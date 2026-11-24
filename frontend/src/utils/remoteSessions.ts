@@ -76,10 +76,13 @@ export function remoteRequestConnection(request: { url?: string; params?: unknow
   const document = DOCUMENT_PATH.exec(path)?.[1]
   const conversation = read('conversation_key')
   const workspace = read('workspace_id')
-  return (session && remoteSessionConnection(decoded(session)))
-    || (project && remoteProjectConnection(decoded(project)))
-    || remoteProjectConnection(read('project_id'))
-    || remoteSessionConnection(read('session_id'))
+  const sessionConnection = session && remoteSessionConnection(decoded(session))
+  if (sessionConnection) return sessionConnection
+  // A request that names its project goes to that project's own server: this window's own project stays here even
+  // while a server chat is open, whose X-Session-ID would otherwise send it there (a Mac project then answered 422).
+  const namedProject = (project && decoded(project)) || read('project_id')
+  if (namedProject) return remoteProjectConnection(namedProject)
+  return remoteSessionConnection(read('session_id'))
     || (typeof headers['X-Session-ID'] === 'string' ? remoteSessionConnection(headers['X-Session-ID']) : undefined)
     || (conversation ? remoteProjectConnection(conversation.split(':')[0]) : undefined)
     || (workspace?.startsWith('work:') ? remoteProjectConnection(workspace.slice(5)) : undefined)

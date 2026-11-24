@@ -29,6 +29,8 @@ it('routes only requests that name a server project, its chats or its open folde
   // This Mac's own work and app-wide reads stay here.
   expect(route({ url: '/api/agent-profiles/work/side-chats', params: { project_id: 'mac-crew' } })).toBeUndefined()
   expect(route({ url: '/api/sessions/mac-chat/events' })).toBeUndefined()
+  // A server chat being open must not pull this Mac's own project with it (its X-Session-ID rides every request).
+  expect(route({ url: '/api/agent-profiles/work/side-chats', params: { project_id: 'mac-crew' }, headers: { 'X-Session-ID': 'remote-chat' } })).toBeUndefined()
   expect(route({ url: '/api/header-summary' })).toBeUndefined()
   expect(route({ url: '/api/documents', params: { folder: 'Crew/other' } })).toBeUndefined()
   // Once a Mac project is open, the same-named Mac folder is read here again.
