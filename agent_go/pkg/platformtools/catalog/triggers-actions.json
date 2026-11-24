@@ -316,5 +316,23 @@
     "description": "Use this caller\u2019s check Watcher action, retaining selected credentials, target and revision checks.",
     "source": "manage_condition_triggers",
     "source_action": "check"
+  },
+  {
+    "family": "automations",
+    "name": "items",
+    "scope": "watcher",
+    "member": "project_watchers_items",
+    "description": "Read a Project activity Watcher's steps, rules and items, with the state of each linked task. Your own feed Watchers only.",
+    "source": "manage_condition_triggers",
+    "source_action": "items"
+  },
+  {
+    "family": "automations",
+    "name": "item_update",
+    "scope": "watcher",
+    "member": "project_watchers_item_update",
+    "description": "Move a Project activity item to one of its steps, add a short note, or link the ask you sent for it (task from messages). Your own feed Watchers only.",
+    "source": "manage_condition_triggers",
+    "source_action": "item_update"
   }
 ]
