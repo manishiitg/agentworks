@@ -349,11 +349,34 @@ func (api *StreamingAPI) withConnectionResolver(keys *llm.ProviderAPIKeys, scope
 			if _, err := api.admitProviderAccount(ctx, scope, string(provider), id); err != nil {
 				return nil, err
 			}
+			logTurnLogin(scope, string(provider), id, nil)
 			return keys.Clone(), nil
 		}
-		return api.connectionAPIKeys(ctx, scope, string(provider), id)
+		record, err := api.admitProviderAccount(ctx, scope, string(provider), id)
+		if err != nil {
+			return nil, err
+		}
+		logTurnLogin(scope, string(provider), id, record)
+		if record == nil {
+			return MergedProviderAPIKeys(ctx), nil
+		}
+		return providerConnectionRuntimeKeys(*record)
 	}
 	return keys
+}
+
+// logTurnLogin names whose AI login a turn uses, so a Crew co-owner's turn can be checked: company (the server's
+// shared account), own (the person's own account) or shared (another person's account shared with them, with its
+// owner). A turn never uses another person's account unless it is shared with them; no credentials are logged.
+func logTurnLogin(scope providerAccountScope, provider, id string, record *storedProviderConnection) {
+	login, owner := "company", ""
+	if record != nil {
+		login, owner = "own", record.OwnerUserID
+		if record.OwnerUserID != scope.Principal {
+			login = "shared"
+		}
+	}
+	log.Printf("[TURN_LOGIN] provider=%s account=%s login=%s account_owner=%s user=%s workspace=%s", provider, canonicalProviderConnectionID(provider, id), login, owner, scope.Principal, scope.WorkspacePath)
 }
 
 // The HTTP handlers for provider accounts live in provider_account_routes.go.
