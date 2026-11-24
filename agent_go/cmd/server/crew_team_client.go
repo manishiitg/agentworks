@@ -202,6 +202,7 @@ func previousCrewTeamMemberRoot(parent string, b crewTeamLocal) string {
 
 func (api *StreamingAPI) startCrewTeamSync() context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
+	go api.deleteRetiredAgentWorksProjects(ctx)
 	if !IsLocalMode() {
 		api.startCrewTeamServerCopies(ctx)
 		return cancel
