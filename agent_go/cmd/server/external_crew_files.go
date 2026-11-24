@@ -33,7 +33,7 @@ func (api *StreamingAPI) externalCrewFilesCall(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if !crew.OwnedByCaller {
-		externalError(w, 403, "forbidden", "Only the project owner can change its files.")
+		externalError(w, 403, "forbidden", "Only the project's owner or co-owners can change its files.")
 		return
 	}
 	root := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)

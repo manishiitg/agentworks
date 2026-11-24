@@ -1057,6 +1057,10 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		if err := api.registerPairedServerAppTools(registrar, gate, userID, workspacePath); err != nil {
 			return err
 		}
+		// A Mac project's owner reads and writes server projects' files as themselves (#3663).
+		if err := api.registerServerProjectFilesTool(registrar, gate, userID, workspacePath); err != nil {
+			return err
+		}
 	}
 
 	// The existing Ask read tool also resolves captured published dashboard
