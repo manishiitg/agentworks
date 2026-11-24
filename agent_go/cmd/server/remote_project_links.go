@@ -20,6 +20,23 @@ type remoteProjectLink struct {
 	Server string `json:"server,omitempty"`
 }
 
+// remoteProjectLinkArg is the project_id of a link to the other machine, or "" for an ordinary workspace_path reference.
+// The tool and the server's external gate both decide with it, so a blank ID never skips the reference check.
+func remoteProjectLinkArg(args map[string]any) (string, error) {
+	project, _ := args["project_id"].(string)
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return "", nil
+	}
+	if path, _ := args["workspace_path"].(string); strings.TrimSpace(path) != "" {
+		return "", fmt.Errorf("pass project_id or workspace_path, not both")
+	}
+	if len(project) > 128 || strings.IndexFunc(project, func(r rune) bool { return r <= ' ' || r == 0x7f }) >= 0 {
+		return "", fmt.Errorf("project_id is not a project ID")
+	}
+	return project, nil
+}
+
 func readRemoteProjectLinks(ctx context.Context, workspacePath string) ([]remoteProjectLink, error) {
 	raw, found, err := readProjectRuntimeManifest(ctx, "work", workspacePath)
 	if err != nil || !found {
@@ -112,7 +129,7 @@ func linkRemoteProject(ctx context.Context, userID, workspacePath, server, proje
 		if strings.TrimSpace(server) != "" {
 			return nil, fmt.Errorf("a project on the server links a Mac project; pass only project_id and project_name")
 		}
-		links, err := setRemoteProjectLink(ctx, workspacePath, remoteProjectLink{ProjectID: project, Name: strings.TrimSpace(name)})
+		links, err := setRemoteProjectLink(ctx, workspacePath, remoteProjectLink{ProjectID: project, Name: cleanAgentLabel(name)})
 		if err != nil {
 			return nil, err
 		}
@@ -148,7 +165,7 @@ func linkRemoteProject(ctx context.Context, userID, workspacePath, server, proje
 	if _, err := callServerTool(ctx, userID, conn, "crew_references", map[string]any{"action": "attach", "crew_id": project, "project_id": here, "project_name": hereName}); err != nil {
 		return nil, err
 	}
-	links, err := setRemoteProjectLink(ctx, workspacePath, remoteProjectLink{ProjectID: project, Name: serverName, Server: conn.ID})
+	links, err := setRemoteProjectLink(ctx, workspacePath, remoteProjectLink{ProjectID: project, Name: cleanAgentLabel(serverName), Server: conn.ID})
 	if err != nil {
 		return nil, err
 	}
