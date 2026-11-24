@@ -45,6 +45,19 @@ describe('collectChatHelpers (#3245)', () => {
     expect(helpers[0]).toMatchObject({ state: 'done', durationMs: 9000 })
   })
 
+  // Real duplicate: Claude's transcript names a helper by its tool call before its task id is known; the
+  // task records then carry both ids. The list showed the same helper twice, one stuck as running.
+  it('merges a helper named first by its tool call and then by its task id', () => {
+    const helpers = collectChatHelpers([
+      helper({ tool_id: 'toolu_9', state: 'started', helper_description: 'Review the diff', helper_mode: 'async' }),
+      helper({ task_id: 'agent-9', tool_id: 'toolu_9', origin: 'sdk_helper', state: 'started', helper_description: 'Review the diff' }),
+      helper({ task_id: 'agent-9', state: 'completed', duration_ms: 12000 }),
+      event('tool_call_start', { tool_call_id: 'toolu_9', tool_name: 'spawnAgent', tool_params: { arguments: '{"prompt":"Review the diff"}' } }),
+    ])
+    expect(helpers).toHaveLength(1)
+    expect(helpers[0]).toMatchObject({ name: 'Review the diff', state: 'done', toolCallId: 'toolu_9' })
+  })
+
   it('skips a quick foreground helper, as the chat does', () => {
     expect(collectChatHelpers([helper({ task_id: 't9', state: 'completed', helper_mode: 'foreground', duration_ms: 1200 })])).toEqual([])
   })

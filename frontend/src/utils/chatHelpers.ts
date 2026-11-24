@@ -124,6 +124,9 @@ export function collectChatHelpers(events: PollingEvent[]): ChatHelper[] {
     if (!record || record.kind !== 'helper') continue
     const toolId = text(record.tool_id), taskId = text(record.task_id), provider = text(record.provider)
     const key = JSON.stringify([provider, text(record.native_session_id), taskId || toolId || text(record.work_id) || text(record.id)])
+    // One helper arrives under two ids: Claude's transcript names it by its tool call first, its task records
+    // by the task id (with the tool call alongside). Either id finds the same line, or it was listed twice.
+    const aliases = [key, ...(taskId ? [`task:${provider}:${taskId}`] : []), ...(toolId ? [`tool:${provider}:${toolId}`] : [])]
     const startedAt = instant(record.started_at), endedAt = instant(record.ended_at)
     const state = nativeHelperState(record.state)
     const durationMs = typeof record.duration_ms === 'number' ? record.duration_ms : startedAt !== undefined && endedAt !== undefined ? endedAt - startedAt : undefined
@@ -143,13 +146,15 @@ export function collectChatHelpers(events: PollingEvent[]): ChatHelper[] {
       ...(toolId ? { toolCallId: toolId } : {}),
       ...(provider === 'claude-code' && taskId && record.origin === 'sdk_helper' ? { stopId: `claude-task:${taskId}` } : {}),
     }
-    const index = nativeKeys.get(key)
-    if (index === undefined) { nativeKeys.set(key, helpers.length); helpers.push(helper); continue }
+    const index = aliases.map(alias => nativeKeys.get(alias)).find(found => found !== undefined)
+    if (index === undefined) { for (const alias of aliases) nativeKeys.set(alias, helpers.length); helpers.push(helper); continue }
+    for (const alias of aliases) nativeKeys.set(alias, index)
     const previous = helpers[index]
     // A late start does not undo a finished helper.
     if (helper.state === 'running' && previous.state !== 'running' && previous.state !== 'unknown') continue
     helpers[index] = {
       ...previous, ...helper,
+      key: previous.key,
       name: helper.task ? helper.name : previous.name,
       task: helper.task || previous.task,
       startedAt: helper.startedAt ?? previous.startedAt,
@@ -162,7 +167,8 @@ export function collectChatHelpers(events: PollingEvent[]): ChatHelper[] {
   for (const pair of pairToolCalls(events)) {
     const startedAt = eventTime(pair.events[0])
     if (pair.name === 'spawnAgent' && pair.callId) {
-      if (helpers.some(helper => helper.key === `codex:${pair.callId}`)) continue
+      // Already listed: from an earlier step, or from the helper's own records.
+      if (helpers.some(helper => helper.key === `codex:${pair.callId}` || helper.toolCallId === pair.callId)) continue
       const prompt = text(json(pair.args)?.prompt)
       helpers.push({
         key: `codex:${pair.callId}`, provider: 'codex-cli', name: firstLine(prompt, 80) || 'Helper agent', task: prompt,
