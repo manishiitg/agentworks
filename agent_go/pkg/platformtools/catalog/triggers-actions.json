@@ -334,5 +334,50 @@
     "description": "Move a Project activity item to one of its steps, add a short note, or link the ask you sent for it (task from messages). Your own feed Watchers only.",
     "source": "manage_condition_triggers",
     "source_action": "item_update"
+  },
+  {
+    "family": "automations",
+    "name": "tasks",
+    "scope": "watcher",
+    "member": "project_watchers_tasks",
+    "description": "Read this project's shared task list: steps, rules, lead, open tasks with their sources, links, activity and linked asks, and the lead's recent sorting decisions.",
+    "source": "manage_condition_triggers",
+    "source_action": "tasks"
+  },
+  {
+    "family": "automations",
+    "name": "task_add",
+    "scope": "watcher",
+    "member": "project_watchers_task_add",
+    "description": "Create a Project task from something a Watcher found (title, source, step, assignee, linked ask).",
+    "source": "manage_condition_triggers",
+    "source_action": "task_add"
+  },
+  {
+    "family": "automations",
+    "name": "task_update",
+    "scope": "watcher",
+    "member": "project_watchers_task_update",
+    "description": "Change a Project task: move its step, rename it, set who has it, link an ask, or add a source, a linked resource (ticket, doc, thread, pull request) or an activity line.",
+    "source": "manage_condition_triggers",
+    "source_action": "task_update"
+  },
+  {
+    "family": "automations",
+    "name": "task_sorted",
+    "scope": "watcher",
+    "member": "project_watchers_task_sorted",
+    "description": "Record what the lead did with something that came in: dropped as noise, or added to an existing task.",
+    "source": "manage_condition_triggers",
+    "source_action": "task_sorted"
+  },
+  {
+    "family": "automations",
+    "name": "task_settings",
+    "scope": "watcher",
+    "member": "project_watchers_task_settings",
+    "description": "Set the project's task steps, rules and lead agent name.",
+    "source": "manage_condition_triggers",
+    "source_action": "task_settings"
   }
 ]

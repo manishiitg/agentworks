@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { Activity, ExternalLink, FolderOpen, ListTodo, Mail, MessageSquare, MoreHorizontal, X, type LucideIcon } from 'lucide-react'
+import { Activity, ExternalLink, FolderOpen, ListChecks, ListTodo, Mail, MessageSquare, MoreHorizontal, X, type LucideIcon } from 'lucide-react'
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
 import type { CrewPanelFeedItem, CrewPanelRow, CrewPanelSection } from './useCrewPanel'
+import { ProjectTasksRow } from './ProjectTasksRow'
 
 // Project activity (#3476, approved mockup 21 Nov): one row per feed Watcher the
 // person's agent set up. The server decides the rows and their state; the feed is
 // the person's own even in a shared Crew.
-const appIcon: Record<string, LucideIcon> = { slack: MessageSquare, mail: Mail, drive: FolderOpen, tasks: ListTodo }
+const appIcon: Record<string, LucideIcon> = { slack: MessageSquare, mail: Mail, drive: FolderOpen, tasks: ListTodo, 'project-tasks': ListChecks }
 
-export const projectActivitySetupMessage = 'Set up Project activity for this project. Check which apps this project can reach (Slack, Gmail, Google Drive, GitHub or another task tracker), ask me which channels, mail, folders and task lists matter, then create one feed Watcher for each. Follow the project-activity guide in the automations skill.'
-export const projectActivityChangeMessage = 'I want to change Project activity for this project. Show me what it watches now and the steps and rules each source uses, then ask what to add, change or remove.'
+export const projectActivitySetupMessage = 'Set up Project activity for this project. Check which apps this project can reach (Slack, Gmail, Google Drive, GitHub or another task tracker), ask me which channels, mail, folders and task lists matter, then set up Project tasks: a lead agent that keeps one shared task list, and one Watcher per source that sends what it finds to that lead. Follow the project-activity guide in the automations skill.'
+export const projectActivityChangeMessage = 'I want to change Project activity for this project. Show me what it watches now, the lead agent, and the steps and rules of the Project tasks list, then ask what to add, change or remove.'
 
 function ago(at: number): string {
   const minutes = Math.max(0, Math.round((Date.now() / 1000 - at) / 60))
@@ -155,8 +156,10 @@ export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHi
     {rows.map(row => <WorkspaceCompactGroup key={row.id} title={row.label} icon={appIcon[row.group || ''] || Activity}
       detail={<span className={row.attention ? 'text-amber-600 dark:text-amber-400' : row.count ? 'font-medium text-foreground' : undefined}>{row.attention ? row.detail : row.count || row.detail}</span>}>
       {row.attention && <button type="button" onClick={onWatchers} className="block w-full rounded px-1 py-0.5 text-left text-[11px] text-amber-600 hover:bg-background/40 dark:text-amber-400">{row.detail} · open Watchers</button>}
-      <RowItems row={row} onAgent={onAgent}/>
-      {!row.items?.length && !row.attention && <p className="px-1 py-0.5 text-[11px] text-muted-foreground">{row.detail}</p>}
+      {row.group === 'project-tasks' ? <ProjectTasksRow row={row}/> : <>
+        <RowItems row={row} onAgent={onAgent}/>
+        {!row.items?.length && !row.attention && <p className="px-1 py-0.5 text-[11px] text-muted-foreground">{row.detail}</p>}
+      </>}
       <div className="flex items-center gap-3 px-1 py-0.5 text-[10px]">
         {row.path && <a href={row.path} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">Open<ExternalLink aria-hidden="true" className="h-2.5 w-2.5"/></a>}
         {onAgent && <button type="button" onClick={() => onAgent(projectActivityChangeMessage)} className="text-muted-foreground hover:text-foreground">Set up Project activity</button>}
