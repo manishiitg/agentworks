@@ -21,23 +21,6 @@ export function registerRemoteProject(projectId: string, connectionId: string, .
 
 export function remoteProjectConnection(projectId?: string | null): string | undefined { return projectId ? projects.get(projectId) : undefined }
 
-// The last place was a server project opened in place: this Mac remembers it so a restart opens it again (#3383).
-// Its own server cannot save it as this window's place, and a later place on this Mac clears it.
-const lastInPlaceKey = (account: string) => `agentworks.last-in-place.${account}`
-export function rememberProjectInPlace(account: string, projectId: string | null) {
-  try {
-    const connection = remoteProjectConnection(projectId)
-    if (projectId && connection) window.localStorage.setItem(lastInPlaceKey(account), JSON.stringify({ id: projectId, connection }))
-    else window.localStorage.removeItem(lastInPlaceKey(account))
-  } catch { /* the place lasts until the window closes */ }
-}
-export function lastProjectInPlace(account: string): { id: string; connection: string } | null {
-  try {
-    const value = JSON.parse(window.localStorage.getItem(lastInPlaceKey(account)) || 'null') as { id?: unknown; connection?: unknown } | null
-    return typeof value?.id === 'string' && typeof value.connection === 'string' ? { id: value.id, connection: value.connection } : null
-  } catch { return null }
-}
-
 /** The chat store says which project a chat tab belongs to; set once by the store (no import cycle). */
 export function setRemoteSessionProjectLookup(lookup: (sessionId: string) => string | undefined) { sessionProject = lookup }
 
