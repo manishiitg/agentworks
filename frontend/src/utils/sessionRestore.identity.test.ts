@@ -106,6 +106,37 @@ describe('durable SQLite hydration isolation', () => {
     await hydrateTabEvents('chat')
     expect(mocks.setTabEvents).toHaveBeenCalledWith('chat', edited)
   })
+
+  it('keeps visible steps omitted by a compact refresh of a warm chat', async () => {
+    const question = { id: 'question', type: 'user_message', sequence: 1 }
+    const start = { id: 'start', type: 'tool_call_start', sequence: 2 }
+    const end = { id: 'end', type: 'tool_call_end', sequence: 3 }
+    const answer = { id: 'answer', type: 'agent_end', sequence: 4 }
+    const latest = { id: 'latest', type: 'user_message', sequence: 5 }
+    const compact = [question, answer, latest]
+    mocks.getTabEvents.mockReturnValue([question, start, end, answer, latest])
+    mocks.getRecentChatEvents.mockResolvedValueOnce(response(structuredClone(compact), 5))
+    await hydrateTabEvents('chat', { compact: true })
+    expect(mocks.setTabEvents).not.toHaveBeenCalled()
+
+    const next = { id: 'next', type: 'user_message', sequence: 6 }
+    const updatedAnswer = { ...answer, data: { content: 'Updated' } }
+    mocks.getRecentChatEvents.mockResolvedValueOnce(response([question, updatedAnswer, latest, next], 6))
+    await hydrateTabEvents('chat', { compact: true })
+    expect(mocks.setTabEvents).toHaveBeenCalledWith('chat', [question, start, end, updatedAnswer, latest, next])
+  })
+
+  it('does not recover rewound steps on a compact reopen', async () => {
+    const kept = { id: 'kept', type: 'user_message', sequence: 1 }
+    const oldQuestion = { id: 'old-question', type: 'user_message', sequence: 2 }
+    const oldStep = { id: 'old-step', type: 'tool_call_end', sequence: 3 }
+    const oldAnswer = { id: 'old-answer', type: 'agent_end', sequence: 4 }
+    const replacement = { id: 'replacement', type: 'user_message', sequence: 5 }
+    mocks.getTabEvents.mockReturnValue([kept, oldQuestion, oldStep, oldAnswer])
+    mocks.getRecentChatEvents.mockResolvedValueOnce(response([kept, replacement], 5))
+    await hydrateTabEvents('chat', { compact: true })
+    expect(mocks.setTabEvents).toHaveBeenCalledWith('chat', [kept, replacement])
+  })
 })
 
 // PLAT-746-988: the goal projection is not a historical page/cursor row.

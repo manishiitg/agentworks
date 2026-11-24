@@ -260,6 +260,27 @@ export async function hydrateTabEvents(
   return result
 }
 
+// A compact page omits older turn details; omission is not deletion. Retain
+// already-rendered steps only before a matching durable row. Edit and resend
+// truncates the journal suffix without reusing its sequence numbers, so rows
+// after the last shared row still get replaced by the authoritative page.
+function keepLoadedCompactSteps(page: PollingEvent[], cached: PollingEvent[], oldest: number): PollingEvent[] {
+  const idsAtSequence = new Map(page.map(event => [event.sequence, event.id]))
+  let confirmedThrough = oldest
+  for (const event of cached) {
+    if (event.id && event.sequence && idsAtSequence.get(event.sequence) === event.id) {
+      confirmedThrough = Math.max(confirmedThrough, event.sequence)
+    }
+  }
+  const steps = cached.filter(event => event.sequence && event.sequence >= oldest &&
+    event.sequence < confirmedThrough && !idsAtSequence.has(event.sequence) &&
+    (event.type === 'tool_call_start' || event.type === 'tool_call_end' || event.type === 'tool_call_error' ||
+      event.type === 'conversation_thinking' || event.type === 'coding_agent_native_activity'))
+  return steps.length
+    ? [...page, ...steps].sort((a, b) => (a.sequence ?? Infinity) - (b.sequence ?? Infinity))
+    : page
+}
+
 async function loadTabEvents(
   sessionId: string,
   options: {
@@ -332,8 +353,11 @@ async function loadTabEvents(
   const olderLoaded = oldestSequence
     ? eventsNow.filter(event => typeof event.sequence === 'number' && event.sequence > 0 && event.sequence < oldestSequence)
     : []
+  const page = compact && oldestSequence && eventsNow.length > 0
+    ? keepLoadedCompactSteps(response.events, eventsNow, oldestSequence)
+    : response.events
   // A provisional bubble survives only until its durable row is on the page.
-  const restored = [...olderLoaded, ...keepUnechoedProvisionals(response.events, eventsNow)]
+  const restored = [...olderLoaded, ...keepUnechoedProvisionals(page, eventsNow)]
 
   if (response.native_goal_snapshot) {
     // Projection is not a page row: do not let an old goal's journal sequence
