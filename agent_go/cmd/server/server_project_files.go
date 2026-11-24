@@ -15,7 +15,8 @@ import (
 
 // A Mac project's agent reads and writes the files of a project on a server the
 // person is signed in to (#3663). It calls that server's own project file tools
-// as the signed-in person, so the server's owner/co-owner/shared checks decide.
+// (the public workspace and files action families) as the signed-in person, so
+// the server's owner/co-owner/shared checks decide.
 // The saved connection's token is added here, in this process; it never reaches
 // the agent's env, files or MCP config. Only the Mac project's own owner gets the
 // tool: a teammate's turn on this Mac never uses the owner's server sign-in.
@@ -52,7 +53,7 @@ func callServerTool(ctx context.Context, owner string, conn desktopConnection, t
 	}
 	var body map[string]any
 	_ = json.NewDecoder(io.LimitReader(res.Body, 16<<20)).Decode(&body)
-	log.Printf("[SERVER_PROJECT_CALL] server=%s tool=%s crew=%v path=%v -> %d (%s)", conn.Name, tool, args["crew_id"], args["path"], res.StatusCode, time.Since(started).Round(time.Millisecond))
+	log.Printf("[SERVER_PROJECT_CALL] server=%s tool=%s action=%v crew=%v path=%v -> %d (%s)", conn.Name, tool, args["action"], args["crew_id"], args["path"], res.StatusCode, time.Since(started).Round(time.Millisecond))
 	if res.StatusCode == http.StatusUnauthorized {
 		return nil, fmt.Errorf("your sign-in to %s has expired; sign in again from Settings", conn.Name)
 	}
@@ -137,15 +138,15 @@ func (api *StreamingAPI) registerServerProjectFilesTool(registrar definitionTool
 			servers := []map[string]any{}
 			for _, c := range targets {
 				entry := map[string]any{"server": c.Name}
-				body, err := callServerTool(ctx, userID, c, "list_crews", map[string]any{"query": stringToolArg(args, "query")})
+				body, err := callServerTool(ctx, userID, c, "workspace", map[string]any{"action": "list", "query": stringToolArg(args, "query")})
 				if err != nil {
 					entry["error"] = err.Error()
 				} else {
 					projects := []map[string]any{}
-					items, _ := body["crews"].([]any)
+					items, _ := body["workspaces"].([]any)
 					for _, item := range items {
 						if p, ok := item.(map[string]any); ok {
-							projects = append(projects, map[string]any{"project": p["crew_id"], "name": p["name"], "owner": p["owner"], "access": p["access"]})
+							projects = append(projects, map[string]any{"project": p["id"], "name": p["name"], "owner": p["owner_name"], "yours": p["owned_by_caller"], "mode": p["mode"]})
 						}
 					}
 					entry["projects"] = projects
@@ -154,8 +155,7 @@ func (api *StreamingAPI) registerServerProjectFilesTool(registrar definitionTool
 			}
 			return out(map[string]any{"servers": servers})
 		}
-		tool := map[string]string{"list": "list_crew_files", "search": "search_crew_files", "read": "read_crew_file", "write": "write_crew_file"}[action]
-		if tool == "" {
+		if action != "list" && action != "search" && action != "read" && action != "write" {
 			return "", fmt.Errorf("action must be projects, list, search, read or write")
 		}
 		project := strings.TrimSpace(stringToolArg(args, "project"))
@@ -166,13 +166,14 @@ func (api *StreamingAPI) registerServerProjectFilesTool(registrar definitionTool
 		if err != nil {
 			return "", err
 		}
-		request := map[string]any{"crew_id": project}
+		// The server's public files family picks its project file member from crew_id.
+		request := map[string]any{"action": action, "crew_id": project}
 		for _, key := range forward {
 			if value, ok := args[key]; ok && value != nil {
 				request[key] = value
 			}
 		}
-		body, err := callServerTool(ctx, userID, c, tool, request)
+		body, err := callServerTool(ctx, userID, c, "files", request)
 		if err != nil {
 			return "", err
 		}
