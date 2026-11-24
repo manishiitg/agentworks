@@ -81,7 +81,23 @@ function useFolderSize(target: TeamTarget, query?: string) {
  * them and sends the person's choices.
  */
 /** The Team page. agents is the Agents tab's content (ShareCrew's own agents and actions, owner 12 Nov). */
-export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: string; onTurnOn?: () => void; onBack?: () => void; agents?: ReactNode }) {
+/** How a Mac project not yet online goes online for its Team (#3797): the servers this Mac is signed in to, the call
+ * that turns Mac online on through one of them, and the way to sign in to a first one. */
+export type TeamGoOnline = { servers: { id: string; name: string }[]; go: (server: string) => Promise<boolean>; signIn: () => void }
+
+// A Mac project that just went online for its Team, kept across the Team page's remount (the unpaired page and the
+// paired one are different trees): its first Team read may still fail while the connection settles, so the page keeps
+// saying it is going online for a short while instead of flashing an error, and the wizard counts the Where step.
+const wentOnline = new Map<string, { at: number; server: string }>()
+const SETTLE_MS = 30000
+
+/** The server a Mac project is still going online on for its Team, or "" once settled. */
+export function teamSettlingServer(projectId: string): string {
+  const entry = wentOnline.get(projectId)
+  return entry && Date.now() - entry.at < SETTLE_MS ? entry.server : ''
+}
+
+export function TeamTab({ projectId, goOnline, onBack, agents }: { projectId: string; goOnline?: TeamGoOnline; onBack?: () => void; agents?: ReactNode }) {
   const state = useTeamTab(projectId)
   const tabId = useId()
   const [section, setSection] = useState<{ project: string; tab: CrewTeamSection } | undefined>(() => {
@@ -99,6 +115,13 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
     return () => window.removeEventListener('agentworks:open-crew-access', open)
   }, [projectId])
   const { view, target, error } = state
+  // While going online, a failed first read is tried again instead of shown.
+  const retryTeam = state.retry
+  useEffect(() => {
+    if (!error || !teamSettlingServer(projectId)) return
+    const timer = setTimeout(retryTeam, 2000)
+    return () => clearTimeout(timer)
+  }, [error, projectId, retryTeam])
   const setups=useTeamSetupsList(target,projectId,!!view?.team.on&&!error)
   const [notice, setNotice] = useState('') // the server's line after a partly saved wizard, until dismissed
   useEffect(() => {
@@ -106,26 +129,35 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
     window.addEventListener('agentworks:team-notice', show)
     return () => window.removeEventListener('agentworks:team-notice', show)
   }, [])
-  const [noTeam, setNoTeam] = useState(false) // step 1 "No": nothing is saved, the normal tab shows until it is reopened
+  const [noTeam, setNoTeam] = useState(false) // Cancel on the first step: nothing is saved, the normal tab shows until it is reopened
+  const [starting, setStarting] = useState(false) // the Team switch was flipped on a Mac project not yet online
   // The way back to the workspace: beside the tabs, or above the People card before Mac online (owner, 18 Nov).
   const back = onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:w-10"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>
   // The Mac app's own Crew before Mac online pairs it: the Team is off, and turning it on turns Mac online on too.
-  if (state.unbound) return <div className="space-y-3">{back && <div className="flex h-8">{back}</div>}<section aria-label="People" className={card}>
-    <div className="flex items-center gap-2">
-      <h3 className="flex-1 font-semibold">People</h3>
-      <span className="text-xs text-muted-foreground">Only you</span>
-      {onTurnOn && <Switch aria-label="Team" checked={false} onCheckedChange={on => { if (on) onTurnOn() }} />}
-    </div>
-    <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work on this project with people; it also turns on Mac online.</p>
-    <NeverOnlinePeople projectId={projectId} />
-  </section></div>
+  if (state.unbound) return <div className="space-y-3">{back && <div className="flex h-8">{back}</div>}
+    {goOnline && starting
+      ? <WhereStep projectId={projectId} online={goOnline} onCancel={() => setStarting(false)} />
+      : <section aria-label="People" className={card}>
+        <div className="flex items-center gap-2">
+          <h3 className="flex-1 font-semibold">People</h3>
+          <span className="text-xs text-muted-foreground">Only you</span>
+          {goOnline && <Switch aria-label="Team" checked={false} onCheckedChange={on => { if (!on) return; if (goOnline.servers.length) setStarting(true); else goOnline.signIn() }} />}
+        </div>
+        <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work on this project with people and with your projects on the server.</p>
+        <NeverOnlinePeople projectId={projectId} />
+      </section>}
+  </div>
+  const settling = wentOnline.get(projectId)
+  const settlingServer = teamSettlingServer(projectId)
+  if (settlingServer && (!view || !target)) return <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />Putting this project online on {settlingServer}…</p>
   if (!view || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>
   const { team } = view
   const requested=team.on ? (section?.project===projectId?section.tab:'activity'):'people'
   // Kit always has a tab: the Team instructions, skills, tools and keys, and setup steps (#3141).
   const tabs:CrewTeamSection[]=['people','agents','activity','sync','setups']
   const selected=requested
-  if (view.new_team && !noTeam) return <TeamWizard target={target} onNo={() => setNoTeam(true)} />
+  if (team.on) wentOnline.delete(projectId)
+  if (view.new_team && !noTeam) return <TeamWizard target={target} onNo={() => setNoTeam(true)} offset={settling ? 1 : 0} />
   return <div className="space-y-3">
     {notice && <p role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/40 px-3 py-2 text-xs text-destructive"><span className="min-w-0 flex-1">{notice}</span><button type="button" aria-label="Dismiss" onClick={() => setNotice('')} className="shrink-0 hover:text-foreground"><X className="h-3.5 w-3.5" /></button></p>}
     {/* The tabs as on every side panel page (YourComputerPanel): one segmented row, a small back arrow beside it. */}
@@ -152,7 +184,7 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
     <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-${selected}-panel`} aria-labelledby={team.on ? `${tabId}-${selected}` : undefined} tabIndex={0} className="space-y-3">
       {selected === 'setups' && (setups.error?<p role="alert" className="text-sm text-destructive">{setups.error}</p>:<TeamKit key={`${captureChatIdentity()}:${target.connection||''}:${target.project}`} target={target} projectId={projectId} list={setups.data} refreshKey={setups.version} folder={team.folder.folders?.find(item=>!item.file)?.path}/>)}
       {selected === 'activity' && <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />}
-      {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{team.on && <OnlineProjectsCard target={target} />}{view.can_leave && <LeaveTeam target={target} confirm={view.leave_confirm} />}</>}
+      {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} projects={team.on ? <OnlineProjectsCard target={target} /> : null} />{view.can_leave && <LeaveTeam target={target} confirm={view.leave_confirm} />}</>}
       {selected === 'agents' && <section aria-label="Agents" className="space-y-3">{agents}</section>}
       {selected === 'sync' && <><FolderLine view={view} target={target} projectId={projectId} />{team.on && <CrewWhereRow projectId={projectId} />}{team.folder_access ? <section aria-label="Sync" className={card}><div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div><TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} /></section> : <p className="text-xs text-muted-foreground">Nothing to sync yet.</p>}</>}
     </div>
@@ -165,6 +197,41 @@ function Dot({ on }: { on: boolean }) {
 
 /** A Crew on the Mac that was never online has no server record, so only the Mac app's own server can say why its
  * people list is closed: one greyed line, the server's. */
+/** Where does the Team work (#3797, approved mockup): a Mac project not yet online picks the server its Team meets on
+ * and goes online right here; with one server it goes at once. Continuing waits for the Team page to load. */
+function WhereStep({ projectId, online, onCancel }: { projectId: string; online: TeamGoOnline; onCancel: () => void }) {
+  const only = online.servers.length === 1 ? online.servers[0].id : ''
+  const [server, setServer] = useState(only)
+  const [going, setGoing] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const name = online.servers.find(item => item.id === server)?.name || 'the server'
+  const go = async (id: string) => {
+    setGoing(true); setFailed(false)
+    wentOnline.set(projectId, { at: Date.now(), server: online.servers.find(item => item.id === id)?.name || 'the server' })
+    const ok = await online.go(id)
+    if (!ok) { wentOnline.delete(projectId); setFailed(true); setGoing(false) }
+  }
+  const started = useRef(false)
+  useEffect(() => { if (only && !started.current) { started.current = true; void go(only) } }, [only]) // eslint-disable-line react-hooks/exhaustive-deps
+  return <section aria-label="Where does the Team work" className="rounded-xl border border-border text-sm">
+    <div className="space-y-2 px-4 py-4">
+      <h3 className="text-[15px] font-semibold">Where does the Team work?</h3>
+      <p className="pb-1 text-xs text-muted-foreground">Your Team meets on a server. This project goes online there so teammates can reach it. Your files and chats stay on this Mac.</p>
+      {!only && <div role="radiogroup" aria-label="Server" className="space-y-2">{online.servers.map(item => <button key={item.id} type="button" role="radio" aria-checked={server === item.id} disabled={going}
+        onClick={() => setServer(item.id)} className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left ${server === item.id ? 'border-primary bg-primary/5' : 'border-border'} disabled:opacity-60`}>
+        <span aria-hidden="true" className={`h-4 w-4 shrink-0 rounded-full border-[1.5px] ${server === item.id ? 'border-primary bg-primary' : 'border-muted-foreground'}`} />
+        <span className="truncate font-medium">{item.name}</span>
+      </button>)}</div>}
+      {going && <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />Putting this project online on {name}…</p>}
+      {failed && <p role="alert" className="text-xs text-destructive">Couldn't put this project online on {name}. Nothing was changed; check your connection and try again.</p>}
+    </div>
+    <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
+      <Button size="sm" variant="outline" disabled={going} onClick={onCancel}>Cancel</Button>
+      <Button size="sm" disabled={going || !server} onClick={() => void go(server)}>{failed ? 'Try again' : 'Put this project online'}</Button>
+    </div>
+  </section>
+}
+
 function NeverOnlinePeople({ projectId }: { projectId: string }) {
   const [line, setLine] = useState('')
   useEffect(() => {
@@ -352,7 +419,7 @@ function AddPerson({ target, pending, known, onPick, everyone }: { target: TeamT
  * writes them (Works with me is the Team). People who only open the dashboards are not listed here: one line says how many,
  * and opens Online > Dashboards, where they are listed (owner's Team Module Manager, 12 Nov). Adding someone or moving
  * them always asks first with what they gain or lose; the server keeps both records and every line. */
-function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
+function PeopleCard({ view, target, projectId, projects }: { view: TeamTabView; target: TeamTarget; projectId: string; projects?: ReactNode }) {
   const { team } = view
   const change = usePeopleChange(target, () => undefined)
   const { pending, error, setError, run, note, setNote, ask, askError, propose, apply, cancel } = change
@@ -381,6 +448,7 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
       <div className={`divide-y divide-border ${closed ? 'opacity-60' : ''}`}>{everyone.map(person => <PersonLine connection={target.connection} key={person.user_id} person={person} people={people} activity={live(person.user_id)} pending={pending} closed={closed} onMove={to => void propose(person.user_id, person.name, to)} />)}</div>
       {people.more_dashboards && <button type="button" onClick={() => openCrewAccess(projectId, useChatStore.getState().activeTabId || '', 'dashboards')} className="text-xs text-primary hover:underline">{people.more_dashboards}</button>}
       {people.can_add && !closed && <AddPerson target={target} pending={pending} known={known} onPick={(id, name) => void propose(id, name, 'works')} />}
+      {projects}
       {people.gets.length > 0 && <details className="text-xs text-muted-foreground">
         <summary className="cursor-pointer">What each level gets</summary>
         <div className="mt-2 grid gap-2.5 sm:grid-cols-2">

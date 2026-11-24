@@ -6,7 +6,8 @@ import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 
-const teamCard = 'space-y-2.5 rounded-xl border border-border px-4 py-3 text-sm' // TeamTab's card
+// Inside the People card (#3797): people and projects are both members, so one card lists them.
+const block = 'space-y-2 border-t border-border pt-3 text-sm'
 
 type OnlineProject = { project_id: string; name?: string }
 type ProjectChoice = { project_id: string; name: string; owner?: string; available: boolean; why?: string }
@@ -16,8 +17,8 @@ type OnlineProjectsView = { projects?: OnlineProject[]; choices?: ProjectChoice[
 const REMOVE_LOSES = ['The Team\'s shared folders and Team instructions, where nobody changed them since the last sync']
 const REMOVE_KEEPS = ['Its own files, chats, agents and keys', 'Shared files someone changed since the last sync']
 
-/** The Team's "Online projects" card (#3664, approved mockup): projects on the Team's server that joined as members of
- * their own kind. The server lists them and the person's projects that can join; adding and removing go through its
+/** The Team's online projects (#3664; inside the People card since #3797): projects on the Team's server that joined as
+ * members of their own kind. The server lists them and the person's projects that can join; adding and removing go through its
  * checks, and its refusal is shown as it says it. Also from chat: team_sync project_add / project_remove. */
 export function OnlineProjectsCard({ target }: { target: TeamTarget }) {
   const [view, setView] = useState<OnlineProjectsView>()
@@ -39,14 +40,14 @@ export function OnlineProjectsCard({ target }: { target: TeamTarget }) {
       setPicking(false); setRemoving(undefined); load()
     } catch (cause) { setError(teamFailure(cause).message) } finally { setPending('') }
   }
-  if (!view) return error ? <section aria-label="Online projects" className={teamCard}><h3 className="font-semibold">Online projects</h3><p role="alert" className="text-xs text-destructive">{error}</p></section> : null
+  if (!view) return error ? <section aria-label="Projects" className={block}><h4 className="text-xs font-semibold text-muted-foreground">Projects</h4><p role="alert" className="text-xs text-destructive">{error}</p></section> : null
   const projects = view.projects || []
   const full = projects.length >= view.max
-  return <section aria-label="Online projects" className={teamCard}>
-    <h3 className="font-semibold">Online projects</h3>
-    <p className="text-xs text-muted-foreground">Projects on the server that work with this Team. They get the Team's shared folders and instructions in their own files; everything else stays their own.</p>
+  return <section aria-label="Projects" className={block}>
+    <h4 className="text-xs font-semibold text-muted-foreground">Projects {where.toLowerCase()}</h4>
+    <p className="text-xs text-muted-foreground">They get the Team's shared folders and instructions in their own files; everything else stays their own.</p>
     {projects.length === 0
-      ? <p className="text-xs text-muted-foreground">No online projects yet.</p>
+      ? <p className="text-xs text-muted-foreground">No projects yet.</p>
       : <div className="divide-y divide-border">{projects.map(project => <div key={project.project_id} className="flex items-center gap-2 py-2">
           <Globe aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
           <div className="min-w-0 flex-1">
@@ -57,7 +58,7 @@ export function OnlineProjectsCard({ target }: { target: TeamTarget }) {
         </div>)}</div>}
     {view.can_add
       ? full ? <p className="text-xs text-muted-foreground">A Team has at most {view.max} online projects. Remove one to add another.</p>
-        : <button type="button" disabled={Boolean(pending)} onClick={() => setPicking(!picking)} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Add an online project</button>
+        : <button type="button" disabled={Boolean(pending)} onClick={() => setPicking(!picking)} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Add a project</button>
       : view.add_line && <p className="text-xs text-muted-foreground">{view.add_line}</p>}
     {picking && <div className="rounded-xl border border-border bg-popover">
       <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">

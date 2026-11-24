@@ -427,12 +427,17 @@ export function useTeamInvites() {
 export type TeamWizardView = {
   new_team: boolean; default_level: CrewPeopleLevelKey; levels: CrewPeopleLevel[]
   people: { user_id: string; name: string; email?: string }[]
-  folders: { default: string; folders: string[]; offline?: string }
+  folders: { default: string; folders: string[]; offline?: string; taken?: Record<string, string> }
   agents: { key: string; name: string; main?: boolean; in_team:boolean }[]
+  projects?: TeamProjectChoice[]
 }
-export type TeamWizardChoice = { people: { user_id: string; level: CrewPeopleLevelKey }[]; folder: string; agents: string[]; create_dashboard?: boolean }
-export function teamWizard(target: TeamTarget): Promise<TeamWizardView> {
-  return teamRequest<TeamWizardView>({ project: target.project, connection: target.connection }, '/setup')
+/** One of the person's projects on the server, as the server offers it to join a Team (available, or why not). */
+export type TeamProjectChoice = { project_id: string; name: string; owner?: string; available: boolean; why?: string }
+export type TeamWizardChoice = { people: { user_id: string; level: CrewPeopleLevelKey }[]; folder: string; agents: string[]; projects?: string[]; create_dashboard?: boolean }
+/** The setup's options; with picked projects the server marks the folders they already have and suggests a free one. */
+export function teamWizard(target: TeamTarget, projects: string[] = []): Promise<TeamWizardView> {
+  const query = projects.length ? `?projects=${encodeURIComponent(projects.join(','))}` : ''
+  return teamRequest<TeamWizardView>({ project: target.project, connection: target.connection }, `/setup${query}`)
 }
 export async function finishTeamWizard(target: TeamTarget, choice: TeamWizardChoice): Promise<void> {
   try {

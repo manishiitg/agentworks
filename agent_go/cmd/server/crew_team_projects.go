@@ -94,8 +94,13 @@ func crewTeamProjectFilesRoot(project string) (string, error) {
 // crewTeamProjectTaken lists what the online project already has at the Team's paths. Joining would send those files
 // to the whole Team, so the project must move them first.
 func crewTeamProjectTaken(root string, t crewTeam) []string {
+	return crewTeamPathsTaken(root, t.Folder.Folders)
+}
+
+// crewTeamPathsTaken lists which of these shared folders, and the Team instructions file, a project's files already have.
+func crewTeamPathsTaken(root string, folders []string) []string {
 	taken := []string{}
-	for _, rel := range append(slices.Clone(t.Folder.Folders), crewTeamInstructionsFile) {
+	for _, rel := range append(slices.Clone(folders), crewTeamInstructionsFile) {
 		if crewTeamUnder(rel, "skills") {
 			continue
 		}
@@ -143,44 +148,49 @@ func (api *StreamingAPI) handleCrewTeamProjects(w http.ResponseWriter, r *http.R
 		api.setCrewTeamProjectAgentLevel(w, r, claims.UserID, team, strings.TrimSpace(in.ProjectID), in.Agent, in.Level)
 		return
 	}
-	member := strings.TrimSpace(in.ProjectID)
+	t, status, code, refusal := changeCrewTeamProject(team, claims.UserID, in.Action, strings.TrimSpace(in.ProjectID))
+	if refusal != "" {
+		externalError(w, status, code, refusal)
+		return
+	}
+	externalJSON(w, map[string]any{"team": t.view(claims.UserID)})
+}
+
+// changeCrewTeamProject adds or removes one online project with every check the Team panel's add has; the panel, chat
+// and the Team setup's Finish all come here. It returns the saved Team, or the status, code and sentence of a refusal.
+func changeCrewTeamProject(team, user, action, member string) (crewTeam, int, string, string) {
 	dir, err := crewTeamDir(team)
 	if err != nil {
-		externalError(w, 400, "team_invalid", "Choose a valid team.")
-		return
+		return crewTeam{}, 400, "team_invalid", "Choose a valid team."
 	}
 	mu := crewTeamRecordMutex(dir)
 	mu.Lock()
 	t, err := readCrewTeam(team)
 	mu.Unlock()
 	if err != nil {
-		externalError(w, 404, "team_unavailable", "This project has no Team yet. Turn the Team on first.")
-		return
+		return crewTeam{}, 404, "team_unavailable", "This project has no Team yet. Turn the Team on first."
 	}
 	memberRoot := crewProjectRootByID(member)
-	if refusal := crewTeamProjectChangeRefusal(t, claims.UserID, member, memberRoot, in.Action); refusal != "" {
-		log.Printf("[CREW_TEAM] project=%s actor=%s event=project_%s_refused member=%s reason=%q", team, logUsernameForUserID(claims.UserID), in.Action, member, refusal)
-		externalError(w, 403, "team_forbidden", refusal)
-		return
+	if refusal := crewTeamProjectChangeRefusal(t, user, member, memberRoot, action); refusal != "" {
+		log.Printf("[CREW_TEAM] project=%s actor=%s event=project_%s_refused member=%s reason=%q", team, logUsernameForUserID(user), action, member, refusal)
+		return crewTeam{}, 403, "team_forbidden", refusal
 	}
-	if in.Action == "add" && !t.hasProject(member) {
+	if action == "add" && !t.hasProject(member) {
 		files, err := crewTeamProjectFilesRoot(member)
 		if err != nil {
-			externalError(w, 409, "project_unavailable", "That project's folder is unavailable now. Try again in a minute.")
-			return
+			return crewTeam{}, 409, "project_unavailable", "That project's folder is unavailable now. Try again in a minute."
 		}
 		if taken := crewTeamProjectTaken(files, t); len(taken) > 0 {
-			externalError(w, 409, "project_has_team_paths", fmt.Sprintf("%s already has %s. The Team would share it with everyone, so rename or move it in that project first, then add it again.", crewTeamProjectName(member), strings.Join(taken, ", ")))
-			return
+			return crewTeam{}, 409, "project_has_team_paths", crewTeamTakenLine(crewTeamProjectName(member), taken)
 		}
 	}
 	mu.Lock()
 	t, err = readCrewTeam(team)
 	if err == nil {
 		switch {
-		case in.Action == "add" && !t.hasProject(member):
-			t.Projects = append(t.Projects, crewTeamProject{ProjectID: member, AddedBy: claims.UserID, AddedAt: time.Now().UTC().Format(time.RFC3339)})
-		case in.Action == "remove":
+		case action == "add" && !t.hasProject(member):
+			t.Projects = append(t.Projects, crewTeamProject{ProjectID: member, AddedBy: user, AddedAt: time.Now().UTC().Format(time.RFC3339)})
+		case action == "remove":
 			t.Projects = slices.DeleteFunc(t.Projects, func(p crewTeamProject) bool { return p.ProjectID == member })
 		}
 		t.Revision++
@@ -188,12 +198,16 @@ func (api *StreamingAPI) handleCrewTeamProjects(w http.ResponseWriter, r *http.R
 	}
 	mu.Unlock()
 	if err != nil {
-		externalError(w, 500, "team_save_failed", "The Team could not be saved now. Try again in a minute.")
-		return
+		return crewTeam{}, 500, "team_save_failed", "The Team could not be saved now. Try again in a minute."
 	}
-	log.Printf("[CREW_TEAM] project=%s actor=%s event=project_%s member=%s", team, logUsernameForUserID(claims.UserID), in.Action, member)
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=project_%s member=%s", team, logUsernameForUserID(user), action, member)
 	crewTeamWakeSoon()
-	externalJSON(w, map[string]any{"team": t.view(claims.UserID)})
+	return t, 0, "", ""
+}
+
+// crewTeamTakenLine is the one sentence for a project that already has the Team's paths.
+func crewTeamTakenLine(name string, taken []string) string {
+	return fmt.Sprintf("%s already has %s, which this Team shares. Rename it in that project, or share a different folder, then add it again.", name, strings.Join(taken, ", "))
 }
 
 // crewTeamProjectChangeRefusal is the sentence a person sees, or "" when the change is allowed.

@@ -260,13 +260,6 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
   // A row only the Mac can change, as the server words it here.
   const serverCopies = [...(team?.server_data ? [{ name: `Shared with the team: ${team.server_data.name}`, detail: 'kept on the server so your team can sync it' }] : [])]
   // Team on while Mac online is off (the Mac app's own Crew): the Mac turns both on (the server decides, owner 5 Nov).
-  const turnOnTeam = async () => {
-    if (!target) { setSection('mac'); setAsking(true); return }
-    setBusy(true); setError('')
-    try { await desktopRequest(`/${encodeURIComponent(target)}/crew-teams/${encodeURIComponent(projectId)}/switch`, 'POST', { on: true }); teamChanged() }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'The Team could not be turned on. Try again.') }
-    finally { setBusy(false); setReload(value => value + 1); refreshCrewPlace(projectId) }
-  }
   // An online project leaves a Team from its own page (#3664); the server checks who may (crewTeamProjectChangeRefusal).
   const leaveTeam = async (team: string) => {
     setBusy(true); setError('')
@@ -344,7 +337,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
             <div><h3 className="font-semibold">In a Team</h3><p className="text-xs text-muted-foreground">Its agents work with this Team and its shared folders sync here.</p></div>
             {status.access_in_teams.map(item => <div key={item.team_id}>{way(item.name, `${item.owner}'s Team`, item.can_remove ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void leaveTeam(item.team_id)}>Remove from Team</Button> : null)}</div>)}
           </section>}</>
-        : <ShareCrew projectId={projectId} onBack={tabs.length > 1 ? undefined : onBack} onTurnOn={here ? () => void turnOnTeam() : undefined} />}
+        : <ShareCrew projectId={projectId} onBack={tabs.length > 1 ? undefined : onBack} goOnline={here ? { servers: connections.map(item => ({ id: item.id, name: item.name || networkName(item.id) })), go: via => run('relay', via), signIn: () => { setSection('mac'); setAsking(true) } } : undefined} />}
     </section>}
     {status.access_laptop && <LaptopCard sessionId={sessionId} />}
     {error && <p role="alert" className="text-xs text-amber-600">{error}</p>}

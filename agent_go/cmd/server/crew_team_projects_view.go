@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,6 +21,41 @@ type crewTeamProjectChoice struct {
 	Owner     string `json:"owner,omitempty"`
 	Available bool   `json:"available"`
 	Why       string `json:"why,omitempty"`
+}
+
+// crewTeamProjectChoices lists the person's projects on this server that could join Team t, sharing these folders:
+// available ones first, and for the rest the one line why not (only shared with them, or already has a folder the Team
+// shares). The Team setup passes no folders yet, so only the Team instructions file can clash there.
+func crewTeamProjectChoices(ctx context.Context, claims *UserClaims, t crewTeam, folders []string) ([]crewTeamProjectChoice, error) {
+	rows, err := listAccessibleWorkspaceProjects(ctx, claims, "")
+	if err != nil {
+		return nil, err
+	}
+	choices := []crewTeamProjectChoice{}
+	for _, row := range rows {
+		id, path := stringField(row["id"]), stringField(row["workspace_path"])
+		if id == "" || id == t.ProjectID || t.hasProject(id) || !crewLivesOnServer(id) {
+			continue // a Mac project's online copy is not an online project of its own
+		}
+		c := crewTeamProjectChoice{ProjectID: id, Name: stringField(row["name"]), Owner: stringField(row["owner"])}
+		if !crewProjectOwnedByCaller(claims.UserID, path) {
+			c.Why = "Only shared with you. Its owner or a co-owner can add it."
+		} else if files, err := crewTeamProjectFilesRoot(id); err != nil {
+			c.Why = "Its folder is unavailable now. Try again in a minute."
+		} else if taken := crewTeamPathsTaken(files, folders); len(taken) > 0 {
+			c.Why = "Already has " + strings.Join(taken, ", ") + ", which this Team shares. Rename it in that project, or share a different folder."
+		} else {
+			c.Available = true
+		}
+		choices = append(choices, c)
+	}
+	sort.SliceStable(choices, func(i, j int) bool {
+		if choices[i].Available != choices[j].Available {
+			return choices[i].Available
+		}
+		return strings.ToLower(choices[i].Name) < strings.ToLower(choices[j].Name)
+	})
+	return choices, nil
 }
 
 func (api *StreamingAPI) handleCrewTeamProjectChoices(w http.ResponseWriter, r *http.Request) {
@@ -50,34 +86,11 @@ func (api *StreamingAPI) handleCrewTeamProjectChoices(w http.ResponseWriter, r *
 		out["add_line"] = "Turn the Team on first, then add an online project."
 	}
 	if claims.UserID == t.OwnerID {
-		rows, err := listAccessibleWorkspaceProjects(r.Context(), claims, "")
+		choices, err := crewTeamProjectChoices(r.Context(), claims, t, t.Folder.Folders)
 		if err != nil {
 			externalError(w, 503, "projects_unavailable", "Your projects can't be listed now. Try again in a minute.")
 			return
 		}
-		choices := []crewTeamProjectChoice{}
-		for _, row := range rows {
-			id, path := stringField(row["id"]), stringField(row["workspace_path"])
-			if id == "" || id == t.ProjectID || t.hasProject(id) {
-				continue
-			}
-			c := crewTeamProjectChoice{ProjectID: id, Name: stringField(row["name"]), Owner: stringField(row["owner"])}
-			switch {
-			case !crewLivesOnServer(id):
-				continue // a Mac project's online copy is not an online project of its own
-			case !crewProjectOwnedByCaller(claims.UserID, path):
-				c.Why = "Only shared with you. Its owner or a co-owner can add it."
-			default:
-				c.Available = true
-			}
-			choices = append(choices, c)
-		}
-		sort.SliceStable(choices, func(i, j int) bool {
-			if choices[i].Available != choices[j].Available {
-				return choices[i].Available
-			}
-			return strings.ToLower(choices[i].Name) < strings.ToLower(choices[j].Name)
-		})
 		out["choices"] = choices
 	}
 	externalJSON(w, out)
