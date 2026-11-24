@@ -166,7 +166,7 @@ function ModelRow({ model, showApp }: { model: ChatContextModelCost; showApp: bo
 
 /** Only Claude Code counts its thinking inside output, so the pane says so rather than show no thinking at all. */
 function thinkingNote(period: ChatContextCostPeriod): string {
-  return period.tokens.thinking > 0 || !(period.tokens.output > 0) || !period.providers.includes('claude-code') ? '' : 'Claude counts its thinking in output.'
+  return period.tokens.thinking > 0 || !(period.tokens.output > 0) || !period.providers?.includes('claude-code') ? '' : 'Claude counts its thinking in output.'
 }
 
 /** "98% of input came from cache. Without it this would have cost about $857; the cache saved about $786." */

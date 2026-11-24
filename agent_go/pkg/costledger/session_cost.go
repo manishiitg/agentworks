@@ -151,6 +151,8 @@ func (l *Ledger) SessionCost(sessionID string) (*SessionCost, error) {
 		m.Calls += calls
 		m.Tokens.add(tokens)
 		if basis == "unpriced" {
+			// The app still counts as used in this period even before it has a price.
+			providerUSD[period][provider] += 0
 			out.UnpricedCalls += calls
 			p.UnpricedCalls += calls
 			continue
@@ -181,6 +183,8 @@ func (l *Ledger) SessionCost(sessionID string) (*SessionCost, error) {
 	}
 	out.TodayUSD = today.Float64
 	for i, p := range periods {
+		// Always lists, never null: the Context panel reads them directly.
+		p.Providers, p.Models = []string{}, []SessionModelCost{}
 		for _, m := range models[i] {
 			p.Models = append(p.Models, *m)
 		}
