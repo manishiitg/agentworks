@@ -373,14 +373,16 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 					startBlock(item.ID)
 				}
 				if item.Type == "plan" && msg.Method == "item/completed" && strings.TrimSpace(item.Text) != "" {
-					// /plan: Codex's plan mode returns its plan as this item, not in the agent message.
-					final = strings.TrimSpace(strings.TrimSpace(final) + "\n\n" + item.Text)
+					// /plan: Codex's plan mode returns its plan as this item, not in the agent message. It is marked as a
+					// plan so the chat folds it to one line (#3711).
+					planText := llmtypes.MarkNativePlan(item.Text)
+					final = strings.TrimSpace(strings.TrimSpace(final) + "\n\n" + planText)
 					if !streamed[item.ID] {
-						emitContent(item.ID, item.Text, metadata)
+						emitContent(item.ID, planText, metadata)
 					}
 					if id := blockID(item.ID); id != "" && !blocksCompleted[id] {
 						blocksCompleted[id] = true
-						emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeAssistantBlock, Content: item.Text, Metadata: map[string]any{llmtypes.AssistantBlockIDMetadataKey: id, llmtypes.AssistantBlockPhaseMetadataKey: "end"}})
+						emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeAssistantBlock, Content: planText, Metadata: map[string]any{llmtypes.AssistantBlockIDMetadataKey: id, llmtypes.AssistantBlockPhaseMetadataKey: "end"}})
 					}
 				}
 				if item.Type == "agentMessage" && msg.Method == "item/completed" {

@@ -205,9 +205,13 @@ func claudeSDKPermission(ctx context.Context, tool string, input json.RawMessage
 		value["answers"] = mapped
 	case "ExitPlanMode":
 		plan, _ := value["plan"].(string)
-		answers, err := nativeinput.AskWithKind(ctx, nativeinput.PlanApprovalRequest, []nativeinput.Question{{ID: "plan", Question: "Approve this plan?\n" + plan, Options: []nativeinput.Option{{Label: "Approve"}, {Label: "Reject"}}}})
-		if err != nil || len(answers) != 1 || len(answers[0].SelectedLabels) != 1 || answers[0].SelectedLabels[0] != "Approve" {
+		// The person approves, rejects, or types what to change (#3711); a change or a rejection keeps Claude planning.
+		answers, err := nativeinput.AskWithKind(ctx, nativeinput.PlanApprovalRequest, []nativeinput.Question{{ID: "plan", Question: "Approve this plan?\n" + plan, Options: []nativeinput.Option{{Label: "Approve"}, {Label: "Reject"}}, AllowOther: true}})
+		if err != nil || len(answers) != 1 {
 			return deny
+		}
+		if denied := planAnswerDenial(answers[0]); denied != nil {
+			return denied
 		}
 	case "Bash", "PowerShell", "Monitor":
 		command, _ := value["command"].(string)
@@ -444,4 +448,15 @@ func claudeSDKElicitation(ctx context.Context, input json.RawMessage) map[string
 		out["content"] = result.Content
 	}
 	return out
+}
+
+// planAnswerDenial is the reply to Claude for a plan the person did not approve, or nil when approved.
+func planAnswerDenial(answer nativeinput.Answer) map[string]any {
+	if feedback := strings.TrimSpace(answer.OtherText); feedback != "" {
+		return map[string]any{"behavior": "deny", "message": "The person asked for changes to the plan: " + feedback + "\nRevise the plan with these changes and present it again for approval. Do not start the work yet."}
+	}
+	if len(answer.SelectedLabels) == 1 && answer.SelectedLabels[0] == "Approve" {
+		return nil
+	}
+	return map[string]any{"behavior": "deny", "message": "The person rejected this plan. Do not start the work. Ask them what to change, then present a revised plan."}
 }

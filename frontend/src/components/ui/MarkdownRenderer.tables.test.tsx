@@ -49,3 +49,12 @@ it('lets the message width constrain markdown cells and keeps the original value
     vi.unstubAllGlobals()
   }
 })
+
+// #3711: a Codex plan arrives marked; the reply shows one plan line, not the whole plan (which may hold code blocks).
+it('folds a marked plan in a reply to one plan line', () => {
+  const reply = 'I checked the README.\n\n~~~~~agentworks-plan\n# Add a line\n\n1. Read it.\n2. Add:\n```\necho hi\n```\n~~~~~'
+  const html = renderToStaticMarkup(<ConversationMarkdownRenderer content={reply} />)
+  expect(html).toContain('data-testid="plan-line"')
+  expect(html).toContain('Add a line')
+  expect(html).not.toContain('echo hi')
+})

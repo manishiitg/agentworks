@@ -55,4 +55,8 @@ func TestCodexAppServerShowsPlanItem(t *testing.T) {
 	if !strings.Contains(output.String(), "1. Read the README.") || !strings.Contains(response.Choices[0].Content, "2. Add the line.") {
 		t.Fatalf("plan missing: %q / %q", output.String(), response.Choices[0].Content)
 	}
+	// #3711: the plan is marked so the chat folds it to one line.
+	if !strings.Contains(output.String(), llmtypes.NativePlanFence) || !strings.Contains(response.Choices[0].Content, llmtypes.NativePlanFence) {
+		t.Fatalf("plan not marked: %q", response.Choices[0].Content)
+	}
 }

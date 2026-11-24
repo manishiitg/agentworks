@@ -21,14 +21,6 @@ export function ComposerPendingPrompt({ prompt, onAnswer }: {
   // A plan is one slim line; the full plan opens in the plan pane (#3711).
   const planOptions = prompt.requestKind === 'plan_approval' && prompt.questions.length === 1
     ? { approve: question.options.find(option => option.label === 'Approve'), reject: question.options.find(option => option.label === 'Reject') } : undefined
-  // One plain choice gets one-click buttons; anything richer keeps the full card.
-  const oneClick = prompt.questions.length === 1 && !question.multiSelect && !question.allowOther
-    && question.options.length > 0 && question.options.length <= 4
-  if (!oneClick) {
-    return <div className="mb-2 w-full px-3" data-testid="composer-pending-prompt">
-      <CodingAgentQuestionCard prompt={prompt} onAnswer={onAnswer} />
-    </div>
-  }
   const approval = prompt.requestKind === 'command_approval'
   const answer = async (label: string) => {
     if (submitting) return
@@ -45,9 +37,17 @@ export function ComposerPendingPrompt({ prompt, onAnswer }: {
   if (planOptions?.approve && planOptions.reject) {
     const { approve, reject } = planOptions
     return <section className="mb-2 w-full px-3" data-testid="composer-pending-prompt" aria-live="polite">
-      <PlanLine plan={planFromQuestion(question.question)} answer={{ busy: submitting, approve: () => void answer(approve.label), reject: () => void answer(reject.label) }} />
+      <PlanLine plan={planFromQuestion(question.question)} typeChanges={question.allowOther} answer={{ busy: submitting, approve: () => void answer(approve.label), reject: () => void answer(reject.label) }} />
       {error && <p role="alert" className="mt-1 text-xs text-destructive">{error}</p>}
     </section>
+  }
+  // One plain choice gets one-click buttons; anything richer keeps the full card.
+  const oneClick = prompt.questions.length === 1 && !question.multiSelect && !question.allowOther
+    && question.options.length > 0 && question.options.length <= 4
+  if (!oneClick) {
+    return <div className="mb-2 w-full px-3" data-testid="composer-pending-prompt">
+      <CodingAgentQuestionCard prompt={prompt} onAnswer={onAnswer} />
+    </div>
   }
   // Approve is the main action, so it comes last (next to where people expect "send").
   const options = approval ? [...question.options].sort((a, b) => Number(a.label === 'Allow') - Number(b.label === 'Allow')) : question.options

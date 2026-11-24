@@ -74,7 +74,7 @@ it('shows a restored ordinary question without treating its id as a permission a
 it('shows a pending plan as one line, opens the full plan in the pane, and shrinks once approved', async () => {
   const plan = '# Add rate limiting\n\nUploads have no limit.\n\n1. Add a limiter.\n2. Wire it in.\n3. Last step only in the pane.'
   const prompt: CodingAgentQuestionPrompt = { provider: 'claude-code', promptId: 'plan:1', state: 'pending', requestKind: 'plan_approval', answers: [], questions: [
-    { id: 'plan', header: '', question: `Approve this plan?\n${plan}`, multiSelect: false, options: [{ label: 'Approve', description: '' }, { label: 'Reject', description: '' }] },
+    { id: 'plan', header: '', question: `Approve this plan?\n${plan}`, multiSelect: false, allowOther: true, options: [{ label: 'Approve', description: '' }, { label: 'Reject', description: '' }] },
   ] }
   const replies: CodingAgentChoiceAnswer[][] = []
   const host = document.createElement('div'), root = createRoot(host)
@@ -87,6 +87,8 @@ it('shows a pending plan as one line, opens the full plan in the pane, and shrin
     expect(line.textContent).toContain('3 steps')
     expect(line.textContent).toContain('Uploads have no limit.')
     expect(host.textContent).not.toContain('Last step only in the pane')
+    // Claude's plan card takes typed changes from the message box (#3711).
+    expect(line.textContent).toContain('type changes')
     await act(async () => button(host, 'View plan').click())
     const pane = document.querySelector('[data-testid="plan-pane"]')!
     expect(pane.textContent).toContain('Last step only in the pane')
@@ -97,6 +99,9 @@ it('shows a pending plan as one line, opens the full plan in the pane, and shrin
     await act(async () => root.render(<CodingAgentQuestionCard prompt={{ ...prompt, state: 'answered', answers: replies[0] }} />))
     expect(host.querySelector('[data-testid="plan-line"]')!.getAttribute('data-outcome')).toBe('approved')
     expect(host.textContent).toContain('Plan approved')
+    await act(async () => root.render(<CodingAgentQuestionCard prompt={{ ...prompt, state: 'answered', answers: [{ id: 'plan', selectedLabels: [], otherText: 'Use 30 a minute' }] }} />))
+    expect(host.querySelector('[data-testid="plan-line"]')!.getAttribute('data-outcome')).toBe('changed')
+    await act(async () => root.render(<CodingAgentQuestionCard prompt={{ ...prompt, state: 'answered', answers: replies[0] }} />))
     expect(host.textContent).not.toContain('Uploads have no limit.')
   } finally {
     await act(async () => root.unmount()); host.remove()
