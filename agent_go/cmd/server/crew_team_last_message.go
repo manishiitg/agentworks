@@ -134,7 +134,12 @@ func crewTeamMessagePreviewsFor(ctx context.Context, owner, project string, incl
 func (api *StreamingAPI) desktopCrewTeamMessagePreviews(ctx context.Context, owner, localProject, serverProject string, connection desktopConnection, rows []AgentProfileSideChat) map[string]crewTeamMessagePreview {
 	out := map[string]crewTeamMessagePreview{}
 	var team crewTeam
-	if err := crewTeamRemoteJSON(ctx, owner, connection, http.MethodGet, "/api/crew-teams/"+url.PathEscape(serverProject), nil, &team); err != nil || !team.On || !team.member(connection.User.ID) {
+	if crewTeamRefusedRecently(serverProject) {
+		return out
+	}
+	err := crewTeamRemoteJSON(ctx, owner, connection, http.MethodGet, "/api/crew-teams/"+url.PathEscape(serverProject), nil, &team)
+	noteCrewTeamRead(serverProject, err)
+	if err != nil || !team.On || !team.member(connection.User.ID) {
 		return out
 	}
 	var previews map[string]crewTeamMessagePreview
