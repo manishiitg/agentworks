@@ -29,7 +29,7 @@ export function ForkToTeammate({ state, agentId, name, close }: { state: TeamTab
     <section role="dialog" aria-modal="true" aria-labelledby="fork-to-title" className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto space-y-4 rounded-xl border border-border bg-background p-5 shadow-xl" onClick={event => event.stopPropagation()}>
       <h2 id="fork-to-title" className="font-semibold">{sent ? 'Copy sent' : `Send a copy of ${name}`}</h2>
       {sent ? <p className="text-sm">{person?.name} can accept their own private copy. Your agent keeps running unchanged.</p> : <>
-        <label className="block space-y-1 text-sm"><span>Teammate in this Crew</span><select aria-label="Teammate in this project" className="w-full rounded-md border border-border bg-background p-2" value={recipient} onChange={event => setRecipient(event.target.value)} disabled={busy}>
+        <label className="block space-y-1 text-sm"><span>Teammate in this project</span><select aria-label="Teammate in this project" className="w-full rounded-md border border-border bg-background p-2" value={recipient} onChange={event => setRecipient(event.target.value)} disabled={busy}>
           <option value="">Choose a teammate</option>
           {people.map(person => <option key={person.user_id} value={person.user_id}>{person.name}</option>)}
         </select></label>

@@ -279,7 +279,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
         {[...groups].sort((x, y) => Number(x.kind === 'crew_files') - Number(y.kind === 'crew_files')).map(group => (
           <div key={`${group.kind}:${group.root}:${group.branch || ''}`} className="mt-3 border-t border-border pt-2 first:mt-2 first:border-0 first:pt-0">
             <div className="flex flex-wrap items-center gap-2">
-              {group.kind === 'crew_files' ? <span className="text-xs text-muted-foreground">Crew files · not in Git</span> : <b>{group.name}</b>}
+              {group.kind === 'crew_files' ? <span className="text-xs text-muted-foreground">Project files · not in Git</span> : <b>{group.name}</b>}
               {group.working_tree && <span className="text-xs text-muted-foreground" title="Current checkout status; saved diffs remain after commit or push.">{group.working_tree === 'clean' ? 'Working tree clean' : 'Uncommitted changes'}</span>}
               {group.new_checkout && <span className="rounded-full border border-border px-2 text-xs text-muted-foreground">new copy · {group.total_files} files</span>}
               {group.kind === 'repo' && group.branch && <span className="rounded-full border border-border px-2 text-xs text-muted-foreground">branch {group.branch}</span>}

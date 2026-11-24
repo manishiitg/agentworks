@@ -78,7 +78,7 @@ function ConnectionsToolsContent() {
             {current.id === 'costs' && canReview && <CostsOverview />}
             {current.id === 'browser' && <BrowserConnectionsPanel open onClose={() => {}} inline startSetup />}
             {current.id === 'mcp' && <AccountMcpPanel />}
-            {current.id === 'skills' && <div className="space-y-2 rounded-lg border border-border p-4"><h3 className="text-sm font-medium">Skills belong to your work</h3><p className="text-sm text-muted-foreground">Open a Crew’s Skills panel to view, add or manage its skills. Plugin and tool selections also stay with that Crew; there is no separate account-wide plugin library.</p></div>}
+            {current.id === 'skills' && <div className="space-y-2 rounded-lg border border-border p-4"><h3 className="text-sm font-medium">Skills belong to your work</h3><p className="text-sm text-muted-foreground">Open a project’s Skills panel to view, add or manage its skills. Plugin and tool selections also stay with that project; there is no separate account-wide plugin library.</p></div>}
             {current.id === 'secrets' && <AccountVaultSecrets />}
             {current.id === 'users' && user?.is_admin && <UsersContent />}
             {current.id === 'connect' && user && <ConnectContent />}
@@ -96,5 +96,5 @@ function AccountVaultSecrets() {
   const canManage = useCanManageVault()
   return canManage
     ? <VaultSecrets mode="vault" />
-    : <p role="status" className="text-sm text-muted-foreground">Secrets are managed by Vault managers. Ask a Vault manager to set up the secrets your Crew needs.</p>
+    : <p role="status" className="text-sm text-muted-foreground">Secrets are managed by Vault managers. Ask a Vault manager to set up the secrets your project needs.</p>
 }

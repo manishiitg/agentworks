@@ -37,7 +37,7 @@ function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section =
   const [apps, setApps] = useState<'connected' | 'available'>(section === 'available' ? 'available' : 'connected')
   useEffect(() => { if (section === 'connected' || section === 'available') setApps(section) }, [section])
   const kinds: Record<IntegrationSection, VaultItemKind[]> = {github:[],connected:['mcp'],available:['mcp'],secrets:['shared_secret'],gmail:['google'],'slack-account':['slack'],laptop:['computer']}
-  if (section === 'github' && (!canEdit || !github)) return <p className="text-sm text-muted-foreground">Open your own Crew to manage your GitHub connection.</p>
+  if (section === 'github' && (!canEdit || !github)) return <p className="text-sm text-muted-foreground">Open your own project to manage your GitHub connection.</p>
   if (!canEdit) return <ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} disabled title={INTEGRATION_LABELS[section]} itemKinds={kinds[section]} />
   return <div className="space-y-5" aria-label={INTEGRATION_LABELS[section]}>
     {(section === 'connected' || section === 'available') && <>

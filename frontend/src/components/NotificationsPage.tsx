@@ -85,7 +85,7 @@ export default function NotificationsPage() {
                 </ul>}
               </div>
             </div>
-            <p className="text-muted-foreground">{isMacApp() ? 'Mac notifications appear only while AgentWorks is in the background.' : 'Not sent for a chat you have open in front of you.'} The notification says which agent and Crew, never the chat's text.</p>
+            <p className="text-muted-foreground">{isMacApp() ? 'Mac notifications appear only while AgentWorks is in the background.' : 'Not sent for a chat you have open in front of you.'} The notification says which agent and project, never the chat's text.</p>
           </section>}
         </div>
       </div>

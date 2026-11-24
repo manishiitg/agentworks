@@ -63,7 +63,7 @@ export function ComputerUsePanel({ projectId }: { projectId: string }) {
   ]
   const ready = status?.installed && (status.platform !== 'darwin' || permissionRows.every(({ state }) => state === 'granted' || state === 'not_required'))
   return <section aria-label="Computer use" className="w-full min-w-0 space-y-4 text-sm">
-    <p className="text-muted-foreground">Give this Crew control of this computer, including apps, Terminal and clipboard.</p>
+    <p className="text-muted-foreground">Give this project control of this computer, including apps, Terminal and clipboard.</p>
     {error && <p role="alert" className="text-destructive">{error} <button className="underline" onClick={() => setRevision(value => value + 1)}>Retry</button></p>}
     {!status && !error && <p role="status">Checking Computer use…</p>}
     {status && <div className="space-y-4">
@@ -88,7 +88,7 @@ export function ComputerUsePanel({ projectId }: { projectId: string }) {
     <details className="text-xs text-muted-foreground">
       <summary className="cursor-pointer">About computer use</summary>
       <div className="mt-2 space-y-2">
-        <p>Only you can use this Crew’s computer control, including from your phone or website chat.</p>
+        <p>Only you can use this project’s computer control, including from your phone or website chat.</p>
         <p>App content goes to your AI provider. Screenshots stay in private chat storage.</p>
         {status?.platform === 'darwin' && <p>macOS permissions apply to the app named in the permission guide and processes it starts.</p>}
       </div>

@@ -320,7 +320,7 @@ function ActionWizard({ name, projectId, onClose }: { name: string; projectId: s
             <h3 className="text-base font-semibold">Who can ask for it?</h3>
             <p className="text-[13px] text-muted-foreground">It runs as you, for this job only.</p>
             {choice(WHO_ASKS, who, setWho, 'Who can ask for it')}
-            <p className="text-xs text-muted-foreground">Next, the Crew's AI builds the action from your answers. You see it in chat before anything is saved.</p>
+            <p className="text-xs text-muted-foreground">Next, the project's AI builds the action from your answers. You see it in chat before anything is saved.</p>
           </>}
         </div>
         <div className="flex justify-end gap-2 border-t border-border px-4 py-3">

@@ -187,8 +187,8 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
       </div>)}
     </section>}
     {confirmation && <section role="region" aria-label="Create a dashboard to share" className="space-y-3 rounded-lg border border-border p-3">
-      <h3 className="font-semibold">Create a dashboard for this Crew?</h3>
-      <p className="text-xs text-muted-foreground">People will open it to chat with this Crew and use its published functions.</p>
+      <h3 className="font-semibold">Create a dashboard for this project?</h3>
+      <p className="text-xs text-muted-foreground">People will open it to chat with this project and use its published functions.</p>
       <p className="text-xs">Share with: {confirmation.mode === 'everyone' ? 'Everyone at the company' : confirmation.emails?.join(', ')}</p>
       <div className="flex flex-wrap gap-2">
         <button type="button" disabled={busy} onClick={() => void run(() => putShare(confirmation.mode, confirmation.emails, true))} className="rounded-md bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50">Create dashboard and share</button>

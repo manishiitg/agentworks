@@ -46,8 +46,8 @@ export function KnowledgebaseUseCrew() {
   const [copyError, setCopyError] = useState(false)
   return <WorkspacePageContent as="section" aria-label="Use Brain in a project" className="max-w-5xl space-y-6">
     <div className="space-y-2">
-      <h2 className="text-lg font-semibold">Organize your Brain with a Crew</h2>
-      <p className="max-w-2xl text-sm text-muted-foreground">Turn scattered notes into useful knowledge. Here are a few things you can ask your Crew to do.</p>
+      <h2 className="text-lg font-semibold">Organize your Brain with a project</h2>
+      <p className="max-w-2xl text-sm text-muted-foreground">Turn scattered notes into useful knowledge. Here are a few things you can ask your project to do.</p>
     </div>
     <ul aria-label="Ways to organize Brain" className="grid gap-4 md:grid-cols-3">
       {examples.map(({ id, title, description, visual: Visual, request }) => <li key={id} className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border">
@@ -66,17 +66,17 @@ export function KnowledgebaseUseCrew() {
     <div className="flex flex-wrap items-center gap-3">
       {allowed ? <Button variant="outline" size="sm" onClick={() => {
         if (visibleProductSurfaceIDs(useAuthStore.getState().user?.allowed_products).includes('work')) openProductWorkspace('work')
-      }}>Open Crew<ArrowRight aria-hidden="true" className="ml-2 h-3.5 w-3.5" /></Button> : <p className="text-sm text-muted-foreground">Ask an administrator for Crew access to organize Brain.</p>}
-      <p className="text-xs text-muted-foreground">Create or open your Crew, then paste a request there.</p>
+      }}>Open project<ArrowRight aria-hidden="true" className="ml-2 h-3.5 w-3.5" /></Button> : <p className="text-sm text-muted-foreground">Ask an administrator for project access to organize Brain.</p>}
+      <p className="text-xs text-muted-foreground">Create or open your project, then paste a request there.</p>
     </div>
     <details className="rounded-lg border border-border p-4">
       <summary className="w-fit cursor-pointer text-sm font-medium">How to set this up</summary>
       <ol className="mt-4 space-y-3 text-xs leading-5 text-muted-foreground">
-        <li className="flex gap-2"><span className="font-medium text-foreground">1.</span><span>Choose <strong className="font-medium text-foreground">New project → Crew</strong>, or open a Crew you already use.</span></li>
-        <li className="flex gap-2"><span className="font-medium text-foreground">2.</span><span>In the Crew, open <strong className="font-medium text-foreground">Connections → Add connection → Brain</strong>. Read &amp; write is the default; choose Read only for reviewing notes without edits. Only the Crew owner can change this setting.</span></li>
-        <li className="flex gap-2"><span className="font-medium text-foreground">3.</span><span>Tell the Crew which notes to work with. For regular cleanup, create a function and schedule inside the Crew.</span></li>
+        <li className="flex gap-2"><span className="font-medium text-foreground">1.</span><span>Choose <strong className="font-medium text-foreground">New project</strong>, or open a project you already use.</span></li>
+        <li className="flex gap-2"><span className="font-medium text-foreground">2.</span><span>In the project, open <strong className="font-medium text-foreground">Connections → Add connection → Brain</strong>. Read &amp; write is the default; choose Read to review notes without edits. Only the project owner can change this setting.</span></li>
+        <li className="flex gap-2"><span className="font-medium text-foreground">3.</span><span>Tell the project which notes to work with. For regular cleanup, create a function and schedule inside the project.</span></li>
       </ol>
-      <p className="mt-4 flex items-start gap-2 border-t border-border pt-3 text-xs leading-5 text-muted-foreground"><UsersRound aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />Your Crew uses existing Brain folder permissions. Setting up a Crew does not share those folders with anyone else.</p>
+      <p className="mt-4 flex items-start gap-2 border-t border-border pt-3 text-xs leading-5 text-muted-foreground"><UsersRound aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />Your project uses existing Brain folder permissions. Setting up a project does not share those folders with anyone else.</p>
     </details>
   </WorkspacePageContent>
 }

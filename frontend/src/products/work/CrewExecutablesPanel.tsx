@@ -128,7 +128,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
     </PageCard>}
     {loaded && items.length === 0 && <section className="flex flex-col items-center gap-2 rounded-xl border border-border bg-card px-4 py-8 text-center">
       <Zap className="h-5 w-5 text-amber-500" aria-hidden="true" />
-      <h3 className="text-sm font-semibold">No workflow in this Crew yet</h3>
+      <h3 className="text-sm font-semibold">No workflow in this project yet</h3>
       <p className="text-xs text-muted-foreground">Tell your agent what should happen each time. It builds the workflow and shows it here.</p>
       <RowButton primary onClick={() => void ask('Help me set up a workflow for work I want to repeat.')}>Ask your agent to make one</RowButton>
     </section>}

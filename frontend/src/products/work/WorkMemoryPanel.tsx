@@ -150,13 +150,13 @@ export function WorkMemoryPanel({ workspacePath, onOpenFile, fileClient, memoryE
                     <h3 className="text-sm font-semibold text-foreground">Custom skills</h3>
                   </div>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Reusable procedures stored inside this Crew project, alongside its memory.
+                    Reusable procedures stored inside this project, alongside its memory.
                   </p>
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {skills.length === 0 ? (
-                  <p className="w-full rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">Crew has not created any custom skills yet.</p>
+                  <p className="w-full rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">This project has not created any custom skills yet.</p>
                 ) : skills.map(skill => (
                   <button
                     key={skill.filePath}
@@ -191,7 +191,7 @@ export function WorkMemoryPanel({ workspacePath, onOpenFile, fileClient, memoryE
                   <Brain className="mb-3 h-9 w-9 text-muted-foreground/50" />
                   <h3 className="text-sm font-semibold text-foreground">No project memory yet</h3>
                   <p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">
-                    Ask Crew to remember durable decisions, preferences, and learned context. Live facts that can be looked up again should stay out of memory.
+                    Ask this project to remember durable decisions, preferences, and learned context. Live facts that can be looked up again should stay out of memory.
                   </p>
                 </div>
               )}

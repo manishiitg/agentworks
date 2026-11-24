@@ -14,7 +14,7 @@ export function CrewSlackSettings({ projectId, workspacePath }: { projectId: str
     window.addEventListener('agentworks:team-updated', load)
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
   }, [target?.project, target?.connection]) // eslint-disable-line react-hooks/exhaustive-deps
-  if (!workspacePath) return <p className="text-xs text-muted-foreground">Open this Crew to set up Slack.</p>
+  if (!workspacePath) return <p className="text-xs text-muted-foreground">Open this project to set up Slack.</p>
   return <SlackBotChoice workspacePath={workspacePath} noun="Project" layout="cards" who={slack && <ShareSlackRules slack={slack} />} />
 }
 

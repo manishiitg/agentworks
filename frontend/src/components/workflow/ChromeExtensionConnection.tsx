@@ -162,9 +162,9 @@ export function ChromeExtensionConnection({ connection, mac, otherWays, ownCard 
           {live && !isPicked && !other && <Button size="xs" variant="outline" disabled={busy} onClick={() => { void (picked ? alsoUse(browser.id) : connect(browser.id)) }}>{picked ? 'Also use' : 'Use this'}</Button>}
           <IconPopover icon={<MoreHorizontal className="h-3.5 w-3.5" />} label={`Options for ${browser.name}`} panelClassName="w-44 !p-1">
             {close => <div className="space-y-1">
-              {isPicked && <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void disconnect() }}>Stop using in this Crew</Button>}
+              {isPicked && <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void disconnect() }}>Stop using in this project</Button>}
               {!isPicked && picked && live && <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void connect(browser.id) }}>Make main</Button>}
-              {other && <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void stopAlso(browser.id) }}>Stop using in this Crew</Button>}
+              {other && <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void stopAlso(browser.id) }}>Stop using in this project</Button>}
               <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); void pair() }}>Reconnect</Button>
               <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); setEditing({ id: browser.id, value: browser.name }) }}>Rename</Button>
               <Button size="sm" variant="ghost" className="w-full justify-start" disabled={busy} onClick={() => { close(); setRemoving(browser.id) }}>Remove</Button>
