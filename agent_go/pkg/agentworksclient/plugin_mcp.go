@@ -138,7 +138,7 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			args["file_name"], args["file_base64"] = name, data
+			args["attachments"] = []any{map[string]any{"file_name": name, "file_base64": data}}
 		}
 		return call(ctx, LocalBridgeRequest{Action: "message", Arguments: args}, req)
 	})

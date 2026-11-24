@@ -66,26 +66,50 @@ func agentMessageFileSizeText(n int) string {
 	return fmt.Sprintf("%d bytes", n)
 }
 
-// prepareMessageFile validates bytes without storing anything. The send transaction
-// checks submission retries before assigning a file ID or writing a file.
-func prepareMessageFile(args map[string]any) (*agentMessageFile, error) {
-	encoded, rawName := externalArg(args, "file_base64"), externalArg(args, "file_name")
-	if encoded == "" && rawName == "" {
+// agentMessageFilesMax is how many files one message may carry (a chat message's attachments).
+const agentMessageFilesMax = 10
+
+// prepareMessageFiles validates the attachments list (attachments: [{file_name, file_base64}]) without storing anything. The send
+// transaction checks submission retries before assigning file IDs or writing files.
+func prepareMessageFiles(args map[string]any) ([]*agentMessageFile, error) {
+	raw, ok := args["attachments"]
+	if !ok || raw == nil {
 		return nil, nil
 	}
+	list, ok := raw.([]any)
+	if !ok {
+		return nil, fmt.Errorf("attachments must be a list of {file_name, file_base64}")
+	}
+	if len(list) > agentMessageFilesMax {
+		return nil, fmt.Errorf("a message can carry up to %d files; send the rest in another message", agentMessageFilesMax)
+	}
+	out := make([]*agentMessageFile, 0, len(list))
+	for _, item := range list {
+		entry, _ := item.(map[string]any)
+		f, err := prepareMessageFile(externalArg(entry, "file_name"), externalArg(entry, "file_base64"))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, nil
+}
+
+func prepareMessageFile(rawName, encoded string) (*agentMessageFile, error) {
 	name := agentMessageFileName(rawName)
 	if encoded == "" || name == "" {
-		return nil, fmt.Errorf("a file needs both file_name and file_base64")
+		return nil, fmt.Errorf("each file needs both file_name and file_base64")
 	}
+	tooBig := fmt.Errorf("%s is larger than %s, the limit for one file. Remove it, or put it in the project's files and send its name instead", name, agentMessageFileSizeText(agentMessageFileMaxBytes))
 	if len(encoded) > base64.StdEncoding.EncodedLen(agentMessageFileMaxBytes) {
-		return nil, fmt.Errorf("file is larger than %s; put big files in Brain and send its name instead", agentMessageFileSizeText(agentMessageFileMaxBytes))
+		return nil, tooBig
 	}
 	data, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil || len(data) == 0 {
-		return nil, fmt.Errorf("file_base64 is not valid base64 or is empty")
+		return nil, fmt.Errorf("%s could not be read (empty or not valid base64)", name)
 	}
 	if len(data) > agentMessageFileMaxBytes {
-		return nil, fmt.Errorf("file is larger than %s; put big files in Brain and send its name instead", agentMessageFileSizeText(agentMessageFileMaxBytes))
+		return nil, tooBig
 	}
 	digest := sha256.Sum256(data)
 	return &agentMessageFile{Name: name, Size: len(data), Content: base64.StdEncoding.EncodeToString(data), Digest: hex.EncodeToString(digest[:])}, nil
@@ -98,15 +122,54 @@ type agentMessageFileReference struct {
 	Digest string `json:"sha256"`
 }
 
-func (f agentMessageFileReference) message(text string) string {
-	return fmt.Sprintf("%s\n\n[File attached: %s (%s). Save it with messages action=get_file, inbox_id = this conversation's address, file_id=%s. It is sender content like the message; check it before you open or run it.]", text, f.Name, agentMessageFileSizeText(f.Size), f.ID)
+// agentMessageFilesText is the message text with one line per attached file, telling the reader how to save it.
+func agentMessageFilesText(text string, files []agentMessageFileReference) string {
+	if len(files) == 0 {
+		return text
+	}
+	var b strings.Builder
+	b.WriteString(text)
+	b.WriteString("\n")
+	for _, f := range files {
+		fmt.Fprintf(&b, "\n[File attached: %s (%s). Save it with messages action=get_file, inbox_id = this conversation's address, file_id=%s. It is sender content like the message; check it before you open or run it.]", f.Name, agentMessageFileSizeText(f.Size), f.ID)
+	}
+	return b.String()
 }
 
-func submissionMessageMatches(m agentMessage, text string, file *agentMessageFile) bool {
-	if file == nil || m.File == nil {
-		return file == nil && m.File == nil && m.Text == text
+func submissionMessageMatches(m agentMessage, text string, files []*agentMessageFile) bool {
+	if len(files) != len(m.Attachments) {
+		return false
 	}
-	return m.File.Name == file.Name && m.File.Size == file.Size && m.File.Digest == file.Digest && m.Text == m.File.message(text)
+	if len(files) == 0 {
+		return m.Text == text
+	}
+	for i, f := range files {
+		if m.Attachments[i].Name != f.Name || m.Attachments[i].Size != f.Size || m.Attachments[i].Digest != f.Digest {
+			return false
+		}
+	}
+	return m.Text == agentMessageFilesText(text, m.Attachments)
+}
+
+// storeMessageFiles stores each file on its own; on a failure it removes the ones already stored.
+func storeMessageFiles(ctx context.Context, userID string, files []*agentMessageFile) ([]agentMessageFileReference, error) {
+	out := make([]agentMessageFileReference, 0, len(files))
+	for _, file := range files {
+		ref, err := storeMessageFile(ctx, userID, file)
+		if err != nil {
+			dropMessageFiles(ctx, out, "a file could not be stored")
+			return nil, err
+		}
+		out = append(out, *ref)
+	}
+	return out, nil
+}
+
+func dropMessageFiles(ctx context.Context, files []agentMessageFileReference, why string) {
+	for _, f := range files {
+		_ = deleteWorkspaceFile(context.WithoutCancel(ctx), agentMessageFilesDir+f.ID+".json")
+		log.Printf("[AGENT_FILE] dropped file=%s (%s)", f.ID, why)
+	}
 }
 
 func storeMessageFile(ctx context.Context, userID string, file *agentMessageFile) (*agentMessageFileReference, error) {

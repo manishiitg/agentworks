@@ -314,7 +314,7 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		externalCommunicationError(w, 404, "not_found", err)
 		return
 	}
-	file, err := prepareMessageFile(args)
+	files, err := prepareMessageFiles(args)
 	if err != nil {
 		externalError(w, 400, "message_refused", err.Error())
 		return
@@ -324,7 +324,7 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		externalError(w, 400, "message_refused", err.Error())
 		return
 	}
-	out, err := api.sendAgentMessage(taskCtx, claims.UserID, caller, target, externalArg(args, "message"), inbox, externalArg(args, "submission_id"), file)
+	out, err := api.sendAgentMessage(taskCtx, claims.UserID, caller, target, externalArg(args, "message"), inbox, externalArg(args, "submission_id"), files...)
 	if err != nil {
 		externalCommunicationError(w, 400, "message_refused", err)
 		return
@@ -424,6 +424,8 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		api.externalAgentPing(w, r, args)
 	case "get_file":
 		api.externalAgentMessageFile(w, r, args)
+	case "stop":
+		api.externalAgentMessageStop(w, r, args)
 	case "send", "ask", "queue":
 		if out, handled, err := api.externalAgentTeamSend(r, claims, args); handled {
 			if err != nil {
@@ -509,14 +511,14 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"query":                  map[string]any{"type": "string", "description": "list_agents: case-insensitive name, purpose, exact address or Team search within admitted agents. Up to 20 compact rows a call. history: words to find in the agent's chat (newest matches first)."},
 		"offset":                 map[string]any{"type": "integer", "minimum": 0, "description": "list_agents: start from this match; when a reply has next_offset, call again with offset=next_offset to see the rest. history with line: where to continue a long message, from next_offset."},
 		"usage_timezone":         map[string]any{"type": "string", "description": "Optional IANA timezone for owner-only native hourly-reading daily totals (default UTC)."},
-		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "agent_status", "send", "ask", "queue", "read", "history", "state", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}},
+		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "agent_status", "send", "ask", "queue", "read", "history", "state", "ack", "update_purpose", "ping_person", "get_file", "stop", "count", "delete", "clear"}},
 		"older_than":             externalString("Inbox cleanup filter: age such as 24h or 7d."),
 		"from_agent":             externalString("Inbox cleanup filter: sender's registered agent name or agent ID."),
 		"delivered_only":         map[string]any{"type": "boolean", "description": "Inbox cleanup filter: only messages with a delivered receipt."},
 		"unread_only":            map[string]any{"type": "boolean", "description": "Inbox cleanup filter: only messages with no admission or processing acknowledgement."},
 		"purpose":                externalString("What this attached agent works on; 1 to 512 characters."),
 		"attachment_id":          externalString("Exact attachment generation in the channel event; required for receipt acknowledgements."),
-		"message_id":             externalString("Incoming message ID being acknowledged or removed with delete; for ping_person, a message this agent sent that is still waiting for a reply (one ping per message: the target's person gets a desktop notification)."),
+		"message_id":             externalString("Incoming message ID being acknowledged or removed with delete; for stop, your own ask to stop (with its inbox_id): withdrawn if not started, else only the turn working on it stops; for ping_person, a message this agent sent that is still waiting for a reply (one ping per message: the target's person gets a desktop notification)."),
 		"delivery":               externalString("The one receipt: delivered, once this chat received the message. It does not claim that work is finished."),
 		"transport":              externalString("Receipt route: codex_queue, codex_desktop, codex_hook, claude_channel, claude_session, claude_hook, cursor_hook, muse_hook, agy_hook, pi_hook, pi_extension or mailbox."),
 		"agent_name":             externalString("Account-owned registered name. Register/unregister selects it; send selects the named sender; read without inbox_id polls all incoming contacts for this name. Only its allowed connections can use it."),
@@ -533,8 +535,7 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"offline":                map[string]any{"type": "string", "enum": []string{"wait"}, "description": "Only after an ask says the agent has been offline for a while and your person chose to wait: it answers when it is back. To read its chat instead, use action=history."},
 		"line":                   map[string]any{"type": "integer", "minimum": 1, "description": "history: read this one message of the agent's chat (from a search result's line)."},
 		"expects_reply":          map[string]any{"type": "boolean", "description": "Send a request that expects a reply. action=ask is always a request; ordinary send is an FYI notification."},
-		"file_name":              externalString("Send a file with the message (action send, also a reply): its name. Needs file_base64. Up to 5 MB; the receiver saves it with action=get_file."),
-		"file_base64":            externalString("The file's bytes, base64 encoded; send with file_name."),
+		"attachments":            map[string]any{"type": "array", "maxItems": agentMessageFilesMax, "description": "Files sent with the message (send, ask, queue, also a reply): up to 10, 5 MB each. The receiver saves each with action=get_file.", "items": map[string]any{"type": "object", "required": []string{"file_name", "file_base64"}, "properties": map[string]any{"file_name": map[string]any{"type": "string"}, "file_base64": map[string]any{"type": "string", "description": "The file's bytes, base64 encoded."}}}},
 		"file_id":                externalString("File ID from a received message's file note; action=get_file with its inbox_id returns file_name and content_base64 (and content for small text files)."),
 		"inbox_id":               externalString("Inbox returned by send; required for action read, reusable for later sends."),
 		"submission_id":          map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Unique ID for this message. Reuse on uncertain delivery."},

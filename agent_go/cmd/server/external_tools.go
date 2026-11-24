@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -547,7 +548,8 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		externalError(w, 401, "unauthorized", "Sign in to AgentWorks.")
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 16<<20)
+	// Room for a message's attachments (10 files of 5 MB, base64) plus the rest of the call (#3661).
+	r.Body = http.MaxBytesReader(w, r.Body, int64(base64.StdEncoding.EncodedLen(agentMessageFilesMax*agentMessageFileMaxBytes))+(1<<20))
 	var call struct {
 		Name              string         `json:"name"`
 		Arguments         map[string]any `json:"arguments"`
@@ -580,7 +582,7 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		}
 	}
 	if token := GetUserFromContext(r.Context()).AccessToken; token != nil && token.BoundAgentID != "" {
-		if call.Name != "messages" || !slices.Contains([]string{"list_agents", "agent_status", crewTeamChatReadAction, "send", "ask", "queue", "read", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}, externalArg(call.Arguments, "action")) || externalArg(call.Arguments, "agent_name") != token.BoundAgentName {
+		if call.Name != "messages" || !slices.Contains([]string{"list_agents", "agent_status", crewTeamChatReadAction, "send", "ask", "queue", "read", "ack", "update_purpose", "ping_person", "get_file", "stop", "count", "delete", "clear"}, externalArg(call.Arguments, "action")) || externalArg(call.Arguments, "agent_name") != token.BoundAgentName {
 			externalError(w, 403, "insufficient_scope", "This connection only supports messaging for its attached agent.")
 			return
 		}

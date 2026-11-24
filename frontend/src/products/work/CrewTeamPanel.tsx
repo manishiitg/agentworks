@@ -55,7 +55,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
  return <TeamPanel files={<TeamFilesRow projectId={projectId} target={target||undefined} sync={team.view.sync} enabled={!!team.view.team.folder_access}/>} selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} askLabel={askName} view={panelView} onNavigate={onPanelView} shared={shared} onShared={openShared} scope={scope} agents={rows} onAsk={ask} teamAgentAsk={direct ? <>
    {asked&&<><TeammateAgentIdentity identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?`${asked.person||'their'}'s Mac`:'the server',online:asked.online,working:asked.activity==='running',hidden:true,avatar:asked,connection:team.target?.connection}}/>
     <p className="min-h-0 flex-1 px-4 py-8 text-sm text-muted-foreground">This agent's chat isn't shared. You can still ask it below.</p>
-    <TeammateAsk target={target||undefined} address={asked.address} name={asked.name} where={asked.place==='mac'?`${asked.person||'their'}'s Mac`:'the server'} online={asked.online} enabled={!!asked.address} scope={`${scope}:${asked.address||''}`}/></>}
+    <TeammateAsk target={target||undefined} address={asked.address} name={asked.name} where={asked.place==='mac'?`${asked.person||'their'}'s Mac`:'the server'} online={asked.online} enabled={!!asked.address} agent={asked} scope={`${scope}:${asked.address||''}`}/></>}
    {!asked&&<p className="px-4 py-3 text-sm text-muted-foreground">This agent is no longer available.</p>}
   </> : null}/>
 }

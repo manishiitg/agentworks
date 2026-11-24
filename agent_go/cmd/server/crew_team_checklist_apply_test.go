@@ -174,10 +174,10 @@ func TestTeamChecklistApplyStaysOwnAndKeyStatusIsLiveMetadata(t *testing.T) {
 				continue
 			}
 			found++
-			if conversation.Endpoints[1-m.From].UserID != "other" || conversation.Endpoints[1-m.From].NamedAgentID != own["agent_id"] || m.File == nil {
-				t.Fatalf("wrong recipient or missing instructions: %+v", m.File)
+			if conversation.Endpoints[1-m.From].UserID != "other" || conversation.Endpoints[1-m.From].NamedAgentID != own["agent_id"] || len(m.Attachments) != 1 {
+				t.Fatalf("wrong recipient or missing instructions: %+v", m.Attachments)
 			}
-			raw, ok, err := readFileFromWorkspace(ctx, agentMessageFilesDir+m.File.ID+".json")
+			raw, ok, err := readFileFromWorkspace(ctx, agentMessageFilesDir+m.Attachments[0].ID+".json")
 			if err != nil || !ok {
 				t.Fatal("instructions not durable", err)
 			}

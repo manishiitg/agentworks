@@ -134,7 +134,7 @@ func TestCrewTeamTasksBindOwnAgentAndFollowRequestThreads(t *testing.T) {
 		state, _ := agentTaskState(c, c.Messages[0], time.Now())
 		return state
 	}
-	ask, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "person:other", "Please approve the release", "ask-other", map[string]any{"ref": "#2965", "buttons": []any{"Approve", "Not now"}, "files": []any{"https://example.com/notes", "notes/local.md"}, "file_name": "notes.md", "file_base64": base64.StdEncoding.EncodeToString([]byte("# Notes"))})
+	ask, err := f.api.sendAgentTeamRequest(ctx, "owner", chatOf(own), "person:other", "Please approve the release", "ask-other", map[string]any{"ref": "#2965", "buttons": []any{"Approve", "Not now"}, "files": []any{"https://example.com/notes", "notes/local.md"}, "attachments": []any{map[string]any{"file_name": "notes.md", "file_base64": base64.StdEncoding.EncodeToString([]byte("# Notes"))}}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2244,7 +2244,7 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 			args["expects_reply"] = true
 		}
 		if in.FileBase64 != "" {
-			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
+			args["attachments"] = []any{map[string]any{"file_name": in.FileName, "file_base64": in.FileBase64}}
 		}
 		addTaskArgs(args, in.Task)
 	case "get_file":
@@ -2254,7 +2254,7 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		// membership/send checks below, not credentials on historical mail.
 		args["action"], args["inbox_id"], args["message"], args["submission_id"] = "send", in.InboxID, in.Message, in.SubmissionID
 		if in.FileBase64 != "" {
-			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
+			args["attachments"] = []any{map[string]any{"file_name": in.FileName, "file_base64": in.FileBase64}}
 		}
 		addTaskArgs(args, in.Task)
 	case "read":
@@ -2848,7 +2848,7 @@ func (b *localBridge) replyToMessage(ctx context.Context, key string, s *localSe
 		}
 		args := map[string]any{"action": "send", "agent_name": att.AgentName, "inbox_id": inbox, "message": in.Message, "submission_id": in.SubmissionID}
 		if in.FileBase64 != "" {
-			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
+			args["attachments"] = []any{map[string]any{"file_name": in.FileName, "file_base64": in.FileBase64}}
 		}
 		addTaskArgs(args, in.Task)
 		b.unlocked(func() { out.Result, err = client.Call(ctx, "messages", args) })

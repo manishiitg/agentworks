@@ -25,7 +25,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 
 const DBG = '[skill-popup]'
-import { ArrowUp, Wand2, Globe, Layers, X, History, Server, Download, Paperclip, Square } from 'lucide-react'
+import { ArrowUp, Wand2, Globe, Layers, X, History, Server, Download, Square } from 'lucide-react'
 import { Button } from './ui/Button'
 import { SessionStopButton } from './SessionStopButton'
 import { attachmentDisplayName } from '../utils/chatMessageContent'
@@ -33,7 +33,7 @@ import { BackgroundWorkPill } from './BackgroundWorkPill'
 import { useSessionBackgroundWork } from '../hooks/useSessionBackgroundWork'
 import { useHeldTurnInFlight } from '../hooks/useHeldTurnInFlight'
 import { useTabTurnActive } from '../hooks/useTabTurnActive'
-import { ChatComposerArea, ChatComposerBand, ChatComposerForm, ChatComposerControls, ChatComposerTextarea, resizeChatComposerTextarea } from './chat/ChatComposer'
+import { ChatComposerArea, ChatComposerAttachButton, ChatComposerBand, ChatComposerForm, ChatComposerControls, ChatComposerTextarea, resizeChatComposerTextarea } from './chat/ChatComposer'
 import FileContextDisplay from './FileContextDisplay'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
 import FileSelectionDialog from './FileSelectionDialog'
@@ -2833,30 +2833,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Compact chat box: the mic holds the send corner until there is something to send (or while dictating).
   const micInSendSlot = compactComposerActions && Boolean(micEl) && (!hasValidQuery || micActive)
   const attachmentEl = (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          disabled={isUploadingFiles}
-          onClick={openAttachmentPicker}
-          className="h-7 w-7 p-0"
-          data-theme-action="attach"
-          data-testid="chat-upload-button"
-          aria-label="Attach files"
-        >
-          {isUploadingFiles ? (
-            <LoadingIndicator className="w-3.5 h-3.5" />
-          ) : (
-            <Paperclip className="w-3.5 h-3.5" />
-          )}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>
-        <p>{isUploadingFiles ? 'Uploading files...' : isProductProfile ? 'Attach files to this chat' : `Upload file(s) to ${uploadTargetFolder}`}</p>
-      </TooltipContent>
-    </Tooltip>
+    <ChatComposerAttachButton busy={isUploadingFiles} onClick={openAttachmentPicker}
+      tip={isUploadingFiles ? 'Uploading files...' : isProductProfile ? 'Attach files to this chat' : `Upload file(s) to ${uploadTargetFolder}`} />
   )
 
   const commandCatalog: ComposerCatalogOptions = {

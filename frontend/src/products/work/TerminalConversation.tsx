@@ -126,6 +126,6 @@ export function TerminalConversation({ selection }: { selection: TerminalConvers
     {hidden ? <p className="flex min-h-0 flex-1 items-center justify-center px-6 py-8 text-center text-sm text-muted-foreground"><span><Lock aria-hidden="true" className="mr-1 inline h-3.5 w-3.5" />{privateLine}</span></p>
       : offline ? <p role="status" className="flex min-h-0 flex-1 items-center justify-center px-6 py-8 text-center text-sm text-muted-foreground">{place} is offline, so this chat can't be shown right now. It shows here again when it's back.</p>
       : <TerminalTranscript target={selection.target} agent={selection.agent} />}
-    <TeammateAsk target={selection.target} address={address} name={name} where={place} online={online} enabled={enabled} scope={`${selection.identity}:${selection.target.connection}:${selection.target.project}:${selection.agent.id}`} />
+    <TeammateAsk target={selection.target} address={address} name={name} where={place} online={online} enabled={enabled} agent={{cli:reachable?.cli||agent?.cli,engine:reachable?.engine||agent?.engine,model_id:reachable?.model_id||agent?.model_id,reasoning_effort:reachable?.reasoning_effort||agent?.reasoning_effort}} scope={`${selection.identity}:${selection.target.connection}:${selection.target.project}:${selection.agent.id}`} />
   </section>
 }

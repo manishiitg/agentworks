@@ -154,8 +154,8 @@ func agentTaskLinksAndFiles(c agentConversation, request agentMessage) ([]string
 		if m.Sequence > request.Sequence && m.MessageType == "request" && m.From == request.From {
 			break
 		}
-		if m.File != nil {
-			files = append(files, crewTeamTaskFile{ID: m.File.ID, Name: m.File.Name, Size: m.File.Size})
+		for _, f := range m.Attachments {
+			files = append(files, crewTeamTaskFile{ID: f.ID, Name: f.Name, Size: f.Size})
 		}
 	}
 	if len(links) == 0 {

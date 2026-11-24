@@ -157,7 +157,7 @@ type agentMessage struct {
 	// DeliveryAttempts counts deliveries that failed for a reason that may pass; the message waits and retries.
 	DeliveryAttempts int `json:"delivery_attempts,omitempty"`
 
-	File *agentMessageFileReference `json:"file,omitempty"`
+	Attachments []agentMessageFileReference `json:"attachments,omitempty"`
 }
 type agentConversation struct {
 	ID        string                  `json:"inbox_id"`
@@ -489,16 +489,16 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	if message != "" {
 		message = agentTaskMessageText(taskSend.Fields, message)
 	}
-	var file *agentMessageFile
-	if len(files) > 0 {
-		file = files[0]
-	}
 	checkedMessage := message
-	if file != nil {
+	if len(files) > 0 {
 		if message == "" {
-			message = "(file)"
+			message = "(files)"
 		}
-		checkedMessage = (agentMessageFileReference{ID: "file-00000000000000000000000000000000", Name: file.Name, Size: file.Size}).message(message)
+		placeholders := make([]agentMessageFileReference, len(files))
+		for i, f := range files {
+			placeholders[i] = agentMessageFileReference{ID: "file-00000000000000000000000000000000", Name: f.Name, Size: f.Size}
+		}
+		checkedMessage = agentMessageFilesText(message, placeholders)
 	}
 	if message == "" || len([]rune(checkedMessage)) > codeChatMessageMaxRune {
 		return nil, fmt.Errorf("message must contain 1 to %d characters", codeChatMessageMaxRune)
@@ -602,7 +602,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 								samePurpose = samePurpose && m.ReplyStatus == agentReplySendStatus(taskSend.Status, newTask)
 							}
 						}
-						if !samePurpose || !submissionMessageMatches(m, message, file) {
+						if !samePurpose || !submissionMessageMatches(m, message, files) {
 							agentMessageMu.Unlock()
 							return nil, fmt.Errorf("submission_id already used for a different message")
 						}
@@ -703,7 +703,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	if submissionID != "" {
 		for _, m := range c.Messages {
 			if m.From == side && m.Submission == submissionID {
-				if !submissionMessageMatches(m, message, file) {
+				if !submissionMessageMatches(m, message, files) {
 					agentMessageMu.Unlock()
 					return nil, fmt.Errorf("submission_id already used for a different message")
 				}
@@ -764,13 +764,13 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	}
 
 	m.SenderNonOwnerTurn, _ = ctx.Value(appNonOwnerMessageKey{}).(bool)
-	if file != nil {
-		m.File, err = storeMessageFile(ctx, userID, file)
+	if len(files) > 0 {
+		m.Attachments, err = storeMessageFiles(ctx, userID, files)
 		if err != nil {
 			agentMessageMu.Unlock()
 			return nil, err
 		}
-		m.Text = m.File.message(message)
+		m.Text = agentMessageFilesText(message, m.Attachments)
 	}
 	if taskSend.AutomaticFor != "" {
 		authorized := false
@@ -822,9 +822,8 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 	}
 	stage = "store_write"
 	err = saveAgentMessageStore(ctx, s)
-	if err != nil && m.File != nil {
-		_ = deleteWorkspaceFile(context.WithoutCancel(ctx), agentMessageFilesDir+m.File.ID+".json")
-		log.Printf("[AGENT_FILE] dropped file=%s (the send was refused)", m.File.ID)
+	if err != nil {
+		dropMessageFiles(ctx, m.Attachments, "the send was refused")
 	}
 	agentMessageMu.Unlock()
 	if err != nil {
@@ -1330,7 +1329,7 @@ func agentDeliveryRetryable(err error) bool {
 // people and delegated/restricted turns retain their own admission boundary.
 func agentMessageMaySteer(c agentConversation, m agentMessage) bool {
 	// An FYI never steers a running turn: it starts its own turn once the agent is idle.
-	if (m.From != 0 && m.From != 1) || m.QueuedRequest || agentFYIMessage(m) || m.Kind != "" || m.File != nil {
+	if (m.From != 0 && m.From != 1) || m.QueuedRequest || agentFYIMessage(m) || m.Kind != "" || len(m.Attachments) > 0 {
 		return false
 	}
 	dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
@@ -1675,6 +1674,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 		return session, agentDeliveryTransient(err)
 	}
 	reqMap["agent_message_inbox"] = c.ID
+	reqMap["agent_message_id"] = m.ID
 	reqMap["triggered_by_label"] = "From " + source.Label
 	// This store owns durable admission. Do not copy a delegated turn into
 	// the browser queue: replay there would lose its current permission lease.
@@ -1682,6 +1682,8 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 	reqMap["disable_live_input_delivery"] = true
 
 	var result internalSessionTurnResult
+	agentMessageTurns.Store(m.ID, session)
+	defer agentMessageTurns.Delete(m.ID)
 	if agentMessageTurn != nil {
 		result, err = agentMessageTurn(api, ctx, reqMap, session, dest.UserID)
 	} else {
