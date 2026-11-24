@@ -200,4 +200,29 @@ func TestCrewTeamOnlineProjectAgentReach(t *testing.T) {
 	if address := crewTeamAgentAddress("srv", id); address != "agent:bob/"+id {
 		t.Fatalf("address %q is not under the account the chat runs as", address)
 	}
+	// Owner, 24 Nov: an online project's agent is an AI teammate. A member's own ask works with the project's full
+	// access unless the project set that agent to Answers only; outsiders and Run turns stay Run.
+	dest := agentMessageEndpoint{ID: "srv", TeamAgentID: id}
+	for _, c := range []struct {
+		name   string
+		source agentMessageEndpoint
+		want   bool
+	}{
+		{"a teammate's own ask makes changes", agentMessageEndpoint{UserID: "ann"}, true},
+		{"the Team owner's ask makes changes", agentMessageEndpoint{UserID: "owner"}, true},
+		{"someone outside the Team does not", agentMessageEndpoint{UserID: "carl"}, false},
+		{"a Run turn in a teammate's agent does not", agentMessageEndpoint{UserID: "ann", Mode: "run"}, false},
+		{"a guest using a teammate's agent does not", agentMessageEndpoint{UserID: "ann", Guest: "carl"}, false},
+	} {
+		if got := crewTeamProjectAskChanges(dest, c.source); got != c.want {
+			t.Errorf("%s: full access=%v, want %v", c.name, got, c.want)
+		}
+	}
+	team.Projects = []crewTeamProject{{ProjectID: "srv", AnswersOnly: []string{row.ChatKey}}}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	if crewTeamProjectAskChanges(dest, agentMessageEndpoint{UserID: "ann"}) {
+		t.Fatal("an agent set to Answers only still made changes")
+	}
 }

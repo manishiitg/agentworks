@@ -2,8 +2,11 @@ package server
 
 import (
 	"context"
+	"log"
+	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -173,4 +176,103 @@ func crewTeamProjectAgents(ctx context.Context, t crewTeam, project string) []cr
 		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Examples: identity.Examples, Place: "server", ChatKey: record.ConversationKey, sessionID: record.SessionID, lastWorkedAt: crewServerChatLastWorkedAt(record.SessionID), InTeam: t.agentInTeam(member, record.ConversationKey), Activity: activity, waitingSince: since, StatusLabel: label, PlaceLabel: crewServerAgentPlaceLabel})
 	}
 	return out
+}
+
+// An online project's agents are AI teammates (owner, 24 Nov, decisions log): a Team member's ask to one runs with the
+// project's full access, on the project's own AI login (the chat's account, as its schedules use), with the cost
+// recorded against the asker. Its owner or co-owners can set one agent to "Answers only"; that agent's asks run as
+// another person's turn (Run), as before.
+
+// crewTeamAgentAnswersOnly is whether the online project set the agent with chat key to Answers only.
+func (t crewTeam) crewTeamAgentAnswersOnly(project, chatKey string) bool {
+	for _, p := range t.Projects {
+		if p.ProjectID == project {
+			return slices.Contains(p.AnswersOnly, chatKey)
+		}
+	}
+	return false
+}
+
+// crewTeamProjectAskChanges says whether a Team ask into dest, an online project's agent, works with the project's full
+// access: the agent is a current project row of a Team the asker is a person member of, not set to Answers only, and
+// the asking turn is that person's own (a Run or guest turn stays Run).
+func crewTeamProjectAskChanges(dest, source agentMessageEndpoint) bool {
+	asker := publishedAsker(source)
+	if dest.TeamAgentID == "" || asker == "" || source.Mode == "run" || strings.TrimSpace(source.Guest) != "" {
+		return false
+	}
+	if _, isProject := crewTeamMemberProjectID(asker); isProject {
+		return false
+	}
+	t, found := crewTeamOfAgent(dest.ID, dest.TeamAgentID)
+	if !found {
+		return false
+	}
+	a, ok := t.Agents[dest.TeamAgentID]
+	project, isProject := crewTeamMemberProjectID(a.OwnerID)
+	if !ok || !isProject || project != dest.ID || !crewTeamMemberCurrent(t, a.OwnerID) || !t.member(asker) || !crewTeamAccountActive(asker) {
+		return false
+	}
+	return !t.crewTeamAgentAnswersOnly(project, a.ChatKey)
+}
+
+// setCrewTeamProjectAgentLevel sets one of an online project's agents to Answers only ("answers") or Can make changes
+// ("changes", the default). Only that project's owner or co-owners decide it.
+func (api *StreamingAPI) setCrewTeamProjectAgentLevel(w http.ResponseWriter, r *http.Request, user, team, project, agent, level string) {
+	if level != "answers" && level != "changes" {
+		externalError(w, 400, "invalid_arguments", "Choose level answers (Answers only) or changes (Can make changes).")
+		return
+	}
+	root := crewProjectRootByID(project)
+	if root == "" || !crewProjectOwnedByCaller(user, root) {
+		externalError(w, 403, "team_forbidden", "Only that project's owner or co-owners choose what its agents may do for the Team.")
+		return
+	}
+	dir, err := crewTeamDir(team)
+	if err != nil {
+		externalError(w, 400, "team_invalid", "Choose a valid team.")
+		return
+	}
+	mu := crewTeamRecordMutex(dir)
+	mu.Lock()
+	t, err := readCrewTeam(team)
+	mu.Unlock()
+	if err != nil || !t.hasProject(project) {
+		externalError(w, 404, "project_not_in_team", "That project isn't in this Team. Add it first.")
+		return
+	}
+	key := ""
+	want := strings.TrimSpace(agent)
+	for _, a := range crewTeamProjectAgents(r.Context(), t, project) {
+		if strings.EqualFold(a.Name, want) || a.ChatKey == want {
+			key = a.ChatKey
+			break
+		}
+	}
+	if key == "" {
+		externalError(w, 404, "agent_unknown", "No agent by that name in the project. Use Main or one of its named agents.")
+		return
+	}
+	mu.Lock()
+	t, err = readCrewTeam(team)
+	if err == nil {
+		for i := range t.Projects {
+			if t.Projects[i].ProjectID != project {
+				continue
+			}
+			t.Projects[i].AnswersOnly = slices.DeleteFunc(slices.Clone(t.Projects[i].AnswersOnly), func(k string) bool { return k == key })
+			if level == "answers" {
+				t.Projects[i].AnswersOnly = append(t.Projects[i].AnswersOnly, key)
+			}
+		}
+		t.Revision++
+		err = writeCrewTeam(t)
+	}
+	mu.Unlock()
+	if err != nil {
+		externalError(w, 500, "team_save_failed", "The Team could not be saved now. Try again in a minute.")
+		return
+	}
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=project_agent_level member=%s agent=%s level=%s", team, logUsernameForUserID(user), project, key, level)
+	externalJSON(w, map[string]any{"team": t.view(user)})
 }

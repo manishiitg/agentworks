@@ -32,6 +32,9 @@ type crewTeamProject struct {
 	AddedBy   string `json:"added_by,omitempty"`
 	AddedAt   string `json:"added_at,omitempty"`
 	Name      string `json:"name,omitempty"`
+	// AnswersOnly are the chat keys of its agents set to "Answers only" by the project's owner or co-owners; every other
+	// agent works for the Team with the project's full access (owner, 24 Nov, decisions log).
+	AnswersOnly []string `json:"answers_only,omitempty"`
 }
 
 // crewTeamMaxProjects keeps the list short enough to read.
@@ -128,10 +131,16 @@ func (api *StreamingAPI) handleCrewTeamProjects(w http.ResponseWriter, r *http.R
 	var in struct {
 		Action    string `json:"action"`
 		ProjectID string `json:"project_id"`
+		Agent     string `json:"agent"`
+		Level     string `json:"level"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
-	if json.NewDecoder(r.Body).Decode(&in) != nil || (in.Action != "add" && in.Action != "remove") || strings.TrimSpace(in.ProjectID) == "" {
-		externalError(w, 400, "invalid_arguments", "Give action add or remove, and the online project's ID.")
+	if json.NewDecoder(r.Body).Decode(&in) != nil || (in.Action != "add" && in.Action != "remove" && in.Action != "agent_level") || strings.TrimSpace(in.ProjectID) == "" {
+		externalError(w, 400, "invalid_arguments", "Give action add, remove or agent_level, and the online project's ID.")
+		return
+	}
+	if in.Action == "agent_level" {
+		api.setCrewTeamProjectAgentLevel(w, r, claims.UserID, team, strings.TrimSpace(in.ProjectID), in.Agent, in.Level)
 		return
 	}
 	member := strings.TrimSpace(in.ProjectID)
