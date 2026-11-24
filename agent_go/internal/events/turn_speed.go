@@ -99,7 +99,7 @@ func TurnSpeedProcess(sessionID, provider, event, reason string) {
 
 func turnSpeedActivity(typ string) bool {
 	switch typ {
-	case "coding_agent_native_activity", "conversation_thinking", "streaming_chunk", "tool_call_start", "llm_generation_start":
+	case "coding_agent_native_activity", "conversation_thinking", "streaming_chunk", "tool_call_start":
 		return true
 	}
 	return false
