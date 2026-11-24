@@ -80,6 +80,7 @@ import { ChatEmptyState, useChatShareLines } from './ChatEmptyState'
 import { teamSideChats } from './teamApi'
 import { useTeammateChatIdentity } from './TeammateChatIdentity'
 import { TeamAgentAsk } from './TeamAgentAsk'
+import { TeammateChatBackup } from './TeammateChatBackup'
 import { ownerShortName } from '../../components/chat/chatTabName'
 import { CrewWorksElsewhere, useCrewWorksElsewhere } from './CrewWorksElsewhere'
 import { updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
@@ -1806,7 +1807,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         {chatOnly && chatOnlyLine ? <p role="note" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">{chatOnlyLine}</p> : null}
                         <ConversationImageRoot.Provider value={selected.filesPath || selected.workspacePath}>
                         <div data-teammate-transcript={teammateIdentity ? true : undefined} className="min-h-0 flex-1">
-                        {chatPrivateLine ? <p role="status" className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">{chatPrivateLine}</p> : worksElsewhere ? <CrewWorksElsewhere projectId={selected.id} /> : <ChatArea
+                        {chatPrivateLine ? <p role="status" className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">{chatPrivateLine}</p> : teammateIdentity?.online === false && !teammateIdentity.hidden && teammateIdentity.ask.target && teammateIdentity.agentId ? <TeammateChatBackup target={teammateIdentity.ask.target} agentId={teammateIdentity.agentId} /> : worksElsewhere ? <CrewWorksElsewhere projectId={selected.id} /> : <ChatArea
                           tabId={tabId}
                           compact
                           landingContent={<ChatEmptyState tabId={tabId} />}

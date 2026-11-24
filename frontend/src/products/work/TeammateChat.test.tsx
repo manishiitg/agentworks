@@ -17,7 +17,7 @@ const f=vi.hoisted(()=>({tabs:{} as Record<string,any>,open:vi.fn(),navigate:vi.
 vi.mock('../../stores/useChatStore',()=>({useChatStore:Object.assign((select:any)=>select({chatTabs:f.tabs}),{getState:()=>({chatTabs:f.tabs,addToast:f.toast})})}))
 vi.mock('../../components/chat/AgentCard',()=>({useCrewAgentsStore:{getState:()=>({projectId:'crew',closed:[]})}}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:(select:any)=>select({user:{id:'viewer'}})}))
-vi.mock('../../utils/agentPurposeDraft',()=>({fillMainDraft:()=>true,fillAskFromMyAgentDraft:(...args:unknown[])=>{f.ask(...args);return true}}))
+vi.mock('../../utils/agentPurposeDraft',()=>({fillMainDraft:()=>true,sendToOwnMain:()=>true,fillAskFromMyAgentDraft:(...args:unknown[])=>{f.ask(...args);return true}}))
 vi.mock('../../utils/appNavigation',()=>({openAppProduct:(...args:unknown[])=>f.navigate(...args)}))
 vi.mock('../../utils/openAgentTab',()=>({openAgentTab:(id:string)=>f.open(id)}))
 vi.mock('../../utils/chatIdentity',()=>({captureChatIdentity:()=>f.identity,isChatIdentityCurrent:(value:number)=>value===f.identity}))
