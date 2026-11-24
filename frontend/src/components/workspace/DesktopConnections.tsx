@@ -39,7 +39,7 @@ import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import { hasActiveSessionWork } from '../../utils/activitySessions'
 import { useChatStore } from '../../stores/useChatStore'
 import { useShallow } from 'zustand/react/shallow'
-import { ProjectFilterMenu, isSharedProject, matchesMenuFilter, useMenuFilter } from './ProjectFilter'
+import { isSharedProject, matchesMenuFilter, useMenuFilter } from './ProjectFilter'
 
 
 type SidebarProject = { team_live?: TeamLiveView; id: string; name: string; shared_line?: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number } & CrewLocationFields
@@ -91,11 +91,11 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
   const directoryError = desktop && current ? state.error : ''
   const { pinned, recent, canPin, setPinned, movePinned } = useWorkHistory()
   const [query, setQuery] = useState('')
-  const { filter, network, pick } = useMenuFilter(Boolean(directory))
-  // The filter is a personal presentation preference, never a connection or access change.
-  const locationId = network === 'all' || connections.some(connection => connection.id === network)
-    ? network
-    : (connections.find(connection => connection.id === active) || connections[0])?.id
+  const { filter, network, pick, error: filterError } = useMenuFilter(Boolean(directory))
+  // One tab per place (owner, 24 Nov): All, this Mac and each network. The tab is a personal presentation preference,
+  // never a connection or access change; with a single place there are no tabs.
+  const tabbed = desktop && connections.length > 1
+  const locationId = tabbed && connections.some(connection => connection.id === network) ? network : 'all'
   const open = (project: typeof rows[number]) => {
     if (project.connection.id === active) {
       openSidebarProject(project.kind, project.id)
@@ -183,30 +183,41 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
   const locations = connections.filter(connection => locationId === 'all' || connection.id === locationId)
   const includesActive = locations.some(connection => connection.id === active)
   const normalizedQuery = query.trim().toLocaleLowerCase()
-  const visible = rows.filter(row => (locationId === 'all' || row.connection.id === locationId) && row.name.toLocaleLowerCase().includes(normalizedQuery))
-  const shown = visible.filter(row => matchesMenuFilter(filter, row))
+  const matching = rows.filter(row => row.name.toLocaleLowerCase().includes(normalizedQuery) && matchesMenuFilter(filter, row))
+  const shown = matching.filter(row => locationId === 'all' || row.connection.id === locationId)
+  const placeName = (connection: DesktopConnection) => desktop ? (connection.id === 'local' ? 'On your Mac' : connection.name) : 'On this server'
   const sections = locations.map(connection => ({
     connection,
-    name: desktop ? (connection.id === 'local' ? 'Mac' : connection.name) : 'On this server',
+    name: placeName(connection),
     projects: shown.filter(row => row.connection.id === connection.id),
   }))
+  // A network's dot: green when connected, amber when it can't be reached or needs a sign-in, grey while connecting.
+  const placeStatus = (connection: DesktopConnection) => connection.id === active || connection.id === 'local' ? 'connected' : inventory[connection.id]?.status === 'connected' ? 'connected' : inventory[connection.id]?.status ? 'trouble' : 'loading'
+  const tabs = [{ id: 'all', name: 'All', count: matching.length, status: 'connected', dot: false }, ...connections.map(connection => ({
+    id: connection.id, name: placeName(connection), count: matching.filter(row => row.connection.id === connection.id).length,
+    status: placeStatus(connection), dot: connection.id !== 'local' && connection.id !== active,
+  }))]
   return <div aria-label="Project directory" className="space-y-3">
     <div className="flex items-center gap-2">
       <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-card px-3 focus-within:ring-2 focus-within:ring-ring">
         <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <input type="search" aria-label="Search projects" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search projects…" className="h-9 min-w-0 flex-1 bg-transparent text-sm outline-none" />
       </label>
-      <ProjectFilterMenu locations={connections.map(c => ({ id: c.id, name: c.id === 'local' ? 'Mac' : c.name }))}
-        locationId={locationId} onLocation={id => pick(filter, id)}
-        onClear={() => pick(filter, 'all')} />
     </div>
-    <div role="group" aria-label="Project ownership" className="flex gap-1 border-b border-border">
+    {tabbed && <div role="tablist" aria-label="Project locations" className="flex gap-1 overflow-x-auto border-b border-border">
+      {tabs.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={locationId === tab.id} onClick={() => pick(filter, tab.id)}
+        className={`flex min-h-9 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${locationId === tab.id ? 'border-primary font-semibold text-foreground' : 'border-transparent text-muted-foreground'}`}>
+        {tab.dot && <span role="img" aria-label={tab.status === 'connected' ? 'Connected' : tab.status === 'trouble' ? 'Unavailable' : 'Connecting'} className={`h-1.5 w-1.5 shrink-0 rounded-full ${tab.status === 'connected' ? 'bg-emerald-500' : tab.status === 'trouble' ? 'bg-amber-500' : 'bg-muted-foreground'}`} />}
+        {tab.name}{tab.status === 'connected' && <span className="text-xs font-normal text-muted-foreground">{tab.count}</span>}
+      </button>)}
+    </div>}
+    <div role="group" aria-label="Project ownership" className="flex gap-1.5">
       {([['all', 'All'], ['mine', 'Mine'], ['shared', 'Shared with me']] as const).map(([id, label]) =>
         <button key={id} type="button" aria-pressed={filter === id} onClick={() => pick(id)}
-          className={`min-h-9 border-b-2 px-2 text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filter === id ? 'border-primary font-semibold text-foreground' : 'border-transparent text-muted-foreground'}`}>{label}</button>)}
+          className={`rounded-full border border-border px-2.5 py-0.5 text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filter === id ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'}`}>{label}</button>)}
     </div>
     {sections.filter(section => section.projects.length > 0).map(section => <section key={section.connection.id} aria-label={section.name}>
-      <h2 className="flex items-center gap-1.5 px-1 pb-1.5 text-xs font-medium text-muted-foreground">{section.name} <span>· {section.projects.length}</span></h2>
+      {locations.length > 1 && <h2 className="flex items-center gap-1.5 px-1 pb-1.5 text-xs font-medium text-muted-foreground">{section.name} <span>· {section.projects.length}</span></h2>}
       <ul className="rounded-lg border border-border bg-card text-card-foreground">
         {section.projects.map(project => {
           const key = keyFor(project)
@@ -240,11 +251,11 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
     })}
     {!shown.length && (!includesActive || !children) && locations.every(connection => connection.id === active || inventory[connection.id]?.status === 'connected') &&
       <div className="space-y-2 rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
-        <p>{normalizedQuery || filter !== 'all' ? 'No matching projects.' : 'No projects here yet.'}</p>
-        {(normalizedQuery || filter !== 'all' || (connections.length > 1 && locationId !== 'all')) &&
-          <button type="button" className="underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setQuery(''); pick('all', 'all') }}>Clear search and filters</button>}
+        <p>{normalizedQuery || filter !== 'all' ? 'No matching projects.' : locationId !== 'all' ? `No projects on ${placeName(locations[0])} yet.` : 'No projects here yet.'}</p>
+        {(normalizedQuery || filter !== 'all') &&
+          <button type="button" className="underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setQuery(''); pick('all') }}>Clear search and filters</button>}
       </div>}
-    {directoryError && <p role="alert" className="text-sm text-destructive">{directoryError}</p>}
+    {(directoryError || filterError) && <p role="alert" className="text-sm text-destructive">{directoryError || filterError}</p>}
   </div>
 }
 
