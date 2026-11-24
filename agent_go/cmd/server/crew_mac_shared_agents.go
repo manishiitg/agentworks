@@ -241,13 +241,16 @@ func macSharedAgentForAgent(project, tab, caller, owner string) (macSharedAgent,
 }
 
 func macSharedAgentAccess(project, tab, caller, owner string, byAgent bool) (macSharedAgent, string) {
-	if claims := (&UserClaims{UserID: caller}); userAccessForClaims(claims).Disabled || !userAllowedProduct(claims, crewProfileID) {
+	// A joined online project has no account of its own: its main owner's decides (crewTeamAskerActive).
+	if _, project := crewTeamMemberProjectID(caller); project && !crewTeamAskerActive(caller) {
+		return macSharedAgent{}, "no_access"
+	} else if claims := (&UserClaims{UserID: caller}); !project && (userAccessForClaims(claims).Disabled || !userAllowedProduct(claims, crewProfileID)) {
 		return macSharedAgent{}, "no_access"
 	}
 	agents := readMacSharedAgents(project)
 	// The relay advertises native bindings, never Team permission. Only the
 	// server's Team record decides whether a teammate may use this agent.
-	if t, err := liveCrewTeam(project); err == nil && t.OwnerID == owner && caller != owner && t.member(caller) && t.agentInTeam(owner, tab) {
+	if t, err := liveCrewTeam(project); err == nil && t.OwnerID == owner && caller != owner && crewTeamMemberCurrent(t, caller) && t.agentInTeam(owner, tab) {
 		for _, a := range agents {
 			if a.Tab == tab {
 				return a, ""
@@ -965,29 +968,31 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 		return api.deliverToMemberMacAgent(ctx, c, m, source, dest)
 	}
 	tab := macSharedAgentTab(dest.ID, dest.ChatKey)
+	// The asker as the Team knows it: a joined online project's Builder turn asks as the project (#3664).
+	asker := crewTeamAskerOf(source)
 	// Your own agent of this Crew messaging your other In team agent on your Mac (owner, 12 Nov: an agent's online copy
 	// and its Mac original talk through Team messaging). A teammate's agent keeps the Team audience check below.
 	if crewOwnTeamAgentMessage(dest.ID, tab, source, dest) {
 		log.Printf("[CREW_TEAM] project=%s event=own_agent_message tab=%q", dest.ID, tab)
-	} else if _, reason := macSharedAgentForAgent(dest.ID, tab, source.UserID, dest.UserID); reason != "" {
+	} else if _, reason := macSharedAgentForAgent(dest.ID, tab, asker, dest.UserID); reason != "" {
 		log.Printf("[CREW_SHARED_AGENT] project=%s tab=%q action=message refused reason=%s sender_agent=%s user=%s", dest.ID, tab, reason, source.NamedAgentID, logUsernameForUserID(source.UserID))
 		return fmt.Errorf("This agent isn't shared with you.")
 	}
-	sender := shareOwnerLabel(source.UserID)
+	sender := crewTeamAskerLabel(asker)
 	// Read the answer from the Mac that took this message.
 	run := func(call crewChatCall, timeout time.Duration) crewChatResult {
 		return callCrewMacFor(context.Background(), dest.UserID, dest.ID, call, timeout)
 	}
 
 	read := func(after, wait int) (map[string]any, int) {
-		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "after": after, "wait_seconds": wait, "submission": m.ID})
+		raw, _ := json.Marshal(map[string]any{"sender_id": asker, "after": after, "wait_seconds": wait, "submission": m.ID})
 		result := run(crewChatCall{Operation: "agent_read", Tab: tab, Caller: sender, Args: raw}, time.Duration(wait+40)*time.Second)
 		var out map[string]any
 		_ = json.Unmarshal(result.Body, &out)
 		return out, result.Status
 	}
 	_, senderAgent, _ := agentMessageSender(ctx, source, source.UserID)
-	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge", "queued_request": m.QueuedRequest, "own_agent_message": crewOwnAgentMessage(dest, source)}, dest.ID, dest.UserID, macSharedAgentChatKey(dest.ID, tab)))
+	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": asker, "sender_agent": senderAgent, "sender_channel": "AgentBridge", "queued_request": m.QueuedRequest, "own_agent_message": crewOwnAgentMessage(dest, source)}, dest.ID, dest.UserID, macSharedAgentChatKey(dest.ID, tab)))
 	ask := crewChatCall{Operation: "agent_ask", Tab: tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}
 	from := 1 - m.From
 	// The Mac must be reachable before the message is handed over; the answer is then read by this message's id.

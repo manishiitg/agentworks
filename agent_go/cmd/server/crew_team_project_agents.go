@@ -276,3 +276,74 @@ func (api *StreamingAPI) setCrewTeamProjectAgentLevel(w http.ResponseWriter, r *
 	log.Printf("[CREW_TEAM] project=%s actor=%s event=project_agent_level member=%s agent=%s level=%s", team, logUsernameForUserID(user), project, key, level)
 	externalJSON(w, map[string]any{"team": t.view(user)})
 }
+
+// The online project as a sender (#3664, owner 24 Nov: online agents are AI teammates; Team Module Manager rule 2): a
+// Builder turn of a joined online project (its owner or a co-owner, or its own schedules, in the project's own chat)
+// asks the Team's agents as the project, project:<id>. A Run person's turn, a function's, a watcher's, a product Ask or
+// a turn started by another person's message never carries the project's identity.
+
+// crewTeamBuilderProject is the online project a sending endpoint speaks for, or "".
+func crewTeamBuilderProject(e agentMessageEndpoint) string {
+	project := e.ID
+	if e.Hosted != nil {
+		project = e.Hosted.Project
+	} else if e.Kind != triggerCallerCrew || e.External {
+		return ""
+	}
+	if e.Mode != "builder" || e.Guest != "" || e.FunctionCallID != "" || e.ConditionJob != "" || e.ProductAsk || e.PublishedAgent != "" || project == "" || !crewLivesOnServer(project) {
+		return ""
+	}
+	if root := crewProjectRootByID(project); root == "" || !crewProjectOwnedByCaller(e.UserID, root) {
+		return ""
+	}
+	return project
+}
+
+// crewTeamAskerOf is who a sending endpoint is in the Teams: a joined online project's Builder turn is the project; every
+// other endpoint its person (publishedAsker).
+func crewTeamAskerOf(e agentMessageEndpoint) string {
+	if project := crewTeamBuilderProject(e); project != "" && len(crewTeamsJoinedBy(project)) > 0 {
+		return crewTeamProjectMemberID(project)
+	}
+	return publishedAsker(e)
+}
+
+// crewTeamAskerKey carries the sending turn's Team identity (crewTeamAskerOf) through one in-process tool call. No
+// request or tool argument can set it.
+type crewTeamAskerKey struct{}
+
+func withCrewTeamAsker(ctx context.Context, e agentMessageEndpoint) context.Context {
+	if asker := crewTeamAskerOf(e); asker != publishedAsker(e) {
+		return context.WithValue(ctx, crewTeamAskerKey{}, asker)
+	}
+	return ctx
+}
+
+// crewTeamViewer is the identity Team admission uses for this call: the sending turn's project, else person.
+func crewTeamViewer(ctx context.Context, person string) string {
+	if asker, _ := ctx.Value(crewTeamAskerKey{}).(string); asker != "" {
+		return asker
+	}
+	return person
+}
+
+// crewTeamAskerLabel is how a Team asker is named to the agent it asks.
+func crewTeamAskerLabel(asker string) string {
+	if project, ok := crewTeamMemberProjectID(asker); ok {
+		return "Project: " + firstNonEmptyTrimmed(crewTeamProjectName(project), "Project")
+	}
+	return shareOwnerLabel(asker)
+}
+
+// crewTeamAskerShortName is crewPersonShortName for a Team asker, the project's name for a project.
+func crewTeamAskerShortName(asker string) string {
+	if _, ok := crewTeamMemberProjectID(asker); ok {
+		return crewTeamAskerLabel(asker)
+	}
+	return crewPersonShortName(asker)
+}
+
+// crewTeamAskerActive: a person's account is active, or a project member's main owner is (the project has no account).
+func crewTeamAskerActive(asker string) bool {
+	return crewTeamAccountActive(crewTeamRowRunsAs(asker))
+}

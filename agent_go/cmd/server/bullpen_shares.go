@@ -365,7 +365,7 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 		return triggerTarget{}, denied
 	}
 	if strings.HasPrefix(name, crewTeamAgentIDPrefix) {
-		return crewTeamBridgeTarget(ctx, subjectID, "agent:"+ownerName+"/"+name)
+		return crewTeamBridgeTarget(ctx, crewTeamViewer(ctx, subjectID), "agent:"+ownerName+"/"+name)
 	}
 	if owner.ID == subjectID {
 		// An owner-qualified Bridge address denotes the same private named
@@ -389,7 +389,7 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 		if a.UserID != owner.ID || a.Name != name {
 			continue
 		}
-		if row, _, teamErr := crewTeamAdmitAddress(ctx, subjectID, "agent:"+ownerName+"/"+a.Name); teamErr == nil {
+		if row, _, teamErr := crewTeamAdmitAddress(ctx, crewTeamViewer(ctx, subjectID), "agent:"+ownerName+"/"+a.Name); teamErr == nil {
 			return triggerTarget{TeamAgentID: row.ID, NamedAgentID: a.ID, Kind: triggerCallerUser, Label: a.Name, ShareOwnerUserID: owner.ID}, nil
 		} else if crewTeamReachReason(teamErr) == "binding_changed" {
 			log.Printf("[TEAM_AGENT_REACH] caller=%s agent=%s event=send outcome=refused reason=binding_changed", subjectID, a.ID)

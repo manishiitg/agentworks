@@ -271,7 +271,7 @@ func crewTeamAdmitTerminalEndpoint(ctx context.Context, viewer string, e agentMe
 	if !found || row.ID != e.TeamAgentID || row.OwnerID != e.UserID || row.Terminal == nil || row.Terminal.NamedAgentID != e.NamedAgentID {
 		return refuse("binding_changed")
 	}
-	if !crewTeamAccountActive(viewer) || !crewTeamSourceRowAdmits(t, viewer, row) {
+	if !crewTeamAskerActive(viewer) || !crewTeamSourceRowAdmits(t, viewer, row) {
 		return refuse("not_reachable")
 	}
 	named, err := currentCrewTeamTerminal(ctx, t, row)
@@ -290,7 +290,7 @@ func crewTeamConversationAdmission(ctx context.Context, c agentConversation) (bo
 		log.Printf("[TEAM_AGENT_REACH] inbox=%s event=send outcome=refused reason=crew_joined", c.ID)
 		return true, err
 	}
-	if publishedAsker(c.Endpoints[0]) == publishedAsker(c.Endpoints[1]) {
+	if crewTeamAskerOf(c.Endpoints[0]) == crewTeamAskerOf(c.Endpoints[1]) {
 		return false, nil
 	}
 	handled := false
@@ -299,8 +299,8 @@ func crewTeamConversationAdmission(ctx context.Context, c agentConversation) (bo
 			continue
 		}
 		handled = true
-		if err := crewTeamAdmitEndpoint(ctx, publishedAsker(c.Endpoints[1-i]), e); err != nil {
-			log.Printf("[TEAM_AGENT_REACH] caller=%s agent=%s inbox=%s event=send outcome=refused reason=%s", publishedAsker(c.Endpoints[1-i]), e.TeamAgentID, c.ID, crewTeamReachReason(err))
+		if err := crewTeamAdmitEndpoint(ctx, crewTeamAskerOf(c.Endpoints[1-i]), e); err != nil {
+			log.Printf("[TEAM_AGENT_REACH] caller=%s agent=%s inbox=%s event=send outcome=refused reason=%s", crewTeamAskerOf(c.Endpoints[1-i]), e.TeamAgentID, c.ID, crewTeamReachReason(err))
 			return true, err
 		}
 	}
@@ -327,24 +327,25 @@ func (api *StreamingAPI) externalAuthorizeConversationPeer(ctx context.Context, 
 // Server-owned per-delivery instructions, kept outside the sender's message.
 func crewTeamMessageInstructions(ctx context.Context, c agentConversation, m agentMessage) string {
 	dest, source := c.Endpoints[1-m.From], c.Endpoints[m.From]
-	if dest.TeamAgentID == "" || publishedAsker(source) == dest.UserID {
+	asker := crewTeamAskerOf(source)
+	if dest.TeamAgentID == "" || asker == dest.UserID {
 		return ""
 	}
 	if dest.NamedAgentID != "" && dest.Hosted == nil {
-		if err := crewTeamAdmitTerminalEndpoint(ctx, publishedAsker(source), dest); err != nil {
+		if err := crewTeamAdmitTerminalEndpoint(ctx, asker, dest); err != nil {
 			return ""
 		}
 		_, row, found, err := terminalCrewForNamed(dest.NamedAgentID)
 		if err != nil || !found || row.ID != dest.TeamAgentID || row.OwnerID != dest.UserID {
 			return ""
 		}
-		return whenOthersAskNote(crewPersonShortName(publishedAsker(source)), crewPersonShortName(dest.UserID), row.Rule.WhenOthersAsk)
+		return whenOthersAskNote(crewTeamAskerShortName(asker), crewPersonShortName(dest.UserID), row.Rule.WhenOthersAsk)
 	}
 	address, err := crewTeamEndpointAddress(ctx, dest)
 	if err != nil {
 		return ""
 	}
-	row, t, err := crewTeamAdmitAddress(ctx, publishedAsker(source), address)
+	row, t, err := crewTeamAdmitAddress(ctx, asker, address)
 	if err != nil {
 		return ""
 	}
@@ -352,7 +353,7 @@ func crewTeamMessageInstructions(ctx context.Context, c agentConversation, m age
 	if !ok {
 		return ""
 	}
-	return whenOthersAskNote(crewPersonShortName(publishedAsker(source)), crewPersonShortName(dest.UserID), a.Rule.WhenOthersAsk)
+	return whenOthersAskNote(crewTeamAskerShortName(asker), crewPersonShortName(dest.UserID), a.Rule.WhenOthersAsk)
 }
 
 // Only message targets use this adapter. It grants no product/file catalog.

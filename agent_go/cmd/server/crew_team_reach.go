@@ -55,7 +55,7 @@ type crewTeamReachableAgent struct {
 // discovery and every send rechecks this at that moment, so leaving a Team ends access at once.
 func crewTeamReachableAgents(ctx context.Context, viewer string) []crewTeamReachableAgent {
 	out := []crewTeamReachableAgent{}
-	if viewer == "" || !crewTeamAccountActive(viewer) {
+	if viewer == "" || !crewTeamAskerActive(viewer) {
 		return out
 	}
 	root, err := crewroot.StateRoot()
@@ -82,7 +82,7 @@ func crewTeamReachableAgents(ctx context.Context, viewer string) []crewTeamReach
 // crewTeamReachOpen: the Team is on, its owner current and active, and the viewer is in it (owner or joined member)
 // with an active account: a disabled teammate's tokens and agents reach nothing, on every reach and offline-copy path.
 func crewTeamReachOpen(t crewTeam, viewer string) bool {
-	return t.On && t.member(viewer) && t.OwnerID != "" && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID && crewTeamAccountActive(t.OwnerID) && crewTeamAccountActive(viewer)
+	return t.On && crewTeamMemberCurrent(t, viewer) && t.OwnerID != "" && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID && crewTeamAccountActive(t.OwnerID)
 }
 
 // crewTeamOwnerReach: the viewer is the current, active owner of this Team record, whether or not the Team is on.
@@ -132,7 +132,7 @@ func crewTeamReachableIn(ctx context.Context, t crewTeam, viewer string) []crewT
 // Team tab, the header's live view) applies the same rows without a second discovery. nil reads it here.
 func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, people []crewTeamAgentsPerson) []crewTeamReachableAgent {
 	out := []crewTeamReachableAgent{}
-	if !crewTeamAccountActive(viewer) || !crewTeamReachOpen(t, viewer) {
+	if !crewTeamReachOpen(t, viewer) {
 		return out // every caller gets the gate, not only crewTeamReachableAgents
 	}
 	if people == nil {
