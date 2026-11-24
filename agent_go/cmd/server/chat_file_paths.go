@@ -27,8 +27,7 @@ func chatFileVisible(rel string) bool {
 // a path from the transcript into a grant to read a different Crew.
 func (api *StreamingAPI) handleChatFilePaths(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
-	if claims == nil || claims.UserID == "" || claims.AccessToken != nil || claims.Scope != "" ||
-		claims.Provider == "bot_route" || claims.ExecutionPrincipal != nil || userAccessForClaims(claims).Disabled {
+	if !websiteDeviceClaims(claims) || userAccessForClaims(claims).Disabled {
 		externalError(w, http.StatusForbidden, "forbidden", "Open this chat in AgentWorks to find its files.")
 		return
 	}
@@ -49,7 +48,7 @@ func (api *StreamingAPI) handleChatFilePaths(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	docs := fsutil.WorkspaceDocsRoot()
-	resolver, err := crewroot.NewResolver(docs)
+	resolver, err := crewroot.NewReadResolver(docs)
 	if err != nil {
 		externalError(w, http.StatusServiceUnavailable, "files_unavailable", "Project files are unavailable.")
 		return
@@ -88,17 +87,30 @@ func (api *StreamingAPI) handleChatFilePaths(w http.ResponseWriter, r *http.Requ
 			continue
 		}
 		if absolute {
-			if mapped, other, bound, err := resolver.Reverse(raw); bound || err != nil {
-				if err == nil && other.Virtual == roots.Virtual && chatCrewFileExists(resolver, roots, guard, mapped, raw) {
+			insideCrew := crewroot.Within(roots.Files, raw) || crewroot.Within(roots.Resources, raw)
+			if !insideCrew && crewroot.Within(docs, raw) {
+				continue
+			}
+			if insideCrew {
+				if mapped, other, bound, err := resolver.Reverse(raw); err == nil && bound &&
+					other.Virtual == roots.Virtual && chatCrewFileExists(resolver, roots, guard, mapped, raw) {
 					targets[raw] = chatFileTarget{Path: mapped, Preview: !strings.HasPrefix(mapped, roots.FilesPath()+"/")}
 				}
-			} else if !crewroot.Within(docs, raw) {
-				for _, dir := range attachRoots {
-					rel, err := filepath.Rel(dir, raw)
-					if err == nil && crewroot.Within(dir, raw) && chatFileVisible(filepath.ToSlash(rel)) && chatRegularFile(dir, rel) {
-						targets[raw] = chatFileTarget{Path: raw, Preview: true}
-						break
-					}
+				continue
+			}
+			for _, dir := range attachRoots {
+				if !crewroot.Within(dir, raw) {
+					continue
+				}
+				// The existing asset reader treats registered Crew folders
+				// as Crew assets first, not as account attachments.
+				if _, _, bound, err := resolver.Reverse(raw); bound || err != nil {
+					break
+				}
+				rel, err := filepath.Rel(dir, raw)
+				if err == nil && chatFileVisible(filepath.ToSlash(rel)) && chatRegularFile(dir, rel) {
+					targets[raw] = chatFileTarget{Path: raw, Preview: true}
+					break
 				}
 			}
 			continue
