@@ -18,6 +18,7 @@ import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useAuthStore } from '../../stores/useAuthStore'
+import { useChatStore } from '../../stores/useChatStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 import { crewFullMenuGroups, crewMenuTarget, crewProjectMenuItems, type CrewMenuItem } from './crewProjectMenu'
@@ -31,7 +32,7 @@ import { useTeamTab } from './teamApi'
 import { CrewTeamPanel } from './CrewTeamPanel'
 import { CrewActivitySection } from './ActivitySection'
 import { useTeamSetupsList } from './useTeamSetupsList'
-import { ProjectActivityRows } from './ProjectActivityRows'
+import { ProjectActivityRows, projectActivitySetupMessage, useProjectActivityHidden } from './ProjectActivityRows'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
   workspacePath: string
@@ -87,6 +88,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     try { if (current) localStorage.setItem(dashboardsKey, '1'); else localStorage.removeItem(dashboardsKey) } catch { /* kept for this visit only */ }
     return !current
   })
+  const [activityHidden, hideActivity] = useProjectActivityHidden(`agentworks.project-activity-hidden:${projectId}`)
+  const addToast = useChatStore(state => state.addToast)
   const computerState = access?.place
   const accessTree = access?.tree || []
   const showMenu = (view: 'full' | 'integrations') => {
@@ -129,6 +132,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const openWorkflow = (rowId: string) => { if (rowId.startsWith('workflow:')) openCrewWorkflow(projectId, rowId.replace(/^workflow:/, '')); openID('workflow') }
   const newWorkflow = dashboardChatTarget ? () => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message: 'I want to create a new workflow. Ask me what it should do, then build it.' }).catch(() => openID('workflow')) } : undefined
   const openAutomation = (target: string) => { const item = byId.get('schedules'); if (item) open({ ...item, target }) }
+  const activityAgent = dashboardChatTarget ? (message: string) => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message }).catch(() => openAutomation('conditions')) } : undefined
   const workflowMenuRow = byId.has('workflow') && (workflowRows.length === 0
     ? <Row icon={Route} detail={data?.details.workflow} onClick={() => openID('workflow')}>Workflow</Row>
     : <WorkspaceCompactGroup key={`${scope}:workflows`} title="Workflows" icon={Route} detail={String(workflowRows.length)}>
@@ -240,10 +244,10 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     </div> : <>
     {changes}
     {/* Project activity sits right under Git (owner, 21 Nov, #3476). */}
-    <ProjectActivityRows key={`${scope}:activity`} section={section('activity')} onAgent={dashboardChatTarget ? message => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message }).catch(() => openAutomation('conditions')) } : undefined} onWatchers={() => openAutomation('conditions')} hideKey={`agentworks.project-activity-hidden:${projectId}`}/>
+    <ProjectActivityRows key={`${scope}:activity`} section={section('activity')} onAgent={activityAgent} onWatchers={() => openAutomation('conditions')} hidden={activityHidden} onHide={() => { hideActivity(); addToast('Project activity hidden. Set it up any time from Connections.', 'info') }}/>
     {/* Artifacts has its own top-level footer row (owner, 14 Nov); Run mode keeps this menu. */}
     {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
-    <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined}/>
+    <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined} onActivitySetup={activityHidden && activityAgent && section('activity')?.rows.length === 0 ? () => activityAgent(projectActivitySetupMessage) : undefined}/>
     {(byId.has('workflow') || byId.has('schedules')) && <TooltipProvider delayDuration={200}><WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={Zap}
       detail={automationChips.length ? undefined : data?.details.automations}
       preview={automationChips.length ? <div className="isolate flex -space-x-1.5">{automationChips.map((chip, i) =>
