@@ -132,7 +132,7 @@ func compactAgentDirectory(ctx context.Context, user string, directory map[strin
 		item := map[string]any{}
 		// No nested chat inventories, tools, transcripts or runtime metadata. A
 		// focused status request supplies details without repeating the inventory.
-		for _, field := range []string{"id", "target", "agent_id", "agent_name", "kind", "name", "label", "owner", "team_name", "team_project_id", "crew_name", "cli", "provider", "presence", "delivery_mode", "online", "hidden", "activity", "activity_source", "activity_reason", "last_active_label", "current_task", "yours", "published"} {
+		for _, field := range []string{"id", "target", "agent_id", "agent_name", "kind", "name", "label", "owner", "team_name", "team_project_id", "crew_name", "presence", "delivery_mode", "online", "hidden", "activity", "activity_source", "activity_reason", "last_active_label", "current_task", "yours", "published"} {
 			if value, ok := row[field]; ok {
 				switch v := value.(type) {
 				case string:
@@ -148,6 +148,10 @@ func compactAgentDirectory(ctx context.Context, user string, directory map[strin
 		}
 		if item["yours"] == true && strings.TrimSpace(stringField(item["owner"])) == "" {
 			item["owner"] = you
+		}
+		// #3666: what it is and where it runs, in the same words for every row.
+		for field, value := range agentDirectoryRuntime(row) {
+			item[field] = value
 		}
 		if purpose := stringField(row["purpose"]); purpose != "" {
 			item["purpose"] = directoryText(purpose, 240)
@@ -177,6 +181,65 @@ func compactAgentDirectory(ctx context.Context, user string, directory map[strin
 	raw, _ := json.Marshal(out)
 	log.Printf("[AGENTBRIDGE] event=directory user=%s total=%d matched=%d offset=%d returned=%d bytes=%d searched=%t", user, total, matched, offset, len(kept), len(raw), strings.TrimSpace(query) != "")
 	return out
+}
+
+// agentDirectoryRuntime is the program, model, how it runs (app chat, attached terminal or server agent) and where
+// (this Mac, a teammate's Mac or the server). A field it cannot tell is left out, never guessed.
+func agentDirectoryRuntime(row map[string]any) map[string]any {
+	out := map[string]any{}
+	if program := agentDirectoryProgramName(stringField(row["cli"])); program != "" {
+		out["program"] = program
+	}
+	if model := strings.TrimSpace(stringField(row["model_id"])); model != "" {
+		if effort := strings.TrimSpace(stringField(row["reasoning_effort"])); effort != "" {
+			model += " · " + effort + " effort"
+		}
+		out["model"] = directoryText(model, 120)
+	}
+	place, provider := stringField(row["place"]), strings.ToLower(stringField(row["provider"]))
+	yours, network := row["yours"] == true, strings.HasPrefix(stringField(row["id"]), "network:")
+	switch {
+	case row["terminal"] == true || (provider != "" && provider != "agentworks"):
+		out["runs_as"] = "terminal (attached)"
+	case place == "server":
+		out["runs_as"] = "server agent"
+	case place == "mac" || (yours && !network && IsLocalMode()):
+		out["runs_as"] = "app chat"
+	}
+	switch {
+	case place == "server":
+		out["runs_on"] = "server"
+	case yours && !network && IsLocalMode():
+		out["runs_on"] = "this Mac"
+	case place == "mac":
+		if owner := strings.TrimSpace(stringField(row["owner"])); owner != "" && !yours {
+			out["runs_on"] = directoryText(owner, 80) + "'s Mac"
+		} else {
+			out["runs_on"] = "your Mac"
+		}
+	}
+	return out
+}
+
+// agentDirectoryProgramName gives every row the program's product name, whichever spelling registered it.
+func agentDirectoryProgramName(cli string) string {
+	switch strings.ToLower(strings.TrimSpace(cli)) {
+	case "":
+		return ""
+	case "claude", "claude-code", "claude code":
+		return "Claude Code"
+	case "codex", "codex-cli":
+		return "Codex"
+	case "cursor", "cursor-cli", "cursor agent":
+		return "Cursor"
+	case "agy", "agy-cli", "antigravity":
+		return "Antigravity"
+	case "muse", "muse-cli":
+		return "Muse"
+	case "pi", "pi-cli":
+		return "Pi"
+	}
+	return directoryText(strings.TrimSpace(cli), 40)
 }
 
 func agentDirectoryProjectKind(kind string) bool {

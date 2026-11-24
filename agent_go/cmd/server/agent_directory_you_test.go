@@ -76,3 +76,41 @@ func TestAgentDirectoryListsProjectsApartWithAgentStatus(t *testing.T) {
 		}
 	}
 }
+
+// #3666: each agent row says its program in one spelling, its model, and whether it is an app chat, an attached
+// terminal or a server agent, and on whose Mac it runs. Unknown facts are left out.
+func TestAgentDirectoryShowsProgramModelAndWhereItRuns(t *testing.T) {
+	_ = newTriggerLinkEnv(t)
+	rows := []map[string]any{
+		{"kind": "team_agent", "name": "rts", "id": "network:c:agent:Owner/team-agent-1", "owner": "Owner P.", "cli": "Claude Code", "model_id": "claude-opus-5-5", "reasoning_effort": "medium", "place": "mac"},
+		{"kind": "team_agent", "name": "ai-work", "id": "network:c:agent:Owner/ai-work", "owner": "Owner P.", "cli": "claude", "place": "mac", "terminal": true},
+		{"kind": "connected_agent", "name": "computer use", "id": "network:c:agent:Owner/codex-1", "owner": "Owner P.", "cli": "codex", "provider": "codex"},
+		{"kind": "team_agent", "name": "always on", "id": "network:c:agent:Owner/team-agent-2", "owner": "Owner P.", "cli": "Codex", "place": "server"},
+		{"kind": "team_agent", "name": "unknown", "id": "network:c:agent:Owner/team-agent-3", "owner": "Owner P."},
+	}
+	out := compactAgentDirectory(t.Context(), "owner", map[string]any{"agents": rows}, "", 0)
+	byName := map[string]map[string]any{}
+	for _, row := range out["agents"].([]map[string]any) {
+		byName[stringField(row["name"])] = row
+	}
+	check := func(name, field, want string) {
+		t.Helper()
+		if got := stringField(byName[name][field]); got != want {
+			t.Fatalf("%s %s=%q want %q (%v)", name, field, got, want, byName[name])
+		}
+	}
+	check("rts", "program", "Claude Code")
+	check("rts", "model", "claude-opus-5-5 · medium effort")
+	check("rts", "runs_as", "app chat")
+	check("rts", "runs_on", "Owner P.'s Mac")
+	check("ai-work", "program", "Claude Code")
+	check("ai-work", "runs_as", "terminal (attached)")
+	check("computer use", "program", "Codex")
+	check("computer use", "runs_as", "terminal (attached)")
+	check("computer use", "runs_on", "")
+	check("always on", "runs_as", "server agent")
+	check("always on", "runs_on", "server")
+	for _, field := range []string{"program", "model", "runs_as", "runs_on", "cli", "provider"} {
+		check("unknown", field, "")
+	}
+}
