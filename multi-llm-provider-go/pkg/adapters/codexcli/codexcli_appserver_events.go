@@ -369,8 +369,19 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 					compact.Phase, compact.Outcome = phase, outcome
 					emit(llmtypes.ContextCompactionChunk(*compact))
 				}
-				if item.Type == "agentMessage" && msg.Method == "item/started" {
+				if (item.Type == "agentMessage" || item.Type == "plan") && msg.Method == "item/started" {
 					startBlock(item.ID)
+				}
+				if item.Type == "plan" && msg.Method == "item/completed" && strings.TrimSpace(item.Text) != "" {
+					// /plan: Codex's plan mode returns its plan as this item, not in the agent message.
+					final = strings.TrimSpace(strings.TrimSpace(final) + "\n\n" + item.Text)
+					if !streamed[item.ID] {
+						emitContent(item.ID, item.Text, metadata)
+					}
+					if id := blockID(item.ID); id != "" && !blocksCompleted[id] {
+						blocksCompleted[id] = true
+						emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeAssistantBlock, Content: item.Text, Metadata: map[string]any{llmtypes.AssistantBlockIDMetadataKey: id, llmtypes.AssistantBlockPhaseMetadataKey: "end"}})
+					}
 				}
 				if item.Type == "agentMessage" && msg.Method == "item/completed" {
 					if item.Phase == "final_answer" || item.Phase == "" {

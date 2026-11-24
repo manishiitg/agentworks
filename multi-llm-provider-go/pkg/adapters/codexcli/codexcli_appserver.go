@@ -45,6 +45,11 @@ type codexAppSession struct {
 	// its own are developerInstructions, changes go with turns (#3190).
 	instructions instructions.Tracker
 	status       *llmtypes.StatusLine
+
+	// planMode: the thread's collaboration mode is Codex's plan mode (a /plan
+	// turn set it). Codex keeps a turn's mode for later turns, so the next
+	// ordinary turn sets the default mode again.
+	planMode bool
 	// A successful steer response acknowledges acceptance; the corresponding
 	// userMessage item is the durable acknowledgement, scoped to this send.
 	receipts []*codexAppReceipt
@@ -552,7 +557,10 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 			Thread struct {
 				ID string `json:"id"`
 			}
-			Model string `json:"model"`
+			Model             string `json:"model"`
+			CollaborationMode *struct {
+				Mode string `json:"mode"`
+			} `json:"collaborationMode"`
 		}
 		if err = r.call(ctx, method, params, &result); err != nil {
 			if c.logger != nil {
@@ -574,6 +582,7 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		s.threadID = thread
 		s.cwd = cwd
 		s.model = result.Model
+		s.planMode = result.CollaborationMode != nil && result.CollaborationMode.Mode == "plan"
 		s.fingerprint = fingerprint
 		s.processFingerprint = processFingerprint
 		s.threadBoundaryFingerprint = threadBoundaryFingerprint
@@ -664,10 +673,25 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 			p.base["additionalContext"] = context
 		}
 	}
+	planTurn := llmtypes.NativePlanModeForSession(ctx, owner)
+	if mode := codexCollaborationMode(s, planTurn, opts); mode != nil {
+		switch p := params.(type) {
+		case map[string]any:
+			p["collaborationMode"] = mode
+		case *codexImageParams:
+			p.base["collaborationMode"] = mode
+		}
+		if c.logger != nil {
+			c.logger.Infof("[PLAN_MODE] provider=codex-cli session=%s action=%s", owner, map[bool]string{true: "plan_turn", false: "default_turn"}[planTurn])
+		}
+	}
 	r.attachEvents()
 	turn, err := startCodexGoalTurn(ctx, s, r, thread, params, activateGoal, emit)
 	if err == nil {
 		deliveredInstructions()
+		s.mu.Lock()
+		s.planMode = planTurn
+		s.mu.Unlock()
 	}
 	finishCodexImageDelivery(owner, params, err)
 	closeImages()
@@ -1013,6 +1037,31 @@ func codexInstructionsContext(d instructions.Delivery) map[string]any {
 		value = "This chat's instructions changed. Follow these from now on, in place of the earlier ones:\n\n" + d.Text
 	}
 	return map[string]any{"agentworks_instructions": map[string]any{"kind": "application", "value": value}}
+}
+
+// codexCollaborationMode is the turn's collaborationMode: Codex's plan mode for
+// a /plan turn, the default mode for the first ordinary turn after one, else
+// nil (the thread keeps its mode). Settings carry the thread's own model and
+// effort, which a collaboration mode takes precedence over.
+func codexCollaborationMode(s *codexAppSession, plan bool, opts *llmtypes.CallOptions) map[string]any {
+	s.mu.Lock()
+	inPlan, model := s.planMode, s.model
+	s.mu.Unlock()
+	if !plan && !inPlan {
+		return nil
+	}
+	if model == "" {
+		model = resolveCodexCLIModelID(codexOptionString(opts, MetadataKeyCodexModel))
+	}
+	var effort any
+	if value := codexOptionString(opts, MetadataKeyReasoningEffort); value != "" {
+		effort = value
+	}
+	mode := "default"
+	if plan {
+		mode = "plan"
+	}
+	return map[string]any{"mode": mode, "settings": map[string]any{"model": model, "reasoning_effort": effort, "developer_instructions": nil}}
 }
 
 func codexAppTurnParams(thread, prompt string, opts *llmtypes.CallOptions) map[string]any {

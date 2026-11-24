@@ -271,6 +271,11 @@ function createTaskOutputTail(publish, { pollMs = TASK_OUTPUT_POLL_MS, root = cl
 
 // Await each native acknowledgement before the next user input can be yielded.
 // Patch only our effort key; prompt-suggestion eligibility belongs to its own control.
+// The mode an approved ExitPlanMode returns to, or '' when nothing changes.
+function exitPlanMode(tool, result, mode) {
+  return tool === 'ExitPlanMode' && result?.behavior === 'allow' && mode && mode !== 'plan' ? mode : '';
+}
+
 async function applySDKTurnSettings(run, current, wanted) {
   if (!wanted) return [];
   const changed = [];
@@ -352,6 +357,7 @@ async function main() {
   }
   let run, wake, ended = false, keepWarm = false;
   const turnSettings = { model: options.model || '', permission_mode: options.permissionMode || 'default', effort: options.effort || null };
+  let planExitMode = '';
   let nextPromptCapable = false, nextPromptTurn = '', settledPromptTurn = '';
   let suggestionNearLimit = false;
   const suggestionWindows = new Map();
@@ -401,6 +407,13 @@ async function main() {
     try { return await response; }
     finally { signal?.removeEventListener('abort', abort); elicitations.delete(id); }
   };
+  // /plan: an approved plan returns the session to the chat's own mode for the rest of the turn.
+  const planApproval = (tool, result) => {
+    const mode = exitPlanMode(tool, result, planExitMode);
+    if (!mode) return result;
+    turnSettings.permission_mode = mode;
+    return { ...result, updatedPermissions: [...(result.updatedPermissions || []), { type: 'setMode', mode, destination: 'session' }] };
+  };
   options.canUseTool = async (tool, toolInput, context) => {
     const id = randomUUID();
     const abort = () => { permissions.get(id)?.(deny()); permissions.delete(id); emit({ type: 'sdk_permission_cancel', request_id: id }); };
@@ -409,7 +422,7 @@ async function main() {
     context.signal.addEventListener('abort', abort, { once: true });
     // Claude's own "always allow" rule for this request, offered as a choice; the host scopes it to this chat.
     emit({ type: 'sdk_permission', request_id: id, tool_name: tool, input: toolInput, ...(context.suggestions?.length ? { suggestions: context.suggestions } : {}) });
-    try { return await response; }
+    try { return planApproval(tool, await response); }
     finally { context.signal.removeEventListener('abort', abort); permissions.delete(id); }
   };
   const first = new Promise((resolve, reject) => {
@@ -495,6 +508,7 @@ async function main() {
       // query() returns its control handle before this microtask resumes.
       await Promise.resolve();
       try {
+        planExitMode = next.settings?.permission_mode === 'plan' ? next.settings.plan_exit_mode || 'default' : '';
         const fields = await applySDKTurnSettings(run, turnSettings, next.settings);
         if (fields.length) emit({type:'sdk_turn_settings', settings_fields:fields});
       }
@@ -624,7 +638,7 @@ async function main() {
     }
   } finally { taskOutput.close(); finishInput(); cancelPermissions(); lines.close(); run.close(); }
 }
-module.exports = { createHelperTracker, applySDKTurnSettings, sdkUserContent, moveForegroundHelpersAside, createScheduledWakeTracker, createTaskOutputTail, taskOutputPathFromResult, locateTaskOutput };
+module.exports = { createHelperTracker, applySDKTurnSettings, exitPlanMode, sdkUserContent, moveForegroundHelpersAside, createScheduledWakeTracker, createTaskOutputTail, taskOutputPathFromResult, locateTaskOutput };
 if (require.main === module) main().then(() => process.stdout.write("", () => process.exit(0)), error => {
   // SDK errors can contain command-line/environment details: report only a
   // stable category here. Native semantic errors still arrive as result events.

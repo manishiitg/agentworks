@@ -191,6 +191,9 @@ async function main() {
   const imageFrames=createImageFrames(emit);
   let terminals; // follows this chat's background shells once start names its folder (#3131)
   let agent, run, start, store, requestedModel, followups = [], early = [], busy = false;
+  // /plan: the mode this bridge last sent. Cursor keeps a send's mode for later sends (and a resumed agent its
+  // saved mode), so the first send of a bridge states it too.
+  let sentMode;
   // PLAT-746-999: observe only metadata after the native turn boundary. Keep
   // the last run's status listener across the foreground result: a completion
   // arriving while the bridge is idle must still be visible. No wake policy.
@@ -466,6 +469,7 @@ async function main() {
     followups = early;
     early = [];
     let text = {text:request.text,image_id:request.image_id}, last;
+    const turnMode = sendMode(request.mode, start.mode, sentMode);
     try {
       // A model chosen for this message: same bridge, same native agent; send({ model }) switches it.
       if (request.model && JSON.stringify(request.model) !== requestedModel) {
@@ -525,6 +529,7 @@ async function main() {
         const sendOptions = {
           // Reassert the selected variant on every turn, including resumed/follow-up runs.
           model: start.model,
+          ...(turnMode ? { mode: turnMode } : {}),
           onDelta: ({ update }) => {
             if (update.type === 'turn-ended') observation.afterEnd = true;
             observe(observation, 'delta', update);
@@ -571,7 +576,7 @@ async function main() {
             else if (update.type === 'thinking-delta') emit({ type: 'delta', kind: 'thinking', text: update.text });
           },
         };
-        try { run = await agent.send(await imageFrames.message(text), sendOptions); }
+        try { run = await agent.send(await imageFrames.message(text), sendOptions); if (turnMode) sentMode = turnMode; }
         catch (error) {
           // Same stale run as at start, if it appeared after: cancel it and retry once. A run the store still marks
           // active that cannot be found or cancelled (its process crashed) is expired by the SDK's own recovery,
@@ -580,6 +585,7 @@ async function main() {
           const cancelled = await cancelStale(agent.agentId).catch(() => false);
           emit({ type: 'stale', agent_id: agent.agentId, action: cancelled ? 'cancelled' : 'forced' });
           run = await agent.send(await imageFrames.message(text), cancelled ? sendOptions : { ...sendOptions, local: { force: true } });
+          if (turnMode) sentMode = turnMode;
         }
         const current = run;
         observation.run = current;
@@ -640,5 +646,12 @@ async function main() {
   await agent?.[Symbol.asyncDispose]?.();
   stopRunObservation?.();
 }
-module.exports = { createTerminalTail, parseTerminalHeader, cursorTerminalDirs };
+module.exports = { createTerminalTail, parseTerminalHeader, cursorTerminalDirs, sendMode };
+// The mode one send carries: 'plan' for a /plan turn, the chat's own mode on the first send after one, else
+// nothing (the agent keeps its mode).
+function sendMode(requested, chatMode, current) {
+  const wanted = requested === 'plan' ? 'plan' : (chatMode || 'agent');
+  return wanted === 'plan' || wanted !== current ? wanted : undefined;
+}
+
 if (require.main === module) main().then(() => process.exit(0), error => { emit({ type: 'fatal', error: short(error) }); process.exit(1); });

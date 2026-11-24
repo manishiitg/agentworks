@@ -252,6 +252,14 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 			permissionMode = "bypassPermissions"
 		}
 	}
+	// /plan: this turn runs in Claude's own plan mode. The SDK switches the warm
+	// process per turn and back to permissionMode once the plan is approved; a
+	// one-shot launch starts in plan mode.
+	planTurn := llmtypes.NativePlanModeForSession(ctx, claudeInteractiveSessionIDFromOptions(opts))
+	planExitMode := permissionMode
+	if planTurn && !c.sdkTransport {
+		permissionMode = "plan"
+	}
 	var tempFiles []string
 	defer func() {
 		// removeFiles, not a bare os.Remove loop: writeClaudeCodeProjectInstructionFile
@@ -552,7 +560,14 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 			}
 		}
 		// Host CallOptions supply the current mode; never derive it from prompt/tool output.
-		request["runtime_settings"] = map[string]any{"model": c.modelID, "permission_mode": permissionMode, "effort": effort}
+		settings := map[string]any{"model": c.modelID, "permission_mode": permissionMode, "effort": effort}
+		if planTurn {
+			settings["permission_mode"], settings["plan_exit_mode"] = "plan", planExitMode
+			if c.logger != nil {
+				c.logger.Infof("[PLAN_MODE] provider=claude-code session=%s action=plan_turn exit_mode=%s", owner, planExitMode)
+			}
+		}
+		request["runtime_settings"] = settings
 		if adoptWake {
 			request = map[string]any{"type": "adopt", "keep_warm": keepAllowed}
 		}
