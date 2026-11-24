@@ -74,6 +74,23 @@ func TestCrewTeamOnlineProjectAccess(t *testing.T) {
 		t.Fatal("a project that is not in the Team was admitted")
 	}
 
+	// Team keys: work lent by a member project's owner gets the Team's keys, the project's own key wins on a name
+	// clash, and someone who owns no project in the Team gets none.
+	if err := writeTeamWay("mac", teamWayRecord{Vault: "v-team1234", AddedBy: map[string]string{"secret:API_KEY": "owner", "secret:DB_URL": "owner"}}); err != nil {
+		t.Fatal(err)
+	}
+	teamKey := func(name string) string { full, _ := vaultSecretName("v-team1234", name); return full }
+	if keys := crewTeamProjectLentKeys(context.Background(), "bob"); keys[teamKey("API_KEY")] != "mac" || len(keys) != 2 {
+		t.Fatalf("member project's owner got Team keys %v", keys)
+	}
+	if keys := crewTeamProjectLentKeys(context.Background(), "ann"); len(keys) != 0 {
+		t.Fatalf("someone with no project in the Team got Team keys %v", keys)
+	}
+	ownKey, _ := vaultSecretName("v-srv12345", "API_KEY")
+	if got := withCrewTeamProjectKeys("srv", []string{ownKey}); !slices.Equal(got, []string{ownKey, teamKey("DB_URL")}) {
+		t.Fatalf("own key should win and the Team's other key be added: %v", got)
+	}
+
 	// Taking it out removes the Team's files that are still as last synced, and nothing else: an edit since the last
 	// sync stays, a folder made later at the same name stays, and a link on the way is never followed.
 	files, outside := t.TempDir(), t.TempDir()
