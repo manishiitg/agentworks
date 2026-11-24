@@ -1,4 +1,5 @@
 import { Avatar } from '../ui/Avatar'
+import { openOnServerWebsite } from '../../utils/openOnServerWebsite'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { desktopRequest } from '../../services/desktopConnections'
 import { answerTeamInvite, useTeamInvites, type TeamInvite } from '../../products/work/teamApi'
@@ -61,7 +62,7 @@ export function TeamInviteLine(){
  const {waiting,busy,joined}=state
  const copy=waiting[0]?.notice
  return <div className="shrink-0 text-xs" aria-label="Team invitation notices">
-  {joined&&<div role="status" className="flex min-w-0 items-center gap-2 border-b border-border px-3 py-1.5"><span aria-hidden="true" className="text-emerald-500">✓</span><span className="min-w-0 flex-1 truncate" title={joined.line}>{joined.line}</span><button type="button" className="shrink-0 text-primary" onClick={()=>{if(window.electronAPI?.openDesktopConnection&&joined.connection!==getRawActiveWorkspaceId())void window.electronAPI.openDesktopConnection(joined.connection,productRoutePath({surface:'work',id:joined.project}));else openSidebarProject('crew',joined.project)}}>{joined.invite.notice?.open}</button></div>}
+  {joined&&<div role="status" className="flex min-w-0 items-center gap-2 border-b border-border px-3 py-1.5"><span aria-hidden="true" className="text-emerald-500">✓</span><span className="min-w-0 flex-1 truncate" title={joined.line}>{joined.line}</span><button type="button" className="shrink-0 text-primary" onClick={()=>{if(joined.connection!==getRawActiveWorkspaceId())void openOnServerWebsite(joined.connection,productRoutePath({surface:'work',id:joined.project}));else openSidebarProject('crew',joined.project)}}>{joined.invite.notice?.open}</button></div>}
   {waiting.length===1?<TeamInviteRow invite={waiting[0]}/>:waiting.length>1?<>
    <div className="flex min-w-0 items-center gap-2 border-b border-border px-3 py-1.5"><span className="min-w-0 flex-1 truncate" title={waiting.map(i=>i.name).join(', ')}>{copy?.multiple.replace('{count}',String(waiting.length)).replace('{names}',waiting.map(i=>i.name).join(', '))}</span><button type="button" disabled={busy} onClick={()=>void state.joinAll()} className="shrink-0 rounded bg-primary px-2 py-0.5 text-primary-foreground disabled:opacity-50">{copy?.join_all}</button><button type="button" aria-expanded={review} onClick={()=>setReview(value=>!value)} className="shrink-0 text-muted-foreground">{copy?.review}</button></div>
    {review&&waiting.map(invite=><TeamInviteRow key={inviteKey(invite)} invite={invite}/>)}

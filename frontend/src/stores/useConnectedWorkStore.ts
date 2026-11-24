@@ -7,7 +7,6 @@ import { agentApi, connectionApiBase, getAuthToken } from '../services/api'
 import type { ActiveSessionInfo, HeaderSummaryResponse } from '../services/api-types'
 import { connectionLiveFeed, liveFeed } from '../services/liveFeed'
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
-import { setServerProjectList } from '../utils/remoteSessions'
 import { getRawActiveWorkspaceId, useWorkspaceConnectionStore } from './useWorkspaceConnectionStore'
 
 export const localConnection: DesktopConnection = { id: 'local', name: 'Local', server: '' }
@@ -52,7 +51,6 @@ async function readActivity(id: string, identity: number, set: ConnectedWorkSet)
 export const useConnectedWorkStore = create<{
   identity: number
   connections: DesktopConnection[]
-  inventory: Record<string, DesktopInventory>
   activity: Record<string, LocationActivity>
   loaded: boolean
   error: string
@@ -63,14 +61,14 @@ export const useConnectedWorkStore = create<{
   /** One network's agents changed: read its activity again, ignoring the shared freshness window. */
   refreshConnectionActivity: (id: string) => Promise<void>
 }>(set => ({
-  identity: captureChatIdentity(), connections: [localConnection], inventory: {}, activity: {}, loaded: false, error: '',
+  identity: captureChatIdentity(), connections: [localConnection], activity: {}, loaded: false, error: '',
   refresh: async (force = false) => {
     if (!hasDesktopConnections()) return
     const identity = captureChatIdentity()
     if (ownerIdentity !== identity) {
       ownerIdentity = identity
       directoryPending = undefined; activityPending = undefined; directoryAt = 0; activityAt = 0
-      set({ identity, connections: [localConnection], inventory: {}, activity: {}, loaded: false, error: '' })
+      set({ identity, connections: [localConnection], activity: {}, loaded: false, error: '' })
     }
     if (directoryPending) return directoryPending
     if (!force && Date.now() - directoryAt < DIRECTORY_FRESH_MS) return
@@ -82,23 +80,11 @@ export const useConnectedWorkStore = create<{
         const connections = [localConnection, ...data.connections.map(connection => ({ ...connection, name: useSidebarExpansionStore.getState().connectionNames[connection.id] || connectionDisplayName(connection) }))]
         const ids = new Set(connections.map(connection => connection.id))
         set(state => ({ connections, loaded: true, error: '',
-          inventory: Object.fromEntries(Object.entries(state.inventory).filter(([id]) => ids.has(id))),
           activity: Object.fromEntries(Object.entries(state.activity).filter(([id]) => ids.has(id))),
         }))
         useWorkspaceConnectionStore.getState().setProfiles(connections.map(c => ({ id: c.id, name: c.name,
           type: c.id === 'local' ? 'local' : 'remote', apiBaseUrl: locationApiBase(c.id),
         })))
-        // Inventory cards load independently; an unreachable server must not
-        // delay the activity monitor's first reads on healthy connections.
-        void Promise.allSettled(connections.map(async connection => {
-          let result: DesktopInventory
-          try { result = await desktopRequest<DesktopInventory>(`/${connection.id}/inventory`) }
-          catch { result = { projects: [], status: 'unavailable' } }
-          if (!isChatIdentityCurrent(identity)) return
-          // A server's own list says which projects live there (an unreachable server keeps what it said last).
-          if (connection.id !== getRawActiveWorkspaceId() && result.status === 'connected') setServerProjectList(connection.id, (result.projects || []).map(project => project.id))
-          set(state => ({ inventory: { ...state.inventory, [connection.id]: result } }))
-        }))
       } catch {
         directoryAt = 0
         if (isChatIdentityCurrent(identity)) set({ error: 'Could not load connections. Try again.' })

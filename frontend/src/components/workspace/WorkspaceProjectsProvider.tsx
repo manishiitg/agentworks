@@ -1,4 +1,3 @@
-import { setWindowProjectList } from '../../utils/remoteSessions'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -45,7 +44,6 @@ export function WorkspaceProjectsProvider({ children }: { children: ReactNode })
     }
     void agentApi.listWorkspaceNavigation().then(result => {
       if (!disposed && isChatIdentityCurrent(identity)) {
-        setWindowProjectList(result.workspaces.map(crew => crew.id))
         setDirectory({ scope, crews: result.workspaces, error: false })
       }
     }).catch(() => {

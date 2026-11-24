@@ -3,7 +3,7 @@ import { randomUUID } from '../utils/randomUUID'
 import type { TeamLiveView } from '../components/workspace/TeamLiveAgents'
 import { admissionWindowHeaders } from '../utils/chatDeliveryTelemetry'
 console.log('Cache bust: 2026-02-08-150000');
-import { folderConnection, remoteProjectConnection, remoteRequestConnection } from '../utils/remoteSessions'
+import { remoteRequestConnection } from '../utils/remoteSessions'
 import axios from 'axios'
 import type { CrewLocationFields } from '../components/workspace/macCrews'
 import { assertChatIdentityCurrent, captureChatIdentity } from '../utils/chatIdentity'
@@ -313,8 +313,8 @@ function getWorkspaceApiBaseUrl(): string {
 const API_BASE_URL = getApiBaseUrl()
 export { API_BASE_URL }
 
-/** The other connection a request goes to when it names a project, chat or folder opened in place from there
- * (#3383), else undefined (this window's own server). */
+/** The other connection a request goes to when it names a teammate chat from there, else undefined (this window's
+ * own server). */
 function projectServer(config: { connection?: string; url?: string; params?: unknown; headers?: unknown; data?: unknown }): string | undefined {
   const remote = config.connection ?? remoteRequestConnection(config)
   return remote && remote !== getRawActiveWorkspaceId() ? remote : undefined
@@ -339,18 +339,6 @@ if (typeof axios?.create === 'function') {
   axios.create = (config => { const instance = createClient(config); followProjectServer(instance); return instance }) as typeof axios.create
 }
 
-/** A full address on this window's server for a raw fetch, or on a server project's own server when the path is one of
- * its folders (#3383). */
-export function apiUrlForPath(route: string, workspacePath?: string): string {
-  const remote = workspacePath ? folderConnection(workspacePath) : undefined
-  return `${remote && remote !== getRawActiveWorkspaceId() ? connectionApiBase(remote) : getApiBaseUrl()}${route}`
-}
-/** This window's server, or a server project's own server while it is open in place (#3383): for the streams a
- * project opens itself, such as its Terminal. */
-export function projectApiBase(projectId?: string | null): string {
-  const remote = remoteProjectConnection(projectId)
-  return remote && remote !== getRawActiveWorkspaceId() ? connectionApiBase(remote) : getApiBaseUrl()
-}
 export const WORKSPACE_API_BASE_URL = getWorkspaceApiBaseUrl()
 
 export type ToolChanges = { added: string[]; removed: string[]; reload_requested: boolean }

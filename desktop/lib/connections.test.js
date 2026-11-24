@@ -27,32 +27,6 @@ test('saved remote sessions are available only to the app top frame, never dashb
   });
 });
 
-// #2831: WebSocket requests were never given the app's proof, even from
-// its own top frame. Do not grant it to a dashboard, another port or sockets.
-test('project Terminal websocket gets proof only in the live app top frame', () => {
-  const origin = 'http://127.0.0.1:18743';
-  const frame = { url: origin + '/crew' }, contents = { id: 4, mainFrame: frame };
-  const request = { webContentsId: 4, frame, resourceType: 'webSocket', url: 'ws://127.0.0.1:18743/api/connections/saved/api/agent-profiles/work/projects/project/shell/stream' };
-  assert.equal(connectionRequest(request, contents, origin), true);
-  // #3383: a server project's live browser view streams the same way; its other browser routes do not.
-  const browser = request.url.replace('/agent-profiles/work/projects/project/shell/stream', '/browser/live/session/stream');
-  assert.equal(connectionRequest({ ...request, url: browser }, contents, origin), true);
-  for (const change of [
-    { url: browser.replace('/stream', '/recording') },
-    { url: browser.replace('/session/', '/a/b/') },
-    { frame: { url: frame.url } }, { webContentsId: 5 },
-    { url: request.url.replace(':18743', ':18744') },
-    { url: 'ws://127.0.0.1:18743/api/connections/saved/api/other/socket' },
-    { url: request.url.replace('ws:', 'wss:') },
-  ]) assert.equal(connectionRequest({ ...request, ...change }, contents, origin), false);
-  let beforeHeaders, filter;
-  installDesktopConnections({ session: { webRequest: { onBeforeSendHeaders: (urls, cb) => { filter = urls; beforeHeaders = cb; } } },
-    ipcMain: { on() {}, handle() {} }, getWindow: () => ({ webContents: contents }), getOrigin: () => origin, secret: 'app-proof' });
-  assert.ok(filter.urls.includes('ws://127.0.0.1/*'));
-  beforeHeaders({ ...request, requestHeaders: {} }, result => assert.equal(result.requestHeaders['X-AgentWorks-Desktop'], 'app-proof'));
-  beforeHeaders({ ...request, frame: { url: frame.url }, requestHeaders: { 'X-AgentWorks-Desktop': 'forged' } }, result => assert.equal(result.requestHeaders['X-AgentWorks-Desktop'], undefined));
-});
-
 // PLAT-746-207: a restart must never stamp the retired port or the startup gap.
 test('connection proof follows the live server and is absent during restart', () => {
   let origin = 'http://127.0.0.1:18743', beforeHeaders;
@@ -144,8 +118,8 @@ test('development window selects connections on Vite and sends proof only to its
   proof = '';
   const stopped = await new Promise(resolve => beforeHeaders({ ...request, url: origin + '/api/desktop-connections' }, resolve));
   assert.equal(stopped.cancel, true);
-  await openConnection(event, 'a'.repeat(32), '/crew/projects/example');
-  assert.equal(loaded, appOrigin + '/crew/projects/example');
+  // #3779: the window stays on this Mac; a server is never opened in it.
+  await assert.rejects(openConnection(event, 'a'.repeat(32), '/crew/projects/example'), /Unknown connection/);
   // PLAT-746-820: switching to a member copy retains the agent/panel link.
   await openConnection(event, 'local', '/crew/projects/member-local?view=files&agent=agent-stable');
   assert.equal(loaded, appOrigin + '/crew/projects/member-local?view=files&agent=agent-stable');
@@ -227,17 +201,16 @@ test('split desktop gets notifications again after its backend restarts with fre
   stop();
 });
 
-// #3383: a notification for a Crew, on this Mac or a server, opens it in the window without reloading it.
-test('a notification click opens a Crew in place while the window is on this Mac', async () => {
+// #3779: a notification for work on a server opens it on that server's website; the window stays on this Mac.
+test('a notification click for a server opens its website, not this window', async () => {
   const sent = [], loaded = [];
   const contents = { id: 1, mainFrame: {}, send: (name, value) => sent.push([name, value]) };
   const api = installDesktopConnections({ session: { webRequest: { onBeforeSendHeaders: () => {} } }, ipcMain: { on: () => {}, handle: () => {} },
     getWindow: () => ({ webContents: contents, loadURL: async url => { loaded.push(url); } }), getOrigin: () => 'http://127.0.0.1:1', secret: 'proof' });
   const server = '0123456789abcdef0123456789abcdef';
   await api.open(server, '/crew/projects/remote-crew?agent=helper');
-  assert.deepEqual(sent, [['open-project-in-place', { connection: server, route: '/crew/projects/remote-crew?agent=helper' }]]);
+  assert.deepEqual(sent, [['open-on-server-website', { connection: server, route: '/crew/projects/remote-crew?agent=helper' }]]);
   assert.deepEqual(loaded, []);
-  // Other pages still switch the window to that server.
-  await api.open(server, '/');
-  assert.deepEqual(loaded, ['http://127.0.0.1:1/']);
+  await api.open('local', '/crew/projects/mac-crew');
+  assert.deepEqual(loaded, ['http://127.0.0.1:1/crew/projects/mac-crew']);
 });

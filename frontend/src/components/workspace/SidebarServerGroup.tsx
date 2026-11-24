@@ -4,7 +4,6 @@ import { ServerIdentityIcon } from './ServerIdentityIcon'
 import { openConnectedServers } from './ConnectedServersMenuItem'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { openAppProduct } from '../../utils/appNavigation'
-import { unregisterRemoteProject } from '../../utils/remoteSessions'
 import { ChevronRight, LayoutDashboard, Laptop, Network } from 'lucide-react'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
@@ -55,7 +54,6 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
 /** Reopen the workspace even when an overlay kept its project URL unchanged. */
 export function openSidebarProject(kind: 'crew' | 'goal', id: string) {
   const surface = kind === 'crew' ? 'work' : 'agentworks'
-  unregisterRemoteProject(id)
   window.dispatchEvent(new Event('close-app-sidebar'))
   openProductWorkspace(surface)
   openAppProduct({ surface, id })

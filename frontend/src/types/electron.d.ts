@@ -13,7 +13,7 @@ interface ElectronBridge {
   isNotificationWindowActive?: () => boolean
   onNotificationWindowActiveChanged?: (callback: (focused: boolean) => void) => () => void
   openDesktopConnection?: (id: string, route: string) => Promise<void>
-  onOpenProjectInPlace?: (callback: (target: { connection: string; route: string }) => void) => () => void
+  onOpenOnServerWebsite?: (callback: (target: { connection: string; route: string }) => void) => () => void
   isWalkthroughDismissed?: (key: string) => boolean
   dismissWalkthrough?: (key: string) => void
   getApiBaseUrl?: () => string
