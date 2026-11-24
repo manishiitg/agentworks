@@ -5544,7 +5544,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// Process the query in the background
 	go func() {
 		// The company-server Vault answers this message needs, asked once and early (#3723).
-		api.prefetchServerVaultInventory(sessionID, currentUserID)
+		api.prefetchServerVaultInventory(sessionID, currentUserID, req.SelectedFolder)
 		serverVaultRound := withServerVaultSecretRound(context.Background())
 		turnStatus := trackedExecutionStatusCanceled
 		turnError := "conversation turn ended before completion was recorded"
