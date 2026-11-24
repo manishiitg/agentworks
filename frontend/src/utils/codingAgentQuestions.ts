@@ -12,6 +12,19 @@ export type CodingAgentQuestionPrompt = {
   requestKind?: 'question' | 'command_approval' | 'plan_approval' | 'form'
 }
 
+// A question the agent asks never traps the person: they can skip it or type their own answer in the message box.
+export const SKIPPED_QUESTION_ANSWER = 'No answer: the person skipped this question. Continue with your best judgment, or ask again in plain text.'
+
+/** Every question takes a typed answer, so the message box and Skip can answer it. */
+export function takesTypedAnswer(prompt: Pick<CodingAgentQuestionPrompt, 'questions'>) {
+  return prompt.questions.length > 0 && prompt.questions.every(question => question.allowOther)
+}
+
+/** The same typed text answers every question of a prompt. */
+export function typedAnswers(prompt: Pick<CodingAgentQuestionPrompt, 'questions'>, text: string): CodingAgentChoiceAnswer[] {
+  return prompt.questions.map(question => ({ id: question.id, selectedLabels: [], otherText: text }))
+}
+
 export type CodingAgentQuestionAnswerHandler = (provider: string, promptId: string, answers: CodingAgentChoiceAnswer[], auto?: boolean) => Promise<void>
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' ? value as Record<string, unknown> : {}

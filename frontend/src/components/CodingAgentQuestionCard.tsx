@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Check, CheckCircle2, CircleHelp } from 'lucide-react'
-import type { CodingAgentQuestionPrompt, CodingAgentChoiceAnswer } from '../utils/codingAgentQuestions'
+import { SKIPPED_QUESTION_ANSWER, takesTypedAnswer, typedAnswers, type CodingAgentQuestionPrompt, type CodingAgentChoiceAnswer } from '../utils/codingAgentQuestions'
 import { PlanLine } from './chat/PlanModeControls'
 import { planFromQuestion } from '../utils/planSummary'
 
@@ -54,6 +54,19 @@ export function CodingAgentQuestionCard({ prompt, onAnswer, docked }: {
       // disabled until that durable event reaches the conversation.
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not submit this choice. Refresh and try again.')
+      setSubmitting(false)
+    }
+  }
+  // Skip answers every question with a plain "no answer" so the agent carries on instead of waiting.
+  const canSkip = takesTypedAnswer(prompt)
+  const skip = async () => {
+    if (!pending || !canSkip || !onAnswer || submitting) return
+    setSubmitting(true)
+    setError('')
+    try {
+      await onAnswer(prompt.provider, prompt.promptId, typedAnswers(prompt, SKIPPED_QUESTION_ANSWER))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not skip this question. Refresh and try again.')
       setSubmitting(false)
     }
   }
@@ -144,6 +157,7 @@ export function CodingAgentQuestionCard({ prompt, onAnswer, docked }: {
       </>}
       {(prompt.questions.length === 1 || activeIndex === prompt.questions.length - 1) && <button type="button" onClick={() => void submit()} disabled={!ready || submitting || !onAnswer} className="min-h-11 rounded-md bg-primary px-4 text-sm font-medium sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-xs text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:cursor-not-allowed disabled:opacity-50">{submitting ? 'Submitting…' : 'Send answer'}</button>}
       {canUseFirstOptions && <button type="button" onClick={() => void submit(true)} disabled={submitting || !onAnswer} className="min-h-11 rounded-md px-3 text-sm font-medium text-muted-foreground sm:min-h-0 sm:px-2.5 sm:py-1.5 sm:text-xs hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">Use first options</button>}
+      {canSkip && <button type="button" onClick={() => void skip()} disabled={submitting || !onAnswer} data-testid="coding-agent-question-skip" title="Skip: the agent continues without your answer" className="ml-auto min-h-11 rounded-md px-3 text-sm text-muted-foreground sm:min-h-0 sm:px-2.5 sm:py-1.5 sm:text-xs hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">Skip</button>}
     </div>
       : <p className="text-xs text-muted-foreground">{prompt.statusMessage || (prompt.state === 'answered' ? 'Choice submitted' : prompt.state === 'unanswered' ? 'This question closed without an answer.' : 'Question interrupted')}</p>}
     {pending && !onAnswer && <p className="mt-2 text-xs text-muted-foreground">This conversation cannot be changed.</p>}
