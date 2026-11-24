@@ -38,10 +38,16 @@ type crewTeamTransportKey struct{}
 type crewTeamInProcess struct {
 	handler http.Handler
 	claims  *UserClaims
+	// projectMember: the online project this copy belongs to (#3664); only this transport marks a request with it.
+	projectMember string
 }
 
 func (t crewTeamInProcess) RoundTrip(req *http.Request) (*http.Response, error) {
-	r := req.Clone(context.WithValue(req.Context(), UserContextKey, t.claims))
+	ctx := context.WithValue(req.Context(), UserContextKey, t.claims)
+	if t.projectMember != "" {
+		ctx = context.WithValue(ctx, crewTeamProjectMemberKey{}, t.projectMember)
+	}
+	r := req.Clone(ctx)
 	r.RequestURI = ""
 	r.Header.Del("Authorization")
 	recorder := httptest.NewRecorder()
@@ -176,6 +182,7 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 		for ctx.Err() == nil {
 			if woken || time.Since(cleaned) >= crewTeamCheckAfter(true) {
 				api.removeStaleCrewTeamServerCopies(ctx)
+				api.removeStaleCrewTeamProjectCopies(ctx)
 				expireAllCrewAgentForks(ctx, time.Now())
 				cleaned = time.Now()
 			}
@@ -202,6 +209,11 @@ func (api *StreamingAPI) startCrewTeamServerCopies(ctx context.Context) {
 					}
 					round, done := context.WithTimeout(ctx, 2*time.Minute)
 					_, _ = api.syncCrewTeamServerCopy(round, p.UserID, t.ProjectID, false)
+					done()
+				}
+				for _, p := range t.Projects {
+					round, done := context.WithTimeout(ctx, 2*time.Minute)
+					_ = api.syncCrewTeamProjectCopy(round, t, p.ProjectID)
 					done()
 				}
 			}

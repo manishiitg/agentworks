@@ -59,6 +59,9 @@ func crewTeamUnder(rel, prefix string) bool {
 // diskRel and remoteRel translate only admitted mounts and the two shared setup
 // files. An unmapped private sibling has no remote path and can never upload.
 func (b crewTeamLocal) diskRel(rel string) string {
+	if b.ProjectMember && (rel == crewTeamSetupFile || crewTeamUnder(rel, "skills")) {
+		return "" // an online project keeps its own setup and skills (#3664)
+	}
 	if !b.Mounted {
 		return rel
 	}
@@ -82,6 +85,9 @@ func (b crewTeamLocal) diskRel(rel string) string {
 }
 
 func (b crewTeamLocal) remoteRel(rel string) string {
+	if b.ProjectMember && (rel == crewTeamSetupFile || crewTeamUnder(rel, "skills")) {
+		return ""
+	}
 	if !b.Mounted {
 		return rel
 	}
@@ -230,6 +236,9 @@ func (b *crewTeamLocal) reconcileMounts(share crewTeamFolder) error {
 	}
 	active := map[string]bool{}
 	for _, entry := range share.mounts() {
+		if b.ProjectMember && crewTeamUnder(entry.Path, "skills") {
+			continue
+		}
 		active[entry.ID] = true
 		root := b.diskRoot(entry.Path)
 		old, had := b.Mounts[entry.ID]

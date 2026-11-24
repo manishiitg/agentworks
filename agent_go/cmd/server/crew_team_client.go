@@ -30,20 +30,22 @@ import (
 )
 
 type crewTeamLocal struct {
-	FolderID       string                   `json:"folder_id"`
-	Connection     string                   `json:"connection"`
-	Project        string                   `json:"project_id"`
-	LocalProject   string                   `json:"local_project_id,omitempty"`
-	RemoteUser     string                   `json:"remote_user"`
-	Client         string                   `json:"client"`
-	Root           string                   `json:"local_folder"`
-	SkillRoot      string                   `json:"skill_root,omitempty"`
-	ScanSkillsOnly bool                     `json:"-"`
-	SkipSkillTree  bool                     `json:"-"`
-	Mounted        bool                     `json:"mounted,omitempty"`
-	ProtectPrivate bool                     `json:"protect_private,omitempty"`
-	Mounts         map[string]crewTeamMount `json:"mounts,omitempty"`
-	OwnedPaths     map[string]crewTeamMount `json:"owned_paths,omitempty"`
+	FolderID       string `json:"folder_id"`
+	Connection     string `json:"connection"`
+	Project        string `json:"project_id"`
+	LocalProject   string `json:"local_project_id,omitempty"`
+	RemoteUser     string `json:"remote_user"`
+	Client         string `json:"client"`
+	Root           string `json:"local_folder"`
+	SkillRoot      string `json:"skill_root,omitempty"`
+	ScanSkillsOnly bool   `json:"-"`
+	SkipSkillTree  bool   `json:"-"`
+	Mounted        bool   `json:"mounted,omitempty"`
+	ProtectPrivate bool   `json:"protect_private,omitempty"`
+	// ProjectMember: an online project's copy in its own folder (#3664). The Team's setup and skills never enter it.
+	ProjectMember bool                     `json:"project_member,omitempty"`
+	Mounts        map[string]crewTeamMount `json:"mounts,omitempty"`
+	OwnedPaths    map[string]crewTeamMount `json:"owned_paths,omitempty"`
 	// Files is what this copy last had in step with the team, including the
 	// identity/stat stamp observed while reading that version's contents.
 	Files    map[string]crewTeamLocalFile `json:"files"`

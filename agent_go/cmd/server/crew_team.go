@@ -161,7 +161,9 @@ type crewTeam struct {
 	On     bool                               `json:"on"`
 	Agents map[string]crewTeamRegisteredAgent `json:"agents,omitempty"`
 	People []crewTeamPerson                   `json:"people"`
-	Folder crewTeamFolder                     `json:"folder"`
+	// Projects are the online projects in this Team (#3664, crew_team_projects.go), changed only by their own route.
+	Projects []crewTeamProject `json:"projects,omitempty"`
+	Folder   crewTeamFolder    `json:"folder"`
 	// FolderNote is a server/migration-authored setup note, never accepted from a settings caller.
 	FolderNote   string `json:"folder_note,omitempty"`
 	Revision     uint64 `json:"revision"`
@@ -216,6 +218,10 @@ func writeCrewTeamWithAgents(t crewTeam, choices func(map[string]crewTeamRegiste
 		return err
 	}
 	t.ServerData = nil
+	t.Projects = slices.Clone(t.Projects)
+	for i := range t.Projects {
+		t.Projects[i].Name = ""
+	}
 	t.CanManage = false
 	t.FolderAccess = false
 	t.OwnerName = ""
@@ -339,6 +345,7 @@ func (t crewTeam) viewLocked(user string) crewTeam { return t.viewLedger(user, t
 
 func (t crewTeam) viewLedger(user string, writerLocked bool) crewTeam {
 	t.CanManage = crewTeamCanManage(t, user)
+	t = t.withProjectNames()
 	t.Where = ""
 	if t.member(user) && user != t.OwnerID {
 		t.Where = "web"
@@ -457,6 +464,11 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	project := mux.Vars(r)["project"]
 	if project == "" {
 		api.listCrewTeams(w, r)
+		return
+	}
+	// An online project's own copy reads the Team it syncs with (#3664): the shared folder, not the people's settings.
+	if t, ok := crewTeamProjectAdmitted(r, claims, project); ok && r.Method == http.MethodGet {
+		externalJSON(w, crewTeam{ProjectID: t.ProjectID, Name: t.Name, OwnerID: t.OwnerID, On: t.On, Folder: t.Folder, Revision: t.Revision, FolderAccess: true, People: []crewTeamPerson{}})
 		return
 	}
 	if !crewTeamClaims(claims, project, r.Method != http.MethodGet) {
@@ -587,6 +599,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	input.Agents = previous.Agents
+	input.Projects = previous.Projects
 	// Team on (owner, 4-5 Nov) starts, with nothing shared yet, with the Crew's team/ folder. The server decides it for
 	// every caller (website, Mac app, chat, MCP); the owner's Mac makes the folder there when it applies the record
 	// (crew_team_apply.go).
@@ -951,9 +964,12 @@ func crewTeamContentDir(project string) (string, error) {
 	return filepath.Join(d, "folders", crewTransferDigest(t.Folder.ID+"\x00"+crewTeamSyncFormat)), nil
 }
 func crewTeamRequestAuthorize(r *http.Request, claims *UserClaims, project, rel string, write, folder bool) (crewTeam, error) {
-	t, err := crewTeamAuthorize(claims, project, rel, write, folder)
-	if err != nil {
-		return t, err
+	t, ok := crewTeamProjectAdmitted(r, claims, project)
+	if !ok {
+		var err error
+		if t, err = crewTeamAuthorize(claims, project, rel, write, folder); err != nil {
+			return t, err
+		}
 	}
 	if id := r.URL.Query().Get("folder_id"); id != "" && id != t.Folder.ID || write && id == "" {
 		return crewTeam{}, fmt.Errorf("the shared folder changed; reopen it before continuing")
