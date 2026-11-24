@@ -48,6 +48,9 @@ func agentMessageSender(ctx context.Context, source agentMessageEndpoint, receiv
 	}
 	agent = agentMessageReadableName(agent)
 	person := agentMessageReadableName(shareOwnerLabel(source.UserID))
+	if account, _, ok := macSenderAccount(source); ok && (person == "Agent" || person == "unknown") {
+		person = agentMessageReadableName(account.Username)
+	}
 	if person == "Agent" || person == "unknown" {
 		person = "Person"
 	}
