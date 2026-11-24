@@ -1408,6 +1408,71 @@ func (api *StreamingAPI) finishAgentMessageSteer(ctx context.Context, c agentCon
 }
 
 // reopenAgentMessage returns a claimed message to pending after a steer that did not happen.
+// readAgentMessageIDs lists the message ids a read returned to the chat.
+func readAgentMessageIDs(out map[string]interface{}) map[string]bool {
+	ids := map[string]bool{}
+	add := func(item map[string]interface{}) {
+		if id, _ := item["message_id"].(string); id != "" {
+			ids[id] = true
+		}
+	}
+	switch items := out["messages"].(type) {
+	case []map[string]interface{}:
+		for _, item := range items {
+			add(item)
+		}
+	case []interface{}:
+		for _, raw := range items {
+			if item, ok := raw.(map[string]interface{}); ok {
+				add(item)
+			}
+		}
+	}
+	return ids
+}
+
+// markReadAgentMessagesDelivered: a chat that read its waiting messages has them, so they are not delivered again
+// as a new turn once its current turn ends. Only messages addressed to this chat's session (or not yet bound to one).
+func markReadAgentMessagesDelivered(ctx context.Context, inboxID, session string, ids map[string]bool) {
+	if session == "" || len(ids) == 0 {
+		return
+	}
+	agentMessageMu.Lock()
+	defer agentMessageMu.Unlock()
+	s, err := readAgentMessageStore(ctx)
+	if err != nil {
+		return
+	}
+	changed := false
+	for i := range s.Conversations {
+		c := &s.Conversations[i]
+		if c.ID != inboxID {
+			continue
+		}
+		for j := range c.Messages {
+			m := &c.Messages[j]
+			if !ids[m.ID] || m.Delivery != "pending" {
+				continue
+			}
+			if dest := c.Endpoints[1-m.From].Session; dest != "" && dest != session {
+				continue
+			}
+			m.Delivery = "delivered"
+			if m.MessageType == "request" {
+				m.TaskProgress.Session = session
+				if m.TaskProgress.NextWake.IsZero() {
+					m.TaskProgress.NextWake = time.Now().Add(agentTaskWakeDelay(0))
+				}
+			}
+			changed = true
+			log.Printf("[AGENT-MESSAGE] action=delivery thread=%s message=%s outcome=delivered reason=read_by_chat session=%s", c.ID, m.ID, session)
+		}
+	}
+	if changed {
+		_ = saveAgentMessageStore(ctx, s)
+	}
+}
+
 func (api *StreamingAPI) reopenAgentMessage(ctx context.Context, inboxID, messageID string) {
 	agentMessageMu.Lock()
 	defer agentMessageMu.Unlock()
@@ -1845,6 +1910,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				if states, ok := desktopTaskStatesFrom(out); ok && caller.Chat != nil {
 					_ = applyDesktopTaskStates(userID, caller.Chat.SessionID, id, states) // no checkpoint: nothing to update
 				}
+				api.withdrawQueuedAgentMessageTurns(ctx, sessionID, readAgentMessageIDs(out))
 				raw, e := json.Marshal(out)
 				return string(raw), e
 			}
@@ -1860,6 +1926,9 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			if err != nil {
 				return "", err
 			}
+			read := readAgentMessageIDs(out)
+			markReadAgentMessagesDelivered(ctx, id, sessionID, read)
+			api.withdrawQueuedAgentMessageTurns(ctx, sessionID, read)
 			raw, err := json.Marshal(out)
 			return string(raw), err
 		}},

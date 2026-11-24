@@ -465,3 +465,26 @@ func TestQueuedAgentMessageProjectionMatchesStartedIdentity(t *testing.T) {
 		t.Fatal("plain text acquired delivery identity")
 	}
 }
+
+// A network message queued while the chat was busy, then read by that chat with messages action=read, ran again as
+// a new turn when the busy turn ended. Reading withdraws its queued turn; other waiting messages stay.
+func TestReadAgentMessageWithdrawsItsQueuedTurn(t *testing.T) {
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	owner := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
+	for _, id := range []string{"msg-read", "msg-unread"} {
+		ctx := context.WithValue(owner, deliveredAgentMessageKey{}, map[string]interface{}{"source": "agent_message", "message_id": id})
+		if _, _, err := api.enqueueConversationTurn(ctx, "owner", "chat", QueryRequest{AgentMode: "multi-agent", Query: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err := api.enqueueConversationTurn(owner, "owner", "chat", QueryRequest{AgentMode: "multi-agent", Query: "person"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := api.withdrawQueuedAgentMessageTurns(context.Background(), "chat", map[string]bool{"msg-read": true}); got != 1 {
+		t.Fatalf("withdrew %d turns, want the read message's one", got)
+	}
+	left := api.mustReadTurnQueueForTest(t, "owner")
+	if len(left) != 2 || left[0].Request.Query != "msg-unread" || left[1].Request.Query != "person" {
+		t.Fatalf("wrong turns left: %+v", left)
+	}
+}
