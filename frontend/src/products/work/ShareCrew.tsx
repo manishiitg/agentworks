@@ -10,7 +10,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { fillMainDraft, fillOwnTabDraft } from '../../utils/agentPurposeDraft'
 import { teamAgentChatTab } from './AgentSharingRow'
 import { openTeammateAgent } from './openTeammateAgent'
-import { AgentDetails, Saving, TeamTab } from './TeamTab'
+import { AgentDetails, Saving, TeamTab, teamSettlingServer, type TeamGoOnline } from './TeamTab'
 import { openCrewAccess } from './MacSharedAgents'
 import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, type CrewShareAction, type CrewShareActionsGroup, type CrewShareAgent, type CrewSharePage, type TeamTarget } from './teamApi'
 
@@ -26,7 +26,7 @@ const toMain = (projectId: string, draft: string) => {
  * agents follow People. The server writes every line and says what this person may change; the page prints it and
  * sends their change to the existing routes. The same page for the owner and every teammate.
  */
-export function ShareCrew({ projectId, onBack, onTurnOn }: { projectId: string; onBack?: () => void; onTurnOn?: () => void }) {
+export function ShareCrew({ projectId, onBack, goOnline }: { projectId: string; onBack?: () => void; goOnline?: TeamGoOnline }) {
   const state = useTeamTab(projectId)
   const { target } = state
   const [page, setPage] = useState<CrewSharePage>()
@@ -34,14 +34,16 @@ export function ShareCrew({ projectId, onBack, onTurnOn }: { projectId: string; 
   useEffect(() => {
     if (!target) return
     let active = true
-    const load = () => void crewSharePage(target).then(data => { if (active) { setPage(data); setError('') } }).catch(e => { if (active) setError(teamFailure(e).message) })
+    // A project that just went online may not answer at once (#3797): try again while it settles, then show the error.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const load = () => void crewSharePage(target).then(data => { if (active) { setPage(data); setError('') } }).catch(e => { if (!active) return; if (teamSettlingServer(projectId)) timer = setTimeout(load, 2000); else setError(teamFailure(e).message) })
     load()
     window.addEventListener('agentworks:team-updated', load)
-    return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
+    return () => { active = false; clearTimeout(timer); window.removeEventListener('agentworks:team-updated', load) }
   }, [target?.project, target?.connection]) // eslint-disable-line react-hooks/exhaustive-deps
   // The Mac app's own Crew before Mac online pairs it has no server copy yet: its Team switch.
-  if (state.unbound) return <TeamTab projectId={projectId} onTurnOn={onTurnOn} onBack={onBack} />
-  if (!page || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading…</p>
+  if (state.unbound) return <TeamTab projectId={projectId} goOnline={goOnline} onBack={onBack} />
+  if (!page || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">{teamSettlingServer(projectId) ? `Putting this project online on ${teamSettlingServer(projectId)}…` : 'Loading…'}</p>
   const option = page.options.find(item => item.key === 'team')
   if (!option) return null
   // With the Team on, the Team page starts with its tabs and the back arrow beside them, like every other side panel
@@ -59,7 +61,7 @@ export function ShareCrew({ projectId, onBack, onTurnOn }: { projectId: string; 
       <span className={`shrink-0 whitespace-nowrap pt-1 text-xs ${option.on ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{option.status}</span>
     </div>}
     {error && <p role="alert" className="px-1 text-xs text-destructive">{error}</p>}
-    <TeamTab projectId={projectId} onTurnOn={onTurnOn} onBack={teamTabs ? onBack : undefined} agents={agents} />
+    <TeamTab projectId={projectId} goOnline={goOnline} onBack={teamTabs ? onBack : undefined} agents={agents} />
     {!teamOn && !state.view?.new_team && agents}
   </div>
 }
