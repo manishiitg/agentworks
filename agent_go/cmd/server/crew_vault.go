@@ -271,7 +271,9 @@ func crewVaultSeedMark(project string) string {
 	if err != nil || strings.TrimSpace(state) == "" {
 		return ""
 	}
-	return filepath.Join(state, "crew-vault-seeded", sanitizeUserIDForPath(project))
+	// v2: the first fill copied only personal-vault keys and left out shared and older server keys; every Crew fills
+	// once more (what is already there is skipped).
+	return filepath.Join(state, "crew-vault-seeded-v2", sanitizeUserIDForPath(project))
 }
 
 func crewVaultSeeded(project string) bool {
@@ -347,10 +349,10 @@ func (api *StreamingAPI) crewVaultFor(ctx context.Context, person, project strin
 	return api.ensureCrewVault(ctx, project)
 }
 
-// seedCrewVault fills a new Crew vault with copies of what the Crew already used from the main owner's own Vault: the
-// selected keys (values stay inside the server) and the apps in use. An API-key or no-login app is copied with its key;
-// a sign-in app is added for one person to sign in for the Crew. The owner keeps their own copies. Each item that
-// cannot be copied is logged and left for the owners to add.
+// seedCrewVault fills a new Crew vault with copies of what the Crew already used from the main owner's Vault: every
+// selected key its turns received (values stay inside the server) and the apps in use. An API-key or no-login app is
+// copied with its key; a sign-in app is added for one person to sign in for the Crew. The owner keeps their own copies.
+// Each item that cannot be copied is logged and left for the owners to add.
 func (api *StreamingAPI) seedCrewVault(ctx context.Context, project, owner, crewVault string) {
 	root := crewProjectRootByID(project)
 	personal, err := ensurePersonalVault(ctx, owner)
@@ -369,16 +371,18 @@ func (api *StreamingAPI) seedCrewVault(ctx context.Context, project, owner, crew
 		}
 	}
 	if selection, err := projectSecretSelection(ctx, root); err == nil {
-		values, _ := ownVaultSecretValues(ctx, owner, selection)
-		for short, value := range values { // only the owner's own keys, by the name they gave them
-			if have["secret:"+short] {
+		// Every key the Crew's turns and runs received before it had a vault, resolved for the owner exactly as a turn
+		// resolved them: personal-vault keys, shared-vault keys and older server keys picked by plain name alike.
+		for _, s := range api.mergeGlobalSecretsFor(ctx, owner, &selection) {
+			if have["secret:"+s.Name] || strings.TrimSpace(s.Value) == "" {
 				continue
 			}
-			if err := api.setVaultSecret(ctx, owner, crewVault, short, value, false); err != nil {
-				log.Printf("[CREW_VAULT] project=%s seed secret=%s not copied: %v", project, short, err)
+			if err := api.setVaultSecret(ctx, owner, crewVault, s.Name, s.Value, false); err != nil {
+				log.Printf("[CREW_VAULT] project=%s seed secret=%s not copied: %v", project, s.Name, err)
 				continue
 			}
-			log.Printf("[CREW_VAULT] project=%s seed secret=%s copied", project, short)
+			log.Printf("[CREW_VAULT] project=%s seed secret=%s copied", project, s.Name)
+			have["secret:"+s.Name] = true
 			keys++
 		}
 	}
