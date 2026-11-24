@@ -273,16 +273,20 @@ func stringListArg(raw any) ([]string, bool) {
 // The Share popup's Owners section talks to the dashboards endpoint, like Share itself: owners lists a Goal's or Flow's
 // owners, owner_add and owner_remove (any current owner, checked in changeFlowOwners) change them.
 func dashboardOwnersAction(action string) bool {
-	return action == "owners" || dashboardOwnersWrite(action)
+	return action == "owners" || action == "owner_setup" || dashboardOwnersWrite(action)
 }
 
 func dashboardOwnersWrite(action string) bool {
 	return action == "owner_add" || action == "owner_remove"
 }
 
-func (api *StreamingAPI) handleDashboardOwners(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action string, emails []string) {
+func (api *StreamingAPI) handleDashboardOwners(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action string, emails []string, setup crewOwnerSetupChange) {
 	if target.Kind == "crew" {
-		api.handleDashboardCrewOwners(w, r, claims, target, action, emails)
+		api.handleDashboardCrewOwners(w, r, claims, target, action, emails, setup)
+		return
+	}
+	if action == "owner_setup" {
+		externalError(w, http.StatusConflict, "unsupported", crewOwnersServerOnly)
 		return
 	}
 	if target.Kind != "relay" && target.Kind != "workflow" {

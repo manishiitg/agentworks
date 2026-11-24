@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -168,11 +170,36 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	if crewProjectOwnedByCaller("bob", root) || crewProjectOwnedByCallerStrict("ann", root) {
 		t.Fatal("a Team member built a server Crew, or a co-owner became its owner")
 	}
+	// "Can change project setup" off (owner, 24 Nov): ann still builds, but her turns cannot write the project's
+	// instructions, skills, settings or the extra paths the owner locked; other files stay writable, and nobody else
+	// is locked.
+	if err := registry.SetCoOwnerSetupLock("work", folder, "ann", true, []string{"briefs/", "../escape"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.SetCoOwnerSetupLock("work", folder, "bob", true, nil); err == nil {
+		t.Fatal("locked the setup of someone who is not a co-owner")
+	}
+	blocked := crewSetupLockedWritePaths(root, "ann")
+	if !crewProjectOwnedByCaller("ann", root) || !slices.Contains(blocked, root+"/PROJECT_INSTRUCTIONS.md") || !slices.Contains(blocked, root+"/skills") || !slices.Contains(blocked, root+"/briefs") {
+		t.Fatalf("a locked co-owner's blocked writes = %v", blocked)
+	}
+	for _, p := range blocked {
+		// "../escape" is cleaned to a path inside the project; nothing may point outside it.
+		if p == root+"/notes.md" || strings.Contains(p, "..") || !strings.HasPrefix(p, root+"/") {
+			t.Fatalf("a locked co-owner is blocked from %q", p)
+		}
+	}
+	if crewSetupLocked(root, "owner") || len(crewSetupLockedWritePaths(root, "owner")) > 0 {
+		t.Fatal("the main owner's setup is locked")
+	}
 	if _, err := registry.RemoveCoOwner("work", folder, "ann"); err != nil {
 		t.Fatal(err)
 	}
 	if crewProjectOwnedByCaller("ann", root) {
 		t.Fatal("a removed co-owner still builds the Crew")
+	}
+	if rec, _ := registry.Lookup("work", folder); len(rec.SetupLocked) != 0 {
+		t.Fatal("removing a co-owner kept their setup lock")
 	}
 	// The online copy of a Mac Crew keeps its Team.
 	if err := crewroot.WriteSync("team-proj", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "owner-pair", PeerProjectID: "mac-crew"}); err != nil {

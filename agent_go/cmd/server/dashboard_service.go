@@ -285,6 +285,8 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		SharedWithMe    bool              `json:"shared_with_me"`
 		PublishedOnly   bool              `json:"published_only"`
 		Emails          []string          `json:"emails"`
+		CanChangeSetup  *bool             `json:"can_change_setup"`
+		LockedPaths     []string          `json:"locked_paths"`
 		crewAgentShareChange
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20))
@@ -323,7 +325,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if dashboardOwnersAction(args.Action) {
-		api.handleDashboardOwners(w, r, claims, target, args.Action, args.Emails)
+		api.handleDashboardOwners(w, r, claims, target, args.Action, args.Emails, crewOwnerSetupChange{CanChangeSetup: args.CanChangeSetup, LockedPaths: args.LockedPaths})
 		return
 	}
 	if dashboardShareAction(args.Action) {

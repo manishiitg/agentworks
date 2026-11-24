@@ -474,6 +474,14 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		return
 	}
 	slotDone := time.Now()
+	// A co-owner whose "Can change project setup" is off sees the project's model and cannot change it.
+	if crewSetupLocked(slot.binding.WorkspacePath, userID) {
+		slot.canBuild = false
+		if r.Method == http.MethodPost {
+			externalError(w, http.StatusForbidden, "setup_locked", crewSetupLockedRefusal(slot.binding.WorkspacePath))
+			return
+		}
+	}
 	// PLAT-746: opening an already-loaded chat only needs fresh project admission,
 	// not every tab's model/account resolution. Use the identical slot check above.
 	if r.Method == http.MethodGet && r.URL.Query().Get("access_only") == "1" {

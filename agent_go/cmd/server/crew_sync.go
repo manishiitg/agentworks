@@ -250,6 +250,13 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		// A Crew that lives on the server has the same Team tab (owner, 5 Nov) under its normal Access page.
 		out.AccessView = "server_crew"
 	}
+	setupLocked := false
+	if !IsLocalMode() && crewLivesOnServer(out.ProjectID) {
+		if root := crewProjectRootByID(out.ProjectID); root != "" && crewSetupLocked(root, GetUserIDFromContext(r.Context())) {
+			// A co-owner whose "Can change project setup" is off gets the chat alone (crew_setup_lock.go).
+			setupLocked, out.ChatOnly = true, true
+		}
+	}
 	if r.Method == http.MethodGet && out.Place == "" {
 		out.Place = crewPlace(GetUserIDFromContext(r.Context()), out.ProjectID, out.Binding)
 	}
@@ -265,7 +272,9 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		if out.AccessCoOwners {
 			out.AccessInTeams = crewProjectInTeams(out.ProjectID, GetUserIDFromContext(r.Context()))
 		}
-		if out.ChatOnly {
+		if setupLocked {
+			out.ChatOnlyLine = crewSetupLockedRefusal(crewProjectRootByID(out.ProjectID))
+		} else if out.ChatOnly {
 			name := out.ProjectID
 			if _, doc, ok := api.resolveExternalWorkspace(r.Context(), GetUserFromContext(r.Context()), "work:"+out.ProjectID); ok {
 				if title := doc.displayTitle(); title != "" {

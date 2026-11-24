@@ -1104,6 +1104,14 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 			input.Engine, input.ModelID, input.ReasoningEffort = own.Engine, own.ModelID, own.ReasoningEffort
 		}
 	}
+	if crewSetupLocked(conversation.WorkspacePath, userID) {
+		// A co-owner whose "Can change project setup" is off always runs on the project's default model, whatever the
+		// request or a saved per-chat choice says (crew_setup_lock.go). The account is theirs or the company's, never
+		// the project owner's personal one (decisions log, 24 Nov).
+		input.Engine, input.ModelID, input.ReasoningEffort, input.ConnectionID = "", "", "", ""
+		useProjectChatDefault(&input, &modelConversation, profile)
+		input.ConnectionID, modelConversation.ConnectionID = "", ""
+	}
 	query, err := queryRequestForAgentProfileChat(profile, input, modelConversation)
 	if err != nil {
 		return QueryRequest{}, err
