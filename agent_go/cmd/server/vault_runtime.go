@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/mcpagent/mcpcache"
 	"github.com/manishiitg/mcpagent/mcpcache/openapi"
 
@@ -657,6 +658,7 @@ func actingVaultPicks(ctx context.Context, rows []vaultRuntimeServer, names []st
 }
 
 func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, names []string, overrides mcpclient.RuntimeOverrides) ([]string, mcpclient.RuntimeOverrides, map[string]string, error) {
+	defer events.TurnSpeedSpan(sessionID, "mcp_scope")()
 	person := mcpCaller(ctx)
 	inPlace := api.projectRootForSession(sessionID) != ""
 	if inPlace {

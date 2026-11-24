@@ -1240,6 +1240,7 @@ func (es *EventStore) appendEventUnheldWithRelease(sessionID string, event Event
 	logStreamingChunkTelemetry(sessionID, event)
 	es.logToolCallTelemetry(sessionID, event)
 	es.trackTurnPhase(sessionID, event)
+	trackTurnSpeed(sessionID, event)
 
 	// Notify SSE subscribers (non-blocking send; drop if buffer full)
 	es.subscribersMu.RLock()

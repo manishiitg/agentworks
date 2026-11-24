@@ -3959,6 +3959,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if command, known, _ := parseNativeGoalCommand(req.Query, sessionID); known {
 		queryPreview = "native_goal:" + command.Action
 	}
+	events.TurnSpeedStart(sessionID, startTime)
 	logfWithContext(queryLogCtx, "[LATENCY_DEBUG] T+0ms | Request received | query_preview=%q", queryPreview)
 	logfWithContext(queryLogCtx, "[USER_ID_DEBUGGING] HTTP handler: currentUserID=%q (from auth context)", currentUserID)
 
@@ -4566,6 +4567,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		len(req.LLMGuidance),
 		req.Query,
 	)
+	events.TurnSpeedStep(sessionID, "setup")
 	logfWithContext(queryLogCtx, "[LATENCY_DEBUG] T+%dms | Session setup complete | sessionID=%s", time.Since(startTime).Milliseconds(), sessionID)
 
 	// Create fresh agent for this request
@@ -5452,7 +5454,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if idleRun == nil {
 		// An idle compaction changes no files; capturing them would show a
 		// reply-files card for a turn nobody sent.
+		endSpeedSpan5455 := events.TurnSpeedSpan(sessionID, "snapshot_start")
 		api.startCrewTurnSnapshot(queryID, sessionID, req)
+		endSpeedSpan5455()
 	}
 
 	// Return immediate response with query ID
@@ -5682,7 +5686,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		var turnFolderGrants []workflowtypes.WorkflowFolderGrant
 		var turnFolderNotice string
 		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
+			endSpeedSpan5685 := events.TurnSpeedSpan(sessionID, "folder_grants")
 			turnFolderGrants, turnFolderNotice, err = workFolderGrantsForTurn(streamCtx, GetUserFromContext(streamCtx), req.SelectedFolder)
+			endSpeedSpan5685()
 			if err != nil {
 				logfWithContext(queryLogCtx, "[WORK FOLDER GUARD] event=resolve_failed session=%s reason=grant_store_unavailable", sessionID)
 				sendError("Could not load your attached folders. Please retry this turn.", true)
@@ -5923,9 +5929,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				codingAgentSecretEnvironment[name] = value
 			}
 		}
+		endSpeedSpan5926 := events.TurnSpeedSpan(sessionID, "secrets")
 		codingAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
+		endSpeedSpan5926()
 		// On the Mac, a selected secret its Vault lacks comes from the lender's Vault on the Crew's company server.
+		endSpeedSpan5928 := events.TurnSpeedSpan(sessionID, "server_secrets")
 		codingAgentSecrets = api.addServerVaultSecrets(context.Background(), currentUserID, req.SelectedFolder, codingAgentSecrets, req.SelectedGlobalSecrets)
+		endSpeedSpan5928()
 		for _, secret := range codingAgentSecrets {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
 		}
@@ -6202,6 +6212,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Set agent mode based on request
 		agentConfig.AgentMode = mcpagent.SimpleAgent
 		log.Printf("[AGENT DEBUG] Creating agent with mode: %s, servers: %s", agentConfig.AgentMode, serverList)
+		events.TurnSpeedStep(sessionID, "config")
+		events.TurnSpeedProvider(sessionID, finalProvider+"/"+finalModelID)
 		logfWithContext(queryLogCtx, "[LATENCY_DEBUG] T+%dms | Agent config built, creating agent wrapper | provider=%s model=%s", time.Since(startTime).Milliseconds(), finalProvider, finalModelID)
 		agentConfig.ToolExecutionContext = api.bindToolExecutionContext(r.Context(), sessionID, req, currentUserIsReadOnly)
 		// Create LLM agent wrapper with trace using streamCtx
@@ -6211,6 +6223,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			sendError(fmt.Sprintf("Failed to create agent: %v", err), true)
 			return
 		}
+		events.TurnSpeedStep(sessionID, "wrapper")
 		logfWithContext(queryLogCtx, "[LATENCY_DEBUG] T+%dms | Agent wrapper created", time.Since(startTime).Milliseconds())
 
 		// Prime MCP server configs in the session registry for chat mode.
@@ -6303,7 +6316,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// req.SelectedGlobalSecrets is loaded from the workflow manifest above
 			// (workflow_phase), so it picks up secrets selected in earlier turns;
 			// multi-agent chat without a selection yields an empty map (no-op).
+			endSpeedSpan6306 := events.TurnSpeedSpan(sessionID, "secrets")
 			chatAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
+			endSpeedSpan6306()
 			chatAgentSecretEnv := make(map[string]string, len(chatAgentSecrets))
 			for _, s := range chatAgentSecrets {
 				chatAgentSecretEnv["SECRET_"+s.Name] = s.Value
@@ -6749,7 +6764,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// Chat mode stays minimal (workflowMode=false). Without
 			// this, the notification implementation was not registered on the serving agent, so it never landed
 			// in a.customTools and was invisible to CLI agents via get_api_spec.
+			endSpeedSpan6752 := events.TurnSpeedSpan(sessionID, "custom_tools")
 			allTools, allExecutors, toolCategories := createCustomTools(false, currentUserID, sessionID, req.SelectedFolder) // session-aware
+			endSpeedSpan6752()
 			if knowledgeProjectBuilderQuery(req, GetUserFromContext(r.Context()), sessionID, sessionID, currentUserIsReadOnly) {
 				projectTools, projectExecs, projectCategories := createKnowledgeProjectBuilderTools()
 				// Replace content-only browse/access schemas for this root Builder.
@@ -7252,7 +7269,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				promptCtx.CLIToolEnvironment = virtualtools.BuildCLIToolEnvironmentPrompt(req.Provider)
 			}
 
+			endSpeedSpan7255 := events.TurnSpeedSpan(sessionID, "prompt")
 			includedSections, skippedSections, sectionErr := assemblePromptSections(llmAgent, promptCtx)
+			endSpeedSpan7255()
 			if sectionErr != nil {
 				sendError(fmt.Sprintf("Failed to assemble the system prompt: %v", sectionErr), true)
 				return
@@ -7271,7 +7290,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Secret values stay in the tool environment; only their names belong in
 		// the immutable identity. Assemble that section before finalization.
+		endSpeedSpan7274 := events.TurnSpeedSpan(sessionID, "secrets")
 		identitySecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
+		endSpeedSpan7274()
 		if len(identitySecrets) > 0 {
 			if underlyingAgent := llmAgent.GetUnderlyingAgent(); underlyingAgent != nil {
 				_ = llmAgent.AddInstructions(buildSecretNamesPrompt(identitySecrets))
@@ -7331,11 +7352,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		// Freeze the incrementally assembled chat identity and runtime before any
 		// turn can run. Finalization constructs the sole live Agent instance.
+		events.TurnSpeedStep(sessionID, "tools_prompt")
 		logfWithContext(queryLogCtx, "[LATENCY_DEBUG] T+%dms | Workspace, tools and prompt prepared, finalizing agent", time.Since(startTime).Milliseconds())
 		if err := llmAgent.FinalizeDefinition(streamCtx); err != nil {
 			sendError(fmt.Sprintf("Failed to finalize agent definition: %v", err), true)
 			return
 		}
+		events.TurnSpeedStep(sessionID, "finalize")
 		logfWithContext(queryLogCtx, "[LATENCY_DEBUG] T+%dms | Agent finalized", time.Since(startTime).Milliseconds())
 
 		// Preserve the finalized prompt for its owner's read-only workspace
@@ -7524,12 +7547,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if target := req.resolvedResumeTarget; target != nil {
 				historyRestoredThisTurn = api.restoreResolvedResumeTarget(sessionID, target, newWorkshopMode)
 			} else {
+				endSpeedSpan7527 := events.TurnSpeedSpan(sessionID, "history_restore")
 				historyRestoredThisTurn = api.restorePersistedConversationHistory(
 					sessionID,
 					currentUserID,
 					"",
 					newWorkshopMode,
 				)
+				endSpeedSpan7527()
 			}
 		}
 
@@ -7600,9 +7625,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			chatQuery = nativePlanPrompt(chatQuery)
 		}
 
+		endSpeedSpan7603 := events.TurnSpeedSpan(sessionID, "secrets")
 		allChatSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
+		endSpeedSpan7603()
 		{
+			endSpeedSpan7605 := events.TurnSpeedSpan(sessionID, "server_secrets")
 			allChatSecrets = api.addServerVaultSecrets(context.Background(), currentUserID, req.SelectedFolder, allChatSecrets, req.SelectedGlobalSecrets)
+			endSpeedSpan7605()
 		}
 		if len(allChatSecrets) > 0 {
 			// Inject secret values as environment variables for shell execution (SECRET_ prefix)
@@ -7638,13 +7667,17 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			} else if target := req.resolvedResumeTarget; target != nil {
 				restoredConversationPathForFallback = target.ConversationPath
 				restoredRuntime = target.Runtime
+				endSpeedSpan7641 := events.TurnSpeedSpan(sessionID, "slot_transcript")
 				api.carryClaudeTranscriptIntoSlot(currentUserID, restoredRuntime, underlyingAgent)
+				endSpeedSpan7641()
 				restoredNativeCodingResume = api.seedCodingAgentRuntimeFromRestoredConversation(sessionID, finalProvider, newWorkshopMode, restoredRuntime, underlyingAgent)
 			} else if runtime, ok, err := ReadChatHistoryRuntimeFromPath(currentUserID, restoredConversationPath); err != nil {
 				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Failed to read restored runtime from %s: %v", restoredConversationPath, err)
 			} else if ok {
 				restoredRuntime = pickSavedRuntime(runtime, finalProvider)
+				endSpeedSpan7647 := events.TurnSpeedSpan(sessionID, "slot_transcript")
 				api.carryClaudeTranscriptIntoSlot(currentUserID, restoredRuntime, underlyingAgent)
+				endSpeedSpan7647()
 				restoredNativeCodingResume = api.seedCodingAgentRuntimeFromRestoredConversation(sessionID, finalProvider, newWorkshopMode, restoredRuntime, underlyingAgent)
 			}
 			if !modeChangedThisTurn && req.resolvedResumeTarget == nil && !restoredNativeCodingResume && restoredConversationPath == "" && restoredConversationSessionID != "" {
@@ -7652,7 +7685,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					logfWithContext(queryLogCtx, "[CHAT_HISTORY] Failed to read restored runtime for session %s: %v", restoredConversationSessionID, err)
 				} else if ok {
 					restoredRuntime = pickSavedRuntime(runtime, finalProvider)
+					endSpeedSpan7655 := events.TurnSpeedSpan(sessionID, "slot_transcript")
 					api.carryClaudeTranscriptIntoSlot(currentUserID, restoredRuntime, underlyingAgent)
+					endSpeedSpan7655()
 					restoredNativeCodingResume = api.seedCodingAgentRuntimeFromRestoredConversation(sessionID, finalProvider, newWorkshopMode, restoredRuntime, underlyingAgent)
 				}
 				if restoredConversationPathForFallback == "" {
@@ -7937,6 +7972,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			sendError(fmt.Sprintf("Failed to start streaming: %v", err), true)
 			return
 		}
+		events.TurnSpeedStep(sessionID, "history_stream")
 		logfWithContext(queryLogCtx, "[LATENCY_DEBUG] T+%dms | StreamWithEvents channel opened | queryID=%s", time.Since(startTime).Milliseconds(), queryID)
 		log.Printf("[AGENT DEBUG] llmAgent.StreamWithEvents() started successfully for query %s", queryID)
 
