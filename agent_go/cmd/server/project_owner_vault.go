@@ -153,31 +153,6 @@ func (api *StreamingAPI) prepareCrewSyncSecret(ctx context.Context, owner, root,
 	return full, "ready", nil
 }
 
-// ownVaultSecretValues are the secrets a project selects from its owner's own Vault (My accounts), by the name the
-// owner gave them, with their values. A Mac sends them when it moves a Crew to the server.
-func ownVaultSecretValues(ctx context.Context, owner string, selection []string) (map[string]string, error) {
-	values := map[string]string{}
-	if len(selection) == 0 {
-		return values, nil
-	}
-	vaultID, err := ensurePersonalVault(ctx, owner)
-	if err != nil {
-		return nil, err
-	}
-	managedGlobalsMu.RLock()
-	defer managedGlobalsMu.RUnlock()
-	for _, full := range selection {
-		short := vaultSecretShortName(full)
-		if mine, e := vaultSecretName(vaultID, short); e != nil || mine != full {
-			continue
-		}
-		if value, ok := managedGlobals[full]; ok && value != "" {
-			values[short] = value
-		}
-	}
-	return values, nil
-}
-
 // withProjectSecret selects a Vault secret and drops any other selected secret with the same name, which it replaces:
 // a project has one $SECRET_<NAME> per name.
 func withProjectSecret(selection []string, full string) []string {
