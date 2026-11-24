@@ -212,6 +212,12 @@ func (api *StreamingAPI) forkCrewNativeRuntime(r *http.Request, source, destinat
 }
 
 func (api *StreamingAPI) copyCrewNativeFork(r *http.Request, roots crewroot.Roots, source, destination ProductConversationRecord, original *ChatHistoryAgentRuntime) (*ChatHistoryAgentRuntime, error) {
+	return api.copyCrewNativeForkCut(r, roots, source, destination, original, nil)
+}
+
+// copyCrewNativeForkCut is copyCrewNativeFork with an optional step that
+// shortens the staged export before it is forked (edit and resend, #3134).
+func (api *StreamingAPI) copyCrewNativeForkCut(r *http.Request, roots crewroot.Roots, source, destination ProductConversationRecord, original *ChatHistoryAgentRuntime, cut func(*sessiontransfer.Bundle) error) (*ChatHistoryAgentRuntime, error) {
 	claims := GetUserFromContext(r.Context())
 	handle := original.AgentSessionHandle.Provider
 	source.Provider = handle.Provider
@@ -284,6 +290,11 @@ func (api *StreamingAPI) copyCrewNativeFork(r *http.Request, roots crewroot.Root
 	cwd, err := crewCLIWorkingDir(roots.Virtual, claims.UserID, destination.SessionID, handle.Provider, false)
 	if err != nil {
 		return nil, err
+	}
+	if cut != nil {
+		if err := cut(bundle); err != nil {
+			return nil, err
+		}
 	}
 	// Import alone preserves the native ID. Always fork first: unsupported
 	// formats use saved history instead of sharing a writer with the original.

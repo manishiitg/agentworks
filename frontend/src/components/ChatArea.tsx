@@ -37,7 +37,9 @@ import { ComposerPendingPrompt } from './chat/ComposerPendingPrompt'
 import { codingAgentQuestionCards, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
 import { StepInspectionTabs } from './chat/StepInspectionTabs'
 import { SessionStopButton } from './SessionStopButton'
-import { ReplyQuote } from './chat/ReplyQuote'
+import { ReplyQuote, CHAT_INSERT_QUOTE_EVENT, type InsertQuoteDetail } from './chat/ReplyQuote'
+import type { MessageEditActions } from './chat/EditResendMessage'
+import { fileChangesAfter, previewRewind, revertFileChanges, rewindChat, rewindError } from '../utils/editResend'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { followTranscriptLatest, transcriptReadingKey } from './useTranscriptScroll'
 import { CHAT_SCROLL_TO_BOTTOM_EVENT, SettledScroll } from '../utils/chatScrollRequest'
@@ -3375,6 +3377,37 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     void submitQueryWithQuery(content, undefined, { sourceTabId: activeTab?.tabId })
   }, [activeTab?.tabId, submitQueryWithQuery])
 
+  // Edit and resend (#3134): only the person's own writable chat. Reverting
+  // later file changes reuses each reply's undo, newest first, before the
+  // server takes the chat back; the edited text then goes as a normal message.
+  const editConversationKey = activeTab?.metadata?.agentProfileConversationKey
+  const editSessionId = activeTab?.sessionId
+  const editWorkspace = activeTab?.metadata?.agentProfileWorkspace
+  const canEditMessages = Boolean(editConversationKey && editSessionId) && !activeTab?.metadata?.isViewOnly && !observingOwnerTab && !isReadOnlyRunView
+  const messageEdit = useMemo<MessageEditActions | undefined>(() => {
+    if (!canEditMessages || !editConversationKey || !editSessionId) return undefined
+    const tabId = activeTab?.tabId
+    return {
+      events: transcriptEvents,
+      disabledReason: activeTabBusy ? 'Edit is available when the agent finishes replying. Press Stop to end the reply now.' : undefined,
+      preview: async eventId => {
+        try { return await previewRewind(editConversationKey, eventId) } catch (cause) { throw rewindError(cause, 'This message cannot be edited right now.') }
+      },
+      resend: async ({ eventId, sequence, text, revertFiles }) => {
+        if (revertFiles) {
+          try { await revertFileChanges(fileChangesAfter(transcriptEvents, sequence)) } catch (cause) { throw rewindError(cause, 'Couldn\'t put the files back. Nothing else was changed.') }
+        }
+        try { await rewindChat(editConversationKey, eventId) } catch (cause) { throw rewindError(cause, 'Couldn\'t go back. Nothing was changed.') }
+        useChatStore.getState().clearTabEvents(editSessionId)
+        try { await hydrateTabEvents(editSessionId, { workspacePath: editWorkspace }) } catch { /* The next poll fills the chat. */ }
+        await submitQueryWithQuery(text, undefined, { sourceTabId: tabId })
+      },
+      putInComposer: text => {
+        if (tabId) window.dispatchEvent(new CustomEvent<InsertQuoteDetail>(CHAT_INSERT_QUOTE_EVENT, { detail: { tabId, text, plain: true } }))
+      },
+    }
+  }, [canEditMessages, editConversationKey, editSessionId, editWorkspace, activeTab?.tabId, transcriptEvents, activeTabBusy, submitQueryWithQuery])
+
   // If the active tab is stuck in streaming state, ChatInput queues the user's text
   // instead of calling /api/query. Force-refresh active sessions so the store can
   // clear stale streaming state and let the queue flush as the next turn.
@@ -3761,6 +3794,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             dockedCodingAgentQuestion={canDockCodingAgentQuestion ? dockedCodingAgentPrompt?.promptId : undefined}
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
                     onResendMessage={resendProductMessage}
+                    messageEdit={messageEdit}
                     onFixVisual={canFixVisual ? fixChatVisual : undefined}
                     onGoalCommand={activeTab?.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView ? undefined : resendProductMessage}
                     streamingText={activeStreamingText}
@@ -3826,6 +3860,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
             dockedCodingAgentQuestion={canDockCodingAgentQuestion ? dockedCodingAgentPrompt?.promptId : undefined}
                     onRetryLastMessage={activeTabBusy ? undefined : retryLastProductMessage}
                     onResendMessage={resendProductMessage}
+                    messageEdit={messageEdit}
                     onFixVisual={canFixVisual ? fixChatVisual : undefined}
                     onGoalCommand={activeTab?.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView ? undefined : resendProductMessage}
                     streamingText={activeStreamingText}
