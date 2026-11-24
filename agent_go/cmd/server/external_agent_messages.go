@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -286,6 +287,11 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 	}
 	if (externalArg(args, "action") == "ask" || agentMessageQueueArgs(args)) && externalArg(args, "inbox_id") == "" {
 		target, err = crewTeamAskTarget(r.Context(), claims.UserID, target, externalArg(args, "offline"))
+		var choice crewTeamOfflineChoiceNeeded
+		if errors.As(err, &choice) {
+			writeCrewTeamOfflineChoice(w, choice)
+			return
+		}
 		if err != nil {
 			externalCommunicationError(w, 409, "ask_unavailable", err)
 			return

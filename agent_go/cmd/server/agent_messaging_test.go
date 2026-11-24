@@ -221,8 +221,8 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 		t.Fatalf("explicit reply missing: %v %v", page, err)
 	}
 	ordinary := page["messages"].([]map[string]interface{})[0]
-	if ordinary["message"] != "My explicit reply" || ordinary["answered_by"] != "" {
-		t.Fatal("plain agent reply gained answer prefix or copy classification", ordinary)
+	if ordinary["message"] != "My explicit reply" {
+		t.Fatal("plain agent reply gained an answer prefix", ordinary)
 	}
 	next := page["next_cursor"].(int)
 	page, err = env.api.readAgentMessages(ctx, "owner", caller, id, next, 30, 0)

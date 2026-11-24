@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -108,6 +110,21 @@ func (e crewTeamOfflineChoiceNeeded) Error() string {
 		return line + "."
 	}
 	return line + fmt.Sprintf(", or read its chat now with messages action=%s target=%s and query=\"words\" (it may not have the latest).", crewTeamChatReadAction, e.Address)
+}
+
+// writeCrewTeamOfflineChoice answers an external ask with the offline choice: the agent text in message, and for a
+// screen (the Ask box) the person's line, how long, and whether its chat can be read, so it shows Wait without
+// parsing text. Nothing was sent.
+func writeCrewTeamOfflineChoice(w http.ResponseWriter, e crewTeamOfflineChoiceNeeded) {
+	who := e.Name
+	if e.Person != "" {
+		who = e.Person + "'s " + e.Name
+	}
+	offFor := crewTeamOfflineFor(time.Since(e.Since))
+	line := fmt.Sprintf("%s has been offline for %s, so nothing was sent yet.", who, offFor)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusConflict)
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "offline_choice", "message": e.Error(), "line": line, "offline_for": offFor, "readable": e.Readable}})
 }
 
 func crewTeamOfflineFor(d time.Duration) string {
