@@ -453,7 +453,7 @@ export interface CodeAdminAuditEntry {
   at: string
   admin_id: string
   admin_username?: string
-  /** What let this account in: an admin, or a Code reviewer. */
+  /** What let this account in: an admin, or a project reviewer. */
   role?: 'admin' | 'reviewer'
   action: string
   owner_id?: string

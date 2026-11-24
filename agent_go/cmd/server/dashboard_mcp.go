@@ -77,7 +77,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 			"upload":   "Upload an attachment to a project using the same route and limits as its chat. The server selects the caller’s upload area. Requires current project access and crews:run or crews:write. Returns a saved path for chat/functions; never edits dashboard source.",
 			"list":     "Discover only accessible published dashboards (drafts for authorized editors), with project identities, document paths and authenticated live URLs. Only managed definitions are listed.",
 			"get":      "Read a dashboard bundle and revision. Draft source requires edit rights and existing authoring consent.",
-			"create":   "Create a managed React TSX dashboard draft from index.tsx (dashboard action=catalog). The server compiles and hosts it in Dashboards; no separate npm app/server. TSX is for live dashboards with data, buttons and functions; HTML (index.html) is for a quick shareable page. JSON dashboards are not supported. Does not publish or select new data sources. Uses existing workflow/Flow/Crew/Code authoring consent and current project edit access.",
+			"create":   "Create a managed React TSX dashboard draft from index.tsx (dashboard action=catalog). The server compiles and hosts it in Dashboards; no separate npm app/server. TSX is for live dashboards with data, buttons and functions; HTML (index.html) is for a quick shareable page. JSON dashboards are not supported. Does not publish or select new data sources. Uses existing workflow/Flow/project authoring consent and current project edit access.",
 			"update":   "Update supplied draft files/title and optionally remove files, preserving omitted files. Creates an immutable revision; published viewers keep seeing the published bundle.",
 			"validate": "Validate the exact dashboard revision with the same HTML, SQL schema and referenced-file checks as the app Builder.",
 			"preview":  "Render the exact dashboard revision with the app's real browser runtime; returns state, data/script errors and screenshots. Requires project edit rights, dashboards:read and runs:execute (live scripts may use your allowed selected sources).",
@@ -338,7 +338,7 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 		return strings.Compare(rows[i]["workspace"].(string)+"/"+rows[i]["dashboard_id"].(string), rows[j]["workspace"].(string)+"/"+rows[j]["dashboard_id"].(string)) < 0
 	})
 	start, end := dashboardPageBounds(rows, limit, offset)
-	externalJSON(w, map[string]any{"dashboards": rows[start:end], "total": len(rows), "next_offset": end, "has_more": end < len(rows), "unavailable_projects": failed, "authentication": "Sign in with current project access; URLs grant no access.", "note": "Private Code dashboards remain owner-only. For HTML pages use document_path with validation/preview/link."})
+	externalJSON(w, map[string]any{"dashboards": rows[start:end], "total": len(rows), "next_offset": end, "has_more": end < len(rows), "unavailable_projects": failed, "authentication": "Sign in with current project access; URLs grant no access.", "note": "Dashboards of an unshared project stay owner-only. For HTML pages use document_path with validation/preview/link."})
 }
 
 func dashboardDiscoveryRow(target dashboardTarget, d dashboards.Dashboard) map[string]any {

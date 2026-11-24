@@ -34,7 +34,7 @@ func (api *StreamingAPI) projectExtensionAccess(r *http.Request, workspace, prof
 		return api.browserWorkspaceAccess(r, workspace, "workflow", true)
 	}
 	if !(profile == crewProfileID && isCrewProjectPath(workspace)) {
-		return "", fmt.Errorf("Browser extension access requires Code, project or a workflow")
+		return "", fmt.Errorf("Browser extension access requires a project or a workflow")
 	}
 	if claims == nil || !userAllowedProduct(claims, profile) {
 		return "", fmt.Errorf("Product access required")

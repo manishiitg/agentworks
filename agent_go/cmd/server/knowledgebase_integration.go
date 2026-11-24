@@ -233,7 +233,7 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 	}
 	kind, _ := common.ClassifySessionWorkspace(userID, workspace)
 	if kind == common.SessionWorkspaceUnknown {
-		return &knowledgebase.Error{Code: "FORBIDDEN", Message: "A workflow, project or Code session is required."}
+		return &knowledgebase.Error{Code: "FORBIDDEN", Message: "A workflow or project session is required."}
 	}
 	project, err := knowledgeProjectLoad(ctx, userID, workspace, false)
 	if err != nil {

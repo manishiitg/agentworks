@@ -24,7 +24,7 @@ func resolveFunctionTarget(ctx context.Context, claims *UserClaims, caller trigg
 // manifest. The only callers of a Code project are chats of that same Code
 // (PLAT-648), so any other caller type is refused.
 func authorizeOwnedCodeCaller(ctx context.Context, actorID, ownerID string, caller triggerLinkCaller) error {
-	denied := fmt.Errorf("private Code target is unavailable or access denied")
+	denied := fmt.Errorf("private project target is unavailable or access denied")
 	if !codeRoleFor(ctx, actorID, ownerID, "").atLeast(codeRoleOwner) || strings.TrimSpace(caller.Stamp.ID) == "" {
 		return denied
 	}

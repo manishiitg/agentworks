@@ -3,7 +3,7 @@ import { BookOpen, BriefcaseBusiness, Code2, Network, UserRound, UsersRound, Wor
 /** Onboarding suggestions only. The live menu inventory still admits every link. */
 export const CREW_STARTER_TYPES = [
   {
-    id: 'code', label: 'Code', icon: Code2,
+    id: 'code', label: 'Software', icon: Code2,
     summary: 'Build & fix software',
     purpose: 'Help me build and maintain software, understand code and fix issues.',
     example: 'Review a project, explain how it works or help make a change.',

@@ -27,7 +27,7 @@ func externalUsersDefinition(add func(string, string, bool, bool, map[string]any
 		"products": products, "create_products": products,
 		"clear_create_products": map[string]any{"type": "boolean"},
 		"disabled":              map[string]any{"type": "boolean"},
-		"crew_reviewer":         map[string]any{"type": "boolean", "description": "May inspect Code through the existing audited review access."},
+		"crew_reviewer":         map[string]any{"type": "boolean", "description": "May inspect projects through the existing audited review access."},
 		"vault_reader":          map[string]any{"type": "boolean", "description": "May inspect Vault through its existing access rules."},
 		"password":              map[string]any{"type": "string", "minLength": 8, "description": "For update: a new password supplied by the person. Never repeat or log it; only its hash is stored."},
 		"confirm":               externalString("Repeat user_id to confirm a change to administrator access."),

@@ -90,7 +90,7 @@ func (c *conditionService) productSource(ctx context.Context, owner, profile, pr
 			return productScheduleJob{}, errors.New("watcher source is unavailable")
 		}
 	default:
-		return productScheduleJob{}, errors.New("watchers are available in Code, project, workflows and Flows")
+		return productScheduleJob{}, errors.New("watchers are available in projects, workflows and Flows")
 	}
 	return conditionCallerJob(owner, conditionCallerDefinition{Source: source}, productScheduleUserState{}), nil
 }
@@ -285,7 +285,7 @@ func (c *conditionService) callerScript(ctx context.Context, job productSchedule
 	}
 	if job.WatcherSource == nil {
 		if _, ok := trigger["script_content"]; ok {
-			return "", errors.New("Code watchers use a saved Python file under code/triggers")
+			return "", errors.New("A project chat's own watchers use a saved Python file under code/triggers")
 		}
 	}
 	raw, found, err := c.s.readFile(ctx, path.Join(conditionScriptRoot(job), cfg.Script))
