@@ -53,6 +53,7 @@ export function folderConnection(path: unknown): string | undefined {
 const PROJECT_PATH = /\/(?:projects|shared-projects|crews|crew-teams|crew-sync)\/([^/?]+)/
 const SESSION_PATH = /^\/api\/(?:sessions|chat-history\/sessions)\/([^/?]+)/
 const DOCUMENT_PATH = /^\/api\/documents\/(.+?)(?:\?|$)/
+const CHAT_REQUEST_PATH = /^\/api\/(?:query|stop|steer|cancel|chat|sessions|chat-history|agent-profiles\/[^/]+\/conversation)(?:\/|$|\?)/
 
 function decoded(value: string): string { try { return decodeURIComponent(value) } catch { return value } }
 
@@ -88,8 +89,10 @@ export function remoteRequestConnection(request: { url?: string; params?: unknow
     const chat = read('session_id') || (typeof headers['X-Session-ID'] === 'string' ? headers['X-Session-ID'] : undefined)
     return chat && (chat.includes(namedProject) || sessionProject(chat) === namedProject) ? remoteSessionConnection(chat) : undefined
   }
+  // Every request carries the open chat's X-Session-ID, so it routes only a chat request (send, stop, steer, the chat's
+  // own reads): a list such as this Mac's projects must never follow an open server chat to its server.
   return remoteSessionConnection(read('session_id'))
-    || (typeof headers['X-Session-ID'] === 'string' ? remoteSessionConnection(headers['X-Session-ID']) : undefined)
+    || (typeof headers['X-Session-ID'] === 'string' && CHAT_REQUEST_PATH.test(path) ? remoteSessionConnection(headers['X-Session-ID']) : undefined)
     || (conversation ? remoteProjectConnection(conversation.split(':')[0]) : undefined)
     || (workspace?.startsWith('work:') ? remoteProjectConnection(workspace.slice(5)) : undefined)
     || (document ? folderConnection(decoded(document)) : undefined)
