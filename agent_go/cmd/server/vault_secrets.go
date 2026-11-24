@@ -263,6 +263,15 @@ func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID strin
 	for _, n := range *selection {
 		wanted[n] = true
 	}
+	// An online project's Team keys (#3664) live in the Team's vault, which its lender is not a member of: they are
+	// taken out here, before the lender's own same-named keys could stand in for them, and resolved after the project's own.
+	teamKeys := map[string]string{}
+	for name, team := range crewTeamProjectLentKeys(ctx, userID) {
+		if wanted[name] {
+			teamKeys[name] = team
+			delete(wanted, name)
+		}
+	}
 	githubSecrets := map[string]bool{}
 	for _, rec := range gitHubConnections(userID) {
 		if wanted[rec.SecretName] {
@@ -294,7 +303,7 @@ func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID strin
 		taken[name] = s.Name
 		scoped = append(scoped, resolvedSecret{Name: name, Value: s.Value})
 	}
-	return scoped
+	return append(scoped, crewTeamProjectKeyValues(ctx, teamKeys, taken)...)
 }
 
 // Removing metadata and grants first ensures a failed value deletion cannot leave usable access.

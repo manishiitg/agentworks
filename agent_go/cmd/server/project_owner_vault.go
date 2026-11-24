@@ -56,7 +56,7 @@ func (api *StreamingAPI) runSecretsOwner(ctx context.Context, person, workspace 
 // A server Crew's workflows use only its Crew vault's keys (crew_vault.go).
 func (api *StreamingAPI) projectRunSecrets(ctx context.Context, person, workspace string, selection *[]string) ([]resolvedSecret, error) {
 	if project := serverCrewForPath(workspace); project != "" {
-		names := api.crewVaultSecretNames(ctx, project)
+		names := withCrewTeamProjectKeys(project, api.crewVaultSecretNames(ctx, project))
 		selection = &names
 	}
 	owner := api.runSecretsOwner(ctx, person, workspace)
