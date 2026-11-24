@@ -242,7 +242,7 @@ func (c *conditionService) activityRows(ctx context.Context, owner, project stri
 			row.Items = append(row.Items, view)
 		}
 		if recent > 0 {
-			row.Count = strconv.Itoa(recent) + " new today"
+			row.Count = strconv.Itoa(recent) + " in 24h"
 		}
 		switch {
 		case !job.Effective().Enabled:
