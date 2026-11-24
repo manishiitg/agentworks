@@ -131,18 +131,42 @@ func (api *StreamingAPI) externalAgentMessageStop(w http.ResponseWriter, r *http
 
 // withdrawQueuedAgentMessageTurn removes the not-yet-started queued turn for this message, if there is one.
 func (api *StreamingAPI) withdrawQueuedAgentMessageTurn(ctx context.Context, session, messageID string) bool {
+	return api.withdrawQueuedAgentMessageTurns(ctx, session, map[string]bool{messageID: true}) > 0
+}
+
+// withdrawQueuedAgentMessageTurns removes the session's not-yet-started queued turns that deliver one of these
+// messages: server mailbox turns carry the id on the request, AgentBridge network turns on the delivery stamp.
+func (api *StreamingAPI) withdrawQueuedAgentMessageTurns(ctx context.Context, session string, ids map[string]bool) int {
+	removed := 0
+	if session == "" || len(ids) == 0 {
+		return 0
+	}
 	for _, owner := range api.conversationQueueOwners(session) {
+		lock := productConversationRegistryMutex(conversationTurnQueuePath(owner))
+		lock.Lock()
 		turns, err := api.readConversationTurnQueue(ctx, owner)
 		if err != nil {
+			lock.Unlock()
 			continue
 		}
+		kept := turns[:0]
 		for _, turn := range turns {
-			if turn.SessionID == session && turn.StartedAt == nil && turn.Request.AgentMessageID == messageID {
-				return api.removeConversationTurn(ctx, turn) == nil
+			stamped, _ := turn.Principal.DeliveredMessage["message_id"].(string)
+			if turn.SessionID == session && turn.StartedAt == nil && !turn.Steering && (ids[turn.Request.AgentMessageID] || ids[stamped]) {
+				log.Printf("[AGENT-MESSAGE] action=queued_turn_withdrawn session=%s turn=%s message=%s", session, turn.ID, turn.Request.AgentMessageID+stamped)
+				removed++
+				continue
+			}
+			kept = append(kept, turn)
+		}
+		if len(kept) != len(turns) {
+			if err := api.writeConversationTurnQueue(ctx, owner, kept); err != nil {
+				removed -= len(turns) - len(kept)
 			}
 		}
+		lock.Unlock()
 	}
-	return false
+	return removed
 }
 
 // agentMessageTurnRunning reports whether the session's running conversation turn is the one answering this message.
