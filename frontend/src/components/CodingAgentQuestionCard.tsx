@@ -65,9 +65,10 @@ export function CodingAgentQuestionCard({ prompt, onAnswer, docked }: {
   // A plan stays one slim line in the conversation; the full plan opens in the plan pane (#3711).
   if (prompt.requestKind === 'plan_approval' && prompt.questions.length === 1) {
     const question = prompt.questions[0]
-    const chosen = prompt.answers.find(answer => answer.id === question.id)?.selectedLabels[0]
+    const given = prompt.answers.find(answer => answer.id === question.id)
+    const chosen = given?.selectedLabels[0]
     const plan = planFromQuestion(question.question)
-    if (!pending) return <PlanLine plan={plan} outcome={chosen === 'Approve' ? 'approved' : chosen ? 'rejected' : 'closed'} />
+    if (!pending) return <PlanLine plan={plan} outcome={chosen === 'Approve' ? 'approved' : given?.otherText ? 'changed' : chosen ? 'rejected' : 'closed'} />
     const answer = (label: string) => () => {
       if (submitting || !onAnswer) return
       setSubmitting(true)

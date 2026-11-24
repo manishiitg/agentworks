@@ -183,6 +183,8 @@ interface ChatInputProps {
   surfaceVariant?: 'default' | 'product'
   placeholderOverride?: string
   pendingNativeChoice?: boolean
+  /** Set while a plan waits for approval: a sent message is the person's changes to it (#3711). */
+  onPlanFeedback?: (text: string) => Promise<void>
   showNewChatAction?: boolean
   hideRuntimeStatus?: boolean
   showProductSteerAction?: boolean
@@ -420,6 +422,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   surfaceVariant = 'default',
   placeholderOverride,
   pendingNativeChoice = false,
+  onPlanFeedback,
   showNewChatAction = false,
   hideRuntimeStatus = false,
   showProductSteerAction = false,
@@ -2047,6 +2050,17 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       addToast('Choose an option above before sending another message.', 'info')
       return
     }
+    if (onPlanFeedback) {
+      const changes = query.trim()
+      if (!changes) return
+      try {
+        await onPlanFeedback(changes)
+        clearInputState()
+      } catch (cause) {
+        addToast(cause instanceof Error ? cause.message : 'Could not send your changes. Try again.', 'error')
+      }
+      return
+    }
     const uploadBatch = pendingUploadBatchRef.current?.tabId === activeTabId ? pendingUploadBatchRef.current : null
     if (isUploadingFiles && !uploadBatch?.submitted && !uploadBatch?.pending.length) {
       addToast('Preparing the attachment. Send again in a moment.', 'info')
@@ -2150,7 +2164,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       const reason = getSubmitBlockReason()
       if (reason) addToast(reason, 'info')
     }
-  }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, closeComposerPickers, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice, chatFileContext, pendingComposerAttachments, requestedSkillId, planOn])
+  }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, closeComposerPickers, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice, onPlanFeedback, chatFileContext, pendingComposerAttachments, requestedSkillId, planOn])
 
   // "Start the work" after a Codex/Cursor plan: Plan goes off and the go-ahead is an ordinary message.
   const startPlannedWork = useCallback(() => {
@@ -2793,6 +2807,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Memoized placeholder
   const placeholder = useMemo(() => {
     if (pendingNativeChoice) return 'Choose an option above to continue…'
+    if (onPlanFeedback) return 'Type changes to the plan, or approve it above…'
     if (isViewOnly && viewOnlyWriter) return `This is ${viewOnlyWriter}'s chat. Only they can write here.`
     if (isViewOnly) return "View only — cannot continue this conversation"
     if (placeholderOverride) return placeholderOverride
@@ -2803,7 +2818,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return 'Chat with the automation builder…'
     }
     return 'Ask anything…'
-  }, [agentProfileWorkspace, isProductSurface, activeTab?.metadata?.agentProfileId, isViewOnly, viewOnlyWriter, isWorkflowPhaseChat, placeholderOverride, pendingNativeChoice, planOn])
+  }, [agentProfileWorkspace, isProductSurface, activeTab?.metadata?.agentProfileId, isViewOnly, viewOnlyWriter, isWorkflowPhaseChat, placeholderOverride, pendingNativeChoice, onPlanFeedback, planOn])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.

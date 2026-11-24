@@ -1,4 +1,5 @@
 import { openWorkspaceFile } from '../../utils/openWorkspaceFile'
+import { PlanLine } from '../chat/PlanModeControls'
 import { ChatImage } from './ChatImage'
 import { ConversationImageRoot } from './ConversationImageRoot'
 import { sharedLink, repairLocalAppLink, isSharedAppRoute } from '../../utils/sharedLinks'
@@ -975,6 +976,8 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
   const renderPre = useCallback(({ children, node }: { children?: React.ReactNode; node?: { position?: { start?: { offset?: number } } } }) => {
     const codeClass = React.isValidElement<{ className?: string }>(children) ? children.props.className ?? '' : ''
     const text = codeBlockText(children).replace(/\n$/, '')
+    // A coding program's plan, marked by the server (#3711): one folded line; the whole plan opens in the pane.
+    if (codeClass.split(/\s+/).includes('language-agentworks-plan')) return <PlanLine plan={text} />
     if (chatElements && codeClass.split(/\s+/).includes('language-chat-ui')) {
       return <ChatElementBlock source={text} disclosureKey={node?.position?.start?.offset} stream={chatElementStream} renderMarkdown={body => (
         <MarkdownRenderer content={body} className={className} untrustedContent={untrustedContent}
