@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,8 +21,8 @@ import (
 // the owner asked that the existing ones go too, without deleting each by hand. On every start, each person's old
 // AgentWorks project (the one the platform made under its reserved id) is backed up (crew-backups/<id>-<time>.tar.gz)
 // and deleted through the ordinary project deletion. One that is working or used by a workflow is kept and tried
-// again on the next start. A server project with apps or keys of its own in its project vault is someone's working
-// project and is kept as an ordinary one. Remove this file once every server has run it.
+// again on the next start. A project in use (a chat in the last 30 days, or on a server apps or keys of its own in its
+// project vault) is kept as an ordinary one. Remove this file once every server has run it.
 
 // retiredAgentWorksProjectID is the id the platform reserved for a person's AgentWorks project.
 func retiredAgentWorksProjectID(owner string) string {
@@ -43,7 +45,7 @@ func (api *StreamingAPI) deleteRetiredAgentWorksProjects(ctx context.Context) {
 		if record.Product != crewProfileID || record.OwnerID == "" || record.ProjectID != retiredAgentWorksProjectID(record.OwnerID) {
 			continue
 		}
-		if reason := api.retiredAgentWorksProjectInUse(ctx, record.ProjectID); reason != "" {
+		if reason := api.retiredAgentWorksProjectInUse(ctx, record); reason != "" {
 			log.Printf("[AGENTWORKS_CLEANUP] project=%s owner=%s event=kept_in_use reason=%q", record.ProjectID, logUsernameForUserID(record.OwnerID), reason)
 			continue
 		}
@@ -56,14 +58,21 @@ func (api *StreamingAPI) deleteRetiredAgentWorksProjects(ctx context.Context) {
 	}
 }
 
-// retiredAgentWorksProjectInUse keeps a server project someone set up for real work (owner, 24 Nov: "keep used ones"):
-// one whose project vault holds apps or keys of its own stays as an ordinary project. A Mac project has no project
-// vault, so nothing keeps it.
-func (api *StreamingAPI) retiredAgentWorksProjectInUse(ctx context.Context, project string) string {
+// retiredAgentWorksProjectInUse keeps a project someone uses (owner, 24 Nov: "keep used ones"): one with a chat in
+// the last 30 days, or, on a server, one whose project vault holds apps or keys of its own. It stays as an ordinary
+// project. Workflows that use it already stop the delete.
+func (api *StreamingAPI) retiredAgentWorksProjectInUse(ctx context.Context, record projectOwnerRecord) string {
+	roots, found, err := crewStorageRoots(retiredAgentWorksProjectRoot(record))
+	if err != nil || !found {
+		return "its folder could not be found"
+	}
+	if last := lastProjectChatAt(roots.Private); time.Since(last) < retiredAgentWorksIdle {
+		return "it has a chat from " + last.UTC().Format(time.DateOnly)
+	}
 	if IsLocalMode() {
 		return ""
 	}
-	contents, err := api.readCrewVault(ctx, project)
+	contents, err := api.readCrewVault(ctx, record.ProjectID)
 	if err != nil {
 		return "its apps and keys could not be checked: " + err.Error()
 	}
@@ -73,8 +82,39 @@ func (api *StreamingAPI) retiredAgentWorksProjectInUse(ctx context.Context, proj
 	return ""
 }
 
+const retiredAgentWorksIdle = 30 * 24 * time.Hour
+
+func retiredAgentWorksProjectRoot(record projectOwnerRecord) string {
+	return firstNonEmptyTrimmed(record.CanonicalRoot, workspaceref.SharedProjectPath(record.Folder))
+}
+
+// lastProjectChatAt is when any chat of the project last changed: its saved conversations live in its private data
+// folder (<id>/builder/conversation/<date>/session-…-conversation.json and the same for every tab).
+func lastProjectChatAt(private string) time.Time {
+	var last time.Time
+	if private == "" {
+		return last
+	}
+	_ = filepath.WalkDir(private, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() && d.Name() == "file-snapshots" {
+			return filepath.SkipDir
+		}
+		if d.IsDir() || !strings.HasSuffix(d.Name(), "-conversation.json") {
+			return nil
+		}
+		if info, err := d.Info(); err == nil && info.ModTime().After(last) {
+			last = info.ModTime()
+		}
+		return nil
+	})
+	return last
+}
+
 func (api *StreamingAPI) deleteRetiredAgentWorksProject(ctx context.Context, record projectOwnerRecord) (string, error) {
-	roots, found, err := crewStorageRoots(firstNonEmptyTrimmed(record.CanonicalRoot, workspaceref.SharedProjectPath(record.Folder)))
+	roots, found, err := crewStorageRoots(retiredAgentWorksProjectRoot(record))
 	if err != nil || !found || roots.Owner != record.OwnerID {
 		return "", fmt.Errorf("its folder could not be found for a backup")
 	}
