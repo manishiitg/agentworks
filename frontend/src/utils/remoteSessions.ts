@@ -81,7 +81,13 @@ export function remoteRequestConnection(request: { url?: string; params?: unknow
   // A request that names its project goes to that project's own server: this window's own project stays here even
   // while a server chat is open, whose X-Session-ID would otherwise send it there (a Mac project then answered 422).
   const namedProject = (project && decoded(project)) || read('project_id')
-  if (namedProject) return remoteProjectConnection(namedProject)
+  if (namedProject) {
+    const own = remoteProjectConnection(namedProject)
+    if (own) return own
+    // A server project restored before it was registered still follows its own chat, never another project's.
+    const chat = read('session_id') || (typeof headers['X-Session-ID'] === 'string' ? headers['X-Session-ID'] : undefined)
+    return chat && (chat.includes(namedProject) || sessionProject(chat) === namedProject) ? remoteSessionConnection(chat) : undefined
+  }
   return remoteSessionConnection(read('session_id'))
     || (typeof headers['X-Session-ID'] === 'string' ? remoteSessionConnection(headers['X-Session-ID']) : undefined)
     || (conversation ? remoteProjectConnection(conversation.split(':')[0]) : undefined)
