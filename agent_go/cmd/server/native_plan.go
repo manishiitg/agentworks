@@ -28,6 +28,15 @@ func parseNativePlanCommand(query string) (string, bool) {
 	return strings.TrimSpace(rest), true
 }
 
+// Program support is a backend fact, shared by admission and the composer's Plan switch.
+func nativePlanProgramCapabilities() map[string]bool {
+	out := make(map[string]bool, len(supportedLLMProviders))
+	for _, provider := range supportedLLMProviders {
+		out[provider] = nativePlanSupported(provider)
+	}
+	return out
+}
+
 func nativePlanSupported(provider string) bool {
 	switch provider {
 	case "claude-code", "codex-cli", "cursor-cli":
@@ -41,7 +50,14 @@ func nativePlanSupported(provider string) bool {
 // starting with "/plan" stay ordinary text.
 func (api *StreamingAPI) prepareNativePlanQuery(w http.ResponseWriter, r *http.Request, req *QueryRequest, sessionID, provider string) (*http.Request, bool) {
 	task, known := parseNativePlanCommand(req.Query)
-	if !known || req.RequestedSkillID != "" || req.IsAutoNotification || req.AgentMessageInbox != "" {
+	if req.IsAutoNotification || req.AgentMessageInbox != "" {
+		return r, false
+	}
+	if !known && req.PlanMode {
+		// The Plan switch: the whole message is the task.
+		task, known = strings.TrimSpace(req.Query), true
+	}
+	if !known || req.RequestedSkillID != "" {
 		return r, false
 	}
 	if !nativePlanSupported(provider) || !isToolBackedChatMode(req.AgentMode) {

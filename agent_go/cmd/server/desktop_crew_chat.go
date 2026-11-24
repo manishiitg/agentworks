@@ -241,7 +241,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		if strings.TrimSpace(call.Message) == "" && len(call.PendingAttachments) == 0 && call.RequestedSkillID == "" {
 			return fail(400, "Write a message first.")
 		}
-		body, _ = json.Marshal(AgentProfileChatRequest{Message: call.Message, DeliveryMode: call.DeliveryMode, RequestedSkillID: call.RequestedSkillID, PendingAttachments: call.PendingAttachments, ConversationKey: conversation.ConversationKey})
+		body, _ = json.Marshal(AgentProfileChatRequest{Message: call.Message, DeliveryMode: call.DeliveryMode, RequestedSkillID: call.RequestedSkillID, PlanMode: call.PlanMode, PendingAttachments: call.PendingAttachments, ConversationKey: conversation.ConversationKey})
 		method, path, handler = http.MethodPost, "/api/agent-profiles/work/query", api.handleAgentProfileChatQuery
 	case "events":
 		path += "/events"

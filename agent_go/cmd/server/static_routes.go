@@ -88,6 +88,7 @@ func (api *StreamingAPI) handleCapabilities(w http.ResponseWriter, r *http.Reque
 		"providers":    append([]string(nil), supportedLLMProviders...),
 		"streaming":    true,
 		"native_goals": nativeGoalProgramCapabilities(),
+		"native_plans": nativePlanProgramCapabilities(),
 		"sse":          true,
 		"agent_modes":  []string{"multi-agent", "workflow"},
 		"tracing": map[string]interface{}{

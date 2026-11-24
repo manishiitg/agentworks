@@ -271,6 +271,10 @@ function createTaskOutputTail(publish, { pollMs = TASK_OUTPUT_POLL_MS, root = cl
 
 // Await each native acknowledgement before the next user input can be yielded.
 // Patch only our effort key; prompt-suggestion eligibility belongs to its own control.
+function sdkReportedPermissionMode(event) {
+  return event?.type === 'system' && (event.subtype === 'status' || event.subtype === 'init') && typeof event.permissionMode === 'string' ? event.permissionMode : '';
+}
+
 // The mode an approved ExitPlanMode returns to, or '' when nothing changes.
 function exitPlanMode(tool, result, mode) {
   return tool === 'ExitPlanMode' && result?.behavior === 'allow' && mode && mode !== 'plan' ? mode : '';
@@ -508,7 +512,8 @@ async function main() {
       // query() returns its control handle before this microtask resumes.
       await Promise.resolve();
       try {
-        planExitMode = next.settings?.permission_mode === 'plan' ? next.settings.plan_exit_mode || 'default' : '';
+        // Also a turn not in plan mode: Claude may enter plan mode itself, and an approved plan returns to this mode.
+        planExitMode = next.settings?.permission_mode === 'plan' ? next.settings.plan_exit_mode || 'default' : next.settings?.permission_mode || '';
         const fields = await applySDKTurnSettings(run, turnSettings, next.settings);
         if (fields.length) emit({type:'sdk_turn_settings', settings_fields:fields});
       }
@@ -558,6 +563,10 @@ async function main() {
         if (nextPromptCapable && !turnActive && settledPromptTurn && !suggestionNearLimit) emit({...event, sdk_prompt_turn:settledPromptTurn});
         continue;
       }
+      // Claude changes its own mode (it entered plan mode, or a plan was approved): track it, so the next turn's
+      // settings set the chat's mode again instead of leaving the session in plan mode.
+      const nativeMode = sdkReportedPermissionMode(event);
+      if (nativeMode) turnSettings.permission_mode = nativeMode;
       helpers.observe(event);
       taskOutput.observe(event);
       const wakeAt = scheduledWake(event);
@@ -638,7 +647,7 @@ async function main() {
     }
   } finally { taskOutput.close(); finishInput(); cancelPermissions(); lines.close(); run.close(); }
 }
-module.exports = { createHelperTracker, applySDKTurnSettings, exitPlanMode, sdkUserContent, moveForegroundHelpersAside, createScheduledWakeTracker, createTaskOutputTail, taskOutputPathFromResult, locateTaskOutput };
+module.exports = { createHelperTracker, applySDKTurnSettings, exitPlanMode, sdkReportedPermissionMode, sdkUserContent, moveForegroundHelpersAside, createScheduledWakeTracker, createTaskOutputTail, taskOutputPathFromResult, locateTaskOutput };
 if (require.main === module) main().then(() => process.stdout.write("", () => process.exit(0)), error => {
   // SDK errors can contain command-line/environment details: report only a
   // stable category here. Native semantic errors still arrive as result events.

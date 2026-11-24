@@ -202,6 +202,7 @@ export function buildAgentProfileChatRequest(payload: AgentQueryRequest, convers
   return {
     message: payload.query,
     ...(payload.requested_skill_id ? { requested_skill_id: payload.requested_skill_id } : {}),
+    ...(payload.plan_mode ? { plan_mode: true } : {}),
     ...(payload.pending_attachments?.length ? { pending_attachments: payload.pending_attachments } : {}),
     ...(payload.delivery_mode ? { delivery_mode: payload.delivery_mode } : {}),
     connection_id: payload.connection_id,

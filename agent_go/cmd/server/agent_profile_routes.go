@@ -39,6 +39,7 @@ const maxAgentProfileRequestBytes = 2 << 20
 // doc comment) — never an arbitrary provider or model.
 type AgentProfileChatRequest struct {
 	RequestedSkillID   string                  `json:"requested_skill_id,omitempty"`
+	PlanMode           bool                    `json:"plan_mode,omitempty"` // the composer's Plan switch (#3699)
 	PendingAttachments []pendingChatAttachment `json:"pending_attachments,omitempty"`
 	DeliveryMode       string                  `json:"delivery_mode,omitempty"`
 	LaptopConnection   *laptopConnectionTarget `json:"laptop_connection,omitempty"`
@@ -182,6 +183,7 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 	}
 	req := QueryRequest{
 		RequestedSkillID:            input.RequestedSkillID,
+		PlanMode:                    input.PlanMode,
 		LaptopConnection:            input.LaptopConnection,
 		Query:                       input.Message,
 		PendingAttachments:          input.PendingAttachments,
@@ -483,7 +485,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	// due schedule back. Scheduled runs enter through Run, never here, so a
 	// check-in's own turns are not mistaken for family activity.
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
-	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "send", Message: input.Message, DeliveryMode: input.DeliveryMode, RequestedSkillID: input.RequestedSkillID, PendingAttachments: input.PendingAttachments}) {
+	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "send", Message: input.Message, DeliveryMode: input.DeliveryMode, RequestedSkillID: input.RequestedSkillID, PlanMode: input.PlanMode, PendingAttachments: input.PendingAttachments}) {
 		return
 	}
 	// A Mac Crew runs on its Mac; published agents have their own server workspace.
