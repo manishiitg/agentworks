@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 
 	"github.com/google/uuid"
@@ -36,7 +37,7 @@ func (api *StreamingAPI) deleteRetiredAgentWorksProjects(ctx context.Context) {
 		}
 		backup, err := api.deleteRetiredAgentWorksProject(ctx, record)
 		if err != nil {
-			log.Printf("[AGENTWORKS_CLEANUP] project=%s owner=%s event=kept reason=%q", record.ProjectID, logUsernameForUserID(record.OwnerID), err.Error())
+			log.Printf("[AGENTWORKS_CLEANUP] project=%s owner=%s event=kept reason=%q backup=%s", record.ProjectID, logUsernameForUserID(record.OwnerID), err.Error(), backup)
 			continue
 		}
 		log.Printf("[AGENTWORKS_CLEANUP] project=%s owner=%s event=deleted backup=%s", record.ProjectID, logUsernameForUserID(record.OwnerID), backup)
@@ -52,10 +53,18 @@ func (api *StreamingAPI) deleteRetiredAgentWorksProject(ctx context.Context, rec
 	if err != nil {
 		return "", err
 	}
+	if t, err := readCrewTeam(record.ProjectID); err == nil && len(t.People) > 0 {
+		log.Printf("[AGENTWORKS_CLEANUP] project=%s event=team_ends people=%d", record.ProjectID, len(t.People))
+	}
 	claims := &UserClaims{UserID: record.OwnerID, Username: record.OwnerID}
 	req := httptest.NewRequest(http.MethodDelete, "/", nil).WithContext(context.WithValue(ctx, UserContextKey, claims))
 	status, body := scheduleHandler(req, api.handleDeleteAgentProfileProject, http.MethodDelete, "/", map[string]string{"id": crewProfileID, "project_id": record.ProjectID}, nil, nil)
 	if status >= 300 {
+		if status == http.StatusConflict {
+			// Refused before anything was removed (working, or used by a workflow): the next start backs it up again.
+			_ = os.Remove(backup)
+			backup = ""
+		}
 		return backup, fmt.Errorf("delete answered %d: %s", status, strings.TrimSpace(string(body)))
 	}
 	return backup, nil
