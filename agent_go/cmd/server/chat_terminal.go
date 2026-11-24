@@ -115,7 +115,7 @@ func (api *StreamingAPI) handleChatTerminal(w http.ResponseWriter, r *http.Reque
 	roots, bound, e := crewStorageRoots(c.WorkspacePath)
 	// A personal terminal cannot borrow another person's private runtime.
 	if e == nil && bound && roots.Owner != user && !IsLocalMode() {
-		fail(403, "not_your_runtime", "Continue in terminal from your own Crew on your computer.")
+		fail(403, "not_your_runtime", "Continue in terminal from your own project on your computer.")
 		return
 	}
 	if e != nil || !bound {

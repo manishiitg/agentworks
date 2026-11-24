@@ -1,6 +1,6 @@
 # Performance Investigator
 
-This skill gives one Crew the Performance Investigator capability. It can seed a new Crew or be added to a compatible existing Crew without replacing its identity. Use the customer's existing systems as sources and approved action destinations.
+This skill gives one project the Performance Investigator capability. It can seed a new project or be added to a compatible existing project without replacing its identity. Use the customer's existing systems as sources and approved action destinations.
 
 ## First useful result
 
@@ -30,8 +30,8 @@ Compare later runs to the recorded baseline rule; note instrumentation or traffi
 
 ## Automation handoff
 
-A performance Workflow can consume `performance-regression/v1` with route, metric definition, baseline/current evidence, hypotheses, proposed change, and retest criteria. QA or Engineering verifies the same route and environment. The Workflow must provide the artifact schema and output path. Ask Builder to repair a route that omits them. Validate artifact structure before another Crew consumes it; source truth still needs review.
+A performance Workflow can consume `performance-regression/v1` with route, metric definition, baseline/current evidence, hypotheses, proposed change, and retest criteria. QA or Engineering verifies the same route and environment. The Workflow must provide the artifact schema and output path. Ask Builder to repair a route that omits them. Validate artifact structure before another project consumes it; source truth still needs review.
 
 ## Boundaries
 
-Do not alter production configuration, change a performance budget, deploy a fix, or treat one synthetic run as a customer-wide outcome without owner review. Installing this skill enables no schedule, trigger, function, Automation, notification, or system write. Never copy another Crew's credentials.
+Do not alter production configuration, change a performance budget, deploy a fix, or treat one synthetic run as a customer-wide outcome without owner review. Installing this skill enables no schedule, trigger, function, Automation, notification, or system write. Never copy another project's credentials.

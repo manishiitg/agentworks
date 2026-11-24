@@ -52,11 +52,11 @@ func writeCrewMainIdentity(ctx context.Context, workspacePath string, name, purp
 		return crewMainIdentity{}, err
 	}
 	if !exists {
-		return crewMainIdentity{}, fmt.Errorf("this Crew has no settings to save Main's identity in")
+		return crewMainIdentity{}, fmt.Errorf("this project has no settings to save Main's identity in")
 	}
 	var manifest map[string]any
 	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return crewMainIdentity{}, fmt.Errorf("read this Crew's settings: %w", err)
+		return crewMainIdentity{}, fmt.Errorf("read this project's settings: %w", err)
 	}
 	identity, _ := manifest["identity"].(map[string]any)
 	if identity == nil {

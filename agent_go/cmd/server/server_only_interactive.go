@@ -5,7 +5,7 @@ import (
 	"log"
 )
 
-const serverOnlyInteractiveMessage = "This runs only in a Crew on the server."
+const serverOnlyInteractiveMessage = "This runs only in a project on the server."
 
 // This is an execution/authoring rule, not a file-reading rule.
 func requireServerInteractive(operation string) error {

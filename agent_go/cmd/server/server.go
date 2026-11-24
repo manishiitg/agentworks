@@ -2587,7 +2587,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		}
 		// A guest's free-text ask uses no MCP server, the platform's Vault ones included (856-59).
 		if cfg := common.GetSessionShellConfig(strings.TrimSpace(r.Header.Get("X-Session-ID"))); cfg != nil && cfg.CrewAskReadOnly {
-			writeUsersJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "MCP tools are not available in a read-only ask: call one of the Crew's functions instead."})
+			writeUsersJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "MCP tools are not available in a read-only ask: call one of the project's functions instead."})
 			return
 		}
 		ctx, realServer, realTool, err := api.vaultBridgeToolName(r.Context(), strings.TrimSpace(r.Header.Get("X-Session-ID")), server, tool)
@@ -3924,7 +3924,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	// every downstream branch sees the canonical name.
 	req.AgentMode = normalizeAgentMode(req.AgentMode)
 	if req.AgentMode != "workflow" && !isToolBackedChatMode(req.AgentMode) {
-		http.Error(w, "Choose a Crew chat, or run a saved Python workflow.", http.StatusBadRequest)
+		http.Error(w, "Choose a project chat, or run a saved Python workflow.", http.StatusBadRequest)
 		return
 	}
 
@@ -6872,13 +6872,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			if err := api.registerWorkDashboardTools(llmAgent, resolvedProfile, sessionID, currentUserID, req.SelectedFolder, crewReadOnly || currentUserIsReadOnly); err != nil {
 				logfWithContext(queryLogCtx, "[WORK DASHBOARD] Failed to register tools: %v", err)
-				sendError(fmt.Sprintf("Failed to register Crew data tools: %v", err), true)
+				sendError(fmt.Sprintf("Failed to register project data tools: %v", err), true)
 				return
 			}
 			// Laptop setup (computer, folders, commands switch) is available from the Crew owner's own chat, as in the panel.
 			if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 				if err := api.registerCrewSettingsChatTools(llmAgent, toolGate, resolvedProfile, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder, getBaseURL(r)); err != nil {
-					sendError(fmt.Sprintf("Failed to register Crew settings tools: %v", err), true)
+					sendError(fmt.Sprintf("Failed to register project settings tools: %v", err), true)
 					return
 				}
 				if err := api.registerLaptopAccessChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder); err != nil {
@@ -6925,7 +6925,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						if IsLocalMode() {
 							location = "this Mac"
 						}
-						_ = llmAgent.AddInstructions(fmt.Sprintf("Paired Crew: this turn runs on %s; its default shell and file tools use %q. Project editing is on %s. For explicitly requested work on the connected Mac from the server, use the Local laptop tools; they do not change the editing location or sync files automatically.", location, roots.Files, binding.Editing))
+						_ = llmAgent.AddInstructions(fmt.Sprintf("Paired project: this turn runs on %s; its default shell and file tools use %q. Project editing is on %s. For explicitly requested work on the connected Mac from the server, use the Local laptop tools; they do not change the editing location or sync files automatically.", location, roots.Files, binding.Editing))
 					}
 				}
 			}
@@ -7071,7 +7071,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				logfWithContext(queryLogCtx, "[AGENT PROFILE] Applied %s@%d system prompt", resolvedProfile.Definition.ID, resolvedProfile.Definition.Version)
 				if isProjectProfileID(resolvedProfile.Definition.ID) && (chatWorkingDir != sharedChatWorkingDir || chatRuntimeDir != "") {
 					if err := llmAgent.AddInstructions(crewCLIWorkspaceInstructions(chatWorkingFolder)); err != nil {
-						sendError(fmt.Sprintf("Failed to apply Crew runtime instructions: %v", err), true)
+						sendError(fmt.Sprintf("Failed to apply project runtime instructions: %v", err), true)
 						return
 					}
 				}
@@ -12573,7 +12573,7 @@ func (api *StreamingAPI) buildSkillCallbacks() *todo_creation_human.SkillCallbac
 
 func skillSelectionHintForContext(ctx context.Context, productID, skillNames string) string {
 	if root, _ := ctx.Value(externalCrewMCPPlaceKey{}).(string); root != "" && productID == "work" {
-		return "Use settings with this crew_id to inspect and select installed skills for future Crew turns, or use Setup > Skills in the app."
+		return "Use settings with this crew_id to inspect and select installed skills for future project turns, or use Setup > Skills in the app."
 	}
 	return skillSelectionHint(productID, skillNames)
 }
@@ -12581,7 +12581,7 @@ func skillSelectionHintForContext(ctx context.Context, productID, skillNames str
 func skillSelectionHint(productID, skillNames string) string {
 
 	if strings.EqualFold(strings.TrimSpace(productID), "work") {
-		return fmt.Sprintf("%s can be loaded immediately with read_skill. To attach it automatically on future Crew turns, call skills(action=\"select\", skill=\"<folder-name>\"); Crew persists that selection in workflow.json and also shows it in Setup > Skills.", skillNames)
+		return fmt.Sprintf("%s can be loaded immediately with read_skill. To attach it automatically on future project turns, call skills(action=\"select\", skill=\"<folder-name>\"); project persists that selection in workflow.json and also shows it in Setup > Skills.", skillNames)
 	}
 	return fmt.Sprintf("Use update_workflow_config to add %s to the workflow's selected skills.", skillNames)
 }
@@ -13548,7 +13548,7 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	// Only the verified Work binding may enter another person's Crew. A
 	// profile-less workflow payload must not bypass Crew access/tool policy.
 	if isCrewProjectPath(req.SelectedFolder) && !crewProjectOwnedByCaller(currentUserID, req.SelectedFolder) && !isProjectProfileID(req.AgentProfileID) {
-		return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("another person's Crew requires its verified Work conversation")}
+		return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("another person's project requires its verified Work conversation")}
 	}
 	access, err := api.conversationTargetAccess(ctx, *req)
 	if err != nil {
@@ -13568,7 +13568,7 @@ func (api *StreamingAPI) admitQueryTarget(ctx context.Context, req *QueryRequest
 	if req.notificationItemWorkspace != "" && strings.HasPrefix(req.SelectedFolder, "Workflow/") {
 		manifest, found, err := ReadWorkflowManifest(ctx, req.SelectedFolder)
 		if err != nil || !found {
-			return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("This workflow's mail settings are unavailable; open its Crew and try again.")}
+			return nil, WorkflowAccessNone, &queryAdmissionError{err: fmt.Errorf("This workflow's mail settings are unavailable; open its project and try again.")}
 		}
 		req.notificationMailConnectionID = manifest.Capabilities.GmailConnectionID
 		req.notificationMailBlockedRecipients = append([]string(nil), manifest.Capabilities.GmailBlockedRecipients...)

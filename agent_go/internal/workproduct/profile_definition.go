@@ -87,7 +87,7 @@ func customCommandMarkdown(name, description, icon, prompt string, modes []strin
 }
 
 func workCustomCommandsFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
-	return CustomCommandsFactory(workspaceAPIURL, "Crew project")
+	return CustomCommandsFactory(workspaceAPIURL, "Project project")
 }
 
 // CustomCommandsFactory is the project slash-command tool shared by the
@@ -97,7 +97,7 @@ func CustomCommandsFactory(workspaceAPIURL, projectNoun string) agentprofiles.To
 		commandsPath := path.Join(runtime.WorkspacePath, commands.CustomCommandsSubPath)
 		return agentprofiles.ToolSpec{
 			Name: "manage_custom_commands", Category: "custom_commands",
-			Description: "List, create, update, or delete reusable slash commands for this " + projectNoun + " when the user asks. Updates preserve omitted description, prompt, icon and show_on_card. Set show_on_card=true only for the few commands the person wants as a button on each reply card (default false; most commands stay slash-only); it can be turned off again. Every Crew starts with one card command, \"Simplify this change\", which can be renamed or deleted. Commands appear immediately in this project's slash menu. Product commands are immutable and cannot be changed with this tool.",
+			Description: "List, create, update, or delete reusable slash commands for this " + projectNoun + " when the user asks. Updates preserve omitted description, prompt, icon and show_on_card. Set show_on_card=true only for the few commands the person wants as a button on each reply card (default false; most commands stay slash-only); it can be turned off again. Every project starts with one card command, \"Simplify this change\", which can be renamed or deleted. Commands appear immediately in this project's slash menu. Product commands are immutable and cannot be changed with this tool.",
 			Parameters: map[string]interface{}{
 				"type": "object", "additionalProperties": false,
 				"properties": map[string]interface{}{
@@ -186,7 +186,7 @@ func RegisterProductSkills() error {
 		registerProductSkillsErr = RegisterFeatureSkills("work", "Crew")
 		if registerProductSkillsErr == nil {
 			registerProductSkillsErr = agentprofiles.RegisterEmbeddedSkills(productConfigFiles, []agentprofiles.SkillFileBinding{
-				{Name: "crew-run", Description: "Use a Crew in Run mode: inspect, answer, run permitted workflow triggers and suggest changes to its owner.", Path: "skills/crew-run/SKILL.md"},
+				{Name: "crew-run", Description: "Use a project in Run mode: inspect, answer, run permitted workflow triggers and suggest changes to its owner.", Path: "skills/crew-run/SKILL.md"},
 				{Name: "crew-builder", Path: "skills/crew-builder/SKILL.md"},
 				{Name: "crew-agents", Path: "skills/crew-agents/SKILL.md"},
 				{Name: "crew-laptop", Path: "skills/crew-laptop/SKILL.md"},
@@ -305,7 +305,7 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 		return agentprofiles.ToolSpec{
 			Name:     "set_work_identity",
 			Category: "work_identity",
-			Description: "Set, update, or clear this Crew project's agent identity when the user asks. It is also Main's name and purpose; a side tab sets its own with set_my_agent_identity. " +
+			Description: "Set, update, or clear this project project's agent identity when the user asks. It is also Main's name and purpose; a side tab sets its own with set_my_agent_identity. " +
 				"A short name and purpose keep the agent consistent across project chats, schedules, bots, and background work; they change presentation and behavior, never permissions. " +
 				"The purpose is required: ask the user for it before the first save, and refuse to clear it. " +
 				"Store it in product.json, preserve omitted fields, and never invent an identity.",
@@ -317,18 +317,18 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 						"description": "Use set to create or update the identity, or clear to remove its name. The purpose is required and clear never removes it.",
 					},
 					"name":    map[string]interface{}{"type": "string", "maxLength": workIdentityNameLimit, "description": "Short display name. Omit to preserve; pass empty to remove."},
-					"purpose": map[string]interface{}{"type": "string", "maxLength": workIdentityPurposeLimit, "description": "Required: what this Crew is for, in one short line. Saved as the project description. Omit to preserve."},
+					"purpose": map[string]interface{}{"type": "string", "maxLength": workIdentityPurposeLimit, "description": "Required: what this project is for, in one short line. Saved as the project description. Omit to preserve."},
 				},
 				"required": []string{"operation"},
 			},
 			Execute: func(ctx context.Context, args map[string]interface{}) (string, error) {
 				read, err := client.ReadWorkspaceFile(ctx, workspace.ReadWorkspaceFileParams{Filepath: manifestPath})
 				if err != nil {
-					return "", fmt.Errorf("read Crew project configuration: %w", err)
+					return "", fmt.Errorf("read project project configuration: %w", err)
 				}
 				var manifest map[string]interface{}
 				if err := json.Unmarshal([]byte(read.Content), &manifest); err != nil {
-					return "", fmt.Errorf("decode Crew project configuration: %w", err)
+					return "", fmt.Errorf("decode project project configuration: %w", err)
 				}
 				operation, _ := args["operation"].(string)
 				operation = strings.ToLower(strings.TrimSpace(operation))
@@ -359,7 +359,7 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 						return fmt.Sprintf("The identity purpose must be at most %d characters.", workIdentityPurposeLimit), nil
 					}
 					if purpose == "" {
-						return "A purpose is required for the Crew identity. Ask the user what this Crew is for before saving.", nil
+						return "A purpose is required for the project identity. Ask the user what this project is for before saving.", nil
 					}
 					manifest["description"] = purpose
 					manifest["identity"] = identity
@@ -369,10 +369,10 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 				manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
 				encoded, err := json.MarshalIndent(manifest, "", "  ")
 				if err != nil {
-					return "", fmt.Errorf("encode Crew project configuration: %w", err)
+					return "", fmt.Errorf("encode project project configuration: %w", err)
 				}
 				if _, err := client.UpdateWorkspaceFile(ctx, workspace.UpdateWorkspaceFileParams{Filepath: manifestPath, Content: string(encoded) + "\n"}); err != nil {
-					return "", fmt.Errorf("save Crew identity: %w", err)
+					return "", fmt.Errorf("save project identity: %w", err)
 				}
 				if operation == "clear" {
 					emitIdentityUpdated(operation)
@@ -397,16 +397,16 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 		return agentprofiles.ToolSpec{
 			Name:     "create_crew",
 			Category: "work_projects",
-			Description: "Create another basic Crew project for the signed-in user when they ask. " +
-				"The new Crew has its own durable conversation, files, runtime configuration, and display name. " +
-				"This does not replace or rename the active Crew. After creation, tell the user to select the new Crew from the top project menu; it asks for its purpose on first chat.",
+			Description: "Create another basic project project for the signed-in user when they ask. " +
+				"The new project has its own durable conversation, files, runtime configuration, and display name. " +
+				"This does not replace or rename the active project. After creation, tell the user to select the new project from the top project menu; it asks for its purpose on first chat.",
 			Parameters: map[string]interface{}{
 				"type":                 "object",
 				"additionalProperties": false,
 				"properties": map[string]interface{}{
-					"name":        map[string]interface{}{"type": "string", "maxLength": workIdentityNameLimit, "description": "Crew display name and project title."},
-					"description": map[string]interface{}{"type": "string", "maxLength": 1000, "description": "Optional short purpose for this Crew."},
-					"root_path":   map[string]interface{}{"type": "string", "description": "Local app only: full path to an existing folder the person chose for this new Crew. Files stay there; Crew resources use .agentworks."},
+					"name":        map[string]interface{}{"type": "string", "maxLength": workIdentityNameLimit, "description": "Project display name and project title."},
+					"description": map[string]interface{}{"type": "string", "maxLength": 1000, "description": "Optional short purpose for this project."},
+					"root_path":   map[string]interface{}{"type": "string", "description": "Local app only: full path to an existing folder the person chose for this new project. Files stay there; project resources use .agentworks."},
 				},
 				"required": []string{"name"},
 			},
@@ -422,7 +422,7 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 				}
 				description = strings.TrimSpace(description)
 				if utf8.RuneCountInString(description) > 1000 {
-					return "The Crew description must be at most 1000 characters.", nil
+					return "The project description must be at most 1000 characters.", nil
 				}
 
 				id := uuid.NewString()
@@ -465,13 +465,13 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 					return err
 				}
 				if err := writeJSON(path.Join(workspacePath, "workflow.json"), workflowManifest); err != nil {
-					return "", fmt.Errorf("create Crew runtime configuration: %w", err)
+					return "", fmt.Errorf("create project runtime configuration: %w", err)
 				}
 				if _, err := client.UpdateWorkspaceFile(ctx, workspace.UpdateWorkspaceFileParams{Filepath: path.Join(workspacePath, "code", ".gitkeep"), Content: ""}); err != nil {
-					return "", fmt.Errorf("create Crew code folder: %w", err)
+					return "", fmt.Errorf("create project code folder: %w", err)
 				}
 				if err := writeJSON(path.Join(workspacePath, "product.json"), productManifest); err != nil {
-					return "", fmt.Errorf("create Crew project configuration: %w", err)
+					return "", fmt.Errorf("create project project configuration: %w", err)
 				}
 
 				if runtime.Emit != nil {
@@ -490,7 +490,7 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 					"project_id":     id,
 					"name":           name,
 					"workspace_path": workspacePath,
-					"message":        "The Crew was created. Select it from the top project menu to open its persistent conversation.",
+					"message":        "The project was created. Select it from the top project menu to open its persistent conversation.",
 				}, "", "  ")
 				return string(result), err
 			},
@@ -529,11 +529,11 @@ func ProjectPromptVariables(workspaceAPIURL string, allowMissing bool) agentprof
 			if allowMissing && workspace.IsFileNotFound(err) {
 				return map[string]string{"WORK_IDENTITY": "", "WORK_IDENTITY_KEY": "\n", "CHAT_INSTRUCTIONS": ""}, nil
 			}
-			return nil, fmt.Errorf("read Crew identity: %w", err)
+			return nil, fmt.Errorf("read project identity: %w", err)
 		}
 		var manifest workProjectManifest
 		if err := json.Unmarshal([]byte(result.Content), &manifest); err != nil {
-			return nil, fmt.Errorf("decode Crew identity: %w", err)
+			return nil, fmt.Errorf("decode project identity: %w", err)
 		}
 		identity := ""
 		if manifest.Identity != nil {

@@ -1,6 +1,6 @@
 # Secrets
 
-In Crew chat these resources live together in the Vault panel.
+In project chat these resources live together in the Vault panel.
 Use panel-access for the panel inventory, project-use ticks and chat routing;
 this procedure covers the underlying operation.
 

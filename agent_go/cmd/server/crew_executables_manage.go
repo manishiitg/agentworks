@@ -17,7 +17,7 @@ import (
 // Rename and delete for a Crew's workflow. Both run inside handleCrewExecutables, so they use the
 // same Crew owner, account and "owner is online on a Mac" checks as creating a workflow.
 
-var errCrewWorkflowNotFound = errors.New("that workflow was not found in this Crew")
+var errCrewWorkflowNotFound = errors.New("that workflow was not found in this project")
 
 // crewWorkflowByID returns this Crew's own Python workflow with that ID. A workflow of another
 // Crew is never returned, so one Crew's owner cannot touch another Crew's workflow.

@@ -18,18 +18,18 @@ func crewTimerWorkflowContext(ctx context.Context, crewRoot, crewID, owner strin
 		return nil, err
 	}
 	if binding == nil || binding.CrewID != crewID || binding.CrewRoot != canonicalCrewWorkspaceRoot(crewRoot) || binding.Kind != "script" {
-		return nil, fmt.Errorf("Choose a saved Python workflow from this Crew. Convert an old workflow before scheduling it.")
+		return nil, fmt.Errorf("Choose a saved Python workflow from this project. Convert an old workflow before scheduling it.")
 	}
 	currentOwner, found := crewProjectOwnerID(binding.CrewRoot)
 	if !found || owner == "" || currentOwner != owner {
-		return nil, fmt.Errorf("This workflow must run as its current Crew owner. Ask that owner to save the schedule.")
+		return nil, fmt.Errorf("This workflow must run as its current project owner. Ask that owner to save the schedule.")
 	}
 	manifest, found, err := crewScriptManifest(ctx, binding)
 	if err != nil {
 		return nil, err
 	}
 	if !found {
-		return nil, fmt.Errorf("Choose a saved workflow from this Crew.")
+		return nil, fmt.Errorf("Choose a saved workflow from this project.")
 	}
 	chat := strings.TrimPrefix(timer.ChatKey, crewID+codeChatSideMarker)
 	if chat == crewID {

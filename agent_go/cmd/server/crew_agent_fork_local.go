@@ -27,12 +27,12 @@ func (api *StreamingAPI) handleCrewAgentForkLocal(w http.ResponseWriter, r *http
 	claims := GetUserFromContext(r.Context())
 	project := mux.Vars(r)["project"]
 	if !IsLocalMode() || !crewTeamClaims(claims, project, true) || ownerOfCrewProjectID(project) != claims.UserID {
-		externalError(w, 403, "agent_fork_unavailable", "Use your own Crew on this computer.")
+		externalError(w, 403, "agent_fork_unavailable", "Use your own project on this computer.")
 		return
 	}
 	localClaims, binding, connection, err := api.desktopCrewChatBinding(r.Context(), project)
 	if err != nil || localClaims.UserID != claims.UserID {
-		externalError(w, 409, "agent_fork_unavailable", "Connect this Crew to its Team first.")
+		externalError(w, 409, "agent_fork_unavailable", "Connect this project to its Team first.")
 		return
 	}
 	var in struct {
@@ -70,7 +70,7 @@ func (api *StreamingAPI) handleCrewAgentForkLocal(w http.ResponseWriter, r *http
 			job := &crewSelfForkJob{Project: project, Fork: in.Fork, Name: in.Name, Stage: "download", Line: "Downloading the conversation to your Mac…", Percent: 20}
 			startCrewForkJob(w, r, claims, job, func(detached *http.Request) (map[string]any, error) {
 				out, err := api.acceptCrewAgentForkOnMac(detached, project, connection, binding.PeerProjectID, in.Fork, base, query, func() {
-					job.set("import", "Adding the copy to your Crew…", 80)
+					job.set("import", "Adding the copy to your project…", 80)
 				})
 				if err != nil {
 					log.Printf("[AGENT_FORK] project=%s event=local_failed operation=accept fork=%s reason=%q", project, in.Fork, err)
@@ -104,7 +104,7 @@ func crewForkFailureLine(err error) string {
 	if err != nil && err.Error() != "" {
 		return laptopActionErrorText(err.Error())
 	}
-	return "Could not copy this conversation through your Crew's Team. Check the connection and try again."
+	return "Could not copy this conversation through your project's Team. Check the connection and try again."
 }
 
 func (api *StreamingAPI) acceptCrewAgentForkOnMac(r *http.Request, project string, connection desktopConnection, remoteProject, id, base, query string, downloaded ...func()) (any, error) {
@@ -183,14 +183,14 @@ func (api *StreamingAPI) acceptCrewAgentForkOnMac(r *http.Request, project strin
 		return nil, err
 	}
 	if destination.ResourceID != project {
-		return nil, fmt.Errorf("keep this copy in the same Crew")
+		return nil, fmt.Errorf("keep this copy in the same project")
 	}
 	roots, found, err := crewStorageRoots(destination.WorkspacePath)
 	if err != nil {
 		return nil, err
 	}
 	if !found {
-		return nil, fmt.Errorf("your Crew storage is unavailable")
+		return nil, fmt.Errorf("your project storage is unavailable")
 	}
 	if err = api.saveCrewAgentForkCopy(request, local, payload, destination, roots); err != nil {
 		return nil, err

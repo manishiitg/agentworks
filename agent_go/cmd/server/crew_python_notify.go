@@ -24,7 +24,7 @@ func (r *crewWorkflowResources) NotifyScript(ctx context.Context, workspace, ses
 	}
 	owner, ok := crewProjectOwnerID(binding.CrewRoot)
 	if !ok || directoryUserIsDisabled(&UserClaims{UserID: owner}) {
-		return "", fmt.Errorf("this Crew's execution owner is unavailable")
+		return "", fmt.Errorf("this project's execution owner is unavailable")
 	}
 	manifest, found, err := ReadWorkflowManifest(ctx, workspace)
 	if err != nil || !found {

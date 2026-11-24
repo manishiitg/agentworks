@@ -22,16 +22,16 @@ include the warning; do not call it a shareable link. A URL based on `localhost`
 `127.0.0.1`, or `::1` cannot be opened by another user or device. The deployment
 must have a reachable `PUBLIC_URL` before the link can be shared.
 
-Crew dashboard links follow current Crew access. Links contain
+Project dashboard links follow current project access. Links contain
 no credentials and grant no access. Each viewer's live permissions govern
 script-backed data; do not promise that sharing a URL grants data-source access.
 
 Resolve the authorized root before reading:
 
-- For an AgentWorks workflow or another Crew reference, use the exact path
+- For an AgentWorks workflow or another project reference, use the exact path
   supplied in attached context. `workspace action=references_list` returns separate
   `workflows` and `crews` lists; every entry includes its project `name` and
-  display `identity` (`name` and `icon`), and each Crew also its `owner`.
+  display `identity` (`name` and `icon`), and each project also its `owner`.
   Discovery does not itself grant file access. Use the exact authorized
   returned path; never guess a project path or scan unattached projects.
 - For a host folder, call `files action=folders` and use its
@@ -39,11 +39,11 @@ Resolve the authorized root before reading:
 - Workflow references and host folders are read-only unless a host-folder
   grant explicitly says `read_write`. Never edit a referenced workflow.
   Execution is allowed only through the trigger procedures below.
-- Crew references follow the effective runtime grants and the restrictions
-  above. Never infer write access from a Crew's name or discovery result.
+- Project references follow the effective runtime grants and the restrictions
+  above. Never infer write access from a project's name or discovery result.
 
 A `#` workflow selection applies only to that message. For durable access to a
-workflow or another Crew, use
+workflow or another project, use
 `workspace action=references_list`, disambiguate by its exact returned path, and call
 `workspace action=reference_attach` only when the user asks to keep it attached. Use
 the exact saved path for `workspace action=reference_detach`. Durable references live

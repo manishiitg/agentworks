@@ -53,11 +53,11 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 	}
 	agent := actor
 	if actor.OwnerID != person || actor.ChatKey == "" {
-		return nil, fmt.Errorf("Use the Team from your own agent in this Crew")
+		return nil, fmt.Errorf("Use the Team from your own agent in this project")
 	}
 	if team := scope.Team; team != nil {
 		if !crewTeamAgentsVisible(*team, person) {
-			return nil, fmt.Errorf("This Crew's Team is not available to you")
+			return nil, fmt.Errorf("This project's Team is not available to you")
 		}
 		if actor.ID != "" || actor.ChatKey != crewWorkPersonPrefix+person {
 			registered := false
@@ -67,7 +67,7 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 				agent.InTeam = false
 			}
 			if agent.OwnerID != person || agent.ChatKey == "" {
-				return nil, fmt.Errorf("Use the Team from your own agent in this Crew")
+				return nil, fmt.Errorf("Use the Team from your own agent in this project")
 			}
 			if actor.InTeam && (!registered || !agent.InTeam) {
 				return nil, fmt.Errorf("The agent is no longer shared with the team. Try again from its own chat")
@@ -77,7 +77,7 @@ func crewWorkDo(ctx context.Context, scope crewWorkScope, person string, actor c
 	switch {
 	case in.Op == "work_answer":
 		if scope.Team == nil {
-			return nil, fmt.Errorf("Needs-you cards show in the Team panel, so they need this Crew's Team. Turn the Team on first")
+			return nil, fmt.Errorf("Needs-you cards show in the Team panel, so they need this project's Team. Turn the Team on first")
 		}
 		// Resolved first: reading the person's own agents may touch the Team record.
 		helper, choose, err := crewWorkAnswerHelper(ctx, *scope.Team, person, in)
@@ -152,7 +152,7 @@ func (api *StreamingAPI) handleCrewWorkLog(rw http.ResponseWriter, r *http.Reque
 		return
 	}
 	if !team.On {
-		externalError(w, 403, "team_off", "Turn on this Crew's Team first")
+		externalError(w, 403, "team_off", "Turn on this project's Team first")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -180,7 +180,7 @@ func (api *StreamingAPI) handleCrewWorkLog(rw http.ResponseWriter, r *http.Reque
 	if body.AgentID == "" && (body.ChatKey == crewWorkPersonPrefix+claims.UserID || body.ChatKey == "" && body.Op == "work_answer") {
 		actor = crewWorkPersonActor(claims.UserID) // a person over MCP forwarded from their Mac, or a Needs-you button click
 	} else if actor, err = api.crewTeamActivityActorForRequest(r, team, claims.UserID, body.AgentID, body.ChatKey, body.Agent); err != nil || body.SharedAsk && !actor.InTeam {
-		externalError(w, 403, "work_forbidden", "Use the Team from your own agent in this Crew")
+		externalError(w, 403, "work_forbidden", "Use the Team from your own agent in this project")
 		return
 	}
 	out, err := crewWorkDo(r.Context(), crewWorkScope{Project: team.ProjectID, Team: &team}, claims.UserID, actor, body.crewWorkInput)

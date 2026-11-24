@@ -122,9 +122,9 @@ func cleanCrewTeamFolders(in, previous []string) ([]string, error) {
 		folder = strings.Trim(strings.TrimSpace(folder), "/")
 		if _, e := publication.CleanPath(folder); e != nil || publication.ExcludedDirectory(folder) || !crewTeamAllowed(folder+"/file.txt") || crewTeamPrivatePath(folder+"/file.txt") {
 			if folder == "" {
-				return nil, fmt.Errorf("Choose a folder inside this Crew to share.")
+				return nil, fmt.Errorf("Choose a folder inside this project to share.")
 			}
-			return nil, fmt.Errorf("%s/ is not a folder the team can share. Choose a folder inside this Crew, outside private state and credentials.", folder)
+			return nil, fmt.Errorf("%s/ is not a folder the team can share. Choose a folder inside this project, outside private state and credentials.", folder)
 		}
 		out = append(out, folder)
 	}
@@ -478,7 +478,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 			e = nil
 		}
 		if e != nil || !crewTeamCanManage(t, claims.UserID) || t.OwnerID != owner || !crewTeamAccountActive(owner) {
-			externalError(w, 403, "team_forbidden", "This Crew isn't shared with you right now. Ask its owner to add you to its Team.")
+			externalError(w, 403, "team_forbidden", "This project isn't shared with you right now. Ask its owner to add you to its Team.")
 			return
 		}
 		// Exclude disabled/deleted members from all live audience resolutions.
@@ -509,7 +509,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		current = crewTeam{ProjectID: project, OwnerID: owner}
 	}
 	if owner == "" || current.OwnerID != owner || !crewTeamAccountActive(owner) || !crewTeamCanManage(current, claims.UserID) {
-		externalError(w, 403, "team_owner_required", "Join this Crew's Team to change its settings.")
+		externalError(w, 403, "team_owner_required", "Join this project's Team to change its settings.")
 		return
 	}
 	var input crewTeam
@@ -553,7 +553,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		previous = crewTeam{ProjectID: project, OwnerID: owner}
 	}
 	if previous.OwnerID != owner || !crewTeamCanManage(previous, claims.UserID) {
-		externalError(w, 403, "team_owner_required", "Join this Crew's Team to change its settings.")
+		externalError(w, 403, "team_owner_required", "Join this project's Team to change its settings.")
 		return
 	}
 	if folders, e := cleanCrewTeamFolders(input.Folder.Folders, previous.Folder.Folders); e != nil {
@@ -877,7 +877,7 @@ func (api *StreamingAPI) runDesktopCrewTeam(w http.ResponseWriter, r *http.Reque
 	}
 	b, e := crewroot.ReadSync(roots.ID)
 	if e != nil || b == nil || b.Side != "local" || b.ConnectionID != mux.Vars(r)["connection"] {
-		externalError(w, 409, "team_connection_required", "Turn on this Crew's connection to your company first.")
+		externalError(w, 409, "team_connection_required", "Turn on this project's connection to your company first.")
 		return
 	}
 	c, e := desktopConnectionFor(claims.UserID, b.ConnectionID)
@@ -898,7 +898,7 @@ func (api *StreamingAPI) runDesktopCrewTeam(w http.ResponseWriter, r *http.Reque
 		// Each chosen folder is an ordinary folder inside this Crew, never its root.
 		for _, rel := range input.Folder.Folders {
 			if folder, err := crewTeamFolderPath(roots.Files, rel); err != nil || folder == roots.Files {
-				externalError(w, 400, "invalid_folder", "Choose existing folders inside this Crew.")
+				externalError(w, 400, "invalid_folder", "Choose existing folders inside this project.")
 				return
 			}
 		}
@@ -1012,7 +1012,7 @@ func moveCrewTeamToTwin(owner, previous, created string) {
 
 // A Crew that lives on the server has co-owners and no Team (owner, 21 Nov): every Team change is refused there, with the
 // one next step. Mac Crews and their online copies keep the Team.
-const crewServerNoTeam = "A Crew on the server has co-owners instead of a Team. Add people under Access › Co-owners."
+const crewServerNoTeam = "A project on the server has co-owners instead of a Team. Add people under Access › Co-owners."
 
 func refuseServerCrewTeam(w http.ResponseWriter, project string) bool {
 	if !crewLivesOnServer(project) {
@@ -1042,7 +1042,7 @@ func deleteCrewTeamRecord(w http.ResponseWriter, caller, project, owner string) 
 	if err != nil || caller != owner || t.OwnerID != caller {
 		mu.Unlock()
 		log.Printf("[CREW_TEAM] project=%s actor=%s event=delete_refused", project, logUsernameForUserID(caller))
-		externalError(w, 403, "team_forbidden", "Only this Crew's owner can delete its Team.")
+		externalError(w, 403, "team_forbidden", "Only this project's owner can delete its Team.")
 		return
 	}
 	err = os.RemoveAll(dir)

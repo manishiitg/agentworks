@@ -11,28 +11,28 @@ import (
 // Dashboard discovery reads admitted workflow bindings, never tracking tables.
 func (api *StreamingAPI) handleCrewDashboards(w http.ResponseWriter, r *http.Request) {
 	if api.projectActions == nil || api.projectActions.registry == nil {
-		http.Error(w, "Crew services are unavailable", 503)
+		http.Error(w, "Project services are unavailable", 503)
 		return
 	}
 	caller := GetUserIDFromContext(r.Context())
 	claims := GetUserFromContext(r.Context())
 	if caller == "" || claims == nil || userAccessForClaims(claims).Disabled {
-		http.Error(w, "Sign in to open this Crew.", 401)
+		http.Error(w, "Sign in to open this project.", 401)
 		return
 	}
 	profile, err := api.projectActions.registry.Resolve("work", 0, caller)
 	if err != nil {
-		http.Error(w, "Crew is unavailable", 404)
+		http.Error(w, "Project is unavailable", 404)
 		return
 	}
 	project, err := resolveCrewProjectBinding(r.Context(), caller, profile, r.URL.Query().Get("crew_id"), "")
 	if err != nil {
-		http.Error(w, "This Crew is unavailable. Open a Crew shared with you.", 403)
+		http.Error(w, "This project is unavailable. Open a project shared with you.", 403)
 		return
 	}
 	root := project.Binding.WorkspacePath
 	if isExternalCrewDirectCall(r.Context()) && !api.externalCrewReferenceAllowed(r.Context(), claims, root, r.Method != http.MethodGet) {
-		http.Error(w, "This Crew is outside the connection's access.", 403)
+		http.Error(w, "This project is outside the connection's access.", 403)
 		return
 	}
 

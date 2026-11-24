@@ -1,8 +1,8 @@
-# Back up the Crew's work
+# Back up the project's work
 
 Inspect the existing backup configuration and destination before changing it.
 Use `panel-dashboard`'s Backup reference and the current file/database tools.
-A Crew and its existing Git repository are the working unit; do not create a
+A project and its existing Git repository are the working unit; do not create a
 separate repository for every task path in its Python workflow. Reuse the
 person's established repository, layout and approved destination.
 

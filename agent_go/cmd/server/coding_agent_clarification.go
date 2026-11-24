@@ -476,7 +476,7 @@ func (api *StreamingAPI) submitCodingAgentClarificationOutcome(sessionID, provid
 		return clarificationOutcome{}, fmt.Errorf("clarification is no longer pending")
 	}
 	if p.ask != nil {
-		return clarificationOutcome{}, fmt.Errorf("answer this question through the Crew Ask connection that started it")
+		return clarificationOutcome{}, fmt.Errorf("answer this question through the project Ask connection that started it")
 	}
 	answers, err := clarificationAnswers(p.questions, auto, input)
 	if err != nil {

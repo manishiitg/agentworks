@@ -25,17 +25,17 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 	}
 	requestFor := func(ctx context.Context) (*http.Request, error) {
 		if current := GetUserFromContext(ctx); current != nil && current.UserID != claims.UserID {
-			return nil, errors.New("Use your own Crew chat to change its settings.")
+			return nil, errors.New("Use your own project chat to change its settings.")
 		}
 		// The authenticated turn owns consent. A native executor can supply
 		// same-user context without its token, but cannot widen this turn.
 		caller := claims
 		if status, _ := externalCrewAuthorGate(caller); status != 0 {
-			return nil, errors.New("Open a Crew you can build, or ask its owner to change these settings.")
+			return nil, errors.New("Open a project you can build, or ask its owner to change these settings.")
 		}
 		current, found := resolveCrewPath(ctx, caller.UserID, ref.Root)
 		if !found || crewAccessFor(caller, current) != crewAccessOwner {
-			return nil, errors.New("Open a Crew you can build, or ask its owner to change these settings.")
+			return nil, errors.New("Open a project you can build, or ask its owner to change these settings.")
 		}
 		return httptest.NewRequest(http.MethodPost, strings.TrimRight(baseURL, "/")+"/", nil).WithContext(context.WithValue(ctx, UserContextKey, caller)), nil
 	}
@@ -61,15 +61,15 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 			// canonical handler's action-specific checks. Native registration
 			// must not turn a run-only connection into browser/cost read access.
 			if !externalTokenAllows(GetUserFromContext(r.Context()), externalTool{Name: publicName}) {
-				return "", errors.New("This connection does not allow this operation. Use a connection with the same access as the Crew's settings page.")
+				return "", errors.New("This connection does not allow this operation. Use a connection with the same access as the project's settings page.")
 			}
 			manifest, err := readCrewProjectManifests(r.Context(), crewProfileID, ref.Root)
 			if err != nil {
-				return "", errors.New("This Crew is unavailable. Reopen it and try again.")
+				return "", errors.New("This project is unavailable. Reopen it and try again.")
 			}
 			crew, _, _, found := api.externalCrewResolve(r.Context(), GetUserFromContext(r.Context()), manifest.ID)
 			if !found || !workspacePathsMatchForUser(claims.UserID, crew.Binding.WorkspacePath, ref.Root) {
-				return "", errors.New("This Crew is unavailable. Reopen it and try again.")
+				return "", errors.New("This project is unavailable. Reopen it and try again.")
 			}
 			// Project selectors and unknown fields cannot change the binding,
 			// even for a caller that bypasses schema validation.
@@ -91,7 +91,7 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 		return body, nil
 	}
 	if schedulerAdminAllowed(claims) {
-		if err := register("manage_schedules", "Read the pause for all schedules (scheduler_status), pause every schedule (pause_all), or resume every schedule (resume_all). This is one company-wide switch, not a pause for this Crew. Administrator only; change it only when the person asks.", map[string]any{
+		if err := register("manage_schedules", "Read the pause for all schedules (scheduler_status), pause every schedule (pause_all), or resume every schedule (resume_all). This is one company-wide switch, not a pause for this project. Administrator only; change it only when the person asks.", map[string]any{
 			"action": map[string]any{"type": "string", "enum": []string{"scheduler_status", "pause_all", "resume_all"}},
 		}, []string{"action"}, func(r *http.Request, args map[string]any) (string, error) {
 			w := httptest.NewRecorder()
@@ -128,7 +128,7 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 			"action":     map[string]any{"type": "string", "enum": []string{"list", "setup", "select", "add", "remove", "disconnect"}},
 			"browser_id": externalString("A browser from list; required for select, add and remove."),
 		}
-		if err := register("browser_connections", "List your own saved Chrome and Edge connections, get their setup link, select this Crew's main one, add or remove other browsers this Crew also uses at the same time (each its own Chrome or profile with its own sign-ins; agents pick one by name with browser=<name>), or disconnect them all from this Crew. Connect the browser once on the website if needed; disconnecting this Crew leaves your other projects connected. No browser credentials or tabs are returned.", props, []string{"action"}, func(r *http.Request, args map[string]any) (string, error) {
+		if err := register("browser_connections", "List your own saved Chrome and Edge connections, get their setup link, select this project's main one, add or remove other browsers this project also uses at the same time (each its own Chrome or profile with its own sign-ins; agents pick one by name with browser=<name>), or disconnect them all from this project. Connect the browser once on the website if needed; disconnecting this project leaves your other projects connected. No browser credentials or tabs are returned.", props, []string{"action"}, func(r *http.Request, args map[string]any) (string, error) {
 			switch externalArg(args, "action") {
 			case "list", "setup", "select", "add", "remove", "disconnect":
 			default:
@@ -142,7 +142,7 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 		}
 	}
 	if agentprofiles.HasFeature(profile.Definition, "costs") {
-		if err := register("get_crew_costs", "Read this Crew's Costs and usage: total spend, tokens and calls, by day, activity and model. Uses the app's ledger and existing Crew owner access, including Team members. days defaults to 30 (at most 90); before pages back by UTC date.", map[string]any{"days": externalInteger(1, 90), "before": externalString("Only spend before this UTC date (YYYY-MM-DD).")}, nil, func(r *http.Request, args map[string]any) (string, error) {
+		if err := register("get_crew_costs", "Read this project's Costs and usage: total spend, tokens and calls, by day, activity and model. Uses the app's ledger and existing project owner access, including Team members. days defaults to 30 (at most 90); before pages back by UTC date.", map[string]any{"days": externalInteger(1, 90), "before": externalString("Only spend before this UTC date (YYYY-MM-DD).")}, nil, func(r *http.Request, args map[string]any) (string, error) {
 			w := httptest.NewRecorder()
 			api.externalCrewCosts(w, r, args)
 			return responseText(w)
@@ -151,12 +151,12 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 		}
 	}
 	if agentprofiles.HasFeature(profile.Definition, "models") {
-		return register("manage_crew_model", "Read the model choices and saved model of this chat (action=list), or change this chat's model when the person asks (action=set). Changes apply from the next message; this reply still uses the current model. Use an engine/model_id and connection_id returned by list. Choose your own personal account or a company account available to you for this tab. An empty engine returns the chat to the Crew's default. Other chats and the Crew default stay unchanged. list also shows this chat's context: tokens used of its window, its account's plan limits and the offered switches. set takes idle_compaction and, for a Claude chat, claude_terminal (without engine only they change). compact: summarise this chat's conversation once this reply ends, so the next message costs less.", map[string]any{
+		return register("manage_crew_model", "Read the model choices and saved model of this chat (action=list), or change this chat's model when the person asks (action=set). Changes apply from the next message; this reply still uses the current model. Use an engine/model_id and connection_id returned by list. Choose your own personal account or a company account available to you for this tab. An empty engine returns the chat to the project's default. Other chats and the project default stay unchanged. list also shows this chat's context: tokens used of its window, its account's plan limits and the offered switches. set takes idle_compaction and, for a Claude chat, claude_terminal (without engine only they change). compact: summarise this chat's conversation once this reply ends, so the next message costs less.", map[string]any{
 			"action":           map[string]any{"type": "string", "enum": []string{"list", "set", "compact"}},
 			"idle_compaction":  map[string]any{"type": "boolean", "description": "For set: Auto-compact when idle. " + idleCompactHint()},
 			"compact_early":    map[string]any{"type": "boolean", "description": "For set: Compact at 300K. " + compactEarlyHint()},
 			"claude_terminal":  map[string]any{"type": "boolean", "description": "For set, a Claude chat only: true runs Claude Code as the native terminal (every session slash command works), false as the chat view. Applies from the next message; the conversation continues."},
-			"engine":           map[string]any{"type": "string", "description": "Provider option from list. For set, an empty string uses the Crew default."},
+			"engine":           map[string]any{"type": "string", "description": "Provider option from list. For set, an empty string uses the project default."},
 			"connection_id":    externalString("Your personal or available company account ID from provider_connections in list."),
 			"model_id":         externalString("Model from that provider's offered models."),
 			"reasoning_effort": externalString("Optional reasoning level offered for that provider."),
@@ -180,7 +180,7 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 			contextReply := func(input chatContextRequest) (string, error) {
 				// The same connection consent as the MCP chat actions: changing a chat needs crews:write.
 				if caller := GetUserFromContext(r.Context()); caller != nil && caller.AccessToken != nil && !caller.AccessToken.Allows(crewChatActionScope(firstNonEmptyTrimmed(input.Action, "set_model"), "")) {
-					return "", errors.New("This connection does not allow changing this chat. Use a connection with the same access as the Crew's settings page.")
+					return "", errors.New("This connection does not allow changing this chat. Use a connection with the same access as the project's settings page.")
 				}
 				input.SessionID = project.Self.SessionID
 				status, out := api.applyChatContext(r.Context(), owner, input, true)
@@ -201,7 +201,7 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 					return contextReply(switches)
 				}
 				if !hasEngine {
-					return "", errors.New("Choose an engine from list, or send an empty engine to use the Crew default.")
+					return "", errors.New("Choose an engine from list, or send an empty engine to use the project default.")
 				}
 				if engine := externalArg(args, "engine"); engine != "" {
 					option, offered := findProviderOptionByID(choices.Runtime.ProviderOptions, engine)

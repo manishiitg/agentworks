@@ -22,14 +22,14 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		action := dashboardActions[name]
 		props := map[string]any{
 			"workflow_id":  externalString("Workflow or Flow ID from workflow action=list or the dashboard list. Pass one of workflow_id, crew_id or workspace."),
-			"crew_id":      externalString("Crew ID from workspace action=list or the dashboard list."),
-			"workspace":    externalString("Project root from the dashboard list; needed only for an owned Code project."),
+			"crew_id":      externalString("Project ID from workspace action=list or the dashboard list."),
+			"workspace":    externalString("Project root from the dashboard list; needed only for an owned project."),
 			"workspace_id": externalString("Stable work:<id> from workspace list/get. Pass exactly one project selector."),
 		}
 		required := []string{}
 		if action == "upload" {
-			props["file_name"] = externalString("Original reference file name. Stored by the existing Crew attachment handler; does not overwrite files.")
-			props["content_base64"] = externalString("Base64 file bytes. Existing Crew attachment limits apply: 10 MiB for Builders and 5 MiB for shared users.")
+			props["file_name"] = externalString("Original reference file name. Stored by the existing project attachment handler; does not overwrite files.")
+			props["content_base64"] = externalString("Base64 file bytes. Existing project attachment limits apply: 10 MiB for Builders and 5 MiB for shared users.")
 			required = []string{"file_name", "content_base64"}
 		}
 		if action == "list" {
@@ -73,8 +73,8 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 			props["width"] = map[string]any{"type": "string", "enum": []any{"mobile", "tablet", "desktop", "all"}}
 		}
 		descriptions := map[string]string{
-			"delete":   "Delete this dashboard definition and disable its public and short links. Keeps its files, run history and Crew functions. The person asking in chat is approval; no second confirmation is needed.",
-			"upload":   "Upload an attachment to a Crew using the same route and limits as its chat. The server selects the caller’s upload area. Requires current Crew access and crews:run or crews:write. Returns a saved path for chat/functions; never edits dashboard source.",
+			"delete":   "Delete this dashboard definition and disable its public and short links. Keeps its files, run history and project functions. The person asking in chat is approval; no second confirmation is needed.",
+			"upload":   "Upload an attachment to a project using the same route and limits as its chat. The server selects the caller’s upload area. Requires current project access and crews:run or crews:write. Returns a saved path for chat/functions; never edits dashboard source.",
 			"list":     "Discover only accessible published dashboards (drafts for authorized editors), with project identities, document paths and authenticated live URLs. Only managed definitions are listed.",
 			"get":      "Read a dashboard bundle and revision. Draft source requires edit rights and existing authoring consent.",
 			"create":   "Create a managed React TSX dashboard draft from index.tsx (dashboard action=catalog). The server compiles and hosts it in Dashboards; no separate npm app/server. TSX is for live dashboards with data, buttons and functions; HTML (index.html) is for a quick shareable page. JSON dashboards are not supported. Does not publish or select new data sources. Uses existing workflow/Flow/Crew/Code authoring consent and current project edit access.",
@@ -89,7 +89,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 	}
 	add("export_dashboard_static", "Export the same published dashboard and current authorized data as a portable static site for Surge, Vercel, Netlify, Cloudflare Pages, GitHub Pages or any file host. Packages the platform React/CSS runtime and captures real report data calls; no SQL extraction, npm app, database or login token is shipped. Returns a folder under publish/exports to deploy in full. Use on every Publish pass to refresh the snapshot. Builder only; existing authoring, dashboards:read, runs:execute and folder grants apply. Ask/functions lead back to the authenticated live dashboard. This exports files only; it does not change sharing or deploy to a host.", true, false, map[string]any{
 		"workflow_id":    externalString("Goal or Flow ID. Pass exactly one project selector."),
-		"crew_id":        externalString("Crew ID."),
+		"crew_id":        externalString("Project ID."),
 		"workspace":      externalString("Existing project root."),
 		"dashboard_id":   externalString("Published dashboard slug. May be omitted when the project has one published dashboard."),
 		"revision":       externalString("Exact published revision. Omit for the current publication."),
@@ -98,8 +98,8 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 	})
 	add("export_dashboard_motion", "Export a published dashboard as an MP4 with its layout, selected theme and frozen data. Native dashboard motion is seeked through its final state; a page without a shared motion clock exports as a still video with a note. A separate explainer is optional via composition_path. Use a unique submission_id to start; retrying returns the original snapshot. Poll with export_id. Builder only; existing authoring and runs:execute consent. Returns the saved video path under db/assets for playback/download. Never runs on page load.", true, false, map[string]any{
 		"workflow_id":      externalString("Workflow or Flow ID. Pass exactly one of workflow_id, crew_id or workspace."),
-		"crew_id":          externalString("Crew ID."),
-		"workspace":        externalString("Project root, for an owned Code project."),
+		"crew_id":          externalString("Project ID."),
+		"workspace":        externalString("Project root, for an owned project."),
 		"export_id":        externalString("Export ID from an earlier call; pass to check its progress/result without starting another export."),
 		"submission_id":    externalString("Stable unique request name for a new export (max 128 characters); reuse only to retry the same composition."),
 		"composition_path": externalString("Folder under code/motion/ with a standalone HyperFrames index.html, local assets and snapshot.json containing as_of, source and data."),
@@ -112,8 +112,8 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		"duration_s":       map[string]any{"type": "number", "minimum": 0, "maximum": 600, "description": "Playback seconds. Omit to use the dashboard clock's duration, or one second for a still page."},
 		"fps":              externalInteger(1, 60),
 	})
-	add("set_dashboard_public_link", "A public link to one published dashboard or artifact of a server Crew: anyone with the link opens a frozen copy without signing in, with no Ask and no function buttons. Only the Crew's main owner, and only when they ask: everything on the page goes public, including the data behind it (its query results, even columns the page doesn't show), so say that first. mode on makes the link, update refreshes the copy under the same link, off stops it at once, status lists the Crew's dashboards with their links. Refused while the page holds a secret value. A Crew that lives on a Mac gets this later.", true, false, map[string]any{
-		"crew_id":      externalString("Crew ID from workspace action=list or the dashboard list."),
+	add("set_dashboard_public_link", "A public link to one published dashboard or artifact of a server project: anyone with the link opens a frozen copy without signing in, with no Ask and no function buttons. Only the project's main owner, and only when they ask: everything on the page goes public, including the data behind it (its query results, even columns the page doesn't show), so say that first. mode on makes the link, update refreshes the copy under the same link, off stops it at once, status lists the project's dashboards with their links. Refused while the page holds a secret value. A project that lives on a Mac gets this later.", true, false, map[string]any{
+		"crew_id":      externalString("Project ID from workspace action=list or the dashboard list."),
 		"workspace":    externalString("Existing project root."),
 		"workspace_id": externalString("Stable work:<id> from workspace list/get. Pass exactly one project selector."),
 		"dashboard_id": externalString("Published dashboard slug from the dashboard list. Needed for on, update and off."),
@@ -122,21 +122,21 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 	shareProps := map[string]any{
 		"workflow_id":  externalString("Goal/workflow ID from workflow action=list. Also accepts an existing Flow ID for compatibility. Pass exactly one project selector."),
 		"flow_id":      externalString("Flow ID from workflow action=list or relay. Pass exactly one of workflow_id, flow_id, crew_id or workspace."),
-		"crew_id":      externalString("Crew ID from workspace action=list or the dashboard list."),
+		"crew_id":      externalString("Project ID from workspace action=list or the dashboard list."),
 		"workspace":    externalString("Existing project root or stable work:<id> from workspace list/get."),
 		"workspace_id": externalString("Stable work:<id> from workspace list/get. Pass exactly one project selector."),
 	}
-	add("get_dashboard_share", "Read who a Crew, Goal or Flow is shared with: everyone, chosen people (emails) or private. Anyone with access to the product may inspect sharing. "+runShareAccessDescription, false, false, shareProps)
+	add("get_dashboard_share", "Read who a project, Goal or Flow is shared with: everyone, chosen people (emails) or private. Anyone with access to the product may inspect sharing. "+runShareAccessDescription, false, false, shareProps)
 	shareSet := map[string]any{}
 	for key, value := range shareProps {
 		shareSet[key] = value
 	}
-	shareSet["create_dashboard"] = map[string]any{"type": "boolean", "description": "Crew only: create and publish the standard dashboard if none exists. Set true only after the person agrees to creating it for sharing; otherwise a missing dashboard returns dashboard_required without changing access."}
+	shareSet["create_dashboard"] = map[string]any{"type": "boolean", "description": "Project only: create and publish the standard dashboard if none exists. Set true only after the person agrees to creating it for sharing; otherwise a missing dashboard returns dashboard_required without changing access."}
 	shareSet["mode"] = map[string]any{"type": "string", "enum": []any{"everyone", "people", "private"}, "description": "everyone: every account allowed to use this product. people: only the emails you list; an email with no account is reported back. private: only the owner. Shared people open the dashboard, Ask, use published functions and read product files, runs and logs through MCP; secret values and private logs stay excluded."}
-	shareSet["shared_agents"] = map[string]any{"type": "array", "maxItems": 100, "items": externalString("Stable chat_id from Share agents."), "description": "Crew only: replaces the selected existing agents for this same audience. Empty clears; omitted preserves. Messages from sharing onward and their configured tools are shared; tab controls remain with their owner."}
-	shareSet["agent_purposes"] = map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string", "maxLength": 300}, "description": "Crew only: saved one-line purpose by chat_id. Only the tab owner can change its purpose."}
+	shareSet["shared_agents"] = map[string]any{"type": "array", "maxItems": 100, "items": externalString("Stable chat_id from Share agents."), "description": "Project only: replaces the selected existing agents for this same audience. Empty clears; omitted preserves. Messages from sharing onward and their configured tools are shared; tab controls remain with their owner."}
+	shareSet["agent_purposes"] = map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string", "maxLength": 300}, "description": "Project only: saved one-line purpose by chat_id. Only the tab owner can change its purpose."}
 	shareSet["emails"] = map[string]any{"type": "array", "maxItems": 200, "items": externalString("Email of an account to share with, for mode people."), "description": "Replaces the people list. Ignored for everyone and private."}
-	add("share_dashboard", "Share a Crew, Goal or Flow using its owner's existing authoring consent. "+runShareAccessDescription+" A Crew without a published dashboard needs the person to agree to creating one first; inspect needs_dashboard, ask, and set create_dashboard=true only after agreement. Nothing is shared until the owner asks: use their choice of everyone, chosen people or private; never pick the audience for them. Mode people REPLACES the whole list: inspect sharing first and keep everyone the owner did not ask to remove; the reply shows the previous list.", true, false, shareSet, "mode")
+	add("share_dashboard", "Share a project, Goal or Flow using its owner's existing authoring consent. "+runShareAccessDescription+" A project without a published dashboard needs the person to agree to creating one first; inspect needs_dashboard, ask, and set create_dashboard=true only after agreement. Nothing is shared until the owner asks: use their choice of everyone, chosen people or private; never pick the audience for them. Mode people REPLACES the whole list: inspect sharing first and keep everyone the owner did not ask to remove; the reply shows the previous list.", true, false, shareSet, "mode")
 	// Replace the old Run-assistant proxy with a native read operation. Keep its call shape.
 	add("get_report_link", "Return a live dashboard URL directly, without starting a Run conversation. document_path defaults to db/reports/index.html; supports Goals and Flows. Requires dashboards:read consent.", false, true, map[string]any{"document_path": externalString("HTML document under db/reports/.")})
 }

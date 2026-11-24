@@ -123,7 +123,7 @@ func (api *StreamingAPI) migrateServerCrewTeam(ctx context.Context, team crewTea
 	root := crewProjectRootByID(team.ProjectID)
 	id, ok := projectIdentityOf(root)
 	if root == "" || !ok {
-		return fmt.Errorf("the Crew's folder was not found")
+		return fmt.Errorf("the project's folder was not found")
 	}
 	dir, err := crewTeamDir(team.ProjectID)
 	if err != nil {

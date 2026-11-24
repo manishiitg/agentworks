@@ -119,7 +119,7 @@ an absolute computer path, an invented URL, a token or a data URL. Consecutive
 Markdown images form a compact gallery; put prose between them to keep them
 apart. People can enlarge and download them, and file permissions still apply.
 Show screenshots, designs and other visual results inline without being asked.
-By default copy an image into the Crew (for example `outputs/`) and show that
+By default copy an image into the project (for example `outputs/`) and show that
 path so everyone reading the chat sees it. An absolute path from an attached
 folder (`WORK_FOLDER_<ALIAS>`) shows only to people who attached that folder
 themselves. For cards, use real image URLs or workspace paths, and leave

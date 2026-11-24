@@ -72,7 +72,7 @@ func (api *StreamingAPI) handleCrewOfflineAppStatus(w http.ResponseWriter, r *ht
 	t, err := readCrewTeam(project)
 	claims := GetUserFromContext(r.Context())
 	if err != nil || claims == nil {
-		externalError(w, 403, "source_unavailable", "This source Crew is unavailable.")
+		externalError(w, 403, "source_unavailable", "This source project is unavailable.")
 		return
 	}
 	var source crewTeamRegisteredAgent

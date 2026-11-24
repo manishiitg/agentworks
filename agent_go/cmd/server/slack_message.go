@@ -230,7 +230,7 @@ func (api *StreamingAPI) authorizeSlackToolRoute(ctx context.Context, session, c
 			return "", err
 		}
 		if normalizeConversationWorkspace(authority.root) != normalizeConversationWorkspace(route.WorkspacePath) {
-			return "", fmt.Errorf("route is outside this Crew")
+			return "", fmt.Errorf("route is outside this project")
 		}
 		if _, err := requireSlackRouteProfileOwner(ctx, api, route); err != nil {
 			return "", err

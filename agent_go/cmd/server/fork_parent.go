@@ -19,14 +19,14 @@ import (
 func (api *StreamingAPI) setForkParent(ctx context.Context, userID, profileID, projectID, workspacePath, key, parent string) (int, string) {
 	key, parent = strings.TrimSpace(key), strings.TrimSpace(parent)
 	if key == "" || crewResourceProjectID(key) != projectID {
-		return http.StatusBadRequest, "Choose one of this Crew's agents."
+		return http.StatusBadRequest, "Choose one of this project's agents."
 	}
 	if key == projectID {
 		return http.StatusBadRequest, "Main is never under another agent."
 	}
 	tab, found, err := crewTabForKey(ctx, userID, profileID, key, workspacePath)
 	if err != nil {
-		return http.StatusServiceUnavailable, "Couldn't read this Crew's agents. Try again."
+		return http.StatusServiceUnavailable, "Couldn't read this project's agents. Try again."
 	}
 	if !found {
 		return http.StatusNotFound, "That agent no longer exists."
@@ -40,11 +40,11 @@ func (api *StreamingAPI) setForkParent(ctx context.Context, userID, profileID, p
 			return http.StatusBadRequest, "An agent can't be under itself."
 		}
 		if crewResourceProjectID(parent) != projectID {
-			return http.StatusBadRequest, "Put it back under an agent of this Crew."
+			return http.StatusBadRequest, "Put it back under an agent of this project."
 		}
 		home, ok, err := crewTabForKey(ctx, userID, profileID, parent, workspacePath)
 		if err != nil {
-			return http.StatusServiceUnavailable, "Couldn't read this Crew's agents. Try again."
+			return http.StatusServiceUnavailable, "Couldn't read this project's agents. Try again."
 		}
 		if !ok || (home.OwnerID != "" && home.OwnerID != userID) {
 			return http.StatusNotFound, "The agent it was under is no longer yours or no longer exists."
@@ -58,7 +58,7 @@ func (api *StreamingAPI) setForkParent(ctx context.Context, userID, profileID, p
 			seen[up] = true
 			identity, err := store.agentIdentity(ctx, userID, profileID, up)
 			if err != nil {
-				return http.StatusServiceUnavailable, "Couldn't read this Crew's agents. Try again."
+				return http.StatusServiceUnavailable, "Couldn't read this project's agents. Try again."
 			}
 			up = strings.TrimSpace(identity.ForkedFrom)
 		}
@@ -89,7 +89,7 @@ func (api *StreamingAPI) handleAgentForkParent(w http.ResponseWriter, r *http.Re
 	}
 	projectID := strings.TrimSpace(input.ProjectID)
 	if api.crewMacTwinForOwner(r, projectID) {
-		writeAgentProfileError(w, http.StatusConflict, "Arrange this Crew's agents on your Mac.")
+		writeAgentProfileError(w, http.StatusConflict, "Arrange this project's agents on your Mac.")
 		return
 	}
 	userID, slot, ok := api.agentProfileConversationSlot(w, r, projectID)
@@ -97,7 +97,7 @@ func (api *StreamingAPI) handleAgentForkParent(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if !limitsSideChats(slot.profile.ID) {
-		writeAgentProfileError(w, http.StatusBadRequest, "only a Crew's agents have forks")
+		writeAgentProfileError(w, http.StatusBadRequest, "only a project's agents have forks")
 		return
 	}
 	if status, reason := api.setForkParent(r.Context(), userID, slot.profile.ID, projectID, slot.binding.WorkspacePath, input.ConversationKey, input.ForkedFrom); status != 0 {

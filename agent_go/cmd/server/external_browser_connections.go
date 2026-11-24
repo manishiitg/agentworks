@@ -21,8 +21,8 @@ func externalBrowserConnectionsDefinition(add func(string, string, bool, bool, m
 		"action":      map[string]any{"type": "string", "enum": []any{"list", "setup", "select", "add", "remove", "disconnect"}},
 		"browser_id":  externalString("Browser ID returned by list; required for select, add and remove."),
 		"workflow_id": externalString("Workflow ID for a project selection."),
-		"crew_id":     externalString("Crew ID for a project selection."),
-		"project_id":  externalString("Your own Code project ID for a project selection."),
+		"crew_id":     externalString("Project ID for a project selection."),
+		"project_id":  externalString("Your own project ID for a project selection."),
 	}, "action")
 }
 func (api *StreamingAPI) externalBrowserConnectionsCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
@@ -40,7 +40,7 @@ func (api *StreamingAPI) externalBrowserConnectionsCall(w http.ResponseWriter, r
 		}
 	}
 	if count != 1 {
-		externalError(w, 400, "invalid_arguments", "Choose one workflow, Crew or Code project.")
+		externalError(w, 400, "invalid_arguments", "Choose one workflow, project or project.")
 		return
 	}
 	root, profile := "", ""
@@ -63,7 +63,7 @@ func (api *StreamingAPI) externalBrowserConnectionsCall(w http.ResponseWriter, r
 		profile = "workflow"
 	case cid != "":
 		if t := c.AccessToken; t != nil && (!t.Allows("crews:write") || !t.AllowsCrew(cid)) {
-			externalError(w, 403, "forbidden", "Use this Crew's Builder connection, or choose its browser in the app.")
+			externalError(w, 403, "forbidden", "Use this project's Builder connection, or choose its browser in the app.")
 			return
 		}
 		if status, message := externalCrewAuthorGate(c); status != 0 {
@@ -72,7 +72,7 @@ func (api *StreamingAPI) externalBrowserConnectionsCall(w http.ResponseWriter, r
 		}
 		crew, _, _, ok := api.externalCrewResolve(r.Context(), c, cid)
 		if !ok {
-			externalError(w, 404, "not_found", "Crew unavailable.")
+			externalError(w, 404, "not_found", "Project unavailable.")
 			return
 		}
 		root, profile = crew.Binding.WorkspacePath, "work"
@@ -83,7 +83,7 @@ func (api *StreamingAPI) externalBrowserConnectionsCall(w http.ResponseWriter, r
 		}
 		binding, _, ok := api.externalCodeRunOwnProject(r.Context(), c.UserID, pid)
 		if !ok {
-			externalError(w, 404, "not_found", "Code project unavailable.")
+			externalError(w, 404, "not_found", "Project unavailable.")
 			return
 		}
 		root, profile = binding.WorkspacePath, crewProfileID

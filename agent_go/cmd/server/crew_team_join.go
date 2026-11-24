@@ -228,7 +228,7 @@ func (api *StreamingAPI) joinCrewTeamOnMac(w http.ResponseWriter, r *http.Reques
 	local, err := api.addCrewTeamToMac(r.Context(), claims, c, project, team, folder)
 	if err != nil {
 		log.Printf("[CREW_TEAM_LOCAL] project=%s event=member_copy_failed reason=%q", project, err)
-		externalError(w, 409, "mac_copy_failed", "Joined the team, but its Crew could not be set up on this Mac: "+err.Error())
+		externalError(w, 409, "mac_copy_failed", "Joined the team, but its project could not be set up on this Mac: "+err.Error())
 		return
 	}
 	out["project_id"], out["where"] = local, "mac"

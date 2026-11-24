@@ -62,7 +62,7 @@ func crewShareAgents(ctx context.Context, caller, root string, includeUnselected
 	}
 	owner, ok := crewProjectOwnerID(root)
 	if !ok {
-		return nil, fmt.Errorf("Crew unavailable")
+		return nil, fmt.Errorf("Project unavailable")
 	}
 	manifest, err := readCrewProjectManifests(ctx, crewProfileID, root)
 	if err != nil {

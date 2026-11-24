@@ -83,12 +83,12 @@ func (api *StreamingAPI) handleProjectAskConversation(w http.ResponseWriter, r *
 			mode = "builder"
 			tabs, e := defaultProductConversationRegistryStore().projectChats(r.Context(), claims.UserID, profile.ID, target.ID)
 			if e != nil {
-				externalError(w, 503, "agents_unavailable", "Could not load this Crew's agents.")
+				externalError(w, 503, "agents_unavailable", "Could not load this project's agents.")
 				return
 			}
 			identities, e := defaultProductConversationRegistryStore().agentIdentities(r.Context(), claims.UserID, profile.ID, target.ID)
 			if e != nil {
-				externalError(w, 503, "agents_unavailable", "Could not load this Crew's agents.")
+				externalError(w, 503, "agents_unavailable", "Could not load this project's agents.")
 				return
 			}
 			for _, tab := range tabs {
@@ -99,7 +99,7 @@ func (api *StreamingAPI) handleProjectAskConversation(w http.ResponseWriter, r *
 		} else {
 			agents, e := crewShareAgents(r.Context(), claims.UserID, target.Root, false)
 			if e != nil {
-				externalError(w, 503, "agents_unavailable", "Could not load this Crew's shared agents.")
+				externalError(w, 503, "agents_unavailable", "Could not load this project's shared agents.")
 				return
 			}
 			for _, agent := range agents {
@@ -119,9 +119,9 @@ func (api *StreamingAPI) handleProjectAskConversation(w http.ResponseWriter, r *
 			message := "Choose an agent to answer."
 			if len(choices) == 0 {
 				if target.Edit && !body.AsUser {
-					message = "Create an agent in this Crew before asking a question."
+					message = "Create an agent in this project before asking a question."
 				} else {
-					message = "The owner has not shared an agent for this Crew."
+					message = "The owner has not shared an agent for this project."
 				}
 			}
 			externalJSON(w, map[string]any{"choose_agent": true, "agents": choices, "message": message})
@@ -135,7 +135,7 @@ func (api *StreamingAPI) handleProjectAskConversation(w http.ResponseWriter, r *
 			}
 		}
 		if !allowed {
-			externalError(w, 404, "agent_unavailable", "Choose an agent shared with you in this Crew.")
+			externalError(w, 404, "agent_unavailable", "Choose an agent shared with you in this project.")
 			return
 		}
 		if target.Edit && body.AsUser {

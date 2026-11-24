@@ -277,7 +277,7 @@ func (r *projectOwnerRegistry) Register(rec projectOwnerRecord) error {
 		}
 		changed := false
 		if rec.LocalRoot != "" && rec.LocalRoot != current.LocalRoot {
-			return false, fmt.Errorf("a Crew's local folder is chosen only at creation")
+			return false, fmt.Errorf("a project's local folder is chosen only at creation")
 		}
 		if rec.BindingRoot != "" && rec.BindingRoot != current.BindingRoot {
 			return false, fmt.Errorf("private state identity can only be pinned by the storage migration")

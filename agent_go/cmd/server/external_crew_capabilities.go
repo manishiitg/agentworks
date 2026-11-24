@@ -88,24 +88,24 @@ func (api *StreamingAPI) crewCapabilityTools(group, user, root string, sessionID
 		}
 		return reg, api.registerWorkWorkflowReferenceTools(reg, user, sessionID, root, false)
 	}
-	return nil, fmt.Errorf("unknown Crew capability")
+	return nil, fmt.Errorf("unknown project capability")
 }
 func externalCrewCapabilityDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) error {
 	api := &StreamingAPI{}
 	groups := []string{"crew_workflows", "crew_skills", "crew_mcp", "crew_folders", "crew_references"}
 	descriptions := map[string]string{
-		"crew_workflows":  "Create and edit this Crew’s workflows (saved Python workflows; a Crew can have several, each with a unique name). Different tasks of one job are paths inside its workflow, chosen by its inputs; a different purpose gets its own workflow. describe returns schemas; edit changes named steps, inputs, schedules or webhooks. Source lives under the Crew automation folder; runtime history stays separate. Run with functions action=run_trigger.",
-		"crew_skills":     "Discover, search, install, import or uninstall skills in this Crew. Use settings to select installed skills. GitHub imports accept the same optional private-repository token as the website tool.",
-		"crew_mcp":        "List connections/catalog, search, install/attach using the exact name returned by list, or catalog; for a new verified remote MCP pass name and url. Complete API key or OAuth app setup in chat using the install action's encrypted credential fields, return the real sign-in link, then verify discovery. Never repeat credentials. Removing detaches only this Crew, preserving other projects and logins. Use settings to select connections.",
-		"crew_folders":    "List, attach or detach this account's additional server folders within administrator-assigned roots. This changes all of the account's Crews, so it requires consent for all Crews without a file guard.",
-		"crew_references": "List accessible workflows and Crews with attached flags, or attach/detach an exact returned workspace_path. Workflow references are read-only; Crew references are shared read-write. Target access and connection bounds apply.",
+		"crew_workflows":  "Create and edit this project’s workflows (saved Python workflows; a project can have several, each with a unique name). Different tasks of one job are paths inside its workflow, chosen by its inputs; a different purpose gets its own workflow. describe returns schemas; edit changes named steps, inputs, schedules or webhooks. Source lives under the project automation folder; runtime history stays separate. Run with functions action=run_trigger.",
+		"crew_skills":     "Discover, search, install, import or uninstall skills in this project. Use settings to select installed skills. GitHub imports accept the same optional private-repository token as the website tool.",
+		"crew_mcp":        "List connections/catalog, search, install/attach using the exact name returned by list, or catalog; for a new verified remote MCP pass name and url. Complete API key or OAuth app setup in chat using the install action's encrypted credential fields, return the real sign-in link, then verify discovery. Never repeat credentials. Removing detaches only this project, preserving other projects and logins. Use settings to select connections.",
+		"crew_folders":    "List, attach or detach this account's additional server folders within administrator-assigned roots. This changes all of the account's projects, so it requires consent for all projects without a file guard.",
+		"crew_references": "List accessible workflows and projects with attached flags, or attach/detach an exact returned workspace_path. Workflow references are read-only; project references are shared read-write. Target access and connection bounds apply.",
 	}
 	for _, group := range groups {
 		reg, err := api.crewCapabilityTools(group, "", "Chats/Work/projects/catalog")
 		if err != nil {
 			return err
 		}
-		props := map[string]any{"crew_id": externalString("Crew ID returned by crew list.")}
+		props := map[string]any{"crew_id": externalString("Project ID returned by crew list.")}
 		actions := []string{}
 		for action := range externalCrewCapabilities[group] {
 			actions = append(actions, action)
@@ -115,7 +115,7 @@ func externalCrewCapabilityDefinitions(add func(string, string, bool, bool, map[
 			member := externalCrewCapabilities[group][action]
 			tool, ok := reg[member]
 			if !ok {
-				return fmt.Errorf("missing Crew capability %s", member)
+				return fmt.Errorf("missing project capability %s", member)
 			}
 			for key, value := range tool.schema["properties"].(map[string]any) {
 				props[key] = value
@@ -126,7 +126,7 @@ func externalCrewCapabilityDefinitions(add func(string, string, bool, bool, map[
 			actionValues[i] = action
 		}
 		props["action"] = map[string]any{"type": "string", "enum": actionValues}
-		add(group, descriptions[group]+" Reads require crews:read. Changes require crews:write, a current editable account and Crew ownership. Executes directly without a Builder model turn.", true, false, props, "crew_id", "action")
+		add(group, descriptions[group]+" Reads require crews:read. Changes require crews:write, a current editable account and project ownership. Executes directly without a Builder model turn.", true, false, props, "crew_id", "action")
 	}
 	return nil
 }
@@ -167,7 +167,7 @@ func (api *StreamingAPI) externalCrewCapabilityCall(w http.ResponseWriter, r *ht
 			scope = "crews:write"
 		}
 		if !token.Allows(scope) || !token.AllowsCrew(id) {
-			externalError(w, 403, "insufficient_scope", "This connection does not allow this action on this Crew.")
+			externalError(w, 403, "insufficient_scope", "This connection does not allow this action on this project.")
 			return
 		}
 	}
@@ -179,15 +179,15 @@ func (api *StreamingAPI) externalCrewCapabilityCall(w http.ResponseWriter, r *ht
 	}
 	crew, manifest, _, ok := api.externalCrewResolve(r.Context(), claims, id)
 	if !ok {
-		externalError(w, 404, "not_found", "Crew not found or not allowed.")
+		externalError(w, 404, "not_found", "Project not found or not allowed.")
 		return
 	}
 	if write && !crew.OwnedByCaller {
-		externalError(w, 403, "forbidden", "Only the Crew owner can change this configuration.")
+		externalError(w, 403, "forbidden", "Only the project owner can change this configuration.")
 		return
 	}
 	if group == "crew_folders" && (!crew.OwnedByCaller || token != nil && (!token.AllCrews || token.FileGuard != nil)) {
-		externalError(w, 403, "insufficient_scope", "Account-wide folder access requires the Crew owner and consent for all Crews without a file guard.")
+		externalError(w, 403, "insufficient_scope", "Account-wide folder access requires the project owner and consent for all projects without a file guard.")
 		return
 	}
 	root := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
@@ -199,13 +199,13 @@ func (api *StreamingAPI) externalCrewCapabilityCall(w http.ResponseWriter, r *ht
 	feature := map[string]string{"crew_workflows": "workflow-references", "crew_skills": "skills", "crew_mcp": "mcp", "crew_folders": "attached-folders", "crew_references": "workflow-references"}[group]
 	nativeCrewAutomation := group == "crew_workflows"
 	if !agentprofiles.HasFeature(profile, feature) || (!nativeCrewAutomation && !containsExactString(profile.ToolPolicy.Enabled, member)) {
-		externalError(w, 404, "tool_unavailable", "This Crew profile does not enable this capability.")
+		externalError(w, 404, "tool_unavailable", "This project profile does not enable this capability.")
 		return
 	}
 	// These native tools resolve managed child files/ledgers. Narrowed file grants
 	// cannot grant that entire operation through a different transport.
 	if nativeCrewAutomation && token != nil && token.FileGuard != nil {
-		externalError(w, 403, "protected_path", "This action needs access to the Crew automation files. Use a connection with full Crew file access.")
+		externalError(w, 403, "protected_path", "This action needs access to the project automation files. Use a connection with full project file access.")
 		return
 	}
 	if nativeCrewAutomation && write && refuseCrewOwnerOnline(w, r, id, claims.UserID) {
@@ -216,7 +216,7 @@ func (api *StreamingAPI) externalCrewCapabilityCall(w http.ResponseWriter, r *ht
 		return
 	}
 	if group == "crew_skills" && action == "uninstall" && token != nil && token.FileGuard != nil {
-		externalError(w, 403, "protected_path", "Uninstalling across native skill locations requires unrestricted Crew file consent.")
+		externalError(w, 403, "protected_path", "Uninstalling across native skill locations requires unrestricted project file consent.")
 		return
 	}
 	// Native-provider skill folders are included in the shared inventory; every
@@ -257,7 +257,7 @@ func (api *StreamingAPI) externalCrewCapabilityCall(w http.ResponseWriter, r *ht
 		selected, chosenOnly, err := projectAppSelection(r.Context(), root)
 		id := strings.TrimPrefix(strings.TrimSpace(externalArg(args, "name")), "vault_")
 		if err != nil || id == "" || !projectVaultAppInUse(r.Context(), selected, chosenOnly, id) {
-			externalError(w, 403, "forbidden", "Discovery is limited to the Vault apps this Crew uses.")
+			externalError(w, 403, "forbidden", "Discovery is limited to the Vault apps this project uses.")
 			return
 		}
 	}

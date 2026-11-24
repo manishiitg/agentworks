@@ -36,4 +36,4 @@ Access Exception to Verified Fix consumes access-review-matrix/v1 keyed by polic
 
 ## Boundaries
 
-Do not use real users or production identities without authorization, broaden privileges, make destructive privileged changes, or infer policy from current UI behavior. Installing this skill enables no scan, schedule, trigger, function, Automation, notification, or write. Never copy another Crew’s credentials.
+Do not use real users or production identities without authorization, broaden privileges, make destructive privileged changes, or infer policy from current UI behavior. Installing this skill enables no scan, schedule, trigger, function, Automation, notification, or write. Never copy another project’s credentials.

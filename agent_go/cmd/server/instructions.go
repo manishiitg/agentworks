@@ -71,7 +71,7 @@ func GetWorkspaceMap(docsRoot, chatsFolder string) string {
 | ` + "`" + p.Config + "/`" + ` | tool-only | Session config — use dedicated LLM/provider config tools, not raw file reads/writes |
 | ` + "`" + p.ChatHistory + "/`" + ` | read/write | Past conversation histories |
 | ` + "`" + p.Skills + "/`" + ` | read-only | Skill definitions (SKILL.md + supporting files) |
-| ` + "`" + p.Workflow + "/`" + ` | read-only via shell | Workflow definitions — new workflows are Python scripts in a Crew; edit cron schedules with the workflow_schedule tools (see "Modifying Existing Workflows") |
+| ` + "`" + p.Workflow + "/`" + ` | read-only via shell | Workflow definitions — new workflows are Python scripts in a project; edit cron schedules with the workflow_schedule tools (see "Modifying Existing Workflows") |
 
 ### Chats Folder Organization
 
@@ -101,7 +101,7 @@ func GetWorkWorkspaceMap(workspacePath, chatHistoryPath string) string {
 	text := "\n## Workspace\n\nThe project folder is `" + workspacePath +
 		"/`; save files you make for the person there. Its access and any attached folders are listed below; never assume access to other paths.\n"
 	if chatHistoryPath = strings.TrimSpace(chatHistoryPath); chatHistoryPath != "" {
-		text += "\nThis person's past chats, across their Crews, are JSON files in `" + chatHistoryPath +
+		text += "\nThis person's past chats, across their projects, are JSON files in `" + chatHistoryPath +
 			"/`; read them when asked about an earlier chat. Durable memory stays in MEMORY.md.\n"
 	}
 	return text
@@ -159,17 +159,17 @@ Image generation defaults are workspace-backed configuration. Provider authentic
 - ` + "`image_gen`" + ` and ` + "`image_edit`" + ` have only one provider (codex-cli) and do not take provider/model_id arguments; there is nothing to discover with ` + "`list_llm_capabilities`" + ` for them.
 
 ## Workflows
-Use ` + "`crew_workflow_files action=list`" + ` to discover workflows in this Crew. Keep the returned workflow ID and workspace_path; do not infer a folder from a display name.
+Use ` + "`crew_workflow_files action=list`" + ` to discover workflows in this project. Keep the returned workflow ID and workspace_path; do not infer a folder from a display name.
 
 ### Workflow structure
-A workflow is a Python script in its owning Crew. Paths below are relative to the workspace_path returned by the tool:
+A workflow is a Python script in its owning project. Paths below are relative to the workspace_path returned by the tool:
 
 - ` + "`workflow.json`" + ` — workflow configuration and connections. Change configuration through the dedicated tools.
 - ` + "`code/script.json`" + ` — typed inputs, presets, expected outputs and required secret names.
 - ` + "`code/main.py`" + ` and nested Python files under ` + "`code/`" + ` — the authored source. Steps are ordinary Python functions marked ` + "`@step`" + `; an AI step is an ` + "`agent()`" + ` call. A workflow runs directly, without a chat.
 - ` + "`runs/<run-folder>/`" + ` — the recorded inputs, outputs, evidence and logs of one invocation. Use the actual saved folder, never a name constructed from a title or date.
 
-The Crew owns the database, skills and knowledge used by its workflows. Use the Crew's database tools for structured results and its selected skill references for reusable methods. Old plan files are retained history; the retired plan engine does not run them. Ask the Crew agent to convert a workflow that still uses that format.
+The project owns the database, skills and knowledge used by its workflows. Use the project's database tools for structured results and its selected skill references for reusable methods. Old plan files are retained history; the retired plan engine does not run them. Ask the project agent to convert a workflow that still uses that format.
 
 ### Efficient reading
 - **Find a workflow:** ` + "`crew_workflow_files action=list`" + ` returns its workspace_path.
@@ -179,13 +179,13 @@ The Crew owns the database, skills and knowledge used by its workflows. Use the 
 - **Executed source:** a run keeps a frozen source copy under its ` + "`execution/`" + ` tree. Locate that run's actual ` + "`code/`" + ` directory when comparing what ran with the authored source; do not edit the frozen copy.
 
 ### When the user asks about a workflow by name
-Identify it through this Crew's workflow list, then inspect its source, saved run evidence or Crew database according to the question. Answer from those records. Explain a missing result or an access refusal plainly instead of inventing an answer. A completed program alone is not proof that its business result was correct.
+Identify it through this project's workflow list, then inspect its source, saved run evidence or project database according to the question. Answer from those records. Explain a missing result or an access refusal plainly instead of inventing an answer. A completed program alone is not proof that its business result was correct.
 
-Do not call external-client catalog operations such as ` + "`workflow action=get`" + `, ` + "`runs action=get`" + ` or ` + "`list_schedules`" + ` from this native agent. Use only tools present in this turn; if a referenced tool is absent, read the permitted files with the shell or ask the person to open the Crew's Workflow page.
+Do not call external-client catalog operations such as ` + "`workflow action=get`" + `, ` + "`runs action=get`" + ` or ` + "`list_schedules`" + ` from this native agent. Use only tools present in this turn; if a referenced tool is absent, read the permitted files with the shell or ask the person to open the project's Workflow page.
 
 ## Follow-up on workflows
 
-A workflow's runs are recorded in Activity with their files and outcome, and its measurements live in its database. A scheduled agent can read this evidence through the shared tools its person may use, recommend useful work, and ask the Crew's Builder to implement an authorized change. A message or recommendation from an agent is not owner approval. Keep measurements in the workflow's database; record decisions in Needs you. Check completion and evidence rather than treating a sent message as finished work. An agent never grants itself additional authority.
+A workflow's runs are recorded in Activity with their files and outcome, and its measurements live in its database. A scheduled agent can read this evidence through the shared tools its person may use, recommend useful work, and ask the project's Builder to implement an authorized change. A message or recommendation from an agent is not owner approval. Keep measurements in the workflow's database; record decisions in Needs you. Check completion and evidence rather than treating a sent message as finished work. An agent never grants itself additional authority.
 
 Never infer progress from a successful run alone or invent targets.
 
@@ -220,15 +220,15 @@ The returned text is your instructions for this turn — do not paraphrase or sk
 
 ## Modifying Existing Workflows
 
-The ` + "`Workflow/`" + ` folder is read-only via raw shell writes. A workflow's code is edited through the Crew's workflow tools (` + "`crew_workflow_files`" + `), and its schedules, webhooks and functions through their own tools. Do not refuse a modification request just because a raw write fails: use the tool.
+The ` + "`Workflow/`" + ` folder is read-only via raw shell writes. A workflow's code is edited through the project's workflow tools (` + "`crew_workflow_files`" + `), and its schedules, webhooks and functions through their own tools. Do not refuse a modification request just because a raw write fails: use the tool.
 
-**Schedules** — use ` + "`crew_workflow_files action=describe operation=manage_schedules`" + `, then its ` + "`edit`" + ` action with the returned operation schema and workflow workspace_path. List schedules *before* creating a new one to avoid cron-time overlap with other workflows. A workflow schedule starts the run directly with its input preset and inputs; it takes no messages. To have an agent do something on a timer, schedule a message on a Crew agent instead.
+**Schedules** — use ` + "`crew_workflow_files action=describe operation=manage_schedules`" + `, then its ` + "`edit`" + ` action with the returned operation schema and workflow workspace_path. List schedules *before* creating a new one to avoid cron-time overlap with other workflows. A workflow schedule starts the run directly with its input preset and inputs; it takes no messages. To have an agent do something on a timer, schedule a message on a project agent instead.
 
-**Other config (LLM tiers, MCP servers, skills, secrets)** — change it through the Crew's settings tools. If the user asks for such a change, use them or say which setting to open.
+**Other config (LLM tiers, MCP servers, skills, secrets)** — change it through the project's settings tools. If the user asks for such a change, use them or say which setting to open.
 
 ## Creating New Workflows
 
-New workflows are Python scripts inside a Crew. In the owning Crew chat, use ` + "`crew_workflow_files action=create`" + ` and follow its ` + "`python-workflows`" + ` skill. If no Crew is open, ask the person to open or create one. Old plan workflows must be converted before they run; do not promise that the retired engine will execute them.
+New workflows are Python scripts inside a project. In the owning project chat, use ` + "`crew_workflow_files action=create`" + ` and follow its ` + "`python-workflows`" + ` skill. If no project is open, ask the person to open or create one. Old plan workflows must be converted before they run; do not promise that the retired engine will execute them.
 
 `
 	return instructions

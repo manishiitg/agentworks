@@ -62,7 +62,7 @@ func (api *StreamingAPI) captureCrewHandoffConversation(ctx context.Context, cla
 		return nil, fmt.Errorf("the saved main conversation could not be read")
 	}
 	if doc.UserID != claims.UserID {
-		return nil, fmt.Errorf("only your own main conversation can move with this Crew")
+		return nil, fmt.Errorf("only your own main conversation can move with this project")
 	}
 	out := &crewHandoffConversation{ConversationID: conversation.ConversationID, ModelID: conversation.ModelID, History: doc.History}
 	if candidate, captureErr := api.captureCrewNative(ctx, claims, roots, conversation, doc.Runtime); captureErr != nil {

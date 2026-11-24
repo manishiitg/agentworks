@@ -366,18 +366,18 @@ func (api *StreamingAPI) localProjectAccess(w http.ResponseWriter, r *http.Reque
 			scope = "crews:write"
 		}
 		if !token.Allows(scope) || !token.AllowsCrew(id) || token.FileGuard != nil {
-			externalError(w, 403, "insufficient_scope", "Use a connection with full access to this own Crew.")
+			externalError(w, 403, "insufficient_scope", "Use a connection with full access to this own project.")
 			return crewProjectBinding{}, crewroot.Roots{}, false
 		}
 	}
 	crew, _, _, ok := api.externalCrewResolve(r.Context(), claims, id)
 	if !ok || crew.OwnerID != claims.UserID {
-		externalError(w, 404, "not_found", "Choose a Crew you own on this computer.")
+		externalError(w, 404, "not_found", "Choose a project you own on this computer.")
 		return crewProjectBinding{}, crewroot.Roots{}, false
 	}
 	roots, bound, err := localCrewRoots(crew.Binding.WorkspacePath)
 	if err != nil || !bound {
-		externalError(w, 404, "not_found", "This Crew does not use an existing local folder.")
+		externalError(w, 404, "not_found", "This project does not use an existing local folder.")
 		return crewProjectBinding{}, crewroot.Roots{}, false
 	}
 	if write {

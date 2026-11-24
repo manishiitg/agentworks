@@ -105,7 +105,7 @@ func (h FunctionElicitationHost) workspaceMaybeElicit(ctx context.Context, args 
 	original, _ := args["workspace_id"].(string)
 	state, _ := json.Marshal(workspaceInputState{Action: action, Workspace: status.Workspace, OriginalWorkspace: original, Chat: status.Chat, Query: status.Query, Request: input.Request, After: status.After})
 	return server.NewInputRequestBuilder(string(state)).Elicit(input.Request, mcp.ElicitationParams{
-		Mode: mcp.ElicitationModeForm, Message: "Please answer these questions to continue your Crew chat. Choose an option or enter another answer where offered.",
+		Mode: mcp.ElicitationModeForm, Message: "Please answer these questions to continue your project chat. Choose an option or enter another answer where offered.",
 		RequestedSchema: map[string]any{"type": "object", "properties": properties, "required": required},
 	}).ToolResult()
 }
@@ -117,14 +117,14 @@ func (s workspaceInputState) pollArgs() map[string]any {
 func (h FunctionElicitationHost) workspaceResume(ctx context.Context, args map[string]any, request mcp.CallToolRequest) *mcp.CallToolResult {
 	var state workspaceInputState
 	if json.Unmarshal([]byte(request.Params.RequestState), &state) != nil || state.Workspace == "" || state.Chat == "" || state.Query == "" || state.Request == "" || (state.Action != "ask" && state.Action != "read_chat") {
-		return mcp.NewToolResultError("invalid_request_state: expected the pending Crew Ask question")
+		return mcp.NewToolResultError("invalid_request_state: expected the pending project Ask question")
 	}
 	workspace, _ := args["workspace_id"].(string)
 	action, _ := args["action"].(string)
 	chat, _ := args["chat_id"].(string)
 	query, _ := args["query_id"].(string)
 	if action != state.Action || workspace != state.OriginalWorkspace || chat != "" && chat != state.Chat || query != "" && query != state.Query || !h.Available("workspace") {
-		return mcp.NewToolResultError("invalid_request_state: the Crew, chat or query changed")
+		return mcp.NewToolResultError("invalid_request_state: the project, chat or query changed")
 	}
 	response := server.ElicitationResponse(request.Params.InputResponses, state.Request)
 	if response == nil {

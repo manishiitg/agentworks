@@ -61,7 +61,7 @@ func (c *conditionService) validateTarget(ctx context.Context, job productSchedu
 	if cfg.Target.Kind == "feed" {
 		// The person's own Project activity in this Crew; nothing else is called.
 		if job.WatcherSource == nil || job.Profile.ID != crewProfileID {
-			return errors.New("feed Watchers are available in Crews")
+			return errors.New("feed Watchers are available in projects")
 		}
 		return nil
 	}
@@ -69,11 +69,11 @@ func (c *conditionService) validateTarget(ctx context.Context, job productSchedu
 		switch job.Profile.ID {
 		case "work":
 			if cfg.Target.Kind != "function" && cfg.Target.Kind != "agent" {
-				return errors.New("Crew watchers send to this Crew's chat or call a published function")
+				return errors.New("Project watchers send to this project's chat or call a published function")
 			}
 		case "relays":
 			if cfg.Target.Kind != "function" {
-				return errors.New("Crew and Flow watchers call a published function")
+				return errors.New("Project and Flow watchers call a published function")
 			}
 		case "agentworks":
 			if cfg.Target.Kind != "route" && cfg.Target.Kind != "trigger" {

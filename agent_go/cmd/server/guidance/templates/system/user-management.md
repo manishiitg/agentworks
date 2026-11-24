@@ -3,9 +3,9 @@
 Use the current server directory and admitted access tools. Read `panel-access`
 and its Sharing/Team procedure before changing a Crew. Inspect saved people,
 roles, audience and current caller authority; a guide, administrator role or
-copied URL does not grant access to another person's private Crew or chat.
+copied URL does not grant access to another person's private project or chat.
 
-A Crew has one main owner. Team invitations and People levels use the current
+A project has one main owner. Team invitations and People levels use the current
 Team service; a Python workflow inside it has no separate owners/readers array
 or execution team. Preserve people and settings not requested. Show native
 change previews and follow the service's confirmation flow. An invitation is

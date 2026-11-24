@@ -48,7 +48,7 @@ const macSharedAgentsMax = maxProjectChatsPerRequest
 
 func macSharedAgentsPath(project string) (string, error) {
 	if project == "" || strings.ContainsAny(project, `/\`) || project == "." || project == ".." {
-		return "", fmt.Errorf("invalid Crew identity")
+		return "", fmt.Errorf("invalid project identity")
 	}
 	state, err := crewroot.StateRoot()
 	return filepath.Join(state, "crew-sync", project+"-agents.json"), err
@@ -137,7 +137,7 @@ func cleanMacSharedAgents(in, previous []macSharedAgent) ([]macSharedAgent, erro
 		agent.Name, agent.Purpose = crewMacTabName(agent.Name), strings.Join(strings.Fields(agent.Purpose), " ")
 		switch {
 		case !crewMacTabID(agent.Tab):
-			return nil, fmt.Errorf("choose one of this Crew's tabs")
+			return nil, fmt.Errorf("choose one of this project's tabs")
 		case agent.Name == "":
 			return nil, fmt.Errorf("an agent needs a name")
 		case len([]rune(agent.Purpose)) > productAgentPurposeMaxRunes:
@@ -203,7 +203,7 @@ func (api *StreamingAPI) shareMacCrewAgents(w http.ResponseWriter, r *http.Reque
 	}
 	b, err := crewroot.ReadSync(roots.ID)
 	if err != nil || b == nil || b.Mode != "relay" || b.Side != "server" || b.Editing != "local" || input.PairID == "" || b.PairID != input.PairID {
-		externalError(w, 409, "wrong_pair", "Share this Crew's agents from the Mac that holds it.")
+		externalError(w, 409, "wrong_pair", "Share this project's agents from the Mac that holds it.")
 		return
 	}
 	previous := readAllMacSharedAgents(roots.ID)
@@ -410,7 +410,7 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 		if team, err := readCrewTeam(projectID); err == nil && crewTeamAgentsVisible(team, claims.UserID) && claims.UserID != owner {
 			externalError(w, 403, "agent_unavailable", "This agent is no longer shared with the team.")
 		} else {
-			externalError(w, 403, "crew_on_mac", "This Crew lives on its owner's Mac and isn't shared with you.")
+			externalError(w, 403, "crew_on_mac", "This project lives on its owner's Mac and isn't shared with you.")
 		}
 		return true
 	}
@@ -452,7 +452,7 @@ func (api *StreamingAPI) macSharedAgentCall(w http.ResponseWriter, r *http.Reque
 			}
 			binding, err := resolveCrewProjectBinding(r.Context(), owner, profile, projectID, "")
 			if err != nil || binding.OwnerID != owner {
-				externalError(w, 403, "agent_unavailable", "This agent's Crew is unavailable.")
+				externalError(w, 403, "agent_unavailable", "This agent's project is unavailable.")
 				return true
 			}
 			// Preserve the validated Crew root in the mailbox endpoint. Delivery
@@ -587,7 +587,7 @@ func macSharedAgentRows(caller string, byAgent bool) []map[string]any {
 				presence = "Answers now, on its owner's Mac"
 			}
 			target := "workspace:" + crewProfileID + ":" + project
-			rows = append(rows, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": target + "/agent/" + agent.Tab, "target": target, "crew_id": project,
+			rows = append(rows, map[string]any{"kind": "crew_agent", "type": "Project agent", "id": target + "/agent/" + agent.Tab, "target": target, "crew_id": project,
 				"chat_id": macSharedAgentChatKey(project, agent.Tab), "name": agent.Name, "crew_name": ownerShort + "'s Mac", "purpose": agent.Purpose, "examples": agent.Examples, "presence": presence, "your_access": "run",
 				"reach":       "workspace action=ask with workspace_id=" + crewProfileID + ":" + project + " and this chat_id, then read_chat for its answer",
 				"owner_short": ownerShort, "crew_title": title, "available": available, "watch_only": crewTeamMember(project, caller)})
@@ -670,7 +670,7 @@ func (api *StreamingAPI) pushMacSharedAgents(ctx context.Context, claims *UserCl
 	for i := range agents {
 		at := slices.IndexFunc(rows, func(row macAgentRow) bool { return row.Tab == agents[i].Tab })
 		if at < 0 {
-			return 400, "invalid_agents", fmt.Errorf("Choose one of this Crew's agents.")
+			return 400, "invalid_agents", fmt.Errorf("Choose one of this project's agents.")
 		}
 		agents[i].Name, agents[i].Purpose = rows[at].Name, rows[at].Purpose
 		agents[i].Examples = rows[at].Examples

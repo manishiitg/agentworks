@@ -44,7 +44,7 @@ has withheld read access in that case, or enable it automatically.
 
 ### Connecting through either OAuth source
 
-The same **Connect a Google account** form is used by Code, Crew and workflows<!-- product:relays -->, and
+The same **Connect a Google account** form is used by Code, project and workflows<!-- product:relays -->, and
 Flows<!-- /product -->. The owner/admin can choose the **Company Google app** configured by the
 deployment administrator, a saved named app, or **Use my own OAuth JSON**. For
 an upload, the person gives the app a unique name and uploads the original file

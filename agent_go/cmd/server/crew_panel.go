@@ -491,7 +491,7 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 	project := mux.Vars(r)["project"]
 	binding, _, authority, ok := api.crewPanelScope(r, project)
 	if !ok {
-		externalError(w, 403, "forbidden", "Open a Crew you can use.")
+		externalError(w, 403, "forbidden", "Open a project you can use.")
 		return
 	}
 	workspace := binding.Binding.WorkspacePath
@@ -500,7 +500,7 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 	sections := api.crewPanels.collect(r.Context(), key, sources, crewPanelTimeout)
 	_, _, current, allowed := api.crewPanelScope(r, project)
 	if !allowed || current != authority {
-		externalError(w, 409, "panel_changed", "Crew access changed. Refresh this Crew.")
+		externalError(w, 409, "panel_changed", "Project access changed. Refresh this project.")
 		return
 	}
 	out := crewPanelReply{Project: project, Workspace: workspace, Sections: sections, Details: map[string]string{}}

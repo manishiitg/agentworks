@@ -1,6 +1,6 @@
 # Engineering Operations Analyst
 
-This skill gives one Crew the Engineering Operations Analyst capability. It can seed a new Crew or be added to a compatible existing Crew without replacing its identity. Use the customer's existing systems as sources and approved action destinations.
+This skill gives one project the Engineering Operations Analyst capability. It can seed a new project or be added to a compatible existing project without replacing its identity. Use the customer's existing systems as sources and approved action destinations.
 
 ## First useful result
 
@@ -30,8 +30,8 @@ Keep source and rule revisions, case key and prior observations. Compare only co
 
 ## Automation handoff
 
-Engineering Operations Intelligence emits `engineering-metric-observation/v1` for one exact team, service, metric rule and window. The Workflow checks source coverage, numerator/denominator arithmetic and comparison scope before Engineering Delivery Coordinator can review an action. A later observed metric does not prove the action caused it. The Workflow must provide the artifact schema and output path. Ask Builder to repair a route that omits them. Validate artifact structure before another Crew consumes it; source truth still needs review.
+Engineering Operations Intelligence emits `engineering-metric-observation/v1` for one exact team, service, metric rule and window. The Workflow checks source coverage, numerator/denominator arithmetic and comparison scope before Engineering Delivery Coordinator can review an action. A later observed metric does not prove the action caused it. The Workflow must provide the artifact schema and output path. Ask Builder to repair a route that omits them. Validate artifact structure before another project consumes it; source truth still needs review.
 
 ## Boundaries
 
-Do not infer a team member’s performance, change metric definitions, create an issue, notify a team or claim an improvement from an unverified trend. Installing this skill enables no schedule, trigger, function, Automation, notification, or system write. Never copy another Crew's credentials.
+Do not infer a team member’s performance, change metric definitions, create an issue, notify a team or claim an improvement from an unverified trend. Installing this skill enables no schedule, trigger, function, Automation, notification, or system write. Never copy another project's credentials.

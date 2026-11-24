@@ -8,11 +8,11 @@ AgentBridge sharing setting.
 
 ## Choose the right agent
 
-Crew agents are persistent chat tabs with their own conversations. Use `sessions`
-to list, open or fork tabs in this Crew; read `crew-agents` for details.
+Project agents are persistent chat tabs with their own conversations. Use `sessions`
+to list, open or fork tabs in this project; read `crew-agents` for details.
 AgentBridge messages app tabs and external coding agents through authorized network
 connections. A CLI's internal subagent is a helper inside its provider session,
-not automatically a Crew tab or an AgentBridge identity. Do not substitute one
+not automatically a project tab or an AgentBridge identity. Do not substitute one
 kind of agent for another.
 
 **Connected** and **Discovery** are different: a connection makes the network
@@ -54,7 +54,7 @@ continue other work rather than polling or sending acknowledgement loops.
 ## Keep the person's chat boundaries
 
 Connect or disconnect only the person's own current native chat when they ask;
-do not select or attach someone else's chat. Load `crew-agents` in Crew or the
+do not select or attach someone else's chat. Load `crew-agents` in project or the
 current network guidance for exact own-chat setup, returning the actual setup
 link/instructions from the backend. Connecting does not itself turn on Discovery for a chat's agent.
 
@@ -65,14 +65,14 @@ returned. To people, describe network visibility as Discovery on/off
 Every message to an agent lands in that agent's one chat, marked with who sent
 it. A message does not let its sender type in or control another person's tab,
 or expand their access. Workflows run as Python scripts; discuss them with the
-Crew agent and inspect their Runs.
+Project agent and inspect their Runs.
 
 
 ## shared agents
 
 Teammates' shared agents are reached only through AgentBridge at the exact `agent:` address returned by discovery; there is no separate in-app Team messaging route or `team:` target. Current membership and Shared with team are checked on every use. Use `messages action=ask` for a question. If the agent is offline, follow the Team guide (`references/team/SKILL.md`). Read and reply in the original inbox.
 
-Claude Code or Codex joins a Crew from the installed plugin Crew skill (Claude: `/agentworks:crew <Crew ID>`), or its `agentworks` tool `action=join` with `project=<Crew ID>`; explicit `action=leave` removes it. This exact session must already be connected. The person must own the Crew or be a current member of its active Team, not just have dashboard Run access. The server returns Crew instructions and an owner-admitted local folder or accepted Team copy; follow the instructions and work there. With no local copy it returns `copy=null`, `folders=[]`: the files stay on the server; ask its agents or add the Crew to this Mac in AgentWorks. Never supply or guess a server/local path or a native session. Keep the Mac app running for shared sync. A new join follows the Crew's Team: Shared with team, with no rule of its own (it helps teammates as it helps its person) when on; only the person and their own agents when off. Turning Team on later needs no rejoin; rejoin keeps Only me/Live choices. The owner can read their own exact terminal journal; other people's native text requires explicit Live. One terminal agent joins one Crew until it leaves. Saved Discovery stays saved but grants no audience while joined; leaving restores it. Team keys stay server-only.
+Claude Code or Codex joins a project from the installed plugin project skill (Claude: `/agentworks:crew <project ID>`), or its `agentworks` tool `action=join` with `project=<project ID>`; explicit `action=leave` removes it. This exact session must already be connected. The person must own the project or be a current member of its active Team, not just have dashboard Run access. The server returns project instructions and an owner-admitted local folder or accepted Team copy; follow the instructions and work there. With no local copy it returns `copy=null`, `folders=[]`: the files stay on the server; ask its agents or add the project to this Mac in AgentWorks. Never supply or guess a server/local path or a native session. Keep the Mac app running for shared sync. A new join follows the project's Team: Shared with team, with no rule of its own (it helps teammates as it helps its person) when on; only the person and their own agents when off. Turning Team on later needs no rejoin; rejoin keeps Only me/Live choices. The owner can read their own exact terminal journal; other people's native text requires explicit Live. One terminal agent joins one project until it leaves. Saved Discovery stays saved but grants no audience while joined; leaving restores it. Team keys stay server-only.
 
 Codex terminal delivery uses approved hooks at turn boundaries, not Claude’s idle live channel. For one explicit bounded wait in the exact attached Codex tool call, use `agentworks bridge message watch --provider codex --after 0`, then retain the returned next_cursor. It waits up to 20 seconds once and exits; never create a polling loop, approve hooks, or promise immediate idle wake.
 
@@ -84,7 +84,7 @@ Use `messages action=queue` to hand off new work without interrupting a busy age
 Use `messages action=ask` for work or a question that needs a reply. Use
 `messages action=send` for an FYI or status update; it is a notification by
 default and does not open a task or trigger a reminder. When a send needs a
-reply, set `expects_reply=true` (Crew chat: `ask=true` also marks a request).
+reply, set `expects_reply=true` (Project chat: `ask=true` also marks a request).
 Delivered requests say **Reply expected**; notifications say **For your
 information, no reply needed**. Neither grants permission to act or changes who may read.
 
@@ -118,7 +118,7 @@ current turn to finish; it never steers and opens no follow-up task. A request
 starts a turn when idle.
 A reply to a request reaches and wakes its asker. Attached native sessions
 receive admitted messages through their existing channel, including first contact. Do not write "please reply" on an FYI and
-expect a response: use ask (Crew chat: send with ask=true) or expects_reply=true
+expect a response: use ask (Project chat: send with ask=true) or expects_reply=true
 when a reply is needed.
 
 
@@ -131,4 +131,4 @@ requests). Examples describe work you actually handle, not new permissions,
 claims about unavailable tools, or private/customer details. They are searchable
 directory metadata; they never instruct another agent or expand access.
 
-In an app Crew chat, save the same `examples` on your own `set_my_agent_identity` action alongside your one-line purpose. No form or separate skills record is needed.
+In an app project chat, save the same `examples` on your own `set_my_agent_identity` action alongside your one-line purpose. No form or separate skills record is needed.

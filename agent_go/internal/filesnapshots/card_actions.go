@@ -114,7 +114,7 @@ func CardActions(groups []Group, canEdit bool, cardCommands []commands.Command) 
 		}
 		out = append(out, CardAction{ID: "command:" + fm.Name, Kind: "command", Label: fm.Name, AriaLabel: aria, Description: description, Icon: fm.Icon, Placement: placement, Prompt: commandPrompt(command.Content, cardContext(groups)), EditorsOnly: true})
 	}
-	out = append(out, CardAction{ID: CardAddButton, Kind: "builtin", Label: "Add button", Description: "Save a reusable button on this Crew's file-change toolbar.", Icon: "plus", Placement: "row", Prompt: "Add a reusable button to this Crew's AgentWorks \"Files changed during this reply\" toolbar.\n\nButton name: ___\nMessage to send when clicked: ___\n\nRead the crew-builder skill's reply-card button guidance. Save this Crew command with manage_custom_commands and show_on_card=true, using a fitting icon.", EditorsOnly: true})
+	out = append(out, CardAction{ID: CardAddButton, Kind: "builtin", Label: "Add button", Description: "Save a reusable button on this project's file-change toolbar.", Icon: "plus", Placement: "row", Prompt: "Add a reusable button to this project's AgentWorks \"Files changed during this reply\" toolbar.\n\nButton name: ___\nMessage to send when clicked: ___\n\nRead the crew-builder skill's reply-card button guidance. Save this project command with manage_custom_commands and show_on_card=true, using a fitting icon.", EditorsOnly: true})
 	return append(out, links...)
 }
 
@@ -164,7 +164,7 @@ func getLatestPrompt(g Group) string {
 
 func groupFolder(g Group) string {
 	if g.Root == "" {
-		return "the Crew folder"
+		return "the project folder"
 	}
 	return g.Root
 }

@@ -165,7 +165,7 @@ func crewLoginHint(ctx context.Context, project, ownServer string) string {
 		if host := serverHost(own); host != "" {
 			where = "this chat is connected to " + host
 		}
-		return fmt.Sprintf("This Crew is on %s (login: %s), but %s. Move this chat there with: agentworks attach --on %s (or type /agentworks attach --on %s in the chat), then join again.", serverHost(g.server), g.names(), where, login, login)
+		return fmt.Sprintf("This project is on %s (login: %s), but %s. Move this chat there with: agentworks attach --on %s (or type /agentworks attach --on %s in the chat), then join again.", serverHost(g.server), g.names(), where, login, login)
 	}
-	return "None of your saved logins can see this Crew. Check the Crew ID, or sign in to the server it is on with agentworks login --server URL --name NAME."
+	return "None of your saved logins can see this project. Check the project ID, or sign in to the server it is on with agentworks login --server URL --name NAME."
 }

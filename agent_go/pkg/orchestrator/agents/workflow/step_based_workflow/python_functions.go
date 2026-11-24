@@ -15,7 +15,7 @@ import (
 func (hcpo *StepBasedWorkflowOrchestrator) pythonFunctionTools(ctx context.Context, stepID string) ([]llmtypes.Tool, map[string]interface{}, error) {
 	opts := hcpo.GetExecutionOptions()
 	if opts == nil || opts.AgentFunctionTools == nil || hcpo.selectedRunFolder == "" {
-		return nil, nil, fmt.Errorf("Crew function calls are unavailable to this automation; open its Crew chat to check its connections.")
+		return nil, nil, fmt.Errorf("Project function calls are unavailable to this automation; open its project chat to check its connections.")
 	}
 	identity, _ := json.Marshal([]string{hcpo.GetWorkspacePath(), hcpo.selectedRunFolder, stepID})
 	hash := sha256.Sum256(identity)
@@ -40,7 +40,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonFunction(ctx context.Context
 	}
 	execute, ok := executors[tool].(func(context.Context, map[string]interface{}) (string, error))
 	if !ok {
-		return pythonHelperReply{Error: "This automation's Crew function service is unavailable."}
+		return pythonHelperReply{Error: "This automation's project function service is unavailable."}
 	}
 	raw, err := execute(ctx, args)
 	if err != nil {

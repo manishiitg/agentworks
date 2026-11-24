@@ -95,7 +95,7 @@ func workspaceProxyHandler() http.Handler {
 				if status == http.StatusForbidden {
 					message = "cross-user workspace access denied"
 					if workspaceProxyRelativePath(r) == "api/upload" {
-						message = "This folder is unavailable for uploads. Reopen the Crew and attach the file from its chat."
+						message = "This folder is unavailable for uploads. Reopen the project and attach the file from its chat."
 					}
 				}
 				http.Error(w, message, status)

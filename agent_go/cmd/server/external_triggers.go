@@ -11,7 +11,7 @@ import (
 // is returned once, on create or rotate, as in the app.
 
 func externalTriggerDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_triggers", "List, create, update or delete the webhooks of a workflow or Flow (a Crew's webhooks belong to its workflow: pass the workflow), or read a trigger's recent deliveries (runs): authenticated HTTP webhooks; for workflows and Flows also test a trigger and read a test run's status. Pass project. List first: it shows declared variables, saved routes and existing triggers. A webhook's secret is returned once, when it is created or rotated.", true, false, map[string]any{
+	add("manage_triggers", "List, create, update or delete the webhooks of a workflow or Flow (a project's webhooks belong to its workflow: pass the workflow), or read a trigger's recent deliveries (runs): authenticated HTTP webhooks; for workflows and Flows also test a trigger and read a test run's status. Pass project. List first: it shows declared variables, saved routes and existing triggers. A webhook's secret is returned once, when it is created or rotated.", true, false, map[string]any{
 		"project": externalString("Project ID or name."),
 		"action":  map[string]any{"type": "string", "enum": []any{"list", "create", "update", "delete", "test", "status", "runs"}},
 		"limit":   externalInteger(1, 100),
@@ -61,7 +61,7 @@ func (api *StreamingAPI) externalWorkflowTriggerCall(w http.ResponseWriter, r *h
 // externalCrewTriggerCall answers manage_triggers for a Crew: a Crew has no webhooks of its own (#3286); its
 // webhooks belong to its workflow.
 func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, _ *http.Request, _ map[string]any, _ string) {
-	externalError(w, 400, "use_workflow", errCrewMessageWebhookRemoved.Error()+". Pass the Crew's workflow as project.")
+	externalError(w, 400, "use_workflow", errCrewMessageWebhookRemoved.Error()+". Pass the project's workflow as project.")
 }
 
 // externalTriggerJSON passes the shared implementation's JSON through, and

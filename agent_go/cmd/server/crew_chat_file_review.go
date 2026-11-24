@@ -187,7 +187,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
 	project := r.URL.Query().Get("history_scope") == "project"
 	if project && !crewProjectOwnedByCaller(GetUserIDFromContext(r.Context()), root) {
-		externalError(w, 403, "forbidden", "Open project history in a Crew you own.")
+		externalError(w, 403, "forbidden", "Open project history in a project you own.")
 		return
 	}
 	if !project && api.eventStore == nil {

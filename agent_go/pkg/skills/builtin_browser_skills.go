@@ -137,7 +137,7 @@ curl http://127.0.0.1:9333/json/version
 ` + "```" + `
 
 Do not run the installer yourself unless the user explicitly asks you to
-install and open a visible local browser. Workflows use the standard Chrome connection. A Crew may select its existing
+install and open a visible local browser. Workflows use the standard Chrome connection. A project may select its existing
 browser connection. The current run must use only the endpoint its prompt
 authorizes.
 
@@ -197,7 +197,7 @@ HAR files and videos can capture credentials or other visible secrets. Create th
 
 ## Headless Rules
 
-- Managed headless browsing uses one persistent browser per workflow. Its authorized users, Crew agent, runs and Python steps share it; unrelated workflows have separate browsers. Session labels do not create browsers.
+- Managed headless browsing uses one persistent browser per workflow. Its authorized users, project agent, runs and Python steps share it; unrelated workflows have separate browsers. Session labels do not create browsers.
 - Tabs are optional: reuse the current/existing tab or create one when useful. Coordinate parallel tasks and re-snapshot before interacting. Do not close/reset the browser, clear storage, or sign out merely because your step finished.
 - During capture, other runs wait until the recording stops. Preserve the browser and sign-ins at completion.
 - Users can watch and interact in the workflow Browser view. Use workspace view tools to show that view when appropriate.
@@ -219,7 +219,7 @@ remains read-only to the agent.
 
 ## Selector Discipline
 
-This is the shared selector contract for Crew chats, Python workflow steps,
+This is the shared selector contract for project chats, Python workflow steps,
 saved scripts, and browser learnings.
 
 1. **Snapshot first.** Start with an interactive snapshot, scoped to the relevant

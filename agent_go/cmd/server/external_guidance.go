@@ -499,7 +499,7 @@ func (api *StreamingAPI) externalAgentContext(w http.ResponseWriter, r *http.Req
 func externalPreparation(claims *UserClaims) []string {
 	steps := []string{
 		"Choose a product with help action=topic topic=product-guide. For an installable MCP usage skill, request help action=skills topics=[agentworks-mcp]. These are versioned server guidance, independent of Brain access.",
-		"Use only tools and actions present in this connection’s catalog. Each call rechecks existing consent, current account/project roles and connection bounds. Saved Python workflows run directly; Crew conversations use the Crew's chat. Each entry keeps its existing permissions.",
+		"Use only tools and actions present in this connection’s catalog. Each call rechecks existing consent, current account/project roles and connection bounds. Saved Python workflows run directly; project conversations use the project's chat. Each entry keeps its existing permissions.",
 		"Call workflow action=list to discover workflow IDs; IDs are never filesystem paths.",
 		"Load only the guidance topics relevant to the task; topic list via help action=topics.",
 		"Use files action=link for preview/download URLs; links identify a file and never grant permission.",
@@ -516,13 +516,13 @@ func externalPreparation(claims *UserClaims) []string {
 		steps = append(steps, "To run a saved Python workflow, use runs action=start with its declared inputs. Read the returned run record and its outputs/logs using the evidence operations named in the reply.")
 	}
 	if claims == nil || externalTokenAllows(claims, externalTool{Name: "ask_crew"}) {
-		steps = append(steps, "To talk to a Crew, use workspace action=ask with crew_id and message. Read messages action=read using the returned inbox_id; reuse that inbox for the same conversation. This is separate from a workflow run.")
+		steps = append(steps, "To talk to a project, use workspace action=ask with crew_id and message. Read messages action=read using the returned inbox_id; reuse that inbox for the same conversation. This is separate from a workflow run.")
 	}
 	if claims != nil && externalTokenAllows(claims, externalTool{Name: "workflow_google_account"}) {
 		steps = append(steps, "For personal Google or Slack accounts, use integrations with workflow_id or crew_id. Start with action=google_list_saved or slack_list_saved. The corresponding attach/detach action changes only this item; connect/reconnect returns a browser sign-in link; disconnect removes the saved connection everywhere. Existing Builder access, account ownership and current item access apply.")
 	}
 	if claims != nil && externalTokenAllows(claims, externalTool{Name: "crew_execution"}) {
-		steps = append(steps, "Crew owners use terminal, browser and integrations for the direct operations offered by get_api_spec. terminal action=history reads existing owner execution records. sessions runtime_tools/runtime_call use only your own chat. Current authoring, selected account, sandbox and browser checks apply.")
+		steps = append(steps, "Project owners use terminal, browser and integrations for the direct operations offered by get_api_spec. terminal action=history reads existing owner execution records. sessions runtime_tools/runtime_call use only your own chat. Current authoring, selected account, sandbox and browser checks apply.")
 	}
 	if claims != nil && claims.AccessToken != nil {
 

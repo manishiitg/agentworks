@@ -142,11 +142,11 @@ func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, 
 	claims := GetUserFromContext(r.Context())
 	tab, validTab := codeShellTab(r)
 	if !validTab {
-		return "", "", "", "", "", http.StatusBadRequest, fmt.Sprintf("a Crew has at most %d terminals (tab 1 to %d)", codeShellMaxTabs, codeShellMaxTabs)
+		return "", "", "", "", "", http.StatusBadRequest, fmt.Sprintf("a project has at most %d terminals (tab 1 to %d)", codeShellMaxTabs, codeShellMaxTabs)
 	}
 	projectID = strings.TrimSpace(mux.Vars(r)["project_id"])
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" || projectID == "" || api == nil || api.agentProfiles == nil {
-		return "", "", "", "", "", http.StatusNotFound, "Crew workspace not found"
+		return "", "", "", "", "", http.StatusNotFound, "Project workspace not found"
 	}
 	profileID := strings.TrimSpace(mux.Vars(r)["id"])
 	if profileID == "" {
@@ -157,11 +157,11 @@ func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, 
 	}
 	profile, err := api.agentProfiles.Resolve(profileID, 0, claims.UserID)
 	if err != nil || !userAllowedProduct(claims, profile.Product) {
-		return "", "", "", "", "", http.StatusNotFound, "Crew workspace not found"
+		return "", "", "", "", "", http.StatusNotFound, "Project workspace not found"
 	}
 	project, err := resolveCrewProjectBinding(r.Context(), claims.UserID, profile, projectID, "")
 	if err != nil {
-		return "", "", "", "", "", http.StatusNotFound, "Crew workspace not found"
+		return "", "", "", "", "", http.StatusNotFound, "Project workspace not found"
 	}
 	if !project.OwnedByCaller || !userAccessForClaims(claims).CanEdit {
 		return "", "", "", "", "", http.StatusForbidden, "Only a project Builder can use its terminal"

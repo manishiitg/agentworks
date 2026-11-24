@@ -279,12 +279,12 @@ func (api *StreamingAPI) appearanceImageFile(w http.ResponseWriter, r *http.Requ
 	}
 	ref := request.ImageFile
 	if ref == nil || ref.CrewID == "" || ref.Path == "" {
-		http.Error(w, "Choose an image_file in a Crew you can access.", 400)
+		http.Error(w, "Choose an image_file in a project you can access.", 400)
 		return
 	}
 	p, err := wf.CleanRelative(ref.Path)
 	if err != nil || p == "." {
-		http.Error(w, "Use a Crew-relative image path.", 400)
+		http.Error(w, "Use a project-relative image path.", 400)
 		return
 	}
 	claims := GetUserFromContext(r.Context())
@@ -294,12 +294,12 @@ func (api *StreamingAPI) appearanceImageFile(w http.ResponseWriter, r *http.Requ
 	}
 	binding, _, _, ok := api.externalCrewResolve(r.Context(), claims, ref.CrewID)
 	if !ok {
-		http.Error(w, "Choose a file in a Crew you can access.", 403)
+		http.Error(w, "Choose a file in a project you can access.", 403)
 		return
 	}
 	roots, bound, err := localCrewRoots(binding.Binding.WorkspacePath)
 	if err != nil {
-		http.Error(w, "Crew folder unavailable.", 400)
+		http.Error(w, "Project folder unavailable.", 400)
 		return
 	}
 	if bound && roots.SeparateFiles() {
@@ -312,7 +312,7 @@ func (api *StreamingAPI) appearanceImageFile(w http.ResponseWriter, r *http.Requ
 		Size          int64  `json:"size"`
 	}
 	if reply.Code >= 400 || json.Unmarshal(reply.Body.Bytes(), &file) != nil || file.Size > appearanceImageMaxBytes || len(file.ContentBase64) > base64.StdEncoding.EncodedLen(appearanceImageMaxBytes) {
-		http.Error(w, "Read an image up to 5 MB from a Crew you can access.", 400)
+		http.Error(w, "Read an image up to 5 MB from a project you can access.", 400)
 		return
 	}
 	data, err := base64.StdEncoding.DecodeString(file.ContentBase64)
@@ -403,7 +403,7 @@ func (api *StreamingAPI) appearanceImageLibrary(w http.ResponseWriter, r *http.R
 // same existing local OS-owner/settings admission protects Mac aerial imports.
 func (api *StreamingAPI) appearanceLocalImage(w http.ResponseWriter, r *http.Request, request appearanceRequest) {
 	if !computerUseAllowed(GetUserFromContext(r.Context())) {
-		http.Error(w, "Import a local image through your own Mac connection, or use image_file from a Crew you can read.", 403)
+		http.Error(w, "Import a local image through your own Mac connection, or use image_file from a project you can read.", 403)
 		return
 	}
 	source := request.ImagePath

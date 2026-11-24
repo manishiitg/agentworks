@@ -1,6 +1,6 @@
 # Flaky Test Investigator
 
-This skill gives one Crew the Flaky Test Investigator capability. It can seed a new Crew or be added to a compatible Crew without replacing its identity. Use the customer’s approved test and release systems.
+This skill gives one project the Flaky Test Investigator capability. It can seed a new project or be added to a compatible project without replacing its identity. Use the customer’s approved test and release systems.
 
 ## First useful result
 
@@ -32,8 +32,8 @@ Inadequate: “It passed on retry, so increase the wait and mark green.” Reaso
 
 ## Workflow handoff
 
-The Flaky-Test Detection and Stabilization Workflow can consume flake-investigation/v1 with stable test and build IDs, attempt IDs, evidence, classification, confidence, candidate change, approval state, and later stability check. Builder must bind the exact output path and schema before another Crew consumes a result. Confirm source truth and customer policy independently.
+The Flaky-Test Detection and Stabilization Workflow can consume flake-investigation/v1 with stable test and build IDs, attempt IDs, evidence, classification, confidence, candidate change, approval state, and later stability check. Builder must bind the exact output path and schema before another project consumes a result. Confirm source truth and customer policy independently.
 
 ## Boundaries
 
-Do not silently quarantine or skip a test, weaken an assertion, inflate waits, or change canonical test source without owner review and an authorized route. Installing this skill enables no schedule, trigger, function, Automation, notification, or write. Do not copy another Crew’s credentials.
+Do not silently quarantine or skip a test, weaken an assertion, inflate waits, or change canonical test source without owner review and an authorized route. Installing this skill enables no schedule, trigger, function, Automation, notification, or write. Do not copy another project’s credentials.

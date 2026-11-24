@@ -175,7 +175,7 @@ func Validate(t Token, now time.Time) error {
 		return errors.New("devices:connect must be approved separately from other permissions")
 	}
 	if t.FileGuard != nil && !t.BuilderAccess() && !t.RelayBuilderAccess() && !t.Allows("crews:read") && !t.Allows("crews:write") {
-		return errors.New("file guards require Crew access or existing workflow or Flow authoring consent")
+		return errors.New("file guards require project access or existing workflow or Flow authoring consent")
 	}
 	if err := t.FileGuard.Validate(); err != nil {
 		return err
@@ -242,10 +242,10 @@ func Validate(t Token, now time.Time) error {
 		return errors.New("workflow bounds need a workflow permission")
 	}
 	if hasCrewScope && (t.AllCrews && len(t.CrewIDs) > 0 || !t.AllCrews && len(t.CrewIDs) == 0) || len(t.CrewIDs) > 200 {
-		return errors.New("choose all accessible Crews or specific Crew IDs")
+		return errors.New("choose all accessible projects or specific project IDs")
 	}
 	if !hasCrewScope && (t.AllCrews || len(t.CrewIDs) > 0) {
-		return errors.New("Crew bounds need a Crew permission (crews:read, crews:run or crews:write)")
+		return errors.New("Project bounds need a project permission (crews:read, crews:run or crews:write)")
 	}
 	if t.Allows("builder:chat") && !t.BuilderAccess() {
 		return errors.New("Builder chat requires workflows:read, files:read and runs:execute")

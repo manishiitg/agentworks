@@ -189,7 +189,7 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 	}
 	next := localHistoryNotice(input.RecentOnly)
 	if selected.Provider == "cursor-cli" && !input.RecentOnly {
-		next = "The same Cursor CLI conversation is open in its own tab, with its saved history. Close it in Cursor before sending here. The Crew's current permissions apply."
+		next = "The same Cursor CLI conversation is open in its own tab, with its saved history. Close it in Cursor before sending here. The project's current permissions apply."
 	}
 	writeAgentProfileJSON(w, 200, map[string]any{"conversation_key": key, "conversation_id": conversation.ConversationID, "session_id": conversation.SessionID, "provider": selected.Provider, "connection_id": selected.Source.ConnectionID, "name": selected.Title, "account": selected.Account, "engine": engine, "model_id": model, "next": next, "recent_only": input.RecentOnly})
 }

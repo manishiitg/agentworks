@@ -40,18 +40,18 @@ func (s *ProjectActionDispatcher) crewFunctionTarget(r *http.Request, manage boo
 		}, true, 0, ""
 	}
 	if s.registry == nil {
-		return triggerTarget{}, false, http.StatusNotFound, "Crew not found"
+		return triggerTarget{}, false, http.StatusNotFound, "Project not found"
 	}
 	profile, err := s.registry.Resolve(profileID, 0, userID)
 	if err != nil {
-		return triggerTarget{}, false, http.StatusNotFound, "Crew not found"
+		return triggerTarget{}, false, http.StatusNotFound, "Project not found"
 	}
 	project, err := resolveCrewProjectBinding(r.Context(), userID, profile, projectID, "")
 	if err != nil {
-		return triggerTarget{}, false, http.StatusNotFound, "Crew not found"
+		return triggerTarget{}, false, http.StatusNotFound, "Project not found"
 	}
 	if manage && !project.OwnedByCaller {
-		return triggerTarget{}, false, http.StatusForbidden, "Only the Crew's owner can change its functions."
+		return triggerTarget{}, false, http.StatusForbidden, "Only the project's owner can change its functions."
 	}
 	return triggerTarget{Kind: triggerCallerCrew, Path: project.Binding.WorkspacePath, CrewID: projectID, CrewProfile: profileID, CrewOwner: project.OwnerID}, project.OwnedByCaller, 0, ""
 }

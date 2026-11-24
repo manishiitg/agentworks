@@ -127,22 +127,22 @@ func (api *StreamingAPI) conversationTargetAccess(ctx context.Context, req Query
 	}
 	if isProjectProfileID(req.AgentProfileID) {
 		if claims == nil || strings.TrimSpace(claims.UserID) == "" || api.agentProfiles == nil {
-			return WorkflowAccessNone, fmt.Errorf("Crew access denied")
+			return WorkflowAccessNone, fmt.Errorf("Project access denied")
 		}
 		profile, err := api.agentProfiles.Resolve(req.AgentProfileID, req.AgentProfileVersion, claims.UserID)
 		if err != nil || !userAllowedProduct(claims, profile.Product) {
-			return WorkflowAccessNone, fmt.Errorf("Crew access denied")
+			return WorkflowAccessNone, fmt.Errorf("Project access denied")
 		}
 		key := strings.TrimSpace(req.AgentProfileConversationKey)
 		if key == "" {
-			return WorkflowAccessNone, fmt.Errorf("Crew conversation is required")
+			return WorkflowAccessNone, fmt.Errorf("Project conversation is required")
 		}
 		// Crew Run mode: the owner chats with full access; anyone else
 		// with the Crew product chats read-only. The binding resolves
 		// under whichever owner holds the project.
 		crew, err := resolveCrewProjectBinding(ctx, claims.UserID, profile, key, req.SelectedFolder)
 		if err != nil || !workspacePathsMatchForUser(claims.UserID, crew.Binding.WorkspacePath, req.SelectedFolder) {
-			return WorkflowAccessNone, fmt.Errorf("Crew access denied")
+			return WorkflowAccessNone, fmt.Errorf("Project access denied")
 		}
 
 		if !crew.OwnedByCaller {

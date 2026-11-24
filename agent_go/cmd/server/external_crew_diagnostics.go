@@ -19,11 +19,11 @@ func crewDiagnosticPage[T any](items []T, limit, offset int) map[string]any {
 }
 
 func externalCrewDiagnosticsDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("crew_diagnostics", "Read this Crew's browser status and scoped browser sessions (action=browser), or its attached MCP connection status (action=connections). Pass an exact connection name for cached tool metadata; include_tools adds schemas for the people who build this Crew (its owner and Team) only. limit/offset page browser sessions, connections, or the named connection's tools. Metadata is cached, not a live reachability check; refresh it with crew_mcp action=discover. Chrome extension status follows account ownership. No browser starts, commands, credentials or server-wide logs. Requires crews:read and current Crew access.", false, false, map[string]any{
-		"crew_id":       externalString("Crew ID from crew action=list."),
+	add("crew_diagnostics", "Read this project's browser status and scoped browser sessions (action=browser), or its attached MCP connection status (action=connections). Pass an exact connection name for cached tool metadata; include_tools adds schemas for the people who build this project (its owner and Team) only. limit/offset page browser sessions, connections, or the named connection's tools. Metadata is cached, not a live reachability check; refresh it with crew_mcp action=discover. Chrome extension status follows account ownership. No browser starts, commands, credentials or server-wide logs. Requires crews:read and current project access.", false, false, map[string]any{
+		"crew_id":       externalString("Project ID from crew action=list."),
 		"action":        map[string]any{"type": "string", "enum": []any{"browser", "connections"}},
 		"name":          externalString("Exact attached connection name; connections only. Omit to list connection summaries."),
-		"include_tools": map[string]any{"type": "boolean", "description": "Builders only (the Crew's owner and its Team): include cached parameter schemas for a named connection. Default false."},
+		"include_tools": map[string]any{"type": "boolean", "description": "Builders only (the project's owner and its Team): include cached parameter schemas for a named connection. Default false."},
 		"limit":         externalInteger(1, 100), "offset": externalInteger(0, 100000),
 	}, "crew_id", "action")
 }
@@ -32,12 +32,12 @@ func (api *StreamingAPI) externalCrewDiagnosticsCall(w http.ResponseWriter, r *h
 	claims := GetUserFromContext(r.Context())
 	id, action, name := externalArg(args, "crew_id"), externalArg(args, "action"), externalArg(args, "name")
 	if claims.AccessToken != nil && (!claims.AccessToken.Allows("crews:read") || !claims.AccessToken.AllowsCrew(id)) {
-		externalError(w, 403, "insufficient_scope", "This connection does not allow reading this Crew.")
+		externalError(w, 403, "insufficient_scope", "This connection does not allow reading this project.")
 		return
 	}
 	crew, _, _, ok := api.externalCrewResolve(r.Context(), claims, id)
 	if !ok {
-		externalError(w, 404, "not_found", "Crew not found or not allowed.")
+		externalError(w, 404, "not_found", "Project not found or not allowed.")
 		return
 	}
 	root := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
@@ -53,12 +53,12 @@ func (api *StreamingAPI) externalCrewDiagnosticsCall(w http.ResponseWriter, r *h
 			return
 		}
 		if profile.Runtime.Capabilities.Browser == agentprofiles.CapabilityDisabled || !containsExactString(profile.ToolPolicy.Enabled, "agent_browser") {
-			externalError(w, 404, "tool_unavailable", "This Crew profile does not enable browser tools.")
+			externalError(w, 404, "tool_unavailable", "This project profile does not enable browser tools.")
 			return
 		}
 		settings, err := readWorkspaceBrowserSettings(r.Context(), root)
 		if err != nil {
-			externalError(w, 502, "browser_settings_unavailable", "Cannot read this Crew's browser settings.")
+			externalError(w, 502, "browser_settings_unavailable", "Cannot read this project's browser settings.")
 			return
 		}
 		// Query the shared capability handler without adopting the owner's chat
@@ -68,7 +68,7 @@ func (api *StreamingAPI) externalCrewDiagnosticsCall(w http.ResponseWriter, r *h
 		probe := browser.NewExecutor(browser.NewClient(getWorkspaceAPIURL()), browser.WithBrowserRuntimeConfig(browser.NewBrowserRuntimeConfig(settings.runtimeMode(), []int{settings.Port})))
 		raw, err := probe.HandleAgentBrowser(ctx, map[string]any{"command": "status"})
 		if err != nil {
-			externalError(w, 502, "browser_status_unavailable", "Cannot inspect this Crew's browser status.")
+			externalError(w, 502, "browser_status_unavailable", "Cannot inspect this project's browser status.")
 			return
 		}
 		var status map[string]any
@@ -121,11 +121,11 @@ func (api *StreamingAPI) externalCrewDiagnosticsCall(w http.ResponseWriter, r *h
 		return
 	}
 	if !containsExactString(profile.ToolPolicy.Enabled, "list_mcp_servers") {
-		externalError(w, 404, "tool_unavailable", "This Crew profile does not enable MCP tools.")
+		externalError(w, 404, "tool_unavailable", "This project profile does not enable MCP tools.")
 		return
 	}
 	if include, _ := args["include_tools"].(bool); include && !crew.OwnedByCaller {
-		externalError(w, 403, "forbidden", "Only the people who build this Crew (its owner and Team) can read full connection parameter schemas. Omit include_tools for tool names and descriptions.")
+		externalError(w, 403, "forbidden", "Only the people who build this project (its owner and Team) can read full connection parameter schemas. Omit include_tools for tool names and descriptions.")
 		return
 	}
 	inventory, err := vaultServersFor(r.Context(), api.projectSecretsOwner(claims.UserID, root))
@@ -157,7 +157,7 @@ func (api *StreamingAPI) externalCrewDiagnosticsCall(w http.ResponseWriter, r *h
 
 	if name != "" {
 		if len(rows) != 1 {
-			externalError(w, 403, "forbidden", "Use an exact connection name attached to this Crew.")
+			externalError(w, 403, "forbidden", "Use an exact connection name attached to this project.")
 			return
 		}
 		externalJSON(w, map[string]any{"crew_id": id, "action": action, "connection": rows[0]})

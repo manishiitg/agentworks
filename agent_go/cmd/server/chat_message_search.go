@@ -55,7 +55,7 @@ func (api *StreamingAPI) handleChatMessageSearch(w http.ResponseWriter, r *http.
 func (api *StreamingAPI) externalSearchChatMessages(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	project, _, ok := api.readExternalWorkspace(r.Context(), GetUserFromContext(r.Context()), externalArg(args, "workspace_id"))
 	if !ok {
-		externalError(w, 404, "not_found", "Choose a Crew you can use before searching its messages.")
+		externalError(w, 404, "not_found", "Choose a project you can use before searching its messages.")
 		return
 	}
 	api.searchChatMessages(w, r, chatSearchInput{Query: externalArg(args, "query"), Cursor: externalArg(args, "cursor")}, project.Binding.WorkspacePath)

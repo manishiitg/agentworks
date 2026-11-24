@@ -4,7 +4,7 @@ All secret values are stored encrypted in Vault. A product never keeps its own c
 
 Secrets are credentials (API keys, tokens, passwords).
 
-- **Your own Vault (My accounts)** — a secret you add to your Crew, Goal or Flow is saved here and selected on that project in one step. Everyone who uses the project gets it lent by you, without seeing the value. It stays yours: other projects of yours can use it too, and saving the same name again replaces its value everywhere.
+- **Your own Vault (My accounts)** — a secret you add to your project, Goal or Flow is saved here and selected on that project in one step. Everyone who uses the project gets it lent by you, without seeing the value. It stays yours: other projects of yours can use it too, and saving the same name again replaces its value everywhere.
 <!-- product:mcp-gateway -->- **Company Vault secrets** — shared credentials with group permissions. They are added, rotated, shared and deleted in Vault (its Secrets panel, its chat, or Vault's MCP tools: `manage_vault_secret_access` operation `set_value`), by a Vault administrator. `GLOBAL_SECRET_*` environment entries remain operator-managed.<!-- /product -->
 
 ### Tools
@@ -22,7 +22,7 @@ Secrets are credentials (API keys, tokens, passwords).
 
 ### Adding a secret value
 
-A person may give you a secret value in chat, in this app or over MCP from any client. Store it with the secret tool for the target (`vault action=set`, the settings tool's `secrets.set` for a workflow or Crew owner<!-- product:relays --> or Flow owner<!-- /product --><!-- product:mcp-gateway -->, `manage_vault_secret_access` `set_value` for company Vault, or `manage_my_vaults` `set_secret` for your own Vault<!-- /product -->), say "I'll store it as NAME; I won't repeat it", then confirm by name only. Developers can instead run `agentworks secret set NAME --vault|--workflow ID|--crew ID|--relay ID`, or import a whole file with `agentworks secret import .env --vault`, in their own terminal. Tools never return a value.
+A person may give you a secret value in chat, in this app or over MCP from any client. Store it with the secret tool for the target (`vault action=set`, the settings tool's `secrets.set` for a workflow or project owner<!-- product:relays --> or Flow owner<!-- /product --><!-- product:mcp-gateway -->, `manage_vault_secret_access` `set_value` for company Vault, or `manage_my_vaults` `set_secret` for your own Vault<!-- /product -->), say "I'll store it as NAME; I won't repeat it", then confirm by name only. Developers can instead run `agentworks secret set NAME --vault|--workflow ID|--crew ID|--relay ID`, or import a whole file with `agentworks secret import .env --vault`, in their own terminal. Tools never return a value.
 
 ### Safety rules
 

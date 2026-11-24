@@ -60,7 +60,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		}
 		return projectScheduleJobID(profileID, projectID, value)
 	}
-	if err := register("list_project_schedules", "List this Crew's timers, including its workflow timers, with the same scope as its Schedules panel. Workflow timers must be converted to Crew schedules before these project tools can edit them. This chat is already bound to its project: use automations action=list scope=schedule, without a project argument.", map[string]interface{}{
+	if err := register("list_project_schedules", "List this project's timers, including its workflow timers, with the same scope as its Schedules panel. Workflow timers must be converted to project schedules before these project tools can edit them. This chat is already bound to its project: use automations action=list scope=schedule, without a project argument.", map[string]interface{}{
 		"type": "object", "properties": map[string]interface{}{},
 	}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
 		out, err := api.chatProjectScheduleRows(ctx, userID, projectWorkspace)
@@ -94,7 +94,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		result := map[string]interface{}{"schedules": out}
 		for _, job := range out {
 			if job.EntityType == "workflow" {
-				result["notice"] = "This list includes workflow timers shown in this Crew's Schedules panel. Timers with entity_type=workflow still need conversion to Crew schedules before the project schedule tools can change them. Do not guess a product schedule ID or recreate these timers."
+				result["notice"] = "This list includes workflow timers shown in this project's Schedules panel. Timers with entity_type=workflow still need conversion to project schedules before the project schedule tools can change them. Do not guess a product schedule ID or recreate these timers."
 				break
 			}
 		}

@@ -28,7 +28,7 @@ const githubToolReadLimit = 200 << 10
 
 var githubAPIBase = "https://api.github.com"
 
-const githubNotConnected = "No GitHub account is connected here. Connect GitHub in Vault (Settings → Vault → GitHub), then use it from this Crew, or select a GITHUB_TOKEN secret for this workflow."
+const githubNotConnected = "No GitHub account is connected here. Connect GitHub in Vault (Settings → Vault → GitHub), then use it from this project, or select a GITHUB_TOKEN secret for this workflow."
 
 // githubStepOwner is whose Vault a workflow step's GitHub login comes from: the person its shell takes secrets
 // from (runSecretsOwner), never just whoever started the run. A Crew's owner wins for its workflows.
@@ -61,7 +61,7 @@ func (api *StreamingAPI) githubToolToken(ctx context.Context) (string, error) {
 		// GitHub connection (productSelectedGlobalSecrets).
 		workspace, err := common.GoogleWorkspaceFromContext(ctx)
 		if err != nil || workspace == "" {
-			return "", fmt.Errorf("Open this Crew or workflow's chat to use GitHub")
+			return "", fmt.Errorf("Open this project or workflow's chat to use GitHub")
 		}
 		names := []string{}
 		crewRoot := workspace

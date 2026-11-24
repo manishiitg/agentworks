@@ -56,7 +56,7 @@ func agentMessageFailureReason(reason string) string {
 	case "Choose a chat_id from list_agents for this Crew", "shared agent unavailable or access denied":
 		return "the agent's chat is no longer available. Refresh messages action=list_agents and choose a current agent."
 	case "message Crew is unavailable or ownership changed":
-		return "the agent's Crew is unavailable or its ownership changed."
+		return "the agent's project is unavailable or its ownership changed."
 	case "Team agent unavailable or access removed":
 		return "this agent is no longer available to this Team."
 	case "message participant account is disabled", "message participant account is no longer active":

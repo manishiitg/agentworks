@@ -1,14 +1,14 @@
 # Working with a Team
 
-Inspect the current Crew first. A Team is people working together on its shared
-folder and chosen agents; it is not a separate workflow execution team. The Crew
+Inspect the current project first. A Team is people working together on its shared
+folder and chosen agents; it is not a separate workflow execution team. The project
 has one Python workflow, not another owner list for each task.
 
-Team dashboards are the Crew's own published items. Work lives either on a Mac or on the server; nothing is copied or moved between them.
+Team dashboards are the project's own published items. Work lives either on a Mac or on the server; nothing is copied or moved between them.
 
 A teammate's agent opens in the main chat with one header line (back, the agent, whose computer and its state, Fork) and an **Ask <agent>** box at the bottom. The box sends an AgentBridge ask from you to that agent's address; its answer shows under the box. The conversation above stays for watching. A hidden chat keeps the same layout with a private note, and you can still ask.
 
-Teammates' shared agents are reached only through AgentBridge at the exact `agent:` address returned by discovery; there is no separate in-app Team messaging route or `team:` target. Current membership and Shared with team are checked on every use. Use MCP `messages action=ask` (in Crew chat, `messages action=send` with `ask=true`) for a question. An agent offline under 10 minutes is Away: the ask waits for it. Past that, nothing is sent and the reply says how long it has been offline; tell your person and let them choose: ask again with `offline="wait"` (it answers when it is back), or read its chat. Never choose for them. A person asking from the agent's view in the app gets the same choice there: a Wait for it button, and its chat above when it is Live chat. Reading a teammate's agent chat works any time, online or offline, without interrupting it: `messages action=history target=<the agent address>` with `query="words"` (or `line=N` from a result; in Crew chat the `read_agent_chat` tool). Use it to find what that agent did or decided instead of asking. It works only for a chat its person shows as Live chat (Teammates see); Just the agent refuses. It is the synced copy, so say the last few minutes may be missing. Nothing on the server answers as another agent. On its next turn the agent is told which teammates' agents read its chat and what they searched, and corrects them if needed. Direct `messages action=send` waits for the original agent and is never redirected. Read and reply in the original inbox. Never provision a substitute or use the maker's login. A shared agent's chat syncs to the server after each turn (joined Claude Code/Codex sessions on join and each turn-end hook, even with Only me or Team off); a large history may take later turns to finish. Same-session reconnect keeps its cursor; a different native session never inherits it. Removing the maker revokes sync and reads. The server keeps a synced chat with no time limit while its agent is on the Team; removing or deleting the agent, taking it out of the Team, its person leaving or switching the Team off (except a joined Claude Code/Codex session) deletes the copy within minutes, and deleting the Crew on its Mac deletes its whole Team on the server. Member agents are listed from their own Mac pairs, not server-shadow chats in the owner's website copy. A Mac agent's own turns stay on its Mac; explicitly moved-online agents keep using their normal server home.
+Teammates' shared agents are reached only through AgentBridge at the exact `agent:` address returned by discovery; there is no separate in-app Team messaging route or `team:` target. Current membership and Shared with team are checked on every use. Use MCP `messages action=ask` (in project chat, `messages action=send` with `ask=true`) for a question. An agent offline under 10 minutes is Away: the ask waits for it. Past that, nothing is sent and the reply says how long it has been offline; tell your person and let them choose: ask again with `offline="wait"` (it answers when it is back), or read its chat. Never choose for them. A person asking from the agent's view in the app gets the same choice there: a Wait for it button, and its chat above when it is Live chat. Reading a teammate's agent chat works any time, online or offline, without interrupting it: `messages action=history target=<the agent address>` with `query="words"` (or `line=N` from a result; in project chat the `read_agent_chat` tool). Use it to find what that agent did or decided instead of asking. It works only for a chat its person shows as Live chat (Teammates see); Just the agent refuses. It is the synced copy, so say the last few minutes may be missing. Nothing on the server answers as another agent. On its next turn the agent is told which teammates' agents read its chat and what they searched, and corrects them if needed. Direct `messages action=send` waits for the original agent and is never redirected. Read and reply in the original inbox. Never provision a substitute or use the maker's login. A shared agent's chat syncs to the server after each turn (joined Claude Code/Codex sessions on join and each turn-end hook, even with Only me or Team off); a large history may take later turns to finish. Same-session reconnect keeps its cursor; a different native session never inherits it. Removing the maker revokes sync and reads. The server keeps a synced chat with no time limit while its agent is on the Team; removing or deleting the agent, taking it out of the Team, its person leaving or switching the Team off (except a joined Claude Code/Codex session) deletes the copy within minutes, and deleting the project on its Mac deletes its whole Team on the server. Member agents are listed from their own Mac pairs, not server-shadow chats in the owner's website copy. A Mac agent's own turns stay on its Mac; explicitly moved-online agents keep using their normal server home.
 
 The first-time Team setup chooses people and their level, the chosen shared folders, and agents (every agent ticked; untick any to keep private), then
 saves with Finish. If sharing requires a dashboard, explain that before saving
@@ -32,7 +32,7 @@ and ask before creating one. Do not create it as a side effect of listing.
 
 ## When the person says "check the Team kit" (or "the Team Todos")
 
-1. Read the kit: `team_sync` `setup_kit` in Crew chat; over MCP (Claude Code,
+1. Read the kit: `team_sync` `setup_kit` in project chat; over MCP (Claude Code,
    Codex) `workspace` action `team_setup_kit` with `crew_id` from
    `team_invites`. Each item's `mine` says what this person has (`missing` or
    `unknown` still needs work); `setup_list` lists just the setup steps.
@@ -96,15 +96,15 @@ do what it says, then ask again. With no answer after a day, ask once more, or
 tell your person.
 "Ask Riya to review PR 3026" from your person means exactly this request.
 
-Use `team_sync` in Crew chat or discover `crew_team_sync` over MCP. Their action
+Use `team_sync` in project chat or discover `crew_team_sync` over MCP. Their action
 names differ: chat `status` lists Teams and invitations; MCP uses `invites`.
 Chat changes folders/Team settings with `configure`; MCP uses `settings`.
 Chat uses its returned `project`; MCP uses `crew_id`. Read the current schema
 rather than copying action names or old workflow-team policy fields:
 
 - `directory` finds eligible people; `people` reads their current levels.
-  **Works with me** invites someone to join; **Dashboards only** is the Crew
-  owner's choice on a server Crew. Moving between levels or removing someone
+  **Works with me** invites someone to join; **Dashboards only** is the project
+  owner's choice on a server project. Moving between levels or removing someone
   uses that same People service. Show any returned gain/loss preview and apply
   its required confirmation only after the person agrees.
 - Chat `status` / MCP `invites` lists the caller’s own invitations. Both tools
@@ -114,7 +114,7 @@ rather than copying action names or old workflow-team policy fields:
 - Chat `configure` / MCP `settings` controls Team on/off and shared folders. The main owner controls
   on/off and removing folders; joined members can add folders. `folders` is the
   complete selection, with at least one folder: include existing folders to keep
-  them. Other Crew files are not shared. People changes still use their own
+  them. Other project files are not shared. People changes still use their own
   returned preview and confirmation requirement.
 - `agents` lists what teammates share. `agent_rule` changes only your own
   agent's Team settings in one call: `in_team` (Shared with team / Only me),
@@ -125,10 +125,10 @@ rather than copying action names or old workflow-team policy fields:
   chosen cannot find, ask, message or watch it; removing someone takes effect
   on their next request.
   Use the offered enums: New terminal joins are Shared with team with no rule of their own (they help teammates as they help their person; only the person's written rule limits them); rejoin keeps existing choices, and the person may choose Only me. Live shares the native conversation only when the person chooses it.
-- `clashes` shows both versions when the same lines changed. Read the Crew
+- `clashes` shows both versions when the same lines changed. Read the project
   builder's clash procedure before `resolve`; save the requested version or
   merge, never silently discard either person's work. Team history is private
-  server state, separate from the Crew database: use these tools rather than
+  server state, separate from the project database: use these tools rather than
   trying to read or edit it through project files or database tools. Recent history
   keeps at least 30 days or 500 changes, plus current-file bases and both sides
   of open clashes. If an older copy needs to catch up, refresh Team sync first;
@@ -144,10 +144,10 @@ agents on the server use the copy. An app with a personal sign-in is
 never copied: it is listed as "Team uses GitHub: each person signs in
 themselves", and each member connects their own. Say which of the two happened.
 Rules and skills are already shared through the Team's setup; do not copy them again.
-Members' agents on the server pick up the Team's shared apps and secrets while they work in that Crew. An agent
+Members' agents on the server pick up the Team's shared apps and secrets while they work in that project. An agent
 running on a member's Mac does not get them: the Team's keys stay on the server and are never copied to a laptop.
 When work on a Mac needs the Team's keys, say plainly that it needs the Team's keys, which stay on the server, so it
-has to run in this Crew on the server.
+has to run in this project on the server.
 A key that lives only in a member's Mac Vault can still reach the Team: the member's agent runs way_add with item
 secret and that name on the Mac. The Mac reads the value from its own Vault and sends it straight to the server; never ask for, read
 out, paste or message a key's value, and report the name only.
@@ -196,7 +196,7 @@ and tab controls remain theirs. Read back the saved result and say what is
 shared, with whom, and whether an invitation still waits for acceptance.
 
 The agent menu's "How this works" explains an agent, the team, who is on it and
-what teammates can use, from this Crew's real agents and people (the server
+what teammates can use, from this project's real agents and people (the server
 words it, differently for the owner and for a teammate). An agent on the server
 shows "Runs on the server, always available". When asked how teams work, say
 the same: a team is the people the owner adds in Share, then Team; teammates
@@ -204,11 +204,11 @@ use only the agents the owner shares.
 
 Team invitations appear as a quiet line above the chat, not a modal. **Join** creates the Team's own project using its automatic folder on this Mac (~/AgentWorks/<Team>); there is no project picker. On the website it joins online. **Not now** hides the line but keeps the invitation under Invites in the Team list; it does not decline or change membership. Several invitations offer **Join all** and **Review** in place. The server provides invitation counts and wording; successful joins show the actual folder or online confirmation with **Open**, then the line disappears. Automatic setup runs through the existing join flow. A folder can be moved later through Team settings or the agent.
 
-## Native sessions join the Crew
+## Native sessions join the project
 
-Claude Code or Codex joins a Crew from the installed plugin Crew skill (Claude: `/agentworks:crew <Crew ID>`), or its `agentworks` tool `action=join` with `project=<Crew ID>`; explicit `action=leave` removes it. This exact session must already be connected. The person must own the Crew or be a current member of its active Team, not just have dashboard Run access. The server returns Crew instructions and an owner-admitted local folder or accepted Team copy; follow the instructions and work there. With no local copy it returns `copy=null`, `folders=[]`: the files stay on the server; ask its agents or add the Crew to this Mac in AgentWorks. Never supply or guess a server/local path or a native session. Keep the Mac app running for shared sync. A new join follows the Crew's Team: Shared with team, Answers only, no change permission when on; only the person and their own agents when off. Turning Team on later needs no rejoin; rejoin keeps Only me/Live choices. The owner can read their own exact terminal journal; other people's native text requires explicit Live. One terminal agent joins one Crew until it leaves. Saved Discovery stays saved but grants no audience while joined; leaving restores it. Team keys stay server-only.
+Claude Code or Codex joins a project from the installed plugin project skill (Claude: `/agentworks:crew <project ID>`), or its `agentworks` tool `action=join` with `project=<project ID>`; explicit `action=leave` removes it. This exact session must already be connected. The person must own the project or be a current member of its active Team, not just have dashboard Run access. The server returns project instructions and an owner-admitted local folder or accepted Team copy; follow the instructions and work there. With no local copy it returns `copy=null`, `folders=[]`: the files stay on the server; ask its agents or add the project to this Mac in AgentWorks. Never supply or guess a server/local path or a native session. Keep the Mac app running for shared sync. A new join follows the project's Team: Shared with team, Answers only, no change permission when on; only the person and their own agents when off. Turning Team on later needs no rejoin; rejoin keeps Only me/Live choices. The owner can read their own exact terminal journal; other people's native text requires explicit Live. One terminal agent joins one project until it leaves. Saved Discovery stays saved but grants no audience while joined; leaving restores it. Team keys stay server-only.
 
-The native plugin keeps `team_sync` for the session brief (`team_action=work_brief`). Asks, discovery, questions and replies use normal AgentBridge; The Team kit uses the AgentWorks MCP `workspace` actions `team_setup_*` when that chat has them. Asks to an offline agent follow the offline rule at the top of this guide. Joining grants no general Crew tool scope.
+The native plugin keeps `team_sync` for the session brief (`team_action=work_brief`). Asks, discovery, questions and replies use normal AgentBridge; The Team kit uses the AgentWorks MCP `workspace` actions `team_setup_*` when that chat has them. Asks to an offline agent follow the offline rule at the top of this guide. Joining grants no general project tool scope.
 
 
 ## Agent sharing card wording

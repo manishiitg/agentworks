@@ -29,11 +29,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) resolveCrewAgentStep(ctx context.Cont
 	}
 	opts := hcpo.GetExecutionOptions()
 	if opts == nil {
-		return nil, fmt.Errorf("step %q: Crew agent configuration is unavailable", step.ID)
+		return nil, fmt.Errorf("step %q: Project agent configuration is unavailable", step.ID)
 	}
 	resolver := opts.CrewResources
 	if resolver == nil || resolver.Agents == nil {
-		return nil, fmt.Errorf("step %q: Crew agent configuration is unavailable", step.ID)
+		return nil, fmt.Errorf("step %q: Project agent configuration is unavailable", step.ID)
 	}
 	resolved, err := resolver.Agents.ResolveCrewAgentConfiguration(ctx, hcpo.GetWorkspacePath(), step.CrewAgent)
 	if err != nil {

@@ -1274,7 +1274,7 @@ func slackTokensInUse(cfg *SlackConfig, exceptID, botToken, appToken string) err
 		where := "the shared platform bot"
 		switch {
 		case other.ProfileID != "" && other.WorkspacePath != "":
-			where = "the Crew at " + other.WorkspacePath
+			where = "the project at " + other.WorkspacePath
 		case other.WorkspacePath != "":
 			where = "the workflow " + other.WorkspacePath
 		}

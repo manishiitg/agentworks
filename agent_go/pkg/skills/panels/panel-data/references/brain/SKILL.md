@@ -9,7 +9,7 @@ remain limited by existing Brain folder roles; there are no project folder
 bindings to attach or detach. For a workflow, name any required Brain paths and read/write limits in the relevant agent() task, using only the tools that run may access.
 
 Use brain/brain for requested shared content or skill changes,
-within current folder permissions. Workflow knowledge files, Crew Memory and shared Brain are different stores. Never edit another product's files or infer
+within current folder permissions. Workflow knowledge files, project Memory and shared Brain are different stores. Never edit another product's files or infer
 access from a link, selected item or loaded skill.
 
 The panel leads with the saved project mode and an authorized library browser

@@ -204,7 +204,7 @@ func GroupChanges(ctx context.Context, root string, changes []Change, newRepos [
 		out = append(out, g)
 	}
 	if len(plain) > 0 {
-		out = append(out, capGroup(Group{Kind: "crew_files", Name: "Crew files (not in Git)", Files: plain}))
+		out = append(out, capGroup(Group{Kind: "crew_files", Name: "Project files (not in Git)", Files: plain}))
 	}
 	return out
 }
@@ -226,7 +226,7 @@ func repoGroup(ctx context.Context, root, dir string, changes []Change, allow fu
 	abs := filepath.Join(root, filepath.FromSlash(dir))
 	name := path.Base(dir)
 	if dir == "" {
-		name = "Crew folder"
+		name = "Project folder"
 	}
 	g := Group{Kind: "repo", Root: dir, Name: name}
 	if out, err := gitIn(ctx, root, abs, "symbolic-ref", "--short", "-q", "HEAD").Output(); err == nil {

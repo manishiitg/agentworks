@@ -26,7 +26,7 @@ func secretCommand(o *options) *cobra.Command {
 	flags := func(c *cobra.Command) {
 		c.Flags().BoolVar(&vault, "vault", false, "add to Vault (a Vault administrator)")
 		c.Flags().StringVar(&workflow, "workflow", "", "add to this workflow (its owner)")
-		c.Flags().StringVar(&crew, "crew", "", "add to this Crew (its owner)")
+		c.Flags().StringVar(&crew, "crew", "", "add to this project (its owner)")
 		c.Flags().StringVar(&relay, "relay", "", "add to this Flow (its owner)")
 	}
 	target := func() (agentworksclient.SecretTarget, error) {

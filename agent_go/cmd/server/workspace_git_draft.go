@@ -33,7 +33,7 @@ func (api *StreamingAPI) workspaceGitDraftModel(r *http.Request, canonical, sess
 	actor := publicWorkspaceUserID(r)
 	owner, err := api.eventStore.DurableChatOwner(session)
 	if err != nil || owner != actor || !api.chatSearchReadable(r, session, canonical) {
-		return nil, errors.New("Use your own chat in this Crew to draft the text.")
+		return nil, errors.New("Use your own chat in this project to draft the text.")
 	}
 	path := productConversationRegistryPath(actor)
 	mu := productConversationRegistryMutex(path)
@@ -45,7 +45,7 @@ func (api *StreamingAPI) workspaceGitDraftModel(r *http.Request, canonical, sess
 	}
 	root, ok, _ := crewroot.Lookup(workspaceGitDocsRoot(), canonical)
 	if !ok {
-		return nil, errors.New("Choose this Crew's own chat.")
+		return nil, errors.New("Choose this project's own chat.")
 	}
 	for key, record := range doc.Entries {
 		if record.ProfileID != crewProfileID || record.SessionID != session {
@@ -401,7 +401,7 @@ func (api *StreamingAPI) workspaceGitDelivery(w http.ResponseWriter, r *http.Req
 func (api *StreamingAPI) externalWorkspaceGitAction(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	project, _, ok := api.readExternalWorkspace(r.Context(), GetUserFromContext(r.Context()), externalArg(args, "workspace_id"))
 	if !ok {
-		externalError(w, 404, "not_found", "Choose a Crew you build before changing its Git repository.")
+		externalError(w, 404, "not_found", "Choose a project you build before changing its Git repository.")
 		return
 	}
 	claims := GetUserFromContext(r.Context())

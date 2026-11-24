@@ -38,7 +38,7 @@ func (api *StreamingAPI) externalUserAvatar(w http.ResponseWriter, r *http.Reque
 	input := userAvatarRequest{Operation: req.Operation, Icon: req.Icon, Color: req.Color, Crop: req.Crop}
 	if req.ImageFile != nil {
 		if req.Operation != "set" || req.Icon != "" || req.ImageFile.CrewID == "" || req.ImageFile.Path == "" {
-			http.Error(w, "Choose an admitted Crew image for set, or an icon, not both.", 400)
+			http.Error(w, "Choose an admitted project image for set, or an icon, not both.", 400)
 			return
 		}
 		response := httptest.NewRecorder()
@@ -49,7 +49,7 @@ func (api *StreamingAPI) externalUserAvatar(w http.ResponseWriter, r *http.Reque
 			Size     int64  `json:"size"`
 		}
 		if response.Code >= 400 || json.Unmarshal(response.Body.Bytes(), &file) != nil || file.Encoding != "base64" || file.Size > avatarInputBytes || len(file.Content) > ((avatarInputBytes+2)/3)*4 {
-			http.Error(w, "Choose a PNG, JPEG or WebP image under 5 MB in a Crew you can read.", 400)
+			http.Error(w, "Choose a PNG, JPEG or WebP image under 5 MB in a project you can read.", 400)
 			return
 		}
 		var err error
@@ -62,11 +62,11 @@ func (api *StreamingAPI) externalUserAvatar(w http.ResponseWriter, r *http.Reque
 	api.userAvatar(w, r, input)
 }
 func userAvatarToolDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("profile_picture", "Read, set or remove your own profile picture. operation=get|set|remove. set uses an offered icon and colour, or image_file with the Crew ID and relative path of an attached/admitted PNG, JPEG or WebP (under 5 MB). Never send image bytes, a host path or URL. Photos become small square JPEGs; optional crop has zoom 1..8 and x/y 0..1. This changes only your authenticated account, never somebody else's picture.", true, false, map[string]any{
+	add("profile_picture", "Read, set or remove your own profile picture. operation=get|set|remove. set uses an offered icon and colour, or image_file with the project ID and relative path of an attached/admitted PNG, JPEG or WebP (under 5 MB). Never send image bytes, a host path or URL. Photos become small square JPEGs; optional crop has zoom 1..8 and x/y 0..1. This changes only your authenticated account, never somebody else's picture.", true, false, map[string]any{
 		"operation":  map[string]any{"type": "string", "enum": []any{"get", "set", "remove"}},
 		"icon":       map[string]any{"type": "string", "enum": []any{"person", "rocket", "star", "leaf", "bot"}},
 		"color":      map[string]any{"type": "string", "enum": []any{"blue", "purple", "green", "orange"}},
-		"image_file": map[string]any{"type": "object", "additionalProperties": false, "required": []any{"crew_id", "path"}, "properties": map[string]any{"crew_id": externalString("Crew containing the image."), "path": externalString("Relative admitted file path, including an uploaded chat attachment."), "agent_id": externalString("Publication agent context, when needed for this file.")}},
+		"image_file": map[string]any{"type": "object", "additionalProperties": false, "required": []any{"crew_id", "path"}, "properties": map[string]any{"crew_id": externalString("Project containing the image."), "path": externalString("Relative admitted file path, including an uploaded chat attachment."), "agent_id": externalString("Publication agent context, when needed for this file.")}},
 		"crop":       map[string]any{"type": "object", "additionalProperties": false, "required": []any{"zoom", "x", "y"}, "properties": map[string]any{"zoom": map[string]any{"type": "number", "minimum": 1, "maximum": 8}, "x": map[string]any{"type": "number", "minimum": 0, "maximum": 1}, "y": map[string]any{"type": "number", "minimum": 0, "maximum": 1}}},
 	})
 }

@@ -16,7 +16,7 @@ import (
 )
 
 // newWorkflowsAreScripts is the plain pointer for a request to create a plan workflow.
-const newWorkflowsAreScripts = "New workflows are Python scripts inside a Crew. Open or create a Crew, then create the workflow there with crew_workflow_files action=create (the python-workflows skill shows how). Existing workflows keep working until they are converted."
+const newWorkflowsAreScripts = "New workflows are Python scripts inside a project. Open or create a project, then create the workflow there with crew_workflow_files action=create (the python-workflows skill shows how). Existing workflows keep working until they are converted."
 
 // Creation is account-scoped. The containing chat never lends its owner's
 // identity or expands the authenticated caller's connection consent.

@@ -1300,7 +1300,7 @@ func RegisterRunFullWorkflowTool(mcpAgent DefinitionToolRegistrar, session *Work
 	}
 	if err := mcpAgent.RegisterCustomTool(
 		"run_full_workflow",
-		"Run this Crew's saved Python workflow for real with optional input_preset and typed inputs. Omitted values use the preset and script defaults. Starts in the background; you will be notified when it finishes. Use the chat's background work control to stop it. A person's request to run or test authorizes the run's normal database writes, app calls and sends.",
+		"Run this project's saved Python workflow for real with optional input_preset and typed inputs. Omitted values use the preset and script defaults. Starts in the background; you will be notified when it finishes. Use the chat's background work control to stop it. A person's request to run or test authorizes the run's normal database writes, app calls and sends.",
 		map[string]interface{}{
 			"type": "object", "additionalProperties": false,
 			"properties": map[string]interface{}{
@@ -1333,7 +1333,7 @@ func RegisterRunFullWorkflowTool(mcpAgent DefinitionToolRegistrar, session *Work
 				return "", err
 			}
 			if session.controller.directCrewScript == nil {
-				return "", fmt.Errorf("choose this Crew's saved Python workflow")
+				return "", fmt.Errorf("choose this project's saved Python workflow")
 			}
 			definitions := session.controller.directCrewScript.InputDefinitions()
 			runVariables, err := WorkflowInputOverrides(definitions, args)

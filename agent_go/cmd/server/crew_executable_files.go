@@ -16,7 +16,7 @@ import (
 // The owner's Crew agent edits child definitions through the existing workspace
 // writers. Its shell keeps the normal Crew sandbox; no extra folder grants.
 func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
-	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this Crew's saved Python workflows. Read the python-workflows skill first. create takes name and a short description of what the workflow is for. list returns workflow ID, workspace_path and agents. read takes workspace_path and file. write accepts script.json, Python source and one top-level requirements.txt through the managed writer; requirements do not support include or installer options. edit with operation manage_schedules or manage_webhooks manages schedules and webhooks; describe returns those schemas. rename takes workspace_path and name and changes only the display name. delete takes workspace_path and confirm=true and removes the workflow with all its runs; it cannot be undone, so ask the person first. Functions use functions with project=workspace_path. Run with functions action=run_trigger and inputs.", map[string]interface{}{
+	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this project's saved Python workflows. Read the python-workflows skill first. create takes name and a short description of what the workflow is for. list returns workflow ID, workspace_path and agents. read takes workspace_path and file. write accepts script.json, Python source and one top-level requirements.txt through the managed writer; requirements do not support include or installer options. edit with operation manage_schedules or manage_webhooks manages schedules and webhooks; describe returns those schemas. rename takes workspace_path and name and changes only the display name. delete takes workspace_path and confirm=true and removes the workflow with all its runs; it cannot be undone, so ask the person first. Functions use functions with project=workspace_path. Run with functions action=run_trigger and inputs.", map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
 			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit", "rename", "delete"}},
 			"workspace_path": map[string]interface{}{"type": "string"},
@@ -38,10 +38,10 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		claims := GetUserFromContext(ctx)
 		root := canonicalCrewWorkspaceRoot(crewRoot)
 		if claims == nil || claims.UserID != userID || root == "" || !crewProjectOwnedByCaller(userID, root) {
-			return "", fmt.Errorf("only this Crew's owners can edit its workflows; open your Crew chat or dashboard instead")
+			return "", fmt.Errorf("only this project's owners can edit its workflows; open your project chat or dashboard instead")
 		}
 		if isExternalCrewDirectCall(ctx) && !api.externalCrewReferenceAllowed(ctx, claims, root, true) {
-			return "", fmt.Errorf("this Crew is outside the connection's access")
+			return "", fmt.Errorf("this project is outside the connection's access")
 		}
 		action, _ := args["action"].(string)
 		if action == "create" || action == "write" || action == "edit" || action == "rename" || action == "delete" {
@@ -56,11 +56,11 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		if action == "list" || action == "create" {
 			identity, ok := projectIdentityOf(root)
 			if !ok {
-				return "", fmt.Errorf("Crew is unavailable")
+				return "", fmt.Errorf("Project is unavailable")
 			}
 			record, found := defaultProjectOwners().Lookup(identity.Product, identity.Folder)
 			if !found {
-				return "", fmt.Errorf("Crew is unavailable")
+				return "", fmt.Errorf("Project is unavailable")
 			}
 			method := http.MethodGet
 			body := ""
@@ -99,7 +99,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 		target, _ := args["workspace_path"].(string)
 		binding, err := findCrewExecutable(target)
 		if err != nil || binding == nil || binding.Kind != "script" || crewExecutableWorkspace(target) != binding.Root || canonicalCrewWorkspaceRoot(binding.CrewRoot) != root {
-			return "", fmt.Errorf("choose a workflow from this Crew's own list")
+			return "", fmt.Errorf("choose a workflow from this project's own list")
 		}
 		manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
 		if err != nil || !found || manifest.Kind == "relay" || workflowAccessForManifest(claims, manifest) != WorkflowAccessOwner {
@@ -170,9 +170,9 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			}
 			if notes := crewScriptSaveNotes(ctx, binding, clean); notes != nil {
 				raw, _ := json.Marshal(notes)
-				return "Saved. The Crew's Steps view will refresh.\n" + string(raw), nil
+				return "Saved. The project's Steps view will refresh.\n" + string(raw), nil
 			}
-			return "Saved. The Crew's Steps view will refresh.", nil
+			return "Saved. The project's Steps view will refresh.", nil
 		default:
 			return "", fmt.Errorf("choose list, create, read, describe, edit or write")
 		}
@@ -187,7 +187,7 @@ func crewPlanDefinitions() []workflow.WorkflowToolDefinition {
 	// Reuse the public action schemas and handlers; only the target is fixed to this Crew's child.
 	add := func(name, description string, _, _ bool, properties map[string]any, required ...string) {
 		delete(properties, "project")
-		description = strings.ReplaceAll(description, "Pass project.", "The target is this Crew's selected workflow or script.")
+		description = strings.ReplaceAll(description, "Pass project.", "The target is this project's selected workflow or script.")
 		required = slices.DeleteFunc(required, func(key string) bool { return key == "project" })
 		if name == "manage_triggers" {
 			name = "manage_webhooks"
@@ -205,11 +205,11 @@ func crewPlanDefinitions() []workflow.WorkflowToolDefinition {
 func (api *StreamingAPI) crewWorkflowRenameOrDelete(ctx context.Context, crewRoot, action string, binding *crewExecutableBinding, args map[string]interface{}) (string, error) {
 	identity, ok := projectIdentityOf(crewRoot)
 	if !ok {
-		return "", fmt.Errorf("Crew is unavailable")
+		return "", fmt.Errorf("Project is unavailable")
 	}
 	record, found := defaultProjectOwners().Lookup(identity.Product, identity.Folder)
 	if !found {
-		return "", fmt.Errorf("Crew is unavailable")
+		return "", fmt.Errorf("Project is unavailable")
 	}
 	crewQuery := "crew_id=" + url.QueryEscape(record.ProjectID)
 	var request *http.Request

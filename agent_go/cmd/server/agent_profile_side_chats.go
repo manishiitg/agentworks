@@ -121,7 +121,7 @@ func (api *StreamingAPI) handleOrderAgentProfileSideChats(w http.ResponseWriter,
 	}
 	projectID := strings.TrimSpace(input.ProjectID)
 	if api.crewMacTwinForOwner(r, projectID) {
-		writeAgentProfileError(w, http.StatusConflict, "Arrange this Crew's tabs on your Mac.")
+		writeAgentProfileError(w, http.StatusConflict, "Arrange this project's tabs on your Mac.")
 		return
 	}
 	userID, slot, ok := api.agentProfileConversationSlot(w, r, projectID)
@@ -162,7 +162,7 @@ func (api *StreamingAPI) handlePinAgentProfileSideChat(w http.ResponseWriter, r 
 	}
 	projectID := strings.TrimSpace(input.ProjectID)
 	if api.crewMacTwinForOwner(r, projectID) {
-		writeAgentProfileError(w, http.StatusConflict, "Arrange this Crew's tabs on your Mac.")
+		writeAgentProfileError(w, http.StatusConflict, "Arrange this project's tabs on your Mac.")
 		return
 	}
 	userID, slot, ok := api.agentProfileConversationSlot(w, r, projectID)

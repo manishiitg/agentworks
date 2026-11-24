@@ -34,10 +34,10 @@ const (
 	// cleared through the same Share save as a named person (owner, 6 Nov: one People list, no separate panel).
 	crewPeopleEveryone     = "everyone"
 	crewPeopleEveryoneName = "Everyone on this server"
-	crewPeopleEveryoneLine = "Anyone with an account on this server can open this Crew's dashboards and ask it. No files."
+	crewPeopleEveryoneLine = "Anyone with an account on this server can open this project's dashboards and ask it. No files."
 
-	crewPeopleNeverOnlineLine = "Turn on Mac online to share this Crew."
-	crewPeoplePutOnlineLine   = "To give someone dashboards only, with Ask and buttons, put this Crew online first."
+	crewPeopleNeverOnlineLine = "Turn on Mac online to share this project."
+	crewPeoplePutOnlineLine   = "To give someone dashboards only, with Ask and buttons, put this project online first."
 )
 
 type crewPeopleLevel struct {
@@ -134,11 +134,11 @@ func crewPeopleLevels(kind string) []crewPeopleLevel {
 func crewPeopleGetsTable() []crewPeopleGets {
 	return []crewPeopleGets{
 		{Title: "Dashboards only", Tagline: "Look and ask. Nothing else.", Items: []crewPeopleGetsItem{
-			{"See all this Crew's dashboards", true},
-			{"Ask this Crew", true},
+			{"See all this project's dashboards", true},
+			{"Ask this project", true},
 			{"Files, agents' chats, changes", false},
 		}},
-		{Title: "Works with me", Tagline: "Works in the Crew with you.", Items: []crewPeopleGetsItem{
+		{Title: "Works with me", Tagline: "Works in the project with you.", Items: []crewPeopleGetsItem{
 			{"Everything in \"Dashboards only\"", true},
 			{"Shared files, edit both ways", true},
 			{"Agents' chats (unless kept private)", true},
@@ -190,7 +190,7 @@ func crewPeopleLevelLabel(level string) string {
 	case crewPeopleDashboards:
 		return "Dashboards only"
 	}
-	return "Not on this Crew"
+	return "Not on this project"
 }
 
 func crewPeopleNote(invited bool) string {
@@ -329,7 +329,7 @@ func crewPeoplePreview(name, from, to string, teamOn, everyone bool) map[string]
 		loses = slices.DeleteFunc(loses, func(line string) bool {
 			return line == "All this Crew's dashboards" || line == "Asking this Crew"
 		})
-		notes = append(notes, "This Crew is open to everyone on this server, so they can still open its dashboards and ask it.")
+		notes = append(notes, "This project is open to everyone on this server, so they can still open its dashboards and ask it.")
 	}
 	if to == crewPeopleWorks && from == crewPeopleNone {
 		notes = append(notes, "They are invited, and join when they accept.")
@@ -337,7 +337,7 @@ func crewPeoplePreview(name, from, to string, teamOn, everyone bool) map[string]
 	if to == crewPeopleWorks && !teamOn {
 		notes = append(notes, "The Team is off, so they get this when you turn it on.")
 	}
-	summary := fmt.Sprintf("%s will be %s.", name, map[string]string{crewPeopleWorks: "added to Works with me", crewPeopleDashboards: "given dashboards only", crewPeopleNone: "removed from this Crew"}[to])
+	summary := fmt.Sprintf("%s will be %s.", name, map[string]string{crewPeopleWorks: "added to Works with me", crewPeopleDashboards: "given dashboards only", crewPeopleNone: "removed from this project"}[to])
 	if from != crewPeopleNone && to != crewPeopleNone {
 		summary = fmt.Sprintf("%s will move from %s to %s.", name, strings.ToLower(crewPeopleLevelLabel(from)), strings.ToLower(crewPeopleLevelLabel(to)))
 	}
@@ -354,7 +354,7 @@ func (api *StreamingAPI) changeCrewPerson(w http.ResponseWriter, r *http.Request
 	t, err := readCrewTeamOrNew(project, claims.UserID)
 	if err != nil || !crewTeamCanManage(t, claims.UserID) {
 		log.Printf("[CREW_TEAM] project=%s actor=%s event=person_refused level=%s reason=team_owner_required", project, logUsernameForUserID(claims.UserID), level)
-		externalError(w, 403, "team_owner_required", "Join this Crew's Team to change its people.")
+		externalError(w, 403, "team_owner_required", "Join this project's Team to change its people.")
 		return
 	}
 	kind := crewPeopleKind(project)
@@ -402,7 +402,7 @@ func (api *StreamingAPI) changeCrewPerson(w http.ResponseWriter, r *http.Request
 	team := func(w http.ResponseWriter, add bool) bool {
 		current, err := readCrewTeamOrNew(project, claims.UserID)
 		if err != nil {
-			externalError(w, 403, "team_owner_required", "Join this Crew's Team to change its people.")
+			externalError(w, 403, "team_owner_required", "Join this project's Team to change its people.")
 			return false
 		}
 		if add && !slices.ContainsFunc(current.People, func(p crewTeamPerson) bool { return p.UserID == person }) {
@@ -483,7 +483,7 @@ func (api *StreamingAPI) changeCrewEveryone(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if claims.UserID != t.OwnerID {
-		externalError(w, 403, "team_owner_only", fmt.Sprintf("Only %s can open this Crew's dashboards to everyone on this server.", crewPersonShortName(t.OwnerID)))
+		externalError(w, 403, "team_owner_only", fmt.Sprintf("Only %s can open this project's dashboards to everyone on this server.", crewPersonShortName(t.OwnerID)))
 		return
 	}
 	root := crewProjectRootByID(project)
@@ -493,16 +493,16 @@ func (api *StreamingAPI) changeCrewEveryone(w http.ResponseWriter, r *http.Reque
 		from = crewPeopleDashboards
 	}
 	if from == level {
-		note := "Everyone on this server can already open this Crew's dashboards."
+		note := "Everyone on this server can already open this project's dashboards."
 		if level == crewPeopleNone {
-			note = "This Crew is not open to everyone on this server."
+			note = "This project is not open to everyone on this server."
 		}
 		externalJSON(w, map[string]any{"changed": false, "note": note})
 		return
 	}
 	if !in.Confirm {
 		preview := crewPeoplePreview(crewPeopleEveryoneName, from, level, t.On, false)
-		preview["summary"] = map[string]string{crewPeopleDashboards: crewPeopleEveryoneName + " will be given dashboards only.", crewPeopleNone: crewPeopleEveryoneName + " will be removed from this Crew."}[level]
+		preview["summary"] = map[string]string{crewPeopleDashboards: crewPeopleEveryoneName + " will be given dashboards only.", crewPeopleNone: crewPeopleEveryoneName + " will be removed from this project."}[level]
 		notes := []string{}
 		if level == crewPeopleDashboards && len(named) > 0 {
 			notes = append(notes, "The people you gave dashboards only are covered by this, so they leave the list.")
@@ -543,7 +543,7 @@ func crewPeopleRunShare(w http.ResponseWriter, r *http.Request, h func(http.Resp
 	h(rec, r)
 	if rec.Code == http.StatusConflict && strings.Contains(rec.Body.String(), "dashboard") && !strings.Contains(rec.Body.String(), "Mac") {
 		// The Share save's own words are for a tool; say it plainly with the next step.
-		externalError(w, http.StatusConflict, "dashboard_needed", "This Crew has no dashboard yet, so there is nothing to show this person. Say yes and I'll create a standard dashboard and add them, or publish your own dashboard first and then add them.")
+		externalError(w, http.StatusConflict, "dashboard_needed", "This project has no dashboard yet, so there is nothing to show this person. Say yes and I'll create a standard dashboard and add them, or publish your own dashboard first and then add them.")
 		return false
 	}
 	if rec.Code >= 300 {

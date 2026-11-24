@@ -12,7 +12,7 @@ import (
 func (api *StreamingAPI) acceptCrewAgentForkOnServer(r *http.Request, offer crewAgentFork) (ProductConversationRecord, error) {
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || claims.UserID != offer.Recipient {
-		return ProductConversationRecord{}, crewAgentForkRefuse("accept this copy where your Crew runs")
+		return ProductConversationRecord{}, crewAgentForkRefuse("accept this copy where your project runs")
 	}
 	team, err := readCrewTeam(offer.Project)
 	if err != nil {
@@ -34,14 +34,14 @@ func (api *StreamingAPI) acceptCrewAgentForkOnServer(r *http.Request, offer crew
 		return destination, err
 	}
 	if destination.ResourceID != offer.Project {
-		return destination, crewAgentForkRefuse("keep this copy in the same Crew")
+		return destination, crewAgentForkRefuse("keep this copy in the same project")
 	}
 	roots, found, err := crewStorageRoots(destination.WorkspacePath)
 	if err != nil {
 		return destination, err
 	}
 	if !found {
-		return destination, crewAgentForkRefuse("your Crew storage is unavailable")
+		return destination, crewAgentForkRefuse("your project storage is unavailable")
 	}
 	if err = api.importCrewAgentForkCopy(request, offer, payload, destination, roots); err != nil {
 		log.Printf("[AGENT_FORK] project=%s fork=%s copy=%s event=import_failed reason=%q", offer.Project, offer.ID, offer.CopyAgentID, crewAgentForkFailureReason(err))

@@ -248,7 +248,7 @@ func (api *StreamingAPI) planCrewAgentRemoval(ctx context.Context, caller string
 	}
 	// Only the Crew's owner can remove or reassign project-wide saved work.
 	if len(plan.preview.Dependencies) > 0 && ownerOfCrewProjectID(project) != caller {
-		return plan, fmt.Errorf("This agent has linked project work. Ask the Crew owner to reassign or remove those links first.")
+		return plan, fmt.Errorf("This agent has linked project work. Ask the project owner to reassign or remove those links first.")
 	}
 	tabs, err := defaultProductConversationRegistryStore().projectChats(ctx, caller, crewProfileID, project)
 	if err != nil {

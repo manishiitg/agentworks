@@ -402,7 +402,7 @@ func (s *Store) beginRun(ctx context.Context, run Run, consumePending, admitted 
 		_, err := recordFireDecision(ctx, tx, FireDecision{
 			DecisionID: run.RunID, ScopeType: run.ScopeType, ScopeID: run.ScopeID,
 			ScheduleID: run.ScheduleID, TriggerSource: run.TriggerSource,
-			Decision: "started", Reason: "admitted by Crew dispatcher", RunID: run.RunID,
+			Decision: "started", Reason: "admitted by project dispatcher", RunID: run.RunID,
 			ScheduledFor: run.ScheduledFor, FiredAt: run.StartedAt,
 		})
 		if err != nil {

@@ -10,7 +10,7 @@ import (
 // never passes through here and keeps its own declared run conversation.
 func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target triggerTarget, chatID string) (triggerTarget, error) {
 	if target.Kind == triggerCallerWorkflow {
-		return target, fmt.Errorf("Workflows run directly. Send your message to a Crew agent instead.")
+		return target, fmt.Errorf("Workflows run directly. Send your message to a project agent instead.")
 	}
 	caller := GetUserIDFromContext(ctx)
 	chatID = strings.TrimSpace(chatID)
@@ -58,7 +58,7 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 			registry = api.projectActions.registry
 		}
 		if registry == nil {
-			return target, fmt.Errorf("Crew chat runtime unavailable")
+			return target, fmt.Errorf("Project chat runtime unavailable")
 		}
 		owner := target.CrewOwner
 		if actual, ok := crewProjectOwnerID(target.Path); ok {

@@ -90,13 +90,13 @@ func crewSyncManifestPath(id string) (string, error) {
 // Builder connection) allowed to author Crews, with the whole project in reach. The ownership check comes after it.
 func crewSyncClaimsGate(claims *UserClaims, id string) *crewSyncFailure {
 	if !personalLaptopSettingsClaims(claims) {
-		return &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "use your own interactive Crew chat or personal Builder connection to sync"}
+		return &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "use your own interactive project chat or personal Builder connection to sync"}
 	}
 	if code, message := externalCrewAuthorGate(claims); code != 0 {
 		return &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: message}
 	}
 	if claims.AccessToken != nil && (!claims.AccessToken.Allows("crews:write") || !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(id))) {
-		return &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "this connection cannot sync this Crew"}
+		return &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "this connection cannot sync this project"}
 	}
 	if token := claims.AccessToken; token != nil && token.FileGuard != nil {
 		guard := token.FileGuard
@@ -121,11 +121,11 @@ func (api *StreamingAPI) crewSyncRoots(ctx context.Context, claims *UserClaims, 
 		return roots, err
 	}
 	if !found || roots.ID != id || roots.Owner != claims.UserID {
-		return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "only this Crew's owner can change how it is reached from the phone and the web; ask its owner"}
+		return crewroot.Roots{}, &crewSyncFailure{Code: crewSyncForbiddenCode, Status: 403, Message: "only this project's owner can change how it is reached from the phone and the web; ask its owner"}
 	}
 	manifest, err := readCrewProjectMetadata(ctx, crewProfileID, roots.Virtual)
 	if err != nil || manifest.ID != roots.ID {
-		return crewroot.Roots{}, fmt.Errorf("this Crew's settings are unavailable")
+		return crewroot.Roots{}, fmt.Errorf("this project's settings are unavailable")
 	}
 	return roots, nil
 }
@@ -222,7 +222,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 			hasDashboard, err := crewHasPublishedDashboardEntry(r.Context(), binding.Binding.WorkspacePath)
 			if err != nil {
 				log.Printf("[DASHBOARD_DELETE] project=%s event=failed reason=shared_entry_read", project)
-				externalError(w, 503, "dashboard_unavailable", "Could not load this Crew's dashboard.")
+				externalError(w, 503, "dashboard_unavailable", "Could not load this project's dashboard.")
 				return
 			}
 			log.Printf("[DASHBOARD_DELETE] project=%s event=shared_entry dashboard=%t ask_only=%t", project, hasDashboard, !hasDashboard)
@@ -293,10 +293,10 @@ var crewRelayCreateMu sync.Mutex
 func (api *StreamingAPI) crewSync(ctx context.Context, claims *UserClaims, id string, input crewSyncRequest) (crewSyncReply, error) {
 	if input.Action == "create" {
 		if input.PairID == "" || input.SourceID == "" || input.Name == "" {
-			return crewSyncReply{}, fmt.Errorf("choose a local Crew to sync")
+			return crewSyncReply{}, fmt.Errorf("choose a local project to sync")
 		}
 		if !personalLaptopSettingsClaims(claims) || !workspaceCreateTokenAllowed(claims) {
-			return crewSyncReply{}, fmt.Errorf("this connection cannot create a Crew")
+			return crewSyncReply{}, fmt.Errorf("this connection cannot create a project")
 		}
 		// A retried relay create (a lost reply) returns the Mac Crew's existing twin, never a second one.
 		crewRelayCreateMu.Lock()

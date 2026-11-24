@@ -179,7 +179,7 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 	}
 	clean, valid := cleanWorkspaceReadPath(workspacePath, false)
 	if !valid {
-		http.Error(w, "a Workflow, Flow, Crew or Code project root is required", http.StatusBadRequest)
+		http.Error(w, "a Workflow, Flow, project or project root is required", http.StatusBadRequest)
 		return
 	}
 	crew, isCrew := resolveCrewPath(r.Context(), claims.UserID, clean)
@@ -187,7 +187,7 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 	root, project, projectRoot := ref.ProjectRoot()
 	isCode := projectRoot && root == workspaceref.CodeProjectsRoot && !strings.HasPrefix(project, ".")
 	if (isCrew && crew.Rest != "") || (!isCrew && !isCode && !isReportRunWorkflowRoot(clean)) {
-		http.Error(w, "a Workflow, Flow, Crew or Code project root is required", http.StatusBadRequest)
+		http.Error(w, "a Workflow, Flow, project or project root is required", http.StatusBadRequest)
 		return
 	}
 	if isCrew {
@@ -277,7 +277,7 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 	sourceScript := publishedReadPath(r.Context(), filepath.ToSlash(filepath.Join(workspacePath, script)))
 	codeRoot, err := fsutil.WorkspacePath(docsRoot, sourceCode)
 	if err != nil {
-		http.Error(w, "Crew code folder is unavailable", http.StatusBadRequest)
+		http.Error(w, "Project code folder is unavailable", http.StatusBadRequest)
 		return
 	}
 	absScript, err := fsutil.WorkspacePath(docsRoot, sourceScript)

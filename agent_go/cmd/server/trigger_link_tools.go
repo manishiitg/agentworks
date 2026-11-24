@@ -118,7 +118,7 @@ func resolveTriggerTarget(ctx context.Context, claims *UserClaims, raw string) (
 		}
 	}
 	if query == "" {
-		return triggerTarget{}, fmt.Errorf("target is required: pass a Crew or workflow name or its exact workspace_path")
+		return triggerTarget{}, fmt.Errorf("target is required: pass a project or workflow name or its exact workspace_path")
 	}
 	userID := ""
 	if claims != nil {
@@ -180,7 +180,7 @@ func resolveTriggerTarget(ctx context.Context, claims *UserClaims, raw string) (
 	}
 	switch len(found) {
 	case 0:
-		return triggerTarget{}, fmt.Errorf("no Crew or workflow you can use matches %q; call list_agents and pass its id", query)
+		return triggerTarget{}, fmt.Errorf("no project or workflow you can use matches %q; call list_agents and pass its id", query)
 	case 1:
 		return found[0], nil
 	default:
@@ -486,14 +486,14 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 		conversationBinding, err = resolveProductConversationBinding(ctx, ownerID, profile, target.CrewID)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("Crew conversation is unavailable: %w", err)
+		return nil, fmt.Errorf("Project conversation is unavailable: %w", err)
 	}
 	conversation, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, ownerID, profile, conversationBinding, "")
 	if err != nil {
-		return nil, fmt.Errorf("Crew conversation is unavailable: %w", err)
+		return nil, fmt.Errorf("Project conversation is unavailable: %w", err)
 	}
 	if conversation.SessionID != status.SessionID {
-		return nil, fmt.Errorf("the Crew's conversation has moved to a new session since run %s started; make a new call", runID)
+		return nil, fmt.Errorf("the project's conversation has moved to a new session since run %s started; make a new call", runID)
 	}
 	framed := fmt.Sprintf("[Follow-up from %s %q about its task in run %s]\n\n%s", caller.Stamp.Type, caller.Label, runID, strings.TrimSpace(message))
 	req, tabAccount, err := automationProductChatQuery(ctx, ownerID, profile, framed, conversation)
@@ -533,14 +533,14 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 		api.handleQuery(recorder, httpReq)
 	}
 	if recorder.Code >= 400 {
-		return nil, fmt.Errorf("the Crew did not accept the message (%d): %s", recorder.Code, strings.TrimSpace(recorder.Body.String()))
+		return nil, fmt.Errorf("the project did not accept the message (%d): %s", recorder.Code, strings.TrimSpace(recorder.Body.String()))
 	}
 	var response QueryResponse
 	_ = json.Unmarshal(recorder.Body.Bytes(), &response)
 	delivery := firstNonEmptyTrimmed(response.DeliveryStatus, response.Status, "accepted")
 	return map[string]interface{}{
 		"target": target.describe(), "run_id": runID, "delivery_status": delivery,
-		"note": "Delivered into the Crew's running conversation with you. If it was queued, it runs right after the current turn; the call's own result still arrives as usual.",
+		"note": "Delivered into the project's running conversation with you. If it was queued, it runs right after the current turn; the call's own result still arrives as usual.",
 	}, nil
 }
 

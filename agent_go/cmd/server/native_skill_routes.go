@@ -35,7 +35,7 @@ func (api *StreamingAPI) ownNativeSkillScope(r *http.Request, write bool) (int, 
 	workspace := r.URL.Query().Get("workspace_path")
 	crew, ok := resolveCrewPath(r.Context(), claims.UserID, workspace)
 	if !ok || crew.OwnerID != sanitizeUserIDForPath(claims.UserID) {
-		return 403, fmt.Errorf("Open a Crew you own to choose native skills.")
+		return 403, fmt.Errorf("Open a project you own to choose native skills.")
 	}
 	if token := claims.AccessToken; token != nil {
 		roots, bound, err := crewStorageRoots(workspace)
@@ -46,7 +46,7 @@ func (api *StreamingAPI) ownNativeSkillScope(r *http.Request, write bool) (int, 
 		// Same native-file admission as localProjectAccess: a file-limited
 		// or another-Crew token cannot expand into personal/native folders.
 		if err != nil || !bound || token.FileGuard != nil || !token.Allows(scope) || !token.AllowsCrew(roots.ID) {
-			return 403, fmt.Errorf("Use a connection with full access to this own Crew.")
+			return 403, fmt.Errorf("Use a connection with full access to this own project.")
 		}
 	}
 	return 0, nil
@@ -59,7 +59,7 @@ func (api *StreamingAPI) nativeSkillSources(r *http.Request) ([]skills.NativeSou
 	workspace := r.URL.Query().Get("workspace_path")
 	crew, ok := resolveCrewPath(r.Context(), user, workspace)
 	if !ok || crewAccessFor(GetUserFromContext(r.Context()), crew) != crewAccessOwner {
-		return nil, "Open a Crew you build to discover native skills."
+		return nil, "Open a project you build to discover native skills."
 	}
 	provider := r.URL.Query().Get("provider")
 	directory := map[string]string{"claude-code": ".claude", "codex-cli": ".codex", "cursor-cli": ".cursor"}[provider]

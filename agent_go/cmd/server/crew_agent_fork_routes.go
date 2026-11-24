@@ -27,7 +27,7 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 	}
 	dir, err := crewTeamDir(project)
 	if err != nil {
-		fail(400, "Choose a valid Crew.")
+		fail(400, "Choose a valid project.")
 		return
 	}
 	mu := crewTeamRecordMutex(dir)
@@ -35,7 +35,7 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 	defer mu.Unlock()
 	team, err := readCrewTeam(project)
 	if err != nil || !team.On || !team.member(claims.UserID) || ownerOfCrewProjectID(project) != team.OwnerID || !crewTeamAccountActive(team.OwnerID) {
-		fail(403, "This Crew's Team is not available to you.")
+		fail(403, "This project's Team is not available to you.")
 		return
 	}
 	now := time.Now().UTC()
@@ -64,7 +64,7 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 		}
 		if in.Operation == "self" {
 			if !crewTeamMacPairAdmitted(project, claims.UserID, r.URL.Query().Get("pair")) {
-				fail(403, "Use your own paired computer for this Crew.")
+				fail(403, "Use your own paired computer for this project.")
 				return
 			}
 			offer, err := api.selfForkCrewAgent(team, claims.UserID, in.AgentID, now)
@@ -83,7 +83,7 @@ func (api *StreamingAPI) handleCrewAgentFork(w http.ResponseWriter, r *http.Requ
 		}
 		if macSource {
 			if !crewTeamMacPairAdmitted(project, claims.UserID, r.URL.Query().Get("pair")) {
-				fail(403, "Use your own paired computer for this Crew.")
+				fail(403, "Use your own paired computer for this project.")
 				return
 			}
 			// A Mac agent's copy comes from the chat the server already keeps for it once it is shared (#3218).

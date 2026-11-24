@@ -68,11 +68,11 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 					"needs_value": globalSecretNamesWithoutValue(ctx, userID),
 				},
 				"project": map[string]interface{}{
-					"source":        "Vault secrets this project uses; in a Crew each person uses their own secret with that name",
+					"source":        "Vault secrets this project uses; in a project each person uses their own secret with that name",
 					"workflow_path": workflowPath,
 					"names":         projectNames,
 				},
-				"note": "Secret VALUES are never returned by any tool. A name in global.needs_value exists in Vault for this person but has no stored value yet: it cannot be selected until they add its value in the Vault panel, so tell them that. Save a new value for this project with set_workflow_secret (in a Crew it goes into your own Vault; for a Goal into its owner's). In a workflow builder, use an existing Vault secret with update_workflow_config(add_secrets=[...]).",
+				"note": "Secret VALUES are never returned by any tool. A name in global.needs_value exists in Vault for this person but has no stored value yet: it cannot be selected until they add its value in the Vault panel, so tell them that. Save a new value for this project with set_workflow_secret (in a project it goes into your own Vault; for a Goal into its owner's). In a workflow builder, use an existing Vault secret with update_workflow_config(add_secrets=[...]).",
 			}, "", "  ")
 			return string(out), nil
 		},
@@ -87,7 +87,7 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 	if strings.TrimSpace(workflowPath) != "" {
 		if err := registerTool(
 			"set_workflow_secret",
-			"Save a secret for this project. In a Crew it is saved in your own Vault (My accounts) and used in your chats and runs here; each teammate uses their own secret with the same name (put it in a shared vault for everyone). For a Goal only its owner saves, into the owner's Vault. Saving a name again replaces its value everywhere it is used. $SECRET_<NAME> is usable immediately in this session.",
+			"Save a secret for this project. In a project it is saved in your own Vault (My accounts) and used in your chats and runs here; each teammate uses their own secret with the same name (put it in a shared vault for everyone). For a Goal only its owner saves, into the owner's Vault. Saving a name again replaces its value everywhere it is used. $SECRET_<NAME> is usable immediately in this session.",
 			map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{

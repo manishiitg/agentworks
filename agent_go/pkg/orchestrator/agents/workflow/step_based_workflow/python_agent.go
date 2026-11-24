@@ -230,7 +230,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		// snapshot instead of silently switching an existing native conversation.
 		resolved := hcpo.selectExecutionLLM(ctx, &saved.Config, saved.StepID)
 		if resolved == nil {
-			return nil, nil, fmt.Errorf("No agent model is configured for this automation; choose its model in the Crew chat.")
+			return nil, nil, fmt.Errorf("No agent model is configured for this automation; choose its model in the project chat.")
 		}
 		saved.Config.ExecutionLLM = &AgentLLMConfig{Provider: resolved.Primary.Provider, ModelID: resolved.Primary.ModelID, ConnectionID: resolved.Primary.ConnectionID, Options: resolved.Primary.Options}
 		if args.Reasoning != "" {
@@ -287,7 +287,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		}
 		matched, enabled := orchestrator.FilterCustomToolsByCategory(pool, executors, []string{requested})
 		if len(matched) == 0 {
-			return nil, nil, fmt.Errorf("Tool %q is unavailable to this automation; select an available tool in its Crew.", requested)
+			return nil, nil, fmt.Errorf("Tool %q is unavailable to this automation; select an available tool in its project.", requested)
 		}
 		for _, tool := range matched {
 			name := tool.Function.Name
@@ -329,9 +329,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		}
 		if !found {
 			if toolName == "agent_browser" {
-				return nil, nil, fmt.Errorf("This automation's browser is not available. In its Crew chat, ask to choose and connect its browser, then retry.")
+				return nil, nil, fmt.Errorf("This automation's browser is not available. In its project chat, ask to choose and connect its browser, then retry.")
 			}
-			return nil, nil, fmt.Errorf("The requested %s tool is unavailable to this automation; connect it in the Crew or turn off that selection.", toolName)
+			return nil, nil, fmt.Errorf("The requested %s tool is unavailable to this automation; connect it in the project or turn off that selection.", toolName)
 		}
 	}
 	available := append([]string{}, hcpo.GetSelectedServers()...)

@@ -204,7 +204,7 @@ func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, sessi
 	stage = "source_roots"
 	roots, found, err := crewStorageRoots(workspace)
 	if err != nil || !found || roots.Owner != user {
-		return fmt.Errorf("source Crew ownership changed")
+		return fmt.Errorf("source project ownership changed")
 	}
 	stage = "saved_history"
 	raw, err := ReadChatHistoryConversation(user, session, workspace)

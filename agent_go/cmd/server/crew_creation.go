@@ -109,10 +109,10 @@ func (s *ProjectActionDispatcher) CreateCrewProject(ctx context.Context, req Cre
 		return CreatedCrew{}, fmt.Errorf("crew creation requires the current authorized user")
 	}
 	if !userAllowedProduct(claims, "work") {
-		return CreatedCrew{}, fmt.Errorf("Crew product is unavailable or access denied")
+		return CreatedCrew{}, fmt.Errorf("Project product is unavailable or access denied")
 	}
 	if !userAccessForClaims(claims).CanCreateIn("work") {
-		return CreatedCrew{}, fmt.Errorf("this account cannot create Crews; an administrator can allow it under the account's create permissions")
+		return CreatedCrew{}, fmt.Errorf("this account cannot create projects; an administrator can allow it under the account's create permissions")
 	}
 	if err := validateCrewCreationWorkflowPath(workflowPath); err != nil {
 		return CreatedCrew{}, err
@@ -140,7 +140,7 @@ func (s *ProjectActionDispatcher) CreateCrewProject(ctx context.Context, req Cre
 		return CreatedCrew{}, fmt.Errorf("creating workflow is unavailable or access denied")
 	}
 	if access := workflowAccessForManifest(claims, creatingManifest); access != WorkflowAccessWrite && access != WorkflowAccessOwner {
-		return CreatedCrew{}, fmt.Errorf("creating a Crew for this workflow requires write access")
+		return CreatedCrew{}, fmt.Errorf("creating a project for this workflow requires write access")
 	}
 	if s == nil || s.registry == nil {
 		return CreatedCrew{}, fmt.Errorf("product profiles are unavailable")
@@ -407,7 +407,7 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		// Only create our new resource directory; never adopt or write into a
 		// pre-existing .agentworks tree or the person's ordinary files.
 		if err := os.Mkdir(filepath.Join(settings.LocalRoot, ".agentworks"), 0700); err != nil {
-			return CreatedCrew{}, fmt.Errorf("create Crew resources: %w", err)
+			return CreatedCrew{}, fmt.Errorf("create project resources: %w", err)
 		}
 		if err := os.MkdirAll(filepath.Join(fsutil.WorkspaceDocsRoot(), "Crew"), 0700); err != nil {
 			_ = os.Remove(filepath.Join(settings.LocalRoot, ".agentworks"))
@@ -659,7 +659,7 @@ func applyCrewCreationStarter(ctx context.Context, workspacePath, title, workflo
 	}
 	var b strings.Builder
 	b.WriteString("# " + strings.TrimSpace(title) + "\n\n")
-	b.WriteString("## " + time.Now().UTC().Format("2006-01-02") + " — Crew brief\n\n")
+	b.WriteString("## " + time.Now().UTC().Format("2006-01-02") + " — Project brief\n\n")
 	b.WriteString("Created by Workflow Builder for workflow `" + workflowPath + "`.\n\n")
 	if purpose != "" {
 		b.WriteString("Purpose: " + purpose + "\n\n")
@@ -725,7 +725,7 @@ func validateCrewCreationSkills(names []string) ([]string, error) {
 		if skills.IsBuiltinSkillIn("Crew", name) {
 			continue
 		}
-		return nil, fmt.Errorf("crew skill %q is not installed inside the new Crew; create it without this attachment, then install and select it there", name)
+		return nil, fmt.Errorf("crew skill %q is not installed inside the new project; create it without this attachment, then install and select it there", name)
 	}
 	return checked, nil
 }
@@ -866,7 +866,7 @@ func (s *ProjectActionDispatcher) validateCrewCreationServers(ctx context.Contex
 		}
 		servers = append(servers, canonical)
 		if !connected {
-			pending = append(pending, PendingConnection{Kind: "mcp_server", Name: canonical, Reason: "configured but not connected; connect it through chat using Vault before the Crew can use its tools"})
+			pending = append(pending, PendingConnection{Kind: "mcp_server", Name: canonical, Reason: "configured but not connected; connect it through chat using Vault before the project can use its tools"})
 		}
 	}
 	return servers, pending, nil

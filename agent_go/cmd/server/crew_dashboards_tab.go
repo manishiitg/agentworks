@@ -39,12 +39,12 @@ type crewDashboardsTabFilter struct {
 
 // The three kinds a Crew publishes, always listed (owner, 9 Nov: "show motion dashboards zero"), each with its hint.
 var crewDashboardsTabKinds = []struct{ key, label, hint, ask string }{
-	{"dashboard", "Dashboards", "Live pages built from this Crew's results, with Ask and buttons. They stay up to date as the Crew works.",
-		"Make a dashboard for this Crew from its results, so people can look at them without changing anything. Show me before you publish it."},
+	{"dashboard", "Dashboards", "Live pages built from this project's results, with Ask and buttons. They stay up to date as the project works.",
+		"Make a dashboard for this project from its results, so people can look at them without changing anything. Show me before you publish it."},
 	{"artifact", "Artifacts", "A finished page made in a chat to show one idea: a proposal, plan or comparison. No live data.",
-		"Make an artifact: one page that sums up this Crew's latest results. Show me before you publish it."},
+		"Make an artifact: one page that sums up this project's latest results. Show me before you publish it."},
 	{"motion", "Motion", "Plays changes over time, or walks through an explanation one step at a time. Same link and sharing as a dashboard.",
-		"Make a motion dashboard that plays this Crew's results over time. Show me before you publish it."},
+		"Make a motion dashboard that plays this project's results over time. Show me before you publish it."},
 }
 
 type crewDashboardsTabEmpty struct {
@@ -79,7 +79,7 @@ type crewDashboardsTab struct {
 }
 
 const (
-	crewDashboardsMacOwnerNote    = "Buttons on these work on your Mac. To share with other people, or make a public link, put this Crew online."
+	crewDashboardsMacOwnerNote    = "Buttons on these work on your Mac. To share with other people, or make a public link, put this project online."
 	crewDashboardsMacTeammateNote = "Buttons on these work on the owner's Mac for now."
 	crewDashboardsTeammateNote    = "Only the owner changes who can open these."
 )
@@ -143,7 +143,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	default:
 		filter = "all"
 	}
-	tab := crewDashboardsTab{Workspace: root, Intro: "Everything published from this Crew.", CanChange: owner && !crewOwnerOnlineOfMacCrew(r, t.ProjectID, GetUserIDFromContext(r.Context())), OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
+	tab := crewDashboardsTab{Workspace: root, Intro: "Everything published from this project.", CanChange: owner && !crewOwnerOnlineOfMacCrew(r, t.ProjectID, GetUserIDFromContext(r.Context())), OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
 	who := api.crewDashboardsTabWho(r, root, owner && !onMac)
 	counts := map[string]int{}
 	for _, row := range rows {
@@ -187,11 +187,11 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	if len(rows) == 0 {
 		// Nothing to open: no lines about items that are not there, and one line for a teammate.
 		tab.Intro, tab.Note, tab.PutOnline = "", "", false
-		tab.Empty = &crewDashboardsTabEmpty{Line: crewPersonShortName(t.OwnerID) + " hasn't published anything from this Crew yet."}
+		tab.Empty = &crewDashboardsTabEmpty{Line: crewPersonShortName(t.OwnerID) + " hasn't published anything from this project yet."}
 		if owner {
 			// The Dashboards tab (owner, 9 Nov mock): one line and "Ask the Crew", which opens Main with this draft.
-			tab.Empty = &crewDashboardsTabEmpty{Title: "No artifacts yet", Line: "Ask the Crew to make a report, proposal, demo or dashboard.",
-				Ask: "Make an artifact for this Crew from its results. Show me before you publish it."}
+			tab.Empty = &crewDashboardsTabEmpty{Title: "No artifacts yet", Line: "Ask the project to make a report, proposal, demo or dashboard.",
+				Ask: "Make an artifact for this project from its results. Show me before you publish it."}
 		}
 	}
 	return tab, true

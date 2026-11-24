@@ -1,7 +1,7 @@
-# Slack bot for this Crew
+# Slack bot for this project
 
 Read `panel-channels` and its Slack bot procedure before setup or route changes.
-The Crew's bot settings are in **Share → Slack**: saved bot, name for this Crew,
+The project's bot settings are in **Share → Slack**: saved bot, name for this project,
 channels and direct messages. Personal **Use Slack as me** stays in Connections.
 Agent UI controls open only the Dashboard; point to the menu rather than inventing
 a Slack UI-open target.
@@ -13,9 +13,9 @@ not verified Slack identity. Token diagnostics and a stored route do not prove
 an incoming mention/thread reply was delivered. Never post a test unless asked.
 Keep bot/app tokens backend-owned, never in source, outputs or chat replies.
 
-Channel conversations answer as the Crew owner in a thread under Run rules;
-they do not grant Crew setup changes. Direct messages use the matched person's
-own AgentWorks access and are limited to people this Crew is shared with. The
+Channel conversations answer as the project owner in a thread under Run rules;
+they do not grant project setup changes. Direct messages use the matched person's
+own AgentWorks access and are limited to people this project is shared with. The
 server checks account/workspace identity, saved bot/routes and exclusions again.
 An event, slug or Slack sender cannot broaden those grants.
 

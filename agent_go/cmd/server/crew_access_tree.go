@@ -215,7 +215,7 @@ func crewTeamFirstName(name string) string {
 // One header (owner, 9 Nov mock): "Dashboards", how many and who can open them, then each dashboard by name.
 func crewAccessDashboardLine(items []crewAccessDashboard) crewAccessLine {
 	if len(items) == 0 {
-		return crewAccessLine{Kind: "dashboard", Group: "online", Title: "No artifacts yet · ask AI to make one", Ask: "Help me make an artifact for this Crew", Target: "dashboards"}
+		return crewAccessLine{Kind: "dashboard", Group: "online", Title: "No artifacts yet · ask AI to make one", Ask: "Help me make an artifact for this project", Target: "dashboards"}
 	}
 	// A header "Artifacts  N", then one row per artifact. No who-can-open tag on the header (owner, 19 Nov, #2993):
 	// each row says itself whether it is on the Team.

@@ -29,7 +29,7 @@ func workspaceGitDeliveryResolve(ctx context.Context, r *http.Request, canonical
 	}
 	roots, found, err := crewroot.Lookup(workspaceGitDocsRoot(), canonical)
 	if err != nil || !found || roots.Virtual != canonical || roots.Owner == "" {
-		return nil, errors.New("Open a Crew and choose its GitHub connection before publishing commits.")
+		return nil, errors.New("Open a project and choose its GitHub connection before publishing commits.")
 	}
 	if !workspaceGitWriteAllowed(ctx, r, GetUserFromContext(ctx), canonical) {
 		return nil, errors.New("Only this project's Builder can publish its commits.")
@@ -52,7 +52,7 @@ func workspaceGitDeliveryResolve(ctx context.Context, r *http.Request, canonical
 		return nil, err
 	}
 	if rec == nil || githubTokenValue(rec) == "" {
-		return nil, errors.New("Connect GitHub for this Crew in Connections before pushing or opening a pull request.")
+		return nil, errors.New("Connect GitHub for this project in Connections before pushing or opening a pull request.")
 	}
 	return &workspaceGitDeliveryTarget{Repository: repository, Branch: branch, Head: head, token: githubTokenValue(rec)}, nil
 }

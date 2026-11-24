@@ -73,7 +73,7 @@ func crewAttachedFilesNotice(crewFolder, query string) string {
 	if len(lines) == 0 {
 		return ""
 	}
-	return sessionModeOpen + "\nWhere the files in this message are on this computer. Native file tools and terminal commands use these full paths; workspace tools keep the Crew paths.\n" +
+	return sessionModeOpen + "\nWhere the files in this message are on this computer. Native file tools and terminal commands use these full paths; workspace tools keep the project paths.\n" +
 		strings.Join(lines, "\n") + "\n" + sessionModeClose
 }
 

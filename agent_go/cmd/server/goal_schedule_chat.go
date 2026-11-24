@@ -59,7 +59,7 @@ func goalScheduleChats(ctx context.Context, owner, presetID, workspace string) (
 func applyGoalScheduleDestination(ctx context.Context, manifest *WorkflowManifest, workspace string, sched *WorkflowSchedule, destination string, chatID *string) error {
 	if manifest != nil && manifest.crewExecutable != nil {
 		if destination != "" && destination != runDestinationChat {
-			return fmt.Errorf("Crew automations always target a saved chat")
+			return fmt.Errorf("Project automations always target a saved chat")
 		}
 		if chatID != nil {
 			sched.ChatID = strings.TrimSpace(*chatID)

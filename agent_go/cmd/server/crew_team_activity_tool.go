@@ -27,7 +27,7 @@ func (api *StreamingAPI) crewTeamActivityAgentForSession(ctx context.Context, ca
 	if connection == nil {
 		team, err := readCrewTeam(project)
 		if err != nil || !crewTeamAgentsVisible(team, caller.UserID) {
-			return crewTeamRegisteredAgent{}, fmt.Errorf("This Crew's Team is not available to you")
+			return crewTeamRegisteredAgent{}, fmt.Errorf("This project's Team is not available to you")
 		}
 		for _, agent := range team.Agents {
 			if agent.OwnerID == caller.UserID && agent.ChatKey == key {
@@ -74,7 +74,7 @@ func (api *StreamingAPI) crewTeamActivityActorForRequest(r *http.Request, team c
 		return actor, nil
 	}
 	if crewResourceProjectID(key) != team.ProjectID {
-		return crewTeamRegisteredAgent{}, fmt.Errorf("Not this Crew's own chat")
+		return crewTeamRegisteredAgent{}, fmt.Errorf("Not this project's own chat")
 	}
 	if person == team.OwnerID && crewMacPairSent(r, team.ProjectID) {
 		tab := strings.TrimPrefix(key, team.ProjectID+codeChatSideMarker)
@@ -120,7 +120,7 @@ func crewSessionChatRecord(ctx context.Context, caller *UserClaims, localProject
 		}
 	}
 	if key == "" {
-		return doc, "", fmt.Errorf("Post activity from your own agent in this Crew")
+		return doc, "", fmt.Errorf("Post activity from your own agent in this project")
 	}
 	return doc, key, nil
 }

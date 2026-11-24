@@ -188,7 +188,7 @@ type startFlags struct {
 
 func startCommand(o *options) *cobra.Command {
 	var f startFlags
-	cmd := &cobra.Command{Use: "start", Args: cobra.NoArgs, Short: "Connect this computer; choose Crew folders and permissions in Settings", Long: "Connect this computer once using your AgentWorks login. AgentBridge messaging keeps its existing attachments. Open Your computer to choose folders and permissions for each Crew. The current terminal folder is not shared automatically.", RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "start", Args: cobra.NoArgs, Short: "Connect this computer; choose project folders and permissions in Settings", Long: "Connect this computer once using your AgentWorks login. AgentBridge messaging keeps its existing attachments. Open Your computer to choose folders and permissions for each project. The current terminal folder is not shared automatically.", RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := restoreAgentBridge(cmd.Context(), o, "", false); err != nil {
 			fmt.Fprintln(o.stderr, err)
 		}
@@ -237,10 +237,10 @@ func runStart(ctx context.Context, o *options, f startFlags) error {
 	pruneStaleLogs(dir, runningShares(dir))
 	cfg, cfgPath, err := o.connection(false)
 	if err != nil {
-		return errors.New("first time: run `agentworks start --server https://your-agentworks.example` (the website's Crew settings show the exact command)")
+		return errors.New("first time: run `agentworks start --server https://your-agentworks.example` (the website's project settings show the exact command)")
 	}
 	if latest, ok := latestCLIRelease(ctx, cfg.Server); ok && cliVersion != "dev" && !cliIsCurrent(cliVersion, cliBuild, latest.Version, latest.CLIBuild) {
-		fmt.Fprintln(o.stderr, "A newer AgentWorks CLI is available on this server. Run `agentworks update`; your saved folders and permissions stay in Crew Settings.")
+		fmt.Fprintln(o.stderr, "A newer AgentWorks CLI is available on this server. Run `agentworks update`; your saved folders and permissions stay in project Settings.")
 	}
 	login := func() error {
 		fmt.Fprintln(o.stderr, "Signing in for AgentBridge and laptop access; open Your computer to choose folders...")

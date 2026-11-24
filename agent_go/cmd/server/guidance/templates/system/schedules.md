@@ -1,6 +1,6 @@
 ---
 name: "schedules"
-description: "Crew workflow and message schedules, dependency waits, Run now and the global pause."
+description: "Project workflow and message schedules, dependency waits, Run now and the global pause."
 external: true
 external_tools: ["automations"]
 external_note: "Use the discovered automations schema with scope=schedule. Read panel-automations for exact current fields; existing access applies."
@@ -12,7 +12,7 @@ Those shared procedures own the current schema; do not reconstruct old workflow
 scheduler fields; schedules are server records, not files. List first and preserve saved
 IDs, timezone, enabled state, inputs, destination and settings not requested.
 
-A Crew schedule either runs one of its Python workflows directly (action `run`
+A project schedule either runs one of its Python workflows directly (action `run`
 with the workflow target of the one to run, typed inputs and optional saved settings), or sends a
 message to an agent. No intermediary model turn is needed for a workflow run.
 New message schedules run in the chat they are made from; the person can name
@@ -40,7 +40,7 @@ and `users:manage` consent. Ordinary schedule operations remain project-bound.
 Read current status; historical skipped rows do not establish a present pause.
 Never resume owner-paused work just to verify a change.
 
-Existing standalone workflow timers still require conversion into Crew schedules;
+Existing standalone workflow timers still require conversion into project schedules;
 do not claim a rename migrated them. Timers, HTTP webhooks and callable/internal
 function bindings are distinct. Compact workflow list counts separate timers,
 webhooks and function triggers; input mappings do not add timers.

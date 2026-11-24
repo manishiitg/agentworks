@@ -161,7 +161,7 @@ func (api *StreamingAPI) handleCrewAgentSelfForkJob(w http.ResponseWriter, r *ht
 	}
 	crewSelfForkJobs.Unlock()
 	if !IsLocalMode() || claims == nil || !ok || copy.Owner != claims.UserID {
-		externalError(w, 404, "agent_self_fork_unavailable", "This copy is no longer being made. Open your Crew to check its agents.")
+		externalError(w, 404, "agent_self_fork_unavailable", "This copy is no longer being made. Open your project to check its agents.")
 		return
 	}
 	externalJSON(w, copy)
@@ -190,7 +190,7 @@ func (api *StreamingAPI) runCrewAgentSelfForkLocal(r *http.Request, claims *User
 	}
 	localClaims, binding, connection, err := api.desktopCrewChatBinding(r.Context(), project)
 	if err != nil || localClaims.UserID != claims.UserID {
-		return nil, fail(409, "Connect your own copy of this Crew to its Team first.", "binding", err)
+		return nil, fail(409, "Connect your own copy of this project to its Team first.", "binding", err)
 	}
 	base := "/api/crew-teams/" + url.PathEscape(binding.PeerProjectID) + "/agent-forks"
 	query := "?pair=" + url.QueryEscape(binding.PairID)
@@ -208,14 +208,14 @@ func (api *StreamingAPI) runCrewAgentSelfForkLocal(r *http.Request, claims *User
 	}
 	step("download", "Downloading the conversation to your Mac…", 40)
 	result, err := api.acceptCrewAgentForkOnMac(r, project, connection, binding.PeerProjectID, offer.ID, base, query, func() {
-		step("import", "Adding the copy to your Crew…", 80)
+		step("import", "Adding the copy to your project…", 80)
 	})
 	if err != nil {
 		return nil, fail(409, "Your copy is ready but wasn't added to your Mac: "+laptopActionErrorText(err.Error()), "import", err)
 	}
 	out, ok := result.(map[string]any)
 	if !ok {
-		return nil, fail(409, "The copy receipt is unavailable. Open your Crew to check it.", "receipt", nil)
+		return nil, fail(409, "The copy receipt is unavailable. Open your project to check it.", "receipt", nil)
 	}
 	out["snapshot_at"], out["project_id"] = offer.SnapshotAt, project
 	return out, nil

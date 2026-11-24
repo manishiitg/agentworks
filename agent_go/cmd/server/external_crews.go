@@ -86,7 +86,7 @@ func externalCrewCallResponse(ctx context.Context, call *crewFunctionCall, wait 
 	addFunctionCallPending(out, call)
 	if status, _ := out["status"].(string); status != "completed" && status != "failed" {
 		// A poll that waits is cheap: it returns the moment the call finishes (PLAT-837).
-		where := "in the Crew's chat"
+		where := "in the project's chat"
 		if call.IsolatedExecution {
 			where = "in its own isolated run"
 		}
@@ -226,7 +226,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	}
 	if name == "project_functions_get_call" || name == "project_functions_reply" {
 		if name == "project_functions_reply" && claims.AccessToken != nil && !claims.AccessToken.Allows("crews:run") {
-			externalError(w, 403, "insufficient_scope", "Answering a Crew question needs crews:run.")
+			externalError(w, 403, "insufficient_scope", "Answering a project question needs crews:run.")
 			return
 		}
 		call := lookupCrewFunctionCall(str("call_id"))
@@ -269,7 +269,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	if name == "list_crews" {
 		crews, err := api.externalCrewsVisible(ctx, claims, str("query"))
 		if err != nil {
-			externalError(w, 502, "workspace_unavailable", "Cannot list Crews.")
+			externalError(w, 502, "workspace_unavailable", "Cannot list projects.")
 			return
 		}
 		items := make([]map[string]interface{}, 0, len(crews))
@@ -287,7 +287,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	}
 	crew, manifest, summary, ok := api.externalCrewResolve(ctx, claims, str("crew_id"))
 	if !ok {
-		externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
+		externalError(w, 404, "not_found", "Project not found or not allowed for this connection.")
 		return
 	}
 	label := fmt.Sprint(summary["name"])
@@ -345,14 +345,14 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: crew.OwnerID}
 		functions, err := readCrewFunctions(ctx, target)
 		if err != nil {
-			externalError(w, 502, "workspace_unavailable", "Cannot read the Crew's functions.")
+			externalError(w, 502, "workspace_unavailable", "Cannot read the project's functions.")
 			return
 		}
 		fnName := str("function")
 		callArgs, _ := args["input"].(map[string]interface{})
 		fn, found := findCrewFunction(offeredCrewFunctions(ctx, target, functions), fnName)
 		if !found {
-			externalError(w, 404, "not_found", fmt.Sprintf("Crew %q has no function %q; see functions action=list.", label, fnName))
+			externalError(w, 404, "not_found", fmt.Sprintf("Project %q has no function %q; see functions action=list.", label, fnName))
 			return
 		}
 		// Each declared function gets a fresh isolated trigger execution.

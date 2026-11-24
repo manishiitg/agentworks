@@ -128,7 +128,7 @@ func productDisplayName(product string) string {
 	case productWorkflows:
 		return "Workflows"
 	case productCrews:
-		return "Crews"
+		return "Projects"
 	case "relays":
 		return "Flows"
 	}
@@ -748,7 +748,7 @@ type ProviderConnectionSharing struct {
 }
 
 // errProviderSharingAdminOnly refuses a member's workflow or Crew share.
-var errProviderSharingAdminOnly = errors.New("Only an admin can share a provider account with workflows or Crews; you can share it with up to 10 named colleagues.")
+var errProviderSharingAdminOnly = errors.New("Only an admin can share a provider account with workflows or projects; you can share it with up to 10 named colleagues.")
 
 // memberShareUserLimit is how many named people a member's account may be
 // shared with; an admin's account takes up to the general 200 entries.
@@ -845,7 +845,7 @@ func (api *StreamingAPI) normalizeProviderSharing(ctx context.Context, ownerID s
 		result.Users = appendUniqueFold(result.Users, rec.ID)
 	}
 	if len(result.Workflows)+len(result.Crews)+len(result.Users) == 0 {
-		return nil, fmt.Errorf("choose at least one workflow, Crew or person to share with, or keep the account private")
+		return nil, fmt.Errorf("choose at least one workflow, project or person to share with, or keep the account private")
 	}
 	sort.Strings(result.Workflows)
 	sort.Strings(result.Crews)

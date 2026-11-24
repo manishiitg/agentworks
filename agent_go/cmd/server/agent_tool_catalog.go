@@ -197,7 +197,7 @@ func crewIntegrationExternalMembers(catalog []externalTool) ([]externalTool, err
 				if err != nil {
 					return nil, err
 				}
-				props["crew_id"] = externalString("Crew ID from workspace action=list.")
+				props["crew_id"] = externalString("Project ID from workspace action=list.")
 				required, _ := schema["required"].([]any)
 				schema["required"] = append([]any{"crew_id"}, required...)
 				member := source

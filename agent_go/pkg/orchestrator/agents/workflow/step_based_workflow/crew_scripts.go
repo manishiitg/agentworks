@@ -100,7 +100,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) validateScriptSecrets(definition *Cre
 	hcpo.LockWorkspaceEnv()
 	defer hcpo.UnlockWorkspaceEnv()
 	if missing := MissingScriptSecrets(definition, hcpo.GetWorkspaceEnvRef()); len(missing) > 0 {
-		return fmt.Errorf("Select or add %s in Vault for this workflow. Ask this Crew's chat to help.", missing[0])
+		return fmt.Errorf("Select or add %s in Vault for this workflow. Ask this project's chat to help.", missing[0])
 	}
 	return nil
 }
@@ -155,11 +155,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) hydrateCrewScripts(ctx context.Contex
 		}
 		options := hcpo.GetExecutionOptions()
 		if options == nil {
-			return fmt.Errorf("Crew script resolver is unavailable")
+			return fmt.Errorf("Project script resolver is unavailable")
 		}
 		resources := options.CrewResources
 		if resources == nil || resources.Scripts == nil {
-			return fmt.Errorf("Crew script resolver is unavailable")
+			return fmt.Errorf("Project script resolver is unavailable")
 		}
 		resolved, err := resources.Scripts.ResolveCrewScript(ctx, hcpo.GetWorkspacePath(), step.Script)
 		if err != nil {
@@ -310,7 +310,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) WriteWorkspaceFile(ctx context.Contex
 		relative := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(file)), hcpo.GetWorkspacePath()+"/")
 		switch relative {
 		case "workflow.json", "variables/variables.json", "planning/plan.json", "planning/step_config.json", "planning/step_override.json":
-			return fmt.Errorf("edit this saved script in its owning Crew; it has one source definition")
+			return fmt.Errorf("edit this saved script in its owning project; it has one source definition")
 		}
 	}
 	return hcpo.BaseOrchestrator.WriteWorkspaceFile(ctx, file, content)

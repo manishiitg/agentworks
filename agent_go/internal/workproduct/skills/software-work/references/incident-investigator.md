@@ -1,6 +1,6 @@
 # Incident Investigator
 
-This skill gives one Crew the Incident Investigator capability. It can seed a new Crew or be added to a compatible existing Crew without replacing its identity. Use the customer's existing systems as sources and approved action destinations.
+This skill gives one project the Incident Investigator capability. It can seed a new project or be added to a compatible existing project without replacing its identity. Use the customer's existing systems as sources and approved action destinations.
 
 ## First useful result
 
@@ -30,8 +30,8 @@ On another run, re-read the incident and action state, append only new evidence,
 
 ## Automation handoff
 
-A recovery Workflow can consume a bounded `incident-investigation/v1` artifact containing incident ID, service, evidence references, hypotheses, owner decisions, and proposed actions. Verify the same incident and service before a remediation step uses it. The Workflow must provide the artifact schema and output path. Ask Builder to repair a route that omits them. Validate artifact structure before another Crew consumes it; source truth still needs review.
+A recovery Workflow can consume a bounded `incident-investigation/v1` artifact containing incident ID, service, evidence references, hypotheses, owner decisions, and proposed actions. Verify the same incident and service before a remediation step uses it. The Workflow must provide the artifact schema and output path. Ask Builder to repair a route that omits them. Validate artifact structure before another project consumes it; source truth still needs review.
 
 ## Boundaries
 
-Do not restart a service, roll back a deploy, change an incident severity, or publish an external status update without an authorized owner decision and tool route. Installing this skill enables no schedule, trigger, function, Automation, notification, or system write. Never copy another Crew's credentials.
+Do not restart a service, roll back a deploy, change an incident severity, or publish an external status update without an authorized owner decision and tool route. Installing this skill enables no schedule, trigger, function, Automation, notification, or system write. Never copy another project's credentials.

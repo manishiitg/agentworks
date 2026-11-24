@@ -49,18 +49,18 @@ func addTerminalTeamTools(s *server.MCPServer, root, provider, host string, reso
 			}
 			var result any
 			if json.Unmarshal(out.Result, &result) != nil {
-				return mcp.NewToolResultError("The Crew returned an invalid reply."), nil
+				return mcp.NewToolResultError("The project returned an invalid reply."), nil
 			}
 			raw, _ := json.MarshalIndent(result, "", "  ")
 			return mcp.NewToolResultText(string(raw)), nil
 		}
 	}
 	for _, operation := range []string{"join", "leave"} {
-		description := "Join this chat to a Crew the person owns or is a member of, only when the person asks. The reply gives the local folder (or copy=null when the files are on the server; never guess a path) and the Crew instructions to read."
+		description := "Join this chat to a project the person owns or is a member of, only when the person asks. The reply gives the local folder (or copy=null when the files are on the server; never guess a path) and the project instructions to read."
 		if operation == "leave" {
-			description = "Leave this Crew from this exact attached session, only when the person asks. Removes its Crew listing, not files or the AgentBridge attachment."
+			description = "Leave this project from this exact attached session, only when the person asks. Removes its project listing, not files or the AgentBridge attachment."
 		}
-		agentworksclient.AddPluginAction(s, mcp.NewTool(operation, mcp.WithDescription(description), mcp.WithString("project", mcp.Required(), mcp.Description("Crew ID from AgentWorks, never a filesystem path."))), handler("crew_"+operation))
+		agentworksclient.AddPluginAction(s, mcp.NewTool(operation, mcp.WithDescription(description), mcp.WithString("project", mcp.Required(), mcp.Description("Project ID from AgentWorks, never a filesystem path."))), handler("crew_"+operation))
 	}
-	agentworksclient.AddPluginAction(s, mcp.NewTool("team_sync", mcp.WithDescription("The Crew's Team for this joined chat. work_brief (start of a session): your unfinished tasks (my_tasks) and requests waiting on your person; work_answer (need, button, optional helper) answers one for your person. Tasks themselves are messages (see the messaging actions)."), mcp.WithString("project", mcp.Required()), mcp.WithString("team_action", mcp.Required(), mcp.Enum("work_brief", "work_answer")), mcp.WithString("need"), mcp.WithString("button"), mcp.WithString("helper")), handler("team_sync"))
+	agentworksclient.AddPluginAction(s, mcp.NewTool("team_sync", mcp.WithDescription("The project's Team for this joined chat. work_brief (start of a session): your unfinished tasks (my_tasks) and requests waiting on your person; work_answer (need, button, optional helper) answers one for your person. Tasks themselves are messages (see the messaging actions)."), mcp.WithString("project", mcp.Required()), mcp.WithString("team_action", mcp.Required(), mcp.Enum("work_brief", "work_answer")), mcp.WithString("need"), mcp.WithString("button"), mcp.WithString("helper")), handler("team_sync"))
 }

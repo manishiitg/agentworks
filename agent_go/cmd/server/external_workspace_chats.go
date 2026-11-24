@@ -38,7 +38,7 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 			return
 		}
 		if project.OwnerID != claims.UserID || project.CoOwner {
-			externalError(w, 403, "crew_on_mac", "This Crew lives on its owner's Mac and isn't shared with you.")
+			externalError(w, 403, "crew_on_mac", "This project lives on its owner's Mac and isn't shared with you.")
 			return
 		}
 		raw, _ := json.Marshal(args)

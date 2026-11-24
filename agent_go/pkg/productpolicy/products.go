@@ -35,7 +35,7 @@ func ServerOnly(product string) bool {
 }
 
 // Flows are parked for this refactor; saved data and the runtime remain.
-const FlowsDisabledMessage = "Flows are turned off. Use a Crew workflow instead."
+const FlowsDisabledMessage = "Flows are turned off. Use a project workflow instead."
 
 func InstallationAvailable(product string) bool {
 	// Brain is a server product: a Mac never runs it (owner, 2026-11-22).

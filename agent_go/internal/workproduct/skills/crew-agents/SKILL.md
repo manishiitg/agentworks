@@ -1,9 +1,9 @@
 ---
 name: crew-agents
-description: "Read before working with this Crew's other tabs (agents) or the person's own agents - asking, opening, forking and naming tabs, starting helpers with a task (fresh or forked, under or beside you), the main chat's lead role, answers that arrive later, function tabs and AgentBridge agents."
+description: "Read before working with this project's other tabs (agents) or the person's own agents - asking, opening, forking and naming tabs, starting helpers with a task (fresh or forked, under or beside you), the main chat's lead role, answers that arrive later, function tabs and AgentBridge agents."
 ---
 
-# Agents in this Crew
+# Agents in this project
 
 Each chat (tab) is its own named agent with the same skills, memory, Brain,
 tools and access, and its own conversation. `sessions action=list` lists them
@@ -12,22 +12,22 @@ with their purposes, marks which tab is you and which is the main chat.
 person hid are left out, and removed ones are gone. Include hidden tabs only
 when the person asks for them (`include_hidden`).
 
-## Crew tabs versus a CLI's own subagents
+## Project tabs versus a CLI's own subagents
 
-In this skill, **Crew agents means chat tabs**, not the coding CLI's internal
-subagents. Use Crew tabs for ongoing ownership, named specialists and work the
+In this skill, **Project agents means chat tabs**, not the coding CLI's internal
+subagents. Use project tabs for ongoing ownership, named specialists and work the
 person wants to revisit or continue independently. Each tab keeps its own
 conversation; shared project files are not shared live conversation context.
 
 A CLI subagent is a helper created inside one provider session for a bounded
 piece of work, with its result normally returned to that parent session. Its
 context, tools and lifetime depend on the provider. Spawning one does not
-create a Crew tab, register an AgentBridge identity or grant Crew access.
+create a project tab, register an AgentBridge identity or grant project access.
 
-When the person asks for another Crew agent, use the tab tools below; do not
+When the person asks for another project agent, use the tab tools below; do not
 substitute the CLI's spawn, list or messaging tools for them. Use CLI helpers
 only when that kind of delegation is requested or allowed by the current
-instructions. Forking a Crew tab and spawning a CLI helper are different
+instructions. Forking a project tab and spawning a CLI helper are different
 operations; do not describe one as the other.
 
 ## Who leads
@@ -55,8 +55,8 @@ Each owner controls their own named Builder tab and any further tabs they create
 All owners can view all owners’ tabs. Only a tab’s owner can type, steer, stop,
 use its terminal, rename, reset, close or change its model, on the website or MCP.
 A person speaks directly in their own tabs; other owners communicate through
-attributed agent messages. The Crew’s instructions, skills and files remain shared.
-There is no whole-Crew edit lock; coordinate overlapping file changes through messages.
+attributed agent messages. The project’s instructions, skills and files remain shared.
+There is no whole-project edit lock; coordinate overlapping file changes through messages.
 
 ## Asking another tab
 
@@ -109,7 +109,7 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
   Open a named tab with `sessions action=open` (a name; add `task` to start it at once). To start it on a particular model, add `engine`, `model_id`, `reasoning_effort`
   and, when needed, `connection_id` (choices from `models action=list`) to the same
   call: do not open it and then set its model. Reuse a tab by name before opening another. Coordinate overlapping
-  changes through messages; there is no whole-Crew edit lock. Do not split a small task.
+  changes through messages; there is no whole-project edit lock. Do not split a small task.
 - `sessions action=new` archives the existing Main's conversation and starts a
   fresh one in that same agent. It does not create a named tab or restore a
   missing Main. Main is optional; use `sessions action=open name="<purpose>"`
@@ -145,7 +145,7 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
 
 ## Agents your Team shares
 
-Agents that other people in this Crew's Team share are not tabs of this chat,
+Agents that other people in this project's Team share are not tabs of this chat,
 so `sessions action=list` never shows them. When the person asks which agents
 they got from a teammate, or which agents the Team shares, list them with
 `messages action=list_agents` (or `team_sync action=agents` for the Team tab's
@@ -171,7 +171,7 @@ messages. Discover the exact target with `messages action=list_agents`, send a
 request with `queue` or `ask`, and reply with `send` in the exact returned inbox.
 Use plain `send` for a notice that needs no reply.
 
-An app Crew chat already has its local Bridge identity. Local app tabs can
+An app project chat already has its local Bridge identity. Local app tabs can
 message each other without a remote server/network login. Never run
 `agentworks login` or `agentworks attach` from an app chat, or require the person
 to sign in to a server just to contact another local tab. External coding
@@ -179,7 +179,7 @@ sessions use their own approved connection; do not invent network-prefixed
 addresses or reuse another session's credentials. Copy the actual address from
 the admitted directory. Admission, not the address spelling, decides access.
 
-For setup, point to this Crew's **Cloud** (Mac app), **Laptop access** (server)
+For setup, point to this project's **Cloud** (Mac app), **Laptop access** (server)
 or connected-agents menu entry as appropriate. Read `panel-access` first. The
 agent's UI controls open or refresh only the Dashboard; do not invent a computer
 or AgentBridge UI target. `manage_laptop_access(action="devices")` also returns this server's
@@ -187,7 +187,7 @@ installation and connection steps when no computer is connected. Installing
 the helper, granting laptop folders, and connecting a particular external chat
 are separate choices. Give the person the supported setup step; an external
 terminal or desktop chat connects itself with `agentworks attach` from that chat. Do not attach this
-hosted Crew under a second external name, choose another process's chat, or
+hosted project under a second external name, choose another process's chat, or
 claim that opening a view connected an agent. Existing `messages` action=list_agents and
 `messages` action=send discover and contact only agents the caller may reach.
 

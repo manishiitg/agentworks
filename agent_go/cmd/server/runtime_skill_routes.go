@@ -37,7 +37,7 @@ func currentSkillBuilder(ctx context.Context, workspace, requested string) (sess
 		// Builder projections contain private authoring context. Shared Run access
 		// to a Crew does not grant access to its author's native runtime.
 		if crewAccessFor(claims, crew) != crewAccessOwner {
-			return "", "", "", http.StatusForbidden, fmt.Errorf("Crew Builder access required")
+			return "", "", "", http.StatusForbidden, fmt.Errorf("Project Builder access required")
 		}
 		if requested == "" {
 			return "", "", "builder", 0, nil
@@ -56,10 +56,10 @@ func currentSkillBuilder(ctx context.Context, workspace, requested string) (sess
 				return record.SessionID, record.Provider, "builder", 0, nil
 			}
 		}
-		return "", "", "", http.StatusConflict, fmt.Errorf("this chat is no longer a current Crew conversation; reopen the current chat")
+		return "", "", "", http.StatusConflict, fmt.Errorf("this chat is no longer a current project conversation; reopen the current chat")
 	}
 	if !strings.HasPrefix(workspace, "Workflow/") {
-		return "", "", "", 400, fmt.Errorf("runtime skills require a Crew, Goal or Relay")
+		return "", "", "", 400, fmt.Errorf("runtime skills require a project, Goal or Relay")
 	}
 	manifest, exists, readErr := ReadWorkflowManifest(ctx, workspace)
 	if readErr != nil || !exists {

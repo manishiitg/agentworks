@@ -209,12 +209,12 @@ func TeamPaneText(p map[string]any) string {
 	}
 	if s, _ := p["crew_name"].(string); s == "" {
 		if server := teamStr(p["server"]); server != "" {
-			return "This chat isn't in a Team on " + server + ". If your Team is on another AgentWorks, connect this chat there; otherwise ask your agent to join your Crew's Team."
+			return "This chat isn't in a Team on " + server + ". If your Team is on another AgentWorks, connect this chat there; otherwise ask your agent to join your project's Team."
 		}
-		return "This chat isn't in a Crew's Team yet. Ask your agent to join your Crew's Team."
+		return "This chat isn't in a project's Team yet. Ask your agent to join your project's Team."
 	}
 	if p["team_on"] != true {
-		return "The Team for " + teamStr(p["crew_name"]) + " is off. The Crew's owner turns it on in AgentWorks."
+		return "The Team for " + teamStr(p["crew_name"]) + " is off. The project's owner turns it on in AgentWorks."
 	}
 	if p["in_team"] != true {
 		return "This agent isn't shared with the Team. Share it from the Team page in AgentWorks."

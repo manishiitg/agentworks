@@ -1,6 +1,6 @@
 ---
 name: "skill-management"
-description: "Create, install, select and scope reusable Crew skills and explicit agent-call attachments."
+description: "Create, install, select and scope reusable project skills and explicit agent-call attachments."
 external: true
 external_tools: ["crew_skills", "skills", "settings", "files"]
 ---
@@ -12,7 +12,7 @@ in references. Verified project facts belong in memory; temporary status, raw
 chats and secrets belong in neither. Read `panel-data`'s Skills reference and the
 current schemas before changing a skill or selection.
 
-List first. Installed skills belong to this Crew; inventory can also discover its
+List first. Installed skills belong to this project; inventory can also discover its
 native provider skill folders. A discovered folder is not an account-wide skill
 library and grants no permissions. Built-in platform skills remain managed.
 

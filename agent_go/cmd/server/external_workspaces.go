@@ -16,9 +16,9 @@ import (
 // The canonical action family reuses native project services. Origin IDs remain
 // storage/routing identities, never a second set of workspace permissions.
 func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("workspace", "Your private and shared Crews. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. Agent-to-agent messages use AgentBridge. ask calls the product Ask entry point; chat controls use your own tabs; update/export/import use existing Builder authority. agentworks returns your own AgentWorks agent (made on first use) and its main chat: it looks after the Goals you run, which are linked to it automatically; a Crew is linked to it only when you ask, because a Crew link lets it change that Crew. search_messages finds readable messages in workspace_id using query and cursor, returning snippets and exact message links. open_editor resolves an admitted local Git project/file/line to the chosen editor target (and can remember the choice); it never runs a shell or opens an app by itself. git_action offers the same Source Control actions: draft_commit writes editable text only; commit uses message and optional all; push uses this Crew’s selected GitHub account; draft_pr returns editable title/body/base and a pinned head; open_pr requires those checked fields and expected_head and never pushes implicitly. Drafts require your own session_id in this Crew and use one small tool-free request on its account. add_context captures an owned Crew browser element or terminal selection into ordinary attachments; context_op=probe returns its current browser_session and document_token, then add uses that token with x/y. For terminal, probe terminal_tab first for actual completed command IDs; add requires command_id, selected text and start_line/end_line. Never invent a command from output. It never clicks the page or sends a chat message. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
+	add("workspace", "Your private and shared projects. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. Agent-to-agent messages use AgentBridge. ask calls the product Ask entry point; chat controls use your own tabs; update/export/import use existing Builder authority. agentworks returns your own AgentWorks agent (made on first use) and its main chat: it looks after the Goals you run, which are linked to it automatically; a project is linked to it only when you ask, because a project link lets it change that project. search_messages finds readable messages in workspace_id using query and cursor, returning snippets and exact message links. open_editor resolves an admitted local Git project/file/line to the chosen editor target (and can remember the choice); it never runs a shell or opens an app by itself. git_action offers the same Source Control actions: draft_commit writes editable text only; commit uses message and optional all; push uses this project’s selected GitHub account; draft_pr returns editable title/body/base and a pinned head; open_pr requires those checked fields and expected_head and never pushes implicitly. Drafts require your own session_id in this project and use one small tool-free request on its account. add_context captures an owned project browser element or terminal selection into ordinary attachments; context_op=probe returns its current browser_session and document_token, then add uses that token with x/y. For terminal, probe terminal_tab first for actual completed command IDs; add requires command_id, selected text and start_line/end_line. Never invent a command from output. It never clicks the page or sends a chat message. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
 		"action":          map[string]any{"type": "string", "enum": []any{"list", "get", "agentworks", "create", "update", "export", "import", "ask", "reply_input", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move", "sync", "search_messages", "open_editor", "git_action", "add_context"}},
-		"context_source":  map[string]any{"type": "string", "enum": []string{"browser", "terminal"}, "description": "add_context: source selection. Only the Crew owner can capture its browser or terminal."},
+		"context_source":  map[string]any{"type": "string", "enum": []string{"browser", "terminal"}, "description": "add_context: source selection. Only the project owner can capture its browser or terminal."},
 		"terminal_tab":    map[string]any{"type": "integer", "minimum": 1, "maximum": 3, "description": "add_context terminal: exact terminal tab, 1 to 3. Probe returns only observed command metadata, never starts a shell."},
 		"command_id":      externalString("add_context terminal add: exact completed command ID returned by this terminal's probe; never a command string."),
 		"start_line":      map[string]any{"type": "integer", "minimum": 0, "description": "add_context terminal: selected first line in the observed terminal buffer."},
@@ -29,9 +29,9 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"document_token":  externalString("add_context: current document_token returned by probe. A changed page must be picked again."),
 		"x":               map[string]any{"type": "number", "minimum": 0, "maximum": 4096, "description": "add_context: picked page x in CSS pixels."},
 		"y":               map[string]any{"type": "number", "minimum": 0, "maximum": 4096, "description": "add_context: picked page y in CSS pixels."},
-		"sync_action":     map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off"}, "description": "sync, local MCP only: status; reach_on to reach a Mac Crew from the phone and the web (with several networks pass network); reach_off to keep it only in the app on this Mac."},
+		"sync_action":     map[string]any{"type": "string", "enum": []string{"status", "reach_on", "reach_off"}, "description": "sync, local MCP only: status; reach_on to reach a Mac project from the phone and the web (with several networks pass network); reach_off to keep it only in the app on this Mac."},
 		"network":         externalString("For sync_action=reach_on with several networks: the network's name."),
-		"workspace_id":    externalString("Crew workspace ID from workspace action=list."),
+		"workspace_id":    externalString("Project workspace ID from workspace action=list."),
 		"name":            externalString("Project or new chat name."), "message": externalString("Message for ask."),
 		"git_op": map[string]any{"type": "string", "enum": []string{"delivery_capabilities", "draft_commit", "commit", "push", "prepare_pr", "draft_pr", "open_pr"}},
 		"all":    map[string]any{"type": "boolean", "description": "git_action commit/draft_commit: include all current tracked changes; otherwise staged only. New unstaged files are read as bounded excerpts, never staged by drafting."},
@@ -39,7 +39,7 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"base":            externalString("git_action draft_pr/open_pr: target branch; draft_pr defaults to GitHub default branch."),
 		"expected_head":   externalString("git_action open_pr: exact head from the reviewed draft_pr result."),
 		"editor":          map[string]any{"type": "string", "enum": []string{"vscode", "cursor", "zed", "jetbrains"}, "description": "open_editor: chosen local editor; omit to use your saved choice. JetBrains means IntelliJ IDEA."},
-		"repo":            externalString("open_editor/git_action: repository root relative to the Crew files root, as returned by files git_status."),
+		"repo":            externalString("open_editor/git_action: repository root relative to the project files root, as returned by files git_status."),
 		"file":            externalString("open_editor: current file relative to repo; omit for the project folder."),
 		"line":            map[string]any{"type": "integer", "minimum": 1, "maximum": 10000000, "description": "open_editor: line in the current file."},
 		"remember":        map[string]any{"type": "boolean", "description": "open_editor: save the explicitly chosen editor for your next opens."},
@@ -49,11 +49,11 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"answers":         map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"id": externalString("Question id."), "selected_labels": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "other_text": externalString("Custom answer when the question allows it.")}, "required": []any{"id"}}, "maxItems": 12},
 		"session_id":      externalString("An earlier chat session from action=chats, for read/delete."),
 		"agent_id":        externalString("Stable published agent ID from agents or an import receipt, for open_agent."),
-		"operation_id":    externalString("Storage operation for storage_status/storage_backup/storage_move. Storage operations need administrator/users:manage access. storage_move moves ready projects to Crew with verified backups; omit workspace_id for all ready projects. Explicitly select a registered project with unreadable files to move it with a partial backup; skipped entries are reported."),
+		"operation_id":    externalString("Storage operation for storage_status/storage_backup/storage_move. Storage operations need administrator/users:manage access. storage_move moves ready projects to project with verified backups; omit workspace_id for all ready projects. Explicitly select a registered project with unreadable files to move it with a partial backup; skipped entries are reported."),
 		"kind":            externalString("create: goal, crew or relay. read_saved_chat: raw (default) or summary."),
 		"idempotency_key": projectCreateDefinition().InputSchema["properties"].(map[string]any)["idempotency_key"],
 		"offset":          externalInteger(0, 1<<30), "limit": externalInteger(0, 65536),
-		"conversation_key":     externalString("Exact conversation key from this Crew’s tab list."),
+		"conversation_key":     externalString("Exact conversation key from this project’s tab list."),
 		"preview_removal":      map[string]any{"type": "boolean", "description": "close_chat: preview linked work without deleting anything."},
 		"removal_confirmation": externalString("close_chat: current server preview confirmation, supplied only after the person approves its listed effects."),
 		"removal_choices":      map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "close_chat: each active dependency ID mapped to remove or an offered destination key; when_removed dependencies apply only when their prerequisite is removed."},
@@ -152,7 +152,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 			return
 		}
 		externalJSON(w, map[string]any{"workspace_id": crewProfileID + ":" + crew.CrewID, "crew_id": crew.CrewID, "chat_id": "main", "name": agentWorksName, "created": crew.Created,
-			"next": "Talk to it with workspace action=ask and this workspace_id; for its schedules pass project=crew_id. In the app it is AgentWorks in the Crew list."})
+			"next": "Talk to it with workspace action=ask and this workspace_id; for its schedules pass project=crew_id. In the app it is AgentWorks in the project list."})
 		return
 	}
 
@@ -185,7 +185,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 		spec := crewSpec{Name: strings.TrimSpace(externalArg(args, "name"))}
 		if args["spec"] != nil {
 			if err := remarshalExternalArgs(args["spec"], &spec); err != nil {
-				externalError(w, 400, "invalid_arguments", "Send the Crew's creation settings or exported spec.")
+				externalError(w, 400, "invalid_arguments", "Send the project's creation settings or exported spec.")
 				return
 			}
 		}

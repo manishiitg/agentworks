@@ -47,12 +47,12 @@ var externalMCPToolNames = []string{externalMCPToolSpec, externalMCPToolSearch, 
 // Remote instructions are short: the two tool descriptions teach the
 // protocol, since hosted clients may not deliver initialize instructions at
 // all (ChatGPT delivers tools only).
-const externalMCPInstructions = `You are connected to an AgentWorks server. <!-- product:agentworks -->Find the user's workflows with workflow action=list (IDs are never file paths). <!-- /product --><!-- product:work -->Find their Crews with workspace action=list.<!-- /product --> <!-- product:work -->Admins and Crew reviewers also get audited Crew review (workspace_review).<!-- /product --> Your sign-in has the person's website role: owners and editors build (Builder), people using shared work run it (Run). Machine and device connections keep their own limits. Find tools with search_tools, read their schemas with get_api_spec and run them with call_tool; use only tools listed for this connection. Dashboards: read help action=topic topic="dashboard-authoring" before building one. help action=context, action=topics and action=skills give current guides.`
+const externalMCPInstructions = `You are connected to an AgentWorks server. <!-- product:agentworks -->Find the user's workflows with workflow action=list (IDs are never file paths). <!-- /product --><!-- product:work -->Find their projects with workspace action=list.<!-- /product --> <!-- product:work -->Admins and project reviewers also get audited project review (workspace_review).<!-- /product --> Your sign-in has the person's website role: owners and editors build (Builder), people using shared work run it (Run). Machine and device connections keep their own limits. Find tools with search_tools, read their schemas with get_api_spec and run them with call_tool; use only tools listed for this connection. Dashboards: read help action=topic topic="dashboard-authoring" before building one. help action=context, action=topics and action=skills give current guides.`
 
-const externalMCPReadOnlyInstructions = `You are connected to an AgentWorks server with a reading connection: every tool reads; nothing creates, edits or runs. <!-- product:agentworks -->Find the user's workflows with workflow action=list (IDs are never file paths). <!-- /product --><!-- product:work -->Find their Crews with workspace action=list.<!-- /product --> <!-- product:work -->Admins and Crew reviewers also get audited Crew review (workspace_review).<!-- /product --> Find tools with search_tools, read their schemas with get_api_spec and run them with call_tool. If the task needs a change, say so instead of attempting one. help action=context, action=topics and action=skills give current guides.`
+const externalMCPReadOnlyInstructions = `You are connected to an AgentWorks server with a reading connection: every tool reads; nothing creates, edits or runs. <!-- product:agentworks -->Find the user's workflows with workflow action=list (IDs are never file paths). <!-- /product --><!-- product:work -->Find their projects with workspace action=list.<!-- /product --> <!-- product:work -->Admins and project reviewers also get audited project review (workspace_review).<!-- /product --> Find tools with search_tools, read their schemas with get_api_spec and run them with call_tool. If the task needs a change, say so instead of attempting one. help action=context, action=topics and action=skills give current guides.`
 
 // Appended for existing Crew authoring consent; handlers still check roles.
-const externalMCPCrewAuthoringInstructions = `Crews: load crew-authoring guidance and the current schemas. Listed Crew setup, file, skill and MCP actions use existing Crew authoring consent and current project roles; workspace action=get reads the spec and workspace action=export returns its portable form.`
+const externalMCPCrewAuthoringInstructions = `Projects: load crew-authoring guidance and the current schemas. Listed project setup, file, skill and MCP actions use existing project authoring consent and current project roles; workspace action=get reads the spec and workspace action=export returns its portable form.`
 
 var externalMCPToolSchemas = map[string]map[string]any{
 	externalMCPToolSpec: {
@@ -145,7 +145,7 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		case tool.Name == "create_crew":
 			instructions += " " + externalMCPCrewAuthoringInstructions
 		case tool.Name == "workspace":
-			instructions += " New workflows are Python scripts inside a Crew: create them with the Crew's workflow files tool and its python-workflows guide."
+			instructions += " New workflows are Python scripts inside a project: create them with the project's workflow files tool and its python-workflows guide."
 		}
 	}
 	for _, tool := range allowed {
@@ -522,7 +522,7 @@ func externalMCPErrorText(rec *externalMCPRecorder) string {
 // the menu instead of an old get_api_spec answer in its history. The
 // fingerprint changes whenever the names do.
 func externalMCPToolIndex(allowed []externalTool) (string, string) {
-	order := []string{"Goals", "Builder", "Flows", "Crews", "Dashboards", "Needs you", "Brain", "Vault", "Crew review", "Account", "Help"}
+	order := []string{"Goals", "Builder", "Flows", "Projects", "Dashboards", "Needs you", "Brain", "Vault", "Project review", "Account", "Help"}
 	groups := map[string][]string{}
 	names := make([]string, 0, len(allowed))
 	for _, tool := range allowed {
@@ -537,13 +537,13 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 		case strings.Contains(name, "relay"):
 			group = "Flows"
 		case strings.Contains(name, "crew"):
-			group = "Crews"
+			group = "Projects"
 		case name == "brain" || strings.HasPrefix(name, "brain_"):
 			group = "Brain"
 		case strings.Contains(name, "vault"):
 			group = "Vault"
 		case name == "workspace_review":
-			group = "Crew review"
+			group = "Project review"
 		case name == "users" || name == "costs" || name == "account" || name == "get_token_usage" || name == "set_token_limits" || name == "set_allowed_models" || name == "set_account_availability" || name == "get_account_availability":
 			group = "Account"
 		case name == "help" || name == "get_agent_context" || name == "get_skill" || strings.Contains(name, "guidance_topic"):

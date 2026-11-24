@@ -199,7 +199,7 @@ func (api *StreamingAPI) setOwnAgentRule(ctx context.Context, user, chatKey stri
 	}
 	b, err := crewroot.ReadSync(project)
 	if err != nil || b == nil || b.Side != "local" {
-		return crewTeamAgentRule{}, fmt.Errorf("turn on this Crew's Team first; it works through Mac online")
+		return crewTeamAgentRule{}, fmt.Errorf("turn on this project's Team first; it works through Mac online")
 	}
 	c, err := desktopConnectionFor(user, b.ConnectionID)
 	if err != nil {
@@ -207,7 +207,7 @@ func (api *StreamingAPI) setOwnAgentRule(ctx context.Context, user, chatKey stri
 	}
 	tab := macSharedAgentTab(project, chatKey)
 	if tab == "" {
-		return crewTeamAgentRule{}, fmt.Errorf("choose one of this Crew's agents")
+		return crewTeamAgentRule{}, fmt.Errorf("choose one of this project's agents")
 	}
 	body := map[string]any{"agent_key": macSharedAgentChatKey(b.PeerProjectID, tab)}
 	if text != nil {

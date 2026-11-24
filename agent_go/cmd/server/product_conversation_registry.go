@@ -110,7 +110,7 @@ func (store productConversationRegistryStore) workflowStepRun(ctx context.Contex
 		document.Entries[key] = record
 		return *selected, store.writeDocument(ctx, path, document)
 	}
-	return "", fmt.Errorf("this chat is unavailable; reopen the Crew chat before running its steps")
+	return "", fmt.Errorf("this chat is unavailable; reopen the project chat before running its steps")
 }
 
 type productConversationRegistryDocument struct {

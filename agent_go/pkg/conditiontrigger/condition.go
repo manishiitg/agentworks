@@ -211,7 +211,7 @@ func (c Config) Validate() error {
 			return errors.New("worktree must be a project-relative folder")
 		}
 		if c.CheckMode != "" && c.CheckMode != "schedule" || c.EmailSource != "" || len(c.Secrets) != 0 || c.Script != "" || c.Once || c.Target.Kind != "agent" || c.Target.ChatID == "" || c.Target.ChatID == "new" {
-			return errors.New("a GitHub watcher checks on a schedule and sends to one existing Crew chat")
+			return errors.New("a GitHub watcher checks on a schedule and sends to one existing project chat")
 		}
 		if len(p.ReviewBots) > 10 {
 			return errors.New("choose at most ten review bots")

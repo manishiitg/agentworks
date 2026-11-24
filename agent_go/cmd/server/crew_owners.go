@@ -15,11 +15,11 @@ import (
 // (the dashboards endpoint: owners, owner_add, owner_remove) and the MCP tool crew_owners reach the same code.
 const externalCrewOwnersTool = "crew_owners"
 
-const crewOwnersServerOnly = "Only a Crew on the server has co-owners. People work on a Mac Crew with you through its Team."
+const crewOwnersServerOnly = "Only a project on the server has co-owners. People work on a Mac project with you through its Team."
 
 func externalCrewOwnersDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(externalCrewOwnersTool, "List, add or remove the co-owners of a Crew on the server. Co-owners build it like its owner: files, agents, memory, instructions and automations, and they see every chat in it. Only the Crew's owner adds or removes co-owners; the owner cannot be removed. Turns still run in the owner's server account.", true, false, map[string]any{
-		"crew_id": externalString("Crew ID from crew action=list."),
+	add(externalCrewOwnersTool, "List, add or remove the co-owners of a project on the server. Co-owners build it like its owner: files, agents, memory, instructions and automations, and they see every chat in it. Only the project's owner adds or removes co-owners; the owner cannot be removed. Turns still run in the owner's server account.", true, false, map[string]any{
+		"crew_id": externalString("Project ID from crew action=list."),
 		"action":  map[string]any{"type": "string", "enum": []any{"list", "add", "remove"}},
 		"email":   externalString("The person's account email; add and remove only."),
 	}, "crew_id", "action")
@@ -56,7 +56,7 @@ func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, root, ownerID, act
 		return crewOwnersState{}, http.StatusConflict, "mac_crew", crewOwnersServerOnly
 	}
 	if !crewProjectOwnedByCallerStrict(claims.UserID, root) {
-		return crewOwnersState{}, http.StatusForbidden, "owner_only", "Only the Crew's owner adds or removes co-owners. Ask " + crewOwnerDisplayName(ownerID) + "."
+		return crewOwnersState{}, http.StatusForbidden, "owner_only", "Only the project's owner adds or removes co-owners. Ask " + crewOwnerDisplayName(ownerID) + "."
 	}
 	if email == "" {
 		return crewOwnersState{}, http.StatusBadRequest, "invalid_arguments", "Give the person's email."
@@ -68,11 +68,11 @@ func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, root, ownerID, act
 	}
 	target := people[0]
 	if action == "add" && !crewTeamAccountActive(target.ID) {
-		return crewOwnersState{}, http.StatusConflict, "inactive", firstNonEmptyTrimmed(target.Username, target.Email) + " can't use Crews on this server, so they can't be a co-owner. Ask an admin to give them Crew access first."
+		return crewOwnersState{}, http.StatusConflict, "inactive", firstNonEmptyTrimmed(target.Username, target.Email) + " can't use projects on this server, so they can't be a co-owner. Ask an admin to give them project access first."
 	}
 	if sanitizeUserIDForPath(target.ID) == sanitizeUserIDForPath(ownerID) {
 		if action == "remove" {
-			return crewOwnersState{}, http.StatusConflict, "creator", "The Crew's owner cannot be removed."
+			return crewOwnersState{}, http.StatusConflict, "creator", "The project's owner cannot be removed."
 		}
 		return crewOwnersStateFor(root, ownerID, claims.UserID), 0, "", ""
 	}
@@ -105,7 +105,7 @@ func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, root, ownerID, act
 	if action == "add" && !changed {
 		state.Note = fmt.Sprintf("%s is already a co-owner.", target.Email)
 	} else if action == "add" {
-		state.Note = fmt.Sprintf("%s can now build this Crew.", firstNonEmptyTrimmed(target.Username, target.Email))
+		state.Note = fmt.Sprintf("%s can now build this project.", firstNonEmptyTrimmed(target.Username, target.Email))
 	}
 	return state, 0, "", ""
 }
@@ -113,7 +113,7 @@ func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, root, ownerID, act
 func (api *StreamingAPI) handleDashboardCrewOwners(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action string, emails []string) {
 	ref, ok := resolveCrewPath(r.Context(), claims.UserID, target.Root)
 	if !ok || crewAccessFor(claims, ref) != crewAccessOwner {
-		externalError(w, http.StatusNotFound, "not_found", "Crew not found or not allowed.")
+		externalError(w, http.StatusNotFound, "not_found", "Project not found or not allowed.")
 		return
 	}
 	if !crewLivesOnServer(target.ID) {
@@ -123,7 +123,7 @@ func (api *StreamingAPI) handleDashboardCrewOwners(w http.ResponseWriter, r *htt
 	state := crewOwnersStateFor(ref.Root, ref.OwnerID, claims.UserID)
 	if dashboardOwnersWrite(action) {
 		if !dashboardAuthoringAllowed(claims, &target) {
-			externalError(w, http.StatusForbidden, "insufficient_scope", "Changing co-owners needs the Crew's owner and existing authoring consent.")
+			externalError(w, http.StatusForbidden, "insufficient_scope", "Changing co-owners needs the project's owner and existing authoring consent.")
 			return
 		}
 		if len(emails) == 0 {
@@ -157,7 +157,7 @@ func (api *StreamingAPI) externalCrewOwnersCall(w http.ResponseWriter, r *http.R
 			scope = "crews:write"
 		}
 		if !t.Allows(scope) || !t.AllowsCrew(crewID) {
-			externalError(w, http.StatusForbidden, "insufficient_scope", "This connection does not allow "+action+" on this Crew's co-owners.")
+			externalError(w, http.StatusForbidden, "insufficient_scope", "This connection does not allow "+action+" on this project's co-owners.")
 			return
 		}
 	}
@@ -169,7 +169,7 @@ func (api *StreamingAPI) externalCrewOwnersCall(w http.ResponseWriter, r *http.R
 	}
 	crew, _, _, ok := api.externalCrewResolve(r.Context(), claims, crewID)
 	if !ok || !crew.OwnedByCaller {
-		externalError(w, http.StatusNotFound, "not_found", "Crew not found or not allowed for this connection.")
+		externalError(w, http.StatusNotFound, "not_found", "Project not found or not allowed for this connection.")
 		return
 	}
 	root := crew.Binding.WorkspacePath

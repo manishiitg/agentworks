@@ -140,7 +140,7 @@ func authorizeContextPathsWithReadRoots(ctx context.Context, paths []string, ski
 	if len(paths) == 0 {
 		return nil, nil, nil
 	}
-	denied := errors.New("One or more attached workflows or Crew projects are unavailable or you no longer have access. Remove the attachment and select an accessible project.")
+	denied := errors.New("One or more attached workflows or project projects are unavailable or you no longer have access. Remove the attachment and select an accessible project.")
 	claims := GetUserFromContext(ctx)
 	seen := map[string]bool{}
 	result := make([]string, 0, len(paths))
@@ -164,7 +164,7 @@ func authorizeContextPathsWithReadRoots(ctx context.Context, paths []string, ski
 			if skipMissing {
 				// A saved reference may outlive its registered project or path.
 				// Omit it without reading or resolving a retired location.
-				log.Printf("[WORKFLOW_CONTEXT] Skipping attached project %s: it is no longer a registered workflow or Crew path", folder)
+				log.Printf("[WORKFLOW_CONTEXT] Skipping attached project %s: it is no longer a registered workflow or project path", folder)
 				continue
 			}
 			logContextDenial(claims, folder, "not a workflow or crew path")

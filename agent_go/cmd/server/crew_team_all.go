@@ -20,7 +20,7 @@ import (
 
 func crewTeamAllPath(project string) (string, error) {
 	if project == "" || strings.ContainsAny(project, `/\`) || project == "." || project == ".." {
-		return "", fmt.Errorf("invalid Crew identity")
+		return "", fmt.Errorf("invalid project identity")
 	}
 	state, err := crewroot.StateRoot()
 	return filepath.Join(state, "crew-sync", project+"-team.json"), err

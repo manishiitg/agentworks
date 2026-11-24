@@ -124,7 +124,7 @@ func (api *StreamingAPI) resolveBridgeMessageAgent(ctx context.Context, claims *
 			return triggerTarget{}, err
 		}
 		if !strings.HasPrefix(address, "agent:") {
-			return triggerTarget{}, fmt.Errorf("Use the exact network address %s from your Crew chat", address)
+			return triggerTarget{}, fmt.Errorf("Use the exact network address %s from your project chat", address)
 		}
 	}
 	name := strings.TrimPrefix(address, "agent:")

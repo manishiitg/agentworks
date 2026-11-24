@@ -29,12 +29,12 @@ var externalCrewGitOps = map[string]string{
 func (api *StreamingAPI) externalCrewGit(w http.ResponseWriter, r *http.Request, crewPath, name string, args map[string]any) {
 	roots, found, err := crewStorageRoots(crewPath)
 	if err != nil || !found {
-		externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
+		externalError(w, 404, "not_found", "Project not found or not allowed for this connection.")
 		return
 	}
 	if claims := GetUserFromContext(r.Context()); claims != nil && claims.AccessToken != nil {
 		if !claims.AccessToken.Allows("crews:read") || !claims.AccessToken.AllowsCrew(roots.ID) {
-			externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
+			externalError(w, 404, "not_found", "Project not found or not allowed for this connection.")
 			return
 		}
 	}
@@ -71,7 +71,7 @@ func (api *StreamingAPI) externalCrewGit(w http.ResponseWriter, r *http.Request,
 		if op == "status" {
 			externalJSON(w, map[string]any{"repos": []workspaceGitRepo{}})
 		} else {
-			externalError(w, 404, "not_found", "This Crew has no Git repository to read.")
+			externalError(w, 404, "not_found", "This project has no Git repository to read.")
 		}
 		return
 	}

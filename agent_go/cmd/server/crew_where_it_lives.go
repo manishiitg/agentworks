@@ -62,10 +62,10 @@ func migrateCrewSyncToRelay() {
 	}
 }
 
-const crewOnMacRefusal = "This Crew lives on its owner's Mac, so it can't answer here."
+const crewOnMacRefusal = "This project lives on its owner's Mac, so it can't answer here."
 
 // crewOnYourMacRefusal is what a member whose agents work on their Mac is told on the website.
-const crewOnYourMacRefusal = "This Crew works on your Mac, so your agents here answer there. Open it in the AgentWorks app on your Mac, or choose Use it on the web instead."
+const crewOnYourMacRefusal = "This project works on your Mac, so your agents here answer there. Open it in the AgentWorks app on your Mac, or choose Use it on the web instead."
 
 // crewOnMacRefusalFor is the refusal the caller sees for a server turn of a Crew that lives on a Mac.
 func crewOnMacRefusalFor(conversationKey, caller string) string {
@@ -121,7 +121,7 @@ func (api *StreamingAPI) desktopCrewWorkspace(ctx context.Context, claims *UserC
 	}
 	binding, manifest, ok := api.resolveExternalWorkspace(ctx, claims, project)
 	if !ok {
-		return fail(404, "This Crew is unavailable on your Mac.")
+		return fail(404, "This project is unavailable on your Mac.")
 	}
 	callCtx := context.WithValue(ctx, crewMacCallerKey{}, call.Caller)
 	r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(callCtx)
@@ -143,7 +143,7 @@ func crewOnMacChannelReply(platform string) string {
 	if platform == "whatsapp" {
 		name = "WhatsApp"
 	}
-	return "This Crew runs on its owner's Mac. Connect " + name + " in the Crew's Integrations on that Mac."
+	return "This project runs on its owner's Mac. Connect " + name + " in the project's Integrations on that Mac."
 }
 
 // crewPlace is where a Crew lives, as its Access row shows it: on this Mac (or the Mac is off, seen from online),
@@ -178,7 +178,7 @@ func (api *StreamingAPI) unpairCrewRelayTwin(w http.ResponseWriter, r *http.Requ
 	}
 	b, err := crewroot.ReadSync(roots.ID)
 	if err != nil || b == nil || b.Mode != "relay" || b.Side != "server" || b.Editing != "local" || pair == "" || b.PairID != pair {
-		externalError(w, 409, "wrong_pair", "Turn this off from the Mac that holds this Crew.")
+		externalError(w, 409, "wrong_pair", "Turn this off from the Mac that holds this project.")
 		return
 	}
 	if crewTeamRecordOn(roots.ID) {

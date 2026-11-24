@@ -31,7 +31,7 @@ func (api *StreamingAPI) captureCrewAgentForkAtKey(ctx context.Context, claims *
 		return payload, err
 	}
 	if !found {
-		return payload, fmt.Errorf("this agent's Crew is unavailable")
+		return payload, fmt.Errorf("this agent's project is unavailable")
 	}
 	payload.Conversation, err = api.captureCrewHandoffConversation(ctx, claims, roots, record)
 	if err != nil {

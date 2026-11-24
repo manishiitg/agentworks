@@ -182,7 +182,7 @@ func loadWorkflowTimerActions(ctx context.Context, root string, manifest *Workfl
 			return fmt.Errorf("schedule project does not match its Goal or Relay")
 		}
 		if manifest.crewExecutable != nil && (workflowExecutionOwnerUserID(manifest) == "" || record.RunAs != workflowExecutionOwnerUserID(manifest)) {
-			return fmt.Errorf("schedule must run as its Crew owner")
+			return fmt.Errorf("schedule must run as its project owner")
 		}
 		owners := manifest.effectiveOwners()
 		if (len(owners) == 0 && (workflowExecutionOwnerUserID(manifest) == "" || record.RunAs != workflowExecutionOwnerUserID(manifest))) ||
@@ -238,7 +238,7 @@ func loadCrewTimerActions(ctx context.Context, root string, manifest *productPro
 	manifest.Schedules = nil
 	for _, record := range records {
 		if record.Project.Kind != "crew" || record.Project.ID != manifest.ID {
-			return fmt.Errorf("schedule project does not match its Crew")
+			return fmt.Errorf("schedule project does not match its project")
 		}
 		// The registry decides who owns a Crew, never its manifest (PLAT-449).
 		owner, registered := crewProjectOwnerID(root)
@@ -249,13 +249,13 @@ func loadCrewTimerActions(ctx context.Context, root string, manifest *productPro
 			owner = GetDefaultUserID()
 		}
 		if owner == "" {
-			return fmt.Errorf("schedule caller does not match its Crew owner")
+			return fmt.Errorf("schedule caller does not match its project owner")
 		}
 		// A chat schedule belongs to the Crew owner or to a Team member of the Crew; a workflow schedule
 		// always runs as the owner. A member who left takes their chat schedules with them.
 		if record.RunAs != owner {
 			if record.Action.Type == "run" || !crewIsCoOwner(root, record.RunAs) {
-				log.Printf("[SCHEDULES] skipping schedule %s of Crew %s: it belongs to %q, who is not in this Crew", record.ID, manifest.ID, record.RunAs)
+				log.Printf("[SCHEDULES] skipping schedule %s of project %s: it belongs to %q, who is not in this project", record.ID, manifest.ID, record.RunAs)
 				continue
 			}
 		}
@@ -271,7 +271,7 @@ func loadCrewTimerActions(ctx context.Context, root string, manifest *productPro
 			New:      record.Action.Conversation == runDestinationNew, When: &record.When}
 		if record.Action.Type == "run" {
 			if record.Action.WorkflowID == "" {
-				return fmt.Errorf("choose the Crew workflow this timer runs")
+				return fmt.Errorf("choose the project workflow this timer runs")
 			}
 			s.WorkflowID, s.InputPreset, s.Inputs, s.RouteSelections = record.Action.WorkflowID, input.InputPreset, input.Inputs, input.Routes
 			s.KeepAwake, s.KeepAwakeOnBattery = input.KeepAwake, input.KeepAwakeOnBattery

@@ -214,7 +214,7 @@ func commandPathForRequest(w http.ResponseWriter, r *http.Request, write bool) (
 	if crew, ok := resolveCrewPath(r.Context(), userID, clean); ok && crew.Shared {
 		access := crewAccessFor(GetUserFromContext(r.Context()), crew)
 		if access == crewAccessNone || (write && access != crewAccessOwner) {
-			http.Error(w, "Crew access required", http.StatusForbidden)
+			http.Error(w, "Project access required", http.StatusForbidden)
 			return "", false
 		}
 		return path.Join(crew.Root, commands.CustomCommandsSubPath), true

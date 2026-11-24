@@ -27,8 +27,8 @@ type externalToolMerge struct {
 }
 
 var externalToolMerges = []externalToolMerge{
-	{"share", "Share a Crew or workflow. get inspects the current audience; set is owner-only and keeps the existing product authoring consent. " + runShareAccessDescription, dashboardMergeActions("share")},
-	{"dashboard", "Live dashboards of workflows and Crews: find them, read and edit drafts, check and publish revisions, and get links.", dashboardMergeActions("dashboard")},
+	{"share", "Share a project or workflow. get inspects the current audience; set is owner-only and keeps the existing product authoring consent. " + runShareAccessDescription, dashboardMergeActions("share")},
+	{"dashboard", "Live dashboards of workflows and projects: find them, read and edit drafts, check and publish revisions, and get links.", dashboardMergeActions("dashboard")},
 	{"settings", "Read or change this product's setup, accounts, linked knowledge and team delivery using its existing access.", platformMergeActions("settings")},
 	{"models", "Read or change project model defaults with existing Builder and account access; other model actions appear only where already available.", platformMergeActions("models")},
 	{"costs", "Read recorded usage and attributed spend for products you can access. Summary, queries and drill-down keep their existing product, root and connection checks.", platformMergeActions("costs")},
@@ -53,7 +53,7 @@ var externalToolMerges = []externalToolMerge{
 	{"browser", "Use the current project browser or manage your own browser connections.", platformMergeActions("browser")},
 	{"terminal", "Use the existing project terminal, execution history or granted laptop connection.", platformMergeActions("terminal")},
 	{"ui", "Open and inspect the current app's views using its existing browser acknowledgement.", platformMergeActions("ui")},
-	{"workspace_review", "Audited inspection of Crew projects for administrators and Crew reviewers: projects, costs, files and the audit log.", [][2]string{
+	{"workspace_review", "Audited inspection of project projects for administrators and project reviewers: projects, costs, files and the audit log.", [][2]string{
 		{"workspaces", "list_review_workspaces"}, {"costs", "get_review_costs"}, {"files", "list_review_files"}, {"file", "read_review_file"},
 		{"audit", "get_review_audit"},
 	}},
@@ -309,7 +309,7 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 					line += " Requires " + strings.Join(required, ", ") + "."
 				}
 			} else {
-				line += " Pass workflow_id, or crew_id for a Crew."
+				line += " Pass workflow_id, or crew_id for a project."
 			}
 			lines = append(lines, line)
 		}

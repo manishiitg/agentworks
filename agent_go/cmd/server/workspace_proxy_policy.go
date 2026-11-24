@@ -103,7 +103,7 @@ func (p workspaceProxyPolicy) denies(key, raw string) string {
 		deleteTarget = strings.TrimSuffix(deleteTarget, "/files")
 	}
 	if p.delete && write && codeFilesDeletionProtected(deleteTarget) {
-		return "the Crew project root and project metadata cannot be deleted from Files; use Delete Crew to remove the workspace"
+		return "the project project root and project metadata cannot be deleted from Files; use Delete project to remove the workspace"
 	}
 	if write && serverOwnedWrite(clean) {
 		return "this file is written only by the server"

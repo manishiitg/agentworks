@@ -54,11 +54,11 @@ func crewScriptManifest(ctx context.Context, binding *crewExecutableBinding) (*W
 		return nil, false, err
 	}
 	if definition.ID != binding.ID {
-		return nil, false, fmt.Errorf("script identity does not match its Crew binding")
+		return nil, false, fmt.Errorf("script identity does not match its project binding")
 	}
 	owner, ok := crewProjectOwnerID(binding.CrewRoot)
 	if !ok {
-		return nil, false, fmt.Errorf("owning Crew is unavailable")
+		return nil, false, fmt.Errorf("owning project is unavailable")
 	}
 	manifest := NewWorkflowManifest(definition.Name)
 	manifest.ID = binding.ID
@@ -117,16 +117,16 @@ func (r *crewWorkflowResources) ResolveCrewScriptScope(ctx context.Context, work
 		return result, nil
 	}
 	if err != nil || parent == nil {
-		return result, fmt.Errorf("this workflow has no owning Crew")
+		return result, fmt.Errorf("this workflow has no owning project")
 	}
 	// The run executes as the Crew's owner (decisions log: "a script acts as its Crew"); the person who starts it is only
 	// rechecked for the right to start it: the owner, or a joined member of the Crew's Team.
 	owner, ok := crewProjectOwnerID(parent.CrewRoot)
 	if !ok || directoryUserIsDisabled(&UserClaims{UserID: owner}) {
-		return result, fmt.Errorf("this Crew's execution owner is unavailable")
+		return result, fmt.Errorf("this project's execution owner is unavailable")
 	}
 	if r.userID != owner && !crewTeamMember(parent.CrewID, r.userID) {
-		return result, fmt.Errorf("this workflow belongs to a Crew you are not on the Team of; ask its owner to add you")
+		return result, fmt.Errorf("this workflow belongs to a project you are not on the Team of; ask its owner to add you")
 	}
 	bindings, err := readCrewExecutables()
 	if err != nil {
@@ -144,7 +144,7 @@ func (r *crewWorkflowResources) ResolveCrewScriptScope(ctx context.Context, work
 			continue
 		}
 		if canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(parent.CrewRoot) {
-			return result, fmt.Errorf("choose a script from this Crew; call another Crew's shared function instead")
+			return result, fmt.Errorf("choose a script from this project; call another project's shared function instead")
 		}
 		sourceRoot := path.Join(binding.Root, "code")
 		result = workflow.CrewScriptConfiguration{Definition: workflow.CrewScriptDefinition{ID: binding.ID}, Root: sourceRoot}
@@ -159,7 +159,7 @@ func (r *crewWorkflowResources) ResolveCrewScriptScope(ctx context.Context, work
 
 		return result, nil
 	}
-	return result, fmt.Errorf("saved script is unavailable; choose a script from this Crew")
+	return result, fmt.Errorf("saved script is unavailable; choose a script from this project")
 }
 
 // Fresh launches read editable source only after the server resolves its scope.
@@ -268,16 +268,16 @@ func writeCrewScriptFile(ctx context.Context, binding *crewExecutableBinding, fi
 func (api *StreamingAPI) crewScriptAuthoringBinding(w http.ResponseWriter, r *http.Request) *crewExecutableBinding {
 	binding, err := findCrewExecutable(r.URL.Query().Get("workspace_path"))
 	if err != nil || binding == nil || binding.Kind != "script" {
-		http.Error(w, "Choose a saved Crew script.", 404)
+		http.Error(w, "Choose a saved project script.", 404)
 		return nil
 	}
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || userAccessForClaims(claims).Disabled || !userAccessForClaims(claims).CanEdit || !userAllowedProduct(claims, "work") || !crewProjectOwnedByCaller(claims.UserID, binding.CrewRoot) {
-		http.Error(w, "Only this Crew's Builder can edit its scripts. Run it through chat or a shared function instead.", 403)
+		http.Error(w, "Only this project's Builder can edit its scripts. Run it through chat or a shared function instead.", 403)
 		return nil
 	}
 	if claims.AccessToken != nil && !api.externalCrewReferenceAllowed(r.Context(), claims, binding.CrewRoot, true) {
-		http.Error(w, "This connection cannot edit this Crew's source. Ask in its chat instead.", 403)
+		http.Error(w, "This connection cannot edit this project's source. Ask in its chat instead.", 403)
 		return nil
 	}
 	if r.Method != http.MethodGet && refuseCrewOwnerOnline(w, r, crewProjectIDOfRoot(binding.CrewRoot), claims.UserID) {
@@ -337,7 +337,7 @@ func (api *StreamingAPI) handleCrewScriptGraph(w http.ResponseWriter, r *http.Re
 	}
 	owner, ok := crewProjectOwnerID(binding.CrewRoot)
 	if !ok {
-		http.Error(w, "This Crew is unavailable.", 404)
+		http.Error(w, "This project is unavailable.", 404)
 		return
 	}
 	resource := &crewWorkflowResources{userID: owner}

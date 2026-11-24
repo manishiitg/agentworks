@@ -38,20 +38,20 @@ func crewExecutableAgentChoices(ctx context.Context, caller, owner, crewID, root
 func (r *crewWorkflowResources) ResolveCrewAgentConfiguration(ctx context.Context, workspace, agentID string) (stepworkflow.CrewAgentConfiguration, error) {
 	var result stepworkflow.CrewAgentConfiguration
 	if r == nil || r.crews == nil || r.crews.registry == nil {
-		return result, fmt.Errorf("Crew services are unavailable")
+		return result, fmt.Errorf("Project services are unavailable")
 	}
 	manifest, found, err := ReadWorkflowManifest(ctx, workspace)
 	if err != nil || !found || manifest.crewExecutable == nil {
-		return result, fmt.Errorf("this workflow has no owning Crew")
+		return result, fmt.Errorf("this workflow has no owning project")
 	}
 	claims := GetUserFromContext(internalBotRequestContext(ctx, r.userID))
 	if claims == nil || claims.UserID != r.userID || workflowAccessForManifest(claims, manifest) == WorkflowAccessNone {
-		return result, fmt.Errorf("this Crew is unavailable")
+		return result, fmt.Errorf("this project is unavailable")
 	}
 	binding := manifest.crewExecutable
 	owner, ok := crewProjectOwnerID(binding.CrewRoot)
 	if !ok || directoryUserIsDisabled(&UserClaims{UserID: owner}) {
-		return result, fmt.Errorf("the Crew owner's account is unavailable")
+		return result, fmt.Errorf("the project owner's account is unavailable")
 	}
 	profile, err := r.crews.registry.Resolve("work", 0, owner)
 	if err != nil {
@@ -59,7 +59,7 @@ func (r *crewWorkflowResources) ResolveCrewAgentConfiguration(ctx context.Contex
 	}
 	project, err := resolveProductConversationBinding(ctx, owner, profile, binding.CrewID)
 	if err != nil || canonicalCrewWorkspaceRoot(project.WorkspacePath) != canonicalCrewWorkspaceRoot(binding.CrewRoot) {
-		return result, fmt.Errorf("the owning Crew is unavailable")
+		return result, fmt.Errorf("the owning project is unavailable")
 	}
 	tabs, err := crewOwnerChatRecords(ctx, r.userID, "work", binding.CrewID, binding.CrewRoot)
 	if err != nil {
@@ -94,7 +94,7 @@ func (r *crewWorkflowResources) ResolveCrewAgentConfiguration(ctx context.Contex
 			return result, err
 		}
 		if strings.TrimSpace(parent.Description) != "" {
-			result.Instructions += "\n\n## Crew purpose\n" + parent.Description
+			result.Instructions += "\n\n## project purpose\n" + parent.Description
 		}
 		result.Instructions += "\n\n" + workflowtypes.ChatInstructionsPrompt(parent.ChatInstructions)
 		result.Servers = append([]string{}, runtimeAppSelection(parent.Capabilities.SelectedServers, parent.Capabilities.ChosenVaultAppsOnly)...)
@@ -108,5 +108,5 @@ func (r *crewWorkflowResources) ResolveCrewAgentConfiguration(ctx context.Contex
 		result.Skills = append([]string{}, parent.Capabilities.SelectedSkills...)
 		return result, nil
 	}
-	return result, fmt.Errorf("the selected Crew agent is no longer available; choose an existing agent")
+	return result, fmt.Errorf("the selected project agent is no longer available; choose an existing agent")
 }

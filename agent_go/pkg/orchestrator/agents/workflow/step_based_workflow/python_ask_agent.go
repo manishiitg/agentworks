@@ -40,7 +40,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAskAgent(ctx context.Context
 	}
 	wait = min(wait, 25)
 	if strings.TrimSpace(crew) == "" || strings.TrimSpace(message) == "" {
-		reply.Error = "An ask needs a Crew and a non-empty message."
+		reply.Error = "An ask needs a project and a non-empty message."
 		return reply
 	}
 	_, executors, err := hcpo.pythonFunctionTools(ctx, parent.GetID())
@@ -51,7 +51,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAskAgent(ctx context.Context
 	send, sendOK := executors["ask_crew"].(func(context.Context, map[string]interface{}) (string, error))
 	read, readOK := executors["read_agent_messages"].(func(context.Context, map[string]interface{}) (string, error))
 	if !sendOK || !readOK {
-		reply.Error = "Crew asks are unavailable to this automation. Open its Crew chat to check access."
+		reply.Error = "Project asks are unavailable to this automation. Open its project chat to check access."
 		return reply
 	}
 	raw, err := send(ctx, map[string]interface{}{"crew": crew, "message": message, "chat_id": arguments["chat_id"], "submission_id": id})

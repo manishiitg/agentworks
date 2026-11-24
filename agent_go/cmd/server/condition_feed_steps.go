@@ -128,7 +128,7 @@ func (c *conditionService) feedJob(ctx context.Context, actor, project, id strin
 
 func (c *conditionService) feedItemsAction(ctx context.Context, actor, profile, project, action string, args map[string]interface{}) (interface{}, error) {
 	if profile != crewProfileID {
-		return nil, errors.New("Project activity is only in a Crew")
+		return nil, errors.New("Project activity is only in a project")
 	}
 	id, _ := args["id"].(string)
 	job, err := c.feedJob(ctx, actor, project, strings.TrimPrefix(id, "feed:"))

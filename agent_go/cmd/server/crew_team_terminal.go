@@ -52,16 +52,16 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		// The Crew is the one this exact session joined, never a caller-supplied project.
 		joinedTeam, row, joined, e := terminalCrewForNamed(named.ID)
 		if e != nil || !joined || row.OwnerID != claims.UserID {
-			crewTeamTerminalRefused(w, 403, "", named, "membership_unavailable", "Join a Crew's Team from this session first.")
+			crewTeamTerminalRefused(w, 403, "", named, "membership_unavailable", "Join a project's Team from this session first.")
 			return
 		}
 		if _, e = currentCrewTeamTerminal(r.Context(), joinedTeam, row); e != nil {
-			crewTeamTerminalRefused(w, 403, joinedTeam.ProjectID, named, "binding_changed", "Join this Crew from this session first.")
+			crewTeamTerminalRefused(w, 403, joinedTeam.ProjectID, named, "binding_changed", "Join this project from this session first.")
 			return
 		}
 		project = joinedTeam.ProjectID
 		if _, e = terminalCrewAdmission(project, claims.UserID); e != nil {
-			crewTeamTerminalRefused(w, 403, project, named, "membership_unavailable", "Choose a Crew you own or whose active Team you have joined.")
+			crewTeamTerminalRefused(w, 403, project, named, "membership_unavailable", "Choose a project you own or whose active Team you have joined.")
 			return
 		}
 		api.terminalTeamFork(w, r, claims, project, named, externalArg(args, "agent_key"))
@@ -77,16 +77,16 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 			team, err = terminalCrewAdmission(project, claims.UserID)
 		case 0:
 		default:
-			crewTeamTerminalRefused(w, 409, project, named, "crew_name_ambiguous", "More than one of your Crews has that name. Use the Crew's ID from its Team page.")
+			crewTeamTerminalRefused(w, 409, project, named, "crew_name_ambiguous", "More than one of your projects has that name. Use the project's ID from its Team page.")
 			return
 		}
 	}
 	if err != nil {
-		crewTeamTerminalRefused(w, 403, project, named, "membership_unavailable", "Choose a Crew you own or whose active Team you have joined, by its name or ID.")
+		crewTeamTerminalRefused(w, 403, project, named, "membership_unavailable", "Choose a project you own or whose active Team you have joined, by its name or ID.")
 		return
 	}
 	if externalArg(args, "action") == "team_sync" && !slices.Contains(crewWorkActions, action) {
-		crewTeamTerminalRefused(w, 400, project, named, "unsupported_action", "Use join or leave for this Crew, or a work_ action for the work log.")
+		crewTeamTerminalRefused(w, 400, project, named, "unsupported_action", "Use join or leave for this project, or a work_ action for the work log.")
 		return
 	}
 	if action != "join" && action != "leave" {
@@ -97,7 +97,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	// A Mac-source Crew always needs its current pair. A server Crew may be
 	// joined without a downloaded Mac copy, but never returns a server path.
 	if crewRelayTwin(project) && claims.UserID == team.OwnerID && !paired {
-		crewTeamTerminalRefused(w, 409, project, named, "pair_unavailable", "This Mac Crew's current connection is unavailable.")
+		crewTeamTerminalRefused(w, 409, project, named, "pair_unavailable", "This Mac project's current connection is unavailable.")
 		return
 	}
 	var copy *crewTeamTerminalCopy
@@ -108,12 +108,12 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		}
 		roots, found, e := crewStorageRoots(crewProjectRootByID(project))
 		if e != nil || !found {
-			crewTeamTerminalRefused(w, 409, project, named, "copy_unavailable", "This Crew's local folder is unavailable.")
+			crewTeamTerminalRefused(w, 409, project, named, "copy_unavailable", "This project's local folder is unavailable.")
 			return
 		}
 		root, e := crewTeamTerminalCopyPath(roots.Files, roots.Files)
 		if e != nil {
-			crewTeamTerminalRefused(w, 409, project, named, "copy_unavailable", "This Crew's local folder is unavailable.")
+			crewTeamTerminalRefused(w, 409, project, named, "copy_unavailable", "This project's local folder is unavailable.")
 			return
 		}
 		copy = &crewTeamTerminalCopy{Path: root}
@@ -136,7 +136,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	if action == "join" {
 		setup, workspace, ownerCtx, ok := api.crewSetupOf(r.Context(), team.OwnerID, project)
 		if !ok {
-			crewTeamTerminalRefused(w, 503, project, named, "instructions_unavailable", "The Crew's instructions could not be read; try again.")
+			crewTeamTerminalRefused(w, 503, project, named, "instructions_unavailable", "The project's instructions could not be read; try again.")
 			return
 		}
 		instructions = setup.ChatInstructions
@@ -145,7 +145,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		if claims.UserID == team.OwnerID {
 			text, found, e := readFileFromWorkspace(ownerCtx, agentProfileRuntimeWorkspace(team.OwnerID, workspace)+"/PROJECT_INSTRUCTIONS.md")
 			if e != nil {
-				crewTeamTerminalRefused(w, 503, project, named, "instructions_unavailable", "The Crew's instructions could not be read; try again.")
+				crewTeamTerminalRefused(w, 503, project, named, "instructions_unavailable", "The project's instructions could not be read; try again.")
 				return
 			}
 			if found {
@@ -166,11 +166,11 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	if action == "join" {
 		other, _, joined, e := terminalCrewForNamed(named.ID)
 		if e != nil {
-			crewTeamTerminalRefused(w, 409, project, named, "membership_unavailable", "This agent's Crew membership could not be checked.")
+			crewTeamTerminalRefused(w, 409, project, named, "membership_unavailable", "This agent's project membership could not be checked.")
 			return
 		}
 		if joined && other.ProjectID != project {
-			crewTeamTerminalRefused(w, 409, project, named, "already_joined", fmt.Sprintf("This agent is already in %s. Leave it first.", firstNonEmptyTrimmed(other.Name, "another Crew")))
+			crewTeamTerminalRefused(w, 409, project, named, "already_joined", fmt.Sprintf("This agent is already in %s. Leave it first.", firstNonEmptyTrimmed(other.Name, "another project")))
 			return
 		}
 	}
@@ -182,7 +182,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	// Ordinary Team writes create this private directory before their atomic
 	// write. A new Off registry must use the same fence, not mkdir's 0755.
 	if err = agentworksclient.EnsurePrivateDirectory(dir); err != nil {
-		crewTeamTerminalRefused(w, 503, project, named, "record_unavailable", "The Crew's private agent registry is unavailable.")
+		crewTeamTerminalRefused(w, 503, project, named, "record_unavailable", "The project's private agent registry is unavailable.")
 		return
 	}
 	mu := crewTeamRecordMutex(dir)
@@ -223,7 +223,7 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 		id = record.ID
 	}
 	if action == "leave" && id == "" {
-		crewTeamTerminalRefused(w, 409, project, named, "not_joined", "This session has not joined this Crew.")
+		crewTeamTerminalRefused(w, 409, project, named, "not_joined", "This session has not joined this project.")
 		return
 	}
 	if copy != nil {
@@ -251,26 +251,26 @@ func (api *StreamingAPI) externalTeamTerminalSync(w http.ResponseWriter, r *http
 	}
 	notice := "Rejoining keeps this agent's existing sharing and chat choices."
 	if newJoin {
-		notice = "Joined this Crew. Only you and your own agents can reach this session while its Team is off."
+		notice = "Joined this project. Only you and your own agents can reach this session while its Team is off."
 		if team.On {
 			notice = "Teammates can now ask this agent. Switch to Only me in AgentWorks to hide it."
 		}
 	}
 	if action == "leave" {
-		notice = "Left this Crew; files and the AgentBridge connection are unchanged."
+		notice = "Left this project; files and the AgentBridge connection are unchanged."
 	}
 	if action == "join" {
 		notice += " Its online copy syncs automatically in the background and answers while this session is away."
 	}
 	if action == "join" && copy == nil {
-		notice += " This Crew's files are on the server, not this Mac. Ask its agents, or add it to this Mac in AgentWorks to work on its files here."
+		notice += " This project's files are on the server, not this Mac. Ask its agents, or add it to this Mac in AgentWorks to work on its files here."
 	}
 	folders := []string{}
 	if copy != nil {
 		folders = copy.Folders
 	}
 	if action == "join" && copy != nil {
-		notice += " Work in the returned Crew folder."
+		notice += " Work in the returned project folder."
 		if team.On {
 			notice += " Only the selected Team folders sync; keep AgentWorks running."
 		}
@@ -423,7 +423,7 @@ func (api *StreamingAPI) terminalTeamAction(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	if _, err := currentCrewTeamTerminal(r.Context(), team, actor); actor.ID == "" || err != nil {
-		crewTeamTerminalRefused(w, 403, team.ProjectID, named, "binding_changed", "Join this Crew from this session first.")
+		crewTeamTerminalRefused(w, 403, team.ProjectID, named, "binding_changed", "Join this project from this session first.")
 		return
 	}
 	if !slices.Contains(crewWorkActions, action) {
@@ -517,7 +517,7 @@ func crewTeamTerminalPostPreview(a crewTeamRegisteredAgent, posts crewTeamActivi
 func terminalCrewAdmission(project, person string) (crewTeam, error) {
 	t, err := readCrewTeamOrNew(project, person)
 	if err != nil || t.OwnerID == "" || ownerOfCrewProjectID(project) != t.OwnerID || !t.member(person) || !crewTeamAccountActive(person) || !crewTeamAccountActive(t.OwnerID) {
-		return crewTeam{}, fmt.Errorf("Crew unavailable or not a current member")
+		return crewTeam{}, fmt.Errorf("Project unavailable or not a current member")
 	}
 	return t, nil
 }
@@ -599,7 +599,7 @@ func (api *StreamingAPI) terminalTeamFork(w http.ResponseWriter, r *http.Request
 	}
 	pair, paired := crewMacPairFor(claims.UserID, project)
 	if !paired {
-		crewTeamTerminalRefused(w, 409, project, named, "fork_no_mac", "Connect your own Mac to this Crew before copying an agent.")
+		crewTeamTerminalRefused(w, 409, project, named, "fork_no_mac", "Connect your own Mac to this project before copying an agent.")
 		return
 	}
 	payload, _ := json.Marshal(map[string]string{"agent": agent})

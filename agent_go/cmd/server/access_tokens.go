@@ -295,7 +295,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 		if !t.AllCrews && len(t.CrewIDs) > 0 {
 			crews, err := listAccessibleCrewProjects(r.Context(), c.UserID, "")
 			if err != nil {
-				externalError(w, 502, "workspace_unavailable", "Cannot check Crew access.")
+				externalError(w, 502, "workspace_unavailable", "Cannot check project access.")
 				return
 			}
 			allowed := map[string]bool{}
@@ -304,7 +304,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			}
 			for _, id := range t.CrewIDs {
 				if !allowed[id] {
-					externalError(w, 403, "forbidden", "One or more selected Crews are not accessible.")
+					externalError(w, 403, "forbidden", "One or more selected projects are not accessible.")
 					return
 				}
 			}

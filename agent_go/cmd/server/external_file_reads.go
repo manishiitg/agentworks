@@ -41,7 +41,7 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	localFiles := localBound && localRoots.Local && rootPath == localRoots.FilesPath()
 	crewRoot = crewRoot || localFiles
 	if !crewRoot && (len(parts) != 2 || parts[0] != "Workflow" || parts[1] == ".") {
-		return wf.Result{}, &externalUpstreamError{400, "root must identify one workflow or Crew"}
+		return wf.Result{}, &externalUpstreamError{400, "root must identify one workflow or project"}
 	}
 	p, err := wf.CleanRelative(req.Path)
 	if err != nil {

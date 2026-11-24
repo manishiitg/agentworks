@@ -179,7 +179,7 @@ func currentHostedBridgeRecord(ctx context.Context, owner string, binding hosted
 				return ProductConversationRecord{}, checkErr
 			}
 			if !live {
-				return ProductConversationRecord{}, admissionRefused("hosted app Crew was removed or replaced")
+				return ProductConversationRecord{}, admissionRefused("hosted app project was removed or replaced")
 			}
 			return record, nil
 		}

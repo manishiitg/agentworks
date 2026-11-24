@@ -150,7 +150,7 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 				}
 				ref, found := resolveCrewPath(ctx, user, root)
 				if !found || crewAccessFor(claims, ref) != crewAccessOwner {
-					return "", errors.New("Only this Crew's Builder can change its settings.")
+					return "", errors.New("Only this project's Builder can change its settings.")
 				}
 				manifest, err := readCrewProjectManifests(ctx, crewProfileID, root)
 				if err != nil {

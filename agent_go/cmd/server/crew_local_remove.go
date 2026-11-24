@@ -22,7 +22,7 @@ func removeLocalCrew(folder string) error {
 		return err
 	}
 	if !bound {
-		return fmt.Errorf("local Crew binding is unavailable")
+		return fmt.Errorf("local project binding is unavailable")
 	}
 	state, err := workflowCLIStateRoot()
 	if err != nil {
@@ -96,7 +96,7 @@ func removeLocalCrew(folder string) error {
 		}
 	}
 	if err != nil {
-		return fmt.Errorf("back up Crew before removal: %w", err)
+		return fmt.Errorf("back up project before removal: %w", err)
 	}
 	if err := os.RemoveAll(roots.Resources); err != nil {
 		return err

@@ -28,11 +28,11 @@ func githubWatcherToken(owner string, p *conditiontrigger.GitHubPR) (string, err
 
 func (c *conditionService) authorizeGitHubPR(ctx context.Context, job productScheduleJob) error {
 	if job.WatcherSource == nil || job.Profile.ID != crewProfileID {
-		return errors.New("PR watchers belong to an owned Crew chat")
+		return errors.New("PR watchers belong to an owned project chat")
 	}
 	owner, err := c.s.projectBuilderOwner(ctx, job.UserID, crewProfileID, job.ProjectID)
 	if err != nil || owner != job.UserID {
-		return errors.New("only the Crew owner can start a PR watcher in their chat")
+		return errors.New("only the project owner can start a PR watcher in their chat")
 	}
 	return nil
 }
@@ -106,7 +106,7 @@ func (c *conditionService) prepareGitHubPR(ctx context.Context, job productSched
 		if cfg.Target.ChatID != codeChatMainName {
 			key += codeChatSideMarker + cfg.Target.ChatID
 			if !projectChatExists(ctx, job.UserID, crewProfileID, job.ProjectID, key) {
-				return errors.New("choose one of your existing Crew chats")
+				return errors.New("choose one of your existing project chats")
 			}
 		}
 		binding, err := resolveProductConversationBinding(ctx, job.UserID, profile, key)

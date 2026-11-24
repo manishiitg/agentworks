@@ -390,7 +390,7 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	}
 	for _, record := range records {
 		if api.sessionStillWorkingAfterIdleRelease(record.SessionID) {
-			writeAgentProfileError(w, http.StatusConflict, "Crew is still working; stop it before deleting the project")
+			writeAgentProfileError(w, http.StatusConflict, "Project is still working; stop it before deleting the project")
 			return
 		}
 	}
@@ -398,11 +398,11 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		used, err := crewUsedByWorkflow(r.Context(), profile.ID, binding.ResourceID, binding.WorkspacePath)
 		if err != nil {
 			log.Printf("[CREW_DELETE] could not check workflow dependencies for project %s: %v", binding.ResourceID, err)
-			writeAgentProfileError(w, http.StatusServiceUnavailable, "Could not check workflow dependencies. Try deleting the Crew again later.")
+			writeAgentProfileError(w, http.StatusServiceUnavailable, "Could not check workflow dependencies. Try deleting the project again later.")
 			return
 		}
 		if used {
-			writeAgentProfileError(w, http.StatusConflict, "Remove this Crew from every workflow before deleting it.")
+			writeAgentProfileError(w, http.StatusConflict, "Remove this project from every workflow before deleting it.")
 			return
 		}
 	}
@@ -435,11 +435,11 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	if profile.ID == crewProfileID {
 		dir, err := crewTeamDir(binding.ResourceID)
 		if err != nil {
-			writeAgentProfileError(w, http.StatusInternalServerError, "The Crew was removed, but its Team state could not be resolved.")
+			writeAgentProfileError(w, http.StatusInternalServerError, "The project was removed, but its Team state could not be resolved.")
 			return
 		}
 		if err := os.RemoveAll(dir); err != nil {
-			writeAgentProfileError(w, http.StatusInternalServerError, "The Crew was removed, but its Team state needs cleanup.")
+			writeAgentProfileError(w, http.StatusInternalServerError, "The project was removed, but its Team state needs cleanup.")
 			return
 		}
 		deleteMacCrewServerTeam(r.Context(), actingFor, binding.ResourceID, serverTeam)
@@ -452,19 +452,19 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	if profile.Product == "work" {
 		if err := removeCrewExecutableBindings(projectID); err != nil {
 			log.Printf("[CREW_DELETE] project=%s executable cleanup failed: %v", projectID, err)
-			writeAgentProfileError(w, http.StatusInternalServerError, "The Crew folder was removed, but its workflow and script cleanup failed.")
+			writeAgentProfileError(w, http.StatusInternalServerError, "The project folder was removed, but its workflow and script cleanup failed.")
 			return
 		}
 	}
 	if err := deletePublicationState(r.Context(), publicationRoot, profile.ID, projectID); err != nil {
 		log.Printf("[CREW_PUBLISH] workspace=%s cleanup=incomplete", projectID)
-		writeAgentProfileError(w, 500, "The Crew folder was removed, but imported publication history cleanup needs a retry.")
+		writeAgentProfileError(w, 500, "The project folder was removed, but imported publication history cleanup needs a retry.")
 		return
 	}
 
 	if profile.ID == crewProfileID {
 		if err := removeCrewSyncState(projectID); err != nil {
-			writeAgentProfileError(w, 500, "The Crew was removed, but its transfer cleanup needs a retry.")
+			writeAgentProfileError(w, 500, "The project was removed, but its transfer cleanup needs a retry.")
 			return
 		}
 	}

@@ -12,7 +12,7 @@ import (
 func crewTeamMessageAgent(ctx context.Context, project, caller, requested string) (crewTeamAgent, string, error) {
 	t, err := readCrewTeam(project)
 	if err != nil || !crewTeamAgentsVisible(t, caller) {
-		return crewTeamAgent{}, "", fmt.Errorf("This Crew's Team is not available to you")
+		return crewTeamAgent{}, "", fmt.Errorf("This project's Team is not available to you")
 	}
 	type choice struct {
 		agent        crewTeamAgent
@@ -70,7 +70,7 @@ func crewTeamMessageAgent(ctx context.Context, project, caller, requested string
 	if len(choices) > 0 {
 		return crewTeamAgent{}, "", fmt.Errorf("No current Team agent matches that address. Did you mean %s? Run messages action=list_agents for the current list", describe(choices))
 	}
-	return crewTeamAgent{}, "", fmt.Errorf("No agents are shared in this Crew's Team now. Run messages action=list_agents for the current list")
+	return crewTeamAgent{}, "", fmt.Errorf("No agents are shared in this project's Team now. Run messages action=list_agents for the current list")
 }
 
 func crewTeamNameDistance(a, b string) int {

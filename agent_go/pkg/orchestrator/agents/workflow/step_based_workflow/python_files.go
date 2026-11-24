@@ -24,41 +24,41 @@ func pythonCrewFileReader(workspace string) func(context.Context, map[string]int
 		p, ok := args["path"].(string)
 		clean, err := wf.CleanRelative(p)
 		if !ok || len(args) != 1 || err != nil || clean != p || p == "." || wf.Private(p) || publication.CredentialPath(p) || strings.HasPrefix(p, "Crew/") || strings.HasPrefix(p, "Workflow/") || strings.HasPrefix(p, "_users/") {
-			return "", fmt.Errorf("Choose a relative file in this Crew, such as knowledgebase/notes/example.md. Private files and other Crews are not available here.")
+			return "", fmt.Errorf("Choose a relative file in this project, such as knowledgebase/notes/example.md. Private files and other projects are not available here.")
 		}
 		// Only the exact knowledgebase/ name: a case variant would reach the same folder past the Brain check.
 		if first, _, _ := strings.Cut(p, "/"); strings.EqualFold(first, "knowledgebase") && first != "knowledgebase" {
-			return "", fmt.Errorf("Choose a relative file in this Crew, such as knowledgebase/notes/example.md. Private files and other Crews are not available here.")
+			return "", fmt.Errorf("Choose a relative file in this project, such as knowledgebase/notes/example.md. Private files and other projects are not available here.")
 		}
 		docs := GetPromptDocsRoot()
 		layout, found, err := crewroot.LookupExecutable(docs, workspace)
 		if err != nil || !found {
-			return "", fmt.Errorf("Run this helper from a saved workflow in its Crew, then choose a file from that Crew's Files.")
+			return "", fmt.Errorf("Run this helper from a saved workflow in its project, then choose a file from that project's Files.")
 		}
 		if strings.HasPrefix(p, "knowledgebase/") && localKnowledgebaseRetired(layout.Crew.Virtual) {
-			return "", fmt.Errorf("This Crew's knowledge is in shared Brain. Ask this Crew to read it through Brain instead of its retired local archive.")
+			return "", fmt.Errorf("This project's knowledge is in shared Brain. Ask this project to read it through Brain instead of its retired local archive.")
 		}
 		guard := &wf.FolderGuard{ReadPaths: []string{"."}}
 		root, name, _, guard, _, err := wf.BoundCrewFileRequest(docs, layout.Crew.Virtual, p, "", guard)
 		if err != nil {
-			return "", fmt.Errorf("This file is not available here. Choose a file from this Crew's Files.")
+			return "", fmt.Errorf("This file is not available here. Choose a file from this project's Files.")
 		}
 		scope, _, err := crewroot.ScopeRoot(docs, root, name)
 		// Chats and the automation records are not Crew files (wf.Private already refuses the database).
 		if err != nil || crewroot.Within(layout.Crew.Private, scope) || crewroot.Within(layout.Crew.SettingsDir(), scope) {
-			return "", fmt.Errorf("This file is private. Choose a document, note, skill or knowledge file from this Crew's Files instead.")
+			return "", fmt.Errorf("This file is private. Choose a document, note, skill or knowledge file from this project's Files instead.")
 		}
 		opened, relative, err := wf.OpenWorkflowDirectory(docs, root, name)
 		if err != nil {
-			return "", fmt.Errorf("This file is not available here. Choose a regular file from this Crew's Files.")
+			return "", fmt.Errorf("This file is not available here. Choose a regular file from this project's Files.")
 		}
 		defer opened.Close()
 		file, err := wf.ReadAt(opened, relative, guard)
 		if err != nil || !file.Exists {
-			return "", fmt.Errorf("This file is not available here. Choose a regular file from this Crew's Files.")
+			return "", fmt.Errorf("This file is not available here. Choose a regular file from this project's Files.")
 		}
 		if file.Size > pythonCrewFileLimit || file.Encoding != "utf-8" {
-			return "", fmt.Errorf("Choose a text file up to 256 KiB. Split a larger document into smaller files in this Crew.")
+			return "", fmt.Errorf("Choose a text file up to 256 KiB. Split a larger document into smaller files in this project.")
 		}
 		data, err := json.Marshal(map[string]string{"content": file.Content})
 		return string(data), err

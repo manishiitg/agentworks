@@ -15,7 +15,7 @@ const updateProjectGlobalSecretSelectionTool = "update_project_global_secret_sel
 func (api *StreamingAPI) registerWorkGlobalSecretSelectionTool(registrar definitionToolRegistrar, userID, workspacePath string) error {
 	cleanWorkspace, err := cleanAgentProfileWorkspace(workspacePath, userID)
 	if err != nil || cleanWorkspace != workspacePath || !isActiveWorkProjectWorkspace(userID, cleanWorkspace) {
-		return fmt.Errorf("Crew global secret selection requires an active Crew project")
+		return fmt.Errorf("Project global secret selection requires an active project project")
 	}
 
 	return registrar.RegisterCustomTool(updateProjectGlobalSecretSelectionTool, "Select or deselect one existing global secret for the active Crew project. Call list_secrets first and use an exact name from its global.names list. This changes only the project's explicit allowlist in workflow.json; it never returns or modifies the secret value. The selection is available to Crew tools from the next user message.", map[string]interface{}{
@@ -45,7 +45,7 @@ func (api *StreamingAPI) registerWorkGlobalSecretSelectionTool(registrar definit
 		}
 		selected, readErr := productSelectedGlobalSecrets(ctx, "work", workspacePath)
 		if readErr != nil {
-			return "", fmt.Errorf("read Crew global secret selection: %w", readErr)
+			return "", fmt.Errorf("read project global secret selection: %w", readErr)
 		}
 		if action == "select" && canonical == "" {
 			for _, name := range globalSecretNamesWithoutValue(ctx, userID) {
@@ -79,11 +79,11 @@ func (api *StreamingAPI) registerWorkGlobalSecretSelectionTool(registrar definit
 			}
 			return next
 		}); err != nil {
-			return "", fmt.Errorf("update Crew global secret selection: %w", err)
+			return "", fmt.Errorf("update project global secret selection: %w", err)
 		}
 		updated, err := productSelectedGlobalSecrets(ctx, "work", workspacePath)
 		if err != nil {
-			return "", fmt.Errorf("read updated Crew global secret selection: %w", err)
+			return "", fmt.Errorf("read updated project global secret selection: %w", err)
 		}
 		result := map[string]interface{}{
 			"action":                       action,
@@ -93,9 +93,9 @@ func (api *StreamingAPI) registerWorkGlobalSecretSelectionTool(registrar definit
 			"takes_effect":                 "next_user_message",
 		}
 		if action == "select" {
-			result["message"] = fmt.Sprintf("%s is selected for this Crew project. It will be available as $SECRET_%s on the next user message.", canonical, canonical)
+			result["message"] = fmt.Sprintf("%s is selected for this project project. It will be available as $SECRET_%s on the next user message.", canonical, canonical)
 		} else {
-			result["message"] = fmt.Sprintf("%s is no longer selected for this Crew project.", canonical)
+			result["message"] = fmt.Sprintf("%s is no longer selected for this project project.", canonical)
 		}
 		encoded, err := json.Marshal(result)
 		if err != nil {

@@ -286,7 +286,7 @@ func (api *StreamingAPI) handleDashboardOwners(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if target.Kind != "relay" && target.Kind != "workflow" {
-		externalError(w, http.StatusNotFound, "not_found", "Owners are available for Crews on the server, Goals and Flows.")
+		externalError(w, http.StatusNotFound, "not_found", "Owners are available for projects on the server, Goals and Flows.")
 		return
 	}
 	level, manifest := workflowAccessForWorkspacePath(r.Context(), claims, target.Root)
@@ -340,6 +340,6 @@ func (api *StreamingAPI) stopRemovedOwnerSessions(userID, root string) {
 	api.activeSessionsMux.RUnlock()
 	for _, id := range ids {
 		log.Printf("[CREW_OWNERS] crew=%s stopping session=%s of removed co_owner=%s", root, id, person)
-		api.cancelSessionRuntimeWork(id, "no longer an owner of this Crew", runtimePhaseCanceled)
+		api.cancelSessionRuntimeWork(id, "no longer an owner of this project", runtimePhaseCanceled)
 	}
 }

@@ -51,7 +51,7 @@ func normalizeCrewScheduleDependencies(schedule *productschedule.Schedule, profi
 		if strings.HasPrefix(id, projectScheduleJobPrefix) {
 			profile, crew, raw, ok := parseProjectScheduleJobID(id)
 			if !ok || profile != profileID || crew != crewID {
-				return fmt.Errorf("Choose a prerequisite schedule from this Crew.")
+				return fmt.Errorf("Choose a prerequisite schedule from this project.")
 			}
 			id = raw
 		}

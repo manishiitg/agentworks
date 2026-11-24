@@ -14,7 +14,7 @@ var groupPurpose = map[string]string{
 	"dashboard":    "Build, check, preview and publish this project's dashboard (an HTML page with its data).",
 	"database":     "This project's database: query it, change data, run migrations and take snapshots; also read a linked Goal's database.",
 	"files":        "This project's files: copy files from other projects, make links, attach shared folders, see or undo what a reply changed, and view Git changes. list, read, write and patch appear only in chats with no file tools of their own; a coding app's chat uses the app's own file tools.",
-	"functions":    "Functions: define this project's functions, call another Crew's or workflow's functions, and check a call in progress.",
+	"functions":    "Functions: define this project's functions, call another project's or workflow's functions, and check a call in progress.",
 	"help":         "AgentWorks help: how-to topics, the current context and slash command guidance.",
 	"integrations": "Google and Slack connections: connect accounts, grant access, and set up the Slack bot and its routes.",
 	"mcp":          "MCP servers (outside apps and services) this project can use: find, add, connect and manage them.",
@@ -28,7 +28,7 @@ var groupPurpose = map[string]string{
 	"terminal":     "Run shell commands on the server or on the person's laptop, and read, write or copy files there.",
 	"ui":           "Show or reload the project dashboard in the side pane.",
 	"vault":        "Secrets and sign-ins: store secret values, choose which secrets this project uses, and connect the person's own apps.",
-	"workspace":    "The project itself: its references to other projects, owners, name, copy or delete, access and the Crew's identity (which is Main's name and purpose; a side agent sets its own with set_my_agent_identity).",
+	"workspace":    "The project itself: its references to other projects, owners, name, copy or delete, access and the project's identity (which is Main's name and purpose; a side agent sets its own with set_my_agent_identity).",
 }
 
 // fillerActionDescription matches generated action text that only repeats the action's name.

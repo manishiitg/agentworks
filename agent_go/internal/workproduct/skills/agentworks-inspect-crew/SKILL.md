@@ -1,18 +1,18 @@
 ---
 name: agentworks-inspect-crew
-description: "Use to inspect a Crew in depth: its instructions, files, tabs, schedules, functions and connections."
+description: "Use to inspect a project in depth: its instructions, files, tabs, schedules, functions and connections."
 ---
 
-# How to inspect a Crew in depth
+# How to inspect a project in depth
 
-Start from the Crew's instructions and what the person told you: a Crew has no success criteria, so what it is for comes from those.
+Start from the project's instructions and what the person told you: a project has no success criteria, so what it is for comes from those.
 
 ## Tools and skills
-- The Crew's identity and path: `workspace` action `references_list`. Read its instructions and other files only where their own read grants allow. Use the linked metadata and authorized files until the platform adds a Crew inspection tool. Skills: `crew-builder`, `panel-data`, `panel-settings`, `panel-dashboard`.
+- The project's identity and path: `workspace` action `references_list`. Read its instructions and other files only where their own read grants allow. Use the linked metadata and authorized files until the platform adds a project inspection tool. Skills: `crew-builder`, `panel-data`, `panel-settings`, `panel-dashboard`.
 - Its chats and tabs: `sessions` action `list` where authorized (never open a tab); earlier conversations through `panel-runs` (chat history). To message it or a tab: `messages` action `list_agents`, then `messages` action `send` with the right `chat_id`. A stored message is not finished work; read the reply with `messages` action `read`.
 - Its schedules and watchers: `automations` action `list` with `scope=schedule` and with `scope=watcher` for this Crew. Skills: `panel-automations`, `schedules`, `watchers`.
 - Its connections and secrets: skill `panel-access` (names only, never values).
-- A linked Crew keeps its effective runtime/file grants; a link does not prove write access. Inspect what is permitted and change only within the person’s request.
+- A linked project keeps its effective runtime/file grants; a link does not prove write access. Inspect what is permitted and change only within the person’s request.
 
 ## What to check
 1. **Instructions:** do they still say what the person wants; anything stale, contradictory, or too long to follow.

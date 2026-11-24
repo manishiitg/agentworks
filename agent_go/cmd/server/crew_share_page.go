@@ -146,17 +146,17 @@ type crewShareSlackRule struct {
 // changes to the Crew); a direct message runs as its sender with their own access, for people the Crew is shared with;
 // guests, other workspaces and Slack emails that are not exactly one AgentWorks account are refused.
 func crewShareSlackRules(owner bool) *crewShareSlack {
-	as := "the Crew's owner"
+	as := "the project's owner"
 	if owner {
 		as = "you"
 	}
 	return &crewShareSlack{
 		Rules: []crewShareSlackRule{
-			{Allowed: true, Where: "In a channel:", Line: "anyone in that channel. It answers as " + as + ", in a thread; it can't change the Crew."},
-			{Allowed: true, Where: "In a direct message:", Line: "people this Crew is shared with, as themselves, with their own access."},
+			{Allowed: true, Where: "In a channel:", Line: "anyone in that channel. It answers as " + as + ", in a thread; it can't change the project."},
+			{Allowed: true, Where: "In a direct message:", Line: "people this project is shared with, as themselves, with their own access."},
 			{Allowed: false, Line: "Guests, people from other Slack workspaces, and anyone whose Slack email isn't an AgentWorks account."},
 		},
-		Note: "Each Slack thread becomes its own chat in this Crew. Who the Crew is shared with is set under Team.",
+		Note: "Each Slack thread becomes its own chat in this project. Who the project is shared with is set under Team.",
 	}
 }
 
@@ -270,7 +270,7 @@ func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, 
 		if !ok {
 			role := "Team member"
 			if id == t.OwnerID {
-				role = "Owner of this Crew"
+				role = "Owner of this project"
 			}
 			out = append(out, crewShareSharedPerson{userAvatarFields: avatarFieldsFor(id, t.ProjectID), Name: name, Role: role, Items: []crewShareSharedEntry{}})
 			i = len(out) - 1
@@ -374,7 +374,7 @@ func crewShareTeammateStatusLine(row crewTeamTabAgent, live crewTeamLiveAgent, o
 
 const (
 	crewShareActionsIntro     = "Ready-made jobs others can start, like “Review a pull request”. They fill in a few details and get the result back. The job uses your access, but they never get it."
-	crewShareOwnerOnlyActions = "Only the Crew's owner turns actions on or off. Ask the owner to change this action."
+	crewShareOwnerOnlyActions = "Only the project's owner turns actions on or off. Ask the owner to change this action."
 	crewSharePublishedAction  = "This action comes from published source. Change its source and publish again."
 )
 
@@ -555,7 +555,7 @@ func crewSharePeopleWords(t crewTeam, everyone bool, named []string) string {
 	case everyone:
 		parts = append(parts, "everyone on this server")
 	case extra > 0:
-		parts = append(parts, fmt.Sprintf("%d more %s you shared this Crew with", extra, plural(extra, "person", "people")))
+		parts = append(parts, fmt.Sprintf("%d more %s you shared this project with", extra, plural(extra, "person", "people")))
 	}
 	if len(parts) == 0 {
 		return "only you so far"
@@ -635,13 +635,13 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 	}
 	if canActions {
 		if len(rows) == 0 {
-			page.ActionsGroup.WizardFor = "this Crew"
+			page.ActionsGroup.WizardFor = "this project"
 			for _, a := range page.Agents {
 				page.ActionsGroup.WizardFor = a.Name
 				break
 			}
 		} else {
-			page.ActionsGroup.SetupAsk = crewShareSetupAsk("this Crew")
+			page.ActionsGroup.SetupAsk = crewShareSetupAsk("this project")
 		}
 	}
 	page.SharedWithYou = crewShareSharedWithYou(t, viewer, tab.Agents, tab.Live, groups)
@@ -663,7 +663,7 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		teamStatus = "On"
 	}
 	page.Options = []crewShareOption{
-		{Key: "team", Title: "Team", Line: "People who work on this Crew with you: the same files and agents, each on their own copy.", Chips: []string{"for: teammates", "they can change things"}, Status: teamStatus, On: t.On},
+		{Key: "team", Title: "Team", Line: "People who work on this project with you: the same files and agents, each on their own copy.", Chips: []string{"for: teammates", "they can change things"}, Status: teamStatus, On: t.On},
 	}
 	anyOpen := false
 	for i := range page.Options {
@@ -717,7 +717,7 @@ func setProjectFunctionEnabled(ctx context.Context, root, name string, on bool) 
 		records[i].UpdatedAt = time.Now().UTC()
 		return writeProjectFunctionDefinitions(ctx, root, records)
 	}
-	return fmt.Errorf("This action is not saved in this Crew. It may come from a published agent, or it was removed. Refresh the page.")
+	return fmt.Errorf("This action is not saved in this project. It may come from a published agent, or it was removed. Refresh the page.")
 }
 
 // handleCrewShareAction is POST /crew-teams/{project}/action {target, name, on}: one action's own switch on the Share
@@ -746,7 +746,7 @@ func (api *StreamingAPI) handleCrewShareAction(w http.ResponseWriter, r *http.Re
 	in.Name = strings.TrimSpace(in.Name)
 	src, ok := api.crewShareSourceFor(r.Context(), claims.UserID, t.ProjectID)
 	if !ok {
-		externalError(w, http.StatusNotFound, "crew_unavailable", "This Crew can't be read right now. Try again.")
+		externalError(w, http.StatusNotFound, "crew_unavailable", "This project can't be read right now. Try again.")
 		return
 	}
 	root := crewFunctionRoot(r.Context(), src.target)

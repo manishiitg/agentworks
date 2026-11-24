@@ -74,7 +74,7 @@ func (api *StreamingAPI) handleCrewTeamWhere(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	if in.Where == "mac" && !crewChatWebsiteClaims(claims) {
-		externalError(w, 403, "mac_sign_in_required", "Add this Crew from the AgentWorks app on your Mac.")
+		externalError(w, 403, "mac_sign_in_required", "Add this project from the AgentWorks app on your Mac.")
 		return
 	}
 	dir, err := crewTeamDir(project)
@@ -207,7 +207,7 @@ func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaim
 		if len(name) > 60 {
 			name = name[:60]
 		}
-		purpose := "Your working copy of " + firstNonEmptyTrimmed(team.OwnerName, "a teammate") + "'s Crew. Your agents here work on this Mac."
+		purpose := "Your working copy of " + firstNonEmptyTrimmed(team.OwnerName, "a teammate") + "'s project. Your agents here work on this Mac."
 		id, err := api.createCrewFromSpec(ctx, claims, crewSpec{Name: string(name), Purpose: purpose, RootPath: folder}, false)
 		if err != nil {
 			// The server already recorded this Mac; without a copy here the member's agents would vanish from the
@@ -375,7 +375,7 @@ func (api *StreamingAPI) handleDesktopCrewTeamAddToMac(w http.ResponseWriter, r 
 		return
 	}
 	if crewTeamMemberCopy(project) == "" {
-		externalError(w, 404, "no_mac_copy", "This Mac has no copy of this Crew yet. Use Add to my Mac on the Team invite.")
+		externalError(w, 404, "no_mac_copy", "This Mac has no copy of this project yet. Use Add to my Mac on the Team invite.")
 		return
 	}
 	var team crewTeam

@@ -17,7 +17,7 @@ import (
 func (api *StreamingAPI) dashboardUploadTarget(w http.ResponseWriter, r *http.Request, root string) (dashboardTarget, bool) {
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || claims.Scope != "" || userAccessForClaims(claims).Disabled {
-		externalError(w, 403, "forbidden", "Sign in to the Crew to add a reference file.")
+		externalError(w, 403, "forbidden", "Sign in to the project to add a reference file.")
 		return dashboardTarget{}, false
 	}
 	target, err := api.dashboardTarget(r.Context(), claims, root)
@@ -26,7 +26,7 @@ func (api *StreamingAPI) dashboardUploadTarget(w http.ResponseWriter, r *http.Re
 		return target, false
 	}
 	if target.Kind != "crew" {
-		externalError(w, 400, "invalid_target", "Reference uploads are available in Crew dashboards.")
+		externalError(w, 400, "invalid_target", "Reference uploads are available in project dashboards.")
 		return target, false
 	}
 	return target, true

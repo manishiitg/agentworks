@@ -54,7 +54,7 @@ func (api *StreamingAPI) handleCrewChatContext(w http.ResponseWriter, r *http.Re
 		log.Printf("[CHAT_CONTEXT_ADD] actor=%q crew=%q chat=%q session=%q source=%q source_id=%q op=%q bytes=%d ok=%t reason=%s", actor, auditProject, auditChat, auditSession, auditSource, sourceID, auditOperation, size, ok, reason)
 	}()
 	if mux.Vars(r)["id"] != "work" || json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10)).Decode(&in) != nil || (in.Source != "browser" && in.Source != "terminal") || (in.Operation != "probe" && in.Operation != "add") {
-		writeAgentProfileError(w, 400, "Choose an element in this Crew's current browser.")
+		writeAgentProfileError(w, 400, "Choose an element in this project's current browser.")
 		return
 	}
 	auditSource, auditOperation = in.Source, in.Operation
@@ -68,13 +68,13 @@ func (api *StreamingAPI) handleCrewChatContext(w http.ResponseWriter, r *http.Re
 	crew, _, _, found := api.externalCrewResolve(r.Context(), claims, project)
 	if !found {
 		reason = "crew_access"
-		writeAgentProfileError(w, 404, "Open an available Crew, then add the selection again.")
+		writeAgentProfileError(w, 404, "Open an available project, then add the selection again.")
 		return
 	}
 	auditProject = project
 	if token := claims.AccessToken; token != nil && !token.Allows("crews:run") && !token.Allows("crews:write") {
 		reason = "scope"
-		writeAgentProfileError(w, 403, "Allow this connection to use the Crew, then try again.")
+		writeAgentProfileError(w, 403, "Allow this connection to use the project, then try again.")
 		return
 	}
 	// Source access is independent of being able to upload a file in Run mode.
@@ -82,12 +82,12 @@ func (api *StreamingAPI) handleCrewChatContext(w http.ResponseWriter, r *http.Re
 	workspace := crew.Binding.WorkspacePath
 	if !crew.OwnedByCaller || (in.Source == "browser" && !api.canControlLiveBrowser(r.Context(), claims, workspace)) {
 		reason = "source_access"
-		writeAgentProfileError(w, 403, "Only this Crew's owner can add its context.")
+		writeAgentProfileError(w, 403, "Only this project's owner can add its context.")
 		return
 	}
 	if status, _ := externalCrewAuthorGate(claims); status != 0 {
 		reason = "upload_access"
-		writeAgentProfileError(w, status, "This account cannot add Crew files. Ask an administrator to allow uploads.")
+		writeAgentProfileError(w, status, "This account cannot add project files. Ask an administrator to allow uploads.")
 		return
 	}
 	if !api.admitPendingChatUpload(w, r, project, in.ConversationKey, in.SessionID) {
@@ -102,7 +102,7 @@ func (api *StreamingAPI) handleCrewChatContext(w http.ResponseWriter, r *http.Re
 	sourceID = browserSessionForWorkspace(actor, workspace)
 	if sourceID == "" || (in.BrowserSession != "" && in.BrowserSession != sourceID) || !browser.IsUserBrowserSession(sourceID) {
 		reason = "source_binding"
-		writeAgentProfileError(w, 409, "Choose the current live browser in this Crew, then pick the element again.")
+		writeAgentProfileError(w, 409, "Choose the current live browser in this project, then pick the element again.")
 		return
 	}
 	view := r.Clone(r.Context())
@@ -120,7 +120,7 @@ func (api *StreamingAPI) handleCrewChatContext(w http.ResponseWriter, r *http.Re
 	}
 	if !active {
 		reason = "source_unavailable"
-		writeAgentProfileError(w, 409, "Open this Crew's browser, then pick the element again.")
+		writeAgentProfileError(w, 409, "Open this project's browser, then pick the element again.")
 		return
 	}
 	if (in.Operation == "probe" && (in.X != nil || in.Y != nil)) || (in.Operation == "add" && (in.BrowserSession == "" || in.X == nil || in.Y == nil || len(in.DocumentToken) != 64)) {
@@ -148,7 +148,7 @@ func (api *StreamingAPI) handleCrewChatContext(w http.ResponseWriter, r *http.Re
 	}
 	if !api.canControlLiveBrowser(r.Context(), claims, workspace) {
 		reason = "access_changed"
-		writeAgentProfileError(w, 403, "Browser access changed. Open an available Crew, then try again.")
+		writeAgentProfileError(w, 403, "Browser access changed. Open an available project, then try again.")
 		return
 	}
 	if !api.admitPendingChatUpload(w, r, project, in.ConversationKey, in.SessionID) {
@@ -218,7 +218,7 @@ func requestBrowserChatContext(ctx context.Context, session, actor string, input
 func (api *StreamingAPI) externalWorkspaceAddContext(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	project := workspaceTokenProjectID(externalArg(args, "workspace_id"))
 	if project == "" {
-		externalError(w, 400, "invalid_arguments", "Choose a Crew workspace before adding context.")
+		externalError(w, 400, "invalid_arguments", "Choose a project workspace before adding context.")
 		return
 	}
 	body, err := json.Marshal(map[string]any{"source": externalArg(args, "context_source"), "operation": externalArg(args, "context_op"), "conversation_key": externalArg(args, "conversation_key"), "session_id": externalArg(args, "session_id"), "browser_session": externalArg(args, "browser_session"), "document_token": externalArg(args, "document_token"), "x": args["x"], "y": args["y"], "terminal_tab": args["terminal_tab"], "command_id": externalArg(args, "command_id"), "text": externalArg(args, "text"), "start_line": args["start_line"], "end_line": args["end_line"]})

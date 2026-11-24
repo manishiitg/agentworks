@@ -23,7 +23,7 @@ func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *ht
 	}
 	t, err := readCrewTeam(project)
 	if err != nil || !t.member(claims.UserID) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
-		externalError(w, 403, "team_member_required", "Join this Crew's Team first.")
+		externalError(w, 403, "team_member_required", "Join this project's Team first.")
 		return
 	}
 	if refuseCrewOwnerOnline(w, r, project, claims.UserID) {
@@ -58,7 +58,7 @@ func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *ht
 		return
 	}
 	if t.OwnerID == claims.UserID {
-		externalError(w, 403, "team_owner_stays", "The Crew's owner stays in its Team. Turn the Team off instead.")
+		externalError(w, 403, "team_owner_stays", "The project's owner stays in its Team. Turn the Team off instead.")
 		return
 	}
 	dir, err := crewTeamDir(project)

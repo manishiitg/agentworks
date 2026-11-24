@@ -662,7 +662,7 @@ func (api *StreamingAPI) externalCrewStorage(w http.ResponseWriter, r *http.Requ
 		}
 		if action == "storage_move" {
 			go api.crewStorageMove(s, selected)
-			externalJSON(w, map[string]any{"operation_id": id, "state": "moving", "message": "Moving ready projects to Crew, using verified backups and keeping old links working."})
+			externalJSON(w, map[string]any{"operation_id": id, "state": "moving", "message": "Moving ready projects to project, using verified backups and keeping old links working."})
 			return
 		}
 		go api.crewStorageBackup(s, selected)

@@ -54,7 +54,7 @@ func (c *conditionService) productSource(ctx context.Context, owner, profile, pr
 	switch profile {
 	case "work":
 		if c.s.registry == nil {
-			return productScheduleJob{}, errors.New("Crew runtime unavailable")
+			return productScheduleJob{}, errors.New("Project runtime unavailable")
 		}
 		p, err := c.s.registry.Resolve("work", 0, owner)
 		if err != nil {
@@ -90,7 +90,7 @@ func (c *conditionService) productSource(ctx context.Context, owner, profile, pr
 			return productScheduleJob{}, errors.New("watcher source is unavailable")
 		}
 	default:
-		return productScheduleJob{}, errors.New("watchers are available in Code, Crew, workflows and Flows")
+		return productScheduleJob{}, errors.New("watchers are available in Code, project, workflows and Flows")
 	}
 	return conditionCallerJob(owner, conditionCallerDefinition{Source: source}, productScheduleUserState{}), nil
 }

@@ -22,7 +22,7 @@ func (api *StreamingAPI) handleAgentDirectory(w http.ResponseWriter, r *http.Req
 	if project := r.URL.Query().Get("crew"); IsLocalMode() && project != "" {
 		root := crewProjectRootByID(project)
 		if root == "" || !crewProjectOwnedByCaller(claims.UserID, root) {
-			externalError(w, 404, "crew_unavailable", "This Crew is unavailable.")
+			externalError(w, 404, "crew_unavailable", "This project is unavailable.")
 			return
 		}
 		ctx = withDirectoryThisCrew(ctx, root)
@@ -209,7 +209,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 		agents = append(agents, row)
 		if !owned {
 			for _, agent := range row["chats"].([]sharedCrewAgent) {
-				agents = append(agents, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": "workspace:" + profileID + ":" + id + "/agent/" + agent.ChatID, "target": "", "crew_id": id, "chat_id": agent.ChatID, "name": agent.Name, "crew_name": name, "relation": relation, "shared_by": crewPersonShortName(agent.tab.OwnerID), "purpose": agent.Purpose, "examples": agent.Examples, "presence": "Runs when called", "your_access": "run", "reach": "Use the product Ask entry point, or discover this agent's AgentBridge address for a peer message."})
+				agents = append(agents, map[string]any{"kind": "crew_agent", "type": "Project agent", "id": "workspace:" + profileID + ":" + id + "/agent/" + agent.ChatID, "target": "", "crew_id": id, "chat_id": agent.ChatID, "name": agent.Name, "crew_name": name, "relation": relation, "shared_by": crewPersonShortName(agent.tab.OwnerID), "purpose": agent.Purpose, "examples": agent.Examples, "presence": "Runs when called", "your_access": "run", "reach": "Use the product Ask entry point, or discover this agent's AgentBridge address for a peer message."})
 			}
 		}
 	}
@@ -311,7 +311,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 	out := map[string]interface{}{
 		"signed_in_as": firstNonEmptyTrimmed(claims.Email, claims.Username, claims.UserID),
 		"agents":       agents,
-		"note":         "Every agent you own or that is shared with you. hidden=true means hidden by you and used less often, not disabled or private. group is your own left-menu group holding the agent (agents in one group usually work together, so ask them first) and forked_from the agent it was forked from; neither is access. Prefer visible agents unless a hidden agent is named or specifically relevant; schedules and messages remain unchanged. Show name, type, cli, model_id, reasoning_effort, presence and last_seen_at when supplied; internal Crew names are projected only for their authorized audience; include last_delivered_at when supplied. Builder/Run describes access, not connection or delivery. Crews run when called and have no laptop heartbeat. Each Crew row says how it relates to you in relation: this_crew (the Crew you are working in), yours (you own it and linked it to this Crew), team (you are in its Team) or shared (shared with you); chats say who shared them (shared_by) and function_agent marks a function's own agent, which only its owner talks to. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
+		"note":         "Every agent you own or that is shared with you. hidden=true means hidden by you and used less often, not disabled or private. group is your own left-menu group holding the agent (agents in one group usually work together, so ask them first) and forked_from the agent it was forked from; neither is access. Prefer visible agents unless a hidden agent is named or specifically relevant; schedules and messages remain unchanged. Show name, type, cli, model_id, reasoning_effort, presence and last_seen_at when supplied; internal project names are projected only for their authorized audience; include last_delivered_at when supplied. Builder/Run describes access, not connection or delivery. Projects run when called and have no laptop heartbeat. Each project row says how it relates to you in relation: this_crew (the project you are working in), yours (you own it and linked it to this project), team (you are in its Team) or shared (shared with you); chats say who shared them (shared_by) and function_agent marks a function's own agent, which only its owner talks to. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
 	}
 	if networkError != "" {
 		out["network_error"] = networkError
@@ -434,7 +434,7 @@ func agentDirectoryHowToCall(rows any) string {
 	}
 	parts := []string{}
 	if kinds["crew"] {
-		parts = append(parts, "Crew: functions action=call(project=<crew_id>, function=<name>, input=<its asks_for>), then functions action=status(call_id) until it settles; or workspace action=ask. A function's own agent is not a chat to message")
+		parts = append(parts, "Project: functions action=call(project=<crew_id>, function=<name>, input=<its asks_for>), then functions action=status(call_id) until it settles; or workspace action=ask. A function's own agent is not a chat to message")
 	}
 	if kinds["goal"] {
 		parts = append(parts, "Goal: functions action=call with workflow_id and function")

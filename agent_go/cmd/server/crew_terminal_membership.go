@@ -65,7 +65,7 @@ func terminalCrewForNamed(named string) (crewTeam, crewTeamRegisteredAgent, bool
 		return crewTeam{}, crewTeamRegisteredAgent{}, false, nil
 	}
 	if project == "" {
-		return crewTeam{}, crewTeamRegisteredAgent{}, false, fmt.Errorf("This native agent is listed in more than one Crew; leave the extra Crew first.")
+		return crewTeam{}, crewTeamRegisteredAgent{}, false, fmt.Errorf("This native agent is listed in more than one project; leave the extra project first.")
 	}
 	t, err := readCrewTeam(project)
 	if err != nil {
@@ -111,7 +111,7 @@ func terminalCrewConversationFence(ctx context.Context, c agentConversation) err
 			var err error
 			joined, err = terminalCrewMemberships()
 			if err != nil {
-				return admissionRefused("This agent's Crew membership is unavailable.")
+				return admissionRefused("This agent's project membership is unavailable.")
 			}
 		}
 		if _, exists := joined[e.NamedAgentID]; exists {

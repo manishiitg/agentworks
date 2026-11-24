@@ -16,7 +16,7 @@ import (
 // session-derived source ID; MCP may select only an agent the caller owns.
 func (api *StreamingAPI) crewAgentForkTool(r *http.Request, claims *UserClaims, project, action string, args map[string]any) (string, error) {
 	if !crewTeamClaims(claims, project, action != "forks") {
-		return "", fmt.Errorf("use your own Crew account with permission for this action")
+		return "", fmt.Errorf("use your own project account with permission for this action")
 	}
 	r = r.WithContext(context.WithValue(r.Context(), UserContextKey, claims))
 	operation := map[string]string{"fork_from": "self", "fork_send": "send", "fork_accept": "accept", "fork_decline": "cancel", "fork_cancel": "cancel"}[action]
@@ -29,7 +29,7 @@ func (api *StreamingAPI) crewAgentForkTool(r *http.Request, claims *UserClaims, 
 	handler := api.handleCrewAgentFork
 	if IsLocalMode() {
 		if ownerOfCrewProjectID(project) != claims.UserID {
-			return "", fmt.Errorf("open your own copy of this Crew")
+			return "", fmt.Errorf("open your own copy of this project")
 		}
 		if operation == "self" {
 			path = "/api/crew-teams/" + url.PathEscape(project) + "/agent-fork-local?self=1"
@@ -56,7 +56,7 @@ func (api *StreamingAPI) crewAgentForkTool(r *http.Request, claims *UserClaims, 
 			return string(result), nil
 		}
 	} else if operation == "self" {
-		return "", fmt.Errorf("Fork from your own connected Mac using its Crew.")
+		return "", fmt.Errorf("Fork from your own connected Mac using its project.")
 	} else if action == "forks" {
 		method = http.MethodGet
 	} else if operation != "send" {

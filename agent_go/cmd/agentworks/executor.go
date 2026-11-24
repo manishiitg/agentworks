@@ -53,7 +53,7 @@ func runExecutor(ctx context.Context, o *options, p executorParams) error {
 	for {
 		err = client.ServeExecutor(ctx, executor, func() {
 			delay = time.Second
-			fmt.Fprintf(o.stderr, "Computer %s connected. Choose folders in Crew Settings → Laptop access.\n", p.deviceID)
+			fmt.Fprintf(o.stderr, "Computer %s connected. Choose folders in project Settings → Laptop access.\n", p.deviceID)
 			if p.connected != nil {
 				p.connected(client.ExecutorOwnerID())
 			}

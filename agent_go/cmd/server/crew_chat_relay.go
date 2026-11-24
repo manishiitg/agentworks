@@ -83,7 +83,7 @@ func crewChatWebsiteClaims(c *UserClaims) bool {
 func (api *StreamingAPI) crewChatPair(r *http.Request, project, pair string) (*crewroot.SyncBinding, error) {
 	c := GetUserFromContext(r.Context())
 	if !crewChatWebsiteClaims(c) || !crewMacTeamWatchAllowed(r, project) {
-		return nil, fmt.Errorf("Open this Crew using its owner's website sign-in.")
+		return nil, fmt.Errorf("Open this project using its owner's website sign-in.")
 	}
 	// A Team member whose agents work on their Mac reads (only reads) their own Mac's chats here, through their pair.
 	if pair, ok := crewTeamMemberMacRead(r, project, c.UserID); ok {
@@ -92,7 +92,7 @@ func (api *StreamingAPI) crewChatPair(r *http.Request, project, pair string) (*c
 			b = &crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local"} // a Crew on the server
 		}
 		if err != nil || b == nil || b.Side != "server" {
-			return nil, fmt.Errorf("This Crew is not currently connected to its Mac conversation. Reopen the Crew.")
+			return nil, fmt.Errorf("This project is not currently connected to its Mac conversation. Reopen the project.")
 		}
 		member := *b
 		member.PairID = pair
@@ -103,7 +103,7 @@ func (api *StreamingAPI) crewChatPair(r *http.Request, project, pair string) (*c
 	}
 	b, err := crewroot.ReadSync(project)
 	if err != nil || b == nil || b.Side != "server" || b.Editing != "local" || b.PendingAction != "" || (pair != "" && b.PairID != pair) {
-		return nil, fmt.Errorf("This Crew is not currently connected to its Mac conversation. Reopen the Crew.")
+		return nil, fmt.Errorf("This project is not currently connected to its Mac conversation. Reopen the project.")
 	}
 	return b, nil
 }
@@ -194,13 +194,13 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	if call.Operation == "rotate" {
-		externalError(w, 409, "mac_main_chat", "Start a new main chat from your Mac, then reopen this Crew here.")
+		externalError(w, 409, "mac_main_chat", "Start a new main chat from your Mac, then reopen this project here.")
 		return true
 	}
 	if call.Operation == "send" {
 		selectedProject, generation := crewChatSessionParts(r.Header.Get("X-Session-ID"))
 		if selectedProject != project || generation == "" {
-			externalError(w, 409, "reopen_mac_chat", "Reopen this Crew to continue its current Mac conversation.")
+			externalError(w, 409, "reopen_mac_chat", "Reopen this project to continue its current Mac conversation.")
 			return true
 		}
 		call.ConversationID = generation
@@ -272,7 +272,7 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 		}
 		project, generation := crewChatSessionParts(session)
 		if project == "" || generation == "" {
-			externalError(w, 409, "reopen_mac_chat", "Reopen this Crew to continue its current Mac conversation.")
+			externalError(w, 409, "reopen_mac_chat", "Reopen this project to continue its current Mac conversation.")
 			return
 		}
 		operation := ""
@@ -310,7 +310,7 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 		if read {
 			r = r.WithContext(context.WithValue(r.Context(), crewRelayReadKey{}, true))
 		} else if crewTeamMemberOnMac(project, GetUserIDFromContext(r.Context())) {
-			externalError(w, 409, "mac_chat_action", "This Crew works on your Mac. Open it in the AgentWorks app on your Mac to send, answer or stop.")
+			externalError(w, 409, "mac_chat_action", "This project works on your Mac. Open it in the AgentWorks app on your Mac to send, answer or stop.")
 			return
 		}
 		switch {
@@ -401,7 +401,7 @@ func (api *StreamingAPI) serveCrewMacEvents(w http.ResponseWriter, r *http.Reque
 	owner := GetUserIDFromContext(r.Context())
 	b, err := api.crewChatPair(r, project, "")
 	if err != nil {
-		writeCrewChatResult(w, crewChatResult{Status: 403, Body: json.RawMessage(`{"error":"This Crew is not currently connected to its Mac conversation. Reopen the Crew."}`)})
+		writeCrewChatResult(w, crewChatResult{Status: 403, Body: json.RawMessage(`{"error":"This project is not currently connected to its Mac conversation. Reopen the project."}`)})
 		return
 	}
 	flusher, ok := w.(http.Flusher)
@@ -585,7 +585,7 @@ func callCrewMacFor(ctx context.Context, owner, project string, call crewChatCal
 	}
 	b, err := crewroot.ReadSync(project)
 	if err != nil || b == nil || b.Side != "server" || b.Editing != "local" || b.PendingAction != "" {
-		return failure(409, "This Crew is not on its Mac right now.")
+		return failure(409, "This project is not on its Mac right now.")
 	}
 	sock := crewMacSocketFor(owner, project, b.PairID)
 	if sock == nil {

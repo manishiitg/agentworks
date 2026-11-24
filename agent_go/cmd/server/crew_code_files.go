@@ -33,7 +33,7 @@ func (api *StreamingAPI) handleCrewCodeFiles(w http.ResponseWriter, r *http.Requ
 	}
 	owner, ok := crewProjectOwnerID(binding.CrewRoot)
 	if !ok {
-		http.Error(w, "This Crew is unavailable.", http.StatusNotFound)
+		http.Error(w, "This project is unavailable.", http.StatusNotFound)
 		return
 	}
 	resource := &crewWorkflowResources{userID: owner}

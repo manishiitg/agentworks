@@ -32,7 +32,7 @@ func crewTeamForTab(w http.ResponseWriter, r *http.Request, write bool) (crewTea
 	owner := ownerOfCrewProjectID(project)
 	t, err := readCrewTeamOrNew(project, claims.UserID)
 	if err != nil || !crewTeamCanManage(t, claims.UserID) || t.OwnerID != owner || !crewTeamAccountActive(owner) {
-		externalError(w, 403, "team_forbidden", "The Team tab is for people in this Crew's Team. Ask its owner to add you.")
+		externalError(w, 403, "team_forbidden", "The Team tab is for people in this project's Team. Ask its owner to add you.")
 		return crewTeam{}, nil, false
 	}
 	return t, claims, true
@@ -95,7 +95,7 @@ func (api *StreamingAPI) handleCrewTeamFolders(w http.ResponseWriter, r *http.Re
 	if !crewRelayTwin(t.ProjectID) {
 		roots, found, err := crewStorageRoots(crewProjectRootByID(t.ProjectID))
 		if err != nil || !found {
-			externalError(w, 409, "folder_unavailable", "This Crew's folder is unavailable.")
+			externalError(w, 409, "folder_unavailable", "This project's folder is unavailable.")
 			return
 		}
 		out, status, err := crewTeamFolderListing(roots.Files, rel)
@@ -155,7 +155,7 @@ func (api *StreamingAPI) desktopCrewTeamFolders(ctx context.Context, claims *Use
 	}
 	roots, err := api.crewSyncRoots(ctx, claims, project)
 	if err != nil {
-		return reply(409, map[string]string{"error": "This Crew's folder is unavailable on the Mac."})
+		return reply(409, map[string]string{"error": "This project's folder is unavailable on the Mac."})
 	}
 	out, status, err := crewTeamFolderListing(roots.Files, strings.Trim(call.Path, "/"))
 	if err != nil {
