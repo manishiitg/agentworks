@@ -6,7 +6,6 @@ import { changeChatContext, chatLimitsPercent, chatLimitsText, resetDate, type C
 import { openSubscriptionLimits } from '../../utils/subscriptionLimitsNavigation'
 import { ContextMeter } from '../chat/ContextMeter'
 import { formatTokens } from '../../utils/formatTokens'
-import { requestNewChat } from '../../utils/newChatRequest'
 import type { ChatContextCost, ChatContextCostPeriod, ChatContextModelCost, ChatContextPart, ChatContextTokens, ChatContextView } from '../../services/api-types'
 
 /** Sent by the chat box chip: open the right pane's Context section for this chat ({ sessionId }). */
@@ -78,7 +77,7 @@ function FocusedChatContext({ sessionId, busy }: { sessionId: string; busy: bool
     </summary>
     <div className="space-y-3 pb-1 pl-1.5 pr-1 text-xs">
       {/* Approved order (owner, 22 Nov): how full, plan use, cost in one line, then the detail folded away. */}
-      {used > 0 && <FullnessBlock sessionId={sessionId} view={view} used={used} windowTokens={windowTokens} percent={percent} working={working} onAct={act} />}
+      {used > 0 && <FullnessBlock view={view} used={used} windowTokens={windowTokens} percent={percent} working={working} onAct={act} />}
       <PlanBlock view={view} projectId={projectId} />
       {view.cost?.current && <CostBlock cost={view.cost} />}
       <DetailsBlock view={view} used={used} />
@@ -101,7 +100,7 @@ function ContextSummary({ used, windowTokens, limits }: { used: number; windowTo
 
 const quietLink = 'text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-function FullnessBlock({ sessionId, view, used, windowTokens, percent, working, onAct }: { sessionId: string; view: ChatContextView; used: number; windowTokens: number; percent: number; working: boolean; onAct: (change: ChatContextChange) => void }) {
+function FullnessBlock({ view, used, windowTokens, percent, working, onAct }: { view: ChatContextView; used: number; windowTokens: number; percent: number; working: boolean; onAct: (change: ChatContextChange) => void }) {
   const full = windowTokens > 0 && percent > 90
   return <div>
     <div className="flex items-baseline gap-2">
@@ -112,12 +111,10 @@ function FullnessBlock({ sessionId, view, used, windowTokens, percent, working, 
     {full && <p className="mt-1.5 text-[11px] text-diff-del">Almost full. This chat will compact soon so it can keep going.</p>}
     {!full && percent > 50 && view.can_compact && <p className="mt-1.5 text-[11px] text-muted-foreground">Over half full. Compact when you reach a good stopping point.</p>}
     {/* Buttons only once the chat is getting full; before that, quiet links so nothing urges an action. */}
-    {(view.can_compact || view.can_new_chat) && (percent > 50 ? <div className="mt-2 flex flex-wrap gap-1.5">
+    {view.can_compact && (percent > 50 ? <div className="mt-2 flex flex-wrap gap-1.5">
       {view.can_compact && <button type="button" disabled={working} title="Summarise this chat now, so each next step reads less." onClick={() => onAct({ action: 'compact' })} className={`rounded-md border px-2 py-1 text-xs disabled:opacity-50 ${full ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted'}`}>Compact now</button>}
-      {view.can_new_chat && <button type="button" disabled={working} title="Start a new chat here. This one is kept in earlier chats." onClick={() => requestNewChat(sessionId)} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50">New chat</button>}
     </div> : <div className="mt-1.5 flex flex-wrap gap-x-3 text-[11px]">
       {view.can_compact && <button type="button" disabled={working} title="Summarise this chat now, so each next step reads less." onClick={() => onAct({ action: 'compact' })} className={quietLink}>Compact now</button>}
-      {view.can_new_chat && <button type="button" disabled={working} title="Start a new chat here. This one is kept in earlier chats." onClick={() => requestNewChat(sessionId)} className={quietLink}>New chat</button>}
     </div>)}
   </div>
 }
