@@ -27,6 +27,7 @@ import { Loader2 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import ChatArea from '../../components/ChatArea'
 import { ConversationImageRoot } from '../../components/ui/ConversationImageRoot'
+import { ChatFilePaths, createChatFileLookup, resolveChatFilePaths } from '../../components/ui/chatFilePathLinks'
 import { useThemePanelDefault } from '../../hooks/useThemePanelDefault'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { useCrewAgentsStore } from '../../components/chat/AgentCard'
@@ -62,7 +63,7 @@ import { createWorkSession, deleteWorkSession, loadRemoteWorkSession, loadWorkSe
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { fileSearchShortcut, isTerminalShortcut } from './CodePaneTabs'
 import { requestFileSearch } from '../../utils/fileSearchRequest'
-import { OPEN_PROJECT_FILE_EVENT, findProjectFile, registerProjectFileOpener, type OpenProjectFileRequest } from '../../utils/projectFileLinks'
+import { OPEN_PROJECT_FILE_EVENT, findProjectFile, registerProjectFileOpener, requestOpenProjectFile, type OpenProjectFileRequest } from '../../utils/projectFileLinks'
 import { openWorkspaceFile } from '../../utils/openWorkspaceFile'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useCrewChatOnly, useCrewChatOnlyLine } from './YourComputerPanel'
@@ -1303,8 +1304,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   // A code path clicked in a reply, or a file picked in ⌘/Ctrl+K: Files opens it at the line. The server's file
   // search finds which repository a relative path belongs to; a path it cannot find says so instead of guessing.
   const filesFolder = selected ? selected.filesPath || selected.workspacePath : ''
+  const currentCrewPath = selected?.workspacePath
+  const currentCrewConnection = selected?.connectionId
   useEffect(() => {
-    if (!fileSearchAllowed || !filesFolder) return
+    if (!fileSearchAllowed || !filesFolder || !currentCrewPath) return
     const unregister = registerProjectFileOpener(filesFolder)
     let pending: AbortController | null = null
     const open = (event: Event) => {
@@ -1312,28 +1315,43 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       if (!request?.path) return
       pending?.abort()
       const controller = new AbortController(); pending = controller
-      void (request.exact ? Promise.resolve(request.path) : findProjectFile(filesFolder, request, controller.signal))
-        .then(async filepath => {
-          if (controller.signal.aborted) return
-          if (!filepath) { useChatStore.getState().addToast(`Could not find ${request.path} in this project.`, 'error'); return }
-          setWorkspaceViewTarget('files', 'browse')
-          setPanelOpen(true)
-          selectWorkspaceView('files')
+      const identity = captureChatIdentity()
+      const resolved = request.chatPath
+        ? resolveChatFilePaths(currentCrewPath, currentCrewConnection, identity, [request.path], controller.signal)
+          .then(files => files?.[request.path])
+        : (request.exact ? Promise.resolve(request.path) : findProjectFile(filesFolder, request, controller.signal))
+          .then(path => path ? { path, preview: false } : undefined)
+      void resolved.then(async file => {
+        if (controller.signal.aborted || !isChatIdentityCurrent(identity)) return
+        if (!file) { useChatStore.getState().addToast('This file is no longer available.', 'error'); return }
+        setWorkspaceViewTarget('files', file.preview
+          ? `preview:${JSON.stringify({ path: file.path, sessionId: activeSessionId, workspacePath: currentCrewPath })}`
+          : 'browse')
+        setPanelOpen(true)
+        selectWorkspaceView('files')
+        if (!file.preview) {
           const workspace = useWorkspaceStore.getState()
-          void workspace.scrollToFile(filepath)
-          void workspace.highlightFile(filepath)
-          await openWorkspaceFile(filepath, request.line)
-        })
-        .catch(() => { if (!controller.signal.aborted) useChatStore.getState().addToast(`Could not open ${request.path}.`, 'error') })
+          void workspace.scrollToFile(file.path)
+          void workspace.highlightFile(file.path)
+          await openWorkspaceFile(file.path, request.line)
+        }
+      })
+        .catch(() => { if (!controller.signal.aborted && isChatIdentityCurrent(identity)) useChatStore.getState().addToast('Could not open this file.', 'error') })
     }
     window.addEventListener(OPEN_PROJECT_FILE_EVENT, open)
     return () => { unregister(); pending?.abort(); window.removeEventListener(OPEN_PROJECT_FILE_EVENT, open) }
-  }, [fileSearchAllowed, filesFolder, selectWorkspaceView, setPanelOpen])
+  }, [fileSearchAllowed, filesFolder, currentCrewPath, currentCrewConnection, activeSessionId, selectWorkspaceView, setPanelOpen])
   const isShared = isWorkSessionRun(selected)
   // A Team member's own agents work in one place; in the other the Crew is one plain screen (owner, 5 Nov).
   const worksElsewhere = useCrewWorksElsewhere(product.profileId === 'work' ? selected?.id || '' : '', tabId).elsewhere
   // The owner reaching their Mac Crew through the server gets its chat alone; the server says so (crew_owner_on_mac.go).
   const chatOnly = useCrewChatOnly(product.profileId === 'work' ? selected?.id : undefined)
+  const canLinkChatFiles = fileSearchAllowed && !chatOnly && !teammateIdentity
+  const chatFileScope = useMemo(() => canLinkChatFiles && currentCrewPath ? {
+    lookup: createChatFileLookup(currentCrewPath, currentCrewConnection),
+    open: (ref: Parameters<typeof requestOpenProjectFile>[0]) => requestOpenProjectFile(ref, false, true),
+  } : null, [canLinkChatFiles, currentCrewPath, currentCrewConnection])
+
   const chatOnlyLine = useCrewChatOnlyLine(product.profileId === 'work' && chatOnly ? selected?.id : undefined)
   const { private: chatPrivateLine } = useChatShareLines(tabId)
   const sharedPanels = SHARED_CREW_WORKSPACE_PANELS
@@ -1805,6 +1823,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                   {terminalConversation ? <TerminalConversation key={`${terminalConversation.identity}:${terminalConversation.target.connection}:${terminalConversation.target.project}:${terminalConversation.agent.id}`} selection={terminalConversation} /> : tabId ? (
                       <div className="relative flex min-h-0 flex-1 flex-col">
                         {chatOnly && chatOnlyLine ? <p role="note" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">{chatOnlyLine}</p> : null}
+                        <ChatFilePaths.Provider value={chatFileScope}>
                         <ConversationImageRoot.Provider value={selected.filesPath || selected.workspacePath}>
                         <div data-teammate-transcript={teammateIdentity ? true : undefined} className="min-h-0 flex-1">
                         {chatPrivateLine ? <p role="status" className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">{chatPrivateLine}</p> : teammateIdentity?.online === false && !teammateIdentity.hidden && teammateIdentity.ask.target && teammateIdentity.agentId ? <TeammateChatBackup target={teammateIdentity.ask.target} agentId={teammateIdentity.agentId} /> : worksElsewhere ? <CrewWorksElsewhere projectId={selected.id} /> : <ChatArea
@@ -1819,6 +1838,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         />}
                         </div>
                         </ConversationImageRoot.Provider>
+                        </ChatFilePaths.Provider>
                         <TeamAgentAsk key={tabId} tabId={tabId} />
                       </div>
                   ) : (

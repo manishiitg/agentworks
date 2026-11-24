@@ -9,7 +9,8 @@ import { MarkdownRenderer } from '../components/ui/MarkdownRenderer'
 import { RenderedContentSearchBar, RenderedContentSearchButton, useRenderedContentSearch } from '../components/ui/RenderedContentSearch'
 import { DocumentPreview, hasDocumentPreview } from '../components/files/DocumentPreview'
 import { DiffRenderer } from '../components/ui/DiffRenderer'
-import { getApiBaseUrl, getAuthToken } from '../services/api'
+import { apiUrlForPath, getAuthToken } from '../services/api'
+import { admissionWindowHeaders } from '../utils/chatDeliveryTelemetry'
 import { isDiffFilePath, looksLikeDiffContent } from '../utils/diff'
 import { isValidJSON } from '../utils/event-helpers'
 
@@ -17,6 +18,8 @@ interface SharedFileProps {
   encodedPath: string
   uid?: string
   onBack?: () => void
+  /** When embedded in a Crew, send reads to that Crew's existing connection. */
+  previewWorkspace?: string
 }
 
 const getCodeFileLanguage = (filepath: string): string | null => {
@@ -32,7 +35,7 @@ const getCodeFileLanguage = (filepath: string): string | null => {
   return codeExtensions[ext] || null
 }
 
-export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
+export function SharedFile({ encodedPath, uid, onBack, previewWorkspace }: SharedFileProps) {
   const [firstPage, setFirstPage] = useState<PreviewPage | null>(null)
   const [content, setContent] = useState<string | null>(null)
   const [binaryData, setBinaryData] = useState<ArrayBuffer | null>(null)
@@ -77,21 +80,26 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
     enabled: isRenderedSearchAvailable,
   })
 
-  const fetchSharedRange = useCallback(async (offset: number, signal?: AbortSignal) => {
+  const requestFile = useCallback((headers: Record<string, string> = {}, signal?: AbortSignal) => {
     const token = getAuthToken()
-    const headers: Record<string, string> = { Range: `bytes=${offset}-${offset + PREVIEW_PAGE_BYTES - 1}` }
-    if (token) headers.Authorization = `Bearer ${token}`
-    const resp = await fetch(`${getApiBaseUrl() || ''}/api/public/file?path=${encodeURIComponent(encodedPath)}${uid ? `&uid=${encodeURIComponent(uid)}` : ''}`, { headers, signal })
+    const query = new URLSearchParams({ path: encodedPath })
+    if (uid) query.set('uid', uid)
+    return fetch(apiUrlForPath(`/api/public/file?${query}`, previewWorkspace), {
+      headers: { ...(previewWorkspace ? admissionWindowHeaders() : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers },
+      signal,
+    })
+  }, [encodedPath, uid, previewWorkspace])
+  const fetchSharedRange = useCallback(async (offset: number, signal?: AbortSignal) => {
+    const resp = await requestFile({ Range: `bytes=${offset}-${offset + PREVIEW_PAGE_BYTES - 1}` }, signal)
     if (resp.status === 401) throw new Error('Sign in to open this file.')
     if (resp.status === 403) throw new Error('You do not have access to this file.')
     if (resp.status !== 206 && resp.status !== 416) { await resp.body?.cancel(); throw new Error('Could not read this file preview.') }
     console.info(`[FILE_PREVIEW] id=${randomUUID()} source=shared offset=${offset}`)
     return { status: resp.status, range: resp.headers.get('Content-Range') || '', data: await resp.arrayBuffer() }
-  }, [encodedPath, uid])
+  }, [requestFile])
   const downloadOriginal = async () => {
     try {
-      const token = getAuthToken()
-      const response = await fetch(`${getApiBaseUrl() || ''}/api/public/file?path=${encodeURIComponent(encodedPath)}${uid ? `&uid=${encodeURIComponent(uid)}` : ''}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      const response = await requestFile()
       if (!response.ok) throw new Error('Could not download this file.')
       const href = URL.createObjectURL(await response.blob())
       const link = document.createElement('a'); link.href = href; link.download = fileName; link.click()
@@ -142,12 +150,7 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
           }
           return
         }
-        const base = getApiBaseUrl() || ''
-        const headers: Record<string, string> = {}
-        const token = getAuthToken()
-        if (token) headers['Authorization'] = `Bearer ${token}`
-        const uidParam = uid ? `&uid=${encodeURIComponent(uid)}` : ''
-        const resp = await fetch(`${base}/api/public/file?path=${encodeURIComponent(encodedPath)}${uidParam}`, { headers, signal: controller.signal })
+        const resp = await requestFile({}, controller.signal)
         if (controller.signal.aborted) return
         if (resp.status === 401) {
           setNeedsAuth(true)
@@ -183,11 +186,12 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
       controller.abort()
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [encodedPath, filePath, uid, isVideoFile, isAudioFile, isImageFile, isPDF, isOfficeOrBinary, lowerPath, fileName, readSharedPage, fetchSharedRange])
+  }, [encodedPath, filePath, uid, isVideoFile, isAudioFile, isImageFile, isPDF, isOfficeOrBinary, lowerPath, fileName, readSharedPage, fetchSharedRange, requestFile])
 
+  const heightClass = previewWorkspace ? 'min-h-full' : 'min-h-screen'
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+      <div className={`${heightClass} flex items-center justify-center bg-gray-100 dark:bg-gray-900`}>
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-500" />
           <p className="mt-4 text-gray-600 dark:text-gray-400">Loading file...</p>
@@ -198,7 +202,7 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
 
   if (needsAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+      <div className={`${heightClass} flex items-center justify-center bg-gray-100 dark:bg-gray-900`}>
         <div className="max-w-md w-full p-8 bg-white dark:bg-gray-800 rounded-lg shadow-lg text-center">
           <LogIn className="h-12 w-12 mx-auto mb-4 text-blue-500" />
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Login Required</h2>
@@ -218,7 +222,7 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+      <div className={`${heightClass} flex items-center justify-center bg-gray-100 dark:bg-gray-900`}>
         <div className="max-w-md w-full p-8 bg-white dark:bg-gray-800 rounded-lg shadow-lg text-center">
           <div className="text-red-500 dark:text-red-400 text-6xl mb-4">!</div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Unable to open file</h2>
@@ -286,7 +290,7 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
       const codeBlockContent = `\`\`\`${language}\n${content}\n\`\`\``
       return (
         <div ref={renderedContentRef} className="prose prose-sm max-w-none dark:prose-invert">
-          <MarkdownRenderer basePath={filePath || undefined} workspaceLinkHref={path => sharedLink(window.location.origin, 'file', path, uid)} content={codeBlockContent} className="max-w-none" showScrollbar={true} />
+          <MarkdownRenderer untrustedContent={!!previewWorkspace} disablePathLinking={!!previewWorkspace} basePath={filePath || undefined} workspaceLinkHref={path => sharedLink(window.location.origin, 'file', path, uid)} content={codeBlockContent} className="max-w-none" showScrollbar={true} />
         </div>
       )
     }
@@ -294,13 +298,13 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
     // Default: render as markdown
     return (
       <div ref={renderedContentRef} className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-semibold prose-headings:text-gray-900 dark:prose-headings:text-gray-100 prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline prose-code:text-blue-600 dark:prose-code:text-blue-400 prose-pre:bg-gray-50 dark:prose-pre:bg-gray-900">
-        <MarkdownRenderer basePath={filePath || undefined} workspaceLinkHref={path => sharedLink(window.location.origin, 'file', path, uid)} content={content} className="max-w-none" showScrollbar={true} />
+        <MarkdownRenderer untrustedContent={!!previewWorkspace} disablePathLinking={!!previewWorkspace} basePath={filePath || undefined} workspaceLinkHref={path => sharedLink(window.location.origin, 'file', path, uid)} content={content} className="max-w-none" showScrollbar={true} />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
+    <div className={`${heightClass} bg-gray-100 dark:bg-gray-900`}>
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 shadow sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
@@ -310,7 +314,7 @@ export function SharedFile({ encodedPath, uid, onBack }: SharedFileProps) {
                 <button
                   onClick={onBack}
                   className="p-1.5 rounded-md text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  title="Back to folder"
+                  title={previewWorkspace ? 'Back to files' : 'Back to folder'}
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </button>

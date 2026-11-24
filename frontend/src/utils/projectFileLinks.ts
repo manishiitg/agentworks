@@ -30,10 +30,10 @@ export function parseCodeRef(text: string): CodeRef | null {
 }
 
 /** exact: the path is already a full workspace path (a search result), so no lookup is needed. */
-export type OpenProjectFileRequest = CodeRef & { exact?: boolean }
+export type OpenProjectFileRequest = CodeRef & { exact?: boolean; chatPath?: boolean }
 
-export function requestOpenProjectFile(ref: CodeRef, exact = false) {
-  window.dispatchEvent(new CustomEvent<OpenProjectFileRequest>(OPEN_PROJECT_FILE_EVENT, { detail: { ...ref, exact } }))
+export function requestOpenProjectFile(ref: CodeRef, exact = false, chatPath = false) {
+  window.dispatchEvent(new CustomEvent<OpenProjectFileRequest>(OPEN_PROJECT_FILE_EVENT, { detail: { ...ref, exact, chatPath } }))
 }
 
 /** The project file a reference means, from Git's file lists: the exact path in a repository, else the

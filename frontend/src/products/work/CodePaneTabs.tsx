@@ -8,7 +8,7 @@ export type CodePaneTab = 'changes' | 'files' | 'terminal'
 export function codePaneTab(view: string, filesView: WorkFilesView): CodePaneTab | null {
   if (view === 'shell') return 'terminal'
   if (view !== 'files') return null
-  return filesView.kind === 'browse' || filesView.kind === 'folder' ? 'files' : 'changes'
+  return filesView.kind === 'browse' || filesView.kind === 'folder' || filesView.kind === 'preview' ? 'files' : 'changes'
 }
 
 /** Changes · Files · Terminal in one pane (owner, 20 Nov), like a desktop code app.

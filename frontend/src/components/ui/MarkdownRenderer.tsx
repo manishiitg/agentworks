@@ -8,6 +8,7 @@ import React, { lazy, Suspense, useEffect, useRef, useState, useCallback } from 
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { remarkImageGallery } from './remarkImageGallery'
+import { ChatFilePaths, ChatFilePathSpan, remarkChatFilePaths } from './chatFilePathLinks'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
 import { useAppStore } from '../../stores/useAppStore'
 import { useModeStore } from '../../stores/useModeStore'
@@ -627,6 +628,8 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
   renderEmbeddedWidget
 }) => {
   const conversationImageRoot = React.useContext(ConversationImageRoot)
+  const chatFileScope = React.useContext(ChatFilePaths)
+  const scopedChatFiles = !!chatFileScope && chatElements && !disablePathLinking && !untrustedContent
   const containerClasses = `prose prose-sm max-w-none dark:prose-invert ${className}`
   const scrollClasses = showScrollbar ? 'overflow-y-auto overflow-x-auto min-w-0' : ""
   const containerStyle = showScrollbar && maxHeight !== 'none'
@@ -825,7 +828,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
     let processed = normalizeMarkdownContent(content)
 
     // 2. Auto-link workspace paths (skip when disablePathLinking is true)
-    if (disablePathLinking) return processed
+    if (disablePathLinking || scopedChatFiles) return processed
     // Regex matches paths starting with specific prefixes: Chats/, Downloads/, Workflow/, skills/
     // Optionally matches surrounding backticks to unwrap them
     // CRITICAL FIX: We must handle paths wrapped in backticks (e.g., `Chats/foo.md`) because LLMs often format them as code.
@@ -967,7 +970,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
     }
     
     return processed
-  }, [basePath, content, disablePathLinking])
+  }, [basePath, content, disablePathLinking, scopedChatFiles])
 
   const renderPre = useCallback(({ children, node }: { children?: React.ReactNode; node?: { position?: { start?: { offset?: number } } } }) => {
     const codeClass = React.isValidElement<{ className?: string }>(children) ? children.props.className ?? '' : ''
@@ -1159,8 +1162,9 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
         // Single-tilde strikethrough off: chat/model text uses ~ for
         // "approximately" (~2.37L), and pairing those into <del> spans
         // strikes whole paragraphs. ~~ still strikethroughs, like GitHub.
-        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkImageGallery]}
+        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkImageGallery, ...(scopedChatFiles && !chatElementStream ? [remarkChatFilePaths] : [])]}
         components={{
+          ...(scopedChatFiles ? { span: ChatFilePathSpan } : {}),
           p: ({ node, children }) => {
             const imageCount = node?.children.filter(child => child.type === 'element' && child.tagName === 'img').length ?? 0
             const gallery = !untrustedContent && imageCount > 1 && node?.children.every(child =>
@@ -1208,7 +1212,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
             // A code path in a reply (`src/app/main.go:42`) opens that file at the line in Files, where a
             // screen can open project files (the Crew surface registers one); elsewhere it stays plain code.
             const inlineText = typeof children === 'string' ? children : Array.isArray(children) && children.length === 1 && typeof children[0] === 'string' ? children[0] : null
-            const codeRef = !match && !disablePathLinking && !untrustedContent && inlineText && !inlineText.includes('\n') && projectFileLinksEnabled() ? parseCodeRef(inlineText) : null
+            const codeRef = !match && !scopedChatFiles && !disablePathLinking && !untrustedContent && inlineText && !inlineText.includes('\n') && projectFileLinksEnabled() ? parseCodeRef(inlineText) : null
             if (codeRef) {
               return (
                 <a href="#" title={`Open ${codeRef.path}${codeRef.line ? ` at line ${codeRef.line}` : ''}`} className="no-underline hover:underline" onClick={event => { event.preventDefault(); event.stopPropagation(); requestOpenProjectFile(codeRef) }}>

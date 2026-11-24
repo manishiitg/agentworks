@@ -201,6 +201,7 @@ func registerWorkflowReadRoutes(apiRouter *mux.Router, api *StreamingAPI) {
 	apiRouter.HandleFunc("/workflow/costs", requireWorkflowReadAccessCallerRelative(api.handleGetCosts)).Methods("GET", "OPTIONS")
 	// Read-only git view of a workspace folder (Files pane).
 	apiRouter.HandleFunc("/workspace-git", requireWorkflowReadAccessCallerRelative(api.handleWorkspaceGit)).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/chat-file-paths", api.handleChatFilePaths).Methods("POST")
 	apiRouter.HandleFunc("/workspace-snapshots", requireWorkflowReadAccessCallerRelative(api.handleCrewFileSnapshots)).Methods("GET", "POST", "OPTIONS")
 	// Local git actions (stage, unstage, discard, commit); write access is checked in the handler.
 	apiRouter.HandleFunc("/workspace-git", api.handleWorkspaceGitAction).Methods("POST")
