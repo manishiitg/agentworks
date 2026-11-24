@@ -178,16 +178,23 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
   // A simple Projects page (owner, 24 Nov: "a simplified ui… something better"): two groups, yours and shared with
   // you, one grey line per row, and no place tabs or ownership chips. Where a project lives shows in its line.
   const normalizedQuery = query.trim().toLocaleLowerCase()
-  const ownLocalNames = new Set(rows.filter(row => row.connection.id === active && !isSharedProject(row)).map(row => row.name.toLocaleLowerCase()))
-  // A Mac project's own online copy is the same project to its owner: list it once, as the Mac one.
-  const listed = rows.filter(row => row.connection.id === active || isSharedProject(row) || !ownLocalNames.has(row.name.toLocaleLowerCase()))
+  // One row per project name among your own (owner, 24 Nov): a Mac project and its online pairs are one project to
+  // you. The row on this Mac wins, so opening it opens your Mac's copy.
+  const ownOrder = (row: typeof rows[number]) => row.connection.id === active ? 0 : 1
+  const ownByName = new Map<string, typeof rows[number]>()
+  for (const row of [...rows].filter(row => !isSharedProject(row)).sort((a, b) => ownOrder(a) - ownOrder(b))) {
+    const name = row.name.toLocaleLowerCase()
+    if (!ownByName.has(name)) ownByName.set(name, row)
+  }
+  const listed = rows.filter(row => isSharedProject(row) || ownByName.get(row.name.toLocaleLowerCase()) === row)
   const recentOrder = new Map((recent ?? []).map((key, index) => [key, index]))
   const byRecent = (a: typeof rows[number], b: typeof rows[number]) =>
     (recentOrder.get(keyFor(a)) ?? Infinity) - (recentOrder.get(keyFor(b)) ?? Infinity) || a.name.localeCompare(b.name)
   const shown = listed.filter(row => row.name.toLocaleLowerCase().includes(normalizedQuery)).sort(byRecent)
   const placeName = (connection: DesktopConnection) => connection.id === 'local' ? '' : connection.name
   // Recent first (owner, 24 Nov): the last five opened, then everything else as yours or shared with you.
-  const recentShown = normalizedQuery ? [] : shown.filter(row => recentOrder.has(keyFor(row))).slice(0, 5)
+  // Recent is what you worked on here, on this Mac (owner, 24 Nov), not projects opened on other networks.
+  const recentShown = normalizedQuery ? [] : shown.filter(row => row.connection.id === active && recentOrder.has(keyFor(row))).slice(0, 5)
   const rest = shown.filter(row => !recentShown.includes(row))
   const groups = [
     { id: 'recent', name: 'Recent', projects: recentShown },
