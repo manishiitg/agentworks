@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ member: vi.fn(), resolve: vi.fn(), observe: vi.fn(() => vi.fn()), cancel: vi.fn(), authValid: false, checkAuth: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../services/desktopConnections', () => ({ desktopRequest: mocks.member }))
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: { getState: () => ({ checkAuth: mocks.checkAuth, isAuthenticated: mocks.authValid }) } }))
-vi.mock('../services/workspaceState', () => ({ workspaceStateApi: { get: vi.fn().mockResolvedValue({ version: 1, revision: 0, last: null, recent: [], destination: { surface: 'bullpen' }, first_visit: true }) } }))
+vi.mock('../services/workspaceState', () => ({ workspaceStateApi: { get: vi.fn().mockResolvedValue({ version: 1, revision: 0, last: null, recent: [], destination: { surface: 'bullpen' } }) } }))
 vi.mock('../utils/restoreWorkspaceChat', () => ({ restoreWorkspaceChat: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../hooks/useWorkspaceReturn', () => ({ installWorkspaceStateFlush: () => () => {}, queueWorkspaceState: vi.fn() }))
 vi.mock('../utils/resolveProductRoute', () => ({ ProductUnavailable: class extends Error {}, resolveProductRoute: mocks.resolve }))
@@ -20,7 +20,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 afterEach(() => { vi.clearAllMocks(); mocks.authValid = false; window.history.replaceState({}, '', '/'); delete window.electronAPI })
 describe('protected deep-link boundary', () => {
-  it('sends an old Goals overview address to Home', async () => {
+  it('sends an old Goals overview address to the root', async () => {
     // Goals were removed; /goals and /workflows used to open an empty page.
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'agentworks'] }
     for (const path of ['/goals', '/workflows']) {
@@ -29,7 +29,7 @@ describe('protected deep-link boundary', () => {
       const root = createRoot(host)
       try {
         await act(async () => root.render(<ProductRouteBoundary account="owner" allowedProducts={['work', 'agentworks']}>Workspace</ProductRouteBoundary>))
-        expect(window.location.pathname).toBe('/home')
+        expect(window.location.pathname).not.toBe(path)
       } finally { await act(async () => root.unmount()); host.remove() }
     }
   })
@@ -184,7 +184,7 @@ describe('protected deep-link boundary', () => {
 })
 
 describe('server workspace return', () => {
-  it('keeps Home addressable while resolving the saved workspace with normal permissions', async () => {
+  it('opens the saved workspace from an old /home link, with normal permissions', async () => {
     const { workspaceStateApi } = await import('../services/workspaceState')
     const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
     useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null })
@@ -196,17 +196,16 @@ describe('server workspace return', () => {
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {
       await act(async () => root.render(<ProductRouteBoundary account="alice">Workspace</ProductRouteBoundary>))
-      expect(window.location.pathname).toBe('/home')
-      expect(useWorkspaceReturnStore.getState().firstVisit).toBe(false)
+      expect(window.location.pathname).toBe('/crew/projects/last')
       expect(workspaceStateApi.get).toHaveBeenCalled()
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
-  it.each([true, false])('shows first-use welcome only for an empty account (existing work: %s)', async existing => {
+  it.each([true, false])('opens existing work, or the product root (which shows Projects) for an empty account (existing work: %s)', async existing => {
     const { workspaceStateApi } = await import('../services/workspaceState')
     const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
     useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null })
-    vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 0, last: null, recent: [], destination: existing ? { surface: 'work', id: 'existing', workspace_path: 'Code/existing' } : { surface: 'work' }, first_visit: !existing })
+    vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 0, last: null, recent: [], destination: existing ? { surface: 'work', id: 'existing', workspace_path: 'Code/existing' } : { surface: 'work' } })
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work'] }
     // PLAT-856-434: the packaged app adds this query on every initial launch.
     window.history.replaceState({}, '', '/?runloop_version=1.2.3')
@@ -215,7 +214,6 @@ describe('server workspace return', () => {
     try {
       await act(async () => root.render(<ProductRouteBoundary account="new-user">Workspace</ProductRouteBoundary>))
       expect(window.location.pathname).toBe(existing ? '/crew/projects/existing' : '/crew')
-      expect(useWorkspaceReturnStore.getState().firstVisit).toBe(!existing)
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
@@ -223,7 +221,7 @@ describe('server workspace return', () => {
     const { workspaceStateApi } = await import('../services/workspaceState')
     const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
     const { restoreWorkspaceChat } = await import('../utils/restoreWorkspaceChat')
-    useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null, restore: null, firstVisit: false })
+    useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null, restore: null })
     const saved = { surface: 'work' as const, id: 'last', view: 'files', session_id: 'chat-1', layout: { chat_open: true, panel_open: false, split_ratio: 0.4, navigation_mode: 'fixed' as const, focused_pane: 'chat' as const } }
     vi.mocked(workspaceStateApi.get).mockResolvedValueOnce({ version: 1, revision: 3, last: saved, recent: [saved] })
     window.__APP_RUNTIME_CONFIG__ = { enabledProductSurfaces: ['work', 'bullpen'] }
@@ -258,7 +256,6 @@ describe('server workspace return', () => {
     try {
       await act(async () => root.render(<ProductRouteBoundary account="bob" allowedProducts={['work']}>Workspace</ProductRouteBoundary>))
       expect(window.location.pathname).toBe('/crew')
-      expect(useWorkspaceReturnStore.getState().firstVisit).toBe(false)
       expect(useWorkspaceReturnStore.getState().note).toContain('no longer available')
       expect(mocks.resolve).toHaveBeenCalledWith({ surface: 'work' }, expect.any(AbortSignal))
     } finally { await act(async () => root.unmount()); host.remove() }

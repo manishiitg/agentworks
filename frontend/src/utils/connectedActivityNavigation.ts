@@ -19,7 +19,7 @@ export async function openConnectedActivity(connection: string, sessionId: strin
   // Only a selector crosses the reload. The destination re-reads its own
   // authorized activity; no foreign session object or credentials are copied.
   sessionStorage.setItem(pendingKey, JSON.stringify({ connection, sessionId }))
-  try { await window.electronAPI.openDesktopConnection(connection, '/home') }
+  try { await window.electronAPI.openDesktopConnection(connection, '/') }
   catch {
     sessionStorage.removeItem(pendingKey)
     useChatStore.getState().addToast('Could not open this server. Try again.', 'error')

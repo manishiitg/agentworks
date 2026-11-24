@@ -61,8 +61,6 @@ type crewSpec struct {
 	Functions        []crewFunctionSpec             `json:"functions,omitempty"`
 	Schedules        []crewScheduleSpec             `json:"schedules,omitempty"`
 	LLMConfig        *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
-	// Role is read only to refuse it: the platform alone marks its own Crews.
-	Role string `json:"role,omitempty"`
 }
 
 // crewScheduleSpec is a project schedule as authors send it; omitted fields
@@ -266,9 +264,6 @@ func normalizeCrewSpec(spec crewSpec) (crewSpec, error) {
 	spec.ChatInstructions, instructionsErr = workflowtypes.NormalizeChatInstructions(spec.ChatInstructions)
 	if instructionsErr != nil {
 		return spec, instructionsErr
-	}
-	if strings.TrimSpace(spec.Role) != "" {
-		return spec, fmt.Errorf("role is set by the platform; remove it from the project settings")
 	}
 	if config := spec.LLMConfig; config != nil {
 		if config.SchemaVersion != 2 || config.Mode != workflowtypes.LLMConfigModeExplicit && config.Mode != workflowtypes.LLMConfigModeProviderProfile {
@@ -484,11 +479,10 @@ func (api *StreamingAPI) createWorkspaceFromSpec(ctx context.Context, claims *Us
 	return api.createWorkspace(ctx, claims, profileID, spec, enableSchedules, creation)
 }
 
-// workspaceCreation carries what only server code may choose for a new Crew: its identity and its platform role.
+// workspaceCreation carries what only server code may choose for a new Crew: its identity.
 type workspaceCreation struct {
 	SyncBinding *crewroot.SyncBinding
 	ReservedID  string
-	Role        string
 	Restore     bool
 }
 
@@ -498,14 +492,8 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 			return "", err
 		}
 	}
-	// A platform-made Crew (its role is set by server code only) is the server's act, not the person's, so the
-	// person's create permission does not apply: everyone gets their AgentWorks.
-	if creation.Role == "" {
-		if status, message := projectCreationGate(claims, profileID); status != 0 {
-			return "", fmt.Errorf("%s", message)
-		}
-	} else if claims == nil || strings.TrimSpace(claims.UserID) == "" {
-		return "", fmt.Errorf("Sign in to create a project.")
+	if status, message := projectCreationGate(claims, profileID); status != 0 {
+		return "", fmt.Errorf("%s", message)
 	}
 	spec, err := normalizeCrewSpec(spec)
 	if err != nil {
@@ -515,9 +503,6 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 		spec.RootPath, err = validateNewLocalCrewRoot(spec.RootPath)
 		if err != nil {
 			return "", err
-		}
-		if creation.Role != "" {
-			return "", fmt.Errorf("platform projects use managed folders")
 		}
 	}
 	if err := checkCrewSkillsAvailable(ctx, "", spec.SelectedSkills, spec.Files); err != nil {
@@ -550,7 +535,7 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 	if projectExistsAtPath(ctx, workspacePath) {
 		return "", fmt.Errorf("crew folder collision; retry")
 	}
-	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, crewID, workspacePath, nil, crewCreationOptions{SyncBinding: creation.SyncBinding, LLMConfig: spec.LLMConfig, Role: creation.Role, LocalRoot: spec.RootPath, Restore: creation.Restore}); err != nil {
+	if _, err := writeCrewCreationManifests(ctx, userID, profile, profileID, "", spec.Name, spec.Purpose, crewID, workspacePath, nil, crewCreationOptions{SyncBinding: creation.SyncBinding, LLMConfig: spec.LLMConfig, LocalRoot: spec.RootPath, Restore: creation.Restore}); err != nil {
 		return "", err
 	}
 	if spec.ChatInstructions != "" {

@@ -31,7 +31,7 @@ import { ChatFilePaths, createChatFileLookup, resolveChatFilePaths } from '../..
 import { useThemePanelDefault } from '../../hooks/useThemePanelDefault'
 import { useAppearanceStore } from '../../stores/useAppearanceStore'
 import { useCrewAgentsStore } from '../../components/chat/AgentCard'
-import { HomeEntry } from '../../components/workspace/HomeEntry'
+import { ProjectsEntry } from '../../components/workspace/ProjectsEntry'
 import { openAppProduct } from '../../utils/appNavigation'
 import { REPORT_SELECTION_EVENT } from '../../components/workflow/reportDocuments'
 import { GlobalHumanFeedbackPrompt } from '../../components/GlobalHumanFeedbackPrompt'
@@ -1657,7 +1657,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
 
   const createProject = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, onboarding?: CrewOnboarding, rootPath?: string, localChat?: LocalChat) => {
     if (creating) return
-    const startedAtHome = window.location.pathname === '/home'
     const user = useAuthStore.getState().user
     const server = useWorkspaceConnectionStore.getState().activeWorkspaceId
     if (!hasProductCreateAccess(user, useAuthStore.getState().isMultiUserMode, product.profileId)) return
@@ -1694,7 +1693,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         }
       }
       setCreateOpen(false)
-      if (imported || startedAtHome && window.location.pathname === '/home') openAppProduct({ surface: 'work', id: created.id, ...(imported ? { agent: imported.conversation_key.split(':chat:')[1] } : {}) })
+      if (imported) openAppProduct({ surface: 'work', id: created.id, ...(imported ? { agent: imported.conversation_key.split(':chat:')[1] } : {}) })
     } catch (cause) {
       setCreateError(localFileError(cause))
     } finally {
@@ -1796,7 +1795,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         {adminPage && !showProviders && <AdminPages />}
         <div className={showProviders || showSchedulesOverview || adminPage ? 'hidden' : 'h-full'}>
           {!selected ? (
-            <>{sessionsLoading ? <div className="grid h-full place-items-center text-sm text-muted-foreground"><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Loading your work…</div> : !createOpen && <HomeEntry />}</>
+            <>{sessionsLoading ? <div className="grid h-full place-items-center text-sm text-muted-foreground"><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Loading your work…</div> : !createOpen && <ProjectsEntry />}</>
           ) : error ? (
             <div className="grid h-full place-items-center p-6 text-center text-sm text-destructive">{error}</div>
           ) : (

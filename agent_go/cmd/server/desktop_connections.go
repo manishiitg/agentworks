@@ -502,7 +502,6 @@ type desktopProject struct {
 	Name          string            `json:"name"`
 	Kind          string            `json:"kind"`
 	Mode          string            `json:"mode,omitempty"`
-	PersonalAgent bool              `json:"personal_agent,omitempty"`
 }
 
 // desktopMemberCrew resolves only this person's active member copy on the named
@@ -602,7 +601,6 @@ func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r
 					ID            string            `json:"id"`
 					Name          string            `json:"name"`
 					Mode          string            `json:"mode"`
-					PersonalAgent bool              `json:"personal_agent"`
 				} `json:"workspaces"`
 				Workflows []struct {
 					Manifest struct {
@@ -635,7 +633,7 @@ func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r
 				if id != "local" {
 					crewTeamLiveLocalSelf(p.TeamLive, selfConnection)
 				}
-				projects = append(projects, desktopProject{TeamLive: p.TeamLive, ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName, SharedLine: p.SharedLine, PersonalAgent: p.PersonalAgent})
+				projects = append(projects, desktopProject{TeamLive: p.TeamLive, ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName, SharedLine: p.SharedLine})
 			}
 			for _, p := range inventory.Workflows {
 				if p.Manifest.Kind != "relay" {

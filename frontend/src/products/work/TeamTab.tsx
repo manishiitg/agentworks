@@ -547,7 +547,7 @@ export function LeaveTeam({ target, confirm }: { target: TeamTarget; confirm?: s
   const [asking, setAsking] = useState(false)
   const leave = () => run('leave', async () => {
     await teamRequest({ project: target.project, connection: target.connection }, '/leave', 'POST', {})
-    openAppPage('/home')
+    openAppPage('/projects')
   })
   return <div className="space-y-1">
     {asking

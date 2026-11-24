@@ -1336,10 +1336,7 @@ type productProjectManifest struct {
 	SchemaVersion                int             `json:"schema_version"`
 	Product                      string          `json:"product,omitempty"`
 	// OwnerID is the project's owner (PLAT-442): carried so manifest rewrites keep it.
-	OwnerID string `json:"owner_id,omitempty"`
-	// Role marks a platform-made Crew ("agentworks": the person's own AgentWorks agent). Only the server sets it;
-	// creation and import refuse a spec that names one.
-	Role             string `json:"role,omitempty"`
+	OwnerID          string `json:"owner_id,omitempty"`
 	ID               string `json:"id"`
 	Title            string `json:"title,omitempty"`
 	Label            string `json:"label,omitempty"`

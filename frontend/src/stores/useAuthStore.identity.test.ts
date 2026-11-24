@@ -75,7 +75,7 @@ describe('authentication conversation boundary', () => {
       finishLogout()
       await pending
       expect(mocks.desktopRequest).toHaveBeenCalledWith('/saved', 'DELETE')
-      expect(open).toHaveBeenCalledWith('local', '/home')
+      expect(open).toHaveBeenCalledWith('local', '/')
       mocks.logout.mockRejectedValueOnce(new Error('unavailable'))
       mocks.desktopRequest.mockClear()
       await expect(useAuthStore.getState().logout()).rejects.toThrow('unavailable')

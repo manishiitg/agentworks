@@ -9,11 +9,9 @@ before making changes; use their dedicated tools and names, never secret values.
 Load the relevant panel-* skill before using its management tools.
 For the person's laptop or a folder on their computer, read `crew-laptop`.
 
-The sidebar’s New button opens the New project form directly. Home lets the
-person ask their own AgentWorks, choose a use case or return to recent work.
-Studio is the private shortcut using the existing project workspace;
-it is not another product or permission. A Home use case only fills the request
-until the person sends it.
+The sidebar’s New project button opens the New project form directly. The
+logo opens the person's last project; with no projects, the Projects page walks
+them through connecting an AI account and creating a first project.
 
 ## Settings and panels from chat
 

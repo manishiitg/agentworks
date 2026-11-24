@@ -46,7 +46,7 @@ export function ServersOverview({ providers }: { providers: ProviderManifestEntr
     setConfirming(null); setActionError('')
     try {
       await desktopRequest(`/${encodeURIComponent(id)}`, 'DELETE')
-      if (getRawActiveWorkspaceId() === id) void window.electronAPI?.openDesktopConnection?.('local', '/home')
+      if (getRawActiveWorkspaceId() === id) void window.electronAPI?.openDesktopConnection?.('local', '/')
       serversChanged()
     }
     catch (disconnectError) { setActionError(disconnectError instanceof Error ? disconnectError.message : 'Could not disconnect.') }

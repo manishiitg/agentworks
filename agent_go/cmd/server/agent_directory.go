@@ -110,8 +110,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 		return nil, err
 	}
 	// Asked from inside a Crew, only this Crew, its Team and the Crews linked to it are listed, with their agents
-	// (owner, 7 and 19 Nov). Over MCP from outside a Crew there is no "here" and nothing changes; the person's
-	// AgentWorks main agent reaches all their Crews, decided by its role on the server.
+	// (owner, 7 and 19 Nov). Over MCP from outside a Crew there is no "here" and nothing changes.
 	reach, _ := crewReachFrom(ctx, here)
 	for _, crew := range crews {
 		id, _ := crew["id"].(string)
@@ -133,9 +132,6 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 			"kind": kind, "type": "Crew", "presence": "Runs when called", "delivery_mode": "on_request", "id": "workspace:" + profileID + ":" + id, "crew_id": id, "name": name, "owner": crew["owner"],
 			"your_access": crew["access"], "description": crew["description"], "functions": agentDirectoryFunctions(functions),
 			"reach": crewDirectoryReach(false),
-		}
-		if role, _ := crew["role"].(string); role != "" {
-			row["role"] = role
 		}
 		owned := crewProjectOwnedByCallerStrict(claims.UserID, crewPath)
 		team, teamErr := readCrewTeam(id)

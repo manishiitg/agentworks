@@ -3,7 +3,6 @@ package workproduct
 import (
 	"embed"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -76,13 +75,3 @@ func mustWorkManifest() ProductManifest {
 
 const ProfileID = "work"
 const ProjectsRoot = "Crew"
-
-// AgentWorksAgentPrompt is the platform-owned instruction section of the person's AgentWorks Crew (role "agentworks").
-// The person's own details live in that Crew's notes, never here.
-func AgentWorksAgentPrompt() string {
-	text, err := productConfigFiles.ReadFile("prompts/agentworks-agent.md")
-	if err != nil {
-		panic(fmt.Errorf("read AgentWorks prompt: %w", err))
-	}
-	return strings.TrimSpace(string(text))
-}

@@ -13,7 +13,7 @@ import { useAppPath } from '../../utils/appNavigation'
 import { parseProductRoute } from '../../utils/productRoutes'
 
 type Crew = Awaited<ReturnType<typeof agentApi.listWorkspaceNavigation>>['workspaces'][number]
-type Project = Pick<Crew, 'id' | 'name' | 'icon' | 'mode' | 'owned_by_caller' | 'owner_name' | 'shared_line' | 'personal_agent' | 'location' | 'mac' | 'state' | 'where'> & { kind: 'crew' }
+type Project = Pick<Crew, 'id' | 'name' | 'icon' | 'mode' | 'owned_by_caller' | 'owner_name' | 'shared_line' | 'location' | 'mac' | 'state' | 'where'> & { kind: 'crew' }
 const Inventory = createContext<{ projects: Project[]; canBrowse: boolean; loading: boolean; error: boolean; retry: () => void }>({
   projects: [], canBrowse: false, loading: false, error: false, retry: () => {},
 })
@@ -51,12 +51,12 @@ export function WorkspaceProjectsProvider({ children }: { children: ReactNode })
   }, [scope, refresh, canBrowse, crewId])
   const current = directory?.scope === scope ? directory : null
   const projects = [
-    ...(canBrowse ? (current?.crews || []).filter(crew => crew.profile_id === 'work').map(crew => ({ id: crew.id, name: crew.name, icon: crew.icon, mode: crew.mode, owned_by_caller: crew.owned_by_caller, owner_name: crew.owner_name, shared_line: crew.shared_line, personal_agent: crew.personal_agent, location: crew.location, mac: crew.mac, state: crew.state, where: crew.where, kind: 'crew' as const })) : []),
+    ...(canBrowse ? (current?.crews || []).filter(crew => crew.profile_id === 'work').map(crew => ({ id: crew.id, name: crew.name, icon: crew.icon, mode: crew.mode, owned_by_caller: crew.owned_by_caller, owner_name: crew.owner_name, shared_line: crew.shared_line, location: crew.location, mac: crew.mac, state: crew.state, where: crew.where, kind: 'crew' as const })) : []),
   ].sort((a, b) => a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id))
 
   const route = parseProductRoute(path)
   const admittedProject = canBrowse && route?.surface === 'work' && product === 'work' && route.id === crewId
-    ? current?.crews.find(crew => crew.id === crewId && !crew.personal_agent && !(crew.owned_by_caller === false && crew.mode === 'run'))?.id
+    ? current?.crews.find(crew => crew.id === crewId && !(crew.owned_by_caller === false && crew.mode === 'run'))?.id
     : undefined
   // The shared shell records an admitted visit even with the phone drawer closed.
   useEffect(() => {

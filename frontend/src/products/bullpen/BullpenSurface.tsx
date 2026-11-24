@@ -1,4 +1,4 @@
-import { openHome } from '../../utils/homeNavigation'
+import { openAppPage } from '../../utils/appNavigation'
 import { currentProductRoute } from '../../utils/productRoutes'
 import { useProductUrlView } from '../../hooks/useProductUrlView'
 import { BullpenUsageOverview } from './BullpenUsage'
@@ -176,7 +176,7 @@ export function BullpenSurface({ messagingOnly = false }: { messagingOnly?: bool
           ...views.map(item => ({ ...item, active: view === item.id, onSelect: () => setView(item.id) })),
           ...(user?.role === 'admin' ? [{ id: 'admin', label: 'Administration', icon: ShieldCheck, active: view === 'admin', onSelect: () => setView('admin') }] : []),
           { id: 'usage', label: 'Token usage', icon: ChartNoAxesCombined, onSelect: () => setDialog('usage') },
-        ]}><Button variant="ghost" size="sm" onClick={() => openHome()}><ArrowLeft className="mr-1 h-4 w-4" aria-hidden="true" />Back to Home</Button>{view !== 'setup' && <Button size="sm" onClick={() => setView('setup')}>Connect your AI app</Button>}</WorkspacePageHeader>}
+        ]}><Button variant="ghost" size="sm" onClick={() => openAppPage('/projects')}><ArrowLeft className="mr-1 h-4 w-4" aria-hidden="true" />Back to Projects</Button>{view !== 'setup' && <Button size="sm" onClick={() => setView('setup')}>Connect your AI app</Button>}</WorkspacePageHeader>}
         <div className="min-h-0 flex-1 overflow-y-auto">
           <WorkspacePageContent className={view === 'setup' ? 'mx-auto w-full max-w-5xl' : undefined}>
             {view === 'setup' ? <AgentMessagingSetupPanel onOpenMcp={messagingOnly ? undefined : () => useAppStore.getState().setAdminPage('mcp')} onBack={() => setView('agents')} /> : view === 'admin' && user?.role === 'admin' ? <AdminPanel /> : user ? <AgentDirectory key={user.id} /> : <p>Sign in to see your agents.</p>}

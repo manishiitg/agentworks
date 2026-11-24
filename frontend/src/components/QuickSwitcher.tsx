@@ -580,7 +580,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     const networkCrewItems: CrewChatItem[] = connections
       .filter(connection => connection.id !== here)
       .flatMap(connection => (inventory[connection.id]?.projects || [])
-        .filter(project => project.kind === 'crew' && !project.personal_agent)
+        .filter(project => project.kind === 'crew')
         .map(project => ({
           type: 'crew' as const,
           id: `crew-network:${connection.id}:${project.id}`,

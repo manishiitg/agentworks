@@ -56,30 +56,29 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
     const settings = workspaceSettingsPage()
     if (settings) {
       syncWorkspaceSettings(settings)
-      useWorkspaceReturnStore.setState({ firstVisit: false, restore: null })
+      useWorkspaceReturnStore.setState({ restore: null })
       finish('ready')
       return () => controller.abort()
     }
     if (window.location.pathname === '/message') {
-      useWorkspaceReturnStore.setState({ firstVisit: false, restore: null })
+      useWorkspaceReturnStore.setState({ restore: null })
       void waitForChatStoreHydration().then(() => finish('ready'))
       return () => controller.abort()
     }
-    // Goals are gone: their old overview address (/goals, /workflows) opens Home instead of an empty page.
+    // Home is gone, and so are Goals: an old /home link or Goals overview (/goals, /workflows) opens the root, which
+    // the server resolves to the person's last project (or Projects when they have none).
     const goalsOverview = parseProductRoute(window.location.pathname + window.location.search)
-    if (goalsOverview?.surface === 'agentworks' && !goalsOverview.id) {
-      window.history.replaceState({}, '', '/home')
+    if (window.location.pathname === '/home' || (goalsOverview?.surface === 'agentworks' && !goalsOverview.id)) {
+      window.history.replaceState({}, '', '/')
       window.dispatchEvent(new PopStateEvent('popstate'))
       return () => controller.abort()
     }
-    const homeRequested = window.location.pathname === '/home'
-    // Resolve the permitted workspace normally, while Home remains the page.
     // Root query parameters (desktop cache version, connection callbacks) do
     // not select a product. Keep them in the URL for App, but resolve the root.
-    let requested = homeRequested || window.location.pathname === '/' ? '/' : window.location.pathname + window.location.search
+    let requested = window.location.pathname === '/' ? '/' : window.location.pathname + window.location.search
     // Top-level directories use their authorized inventories without resolving a selected project.
     if (window.location.pathname === '/dashboards' || window.location.pathname === '/projects') {
-      useWorkspaceReturnStore.setState({ firstVisit: false, restore: null })
+      useWorkspaceReturnStore.setState({ restore: null })
       void waitForChatStoreHydration().then(() => finish('ready'))
       return () => controller.abort()
     }
@@ -113,7 +112,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
 
       let state = useWorkspaceReturnStore.getState()
       if (state.account !== account || state.workspace !== workspace || !state.ready || requested === '/') {
-        useWorkspaceReturnStore.setState({ account, workspace, ready: false, record: null, restore: null, firstVisit: false, note: '', saveError: '' })
+        useWorkspaceReturnStore.setState({ account, workspace, ready: false, record: null, restore: null, note: '', saveError: '' })
         const record = await workspaceStateApi.get(controller.signal)
         if (controller.signal.aborted) return
         useWorkspaceReturnStore.setState({ account, workspace, ready: true, record, note: record.note || '' })
@@ -131,10 +130,8 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
         // Entry is resolved server-side using only the permitted inventory.
         // No attention feed or client-selected fallback decides where to land.
         destination = defaultDestination ?? null
-        useWorkspaceReturnStore.setState({ firstVisit: state.record?.first_visit === true, restore: null })
-      } else {
-        useWorkspaceReturnStore.setState({ firstVisit: false, restore: null })
       }
+      useWorkspaceReturnStore.setState({ restore: null })
       // Root connection parameters belong to App, not workspace restoration.
       if (!destination) { finish('unavailable'); return }
       if (!allowed.includes(destination.surface)) {
@@ -142,8 +139,8 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
         const activate = await resolveProductRoute(defaultDestination, controller.signal)
         if (controller.signal.aborted) return
         activate()
-        useWorkspaceReturnStore.setState({ firstVisit: false, restore: null, note: 'Your last workspace is no longer available. Choose another workspace.' })
-        if (!homeRequested) window.history.replaceState({}, '', productRoutePath(defaultDestination)); finish('ready'); return
+        useWorkspaceReturnStore.setState({ restore: null, note: 'Your last workspace is no longer available. Choose another workspace.' })
+        window.history.replaceState({}, '', productRoutePath(defaultDestination)); finish('ready'); return
       }
       await waitForChatStoreHydration()
       if (controller.signal.aborted) return
@@ -161,7 +158,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
           const layout = explicitPanel && saved.layout ? { ...saved.layout, panel_open: true, focused_pane: 'preview' as const } : saved.layout
           useWorkspaceReturnStore.setState({ restore: ['agentworks', 'work'].includes(saved.surface) ? { ...saved, view: destination.view, layout } : null })
         }
-        if (!homeRequested) window.history.replaceState({}, '', productRoutePath(destination))
+        window.history.replaceState({}, '', productRoutePath(destination))
         finish('ready')
       } catch (error) {
         const code = (error as { response?: { status?: number } })?.response?.status
@@ -171,8 +168,8 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
           const activate = await resolveProductRoute(defaultDestination, controller.signal)
           if (controller.signal.aborted) return
           activate()
-          useWorkspaceReturnStore.setState({ firstVisit: false, restore: null, note: 'Your last workspace is no longer available. Choose another workspace.' })
-          if (!homeRequested) window.history.replaceState({}, '', productRoutePath(defaultDestination)); finish('ready'); return
+          useWorkspaceReturnStore.setState({ restore: null, note: 'Your last workspace is no longer available. Choose another workspace.' })
+          window.history.replaceState({}, '', productRoutePath(defaultDestination)); finish('ready'); return
         }
         throw error
       }

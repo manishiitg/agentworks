@@ -56,7 +56,6 @@ type workspaceReturnState struct {
 	UpdatedAt   string                 `json:"updated_at,omitempty"`
 	Note        string                 `json:"note,omitempty"`        // response only
 	Destination *workspaceDestination  `json:"destination,omitempty"` // response only
-	FirstVisit  bool                   `json:"first_visit,omitempty"` // response only
 }
 
 var workspaceReturnLocks workspaceReturnLockSet
@@ -149,7 +148,6 @@ func readWorkspaceReturnState(r *http.Request) (workspaceReturnState, error) {
 	}
 	result.Note = ""
 	result.Destination = nil
-	result.FirstVisit = false
 	return result, nil
 }
 
@@ -354,7 +352,6 @@ func (api *StreamingAPI) handleWorkspaceReturnState(w http.ResponseWriter, r *ht
 		state.Recent = recent
 		state.Note = ""
 		state.Destination = nil
-		state.FirstVisit = false
 		raw, err := json.Marshal(state)
 		if err != nil {
 			http.Error(w, "Could not encode workspace state.", 500)
@@ -410,7 +407,6 @@ func (api *StreamingAPI) handleWorkspaceReturnState(w http.ResponseWriter, r *ht
 						break
 					}
 				}
-				state.FirstVisit = state.Note == ""
 			}
 		}
 	}

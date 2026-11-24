@@ -62,8 +62,8 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
   }
   const schedule = (change: HistoryChange, explicit = false) => {
     if (traversing) return
-    // Background hydration must not navigate away from Home, Projects or Settings.
-    const topLevel = window.location.pathname === '/home' || window.location.pathname === '/projects' || Boolean(workspaceSettingsPage())
+    // Background hydration must not navigate away from Projects or Settings.
+    const topLevel = window.location.pathname === '/projects' || Boolean(workspaceSettingsPage())
     if (topLevel && (!explicit || change !== 'navigation')) return
     // Mounting and asynchronous resource hydration settle the current entry.
     // Keep a pending navigation push, and coalesce subsequent view hydration
@@ -80,11 +80,10 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
       replace = false
       // Do not take over shared assets, sign-in or consent routes.
       const fromDashboards = window.location.pathname === '/dashboards'
-      const fromHome = window.location.pathname === '/home'
       const fromProjects = window.location.pathname === '/projects'
       const fromSettings = Boolean(workspaceSettingsPage())
-      if ((fromHome || fromProjects || fromSettings) && !topLevel) return
-      if (currentProductRoute() === undefined && !fromDashboards && !fromHome && !fromProjects && !fromSettings) return
+      if ((fromProjects || fromSettings) && !topLevel) return
+      if (currentProductRoute() === undefined && !fromDashboards && !fromProjects && !fromSettings) return
       const projected = readProductNavigation()
       // A fresh deep link names its view before the mounted surface has
       // applied it; a projection must not rewrite the link to the default.
@@ -92,13 +91,12 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
       if (replaceEntry && currentProductRoute()?.agent && projected.agent !== currentProductRoute()?.agent) { lastSelection = productRoutePath(projected); return }
       onSelection?.(projected)
       const path = productRoutePath(projected)
-      if (path === lastSelection && !replaceEntry && !fromDashboards && !fromHome && !fromProjects && !fromSettings) return
+      if (path === lastSelection && !replaceEntry && !fromDashboards && !fromProjects && !fromSettings) return
       lastSelection = path
       if (path !== window.location.pathname + window.location.search) {
         if (replaceEntry) window.history.replaceState({}, '', path)
         else window.history.pushState({}, '', path)
         if (fromDashboards || fromProjects || fromSettings) window.dispatchEvent(new PopStateEvent('popstate'))
-        if (fromHome) window.dispatchEvent(new Event('product-navigation-changed'))
       }
     }, 0)
   }

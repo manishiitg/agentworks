@@ -8,8 +8,7 @@ export const useWorkspaceReturnStore = create<{
   ready: boolean
   record: WorkspaceState | null
   restore: WorkspaceDestination | null
-  firstVisit: boolean
   note: string
   navigationMode: 'fixed' | 'auto-hide'
   saveError: string
-}>(() => ({ ready: false, record: null, restore: null, firstVisit: false, note: '', navigationMode: 'fixed', saveError: '' }))
+}>(() => ({ ready: false, record: null, restore: null, note: '', navigationMode: 'fixed', saveError: '' }))

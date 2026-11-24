@@ -19,7 +19,7 @@ export function closeWorkspaceSettings(): void {
   if (!workspaceSettingsPage()) return
   if (window.history.state?.workspaceSettings) window.history.back()
   else {
-    window.history.replaceState({}, '', '/home')
+    window.history.replaceState({}, '', '/')
     window.dispatchEvent(new PopStateEvent('popstate'))
   }
 }

@@ -181,7 +181,7 @@ func TestWorkspaceStateDerivesAuthorityAndEntryOnGet(t *testing.T) {
 	if !chat.ReadOnly || !chat.ExecutionRun || !chat.ScheduledRun || chat.WorkshopMode != "run" || chat.BotPlatform != "" || chat.Name != "My saved label" || chat.ViewMode != "tree" {
 		t.Fatalf("browser mode trusted: %+v", chat)
 	}
-	if state.Destination == nil || state.Destination.ID != "invoices" || state.FirstVisit {
+	if state.Destination == nil || state.Destination.ID != "invoices" {
 		t.Fatal("entry not server resolved", get.Body)
 	}
 	if f.questionRegistryReads.Load() != 0 {
