@@ -7,6 +7,7 @@ import { agentApi, connectionApiBase, getAuthToken } from '../services/api'
 import type { ActiveSessionInfo, HeaderSummaryResponse } from '../services/api-types'
 import { connectionLiveFeed, liveFeed } from '../services/liveFeed'
 import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
+import { setServerProjectList } from '../utils/remoteSessions'
 import { getRawActiveWorkspaceId, useWorkspaceConnectionStore } from './useWorkspaceConnectionStore'
 
 export const localConnection: DesktopConnection = { id: 'local', name: 'Local', server: '' }
@@ -94,6 +95,8 @@ export const useConnectedWorkStore = create<{
           try { result = await desktopRequest<DesktopInventory>(`/${connection.id}/inventory`) }
           catch { result = { projects: [], status: 'unavailable' } }
           if (!isChatIdentityCurrent(identity)) return
+          // A server's own list says which projects live there (an unreachable server keeps what it said last).
+          if (connection.id !== getRawActiveWorkspaceId() && result.status === 'connected') setServerProjectList(connection.id, (result.projects || []).map(project => project.id))
           set(state => ({ inventory: { ...state.inventory, [connection.id]: result } }))
         }))
       } catch {
