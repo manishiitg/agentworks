@@ -18,14 +18,23 @@ const agentDirectoryMaxRows = 20
 // offset pages through the matches (#3364): an agent can list everyone it may
 // message, 20 rows at a time, following next_offset.
 func compactAgentDirectory(ctx context.Context, user string, directory map[string]any, query string, offset int) map[string]any {
-	rows, _ := directory["agents"].([]map[string]any)
-	rows = append([]map[string]any(nil), rows...)
+	all, _ := directory["agents"].([]map[string]any)
+	// #3666: projects (a Crew, Goal or Relay) are called through their functions or Ask, never messaged as a chat.
+	// They get their own section so the agent count covers agents only.
+	rows, projectRows := []map[string]any{}, []map[string]any{}
+	for _, row := range all {
+		if agentDirectoryProjectKind(stringField(row["kind"])) {
+			projectRows = append(projectRows, row)
+		} else {
+			rows = append(rows, row)
+		}
+	}
 	counts := map[string]int{}
 	teams := map[string]int{}
 	for _, row := range rows {
 		kind := stringField(row["kind"])
 		switch kind {
-		case "team_agent", "connected_agent", "crew_agent", "mac_agent", "crew", "goal", "relay":
+		case "team_agent", "connected_agent", "crew_agent", "mac_agent":
 		default:
 			kind = "other"
 		}
@@ -35,9 +44,10 @@ func compactAgentDirectory(ctx context.Context, user string, directory map[strin
 		}
 	}
 	total := len(rows)
-	filtered := map[string]any{"agents": rows}
+	filtered := map[string]any{"agents": rows, "projects": projectRows}
 	filterAgentDirectory(filtered, query)
 	rows, _ = filtered["agents"].([]map[string]any)
+	projectRows, _ = filtered["projects"].([]map[string]any)
 	matched := len(rows)
 	// Rank from the caller's existing threads only; never other people's traffic
 	// or message text. Admission has already removed unavailable contacts.
@@ -61,6 +71,33 @@ func compactAgentDirectory(ctx context.Context, user string, directory map[strin
 		"agents": []map[string]any{}, "total": total, "matched": matched,
 		"counts_by_kind": counts, "teams": []map[string]any{},
 		"hint": "More agents: call again with offset=next_offset, or use query=<agent name or Team>. Copy the exact target from a returned row; never shorten or guess it. Product IDs are not peer addresses.",
+	}
+	projects := []map[string]any{}
+	for _, row := range projectRows {
+		if len(projects) == agentDirectoryMaxRows {
+			break
+		}
+		item := map[string]any{}
+		for _, field := range []string{"id", "kind", "crew_id", "workflow_id", "name", "owner", "presence", "delivery_mode"} {
+			if value := stringField(row[field]); value != "" {
+				if field == "id" || field == "crew_id" || field == "workflow_id" {
+					item[field] = value
+				} else {
+					item[field] = directoryText(value, 160)
+				}
+			}
+		}
+		if description := stringField(row["description"]); description != "" {
+			item["description"] = directoryText(description, 240)
+		}
+		if functions := agentDirectoryFunctionNames(row["functions"]); len(functions) > 0 {
+			item["functions"] = functions
+		}
+		projects = append(projects, item)
+	}
+	out["projects"], out["project_count"] = projects, len(projectRows)
+	if len(projectRows) > 0 {
+		out["projects_hint"] = "Projects are not agents: call their functions or Ask them; never message them as a chat."
 	}
 	// A Team summary is bounded too, including hostile/oversized labels.
 	names := make([]string, 0, len(teams))
@@ -95,7 +132,7 @@ func compactAgentDirectory(ctx context.Context, user string, directory map[strin
 		item := map[string]any{}
 		// No nested chat inventories, tools, transcripts or runtime metadata. A
 		// focused status request supplies details without repeating the inventory.
-		for _, field := range []string{"id", "target", "agent_id", "agent_name", "kind", "name", "label", "owner", "team_name", "team_project_id", "crew_name", "cli", "provider", "presence", "delivery_mode", "online", "hidden", "activity", "activity_source", "activity_reason", "yours", "published"} {
+		for _, field := range []string{"id", "target", "agent_id", "agent_name", "kind", "name", "label", "owner", "team_name", "team_project_id", "crew_name", "cli", "provider", "presence", "delivery_mode", "online", "hidden", "activity", "activity_source", "activity_reason", "last_active_label", "current_task", "yours", "published"} {
 			if value, ok := row[field]; ok {
 				switch v := value.(type) {
 				case string:
@@ -140,6 +177,33 @@ func compactAgentDirectory(ctx context.Context, user string, directory map[strin
 	raw, _ := json.Marshal(out)
 	log.Printf("[AGENTBRIDGE] event=directory user=%s total=%d matched=%d offset=%d returned=%d bytes=%d searched=%t", user, total, matched, offset, len(kept), len(raw), strings.TrimSpace(query) != "")
 	return out
+}
+
+func agentDirectoryProjectKind(kind string) bool {
+	return kind == "crew" || kind == "goal" || kind == "relay"
+}
+
+// agentDirectoryFunctionNames keeps only a project's function names (at most 10); call details come from the function.
+func agentDirectoryFunctionNames(raw any) []string {
+	names := []string{}
+	add := func(name string) {
+		if name = strings.TrimSpace(name); name != "" && len(names) < 10 {
+			names = append(names, directoryText(name, 80))
+		}
+	}
+	switch list := raw.(type) {
+	case []map[string]any:
+		for _, f := range list {
+			add(stringField(f["name"]))
+		}
+	case []any:
+		for _, f := range list {
+			if m, ok := f.(map[string]any); ok {
+				add(stringField(m["name"]))
+			}
+		}
+	}
+	return names
 }
 
 // agentDirectoryYouLabel is "you", with the account names this person is signed in as: on a Mac, each saved

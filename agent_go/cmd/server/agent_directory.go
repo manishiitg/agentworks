@@ -386,7 +386,7 @@ func filterAgentDirectory(directory map[string]any, query string) {
 	if query == "" {
 		return
 	}
-	for _, key := range []string{"agents", "chats_inside_agentworks"} {
+	for _, key := range []string{"agents", "chats_inside_agentworks", "projects"} {
 		rows, ok := directory[key].([]map[string]any)
 		if !ok {
 			continue

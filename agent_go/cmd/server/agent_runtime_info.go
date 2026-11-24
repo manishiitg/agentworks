@@ -52,6 +52,22 @@ func (api *StreamingAPI) annotateAgentRuntimeInfoFrom(ctx context.Context, calle
 	}
 	reachable := reach()
 	count := 0
+	// #3666: what each agent is on now, read the way agent_status reads it, once per Team for the whole list.
+	doing := map[string]map[string]crewTeamActivityPost{}
+	teamTask := func(project, agentID string) string {
+		posts, ok := doing[project]
+		if !ok {
+			posts = map[string]crewTeamActivityPost{}
+			if team, err := readCrewTeam(project); err == nil {
+				posts = crewTeamActivityPostsFor(team, caller).Doing
+			}
+			doing[project] = posts
+		}
+		if post, ok := posts[agentID]; ok {
+			return crewTeamMessageLine(post.Line)
+		}
+		return ""
+	}
 	var annotate func(map[string]interface{})
 	annotate = func(row map[string]interface{}) {
 		// This is the caller's registry, never a guess based on a display name
@@ -82,6 +98,11 @@ func (api *StreamingAPI) annotateAgentRuntimeInfoFrom(ctx context.Context, calle
 				localFacts = true
 				if info.Activity == "Working" || info.Activity == "Waiting for you" {
 					row["online"], row["presence"], row["delivery_mode"] = true, "Wakes now", "live"
+					if session, ok := api.getActiveSession(record.SessionID); ok && session != nil && session.UserID == caller {
+						if task := crewTeamMessageLine(session.Title); task != "" {
+							row["current_task"] = task
+						}
+					}
 				}
 				count++
 			}
@@ -105,6 +126,9 @@ func (api *StreamingAPI) annotateAgentRuntimeInfoFrom(ctx context.Context, calle
 				}
 				projectAgentActivity(row, activity, admitted.Info.LastActiveAt)
 				row["crew_name"] = admitted.Reach.TeamName
+				if task := teamTask(admitted.Reach.Team, admitted.Reach.ID); task != "" {
+					row["current_task"] = task
+				}
 				count++
 			}
 		}
@@ -246,12 +270,7 @@ func projectAgentActivity(row map[string]interface{}, activity string, at time.T
 	delete(row, "last_active_label")
 	if !at.IsZero() {
 		row["last_active_at"] = at
-		minutes := int(time.Since(at).Minutes())
-		if minutes < 1 {
-			row["last_active_label"] = "last active just now"
-		} else {
-			row["last_active_label"] = fmt.Sprintf("last active %d min ago", minutes)
-		}
+		row["last_active_label"] = agentLastActiveLabel(time.Since(at))
 	}
 }
 
@@ -278,5 +297,19 @@ func chatRegistryReadReason(err error) string {
 		return "invalid_record"
 	default:
 		return "registry_read_failed"
+	}
+}
+
+// agentLastActiveLabel says how long ago in the largest whole unit, so a day-old agent reads "1 day ago", not "1440 min".
+func agentLastActiveLabel(ago time.Duration) string {
+	switch minutes := int(ago.Minutes()); {
+	case minutes < 1:
+		return "last active just now"
+	case minutes < 60:
+		return fmt.Sprintf("last active %d min ago", minutes)
+	case minutes < 48*60:
+		return fmt.Sprintf("last active %d h ago", minutes/60)
+	default:
+		return fmt.Sprintf("last active %d days ago", minutes/(24*60))
 	}
 }
