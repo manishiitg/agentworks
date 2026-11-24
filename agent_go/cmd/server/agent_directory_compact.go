@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -78,6 +79,11 @@ func compactAgentDirectory(ctx context.Context, user string, directory map[strin
 	if directory["network_error"] != nil {
 		out["network_error"] = "Some network agents could not be loaded. Try again."
 	}
+	// #3666: your own agents carried no owner, so an agent read the owners it saw as the only people and missed
+	// its own person's agents. Name them, and say which account "you" is.
+	you := agentDirectoryYouLabel(user)
+	out["you"] = you
+	out["hint"] = stringField(out["hint"]) + " Rows with yours=true belong to your own person (" + you + "); every other owner is a separate person."
 	kept := []map[string]any{}
 	// consumed counts the rows this page used up, shown or not, so next_offset
 	// never skips or repeats an agent.
@@ -102,6 +108,9 @@ func compactAgentDirectory(ctx context.Context, user string, directory map[strin
 					item[field] = v
 				}
 			}
+		}
+		if item["yours"] == true && strings.TrimSpace(stringField(item["owner"])) == "" {
+			item["owner"] = you
 		}
 		if purpose := stringField(row["purpose"]); purpose != "" {
 			item["purpose"] = directoryText(purpose, 240)
@@ -131,6 +140,31 @@ func compactAgentDirectory(ctx context.Context, user string, directory map[strin
 	raw, _ := json.Marshal(out)
 	log.Printf("[AGENTBRIDGE] event=directory user=%s total=%d matched=%d offset=%d returned=%d bytes=%d searched=%t", user, total, matched, offset, len(kept), len(raw), strings.TrimSpace(query) != "")
 	return out
+}
+
+// agentDirectoryYouLabel is "you", with the account names this person is signed in as: on a Mac, each saved
+// network sign-in (the name teammates see); on a server, the account's own username.
+func agentDirectoryYouLabel(user string) string {
+	names := []string{}
+	add := func(name string) {
+		name = strings.TrimSpace(name)
+		if name != "" && name != "unknown" && !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	if IsLocalMode() {
+		if connections, err := readDesktopConnections(user); err == nil {
+			for _, connection := range connections {
+				add(firstNonEmptyTrimmed(connection.User.Username, strings.SplitN(connection.User.Email, "@", 2)[0]))
+			}
+		}
+	} else {
+		add(shareOwnerLabel(user))
+	}
+	if len(names) == 0 {
+		return "you"
+	}
+	return "you (" + strings.Join(names, ", ") + ")"
 }
 
 func directoryText(s string, limit int) string {
