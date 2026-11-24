@@ -225,4 +225,35 @@ func TestCrewTeamOnlineProjectAgentReach(t *testing.T) {
 	if crewTeamProjectAskChanges(dest, agentMessageEndpoint{UserID: "ann"}) {
 		t.Fatal("an agent set to Answers only still made changes")
 	}
+	// The other direction (Team Module Manager rule 2): only a Builder turn of the joined project asks the Team as the
+	// project; a Run turn, a guest, another project or a project that left asks as its person and is refused.
+	annID := crewTeamAgentIDPrefix + "00000000-0000-4000-8000-000000000002"
+	annRow := crewTeamRegisteredAgent{ID: annID, OwnerID: "ann", Tab: "a1", ChatKey: "mac" + codeChatSideMarker + "a1", Name: "QA", Place: "mac", InTeam: true, Rule: crewTeamDefaultRule()}
+	team.Agents[annID] = annRow
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	builder := agentMessageEndpoint{UserID: "bob", Kind: triggerCallerCrew, ID: "srv", Mode: "builder"}
+	for _, c := range []struct {
+		name   string
+		source agentMessageEndpoint
+		want   bool
+	}{
+		{"the joined project's Builder turn asks as the project", builder, true},
+		{"a Run turn in the project does not", agentMessageEndpoint{UserID: "bob", Kind: triggerCallerCrew, ID: "srv", Mode: "run"}, false},
+		{"another person's turn in the project does not", agentMessageEndpoint{UserID: "bob", Kind: triggerCallerCrew, ID: "srv", Mode: "run", Guest: "carl"}, false},
+		{"a project not in the Team does not", agentMessageEndpoint{UserID: "bob", Kind: triggerCallerCrew, ID: "other", Mode: "builder"}, false},
+	} {
+		asker := crewTeamAskerOf(c.source)
+		if got := asker == member && crewTeamReachRow(team, asker, annRow); got != c.want {
+			t.Errorf("%s: asker=%q reach=%v, want %v", c.name, asker, got, c.want)
+		}
+	}
+	team.Projects = nil
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	if asker := crewTeamAskerOf(builder); asker == member || crewTeamReachRow(team, member, annRow) {
+		t.Fatal("a project that left the Team still asked it as the project")
+	}
 }

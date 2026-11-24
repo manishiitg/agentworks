@@ -254,7 +254,7 @@ func updateCrewTeamRegisteredAgent(project, person, id string, change func(*crew
 
 // Shared by directory discovery and message admission. No calling-Crew restriction.
 func crewTeamAgentsVisible(t crewTeam, person string) bool {
-	return t.On && t.member(person) && crewTeamAccountActive(person) && crewTeamAccountActive(t.OwnerID) && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID
+	return t.On && crewTeamMemberCurrent(t, person) && crewTeamAccountActive(t.OwnerID) && ownerOfCrewProjectID(t.ProjectID) == t.OwnerID
 }
 
 // crewTeamAgentByID admits a Team message by actual agent ownership, never by

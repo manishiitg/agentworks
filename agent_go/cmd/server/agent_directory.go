@@ -220,6 +220,10 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 		}
 	}
 	agents = append(agents, crewTeamBridgeDirectoryItems(ctx, claims.UserID)...)
+	// A joined online project's Builder turn also lists the Team agents it may ask as the project (#3664).
+	if viewer := crewTeamViewer(ctx, claims.UserID); viewer != claims.UserID {
+		agents = append(agents, crewTeamBridgeDirectoryItems(ctx, viewer)...)
+	}
 	discovered, err := DiscoverWorkflowManifests(ctx)
 	if err != nil {
 		return nil, err

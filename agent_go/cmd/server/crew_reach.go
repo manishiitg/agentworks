@@ -40,6 +40,10 @@ func crewReachFrom(ctx context.Context, here string) (*crewReach, error) {
 		if pair, e := crewroot.ReadSync(id); e == nil && pair != nil {
 			r.projects[pair.PeerProjectID] = true
 		}
+		// The Teams an online project joined are its Team too (#3664).
+		for _, t := range crewTeamsJoinedBy(id) {
+			r.projects[t.ProjectID] = true
+		}
 	}
 	// Linked projects on the other machine (#3663): their agents are the person's own agents tagged with that project.
 	links, linkErr := readRemoteProjectLinks(ctx, here)

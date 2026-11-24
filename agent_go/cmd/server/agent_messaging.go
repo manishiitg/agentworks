@@ -1465,7 +1465,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 	var teamRoute string
 	if dest.TeamAgentID != "" && dest.NamedAgentID == "" && !replyInbox {
 		var err error
-		viewer := source.UserID
+		viewer := crewTeamAskerOf(source)
 		if replyInbox {
 			viewer = dest.UserID
 		}
@@ -1750,6 +1750,8 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 			if err != nil {
 				return "", err
 			}
+			// A joined online project's Builder turn asks the Team as the project (#3664).
+			ctx = withCrewTeamAsker(ctx, api.agentMessageCallerRole(callerMessageEndpoint(userID, caller)))
 			// #2965: a request to a person in the Team or to the whole Team, or a send into one.
 			if out, handled, err := api.agentTeamToolSend(ctx, userID, caller, args); handled {
 				if err != nil {
@@ -1810,7 +1812,7 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 				return "", err
 			}
 			if (agentMessageAskArgs(args) || agentMessageQueueArgs(args)) && id == "" {
-				target, err = crewTeamAskTarget(ctx, userID, target, stringToolArg(args, "offline"))
+				target, err = crewTeamAskTarget(ctx, crewTeamViewer(ctx, userID), target, stringToolArg(args, "offline"))
 				if err != nil {
 					return "", err
 				}
@@ -1906,6 +1908,9 @@ func (api *StreamingAPI) registerAgentMessagingTools(registrar definitionToolReg
 		claims := GetUserFromContext(ctx)
 		if claims == nil {
 			claims = &UserClaims{UserID: userID}
+		}
+		if caller, err := callerFor(ctx, args); err == nil {
+			ctx = withCrewTeamAsker(ctx, api.agentMessageCallerRole(callerMessageEndpoint(userID, caller)))
 		}
 		out, err := listAgentDirectory(withDirectoryThisCrew(ctx, parentReq.SelectedFolder), claims, api)
 		if err != nil {
@@ -2127,7 +2132,7 @@ func (api *StreamingAPI) resumeAgentMessagesThrottled() {
 func requireLinkedOwnCrew(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget) error {
 	team := ""
 	if target.TeamAgentID != "" {
-		t, err := crewTeamAdmittedTeam(ctx, userID, targetMessageEndpoint(userID, target))
+		t, err := crewTeamAdmittedTeam(ctx, crewTeamViewer(ctx, userID), targetMessageEndpoint(userID, target))
 		if err != nil {
 			return err
 		}

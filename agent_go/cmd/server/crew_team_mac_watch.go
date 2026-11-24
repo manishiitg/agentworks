@@ -540,7 +540,7 @@ func crewMemberMacAgentFor(ctx context.Context, project, key, caller string, own
 		return "", crewMacTeamTab{}, false
 	}
 	t, err := readCrewTeam(project)
-	if err != nil || !t.member(caller) || caller == person && !t.agentInTeam(person, tab) {
+	if err != nil || !crewTeamMemberCurrent(t, caller) || caller == person && !t.agentInTeam(person, tab) {
 		return "", crewMacTeamTab{}, false
 	}
 	for _, t := range crewMacTabsFor(ctx, person, project, caller) {
@@ -560,20 +560,22 @@ const crewMemberMacOffLine = "Their Mac is off and their agent can't answer from
 // on their Mac receives the message there; otherwise the message waits
 // for the Mac.
 func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentConversation, m agentMessage, source, dest agentMessageEndpoint) error {
-	person, agent, ok := crewMemberMacAgentFor(ctx, dest.ID, dest.ChatKey, source.UserID, (source.ID == dest.ID || source.TeamPanel) && source.UserID != "" && crewOwnAgentMessage(agentMessageEndpoint{UserID: source.UserID, Mode: dest.Mode, Guest: dest.Guest}, source))
+	// The asker as the Team knows it: a joined online project's Builder turn asks as the project (#3664).
+	asker := crewTeamAskerOf(source)
+	person, agent, ok := crewMemberMacAgentFor(ctx, dest.ID, dest.ChatKey, asker, (source.ID == dest.ID || source.TeamPanel) && source.UserID != "" && crewOwnAgentMessage(agentMessageEndpoint{UserID: source.UserID, Mode: dest.Mode, Guest: dest.Guest}, source))
 	if !ok {
 		log.Printf("[CREW_TEAM] project=%s event=member_mac_message refused user=%s", dest.ID, logUsernameForUserID(source.UserID))
 		return fmt.Errorf("This agent isn't shared with you.")
 	}
 	pair, _ := crewMacPairFor(person, dest.ID)
-	sender := shareOwnerLabel(source.UserID)
+	sender := crewTeamAskerLabel(asker)
 	// Member agents run on their admitted paired Mac.
 	run := func(call crewChatCall, timeout time.Duration) crewChatResult {
 		return callCrewMacPair(context.Background(), person, dest.ID, pair, call, timeout)
 	}
 
 	read := func(after, wait int) (map[string]any, int) {
-		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "after": after, "wait_seconds": wait, "submission": m.ID})
+		raw, _ := json.Marshal(map[string]any{"sender_id": asker, "after": after, "wait_seconds": wait, "submission": m.ID})
 		result := run(crewChatCall{Operation: "agent_read", Tab: agent.Tab, Caller: sender, Args: raw}, time.Duration(wait+40)*time.Second)
 		var out map[string]any
 		_ = json.Unmarshal(result.Body, &out)
@@ -583,7 +585,7 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 	// The agent's person comes from the Team registry (crewMemberMacAgentFor), never from the message.
 	member := dest
 	member.UserID = person
-	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge", "queued_request": m.QueuedRequest, "own_agent_message": crewOwnAgentMessage(member, source)}, dest.ID, person, crewMacTabRow(dest.ID, agent).ConversationKey))
+	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": asker, "sender_agent": senderAgent, "sender_channel": "AgentBridge", "queued_request": m.QueuedRequest, "own_agent_message": crewOwnAgentMessage(member, source)}, dest.ID, person, crewMacTabRow(dest.ID, agent).ConversationKey))
 	ask := crewChatCall{Operation: "agent_ask", Tab: agent.Tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}
 	from := 1 - m.From
 	_, status := read(0, 0)
