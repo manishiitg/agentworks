@@ -1,0 +1,81 @@
+package server
+
+import (
+	"net/http"
+	"sort"
+	"strings"
+
+	"github.com/gorilla/mux"
+)
+
+// The Team panel's "Online projects" card (#3664): the server decides which of the person's projects can join and says
+// why the others can't. It lists only projects the person can already open; adding still goes through
+// handleCrewTeamProjects and its checks.
+type crewTeamProjectChoice struct {
+	ProjectID string `json:"project_id"`
+	Name      string `json:"name"`
+	Owner     string `json:"owner,omitempty"`
+	Available bool   `json:"available"`
+	Why       string `json:"why,omitempty"`
+}
+
+func (api *StreamingAPI) handleCrewTeamProjectChoices(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserFromContext(r.Context())
+	team := mux.Vars(r)["project"]
+	if IsLocalMode() {
+		externalError(w, 409, "server_only", "Online projects are added on the server.")
+		return
+	}
+	if !crewTeamClaims(claims, team, false) {
+		externalError(w, 403, "team_forbidden", "Use your own account to see this Team.")
+		return
+	}
+	t, err := readCrewTeam(team)
+	if err != nil {
+		externalError(w, 404, "team_unavailable", "This project has no Team yet. Turn the Team on first.")
+		return
+	}
+	if claims.UserID != t.OwnerID && !t.member(claims.UserID) {
+		externalError(w, 403, "team_forbidden", "Join this Team to see its online projects.")
+		return
+	}
+	out := map[string]any{"projects": t.withProjectNames().Projects, "can_add": claims.UserID == t.OwnerID && t.On, "max": crewTeamMaxProjects}
+	switch {
+	case claims.UserID != t.OwnerID:
+		out["add_line"] = "Only " + crewPersonShortName(t.OwnerID) + ", the Team's owner, can add an online project."
+	case !t.On:
+		out["add_line"] = "Turn the Team on first, then add an online project."
+	}
+	if claims.UserID == t.OwnerID {
+		rows, err := listAccessibleWorkspaceProjects(r.Context(), claims, "")
+		if err != nil {
+			externalError(w, 503, "projects_unavailable", "Your projects can't be listed now. Try again in a minute.")
+			return
+		}
+		choices := []crewTeamProjectChoice{}
+		for _, row := range rows {
+			id, path := stringField(row["id"]), stringField(row["workspace_path"])
+			if id == "" || id == t.ProjectID || t.hasProject(id) {
+				continue
+			}
+			c := crewTeamProjectChoice{ProjectID: id, Name: stringField(row["name"]), Owner: stringField(row["owner"])}
+			switch {
+			case !crewLivesOnServer(id):
+				continue // a Mac project's online copy is not an online project of its own
+			case !crewProjectOwnedByCaller(claims.UserID, path):
+				c.Why = "Only shared with you. Its owner or a co-owner can add it."
+			default:
+				c.Available = true
+			}
+			choices = append(choices, c)
+		}
+		sort.SliceStable(choices, func(i, j int) bool {
+			if choices[i].Available != choices[j].Available {
+				return choices[i].Available
+			}
+			return strings.ToLower(choices[i].Name) < strings.ToLower(choices[j].Name)
+		})
+		out["choices"] = choices
+	}
+	externalJSON(w, out)
+}

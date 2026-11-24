@@ -12,6 +12,7 @@ import { openAppPage } from '../../utils/appNavigation'
 import ModalPortal from '../../components/ui/ModalPortal'
 import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderListing, type TeamTabAgent, type TeamTabPerson, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
+import { OnlineProjectsCard } from './OnlineProjectsCard'
 import { TeamActivity } from './TeamActivity'
 import { openCrewAccess, pendingCrewTeamSection, type CrewTeamSection } from './MacSharedAgents'
 import { CrewWhereRow } from './CrewWorksElsewhere'
@@ -151,7 +152,7 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
     <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-${selected}-panel`} aria-labelledby={team.on ? `${tabId}-${selected}` : undefined} tabIndex={0} className="space-y-3">
       {selected === 'setups' && (setups.error?<p role="alert" className="text-sm text-destructive">{setups.error}</p>:<TeamKit key={`${captureChatIdentity()}:${target.connection||''}:${target.project}`} target={target} projectId={projectId} list={setups.data} refreshKey={setups.version} folder={team.folder.folders?.find(item=>!item.file)?.path}/>)}
       {selected === 'activity' && <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />}
-      {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{view.can_leave && <LeaveTeam target={target} confirm={view.leave_confirm} />}</>}
+      {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{team.on && <OnlineProjectsCard target={target} />}{view.can_leave && <LeaveTeam target={target} confirm={view.leave_confirm} />}</>}
       {selected === 'agents' && <section aria-label="Agents" className="space-y-3">{agents}</section>}
       {selected === 'sync' && <><FolderLine view={view} target={target} projectId={projectId} />{team.on && <CrewWhereRow projectId={projectId} />}{team.folder_access ? <section aria-label="Sync" className={card}><div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div><TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} /></section> : <p className="text-xs text-muted-foreground">Nothing to sync yet.</p>}</>}
     </div>
