@@ -69,10 +69,9 @@ const row = (id: string, name: string, fields = {}) => ({
 
 it('opens Projects from the sidebar and keeps browsing, pins and recent shortcuts distinct', async () => {
   const alpha = row('a', 'Alpha'), beta = row('b', 'Beta')
-  const excluded = row('home', 'Personal agent', { personal_agent: true })
   const sharedDashboard = { ...row('dash', 'Shared dashboard', { owned_by_caller: false }), mode: 'run' as const }
   const shared = row('shared', 'Shared project', { owned_by_caller: false })
-  const inventory = [alpha, beta, excluded, sharedDashboard, shared]
+  const inventory = [alpha, beta, sharedDashboard, shared]
   const read = vi.spyOn(agentApi, 'listWorkspaceNavigation').mockResolvedValue({ workspaces: inventory })
   const chats = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockImplementation(f.sideChats)
   const previous = localStorage.getItem('auth-storage')
@@ -82,7 +81,7 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
   const host = document.createElement('div')
   document.body.append(host)
   const root = createRoot(host)
-  window.history.replaceState({}, '', '/home')
+  window.history.replaceState({}, '', '/')
   function Screen() {
     const projects = useProjectsPage()
     return <><DesktopConnections top={<SidebarActions />} projects={inventory} showBrowse />{projects && <ProjectsDirectory />}</>
@@ -99,7 +98,6 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
     const page = () => host.querySelector('main')!
     expect(page().querySelector('h1')?.textContent).toBe('Projects')
     expect(page().textContent).toContain('Beta')
-    expect(page().textContent).not.toContain('Personal agent')
     expect(page().textContent).not.toContain('Shared dashboard')
     expect(read).toHaveBeenCalledOnce()
     expect(chats).not.toHaveBeenCalled()

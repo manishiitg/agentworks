@@ -102,7 +102,7 @@ export function openQuickNavigation(item: QuickNavigationItem): boolean {
     // Resolve the admitted destination again instead of trusting a stale row.
     const destination = quickNavigationItems(user, current).find(candidate => candidate.id === item.id)?.surface
     if (!destination || !(destination in CREATION_LABELS)) return false
-    openProductWorkspace(destination, { keepHome: true })
+    openProductWorkspace(destination)
     useCommandDialogStore.getState().requestProductCreate(destination as ProductCreateSurface)
     return true
   }

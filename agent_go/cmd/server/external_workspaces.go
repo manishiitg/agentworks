@@ -16,8 +16,8 @@ import (
 // The canonical action family reuses native project services. Origin IDs remain
 // storage/routing identities, never a second set of workspace permissions.
 func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("workspace", "Your private and shared projects. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. Agent-to-agent messages use AgentBridge. ask calls the product Ask entry point; chat controls use your own tabs; update/export/import use existing Builder authority. agentworks returns your own AgentWorks agent (made on first use) and its main chat: it looks after the Goals you run, which are linked to it automatically; a project is linked to it only when you ask, because a project link lets it change that project. search_messages finds readable messages in workspace_id using query and cursor, returning snippets and exact message links. open_editor resolves an admitted local Git project/file/line to the chosen editor target (and can remember the choice); it never runs a shell or opens an app by itself. git_action offers the same Source Control actions: draft_commit writes editable text only; commit uses message and optional all; push uses this project’s selected GitHub account; draft_pr returns editable title/body/base and a pinned head; open_pr requires those checked fields and expected_head and never pushes implicitly. Drafts require your own session_id in this project and use one small tool-free request on its account. add_context captures an owned project browser element or terminal selection into ordinary attachments; context_op=probe returns its current browser_session and document_token, then add uses that token with x/y. For terminal, probe terminal_tab first for actual completed command IDs; add requires command_id, selected text and start_line/end_line. Never invent a command from output. It never clicks the page or sends a chat message. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
-		"action":          map[string]any{"type": "string", "enum": []any{"list", "get", "agentworks", "create", "update", "export", "import", "ask", "reply_input", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move", "sync", "search_messages", "open_editor", "git_action", "add_context"}},
+	add("workspace", "Your private and shared projects. list/get inspect current access; create starts Only me. Owners see every owner’s named tabs; only a tab’s owner controls it. Agent-to-agent messages use AgentBridge. ask calls the product Ask entry point; chat controls use your own tabs; update/export/import use existing Builder authority. search_messages finds readable messages in workspace_id using query and cursor, returning snippets and exact message links. open_editor resolves an admitted local Git project/file/line to the chosen editor target (and can remember the choice); it never runs a shell or opens an app by itself. git_action offers the same Source Control actions: draft_commit writes editable text only; commit uses message and optional all; push uses this project’s selected GitHub account; draft_pr returns editable title/body/base and a pinned head; open_pr requires those checked fields and expected_head and never pushes implicitly. Drafts require your own session_id in this project and use one small tool-free request on its account. add_context captures an owned project browser element or terminal selection into ordinary attachments; context_op=probe returns its current browser_session and document_token, then add uses that token with x/y. For terminal, probe terminal_tab first for actual completed command IDs; add requires command_id, selected text and start_line/end_line. Never invent a command from output. It never clicks the page or sends a chat message. Accounts, files and published actions keep the website's permissions.", true, false, map[string]any{
+		"action":          map[string]any{"type": "string", "enum": []any{"list", "get", "create", "update", "export", "import", "ask", "reply_input", "chats", "read_chat", "open_chat", "rename_chat", "close_chat", "new_chat", "delete_chat", "stop", "chat_tools", "chat_tool", "agents", "open_agent", "read_saved_chat", "storage_preview", "storage_status", "storage_backup", "storage_move", "sync", "search_messages", "open_editor", "git_action", "add_context"}},
 		"context_source":  map[string]any{"type": "string", "enum": []string{"browser", "terminal"}, "description": "add_context: source selection. Only the project owner can capture its browser or terminal."},
 		"terminal_tab":    map[string]any{"type": "integer", "minimum": 1, "maximum": 3, "description": "add_context terminal: exact terminal tab, 1 to 3. Probe returns only observed command metadata, never starts a shell."},
 		"command_id":      externalString("add_context terminal add: exact completed command ID returned by this terminal's probe; never a command string."),
@@ -142,17 +142,6 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 	}
 	if action == "read_saved_chat" {
 		api.externalPublicationHistory(w, r, args)
-		return
-	}
-	if action == "agentworks" {
-		// The same ensure as the Home send: it acts for the signed-in person only and never widens this connection.
-		crew, err := api.ensureAgentWorks(context.Background(), claims.UserID, true)
-		if err != nil {
-			externalError(w, 409, "agentworks_unavailable", "Your AgentWorks could not be opened: "+err.Error())
-			return
-		}
-		externalJSON(w, map[string]any{"workspace_id": crewProfileID + ":" + crew.CrewID, "crew_id": crew.CrewID, "chat_id": "main", "name": agentWorksName, "created": crew.Created,
-			"next": "Talk to it with workspace action=ask and this workspace_id; for its schedules pass project=crew_id. In the app it is AgentWorks in the project list."})
 		return
 	}
 
@@ -386,10 +375,6 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 					item["shared_line"] = line
 				}
 
-			}
-			// The person's own AgentWorks agent: the left menu pins it apart from the server's Crews.
-			if binding.OwnerID == claims.UserID && doc.ID == agentWorksCrewID(claims.UserID) {
-				item["personal_agent"] = true
 			}
 			// A Team member's row says where their own agents here work (owner, 5 Nov: one working copy).
 			// Someone else's Crew says whose it is in the same one line as a Team copy on a Mac.

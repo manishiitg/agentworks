@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -186,9 +185,6 @@ func (api *StreamingAPI) slackVaultBotOperation(r *http.Request, workspace strin
 	svc, err := ensureSlackService()
 	if err != nil {
 		return nil, err
-	}
-	if action == "select" && agentWorksPrivateRoot(r.Context(), workspace) {
-		return nil, errors.New(agentWorksPrivateLine)
 	}
 	if action == "select" {
 		if workspace == "" {

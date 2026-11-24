@@ -17,11 +17,11 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
   const projectsOpen = useProjectsPage()
   return <aside aria-label="Projects" className="flex min-h-0 w-full shrink-0 flex-col border-r border-border/70 bg-muted/20">
     <div className="flex h-[50px] shrink-0 items-center gap-2 px-3">
-      <a href="/home" onClick={followAppLink} aria-label="Home" title="Home" className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><RuntimeBrandLogo variant="sidebar-header" /></a>
+      <a href="/" onClick={followAppLink} aria-label="Open your last project" title="Open your last project" className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><RuntimeBrandLogo variant="sidebar-header" /></a>
       {toggle}
     </div>
     <DesktopConnections showBrowse={canBrowse} loading={loading} top={<SidebarActions />} projects={projects.map(project => ({ ...project,
-      selected: !projectsOpen && !globalPageOpen && !providersOpen && window.location.pathname !== '/home' && window.location.pathname !== '/dashboards' &&
+      selected: !projectsOpen && !globalPageOpen && !providersOpen && window.location.pathname !== '/dashboards' &&
         product === 'work' && crewId === project.id,
     }))} />
     {footer && <div className="shrink-0 border-t border-border/60 bg-background/60 p-2">{footer}</div>}

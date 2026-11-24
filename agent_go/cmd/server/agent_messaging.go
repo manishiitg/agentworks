@@ -2122,7 +2122,7 @@ func (api *StreamingAPI) resumeAgentMessagesThrottled() {
 
 // requireLinkedOwnCrew: an agent inside a Crew starts a message or function call only to its own Crew, that Crew's Team
 // and the Crews linked to it, with their agents and Team agents (owner, 7 and 19 Nov); old workflow projects are refused.
-// The person's AgentWorks main agent, workflow steps and watchers are exempt, other people's shared agents and Relays
+// Workflow steps and watchers are exempt, other people's shared agents and Relays
 // follow their own sharing, and a reply in an existing conversation needs no link.
 func requireLinkedOwnCrew(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget) error {
 	team := ""

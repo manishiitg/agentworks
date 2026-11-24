@@ -8,7 +8,7 @@ export type WorkspaceDestination = ProductRoute & {
   chat?: { name: string; read_only?: boolean; execution_run?: boolean; scheduled_run?: boolean; scheduled_job_name?: string; bot_platform?: string; view_mode?: 'formatted' | 'terminal' | 'tree'; workshop_mode?: 'workshop' | 'run'; conversation_key?: string }
   layout?: WorkspaceLayout
 }
-export type WorkspaceState = { version: 1; revision: number; last: WorkspaceDestination | null; recent: WorkspaceDestination[]; updated_at?: string; note?: string; destination?: WorkspaceDestination; first_visit?: boolean }
+export type WorkspaceState = { version: 1; revision: number; last: WorkspaceDestination | null; recent: WorkspaceDestination[]; updated_at?: string; note?: string; destination?: WorkspaceDestination }
 export const workspaceStateApi = {
   get: async (signal?: AbortSignal): Promise<WorkspaceState> => (await api.get('/api/workspace-state', { signal, skipSessionContext: true, chatIdentityGeneration: captureChatIdentity() })).data,
   save: async (state: WorkspaceState, signal?: AbortSignal): Promise<WorkspaceState> => (await api.put('/api/workspace-state', { version: 1, revision: state.revision, last: state.last }, { signal, skipSessionContext: true, chatIdentityGeneration: captureChatIdentity() })).data,

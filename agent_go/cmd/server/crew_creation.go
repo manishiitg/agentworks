@@ -341,8 +341,6 @@ type crewCreationOptions struct {
 	Restore     bool
 	LocalRoot   string
 	LLMConfig   *workflowtypes.PresetLLMConfig
-	// Role is set only by the server (agentWorksRole); a spec never supplies it.
-	Role string
 }
 
 func writeCrewCreationManifests(ctx context.Context, userID string, profile agentprofiles.Profile, profileID, workflowPath, title, purpose, crewID, workspacePath string, inheritedLLM *workflowtypes.AgentLLMConfig, options ...crewCreationOptions) (created CreatedCrew, createErr error) {
@@ -351,7 +349,6 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		settings = options[0]
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	sessionID := ""
 	purpose = strings.TrimSpace(purpose)
 	capabilities := map[string]interface{}{
 		"selected_servers":             []string{},
@@ -393,9 +390,6 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		"created_at":     now,
 		"updated_at":     now,
 		"identity":       map[string]interface{}{"name": title},
-	}
-	if settings.Role != "" {
-		manifest["role"] = settings.Role
 	}
 	// The server records who owns the project before anything about it exists (PLAT-449): the registry is the
 	// authority, the owner_id above is information for whoever reads the folder.
@@ -528,24 +522,7 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	if err := selectSoleNewCrewBrowser(ctx, userID, workspacePath, profileID); err != nil {
 		log.Printf("[PROJECT_CREATE] default browser selection unavailable for %s", crewID)
 	}
-	// The personal app assistant is an explicit server-owned agent, not an
-	// implicit agent created for an ordinary Crew.
-	if settings.Role == agentWorksRole {
-		binding, err := resolveProductProjectBindingWithStore(ctx, userID, profile, crewID+codeChatSideMarker+"assistant", defaultProductProjectStore())
-		if err != nil {
-			return CreatedCrew{}, err
-		}
-		store := defaultProductConversationRegistryStore()
-		record, err := store.resolveOrCreate(ctx, userID, profile, binding, "")
-		if err != nil {
-			return CreatedCrew{}, err
-		}
-		if err = store.writeMainChatPointer(ctx, manifestPath, record.ConversationKey, record.SessionID); err != nil {
-			return CreatedCrew{}, err
-		}
-		sessionID = record.SessionID
-	}
-	return CreatedCrew{CrewID: crewID, Title: title, WorkspacePath: workspacePath, ManifestPath: manifestPath, SessionID: sessionID}, nil
+	return CreatedCrew{CrewID: crewID, Title: title, WorkspacePath: workspacePath, ManifestPath: manifestPath}, nil
 }
 
 // inheritCrewCreationLLM resolves the creating workflow's model choice into

@@ -40,7 +40,6 @@ declare global {
 
 import { apiLogEntries, summarizeApiTimings } from './utils/apiTiming'
 import { useWorkspaceReturnStore } from './stores/useWorkspaceReturnStore'
-import { WelcomeHome } from './components/WelcomeHome'
 
 const queryClient = new QueryClient();
 
@@ -101,7 +100,6 @@ function AppWorkspace() {
   const dashboardsOpen = useContext(DashboardsPageContext)
   const projectsOpen = useProjectsPage()
   const returnNote = useWorkspaceReturnStore(state => state.note || state.saveError)
-  const firstVisit = useWorkspaceReturnStore(state => state.firstVisit)
   const productSurface = useProductSurfaceStore(state => state.productSurface)
   const setProductSurface = useProductSurfaceStore(state => state.setProductSurface)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
@@ -713,8 +711,6 @@ function AppWorkspace() {
 
   return (
         <>
-        {/* First visit: products, MCP and providers instead of an empty product surface. */}
-        <WelcomeHome autoOpen={firstVisit} />
         <GitHubConnectCompletion />
         {returnNote && <div role="status" className="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-lg border border-border bg-popover p-3 text-sm text-popover-foreground shadow-lg"><span>{returnNote}</span><button type="button" aria-label="Dismiss workspace notice" onClick={() => useWorkspaceReturnStore.setState({ note: '', saveError: '' })}>×</button></div>}
         {projectsOpen ? (

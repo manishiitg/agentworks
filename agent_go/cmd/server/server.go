@@ -2462,7 +2462,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/reserve", api.handleReserveAgentProfileProject).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/location", api.handleProjectCreationLocation).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects", api.handleCreateAgentProfileProject).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/agentworks", api.handleOpenAgentWorks).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/own-shared-projects", api.handleListOwnSharedProjects).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/project-sharing", api.handleGetProjectSharing).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/sharing", api.handlePutProjectSharing).Methods("PUT", "OPTIONS")
@@ -3032,11 +3031,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// once every server has started on this version).
 	if err := clearCrewWorkflowLinks(); err != nil {
 		log.Printf("[CREW_LINKS] event=workflow_links_clear_failed error=%v", err)
-	}
-	// One-off, before any schedule can fire: AgentWorks stops watching Goals (migration file; delete once every
-	// server has started on this version).
-	if err := api.retireAgentWorksGoalWatching(context.Background()); err != nil {
-		log.Printf("[AGENTWORKS] event=goal_watch_retirement_failed error=%v", err)
 	}
 	// Recover accepted conversation turns before either scheduler can compete
 	// for those same session lanes. Both services are already wired so a
@@ -7217,11 +7211,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			if note := omittedWorkflowContextNote(req.omittedWorkflowContextCount); note != "" {
 				promptCtx.WorkflowContext += note
-			}
-			if resolvedProfile != nil && resolvedProfile.Definition.ID == crewProfileID && !crewReaderCLI {
-				if manifest, err := readCrewProjectManifests(r.Context(), crewProfileID, promptCtx.ProfileWorkspace); err == nil {
-					promptCtx.CrewRole = manifest.Role
-				}
 			}
 			if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 				promptCtx.WorkFolders = crewTeamFilesLine(GetUserFromContext(r.Context())) + workproduct.BuildAttachedFoldersPrompt(turnFolderGrants) + "\n" + turnFolderNotice

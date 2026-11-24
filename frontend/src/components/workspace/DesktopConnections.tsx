@@ -42,11 +42,11 @@ import { useShallow } from 'zustand/react/shallow'
 import { ProjectFilterMenu, isSharedProject, matchesMenuFilter, useMenuFilter } from './ProjectFilter'
 
 
-type SidebarProject = { team_live?: TeamLiveView; id: string; name: string; shared_line?: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number; personal_agent?: boolean } & CrewLocationFields
+type SidebarProject = { team_live?: TeamLiveView; id: string; name: string; shared_line?: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number } & CrewLocationFields
 
 /** Crews you build or work on. Dashboards shared with you are not listed here: they have their own page (owner,
- * 10 Nov). The personal AgentWorks agent is on the Home page only. */
-const menuListed = (project: SidebarProject) => !project.personal_agent && !(project.owned_by_caller === false && project.mode === 'run')
+ * 10 Nov). */
+const menuListed = (project: SidebarProject) => !(project.owned_by_caller === false && project.mode === 'run')
 function useWorkHistory() {
   const historyScope = connectedWorkHistoryScope()
   const pinned = useProjectMenuHistoryStore(state => state.pinned[historyScope])
@@ -137,11 +137,11 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
       const target = pinnedRows[pinnedIndex + offset]
       if (target) movePinned(key, keyFor(target))
     }
-    const crew = project.kind === 'crew' && !project.personal_agent
+    const crew = project.kind === 'crew'
     const currentCrew = here && crew && project.selected && creationProjectId === project.id
     const importFromCrew = (kind: 'chat' | 'skills') => () => window.dispatchEvent(new CustomEvent('crew-agent-import', { detail: { projectId: project.id, kind } }))
     const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void) => <SidebarProjectRow {...rest} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false || activityTitle ? activityLabel : undefined} activityTitle={activityTitle}
-      showIcon={project.kind !== 'crew' || project.personal_agent || project.mode === 'run'}
+      showIcon={project.kind !== 'crew' || project.mode === 'run'}
       onMoveUp={pinnedShortcut && canPin && pinnedIndex > 0 ? () => move(-1) : undefined} onMoveDown={pinnedShortcut && canPin && pinnedIndex >= 0 && pinnedIndex < pinnedRows.length - 1 ? () => move(1) : undefined}
       selected={isOpenProject(project)}
       location={desktop ? connection.id === 'local' ? 'On your Mac' : connection.name : undefined} remote={desktop && connection.id !== 'local'} showLocation={desktop}

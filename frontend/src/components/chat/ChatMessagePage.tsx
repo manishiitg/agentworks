@@ -19,13 +19,13 @@ export function ChatMessagePage() {
     return () => controller.abort()
   }, [])
   useEffect(() => { selected.current?.scrollIntoView({ block: 'center' }) }, [page])
-  if (error) return <main className="grid h-full place-items-center p-6"><div className="max-w-md space-y-4 text-center text-sm"><p role="alert">{error}</p><a href="/home" className="underline">Your workspace</a></div></main>
+  if (error) return <main className="grid h-full place-items-center p-6"><div className="max-w-md space-y-4 text-center text-sm"><p role="alert">{error}</p><a href="/" className="underline">Your workspace</a></div></main>
   if (!page) return <p role="status" className="p-6 text-sm text-muted-foreground">Opening message…</p>
   const first = page.messages[0], last = page.messages.at(-1)
   const selectedSequence = page.messages.find(message => message.id === page.selected_id)?.sequence || 0
   const href = (message: Message) => `/message?${new URLSearchParams({ chat: message.session_id, id: message.id, sequence: String(message.sequence) })}`
   return <main className="flex h-full min-h-0 flex-col">
-    <header className="flex items-center justify-between gap-4 border-b border-border px-4 py-3 text-sm"><div><h1 className="font-medium">{page.title}</h1><p className="text-xs text-muted-foreground">Saved messages · the linked message is highlighted</p></div><a href="/home" className="shrink-0 text-xs underline">Your workspace</a></header>
+    <header className="flex items-center justify-between gap-4 border-b border-border px-4 py-3 text-sm"><div><h1 className="font-medium">{page.title}</h1><p className="text-xs text-muted-foreground">Saved messages · the linked message is highlighted</p></div><a href="/" className="shrink-0 text-xs underline">Your workspace</a></header>
     <div className="overflow-auto"><div className="mx-auto max-w-3xl space-y-4 px-4 py-6">
       {page.messages.map(message => <article key={message.id} ref={message.id === page.selected_id ? selected : undefined} aria-label={message.id === page.selected_id ? 'Linked message' : undefined} className={`rounded-xl border p-4 ${message.id === page.selected_id ? 'border-primary bg-primary/5' : 'border-border'}`}>
         <div className="mb-3 flex items-center justify-between gap-4 text-xs text-muted-foreground"><span>{message.role === 'user' ? 'Message' : 'Agent'} · {new Date(message.at).toLocaleString()}</span><a href={href(message)} className="underline">Link to message</a></div>
