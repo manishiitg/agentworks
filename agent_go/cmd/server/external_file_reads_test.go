@@ -172,10 +172,10 @@ func TestExternalFileReadsUseSharedAssetsWhenWorkspaceIsRemote(t *testing.T) {
 	}
 }
 
-func TestWorkspaceCodeFileReadsKeepCrewPrivacyAndPathGuards(t *testing.T) {
+func TestWorkspaceProjectFileReadsKeepCrewPrivacyAndPathGuards(t *testing.T) {
 	docs := t.TempDir()
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	root := "_users/owner/Chats/Code/projects/example"
+	root := "_users/owner/Chats/Work/projects/example"
 	for _, dir := range []string{"qa", "builder/conversation"} {
 		if err := os.MkdirAll(filepath.Join(docs, root, dir), 0700); err != nil {
 			t.Fatal(err)

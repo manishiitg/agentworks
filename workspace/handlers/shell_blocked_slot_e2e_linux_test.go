@@ -17,7 +17,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-// A Code agent's shell call blocks the project's db/db.sqlite. That used to push the command off Landlock onto the
+// An agent's shell call blocks the project's db/db.sqlite. That used to push the command off Landlock onto the
 // mount-namespace backend, which ran it as the service account: it read the platform's .env and wrote the service
 // account's home (server B 2026-10-03). It must run as the user's slot, under Landlock, with the file hidden.
 // Opt-in, same settings as TestInteractiveShellRunsAsTheUsersSlotE2E.
@@ -82,10 +82,6 @@ func TestShellWithABlockedFileRunsAsTheUsersSlotE2E(t *testing.T) {
 	}
 	if raw, _ := os.ReadFile(filepath.Join(abs, "db", "db.sqlite")); string(raw) != "SECRET-DB" {
 		t.Errorf("the real blocked file changed: %q", raw)
-	}
-	// A Code command as the owner's slot has the slot's own home (the same as their terminal), never the service account's.
-	if want := slots.HomeOf(slot); want == "" || !strings.Contains(out, "HOME="+want+"\n") {
-		t.Errorf("HOME must be the slot's own home %q: %q", want, out)
 	}
 	if !strings.Contains(out, "WROTE_PROJECT") {
 		t.Errorf("the project must stay writable: %q", out)

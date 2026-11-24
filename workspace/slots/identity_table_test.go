@@ -49,28 +49,3 @@ func TestSlotForDirRegressionTable(t *testing.T) {
 		})
 	}
 }
-
-func TestIsCodeProjectDirRegressionTable(t *testing.T) {
-	docs := filepath.Join(t.TempDir(), "docs")
-	for _, tc := range []struct {
-		name string
-		dir  string
-		want bool
-	}{
-		{"Code project root", filepath.Join(docs, "_users", "u", "Chats", "Code", "projects", "p"), true},
-		{"inside a Code project", filepath.Join(docs, "_users", "u", "Chats", "Code", "projects", "p", "code", "src"), true},
-		{"the projects folder itself", filepath.Join(docs, "_users", "u", "Chats", "Code", "projects"), true},
-		{"Code folder without projects", filepath.Join(docs, "_users", "u", "Chats", "Code"), false},
-		{"a Crew project", filepath.Join(docs, "_users", "u", "Chats", "Work", "projects", "p"), false},
-		{"a Goal", filepath.Join(docs, "Workflow", "g"), false},
-		{"no owner segment", filepath.Join(docs, "Chats", "Code", "projects", "p"), false},
-		{"outside the docs root", filepath.Join(filepath.Dir(docs), "elsewhere", "_users", "u", "Chats", "Code", "projects", "p"), false},
-		{"another user's Code (the answer does not depend on who asks)", filepath.Join(docs, "_users", "other", "Chats", "Code", "projects", "p"), true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := IsCodeProjectDir(docs, tc.dir); got != tc.want {
-				t.Fatalf("IsCodeProjectDir(%q) = %v, want %v", tc.dir, got, tc.want)
-			}
-		})
-	}
-}

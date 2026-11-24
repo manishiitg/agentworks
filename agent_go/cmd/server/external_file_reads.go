@@ -326,7 +326,7 @@ func externalIsCrewRoot(rootPath string) bool {
 	}
 	ref := workspaceref.MustParse(rootPath)
 	root, _, ok := ref.ProjectRoot()
-	return ok && (root == workspaceref.CrewProjectsRoot || root == workspaceref.CodeProjectsRoot) && ref.HasOwner() && ref.String() == rootPath
+	return ok && root == workspaceref.CrewProjectsRoot && ref.HasOwner() && ref.String() == rootPath
 }
 
 // externalPathPrivate is the workflow file privacy rule, plus a Crew's own
