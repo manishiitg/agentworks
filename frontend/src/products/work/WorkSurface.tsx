@@ -630,9 +630,11 @@ export function useWorkChatTab(
   const awaitingRequestedAgent = !!projectId && !!requestedAgent && requestedAgent !== 'main' && activeConversation !== workConversationKey(projectId, requestedAgent)
   return {
     // Do not flash Main while the specifically requested agent is being restored.
-    tabId: departing ? activeProjectTabId ?? previousProjectTabId : awaitingRequestedAgent ? null : activeProjectTabId ?? canonicalTabId ?? null,
+    // Switching projects shows "Opening project…", never the previous project's chat (owner, 24 Nov: a server project
+    // takes 1-3 s to answer, and the old chat looked like the new one).
+    tabId: departing ? null : awaitingRequestedAgent ? null : activeProjectTabId ?? canonicalTabId ?? null,
     canonicalTabId: canonicalTabId ?? null,
-    projectReady: preparedProject === projectId,
+    projectReady: preparedProject === projectId && !departing,
     error: failure && failure.projectId === session?.id ? failure.message : null,
   }
 }
