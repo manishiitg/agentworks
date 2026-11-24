@@ -633,7 +633,11 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 		}
 		if !availability.AvailableTo.admits(scope.Principal) {
 			log.Printf("[PROVIDER_ACCOUNT] %s server account denied for %q (%s): available to %s", provider, scope.Principal, run.Product, availability.Text)
-			return nil, fmt.Errorf("This chat's model uses the company %s account, which is available to %s and not to the person this chat runs as. Pick another model or ask an admin to add them", providerAccountProductName(provider), availability.Text)
+			name, audience := providerAccountProductName(provider), "chosen people"
+			if len(availability.AvailableTo.Users) == 0 {
+				audience = "admins"
+			}
+			return nil, fmt.Errorf("The company %s sign-in is only for %s, and you are not one of them. Sign in with your own %s account (Settings → AI accounts → Add your account), or pick another AI program for this chat in Models", name, audience, name)
 		}
 		// Per-user token limits count and cap server accounts only: this
 		// account's own limit, then the overall cap (PLAT-683, PLAT-693).

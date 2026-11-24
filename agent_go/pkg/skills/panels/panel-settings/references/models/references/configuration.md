@@ -22,4 +22,4 @@ An admin chooses **Everyone in the company**, **Only admins**, or **Chosen peopl
 
 Over MCP, read `account action=availability account=<provider>` before changing it. Use `account action=set_availability account=<provider> available_to="all"`, `"admins"`, or `{"users":[person IDs]}` for the requested audience, then read it back. Get person IDs from `account action=users_list`; do not invent product groups. Both actions require an admin and `users:manage`, and use the same server checks as the screen. An installation-pinned choice must be changed by the installation administrator. Leave models, limits and saved logins unchanged unless asked.
 
-A default model may use a restricted company account. People outside its audience must choose another available account or ask an admin to add them; never silently switch accounts or native login folders to bypass a refusal.
+A default model may use a restricted company account. People outside its audience sign in with their own account (Settings → AI accounts) or choose another AI program; never silently switch accounts or native login folders to bypass a refusal.
