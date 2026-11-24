@@ -149,6 +149,9 @@ test('development window selects connections on Vite and sends proof only to its
   // PLAT-746-820: switching to a member copy retains the agent/panel link.
   await openConnection(event, 'local', '/crew/projects/member-local?view=files&agent=agent-stable');
   assert.equal(loaded, appOrigin + '/crew/projects/member-local?view=files&agent=agent-stable');
+  // #3749: the start page ('/') must open, or the window stays on another server's connection.
+  await openConnection(event, 'local', '/')
+  assert.equal(loaded, appOrigin + '/');
   for (const path of ['//example.com/crew', '/crew/projects/../private', '/crew/projects/member-local?redirect=https://example.com']) {
     await assert.rejects(openConnection(event, 'local', path), /Unknown project/);
   }
@@ -235,6 +238,6 @@ test('a notification click opens a Crew in place while the window is on this Mac
   assert.deepEqual(sent, [['open-project-in-place', { connection: server, route: '/crew/projects/remote-crew?agent=helper' }]]);
   assert.deepEqual(loaded, []);
   // Other pages still switch the window to that server.
-  await api.open(server, '/home');
-  assert.deepEqual(loaded, ['http://127.0.0.1:1/home']);
+  await api.open(server, '/');
+  assert.deepEqual(loaded, ['http://127.0.0.1:1/']);
 });

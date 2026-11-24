@@ -12,8 +12,8 @@ test('notification click preserves exact Main and side chat without arbitrary ro
   }
   assert.equal(notifyRoute('/crew/projects/example?agent=fork-example&view=terminal', true), '/crew/projects/example?agent=fork-example');
   assert.equal(notifyRoute('/crew/projects/example?agent=..%2Fsecret', true), '/crew/projects/example');
-  assert.equal(notifyRoute('//example.com/crew/projects/example?agent=main', true), '/home');
-  assert.equal(notifyRoute('/settings', true), '/home');
+  assert.equal(notifyRoute('//example.com/crew/projects/example?agent=main', true), '/');
+  assert.equal(notifyRoute('/settings', true), '/');
 });
 
 // PLAT-746: another monitor/app taking keyboard focus must not trigger Mac alerts.

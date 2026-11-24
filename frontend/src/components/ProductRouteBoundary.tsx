@@ -1,6 +1,5 @@
 import { desktopRequest } from '../services/desktopConnections'
 import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
-import { lastProjectInPlace, registerRemoteProject, rememberProjectInPlace } from '../utils/remoteSessions'
 import { markViewSwitchAdmitted, markViewSwitchStart } from '../utils/chatDeliveryTelemetry'
 import { workspaceSettingsPage } from '../utils/workspaceSettingsRoutes'
 import { syncWorkspaceSettings } from '../utils/workspaceSettingsNavigation'
@@ -119,11 +118,10 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
         state = useWorkspaceReturnStore.getState()
       }
       let destination = route
-      // The last place was a server Crew opened in place (#3383): this Mac remembered it; open it in place again.
-      const inPlace = !destination && requested === '/' && account && getRawActiveWorkspaceId() === 'local' ? lastProjectInPlace(account) : null
-      if (inPlace) { registerRemoteProject(inPlace.id, inPlace.connection); destination = { surface: 'work', id: inPlace.id } }
+      // Start lands on this app's own last project (owner, 24 Nov): a project on another server opened in place is not
+      // restored, so the menu never opens on another server's work alone.
       const last = state.record?.last
-      const saved = !inPlace && ((!destination && requested === '/') || (destination && last?.surface === destination.surface && last.id === destination.id)) ? last : null
+      const saved = ((!destination && requested === '/') || (destination && last?.surface === destination.surface && last.id === destination.id)) ? last : null
       if (saved && !destination) destination = saved
       const defaultDestination = state.record?.destination
       if (!destination && requested === '/') {
@@ -162,9 +160,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
         finish('ready')
       } catch (error) {
         const code = (error as { response?: { status?: number } })?.response?.status
-        // A server Crew that no longer opens is forgotten, so the next start lands on this Mac's own place.
-        if (inPlace && account) rememberProjectInPlace(account, null)
-        if ((saved || inPlace) && defaultDestination && (error instanceof ProductUnavailable || code === 403 || code === 404)) {
+        if (saved && defaultDestination && (error instanceof ProductUnavailable || code === 403 || code === 404)) {
           const activate = await resolveProductRoute(defaultDestination, controller.signal)
           if (controller.signal.aborted) return
           activate()
