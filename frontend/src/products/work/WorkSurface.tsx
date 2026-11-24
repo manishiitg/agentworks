@@ -423,6 +423,14 @@ export function useWorkChatTab(
 ) {
   const [failure, setFailure] = useState<{ projectId: string; message: string } | null>(null)
   const [preparedProject, setPreparedProject] = useState<string | null>(null)
+  // A project just switched to has no chat tab for a moment while its tabs are made; say "Opening project…" then, not
+  // "Add your first agent" (owner, 24 Nov). After two seconds an empty project is really empty.
+  const [settledProject, setSettledProject] = useState<string | null>(null)
+  useEffect(() => {
+    const id = session?.id ?? null
+    const timer = window.setTimeout(() => setSettledProject(id), 2000)
+    return () => window.clearTimeout(timer)
+  }, [session?.id])
   // Subscribe to the two tab ids this hook needs, never to chatTabs itself:
   // the chat input saves its draft into its tab's config, and a whole-map
   // subscription re-rendered the Work surface (and the workspace pane beside
@@ -634,7 +642,7 @@ export function useWorkChatTab(
     // takes 1-3 s to answer, and the old chat looked like the new one).
     tabId: departing ? null : awaitingRequestedAgent ? null : activeProjectTabId ?? canonicalTabId ?? null,
     canonicalTabId: canonicalTabId ?? null,
-    projectReady: preparedProject === projectId && !departing,
+    projectReady: preparedProject === projectId && !departing && settledProject === projectId,
     error: failure && failure.projectId === session?.id ? failure.message : null,
   }
 }
