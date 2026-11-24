@@ -42,7 +42,8 @@ export function isImageAttachmentPath(path: string): boolean {
 }
 
 /** Remove request-only context that was not typed by the user. */
-const FIRST_TURN_NOTE = /^\[This chat is [\s\S]*?\]\n\n/
+// Forks made before 24 Nov saved their note without the closing bracket when the parent had no purpose.
+const FIRST_TURN_NOTE = /^\[This chat is [\s\S]*?(?:\]|send only a hand-off, a blocker or a result\.)\n\n/
 
 export function getDisplaySafeUserMessageContent(content: string): string {
   const markerIndexes = TRANSPORT_CONTEXT_MARKERS

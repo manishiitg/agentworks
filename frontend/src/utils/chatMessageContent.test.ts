@@ -39,5 +39,8 @@ it('keeps a first-turn fork, copy or helper note out of the person\'s message', 
   const note = '[This chat is a fork. It is "B", a separate agent forked from "A". The parent\'s job was: review tools]'
   expect(getDisplaySafeUserMessageContent(note + '\n\ngo')).toBe('go')
   expect(getDisplaySafeUserMessageContent('[This chat is "Helper", a helper agent opened by "A".]\n\nCheck the list')).toBe('Check the list')
+  // Owner, 24 Nov: a fork whose parent had no purpose saved its note without the closing bracket.
+  const unclosed = '[This chat is a fork. It is "B", a separate agent forked from "A". To reach it, send through AgentBridge; send only a hand-off, a blocker or a result.'
+  expect(getDisplaySafeUserMessageContent(unclosed + '\n\ncan you create a skill')).toBe('can you create a skill')
   expect(getDisplaySafeUserMessageContent('[This chat is my note] but\n\nnot a first-turn note')).toBe('[This chat is my note] but\n\nnot a first-turn note')
 })

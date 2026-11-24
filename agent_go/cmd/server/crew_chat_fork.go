@@ -376,7 +376,7 @@ func (api *StreamingAPI) seedForkChatJournal(user string, destination ProductCon
 // forkFirstTurnNote is what a new fork's agent reads on its first turn. The copied conversation is the parent's, so
 // without it the fork can believe it is the parent and carry on the parent's role.
 func forkFirstTurnNote(parentName, forkName, parentPurpose string) string {
-	note := fmt.Sprintf("[This chat is a fork. It is %q, a separate agent forked from %q. The conversation above is a copy of %q up to the fork: its earlier replies were written by that agent, not by you. You are not %q: do not carry on its role or its unfinished work unless the person asks you to. %q keeps working on its own and does not see what you do here. To reach it, find it with messages action=list_agents and send through AgentBridge; send only a hand-off, a blocker or a result.", forkName, parentName, parentName, parentName, parentName)
+	note := fmt.Sprintf("[This chat is a fork. It is %q, a separate agent forked from %q. The conversation above is a copy of %q up to the fork: its earlier replies were written by that agent, not by you. You are not %q: do not carry on its role or its unfinished work unless the person asks you to. %q keeps working on its own and does not see what you do here. To reach it, find it with messages action=list_agents and send through AgentBridge; send only a hand-off, a blocker or a result.]", forkName, parentName, parentName, parentName, parentName)
 	if purpose := strings.TrimSpace(parentPurpose); purpose != "" {
 		note = strings.TrimSuffix(note, "]") + fmt.Sprintf(" The parent's job was: %s", purpose) + "]"
 	}
