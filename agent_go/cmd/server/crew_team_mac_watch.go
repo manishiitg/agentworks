@@ -606,7 +606,7 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 	if status != http.StatusOK {
 		return fmt.Errorf("the agent could not take this message; try again shortly")
 	}
-	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: agent.Tab, Mac: person, Member: true, SenderID: source.UserID, Caller: sender})
+	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: agent.Tab, Mac: person, Member: true, SenderID: asker, Caller: sender})
 	return nil
 }
 

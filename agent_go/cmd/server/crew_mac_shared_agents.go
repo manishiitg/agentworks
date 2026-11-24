@@ -1017,7 +1017,7 @@ func (api *StreamingAPI) deliverToMacSharedAgent(ctx context.Context, c agentCon
 		go api.appendMacAgentReply(c.ID, from, shareOwnerLabel(dest.UserID)+"'s agent could not take your message, so it was not delivered. Ask again in a moment; if it keeps failing, tell "+shareOwnerLabel(dest.UserID)+".")
 		return fmt.Errorf("the agent could not take this message; try again shortly")
 	}
-	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: tab, Mac: dest.UserID, SenderID: source.UserID, Caller: sender})
+	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: tab, Mac: dest.UserID, SenderID: asker, Caller: sender})
 	return nil
 }
 
