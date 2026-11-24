@@ -41,6 +41,8 @@ type crewTeamReachableAgent struct {
 	TaskState string `json:"task_state,omitempty"`
 	// ChatReadable: its chat is on the server and shown to teammates, so an asker may read it, online or not (#3194).
 	ChatReadable bool `json:"chat_readable,omitempty"`
+	// Terminal: an attached terminal session (agentworks attach), not an app chat (#3666, shown in the agent list).
+	Terminal bool `json:"terminal,omitempty"`
 	// OfflineSince is when an offline source was last heard from (#3194); zero while online.
 	OfflineSince time.Time `json:"offline_since,omitempty"`
 	// OfflineLine is the server's plain line for an offline row (Away, or how long and what the asker may choose).
@@ -162,6 +164,7 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 			row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: a.ID, Kind: "agent", Purpose: a.Purpose, Examples: a.Examples, Name: firstNonEmptyTrimmed(a.Name, "Agent"), PersonID: p.UserID, Person: p.Name, Place: a.Place,
 				Online: online, OfflineSince: since, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address, TaskState: crewAgentRequestState(ctx, registered)}
 			row.ChatReadable = crewTeamChatReadable(t, registered)
+			row.Terminal = registered.Kind == "terminal"
 			if !online {
 				row.OfflineLine = crewTeamOfflineLine(row)
 			}
@@ -221,6 +224,7 @@ func crewTeamOwnSourceRows(ctx context.Context, t crewTeam, viewer string) []cre
 		row := crewTeamReachableAgent{userAvatarFields: avatarFieldsFor(viewer, t.ProjectID), Team: t.ProjectID, TeamName: t.Name, ID: id, Kind: "agent", Purpose: a.Purpose, Examples: a.Examples, Name: firstNonEmptyTrimmed(a.Name, registered.Name, "Agent"), PersonID: viewer, Place: registered.Place,
 			Online: online, OfflineSince: since, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address, TaskState: crewAgentRequestState(ctx, registered)}
 		row.ChatReadable = crewTeamChatReadable(t, registered)
+		row.Terminal = registered.Kind == "terminal"
 		if !online {
 			row.OfflineLine = crewTeamOfflineLine(row)
 		}
