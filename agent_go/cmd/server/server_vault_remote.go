@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/mcpagent/mcpcache/openapi"
 	"github.com/manishiitg/mcpagent/mcpclient"
@@ -146,7 +147,9 @@ func (api *StreamingAPI) withServerVaultInventory(ctx context.Context, lender, s
 	if !paired {
 		return ctx, nil
 	}
+	endSpeedSpan := events.TurnSpeedSpan(sessionID, "vault_list")
 	rows, err := fetchServerVaultTools(ctx, lender, p.conn)
+	endSpeedSpan()
 	if err != nil {
 		return ctx, nil
 	}

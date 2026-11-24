@@ -88,7 +88,14 @@ func (p *AgentProcess) Exited(logger AgentProcessLogger, reason string) {
 	p.log(logger, "exit", reason, turns)
 }
 
+// OnAgentProcessEvent, when set, also receives each launch, reuse and exit,
+// so the server can add them to its per-message speed line (#3724).
+var OnAgentProcessEvent func(session, provider, event, reason string)
+
 func (p *AgentProcess) log(logger AgentProcessLogger, event, reason string, turns int) {
+	if hook := OnAgentProcessEvent; hook != nil && p.session != "" {
+		hook(p.session, string(p.provider), event, reason)
+	}
 	session := p.session
 	if session == "" {
 		session = "-"
