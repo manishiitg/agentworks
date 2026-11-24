@@ -246,8 +246,13 @@ func (api *StreamingAPI) externalCrewCapabilityCall(w http.ResponseWriter, r *ht
 		return
 	}
 	// A link to a Mac project (project_id, #3663) opens no files here; only a workspace_path reference does.
-	if group == "crew_references" && action == "attach" && externalArg(args, "project_id") == "" {
-		if !api.externalCrewReferenceAllowed(r.Context(), claims, externalArg(args, "workspace_path"), true) {
+	if group == "crew_references" && action == "attach" {
+		remote, err := remoteProjectLinkArg(args)
+		if err != nil {
+			externalError(w, 400, "invalid_arguments", err.Error())
+			return
+		}
+		if remote == "" && !api.externalCrewReferenceAllowed(r.Context(), claims, externalArg(args, "workspace_path"), true) {
 			externalError(w, 403, "forbidden", "Reference is outside current access or this connection's bounds.")
 			return
 		}

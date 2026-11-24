@@ -112,3 +112,16 @@ func TestAgentDirectoryOtherOwnedCrewsNeedALink(t *testing.T) {
 		t.Fatal("a linked Crew's Team agent was hidden")
 	}
 }
+
+// #3663 review: a blank project_id must not skip the connection-bounds check on an ordinary workspace_path reference.
+func TestRemoteProjectLinkBlankIDKeepsReferenceCheck(t *testing.T) {
+	if id, err := remoteProjectLinkArg(map[string]any{"project_id": "  ", "workspace_path": "Chats/Work/projects/a"}); id != "" || err != nil {
+		t.Fatalf("a blank project_id was taken as a link: %q %v", id, err)
+	}
+	if _, err := remoteProjectLinkArg(map[string]any{"project_id": "mac-crew", "workspace_path": "Chats/Work/projects/a"}); err == nil {
+		t.Fatal("a link with a workspace_path was accepted")
+	}
+	if id, err := remoteProjectLinkArg(map[string]any{"project_id": " mac-crew "}); id != "mac-crew" || err != nil {
+		t.Fatalf("a link was refused: %q %v", id, err)
+	}
+}

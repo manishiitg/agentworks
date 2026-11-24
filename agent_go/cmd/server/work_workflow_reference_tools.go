@@ -378,7 +378,11 @@ func (api *StreamingAPI) registerWorkWorkflowReferenceTools(registrar definition
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
-		if project := stringToolArg(args, "project_id"); strings.TrimSpace(project) != "" {
+		project, err := remoteProjectLinkArg(args)
+		if err != nil {
+			return "", err
+		}
+		if project != "" {
 			out, err := linkRemoteProject(ctx, userID, workspacePath, stringToolArg(args, "server"), project, stringToolArg(args, "project_name"))
 			if err != nil {
 				return "", err
@@ -426,7 +430,11 @@ func (api *StreamingAPI) registerWorkWorkflowReferenceTools(registrar definition
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
-		if project := stringToolArg(args, "project_id"); strings.TrimSpace(project) != "" {
+		project, err := remoteProjectLinkArg(args)
+		if err != nil {
+			return "", err
+		}
+		if project != "" {
 			return unlinkRemoteProject(ctx, userID, workspacePath, project)
 		}
 		path, _ := args["workspace_path"].(string)
