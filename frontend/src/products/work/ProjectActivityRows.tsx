@@ -3,7 +3,7 @@ import { Activity, ExternalLink, FolderOpen, ListChecks, ListTodo, Mail, Message
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
 import { SetupPrompt } from '../../components/workspace/SetupPrompt'
 import type { CrewPanelFeedItem, CrewPanelRow, CrewPanelSection } from './useCrewPanel'
-import { ProjectTasksRow } from './ProjectTasksRow'
+import { ProjectTasksRow, projectActivityChangeMessage } from './ProjectTasksRow'
 
 // Project activity (#3476, approved mockup 21 Nov): one row per feed Watcher the
 // person's agent set up. The server decides the rows and their state; the feed is
@@ -13,7 +13,6 @@ const appIcon: Record<string, LucideIcon> = { slack: MessageSquare, mail: Mail, 
 export const projectActivityLine = 'Slack, mail, Drive and tasks for this project'
 
 export const projectActivitySetupMessage = 'Set up Project activity for this project. Check which apps this project can reach (Slack, Gmail, Google Drive, GitHub or another task tracker), ask me which channels, mail, folders and task lists matter, then set up Project tasks: a lead agent that keeps one shared task list, and one Watcher per source that sends what it finds to that lead. Follow the project-activity guide in the automations skill.'
-export const projectActivityChangeMessage = 'I want to change Project activity for this project. Show me what it watches now, the lead agent, and the steps and rules of the Project tasks list, then ask what to add, change or remove.'
 
 function ago(at: number): string {
   const minutes = Math.max(0, Math.round((Date.now() / 1000 - at) / 60))
@@ -125,12 +124,13 @@ function ItemMenu({ onPick }: { onPick: (kind: 'ask' | 'mine' | 'team') => void 
   </div>
 }
 
-export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHide }: {
+export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHide, onOpenTask }: {
   section?: CrewPanelSection
   onAgent?: (message: string) => void
   onWatchers: () => void
   hidden: boolean
   onHide: () => void
+  onOpenTask: (id: string) => void
 }) {
   if (!section) return null
   const rows = section.rows
@@ -143,15 +143,17 @@ export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHi
   return <div>
     {rows.map(row => <WorkspaceCompactGroup key={row.id} title={row.label} icon={appIcon[row.group || ''] || Activity}
       detail={<span className={row.attention ? 'text-amber-600 dark:text-amber-400' : row.count ? 'font-medium text-foreground' : undefined}>
-        {!row.attention && row.needs_you_count ? <span className="text-amber-600 dark:text-amber-400">{row.needs_you_count} need{row.needs_you_count === 1 ? 's' : ''} you · </span> : null}{row.attention ? row.detail : row.count || row.detail}</span>}>
+        {!row.attention && row.needs_you_count ? <span className="text-amber-600 dark:text-amber-400">{row.needs_you_count} need{row.needs_you_count === 1 ? 's' : ''} you</span> : null}
+        {/* "3 need you" alone when every open task needs you; the count only adds what the amber part doesn't say. */}
+        {row.attention ? row.detail : row.needs_you_count && row.needs_you_count === row.open_count ? null : <>{!row.attention && row.needs_you_count ? ' · ' : ''}{row.count || row.detail}</>}</span>}>
       {row.attention && <button type="button" onClick={onWatchers} className="block w-full rounded px-1 py-0.5 text-left text-[11px] text-amber-600 hover:bg-background/40 dark:text-amber-400">{row.detail} · open Watchers</button>}
-      {row.group === 'project-tasks' ? <ProjectTasksRow row={row} onAgent={onAgent}/> : <>
+      {row.group === 'project-tasks' ? <ProjectTasksRow row={row} onAgent={onAgent} onOpenTask={onOpenTask}/> : <>
         <RowItems row={row} onAgent={onAgent}/>
         {!row.items?.length && !row.attention && <p className="px-1 py-0.5 text-[11px] text-muted-foreground">{row.detail}</p>}
       </>}
       <div className="flex items-center gap-3 px-1 py-0.5 text-[10px]">
         {row.path && <a href={row.path} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">Open<ExternalLink aria-hidden="true" className="h-2.5 w-2.5"/></a>}
-        {onAgent && <button type="button" onClick={() => onAgent(projectActivityChangeMessage)} className="text-muted-foreground hover:text-foreground">Set up Project activity</button>}
+        {onAgent && row.group !== 'project-tasks' && <button type="button" onClick={() => onAgent(projectActivityChangeMessage)} className="text-muted-foreground hover:text-foreground">Change setup</button>}
       </div>
     </WorkspaceCompactGroup>)}
   </div>

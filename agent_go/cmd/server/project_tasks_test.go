@@ -50,6 +50,13 @@ func TestProjectTasksNeedsYou(t *testing.T) {
 			t.Errorf("case %d: needs you = %v, want %v", i, got, c.want)
 		}
 	}
+	// The person's answer buttons come only with an open question.
+	if v := projectTaskView(list, projectTask{Waiting: "Fix now or later?", Choices: []string{"Fix now", "Later"}}, nil); len(v.Choices) != 2 {
+		t.Errorf("choices = %v", v.Choices)
+	}
+	if _, err := projectTaskChoices([]interface{}{"a", "b", "c", "d", "e"}); err == nil {
+		t.Error("five choices: want an error")
+	}
 }
 
 func TestProjectTaskChecklist(t *testing.T) {
