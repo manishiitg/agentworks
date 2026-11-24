@@ -25,4 +25,4 @@
 - id: project-schedules-create
   text: 'In a project you own, ask “run this report every weekday at 9am”. Automation shows, pauses or changes it.'
 - id: project-dashboard-create
-  text: 'Ask “build a dashboard from these files”. Your dashboards and the ones shared with you are in Dashboards in the left menu.'
+  text: 'Ask “build a dashboard from these files”. Find it again with ⌘K / Ctrl+K.'
