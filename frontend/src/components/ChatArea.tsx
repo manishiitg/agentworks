@@ -39,7 +39,7 @@ import { StepInspectionTabs } from './chat/StepInspectionTabs'
 import { SessionStopButton } from './SessionStopButton'
 import { ReplyQuote, CHAT_INSERT_QUOTE_EVENT, type InsertQuoteDetail } from './chat/ReplyQuote'
 import type { MessageEditActions } from './chat/EditResendMessage'
-import { fileChangesAfter, previewRewind, revertFileChanges, rewindChat, rewindError } from '../utils/editResend'
+import { eventsBefore, fileChangesAfter, previewRewind, revertFileChanges, rewindChat, rewindError } from '../utils/editResend'
 import { TerminalEventTranscript } from './TerminalEventTranscript'
 import { followTranscriptLatest, transcriptReadingKey } from './useTranscriptScroll'
 import { CHAT_SCROLL_TO_BOTTOM_EVENT, SettledScroll } from '../utils/chatScrollRequest'
@@ -3398,8 +3398,16 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           try { await revertFileChanges(fileChangesAfter(transcriptEvents, sequence)) } catch (cause) { throw rewindError(cause, 'Couldn\'t put the files back. Nothing else was changed.') }
         }
         try { await rewindChat(editConversationKey, eventId) } catch (cause) { throw rewindError(cause, 'Couldn\'t go back. Nothing was changed.') }
-        useChatStore.getState().clearTabEvents(editSessionId)
-        try { await hydrateTabEvents(editSessionId, { workspacePath: editWorkspace }) } catch { /* The next poll fills the chat. */ }
+        // Trim the chat in place rather than clearing and reloading it, so the
+        // earlier messages stay on screen while the new text goes out.
+        const chatStore = useChatStore.getState()
+        const kept = eventsBefore(chatStore.tabEvents[editSessionId] ?? [], eventId)
+        if (kept) {
+          chatStore.setTabEvents(editSessionId, kept)
+        } else {
+          chatStore.clearTabEvents(editSessionId)
+          try { await hydrateTabEvents(editSessionId, { workspacePath: editWorkspace }) } catch { /* The next poll fills the chat. */ }
+        }
         await submitQueryWithQuery(text, undefined, { sourceTabId: tabId })
       },
       putInComposer: text => {

@@ -45,6 +45,13 @@ export function fileChangesAfter(events: PollingEvent[], sequence: number): Repl
   return found.sort((a, b) => b.end - a.end).map(({ end: _end, ...ref }) => ref)
 }
 
+/** The chat as it reads just before the edited message, or null when that
+ * message is not in memory and the chat must be loaded again. */
+export function eventsBefore(events: PollingEvent[], eventId: string): PollingEvent[] | null {
+  const index = events.findIndex(event => event.id === eventId)
+  return index < 0 ? null : events.slice(0, index)
+}
+
 /** Changed file names across those replies, for the checkbox's line. */
 export function changedFileNames(events: PollingEvent[], sequence: number): string[] {
   const names = new Set<string>()

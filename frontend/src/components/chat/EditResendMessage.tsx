@@ -97,7 +97,7 @@ export function EditResendEditor({ eventId, sequence, text, onClose }: { eventId
     <textarea aria-label="Edit your message" value={draft} autoFocus disabled={state === 'going'}
       onChange={event => setDraft(event.target.value)}
       onKeyDown={event => { if (event.key === 'Escape') onClose(); if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void send() }}
-      className="min-h-[72px] w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-[length:calc(14px*var(--chat-scale,1))] text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+      className="min-h-[72px] w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-[length:calc(14px*var(--chat-scale,1))] text-foreground focus:border-foreground/40 focus:outline-none" />
     {replies > 0 && <label className="mt-2 flex items-start gap-2 text-xs text-foreground">
       <input type="checkbox" checked={revertFiles} disabled={state === 'going'} onChange={event => setRevertFiles(event.target.checked)} className="mt-0.5" />
       <span>Also revert the file changes made after this message
