@@ -42,3 +42,17 @@ it('routes only requests that name a server project, its chats or its open folde
   expect(route({ url: `/api/documents/${encodeURIComponent('Crew/shared-name/product.json')}` })).toBeUndefined()
 })
 
+
+// One rule (owner, 24 Nov): a project goes to the server whose own list has it; this window's own list always wins.
+it('routes a project by the lists that contain it, the window list first', async () => {
+  const { setServerProjectList, setWindowProjectList, remoteRequestConnection: route } = await import('./remoteSessions')
+  setServerProjectList('excellence', ['server-crew', 'paired-crew'])
+  setWindowProjectList(['mac-crew', 'paired-crew'])
+  const request = (project_id: string) => route({ url: '/api/agent-profiles/work/side-chats', params: { project_id } })
+  expect(request('server-crew')).toBe('excellence')
+  expect(request('paired-crew')).toBeUndefined()
+  expect(request('mac-crew')).toBeUndefined()
+  // A server's next list replaces what it said before.
+  setServerProjectList('excellence', ['paired-crew'])
+  expect(request('server-crew')).toBeUndefined()
+})

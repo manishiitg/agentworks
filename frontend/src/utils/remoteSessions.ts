@@ -26,7 +26,28 @@ export function unregisterRemoteProject(projectId: string) {
   folders.delete(projectId)
 }
 
-export function remoteProjectConnection(projectId?: string | null): string | undefined { return projectId ? projects.get(projectId) : undefined }
+// Where each project lives, from the lists themselves (owner, 24 Nov: one rule, no guessing). The window's own list
+// says "here"; each other server's own list says "there". The window's list wins a clash, and the lists reload with the
+// app, so a restart routes exactly as before it.
+const windowListed = new Set<string>()
+const serverListed = new Map<string, string>()
+
+/** The window's own project list (this Mac's, in the Mac app): these projects are always answered here. */
+export function setWindowProjectList(ids: readonly string[]) {
+  windowListed.clear()
+  for (const id of ids) windowListed.add(id)
+}
+
+/** One other server's own project list, as this Mac reads it through its saved sign-in. */
+export function setServerProjectList(connectionId: string, ids: readonly string[]) {
+  for (const [id, connection] of serverListed) if (connection === connectionId) serverListed.delete(id)
+  for (const id of ids) if (!serverListed.has(id)) serverListed.set(id, connectionId)
+}
+
+export function remoteProjectConnection(projectId?: string | null): string | undefined {
+  if (!projectId || windowListed.has(projectId)) return undefined
+  return projects.get(projectId) ?? serverListed.get(projectId)
+}
 
 /** The chat store says which project a chat tab belongs to; set once by the store (no import cycle). */
 export function setRemoteSessionProjectLookup(lookup: (sessionId: string) => string | undefined) { sessionProject = lookup }
@@ -37,7 +58,7 @@ export function setRemoteOpenProjectLookup(lookup: () => string | null | undefin
 /** The connection a session's requests go through, or undefined for this app's own chats. */
 export function remoteSessionConnection(sessionId?: string | null): string | undefined {
   if (!sessionId) return undefined
-  return sessions.get(sessionId) ?? (projects.size ? remoteProjectConnection(sessionProject(sessionId)) : undefined)
+  return sessions.get(sessionId) ?? (projects.size || serverListed.size ? remoteProjectConnection(sessionProject(sessionId)) : undefined)
 }
 
 /** The connection a workspace path belongs to: a folder of the server project open in place, else none. */
@@ -60,7 +81,7 @@ function decoded(value: string): string { try { return decodeURIComponent(value)
 /** Which connection a request belongs to, from the project, chat or folder it names; undefined keeps it on the
  * window's own server. Requests that name none of them (menu, settings, account) never leave this Mac. */
 export function remoteRequestConnection(request: { url?: string; params?: unknown; headers?: unknown; data?: unknown }): string | undefined {
-  if (!sessions.size && !projects.size) return undefined
+  if (!sessions.size && !projects.size && !serverListed.size) return undefined
   const url = request.url || ''
   const path = url.split('?')[0]
   const query = new URLSearchParams(url.includes('?') ? url.slice(url.indexOf('?') + 1) : '')
