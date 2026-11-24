@@ -8,6 +8,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -99,9 +101,20 @@ func (api *StreamingAPI) handleRewindCrewChat(w http.ResponseWriter, r *http.Req
 	}
 	native := chatRewindCanCut(runtime)
 	if input.DryRun {
-		writeAgentProfileJSON(w, 200, map[string]any{"ok": true, "later_messages": point.later, "provider": provider, "native": native})
+		writeAgentProfileJSON(w, 200, map[string]any{"ok": true, "later_messages": point.later, "provider": provider, "native": native, "team_copy": crewChatHasTeamCopy(source.Record)})
 		return
 	}
+
+	// Hold the chat's input lane for the whole rewind: a message, schedule or
+	// Team ask arriving now waits (or is told the chat is busy) instead of
+	// starting a turn that is cut off or saves the removed turns back.
+	// (sessionTurnRunning was checked above; holding the lane itself counts as a turn.)
+	release, free := api.tryLockSessionInputLane(session, 0)
+	if !free {
+		externalError(w, 409, "turn_running", "Edit is available when the agent finishes replying. Press Stop to end the reply now.")
+		return
+	}
+	defer release()
 
 	started := time.Now()
 	// Nothing may keep the old conversation alive: close the running CLI and
@@ -263,6 +276,22 @@ func (api *StreamingAPI) rewindNativeRuntime(r *http.Request, record ProductConv
 
 var errRewindToStart = errors.New("the edited message was the first; starting fresh")
 
+// rewindBackupSuffix names the one copy kept of a conversation before its
+// latest edit; the next edit replaces it.
+const rewindBackupSuffix = ".before-edit"
+
+// crewChatHasTeamCopy reports whether this chat has been copied for the Team
+// (its private source journal exists). That copy only grows, so an edit does
+// not remove the earlier messages from it.
+func crewChatHasTeamCopy(record ProductConversationRecord) bool {
+	roots, found, err := crewStorageRoots(record.WorkspacePath)
+	if err != nil || !found || record.ConversationID == "" {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(roots.Private, "offline-source-journals", record.ConversationID))
+	return err == nil
+}
+
 // writeRewoundConversation replaces the saved conversation with the rows
 // before the edited message. This is the one deliberate shortening: the usual
 // writer refuses to lose turns.
@@ -281,6 +310,11 @@ func (api *StreamingAPI) writeRewoundConversation(user, session, path string, po
 	if owner := stringFromRecord(record, "user_id"); owner != "" && owner != user {
 		return fmt.Errorf("conversation belongs to another person")
 	}
+	// One copy of the conversation as it was before the latest edit, beside it.
+	// Agents that start fresh (Cursor, Antigravity) keep the cut turns nowhere else.
+	if err := writeRawFileToWorkspace(context.Background(), path+rewindBackupSuffix, existing); err != nil {
+		return fmt.Errorf("save the conversation before the edit: %w", err)
+	}
 	kept := append([]llmtypes.MessageContent(nil), point.history[:point.cut]...)
 	for _, key := range []string{"history_log", "history_count", "history_system", "history_tail", "history_total"} {
 		delete(record, key)
@@ -293,9 +327,8 @@ func (api *StreamingAPI) writeRewoundConversation(user, session, path string, po
 	}
 	delete(record, "terminal_snapshots")
 	delete(record, "terminal_snapshot")
-	if cutoff, ok := api.rewindCutoffTime(session, point.sequence); ok {
-		record["ui_events"] = uiEventsBefore(record["ui_events"], cutoff)
-	}
+	cutoff, _ := api.rewindCutoffTime(session, point.sequence)
+	record["ui_events"] = uiEventsBefore(record["ui_events"], point.sequence, cutoff)
 	record["updated_at"] = time.Now().Format(time.RFC3339)
 	advanceChatConversationRevision(record)
 	data, err := json.MarshalIndent(record, "", "  ")
@@ -329,7 +362,9 @@ func (api *StreamingAPI) rewindCutoffTime(session string, sequence int64) (time.
 	return users[len(users)-1].Timestamp, !users[len(users)-1].Timestamp.IsZero()
 }
 
-func uiEventsBefore(value interface{}, cutoff time.Time) interface{} {
+// uiEventsBefore keeps saved screen events from before the edited message: by
+// journal sequence when an event carries one, else by its time.
+func uiEventsBefore(value interface{}, sequence int64, cutoff time.Time) interface{} {
 	raw, err := json.Marshal(value)
 	if err != nil || value == nil {
 		return value
@@ -340,7 +375,12 @@ func uiEventsBefore(value interface{}, cutoff time.Time) interface{} {
 	}
 	kept := make([]storeevents.Event, 0, len(events))
 	for _, event := range events {
-		if event.Timestamp.IsZero() || event.Timestamp.Before(cutoff) {
+		switch {
+		case event.Sequence > 0 && sequence > 0:
+			if event.Sequence < sequence {
+				kept = append(kept, event)
+			}
+		case cutoff.IsZero() || event.Timestamp.IsZero() || event.Timestamp.Before(cutoff):
 			kept = append(kept, event)
 		}
 	}

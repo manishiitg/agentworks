@@ -46,6 +46,7 @@ it('edits in place and resends with the file revert choice', async () => {
     expect(host.textContent).toContain('The 2 messages after this one will leave the chat.')
     expect(host.textContent).toContain('Claude Code goes back to its own session at that point.')
     expect(host.textContent).toContain('upload.go, README.md · 2 replies')
+    expect(host.querySelector('[data-testid="edit-resend-team-copy"]')).toBeNull()
     const box = host.querySelector('input[type="checkbox"]') as HTMLInputElement
     expect(box.checked).toBe(false)
     await click(box)
@@ -62,13 +63,14 @@ it('edits in place and resends with the file revert choice', async () => {
 it('keeps the edited text and offers the message box when going back fails', async () => {
   const host = document.createElement('div'), root = createRoot(host)
   const value = actions({
-    preview: vi.fn(async () => ({ ok: true, later_messages: 1, provider: 'cursor-cli', native: false })),
+    preview: vi.fn(async () => ({ ok: true, later_messages: 1, provider: 'cursor-cli', native: false, team_copy: true })),
     resend: vi.fn(async () => { throw { message: 'Couldn\'t go back: the saved conversation could not be updated. Nothing was changed.', code: 'rewind_failed' } }),
   })
   try {
     await act(async () => root.render(<MessageEditContext.Provider value={value}><EditResendEditor eventId="user:1" sequence={20} text="Hi" onClose={() => undefined} /></MessageEditContext.Provider>))
     expect(host.textContent).toContain('Cursor can\'t go back on its own, so it starts fresh with the chat up to that point.')
     expect(host.querySelector('input[type="checkbox"]')).toBeNull()
+    expect(host.querySelector('[data-testid="edit-resend-team-copy"]')?.textContent).toContain('not changed')
     await click(host.querySelector('[data-testid="edit-resend-send"]'))
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('Nothing was changed. Your edited text is kept.')
     expect(host.querySelector('[data-testid="edit-resend-send"]')?.textContent).toBe('Try again')

@@ -5,7 +5,7 @@ import type { ReplyFileChangesRef } from './replyFileChanges'
 // Edit and resend (#3134): the server takes the chat back to just before one
 // of the person's messages; the screen then sends the edited text as usual.
 
-export type RewindPreview = { ok: boolean; later_messages: number; provider: string; native: boolean }
+export type RewindPreview = { ok: boolean; later_messages: number; provider: string; native: boolean; /** The chat is copied for the Team; that copy keeps the earlier messages. */ team_copy?: boolean }
 export type RewindResult = RewindPreview & { mode?: 'native' | 'fresh' }
 
 const rewindPath = '/api/agent-profiles/work/conversation/rewind'
