@@ -82,7 +82,7 @@ export function MCPOAuthConsent() {
         {vault
           ? <ul className="space-y-2 text-sm text-foreground">{scopeGroups.filter(group => group.scopes.some(scope => consent.scopes.includes(scope))).map(group => <li key={group.summary} className="rounded-md bg-muted p-3">{group.summary}</li>)}</ul>
           : consent.project ? <div className="rounded-md bg-muted p-3 text-sm text-foreground"><p className="font-medium">{consent.project.title} only</p><p className="mt-1">{consent.project.access === 'use' ? 'View and use this project within your current permissions.' : 'View this project within your current permissions.'} Other projects and project settings are excluded. Removing your project access ends this connection’s access.</p></div>
-          : <p className="rounded-md bg-muted p-3 text-sm text-foreground">This app can do what you can do on the website, and nothing more. Your role on each Crew, workflow or project still decides what it may change.</p>}
+          : <p className="rounded-md bg-muted p-3 text-sm text-foreground">This app can do what you can do on the website, and nothing more. Your role on each project, workflow or project still decides what it may change.</p>}
         <details className="text-xs text-muted-foreground">
           <summary className="cursor-pointer">Show details</summary>
           <ul className="mt-2 space-y-1">{consent.scopes.map(scope => <li key={scope}>{scopeDescriptions[scope] || scope}</li>)}</ul>

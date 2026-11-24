@@ -130,7 +130,7 @@ export function TeamSchedules({ target, folder }: { target: TeamTarget; folder?:
           {item.mine && <button type="button" disabled={busy} onClick={() => void stop(item)} className="rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50" aria-label={`Stop sharing ${item.file.name}`}>Stop sharing</button>}
         </div>
         {adding?.path === item.path && <div className="mt-2 space-y-2 border-t border-border pt-2 text-xs">
-          <p className="text-muted-foreground">Created in your Crew, switched off, until you confirm the time.</p>
+          <p className="text-muted-foreground">Created in your project, switched off, until you confirm the time.</p>
           {simple ? <div className="grid grid-cols-2 gap-2">
             <label className="grid gap-0.5 text-muted-foreground">Days<select aria-label="Days" value={days} onChange={event => setDays(event.target.value)} className="rounded border border-input bg-background px-2 py-1 text-foreground">{DAYS.map(day => <option key={day.value} value={day.value}>{day.label}</option>)}</select></label>
             <label className="grid gap-0.5 text-muted-foreground">Time<input aria-label="Time" type="time" value={time} onChange={event => setTime(event.target.value)} className="rounded border border-input bg-background px-2 py-1 text-foreground" /></label>

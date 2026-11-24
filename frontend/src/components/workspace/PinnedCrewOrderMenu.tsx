@@ -59,7 +59,7 @@ export function PinnedCrewOrderMenu({ name, pinned, onTogglePin, onMoveUp, onMov
       {onTogglePin && <button type="button" onClick={() => { onTogglePin(); close() }} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">{pinned ? <PinOff aria-hidden="true" className="h-3.5 w-3.5" /> : <Pin aria-hidden="true" className="h-3.5 w-3.5" />}{pinned ? 'Unpin project' : 'Pin project'}</button>}
       {onRemoveOnlineCopy && !confirmRemove && <button type="button" onClick={() => setConfirmRemove(true)} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remove online copy</button>}
       {onRemoveOnlineCopy && confirmRemove && <div className="px-2 py-1">
-        <p className="px-1 pb-1.5 text-xs text-muted-foreground">Remove this online copy? Your Mac Crew stays on your Mac.</p>
+        <p className="px-1 pb-1.5 text-xs text-muted-foreground">Remove this online copy? Your Mac project stays on your Mac.</p>
         <div className="flex gap-1">
           <button type="button" onClick={() => { onRemoveOnlineCopy(); close() }} className="flex-1 rounded-md bg-destructive px-2 py-1.5 text-left text-xs text-destructive-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Remove</button>
           <button type="button" onClick={() => setConfirmRemove(false)} className="flex-1 rounded-md border px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Cancel</button>

@@ -47,7 +47,7 @@ export function AgentInboxPanel({ workspacePath, refreshToken = 0, embedded = fa
     // Off: one line (or the owner's switch) and nothing else; the server also sends no address then.
     const address = state?.enabled ? state.inbox.address : undefined
     const week = mail.filter(message => message.received_at > Date.now() - 7 * 86400000).length
-    if (state && !state.enabled && !state.can_configure) return <section aria-label="Agent inbox"><p className="px-4 py-3 text-sm text-muted-foreground">Incoming email is off for this Crew.</p></section>
+    if (state && !state.enabled && !state.can_configure) return <section aria-label="Agent inbox"><p className="px-4 py-3 text-sm text-muted-foreground">Incoming email is off for this project.</p></section>
     const status = !state ? 'Loading…' : !state.enabled ? 'Off.' : state.receiving ? `${week} ${week === 1 ? 'message' : 'messages'} this week · each starts a chat` : 'Checking the project owner’s Gmail…'
     return <section aria-label="Agent inbox">
       {state?.can_configure && <PageRow title="Incoming email" lines={[state.enabled ? 'Anyone can email this project’s address.' : 'Off. Email to this project is not received.']} action={<Switch aria-label={state.enabled ? 'Turn incoming email off' : 'Turn incoming email on'} checked={state.enabled} disabled={busy} onCheckedChange={on => void setIncoming(on)} />} />}

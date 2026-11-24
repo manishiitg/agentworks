@@ -232,7 +232,7 @@ export function WorkModelsPanel({
     <>
         {supportsChatModels && <section className="mb-4 overflow-hidden rounded-xl border border-border" aria-label="Models by chat">
           <button type="button" disabled={chatModelSaving} aria-pressed={!modelTarget} onClick={() => setModelTarget('')} className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm ${!modelTarget ? 'bg-primary/10' : 'hover:bg-muted'}`}>
-            <span className="font-medium">Crew’s model</span><span className="text-xs text-muted-foreground">For chats without their own model</span>
+            <span className="font-medium">Project’s model</span><span className="text-xs text-muted-foreground">For chats without their own model</span>
           </button>
           {chatModelsLoading ? <p role="status" className="px-3 py-2 text-xs text-muted-foreground">Loading chats…</p> : modelChats.map(chat => {
             const own = chatModels.find(model => model.conversation_key === chat.conversation_key)
@@ -245,7 +245,7 @@ export function WorkModelsPanel({
         {chatModelError && <p role="alert" className="mb-3 text-sm text-destructive">{chatModelError}</p>}
         {modelTarget && <div className="mb-3 flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">{ownChatModel ? 'Used for messages and automated work in this agent.' : "Uses the project's model."}</p>
-          {ownChatModel && <button type="button" disabled={observingModel || chatModelSaving} onClick={() => void saveChatModel()} className="shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50">Use Crew's model</button>}
+          {ownChatModel && <button type="button" disabled={observingModel || chatModelSaving} onClick={() => void saveChatModel()} className="shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50">Use project's model</button>}
         </div>}
         <fieldset disabled={observingModel || chatModelSaving || (Boolean(modelTarget) && chatModelsLoading)} className="min-w-0 border-0 p-0">
         {savedProviderUnusable && (

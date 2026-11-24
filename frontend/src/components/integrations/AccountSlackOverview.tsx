@@ -31,7 +31,7 @@ export function AccountSlackOverview() {
       <p className="text-xs text-muted-foreground">Messages from these connections appear as the bot, not as you.</p>
       {error ? <p role="alert" className="text-xs text-destructive">Could not load Slack bots. Try Refresh.</p> : !data ? <p role="status" className="text-xs text-muted-foreground">Loading Slack bots…</p> : <VaultSlackBots data={data} workspacePath="" manageOnly busy={false} onSelect={async () => {}} onUpdated={async () => { setRevision(value => value + 1) }} />}
 
-      <p className="text-xs text-muted-foreground">Configure saved bots here. Choose which bot a Crew uses in that Crew’s Slack settings. Only authorized project usage is listed.</p>
+      <p className="text-xs text-muted-foreground">Configure saved bots here. Choose which bot a project uses in that project’s Slack settings. Only authorized project usage is listed.</p>
     </section>
   </div>
 }

@@ -235,8 +235,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   return <WorkspaceContextCard onFullMenu={() => showMenu('full')} endContent={!macElsewhere && reviewSessionId ? <ChatContextSection key={`${scope}:context:${reviewSessionId}`} sessionId={reviewSessionId} /> : undefined} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.filter(item => item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)).map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' && !access?.co_owners ? teamTree : null}{item.id === 'mcp:team' && !access?.co_owners && !selectedPerson && setups.data?.setups.length ? <Row icon={ListChecks} detail={setups.data.to_do ? `${setups.data.to_do} to do` : 'All done'} onClick={() => { console.info('[TEAM_SETUP]', { event: 'open', project: projectId }); openCrewAccess(projectId, '', 'team', 'setups') }}>Team kit</Row> : null}</div>)}</div>}>
     {activitySection}
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
-      <p>This Crew lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
-      <p>Artifacts work once this Crew is online. Move it online from your Mac.</p>
+      <p>This project lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
+      <p>Artifacts work once this project is online. Move it online from your Mac.</p>
     </div> : <>
     {changes}
     {/* Project activity sits right under Git (owner, 21 Nov, #3476). */}

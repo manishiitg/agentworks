@@ -45,7 +45,7 @@ export function ConnectedHomeRecentWork({ personalAgentId }: { personalAgentId?:
       }} />
     </li>)}</ul>
     {loading && <p role="status" className="flex items-center gap-2 py-3 text-xs text-muted-foreground"><Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />Loading recent work…</p>}
-    {!loading && !rows.length && !unavailable.length && !signedOut.length && !state.error && <p className="py-3 text-xs text-muted-foreground">Open a Crew or Goal from the sidebar. Your recent work will appear here.</p>}
+    {!loading && !rows.length && !unavailable.length && !signedOut.length && !state.error && <p className="py-3 text-xs text-muted-foreground">Open a project or Goal from the sidebar. Your recent work will appear here.</p>}
     {(unavailable.length > 0 || state.error) && <button type="button" onClick={() => void state.refresh()} className="py-2 text-left text-xs text-muted-foreground underline">Some recent work could not be loaded. Retry</button>}
     {signedOut.map(connection => <button type="button" key={connection.id} onClick={() => openConnectedServers(connection.server)} className="block py-2 text-left text-xs text-muted-foreground underline">Sign in to {connection.name} again</button>)}
     {error && <p role="alert" className="py-2 text-xs text-destructive">{error}</p>}

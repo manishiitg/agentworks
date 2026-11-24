@@ -127,7 +127,7 @@ export default function CostsOverview() {
         <div>
           <h2 className="text-xl font-semibold text-gray-950 dark:text-white">Costs</h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-300">
-            Recorded AI usage by user, workflow, Crew, Code workspace, project, and bot for work you can open{data?.includes_other ? ', plus unattributed activity' : ''}.
+            Recorded AI usage by user, workflow, project, and bot for work you can open{data?.includes_other ? ', plus unattributed activity' : ''}.
           </p>
         </div>
         <div className="flex items-center gap-2">

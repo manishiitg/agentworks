@@ -115,7 +115,7 @@ export function TeamTab({ projectId, onTurnOn, onBack, agents }: { projectId: st
       <span className="text-xs text-muted-foreground">Only you</span>
       {onTurnOn && <Switch aria-label="Team" checked={false} onCheckedChange={on => { if (on) onTurnOn() }} />}
     </div>
-    <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work on this Crew with people; it also turns on Mac online.</p>
+    <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work on this project with people; it also turns on Mac online.</p>
     <NeverOnlinePeople projectId={projectId} />
   </section></div>
   if (!view || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>
@@ -373,7 +373,7 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
       {view.can_switch && <><Saving on={pending === 'team'}>{null}</Saving><Switch aria-label="Team" disabled={Boolean(pending)} checked={team.on} onCheckedChange={on => void turn(on)} /></>}
     </div>
     {note && <p className="text-xs text-muted-foreground">{note}</p>}
-    {!team.on && <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work on this Crew with people.</p>}
+    {!team.on && <p className="text-xs text-muted-foreground">Off: only you. Turn it on to work on this project with people.</p>}
     {people && <>
       {people.intro && <p className="text-xs text-muted-foreground">{people.intro}</p>}
       {people.blocked && <p className="text-xs text-muted-foreground">{people.blocked}</p>}
@@ -411,7 +411,7 @@ export function DashboardPeopleCard({ target }: { target: TeamTarget }) {
   const everyone = people.add_everyone ? { label: people.add_everyone, onPick: () => void propose('everyone', people.add_everyone || '', 'dashboards') } : undefined
   return <section aria-label="Who can open the dashboards" className={card}>
     <h3 className="font-semibold">Who can open the dashboards</h3>
-    <p className="text-xs text-muted-foreground">People here open all this Crew's dashboards and can ask it. They see no files. People who work in the Crew with you are under Team.</p>
+    <p className="text-xs text-muted-foreground">People here open all this project's dashboards and can ask it. They see no files. People who work in the project with you are under Team.</p>
     {note && <p className="text-xs text-muted-foreground">{note}</p>}
     {people.dashboard_people.length === 0
       ? <p className="text-xs text-muted-foreground">No one yet.</p>

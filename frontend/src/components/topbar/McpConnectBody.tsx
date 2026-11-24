@@ -20,25 +20,25 @@ export default function McpConnectBody({ codeReview, onNavigate }: { codeReview:
       <details className="rounded-lg border border-border p-4 text-sm"><summary className="cursor-pointer font-medium text-foreground">What your connections can access</summary><div className="mt-4 space-y-3">
       {codeReview && (
         <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-          <p className="font-medium text-foreground">Crew review</p>
+          <p className="font-medium text-foreground">Project review</p>
           <p className="mt-1">
-            The approval screen lists <b>Review every Crew project</b> for your account. Once you allow it, your agent can
-            then list every Crew project, see its cost by person, and read its chats and files, read-only. Every call is
-            recorded in the Crew review audit log.
+            The approval screen lists <b>Review every project</b> for your account. Once you allow it, your agent can
+            then list every project, see its cost by person, and read its chats and files. Every call is
+            recorded in the project review audit log.
           </p>
         </div>
       )}
       <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground">Crew authoring access</p>
+        <p className="font-medium text-foreground">Project authoring access</p>
         <p className="mt-1">Existing connections with permission to edit your Crews can also run sandboxed commands,
-          control their browser, change their database and use their connected tools. Your current role, Crew ownership
-          and connection limits apply. Calls appear in the owner-only Crew execution history. Revoke a connection here
+          control their browser, change their database and use their connected tools. Your current role, project ownership
+          and connection limits apply. Calls appear in the owner-only project execution history. Revoke a connection here
           if you no longer want it to have that access.</p>
       </div>
       <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
         <p className="font-medium text-foreground">Workflow authoring access</p>
         <p className="mt-1">Connections with workflow authoring permission can change saved source, inputs and settings
-          without a model turn. Current Crew ownership, connection limits and source validation apply. Revoke a connection here if you no longer want it to have that access.</p>
+          without a model turn. Current project ownership, connection limits and source validation apply. Revoke a connection here if you no longer want it to have that access.</p>
       </div>
       </div></details></div>
     </div>

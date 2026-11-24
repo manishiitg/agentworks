@@ -150,7 +150,7 @@ function KeepAwakeChoice({ job, busy, onChange }: { job: ScheduledJob; busy: boo
   const current = job.keep_awake || ''
   const onBattery = !!job.keep_awake_on_battery
   return <fieldset className="space-y-1 pt-2 text-xs" data-testid={`keep-awake-${job.id}`}>
-    <legend className="text-muted-foreground">This Crew lives on this Mac, so a scheduled run happens only while the Mac is awake. A run that falls while it sleeps is skipped, not run later.</legend>
+    <legend className="text-muted-foreground">This project lives on this Mac, so a scheduled run happens only while the Mac is awake. A run that falls while it sleeps is skipped, not run later.</legend>
     {KEEP_AWAKE.map(option => <label key={option.value || 'off'} className="flex items-start gap-2">
       <input type="radio" name={`keep-awake-${job.id}`} className="mt-0.5" checked={current === option.value} disabled={busy}
         onChange={() => onChange({ keep_awake: option.value, keep_awake_on_battery: onBattery })} />

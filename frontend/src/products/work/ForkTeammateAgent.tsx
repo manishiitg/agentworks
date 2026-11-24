@@ -75,7 +75,7 @@ export function ForkTeammateAgent({target,agent,name,compact=false}:{target:Team
     {!local&&<p role="status" className="text-sm">Open AgentWorks on your connected Mac to fork this agent.</p>}
     {error&&<><p role="alert" className="text-sm text-destructive">{error}</p><button type="button" onClick={requestCopy} className="text-sm text-primary hover:underline">Request a copy via my agent…</button><p className="text-xs text-muted-foreground">Opens a draft in your own chat. No request or copy is sent yet.</p></>}
     {busy&&progress&&<div role="status" className="space-y-1.5"><div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary transition-all duration-500" style={{width:`${progress.percent}%`}}/></div><p className="text-sm">{progress.line}</p><p className="text-xs text-muted-foreground">You can close this; the copy keeps going and you'll get a notice when it's ready.</p></div>}
-    {saved&&<p role="status" className="text-sm">Copied from the version saved {new Date(saved).toLocaleString()}. Your new agent is in this Crew on your Mac.</p>}
+    {saved&&<p role="status" className="text-sm">Copied from the version saved {new Date(saved).toLocaleString()}. Your new agent is in this project on your Mac.</p>}
     <div className="flex justify-end gap-2"><button type="button" onClick={()=>setOpen(false)} className="rounded-md px-3 py-2 text-sm hover:bg-muted">{saved?'Done':busy?'Close':'Cancel'}</button>{!saved&&<button type="button" disabled={!local||busy} onClick={()=>void fork()} className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50">{busy?'Copying…':'Fork to my Mac'}</button>}</div>
    </section>
   </div>,document.body)}

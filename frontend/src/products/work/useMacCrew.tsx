@@ -30,6 +30,6 @@ export function OnlineOnlyNote({ projectId }: { projectId?: string }) {
   const { livesOnMac } = useMacCrew(projectId, 15000)
   if (!livesOnMac) return null
   return <div role="note" className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-2 text-xs">
-    <span className="flex-1">Works only in a Crew on the server, not in a Crew on this Mac.</span>
+    <span className="flex-1">Works only in a project on the server, not in a project on this Mac.</span>
   </div>
 }

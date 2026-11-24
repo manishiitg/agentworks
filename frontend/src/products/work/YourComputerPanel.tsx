@@ -302,7 +302,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
           <p className="text-[12.5px] text-muted-foreground">{status.access_mac?.line}</p>
           {status.access_mac?.kept && <p className="text-xs text-muted-foreground">{status.access_mac.kept}{serverCopies.length > 0 && <> <button type="button" className="text-primary hover:underline" onClick={() => setSection('team')}>What's kept on the server</button></>}</p>}
           {!!status.access_mac?.reach?.length && <div aria-label="Who can reach this project" className="space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">Who can reach this Crew</p>
+            <p className="text-xs font-medium text-muted-foreground">Who can reach this project</p>
             <dl className="divide-y divide-border text-[12.5px]">{status.access_mac.reach.map(row => <div key={row.who} className="grid grid-cols-[38%_1fr] gap-2 py-1.5">
               <dt className="font-medium">{row.who}</dt><dd className="text-muted-foreground">{row.how}</dd></div>)}</dl>
           </div>}
@@ -318,7 +318,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
             </>)}
             {open === 'code' && reachLink && <div id={`crew-phone-code-${projectId}`} className="flex justify-center p-3"><LinkCode link={reachLink} /></div>}
           </div>
-          {!reachLink && <p className="text-xs text-muted-foreground">Turn on Mac online to open this Crew in a browser or on your phone.</p>}
+          {!reachLink && <p className="text-xs text-muted-foreground">Turn on Mac online to open this project in a browser or on your phone.</p>}
         </section>
 
       </>}
@@ -346,7 +346,7 @@ function MacDataLine({ children }: { children: ReactNode }) {
 /** The Access page before this Mac has a server: why, then the same connect form as Servers. */
 function SignInToServer({ onConnected }: { onConnected: () => void }) {
   return <section aria-label="Sign in to a server" className="space-y-3 rounded-xl border border-border p-4">
-    <p className="text-[13px] text-muted-foreground">Sign in to your company's AgentWorks server to use this Crew from your phone and the web and work with a team. Your files stay on this Mac.</p>
+    <p className="text-[13px] text-muted-foreground">Sign in to your company's AgentWorks server to use this project from your phone and the web and work with a team. Your files stay on this Mac.</p>
     <ConnectServerForm onConnected={onConnected} />
   </section>
 }
