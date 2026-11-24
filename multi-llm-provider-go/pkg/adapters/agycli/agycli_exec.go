@@ -393,7 +393,7 @@ func (a *AgyCLIAdapter) generateContentExec(ctx context.Context, messages []llmt
 		}
 		baseEnv = append(filtered, "HOME="+home)
 	}
-	cmd.Env = llmtypes.MergeCodingAgentSecretEnvironment(baseEnv, opts)
+	cmd.Env = agyAccountEnv(llmtypes.MergeCodingAgentSecretEnvironment(baseEnv, opts), opts)
 	if privateHome != "" && agyStringMetadata(opts, agyTestOnlyMetadataKeyHomeOverride) == "" {
 		cmd.Env = agyPinHome(cmd.Env, privateHome)
 	}

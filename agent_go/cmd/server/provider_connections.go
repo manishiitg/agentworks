@@ -185,7 +185,7 @@ func connectionCredentialKeys(record storedProviderConnection) (*llm.ProviderAPI
 			return nil, fmt.Errorf("isolated browser login is unavailable for this provider; use a token or API key")
 		}
 		empty := ""
-		return &llm.ProviderAPIKeys{ClaudeCodeOAuthToken: &empty, CodexCLI: &empty, CursorCLI: &empty, MuseCLI: &empty}, nil
+		return &llm.ProviderAPIKeys{ClaudeCodeOAuthToken: &empty, CodexCLI: &empty, CursorCLI: &empty, MuseCLI: &empty, AgyCLI: &empty}, nil
 	}
 	if strings.TrimSpace(record.Credential) == "" {
 		return nil, fmt.Errorf("provider connection needs authentication")
@@ -200,6 +200,8 @@ func connectionCredentialKeys(record storedProviderConnection) (*llm.ProviderAPI
 		keys.CursorCLI = &record.Credential
 	case "muse-cli":
 		keys.MuseCLI = &record.Credential
+	case "agy-cli":
+		keys.AgyCLI = &record.Credential
 	case "pi-cli":
 		if record.UnderlyingProvider == "" {
 			return nil, fmt.Errorf("Pi connection requires an underlying provider")
@@ -400,7 +402,7 @@ func providerConnectionSetupEnvironment(label string, keys *llm.ProviderAPIKeys,
 	opts := &llmtypes.CallOptions{}
 	llmtypes.WithProviderAccountEnvironment(keys.RuntimeEnvironment)(opts)
 	env = llmtypes.MergeCodingAgentSecretEnvironment(env, opts)
-	for name, value := range map[string]*string{"CLAUDE_CODE_OAUTH_TOKEN": keys.ClaudeCodeOAuthToken, "CODEX_API_KEY": keys.CodexCLI, "CURSOR_API_KEY": keys.CursorCLI, "META_API_KEY": keys.MuseCLI} {
+	for name, value := range map[string]*string{"CLAUDE_CODE_OAUTH_TOKEN": keys.ClaudeCodeOAuthToken, "CODEX_API_KEY": keys.CodexCLI, "CURSOR_API_KEY": keys.CursorCLI, "META_API_KEY": keys.MuseCLI, "GEMINI_API_KEY": keys.AgyCLI} {
 		if value != nil && *value != "" {
 			env = append(env, name+"="+*value)
 		}
@@ -414,7 +416,7 @@ func providerConnectionSetupEnvironment(label string, keys *llm.ProviderAPIKeys,
 // for the account never touches the server's own login.
 func providerSupportsPrivateCLILogin(provider string) bool {
 	switch provider {
-	case "claude-code", "codex-cli", "cursor-cli", "muse-cli":
+	case "claude-code", "codex-cli", "cursor-cli", "muse-cli", "agy-cli":
 		return true
 	}
 	return false

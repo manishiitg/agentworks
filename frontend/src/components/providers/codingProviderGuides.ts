@@ -19,7 +19,7 @@ export const CODING_PROVIDER_GUIDES: Record<string, CodingProviderGuide> = {
     authenticateNote: 'Complete the guided Muse sign-in. No SSH or direct server access is required. META_API_KEY is also supported for managed environments.',
   },
   'agy-cli': {
-    authenticateNote: 'Launch the guided Antigravity window and complete Google sign-in. No SSH or direct server access is required.',
+    authenticateNote: 'Open the Google link the window shows, sign in, then paste the code from the Antigravity page into the window. Works from any device.',
   },
 }
 

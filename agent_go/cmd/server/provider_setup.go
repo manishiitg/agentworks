@@ -22,6 +22,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/manishiitg/mcpagent/llm"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/claudeauth"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/cursorauth"
@@ -83,9 +84,9 @@ var providerSetupCommands = map[string]map[string]providerSetupCommand{
 		"inspect":      {command: "muse", args: []string{"--disable-shell", "--disable-write"}},
 	},
 	"agy-cli": {
-		// agy has no login subcommand: Google sign-in completes inside the
-		// TUI, so authenticate opens the bare CLI like pi.
-		"authenticate": {command: "agy"},
+		// `agy acp --login` prints a Google link and reads the code the Antigravity page shows, like Codex's
+		// device login: it works from any device, with no browser on this machine.
+		"authenticate": {command: "agy", args: []string{"acp", "--login"}},
 		"inspect":      {command: "agy", args: []string{"--sandbox"}},
 	},
 }
@@ -613,6 +614,11 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 		}
 		accountOwner = record.OwnerUserID
 		environment = providerConnectionSetupEnvironment(providerConnectionEnvLabel(request.Provider, request.ConnectionID), keys)
+		if request.Provider == "agy-cli" {
+			// The account's Google sign-in goes to a file in its own home, never the system keychain that every
+			// account would share (agycli.agyAccountEnv does the same for its turns).
+			environment = append(environment, "SSH_CONNECTION="+agycli.AgyFileLoginSSHConnection, "AGY_ACP_FORCE_FILE_STORAGE=1")
+		}
 	} else if !admin {
 		// The server account: signing it in or inspecting it is admin-only.
 		writeWorkflowPermissionDenied(w, "admin")

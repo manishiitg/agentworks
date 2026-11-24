@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/manishiitg/multi-llm-provider-go/internal/slotfs"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -20,11 +21,56 @@ func agyIsolatedHome(servers []agyMCPServer, workingDirs ...string) (string, fun
 	return agyIsolatedHomeWithConversations(servers, "", workingDirs...)
 }
 
+// agyLogin is where one run's agy signs in from: the account's own HOME (its Google sign-in, saved there as a file)
+// or the server's, and whether it runs on a Gemini key instead.
+type agyLogin struct {
+	home    string
+	keyMode bool
+}
+
+// agyLoginFor reads the run's account. An account carries its own HOME and, for a key account, its own
+// GEMINI_API_KEY; an account signed in with Google never falls back to the server's key. Without an account the
+// server's home and environment decide, as before.
+func agyLoginFor(opts *llmtypes.CallOptions) agyLogin {
+	if home := strings.TrimSpace(llmtypes.ProviderAccountEnvironment(opts)["HOME"]); home != "" {
+		return agyLogin{home: home, keyMode: strings.TrimSpace(llmtypes.ProviderAccountCredentialValue(opts, "GEMINI_API_KEY")) != ""}
+	}
+	return agyLogin{keyMode: os.Getenv("GEMINI_API_KEY") != ""}
+}
+
+// agyAccountEnv makes an account's agy keep its Google sign-in in a file in that account's home. agy 1.5 otherwise
+// keeps every Google sign-in in one system keychain entry, so two accounts would share one login; it writes the file
+// only when it believes it runs over SSH (the same settings T3 Code uses).
+func agyAccountEnv(env []string, opts *llmtypes.CallOptions) []string {
+	if agyLoginFor(opts).home == "" {
+		return env
+	}
+	out := make([]string, 0, len(env)+2)
+	ssh := ""
+	for _, entry := range env {
+		if strings.HasPrefix(entry, "AGY_ACP_FORCE_FILE_STORAGE=") {
+			continue
+		}
+		if value, ok := strings.CutPrefix(entry, "SSH_CONNECTION="); ok {
+			ssh = value
+			continue
+		}
+		out = append(out, entry)
+	}
+	if ssh == "" {
+		ssh = AgyFileLoginSSHConnection
+	}
+	return append(out, "SSH_CONNECTION="+ssh, "AGY_ACP_FORCE_FILE_STORAGE=1")
+}
+
+// AgyFileLoginSSHConnection is the SSH_CONNECTION value that makes agy keep its Google sign-in in a file.
+const AgyFileLoginSSHConnection = "127.0.0.1 0 127.0.0.1 0"
+
 // Confined runs persist only in the chat's durable private home. Linking to
 // the server conversation directory would leave the kernel refusing SQLite
 // writes; granting that shared directory would expose other chats.
 func agyIsolatedHomeForCall(servers []agyMCPServer, workingDir string, opts *llmtypes.CallOptions) (string, func(), error) {
-	return agyIsolatedHomeWithConversations(servers, agyTranscriptHome(opts), workingDir)
+	return agyIsolatedHomeIn(servers, agyTranscriptHome(opts), agyLoginFor(opts), workingDir)
 }
 
 func agyTranscriptHome(opts *llmtypes.CallOptions) string {
@@ -43,9 +89,17 @@ func agyHome(accountHome ...string) (string, error) {
 }
 
 func agyIsolatedHomeWithConversations(servers []agyMCPServer, conversationHome string, workingDirs ...string) (string, func(), error) {
+	return agyIsolatedHomeIn(servers, conversationHome, agyLogin{keyMode: os.Getenv("GEMINI_API_KEY") != ""}, workingDirs...)
+}
+
+func agyIsolatedHomeIn(servers []agyMCPServer, conversationHome string, login agyLogin, workingDirs ...string) (string, func(), error) {
 	base, err := os.UserHomeDir()
 	if err != nil {
 		return "", nil, err
+	}
+	loginHome := base
+	if login.home != "" {
+		loginHome = login.home
 	}
 	agyPrivateHomesSweepOnce.Do(agySweepStalePrivateHomes)
 	// A run as a person's slot keeps its per-run home inside that slot's own private home: one in the app's temp
@@ -68,11 +122,12 @@ func agyIsolatedHomeWithConversations(servers []agyMCPServer, conversationHome s
 		cleanup()
 		return "", nil, err
 	}
-	baseGemini := filepath.Join(base, ".gemini")
+	baseGemini := filepath.Join(loginHome, ".gemini")
 	privateGemini := filepath.Join(home, ".gemini")
 	// Copy account metadata and settings, but never the global MCP catalogue.
 	// AGY may keep login metadata in either config or antigravity-cli.
-	for _, subdir := range []string{"config", "antigravity-cli"} {
+	// A file Google sign-in (an account's) is under antigravity-acp.
+	for _, subdir := range []string{"config", "antigravity-cli", "antigravity-acp"} {
 		if err := agyCopyHomeTree(filepath.Join(baseGemini, subdir), filepath.Join(privateGemini, subdir), map[string]bool{
 			"mcp_config.json": true, "mcp": true, "conversations": true,
 			// Each private home creates its own conversation index. Copying
@@ -122,8 +177,11 @@ func agyIsolatedHomeWithConversations(servers []agyMCPServer, conversationHome s
 	delete(settings, "statusLine")
 	// A supplied key opts this private run into Gemini API mode. This changes
 	// only the private copy; the user's global login settings stay untouched.
-	if os.Getenv("GEMINI_API_KEY") != "" {
+	if login.keyMode {
 		settings["modelProvider"] = "gemini"
+	} else if login.home != "" && settings["modelProvider"] == "gemini" {
+		// An account signed in with Google runs on that sign-in, never on a key mode left in its settings.
+		delete(settings, "modelProvider")
 	}
 	if len(workingDirs) > 0 && workingDirs[0] != "" {
 		trusted, _ := settings["trustedWorkspaces"].([]interface{})

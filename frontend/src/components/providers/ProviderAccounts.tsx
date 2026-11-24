@@ -31,6 +31,8 @@ import { desktopRequest, type DesktopConnection } from '../../services/desktopCo
 
 // Providers with a browser login the server can sign out (the CLI's own logout).
 const SIGN_OUT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'])
+// Programs whose own sign-in an account keeps in its private home (Antigravity: a Google sign-in).
+const BROWSER_LOGIN_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli', 'agy-cli'])
 // Programs a person can sign in once on the server: the server keeps the login, and their Mac and online agents both
 // use it (PLAT-856-441).
 const SERVER_LOGIN_PROVIDERS = new Set(['codex-cli'])
@@ -134,7 +136,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   // most people want, so it is the default. An API key stays one choice away.
   // On a server, a program that can sign in once there defaults to that: one login for this server, the Mac and online agents.
   const serverLoginChoice = SERVER_LOGIN_PROVIDERS.has(provider) && window.electronAPI?.getDesktopConnection?.() !== 'local'
-  const defaultAuthMethod = serverLoginChoice ? 'server_login' : ['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'].includes(provider) ? 'cli_login' : 'api_key'
+  const defaultAuthMethod = serverLoginChoice ? 'server_login' : BROWSER_LOGIN_PROVIDERS.has(provider) ? 'cli_login' : 'api_key'
   const [authMethod, setAuthMethod] = useState(defaultAuthMethod)
   const [session, setSession] = useState<ProviderSetupSession | null>(null)
   const [sessionRowId, setSessionRowId] = useState<string | null>(null)
@@ -694,7 +696,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
         <button disabled={busy} type="button" aria-label="Cancel account form" className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800" onClick={cancel}><X className="h-4 w-4" /></button>
       </div>
       <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Account name<input required maxLength={120} placeholder="e.g. Personal account" value={name} onChange={event => setName(event.target.value)} className={inputClass} /></label>
-      {!editingId && ['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'].includes(provider) && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Authentication<select value={authMethod} onChange={event => { setAuthMethod(event.target.value); setCredential('') }} className={inputClass}>{serverLoginChoice && <option value="server_login">Sign in once on this server (works on your Mac and online)</option>}<option value="cli_login">{serverLoginChoice ? 'Browser login on this server only' : 'Browser login (sign in with your own account)'}</option><option value="api_key">API key</option></select></label>}
+      {!editingId && BROWSER_LOGIN_PROVIDERS.has(provider) && <label className="block text-xs font-medium text-foreground">Authentication<select value={authMethod} onChange={event => { setAuthMethod(event.target.value); setCredential('') }} className={inputClass}>{serverLoginChoice && <option value="server_login">Sign in once on this server (works on your Mac and online)</option>}<option value="cli_login">{serverLoginChoice ? 'Browser login on this server only' : 'Browser login (sign in with your own account)'}</option><option value="api_key">API key</option></select></label>}
       {authMethod === 'server_login' && <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">You sign in once with a link and a code. This server keeps the login: your online agents use it, and so does the Mac app when it is connected here. Uses your own plan, not API billing. Only you can use it.</p>}
       {authMethod !== 'cli_login' && authMethod !== 'server_login' && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">{provider === 'claude-code' ? 'Claude Code OAuth token' : 'API key'}<input required={!editingId} type="password" placeholder={editingId ? 'Leave blank to keep current credential' : 'Paste your credential'} autoComplete="new-password" value={credential} onChange={event => setCredential(event.target.value)} className={inputClass} /></label>}
       {provider === 'claude-code' && authMethod !== 'cli_login' && <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">Generate a token with <code className="rounded bg-gray-100 px-1 py-0.5 dark:bg-gray-800">claude setup-token</code> for the account you want to add.</p>}
