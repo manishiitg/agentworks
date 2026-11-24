@@ -262,7 +262,11 @@ func (r *serverVaultSecretRound) get(key string, fetch func() ([]byte, string)) 
 		return answer.body, answer.result
 	}
 	body, result := fetch()
-	r.answers[key] = serverVaultSecretAnswer{body: body, result: result}
+	// A found or refused secret is the server's answer for this message; an unreachable server or an expired sign-in
+	// may recover, so the next lookup asks again.
+	if result == "ok" || result == "refused" {
+		r.answers[key] = serverVaultSecretAnswer{body: body, result: result}
+	}
 	return body, result
 }
 
