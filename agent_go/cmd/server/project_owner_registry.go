@@ -104,10 +104,22 @@ type projectOwnerRegistry struct {
 	// dir is the registry directory; empty means "no state area": lookups find nothing, writes fail loudly.
 	dir string
 
-	mu     sync.Mutex
-	cached map[string]projectOwnerRecord
-	stamp  fileStamp
+	mu        sync.Mutex
+	cached    map[string]projectOwnerRecord
+	stamp     fileStamp
+	checkedAt time.Time // last time the file's stamp was compared
 }
+
+// projectOwnerStatLife is how long a cached registry is trusted without re-checking the file. This process's own
+// writes drop the cache at once (modify); another process's write (the migration command) shows within this time.
+// The per-call Lstat was ~16% of agent CPU on a server CPU profile (#2989). Tests edit the file directly and
+// read it back at once, so they re-check on every read.
+var projectOwnerStatLife = func() time.Duration {
+	if testing.Testing() {
+		return 0
+	}
+	return time.Second
+}()
 
 type fileStamp struct {
 	size  int64
@@ -155,6 +167,13 @@ func (r *projectOwnerRegistry) load() (map[string]projectOwnerRecord, error) {
 	if r == nil || r.dir == "" {
 		return map[string]projectOwnerRecord{}, nil
 	}
+	r.mu.Lock()
+	if r.cached != nil && time.Since(r.checkedAt) < projectOwnerStatLife {
+		cached := r.cached
+		r.mu.Unlock()
+		return cached, nil
+	}
+	r.mu.Unlock()
 	info, err := os.Lstat(r.path())
 	switch {
 	case errors.Is(err, os.ErrNotExist):
@@ -168,6 +187,7 @@ func (r *projectOwnerRegistry) load() (map[string]projectOwnerRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.cached != nil && r.stamp == stamp {
+		r.checkedAt = time.Now()
 		return r.cached, nil
 	}
 	raw, err := os.ReadFile(r.path())
@@ -181,7 +201,7 @@ func (r *projectOwnerRegistry) load() (map[string]projectOwnerRecord, error) {
 	if file.Projects == nil {
 		file.Projects = map[string]projectOwnerRecord{}
 	}
-	r.cached, r.stamp = file.Projects, stamp
+	r.cached, r.stamp, r.checkedAt = file.Projects, stamp, time.Now()
 	return file.Projects, nil
 }
 
