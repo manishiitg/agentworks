@@ -144,7 +144,7 @@ import { isMainAgentTerminal } from '../utils/terminalIdentity'
 import { loadProfileAtFiles } from '../utils/profileAtFiles'
 import { proxyCrewFileClient, sharedCrewFileClient } from '../products/work/sharedCrewFiles'
 import { chatSendMessageEvent } from '../products/work/ChatContextItems'
-import { PlanModeChip, PlanStartBar } from './chat/PlanModeControls'
+import { PlanModeTag, PlanStartBar } from './chat/PlanModeControls'
 import { isPlanToggleKey, PLAN_START_MESSAGE, planNeedsStartButton } from '../utils/planMode'
 
 // The person's chat/terminal choice for this tab. Not remembered: every
@@ -2964,7 +2964,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             <span className="truncate rounded border border-border bg-muted px-2 py-1" title={requestedSkill ? `${requestedSkill.description} · ${requestedSkill.source}` : nativeSkillCatalog.error || nativeSkillCatalog.catalog.message}>Skill requested: {requestedSkill?.name || (nativeSkillCatalog.loading ? 'Loading…' : 'unavailable — refresh Skills')}</span>
             <button type="button" aria-label="Remove requested skill" onClick={() => activeTabId && setTabConfig(activeTabId, { requestedSkillId: undefined })}><X size={14} /></button>
           </div>}
-          {planOn && tabConfig?.planAwaitingStart && !isTurnInFlight && planNeedsStartButton(effectiveProviderForSteer) && <PlanStartBar onStart={startPlannedWork} />}
+          {planOn && tabConfig?.planAwaitingStart && !isTurnInFlight && !pendingNativeChoice && planNeedsStartButton(effectiveProviderForSteer) && <PlanStartBar onStart={startPlannedWork} />}
           {tabSessionId && activeTabId && !isViewOnly && <Suspense fallback={null}><DurableChatQueue ref={durableQueueRef} key={tabSessionId} sessionId={tabSessionId} tabId={activeTabId} busy={isTurnInFlight} canEdit={!queryToSubmit.trim() && !requestedSkillId && !isUploadingFiles} onEdit={restoreQueuedDraft} /></Suspense>}
         </>}>
             {uploadingFiles && uploadingFiles.tabId === activeTabId && <UploadingAttachments files={uploadingFiles.files} />}
@@ -3073,6 +3073,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   uploading={isUploadingFiles}
                   onAttach={openAttachmentPicker}
                   commands={commandPreview}
+                  planMode={nativePlanSupported ? { on: planOn, onToggle: togglePlanMode } : undefined}
                   onOpenChange={setSendOptionsOpen}
                   sendOptions={{
                     busy: isStreaming || transcriptTurnActive,
@@ -3442,6 +3443,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       busy={isTurnInFlight}
                       actions={{ uploading: isUploadingFiles, onAttach: openAttachmentPicker,
                         commands: commandPreview,
+                        planMode: nativePlanSupported ? { on: planOn, onToggle: togglePlanMode } : undefined,
                         onOpenChange: setSendOptionsOpen,
                         // New chat in the Context section starts over; no second Clear chat here.
                         sendOptions: { busy: isStreaming || transcriptTurnActive, backgroundWork },
@@ -3449,7 +3451,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     : label
                 })()}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
-                {nativePlanSupported && <PlanModeChip on={planOn} onToggle={togglePlanMode} />}
+                {/* Plan first shows only while on; Shift+Tab, /plan or the chat menu turn it on (#3711). */}
+                {planOn && <PlanModeTag onToggle={togglePlanMode} />}
                 {agentProfileId === 'work' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
                 <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID
