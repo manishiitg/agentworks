@@ -32,14 +32,14 @@ import { TeamInvites } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
 import { SidebarAgentLayout, SidebarCrewAgents, SidebarHiddenAgents } from './SidebarCrewAgents'
 import { sidebarAgentDisclosureClass, sidebarAgentListClass } from './sidebarAgentLayout'
-import { ChevronRight, Folder, Laptop, Pin, Search } from 'lucide-react'
+import { ChevronRight, Folder, Pin, Search } from 'lucide-react'
 import { mostInTeam } from '../chat/AgentInTeamMark'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import { hasActiveSessionWork } from '../../utils/activitySessions'
 import { useChatStore } from '../../stores/useChatStore'
 import { useShallow } from 'zustand/react/shallow'
-import { isSharedProject, matchesMenuFilter, useMenuFilter } from './ProjectFilter'
+import { isSharedProject, useMenuFilter } from './ProjectFilter'
 
 
 type SidebarProject = { team_live?: TeamLiveView; id: string; name: string; shared_line?: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number } & CrewLocationFields
@@ -91,11 +91,7 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
   const directoryError = desktop && current ? state.error : ''
   const { pinned, recent, canPin, setPinned, movePinned } = useWorkHistory()
   const [query, setQuery] = useState('')
-  const { filter, network, pick, error: filterError } = useMenuFilter(Boolean(directory))
-  // One tab per place (owner, 24 Nov): All, this Mac and each network. The tab is a personal presentation preference,
-  // never a connection or access change; with a single place there are no tabs.
-  const tabbed = desktop && connections.length > 1
-  const locationId = tabbed && connections.some(connection => connection.id === network) ? network : 'all'
+  const { error: filterError } = useMenuFilter(Boolean(directory))
   const open = (project: typeof rows[number]) => {
     if (project.connection.id === active) {
       openSidebarProject(project.kind, project.id)
@@ -180,57 +176,51 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
     </div>
   }
 
-  const locations = connections.filter(connection => locationId === 'all' || connection.id === locationId)
-  const includesActive = locations.some(connection => connection.id === active)
+  // A simple Projects page (owner, 24 Nov: "a simplified ui… something better"): two groups, yours and shared with
+  // you, one grey line per row, and no place tabs or ownership chips. Where a project lives shows in its line.
   const normalizedQuery = query.trim().toLocaleLowerCase()
-  const matching = rows.filter(row => row.name.toLocaleLowerCase().includes(normalizedQuery) && matchesMenuFilter(filter, row))
-  const shown = matching.filter(row => locationId === 'all' || row.connection.id === locationId)
-  const placeName = (connection: DesktopConnection) => desktop ? (connection.id === 'local' ? 'On your Mac' : connection.name) : 'On this server'
-  const sections = locations.map(connection => ({
-    connection,
-    name: placeName(connection),
-    projects: shown.filter(row => row.connection.id === connection.id),
-  }))
-  // A network's dot: green when connected, amber when it can't be reached or needs a sign-in, grey while connecting.
-  const placeStatus = (connection: DesktopConnection) => connection.id === active || connection.id === 'local' ? 'connected' : inventory[connection.id]?.status === 'connected' ? 'connected' : inventory[connection.id]?.status ? 'trouble' : 'loading'
-  const tabs = [{ id: 'all', name: 'All', count: matching.length, status: 'connected', dot: false }, ...connections.map(connection => ({
-    id: connection.id, name: placeName(connection), count: matching.filter(row => row.connection.id === connection.id).length,
-    status: placeStatus(connection), dot: connection.id !== 'local' && connection.id !== active,
-  }))]
-  return <div aria-label="Project directory" className="space-y-3">
-    <div className="flex items-center gap-2">
-      <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-card px-3 focus-within:ring-2 focus-within:ring-ring">
-        <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <input type="search" aria-label="Search projects" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search projects…" className="h-9 min-w-0 flex-1 bg-transparent text-sm outline-none" />
-      </label>
-    </div>
-    {tabbed && <div role="tablist" aria-label="Project locations" className="flex gap-1 overflow-x-auto border-b border-border">
-      {tabs.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={locationId === tab.id} onClick={() => pick(filter, tab.id)}
-        className={`flex min-h-9 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 text-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${locationId === tab.id ? 'border-primary font-semibold text-foreground' : 'border-transparent text-muted-foreground'}`}>
-        {tab.dot && <span role="img" aria-label={tab.status === 'connected' ? 'Connected' : tab.status === 'trouble' ? 'Unavailable' : 'Connecting'} className={`h-1.5 w-1.5 shrink-0 rounded-full ${tab.status === 'connected' ? 'bg-emerald-500' : tab.status === 'trouble' ? 'bg-amber-500' : 'bg-muted-foreground'}`} />}
-        {tab.name}{tab.status === 'connected' && <span className="text-xs font-normal text-muted-foreground">{tab.count}</span>}
-      </button>)}
-    </div>}
-    <div role="group" aria-label="Project ownership" className="flex gap-1.5">
-      {([['all', 'All'], ['mine', 'Mine'], ['shared', 'Shared with me']] as const).map(([id, label]) =>
-        <button key={id} type="button" aria-pressed={filter === id} onClick={() => pick(id)}
-          className={`rounded-full border border-border px-2.5 py-0.5 text-xs hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filter === id ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'}`}>{label}</button>)}
-    </div>
-    {sections.filter(section => section.projects.length > 0).map(section => <section key={section.connection.id} aria-label={section.name}>
-      {locations.length > 1 && <h2 className="flex items-center gap-1.5 px-1 pb-1.5 text-xs font-medium text-muted-foreground">{section.name} <span>· {section.projects.length}</span></h2>}
+  const ownLocalNames = new Set(rows.filter(row => row.connection.id === active && !isSharedProject(row)).map(row => row.name.toLocaleLowerCase()))
+  // A Mac project's own online copy is the same project to its owner: list it once, as the Mac one.
+  const listed = rows.filter(row => row.connection.id === active || isSharedProject(row) || !ownLocalNames.has(row.name.toLocaleLowerCase()))
+  const recentOrder = new Map((recent ?? []).map((key, index) => [key, index]))
+  const byRecent = (a: typeof rows[number], b: typeof rows[number]) =>
+    (recentOrder.get(keyFor(a)) ?? Infinity) - (recentOrder.get(keyFor(b)) ?? Infinity) || a.name.localeCompare(b.name)
+  const shown = listed.filter(row => row.name.toLocaleLowerCase().includes(normalizedQuery)).sort(byRecent)
+  const placeName = (connection: DesktopConnection) => connection.id === 'local' ? '' : connection.name
+  const groups = [
+    { id: 'yours', name: 'Yours', projects: shown.filter(row => !isSharedProject(row)) },
+    { id: 'shared', name: 'Shared with you', projects: shown.filter(row => isSharedProject(row)) },
+  ]
+  const lineFor = (project: typeof rows[number]) => {
+    const network = project.team_live?.network?.trim() || placeName(project.connection)
+    if (isSharedProject(project)) {
+      const by = project.owner_name?.trim() || project.shared_line?.replace(/^Shared by\s+/, '').split(' · ')[0]?.trim() || ''
+      const theirMac = project.shared_line?.includes('On their Mac') ? 'their Mac' : ''
+      return [by, project.team_live ? 'Team member' : '', theirMac, network].filter(Boolean).join(' · ')
+    }
+    return project.team_live ? ['Team', network].filter(Boolean).join(' · ') : network
+  }
+  const unavailable = connections.filter(connection => connection.id !== active && inventory[connection.id]?.status && inventory[connection.id]?.status !== 'connected')
+  const loadingPlaces = connections.filter(connection => connection.id !== active && !inventory[connection.id]?.status)
+  return <div aria-label="Project directory" className="space-y-4">
+    <label className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-card px-3 focus-within:ring-2 focus-within:ring-ring">
+      <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <input type="search" aria-label="Search projects" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search projects…" className="h-9 min-w-0 flex-1 bg-transparent text-sm outline-none" />
+    </label>
+    {groups.filter(group => group.projects.length > 0).map(group => <section key={group.id} aria-label={group.name}>
+      <h2 className="px-1 pb-1.5 text-xs font-medium text-muted-foreground">{group.name} <span>· {group.projects.length}</span></h2>
       <ul className="rounded-lg border border-border bg-card text-card-foreground">
-        {section.projects.map(project => {
+        {group.projects.map(project => {
           const key = keyFor(project)
           const pinned = pinnedKeys.has(key)
-          const shared = isSharedProject(project)
+          const detail = lineFor(project)
           const macStatus = project.where === 'mac'
             ? [project.mac?.name || 'On a Mac', project.mac?.online === false ? 'Mac off' : macCrewStateText(project.state)].filter(Boolean).join(' · ')
             : ''
           return <li key={key} data-theme-row="project" className="group/crew flex min-h-9 items-center gap-1 rounded-md px-1 hover:bg-muted max-md:min-h-11">
             <button type="button" title={project.name} onClick={() => open(project)} className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{project.name}</span>
-              {macStatus && <span role="img" aria-label={macStatus} title={macStatus} className="shrink-0 text-muted-foreground"><Laptop aria-hidden="true" className="h-3.5 w-3.5" /></span>}
-              {shared && <span title={project.shared_line} className="shrink-0 text-xs text-muted-foreground">Shared</span>}
+              {detail && <span title={[detail, macStatus].filter(Boolean).join(' · ')} className="min-w-0 max-w-[55%] shrink truncate text-xs text-muted-foreground">{detail}</span>}
             </button>
             {canPin && <button type="button" onClick={() => setPinned(key, !pinned)} title={pinned ? 'Unpin from sidebar' : 'Pin to sidebar'} aria-pressed={pinned} aria-label={`${pinned ? 'Unpin' : 'Pin'} ${project.name}`}
               className={`grid h-8 w-8 shrink-0 place-items-center rounded-md hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-10 max-md:w-10 ${pinned ? 'text-primary' : 'text-muted-foreground [@media(hover:hover)]:opacity-0 group-hover/crew:opacity-100 group-focus-within/crew:opacity-100'}`}>
@@ -241,19 +231,15 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
         })}
       </ul>
     </section>)}
-    {includesActive && children}
-    {locations.filter(connection => connection.id !== active).map(connection => {
-      const status = inventory[connection.id]?.status
-      if (!status) return <p key={connection.id} role="status" className="text-sm text-muted-foreground">Loading {connection.name}…</p>
-      if (status === 'unavailable') return <button key={connection.id} type="button" className="text-sm text-muted-foreground underline" onClick={() => void state.refresh(true)}>{connection.name} unavailable · Retry</button>
-      if (status === 'sign_in') return <button key={connection.id} type="button" className="text-sm text-muted-foreground underline" onClick={() => openConnectedServers(connection.server)}>{connection.name} · Sign in again</button>
-      return null
-    })}
-    {!shown.length && (!includesActive || !children) && locations.every(connection => connection.id === active || inventory[connection.id]?.status === 'connected') &&
+    {children}
+    {loadingPlaces.length > 0 && <p role="status" className="text-xs text-muted-foreground">Loading {loadingPlaces.map(connection => connection.name).join(', ')}…</p>}
+    {unavailable.map(connection => inventory[connection.id]?.status === 'sign_in'
+      ? <button key={connection.id} type="button" className="block text-xs text-muted-foreground underline" onClick={() => openConnectedServers(connection.server)}>{connection.name} · Sign in again</button>
+      : <button key={connection.id} type="button" className="block text-xs text-muted-foreground underline" onClick={() => void state.refresh(true)}>{connection.name} unavailable · Retry</button>)}
+    {!shown.length && !children && loadingPlaces.length === 0 &&
       <div className="space-y-2 rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
-        <p>{normalizedQuery || filter !== 'all' ? 'No matching projects.' : locationId !== 'all' ? `No projects on ${placeName(locations[0])} yet.` : 'No projects here yet.'}</p>
-        {(normalizedQuery || filter !== 'all') &&
-          <button type="button" className="underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => { setQuery(''); pick('all') }}>Clear search and filters</button>}
+        <p>{normalizedQuery ? 'No matching projects.' : 'No projects yet.'}</p>
+        {normalizedQuery && <button type="button" className="underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setQuery('')}>Clear search</button>}
       </div>}
     {(directoryError || filterError) && <p role="alert" className="text-sm text-destructive">{directoryError || filterError}</p>}
   </div>
