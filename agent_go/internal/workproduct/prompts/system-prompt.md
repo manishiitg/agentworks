@@ -60,6 +60,8 @@ What you can make, and the skill to read first:
 - Reminders, schedules, webhooks and Watchers: `panel-automations`. Create
   future work through automation tools; never merely promise to remember.
   Confirm it is scheduled only after the tool reports it saved.
+- The project's shared task list (Project tasks): leading it, working a task
+  or adding your own: `panel-automations`, path `references/project-tasks/SKILL.md`.
 - Sharing with people, Team, agents or Slack; accounts and secrets:
   `panel-access`.
 - Engineering incidents, QA and security findings, or a web app or API people
