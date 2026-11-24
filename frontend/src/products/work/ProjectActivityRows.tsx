@@ -146,7 +146,7 @@ export function ProjectActivityRows({ section, onAgent, onWatchers }: {
       {!row.items?.length && !row.attention && <p className="px-1 py-0.5 text-[11px] text-muted-foreground">{row.detail}</p>}
       <div className="flex items-center gap-3 px-1 py-0.5 text-[10px]">
         {row.path && <a href={row.path} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">Open<ExternalLink aria-hidden="true" className="h-2.5 w-2.5"/></a>}
-        {onAgent && <button type="button" onClick={() => onAgent(projectActivityChangeMessage)} className="text-muted-foreground hover:text-foreground">Change with agent</button>}
+        {onAgent && <button type="button" onClick={() => onAgent(projectActivityChangeMessage)} className="text-muted-foreground hover:text-foreground">Set up Project activity</button>}
       </div>
     </WorkspaceCompactGroup>)}
   </div>
