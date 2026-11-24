@@ -64,8 +64,19 @@ func TestUIEventsBeforeKeepsEarlierRows(t *testing.T) {
 		{ID: "edited", Type: "user_message", Timestamp: cutoff},
 		{ID: "later", Type: "agent_reply", Timestamp: cutoff.Add(time.Minute)},
 	}
-	kept, ok := uiEventsBefore(events, cutoff).([]storeevents.Event)
+	kept, ok := uiEventsBefore(events, 0, cutoff).([]storeevents.Event)
 	if !ok || len(kept) != 1 || kept[0].ID != "old" {
 		t.Fatalf("kept=%v", kept)
+	}
+	// A sequence wins over the clock: a late-stamped earlier row stays, an early-stamped later row goes.
+	sequenced := []storeevents.Event{
+		{ID: "earlier", Sequence: 4, Timestamp: cutoff.Add(time.Hour)},
+		{ID: "edited", Sequence: 5, Timestamp: cutoff},
+		{ID: "after", Sequence: 6, Timestamp: cutoff.Add(-time.Hour)},
+		{ID: "unsequenced", Timestamp: cutoff.Add(-time.Minute)},
+	}
+	kept, _ = uiEventsBefore(sequenced, 5, cutoff).([]storeevents.Event)
+	if len(kept) != 2 || kept[0].ID != "earlier" || kept[1].ID != "unsequenced" {
+		t.Fatalf("by sequence kept=%v", kept)
 	}
 }
