@@ -14,6 +14,14 @@ test('PLAT-746-1008 explicit skill occupies the last text block without losing i
   assert.deepEqual(blocks.at(-1), { type: 'text', text: '/review\nInspect this image' });
 });
 
+test('#3189 an attached PDF is a document block and images stay image blocks', () => {
+  const { sdkUserContent } = require('./claude_sdk_bridge.cjs');
+  const blocks = sdkUserContent({ text: 'Summarise these', images: [{ mediaType: 'application/pdf', data: 'pdf' }, { mediaType: 'image/png', data: 'pixels' }] });
+  assert.deepEqual(blocks[0], { type: 'text', text: 'Summarise these' });
+  assert.deepEqual(blocks[1], { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'pdf' } });
+  assert.equal(blocks[2].type, 'image');
+});
+
 test('PLAT-872 native helper bookends ignore shell/ambient tasks and late runs', () => {
   const events = [], tracker = createHelperTracker(event => events.push(event.helper));
   const system = (subtype, extra) => tracker.observe({ type: 'system', subtype, ...extra });

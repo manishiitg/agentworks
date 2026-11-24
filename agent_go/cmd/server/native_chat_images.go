@@ -185,6 +185,19 @@ func (api *StreamingAPI) withNativeChatImages(ctx context.Context, user, session
 		if ref.User != user || ref.Session != session || ref.Conversation != req.AgentProfileConversationKey {
 			continue
 		}
+		if nativeChatDocumentPath(ref.Path) {
+			if unavailable || !nativeChatDocumentsSupported(provider) {
+				continue // the saved path in the message reaches every program
+			}
+			if ref.Bytes <= 0 || ref.Bytes > nativeChatImageMaxBytes || sourceBytes+ref.Bytes > nativeChatTurnImageMaxBytes || len(inputs) >= 16 {
+				api.recordChatImageNotice(session, "A PDF was too large to send directly. Its file path is still available.")
+				log.Printf("[CHAT_DOCUMENT] session=%s provider=%s documents=1 bytes=%d native=false action=skipped reason=document_limit", session, provider, ref.Bytes)
+				continue
+			}
+			sourceBytes += ref.Bytes
+			inputs = append(inputs, api.nativeChatDocumentInput(ctx, session, provider, ref))
+			continue
+		}
 		if !nativeChatImagePath(ref.Path) {
 			switch strings.ToLower(filepath.Ext(ref.Path)) {
 			case ".heic", ".heif", ".bmp", ".avif":
