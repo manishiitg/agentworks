@@ -150,7 +150,9 @@ func (api *StreamingAPI) withServerVaultInventory(ctx context.Context, lender, s
 	}
 	endSpeedSpan := events.TurnSpeedSpan(sessionID, "vault_list")
 	var rows []vaultRuntimeServer
-	if early := takeServerVaultPrefetch(serverVaultPrefetchKey(lender, sessionID, p.conn.ID)); early != nil {
+	early := takeServerVaultPrefetch(serverVaultPrefetchKey(lender, sessionID, p.conn.ID))
+	log.Printf("[VAULT_REMOTE] user=%s conn=%s tool=list early=%t session=%s", lender, serverVaultConnShort(p.conn.ID), early != nil, sessionID)
+	if early != nil {
 		select {
 		case <-early.done:
 			rows, err = early.rows, early.err
@@ -189,11 +191,15 @@ func serverVaultPrefetchKey(lender, sessionID, connID string) string {
 }
 
 // prefetchServerVaultInventory starts the turn's Vault list for the same person scopeAgentMCP will use.
-func (api *StreamingAPI) prefetchServerVaultInventory(sessionID, currentUserID string) {
+func (api *StreamingAPI) prefetchServerVaultInventory(sessionID, currentUserID, selectedFolder string) {
 	if !IsLocalMode() || sessionID == "" {
 		return
 	}
+	// A chat's first message after a restart starts before its session knows its folder; the message names it.
 	root := api.projectRootForSession(sessionID)
+	if root == "" {
+		root = projectRootOf(selectedFolder)
+	}
 	if root == "" {
 		return
 	}
@@ -219,6 +225,7 @@ func (api *StreamingAPI) prefetchServerVaultInventory(sessionID, currentUserID s
 	}
 	serverVaultPrefetches.m[key] = early
 	serverVaultPrefetches.Unlock()
+	log.Printf("[VAULT_REMOTE] user=%s conn=%s tool=list early=started session=%s", lender, serverVaultConnShort(p.conn.ID), sessionID)
 	go func() {
 		defer close(early.done)
 		early.rows, early.err = fetchServerVaultTools(context.Background(), lender, p.conn)
