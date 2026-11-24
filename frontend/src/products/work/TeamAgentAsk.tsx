@@ -1,5 +1,9 @@
 import { randomUUID } from '../../utils/randomUUID'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Loader2 } from 'lucide-react'
+import { ChatComposerArea, ChatComposerBand, ChatComposerControls, ChatComposerForm, ChatComposerSendButton, ChatComposerTextarea, resizeChatComposerTextarea } from '../../components/chat/ChatComposer'
+import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
+import { cn } from '../../lib/utils'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { type TeamTarget } from './teamApi'
@@ -44,26 +48,46 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,childr
   return()=>{active=false;window.clearInterval(timer)}
  },[scope,inbox,enabled]) // eslint-disable-line react-hooks/exhaustive-deps
  const admitted=enabled&&!!address&&!!target
- return <section aria-label="Ask this agent" className="shrink-0 border-t border-border px-4 py-3 text-sm">
-  {admitted&&threadScope===scope&&replies.length>0&&<div className="mb-2 max-h-64 space-y-2 overflow-y-auto">{replies.map(row=><p key={row.message_id} className="whitespace-pre-wrap break-words"><b>{row.sender||sender}: </b>{row.message}</p>)}</div>}
-  {error&&<p role="alert" className="mb-2 text-xs text-destructive">{error}</p>}
-  {status&&<p role="status" className="mb-2 text-xs text-muted-foreground">{status}</p>}
-  <form onSubmit={async event=>{
-   event.preventDefault();if(!admitted||busy||!draft.trim()||!target||!address)return
-   const identity=captureChatIdentity(),sendScope=scope,text=draft.trim()
-   setBusy(true);setError('')
-   try{
-    const data=await teamAgentMail(target,{action:'ask',...(inbox?{inbox_id:inbox}:{target:address}),message:text,submission_id:randomUUID()})
-    if(!isChatIdentityCurrent(identity)||currentScope.current!==sendScope)return
-    if(!data.inbox_id)throw new Error('No conversation receipt was returned. Check delivery before sending again.')
-    setInbox(data.inbox_id);setReplies(old=>[...old,{message_id:data.message_id||randomUUID(),sender:'You',message:text}]);setDraft('');setStatus(data.delivery==='delivered'?'Delivered.':'Sent; waiting for delivery. Replies appear here.')
-   }catch(cause){if(isChatIdentityCurrent(identity)&&currentScope.current===sendScope)setError(cause instanceof Error?cause.message:'Could not send this message.')}
-   finally{if(isChatIdentityCurrent(identity)&&currentScope.current===sendScope)setBusy(false)}
-  }} className="flex items-end gap-2">
-   <textarea aria-label={label} placeholder={`${label}…`} rows={2} value={threadScope===scope?draft:''} onChange={event=>setDraft(event.target.value)} disabled={!admitted||busy} className="min-w-0 flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 disabled:opacity-50"/>
-   <button type="submit" disabled={!admitted||busy||!draft.trim()} className="rounded-lg bg-primary px-3 py-2 text-primary-foreground disabled:opacity-50">{busy?'Sending…':'Send'}</button>
-  </form>
-  {children}
+ const box=useRef<HTMLTextAreaElement>(null),list=useRef<HTMLDivElement>(null)
+ const value=threadScope===scope?draft:''
+ useLayoutEffect(()=>{if(box.current)resizeChatComposerTextarea(box.current,true)},[value])
+ useEffect(()=>{list.current?.scrollTo({top:list.current.scrollHeight})},[replies.length])
+ const send=async()=>{
+  if(!admitted||busy||!draft.trim()||!target||!address)return
+  const identity=captureChatIdentity(),sendScope=scope,text=draft.trim()
+  setBusy(true);setError('')
+  try{
+   const data=await teamAgentMail(target,{action:'ask',...(inbox?{inbox_id:inbox}:{target:address}),message:text,submission_id:randomUUID()})
+   if(!isChatIdentityCurrent(identity)||currentScope.current!==sendScope)return
+   if(!data.inbox_id)throw new Error('No conversation receipt was returned. Check delivery before sending again.')
+   setInbox(data.inbox_id);setReplies(old=>[...old,{message_id:data.message_id||randomUUID(),sender:'You',message:text}]);setDraft('');setStatus(data.delivery==='delivered'?'Delivered.':'Sent; waiting for delivery. Replies appear here.')
+  }catch(cause){if(isChatIdentityCurrent(identity)&&currentScope.current===sendScope)setError(cause instanceof Error?cause.message:'Could not send this message.')}
+  finally{if(isChatIdentityCurrent(identity)&&currentScope.current===sendScope){setBusy(false);box.current?.focus()}}
+ }
+ return <section aria-label="Ask this agent" className="shrink-0">
+  {admitted&&threadScope===scope&&replies.length>0&&<div ref={list} className="max-h-72 space-y-2 overflow-y-auto border-t border-border px-4 py-3 text-sm">{replies.map(row=>{
+   const mine=row.sender==='You'
+   return <div key={row.message_id} className={cn('flex',mine?'justify-end':'justify-start')}>
+    <div className={cn('max-w-[85%] min-w-0 break-words rounded-2xl px-3 py-2',mine?'bg-primary/10':'bg-muted')}>
+     {!mine&&<p className="mb-0.5 text-xs font-medium text-muted-foreground">{row.sender||sender}</p>}
+     {mine?<p className="whitespace-pre-wrap">{row.message}</p>:<MarkdownRenderer content={row.message} untrustedContent disablePathLinking copyableCode />}
+    </div>
+   </div>})}</div>}
+  <ChatComposerBand product>
+   <ChatComposerArea product>
+    {error&&<p role="alert" className="mb-1 px-1 text-xs text-destructive">{error}</p>}
+    {status&&!error&&<p role="status" className="mb-1 px-1 text-xs text-muted-foreground">{status}</p>}
+    <ChatComposerForm product onSubmit={event=>{event.preventDefault();void send()}}>
+     <ChatComposerTextarea product ref={box} aria-label={label} placeholder={`${label}…`} value={value} disabled={!admitted||busy}
+      onChange={event=>setDraft(event.target.value)}
+      onKeyDown={event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();void send()}}}/>
+     <ChatComposerControls>
+      <span className="min-w-0 truncate px-1.5 text-xs text-muted-foreground">{children}</span>
+      <ChatComposerSendButton product type="submit" aria-label={busy?'Sending':'Send'} disabled={!admitted||busy||!draft.trim()}>{busy?<Loader2 className="h-3.5 w-3.5 animate-spin"/>:undefined}</ChatComposerSendButton>
+     </ChatComposerControls>
+    </ChatComposerForm>
+   </ChatComposerArea>
+  </ChatComposerBand>
  </section>
 }
 
@@ -79,6 +103,6 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
 export function TeammateAsk({target,address,name,where,online,enabled,scope}:{target?:TeamTarget;address?:string;name:string;where:string;online?:boolean;enabled:boolean;scope:string}) {
  const hint=!enabled?`You can't ask ${name} right now.`:online===false?`${where.charAt(0).toUpperCase()}${where.slice(1)} is offline. Your ask goes to its online copy if it has one.`:`Goes to ${name} as your ask. Its answer shows here.`
  return <AgentAskThread target={target} address={address} label={`Ask ${name}`} scope={scope} enabled={enabled} sender={name}>
-  <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+  {hint}
  </AgentAskThread>
 }
