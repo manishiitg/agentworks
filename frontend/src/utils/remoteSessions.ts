@@ -19,6 +19,13 @@ export function registerRemoteProject(projectId: string, connectionId: string, .
   if (named.length) folders.set(projectId, named)
 }
 
+/** Opening a project from this window's own server: a same-ID online copy opened in place earlier must not keep
+ * routing it to that server (#3749 follow-up: the Mac's ai-work went to the server after its online copy was opened). */
+export function unregisterRemoteProject(projectId: string) {
+  projects.delete(projectId)
+  folders.delete(projectId)
+}
+
 export function remoteProjectConnection(projectId?: string | null): string | undefined { return projectId ? projects.get(projectId) : undefined }
 
 /** The chat store says which project a chat tab belongs to; set once by the store (no import cycle). */
