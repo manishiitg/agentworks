@@ -7,6 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
 // #3664: only the Team's owner adds an online project, and only one they own or co-own that lives on the server; the
@@ -70,15 +73,40 @@ func TestCrewTeamOnlineProjectAccess(t *testing.T) {
 		t.Fatal("a project that is not in the Team was admitted")
 	}
 
-	// Taking it out removes the Team's folders from the project and nothing else.
-	files := t.TempDir()
-	for _, rel := range []string{"team/notes.md", "TEAM_INSTRUCTIONS.md", "reports/own.md"} {
-		if err := os.MkdirAll(filepath.Dir(filepath.Join(files, rel)), 0o755); err != nil {
+	// Taking it out removes the Team's files that are still as last synced, and nothing else: an edit since the last
+	// sync stays, a folder made later at the same name stays, and a link on the way is never followed.
+	files, outside := t.TempDir(), t.TempDir()
+	write := func(root, rel string) {
+		t.Helper()
+		path := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(files, rel), []byte("x"), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
 		}
+		old := time.Now().Add(-time.Hour)
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, rel := range []string{"team/notes.md", "team/edited.md", "TEAM_INSTRUCTIONS.md", "reports/own.md", "replaced/a.md"} {
+		write(files, rel)
+	}
+	write(outside, "deep/secret.md")
+	if err := os.Symlink(outside, filepath.Join(files, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	synced := map[string]crewTeamLocalFile{}
+	for _, rel := range []string{"team/notes.md", "team/edited.md", "TEAM_INSTRUCTIONS.md", "replaced/a.md"} {
+		info, err := os.Lstat(filepath.Join(files, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		synced[rel] = crewTeamLocalFile{Stamp: crewsync.StampOf(info), ReadAt: time.Now().Add(2 * time.Second)} // read after the last change
+	}
+	if err := os.WriteFile(filepath.Join(files, "team/edited.md"), []byte("edited after the last sync"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	dir, err := crewTeamProjectCopyDir("srv", "mac", "f1")
 	if err != nil {
@@ -87,13 +115,13 @@ func TestCrewTeamOnlineProjectAccess(t *testing.T) {
 	if err = os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	copyRecord := crewTeamLocal{FolderID: "f1", Project: "mac", LocalProject: "srv", RemoteUser: crewTeamProjectMemberID("srv"), Root: files, Mounted: true, ProjectMember: true,
-		Mounts: map[string]crewTeamMount{"p1": {Remote: "team", Local: "team"}}, Files: map[string]crewTeamLocalFile{"TEAM_INSTRUCTIONS.md": {}}}
+	copyRecord := crewTeamLocal{FolderID: "f1", Project: "mac", LocalProject: "srv", RemoteUser: crewTeamProjectMemberID("srv"), Root: files, Mounted: true, ProjectMember: true, Files: synced,
+		Mounts: map[string]crewTeamMount{"p1": {Remote: "team", Local: "team"}, "p2": {Remote: "replaced", Local: "replaced", Inode: 1, Device: 1}, "p3": {Remote: "linked/deep", Local: "linked/deep"}}}
 	if err = saveCrewTeamLocal(dir, copyRecord); err != nil {
 		t.Fatal(err)
 	}
 	(&StreamingAPI{}).removeStaleCrewTeamProjectCopies(context.Background())
-	if _, err := os.Stat(filepath.Join(files, "team")); err != nil {
+	if _, err := os.Stat(filepath.Join(files, "team/notes.md")); err != nil {
 		t.Fatal("a member project's copy was removed while it is still in the Team")
 	}
 	team.Projects = nil
@@ -101,9 +129,13 @@ func TestCrewTeamOnlineProjectAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	(&StreamingAPI{}).removeStaleCrewTeamProjectCopies(context.Background())
-	for rel, want := range map[string]bool{"team": false, "TEAM_INSTRUCTIONS.md": false, "reports/own.md": true} {
-		if _, err := os.Stat(filepath.Join(files, rel)); (err == nil) != want {
-			t.Errorf("%s present=%v after removal, want %v", rel, err == nil, want)
+	for path, want := range map[string]bool{filepath.Join(files, "team/notes.md"): false, filepath.Join(files, "TEAM_INSTRUCTIONS.md"): false, filepath.Join(files, "team/edited.md"): true,
+		filepath.Join(files, "reports/own.md"): true, filepath.Join(files, "replaced/a.md"): true, filepath.Join(outside, "deep/secret.md"): true} {
+		if _, err := os.Stat(path); (err == nil) != want {
+			t.Errorf("%s present=%v after removal, want %v", path, err == nil, want)
 		}
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("the copy's record was kept: %v", err)
 	}
 }
