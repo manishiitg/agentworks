@@ -207,14 +207,19 @@ branding:
 
 ui:
   tips:
-    - id: dashboards-library
     - id: quick-switcher
+    - id: team-ask-agent
+    - id: team-ask-files
+    - id: team-fork-agent
+    - id: team-needs-you
+    - id: team-invite
+    - id: team-connect-cli
+    - id: vault-secret-in-chat
+    - id: own-ai-account
+    - id: project-workflow
     - id: reminders
     - id: project-schedules-create
-    - id: project-schedules-manage
     - id: project-dashboard-create
-    - id: project-dashboard-update
-    - id: toolbar-hide
   surface: work
   files_panel: true
   workflow_panel: false
