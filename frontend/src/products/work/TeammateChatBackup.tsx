@@ -8,7 +8,8 @@ type BackupLine = { line:number; role:string; text:string }
 type Backup = { banner:string; lines:BackupLine[]; older?:boolean }
 
 /** A teammate's Mac agent while its Mac is offline (#3577): the chat backup its Mac synced to the server, under a
- * banner the server words (a copy, how old, asks wait for the real agent). Only shown; nothing answers from it. */
+ * banner the server words (a copy, how old, asks wait for the real agent). The agent never answers from it; the Ask box's
+ * "Answer from its chat" has the viewer's own agent read it. */
 export function TeammateChatBackup({target,agentId}:{target:TeamTarget;agentId:string}) {
  const [backup,setBackup]=useState<Backup|null>(null),[error,setError]=useState('')
  const list=useRef<HTMLDivElement>(null)

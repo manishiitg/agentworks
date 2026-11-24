@@ -14,8 +14,9 @@ import (
 
 // The chat backup is what a teammate sees in place of a Mac agent's chat while that Mac is offline (#3577): the
 // copy its Mac synced to the server after each turn, shown with a line that says it is a backup and how old it is.
-// It is only shown; nothing answers from it. The same rules as reading it from chat (crewTeamReadChat) apply: a Live
-// chat only, and the agent's person is told on its next turn that a teammate opened it.
+// The agent itself never answers from it; "Answer from its chat" in the Ask box has the viewer's own agent read it
+// (read_agent_chat). The same rules as reading it from chat apply: someone else's agent shared with the viewer (the
+// reachable rows never include the viewer's own), a Live chat only, and its person is told on its next turn.
 
 // crewTeamChatBackupLines and crewTeamChatBackupText bound one response: the newest lines, each clipped.
 const (
@@ -43,7 +44,7 @@ func (api *StreamingAPI) handleCrewTeamChatBackup(w http.ResponseWriter, r *http
 		externalError(w, http.StatusForbidden, "not_reachable", "This agent is not shared with you in this Team.")
 		return
 	}
-	if a.OwnerID != viewer && a.Rule.ChatShare != crewChatShareLive {
+	if a.Rule.ChatShare != crewChatShareLive {
 		log.Printf("[TEAM_CHAT_READ] project=%s agent=%s caller=%s event=refused reason=chat_private view=backup", t.ProjectID, a.ID, viewer)
 		externalError(w, http.StatusForbidden, "chat_private", crewChatPrivateLine(a.OwnerID))
 		return
@@ -98,13 +99,11 @@ func (api *StreamingAPI) handleCrewTeamChatBackup(w http.ResponseWriter, r *http
 		shown[i] = line
 	}
 	out["lines"] = shown
-	if a.OwnerID != viewer {
-		seen := []string{}
-		if len(shown) > 0 {
-			seen = append(seen, fmt.Sprintf("%d-%d", shown[0].Line, shown[len(shown)-1].Line))
-		}
-		recordCrewTeamChatRead(t, a, chat.binding, viewer, "opened its chat backup", seen)
+	seen := []string{}
+	if len(shown) > 0 {
+		seen = append(seen, fmt.Sprintf("%d-%d", shown[0].Line, shown[len(shown)-1].Line))
 	}
+	recordCrewTeamChatRead(t, a, chat.binding, viewer, "opened its chat backup", seen)
 	log.Printf("[TEAM_CHAT_READ] project=%s agent=%s caller=%s event=read view=backup online=%t lines_shown=%d revision=%d", t.ProjectID, a.ID, viewer, row.Online, len(shown), chat.revision)
 	writeAgentProfileJSON(w, http.StatusOK, out)
 }
