@@ -80,13 +80,14 @@ it('shows files not committed yet on the Git line and on each repository', () =>
   act(() => root.render(<ChatChangesRow section={counted} storageKey="test.git-count" onOpen={(repo, changed) => opened.push(`${repo}:${changed}`)} />))
   expect(host.textContent).toContain('2 repositories · 2 worktrees')
   // The count is its own button: one review of every uncommitted file, and the list stays open.
-  const count = [...host.querySelectorAll('button')].find(b => b.textContent === '12 changed files')!
+  const count = [...host.querySelectorAll('button')].find(b => b.getAttribute('aria-label') === '12 changed files: review them')!
+  expect(count.textContent).toBe('±12')
   act(() => count.click())
   expect(opened).toEqual(['undefined:true'])
   expect(host.textContent).toContain('site')
   expect(host.textContent).toContain('12 changed · 1 not pushed')
   act(() => root.render(<ChatChangesRow section={{ ...counted, changed: 0 }} storageKey="test.git-count" onOpen={() => {}} />))
-  expect(host.textContent).not.toContain('changed files')
+  expect(host.querySelector('[aria-label$="review them"]')).toBeNull()
   expect(changedLabel(1, 'changed files')).toBe('1 changed file')
   expect(changedLabel(0, 'changed')).toBe('')
   act(() => root.unmount())
