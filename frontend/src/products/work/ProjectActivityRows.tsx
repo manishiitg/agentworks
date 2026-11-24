@@ -121,20 +121,25 @@ function ItemMenu({ onPick }: { onPick: (kind: 'ask' | 'mine' | 'team') => void 
   </div>
 }
 
-export function ProjectActivityRows({ section, onAgent, onWatchers }: {
+export function ProjectActivityRows({ section, onAgent, onWatchers, hideKey }: {
   section?: CrewPanelSection
   onAgent?: (message: string) => void
   onWatchers: () => void
+  hideKey: string
 }) {
+  // "Not now" on the set-up prompt is a view preference for this project; it comes back once a source exists.
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(hideKey) === '1' } catch { return false } })
   if (!section) return null
   const rows = section.rows
   if (!rows.length) {
-    if (!onAgent) return null
+    if (!onAgent || hidden) return null
+    const hide = () => { setHidden(true); try { localStorage.setItem(hideKey, '1') } catch { /* hidden for this visit only */ } }
     return <div>
       <div className="flex min-h-8 items-center gap-2.5 px-1 text-xs text-foreground/85"><Activity aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground"/><span>Project activity</span></div>
       <div className="flex items-center gap-2 pb-1 pl-7 pr-1 text-[10px] text-muted-foreground">
         <span className="min-w-0 flex-1">Slack, mail, Drive and tasks for this project</span>
         <button type="button" onClick={() => onAgent(projectActivitySetupMessage)} className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Set up with agent</button>
+        <button type="button" onClick={hide} className="shrink-0 text-[10px] text-muted-foreground hover:text-foreground">Not now</button>
       </div>
     </div>
   }
