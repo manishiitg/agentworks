@@ -156,7 +156,7 @@ export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHi
     {rows.map(row => <WorkspaceCompactGroup key={row.id} title={row.label} icon={appIcon[row.group || ''] || Activity}
       detail={<span className={row.attention ? 'text-amber-600 dark:text-amber-400' : row.count ? 'font-medium text-foreground' : undefined}>{row.attention ? row.detail : row.count || row.detail}</span>}>
       {row.attention && <button type="button" onClick={onWatchers} className="block w-full rounded px-1 py-0.5 text-left text-[11px] text-amber-600 hover:bg-background/40 dark:text-amber-400">{row.detail} · open Watchers</button>}
-      {row.group === 'project-tasks' ? <ProjectTasksRow row={row}/> : <>
+      {row.group === 'project-tasks' ? <ProjectTasksRow row={row} onAgent={onAgent}/> : <>
         <RowItems row={row} onAgent={onAgent}/>
         {!row.items?.length && !row.attention && <p className="px-1 py-0.5 text-[11px] text-muted-foreground">{row.detail}</p>}
       </>}

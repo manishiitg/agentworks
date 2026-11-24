@@ -1,11 +1,32 @@
 import { useState } from 'react'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Pause, Play } from 'lucide-react'
 import type { CrewPanelRow, ProjectTask, ProjectTaskRef } from './useCrewPanel'
 
 // Project tasks (approved mockup 24 Nov): one shared, curated list per project.
 // Watchers send what they find to the lead agent, which creates, merges or drops;
 // each task shows where it came from, what is linked to it, what is happening on
 // those links and who moved it. The server decides the list; this only shows it.
+// #3732: the lead line (auto or ask first, last sorted, Pause), a Needs you group
+// the server decides, and Reassign / Approve / Hold per task. Like the activity
+// item menu, each control drafts a message in the project chat; the agent does
+// the change with the same task actions.
+
+type Draft = (message: string) => void
+
+export function projectTaskMessage(kind: 'approve' | 'reassign' | 'hold' | 'unhold', task: ProjectTask): string {
+  const what = `Project task ${task.id} "${task.title}"`
+  if (kind === 'approve') return `Approve handing ${what} to ${task.proposed}: set them as assignee, send them the ask and link it to the task.`
+  if (kind === 'reassign') return `Reassign ${what}${task.assignee ? ` (now with ${task.assignee})` : ''}. Suggest the best-fitting agent by purpose and ask me which one, then hand it over, link the new ask and tell the old agent.`
+  if (kind === 'hold') return `Put ${what} on hold (task_update held=true) and tell whoever has it to stop for now.`
+  return `Take ${what} off hold (task_update held=false) and let whoever has it carry on.`
+}
+
+export function projectLeadMessage(kind: 'pause' | 'resume' | 'auto' | 'ask', lead = 'the lead'): string {
+  if (kind === 'pause') return `Pause the Project tasks lead (${lead}): task_settings paused=true. New events wait until I resume it.`
+  if (kind === 'resume') return `Resume the Project tasks lead (${lead}): task_settings paused=false.`
+  if (kind === 'ask') return `Switch Project tasks to ask me first: task_settings mode=ask. ${lead} should propose an agent for each new task and wait for my approval.`
+  return `Switch Project tasks to auto: task_settings mode=auto. ${lead} hands new tasks out by itself.`
+}
 
 const kindLetter: Record<string, string> = { slack: 'S', mail: 'M', tasks: 'T', github: 'G', notion: 'N', drive: 'D', other: '•' }
 const kindTone: Record<string, string> = { slack: 'bg-purple-500/15 text-purple-700 dark:text-purple-300', mail: 'bg-blue-500/15 text-blue-700 dark:text-blue-300', tasks: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300', github: 'bg-foreground/10 text-foreground', notion: 'bg-foreground/10 text-foreground', drive: 'bg-amber-500/15 text-amber-700 dark:text-amber-300', other: 'bg-muted text-muted-foreground' }
@@ -33,7 +54,17 @@ function Ref({ item }: { item: ProjectTaskRef }) {
     : <div className="flex items-center gap-1.5 rounded border border-border px-1.5 py-0.5">{body}</div>
 }
 
-function TaskDetail({ task, steps }: { task: ProjectTask; steps: string[] }) {
+function TaskActions({ task, onAgent }: { task: ProjectTask; onAgent?: Draft }) {
+  if (!onAgent || task.done) return null
+  const button = 'rounded border border-border px-1.5 py-px hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  return <div className="flex flex-wrap gap-1 pt-0.5">
+    {task.proposed && !task.held && <button type="button" onClick={() => onAgent(projectTaskMessage('approve', task))} className={`${button} font-medium text-primary`}>Approve → {task.proposed}</button>}
+    <button type="button" onClick={() => onAgent(projectTaskMessage('reassign', task))} className={`${button} text-foreground`}>Reassign</button>
+    <button type="button" onClick={() => onAgent(projectTaskMessage(task.held ? 'unhold' : 'hold', task))} className={`${button} text-muted-foreground`}>{task.held ? 'Take off hold' : 'Hold'}</button>
+  </div>
+}
+
+function TaskDetail({ task, steps, onAgent }: { task: ProjectTask; steps: string[]; onAgent?: Draft }) {
   const at = Math.max(0, steps.indexOf(task.step || steps[0]))
   const head = 'pt-1 text-[10px] font-medium text-foreground'
   return <div className="space-y-1 px-1 pb-1.5 pt-0.5 text-[10px]">
@@ -41,6 +72,8 @@ function TaskDetail({ task, steps }: { task: ProjectTask; steps: string[] }) {
       {steps.map((step, index) => <li key={step} aria-current={index === at ? 'step' : undefined}
         className={`rounded px-1.5 ${index === at ? (task.done ? 'bg-emerald-500/15 font-medium text-emerald-700 dark:text-emerald-300' : 'bg-sky-500/15 font-medium text-foreground') : index < at ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'}`}>{index < at ? '✓ ' : ''}{step}</li>)}
     </ol>
+    {task.needs_you && <p className="font-medium text-amber-600 dark:text-amber-400">{task.needs_you}</p>}
+    <TaskActions task={task} onAgent={onAgent}/>
     {task.tasks?.map((t, index) => <p key={index} className="text-muted-foreground"><span className="text-foreground">{t.agent}</span> · {taskWords[t.state] || t.state}{t.title ? ` · ${t.title}` : ''}</p>)}
     {task.sources?.length ? <><p className={head}>From</p><div className="space-y-0.5">{task.sources.map((s, i) => <Ref key={i} item={s}/>)}</div></> : null}
     <p className={head}>Linked</p>
@@ -55,11 +88,12 @@ function TaskDetail({ task, steps }: { task: ProjectTask; steps: string[] }) {
   </div>
 }
 
-function TaskLine({ task, steps }: { task: ProjectTask; steps: string[] }) {
+function TaskLine({ task, steps, onAgent }: { task: ProjectTask; steps: string[]; onAgent?: Draft }) {
   const [open, setOpen] = useState(false)
   const kind = task.sources?.[0]?.kind || 'other'
-  const waiting = task.tasks?.find(t => t.state === 'needs_you')
-  const who = waiting ? 'waiting on you' : task.assignee ? `${task.assignee}${task.tasks?.length ? ` · ${taskWords[task.tasks[task.tasks.length - 1].state] || ''}` : ''}` : 'not handed out yet'
+  const waiting = !!task.needs_you
+  const state = task.tasks?.length ? taskWords[task.tasks[task.tasks.length - 1].state] : ''
+  const who = task.held ? 'on hold' : task.proposed ? `suggest ${task.proposed}` : task.assignee ? `${task.assignee}${state ? ` · ${state}` : ''}` : 'not handed out yet'
   const day = Date.now() / 1000 - 24 * 3600
   const fresh = task.activity?.filter(a => a.at >= day).length || 0
   return <div className="rounded text-[11px] hover:bg-background/40 focus-within:bg-background/40">
@@ -76,24 +110,46 @@ function TaskLine({ task, steps }: { task: ProjectTask; steps: string[] }) {
         </span>
       </span>
     </button>
-    {open && <TaskDetail task={task} steps={steps}/>}
+    {open && <TaskDetail task={task} steps={steps} onAgent={onAgent}/>}
   </div>
 }
 
-export function ProjectTasksRow({ row }: { row: CrewPanelRow }) {
+function LeadLine({ row, onAgent }: { row: CrewPanelRow; onAgent?: Draft }) {
+  if (!row.lead) return null
+  const ask = row.tasks_mode === 'ask'
+  const mode = row.paused ? 'paused' : ask ? 'asks you first' : 'auto-assigning'
+  const link = 'text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  return <div className="flex items-center gap-1 px-1 pb-0.5 text-[10px] text-muted-foreground">
+    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${row.paused ? 'bg-amber-500' : 'bg-emerald-500'}`} aria-hidden="true"/>
+    <span className="min-w-0 truncate"><span className="text-foreground">{row.lead}</span> · <span className={row.paused ? 'font-medium text-amber-600 dark:text-amber-400' : ''}>{mode}</span>{row.last_sorted ? ` · sorted ${ago(row.last_sorted)} ago` : ''}</span>
+    {onAgent && <span className="ml-auto flex shrink-0 items-center gap-2">
+      {!row.paused && <button type="button" onClick={() => onAgent(projectLeadMessage(ask ? 'auto' : 'ask', row.lead))} title={ask ? 'Let the lead hand work out by itself' : 'The lead proposes; you approve each hand-out'} className={link}>{ask ? 'Auto' : 'Ask me first'}</button>}
+      <button type="button" onClick={() => onAgent(projectLeadMessage(row.paused ? 'resume' : 'pause', row.lead))} className={`inline-flex items-center gap-0.5 ${link}`}>
+        {row.paused ? <Play aria-hidden="true" className="h-2.5 w-2.5"/> : <Pause aria-hidden="true" className="h-2.5 w-2.5"/>}{row.paused ? 'Resume' : 'Pause'}</button>
+    </span>}
+  </div>
+}
+
+export function ProjectTasksRow({ row, onAgent }: { row: CrewPanelRow; onAgent?: Draft }) {
   const [showDone, setShowDone] = useState(false)
   const [showSorted, setShowSorted] = useState(false)
   const steps = row.steps || []
   const tasks = row.tasks || []
   const open = tasks.filter(t => !t.done), done = tasks.filter(t => t.done)
+  const needsYou = open.filter(t => t.needs_you), others = open.filter(t => !t.needs_you)
   const sorted = row.sorted || []
   const dropped = sorted.filter(s => s.kind === 'dropped').length, added = sorted.filter(s => s.kind === 'added').length
   return <>
-    {steps.length ? <p className="px-1 pb-0.5 text-[10px] text-muted-foreground">{steps.join(' → ')}{row.lead ? ` · kept by ${row.lead}` : ''}</p> : null}
-    {open.map(task => <TaskLine key={task.id} task={task} steps={steps}/>)}
+    <LeadLine row={row} onAgent={onAgent}/>
+    {steps.length ? <p className="px-1 pb-0.5 text-[10px] text-muted-foreground">{steps.join(' → ')}</p> : null}
+    {needsYou.length ? <section aria-label="Needs you" className="mb-1 rounded border border-amber-500/30 bg-amber-500/5 py-0.5">
+      <p className="px-1 text-[10px] font-medium text-amber-700 dark:text-amber-300">Needs you · {needsYou.length}</p>
+      {needsYou.map(task => <TaskLine key={task.id} task={task} steps={steps} onAgent={onAgent}/>)}
+    </section> : null}
+    {others.map(task => <TaskLine key={task.id} task={task} steps={steps} onAgent={onAgent}/>)}
     {!open.length && <p className="px-1 py-0.5 text-[11px] text-muted-foreground">Nothing open. New work shows here once the lead sorts it.</p>}
     {row.done_count ? <button type="button" aria-expanded={showDone} onClick={() => setShowDone(value => !value)} className="px-1 py-0.5 text-[10px] text-muted-foreground hover:text-foreground">✓ {row.done_count} {(steps[steps.length - 1] || 'done').toLowerCase()} {showDone ? '▾' : '▸'}</button> : null}
-    {showDone && done.map(task => <TaskLine key={task.id} task={task} steps={steps}/>)}
+    {showDone && done.map(task => <TaskLine key={task.id} task={task} steps={steps} onAgent={onAgent}/>)}
     {sorted.length ? <button type="button" aria-expanded={showSorted} onClick={() => setShowSorted(value => !value)} className="block px-1 py-0.5 text-left text-[10px] text-primary hover:underline">
       {sorted.length} sorted today{dropped ? `: ${dropped} dropped` : ''}{added ? `${dropped ? ',' : ':'} ${added} added to tasks` : ''} {showSorted ? '▾' : '▸'}</button> : null}
     {showSorted && <ul aria-label="What the lead sorted" className="space-y-0.5 px-1 pb-1 text-[10px]">

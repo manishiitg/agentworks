@@ -58,6 +58,9 @@ type projectTask struct {
 	Title    string              `json:"title"`
 	Step     string              `json:"step,omitempty"`
 	Assignee string              `json:"assignee,omitempty"` // the agent or person who has it; "" = not handed out yet
+	Proposed string              `json:"proposed,omitempty"` // "Ask me first": the agent the lead suggests, until the person approves
+	Waiting  string              `json:"waiting,omitempty"`  // what the lead needs the person to decide
+	Held     bool                `json:"held,omitempty"`     // the person put it on hold; the lead leaves it alone
 	Tasks    []projectTaskLink   `json:"tasks,omitempty"`
 	Sources  []projectTaskRef    `json:"sources,omitempty"`
 	Links    []projectTaskRef    `json:"links,omitempty"`
@@ -78,12 +81,17 @@ type projectTaskSorted struct {
 }
 
 type projectTaskList struct {
-	Steps  []string            `json:"steps,omitempty"`
-	Rules  string              `json:"rules,omitempty"`
-	Lead   string              `json:"lead,omitempty"` // the lead agent's name, for people reading the list
-	Next   int                 `json:"next"`
-	Tasks  []projectTask       `json:"tasks"`
-	Sorted []projectTaskSorted `json:"sorted,omitempty"`
+	Steps []string `json:"steps,omitempty"`
+	Rules string   `json:"rules,omitempty"`
+	Lead  string   `json:"lead,omitempty"` // the lead agent's name, for people reading the list
+	// LeadChat is the lead's chat id in this project. While Paused, Watchers that
+	// send to that chat hold their events and deliver them on resume.
+	LeadChat string              `json:"lead_chat,omitempty"`
+	Paused   bool                `json:"paused,omitempty"`
+	Mode     string              `json:"mode,omitempty"` // auto (default): the lead hands work out; ask: it proposes and the person approves
+	Next     int                 `json:"next"`
+	Tasks    []projectTask       `json:"tasks"`
+	Sorted   []projectTaskSorted `json:"sorted,omitempty"`
 }
 
 func (l projectTaskList) steps() []string {
@@ -200,6 +208,18 @@ type crewPanelProjectTask struct {
 	Sources  []projectTaskRef   `json:"sources,omitempty"`
 	Links    []projectTaskRef   `json:"links,omitempty"`
 	Activity []projectTaskEvent `json:"activity,omitempty"`
+	Proposed string             `json:"proposed,omitempty"`
+	Held     bool               `json:"held,omitempty"`
+	// NeedsYou says what the person must do; the server decides it so the panel
+	// and the lead read the same "Needs you" list.
+	NeedsYou string `json:"needs_you,omitempty"`
+}
+
+func (l projectTaskList) mode() string {
+	if l.Mode == "ask" {
+		return "ask"
+	}
+	return "auto"
 }
 
 func projectTaskView(list projectTaskList, t projectTask, tasks *conditionFeedTasks) crewPanelProjectTask {
@@ -215,6 +235,22 @@ func projectTaskView(list projectTaskList, t projectTask, tasks *conditionFeedTa
 		} else if link.Agent != "" {
 			// Someone else's ask: its thread is theirs, so only who has it shows.
 			view.Tasks = append(view.Tasks, crewPanelFeedTask{Agent: link.Agent, State: "asked"})
+		}
+	}
+	view.Proposed, view.Held = t.Proposed, t.Held
+	if !view.Done && !t.Held {
+		for _, task := range view.Tasks {
+			if task.State == "needs_you" || task.State == "blocked" {
+				view.NeedsYou = task.Agent + " is " + map[string]string{"needs_you": "waiting on you", "blocked": "blocked"}[task.State]
+			}
+		}
+		switch {
+		case t.Waiting != "":
+			view.NeedsYou = t.Waiting
+		case t.Proposed != "":
+			view.NeedsYou = "Approve handing it to " + t.Proposed
+		case t.Assignee == "" && view.NeedsYou == "":
+			view.NeedsYou = "No agent fits yet"
 		}
 	}
 	view.History = t.History
@@ -269,7 +305,10 @@ func (c *conditionService) projectTasksRow(ctx context.Context, viewer, project 
 			row.Sorted = append(row.Sorted, s)
 		}
 	}
-	row.Lead = list.Lead
+	row.Lead, row.TasksMode, row.Paused = list.Lead, list.mode(), list.Paused
+	if n := len(list.Sorted); n > 0 {
+		row.LastSorted = list.Sorted[n-1].At
+	}
 	return row, true, nil
 }
 
@@ -311,7 +350,7 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 		if len(sorted) > 20 {
 			sorted = sorted[len(sorted)-20:]
 		}
-		return map[string]interface{}{"steps": list.steps(), "rules": list.Rules, "lead": list.Lead, "tasks": out, "recently_sorted": sorted}, nil
+		return map[string]interface{}{"steps": list.steps(), "rules": list.Rules, "lead": list.Lead, "lead_chat": list.LeadChat, "mode": list.mode(), "paused": list.Paused, "tasks": out, "recently_sorted": sorted}, nil
 	}
 
 	by := feedText(args["by"], 60)
@@ -369,10 +408,29 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 		if v, ok := args["lead"].(string); ok {
 			list.Lead = feedText(v, 60)
 		}
+		if v, ok := args["lead_chat"].(string); ok {
+			if v = strings.TrimSpace(v); v != "" && !conditionChatIDPattern.MatchString(v) {
+				return nil, errors.New("lead_chat is the lead's chat id from sessions list")
+			}
+			list.LeadChat = strings.TrimSpace(v)
+		}
+		if v, ok := args["mode"].(string); ok {
+			if v != "auto" && v != "ask" {
+				return nil, errors.New("mode is auto (the lead hands work out) or ask (the lead proposes, the person approves)")
+			}
+			list.Mode = v
+		}
+		if v, ok := args["paused"].(bool); ok {
+			if v && list.LeadChat == "" {
+				return nil, errors.New("set lead_chat (the lead's chat id from sessions list) before pausing, so its Watchers know to wait")
+			}
+			list.Paused = v
+		}
 		if err := c.writeProjectTasks(ctx, base, list); err != nil {
 			return nil, err
 		}
-		return map[string]interface{}{"steps": list.steps(), "rules": list.Rules, "lead": list.Lead}, nil
+		log.Printf("[PROJECT_TASKS] settings mode=%s paused=%t", list.mode(), list.Paused)
+		return map[string]interface{}{"steps": list.steps(), "rules": list.Rules, "lead": list.Lead, "lead_chat": list.LeadChat, "mode": list.mode(), "paused": list.Paused}, nil
 	case "task_sorted":
 		kind := feedText(args["kind"], 10)
 		if kind != "dropped" && kind != "added" {
@@ -397,7 +455,7 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 			return nil, err
 		}
 		list.Next++
-		t := projectTask{ID: "t" + strconv.Itoa(list.Next), Title: title, Step: step, Assignee: feedText(args["assignee"], 60), Created: now, Updated: now}
+		t := projectTask{ID: "t" + strconv.Itoa(list.Next), Title: title, Step: step, Assignee: feedText(args["assignee"], 60), Proposed: feedText(args["proposed"], 60), Waiting: feedText(args["waiting"], 200), Created: now, Updated: now}
 		if source != nil {
 			t.Sources = []projectTaskRef{*source}
 		}
@@ -443,7 +501,18 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 		t.Title, changed = title, true
 	}
 	if v, ok := args["assignee"].(string); ok {
-		t.Assignee, changed = feedText(v, 60), true
+		// Handing it out settles a proposal.
+		t.Assignee, t.Proposed, changed = feedText(v, 60), "", true
+	}
+	if v, ok := args["proposed"].(string); ok {
+		t.Proposed, changed = feedText(v, 60), true
+	}
+	if v, ok := args["waiting"].(string); ok {
+		t.Waiting, changed = feedText(v, 200), true
+	}
+	if v, ok := args["held"].(bool); ok && v != t.Held {
+		t.Held, changed = v, true
+		note = firstNonEmptyTrimmed(note, map[bool]string{true: "On hold", false: "Off hold"}[v])
 	}
 	if link != nil {
 		known := false
@@ -496,7 +565,7 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 		changed = true
 	}
 	if !changed {
-		return nil, errors.New("task_update needs something to change: step, title, assignee, task, source, link, activity or note")
+		return nil, errors.New("task_update needs something to change: step, title, assignee, proposed, waiting, held, task, source, link, activity or note")
 	}
 	t.Updated = now
 	saved := *t
@@ -533,4 +602,18 @@ func feedURL(v interface{}) string {
 func stringArg(args map[string]interface{}, key string) string {
 	s, _ := args[key].(string)
 	return s
+}
+
+// projectTasksLeadPaused reports whether the project's lead is paused and chatID
+// is its chat: its Watchers then hold events until the person resumes it.
+func (c *conditionService) projectTasksLeadPaused(ctx context.Context, workspace, chatID string) bool {
+	if workspace == "" || chatID == "" {
+		return false
+	}
+	var list projectTaskList
+	raw, found, err := c.s.readFile(ctx, path.Join(workspace, "db", "project-tasks.json"))
+	if err != nil || !found || json.Unmarshal([]byte(raw), &list) != nil {
+		return false
+	}
+	return list.Paused && list.LeadChat == chatID
 }

@@ -28,3 +28,25 @@ func TestProjectTasksKeepOpenWorkAndOwnSteps(t *testing.T) {
 		t.Fatalf("step match: %q %v", step, err)
 	}
 }
+
+// Needs you is decided by the server: a proposal, an open question, an ask stuck
+// on the person and an unassigned task all show there, a held one does not.
+func TestProjectTasksNeedsYou(t *testing.T) {
+	list := projectTaskList{Steps: []string{"New", "Done"}}
+	cases := []struct {
+		task projectTask
+		want bool
+	}{
+		{projectTask{Assignee: "Docs agent"}, false},
+		{projectTask{}, true},
+		{projectTask{Proposed: "Docs agent"}, true},
+		{projectTask{Assignee: "Docs agent", Waiting: "Which server first?"}, true},
+		{projectTask{Held: true}, false},
+		{projectTask{Step: "Done"}, false},
+	}
+	for i, c := range cases {
+		if got := projectTaskView(list, c.task, nil).NeedsYou != ""; got != c.want {
+			t.Errorf("case %d: needs you = %v, want %v", i, got, c.want)
+		}
+	}
+}
