@@ -6,27 +6,31 @@ import { summarizePlan } from '../../utils/planSummary'
 
 // Plan mode in the message box (#3711, approved mockup): no button while Plan is off. Shift+Tab, /plan or
 // "Plan first" in the chat menu turn it on; while on, a small tag beside the model turns it off again.
-export function PlanModeTag({ onToggle }: { onToggle: () => void }) {
+export function PlanModeTag({ onToggle, onStart }: { onToggle: () => void; onStart?: () => void }) {
+  // Quiet, like the model name beside it (owner: the filled pink tag read as an error).
+  const base = 'group inline-flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-muted-foreground'
+  if (onStart) {
+    // Codex and Cursor answer a plan as a reply, so the tag offers the one step that starts the work and turns
+    // Plan off. A Claude turn that ended without its plan card gets it too. Typing still sends changes.
+    return (
+      <span className={base} data-testid="plan-mode-chip" title="The plan is ready. Start runs it and turns Plan first off; or type changes.">
+        <ListChecks className="h-3 w-3" aria-hidden="true" />
+        Plan ready ·
+        <button type="button" onClick={onStart} data-testid="plan-start-button"
+          className="rounded px-0.5 font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          Start
+        </button>
+      </span>
+    )
+  }
   return (
     <button type="button" onClick={onToggle} aria-pressed="true" data-testid="plan-mode-chip"
       title="Plan first is on: the agent proposes a plan and changes nothing until you approve. Click or press Shift+Tab to turn it off."
-      className="inline-flex h-4 items-center rounded bg-primary/10 px-1 text-[10px] font-semibold leading-none text-primary hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      Plan
+      className={`${base} hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>
+      <ListChecks className="h-3 w-3" aria-hidden="true" />
+      Plan first
+      <X className="hidden h-2.5 w-2.5 group-hover:inline" aria-hidden="true" />
     </button>
-  )
-}
-
-// Codex and Cursor answer a plan as a reply: one step to start the work, which turns Plan off. A Claude turn
-// that ended without its plan card gets it too.
-export function PlanStartBar({ onStart }: { onStart: () => void }) {
-  return (
-    <div className="mx-3 mb-1 flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-1 text-xs" data-testid="plan-start-bar">
-      <span className="text-muted-foreground">Plan ready. Start the work, or type changes.</span>
-      <button type="button" onClick={onStart}
-        className="ml-auto rounded-md bg-primary px-2.5 py-1 font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        Start
-      </button>
-    </div>
   )
 }
 

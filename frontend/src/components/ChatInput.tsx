@@ -144,7 +144,7 @@ import { isMainAgentTerminal } from '../utils/terminalIdentity'
 import { loadProfileAtFiles } from '../utils/profileAtFiles'
 import { proxyCrewFileClient, sharedCrewFileClient } from '../products/work/sharedCrewFiles'
 import { chatSendMessageEvent } from '../products/work/ChatContextItems'
-import { PlanModeTag, PlanStartBar } from './chat/PlanModeControls'
+import { PlanModeTag } from './chat/PlanModeControls'
 import { isPlanToggleKey, PLAN_START_MESSAGE, planNeedsStartButton } from '../utils/planMode'
 
 // The person's chat/terminal choice for this tab. Not remembered: every
@@ -2804,6 +2804,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const submitButtonDisabled = pendingNativeChoice || !hasValidQuery || !hasSubmitTarget || isViewOnly || isCdpDisconnected || (isUploadingFiles && !uploadingFiles?.canSend && !pendingUploadBatchRef.current?.submitted)
   const sendButtonLabel = isStreaming || transcriptTurnActive ? 'Steer' : 'Send'
 
+  // A plan reply is waiting to be started: the Plan tag offers Start (no bar above the box).
+  const planReady = planOn && tabConfig?.planAwaitingStart === true && !isTurnInFlight && !pendingNativeChoice && planNeedsStartButton(effectiveProviderForSteer)
+
   // Memoized placeholder
   const placeholder = useMemo(() => {
     if (pendingNativeChoice) return 'Choose an option above to continue…'
@@ -2811,6 +2814,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (isViewOnly && viewOnlyWriter) return `This is ${viewOnlyWriter}'s chat. Only they can write here.`
     if (isViewOnly) return "View only — cannot continue this conversation"
     if (placeholderOverride) return placeholderOverride
+    if (planReady) return 'Type changes to the plan, or press Start…'
     if (planOn) return 'Describe what to plan… (nothing changes until you approve)'
     if (isProductSurface || activeTab?.metadata?.agentProfileId === 'work') return 'Ask anything…'
     if (agentProfileWorkspace) return 'Describe the video you want to make…'
@@ -2818,7 +2822,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return 'Chat with the automation builder…'
     }
     return 'Ask anything…'
-  }, [agentProfileWorkspace, isProductSurface, activeTab?.metadata?.agentProfileId, isViewOnly, viewOnlyWriter, isWorkflowPhaseChat, placeholderOverride, pendingNativeChoice, onPlanFeedback, planOn])
+  }, [agentProfileWorkspace, isProductSurface, activeTab?.metadata?.agentProfileId, isViewOnly, viewOnlyWriter, isWorkflowPhaseChat, placeholderOverride, pendingNativeChoice, onPlanFeedback, planOn, planReady])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.
@@ -2979,7 +2983,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             <span className="truncate rounded border border-border bg-muted px-2 py-1" title={requestedSkill ? `${requestedSkill.description} · ${requestedSkill.source}` : nativeSkillCatalog.error || nativeSkillCatalog.catalog.message}>Skill requested: {requestedSkill?.name || (nativeSkillCatalog.loading ? 'Loading…' : 'unavailable — refresh Skills')}</span>
             <button type="button" aria-label="Remove requested skill" onClick={() => activeTabId && setTabConfig(activeTabId, { requestedSkillId: undefined })}><X size={14} /></button>
           </div>}
-          {planOn && tabConfig?.planAwaitingStart && !isTurnInFlight && !pendingNativeChoice && planNeedsStartButton(effectiveProviderForSteer) && <PlanStartBar onStart={startPlannedWork} />}
           {tabSessionId && activeTabId && !isViewOnly && <Suspense fallback={null}><DurableChatQueue ref={durableQueueRef} key={tabSessionId} sessionId={tabSessionId} tabId={activeTabId} busy={isTurnInFlight} canEdit={!queryToSubmit.trim() && !requestedSkillId && !isUploadingFiles} onEdit={restoreQueuedDraft} /></Suspense>}
         </>}>
             {uploadingFiles && uploadingFiles.tabId === activeTabId && <UploadingAttachments files={uploadingFiles.files} />}
@@ -3467,7 +3470,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 })()}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
                 {/* Plan first shows only while on; Shift+Tab, /plan or the chat menu turn it on (#3711). */}
-                {planOn && <PlanModeTag onToggle={togglePlanMode} />}
+                {planOn && <PlanModeTag onToggle={togglePlanMode} onStart={planReady ? startPlannedWork : undefined} />}
                 {agentProfileId === 'work' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
                 <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID
