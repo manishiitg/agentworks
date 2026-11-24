@@ -216,7 +216,7 @@ func (api *StreamingAPI) handleProviderAccountCosts(w http.ResponseWriter, r *ht
 		return
 	}
 	if !currentUserCanReviewCode(r) {
-		writeWorkflowPermissionDenied(w, "admin or Code reviewer")
+		writeWorkflowPermissionDenied(w, "admin or project reviewer")
 		return
 	}
 	if api.costLedger == nil {

@@ -285,7 +285,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		if t.Allows("crews:review") && !currentUserCanReviewCode(r) {
-			externalError(w, 403, "forbidden", "crews:review is for admins and Code reviewers.")
+			externalError(w, 403, "forbidden", "crews:review is for admins and project reviewers.")
 			return
 		}
 		if t.Allows("users:manage") && !currentUserIsAdmin(r) {

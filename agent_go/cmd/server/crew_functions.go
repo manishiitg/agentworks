@@ -1840,7 +1840,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 			return "", fmt.Errorf("workflow runs do not accept mid-run messages; use functions action=status for status and progress")
 		}
 		if call.TargetChat != "" {
-			return "", fmt.Errorf("a chat of this Code takes no mid-turn questions; read its progress and recent activity with functions action=status")
+			return "", fmt.Errorf("a chat of this project takes no mid-turn questions; read its progress and recent activity with functions action=status")
 		}
 		question, _ := args["question"].(string)
 		if strings.TrimSpace(question) == "" {

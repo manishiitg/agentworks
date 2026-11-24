@@ -83,7 +83,7 @@ func (c *conditionService) validateTarget(ctx context.Context, job productSchedu
 	}
 	if cfg.Target.Kind == "agent" {
 		if cfg.Target.Name != "" {
-			return errors.New("Code agent targets stay in this project; use chat_id for its side chats")
+			return errors.New("Agent targets stay in this project; use chat_id for its side chats")
 		}
 		if id := strings.TrimSpace(cfg.Target.ChatID); id != "" && !conditionChatIDPattern.MatchString(id) {
 			return errors.New("chat_id must be main, new (a new chat for each event) or the id of an existing side chat")

@@ -18,8 +18,8 @@ const scopeDescriptions: Record<string, string> = {
   'crews:write': 'Create projects and edit the projects you own (identity, skills, MCP connections, references, functions, schedules, files, dashboards). Run sandboxed shell commands, control the project browser, mutate its database and use its connected tools; execution is recorded in your owner-only audit history. With access to all your projects, manage approved account-wide folder attachments',
   'knowledgebase:read': 'Read shared Brain folders your identity can access',
   'knowledgebase:write': 'Save shared knowledge within your folder grants',
-  'code:run': 'Send messages into your own Code projects and read the replies, so the agent runs commands in your project\'s sandbox. Includes editing dashboards in your own projects within your current role',
-  'crews:review': 'Review every Code workspace: cost, chats and files. Every view is recorded in the audit log',
+  'code:run': 'Send messages into your own projects and read the replies, so the agent runs commands in your project\'s sandbox. Includes editing dashboards in your own projects within your current role',
+  'crews:review': 'Review every project: cost, chats and files. Every view is recorded in the audit log',
   'users:manage': 'See everyone\'s token use on the shared accounts and set their daily and weekly limits, as an administrator. Every change is recorded in the audit log',
 }
 
@@ -33,8 +33,8 @@ const scopeGroups: { summary: string; scopes: string[] }[] = [
   { summary: 'Use your projects', scopes: ['crews:read', 'crews:run'] },
   { summary: 'Edit your own projects and run their sandboxed commands, browser, database and connected tools (logged)', scopes: ['crews:write'] },
   { summary: 'Use shared Brain within your folder grants', scopes: ['knowledgebase:read', 'knowledgebase:write'] },
-  { summary: 'Run your own Code: send it messages and read the replies (it runs commands in your project)', scopes: ['code:run'] },
-  { summary: 'Review Code workspaces (logged)', scopes: ['crews:review'] },
+  { summary: 'Run your own projects: send them messages and read the replies (the agent runs commands in the project)', scopes: ['code:run'] },
+  { summary: 'Review projects (logged)', scopes: ['crews:review'] },
   { summary: 'Set people\'s shared-account token limits (administrator, logged)', scopes: ['users:manage'] },
 ]
 

@@ -503,7 +503,7 @@ func buildCostOverview(summary *costledger.Summary, visible func(id, kind string
 // (YYYY-MM-DD, UTC) bound the range, as for /api/cost/summary.
 func (api *StreamingAPI) handleCostOverview(w http.ResponseWriter, r *http.Request) {
 	if !currentUserCanReviewCode(r) {
-		writeWorkflowPermissionDenied(w, "admin or Code reviewer")
+		writeWorkflowPermissionDenied(w, "admin or project reviewer")
 		return
 	}
 	if api.costLedger == nil {

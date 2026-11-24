@@ -134,7 +134,7 @@ func codeSessionTurnRefusal(sessionID string, claims *UserClaims) string {
 		return ""
 	}
 	if claims == nil || claims.Provider == "bot_route" || sanitizeUserIDForPath(strings.TrimSpace(claims.UserID)) != pin.Person {
-		return "This project chat belongs to another person. Open your own chat of this Code."
+		return "This project chat belongs to another person. Open your own chat in this project."
 	}
 	return ""
 }

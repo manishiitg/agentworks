@@ -895,7 +895,7 @@ func (g *GmailService) resolveSendConfig(connectionID string) (*GmailConfig, str
 		// Platform sends (notifications, workflow mail) never use a Code's
 		// private account.
 		if conn.IsPrivate() {
-			return nil, "", fmt.Errorf("gmail connection %q belongs to one Code workspace and cannot send platform mail", conn.ID)
+			return nil, "", fmt.Errorf("gmail connection %q belongs to one project and cannot send platform mail", conn.ID)
 		}
 		return gmailConnectionConfig(conn), conn.ID, nil
 	}

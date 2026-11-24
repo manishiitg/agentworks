@@ -78,7 +78,7 @@ func (api *StreamingAPI) externalBrowserConnectionsCall(w http.ResponseWriter, r
 		root, profile = crew.Binding.WorkspacePath, "work"
 	case pid != "":
 		if !externalCodeRunAllowed(c) {
-			externalError(w, 403, "forbidden", "Use your own Code connection, or choose its browser in the app.")
+			externalError(w, 403, "forbidden", "Use your own project's connection, or choose its browser in the app.")
 			return
 		}
 		binding, _, ok := api.externalCodeRunOwnProject(r.Context(), c.UserID, pid)

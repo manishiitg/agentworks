@@ -337,7 +337,7 @@ func (s *SlackService) pickDMRoute(ctx context.Context, hooks *SlackRoutingHooks
 		}
 		switch len(reachableIdx) {
 		case 0:
-			return slackDMPick{reply: "Nothing is reachable for you through this bot yet. A workflow's, project's or Code's owner turns it on in its Integrations → Slack tab."}
+			return slackDMPick{reply: "Nothing is reachable for you through this bot yet. A workflow's or project's owner turns it on in its Integrations → Slack tab."}
 		case 1:
 			chosen = reachableIdx[0]
 		default:
