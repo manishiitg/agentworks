@@ -58,5 +58,4 @@ profile:
 ui:
   tips:
     - id: quick-switcher
-    - id: toolbar-hide
   surface: mcp-gateway

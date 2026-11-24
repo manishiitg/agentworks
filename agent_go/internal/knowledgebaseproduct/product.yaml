@@ -95,7 +95,6 @@ branding: {icon: book-open, favicon: ""}
 ui:
   tips:
     - id: quick-switcher
-    - id: toolbar-hide
   surface: knowledgebase
   files_panel: false
   workflow_panel: false

@@ -60,9 +60,10 @@ branding:
 
 ui:
   tips:
-    - id: dashboards-library
     - id: quick-switcher
-    - id: toolbar-hide
+    - id: vault-secret-in-chat
+    - id: own-ai-account
+    - id: project-dashboard-create
   surface: ""
   files_panel: false
   workflow_panel: false
