@@ -162,7 +162,7 @@ func linkRemoteProject(ctx context.Context, userID, workspacePath, server, proje
 	if serverName == "" {
 		return nil, fmt.Errorf("no project %s on %s that you can open; list them with server_project_files action=projects", project, conn.Name)
 	}
-	if _, err := callServerTool(ctx, userID, conn, "crew_references", map[string]any{"action": "attach", "crew_id": project, "project_id": here, "project_name": hereName}); err != nil {
+	if _, err := callServerTool(ctx, userID, conn, "workspace", map[string]any{"action": "reference_attach", "crew_id": project, "project_id": here, "project_name": hereName}); err != nil {
 		return nil, err
 	}
 	links, err := setRemoteProjectLink(ctx, workspacePath, remoteProjectLink{ProjectID: project, Name: cleanAgentLabel(serverName), Server: conn.ID})
@@ -195,7 +195,7 @@ func unlinkRemoteProject(ctx context.Context, userID, workspacePath, project str
 		if err != nil {
 			return "Link removed on this Mac. This Mac is no longer signed in to that server; remove the link there from that project's chat if it still shows.", nil
 		}
-		if _, err := callServerTool(ctx, userID, conn, "crew_references", map[string]any{"action": "detach", "crew_id": project, "project_id": here}); err != nil {
+		if _, err := callServerTool(ctx, userID, conn, "workspace", map[string]any{"action": "reference_detach", "crew_id": project, "project_id": here}); err != nil {
 			return fmt.Sprintf("Link removed on this Mac. %s did not remove its side (%v); remove it there from that project's chat.", conn.Name, err), nil
 		}
 	}
