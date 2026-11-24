@@ -20,6 +20,8 @@ func TestTurnSpeedLogsFirstActivityOnceThenTurnEnd(t *testing.T) {
 	TurnSpeedSpan("s1", "secrets")()
 	TurnSpeedProcess("s1", "claude-code", "reuse", "launch_unchanged")
 	trackTurnSpeed("s1", Event{Type: "user_message"})
+	// The server's own "sending to the model" event is not the agent's activity.
+	trackTurnSpeed("s1", Event{Type: "llm_generation_start"})
 	trackTurnSpeed("s1", Event{Type: "tool_call_start"})
 	trackTurnSpeed("s1", Event{Type: "tool_call_start"})
 	trackTurnSpeed("s1", Event{Type: "streaming_chunk"})
