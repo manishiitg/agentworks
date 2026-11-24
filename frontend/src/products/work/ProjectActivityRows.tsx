@@ -121,25 +121,32 @@ function ItemMenu({ onPick }: { onPick: (kind: 'ask' | 'mine' | 'team') => void 
   </div>
 }
 
-export function ProjectActivityRows({ section, onAgent, onWatchers, hideKey }: {
+// "Not now" on the set-up prompt is a view preference for this project; Connections then offers the set-up instead.
+export function useProjectActivityHidden(key: string) {
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(key) === '1' } catch { return false } })
+  useEffect(() => { try { setHidden(localStorage.getItem(key) === '1') } catch { setHidden(false) } }, [key])
+  const hide = () => { setHidden(true); try { localStorage.setItem(key, '1') } catch { /* hidden for this visit only */ } }
+  return [hidden, hide] as const
+}
+
+export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHide }: {
   section?: CrewPanelSection
   onAgent?: (message: string) => void
   onWatchers: () => void
-  hideKey: string
+  hidden: boolean
+  onHide: () => void
 }) {
-  // "Not now" on the set-up prompt is a view preference for this project; it comes back once a source exists.
-  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(hideKey) === '1' } catch { return false } })
   if (!section) return null
   const rows = section.rows
   if (!rows.length) {
     if (!onAgent || hidden) return null
-    const hide = () => { setHidden(true); try { localStorage.setItem(hideKey, '1') } catch { /* hidden for this visit only */ } }
+    const hide = onHide
     return <div className="px-1 pb-1">
       <div className="flex min-h-8 items-center gap-2 text-xs text-foreground/85">
         <Activity aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground"/>
         <span className="min-w-0 flex-1 truncate">Project activity</span>
         <button type="button" onClick={() => onAgent(projectActivitySetupMessage)} className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Set up</button>
-        <button type="button" onClick={hide} className="shrink-0 text-[10px] text-muted-foreground hover:text-foreground">Not now</button>
+        <button type="button" onClick={hide} className="shrink-0 text-[9px] text-muted-foreground/80 hover:text-foreground">Not now</button>
       </div>
       <p className="truncate pl-[22px] text-[10px] text-muted-foreground">Slack, mail, Drive and tasks for this project</p>
     </div>

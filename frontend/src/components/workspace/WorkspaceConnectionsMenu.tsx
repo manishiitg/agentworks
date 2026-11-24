@@ -1,5 +1,5 @@
 import { Portal as TooltipPortal } from '@radix-ui/react-tooltip'
-import { Bot, Cable, ChevronRight, Chrome, Github, Grid2X2, MessageCircle, Monitor, MonitorCog, Settings2, Slack, type LucideIcon } from 'lucide-react'
+import { Activity, Bot, Cable, ChevronRight, Chrome, Github, Grid2X2, MessageCircle, Monitor, MonitorCog, Settings2, Slack, type LucideIcon } from 'lucide-react'
 import type { CrewPanelRow } from '../../products/work/useCrewPanel'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 import { WorkspaceCompactGroup } from './WorkspaceCompactGroup'
@@ -15,9 +15,9 @@ export function ConnectionIcon({ icon: Icon, hint, count, onClick }: {
     </button>
   </TooltipTrigger><TooltipPortal><TooltipContent className="max-w-72 break-words">{hint}</TooltipContent></TooltipPortal></Tooltip>
 }
-export function WorkspaceConnectionsMenu({ browser, details, browserAllowed, mcpAllowed, apps, loading, unavailable, onOpen, onManage }: {
+export function WorkspaceConnectionsMenu({ browser, details, browserAllowed, mcpAllowed, apps, loading, unavailable, onOpen, onManage, onActivitySetup }: {
   browser: { connected: boolean; label: string; name?: string }; details: Record<string, string>; browserAllowed: boolean; mcpAllowed: boolean
-  apps: CrewPanelRow[]; loading: boolean; unavailable: boolean; onOpen: (destination: string) => void; onManage?: () => void
+  apps: CrewPanelRow[]; loading: boolean; unavailable: boolean; onOpen: (destination: string) => void; onManage?: () => void; onActivitySetup?: () => void
 }) {
   const mcps = apps.filter(item => item.destination === 'mcp:connected')
   const connectedMcps = mcps.filter(item => item.connected)
@@ -29,7 +29,7 @@ export function WorkspaceConnectionsMenu({ browser, details, browserAllowed, mcp
   const browserIcon = browser.name?.toLowerCase().includes('chrome') ? Chrome : Monitor
   const labelFor = (item: CrewPanelRow) => item.destination === 'mcp:slack-bot' ? 'Slack bot' : item.label
   const iconFor = (item: CrewPanelRow) => item.destination === 'mcp:computer-use' ? MonitorCog : item.destination === 'mcp:github' ? Github : item.destination === 'mcp:gmail' ? Grid2X2 : item.destination === 'mcp:slack-bot' ? Bot : item.destination === 'mcp:whatsapp' ? MessageCircle : Slack
-  if (!browserAllowed && !mcpAllowed && !accounts.length && !onManage) return null
+  if (!browserAllowed && !mcpAllowed && !accounts.length && !onManage && !onActivitySetup) return null
   return <TooltipProvider delayDuration={200}><WorkspaceCompactGroup title="Connections" icon={Cable} preview={<div className="isolate flex -space-x-1.5">
     {browserAllowed && browser.connected && <ConnectionIcon icon={browserIcon} hint={browserHint} onClick={() => onOpen('browser')}/>}
     {accounts.filter(item => item.connected).map(item => <ConnectionIcon key={item.id} icon={iconFor(item)} hint={`${labelFor(item)} · ${item.detail}`} onClick={() => onOpen(item.destination!)}/>)}
@@ -38,6 +38,7 @@ export function WorkspaceConnectionsMenu({ browser, details, browserAllowed, mcp
     {browserAllowed && <WorkspaceContextRow icon={browserIcon} hint={browserHint} detail={browser.name || browser.label} attention={!browser.connected && browser.label !== 'Checking…'} onClick={() => onOpen('browser')}>Browser</WorkspaceContextRow>}
     {accounts.map(item => <WorkspaceContextRow key={item.id} icon={iconFor(item)} hint={`${labelFor(item)} · ${item.detail}`} detail={item.detail} attention={item.attention} onClick={() => onOpen(item.destination!)}>{labelFor(item)}</WorkspaceContextRow>)}
     {mcpAllowed && <WorkspaceContextRow icon={Cable} hint={mcpHint} detail={mcpDetail} attention={attention > 0 || unavailable} onClick={() => onOpen('mcp:connected')}>MCPs</WorkspaceContextRow>}
+    {onActivitySetup && <WorkspaceContextRow icon={Activity} hint="Slack, mail, Drive and tasks for this project" detail="Set up" onClick={onActivitySetup}>Project activity</WorkspaceContextRow>}
     {onManage && <WorkspaceContextRow icon={Settings2} detail={<ChevronRight aria-hidden="true" className="h-3 w-3" />} onClick={onManage}>Manage integrations</WorkspaceContextRow>}
   </WorkspaceCompactGroup></TooltipProvider>
 }
