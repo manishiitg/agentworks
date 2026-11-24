@@ -7,37 +7,12 @@ import { AgentMark, latestTime } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
 import { openAgentTab } from '../../utils/openAgentTab'
-import { teamAgentFor, teammateAgentsListed, useTeamTab } from '../../products/work/teamApi'
+import { teamAgentFor, useTeamTab } from '../../products/work/teamApi'
 import { openTeammateAgent } from '../../products/work/openTeammateAgent'
 import { groupNames, useAgentGroups, useAgentGroupsStore } from './agentGroups'
 
 import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarGroupHeaderClass } from './sidebarAgentLayout'
 import { AgentRowLine, PersonInitial, agentRowThemeProps } from './SidebarAgentRowLine'
-
-/** A grouped agent this list never saw was unshared, except a teammate's agent (":team:" key) where this app
- * does not list teammates' agents at all (outside the Mac app). */
-const unshared = (key: string, known: Set<string | undefined>) =>
-  !known.has(key) && (!key.includes(':team:') || teammateAgentsListed())
-
-/** The grouped keys still missing after a short wait. The agent lists fill in over a second or two (your own,
- * closed and teammates' agents arrive separately), so a key missing only while they load is not "no longer
- * shared"; showing the note at once made it flash on every switch (#3389). */
-const UNSHARED_AFTER_MS = 3000
-function useUnsharedKeys(keys: string[]): Set<string> {
-  const since = useRef(new Map<string, number>())
-  const [, recheck] = useState(0)
-  const now = Date.now()
-  for (const key of [...since.current.keys()]) if (!keys.includes(key)) since.current.delete(key)
-  for (const key of keys) if (!since.current.has(key)) since.current.set(key, now)
-  const settled = new Set(keys.filter(key => now - since.current.get(key)! >= UNSHARED_AFTER_MS))
-  const waiting = keys.filter(key => !settled.has(key)).join('\n')
-  useEffect(() => {
-    if (!waiting) return
-    const timer = window.setTimeout(() => recheck(n => n + 1), UNSHARED_AFTER_MS)
-    return () => window.clearTimeout(timer)
-  }, [waiting])
-  return settled
-}
 
 // The phone drawer closes once something is opened from it.
 const closeDrawer = () => window.dispatchEvent(new Event('close-app-sidebar'))
@@ -108,9 +83,8 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   // The Team tab's one server reading: each agent's availability and every person, by account, with their name.
   const team = useTeamTab(projectId).view
   const tabs = useChatStore(state => state.chatTabs)
-  // Groups hold your own agents and teammates' agents shared with the Team; a key no list knows was unshared.
-  const known = new Set([...crew.agents.map(agent => agent.key), ...crew.closed.map(agent => agent.key)])
-  const unsharedKeys = useUnsharedKeys(crew.projectId === projectId && crew.agents.length ? Object.keys(groups).filter(key => unshared(key, known)) : [])
+  // The roster can be incomplete. An absent row does not tell us that sharing
+  // changed; keep the saved group so the row can reappear with the next list.
   if (crew.projectId !== projectId || !crew.agents.length) return <OwnTerminalAgents projectId={projectId} />
   const ownAgents = crew.agents.filter(agent => !agent.ownerId)
   // A teammate's agent with no tab open here still shows in its group, as in a project that is not open:
@@ -258,7 +232,6 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     const members = roots.filter(agent => groupOf(agent) === name)
     const theirs = teammates.filter(agent => groupOf(agent) === name)
     const theirsClosed = theirClosed.filter(agent => groups[agent.key] === name)
-    const gone = Object.entries(groups).filter(([key, group]) => group === name && unsharedKeys.has(key)).map(([key]) => key)
     const inside = [...members.flatMap(agent => [agent, ...below(agent)]), ...theirs]
     const count = members.length + theirs.length + theirsClosed.length
     const renaming = naming?.kind === 'rename' && naming.group === name
@@ -289,11 +262,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
         {members.map(agent => tree(agent))}
         {theirs.map(agent => <div key={agent.tabId}>{row(agent, true)}</div>)}
         {theirsClosed.map(closedRow)}
-        {gone.map(key => <div key={key} className="mx-1 my-0.5 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground">
-          An agent in this group is no longer shared with you, so it can’t be opened.{' '}
-          <button type="button" className="font-medium text-foreground underline" onClick={() => { void edit({ op: 'move', key, group: '' }) }}>Remove from group</button>
-        </div>)}
-        {!count && !gone.length && <p className="px-2 py-1 text-[11px] text-muted-foreground">Drag an agent here.</p>}
+        {!count && <p className="px-2 py-1 text-[11px] text-muted-foreground">Drag an agent here.</p>}
       </div>}
     </div>
   }
@@ -423,11 +392,9 @@ function TeammateAgentPicker({ group, agents, onPick, onClose }: { group: string
 
 /** A project's agents when it is not the open one: the same groups and fork tree as the live list, without the
  * editing (that happens once it is open), so switching projects does not reshape the menu (#3288). */
-export function SidebarAgentLayout<T>({ projectId, rows: all, known, keyOf, forkedFromOf, teammate, render }: { projectId?: string; rows: T[]; known: Set<string>; keyOf: (row: T) => string; forkedFromOf: (row: T) => string | undefined; teammate: (row: T) => boolean; render: (row: T) => ReactNode }) {
+export function SidebarAgentLayout<T>({ projectId, rows: all, keyOf, forkedFromOf, teammate, render }: { projectId?: string; rows: T[]; keyOf: (row: T) => string; forkedFromOf: (row: T) => string | undefined; teammate: (row: T) => boolean; render: (row: T) => ReactNode }) {
   const groups = useAgentGroups(projectId)
   const [folds, toggleFold] = useFolds(projectId || '')
-  // Keys this list never saw (a closed or hidden agent is known) were unshared, as in the open project's list.
-  const unsharedKeys = useUnsharedKeys(Object.keys(groups).filter(key => unshared(key, known)))
   // A teammate's agent shows only in one of your groups, as in the live list.
   const rows = all.filter(row => !teammate(row) || groups[keyOf(row)])
   const byKey = new Map(rows.map(row => [keyOf(row), row]))
@@ -468,7 +435,6 @@ export function SidebarAgentLayout<T>({ projectId, rows: all, known, keyOf, fork
   return <>
     {groupNames(groups).map(name => {
       const members = roots.filter(row => groupOf(row) === name)
-      const gone = Object.entries(groups).filter(([key, group]) => group === name && unsharedKeys.has(key)).map(([key]) => key)
       const folded = folds.has(`group:${name}`)
       return <div key={name} role="group" aria-label={`Group ${name}`}>
         <button type="button" aria-expanded={!folded} onClick={() => toggleFold(`group:${name}`)} className={sidebarGroupHeaderClass}>
@@ -476,10 +442,7 @@ export function SidebarAgentLayout<T>({ projectId, rows: all, known, keyOf, fork
           <span className="flex-1" />{foldArrow(!folded)}
         </button>
         {!folded && <div className="ml-2 border-l border-dashed border-border pl-1">{members.map(tree)}
-          {gone.map(key => <div key={key} className="mx-1 my-0.5 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground">
-            An agent in this group is no longer shared with you, so it can’t be opened.{projectId && <>{' '}<button type="button" className="font-medium text-foreground underline" onClick={() => { void useAgentGroupsStore.getState().edit(projectId, { op: 'move', key, group: '' }).catch(() => {}) }}>Remove from group</button></>}
-          </div>)}
-          {!members.length && !gone.length && <p className="px-2 py-1 text-[11px] text-muted-foreground">Open the project to add agents here.</p>}
+          {!members.length && <p className="px-2 py-1 text-[11px] text-muted-foreground">Open the project to add agents here.</p>}
         </div>}
       </div>
     })}
