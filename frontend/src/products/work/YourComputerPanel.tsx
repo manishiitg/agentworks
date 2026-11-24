@@ -339,7 +339,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
     {!(here && needsServer) && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
       {/* A Crew on the server has co-owners instead of a Team (owner, 21 Nov): the Access panel with Shared with and Co-owners. */}
       {status.access_co_owners && workspacePath
-        ? <><ShareDashboardButton workspacePath={workspacePath} variant="panel" />
+        ? <><ShareDashboardButton workspacePath={workspacePath} variant="panel" coOwnersOnly />
           {!!status.access_in_teams?.length && <section aria-label="In a Team" className="space-y-1 border-t border-border pt-4">
             <div><h3 className="font-semibold">In a Team</h3><p className="text-xs text-muted-foreground">Its agents work with this Team and its shared folders sync here.</p></div>
             {status.access_in_teams.map(item => <div key={item.team_id}>{way(item.name, `${item.owner}'s Team`, item.can_remove ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void leaveTeam(item.team_id)}>Remove from Team</Button> : null)}</div>)}

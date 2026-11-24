@@ -28,9 +28,11 @@ const errorText = (cause: unknown, fallback: string) => {
 }
 
 /** One Access overview. Changes use the project's visible chat and its existing server tools. */
-export function ShareDashboardButton({ workspacePath, documentPath, label = 'Share', variant = 'button', onOpen, tabId }: {
+export function ShareDashboardButton({ workspacePath, documentPath, label = 'Share', variant = 'button', onOpen, tabId, coOwnersOnly = false }: {
   /** The open dashboard or artifact; Copy link copies its link rather than the project's first dashboard. */
   workspacePath: string; documentPath?: string; label?: string; variant?: 'button' | 'row' | 'panel'; onOpen?: () => void
+  /** A server project's Co-owners page (owner, 24 Nov): who builds it, nothing about who uses it or its artifacts. */
+  coOwnersOnly?: boolean
   onAsk?: (message: string) => void | Promise<unknown>; tabId?: string
 }) {
   const user = useAuthStore(state => state.user?.id)
@@ -161,7 +163,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   </form>
   const choices = [['private', 'Only me'], ['people', 'Chosen people'], ['everyone', 'Everyone']] as const
   const peopleContent = <div className="space-y-6 text-sm">
-    <OnlineOnlyNote projectId={crewProjectId} />
+    {!coOwnersOnly && <><OnlineOnlyNote projectId={crewProjectId} />
     <section aria-label="Shared with" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold">Shared with</h3>
@@ -195,7 +197,8 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
         <button type="button" disabled={busy} onClick={() => setPendingShare(undefined)} className="rounded-md border border-border px-3 py-2 text-xs hover:bg-muted">Cancel</button>
       </div>
     </section>}
-    {state.has_owners && <section aria-label="Co-owners" className="space-y-3 border-t border-border pt-4">
+    </>}
+    {state.has_owners && <section aria-label="Co-owners" className={`space-y-3${coOwnersOnly ? '' : ' border-t border-border pt-4'}`}>
       <div><h3 className="font-semibold">Co-owners</h3><p className="text-xs text-muted-foreground">Can build and change it, like you.</p></div>
       <ul aria-label="Owners" className="space-y-2">
         {owners?.owner && <li className="flex min-w-0 items-center gap-2">{avatar(owners.owner)}<span className="min-w-0 flex-1 truncate" title={who(owners.owner)}>{who(owners.owner)}</span><span className="shrink-0 text-xs text-muted-foreground">Created it</span></li>}
@@ -207,7 +210,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     {notice && <p role="status" className="text-xs text-muted-foreground">{notice}</p>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {/* Which agents others can message is each agent's Public on AgentBridge, in the Team tab's one agent list. */}
-    {!!state.accounts?.length && <details className="border-t border-border pt-3 text-xs"><summary className="cursor-pointer py-1 text-muted-foreground">Details</summary>
+    {!coOwnersOnly && !!state.accounts?.length && <details className="border-t border-border pt-3 text-xs"><summary className="cursor-pointer py-1 text-muted-foreground">Details</summary>
       <div className="mt-2 space-y-3">
         {!!state.accounts?.length && <div><p className="font-medium">Accounts used</p><ul className="mt-1 space-y-1">{state.accounts.map((account, i) => <li key={i}>{account.name}<span className="block text-muted-foreground">{account.use}</span></li>)}</ul></div>}
       </div>
