@@ -117,7 +117,7 @@ func agyACPLaunch(req acpcli.LaunchRequest) (*acpcli.LaunchSpec, error) {
 			env = append(env, entry)
 		}
 	}
-	env = agyPinHome(llmtypes.MergeCodingAgentSecretEnvironment(append(env, "HOME="+privateHome, "NO_OPEN_BROWSER=1"), opts), privateHome)
+	env = agyPinHome(agyAccountEnv(llmtypes.MergeCodingAgentSecretEnvironment(append(env, "HOME="+privateHome, "NO_OPEN_BROWSER=1"), opts), opts), privateHome)
 	agyLogLaunch(env)
 	return &acpcli.LaunchSpec{
 		Args: args,

@@ -34,6 +34,8 @@ func accountCredentials(config Config) map[string]string {
 		put("CURSOR_API_KEY", config.APIKeys.CursorCLI)
 	case ProviderMuseCLI:
 		put("META_API_KEY", config.APIKeys.MuseCLI)
+	case ProviderAgyCLI:
+		put("GEMINI_API_KEY", config.APIKeys.AgyCLI)
 	}
 	return result
 }
