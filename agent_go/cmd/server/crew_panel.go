@@ -56,12 +56,13 @@ type crewPanelRow struct {
 	DoneCount int      `json:"done_count,omitempty"`
 	// Project tasks (one shared list per project): its tasks, the lead's
 	// decisions in the last day, and the lead agent's name.
-	Tasks      []crewPanelProjectTask `json:"tasks,omitempty"`
-	Sorted     []projectTaskSorted    `json:"sorted,omitempty"`
-	Lead       string                 `json:"lead,omitempty"`
-	TasksMode  string                 `json:"tasks_mode,omitempty"`
-	Paused     bool                   `json:"paused,omitempty"`
-	LastSorted int64                  `json:"last_sorted,omitempty"`
+	Tasks         []crewPanelProjectTask `json:"tasks,omitempty"`
+	Sorted        []projectTaskSorted    `json:"sorted,omitempty"`
+	Lead          string                 `json:"lead,omitempty"`
+	TasksMode     string                 `json:"tasks_mode,omitempty"`
+	Paused        bool                   `json:"paused,omitempty"`
+	LastSorted    int64                  `json:"last_sorted,omitempty"`
+	NeedsYouCount int                    `json:"needs_you_count,omitempty"` // Project tasks: shown on the closed row
 }
 type crewPanelSection struct {
 	ID     string `json:"id"`
