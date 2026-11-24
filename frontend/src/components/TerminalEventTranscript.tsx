@@ -6,6 +6,7 @@ import { BackgroundWakeNotice, isAutomaticContinueNotice } from './chat/Backgrou
 import { thinkingSummary } from '../utils/thinkingSummary'
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
 import { ReplyFileChanges } from './chat/ReplyFileChanges'
+import { EditMessageButton, EditResendEditor, MessageEditContext, type MessageEditActions } from './chat/EditResendMessage'
 import { replyFileChangesByMessage, replyPullRequestsByMessage } from '../utils/replyFileChanges'
 import { ReplyLinkedPullRequests } from './chat/ReplyLinkedPullRequests'
 import { TranscriptFind } from './chat/TranscriptFind'
@@ -386,12 +387,12 @@ const TranscriptEvent: React.FC<{
   if (isConversationContinuityNotice(content)) {
     const notice = <ConversationContinuityNotice content={content} timestamp={timestamp} />
     if (!displayContent) return notice
-    return <>{notice}<UserTranscriptMessage content={displayContent} timestamp={timestamp} metadata={metadata} compactBottom={compactUserBottom} onResend={onResendMessage} sessionId={event.session_id} /></>
+    return <>{notice}<UserTranscriptMessage content={displayContent} timestamp={timestamp} metadata={metadata} compactBottom={compactUserBottom} onResend={onResendMessage} sessionId={event.session_id} editEventId={event.id} editSequence={event.sequence} /></>
   }
   // A message another agent sent into this chat (Pulse messaging the Builder
   // chat) shows who sent it, with that agent's icon, on the agent side.
 
-  return <UserTranscriptMessage content={displayContent || content || (messageAttachmentPaths(metadata).length > 0 ? '' : 'Message')} timestamp={timestamp} metadata={metadata} compactBottom={compactUserBottom} onResend={onResendMessage} sessionId={event.session_id} />
+  return <UserTranscriptMessage content={displayContent || content || (messageAttachmentPaths(metadata).length > 0 ? '' : 'Message')} timestamp={timestamp} metadata={metadata} compactBottom={compactUserBottom} onResend={onResendMessage} sessionId={event.session_id} editEventId={event.id} editSequence={event.sequence} />
 }
 
 
@@ -432,8 +433,13 @@ function messageAttachmentPaths(metadata?: Record<string, unknown>): string[] {
   return paths.filter(path => path.trim() !== '')
 }
 
-const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; metadata?: Record<string, unknown>; compactBottom?: boolean; onResend?: (text: string) => void; sessionId?: string }> = ({ content: rawContent, timestamp, metadata, compactBottom = false, onResend, sessionId }) => {
+const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; metadata?: Record<string, unknown>; compactBottom?: boolean; onResend?: (text: string) => void; sessionId?: string; editEventId?: string; editSequence?: number }> = ({ content: rawContent, timestamp, metadata, compactBottom = false, onResend, sessionId, editEventId, editSequence }) => {
   const content = getDisplaySafeUserMessageContent(rawContent)
+  // Edit and resend (#3134): only a saved row of the person's own message.
+  const canEdit = Boolean(editEventId && typeof editSequence === 'number' && editSequence > 0 && content.trim())
+  const [editing, setEditing] = useState(false)
+  const editButton = canEdit && !editing ? <EditMessageButton onEdit={() => setEditing(true)} /> : null
+  const editor = canEdit && editing ? <EditResendEditor eventId={editEventId!} sequence={editSequence!} text={content} onClose={() => setEditing(false)} /> : null
   // Ask AI blocks collapse to their plain-words request; the builder-only
   // instructions stay one click away behind the usual expansion toggle.
   const askAI = hasAskAIMessage(content)
@@ -455,7 +461,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
     return (
       <div data-theme-message-role="user" className={`ml-auto mt-2 flex max-w-[90%] flex-col items-end text-right md:max-w-[75%] ${compactBottom ? 'mb-1' : 'mb-2'}`}>
         {attachments.length > 0 && <UserAttachments paths={attachments} />}
-        {shown !== '' && <div data-theme-message-body="" data-testid="transcript-user-bubble" className="max-w-full whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground"><ChatFilePathText text={shown} /></div>}
+        {editor ? <div className="w-full rounded-2xl bg-muted px-4 py-3">{editor}</div> : shown !== '' && <div data-theme-message-body="" data-testid="transcript-user-bubble" className="max-w-full whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground"><ChatFilePathText text={shown} /></div>}
         {showReceipt && (
           <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
             <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
@@ -464,6 +470,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
             {timestamp && <span className="tabular-nums">{timestamp}</span>}
             <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} sessionId={sessionId} /></span>
             <QueuedMessageControls sessionId={sessionId} metadata={metadata} />
+            {editButton}
           </div>
         )}
         <QueuedMessageNotice sessionId={sessionId} metadata={metadata} />
@@ -474,7 +481,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
   return (
     <article data-theme-message-role="user" className={`ml-auto mt-4 w-[min(92%,52rem)] rounded-lg border border-border bg-muted/30 px-4 py-3 text-left ${compactBottom ? 'mb-1' : 'mb-4'}`}>
       {attachments.length > 0 && <UserAttachments paths={attachments} />}
-      <div data-theme-message-body="" className="whitespace-pre-wrap break-words text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(24px*var(--chat-scale,1))] text-foreground/90"><ChatFilePathText text={shown} /></div>
+      {editor ?? <div data-theme-message-body="" className="whitespace-pre-wrap break-words text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(24px*var(--chat-scale,1))] text-foreground/90"><ChatFilePathText text={shown} /></div>}
       <div className="mt-1 flex items-center gap-2">
         <button
           type="button"
@@ -490,6 +497,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
           {timestamp && <span className="tabular-nums">{timestamp}</span>}
           <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} sessionId={sessionId} /></span>
             <QueuedMessageControls sessionId={sessionId} metadata={metadata} />
+            {editButton}
         </div>
       </div>
       <QueuedMessageNotice sessionId={sessionId} metadata={metadata} />
@@ -1332,6 +1340,8 @@ interface TerminalEventTranscriptProps {
   searchable?: boolean
   /** Pause, Resume and Clear of the pinned goal bar (main chat only): sends the /goal command the person would type. */
   onGoalCommand?: (command: string) => void
+  /** Edit and resend on the person's own messages (#3134); only the owner's own chat passes it. */
+  messageEdit?: MessageEditActions
 }
 
 const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { readingState: TranscriptReadingState; readingKey?: string }> = ({
@@ -1745,6 +1755,8 @@ export const TerminalEventTranscript = memo(function TerminalEventTranscript(pro
   const key = props.scrollKey ?? props.terminal?.terminal_id ?? props.events?.find(event => event.session_id)?.session_id
   const readingState = useMemo(() => key ? transcriptReadingState(key) : { following: true, disclosures: new Map<string, boolean>() }, [key])
   return <DisclosureContext.Provider value={readingState.disclosures}>
-    <TerminalEventTranscriptInner key={key ?? 'unscoped'} {...props} readingState={readingState} readingKey={key} />
+    <MessageEditContext.Provider value={props.messageEdit ?? null}>
+      <TerminalEventTranscriptInner key={key ?? 'unscoped'} {...props} readingState={readingState} readingKey={key} />
+    </MessageEditContext.Provider>
   </DisclosureContext.Provider>
 })
