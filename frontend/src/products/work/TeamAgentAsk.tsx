@@ -164,8 +164,9 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
  const identity=useTeammateChatIdentity(tabId)
  if(!identity)return null
  const {name,person,place,online,ask,runtime,readable,project}=identity
- // Offline with a readable backup: the person may have their own agent answer from it instead of asking (#3577).
- const answerFromChat=online===false&&readable&&project&&ask.address?(question:string)=>{
+ // A readable backup (Live chat, synced), online or offline: the person may have their own agent answer from it
+ // instead of asking the agent (#3577).
+ const answerFromChat=readable&&project&&ask.address?(question:string)=>{
   const prompt=`Answer my question from ${person}'s ${name} chat backup, without messaging that agent or ${person}: read it with read_agent_chat (target ${ask.address}; search a few key words, then read the matching lines), answer, and say the answer comes from its backup, which may miss the last few minutes. My question: ${question}`
   sendToOwnMain(project,prompt)
  }:undefined
@@ -173,7 +174,7 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
 }
 
 export function TeammateAsk({target,address,name,where,online,enabled,scope,agent,answerFromChat}:{target?:TeamTarget;address?:string;name:string;where:string;online?:boolean;enabled:boolean;scope:string;agent?:AskAgentRuntime;answerFromChat?:(question:string)=>void}) {
- const hint=!enabled?`You can't ask ${name} right now.`:online===false?`${where.charAt(0).toUpperCase()}${where.slice(1)} is offline. Your ask waits until it is back${answerFromChat?', or your own agent can answer from its chat backup now':''}.`:`Goes to ${name} as your ask. Its answer shows here.`
+ const hint=!enabled?`You can't ask ${name} right now.`:online===false?`${where.charAt(0).toUpperCase()}${where.slice(1)} is offline. Your ask waits until it is back${answerFromChat?', or your own agent can answer from its chat backup now':''}.`:`Goes to ${name} as your ask. Its answer shows here.${answerFromChat?' Or use Answer from its chat: your own agent answers from its chat backup without asking it.':''}`
  return <AgentAskThread target={target} address={address} label={`Ask ${name}`} scope={scope} enabled={enabled} sender={name} agent={agent} answerFromChat={answerFromChat}>
   {hint}
  </AgentAskThread>
