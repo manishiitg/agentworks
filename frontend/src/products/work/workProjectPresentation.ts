@@ -16,7 +16,7 @@ export function workProjectActivity(sessions: ActiveSessionInfo[], tabs: ChatTab
   let running = false
   for (const session of sessions) {
     const scope = sidebarScope(session.session_id, session.workspace_path)
-    if (!scope || !['work', 'code'].includes(scope.surface) || scope.projectId !== projectId) continue
+    if (!scope || scope.surface !== 'work' || scope.projectId !== projectId) continue
     const hidden = !visible.has(session.session_id)
     if (hidden && runtimeNeedsUserInput(session)) return 'waiting'
     // Foreground activity already has its own tab. Background-only work still needs a signal.

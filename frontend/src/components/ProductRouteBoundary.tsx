@@ -159,7 +159,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
           if (controller.signal.aborted) return
           const explicitPanel = route?.view && route.view !== saved.view
           const layout = explicitPanel && saved.layout ? { ...saved.layout, panel_open: true, focused_pane: 'preview' as const } : saved.layout
-          useWorkspaceReturnStore.setState({ restore: ['agentworks', 'work', 'code'].includes(saved.surface) ? { ...saved, view: destination.view, layout } : null })
+          useWorkspaceReturnStore.setState({ restore: ['agentworks', 'work'].includes(saved.surface) ? { ...saved, view: destination.view, layout } : null })
         }
         if (!homeRequested) window.history.replaceState({}, '', productRoutePath(destination))
         finish('ready')
@@ -201,7 +201,7 @@ export function ProductRouteBoundary({ children, account, allowedProducts }: { c
     return () => { window.clearTimeout(notice); window.clearTimeout(expiry) }
   }, [openingLink, location, attempt])
   useEffect(() => status === 'ready' ? observeProductHistory(route => {
-    if (!['agentworks', 'work', 'code'].includes(route.surface)) queueWorkspaceState({ surface: route.surface, view: route.view })
+    if (!['agentworks', 'work'].includes(route.surface)) queueWorkspaceState({ surface: route.surface, view: route.view })
   }) : undefined, [status, location, account])
   // Keep the admitted workspace mounted while another link is checked, so a
   // Crew switch does not tear down the chat and flash a full-page loader.

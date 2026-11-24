@@ -26,7 +26,7 @@ func extensionBinding(ctx context.Context, name string) (*browserrelay.Binding, 
 		id, _ := ctx.Value(key).(string)
 		if scope := common.SandboxBrowserSession(id); scope != "" {
 			main := browserrelay.Default.Lookup(user, scope)
-			if main == nil || (main.Profile() != "code" && main.Profile() != "work" && main.Profile() != "workflow") {
+			if main == nil || (main.Profile() != "work" && main.Profile() != "workflow") {
 				continue
 			}
 			if strings.TrimSpace(name) == "" {
