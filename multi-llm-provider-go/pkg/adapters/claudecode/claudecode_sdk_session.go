@@ -555,9 +555,12 @@ var claudeSDKWakeGrace = 30 * time.Second
 var claudeSDKWakeHoldLimit = 60 * time.Second
 var claudeSDKWakeNextID atomic.Uint64
 
-const claudeSDKWarmLimit = 4
+// Idle Claude chats stay running so the next message skips a fresh start
+// (about 2s typical, 10s+ at worst). Each kept chat holds roughly 250-330 MB,
+// so 8 bounds the idle cost near 2.5 GB.
+const claudeSDKWarmLimit = 8
 
-var claudeSDKWarmIdle = 15 * time.Minute
+var claudeSDKWarmIdle = time.Hour
 
 type claudeSDKWarmMemory struct {
 	BridgeRSSBytes int64 `json:"bridge_rss_bytes"`
