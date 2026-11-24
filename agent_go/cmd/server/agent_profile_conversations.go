@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // A product's earlier conversations. The registry remembers every
@@ -412,6 +414,11 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		writeAgentProfileError(w, 500, "Could not resolve run history before deletion: "+err.Error())
 		return
 	}
+	var serverTeam *crewroot.SyncBinding
+	if profile.ID == crewProfileID && IsLocalMode() {
+		// Read before the folder goes: a Mac Crew's Team lives on its server (#3577).
+		serverTeam, _ = crewroot.ReadSync(binding.ResourceID)
+	}
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(actingFor))
 	var deleteErr error
 	if _, bound, rootErr := localCrewRemovalRoots(binding.WorkspacePath); rootErr != nil {
@@ -435,6 +442,7 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 			writeAgentProfileError(w, http.StatusInternalServerError, "The Crew was removed, but its Team state needs cleanup.")
 			return
 		}
+		deleteMacCrewServerTeam(r.Context(), actingFor, binding.ResourceID, serverTeam)
 	}
 	if err := purgeRemovedScheduleHistory(r.Context(), historyRoot); err != nil {
 		writeAgentProfileError(w, 500, "Folder removed; run history cleanup failed: "+err.Error())
@@ -513,4 +521,21 @@ func resumeProductConversation(ctx context.Context, userID string, profile agent
 		verified = chatHistorySessionWorkspace(session) == normalizeConversationWorkspace(binding.WorkspacePath)
 	}
 	return defaultProductConversationRegistryStore().switchTo(ctx, userID, profile, binding, sessionID, verified)
+}
+
+// deleteMacCrewServerTeam deletes a deleted Mac Crew's Team on its server, synced chats included (owner, 24 Nov).
+// Best effort: the Crew is already gone on the Mac, so a failure is logged, not shown.
+func deleteMacCrewServerTeam(ctx context.Context, owner, project string, pair *crewroot.SyncBinding) {
+	if pair == nil || pair.Side != "local" || pair.ConnectionID == "" || pair.PeerProjectID == "" {
+		return
+	}
+	connection, err := desktopConnectionFor(owner, pair.ConnectionID)
+	if err == nil {
+		err = crewTeamRemoteJSON(ctx, owner, connection, http.MethodDelete, "/api/crew-teams/"+url.PathEscape(pair.PeerProjectID), nil, nil)
+	}
+	if err != nil {
+		log.Printf("[CREW_DELETE] project=%s event=server_team_delete_failed error=%q", project, err.Error())
+		return
+	}
+	log.Printf("[CREW_DELETE] project=%s event=server_team_deleted", project)
 }

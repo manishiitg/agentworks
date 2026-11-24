@@ -150,7 +150,7 @@ func (api *StreamingAPI) handleCrewOfflineCopy(w http.ResponseWriter, r *http.Re
 		fail(403, "source_unavailable")
 		return
 	}
-	dir, err := crewOfflineDirectory(project, agent)
+	dir, err := crewOfflineWritableDirectory(project, agent)
 	if err != nil {
 		fail(503, "store_unavailable")
 		return

@@ -493,6 +493,10 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	if refuseServerCrewTeam(w, project) {
 		return
 	}
+	if r.Method == http.MethodDelete {
+		deleteCrewTeamRecord(w, claims.UserID, project, owner)
+		return
+	}
 	if mux.Vars(r)["op"] == "invite" {
 		api.answerCrewTeamInvite(w, r, claims, project)
 		return
@@ -1017,4 +1021,37 @@ func refuseServerCrewTeam(w http.ResponseWriter, project string) bool {
 	log.Printf("[CREW_TEAM] project=%s event=refused reason=server_crew", project)
 	externalError(w, http.StatusConflict, "server_crew", crewServerNoTeam)
 	return true
+}
+
+// deleteCrewTeamRecord: the owner's Mac deleted this Crew, so its Team goes too, synced chats included (owner,
+// 24 Nov). Only the Crew's own owner may do it; a missing Team is already gone.
+func deleteCrewTeamRecord(w http.ResponseWriter, caller, project, owner string) {
+	dir, err := crewTeamDir(project)
+	if err != nil {
+		externalError(w, 400, "team_invalid", "Choose a valid team.")
+		return
+	}
+	mu := crewTeamRecordMutex(dir)
+	mu.Lock()
+	t, err := readCrewTeam(project)
+	if os.IsNotExist(err) {
+		mu.Unlock()
+		externalJSON(w, map[string]any{"deleted": false})
+		return
+	}
+	if err != nil || caller != owner || t.OwnerID != caller {
+		mu.Unlock()
+		log.Printf("[CREW_TEAM] project=%s actor=%s event=delete_refused", project, logUsernameForUserID(caller))
+		externalError(w, 403, "team_forbidden", "Only this Crew's owner can delete its Team.")
+		return
+	}
+	err = os.RemoveAll(dir)
+	mu.Unlock()
+	if err != nil {
+		externalError(w, 500, "team_delete_failed", "The Team could not be deleted now. Try again in a minute.")
+		return
+	}
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=deleted reason=crew_deleted agents=%d people=%d", project, logUsernameForUserID(caller), len(t.Agents), len(t.People))
+	publishCrewPanelChanged(project)
+	externalJSON(w, map[string]any{"deleted": true})
 }

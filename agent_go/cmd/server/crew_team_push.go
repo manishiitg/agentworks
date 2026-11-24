@@ -27,6 +27,9 @@ func pushCrewTeamChanged(project string, revision uint64) {
 // Mac shows the invite and a member's Mac sees the Team change at once.
 func pushCrewTeamRecordChanged(t crewTeam) {
 	pushCrewTeamNote(t.ProjectID, "team", t.Revision, true)
+	if !IsLocalMode() {
+		pruneCrewSyncedChats(t.ProjectID) // an agent or person that left takes its synced chat with it
+	}
 }
 
 func pushCrewTeamNote(project, kind string, revision uint64, everyone bool) {
