@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Activity, ExternalLink, FolderOpen, ListChecks, ListTodo, Mail, MessageSquare, MoreHorizontal, X, type LucideIcon } from 'lucide-react'
+import { Activity, ExternalLink, FolderOpen, ListChecks, ListTodo, Mail, MessageSquare, MoreHorizontal, type LucideIcon } from 'lucide-react'
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
+import { SetupPrompt } from '../../components/workspace/SetupPrompt'
 import type { CrewPanelFeedItem, CrewPanelRow, CrewPanelSection } from './useCrewPanel'
 import { ProjectTasksRow } from './ProjectTasksRow'
 
@@ -8,6 +9,8 @@ import { ProjectTasksRow } from './ProjectTasksRow'
 // person's agent set up. The server decides the rows and their state; the feed is
 // the person's own even in a shared Crew.
 const appIcon: Record<string, LucideIcon> = { slack: MessageSquare, mail: Mail, drive: FolderOpen, tasks: ListTodo, 'project-tasks': ListChecks }
+
+export const projectActivityLine = 'Slack, mail, Drive and tasks for this project'
 
 export const projectActivitySetupMessage = 'Set up Project activity for this project. Check which apps this project can reach (Slack, Gmail, Google Drive, GitHub or another task tracker), ask me which channels, mail, folders and task lists matter, then set up Project tasks: a lead agent that keeps one shared task list, and one Watcher per source that sends what it finds to that lead. Follow the project-activity guide in the automations skill.'
 export const projectActivityChangeMessage = 'I want to change Project activity for this project. Show me what it watches now, the lead agent, and the steps and rules of the Project tasks list, then ask what to add, change or remove.'
@@ -122,14 +125,6 @@ function ItemMenu({ onPick }: { onPick: (kind: 'ask' | 'mine' | 'team') => void 
   </div>
 }
 
-// Hiding (×) the set-up prompt is a view preference for this project; Connections then offers the set-up instead.
-export function useProjectActivityHidden(key: string) {
-  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(key) === '1' } catch { return false } })
-  useEffect(() => { try { setHidden(localStorage.getItem(key) === '1') } catch { setHidden(false) } }, [key])
-  const hide = () => { setHidden(true); try { localStorage.setItem(key, '1') } catch { /* hidden for this visit only */ } }
-  return [hidden, hide] as const
-}
-
 export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHide }: {
   section?: CrewPanelSection
   onAgent?: (message: string) => void
@@ -141,16 +136,9 @@ export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHi
   const rows = section.rows
   if (!rows.length) {
     if (!onAgent || hidden) return null
-    const hide = onHide
-    return <div className="px-1 pb-1">
-      <div className="flex min-h-8 items-center gap-2 text-xs text-foreground/85">
-        <Activity aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground"/>
-        <span className="min-w-0 flex-1 truncate">Project activity</span>
-        <button type="button" onClick={() => onAgent(projectActivitySetupMessage)} className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Set up</button>
-        <button type="button" onClick={hide} aria-label="Hide Project activity" title="Hide. Set up later from Connections" className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground/70 hover:bg-background/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><X aria-hidden="true" className="h-3 w-3"/></button>
-      </div>
-      <p className="truncate pl-[22px] text-[10px] text-muted-foreground">Slack, mail, Drive and tasks for this project</p>
-    </div>
+    return <SetupPrompt icon={Activity} title="Project activity" line={projectActivityLine} action="Set up" onAction={() => onAgent(projectActivitySetupMessage)} onHide={onHide}
+      what="One shared task list for this project, kept up to date for you."
+      points={['It keeps an eye on the Slack channels, mail and task lists you pick', 'New requests become tasks, and an agent picks each one up', 'You see who is on what; only real decisions come to you']}/>
   }
   return <div>
     {rows.map(row => <WorkspaceCompactGroup key={row.id} title={row.label} icon={appIcon[row.group || ''] || Activity}
