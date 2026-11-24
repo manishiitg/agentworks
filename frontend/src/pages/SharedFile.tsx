@@ -9,7 +9,7 @@ import { MarkdownRenderer } from '../components/ui/MarkdownRenderer'
 import { RenderedContentSearchBar, RenderedContentSearchButton, useRenderedContentSearch } from '../components/ui/RenderedContentSearch'
 import { DocumentPreview, hasDocumentPreview } from '../components/files/DocumentPreview'
 import { DiffRenderer } from '../components/ui/DiffRenderer'
-import { apiUrlForPath, getAuthToken } from '../services/api'
+import { getApiBaseUrl, getAuthToken } from '../services/api'
 import { admissionWindowHeaders } from '../utils/chatDeliveryTelemetry'
 import { isDiffFilePath, looksLikeDiffContent } from '../utils/diff'
 import { isValidJSON } from '../utils/event-helpers'
@@ -84,7 +84,7 @@ export function SharedFile({ encodedPath, uid, onBack, previewWorkspace }: Share
     const token = getAuthToken()
     const query = new URLSearchParams({ path: encodedPath })
     if (uid) query.set('uid', uid)
-    return fetch(apiUrlForPath(`/api/public/file?${query}`, previewWorkspace), {
+    return fetch(`${getApiBaseUrl()}/api/public/file?${query}`, {
       headers: { ...(previewWorkspace ? admissionWindowHeaders() : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers },
       signal,
     })

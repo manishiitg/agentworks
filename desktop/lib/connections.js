@@ -7,15 +7,9 @@ function isAppFrame(frame, contents, origin) {
 
 function connectionRequest(details, contents, origin, appOrigin = origin) {
   if (!contents || details.webContentsId !== contents.id ||
-      !['xhr', 'fetch', 'webSocket'].includes(details.resourceType) || !isAppFrame(details.frame, contents, appOrigin)) return false;
+      !['xhr', 'fetch'].includes(details.resourceType) || !isAppFrame(details.frame, contents, appOrigin)) return false;
   try {
     const url = new URL(details.url);
-    if (details.resourceType === 'webSocket') {
-      // Only a server project's Terminal and live browser view streams (#3383), not arbitrary socket endpoints.
-      // Keep the same top-frame check above; a dashboard must never get app proof.
-      if (url.protocol !== 'ws:' || !/^\/api\/connections\/[^/]+\/api\/(?:agent-profiles\/[^/]+\/projects\/[^/]+\/shell|browser\/live\/[^/]+)\/stream$/.test(url.pathname)) return false;
-      url.protocol = 'http:';
-    }
     return url.origin === origin && (url.pathname === '/api/desktop-connections' ||
       url.pathname.startsWith('/api/desktop-connections/') || url.pathname.startsWith('/api/connections/'));
   } catch { return false; }
@@ -51,7 +45,8 @@ function installDesktopConnections({ session, ipcMain, getWindow, getOrigin, get
   ipcMain.handle('open-desktop-connection', async (event, id, route) => {
     const origin = getOrigin();
     if (!origin || event.sender !== getWindow()?.webContents || !isAppFrame(event.senderFrame, event.sender, getAppOrigin())) throw new Error('Use the main app window.');
-    if (id !== 'local' && !/^[a-f0-9]{32}$/.test(id)) throw new Error('Unknown connection.');
+    // The window stays on this Mac (#3779): server projects open on their website, not in this window.
+    if (id !== 'local') throw new Error('Unknown connection.');
     if (typeof route !== 'string' || !/^\/(?:crew(?:\/projects\/[a-zA-Z0-9_-]+(?:\/dashboard)?)?|workflows(?:\/[a-zA-Z0-9_-]+)?|goals)?(?:\?(?:agent|view)=[a-zA-Z0-9_%.-]+(?:&(?:agent|view)=[a-zA-Z0-9_%.-]+)*)?$/.test(route)) throw new Error('Unknown project.');
     connection = id;
     // Reopening discards per-server singleton caches and event readers. Work
@@ -61,10 +56,10 @@ function installDesktopConnections({ session, ipcMain, getWindow, getOrigin, get
   // The main process opens a chat from a notification the same way (lib/notify.js chose the route).
   return {
     open: async (id, route) => {
-      // A window on this Mac opens any Crew in place, a server's too (#3383): no reload.
+      // Work on a server opens on that server's website (#3779); the window stays on this Mac.
       const window = getWindow();
-      if (connection === 'local' && window && /^\/crew\/projects\/[a-zA-Z0-9_-]+(?:\?agent=[^&]+)?$/.test(route)) {
-        window.webContents.send('open-project-in-place', { connection: id, route });
+      if (id !== 'local') {
+        window?.webContents.send('open-on-server-website', { connection: id, route });
         return;
       }
       connection = id;

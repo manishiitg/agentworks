@@ -1,5 +1,5 @@
 import { ForkTeammateAgent } from '../../products/work/ForkTeammateAgent'
-import { openProjectInPlace } from '../../utils/openProjectInPlace'
+import { openOnServerWebsite } from '../../utils/openOnServerWebsite'
 import { TeamMonitorAgentRow } from './TeamMonitorAgentRow'
 import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { useChatStore } from '../../stores/useChatStore'
@@ -57,9 +57,9 @@ function useTeamCrews():{sources:MonitorSource[];notice:string} {
 }
 
 function openCrewTeam(connectionId: string, crewId: string, section:'agents'|'activity'='agents') {
-  // A Crew on another server opens in place too (#3383), with its Team panel.
-  if (connectionId === getRawActiveWorkspaceId()) openSidebarProject('crew', crewId)
-  else openProjectInPlace(connectionId, { surface: 'work', id: crewId })
+  // A Crew on a server opens on that server's website (#3779): the Mac app shows only this Mac's projects.
+  if (connectionId !== getRawActiveWorkspaceId()) { void openOnServerWebsite(connectionId, `/crew/projects/${encodeURIComponent(crewId)}`); return }
+  openSidebarProject('crew', crewId)
   openCrewAccess(crewId, '', 'team', section)
 }
 

@@ -3,9 +3,7 @@
 // The server sends "X changed" notices, never data; panels refetch through
 // their normal endpoints. Chat conversations keep their own per-session
 // streams and never use this. See docs/design/live_update_feed.md.
-import { connectionApiBase, getApiBaseUrl, getAuthToken } from './api'
-import { remoteProjectConnection } from '../utils/remoteSessions'
-import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
+import { getApiBaseUrl, getAuthToken } from './api'
 import { readEventStream } from '../../shared/session/eventStream'
 
 // Keep in sync with agent_go/internal/livefeed/livefeed.go.
@@ -44,8 +42,7 @@ export function liveFeedWorkflowRoot(path: string | null | undefined): string | 
 
 class LiveFeed {
   private readonly baseUrl: () => string
-  private readonly followsRemoteProjects: boolean
-  constructor(baseUrl: () => string, followsRemoteProjects = false) { this.baseUrl = baseUrl; this.followsRemoteProjects = followsRemoteProjects }
+  constructor(baseUrl: () => string) { this.baseUrl = baseUrl }
   private source: AbortController | null = null
   private connectionKey = ''
   private listeners = new Set<Listener>()
@@ -65,9 +62,6 @@ class LiveFeed {
   }
 
   subscribe(kinds: readonly LiveFeedKind[], workflow: string | null, onChange: (notice?: LiveFeedNotice) => void, project: string | null = null): () => void {
-    // A server project opened in place (#3383) hears about its changes from its own server.
-    const remote = this.followsRemoteProjects ? remoteProjectConnection(project) : undefined
-    if (remote && remote !== getRawActiveWorkspaceId()) return connectionLiveFeed(connectionApiBase(remote)).subscribe(kinds, workflow, onChange, project)
     const listener: Listener = { kinds: new Set(kinds), workflow: liveFeedWorkflowRoot(workflow) ?? workflow, project, onChange }
     this.listeners.add(listener)
     this.ensureOpen()
@@ -154,7 +148,7 @@ class LiveFeed {
   }
 }
 
-export const liveFeed = new LiveFeed(() => getApiBaseUrl(), true)
+export const liveFeed = new LiveFeed(() => getApiBaseUrl())
 
 const connectionFeeds = new Map<string, LiveFeed>()
 /** The live stream of another network, read through this Mac's saved sign-in (base: /api/connections/<id>). The

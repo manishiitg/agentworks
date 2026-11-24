@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-vi.mock('../services/api', () => ({ getApiBaseUrl: () => 'http://localhost:18743', apiUrlForPath: (route: string) => `http://localhost:18743${route}`, getAuthToken: () => 'app-session' }))
+vi.mock('../services/api', () => ({ getApiBaseUrl: () => 'http://localhost:18743', getAuthToken: () => 'app-session' }))
 vi.mock('../components/ui/MarkdownRenderer', () => ({ MarkdownRenderer: () => <div>Markdown</div> }))
 vi.mock('../components/ui/RenderedContentSearch', () => ({ useRenderedContentSearch: () => ({}), RenderedContentSearchButton: () => null, RenderedContentSearchBar: () => null }))
 vi.mock('../components/ui/CsvRenderer', () => ({ CsvRenderer: () => null }))
