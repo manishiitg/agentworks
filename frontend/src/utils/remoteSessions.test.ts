@@ -31,6 +31,8 @@ it('routes only requests that name a server project, its chats or its open folde
   expect(route({ url: '/api/sessions/mac-chat/events' })).toBeUndefined()
   // A server chat being open must not pull this Mac's own project with it (its X-Session-ID rides every request).
   expect(route({ url: '/api/agent-profiles/work/side-chats', params: { project_id: 'mac-crew' }, headers: { 'X-Session-ID': 'remote-chat' } })).toBeUndefined()
+  // A list request never follows the open chat (this Mac's project list was read from the server).
+  expect(route({ url: '/api/workspaces', headers: { 'X-Session-ID': 'remote-chat' } })).toBeUndefined()
   // ...while a request for that chat's own project still follows it.
   expect(route({ url: '/api/agent-profiles/work/side-chats', params: { project_id: 'remote-crew' }, headers: { 'X-Session-ID': 'remote-chat' } })).toBe('srv')
   expect(route({ url: '/api/header-summary' })).toBeUndefined()
