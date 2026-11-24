@@ -14,11 +14,56 @@ vi.mock('../chat/AgentCard', async importOriginal => ({
 }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: (select: (s: unknown) => unknown) => select({ activeTabId: f.active, chatTabs: {b:{sessionId:'second-session'}}, activeSessionsCache: f.hidden.size ? [{session_id:'second-session',last_activity:new Date(Date.now()-41*60_000).toISOString()}] : [], markTabUnread: f.markUnread }) }))
 vi.mock('../../stores/useLLMStore', () => ({ useLLMStore: (select: (s: unknown) => unknown) => select({ providerManifest: [] }) }))
+vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: (select: (s: unknown) => unknown) => select({ user: { id: 'sidebar-owner' } }) }))
 vi.mock('../../products/work/teamApi', () => ({ useTeamTab: () => ({}), teamAgentFor: () => undefined }))
 vi.mock('../../products/work/OwnTerminalAgents', () => ({ OwnTerminalAgents: () => null }))
 vi.mock('../chat/agentMenuState', () => ({ useAgentMenuState: () => null }))
 vi.mock('./agentGroups', async importOriginal => ({ ...await importOriginal<typeof import('./agentGroups')>(), useAgentGroups: () => f.groups, useAgentGroupsStore: { getState: () => ({ edit: (_project: string, change: unknown) => f.edit(change) }) } }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+
+it('lets a person put an agent above a group and move the whole group back', async () => {
+ const host = document.createElement('div'), root = createRoot(host)
+ f.groups = { member: 'CLI agents' }
+ f.extra = [
+  { tabId: 'member', key: 'member', name: 'Tools', actions: { orderKey: 'member' } },
+  { tabId: 'lead', key: 'lead', name: 'Lead', actions: { orderKey: 'lead' } },
+ ]
+ const drag = (type: string, target: Element) => {
+  const event = new Event(type, { bubbles: true, cancelable: true })
+  Object.defineProperty(event, 'dataTransfer', { value: { setData: () => {}, effectAllowed: '', dropEffect: '' } })
+  target.dispatchEvent(event)
+ }
+ const live = () => root.render(<SidebarCrewAgents projectId="crew" />)
+ const group = () => host.querySelector('[aria-label="Group CLI agents"]')!
+ try {
+  f.edit.mockClear()
+  localStorage.clear()
+  await act(async () => live())
+  const lead = host.querySelector('[aria-label="More for Lead"]')!.closest('[draggable="true"]')!
+  await act(async () => drag('dragstart', lead))
+  const gap = host.querySelector('[data-sidebar-drop-before="group:CLI agents"]')!
+  expect(gap).toBeTruthy()
+  await act(async () => { drag('dragover', gap); drag('drop', gap) })
+  expect(host.textContent!.indexOf('Lead')).toBeLessThan(host.textContent!.indexOf('CLI agents'))
+  expect(group().textContent).toContain('Tools')
+  expect(group().textContent).not.toContain('Lead')
+  expect(f.edit).not.toHaveBeenCalled()
+
+  await act(async () => root.render(<SidebarAgentLayout projectId="crew" rows={['member', 'lead']} keyOf={value => value} forkedFromOf={() => undefined} teammate={() => false} render={value => <span>{value}</span>} />))
+  expect(host.textContent!.indexOf('lead')).toBeLessThan(host.textContent!.indexOf('CLI agents'))
+  await act(async () => live())
+  await act(async () => drag('dragstart', group().querySelector('[draggable="true"]')!))
+  const aboveLead = host.querySelector('[data-sidebar-drop-before="agent:lead"]')!
+  await act(async () => drag('drop', aboveLead))
+  expect(host.textContent!.indexOf('CLI agents')).toBeLessThan(host.textContent!.indexOf('Lead'))
+  expect(group().textContent).toContain('Tools')
+
+  const leadAgain = host.querySelector('[aria-label="More for Lead"]')!.closest('[draggable="true"]')!
+  await act(async () => drag('dragstart', leadAgain))
+  await act(async () => drag('drop', group().querySelector('[draggable="true"]')!))
+  expect(f.edit).toHaveBeenCalledWith({ op: 'move', key: 'lead', group: 'CLI agents' })
+ } finally { f.groups = {}; f.extra = []; f.edit.mockClear(); localStorage.clear(); await act(async () => root.unmount()) }
+})
 
 // #2952: flattening preserves the existing order, selected agent and closed access.
 it('lists own agents directly in their normal order without group controls', async () => {

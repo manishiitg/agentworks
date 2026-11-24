@@ -1,6 +1,6 @@
 import { mostInTeam } from '../chat/AgentInTeamMark'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
-import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { ChevronRight, MoreHorizontal, Search, X } from 'lucide-react'
 import { AgentActionsMenu, useCrewAgentsStore, type CrewAgentRow, type CrewClosedAgent } from '../chat/AgentCard'
 import { AgentMark, latestTime } from '../chat/AgentIcon'
@@ -10,6 +10,7 @@ import { openAgentTab } from '../../utils/openAgentTab'
 import { teamAgentFor, useTeamTab } from '../../products/work/teamApi'
 import { openTeammateAgent } from '../../products/work/openTeammateAgent'
 import { groupNames, useAgentGroups, useAgentGroupsStore } from './agentGroups'
+import { moveSidebarRow, sidebarAgentId, sidebarGroupId, sidebarRowsInOrder, useSidebarAgentOrder } from './sidebarAgentOrder'
 
 import { sidebarAgentDisclosureClass, sidebarAgentListClass, sidebarGroupHeaderClass } from './sidebarAgentLayout'
 import { AgentRowLine, PersonInitial, agentRowThemeProps } from './SidebarAgentRowLine'
@@ -60,8 +61,7 @@ const foldArrow = (open: boolean) => <ChevronRight aria-hidden="true" className=
 const menuItem = 'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs max-md:min-h-10 max-md:text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 const nameInput = 'w-full min-w-0 rounded-md border border-primary bg-background px-2 py-1 text-xs max-md:text-base'
 
-/** The sidebar's own agents in their saved order, with two folded lists. Your own groups come first (#3288), and a fork
- * sits under the agent it was forked from. */
+/** Personal groups and ungrouped agents share an order; forks stay under their agents. */
 export function SidebarCrewAgents({ projectId, popup = false, reordering = false, onSelect, onClosedOpened, hiddenExpansion }: { projectId: string; popup?: boolean; reordering?: boolean; onSelect?: (tabId: string) => void; onClosedOpened?: () => void; hiddenExpansion?: [boolean, (value: boolean) => void] }) {
   const crew = useCrewAgentsStore()
   const activeTabId = useChatStore(state => state.activeTabId)
@@ -69,8 +69,10 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const [showHidden, setShowHidden] = hiddenExpansion ?? localHiddenExpansion
   const [showClosed, setShowClosed] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
+  const [draggingGroup, setDraggingGroup] = useState<string | null>(null)
   const [dropOn, setDropOn] = useState('')
   const groups = useAgentGroups(projectId)
+  const { order, save: saveOrder } = useSidebarAgentOrder(projectId)
   const [folds, toggleFold] = useFolds(projectId)
   // An inline name box: a new group for an agent, or a rename; error is the server's refusal.
   const [naming, setNaming] = useState<{ kind: 'new' | 'rename'; key?: string; group?: string; draft: string; error: string } | null>(null)
@@ -103,7 +105,14 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
 
   const edit = async (change: Parameters<ReturnType<typeof useAgentGroupsStore.getState>['edit']>[1]) => {
     setFailed('')
-    try { await useAgentGroupsStore.getState().edit(projectId, change); return '' }
+    try {
+      await useAgentGroupsStore.getState().edit(projectId, change)
+      if (change.group && (change.op === 'rename' || change.op === 'ungroup') && order.includes(sidebarGroupId(change.group))) {
+        const old = sidebarGroupId(change.group)
+        saveOrder(order.flatMap(id => id !== old ? [id] : change.op === 'rename' && change.name ? [sidebarGroupId(change.name.trim())] : []))
+      }
+      return ''
+    }
     catch (cause) { const message = cause instanceof Error ? cause.message : 'Couldn’t save this group change. Try again.'; setFailed(message); return message }
   }
   // A fork hangs under its parent when the parent is in this list; a chain that never ends at a root stays flat.
@@ -168,6 +177,24 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const names = groupNames(groups)
   const groupOf = (agent: CrewAgentRow) => agent.key ? groups[agent.key] : undefined
   const grouped = new Set(Object.keys(groups))
+  const mixed = names.length > 0
+  const rootId = (agent: CrewAgentRow) => agent.key ? sidebarAgentId(agent.key) : `tab:${agent.tabId}`
+  const top = sidebarRowsInOrder<string | CrewAgentRow>([
+    ...names.map(name => ({ id: sidebarGroupId(name), value: name })),
+    ...roots.filter(agent => !groupOf(agent)).map(agent => ({ id: rootId(agent), value: agent })),
+  ], mixed ? order : [])
+  const topIds = top.map(item => item.id)
+  const draggedRoot = roots.find(agent => agent.actions?.orderKey === dragging)
+  const draggedTop = draggingGroup !== null ? sidebarGroupId(draggingGroup) : draggedRoot ? rootId(draggedRoot) : null
+  const reorderTop = (id: string, before: string | null, visible = topIds) => {
+    if (!saveOrder(moveSidebarRow(order, visible, id, before))) setFailed('Couldn’t save this sidebar order. Try again.')
+    else setFailed('')
+  }
+  const moveTop = (id: string, direction: -1 | 1) => {
+    const index = topIds.indexOf(id)
+    if (index < 0 || !topIds[index + direction]) return
+    reorderTop(id, topIds[index + (direction === -1 ? -1 : 2)] ?? null)
+  }
 
   const status = (agent: CrewAgentRow) => agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''
   const moveMenu = (agent: CrewAgentRow) => {
@@ -182,9 +209,18 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   }
   // Dropping a fork onto a row outside its agent's list moves it out too; among its siblings it only reorders.
   const dropTarget = (agent: CrewAgentRow): CrewAgentRow => {
+    const id = rootId(agent)
+    const position = mixed && agent.actions?.orderKey ? topIds.indexOf(id) : -1
+    const moves = position < 0 ? {} : {
+      moveUp: position > 0 ? () => moveTop(id, -1) : undefined,
+      moveDown: position + 1 < top.length ? () => moveTop(id, 1) : undefined,
+    }
     const reorder = agent.actions?.dropHere
-    if (!reorder) return agent
-    return { ...agent, actions: { ...agent.actions, dropHere: from => {
+    if (!reorder && position < 0) return agent
+    return { ...agent, actions: { ...agent.actions, ...moves, dropHere: from => {
+      const source = roots.find(row => row.actions?.orderKey === from && !groupOf(row))
+      if (source && position >= 0) { reorderTop(rootId(source), id); return }
+      if (!reorder) return
       const parent = nestedParent(from)
       if (!parent || parent.key === agent.key || nestedParent(agent.key)?.key === parent.key) { reorder(from); return }
       void dropOut(from, () => reorder(from))
@@ -214,6 +250,23 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     onDragLeave: () => setDropOn(current => current === id ? '' : current),
     onDrop: (event: DragEvent) => { event.preventDefault(); const key = dragging; setDragging(null); setDropOn(''); if (key) drop(key) },
   })
+  const between = (before: string | null) => {
+    if (!mixed || !draggedTop || draggedTop === before) return null
+    const id = 'between:' + (before ?? 'end')
+    return <div data-sidebar-drop-before={before ?? ''} title="Drop here to reorder"
+      className={`mx-1 h-2 rounded ${dropOn === id ? 'bg-primary' : 'bg-border/40'}`}
+      onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDropOn(id) }}
+      onDragLeave={() => setDropOn(current => current === id ? '' : current)}
+      onDrop={event => {
+        event.preventDefault()
+        if (draggedRoot?.key && groupOf(draggedRoot)) {
+          void edit({ op: 'move', key: draggedRoot.key, group: '' }).then(error => {
+            if (!error) reorderTop(draggedTop, before, [...topIds, draggedTop])
+          })
+        } else reorderTop(draggedTop, before)
+        setDragging(null); setDraggingGroup(null); setDropOn('')
+      }} />
+  }
   const nameBox = (label: string, save: (name: string) => Promise<string>) => naming && <div className="px-1 py-0.5">
     <input autoFocus aria-label={label} value={naming.draft} placeholder="Group name" className={nameInput}
       onChange={event => setNaming({ ...naming, draft: event.target.value, error: '' })}
@@ -238,7 +291,11 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     const addable = teammates.filter(agent => groupOf(agent) !== name)
     return <div key={name} role="group" aria-label={`Group ${name}`}>
       {renaming ? nameBox(`New name for ${name}`, draft => edit({ op: 'rename', group: name, name: draft }))
-        : <div className={`group relative flex min-w-0 items-center rounded-md ${dropOn === foldKey ? 'bg-primary/10 ring-1 ring-primary' : ''}`} {...dropZone(foldKey, key => { void dropOut(key, () => edit({ op: 'move', key, group: name })) })}>
+        : <div draggable onDragStart={event => {
+          event.dataTransfer.setData('text/plain', name); event.dataTransfer.effectAllowed = 'move'
+          setDragging(null); setDraggingGroup(name); setDropOn(''); setGroupMenu('')
+        }} onDragEnd={() => { setDraggingGroup(null); setDropOn('') }}
+          className={`group relative flex min-w-0 items-center rounded-md ${dropOn === foldKey ? 'bg-primary/10 ring-1 ring-primary' : ''}`} {...dropZone(foldKey, key => { void dropOut(key, () => edit({ op: 'move', key, group: name })) })}>
           <button type="button" aria-expanded={!folded} onClick={() => toggleFold(foldKey)} className={sidebarGroupHeaderClass}>
             {/* A group is a heading inside its project: small grey capitals, never bold like the project name (#3369). */}
             <span className="min-w-0 truncate">{name}</span>
@@ -252,6 +309,8 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
             <MoreHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
           </button>
           {groupMenu === name && <div role="menu" aria-label={`Group ${name} actions`} className="absolute right-0 top-full z-50 mt-1 w-52 space-y-0.5 rounded-xl border border-border bg-popover p-1 shadow-lg">
+            {topIds.indexOf(foldKey) > 0 && <button type="button" role="menuitem" className={menuItem} onClick={() => { moveTop(foldKey, -1); setGroupMenu('') }}>Move up</button>}
+            {topIds.indexOf(foldKey) < topIds.length - 1 && <button type="button" role="menuitem" className={menuItem} onClick={() => { moveTop(foldKey, 1); setGroupMenu('') }}>Move down</button>}
             <button type="button" role="menuitem" className={menuItem} onClick={() => { setNaming({ kind: 'rename', group: name, draft: name, error: '' }); setGroupMenu('') }}>Rename</button>
             <button type="button" role="menuitem" className={menuItem} onClick={() => { setPicking(name); setGroupMenu('') }}>Add a teammate’s agent…</button>
             <button type="button" role="menuitem" className={`${menuItem} text-destructive`} onClick={() => { void edit({ op: 'ungroup', group: name }); setGroupMenu('') }}>Ungroup</button>
@@ -269,9 +328,9 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const draggedGrouped = dragging ? grouped.has(dragging) : false
   const draggedParent = dragging && byKey.get(dragging)?.actions?.forkParent ? nestedParent(dragging) : undefined
   return <div role="list" aria-label="Agents" className={popup ? 'space-y-0.5 pb-1' : sidebarAgentListClass}>
-    {names.map(groupBlock)}
     {naming?.kind === 'new' && nameBox('New group name', draft => edit({ op: 'new', key: naming.key, name: draft }))}
-    {roots.filter(agent => !groupOf(agent)).map(agent => tree(agent))}
+    {top.map(({ id, value }) => <Fragment key={id}>{between(id)}{typeof value === 'string' ? groupBlock(value) : tree(value)}</Fragment>)}
+    {between(null)}
     {draggedGrouped && <div className={`mx-1 my-1 rounded-md border border-dashed px-2 py-2 text-center text-[11px] text-muted-foreground ${dropOn === 'out' ? 'border-primary bg-primary/10' : 'border-border'}`}
       {...dropZone('out', key => { void edit({ op: 'move', key, group: '' }) })}>Drop here to take it out of the group</div>}
     {draggedParent && <div className={`mx-1 my-1 rounded-md border border-dashed px-2 py-2 text-center text-[11px] text-muted-foreground ${dropOn === 'fork-out' ? 'border-primary bg-primary/10' : 'border-border'}`}
@@ -394,6 +453,7 @@ function TeammateAgentPicker({ group, agents, onPick, onClose }: { group: string
  * editing (that happens once it is open), so switching projects does not reshape the menu (#3288). */
 export function SidebarAgentLayout<T>({ projectId, rows: all, keyOf, forkedFromOf, teammate, render }: { projectId?: string; rows: T[]; keyOf: (row: T) => string; forkedFromOf: (row: T) => string | undefined; teammate: (row: T) => boolean; render: (row: T) => ReactNode }) {
   const groups = useAgentGroups(projectId)
+  const { order } = useSidebarAgentOrder(projectId)
   const [folds, toggleFold] = useFolds(projectId || '')
   // A teammate's agent shows only in one of your groups, as in the live list.
   const rows = all.filter(row => !teammate(row) || groups[keyOf(row)])
@@ -432,8 +492,14 @@ export function SidebarAgentLayout<T>({ projectId, rows: all, keyOf, forkedFromO
     </div>
   }
   const groupOf = (row: T) => groups[keyOf(row)]
+  const names = groupNames(groups)
   return <>
-    {groupNames(groups).map(name => {
+    {sidebarRowsInOrder<{ kind: 'group'; name: string } | { kind: 'agent'; row: T }>([
+      ...names.map(name => ({ id: sidebarGroupId(name), value: { kind: 'group' as const, name } })),
+      ...roots.filter(row => !groupOf(row)).map(row => ({ id: sidebarAgentId(keyOf(row)), value: { kind: 'agent' as const, row } })),
+    ], names.length ? order : []).map(({ value }) => {
+      if (value.kind === 'agent') return tree(value.row)
+      const { name } = value
       const members = roots.filter(row => groupOf(row) === name)
       const folded = folds.has(`group:${name}`)
       return <div key={name} role="group" aria-label={`Group ${name}`}>
@@ -446,6 +512,5 @@ export function SidebarAgentLayout<T>({ projectId, rows: all, keyOf, forkedFromO
         </div>}
       </div>
     })}
-    {roots.filter(row => !groupOf(row)).map(tree)}
   </>
 }
