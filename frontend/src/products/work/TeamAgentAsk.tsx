@@ -1,7 +1,8 @@
 import { randomUUID } from '../../utils/randomUUID'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { Loader2 } from 'lucide-react'
-import { ChatComposerArea, ChatComposerBand, ChatComposerControls, ChatComposerForm, ChatComposerSendButton, ChatComposerTextarea, resizeChatComposerTextarea } from '../../components/chat/ChatComposer'
+import { ArrowUp, Loader2 } from 'lucide-react'
+import { Button } from '../../components/ui/Button'
+import { ChatComposerArea, ChatComposerBand, ChatComposerControls, ChatComposerForm, ChatComposerTextarea, resizeChatComposerTextarea } from '../../components/chat/ChatComposer'
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
 import { cn } from '../../lib/utils'
 import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
@@ -81,11 +82,11 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,childr
      <ChatComposerTextarea product ref={box} aria-label={label} placeholder={`${label}…`} value={value} disabled={!admitted||busy}
       onChange={event=>setDraft(event.target.value)}
       onKeyDown={event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();void send()}}}/>
-     <ChatComposerControls>
-      <span className="min-w-0 truncate px-1.5 text-xs text-muted-foreground">{children}</span>
-      <ChatComposerSendButton product type="submit" aria-label={busy?'Sending':'Send'} disabled={!admitted||busy||!draft.trim()}>{busy?<Loader2 className="h-3.5 w-3.5 animate-spin"/>:undefined}</ChatComposerSendButton>
+     <ChatComposerControls className="justify-end">
+      <Button type="submit" variant="ghost" size="xs" aria-label={busy?'Sending':'Send'} title="Send (Enter)" disabled={!admitted||busy||!draft.trim()} className="w-7 rounded-md border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">{busy?<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true"/>:<ArrowUp className="h-3.5 w-3.5" aria-hidden="true"/>}</Button>
      </ChatComposerControls>
     </ChatComposerForm>
+    {children&&<p className="mt-1 truncate px-2 text-[11px] text-muted-foreground">{children}</p>}
    </ChatComposerArea>
   </ChatComposerBand>
  </section>
