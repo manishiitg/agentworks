@@ -5542,6 +5542,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 	// Process the query in the background
 	go func() {
+		// The company-server Vault answers this message needs, asked once and early (#3723).
+		api.prefetchServerVaultInventory(sessionID, currentUserID)
+		serverVaultRound := withServerVaultSecretRound(context.Background())
 		turnStatus := trackedExecutionStatusCanceled
 		turnError := "conversation turn ended before completion was recorded"
 		var agentCancel context.CancelFunc
@@ -5934,7 +5937,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		endSpeedSpan5926()
 		// On the Mac, a selected secret its Vault lacks comes from the lender's Vault on the Crew's company server.
 		endSpeedSpan5928 := events.TurnSpeedSpan(sessionID, "server_secrets")
-		codingAgentSecrets = api.addServerVaultSecrets(context.Background(), currentUserID, req.SelectedFolder, codingAgentSecrets, req.SelectedGlobalSecrets)
+		codingAgentSecrets = api.addServerVaultSecrets(serverVaultRound, currentUserID, req.SelectedFolder, codingAgentSecrets, req.SelectedGlobalSecrets)
 		endSpeedSpan5928()
 		for _, secret := range codingAgentSecrets {
 			codingAgentSecretEnvironment["SECRET_"+secret.Name] = secret.Value
@@ -7630,7 +7633,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		endSpeedSpan7603()
 		{
 			endSpeedSpan7605 := events.TurnSpeedSpan(sessionID, "server_secrets")
-			allChatSecrets = api.addServerVaultSecrets(context.Background(), currentUserID, req.SelectedFolder, allChatSecrets, req.SelectedGlobalSecrets)
+			allChatSecrets = api.addServerVaultSecrets(serverVaultRound, currentUserID, req.SelectedFolder, allChatSecrets, req.SelectedGlobalSecrets)
 			endSpeedSpan7605()
 		}
 		if len(allChatSecrets) > 0 {
