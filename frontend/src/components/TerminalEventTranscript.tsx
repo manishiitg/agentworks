@@ -31,6 +31,7 @@ import { EventDispatcher } from './events/EventDispatcher'
 import { agentApi } from '../services/api'
 import { PinnedGoalBar } from './events/PinnedGoalBar'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
+import { ChatFilePathText } from './ui/chatFilePathLinks'
 import { ChatElementDisclosureContext, ChatVisualRepairContext, type FixChatVisual } from './ui/ChatElement'
 import { failureHints, normalizeProductChatFailure } from '../platform/chat/productChatFailure'
 import {
@@ -454,7 +455,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
     return (
       <div data-theme-message-role="user" className={`ml-auto mt-2 flex max-w-[90%] flex-col items-end text-right md:max-w-[75%] ${compactBottom ? 'mb-1' : 'mb-2'}`}>
         {attachments.length > 0 && <UserAttachments paths={attachments} />}
-        {shown !== '' && <div data-theme-message-body="" data-testid="transcript-user-bubble" className="max-w-full whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">{shown}</div>}
+        {shown !== '' && <div data-theme-message-body="" data-testid="transcript-user-bubble" className="max-w-full whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground"><ChatFilePathText text={shown} /></div>}
         {showReceipt && (
           <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
             <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
@@ -473,7 +474,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
   return (
     <article data-theme-message-role="user" className={`ml-auto mt-4 w-[min(92%,52rem)] rounded-lg border border-border bg-muted/30 px-4 py-3 text-left ${compactBottom ? 'mb-1' : 'mb-4'}`}>
       {attachments.length > 0 && <UserAttachments paths={attachments} />}
-      <div data-theme-message-body="" className="whitespace-pre-wrap break-words text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(24px*var(--chat-scale,1))] text-foreground/90">{shown}</div>
+      <div data-theme-message-body="" className="whitespace-pre-wrap break-words text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(24px*var(--chat-scale,1))] text-foreground/90"><ChatFilePathText text={shown} /></div>
       <div className="mt-1 flex items-center gap-2">
         <button
           type="button"

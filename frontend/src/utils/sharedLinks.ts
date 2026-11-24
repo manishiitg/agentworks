@@ -1,9 +1,13 @@
 // Shared links identify assets, never credentials or access grants.
-export function sharedLink(base: string, kind: 'file' | 'folder' | 'report', path: string, uid?: string): string {
+export function encodeSharedAssetPath(path: string): string {
   const bytes = new TextEncoder().encode(path)
   let binary = ''
   for (const byte of bytes) binary += String.fromCharCode(byte)
-  const params = new URLSearchParams({ path: btoa(binary) })
+  return btoa(binary)
+}
+
+export function sharedLink(base: string, kind: 'file' | 'folder' | 'report', path: string, uid?: string): string {
+  const params = new URLSearchParams({ path: encodeSharedAssetPath(path) })
   if (uid) params.set('uid', uid)
   return `${base.replace(/\/$/, '')}/${kind}?${params.toString()}`
 }
