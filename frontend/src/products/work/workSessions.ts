@@ -87,7 +87,7 @@ export async function createWorkSession(title: string, description: string, icon
 }
 
 export async function deleteWorkSession(session: WorkSession): Promise<void> {
-  if (isWorkSessionRun(session)) throw new Error('Shared Crew projects can only be deleted by their owner.')
+  if (isWorkSessionRun(session)) throw new Error('Shared projects can only be deleted by their owner.')
   try {
     await agentApi.deleteAgentProfileProject(session.product, session.id)
   } catch (cause) {
@@ -189,7 +189,7 @@ export async function loadWorkSessionsWithOpenRemote(product: ProjectProductConf
 
 
 export async function updateWorkSessionIdentity(session: WorkSession, patch: ProductIdentityPatch): Promise<WorkSession> {
-  if (isWorkSessionRun(session)) throw new Error('Only the Crew owner can change this.')
+  if (isWorkSessionRun(session)) throw new Error('Only the project owner can change this.')
   return updateProductProjectIdentity(session, patch, `Update ${projectProductConfig(session.product).noun} project identity ${session.title}`)
 }
 

@@ -38,7 +38,7 @@ export function parseProductCommands(profile: AgentProfileResponse): WorkProduct
   })
 }
 
-export async function loadWorkProductCommands(profileId: string = WORK_PROFILE_ID, profileVersion: number = WORK_PROFILE_VERSION, noun = 'Crew'): Promise<WorkProductCommand[]> {
+export async function loadWorkProductCommands(profileId: string = WORK_PROFILE_ID, profileVersion: number = WORK_PROFILE_VERSION, noun = 'Project'): Promise<WorkProductCommand[]> {
   const token = getAuthToken()
   const response = await fetch(`${getApiBaseUrl()}/api/agent-profiles/${encodeURIComponent(profileId)}?version=${profileVersion}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,

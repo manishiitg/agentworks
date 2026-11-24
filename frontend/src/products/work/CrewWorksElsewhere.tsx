@@ -37,7 +37,7 @@ export function CrewWorksElsewhere({ projectId }: { projectId: string }) {
   return <div className="flex h-full min-h-0 flex-1 items-center justify-center p-6">
     <div className="max-w-sm text-center">
       <Icon aria-hidden="true" className="mx-auto mb-3 h-6 w-6 text-muted-foreground" />
-      <h2 className="text-base font-semibold">{elsewhere === 'mac' ? 'This Crew works on your Mac' : 'This Crew works on the website'}</h2>
+      <h2 className="text-base font-semibold">{elsewhere === 'mac' ? 'This project works on your Mac' : 'This project works on the website'}</h2>
       <p className="mt-1 text-sm text-muted-foreground">{elsewhere === 'mac'
         ? 'Your agents here answer on your Mac. Open it in the AgentWorks app on your Mac to use them.'
         : 'Your agents here answer on the website now. Open it there to use them.'}</p>

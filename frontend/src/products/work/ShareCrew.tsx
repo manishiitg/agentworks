@@ -16,7 +16,7 @@ import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, typ
 
 /** Opens the viewer's own Main with the words in its chat box, not sent; nothing is saved by this page. */
 const toMain = (projectId: string, draft: string) => {
-  if (!fillMainDraft(projectId, draft)) useChatStore.getState().addToast('Open one of your agents in this Crew, then ask from there.', 'error')
+  if (!fillMainDraft(projectId, draft)) useChatStore.getState().addToast('Open one of your agents in this project, then ask from there.', 'error')
 }
 
 /**
@@ -264,7 +264,7 @@ const GETS_BACK = [
 ]
 const WHO_ASKS = [
   { label: 'Your team', words: 'my team' },
-  { label: 'Other Crews you choose', words: 'other Crews I choose' },
+  { label: 'Other projects you choose', words: 'other projects I choose' },
   { label: 'Apps connected to you (Claude, ChatGPT)', words: 'apps connected to me (Claude, ChatGPT)' },
 ]
 

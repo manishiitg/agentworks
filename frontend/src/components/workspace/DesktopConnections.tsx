@@ -109,7 +109,7 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
   const removeOnlineCopy = (project: typeof rows[number]) => {
     void agentApi.deleteAgentProfileProject('work', project.id)
       .then(() => {
-        useChatStore.getState().addToast(`Removed the online copy of “${project.name}”. Your Mac Crew is unchanged.`, 'success')
+        useChatStore.getState().addToast(`Removed the online copy of “${project.name}”. Your Mac project is unchanged.`, 'success')
         void state.refresh()
       })
       .catch(() => {

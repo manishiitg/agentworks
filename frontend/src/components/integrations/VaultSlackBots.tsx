@@ -102,7 +102,7 @@ export function VaultSlackBots({ data, workspacePath, busy: parentBusy, onSelect
         </div>
         <details className="text-xs text-muted-foreground">
           <summary className="cursor-pointer">Used in {item.used_in?.length || 0} {(item.used_in?.length || 0) === 1 ? 'project' : 'projects'}</summary>
-          {item.used_in?.length ? <ul className="mt-2 space-y-1">{item.used_in.map((usage, i) => <li key={`${usage.kind}:${usage.label}:${i}`}>{usage.kind === 'workflows' ? 'Goal' : usage.kind === 'crew' ? 'Crew' : 'Project'} · {usage.label}</li>)}</ul> : <p className="mt-2">No projects visible to you yet.</p>}
+          {item.used_in?.length ? <ul className="mt-2 space-y-1">{item.used_in.map((usage, i) => <li key={`${usage.kind}:${usage.label}:${i}`}>{usage.kind === 'workflows' ? 'Goal' : usage.kind === 'crew' ? 'Project' : 'Project'} · {usage.label}</li>)}</ul> : <p className="mt-2">No projects visible to you yet.</p>}
         </details>
         {item.id === data.selected_id && children}
       </div>)}
@@ -118,7 +118,7 @@ export function VaultSlackBots({ data, workspacePath, busy: parentBusy, onSelect
       <SecretField label="App token" hint={<SlackTokenHint kind="app"/>} value={app} onChange={setApp} placeholder={editing === 'new' ? 'xapp-…' : 'Leave blank to keep the saved token'}/>
       <p className="text-muted-foreground">Tokens are encrypted. Saved values are never shown here.</p>
       <ToggleRow label="Enabled" checked={enabled} onCheckedChange={setEnabled}/>
-      <details><summary className="cursor-pointer">Slack app setup instructions</summary><div className="mt-2 space-y-3"><SlackManifestSetup defaultName={name || 'AgentWorks'} finalStep={manageOnly ? "Save the bot here, then choose it in a Crew’s Slack settings." : "Save the bot here, then choose Use here."}/><SlackPermissionsChecklist/></div></details>
+      <details><summary className="cursor-pointer">Slack app setup instructions</summary><div className="mt-2 space-y-3"><SlackManifestSetup defaultName={name || 'AgentWorks'} finalStep={manageOnly ? "Save the bot here, then choose it in a project’s Slack settings." : "Save the bot here, then choose Use here."}/><SlackPermissionsChecklist/></div></details>
       <div className="flex flex-wrap gap-2">
         <Button type="submit" size="sm" disabled={busy || !name.trim() || (editing === 'new' && (!scope || !bot || !app))}>{working ? 'Saving…' : 'Save bot'}</Button>
         <Button type="button" size="sm" variant="outline" disabled={busy} onClick={existing}>Cancel</Button>

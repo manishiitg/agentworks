@@ -385,7 +385,7 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
             /></div>}
           {view === 'workflow' && (canEditConnections
             ? <CrewWorkflowPage projectId={projectId} chatTabId={tabId} onBack={() => onViewChange('context')} />
-            : <p className="p-6 text-sm text-muted-foreground">{projectAccess?.key !== accessKey ? 'Loading…' : 'Open this Crew’s chat or dashboard.'}</p>)}
+            : <p className="p-6 text-sm text-muted-foreground">{projectAccess?.key !== accessKey ? 'Loading…' : 'Open this project’s chat or dashboard.'}</p>)}
           {view === 'schedules' && <AutomationHubPanel
             onBack={() => onViewChange('context')}
             initialSection="schedules"

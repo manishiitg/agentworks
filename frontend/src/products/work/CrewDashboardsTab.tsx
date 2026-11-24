@@ -77,7 +77,7 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
       {complete && !rows.length && <div className="rounded-lg bg-muted/40 px-3 py-3 text-sm">
         <p>{tab?.empty?.title || 'No artifacts yet'}</p>
         <p className="text-muted-foreground">{tab?.empty?.line}</p>
-        {tab?.empty?.ask && <Button size="sm" onClick={() => { if (!fillMainDraft(projectId, tab.empty?.ask || '')) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }}>Ask the Crew</Button>}
+        {tab?.empty?.ask && <Button size="sm" onClick={() => { if (!fillMainDraft(projectId, tab.empty?.ask || '')) useChatStore.getState().addToast('Open your own Main tab in this project, then ask from there.', 'error') }}>Ask the Crew</Button>}
       </div>}
       <div className="divide-y divide-border">
         {rows.filter(row => kind === 'all' || kind === row.kind).map(row => {

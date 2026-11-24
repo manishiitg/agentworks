@@ -47,7 +47,7 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
    if(agent) {clickLog(row.id,'chat_opened');openTeammateAgent(projectId,agent.watch_key||agent.key,agent.owner_id);return}
   }
   clickLog(row.id,'refused','agent_unavailable')
-  useChatStore.getState().addToast('Open your own agent in this Crew, then try again.','error')
+  useChatStore.getState().addToast('Open your own agent in this project, then try again.','error')
  }
  // Shared by you: the person's own agents shared with the team, with their mode and audience from the server rows.
  const shared:TeamPanelShared[]=team.view.agents.filter(agent=>agent.mine&&agent.in_team).map(agent=>({key:agent.key,name:agent.name,chosen:agent.audience==='chosen'?(agent.chosen_people||[]).length:undefined}))

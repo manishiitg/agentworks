@@ -55,7 +55,7 @@ export function PendingAgentForks({ state, place = 'header' }: { state: TeamTabS
         for (const job of next) {
           if (running(job) || !job.fork_id || announced.has(job.id)) continue
           announced.add(job.id); finished = true
-          if (job.stage === 'done') useChatStore.getState().addToast(`${job.name || 'The agent'} was copied to your Mac. Open it in your Crew's agent list.`, 'success')
+          if (job.stage === 'done') useChatStore.getState().addToast(`${job.name || 'The agent'} was copied to your Mac. Open it in your project's agent list.`, 'success')
           else useChatStore.getState().addToast(`${job.name || 'The agent'} wasn't copied: ${job.error || 'try again.'}`, 'error')
         }
         if (finished) { void reload(); window.dispatchEvent(new Event('agentworks:team-updated')) }

@@ -93,7 +93,7 @@ export function TeamCommands({ target, folder }: { target: TeamTarget; folder?: 
     const message = item.mine
       ? `My /${name} command differs from the version I shared with the Team. Compare the two, tell me in plain words what is different, and ask me before you update the shared version.`
       : `The Team's shared /${name} command differs from my /${name}. Compare the two (the Team files and my commands), tell me in plain words what is different, and ask me before you change anything: take theirs, keep mine, or merge both.`
-    if (!sendToOpenChat(target.project, message)) useChatStore.getState().addToast('Open one of your own agent chats in this Crew, then try again.', 'info')
+    if (!sendToOpenChat(target.project, message)) useChatStore.getState().addToast('Open one of your own agent chats in this project, then try again.', 'info')
   }
   const taken = !!adding && mine.some(command => command.folder_name.toLowerCase() === name.toLowerCase())
   const add = () => adding && run(async () => {

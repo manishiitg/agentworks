@@ -11,7 +11,7 @@ type SlackAccounts = { accounts: SlackAccount[]; can_connect: boolean; sign_in_r
 const key = (account: SlackAccount) => `${account.owner}:${account.id}`
 
 /** A single account view; saving a sign-in and lending it to a project keep their separate server checks. */
-export default function SlackAccountsPanel({ workspacePath, noun = 'Crew', embedded = false, savedBotNames = [], onStatus }: { workspacePath: string; noun?: string; tabId?: string; embedded?: boolean; savedBotNames?: string[]; onStatus?: (status: string) => void }) {
+export default function SlackAccountsPanel({ workspacePath, noun = 'Project', embedded = false, savedBotNames = [], onStatus }: { workspacePath: string; noun?: string; tabId?: string; embedded?: boolean; savedBotNames?: string[]; onStatus?: (status: string) => void }) {
  const [saved, setSaved] = useState<SlackAccounts | null>(null)
  const [scoped, setScoped] = useState<SlackAccounts | null>(null)
  const [busy, setBusy] = useState(false)

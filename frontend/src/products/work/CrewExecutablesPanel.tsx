@@ -60,7 +60,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
   async function ask(message: string) {
     try {
       await openWorkspacePaneChatWithDraft({ tabId: chatTabId, message })
-    } catch (e) { setError(failureMessage(e, 'Open your Crew chat to continue.')) }
+    } catch (e) { setError(failureMessage(e, 'Open your project chat to continue.')) }
   }
   // Editing is a chat with the Crew's agent: the draft names the workflow and its ID, and the agent asks what to change.
   const editRequest = (workflow: CrewExecutable) => `I want to edit this workflow: “${workflow.manifest.label}” (workflow ID: ${workflow.id}, path: ${workflow.workspace_path}). Before changing anything, ask me what I want to edit: its name, its description, a task, or a step inside a task. If it is a task or a step, ask me which task and what to change. Wait for my answer, then make the change.\n\nI want to edit: `
@@ -114,7 +114,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
     {!loaded && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
     {loaded && items.length > 0 && <PageCard testId="crew-workflow-overview" title="Workflows" action={newWorkflow}
       hint={<><span data-testid="crew-workflow-count" className="font-medium text-foreground">{items.length} {items.length === 1 ? 'workflow' : 'workflows'}</span> · Expand one to read about it, or press Open to see its tasks and runs.</>}
-      onAsk={() => ask('Help me with the workflows in this Crew.')}>
+      onAsk={() => ask('Help me with the workflows in this project.')}>
       {items.map(workflow => {
         const description = workflow.manifest.description?.trim() || 'No description yet.'
         const isOpen = expanded.has(workflow.id)

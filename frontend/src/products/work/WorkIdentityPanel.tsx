@@ -219,13 +219,13 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
         onChange={onWorkflowContextPathsChange}
         excludeWorkspacePath={workspacePath}
         additionalReferences={crewReferences}
-        additionalLabel="Crew"
+        additionalLabel="Project"
         showAdditionalGroup
       />}
       {part !== 'linked' && <SettingsCard
         icon={<FolderOpen aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Attached folders"
-        description={local ? "Folders on your Mac that your Crews can open. They stay on your Mac." : "Folders available on this server. Use Your computer for folders on your laptop."}
+        description={local ? "Folders on your Mac that your projects can open. They stay on your Mac." : "Folders available on this server. Use Your computer for folders on your laptop."}
         count={`${folders.length} attached`}
       >
         {home && !wholeMac && <div className="mb-2 flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3">

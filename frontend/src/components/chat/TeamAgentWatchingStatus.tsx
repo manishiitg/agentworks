@@ -19,6 +19,6 @@ export function TeamAgentWatchingStatus({ projectId, chatKey, ownerName, agentNa
     <span className="min-w-0">Watching {owner}'s {name}. Only they type here.{status && <> <span className="font-medium">{status}</span> · Messages arrive when the Mac is back.</>}</span>
   </span>
   {projectId && <button type="button" className="ml-auto shrink-0 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
-    onClick={() => { if (!fillAskFromMyAgentDraft(projectId, owner, name, agent?.address)) useChatStore.getState().addToast('Open your own Main tab in this Crew, then ask from there.', 'error') }}>Ask from my agent</button>}
+    onClick={() => { if (!fillAskFromMyAgentDraft(projectId, owner, name, agent?.address)) useChatStore.getState().addToast('Open your own Main tab in this project, then ask from there.', 'error') }}>Ask from my agent</button>}
   </>
 }

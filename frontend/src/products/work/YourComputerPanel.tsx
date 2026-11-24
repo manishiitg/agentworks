@@ -287,7 +287,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
     {/* Mac online (owner, 6 Nov, approved mockup): two cards, the same on the Mac app and the website. The server
         words This Mac; the Mac app holds its switch, the website shows it. */}
     {!(here && needsServer) && shown === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
-      {here && online ? <MacDataLine>{`This Crew now runs on ${network}.`}</MacDataLine> : <>
+      {here && online ? <MacDataLine>{`This project now runs on ${network}.`}</MacDataLine> : <>
         <section aria-label="This Mac" className={teamCard}>
           <div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">This Mac</h3><AskButton projectId={projectId} card="mac" /></div>
           <div className="flex items-center gap-2.5">
@@ -301,7 +301,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
           {connections.length > 1 && pairedHost && <p className="break-words text-[12.5px] text-muted-foreground">Network · <span className="text-foreground">{pairedName}</span>{pairedName !== pairedHost && <> · {pairedHost}</>}</p>}
           <p className="text-[12.5px] text-muted-foreground">{status.access_mac?.line}</p>
           {status.access_mac?.kept && <p className="text-xs text-muted-foreground">{status.access_mac.kept}{serverCopies.length > 0 && <> <button type="button" className="text-primary hover:underline" onClick={() => setSection('team')}>What's kept on the server</button></>}</p>}
-          {!!status.access_mac?.reach?.length && <div aria-label="Who can reach this Crew" className="space-y-1">
+          {!!status.access_mac?.reach?.length && <div aria-label="Who can reach this project" className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground">Who can reach this Crew</p>
             <dl className="divide-y divide-border text-[12.5px]">{status.access_mac.reach.map(row => <div key={row.who} className="grid grid-cols-[38%_1fr] gap-2 py-1.5">
               <dt className="font-medium">{row.who}</dt><dd className="text-muted-foreground">{row.how}</dd></div>)}</dl>
@@ -312,7 +312,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
           </div>}
           {/* Website and phone is This Mac's last row (owner, 6 Nov: the ChatGPT/Claude row is gone, so no card of one row). */}
           <div aria-disabled={!reachLink} className={`border-t border-border ${reachLink ? '' : 'pointer-events-none opacity-50'}`}>
-            {way('Website and phone', 'Open this Crew in any browser', <>
+            {way('Website and phone', 'Open this project in any browser', <>
               <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!reachLink} onClick={() => window.open(reachLink, '_blank', 'noopener,noreferrer')}>Open</Button>
               <Button className="h-7 rounded-full px-3" size="sm" variant="outline" disabled={!reachLink} aria-expanded={open === 'code'} aria-controls={`crew-phone-code-${projectId}`} onClick={() => setOpen(open === 'code' ? '' : 'code')}>{open === 'code' ? 'Hide QR' : 'QR for phone'}</Button>
             </>)}

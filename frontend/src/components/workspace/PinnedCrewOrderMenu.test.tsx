@@ -20,7 +20,7 @@ it('positions a short project menu by its actual height and keeps pin inside it'
     await act(async () => host.querySelector('button')!.click())
     const menu = document.querySelector<HTMLElement>('[role="dialog"][aria-label="Actions for Example"]')!
     expect(menu.style.top).toBe('536px')
-    await act(async () => [...menu.querySelectorAll('button')].find(button => button.textContent === 'Unpin Crew')!.click())
+    await act(async () => [...menu.querySelectorAll('button')].find(button => button.textContent === 'Unpin project')!.click())
     expect(pin).toHaveBeenCalledOnce()
     expect(document.querySelector('[role="dialog"][aria-label="Actions for Example"]')).toBeNull()
   } finally { await act(async () => root.unmount()); host.remove(); rect.mockRestore() }

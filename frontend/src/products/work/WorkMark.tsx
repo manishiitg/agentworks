@@ -7,7 +7,7 @@ type WorkMarkProps = ComponentPropsWithoutRef<'svg'> & {
 
 export function WorkMark({
   className,
-  title = 'Crew',
+  title = 'Project',
   ...props
 }: WorkMarkProps) {
   return (

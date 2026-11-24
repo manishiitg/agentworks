@@ -28,7 +28,7 @@ export type QuickNavigationItem = {
 }
 
 const CREATION_LABELS: Record<ProductCreateSurface, string> = {
-  work: 'Create new Crew',
+  work: 'Create new project',
 }
 
 // Keep this beside the shared creation commands so a product consolidation has
@@ -49,7 +49,7 @@ export function quickNavigationItems(
   const common = { lastAccessedAt: 0, hasLocalActivity: false as const }
   const items: QuickNavigationItem[] = navigationProductSurfaceIDs(user?.allowed_products).map(surface => ({
     ...common, type: 'product', id: `product:${surface}`, label: PRODUCT_SURFACE_LABELS[surface],
-    ...((surface === 'work') ? { searchText: 'Code Crew workspace' } : {}),
+    ...((surface === 'work') ? { searchText: 'Code project workspace' } : {}),
     subtitle: surface === 'knowledgebase' ? 'Product · shared knowledge for your agents' : 'Product · open workspace', isActive: surface === current, surface,
   }))
   const menu = (action: NavigationAction, label: string, description: string) => {
@@ -60,7 +60,7 @@ export function quickNavigationItems(
   }
   browse('active', 'Running work')
   if (products.includes('agentworks')) { browse('workflows', 'All Goals'); browse('chats', 'All chats') }
-  if (products.includes('work')) browse('crew', 'All Crews')
+  if (products.includes('work')) browse('crew', 'All projects')
   if (products.length) browse('products', 'All products')
   if (products.includes(current)) browse('panels', 'All panels and tabs')
   const creatableOrigins = products.filter((surface): surface is ProductCreateSurface => surface in CREATION_LABELS)

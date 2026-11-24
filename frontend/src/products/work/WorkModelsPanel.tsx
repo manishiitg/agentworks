@@ -238,13 +238,13 @@ export function WorkModelsPanel({
             const own = chatModels.find(model => model.conversation_key === chat.conversation_key)
             return <button key={chat.conversation_key} type="button" disabled={chat.can_write === false || chatModelSaving || !chatModelsReady} aria-pressed={modelTarget === chat.conversation_key} onClick={() => setModelTarget(chat.conversation_key)} className={`flex w-full items-center justify-between gap-3 border-t border-border px-3 py-2 text-left text-sm disabled:opacity-50 ${modelTarget === chat.conversation_key ? 'bg-primary/10' : 'hover:bg-muted'}`}>
               <span className="min-w-0 truncate">{chat.name}</span>
-              <span className="max-w-[60%] truncate text-xs text-muted-foreground">{own ? own.display_label || 'Selected model' : "Crew's model"}</span>
+              <span className="max-w-[60%] truncate text-xs text-muted-foreground">{own ? own.display_label || 'Selected model' : "Project's model"}</span>
             </button>
           })}
         </section>}
         {chatModelError && <p role="alert" className="mb-3 text-sm text-destructive">{chatModelError}</p>}
         {modelTarget && <div className="mb-3 flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">{ownChatModel ? 'Used for messages and automated work in this agent.' : "Uses the Crew's model."}</p>
+          <p className="text-xs text-muted-foreground">{ownChatModel ? 'Used for messages and automated work in this agent.' : "Uses the project's model."}</p>
           {ownChatModel && <button type="button" disabled={observingModel || chatModelSaving} onClick={() => void saveChatModel()} className="shrink-0 text-xs font-medium text-primary hover:underline disabled:opacity-50">Use Crew's model</button>}
         </div>}
         <fieldset disabled={observingModel || chatModelSaving || (Boolean(modelTarget) && chatModelsLoading)} className="min-w-0 border-0 p-0">

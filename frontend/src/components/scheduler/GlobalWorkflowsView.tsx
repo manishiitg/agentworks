@@ -67,7 +67,7 @@ export default function GlobalWorkflowsView({ crew }: { crew: boolean }) {
     <div className="min-h-0 flex-1 overflow-y-auto">
       {error ? <p role="alert" className="rounded-lg border border-border bg-card p-4 text-sm">Could not load workflows. <button type="button" className="underline" onClick={refresh}>Retry</button></p>
         : pending && rows.length === 0 ? <p role="status" className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">Loading workflows…</p>
-          : rows.length === 0 ? <p className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">No workflows yet. Ask an agent in a {crew ? 'Crew' : 'project'} to create one.</p>
+          : rows.length === 0 ? <p className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">No workflows yet. Ask an agent in a {crew ? 'Project' : 'project'} to create one.</p>
             : visible.length === 0 ? <p className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">No matching workflows. <button type="button" className="underline" onClick={() => setSearch('')}>Clear search</button></p>
               : <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
                 {visible.map(({ item, owner, name, place }) => <PageRow key={item.workspace_path} lead={<Workflow aria-hidden="true" className="h-4 w-4 text-muted-foreground" />}
@@ -83,7 +83,7 @@ export default function GlobalWorkflowsView({ crew }: { crew: boolean }) {
                     } else {
                       openAppProduct({ surface: 'agentworks', id: item.manifest.id })
                     }
-                  }}>{owner?.mode === 'run' ? 'Open Crew' : 'Open workflow'}</button>
+                  }}>{owner?.mode === 'run' ? 'Open project' : 'Open workflow'}</button>
                 </PageRow>)}
               </div>}
     </div>

@@ -38,7 +38,7 @@ export function useBrowserContextPicker(options: PickerOptions) {
   const valid = (state: PickState, id: number) => generation.current === id && current.current.enabled && current.current.sourceKey === state.sourceKey && isChatContextDestinationCurrent(state.scope)
   async function begin() {
     const scope = options.tabId ? captureChatContextDestination(options.tabId) : undefined
-    if (!scope) { error(new Error('Open the intended Crew chat before picking an element.')); return }
+    if (!scope) { error(new Error('Open the intended project chat before picking an element.')); return }
     cancel()
     const id = generation.current
     const state: PickState = { scope, sourceKey: options.sourceKey, phase: 'loading' }

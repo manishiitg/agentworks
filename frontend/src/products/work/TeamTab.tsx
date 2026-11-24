@@ -47,8 +47,8 @@ function useSave() {
 const askTitle = 'Ask your AI agent how to set this up'
 // Before Mac online pairs the Mac app's own Crew there is no server reply with the cards' messages yet.
 const UNPAIRED_ASKS: Record<string, string> = {
-  mac: 'Explain Mac online for this Crew: is it on, and what turning it on lets me do from the website, my phone and my other apps. Help me turn it on.',
-  publish: 'Help me publish this Crew to the server.',
+  mac: 'Explain Mac online for this project: is it on, and what turning it on lets me do from the website, my phone and my other apps. Help me turn it on.',
+  publish: 'Help me publish this project to the server.',
 }
 
 /** The small Ask pill on every Access/Team card (owner, 6 Nov): sends the server's message for the card (or the
@@ -57,7 +57,7 @@ export function AskButton({ projectId, card, prompt, label = 'Ask' }: { projectI
   const { view } = useTeamTab(projectId)
   const text = prompt || (card ? view?.asks?.[card] || UNPAIRED_ASKS[card] : '') || ''
   return <button type="button" title={askTitle} aria-label={label === 'Ask' ? askTitle : label} disabled={!text} className="shrink-0 rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted disabled:opacity-50"
-    onClick={() => { if (!sendToOpenChat(projectId, text)) useChatStore.getState().addToast('Open one of your own agent chats in this Crew, then try again.', 'info') }}>{label}</button>
+    onClick={() => { if (!sendToOpenChat(projectId, text)) useChatStore.getState().addToast('Open one of your own agent chats in this project, then try again.', 'info') }}>{label}</button>
 }
 
 /** One read of the Crew's folders through the server (a size: path=…); undefined until it answers. */
@@ -287,7 +287,7 @@ function useCompanyDirectory(target: TeamTarget, open: boolean, onError: (messag
 /** One person: name, note, whether they are active, and how they use this Crew (a choice only where the server offers one). */
 function PersonLine({ connection, person, people, activity, pending, closed, onMove }: { connection?: string; person: CrewPeoplePerson; people: CrewPeopleView; activity?: TeamTabPerson; pending: string; closed: boolean; onMove: (to: CrewPeopleChange['level']) => void }) {
   const levelOf = (key: CrewPeopleLevelKey) => people.levels.find(item => item.key === key)
-  const options = (person.moves || []).map(move => move === 'none' ? { key: move, label: 'Remove from this Crew', off: false, why: '' } : { key: move, label: levelOf(move)?.label || move, off: levelOf(move)?.available === false, why: levelOf(move)?.why || '' })
+  const options = (person.moves || []).map(move => move === 'none' ? { key: move, label: 'Remove from this project', off: false, why: '' } : { key: move, label: levelOf(move)?.label || move, off: levelOf(move)?.available === false, why: levelOf(move)?.why || '' })
   const saving = pending === `change:${person.user_id}`
   const [photo, setPhoto] = useState(false)
   return <div className={`flex items-center gap-2 py-2 ${saving ? 'opacity-60' : ''}`}>
@@ -304,7 +304,7 @@ function PersonLine({ connection, person, people, activity, pending, closed, onM
     {activity && <span className="flex shrink-0 items-center"><Dot on={activity.active} /></span>}
     {options.length > 0 && !closed
       ? <span className="inline-flex shrink-0 items-center gap-1.5"><Saving on={saving}>{null}</Saving>
-        <select aria-label={`${person.name}: how they use this Crew`} disabled={Boolean(pending)} value={person.level} onChange={event => { const next = event.target.value as CrewPeopleChange['level']; if (next !== person.level) onMove(next) }}
+        <select aria-label={`${person.name}: how they use this project`} disabled={Boolean(pending)} value={person.level} onChange={event => { const next = event.target.value as CrewPeopleChange['level']; if (next !== person.level) onMove(next) }}
           className="rounded-md border border-border bg-background px-2 py-0.5 text-xs">
           <option value={person.level}>{person.level_label}</option>
           {options.map(option => <option key={option.key} value={option.key} disabled={option.off} title={option.why || undefined}>{option.label}</option>)}
@@ -478,7 +478,7 @@ function SharesCard({ view, target, projectId }: { view: TeamTabView; target: Te
       {folders.map(folder => <FolderRow key={folder} folder={folder} target={target} canRemove={view.can_remove_folder} saving={pending === `remove:${folder}`} disabled={Boolean(pending)}
         onRemove={() => void save(`remove:${folder}`, { ...team, folder: { folders: entries.filter(f => f.path !== folder) } })} />)}
       {!folders.length && <p className="text-xs text-muted-foreground">Add a folder to share with the Team.</p>}
-      {view.can_add_folder && <button type="button" disabled={Boolean(pending)} title="Choose a folder of this Crew to share with the Team"
+      {view.can_add_folder && <button type="button" disabled={Boolean(pending)} title="Choose a folder of this project to share with the Team"
         onClick={() => { setPicking(!picking); setParent('') }} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Share this folder</button>}
     </div>
     {picking && <div className="space-y-2 rounded-lg bg-muted/40 p-3 text-xs">

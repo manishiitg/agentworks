@@ -423,9 +423,9 @@ export const GlobalActivityMonitor: React.FC<{ representedSessionIds?: readonly 
                 const isCrewBuilder = item.tab.metadata?.agentProfileId === 'work'
                 const builderPreset = isCrewBuilder ? undefined : workflowPresetForActivity(workflowPresets, undefined, item.tab) ?? currentWorkflowPreset ?? undefined
                 const builderName = isCrewBuilder
-                  ? item.tab.metadata?.agentProfileIdentityName || item.tab.metadata?.agentProfileProjectTitle || 'Crew'
+                  ? item.tab.metadata?.agentProfileIdentityName || item.tab.metadata?.agentProfileProjectTitle || 'Project'
                   : builderPreset?.label || ((item.tab.name && item.tab.name !== 'Automation Builder') ? item.tab.name : currentWorkflowPresetName)
-                const builderTitle = builderName || (isCrewBuilder ? 'Crew' : 'Automation')
+                const builderTitle = builderName || (isCrewBuilder ? 'Project' : 'Automation')
                 return (
                   <button
                     key={item.id}

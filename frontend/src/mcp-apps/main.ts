@@ -143,7 +143,7 @@ function showFunction(name: string, defaults: Record<string, unknown> = {}) {
 
 function appendMessages(value: Record<string, unknown>) {
   for (const message of (value.messages ?? []) as { role?: string; text?: string }[]) {
-    if (message.text) history.append(element('p', `${message.role === 'you' ? 'You' : 'Crew'}: ${message.text}`))
+    if (message.text) history.append(element('p', `${message.role === 'you' ? 'You' : 'Project'}: ${message.text}`))
   }
   if (typeof value.next_after === 'number') after = value.next_after
   if (typeof value.chat_id === 'string') chatId = value.chat_id
@@ -165,7 +165,7 @@ function mount() {
   chatDialog?.remove()
   chatDialog = element('dialog'); chatDialog.setAttribute('aria-label', 'Ask about this dashboard')
   const form = element('form'); form.append(element('h2', 'Ask about this dashboard'))
-  ask = element('textarea'); ask.setAttribute('aria-label', 'Message to the Crew'); ask.disabled = !dashboard!.capability.can_ask
+  ask = element('textarea'); ask.setAttribute('aria-label', 'Message to the project'); ask.disabled = !dashboard!.capability.can_ask
   const send = element('button', 'Send'); send.type = 'submit'; send.disabled = ask.disabled
   const check = element('button', 'Check reply'); check.type = 'button'
   check.onclick = () => { if (chatId) void bridge.call('workspace', { action: 'read_chat', workspace_id: dashboard!.workspace_id, chat_id: chatId, after, wait_seconds: 2 }).then(appendMessages).catch(error) }

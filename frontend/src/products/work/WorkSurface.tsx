@@ -1758,8 +1758,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         title={`Delete ${product.noun}`}
         message={deleteCandidate
           ? deleteCandidate.filesPath && deleteCandidate.filesPath !== deleteCandidate.workspacePath
-            ? `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and its setup, chat history, dashboards and database? Your selected folder and files will stay. Remove this Crew from every workflow before deleting it. This cannot be undone.`
-            : `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and permanently remove its project files, chat history, ${product.hasIdentity ? 'schedules, triggers, bots, ' : ''}dashboard, and database?${product.profileId === 'work' ? ' Remove this Crew from every workflow before deleting it.' : ''} This cannot be undone.`
+            ? `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and its setup, chat history, dashboards and database? Your selected folder and files will stay. Remove this project from every workflow before deleting it. This cannot be undone.`
+            : `Delete ${product.noun} “${deleteCandidate.identity?.name || deleteCandidate.title}” and permanently remove its project files, chat history, ${product.hasIdentity ? 'schedules, triggers, bots, ' : ''}dashboard, and database?${product.profileId === 'work' ? ' Remove this project from every workflow before deleting it.' : ''} This cannot be undone.`
           : ''}
         confirmText={`Delete ${product.noun}`}
         loadingText={`Deleting ${product.noun}…`}
@@ -1810,7 +1810,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                           tabId={tabId}
                           compact
                           landingContent={<ChatEmptyState tabId={tabId} />}
-                          composerPlaceholder={openAgentName ? `Ask ${openAgentName}…` : 'Ask this Crew to help with your work…'}
+                          composerPlaceholder={openAgentName ? `Ask ${openAgentName}…` : 'Ask this project to help with your work…'}
                           showProductSteerAction
                           // Code only, and only its owner: New chat replaces this project's conversation in the same
                           // tab (the server rotates the project's session), never a second, parallel chat.

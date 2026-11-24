@@ -73,9 +73,9 @@ export const CREW_STARTER_TYPES = [
   },
   {
     id: 'chief-of-staff', label: 'Chief of Staff', icon: Network,
-    summary: 'Coordinate your Crews & workflows',
-    purpose: 'Coordinate my Crews and workflows: track progress, route work through their available functions and triggers, follow up on blockers and prepare status summaries. Help me choose the projects to connect. Use only the projects and actions I have access to.',
-    example: 'Coordinate a launch across my Crews and workflows, highlight blockers and prepare a daily brief.',
+    summary: 'Coordinate your projects & workflows',
+    purpose: 'Coordinate my projects and workflows: track progress, route work through their available functions and triggers, follow up on blockers and prepare status summaries. Help me choose the projects to connect. Use only the projects and actions I have access to.',
+    example: 'Coordinate a launch across my projects and workflows, highlight blockers and prepare a daily brief.',
     shortcuts: [
       { id: 'schedules', label: 'Automations' },
       { id: 'mcp:folders', label: 'Linked projects & folders' },

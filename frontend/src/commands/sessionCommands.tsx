@@ -20,7 +20,7 @@ export const sessionCommands: CommandDefinition[] = [{
   source: 'builtin',
   validate: ctx => {
     const tab = useChatStore.getState().chatTabs[ctx.activeTabId]
-    return tab?.metadata?.agentProfileId === 'work' && tab.metadata.agentProfileTabCanWrite !== false ? null : 'Open one of your own Crew chats to fork it.'
+    return tab?.metadata?.agentProfileId === 'work' && tab.metadata.agentProfileTabCanWrite !== false ? null : 'Open one of your own project chats to fork it.'
   },
   execute: ctx => { void forkChatTab(ctx.activeTabId) },
 }]

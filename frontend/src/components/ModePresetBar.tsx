@@ -504,7 +504,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                             {!presetsLoading && presetsForMode.length === 0 && (
                               <div className="p-2 text-sm text-gray-500 dark:text-gray-400 text-center">
                                 {canCreateWorkflows
-                                  ? 'No automations available. Create one in your Crew chat.'
+                                  ? 'No automations available. Create one in your project chat.'
                                   : 'No automations are available to your account.'}
                               </div>
                             )}

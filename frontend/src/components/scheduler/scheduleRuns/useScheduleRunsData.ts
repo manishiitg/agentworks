@@ -677,7 +677,7 @@ export function useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, enti
             writableConversationKey: run.open.writable ? run.open.conversation_key : undefined,
           })
         } catch {
-          chatStore.addToast('This run could not be opened. Its Crew may no longer exist.', 'error')
+          chatStore.addToast('This run could not be opened. Its project may no longer exist.', 'error')
           return
         }
       }

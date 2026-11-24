@@ -57,16 +57,16 @@ export function sharedCrewFileClient(projectId: string, workspaceRoot: string, p
     },
     readFile: async (filePath: string) => {
       const rel = sharedCrewRelativePath(root, filePath)
-      if (rel === null || rel === '') return blank('File is outside this Crew project.')
+      if (rel === null || rel === '') return blank('File is outside this project.')
       try {
         const response = await agentApi.getSharedProjectFile(profileId, projectId, rel)
-        if (typeof response?.content !== 'string') return blank('Could not open shared Crew file.')
+        if (typeof response?.content !== 'string') return blank('Could not open shared project file.')
         return { success: true, message: '', data: { filepath: filePath, content: response.content } }
       } catch (cause) {
         // Mirror the proxy client's 404 contract: callers treat a missing
         // file as empty, and every other failure as an error.
         const status = (cause as { response?: { status?: number } } | undefined)?.response?.status
-        const error = new Error(status === 404 ? 'File not found.' : 'Could not open shared Crew file.') as Error & { response?: { status?: number } }
+        const error = new Error(status === 404 ? 'File not found.' : 'Could not open shared project file.') as Error & { response?: { status?: number } }
         error.response = { status: status ?? 500 }
         throw error
       }

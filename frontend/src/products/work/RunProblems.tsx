@@ -38,7 +38,7 @@ export function RunProblemCardView({ card, press, onAsk }: { card: RunProblemCar
       const reply = await press(card, button)
       if (reply.ask) {
         if (onAsk) onAsk(reply.ask)
-        else setNote(`Ask the Crew's agent: "${reply.ask}"`)
+        else setNote(`Ask the project's agent: "${reply.ask}"`)
       } else if (reply.note) setNote(reply.note)
     } catch (e) {
       const message = (e as { response?: { data?: { message?: string; error?: string } } })?.response?.data

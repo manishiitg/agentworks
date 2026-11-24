@@ -69,7 +69,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
         {/* One Access page in the Mac app and on the website (owner, 5 Nov); the server's reply decides its rows. */}
         {tab === 'access' && <div><YourComputerPanel projectId={projectId} sessionId={sessionId} workspacePath={workspacePath} onBack={onBack} /></div>}
         {tab === 'computer-use' && canEdit && isLocalDeployment() && <ComputerUsePanel projectId={projectId} />}
-        {tab === 'apps' && <ProjectIntegrationPanel github workspacePath={workspacePath} tabId={tabId} placeNoun="Crew" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
+        {tab === 'apps' && <ProjectIntegrationPanel github workspacePath={workspacePath} tabId={tabId} placeNoun="Project" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
         {tab === 'folders' && <WorkFoldersSection part={isLocalDeployment() ? 'linked' : 'all'} onOpenComputer={canEdit ? () => setTab('access') : undefined} workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />}
         {/* In the Mac app this is the folders attached on this Mac (Downloads, your whole Mac, picked folders); on a server it
@@ -81,7 +81,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
         {tab === 'cli' && <ProjectMcpSetupPanel workspacePath={workspacePath} />}
         {/* Bot setup and personal Slack accounts keep their existing Connections entries. */}
         {tab === 'slack-bot' && <CrewSlackSettings projectId={projectId} workspacePath={workspacePath} />}
-        {tab === 'slack' && <SlackAccountsPanel workspacePath={workspacePath} noun="Crew" tabId={tabId} />}
+        {tab === 'slack' && <SlackAccountsPanel workspacePath={workspacePath} noun="Project" tabId={tabId} />}
         {tab === 'whatsapp' && <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" scopeNoun="project" onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}
       </>
     </div>

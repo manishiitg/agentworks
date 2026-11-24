@@ -88,7 +88,7 @@ export async function openWorkAutomationRunChat(
   }
   const project = await resolveRunProject(session)
   if (!project) {
-    throw new Error('This Crew project is no longer available.')
+    throw new Error('This project is no longer available.')
   }
 
   const surfaces = useProductSurfaceStore.getState()
@@ -134,7 +134,7 @@ export async function openWorkAutomationRunChat(
   })
   const canonical = useChatStore.getState().chatTabs[canonicalTabId]
   if (!canonical?.metadata?.agentProfileId) {
-    throw new Error('Could not open the Crew chat for this run.')
+    throw new Error('Could not open the project chat for this run.')
   }
 
   // Schedules may run in an ordinary Crew conversation. The server's chat

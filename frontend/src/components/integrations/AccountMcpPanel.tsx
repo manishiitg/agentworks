@@ -76,7 +76,7 @@ export default function AccountMcpPanel() {
         {result?.setup && <div className="space-y-2"><p>This service needs OAuth app details before sign-in can start.</p>{result.setup.redirect_uri && <p className="break-all text-xs text-muted-foreground">Register callback: {result.setup.redirect_uri}</p>}<Button size="sm" variant="outline" disabled={busy} onClick={() => { const saved = vault.items.find(item => item.id === result.connection_id); if (saved) setTarget({ server: saved, appSetup: true }); else setError('Refresh connections, then use Edit connection to enter the OAuth app details.') }}>Enter app details</Button></div>}
       </div>}
     <McpConnectionsPanel density="directory" view={view} onViewChange={setView} selectedServerId={selectedServerId}
-      description="Manage your saved MCP connections here. Choose what each Crew uses in that Crew’s settings."
+      description="Manage your saved MCP connections here. Choose what each project uses in that project’s settings."
       headerActions={vault.canConnect && <Button size="sm" onClick={() => { setError(''); setTarget({}) }} disabled={busy}><Plus className="h-4 w-4" />Add MCP server</Button>}
       servers={vault.servers.map(server => {
         const saved = vault.items.find(item => 'vault_' + item.id === server.id)!
@@ -102,7 +102,7 @@ export default function AccountMcpPanel() {
     {target && <McpAccountForm target={target} busy={busy} error={error} close={() => setTarget(undefined)}
       submit={fields => operate(target.server ? 'edit_connection' : 'connect', fields)} />}
     <ConfirmationDialog isOpen={Boolean(removing)} onClose={() => { if (!busy) setRemoving(undefined) }} onConfirm={() => { if (removing) void operate('remove_connection', { connection_id: removing.id }) }}
-      title={'Remove ' + (removing?.label || 'connection') + '?'} message={error || 'Delete this saved connection and its stored sign-in from Vault. Crews using it will lose access. This does not revoke permission at the external service.'}
+      title={'Remove ' + (removing?.label || 'connection') + '?'} message={error || 'Delete this saved connection and its stored sign-in from Vault. Projects using it will lose access. This does not revoke permission at the external service.'}
       confirmText="Remove connection" isLoading={busy} loadingText="Removing…" />
   </>
 }
