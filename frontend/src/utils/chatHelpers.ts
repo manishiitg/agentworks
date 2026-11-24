@@ -114,8 +114,23 @@ export function mergeHelperEvents(saved: PollingEvent[], live: PollingEvent[]): 
 }
 
 /** Builds the list from a chat's (already coalesced) events, oldest first. */
+/** One helper's later record over its earlier one. A late start does not undo a finished helper. */
+function mergeHelper(previous: ChatHelper, helper: ChatHelper): ChatHelper {
+  const keepState = helper.state === 'running' && previous.state !== 'running' && previous.state !== 'unknown'
+  const base = keepState ? { ...helper, ...previous } : { ...previous, ...helper }
+  return {
+    ...base,
+    key: previous.key,
+    name: helper.task && !keepState ? helper.name : previous.task ? previous.name : helper.name,
+    task: (keepState ? previous.task : helper.task) || previous.task || helper.task,
+    startedAt: previous.startedAt ?? helper.startedAt,
+    toolCallId: helper.toolCallId || previous.toolCallId,
+    stopId: helper.stopId || previous.stopId,
+  }
+}
+
 export function collectChatHelpers(events: PollingEvent[]): ChatHelper[] {
-  const helpers: ChatHelper[] = []
+  const helpers: Array<ChatHelper | undefined> = []
   const nativeKeys = new Map<string, number>()
   for (const event of events) {
     if (event.type !== 'coding_agent_native_activity') continue
@@ -146,31 +161,28 @@ export function collectChatHelpers(events: PollingEvent[]): ChatHelper[] {
       ...(toolId ? { toolCallId: toolId } : {}),
       ...(provider === 'claude-code' && taskId && record.origin === 'sdk_helper' ? { stopId: `claude-task:${taskId}` } : {}),
     }
-    const index = aliases.map(alias => nativeKeys.get(alias)).find(found => found !== undefined)
-    if (index === undefined) { for (const alias of aliases) nativeKeys.set(alias, helpers.length); helpers.push(helper); continue }
-    for (const alias of aliases) nativeKeys.set(alias, index)
-    const previous = helpers[index]
-    // A late start does not undo a finished helper.
-    if (helper.state === 'running' && previous.state !== 'running' && previous.state !== 'unknown') continue
-    helpers[index] = {
-      ...previous, ...helper,
-      key: previous.key,
-      name: helper.task ? helper.name : previous.name,
-      task: helper.task || previous.task,
-      startedAt: helper.startedAt ?? previous.startedAt,
-      toolCallId: helper.toolCallId || previous.toolCallId,
-      stopId: helper.stopId || previous.stopId,
+    // Pieces can arrive task id only, then tool call only, then both: the record with both joins the two lines.
+    const found = [...new Set(aliases.map(alias => nativeKeys.get(alias)).filter((at): at is number => at !== undefined))].sort((a, b) => a - b)
+    if (!found.length) { for (const alias of aliases) nativeKeys.set(alias, helpers.length); helpers.push(helper); continue }
+    const [index, ...joined] = found
+    for (const other of joined) {
+      helpers[index] = mergeHelper(helpers[index] as ChatHelper, helpers[other] as ChatHelper)
+      helpers[other] = undefined
+      for (const [alias, at] of nativeKeys) if (at === other) nativeKeys.set(alias, index)
     }
+    for (const alias of aliases) nativeKeys.set(alias, index)
+    helpers[index] = mergeHelper(helpers[index] as ChatHelper, helper)
   }
 
+  const list = helpers.filter((helper): helper is ChatHelper => helper !== undefined)
   const jobs = new Map<string, ChatHelper>()
   for (const pair of pairToolCalls(events)) {
     const startedAt = eventTime(pair.events[0])
     if (pair.name === 'spawnAgent' && pair.callId) {
       // Already listed: from an earlier step, or from the helper's own records.
-      if (helpers.some(helper => helper.key === `codex:${pair.callId}` || helper.toolCallId === pair.callId)) continue
+      if (list.some(helper => helper.key === `codex:${pair.callId}` || helper.toolCallId === pair.callId)) continue
       const prompt = text(json(pair.args)?.prompt)
-      helpers.push({
+      list.push({
         key: `codex:${pair.callId}`, provider: 'codex-cli', name: firstLine(prompt, 80) || 'Helper agent', task: prompt,
         state: 'unknown', stateFromServer: true, startedAt, toolCallId: pair.callId,
       })
@@ -183,7 +195,7 @@ export function collectChatHelpers(events: PollingEvent[]): ChatHelper[] {
       const jobId = text(out.job_id)
       const status = text(out.status)
       const existing = jobId ? jobs.get(jobId) : undefined
-      if (existing) { helpers.splice(helpers.indexOf(existing), 1); jobs.delete(jobId) }
+      if (existing) { list.splice(list.indexOf(existing), 1); jobs.delete(jobId) }
       const helper: ChatHelper = {
         key: `job:${jobId || pair.key}`, provider: text(out.provider) || text(args.provider) || 'agent', name: firstLine(task, 80) || 'Coding job', task,
         state: pair.status === 'error' ? 'failed' : pair.status === 'running' ? 'running' : status ? jobState(status) : 'unknown',
@@ -191,7 +203,7 @@ export function collectChatHelpers(events: PollingEvent[]): ChatHelper[] {
         delegated: true, model: text(out.model) || text(args.model) || undefined, jobId: jobId || undefined,
         result: pair.status === 'error' ? firstLine(pair.result || '', 400) || undefined : undefined,
       }
-      helpers.push(helper)
+      list.push(helper)
       if (jobId) jobs.set(jobId, helper)
       continue
     }
@@ -210,7 +222,7 @@ export function collectChatHelpers(events: PollingEvent[]): ChatHelper[] {
       if (typeof out.elapsed_seconds === 'number') helper.durationMs = out.elapsed_seconds * 1000
     }
   }
-  return helpers
+  return list
 }
 
 /** Running first (newest first), then the rest (newest first). */
