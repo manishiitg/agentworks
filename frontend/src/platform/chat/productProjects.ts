@@ -252,7 +252,7 @@ export async function createProductProject<P extends string>(options: {
 }): Promise<ProductProject<P>> {
   const title = options.title.trim()
   const description = options.description.trim()
-  if (options.product === 'work' || options.product === 'code') {
+  if (options.product === 'work') {
     const created = await agentApi.createProductProject(options.product, {
       name: title, purpose: description, root_path: options.rootPath, icon: options.identity?.icon,
       llm_config: options.llmConfig,
@@ -262,7 +262,7 @@ export async function createProductProject<P extends string>(options: {
     if (!project || project.id !== created.id) throw new Error('The new project could not be opened. Reload your projects to find it.')
     return { ...applyRuntimeManifest(project, JSON.stringify(created.runtime_manifest)), filesPath: created.files_path, creationWarnings: created.warnings }
   }
-  // Personal products retain their existing creation path. Crew and Code
+  // Personal products retain their existing creation path. Projects
   // have already returned through server-owned creation above.
   const reserved = await (async () => agentApi.reserveProject(options.product, title))().catch((error: unknown) => {
     const response = (error as { response?: { status?: number; data?: { error?: string } } })?.response

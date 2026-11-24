@@ -176,7 +176,7 @@ var featureCatalog = map[string]featureDefinition{
 		Tools:           []string{"list_project_schedules", "create_project_schedule", "update_project_schedule", "delete_project_schedule", "trigger_project_schedule"},
 		Skills:          []string{"panel-automations"},
 		UIPanels:        []string{"schedules"},
-		PromptExtension: "Project schedules are enabled in message-only mode. Read the attached `panel-automations` skill before managing schedules. A schedule sends one message to the project chat<!-- product:code --> (in a Code, the tab it was set from)<!-- /product -->; it is not a workflow execution. For \"check this in N minutes\", check once first when that is cheap, and never create a reminder and then delete it in the same turn.",
+		PromptExtension: "Project schedules are enabled in message-only mode. Read the attached `panel-automations` skill before managing schedules. A schedule sends one message to the project chat; it is not a workflow execution. For \"check this in N minutes\", check once first when that is cheap, and never create a reminder and then delete it in the same turn.",
 	},
 	"triggers": {
 		Dependencies:    []string{"schedules"},
@@ -345,8 +345,8 @@ func featureSkillNames(profileID string, names []string) []string {
 }
 
 // RenderFeatureText fills a shared feature text for one product: {{product}}
-// becomes the product.yaml name ("Crew", "Code"), {{profile_id}} its profile
-// id ("work", "code"), and backticked feature skill names become that
+// becomes the product.yaml name ("Crew"), {{profile_id}} its profile
+// id ("work"), and backticked feature skill names become that
 // product's skill names.
 func RenderFeatureText(profileID, productName, text string) string {
 	if strings.TrimSpace(productName) == "" {

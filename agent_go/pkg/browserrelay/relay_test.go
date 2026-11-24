@@ -149,19 +149,6 @@ func TestRelayPairingIsolationAndStop(t *testing.T) {
 	if status := restarted.Status("alice", "project-one"); !status.Selected || status.Connected {
 		t.Fatal("restart lost disconnected selection")
 	}
-	legacyRoot := t.TempDir()
-	legacySelection, _ := json.Marshal(map[string]string{key("alice", "legacy-code"): "_users/alice/Chats/Code/projects/legacy"})
-	if err := os.WriteFile(filepath.Join(legacyRoot, "selected.json"), legacySelection, 0600); err != nil {
-		t.Fatal(err)
-	}
-	legacy, err := NewPersistent(legacyRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer legacy.Close()
-	if binding := legacy.Lookup("alice", "legacy-code"); binding == nil || binding.Profile() != "code" || binding.Status().Connected {
-		t.Fatal("legacy Code selection lost its fail-closed routing")
-	}
 	state, err := os.ReadFile(filepath.Join(stateRoot, "selected.json"))
 	if err != nil || strings.Contains(string(state), token) || strings.Contains(string(state), b.capability) {
 		t.Fatal("selection persisted a credential")

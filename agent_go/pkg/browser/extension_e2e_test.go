@@ -48,7 +48,7 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	browserrelay.Default = m
 	defer func() { live.Load().Close(); browserrelay.Default = previous }()
 	root := t.TempDir()
-	workspace := "Chats/Code/projects/extension-e2e"
+	workspace := "Crew/extension-e2e"
 	evidence := workspace + "/evidence"
 	os.MkdirAll(filepath.Join(root, evidence), 0755)
 	oldDocs := viper.GetString("docs-dir")
@@ -70,7 +70,7 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	defer common.ClearSessionShellConfig("code-delegate")
 	defer ReleaseExtensionConversation(context.Background(), sideSession)
 	defer ReleaseExtensionConversation(context.Background(), session)
-	token, err := m.PairForProfile("alice", common.SandboxBrowserSession(session), workspace, "code")
+	token, err := m.PairForProfile("alice", common.SandboxBrowserSession(session), workspace, "work")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 		live.Load().Disconnect("alice", common.SandboxBrowserSession(session))
 	})
 	mux.HandleFunc("/fixture/reset-code", func(w http.ResponseWriter, r *http.Request) {
-		_, err := live.Load().Reset("alice", common.SandboxBrowserSession(session), workspace, "code")
+		_, err := live.Load().Reset("alice", common.SandboxBrowserSession(session), workspace, "work")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 		}

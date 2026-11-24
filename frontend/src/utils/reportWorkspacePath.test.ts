@@ -2,11 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { isSafeReportWorkspacePath } from './reportWorkspacePath'
 
 describe('isSafeReportWorkspacePath', () => {
-  it('accepts a workflow, a Crew in its owner tree, a Crew at the shared root and a Code', () => {
+  it('accepts a workflow, a Crew in its owner tree, and a Crew at the shared root', () => {
     expect(isSafeReportWorkspacePath('Workflow/trading')).toBe(true)
     expect(isSafeReportWorkspacePath('Chats/Work/projects/sde-1a2b3c4d')).toBe(true)
     expect(isSafeReportWorkspacePath('Crew/sde-1a2b3c4d')).toBe(true)
-    expect(isSafeReportWorkspacePath('Chats/Code/projects/app-1')).toBe(true)
   })
 
   it('refuses the bare shared root, hidden entries, traversal and other roots', () => {

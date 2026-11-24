@@ -98,7 +98,7 @@ interface ActiveWorkItem {
 }
 
 interface CrewChatItem {
-  /** A Crew, or a Code workspace (same project surface, its own product). */
+  /** A project. */
   type: 'crew'
   id: string
   label: string
@@ -341,9 +341,6 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   // The left menu's connected networks (owner, 11 Nov: Cmd+K showed only this Mac's Crews).
   const connections = useConnectedWorkStore(state => state.connections)
   const inventory = useConnectedWorkStore(state => state.inventory)
-  // Code workspaces are listed only where this deployment offers Code and
-  // the account may open it.
-  const allowedProducts = useAuthStore(state => state.user?.allowed_products)
   const user = useAuthStore(state => state.user)
   const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
   const resourceScope = `${workspace}:${user?.id || ''}`

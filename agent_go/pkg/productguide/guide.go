@@ -33,14 +33,10 @@ func source(name string) string {
 	return string(b)
 }
 
-// Crew is one display product available through either legacy origin. This
-// projection only chooses guide text; origin entitlements stay with the server.
+// The guide marks project text as product:crew; projects are the work product.
+// This only chooses guide text; entitlements stay with the server.
 func selectedText(selection productpolicy.Selection, content string) string {
-	origin := "work"
-	if !selection.Has(origin) && selection.Has("code") {
-		origin = "code"
-	}
-	return selection.Text(strings.ReplaceAll(content, "<!-- product:crew -->", "<!-- product:"+origin+" -->"))
+	return selection.Text(strings.ReplaceAll(content, "<!-- product:crew -->", "<!-- product:work -->"))
 }
 
 func Fingerprint(content string) string {

@@ -25,7 +25,7 @@ export function shellReconnectDelayMs(attempt: number): number {
   return Math.min(8000, 1000 * 2 ** Math.max(0, attempt))
 }
 
-export function shellStreamUrl(projectId: string, cols: number, rows: number, apiBase: string, token: string | null, tab = 1, profileId = 'code', client?: { kind: string; version: string }): string {
+export function shellStreamUrl(projectId: string, cols: number, rows: number, apiBase: string, token: string | null, tab = 1, profileId = 'work', client?: { kind: string; version: string }): string {
   // A leading / in new URL would discard the saved desktop connection.
   const url = new URL(`${apiBase.replace(/\/$/, '').replace(/^http/i, 'ws')}/api/agent-profiles/${encodeURIComponent(profileId)}/projects/${encodeURIComponent(projectId)}/shell/stream`)
   if (client) {

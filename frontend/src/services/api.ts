@@ -1433,7 +1433,7 @@ export const agentApi = {
     const response = await api.post('/api/workspaces', { action: 'list', detail: 'navigation' })
     const result = response.data
     if (!Array.isArray(result.workspaces) || result.workspaces.some((item: { workspace_id?: string; id?: string; profile_id?: string; workspace_path?: string }) =>
-      !item.id || !['work', 'code'].includes(item.profile_id || '') || !item.workspace_path || item.workspace_id !== `${item.profile_id}:${item.id}`)) {
+      !item.id || item.profile_id !== 'work' || !item.workspace_path || item.workspace_id !== `${item.profile_id}:${item.id}`)) {
       throw new Error('Project navigation is unavailable.')
     }
     return result

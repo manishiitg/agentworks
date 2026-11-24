@@ -201,7 +201,7 @@ func IsPlanPath(p string) bool {
 	switch {
 	case len(parts) >= start+2 && (parts[start] == "Workflow" || parts[start] == "Crew") && parts[start+1] != "":
 		rootEnd = start + 2
-	case len(parts) >= start+4 && parts[start] == "Chats" && (parts[start+1] == "Work" || parts[start+1] == "Code") && parts[start+2] == "projects" && parts[start+3] != "":
+	case len(parts) >= start+4 && parts[start] == "Chats" && parts[start+1] == "Work" && parts[start+2] == "projects" && parts[start+3] != "":
 		rootEnd = start + 4
 	default:
 		return false
@@ -214,7 +214,7 @@ func IsPlanPath(p string) bool {
 		(rest[1] == "plan.json" || rest[1] == "step_config.json")
 }
 
-// PublishPlanPath keeps Workflow/Crew notices scoped. Legacy Crew and Code
+// PublishPlanPath keeps Workflow/Crew notices scoped. Legacy Crew
 // project paths use a path-free notice; their read endpoints still authorize
 // the refetch, and the feed reveals no private project path to other users.
 func PublishPlanPath(p string) {
