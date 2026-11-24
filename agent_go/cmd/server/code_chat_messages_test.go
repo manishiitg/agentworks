@@ -131,6 +131,40 @@ func TestCrewTabsFindEachOtherOnlyForTheOwner(t *testing.T) {
 	if place, _ := spawnPlace(map[string]interface{}{}); place != spawnUnder {
 		t.Fatalf("default place = %q", place)
 	}
+	// #3655: making an agent also sets it up, with the same limits and owner rule as sessions action=identity.
+	for name, tool := range map[string]recordedTool{"fork_project_chat": fork, "open_project_chat": open} {
+		properties := tool.params["properties"].(map[string]interface{})
+		for _, field := range []string{"purpose", "instructions"} {
+			if _, offered := properties[field]; !offered {
+				t.Fatalf("%s does not offer %s", name, field)
+			}
+		}
+	}
+	if _, err := open.exec(ctx, map[string]interface{}{"name": "Issue lead", "instructions": strings.Repeat("x", productAgentInstructionsMaxRunes+1)}); err == nil || !strings.Contains(err.Error(), "nothing was made") {
+		t.Fatalf("over-long instructions = %v", err)
+	}
+	purpose, rules := "Leads the issues row", "Fixer done -> Reviewer checks it.\nAnyone stuck -> ask me."
+	setUp, err := env.api.spawnIdentityArgs(ctx, conversation.SessionID, "owner", map[string]interface{}{"purpose": purpose, "instructions": rules})
+	if err != nil || setUp.empty() {
+		t.Fatalf("owner's own setup = %+v, %v", setUp, err)
+	}
+	saved := map[string]interface{}{}
+	saveSpawnIdentity(ctx, "owner", project, project.Self.Key, setUp, saved)
+	if saved["purpose"] != purpose || saved["instructions_saved"] != true {
+		t.Fatalf("setup not saved: %v", saved)
+	}
+	env.api.lastQueryMu.Lock()
+	if env.api.lastQueryRequests == nil {
+		env.api.lastQueryRequests = map[string]QueryRequest{}
+	}
+	env.api.lastQueryRequests[conversation.SessionID] = QueryRequest{AskedBy: "teammate"}
+	env.api.lastQueryMu.Unlock()
+	if _, err := env.api.spawnIdentityArgs(ctx, conversation.SessionID, "owner", map[string]interface{}{"instructions": rules}); err == nil || !strings.Contains(err.Error(), "own person") {
+		t.Fatalf("a teammate's turn set a new agent's instructions: %v", err)
+	}
+	env.api.lastQueryMu.Lock()
+	delete(env.api.lastQueryRequests, conversation.SessionID)
+	env.api.lastQueryMu.Unlock()
 	holder := &agentSendHolder{}
 	capture := agentSendCaptureRegistrar{&recordingRegistrar{}, holder}
 	_ = capture.RegisterCustomTool("read_agent_messages", "", nil, func(context.Context, map[string]interface{}) (string, error) { return "", nil }, "")

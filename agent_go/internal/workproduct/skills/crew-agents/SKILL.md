@@ -87,6 +87,11 @@ There is no whole-Crew edit lock; coordinate overlapping file changes through me
     `task`; they work at the same time and each answers in its own thread.
   - Tester or critic: open a fresh helper with a review task naming exactly what
     to check (branch, files, PR); keep working and read its findings when they arrive.
+- Setting up an agent with its own rules: when the person asks for an agent that
+  always works a certain way, pass `purpose` (one line) and `instructions` (its
+  standing rules, in the person's words) to the same `open` or `fork` call; they
+  are saved before its first turn. Only from the person's own chat. `open` with
+  the name of an existing tab updates that tab's purpose and instructions.
 - When a fork or helper you made has finished, you may delete it with
   `sessions action=delete chat="<id>"` (preview, then call again with the
   returned `confirmation`). Only while it is still under you in the left menu;

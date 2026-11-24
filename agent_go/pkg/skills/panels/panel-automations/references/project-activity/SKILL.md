@@ -49,5 +49,6 @@ Each item shows its step and the live state of the tasks it became, so the perso
 - `items` (Watcher tool, `id` = the feed Watcher) reads a row's items with their `id`, step, linked tasks and history, plus the row's `steps` and `rules`.
 - When you hand an item to an agent (an ask, a sub-task, a Team task, a `person:` task), call `item_update` with `item_id` and `task: {inbox_id, message_id}` of that ask, and the step the rules give. The task's state (working, blocked, stalled, done) then shows on the item by itself.
 - When a linked task's answer comes back (done, blocked, a stall notice), read the row's rules and do the next step: move the item with `item_update` (`step`, a short `note` of what happened) and send the next ask, or ask the person. Reply where the item came from only if the rules say so.
+- When the person wants one agent to lead a row's items, set it up in the same pass: `sessions action=open` (or `fork` when it needs this conversation) with a `name`, a one-line `purpose` and `instructions` holding the row's steps and rules in the person's words. Then hand it items as asks.
 - Use only the row's steps. If the rules need a step that isn't there, ask the person to add it instead of choosing another.
 - Project activity is the person's own: only their own agents' asks can be linked, and only their own rows can be read or changed.
