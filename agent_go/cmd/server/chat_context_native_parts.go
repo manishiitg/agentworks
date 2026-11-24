@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -23,27 +24,83 @@ func (api *StreamingAPI) nativeChatContextParts(sessionID string, breakdown clau
 // nativeChatBreakdown reads a Claude Code chat's transcript; false for other coding agents or when it cannot be read.
 // Its total is also the chat's size after a restart, before the chat has reported again.
 func (api *StreamingAPI) nativeChatBreakdown(owner string, tab chatContextTab) (claudecode.ContextBreakdown, bool) {
+	nativeID, workingDir, accountHome, ok := api.nativeChatTranscript(owner, tab)
+	if !ok {
+		return claudecode.ContextBreakdown{}, false
+	}
+	return claudecode.ContextBreakdownFromTranscript(nativeID, workingDir, accountHome)
+}
+
+// nativeChatTranscript finds a Claude Code chat's own session and where its transcript is kept.
+func (api *StreamingAPI) nativeChatTranscript(owner string, tab chatContextTab) (nativeID, workingDir, accountHome string, ok bool) {
 	runtime := chatContextRuntimeMetadata(owner, tab.Record)
 	if runtime == nil || runtime.AgentSessionHandle == nil {
-		return claudecode.ContextBreakdown{}, false
+		return "", "", "", false
 	}
 	handle := runtime.AgentSessionHandle
 	provider := chatProviderKey(firstNonEmptyTrimmed(handle.Provider.Provider, runtime.Provider))
 	if provider != chatProviderKey("claude-code") {
-		return claudecode.ContextBreakdown{}, false
+		return "", "", "", false
 	}
-	nativeID := firstNonEmptyTrimmed(handle.Provider.NativeSessionID, runtime.ExternalSessionID)
+	nativeID = firstNonEmptyTrimmed(handle.Provider.NativeSessionID, runtime.ExternalSessionID)
 	if nativeID == "" {
-		return claudecode.ContextBreakdown{}, false
+		return "", "", "", false
 	}
-	accountHome := ""
 	if handle.ConnectionID != "" {
 		scope := providerAccountScope{Principal: owner, WorkspacePath: tab.Record.WorkspacePath}
 		if keys, err := api.connectionAPIKeys(context.Background(), scope, "claude-code", handle.ConnectionID); err == nil && keys != nil {
 			accountHome = keys.RuntimeEnvironment["HOME"]
 		}
 	}
-	return claudecode.ContextBreakdownFromTranscript(nativeID, strings.TrimSpace(handle.Provider.WorkingDir), accountHome)
+	return nativeID, strings.TrimSpace(handle.Provider.WorkingDir), accountHome, true
+}
+
+// chatContextPartItem is one item behind a part of the Context pane's breakdown, with its text.
+type chatContextPartItem struct {
+	Label  string `json:"label"`
+	Text   string `json:"text"`
+	Tokens int    `json:"tokens"`
+	Count  int    `json:"count,omitempty"`
+}
+
+// chatContextPartTexts are the parts whose items a Claude Code chat's transcript holds.
+var chatContextPartTexts = map[string]bool{
+	claudecode.ContextPartSetup: true, claudecode.ContextPartSkills: true, claudecode.ContextPartFiles: true,
+	claudecode.ContextPartResent: true, claudecode.ContextPartSummary: true, claudecode.ContextPartNotes: true,
+}
+
+// GET /api/chat-context/part?session_id=…&key=skills lists what one part of the caller's own Claude Code chat is
+// made of, with each item's text and rough size, biggest first.
+func (api *StreamingAPI) handleChatContextPart(w http.ResponseWriter, r *http.Request) {
+	owner := productWorkspaceUserID(r.Context())
+	tab, found := chatContextTabForSession(r.Context(), owner, r.URL.Query().Get("session_id"))
+	if !found {
+		writeAgentProfileError(w, http.StatusNotFound, "Only this chat's owner can see what fills it.")
+		return
+	}
+	key := strings.TrimSpace(r.URL.Query().Get("key"))
+	if !chatContextPartTexts[key] {
+		writeAgentProfileError(w, http.StatusBadRequest, "This part has no saved text to show.")
+		return
+	}
+	nativeID, workingDir, accountHome, ok := api.nativeChatTranscript(owner, tab)
+	var texts map[string][]claudecode.ContextItem
+	if ok {
+		texts, ok = claudecode.ContextTextsFromTranscript(nativeID, workingDir, accountHome)
+	}
+	if !ok {
+		writeAgentProfileError(w, http.StatusNotFound, "This chat's saved log can't be read right now. Send a message and try again.")
+		return
+	}
+	items := make([]chatContextPartItem, 0, len(texts[key]))
+	for _, item := range texts[key] {
+		items = append(items, chatContextPartItem{Label: item.Label, Text: item.Text, Tokens: max(1, item.Chars/charsPerToken), Count: item.Count})
+	}
+	out := map[string]any{"items": items}
+	if len(items) == 0 && key == claudecode.ContextPartSetup {
+		out["note"] = "This Claude Code version doesn't save its own rules and tools in the chat log, so only their size is known."
+	}
+	writeAgentProfileJSON(w, http.StatusOK, out)
 }
 
 // nativeContextParts turns a transcript breakdown into the pane's parts, scaled to the total the chat reports now.
@@ -61,7 +118,7 @@ func nativeContextParts(b claudecode.ContextBreakdown, ours, usedTokens int) []c
 	var parts []chatContextPart
 	add := func(key, label string, tokens int, note string) {
 		if tokens = scale(tokens); tokens > 0 {
-			parts = append(parts, chatContextPart{Key: key, Label: label, Tokens: tokens, Note: note})
+			parts = append(parts, chatContextPart{Key: key, Label: label, Tokens: tokens, Note: note, Openable: chatContextPartTexts[key]})
 		}
 	}
 	setup := b.Setup

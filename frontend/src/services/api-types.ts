@@ -275,6 +275,17 @@ export interface ChatContextPart {
   tokens: number
   /** Why this part matters, when people can act on it (e.g. instructions sent more than once). */
   note?: string
+  /** The pane can open this part to list its items with their text (getChatContextPart). */
+  openable?: boolean
+}
+
+/** One item behind a part of the context: a tool, a skill, an instruction file, a kind of reminder. */
+export interface ChatContextPartItem {
+  label: string
+  text: string
+  tokens: number
+  /** How many times it was added, when more than once. */
+  count?: number
 }
 
 /** Tokens by kind; new_input excludes input read from or written to the cache. */

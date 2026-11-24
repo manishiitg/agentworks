@@ -6,7 +6,8 @@ import { changeChatContext, chatLimitsPercent, chatLimitsText, resetDate, type C
 import { openSubscriptionLimits } from '../../utils/subscriptionLimitsNavigation'
 import { ContextMeter } from '../chat/ContextMeter'
 import { formatTokens } from '../../utils/formatTokens'
-import type { ChatContextCost, ChatContextCostPeriod, ChatContextModelCost, ChatContextPart, ChatContextTokens, ChatContextView } from '../../services/api-types'
+import type { ChatContextCost, ChatContextCostPeriod, ChatContextModelCost, ChatContextPart, ChatContextPartItem, ChatContextTokens, ChatContextView } from '../../services/api-types'
+import { agentApi } from '../../services/api'
 
 /** Sent by the chat box chip: open the right pane's Context section for this chat ({ sessionId }). */
 export const openChatContextPanelEvent = 'agentworks:open-chat-context-panel'
@@ -80,7 +81,7 @@ function FocusedChatContext({ sessionId, busy }: { sessionId: string; busy: bool
       {used > 0 && <FullnessBlock view={view} used={used} windowTokens={windowTokens} percent={percent} working={working} onAct={act} />}
       <PlanBlock view={view} projectId={projectId} />
       {view.cost?.current && <CostBlock cost={view.cost} />}
-      <DetailsBlock view={view} used={used} />
+      <DetailsBlock sessionId={sessionId} view={view} used={used} />
       <SettingsBlock view={view} working={working} onAct={act} />
     </div>
   </details>
@@ -206,7 +207,7 @@ function CostBlock({ cost }: { cost: ChatContextCost }) {
 }
 
 /** What fills the context and where the tokens went, folded away: most people never need it. */
-function DetailsBlock({ view, used }: { view: ChatContextView; used: number }) {
+function DetailsBlock({ sessionId, view, used }: { sessionId: string; view: ChatContextView; used: number }) {
   const cost = view.cost
   const earlier = cost?.earlier
   const parts = view.parts ?? []
@@ -217,7 +218,7 @@ function DetailsBlock({ view, used }: { view: ChatContextView; used: number }) {
       <ChevronRight aria-hidden="true" className="h-3 w-3 transition-transform group-open/details:rotate-90" />Details
     </summary>
     <div className="space-y-3 pt-2 pl-4">
-      {parts.length > 0 && <PartsBlock parts={parts} />}
+      {parts.length > 0 && <PartsBlock sessionId={sessionId} parts={parts} />}
       {totalOnly && <p className="text-[11px] text-muted-foreground">This chat runs in a coding agent's own app, which reports its total but not what fills it.</p>}
       {cost?.current && <PeriodDetail period={cost.current} />}
       {earlier && <details className="group/earlier border-t border-border pt-2">
@@ -269,14 +270,49 @@ function PlanBlock({ view, projectId }: { view: ChatContextView; projectId: stri
 }
 
 /** What fills the context, as an estimate: the model reports one total, so each part is sized from the prompt. */
-export function PartsBlock({ parts }: { parts: ChatContextPart[] }) {
+export function PartsBlock({ parts, sessionId }: { parts: ChatContextPart[]; sessionId?: string }) {
   const total = parts.reduce((sum, part) => sum + part.tokens, 0)
   return <div>
     <h4 className="mb-0.5 text-[11px] font-medium text-muted-foreground">What fills it (estimate)</h4>
-    <ul className="space-y-1">{parts.map(part => <li key={part.key} className="text-[11px] tabular-nums">
-      <div className="flex gap-2"><span className="min-w-0 flex-1 break-words">{part.label}</span><span className="text-muted-foreground">about {formatTokens(part.tokens)}</span></div>
-      <div className="mt-0.5 h-1 rounded-full bg-muted"><div className={`h-1 rounded-full ${part.note ? 'bg-amber-500' : 'bg-primary/60'}`} style={{ width: `${total > 0 ? Math.max(2, Math.round((part.tokens / total) * 100)) : 0}%` }} /></div>
-      {part.note && <p className="mt-0.5 text-amber-600 dark:text-amber-400">{part.note}</p>}
-    </li>)}</ul>
+    <ul className="space-y-1">{parts.map(part => {
+      const row = <>
+        <div className="flex gap-2"><span className="min-w-0 flex-1 break-words">{part.label}</span><span className="text-muted-foreground">about {formatTokens(part.tokens)}</span></div>
+        <div className="mt-0.5 h-1 rounded-full bg-muted"><div className={`h-1 rounded-full ${part.note ? 'bg-amber-500' : 'bg-primary/60'}`} style={{ width: `${total > 0 ? Math.max(2, Math.round((part.tokens / total) * 100)) : 0}%` }} /></div>
+      </>
+      return <li key={part.key} className="text-[11px] tabular-nums">
+        {part.openable && sessionId
+          ? <details className="group/part">
+            <summary className="cursor-pointer list-none rounded hover:bg-muted/60 [&::-webkit-details-marker]:hidden" title="Show what this is made of">{row}</summary>
+            <PartItems sessionId={sessionId} partKey={part.key} />
+          </details>
+          : row}
+        {part.note && <p className="mt-0.5 text-amber-600 dark:text-amber-400">{part.note}</p>}
+      </li>
+    })}</ul>
   </div>
+}
+
+/** The items behind one part, read when the part is opened: each with its size, and its text one click further. */
+function PartItems({ sessionId, partKey }: { sessionId: string; partKey: string }) {
+  const [state, setState] = useState<{ items?: ChatContextPartItem[]; note?: string; error?: string }>({})
+  useEffect(() => {
+    let cancelled = false
+    agentApi.getChatContextPart(sessionId, partKey)
+      .then(result => { if (!cancelled) setState({ items: result.items, note: result.note }) })
+      .catch((error: { response?: { data?: { error?: string } } }) => { if (!cancelled) setState({ error: error?.response?.data?.error || 'Could not read this part. Try again in a moment.' }) })
+    return () => { cancelled = true }
+  }, [sessionId, partKey])
+  if (state.error) return <p className="mt-1 pl-2 text-muted-foreground">{state.error}</p>
+  if (!state.items) return <p role="status" className="mt-1 pl-2 text-muted-foreground">Reading…</p>
+  if (!state.items.length) return <p className="mt-1 pl-2 text-muted-foreground">{state.note || 'Nothing saved for this part.'}</p>
+  return <ul className="mt-1 space-y-0.5 border-l border-border pl-2">{state.items.map((item, index) => <li key={`${item.label}:${index}`}>
+    <details className="group/item">
+      <summary className="flex cursor-pointer list-none gap-2 rounded hover:bg-muted/60 [&::-webkit-details-marker]:hidden">
+        <ChevronRight aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground transition-transform group-open/item:rotate-90" />
+        <span className="min-w-0 flex-1 break-words">{item.label}{(item.count ?? 0) > 1 && <span className="text-muted-foreground"> ×{item.count}</span>}</span>
+        <span className="text-muted-foreground">about {formatTokens(item.tokens)}</span>
+      </summary>
+      <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 p-2 font-mono text-[10px] leading-snug text-foreground">{item.text}</pre>
+    </details>
+  </li>)}</ul>
 }
