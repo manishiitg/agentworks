@@ -34,7 +34,7 @@ import { ChatToolChanges } from './chat/ChatToolChanges'
 import { ChatLinkStatus } from './chat/ChatLinkStatus'
 import { NotifyNudge } from './chat/NotifyNudge'
 import { ComposerPendingPrompt } from './chat/ComposerPendingPrompt'
-import { codingAgentQuestionCards, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
+import { codingAgentQuestionCards, takesTypedAnswer, typedAnswers, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
 import { StepInspectionTabs } from './chat/StepInspectionTabs'
 import { SessionStopButton } from './SessionStopButton'
 import { ReplyQuote, CHAT_INSERT_QUOTE_EVENT, type InsertQuoteDetail } from './chat/ReplyQuote'
@@ -1110,12 +1110,13 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // Dock a pending prompt above the message box only where this person can answer it and the
   // message box is shown; otherwise it stays in the transcript as before.
   const canDockCodingAgentQuestion = !hideInput && !observingOwnerTab && !activeTab?.metadata?.isViewOnly && !isReadOnlyRunView
-  // While a plan waits, the message box sends changes to it instead of being locked (#3711).
-  const planFeedbackPrompt = canDockCodingAgentQuestion && dockedCodingAgentPrompt?.requestKind === 'plan_approval' && dockedCodingAgentPrompt.questions[0]?.allowOther ? dockedCodingAgentPrompt : undefined
-  const sendPlanFeedback = useCallback(async (text: string) => {
-    if (!planFeedbackPrompt) return
-    await answerCodingAgentQuestion(planFeedbackPrompt.provider, planFeedbackPrompt.promptId, [{ id: planFeedbackPrompt.questions[0].id, selectedLabels: [], otherText: text }])
-  }, [planFeedbackPrompt, answerCodingAgentQuestion])
+  // While a plan or a question waits, the message box answers it in the person's own words instead of being
+  // locked (#3711): changes to a plan, or a typed answer to every question.
+  const typedAnswerPrompt = canDockCodingAgentQuestion && dockedCodingAgentPrompt && takesTypedAnswer(dockedCodingAgentPrompt) ? dockedCodingAgentPrompt : undefined
+  const sendTypedAnswer = useCallback(async (text: string) => {
+    if (!typedAnswerPrompt) return
+    await answerCodingAgentQuestion(typedAnswerPrompt.provider, typedAnswerPrompt.promptId, typedAnswers(typedAnswerPrompt, text))
+  }, [typedAnswerPrompt, answerCodingAgentQuestion])
   // A resumed conversation becomes active when its durable events arrive. Never
   // use a tmux snapshot as a proxy for product-visible chat content.
   const hasRestoredLiveContent = activeTabHasRestoredConversation && hasConversationContent
@@ -3926,8 +3927,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           slashCommands={slashCommands}
           showNewChatAction={showNewChatAction && activeTab?.metadata?.agentProfileChatLocation !== 'mac'}
           placeholderOverride={scheduleOwnChat ? 'Reply to this schedule…' : composerPlaceholder}
-          pendingNativeChoice={pendingCodingAgentChoice && !planFeedbackPrompt}
-          onPlanFeedback={planFeedbackPrompt ? sendPlanFeedback : undefined}
+          pendingNativeChoice={pendingCodingAgentChoice && !typedAnswerPrompt}
+          typedAnswer={typedAnswerPrompt ? { send: sendTypedAnswer, plan: typedAnswerPrompt.requestKind === 'plan_approval' } : undefined}
         />
       )}
       {/* A schedule's own chat takes replies from its owner (owner, 22 Nov); the next run continues it. */}

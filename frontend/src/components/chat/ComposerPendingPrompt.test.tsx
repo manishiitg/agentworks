@@ -3,7 +3,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it } from 'vitest'
 import { ComposerPendingPrompt } from './ComposerPendingPrompt'
-import { codingAgentQuestionCards } from '../../utils/codingAgentQuestions'
+import { codingAgentQuestionCards, SKIPPED_QUESTION_ANSWER } from '../../utils/codingAgentQuestions'
 import type { PollingEvent } from '../../services/api-types'
 import type { CodingAgentChoiceAnswer, CodingAgentQuestionPrompt } from '../../utils/codingAgentQuestions'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -105,5 +105,25 @@ it('shows a pending plan as one line, opens the full plan in the pane, and shrin
     expect(host.textContent).not.toContain('Uploads have no limit.')
   } finally {
     await act(async () => root.unmount()); host.remove()
+  }
+})
+
+// The owner was stuck on a question with no way out: a question that takes typed answers can be skipped,
+// and Skip answers every question so the agent carries on.
+it('skips a question the person does not want to answer', async () => {
+  const prompt: CodingAgentQuestionPrompt = { provider: 'claude-code', promptId: 'skip-me', state: 'pending', answers: [], questions: [
+    { id: '0', header: '', question: 'Which mockup?', multiSelect: false, allowOther: true, options: [{ label: 'A', description: '' }, { label: 'B', description: '' }] },
+    { id: '1', header: '', question: 'Which colour?', multiSelect: false, allowOther: true, options: [{ label: 'Red', description: '' }] },
+  ] }
+  const replies: CodingAgentChoiceAnswer[][] = []
+  const host = document.createElement('div'), root = createRoot(host)
+  document.body.append(host)
+  try {
+    await act(async () => root.render(<ComposerPendingPrompt prompt={prompt} onAnswer={async (_provider, _id, answers) => { replies.push(answers) }} />))
+    await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="coding-agent-question-skip"]')!.click())
+    expect(replies).toEqual([[{ id: '0', selectedLabels: [], otherText: SKIPPED_QUESTION_ANSWER }, { id: '1', selectedLabels: [], otherText: SKIPPED_QUESTION_ANSWER }]])
+  } finally {
+    act(() => root.unmount())
+    host.remove()
   }
 })
