@@ -655,7 +655,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if status, _ := request(token, attached, "put_online"); status != 400 {
 				t.Fatal("removed put_online action was accepted", status)
 			}
-			copyDir, e := crewOfflineDirectory("alpha", id)
+			copyDir, e := crewOfflineWritableDirectory("alpha", id)
 			if e != nil {
 				t.Fatal(e)
 			}

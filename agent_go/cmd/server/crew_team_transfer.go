@@ -331,10 +331,13 @@ func (api *StreamingAPI) handleCrewTeamChunks(w http.ResponseWriter, r *http.Req
 }
 
 func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
+	if !IsLocalMode() {
+		startCrewSyncedChatPruner()
+	}
 	r.HandleFunc("/crew-team-monitor", api.handleCrewTeamMonitor).Methods("GET")
 	r.HandleFunc("/crew-teams", api.handleCrewTeam).Methods("GET")
 	r.HandleFunc("/crew-team-reach", api.handleCrewTeamReach).Methods("GET")
-	r.HandleFunc("/crew-teams/{project}", api.handleCrewTeam).Methods("GET", "PUT")
+	r.HandleFunc("/crew-teams/{project}", api.handleCrewTeam).Methods("GET", "PUT", "DELETE")
 	r.HandleFunc("/crew-teams/{project}/{op:invite}", api.handleCrewTeam).Methods("POST")
 	r.HandleFunc("/crew-teams/{project}/agents", api.handleCrewTeamAgents).Methods("GET")
 	r.HandleFunc("/crew-teams/{project}/agent-fork-local", api.handleCrewAgentForkLocal).Methods("POST")

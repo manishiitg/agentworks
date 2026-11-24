@@ -115,7 +115,7 @@ func (api *StreamingAPI) syncCrewOfflineServerTurn(ctx context.Context, user, se
 		return err
 	}
 	b := crewOfflineBinding{Provider: "agentworks", Session: record.SessionID, Attachment: record.ConversationID}
-	dir, err := crewOfflineDirectory(project, a.ID)
+	dir, err := crewOfflineWritableDirectory(project, a.ID)
 	if err != nil {
 		return err
 	}

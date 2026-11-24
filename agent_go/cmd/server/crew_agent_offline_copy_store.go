@@ -69,7 +69,17 @@ func crewOfflineEmptyHash() string {
 	return hex.EncodeToString(sum[:])
 }
 
+// crewOfflineDirectory is where a source agent's synced chat lives. Reading never creates it (checks used to leave
+// thousands of empty folders); only an accepted upload does, through crewOfflineWritableDirectory.
 func crewOfflineDirectory(project, agent string) (string, error) {
+	return crewOfflineDirectoryAt(project, agent, false)
+}
+
+func crewOfflineWritableDirectory(project, agent string) (string, error) {
+	return crewOfflineDirectoryAt(project, agent, true)
+}
+
+func crewOfflineDirectoryAt(project, agent string, create bool) (string, error) {
 	id := strings.TrimPrefix(agent, crewTeamAgentIDPrefix)
 	parsed, err := uuid.Parse(id)
 	if err != nil || parsed.String() != id || !strings.HasPrefix(agent, crewTeamAgentIDPrefix) {
@@ -79,13 +89,18 @@ func crewOfflineDirectory(project, agent string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Refuse links at every new private component, including existing stages.
+	// Refuse links at every private component, including existing stages.
 	for _, part := range []string{"offline-copies", id} {
 		dir = filepath.Join(dir, part)
-		if err = os.Mkdir(dir, 0700); err != nil && !os.IsExist(err) {
-			return "", err
+		if create {
+			if err = os.Mkdir(dir, 0700); err != nil && !os.IsExist(err) {
+				return "", err
+			}
 		}
 		st, e := os.Lstat(dir)
+		if os.IsNotExist(e) && !create {
+			continue
+		}
 		if e != nil || !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
 			return "", fmt.Errorf("private copy storage unavailable")
 		}

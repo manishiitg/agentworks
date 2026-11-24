@@ -101,7 +101,7 @@ func TestCrewOfflineAppHTTPRequiresOwnPairAndOnlineIntent(t *testing.T) {
 	}
 	// Returned text is readable/acknowledgeable only by this exact maker pair,
 	// never by the teammate who asked or a stale source installation.
-	returnDir, err := crewOfflineDirectory("alpha", agent)
+	returnDir, err := crewOfflineWritableDirectory("alpha", agent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestCrewOfflineAppHTTPRequiresOwnPairAndOnlineIntent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(teamDir, "team.json"), teamRaw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	memberDir, err := crewOfflineDirectory("alpha", memberID)
+	memberDir, err := crewOfflineWritableDirectory("alpha", memberID)
 	if err != nil {
 		t.Fatal(err)
 	}
