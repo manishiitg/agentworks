@@ -72,7 +72,7 @@ func agentSourceMutates(source, operation string, original bool) bool {
 	case "manage_triggers":
 		return operation != "list" && operation != "runs" && operation != "status"
 	case "manage_condition_triggers":
-		return operation != "list" && operation != "history" && operation != "read_script" && operation != "items"
+		return operation != "list" && operation != "history" && operation != "read_script" && operation != "items" && operation != "tasks"
 	case "crew_skills", "crew_mcp":
 		return !crewCapabilityRead(operation)
 	case externalCrewCommandsTool:

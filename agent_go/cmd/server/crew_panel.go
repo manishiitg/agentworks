@@ -54,6 +54,11 @@ type crewPanelRow struct {
 	Steps     []string `json:"steps,omitempty"`
 	Rules     string   `json:"rules,omitempty"`
 	DoneCount int      `json:"done_count,omitempty"`
+	// Project tasks (one shared list per project): its tasks, the lead's
+	// decisions in the last day, and the lead agent's name.
+	Tasks  []crewPanelProjectTask `json:"tasks,omitempty"`
+	Sorted []projectTaskSorted    `json:"sorted,omitempty"`
+	Lead   string                 `json:"lead,omitempty"`
 }
 type crewPanelSection struct {
 	ID     string `json:"id"`
