@@ -222,7 +222,8 @@ export function useTeamTab(project?: string, connection?: string): TeamTabState 
     if (!project || !user) return
     return watchTeamTab(project, key, source, state => setLoaded({ key, state }))
   }, [project, source, user, key])
-  const retry = useCallback(() => { void tabCache.get(key)?.load() }, [key])
+  // Try again is the person asking: it forgets remembered refusals so the server answers afresh (#3790).
+  const retry = useCallback(() => { teamRefusals.clear(); void tabCache.get(key)?.load() }, [key])
   return { ...(loaded?.key === key ? loaded.state : { error: '' }), retry }
 }
 
