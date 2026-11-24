@@ -116,7 +116,7 @@ func (api *StreamingAPI) sendAgentTeamRequest(ctx context.Context, userID string
 	m.Text = agentTaskMessageText(fields, message)
 	m.Title, m.Ref, m.Files = agentTaskTitle(fields, message), agentTaskRef(fields, message), fields.Files
 	// A file sent with the request (file_path in a coding chat) is kept with it and shown on the card.
-	file, err := prepareMessageFile(args)
+	files, err := prepareMessageFiles(args)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func (api *StreamingAPI) sendAgentTeamRequest(ctx context.Context, userID string
 		for _, c := range s.Conversations {
 			if len(c.Messages) > 0 && c.Messages[0].Submission == submission && sameAgentMessageSender(c.Endpoints[0], asker) {
 				agentMessageMu.Unlock()
-				if !submissionMessageMatches(c.Messages[0], m.Text, file) {
+				if !submissionMessageMatches(c.Messages[0], m.Text, files) {
 					return nil, fmt.Errorf("submission_id already used for a different message")
 				}
 				return agentMessageReceipt(c.ID, c.Messages[0]), nil
@@ -142,12 +142,12 @@ func (api *StreamingAPI) sendAgentTeamRequest(ctx context.Context, userID string
 		agentMessageMu.Unlock()
 		return nil, fmt.Errorf("conversation capacity reached")
 	}
-	if file != nil {
-		if m.File, err = storeMessageFile(ctx, userID, file); err != nil {
+	if len(files) > 0 {
+		if m.Attachments, err = storeMessageFiles(ctx, userID, files); err != nil {
 			agentMessageMu.Unlock()
 			return nil, err
 		}
-		m.Text = m.File.message(m.Text)
+		m.Text = agentMessageFilesText(m.Text, m.Attachments)
 	}
 	c := agentConversation{ID: "inbox-" + uuid.NewString(), Endpoints: [2]agentMessageEndpoint{asker, dest}, Messages: []agentMessage{m}, Next: 1}
 	s.Conversations = append(s.Conversations, c)

@@ -972,6 +972,8 @@ type QueryRequest struct {
 	// AgentMessageInbox marks another agent's message delivered into this chat (agent_messaging.go). It survives
 	// the turn queue, and makes the turn attended: the tab shows question cards (codingAgentTurnAttended).
 	AgentMessageInbox string `json:"agent_message_inbox,omitempty"`
+	// AgentMessageID is the delivered message this turn answers; the asker's Stop finds its queued turn by it (#3661).
+	AgentMessageID string `json:"agent_message_id,omitempty"`
 	// AgentMessageFromOtherPerson marks an agent message whose sender belongs to another person: that turn works for
 	// them, so it never gets the receiving person's laptop.
 	AgentMessageFromOtherPerson bool `json:"agent_message_from_other_person,omitempty"`

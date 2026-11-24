@@ -215,8 +215,32 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 			}
 		}
 	}
+	// #3661: only the asker can stop their ask; one not yet delivered is withdrawn, so it never starts.
+	t.Run("only the asker stops their own ask", func(t *testing.T) {
+		asked := call(hosted, map[string]any{"action": "ask", "agent_name": "browser-helper", "target": "agent:terminal-helper", "message": "Please check the build", "submission_id": "hosted-stop"}, true)
+		stopArgs := map[string]any{"action": "stop", "inbox_id": asked["inbox_id"], "message_id": asked["message_id"]}
+		call(other, stopArgs, false)
+		stopArgs["agent_name"] = "browser-helper"
+		if out := call(hosted, stopArgs, true); out["outcome"] != "withdrawn" {
+			t.Fatalf("own undelivered ask was not withdrawn: %v", out)
+		}
+		st, err := readAgentMessageStore(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range st.Conversations {
+			for _, m := range c.Messages {
+				if m.ID == asked["message_id"] && m.Delivery != "withdrawn" {
+					t.Fatalf("stopped ask still waits for delivery: %s", m.Delivery)
+				}
+			}
+		}
+	})
 	t.Run("file submission retries keep one message and one file", func(t *testing.T) {
-		fileArgs := map[string]any{"action": "send", "agent_name": "browser-helper", "target": "agent:terminal-helper", "message": "Review this file", "submission_id": "hosted-file", "file_name": "report.txt", "file_base64": base64.StdEncoding.EncodeToString([]byte("example report"))}
+		attach := func(name, text string) []any {
+			return []any{map[string]any{"file_name": name, "file_base64": base64.StdEncoding.EncodeToString([]byte(text))}}
+		}
+		fileArgs := map[string]any{"action": "send", "agent_name": "browser-helper", "target": "agent:terminal-helper", "message": "Review this file", "submission_id": "hosted-file", "attachments": attach("report.txt", "example report")}
 		first := call(hosted, fileArgs, true)
 		if again := call(hosted, fileArgs, true); again["message_id"] != first["message_id"] || again["inbox_id"] != first["inbox_id"] {
 			t.Fatalf("file retry duplicated the message: first=%v retry=%v", first, again)
@@ -226,7 +250,7 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 		if again := call(hosted, fileArgs, true); again["message_id"] != first["message_id"] {
 			t.Fatalf("file retry inside the inbox duplicated the message: %v", again)
 		}
-		for key, changed := range map[string]any{"file_base64": base64.StdEncoding.EncodeToString([]byte("changed report")), "file_name": "different.txt", "message": "Different request"} {
+		for key, changed := range map[string]any{"attachments": attach("report.txt", "changed report"), "message": "Different request"} {
 			original := fileArgs[key]
 			fileArgs[key] = changed
 			call(hosted, fileArgs, false)
@@ -235,7 +259,7 @@ func TestHostedAgentInboxOverMCP(t *testing.T) {
 		withoutFile := map[string]any{"action": "send", "agent_name": "browser-helper", "inbox_id": first["inbox_id"], "message": "Review this file", "submission_id": "hosted-file"}
 		call(hosted, withoutFile, false)
 		// Concurrent CLI retries cannot create orphan files either.
-		replyFile := map[string]any{"action": "send", "agent_name": "terminal-helper", "inbox_id": first["inbox_id"], "submission_id": "cli-file-reply", "file_name": "reply.txt", "file_base64": base64.StdEncoding.EncodeToString([]byte("example reply"))}
+		replyFile := map[string]any{"action": "send", "agent_name": "terminal-helper", "inbox_id": first["inbox_id"], "submission_id": "cli-file-reply", "attachments": attach("reply.txt", "example reply")}
 		results := make(chan error, 6)
 		ids := make(chan string, 6)
 		for range 6 {

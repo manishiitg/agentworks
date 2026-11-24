@@ -65,6 +65,11 @@ it('identifies the observed person and Mac in one line and asks the agent direct
  await act(async()=>host.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})))
  expect(f.post).toHaveBeenCalledWith('/api/external/v1/call',expect.objectContaining({name:'messages',arguments:expect.objectContaining({action:'ask',target:'agent:colleague/review',message:'Is the release ready?'})}),expect.anything())
  expect(host.textContent).toContain('Is the release ready?')
+ // #3661: while your ask runs, Send is Stop, and Stop names only your own ask.
+ f.post.mockResolvedValue({data:{stopped:true,line:'You stopped your ask.'}})
+ await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Stop your ask"]')!.click())
+ expect(f.post).toHaveBeenLastCalledWith('/api/external/v1/call',expect.objectContaining({arguments:{action:'stop',inbox_id:'inbox-1',message_id:'m1'}}),expect.anything())
+ expect(host.querySelector('[aria-label="Stop your ask"]')).toBeNull()
  f.team.view.reachable=[];await act(async()=>root.render(null));await render();expect(textbox().disabled).toBe(true)
 })
 

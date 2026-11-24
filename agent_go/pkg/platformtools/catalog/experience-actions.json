@@ -1157,6 +1157,14 @@
   },
   {
     "family": "messages",
+    "name": "stop",
+    "member": "messages__stop",
+    "description": "Stop your own ask (its inbox_id and message_id): withdrawn if it has not started, otherwise only the turn working on it stops.",
+    "source": "messages",
+    "source_action": "stop"
+  },
+  {
+    "family": "messages",
     "name": "count",
     "member": "messages__count",
     "description": "Use the current messages count operation.",

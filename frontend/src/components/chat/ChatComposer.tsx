@@ -1,5 +1,7 @@
-import { forwardRef, type HTMLAttributes, type ReactNode, type FormEventHandler } from 'react'
-import { Send } from 'lucide-react'
+import { forwardRef, useEffect, useState, type HTMLAttributes, type ReactNode, type FormEventHandler } from 'react'
+import { FileText, Paperclip, Send, X } from 'lucide-react'
+import { LoadingIndicator } from '../ui/LoadingIndicator'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 import { Button, type ButtonProps } from '../ui/Button'
 import { Textarea } from '../ui/Textarea'
 import { cn } from '../../lib/utils'
@@ -89,4 +91,36 @@ export function ChatComposerForm({ product = false, className, onSubmit, aboveCa
     {aboveCard}
     <ChatComposerCard product={product}>{children}</ChatComposerCard>
   </form>
+}
+
+/** The message box's paperclip, shared by the chat input and the Ask box under a teammate's agent. */
+export function ChatComposerAttachButton({ busy = false, disabled = false, onClick, tip }: { busy?: boolean; disabled?: boolean; onClick: () => void; tip: string }) {
+  return <TooltipProvider><Tooltip>
+    <TooltipTrigger asChild>
+      <Button type="button" variant="outline" size="icon" disabled={disabled || busy} onClick={onClick} className="h-7 w-7 p-0"
+        data-theme-action="attach" data-testid="chat-upload-button" aria-label="Attach files">
+        {busy ? <LoadingIndicator className="w-3.5 h-3.5" /> : <Paperclip className="w-3.5 h-3.5" />}
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent><p>{tip}</p></TooltipContent>
+  </Tooltip></TooltipProvider>
+}
+
+/** Local previews of files in the message box: an image thumbnail or a file icon, with the name; ✕ removes one. */
+export function ChatComposerAttachmentTiles({ files, onRemove, dim = false }: { files: File[]; onRemove?: (index: number) => void; dim?: boolean }) {
+  const [previews, setPreviews] = useState<(string | undefined)[]>([])
+  useEffect(() => {
+    const urls = files.map(file => file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined)
+    setPreviews(urls)
+    return () => { urls.forEach(url => { if (url) URL.revokeObjectURL(url) }) }
+  }, [files])
+  return <div className="flex gap-2 overflow-x-auto pt-1">
+    {files.map((file, index) => <div key={`${file.name}-${index}`} title={file.name}
+      className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted">
+      {previews[index] ? <img src={previews[index]} alt={file.name} className={cn('h-full w-full object-cover', dim && 'opacity-60')} /> : <FileText aria-hidden="true" className="h-6 w-6 text-muted-foreground" />}
+      <span className="absolute inset-x-0 bottom-0 truncate bg-background/95 px-1.5 py-1 text-[10px] text-foreground">{file.name}</span>
+      {onRemove && <button type="button" aria-label={`Remove ${file.name}`} onClick={() => onRemove(index)}
+        className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full border border-border bg-background/95 text-foreground hover:bg-muted"><X className="h-3 w-3" aria-hidden="true" /></button>}
+    </div>)}
+  </div>
 }

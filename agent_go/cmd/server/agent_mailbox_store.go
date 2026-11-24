@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -426,10 +427,7 @@ func cloneAgentMessages(in []agentMessage) []agentMessage {
 	}
 	out := slices.Clone(in)
 	for i := range out {
-		if out[i].File != nil {
-			f := *out[i].File
-			out[i].File = &f
-		}
+		out[i].Attachments = slices.Clone(out[i].Attachments)
 	}
 	return out
 }
@@ -600,10 +598,10 @@ func endpointColumns(e agentMessageEndpoint) []any {
 }
 
 func sameAgentMessage(a, b agentMessage) bool {
-	if (a.File == nil) != (b.File == nil) || a.File != nil && *a.File != *b.File {
+	if !slices.Equal(a.Attachments, b.Attachments) {
 		return false
 	}
-	a.File, b.File = nil, nil
+	a.Attachments, b.Attachments = nil, nil
 	return reflect.DeepEqual(a, b)
 }
 
@@ -634,10 +632,11 @@ func messageRowValues(inbox string, m agentMessage) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	fileID := ""
-	if m.File != nil {
-		fileID = m.File.ID
+	ids := make([]string, len(m.Attachments))
+	for i, f := range m.Attachments {
+		ids[i] = f.ID
 	}
+	fileID := strings.Join(ids, ",")
 	return []any{inbox, m.ID, m.Sequence, m.AgentSequence, m.From, m.Submission, m.Delivery, boolInt(!m.DeliveredAt.IsZero()), boolInt(!m.InboxRemovedAt.IsZero()), fileID, string(raw)}, nil
 }
 
@@ -673,8 +672,8 @@ func writeAgentMailboxDiff(tx *sql.Tx, base *agentMailboxImage, s *agentMessageS
 			continue
 		}
 		for _, m := range c.Messages {
-			if m.File != nil {
-				w.deletedFiles = append(w.deletedFiles, m.File.ID)
+			for _, f := range m.Attachments {
+				w.deletedFiles = append(w.deletedFiles, f.ID)
 			}
 		}
 		if err := exec(`DELETE FROM messages WHERE inbox_id=?`, c.ID); err != nil {
@@ -748,8 +747,8 @@ ON CONFLICT(inbox_id) DO UPDATE SET ord=excluded.ord, next_sequence=excluded.nex
 			if used[i] {
 				continue
 			}
-			if m.File != nil {
-				w.deletedFiles = append(w.deletedFiles, m.File.ID)
+			for _, f := range m.Attachments {
+				w.deletedFiles = append(w.deletedFiles, f.ID)
 			}
 			if err := exec(`DELETE FROM messages WHERE ord=?`, oldOrds[i]); err != nil {
 				return nil, w, err
