@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -32,6 +33,7 @@ func crewTeamForTab(w http.ResponseWriter, r *http.Request, write bool) (crewTea
 	owner := ownerOfCrewProjectID(project)
 	t, err := readCrewTeamOrNew(project, claims.UserID)
 	if err != nil || !crewTeamCanManage(t, claims.UserID) || t.OwnerID != owner || !crewTeamAccountActive(owner) {
+		log.Printf("[CREW_TEAM] project=%s event=tab_refused read_err=%t can_manage=%t owner_match=%t owner_active=%t", project, err != nil, err == nil && crewTeamCanManage(t, claims.UserID), t.OwnerID == owner, crewTeamAccountActive(owner))
 		externalError(w, 403, "team_forbidden", "The Team tab is for people in this project's Team. Ask its owner to add you.")
 		return crewTeam{}, nil, false
 	}

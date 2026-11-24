@@ -941,8 +941,12 @@ func crewTeamFolderPath(root, rel string) (string, error) {
 	return filepath.Join(root, filepath.FromSlash(rel)), nil
 }
 
-// Team folder membership needs Crew access, not an AgentBridge product grant.
+// Team folder membership needs Crew access, not an AgentBridge product grant. A Mac app's own person has no row in
+// the Mac's people list (it has one person), so on a Mac that person is always active (#3790).
 func crewTeamAccountActive(user string) bool {
+	if user != "" && IsLocalMode() && !IsMultiUserMode() && user == GetDefaultUserID() {
+		return true
+	}
 	directory, err := loadUserDirectory()
 	if err != nil || directory == nil {
 		return false
