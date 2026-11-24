@@ -22,8 +22,29 @@ export type TeamClash = { path: string; source: string; winning_revision: number
 export type TeamEvent = { path: string; kind: string; revision: number; author: string; time: string }
 export const teamError = (e: unknown) => e instanceof Error ? e.message : 'Could not open the shared folder. Try again.'
 
+// A Team read the server refused (403) is a steady answer, not an outage (#3760): every Team read is answered from
+// here for ten minutes, or until a Team change on this page, instead of asking the server again on each refresh.
+const teamRefusals = new Map<string, { at: number; error: unknown }>()
+const TEAM_REFUSAL_WAIT = 10 * 60_000
+if (typeof window !== 'undefined') window.addEventListener('agentworks:team-updated', () => teamRefusals.clear())
+
 export async function teamRequest<T>(target: TeamTarget, suffix = '', method = 'GET', body?: unknown, raw: boolean | 'blob' = false, signal?: AbortSignal): Promise<T> {
   const route = `/api/crew-teams/${encodeURIComponent(target.project)}${suffix}${suffix && target.folderId ? `${suffix.includes('?') ? '&' : '?'}folder_id=${encodeURIComponent(target.folderId)}` : ''}`
+  const read = method === 'GET' ? `${target.connection || ''}\x00${route.split('?')[0]}` : ''
+  const refused = read ? teamRefusals.get(read) : undefined
+  if (refused && Date.now() - refused.at < TEAM_REFUSAL_WAIT) throw refused.error
+  try {
+    const data = await teamFetch<T>(target, route, method, body, raw, signal)
+    if (read) teamRefusals.delete(read)
+    return data
+  } catch (error) {
+    const failed = error as { status?: number; response?: { status?: number } }
+    if (read && (failed?.status ?? failed?.response?.status) === 403) teamRefusals.set(read, { at: Date.now(), error })
+    throw error
+  }
+}
+
+async function teamFetch<T>(target: TeamTarget, route: string, method: string, body: unknown, raw: boolean | 'blob', signal?: AbortSignal): Promise<T> {
   if (!target.connection) {
     const { data } = await api.request<T>({ url: route, method, data: body, skipSessionContext: true, ...(signal ? { signal, timeout: 0 } : {}), ...(raw ? { responseType: raw === 'blob' ? 'blob' : 'text', headers: { 'Content-Type': 'application/octet-stream' } } : {}) })
     return data
@@ -32,7 +53,7 @@ export async function teamRequest<T>(target: TeamTarget, suffix = '', method = '
     signal, method, headers: { Authorization: `Bearer ${getAuthToken() || ''}`, 'Content-Type': raw ? 'application/octet-stream' : 'application/json' },
     ...(body === undefined ? {} : { body: typeof body === 'string' || body instanceof Blob ? body : JSON.stringify(body) }),
   })
-  if (!response.ok) { const data = await response.json().catch(() => null); throw Object.assign(new Error(data?.error?.message || (typeof data?.error === 'string' ? data.error : '') || 'The shared folder is unavailable. Check your Team access.'), { code: data?.error?.code as string | undefined }) }
+  if (!response.ok) { const data = await response.json().catch(() => null); throw Object.assign(new Error(data?.error?.message || (typeof data?.error === 'string' ? data.error : '') || 'The shared folder is unavailable. Check your Team access.'), { code: data?.error?.code as string | undefined, status: response.status }) }
   return (response.status === 204 ? '' : raw === 'blob' ? await response.blob() : raw ? await response.text() : await response.json()) as T
 }
 
@@ -135,8 +156,6 @@ function watchTeamTab(project: string, key: string, workspace: string, listener:
     // request: live notices wait for the shared refresh window instead.
     let reading = false
     let last = ''
-    // The server said this viewer is not in the Team (team_forbidden): stop asking until the Team changes.
-    let refused = false
     const created: TabEntry = { state: { error: '' }, listeners: new Set(), load: async () => {}, stop: () => {} }
     const publish = (state: TeamTabState) => {
       const text = JSON.stringify(state)
@@ -161,7 +180,6 @@ function watchTeamTab(project: string, key: string, workspace: string, listener:
           publish(await readTeamTabState(target))
         }
       } catch (e) {
-        refused = teamFailure(e).code === 'team_forbidden'
         publish({ ...created.state, error: teamError(e) })
       }
       reading = false
@@ -169,13 +187,13 @@ function watchTeamTab(project: string, key: string, workspace: string, listener:
     let refreshTimer: ReturnType<typeof setTimeout> | undefined
     let lastRead = 0
     const reload = () => {
-      if (refreshTimer || document.hidden || refused) return
+      if (refreshTimer || document.hidden) return
       const delay = Math.max(0, lastRead + 15000 - Date.now())
       refreshTimer = setTimeout(() => { refreshTimer = undefined; void created.load() }, delay)
     }
     const timer = window.setInterval(() => { if (!document.hidden) reload() }, 60000)
     document.addEventListener('visibilitychange', reload)
-    const teamUpdated = () => { refused = false; reload() }
+    const teamUpdated = () => reload()
     window.addEventListener('agentworks:team-updated', teamUpdated)
     const unlive = liveFeed.subscribe(['crew_panel', 'sessions'], null, reload, project)
     created.stop = () => { document.removeEventListener('visibilitychange', reload); clearTimeout(refreshTimer); window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', teamUpdated); unlive() }
