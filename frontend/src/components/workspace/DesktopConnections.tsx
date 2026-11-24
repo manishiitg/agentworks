@@ -203,12 +203,23 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
     { id: 'yours', name: 'Yours', projects: rest.filter(row => !isSharedProject(row)) },
     { id: 'shared', name: 'Shared with you', projects: rest.filter(row => isSharedProject(row)) },
   ]
+  // A network is named as in this Mac's connections ("Excellencetechnologies"), not by its host name.
+  const networkName = (value: string) => {
+    const host = value.replace(/^https?:\/\//, '').replace(/\/.*$/, '')
+    return connections.find(connection => connection.id !== 'local' && connection.server && connection.server.includes(host))?.name || value
+  }
   const lineFor = (project: typeof rows[number]) => {
-    const network = project.team_live?.network?.trim() || placeName(project.connection)
+    const shareNetwork = project.shared_line?.split(' · ').slice(1).find(part => /\./.test(part)) || ''
+    const network = networkName(project.team_live?.network?.trim() || shareNetwork) || placeName(project.connection)
     if (isSharedProject(project)) {
-      const by = project.owner_name?.trim() || project.shared_line?.replace(/^Shared by\s+/, '').split(' · ')[0]?.trim() || ''
+      // A Team copy on this Mac is owned by this Mac's own account ("default"); its share line names the real owner.
+      const fromLine = project.shared_line?.startsWith('Shared by ') ? project.shared_line.slice('Shared by '.length).split(' · ')[0]?.trim() : ''
+      const owner = project.owner_name?.trim()
+      const by = fromLine || (owner && owner !== 'default' ? owner : '')
       const theirMac = project.shared_line?.includes('On their Mac') ? 'their Mac' : ''
-      return [by, project.team_live ? 'Team member' : '', theirMac, network].filter(Boolean).join(' · ')
+      // A shared project kept on this Mac is a Team copy: you joined its Team.
+      const member = Boolean(project.team_live) || project.connection.id === active
+      return [by, member ? 'Team member' : '', theirMac, network].filter(Boolean).join(' · ')
     }
     return project.team_live ? ['Team', network].filter(Boolean).join(' · ') : network
   }
