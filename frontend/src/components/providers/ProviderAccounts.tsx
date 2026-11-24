@@ -77,7 +77,7 @@ export const ACCOUNT_GROUPS: { label: string; relations: ProviderAccountRelation
   { label: 'Your accounts', relations: ['own'] },
   { label: 'Shared with you', relations: ['shared_with_you'] },
   { label: 'Shared with this workflow', relations: ['shared_with_workflow'] },
-  { label: 'Shared with this Crew', relations: ['shared_with_crew'] },
+  { label: 'Shared with this project', relations: ['shared_with_crew'] },
 ]
 
 /** Short label for a selectable account in a picker. */
@@ -320,7 +320,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     void login(record)
   }, [connections, disabled])
   const remove = async (record: ProviderConnection) => {
-    if (!window.confirm(`Remove ${record.display_name}? Workflows, Crews and Codes that use it will stop working until they pick another account.`)) return
+    if (!window.confirm(`Remove ${record.display_name}? Workflows, projects and Codes that use it will stop working until they pick another account.`)) return
     setBusy(true); setError(null)
     try { await llmConfigService.deleteProviderConnection(record.id); setConnections(current => current.filter(item => item.id !== record.id)); changed() }
     catch (removeError) { setError(providerApiErrorText(removeError, 'Could not remove account.')) }

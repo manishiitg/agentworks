@@ -33,7 +33,7 @@ type Row = {
 const TABS: { value: Group; label: string }[] = [
   { value: 'user', label: 'Users' },
   { value: 'workflow', label: 'Workflows' },
-  { value: 'crew', label: 'Crews' },
+  { value: 'crew', label: 'Projects' },
   { value: 'code', label: 'Code' },
   { value: 'product', label: 'Projects' },
   { value: 'bot', label: 'Bots' },
@@ -267,7 +267,7 @@ export default function CostExplorer({ data, days, itemLabel }: {
           </section>}
 
           {selected.item && (selected.item.by_user?.length ?? 0) > 0 && <section className="mt-5">
-            <h4 className="mb-2 text-sm font-semibold text-gray-900 dark:text-gray-100">Users in this {selected.item.kind === 'crew' ? 'Crew' : selected.item.kind === 'workflow' ? 'workflow' : itemGroup(selected.item) === 'code' ? 'Code workspace' : 'project'}</h4>
+            <h4 className="mb-2 text-sm font-semibold text-foreground">Users in this {selected.item.kind === 'crew' ? 'Project' : selected.item.kind === 'workflow' ? 'workflow' : itemGroup(selected.item) === 'code' ? 'Code workspace' : 'project'}</h4>
             <div className="space-y-1">
               {selected.item.by_user?.map(actor => <button key={actor.id} type="button" onClick={() => openUser(actor.id)}
                 className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 text-left text-sm hover:border-violet-300 dark:border-gray-700 dark:hover:border-violet-500/40">

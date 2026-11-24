@@ -10,7 +10,7 @@ import { ProductSurfaceSwitcher } from './ProductSurfaceSwitcher'
 import { WorkspacePageContent } from './workspace/WorkspacePageContent'
 
 const PRODUCT_GROUPS = [
-  { id: 'crew', label: 'Crew' },
+  { id: 'crew', label: 'Project' },
   { id: 'workflow', label: 'Workflows' },
 ] as const
 

@@ -32,7 +32,7 @@ function formatTime(value?: string): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }
 
-const CALLER_KIND: Record<string, string> = { crew: 'Crew', workflow: 'Workflow', user: 'External connection' }
+const CALLER_KIND: Record<string, string> = { crew: 'Project', workflow: 'Workflow', user: 'External connection' }
 
 const STATUS_LABEL: Record<string, string> = { queued: 'Queued', running: 'Running', completed: 'Done', failed: 'Failed' }
 
@@ -117,7 +117,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, embedded = 
 
   return <div className={`${embedded ? '' : 'h-full'} min-w-0 w-full max-w-none overflow-x-hidden overflow-y-auto bg-background`}>
     <div className="space-y-4 p-4">
-      <AutomationIntro icon={Braces} tone="sky" title="Functions" action={onEdit && canManage ? <button type="button" className={buttonClass} onClick={() => void onEdit('I want to add a function to this Crew. Ask me what it should do, then set it up.')}>Add in chat</button> : undefined}>
+      <AutomationIntro icon={Braces} tone="sky" title="Functions" action={onEdit && canManage ? <button type="button" className={buttonClass} onClick={() => void onEdit('I want to add a function to this project. Ask me what it should do, then set it up.')}>Add in chat</button> : undefined}>
         {loaded ? `${functions.length} functions · ${running} running · ${calls.length} recent calls` : 'Loading functions…'}
       </AutomationIntro>
       {scope.profileId === 'work' && <OnlineOnlyNote projectId={scope.projectId} />}
@@ -138,7 +138,7 @@ export default function CrewFunctionsView({ scope, refreshToken = 0, embedded = 
             <FieldTable label="Gives back" schema={fn.result_schema} />
             <p className="text-[11px] text-muted-foreground">{fresh ? 'A new chat for every call.' : `Runs in its own tab${fn.agent ? ` "${fn.agent}"` : ''}; calls take turns there.`}{fn.updated_at ? ` · Changed ${formatTime(fn.updated_at)}` : ''}</p>
             {!fn.implicit && canManage && <div className="flex flex-wrap gap-1.5">
-              {onEdit && <button type="button" disabled={busy} className={buttonClass} onClick={() => void onEdit(`I want to update the Crew function "${fn.name}". Show me its current definition and ask me what to change.`)}>Edit in chat</button>}
+              {onEdit && <button type="button" disabled={busy} className={buttonClass} onClick={() => void onEdit(`I want to update the project function "${fn.name}". Show me its current definition and ask me what to change.`)}>Edit in chat</button>}
               <button type="button" disabled={busy} className={buttonClass} onClick={() => void remove(fn.name)}>Remove</button>
             </div>}
           </AutomationRow>

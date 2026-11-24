@@ -43,7 +43,7 @@ const products: Array<{
   description: string
   icon: ProductMarkComponent
 }> = [
-  { id: 'work', label: 'Crew', description: 'Private or shared projects with agents, functions, files and tools', icon: WorkMark },
+  { id: 'work', label: 'Project', description: 'Private or shared projects with agents, functions, files and tools', icon: WorkMark },
   { id: 'mcp-gateway', label: 'Vault', description: 'Share secrets and MCP tools with the right users and projects. Check access and inspect call logs.', icon: VaultMark },
   { id: 'llm-gateway', label: 'LLM Gateway', description: 'Give users one endpoint for AI models, with model access, request logs and costs tracked per person.', icon: Network },
   { id: 'knowledgebase', label: 'Brain', description: 'Keep shared knowledge and skills in one place so your agents and team can reuse them.', icon: BrainMark },

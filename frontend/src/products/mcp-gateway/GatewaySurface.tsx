@@ -62,7 +62,7 @@ function GatewayAdminWorkspace({ base, standalone, page, onPage }: { base: strin
     try {
       const tabId = await openLastProjectIntegrationChat()
       await openWorkspacePaneChatWithDraft({ tabId, message: 'Help me connect a custom MCP app in Vault. Ask for its name and URL, then guide setup in this chat.' })
-    } catch (error) { useChatStore.getState().addToast(error instanceof Error ? error.message : 'Open a Crew or Goal chat to set up Vault.', 'error') }
+    } catch (error) { useChatStore.getState().addToast(error instanceof Error ? error.message : 'Open a project or Goal chat to set up Vault.', 'error') }
   }
   const title = page === 'audit' ? 'Audit logs' : page === 'connect' ? 'Vault MCP endpoint' : gatewayPanels.find(item => item.id === panel)?.label ?? 'Vault'
   return <ProductWorkspaceShell testId="gateway-setup-panel" chatOpen panelOpen={false} splitRatio={1} toolbarWhenPanelClosed

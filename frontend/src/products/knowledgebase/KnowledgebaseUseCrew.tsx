@@ -44,7 +44,7 @@ export function KnowledgebaseUseCrew() {
   const allowed = visibleProductSurfaceIDs(user?.allowed_products).includes('work')
   const [copied, setCopied] = useState<string | null>(null)
   const [copyError, setCopyError] = useState(false)
-  return <WorkspacePageContent as="section" aria-label="Use Brain in a Crew" className="max-w-5xl space-y-6">
+  return <WorkspacePageContent as="section" aria-label="Use Brain in a project" className="max-w-5xl space-y-6">
     <div className="space-y-2">
       <h2 className="text-lg font-semibold">Organize your Brain with a Crew</h2>
       <p className="max-w-2xl text-sm text-muted-foreground">Turn scattered notes into useful knowledge. Here are a few things you can ask your Crew to do.</p>
@@ -62,7 +62,7 @@ export function KnowledgebaseUseCrew() {
         </div>
       </li>)}
     </ul>
-    <p role="status" aria-live="polite" className="text-xs text-muted-foreground">{copyError ? 'Could not copy. Select the request above and copy it manually.' : copied ? 'Request copied. Paste it into your Crew when you are ready.' : 'These are examples of work a Crew can do with your Brain notes.'}</p>
+    <p role="status" aria-live="polite" className="text-xs text-muted-foreground">{copyError ? 'Could not copy. Select the request above and copy it manually.' : copied ? 'Request copied. Paste it into your project when you are ready.' : 'These are examples of work a project can do with your Brain notes.'}</p>
     <div className="flex flex-wrap items-center gap-3">
       {allowed ? <Button variant="outline" size="sm" onClick={() => {
         if (visibleProductSurfaceIDs(useAuthStore.getState().user?.allowed_products).includes('work')) openProductWorkspace('work')

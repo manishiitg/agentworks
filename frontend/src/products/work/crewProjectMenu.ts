@@ -70,7 +70,7 @@ export function crewFullMenuGroups(inventory: CrewMenuItem[]) {
     { title: 'Automations', items: [] },
     { title: 'Connections', items: [] },
     { title: 'Team & access', items: [] },
-    { title: 'Crew settings', items: [] },
+    { title: 'Project settings', items: [] },
   ]
   const order = [
     ['mcp:artifacts', 'dashboard', 'files', 'database', 'shell'],

@@ -259,14 +259,14 @@ export async function createProductProject<P extends string>(options: {
       selected_skills: options.selectedSkills, files: options.initialFiles,
     })
     const project = parseProductProjectManifest(JSON.stringify(created.product_manifest), created.workspace_path, options.product)
-    if (!project || project.id !== created.id) throw new Error('The new Crew could not be opened. Reload your projects to find it.')
+    if (!project || project.id !== created.id) throw new Error('The new project could not be opened. Reload your projects to find it.')
     return { ...applyRuntimeManifest(project, JSON.stringify(created.runtime_manifest)), filesPath: created.files_path, creationWarnings: created.warnings }
   }
   // Personal products retain their existing creation path. Crew and Code
   // have already returned through server-owned creation above.
   const reserved = await (async () => agentApi.reserveProject(options.product, title))().catch((error: unknown) => {
     const response = (error as { response?: { status?: number; data?: { error?: string } } })?.response
-    if (response?.status === 403) throw new Error(response.data?.error || 'This account cannot create Crews.')
+    if (response?.status === 403) throw new Error(response.data?.error || 'This account cannot create projects.')
     return { shared: false } as { shared: boolean; id?: string; workspace_path?: string }
   })
   const shared = reserved.shared && !!reserved.id && !!reserved.workspace_path

@@ -89,7 +89,7 @@ export function TeamSchedules({ target, folder }: { target: TeamTarget; folder?:
     const message = item.mine
       ? `My “${name}” schedule differs from the version I shared with the Team. Compare the two (message and time), tell me in plain words what is different, and ask me before you update the shared version.`
       : `The Team's shared “${name}” schedule differs from my “${name}”. Compare the two (the Team files and my schedules, message and time), tell me in plain words what is different, and ask me before you change anything: take theirs, keep mine, or merge both.`
-    if (!sendToOpenChat(target.project, message)) useChatStore.getState().addToast('Open one of your own agent chats in this Crew, then try again.', 'info')
+    if (!sendToOpenChat(target.project, message)) useChatStore.getState().addToast('Open one of your own agent chats in this project, then try again.', 'info')
   }
   const open = (item: SharedSchedule) => {
     const simple = simpleWhen(item.file.cron_expression)

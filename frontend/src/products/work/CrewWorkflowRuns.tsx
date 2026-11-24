@@ -251,7 +251,7 @@ export function CrewWorkflowRuns({ workflowId, workspacePath, script = false, ta
   return <div className="space-y-4">
     {folders.length > 0 && <PageCard title="Costs" hint={costsLoaded ? <>{formatCost(spend(weekAgo))} this week · {formatCost(spend(startOfToday))} today. <button type="button" onClick={() => setShowCosts(true)} className="text-primary hover:underline">By day and by step</button></> : <button type="button" onClick={() => setShowCosts(true)} className="text-primary hover:underline">By day and by step</button>} onAsk={() => onAsk('Explain what this workflow has cost recently.')}>{null}</PageCard>}
     <PageCard title="Runs" hint={hint || undefined}>
-      {folders.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">{loading ? 'Loading runs…' : 'No runs yet. Run the workflow from your Crew chat.'}</p>}
+      {folders.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">{loading ? 'Loading runs…' : 'No runs yet. Run the workflow from your project chat.'}</p>}
       {folders.map(folder => {
         const cost = costOf(folder.name)
         const isOpen = opened?.name === folder.name

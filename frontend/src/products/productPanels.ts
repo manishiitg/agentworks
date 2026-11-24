@@ -50,7 +50,7 @@ export const BRAIN_PANELS: ProductPanel<KnowledgebaseView>[] = [
   { id: 'models', label: 'Assistant model', icon: BrainCircuit },
   { id: 'secrets', label: 'Brain secrets', icon: KeyRound },
   { id: 'backup', label: 'Backup', icon: Archive },
-  { id: 'crew', label: 'Use in a Crew', icon: UsersRound },
+  { id: 'crew', label: 'Use in a project', icon: UsersRound },
 ]
 
 /** Vault (GatewaySurface). */

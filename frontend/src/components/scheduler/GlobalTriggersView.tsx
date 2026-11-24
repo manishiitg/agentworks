@@ -94,12 +94,12 @@ export default function GlobalTriggersView({ kind, onOpen, mode = 'webhooks' }: 
     <AutomationOverviewToolbar label={label} search={search} onSearch={setSearch} loading={loading} onRefresh={refresh} />
     <div className="min-h-0 flex-1 overflow-y-auto">
       {error && <p role="alert" className="mb-3 rounded-lg border border-border bg-card p-4 text-sm">{error} <button type="button" className="underline" onClick={refresh}>Retry</button></p>}
-      {failures > 0 && <p role="status" className="mb-3 text-sm text-warning">Could not load {label} for {failures} {kind === 'crew' ? 'Crews' : 'workflows'}.</p>}
+      {failures > 0 && <p role="status" className="mb-3 text-sm text-warning">Could not load {label} for {failures} {kind === 'crew' ? 'Projects' : 'workflows'}.</p>}
       {loading && currentRows.length === 0 && <p role="status" className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">Loading {label}…</p>}
       {!loading && !error && visibleRows.length === 0 && <p className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
         {query && currentRows.length > 0
           ? <>No matching {label}. <button type="button" className="underline" onClick={() => setSearch('')}>Clear search</button></>
-          : failures === 0 ? <>No {label} yet. {mode === 'watchers' ? 'Ask an agent in a Crew or workflow to set one up.' : 'Open a workflow to add a webhook.'}</> : <>No {label} to show.</>}
+          : failures === 0 ? <>No {label} yet. {mode === 'watchers' ? 'Ask an agent in a project or workflow to set one up.' : 'Open a workflow to add a webhook.'}</> : <>No {label} to show.</>}
       </p>}
       {!error && visibleRows.length > 0 && <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">{visibleRows.map(row => {
         const key = `${row.owner.id}:${row.id}`

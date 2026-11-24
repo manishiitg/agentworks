@@ -44,7 +44,7 @@ export function GmailHowToGuide({ scopeNoun }: GmailHowToGuideProps) {
     },
     {
       title: 'Can people reply to notification emails?',
-      answer: <>These emails are one-way notifications. A reply does not resume a {scopeNoun === 'project' ? 'Crew conversation' : 'workflow run'}. Mailbox reading and agent-authored replies require separate access and are configured above.</>,
+      answer: <>These emails are one-way notifications. A reply does not resume a {scopeNoun === 'project' ? 'Project conversation' : 'workflow run'}. Mailbox reading and agent-authored replies require separate access and are configured above.</>,
     },
   ]
 

@@ -84,7 +84,7 @@ function ProviderAccounts({ provider, workspacePath, onChanged, heading }: { hea
         {!central && account.can_add && !account.selected && <Button size="xs" variant="outline" disabled={busy} onClick={() => void act('attach', account)}>Use here</Button>}
         {!central && account.can_detach && <Button size="xs" variant="outline" disabled={busy} onClick={() => void act('detach', account)}>Remove here</Button>}
         {central && account.can_reconnect && <Button size="xs" variant="outline" disabled={busy} onClick={() => provider === 'google' && account.google ? changeGoogleAccountAccess(account.google, '') : void act('reconnect', account)}>{provider === 'google' ? 'Change access' : 'Reconnect'}</Button>}
-        {central && provider === 'google' && data?.inbox_available && account.mine && account.google?.personal && <Button size="xs" variant="outline" disabled={busy || account.google.agent_inbox} onClick={() => void act('set_inbox_account', account)}>{account.google.agent_inbox ? 'Crew inbox account' : 'Use for Crew inboxes'}</Button>}
+        {central && provider === 'google' && data?.inbox_available && account.mine && account.google?.personal && <Button size="xs" variant="outline" disabled={busy || account.google.agent_inbox} onClick={() => void act('set_inbox_account', account)}>{account.google.agent_inbox ? 'Project inbox account' : 'Use for project inboxes'}</Button>}
         {central && account.can_manage && <Button size="xs" variant="ghost" disabled={busy} onClick={() => void act('disconnect', account)}>Disconnect everywhere</Button>}
       </div>
 

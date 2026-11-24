@@ -183,7 +183,7 @@ export function CrewReferencePicker({
       <div ref={listRef} id={listId} role="listbox" aria-label="References" className="overflow-y-auto max-h-64">
         {filteredCrews.length === 0 ? (
           <div className="px-3 py-4 text-center text-muted-foreground text-sm">
-            {loadingReferences ? 'Loading references… You can still send.' : loadError ? 'Could not load references. You can still send.' : 'No available Crews. You can still send.'}
+            {loadingReferences ? 'Loading references… You can still send.' : loadError ? 'Could not load references. You can still send.' : 'No available projects. You can still send.'}
           </div>
         ) : (
           filteredCrews.map(crew => (

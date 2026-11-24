@@ -33,7 +33,7 @@ export function ProductSlackPanel(props: { workspacePath: string; noun?: string;
  return <SlackConnections key={`${server}:${actor}:${props.workspacePath}`} {...props}/>
 }
 
-function SlackConnections({ workspacePath, noun = 'Crew', allowBots = true, section = 'account', tabId }: { workspacePath: string; noun?: string; allowBots?: boolean; section?: 'account' | 'bot'; tabId?: string }) {
+function SlackConnections({ workspacePath, noun = 'Project', allowBots = true, section = 'account', tabId }: { workspacePath: string; noun?: string; allowBots?: boolean; section?: 'account' | 'bot'; tabId?: string }) {
  const [bot, setBot] = useState<SlackBotOverview>({status:'Checking…',names:[]})
  const [account, setAccount] = useState('Checking…')
  return <div className="w-full max-w-3xl space-y-4">
@@ -54,7 +54,7 @@ function SlackConnections({ workspacePath, noun = 'Crew', allowBots = true, sect
  * Goal's Slack page (one list, settings under the chosen bot); layout "cards" is the Crew's Share › Slack (owner, 9 Nov
  * mock): the same controls in a Bot card, a How people reach it card and the server's Who can talk to it card.
  */
-export function SlackBotChoice({ workspacePath, noun = 'Crew', embedded = false, onOverview, layout = 'list', who }: { workspacePath: string; noun?: string; embedded?: boolean; onOverview?: (overview: SlackBotOverview) => void; layout?: 'list' | 'cards'; who?: ReactNode }) {
+export function SlackBotChoice({ workspacePath, noun = 'Project', embedded = false, onOverview, layout = 'list', who }: { workspacePath: string; noun?: string; embedded?: boolean; onOverview?: (overview: SlackBotOverview) => void; layout?: 'list' | 'cards'; who?: ReactNode }) {
  const [data, setData] = useState<SlackBotState | null>(null)
  const [error, setError] = useState('')
  const [busy, setBusy] = useState(false)

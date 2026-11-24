@@ -734,7 +734,7 @@ function AppWorkspace() {
         ) : productSurface === 'knowledgebase' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Brain" />}><KnowledgebaseSurface /></Suspense>
         ) : productSurface === 'work' ? (
-          <Suspense fallback={<ProductSurfaceFallback label="Crew" />}><WorkSurface key="work" /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="Project" />}><WorkSurface key="work" /></Suspense>
         ) : productSurface === 'llm-gateway' ? (
           <ServerProductSurface product="llm-gateway" label="LLM Gateway" />
         ) : productSurface === 'mcp-gateway' ? (

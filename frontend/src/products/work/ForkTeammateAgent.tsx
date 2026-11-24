@@ -29,7 +29,7 @@ export async function forkTeammateAgent(target:TeamTarget,agent:string,onProgres
   await new Promise(resolve=>setTimeout(resolve,1000))
   const next=await fetch(`${base}/jobs/${encodeURIComponent(job.id)}`,{headers})
   const data=await next.json()
-  if(!next.ok)throw new Error(data?.error?.message||'Lost track of this copy. Open your Crew to check its agents.')
+  if(!next.ok)throw new Error(data?.error?.message||'Lost track of this copy. Open your project to check its agents.')
   job=data
  }
 }
@@ -58,7 +58,7 @@ export function ForkTeammateAgent({target,agent,name,compact=false}:{target:Team
    setSaved(result.snapshot_at)
    window.dispatchEvent(new Event('agentworks:team-updated'))
    void useConnectedWorkStore.getState().refresh(true)
-   useChatStore.getState().addToast(`${name} was copied to your Mac. Open it in your Crew's agent list.`,'success')
+   useChatStore.getState().addToast(`${name} was copied to your Mac. Open it in your project's agent list.`,'success')
   }catch(cause){
    const line=cause instanceof Error?cause.message:'Could not fork this agent.'
    if(isChatIdentityCurrent(identity)&&current.current===requestScope)setError(line)

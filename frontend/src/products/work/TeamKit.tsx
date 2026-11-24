@@ -96,7 +96,7 @@ function KitRow({ item, names, target, projectId, onChanged }: { item: TeamKitIt
       {!!item.people?.length && <ul className="grid grid-cols-2 gap-x-3 gap-y-0.5">{item.people.map(p => <li key={p.person_id} className={p.state === 'have' ? 'text-emerald-500' : p.state === 'missing' ? 'text-amber-500' : 'text-muted-foreground'}>
         {p.state === 'have' ? '✓' : p.state === 'missing' ? '–' : '?'} {names[p.person_id] || 'Someone'}{p.total ? ` · ${p.done ?? 0} of ${p.total}` : p.state === 'unknown' ? ' · not checked yet' : ''}</li>)}</ul>}
       <div className="flex flex-wrap gap-2">
-        {item.kind === 'sign_in' && item.mine === 'missing' && <button type="button" className="rounded-lg border border-border px-2.5 py-1 hover:bg-muted" onClick={() => { if (!sendToOpenChat(projectId, `Help me connect my ${item.name} account so I can use it with this Team.`)) useChatStore.getState().addToast('Open one of your own agent chats in this Crew, then try again.', 'info') }}>Connect {item.name}</button>}
+        {item.kind === 'sign_in' && item.mine === 'missing' && <button type="button" className="rounded-lg border border-border px-2.5 py-1 hover:bg-muted" onClick={() => { if (!sendToOpenChat(projectId, `Help me connect my ${item.name} account so I can use it with this Team.`)) useChatStore.getState().addToast('Open one of your own agent chats in this project, then try again.', 'info') }}>Connect {item.name}</button>}
         {(item.kind === 'app' || item.kind === 'key') && <button type="button" disabled={busy} className="rounded-lg border border-border px-2.5 py-1 hover:bg-muted disabled:opacity-50" aria-label={`Remove ${item.name} from the Team`} onClick={() => void remove()}>Remove from the Team</button>}
       </div>
     </div>}
@@ -133,7 +133,7 @@ export function TeamKit({ target, projectId, list, refreshKey, folder }: { targe
   const apply = () => {
     if (!view?.apply_ask) return
     if (sendToOpenChat(projectId, view.apply_ask)) setLine('Asked your agent to set up what you are missing. It ticks each item once it has checked it.')
-    else useChatStore.getState().addToast('Open one of your own agent chats in this Crew, then try again. Nothing was sent.', 'info')
+    else useChatStore.getState().addToast('Open one of your own agent chats in this project, then try again. Nothing was sent.', 'info')
   }
   return <div className="space-y-3 text-sm">
     <section aria-label="Team kit" className="space-y-2 rounded-xl border border-border px-4 py-3">

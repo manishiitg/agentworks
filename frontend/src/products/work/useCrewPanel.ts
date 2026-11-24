@@ -44,7 +44,7 @@ export function useCrewPanel(scope: string, project: string, workspace: string) 
       } catch {
         // Do not retain a previous account's or now-revoked Crew's data after
         // a failed admission. Section-level last-good values live on the server.
-        if (!controller.signal.aborted) { lastKnown.delete(key); setState({ key, error: 'Could not load this Crew’s status. Try again.' }) }
+        if (!controller.signal.aborted) { lastKnown.delete(key); setState({ key, error: 'Could not load this project’s status. Try again.' }) }
       } finally {
         reading = false
         if (again && !controller.signal.aborted) { again = false; void read() }

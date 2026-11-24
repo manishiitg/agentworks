@@ -63,7 +63,7 @@ export function WorkSkillsPanel({ workspacePath, projectId, tabId, onSelectedSki
             }
           }}
           onToggleSkill={folderName => { void toggleSkill(folderName) }}
-          selectionScopeLabel="Crew"
+          selectionScopeLabel="Project"
           emptySelectionText={`No custom skills have been added to this ${product.noun} yet.`}
         />{discover && <DiscoverSkillsDialog key={workspacePath} workspacePath={workspacePath} close={() => setDiscover(false)} onImported={() => setRevision(value => value + 1)} />}</>
 }

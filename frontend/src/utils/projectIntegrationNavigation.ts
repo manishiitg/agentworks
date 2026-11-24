@@ -33,7 +33,7 @@ export function isProjectIntegrationChat(tab: ChatTab | undefined): tab is ChatT
 /** Reveal the actual product as well as its tab, so a draft cannot stay behind
  * another product or an account-settings overlay. Never creates a Vault chat. */
 export function revealProjectIntegrationChat(tab: ChatTab, openVault = false, target: IntegrationSection = 'connected') {
-  if (!isProjectIntegrationChat(tab)) throw new Error('Open your own Crew or Goal tab to manage integrations.')
+  if (!isProjectIntegrationChat(tab)) throw new Error('Open your own project or Goal tab to manage integrations.')
   const crew = tab.metadata?.agentProfileId === 'work'
   if (crew && openVault) writeWorkspaceViewPreference('work', tab.metadata!.agentProfileProjectId!, 'mcp')
   openProductWorkspace(crew ? 'work' : 'agentworks')
@@ -54,11 +54,11 @@ export async function openLastProjectIntegrationChat(targetSection: IntegrationS
   const candidates = Object.values(state.chatTabs).filter(tab => isProjectIntegrationChat(tab))
   const target = sessionId ? candidates.find(tab => tab.sessionId === sessionId) : candidates.find(tab => tab.tabId === state.activeTabId)
     ?? candidates.sort((a, b) => (b.lastAccessedAt ?? b.createdAt) - (a.lastAccessedAt ?? a.createdAt))[0]
-  if (!target) throw new Error('Open a Crew or workflow chat first, then choose Integrations. Setup happens in that chat.')
+  if (!target) throw new Error('Open a project or workflow chat first, then choose Integrations. Setup happens in that chat.')
   revealProjectIntegrationChat(target, true, targetSection)
   return target.tabId
 }
 
 export function openProjectIntegrations(section: IntegrationSection = 'connected', sessionId?: string) {
-  void openLastProjectIntegrationChat(section, sessionId).catch(error => useChatStore.getState().addToast(error instanceof Error ? error.message : 'Open a Crew or Goal chat to manage integrations.', 'error'))
+  void openLastProjectIntegrationChat(section, sessionId).catch(error => useChatStore.getState().addToast(error instanceof Error ? error.message : 'Open a project or Goal chat to manage integrations.', 'error'))
 }

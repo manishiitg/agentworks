@@ -72,7 +72,7 @@ export function GitReview({ workspacePath, sessionId, tabId, repos, recentRepos,
   const baseSha = compare?.base_sha, headSha = compare?.head_sha
 
   const refresh = () => { setError(''); onRefresh(); setRevision(value => value + 1) }
-  const rootLabel = (root: string) => root || 'the Crew folder'
+  const rootLabel = (root: string) => root || 'the project folder'
   // Changes for the selected file, and how a clicked line is named in the
   // message to this chat (repo, file, side, line and which comparison).
   const sourceFor = (current: Row) => !current.path.endsWith('/') ? {

@@ -140,7 +140,7 @@ const chatFindItem: ChatFindItem = { type: 'chat-find', id: 'chat:find', label: 
 
 type ResourceItem = { chatId?: string; sender?: string; at?: string; filepath?: string; type: 'artifact' | 'schedule' | 'message' | 'file'; id: string; label: string; subtitle: string; searchText: string; href?: string; scheduledProduct?: 'work' | 'agentworks'; isActive: false; lastAccessedAt: 0; activeSession?: undefined; hasLocalActivity: false }
 type SearchCategory = 'all' | 'chat' | 'crew' | 'artifact' | 'schedule' | 'file'
-const searchCategories: { id: SearchCategory; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'chat', label: 'Chats' }, { id: 'crew', label: 'Crews' }, { id: 'file', label: 'Files' }, { id: 'artifact', label: 'Artifacts' }, { id: 'schedule', label: 'Schedules' }]
+const searchCategories: { id: SearchCategory; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'chat', label: 'Chats' }, { id: 'crew', label: 'Projects' }, { id: 'file', label: 'Files' }, { id: 'artifact', label: 'Artifacts' }, { id: 'schedule', label: 'Schedules' }]
 type QuickSwitcherItem = ResourceItem | ChatFindItem | PanelItem | WorkflowItem | ChatTabItem | CrewChatItem | ActiveWorkItem | QuickNavigationItem
 
 type QuickSwitcherRow = QuickSwitcherItem & { treeChild?: boolean; treeLastChild?: boolean; treeParentLabel?: string }
@@ -175,7 +175,7 @@ const projectChatTree = (ranked: QuickSwitcherItem[], inventory: QuickSwitcherIt
     let parent = parents.get(key)
     if (!parent && item.type === 'crew') {
       parent = { ...item, id: `crew-project:${item.projectId}`, label: item.projectLabel || item.label,
-        subtitle: 'Crew', tabId: undefined, isActive: false, activeSession: undefined, hasLocalActivity: false }
+        subtitle: 'Project', tabId: undefined, isActive: false, activeSession: undefined, hasLocalActivity: false }
     }
     if (parent) {
       const representedSession = parent.activeSession && children.some(child => itemActiveSession(child)?.session_id === parent.activeSession?.session_id)
@@ -209,7 +209,7 @@ const activeSessionLabel = (session: ActiveSessionInfo): string => {
       session.title ||
       session.workspace_path?.split('/').filter(Boolean).pop() ||
       session.query ||
-      'Crew work'
+      'Project work'
   }
   if (isWorkflowSession(session)) {
     return session.workflow_label ||
@@ -539,7 +539,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       .sort((a, b) => (b.lastAccessedAt || b.createdAt || 0) - (a.lastAccessedAt || a.createdAt || 0))
       .map(tab => {
         const activeSession = tab.sessionId ? visibleActiveSessions.find(session => session.session_id === tab.sessionId) : undefined
-        const project = tab.metadata?.agentProfileIdentityName || tab.metadata?.agentProfileProjectTitle || 'Crew'
+        const project = tab.metadata?.agentProfileIdentityName || tab.metadata?.agentProfileProjectTitle || 'Project'
         const role = tab.metadata?.agentProfileBuilder ? 'Builder' : isWorkSideChatTab(tab) ? tab.name : 'Builder'
         const projectId = workProjectIdForTab(tab) || undefined
         return {
@@ -548,7 +548,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           label: projectId ? role : project,
           projectId,
           projectLabel: project,
-          subtitle: projectId ? `${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`.replace(/^ · /, '') : `Crew · ${role}${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`,
+          subtitle: projectId ? `${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`.replace(/^ · /, '') : `Project · ${role}${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`,
           searchText: `${project} ${role} ${activeSessionSearchText(activeSession)}`,
           isActive: productSurface === 'work' && tab.tabId === activeTabId,
           lastAccessedAt: tab.lastAccessedAt || tab.createdAt || 0,
@@ -568,8 +568,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           type: 'crew' as const,
           id: `crew-project:${crew.id}`,
           label: name,
-          subtitle: agentWorks ? AGENTWORKS_SUBTITLE : `Crew · ${owner}${name !== crew.title ? ` · ${crew.title}` : ''}`,
-          searchText: agentWorks ? `${crew.title} Crew` : undefined,
+          subtitle: agentWorks ? AGENTWORKS_SUBTITLE : `Project · ${owner}${name !== crew.title ? ` · ${crew.title}` : ''}`,
+          searchText: agentWorks ? `${crew.title} project` : undefined,
           agentWorks,
           isActive: productSurface === 'work' && useProductSurfaceStore.getState().selectedWorkProjectId === crew.id,
           lastAccessedAt: 0,
@@ -588,7 +588,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           type: 'crew' as const,
           id: `crew-network:${connection.id}:${project.id}`,
           label: project.name,
-          subtitle: `Crew · ${connection.id === 'local' ? 'on your Mac' : `on ${connection.name}`}${project.shared_line ? ` · ${project.shared_line}` : project.owned_by_caller === false && project.owner_name ? ` · shared by ${project.owner_name}` : ''}`,
+          subtitle: `Project · ${connection.id === 'local' ? 'on your Mac' : `on ${connection.name}`}${project.shared_line ? ` · ${project.shared_line}` : project.owned_by_caller === false && project.owner_name ? ` · shared by ${project.owner_name}` : ''}`,
           searchText: `${project.name} ${connection.name}`,
           isActive: false,
           lastAccessedAt: 0,
@@ -642,7 +642,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           type: 'active' as const,
           id: `active:${session.session_id}`,
           label: titleWithoutOrigin(activeSessionLabel(session), origin),
-          subtitle: `${crew ? 'Active Crew work' : workflow ? 'Active automation' : 'Active chat'} · ${origin} · ${status}${current}`,
+          subtitle: `${crew ? 'Active project work' : workflow ? 'Active automation' : 'Active chat'} · ${origin} · ${status}${current}`,
           searchText: session.session_id,
           activeScopeOnly: coveredByTab || coveredByAutomation,
           isActive: !!tab && tab.tabId === activeTabId && productSurface === (crew ? 'work' : 'agentworks'),
@@ -899,7 +899,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     {messageSearch.loading ? <span role="status">Searching messages…</span> : messageSearch.error ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>Message search could not finish. Retry</button> : messageSearch.cursor ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>{messageSearch.items.length ? 'Search older messages' : 'No matches in messages searched so far · Search older messages'}</button> : <span>{messageSearch.items.length ? 'Message search complete' : 'No matching messages'}</span>}
   </div>
 
-  const placeholder = filesFolder ? 'Search chats, Crews, files, artifacts, schedules, panels and pages…' : 'Search chats, Crews, artifacts, schedules, panels and pages…'
+  const placeholder = filesFolder ? 'Search chats, projects, files, artifacts, schedules, panels and pages…' : 'Search chats, projects, artifacts, schedules, panels and pages…'
   const emptyText = query ? 'No matching items' : scopeFilter ? 'No items in this list' : 'No work to switch to. Search for a product or menu.'
   return (
     <div
@@ -1004,7 +1004,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                         {item.type === 'message' ? item.sender || 'Message' : item.label}
                       </span>
                       {!item.treeChild && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 font-medium flex-shrink-0">
-                        {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'menu' && item.action === 'create' ? 'create' : item.type === 'workflow' ? ('Workflow') : item.type === 'crew' ? 'Crew' : item.type === 'chat-find' ? 'search' : item.type}
+                        {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'menu' && item.action === 'create' ? 'create' : item.type === 'workflow' ? ('Workflow') : item.type === 'crew' ? 'Project' : item.type === 'chat-find' ? 'search' : item.type}
                       </span>}
                       {item.type === 'message' && item.at && <time className="ml-auto shrink-0 text-[10px] text-muted-foreground" dateTime={item.at}>{new Date(item.at).toLocaleString()}</time>}
                       {activeSession && item.type !== 'active' && (

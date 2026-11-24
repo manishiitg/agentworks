@@ -173,7 +173,7 @@ export function ChromeExtensionConnection({ connection, mac, otherWays, ownCard 
         </div>
         {removing === browser.id && <p role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs"><span>Remove {browser.name}? Crews that used it stop using it. You can connect that Chrome again later.</span><Button size="xs" variant="outline" disabled={busy} onClick={() => { void confirmRemove(browser.id) }}>Remove</Button><Button size="xs" variant="ghost" onClick={() => setRemoving(null)}>Cancel</Button></p>}
         <p className={`mt-0.5 text-xs text-muted-foreground ${browsers.length > 1 ? 'ml-6' : ''}`}>
-          {live ? (isPicked ? (browsers.length > 1 ? 'Connected · agents use this one' : 'Connected. Agents in this Crew use it.') : other ? (other.connected ? `Connected · agents use it when asked for "${browser.name}"` : 'Connecting to this Crew…') : 'Connected')
+          {live ? (isPicked ? (browsers.length > 1 ? 'Connected · agents use this one' : 'Connected. Agents in this project use it.') : other ? (other.connected ? `Connected · agents use it when asked for "${browser.name}"` : 'Connecting to this project…') : 'Connected')
             : !browser.enabled ? 'Disconnected. Connect it again to use it.'
               : `Not connected${browser.last_connected ? ` · last seen ${ago(browser.last_connected)}` : ''} (that computer is off or Chrome is closed)`}
         </p>

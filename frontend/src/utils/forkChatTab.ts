@@ -28,7 +28,7 @@ export function dismissChatForkFeedback(tabId: string) {
 export async function forkChatTab(tabId: string): Promise<void> {
   const source = useChatStore.getState().chatTabs[tabId]
   if (!source || source.metadata?.agentProfileId !== 'work' || !source.metadata.agentProfileConversationKey || source.metadata.agentProfileTabCanWrite === false || source.metadata.isViewOnly || source.metadata.isScheduledRun || source.metadata.isBotRun) {
-    useChatStore.getState().addToast('Open one of your own Crew chats to fork it.', 'info')
+    useChatStore.getState().addToast('Open one of your own project chats to fork it.', 'info')
     return
   }
   const identity = captureChatIdentity()

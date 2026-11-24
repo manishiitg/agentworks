@@ -21,7 +21,7 @@ const costText = (usage: CostAggregate) =>
 const tokenText = (usage: CostAggregate) =>
   tokenSummary(usage)
 
-const WORK_KIND: Record<string, string> = { workflow: 'Workflow', crew: 'Crew', code: 'Code', product: 'Project', chat: 'Chat', other: 'Other' }
+const WORK_KIND: Record<string, string> = { workflow: 'Workflow', crew: 'Project', code: 'Code', product: 'Project', chat: 'Chat', other: 'Other' }
 
 const accountKindText = (account: ProviderAccountCost) =>
   account.kind === 'server' ? ADMIN_MANAGED_ACCOUNT_LABEL : account.kind === 'unrecorded' ? 'Account not recorded' : account.owner_name ? `Owner: ${account.owner_name}` : 'User account'

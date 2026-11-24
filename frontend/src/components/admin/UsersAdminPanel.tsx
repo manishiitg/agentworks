@@ -128,7 +128,7 @@ const UsersAdminPanel: React.FC<{ vaultOnly?: boolean }> = ({ vaultOnly = false 
             const role = roleOf(u), isMe = u.id === me?.id, busy = busyId === u.id, open = expanded === u.id && !vaultOnly
             const apps = accessible(u, role)
             const create = role === 'admin' ? products.filter(p => CREATABLE_PRODUCTS.includes(p)) : (u.create_products ?? (role === 'creator' ? apps.filter(p => CREATABLE_PRODUCTS.includes(p)) : [])).filter(p => apps.includes(p))
-            const extras = [u.crew_reviewer && 'Crew reviewer', u.vault_reader && 'Vault audit'].filter(Boolean)
+            const extras = [u.crew_reviewer && 'Project reviewer', u.vault_reader && 'Vault audit'].filter(Boolean)
             return <li key={u.id} className={u.disabled ? 'opacity-60' : ''}>
               <Button type="button" variant="ghost" disabled={vaultOnly} onClick={() => setExpanded(open ? null : u.id)} aria-expanded={open} aria-label={`${open ? 'Close' : 'Details for'} ${u.username}`}
                 className="h-auto w-full justify-start gap-3 rounded-none px-3 py-3 text-left font-normal hover:bg-muted/40 disabled:cursor-default disabled:opacity-100">

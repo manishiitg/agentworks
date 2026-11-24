@@ -53,8 +53,8 @@ export function TeamWizard({ target, onNo }: { target: TeamTarget; onNo: () => v
     }
   }
   const next = () => { if (step === 1 && !yes) onNo(); else setStep(step + 1) }
-  const heading = ['Share this Crew with a team?', 'Who is on the Team?', 'What do people work on?', 'Which agents can the Team ask?'][step - 1]
-  const sub = ['A Team lets other people use this Crew with you. You can change it any time.', 'Choose people, then how each uses this Crew.', 'The part of the Crew people with “Works with me” can open.', 'New agents start in the Team. Your saved choices stay the same. Untick any you want to keep to yourself.'][step - 1]
+  const heading = ['Share this project with a team?', 'Who is on the Team?', 'What do people work on?', 'Which agents can the Team ask?'][step - 1]
+  const sub = ['A Team lets other people use this project with you. You can change it any time.', 'Choose people, then how each uses this project.', 'The part of the project people with “Works with me” can open.', 'New agents start in the Team. Your saved choices stay the same. Untick any you want to keep to yourself.'][step - 1]
   return <section aria-label="Set up the Team" className="rounded-xl border border-border text-sm">
     <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
       <div className="flex flex-1 gap-1" aria-hidden="true">{Array.from({ length: STEPS }, (_, i) => <i key={i} className={`h-1 flex-1 rounded ${i < step ? 'bg-primary' : 'bg-border'}`} />)}</div>
@@ -73,7 +73,7 @@ export function TeamWizard({ target, onNo }: { target: TeamTarget; onNo: () => v
           const level = picked[person.user_id]
           return <Option key={person.user_id} kind="check" on={Boolean(level)} title={person.name} line={person.email}
             onClick={() => setPicked(current => { const { [person.user_id]: removed, ...rest } = current; return removed || !firstLevel ? rest : { ...rest, [person.user_id]: firstLevel } })}
-            aside={level && <select aria-label={`${person.name}: how they use this Crew`} value={level} onChange={event => setPicked(current => ({ ...current, [person.user_id]: event.target.value as CrewPeopleLevelKey }))} className="shrink-0 rounded-md border border-border bg-background px-2 py-0.5 text-xs">
+            aside={level && <select aria-label={`${person.name}: how they use this project`} value={level} onChange={event => setPicked(current => ({ ...current, [person.user_id]: event.target.value as CrewPeopleLevelKey }))} className="shrink-0 rounded-md border border-border bg-background px-2 py-0.5 text-xs">
               {options.levels.map(item => <option key={item.key} value={item.key} disabled={!item.available} title={item.why || undefined}>{item.label}</option>)}
             </select>} />
         })}

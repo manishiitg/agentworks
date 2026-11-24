@@ -86,7 +86,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ i
   const compact = embedded && !isWorkflowScoped
 
   const views = [
-    { key: 'by-workflow' as const, label: entityType === 'product' ? 'Crews' : 'Workflows' },
+    { key: 'by-workflow' as const, label: entityType === 'product' ? 'Projects' : 'Workflows' },
     { key: 'schedules' as const, label: 'List' },
     { key: 'calendar' as const, label: 'Calendar' },
   ]
@@ -211,12 +211,12 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ i
                       )}
                       {!isWorkflowScoped && (activeView !== 'by-workflow' || selectedWorkflowFilter !== 'all') && (
                         <select
-                          aria-label={entityType === 'product' ? 'Filter by Crew' : 'Filter by automation'}
+                          aria-label={entityType === 'product' ? 'Filter by project' : 'Filter by automation'}
                           value={selectedWorkflowFilter}
                           onChange={(event) => setSelectedWorkflowFilter(event.target.value)}
                           className="min-w-40 max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                         >
-                          <option value="all">{entityType === 'product' ? 'All Crews' : 'All automations'}</option>
+                          <option value="all">{entityType === 'product' ? 'All projects' : 'All automations'}</option>
                           {workflowOptions.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
                           ))}
@@ -274,7 +274,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ i
                     }}
                     className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                   >
-                    <ChevronLeft className="h-3.5 w-3.5" /> {entityType === 'product' ? 'All Crews' : 'All workflows'}
+                    <ChevronLeft className="h-3.5 w-3.5" /> {entityType === 'product' ? 'All projects' : 'All workflows'}
                   </button>
                   <span className="truncate text-xs text-muted-foreground">
                     {workflowOptions.find(option => option.value === selectedWorkflowFilter)?.label}
@@ -298,12 +298,12 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ i
                       </div>
                       {!isWorkflowScoped && (activeView !== 'by-workflow' || selectedWorkflowFilter !== 'all') && (
                         <select
-                          aria-label={entityType === 'product' ? 'Filter by Crew' : 'Filter by automation'}
+                          aria-label={entityType === 'product' ? 'Filter by project' : 'Filter by automation'}
                           value={selectedWorkflowFilter}
                           onChange={(event) => setSelectedWorkflowFilter(event.target.value)}
                           className="min-w-40 max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                         >
-                          <option value="all">{entityType === 'product' ? 'All Crews' : 'All automations'}</option>
+                          <option value="all">{entityType === 'product' ? 'All projects' : 'All automations'}</option>
                           {workflowOptions.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
                           ))}
@@ -340,7 +340,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ i
             </div>
           )}
           {panelJobs.length > 0 && activeView === 'by-workflow' && workflowGroups.length > 0 && (
-            <ScheduleGroupsView panel={panel} entityLabel={entityType === 'product' ? 'Crew' : 'Automation'} />
+            <ScheduleGroupsView panel={panel} entityLabel={entityType === 'product' ? 'Project' : 'Automation'} />
           )}
           {panelJobs.length > 0 && activeView === 'schedules' && filteredJobs.length === 0 && (
             <div className="flex flex-col items-center justify-center h-40 gap-2 text-sm text-muted-foreground px-6 text-center">

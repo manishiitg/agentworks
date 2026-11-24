@@ -32,7 +32,7 @@ export function ScheduleTableView({ panel, entityType = 'workflow' }: ScheduleTa
       <table className="w-full min-w-[1080px] text-left text-sm">
         <thead className="border-b border-border bg-muted/30 text-xs text-muted-foreground">
           <tr>
-            <th className="px-4 py-2 font-medium">Schedule / {entityType === 'product' ? 'Crew' : 'automation'}</th>
+            <th className="px-4 py-2 font-medium">Schedule / {entityType === 'product' ? 'Project' : 'automation'}</th>
             <th className="px-3 py-2 font-medium">Frequency</th>
             <th className="px-3 py-2 font-medium">State</th>
             <th className="px-3 py-2 font-medium">Next run (local)</th>
@@ -124,7 +124,7 @@ export function ScheduleTableView({ panel, entityType = 'workflow' }: ScheduleTa
                     compact
                   />}
                   <p className="text-xs text-muted-foreground">{entityType === 'product'
-                    ? 'Open this Crew’s Automation panel to change this schedule.'
+                    ? 'Open this project’s Automation panel to change this schedule.'
                     : isWebhook ? 'Ask the workflow builder chat to configure this webhook.' : 'Ask the workflow Builder chat to change timing, busy-run handling, or schedule dependencies.'}</p>
                 </div>
               </td></tr>}

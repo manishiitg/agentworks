@@ -130,7 +130,7 @@ export function CrewExecutableEditor({
         message: `${task}\n\nWorkflow: ${item.manifest.label}`,
       })
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Open your Crew chat to continue.')
+      setError(cause instanceof Error ? cause.message : 'Open your project chat to continue.')
     }
   }
   return (

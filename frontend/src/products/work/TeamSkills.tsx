@@ -21,7 +21,7 @@ const describe = (file: SkillFile) => file.description?.trim() || /^description:
 /** Key names a skill mentions (SECRET_NAME); names are shown, values never travel. */
 const keysOf = (file: SkillFile) => [...new Set(Object.values(file.files).flatMap(text => text.match(/\bSECRET_[A-Z0-9_]+\b/g) ?? []))].map(key => key.replace(/^SECRET_/, ''))
 
-const toast = () => useChatStore.getState().addToast('Open one of your own agent chats in this Crew, then try again. Nothing was sent.', 'info')
+const toast = () => useChatStore.getState().addToast('Open one of your own agent chats in this project, then try again. Nothing was sent.', 'info')
 
 /** `folder` is the Team's first shared folder; no shared folder means nothing to show here. */
 export function TeamSkills({ target, projectId, folder }: { target: TeamTarget; projectId: string; folder?: string }) {
