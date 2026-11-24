@@ -90,7 +90,7 @@ import { ChatAgentsStrip, useChatHelpers } from './chat/ChatAgents'
 import { submissionFailure } from '../platform/chat/submissionFailure'
 import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths } from '../utils/chatMessageContent'
 import { recordChatDeliveryTelemetry, recordChatSubmissionTelemetry, recordViewTimingTelemetry, readViewSwitch, clearViewSwitch } from '../utils/chatDeliveryTelemetry'
-import { approvesPlan } from '../utils/planMode'
+import { answersPlanCard, approvesPlan } from '../utils/planMode'
 
 // Stable empty array to avoid infinite re-render loops in Zustand selectors
 // (a new [] on every selector call breaks referential equality checks)
@@ -955,6 +955,9 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       // An approved plan turns the Plan switch off; the work runs in the same turn (#3699).
       if (activeTab?.tabId && approvesPlan(answers) && useChatStore.getState().getTabConfig(activeTab.tabId)?.planMode) {
         useChatStore.getState().setTabConfig(activeTab.tabId, { planMode: false, planAwaitingStart: false })
+      } else if (activeTab?.tabId && answersPlanCard(answers)) {
+        // A rejected plan: Claude keeps planning, so no Start step for this turn.
+        useChatStore.getState().setTabConfig(activeTab.tabId, { planAwaitingStart: false })
       }
     } catch (cause) {
       const detail = codingAgentQuestionErrorText(cause)

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Check, CheckCircle2, CircleHelp } from 'lucide-react'
 import type { CodingAgentQuestionPrompt, CodingAgentChoiceAnswer } from '../utils/codingAgentQuestions'
+import { PlanLine } from './chat/PlanModeControls'
+import { planFromQuestion } from '../utils/planSummary'
 
 export function CodingAgentQuestionCard({ prompt, onAnswer, docked }: {
   prompt: CodingAgentQuestionPrompt
@@ -59,6 +61,26 @@ export function CodingAgentQuestionCard({ prompt, onAnswer, docked }: {
     return <p className="flex items-center gap-2 text-xs text-muted-foreground" data-testid="coding-agent-question-docked">
       <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" /> Waiting for your answer just above the message box.
     </p>
+  }
+  // A plan stays one slim line in the conversation; the full plan opens in the plan pane (#3711).
+  if (prompt.requestKind === 'plan_approval' && prompt.questions.length === 1) {
+    const question = prompt.questions[0]
+    const chosen = prompt.answers.find(answer => answer.id === question.id)?.selectedLabels[0]
+    const plan = planFromQuestion(question.question)
+    if (!pending) return <PlanLine plan={plan} outcome={chosen === 'Approve' ? 'approved' : chosen ? 'rejected' : 'closed'} />
+    const answer = (label: string) => () => {
+      if (submitting || !onAnswer) return
+      setSubmitting(true)
+      setError('')
+      onAnswer(prompt.provider, prompt.promptId, [{ id: question.id, selectedLabels: [label] }]).catch(cause => {
+        setError(cause instanceof Error ? cause.message : 'Could not send your answer. Try again.')
+        setSubmitting(false)
+      })
+    }
+    return <div className="w-full">
+      <PlanLine plan={plan} answer={onAnswer ? { busy: submitting, approve: answer('Approve'), reject: answer('Reject') } : undefined} />
+      {error && <p role="alert" className="mt-1 text-xs text-destructive">{error}</p>}
+    </div>
   }
   return <section className={`w-full rounded-xl border border-border bg-card p-3 text-card-foreground ${pending ? 'flex max-h-[min(320px,40dvh)] flex-col' : ''}`} data-testid="coding-agent-question-card" tabIndex={pending ? 0 : undefined} onKeyDown={event => {
     // Shortcuts belong to this focused card, never the chat's typing box.

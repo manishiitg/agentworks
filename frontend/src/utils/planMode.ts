@@ -7,9 +7,15 @@ export function isPlanToggleKey(event: PlanKey): boolean {
   return event.key === 'Tab' && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing
 }
 
-/** Codex and Cursor answer a plan as a reply; Claude asks with its own approval card. */
+/** Codex and Cursor answer a plan as a reply. Claude asks with its own plan card; when a planning turn ends
+ * without one (the card never came, #3711), the same Start step keeps the chat from staying stuck in Plan. */
 export function planNeedsStartButton(provider: string | null | undefined): boolean {
-  return provider === 'codex-cli' || provider === 'cursor-cli'
+  return provider === 'codex-cli' || provider === 'cursor-cli' || provider === 'claude-code'
+}
+
+/** Any answer to Claude's plan card (Approve or Reject) means the card came, so no Start step is needed. */
+export function answersPlanCard(answers: ReadonlyArray<{ id: string }>): boolean {
+  return answers.some(answer => answer.id === 'plan')
 }
 
 export const PLAN_START_MESSAGE = 'Go ahead with the plan.'
