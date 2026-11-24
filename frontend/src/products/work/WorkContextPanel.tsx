@@ -2,7 +2,7 @@ import { TeamPanelHeader } from './TeamPanelHeader'
 import { PendingAgentForks } from '../../components/chat/PendingAgentForks'
 import type { TeamPanelView } from './TeamPanel'
 import { useCallback, useEffect, useState } from 'react'
-import { CalendarClock, ChevronRight, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, Mail, Plus, RefreshCw, Route, TriangleAlert, Users, Zap, type LucideIcon } from 'lucide-react'
+import { Activity, CalendarClock, ChevronRight, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, Mail, Plus, RefreshCw, Route, TriangleAlert, Users, Zap, type LucideIcon } from 'lucide-react'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { ChatContextSection } from '../../components/workspace/ChatContextSection'
@@ -32,7 +32,8 @@ import { useTeamTab } from './teamApi'
 import { CrewTeamPanel } from './CrewTeamPanel'
 import { CrewActivitySection } from './ActivitySection'
 import { useTeamSetupsList } from './useTeamSetupsList'
-import { ProjectActivityRows, projectActivitySetupMessage, useProjectActivityHidden } from './ProjectActivityRows'
+import { ProjectActivityRows, projectActivityLine, projectActivitySetupMessage } from './ProjectActivityRows'
+import { SetupPrompt, useSetupPromptHidden } from '../../components/workspace/SetupPrompt'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
   workspacePath: string
@@ -88,7 +89,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     try { if (current) localStorage.setItem(dashboardsKey, '1'); else localStorage.removeItem(dashboardsKey) } catch { /* kept for this visit only */ }
     return !current
   })
-  const [activityHidden, hideActivity] = useProjectActivityHidden(`agentworks.project-activity-hidden:${projectId}`)
+  const [activityHidden, hideActivity] = useSetupPromptHidden(`agentworks.project-activity-hidden:${projectId}`)
+  const [teamHidden, hideTeam] = useSetupPromptHidden(`agentworks.team-prompt-hidden:${projectId}`)
   const addToast = useChatStore(state => state.addToast)
   const computerState = access?.place
   const accessTree = access?.tree || []
@@ -171,11 +173,12 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const accessRow = (item: CrewMenuItem) => item.id === 'mcp:online'
     ? <CrewOnlineRow key={item.id} state={computerState} theirs={theirs} onOpen={() => open(item)} />
     : item.id === 'mcp:team' && teamState.view?.team.on ? <div key={item.id}><TeamPanelHeader onName={()=>openCrewAccess(projectId,'','team')} view={teamState.view} connection={teamState.target?.connection} selectedPerson={selectedPerson} onPersonSelect={selectPerson} expanded={showTeam} onToggle={()=>{saveCollapsed(!collapsed);setTeamPerson({scope});setTeamPane({scope,view:'live'})}} needsCount={needs?.key===collapseKey?needs.count:0}/><PendingAgentForks state={teamState} place="menu" /></div>
-    : item.id === 'mcp:team' && !access?.co_owners && !teamState.error && !teamLines.length ? <div key={item.id}>
-      <Row icon={item.icon} onClick={() => open(item)}>{accessTree.find(line=>line.kind==='team')?.title||item.label}</Row>
-      {/* No Team yet (owner, 18 Nov): say what a Team is for and offer the one next step. */}
-      <div className="flex items-center gap-2 pb-1 pl-7 pr-1 text-[10px] text-muted-foreground"><span className="min-w-0 flex-1">Work with teammates and their agents</span><button type="button" onClick={() => open(item)} className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Start a Team</button></div>
-    </div>
+    : noTeamYet && item.id === 'mcp:team' ? (teamHidden ? null : <div key={item.id}>
+      {/* No Team yet (owner, 18 Nov; ⓘ card and Hide into Connections, #3780). */}
+      <SetupPrompt icon={item.icon} title={teamTitle(item)} line={teamLine} action="Start a Team" onAction={() => open(item)} onHide={() => { hideTeam(); addToast('Team hidden. Start one any time from Connections.', 'info') }}
+        what="Bring teammates and their agents into this project."
+        points={['Everyone works from the same project, tasks and files', 'Agents can hand work to each other and to people', 'See who is working on what, live']}/>
+    </div>)
     : <Row key={item.id} icon={item.icon} onClick={() => open(item)}>{item.id==='mcp:team'?accessTree.find(line=>line.kind==='team')?.title||item.label:item.label}</Row>
   // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the shared
   // folder's line, then who asked; each opens Access at its place.
@@ -230,6 +233,10 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // Team keeps its details; Mac online is one row. Artifacts remains a sibling
   // with its own document list (owner, 15 Nov).
   const teamLines = accessTree.filter(line => line.group === 'team' && line.kind !== 'team' && line.kind !== 'team_live')
+  const noTeamYet = !teamState.view?.team.on && !access?.co_owners && !teamState.error && !teamLines.length
+  const teamLine = 'Work with teammates and their agents'
+  const teamTitle = (item: CrewMenuItem) => accessTree.find(line=>line.kind==='team')?.title||item.label
+  const teamItem = accessItems.find(item => item.id === 'mcp:team')
   const artifactLines = accessTree.filter(line => line.kind === 'dashboard')
   const teamTree = (teamLines.length > 0 || teamState.view?.team.on || !!teamState.error) && <div role="list" aria-label="Team details" className={showTeam?'pb-1':undefined}><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} collapsed={!showTeam} selectedPerson={selectedPerson} onPersonSelect={selectPerson} onPanelView={openTeamPane} askAgent={askAgent} />{!teamState.view?.team.on&&treeLines(teamLines)}</div>
   // Needs you sits at the very top of the panel, only while something waits (owner, 23 Nov).
@@ -247,7 +254,10 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     <ProjectActivityRows key={`${scope}:activity`} section={section('activity')} onAgent={activityAgent} onWatchers={() => openAutomation('conditions')} hidden={activityHidden} onHide={() => { hideActivity(); addToast('Project activity hidden. Set it up any time from Connections.', 'info') }}/>
     {/* Artifacts has its own top-level footer row (owner, 14 Nov); Run mode keeps this menu. */}
     {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
-    <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined} onActivitySetup={activityHidden && activityAgent && section('activity')?.rows.length === 0 ? () => activityAgent(projectActivitySetupMessage) : undefined}/>
+    <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined} setups={[
+      ...(activityHidden && activityAgent && section('activity')?.rows.length === 0 ? [{ id: 'activity', icon: Activity, title: 'Project activity', line: projectActivityLine, action: 'Set up', onClick: () => activityAgent(projectActivitySetupMessage) }] : []),
+      ...(teamHidden && noTeamYet && teamItem && !access?.co_owners ? [{ id: 'team', icon: teamItem.icon, title: teamTitle(teamItem), line: teamLine, action: 'Start a Team', onClick: () => open(teamItem) }] : []),
+    ]}/>
     {(byId.has('workflow') || byId.has('schedules')) && <TooltipProvider delayDuration={200}><WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={Zap}
       detail={automationChips.length ? undefined : data?.details.automations}
       preview={automationChips.length ? <div className="isolate flex -space-x-1.5">{automationChips.map((chip, i) =>
