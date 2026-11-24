@@ -161,16 +161,14 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
     return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3" data-sidebar-project-scroll>
         {top}
-        {pinnedRows.length > 0 ? <section aria-label="Pinned projects" className="mb-3 shrink-0 space-y-1">
+        {pinnedRows.length > 0 && <section aria-label="Pinned projects" className="mb-3 shrink-0 space-y-1">
           {pinnedRows.map(project => renderProject(project, true))}
-        </section> : recentRows.length > 0 ? <section aria-labelledby="recent-projects-heading" className="mb-3 shrink-0 space-y-1">
-          <h2 id="recent-projects-heading" className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">Recent projects</h2>
+        </section>}
+        {recentRows.length > 0 && <section aria-labelledby="recent-projects-heading" className="mb-3 shrink-0 space-y-1">
+          <h2 id="recent-projects-heading" className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">Recent</h2>
           {recentRows.map(project => renderProject(project, false))}
-        </section> : null}
-        {openRow ? <section aria-labelledby="open-project-heading" className="mb-3 shrink-0 space-y-1">
-          <h2 id="open-project-heading" className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">Open now</h2>
-          {renderProject(openRow, false)}
-        </section> : !pinnedRows.length && !recentRows.length && showBrowse && !loading && <button type="button" onClick={() => { openAppPage('/projects'); window.dispatchEvent(new Event('close-app-sidebar')) }} className="flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        </section>}
+        {!pinnedRows.length && !recentRows.length && showBrowse && !loading && <button type="button" onClick={() => { openAppPage('/projects'); window.dispatchEvent(new Event('close-app-sidebar')) }} className="flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <Folder className="h-4 w-4" aria-hidden="true" />Browse projects
         </button>}
       </div>
@@ -188,9 +186,13 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
     (recentOrder.get(keyFor(a)) ?? Infinity) - (recentOrder.get(keyFor(b)) ?? Infinity) || a.name.localeCompare(b.name)
   const shown = listed.filter(row => row.name.toLocaleLowerCase().includes(normalizedQuery)).sort(byRecent)
   const placeName = (connection: DesktopConnection) => connection.id === 'local' ? '' : connection.name
+  // Recent first (owner, 24 Nov): the last five opened, then everything else as yours or shared with you.
+  const recentShown = normalizedQuery ? [] : shown.filter(row => recentOrder.has(keyFor(row))).slice(0, 5)
+  const rest = shown.filter(row => !recentShown.includes(row))
   const groups = [
-    { id: 'yours', name: 'Yours', projects: shown.filter(row => !isSharedProject(row)) },
-    { id: 'shared', name: 'Shared with you', projects: shown.filter(row => isSharedProject(row)) },
+    { id: 'recent', name: 'Recent', projects: recentShown },
+    { id: 'yours', name: 'Yours', projects: rest.filter(row => !isSharedProject(row)) },
+    { id: 'shared', name: 'Shared with you', projects: rest.filter(row => isSharedProject(row)) },
   ]
   const lineFor = (project: typeof rows[number]) => {
     const network = project.team_live?.network?.trim() || placeName(project.connection)
