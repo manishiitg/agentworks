@@ -21,7 +21,7 @@ import (
 // server writes every line; the Mac app and the website show the same tree.
 
 type crewAccessLine struct {
-	Kind   string `json:"kind"`  // mac, team, team_live, dashboard, public, folder, clash
+	Kind   string `json:"kind"`  // mac, team, team_live, in_team, dashboard, public, folder, clash
 	Group  string `json:"group"` // the menu row it sits under: "team" or "online" (crewAccessLineGroup)
 	Title  string `json:"title"`
 	Detail string `json:"detail,omitempty"`
@@ -60,6 +60,8 @@ type crewAccessFacts struct {
 	// CoOwners: a Crew that lives on the server has co-owners and no Team (owner, 21 Nov); the names besides the viewer.
 	// Non-nil means the menu's Team row is the Co-owners row.
 	CoOwners []string
+	// InTeams: the Teams this online project is in (#3664), one line each under its Co-owners row.
+	InTeams []crewProjectInTeam
 	// Where the viewer's own agents work, when they are a Team member: "mac" or "web" (crew_team_where.go).
 	Where string
 	// Member: the viewer is a teammate, not the Crew's owner; the owner's Mac and its agent choices are not theirs.
@@ -73,7 +75,7 @@ const crewAccessTeamOffTitle = "Team off"
 // folder under Team, and how everyone else reaches it (Mac online, AgentBridge, dashboards) under Online.
 func crewAccessLineGroup(kind string) string {
 	switch kind {
-	case "team", "team_live", "folder", "clash":
+	case "team", "team_live", "in_team", "folder", "clash":
 		return "team"
 	}
 	return "online"
@@ -104,6 +106,9 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 			title = "Co-owners · You + " + strings.Join(f.CoOwners, ", ")
 		}
 		lines = append(lines, crewAccessLine{Kind: "team", Title: title, Count: len(f.CoOwners)})
+		for _, in := range f.InTeams {
+			lines = append(lines, crewAccessLine{Kind: "in_team", Title: "In Team · " + in.Name, Detail: in.Owner + "'s Team"})
+		}
 		return append(lines, crewAccessPublicLine(f.Agents)...)
 	}
 	if !f.TeamKnown {
@@ -315,6 +320,7 @@ func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClai
 		f.ServerCrew = !crewRelayTwin(project)
 		if crewLivesOnServer(project) {
 			f.CoOwners = crewOwnerNamesFor(project, owner)
+			f.InTeams = crewProjectInTeams(project, owner)
 			return crewAccessTree(f)
 		}
 		f.TeamKnown = true // no Team record means the Team is off

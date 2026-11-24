@@ -16,7 +16,7 @@ import { AskButton, teamCard } from './TeamTab'
 import { ShareCrew } from './ShareCrew'
 import { CrewDashboardsTab } from './CrewDashboardsTab'
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
-import { useTeamTab } from './teamApi'
+import { teamFailure, teamRequest, useTeamTab } from './teamApi'
 import { MacAgentBridge } from './MacAgentBridge'
 import { hasPendingCrewAccess, pendingCrewAccessSection, crewAccessDestination, type CrewAccessSection } from './MacSharedAgents'
 
@@ -29,7 +29,8 @@ type AccessTab = { id: CrewAccessSection; label: string; detail?: string; group?
 // The Mac online tab's This Mac card, worded by the server (crew_access_page.go crewAccessMacCard).
 type MacCard = { online: boolean; status: string; line: string; kept?: string; reach?: { who: string; how: string }[] }
 type SyncStatus = { place?: CloudState; message?: string; binding: Binding | null; shared_agents?: number
-  access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_laptop?: boolean; access_co_owners?: boolean }
+  access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_laptop?: boolean; access_co_owners?: boolean
+  access_in_teams?: { team_id: string; name: string; owner: string; can_remove: boolean }[] }
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
 /** In the AgentWorks app a Crew lives on this Mac or online (owner, 3 Nov); on a server the page is its laptop access. */
@@ -42,7 +43,7 @@ export type CloudState = 'mac' | 'mac_off' | 'online' | 'offline'
 /** Someone else's ask to a shared agent on this Mac, from the Mac's own status (the last ten minutes). */
 export type CrewAsk = { tab: string; agent: string; sender: string; channel?: string; conversation_key: string; session_id: string; started_at: string; active: boolean }
 /** One line of the Access tree under the side panel's Access row, written by the server (owner, 5 Nov mockup). */
-export type CrewAccessLine = { kind: 'mac' | 'team' | 'team_live' | 'dashboard' | 'public' | 'folder' | 'clash'; group?: 'team' | 'online'; title: string; detail?: string; path?: string; ask?: string; target?: string; dashboards?: { id?: string; name: string; path: string }[]; count?: number; tag?: string; progress?: { direction: string; bytes_done: number; bytes_total: number } }
+export type CrewAccessLine = { kind: 'mac' | 'team' | 'team_live' | 'in_team' | 'dashboard' | 'public' | 'folder' | 'clash'; group?: 'team' | 'online'; title: string; detail?: string; path?: string; ask?: string; target?: string; dashboards?: { id?: string; name: string; path: string }[]; count?: number; tag?: string; progress?: { direction: string; bytes_done: number; bytes_total: number } }
 type PlaceEntry = { place?: CloudState; chatOnly?: boolean; chatOnlyLine?: string; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 
@@ -266,6 +267,13 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
     catch (cause) { setError(cause instanceof Error ? cause.message : 'The Team could not be turned on. Try again.') }
     finally { setBusy(false); setReload(value => value + 1); refreshCrewPlace(projectId) }
   }
+  // An online project leaves a Team from its own page (#3664); the server checks who may (crewTeamProjectChangeRefusal).
+  const leaveTeam = async (team: string) => {
+    setBusy(true); setError('')
+    try { await teamRequest({ project: team }, '/projects', 'POST', { action: 'remove', project_id: projectId }); teamChanged() }
+    catch (cause) { setError(teamFailure(cause).message) }
+    finally { setBusy(false); setReload(value => value + 1); refreshCrewPlace(projectId) }
+  }
   return <div className="space-y-3.5 text-sm">
     {/* No title row (owner, 4 Nov): a small back arrow beside the tabs, and Esc, return to the workspace. */}
     {(tabs.length > 1 || shown !== 'team') && <div className="flex items-stretch gap-2">
@@ -331,7 +339,11 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
     {!(here && needsServer) && shown === 'team' && <section role="tabpanel" id={`crew-access-panel-${projectId}-team`} aria-labelledby={`crew-access-${projectId}-team`} className="space-y-3">
       {/* A Crew on the server has co-owners instead of a Team (owner, 21 Nov): the Access panel with Shared with and Co-owners. */}
       {status.access_co_owners && workspacePath
-        ? <ShareDashboardButton workspacePath={workspacePath} variant="panel" />
+        ? <><ShareDashboardButton workspacePath={workspacePath} variant="panel" />
+          {!!status.access_in_teams?.length && <section aria-label="In a Team" className="space-y-1 border-t border-border pt-4">
+            <div><h3 className="font-semibold">In a Team</h3><p className="text-xs text-muted-foreground">Its agents work with this Team and its shared folders sync here.</p></div>
+            {status.access_in_teams.map(item => <div key={item.team_id}>{way(item.name, `${item.owner}'s Team`, item.can_remove ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void leaveTeam(item.team_id)}>Remove from Team</Button> : null)}</div>)}
+          </section>}</>
         : <ShareCrew projectId={projectId} onBack={tabs.length > 1 ? undefined : onBack} onTurnOn={here ? () => void turnOnTeam() : undefined} />}
     </section>}
     {status.access_laptop && <LaptopCard sessionId={sessionId} />}

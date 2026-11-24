@@ -2,10 +2,13 @@ package server
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // The Team panel's "Online projects" card (#3664): the server decides which of the person's projects can join and says
@@ -78,4 +81,37 @@ func (api *StreamingAPI) handleCrewTeamProjectChoices(w http.ResponseWriter, r *
 		out["choices"] = choices
 	}
 	externalJSON(w, out)
+}
+
+// crewProjectInTeam is one Team an online project is in, as its own panel and chat show it (#3664): the project has
+// co-owners and no Team of its own, so this is where its owners see the Team and take the project out of it.
+type crewProjectInTeam struct {
+	TeamID    string `json:"team_id"`
+	Name      string `json:"name"`
+	Owner     string `json:"owner"`
+	CanRemove bool   `json:"can_remove"`
+}
+
+// crewProjectInTeams lists the Teams on this server that have the online project as a member.
+func crewProjectInTeams(project, viewer string) []crewProjectInTeam {
+	if IsLocalMode() || project == "" || !crewLivesOnServer(project) {
+		return nil
+	}
+	root, err := crewroot.StateRoot()
+	if err != nil {
+		return nil
+	}
+	entries, _ := os.ReadDir(filepath.Join(root, "team-folders"))
+	memberRoot := crewProjectRootByID(project)
+	out := []crewProjectInTeam{}
+	for _, entry := range entries {
+		t, err := readCrewTeam(entry.Name())
+		if !entry.IsDir() || err != nil || !t.hasProject(project) {
+			continue
+		}
+		out = append(out, crewProjectInTeam{TeamID: t.ProjectID, Name: crewTeamProjectName(t.ProjectID), Owner: crewPersonShortName(t.OwnerID),
+			CanRemove: crewTeamProjectChangeRefusal(t, viewer, project, memberRoot, "remove") == ""})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
+	return out
 }
