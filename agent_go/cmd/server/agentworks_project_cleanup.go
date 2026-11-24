@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -18,7 +19,8 @@ import (
 // the owner asked that the existing ones go too, without deleting each by hand. On every start, each person's old
 // AgentWorks project (the one the platform made under its reserved id) is backed up (crew-backups/<id>-<time>.tar.gz)
 // and deleted through the ordinary project deletion. One that is working or used by a workflow is kept and tried
-// again on the next start. Remove this file once every server has run it.
+// again on the next start. A server project with apps or keys of its own in its project vault is someone's working
+// project and is kept as an ordinary one. Remove this file once every server has run it.
 
 // retiredAgentWorksProjectID is the id the platform reserved for a person's AgentWorks project.
 func retiredAgentWorksProjectID(owner string) string {
@@ -26,6 +28,12 @@ func retiredAgentWorksProjectID(owner string) string {
 }
 
 func (api *StreamingAPI) deleteRetiredAgentWorksProjects(ctx context.Context) {
+	// After start-up, so the Vault service answers the in-use check below.
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(crewVaultQueueStartDelay):
+	}
 	records, err := defaultProjectOwners().All()
 	if err != nil {
 		log.Printf("[AGENTWORKS_CLEANUP] event=skipped reason=%q", err.Error())
@@ -35,6 +43,10 @@ func (api *StreamingAPI) deleteRetiredAgentWorksProjects(ctx context.Context) {
 		if record.Product != crewProfileID || record.OwnerID == "" || record.ProjectID != retiredAgentWorksProjectID(record.OwnerID) {
 			continue
 		}
+		if reason := api.retiredAgentWorksProjectInUse(ctx, record.ProjectID); reason != "" {
+			log.Printf("[AGENTWORKS_CLEANUP] project=%s owner=%s event=kept_in_use reason=%q", record.ProjectID, logUsernameForUserID(record.OwnerID), reason)
+			continue
+		}
 		backup, err := api.deleteRetiredAgentWorksProject(ctx, record)
 		if err != nil {
 			log.Printf("[AGENTWORKS_CLEANUP] project=%s owner=%s event=kept reason=%q backup=%s", record.ProjectID, logUsernameForUserID(record.OwnerID), err.Error(), backup)
@@ -42,6 +54,23 @@ func (api *StreamingAPI) deleteRetiredAgentWorksProjects(ctx context.Context) {
 		}
 		log.Printf("[AGENTWORKS_CLEANUP] project=%s owner=%s event=deleted backup=%s", record.ProjectID, logUsernameForUserID(record.OwnerID), backup)
 	}
+}
+
+// retiredAgentWorksProjectInUse keeps a server project someone set up for real work (owner, 24 Nov: "keep used ones"):
+// one whose project vault holds apps or keys of its own stays as an ordinary project. A Mac project has no project
+// vault, so nothing keeps it.
+func (api *StreamingAPI) retiredAgentWorksProjectInUse(ctx context.Context, project string) string {
+	if IsLocalMode() {
+		return ""
+	}
+	contents, err := api.readCrewVault(ctx, project)
+	if err != nil {
+		return "its apps and keys could not be checked: " + err.Error()
+	}
+	if len(contents.Apps) > 0 || len(contents.SecretNames) > 0 {
+		return fmt.Sprintf("it has %d apps and %d keys of its own", len(contents.Apps), len(contents.SecretNames))
+	}
+	return ""
 }
 
 func (api *StreamingAPI) deleteRetiredAgentWorksProject(ctx context.Context, record projectOwnerRecord) (string, error) {
