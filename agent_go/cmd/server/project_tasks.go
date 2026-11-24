@@ -70,6 +70,7 @@ type projectTask struct {
 	Assignee string              `json:"assignee,omitempty"` // the agent or person who has it; "" = not handed out yet
 	Proposed string              `json:"proposed,omitempty"` // "Ask me first": the agent the lead suggests, until the person approves
 	Waiting  string              `json:"waiting,omitempty"`  // what the lead needs the person to decide
+	Choices  []string            `json:"choices,omitempty"`  // short answers for Waiting, shown as buttons
 	Held     bool                `json:"held,omitempty"`     // the person put it on hold; the lead leaves it alone
 	Tasks    []projectTaskLink   `json:"tasks,omitempty"`
 	Checks   []projectTaskCheck  `json:"checklist,omitempty"`
@@ -222,6 +223,7 @@ type crewPanelProjectTask struct {
 	Checks   []projectTaskCheck `json:"checklist,omitempty"`
 	Proposed string             `json:"proposed,omitempty"`
 	Held     bool               `json:"held,omitempty"`
+	Choices  []string           `json:"choices,omitempty"`
 	// NeedsYou says what the person must do; the server decides it so the panel
 	// and the lead read the same "Needs you" list.
 	NeedsYou string `json:"needs_you,omitempty"`
@@ -258,7 +260,7 @@ func projectTaskView(list projectTaskList, t projectTask, tasks *conditionFeedTa
 		}
 		switch {
 		case t.Waiting != "":
-			view.NeedsYou = t.Waiting
+			view.NeedsYou, view.Choices = t.Waiting, t.Choices
 		case t.Proposed != "":
 			view.NeedsYou = "Approve handing it to " + t.Proposed
 		case t.Assignee == "" && view.NeedsYou == "" && step == list.steps()[0]:
@@ -311,20 +313,13 @@ func (c *conditionService) projectTasksRow(ctx context.Context, viewer, project 
 		}
 		row.Tasks = append(row.Tasks, view)
 	}
+	row.OpenCount = open
 	if open > 0 {
 		row.Count = strconv.Itoa(open) + " open"
 		row.Detail = row.Count
 	}
-	day := time.Now().Add(-24 * time.Hour).Unix()
-	for _, s := range list.Sorted {
-		if s.At >= day {
-			row.Sorted = append(row.Sorted, s)
-		}
-	}
+	// What the lead sorted stays in the tasks read for agents; the panel doesn't list it (owner, 24 Nov).
 	row.Lead, row.TasksMode, row.Paused = list.Lead, list.mode(), list.Paused
-	if n := len(list.Sorted); n > 0 {
-		row.LastSorted = list.Sorted[n-1].At
-	}
 	return row, true, nil
 }
 
@@ -472,6 +467,9 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 		}
 		list.Next++
 		t := projectTask{ID: "t" + strconv.Itoa(list.Next), Title: title, Step: step, Assignee: feedText(args["assignee"], 60), Proposed: feedText(args["proposed"], 60), Waiting: feedText(args["waiting"], 200), Created: now, Updated: now}
+		if t.Choices, err = projectTaskChoices(args["choices"]); err != nil {
+			return nil, err
+		}
 		if source != nil {
 			t.Sources = []projectTaskRef{*source}
 		}
@@ -527,7 +525,14 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 		t.Proposed, changed = feedText(v, 60), true
 	}
 	if v, ok := args["waiting"].(string); ok {
-		t.Waiting, changed = feedText(v, 200), true
+		// A new question replaces the old answers; clearing it clears them.
+		t.Waiting, t.Choices, changed = feedText(v, 200), nil, true
+	}
+	if _, ok := args["choices"]; ok {
+		if t.Choices, err = projectTaskChoices(args["choices"]); err != nil {
+			return nil, err
+		}
+		changed = true
 	}
 	if v, ok := args["held"].(bool); ok && v != t.Held {
 		t.Held, changed = v, true
@@ -589,7 +594,7 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 		changed = true
 	}
 	if !changed {
-		return nil, errors.New("task_update needs something to change: step, title, assignee, proposed, waiting, held, task, source, link, activity, checklist_add, checklist_done, checklist_open, checklist_remove or note")
+		return nil, errors.New("task_update needs something to change: step, title, assignee, proposed, waiting, choices, held, task, source, link, activity, checklist_add, checklist_done, checklist_open, checklist_remove or note")
 	}
 	t.Updated = now
 	saved := *t
@@ -603,6 +608,26 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 // projectTaskChecklist applies checklist_add (new items), checklist_done /
 // checklist_open (tick or untick, 1-based) and checklist_remove. It reports
 // whether anything changed.
+// projectTaskChoices reads up to four short answers the person can pick for waiting.
+func projectTaskChoices(v interface{}) ([]string, error) {
+	raw, ok := v.([]interface{})
+	if v == nil || (ok && len(raw) == 0) {
+		return nil, nil
+	}
+	if !ok || len(raw) > 4 {
+		return nil, errors.New("choices: up to 4 short answers the person can pick")
+	}
+	var out []string
+	for _, item := range raw {
+		text := feedText(item, 40)
+		if text == "" {
+			return nil, errors.New("choices: each answer needs text")
+		}
+		out = append(out, text)
+	}
+	return out, nil
+}
+
 func projectTaskChecklist(t *projectTask, args map[string]interface{}, by string, now int64) (bool, error) {
 	changed := false
 	var adds []string

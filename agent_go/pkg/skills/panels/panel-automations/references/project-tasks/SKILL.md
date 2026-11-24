@@ -19,7 +19,7 @@ You got an ask that names a task (or you can see your name on one):
 2. As things happen, `link` what you make or use (the pull request, the ticket, the doc, the thread), and add an `activity` line for events worth seeing at a glance ("PR merged", "reporter replied").
 3. For a task with several steps you do yourself, add a checklist (`checklist_add`) and tick each step with `checklist_done: N` as you finish it, not all at the end.
 4. When your part is done, move it with a one-line `note` saying what was done and where (a SHA, a PR). Reply `done` on the ask too: the task shows the ask's state.
-5. Stuck on the person: set `waiting` to the one question they must answer (it shows under Needs you); clear it with `""` once answered. Stuck on another agent: say so on its ask, not on the task.
+5. Stuck on the person: set `waiting` to the one question they must answer (it shows under Needs you); when it has a few clear answers, add them as `choices` (up to 4, shown as buttons, for example `["Fix now", "After the release"]`). The person's pick or reply comes back to the project chat as a message naming the task. Clear `waiting` with `""` once answered. Stuck on another agent: say so on its ask, not on the task.
 
 Move a task only to the project's own steps, and to the last step only when the rules say the work is finished (for example, merged is not always done).
 
@@ -52,9 +52,12 @@ Watchers send you what they find. For each event:
 
 ## Controls in the panel
 
-The Project tasks row shows the lead line (auto or ask first, last sorted, Pause), a Needs you group, and Approve, Reassign and Hold on each task. Each button drafts a message in the project chat; the agent who gets it makes the change:
+The Project tasks row lists Needs you first, then the rest; its footer shows the lead with ⋯ (Pause, auto or ask first, Change setup), and how many are done. Clicking a task opens its page: what you need to do with its answer buttons, the checklist, who is working on it, linked items, what's happening and history, with Approve, Reassign, Hold and Move. Each button, answer and checklist tick drafts a message in the project chat; the agent who gets it makes the change:
 
 - Pause or resume: `task_settings {paused: true|false}`. While paused, Watchers sending to the lead's chat keep their events and deliver them on resume.
 - Auto or ask first: `task_settings {mode}`.
 - Approve or reassign: `task_update {task_id, assignee}`, then send the agent the ask (or tell the lead to) and link it with `task`. On a reassign, tell the old agent with a short note on its ask.
 - Hold: `task_update {task_id, held: true|false}`.
+- An answer or reply: pass it to whoever asked (the agent on the task), then clear `waiting`.
+- A checklist tick: `task_update {task_id, checklist_done | checklist_open: N}`.
+- Move: `task_update {task_id, step}` with a short `note`.
