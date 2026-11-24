@@ -985,6 +985,9 @@ type QueryRequest struct {
 	// the next cron message waits for turn completion instead of racing a tmux
 	// snapshot that may not have flipped to busy yet.
 	DisableLiveInputDelivery bool `json:"disable_live_input_delivery,omitempty"`
+	// PlanMode: the person's Plan switch was on when they sent this message (#3699); the turn runs in the
+	// program's own plan mode, like "/plan". Honoured only for a person's own message, never an agent's.
+	PlanMode bool `json:"plan_mode,omitempty"`
 	// RestartCodingCLI asks for the chat's coding CLI to be closed and relaunched when this
 	// message's turn starts: a product chat's runtime selection changed while a turn was running
 	// (PLAT-676). It is applied between turns, never mid-turn; the flag survives the turn queue.

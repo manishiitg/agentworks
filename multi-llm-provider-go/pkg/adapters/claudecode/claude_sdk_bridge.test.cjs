@@ -608,3 +608,16 @@ test('/plan: an approved plan returns the session to the chat mode; anything els
   assert.equal(exitPlanMode('ExitPlanMode', { behavior: 'allow' }, ''), '');
   assert.equal(exitPlanMode('ExitPlanMode', { behavior: 'allow' }, 'plan'), '');
 });
+
+test('#3699 a mode Claude reports (it entered plan mode itself) is tracked so the next turn resets it', async () => {
+  const { sdkReportedPermissionMode, applySDKTurnSettings } = require('./claude_sdk_bridge.cjs');
+  assert.equal(sdkReportedPermissionMode({ type: 'system', subtype: 'status', status: null, permissionMode: 'plan' }), 'plan');
+  assert.equal(sdkReportedPermissionMode({ type: 'system', subtype: 'status', status: 'compacting' }), '');
+  assert.equal(sdkReportedPermissionMode({ type: 'assistant', permissionMode: 'plan' }), '');
+  const current = { model: 'm', permission_mode: 'dontAsk', effort: null };
+  current.permission_mode = sdkReportedPermissionMode({ type: 'system', subtype: 'status', permissionMode: 'plan' });
+  const calls = [];
+  const run = { setModel: async () => {}, setPermissionMode: async mode => calls.push(mode), applyFlagSettings: async () => {} };
+  assert.deepEqual(await applySDKTurnSettings(run, current, { model: 'm', permission_mode: 'dontAsk', effort: null }), ['permission_mode']);
+  assert.deepEqual(calls, ['dontAsk']);
+});

@@ -92,6 +92,7 @@ export type ExtendedLLMConfiguration = Omit<LLMConfiguration, 'api_keys'> & {
 // Agent streaming types
 export interface AgentQueryRequest {
   requested_skill_id?: string
+  plan_mode?: boolean
   pending_attachments?: { hash: string; name: string }[]
   delivery_mode?: 'steer' | 'queue'
   connection_id?: string
@@ -195,6 +196,7 @@ export interface AgentQueryResponse {
 // fields only for profiles that explicitly support them.
 export interface AgentProfileChatRequest {
   requested_skill_id?: string
+  plan_mode?: boolean
   pending_attachments?: { hash: string; name: string }[]
   delivery_mode?: 'steer' | 'queue'
   /** Optional Crew laptop connection; the server checks the current owner and live folder grants. */
@@ -1729,6 +1731,8 @@ export interface WorkflowPhase {
 
 export interface CapabilitiesResponse {
   native_goals?: Record<string, boolean>;
+  /** Programs whose chats run a message in their own plan mode (the Plan switch, /plan). */
+  native_plans?: Record<string, boolean>;
   providers: string[];
   streaming: boolean;
   sse: boolean;

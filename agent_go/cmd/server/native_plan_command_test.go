@@ -1,6 +1,9 @@
 package server
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestNativePlanCommand(t *testing.T) {
 	for query, want := range map[string]string{"/plan add dark mode": "add dark mode", "  /plan\n fix the login ": "fix the login", "/plan": ""} {
@@ -20,5 +23,25 @@ func TestNativePlanCommand(t *testing.T) {
 		if nativePlanSupported(provider) != want {
 			t.Fatalf("%s support", provider)
 		}
+	}
+}
+
+// #3699: the composer's Plan switch is offered only where the server says so, and its flag
+// survives the Crew chat request into the turn.
+func TestNativePlanSwitchCapabilityAndFlag(t *testing.T) {
+	caps := nativePlanProgramCapabilities()
+	for provider, want := range map[string]bool{"claude-code": true, "codex-cli": true, "cursor-cli": true} {
+		if caps[provider] != want {
+			t.Fatalf("%s capability: %v", provider, caps[provider])
+		}
+	}
+	for provider, supported := range caps {
+		if supported != nativePlanSupported(provider) {
+			t.Fatalf("%s capability disagrees with admission", provider)
+		}
+	}
+	var req AgentProfileChatRequest
+	if err := json.Unmarshal([]byte(`{"message":"add dark mode","plan_mode":true}`), &req); err != nil || !req.PlanMode {
+		t.Fatalf("plan_mode not read: %v %+v", err, req)
 	}
 }

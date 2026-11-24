@@ -2,6 +2,8 @@ import type { FileContextItem } from '../stores/types'
 
 export interface ChatSubmissionOptions {
   requestedSkillId?: string
+  /** The Plan switch was on for this message (#3699). */
+  planMode?: boolean
   pendingAttachments?: { hash: string; name: string }[]
   fileContext?: FileContextItem[]
   fileContextConsumed?: boolean

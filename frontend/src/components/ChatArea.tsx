@@ -88,6 +88,7 @@ import { ChatAgentsStrip, useChatHelpers } from './chat/ChatAgents'
 import { submissionFailure } from '../platform/chat/submissionFailure'
 import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths } from '../utils/chatMessageContent'
 import { recordChatDeliveryTelemetry, recordChatSubmissionTelemetry, recordViewTimingTelemetry, readViewSwitch, clearViewSwitch } from '../utils/chatDeliveryTelemetry'
+import { approvesPlan } from '../utils/planMode'
 
 // Stable empty array to avoid infinite re-render loops in Zustand selectors
 // (a new [] on every selector call breaks referential equality checks)
@@ -949,6 +950,10 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       if (onQuestionAnswerOverride) await onQuestionAnswerOverride(provider, promptId, answers, auto)
       else if (activeTab?.metadata?.externalTransport) throw new Error("Question answers are unavailable for this connection")
       else await agentApi.submitCodingAgentQuestion(activeSessionId, provider, promptId, answers, auto)
+      // An approved plan turns the Plan switch off; the work runs in the same turn (#3699).
+      if (activeTab?.tabId && approvesPlan(answers) && useChatStore.getState().getTabConfig(activeTab.tabId)?.planMode) {
+        useChatStore.getState().setTabConfig(activeTab.tabId, { planMode: false, planAwaitingStart: false })
+      }
     } catch (cause) {
       const detail = codingAgentQuestionErrorText(cause)
       if (/no longer pending|unavailable/i.test(detail)) {
@@ -957,7 +962,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       }
       throw new Error(detail || 'Could not submit this choice. Try again.')
     }
-  }, [activeSessionId, onQuestionAnswerOverride, activeTab?.metadata?.externalTransport])
+  }, [activeSessionId, onQuestionAnswerOverride, activeTab?.metadata?.externalTransport, activeTab?.tabId])
 
   const activeTabIsExecution = isExecutionConversationTab(activeTab)
   const activeTabProfileWorkspace = activeTab?.metadata?.agentProfileWorkspace
@@ -3010,6 +3015,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       }), currentTab)
 
       requestPayload.requested_skill_id = options?.requestedSkillId
+      if (options?.planMode) requestPayload.plan_mode = true
       requestPayload.pending_attachments = submittedChatAttachmentReferences(options?.fileContext ?? currentTab.config.fileContext, options?.pendingAttachments)
 
       // Validate execution groups for workflow mode

@@ -144,6 +144,8 @@ import { isMainAgentTerminal } from '../utils/terminalIdentity'
 import { loadProfileAtFiles } from '../utils/profileAtFiles'
 import { proxyCrewFileClient, sharedCrewFileClient } from '../products/work/sharedCrewFiles'
 import { chatSendMessageEvent } from '../products/work/ChatContextItems'
+import { PlanModeChip, PlanStartBar } from './chat/PlanModeControls'
+import { isPlanToggleKey, PLAN_START_MESSAGE, planNeedsStartButton } from '../utils/planMode'
 
 // The person's chat/terminal choice for this tab. Not remembered: every
 // Crew, Code or workflow opens in the chat view.
@@ -837,6 +839,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     workflowPhasePreset?.llmConfig?.provider])
   const nativeGoalPrograms = useCapabilitiesStore(state => state.capabilities?.native_goals)
   const nativeGoalSupported = supportsNativeGoal(nativeGoalPrograms, effectiveProviderForSteer)
+  // The Plan switch (#3699): only where the server says the program has its own plan mode.
+  const nativePlanPrograms = useCapabilitiesStore(state => state.capabilities?.native_plans)
+  const nativePlanSupported = supportsNativeGoal(nativePlanPrograms, effectiveProviderForSteer) && !isViewOnly
+  const planOn = nativePlanSupported && tabConfig?.planMode === true
+  const togglePlanMode = useCallback(() => {
+    if (!activeTabId) return
+    const on = useChatStore.getState().getTabConfig(activeTabId)?.planMode === true
+    setTabConfig(activeTabId, { planMode: !on, planAwaitingStart: false })
+  }, [activeTabId, setTabConfig])
 
   // Interactive coding-agent chats use the shared retained tmux path. Prefer
   // the backend-reported transport once a session exists so restored
@@ -2084,6 +2095,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             fileContextConsumed: true,
             deliveryMode: deliveryOverride ?? 'steer',
             submissionId,
+            ...(planOn ? { planMode: true } : {}),
             onRejected: failure => { restoreRefusedDraft = !isAccessRefusal(failure) },
           })
         } catch (error) {
@@ -2104,6 +2116,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           }
           return
         }
+        // A Codex/Cursor plan reply then offers "Start the work" (Claude asks with its own card).
+        if (planOn && submittedTabId) setTabConfig(submittedTabId, { planAwaitingStart: true })
         return
       }
       const reason = getSubmitBlockReason()
@@ -2120,6 +2134,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       let restoreRefusedDraft = true
       try {
         accepted = await onSubmit(query, { sourceTabId: submittedTabId, requestedSkillId, fileContext: submittedDraft.fileContext, fileContextConsumed: true, deliveryMode: deliveryOverride ?? 'steer', submissionId,
+          ...(planOn ? { planMode: true } : {}),
           onRejected: failure => { restoreRefusedDraft = !isAccessRefusal(failure) },
         })
       } catch (error) {
@@ -2130,12 +2145,19 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         latestInputTextRef.current = submittedDraft.inputText
         setLocalInputText(submittedDraft.inputText)
         addToast('Message was not accepted. Your draft was kept.', 'warning')
-      }
+      } else if (accepted !== false && planOn && submittedTabId) setTabConfig(submittedTabId, { planAwaitingStart: true })
     } else {
       const reason = getSubmitBlockReason()
       if (reason) addToast(reason, 'info')
     }
-  }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, closeComposerPickers, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice, chatFileContext, pendingComposerAttachments, requestedSkillId])
+  }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, closeComposerPickers, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice, chatFileContext, pendingComposerAttachments, requestedSkillId, planOn])
+
+  // "Start the work" after a Codex/Cursor plan: Plan goes off and the go-ahead is an ordinary message.
+  const startPlannedWork = useCallback(() => {
+    if (!activeTabId) return
+    setTabConfig(activeTabId, { planMode: false, planAwaitingStart: false })
+    void onSubmit(PLAN_START_MESSAGE, { sourceTabId: activeTabId, deliveryMode: 'steer', submissionId: randomUUID() })
+  }, [activeTabId, setTabConfig, onSubmit])
 
   const nextPrompt = useNextPrompt(tabSessionId, !isTurnInFlight && !inputText.length && !requestedSkillId && !showNativeSkillPicker && !isViewOnly && !pendingNativeChoice && !micActive && !isUploadingFiles && !chatFileContext.length && !pendingComposerAttachments.length && !showCommandDialog && !showFileDialog && !showCrewReferences && !showSkillPopup && !showServerPopup)
 
@@ -2153,6 +2175,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     } else if (showSkillPopup || showServerPopup) {
       if (!isPlainPickerKey(e.nativeEvent)) e.stopPropagation()
       if (isPlainPickerKey(e.nativeEvent) && ['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) return
+    }
+
+    // Shift+Tab toggles Plan (#3699), before the key can reach a live terminal or move focus.
+    if (nativePlanSupported && isPlanToggleKey(e.nativeEvent)) {
+      e.preventDefault()
+      e.stopPropagation()
+      togglePlanMode()
+      return
     }
 
     // A prediction only fills a draft. Explicitly clear autoRun, which other
@@ -2233,7 +2263,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         textarea.selectionStart = textarea.selectionEnd = start + 1
       }, 0)
     }
-  }, [nextPrompt, showFileDialog, showCommandDialog, showCrewReferences, showSkillPopup, showServerPopup, isStreaming, isTurnInFlight, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers, chatFileContext, uploadingFiles, activeTabId, requestedSkillId])
+  }, [nextPrompt, showFileDialog, showCommandDialog, showCrewReferences, showSkillPopup, showServerPopup, isStreaming, isTurnInFlight, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers, chatFileContext, uploadingFiles, activeTabId, requestedSkillId, nativePlanSupported, togglePlanMode])
 
   // A message the app sends for the person in this chat (the terminal's starter message), through the same send path.
   useEffect(() => {
@@ -2766,13 +2796,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (isViewOnly && viewOnlyWriter) return `This is ${viewOnlyWriter}'s chat. Only they can write here.`
     if (isViewOnly) return "View only — cannot continue this conversation"
     if (placeholderOverride) return placeholderOverride
+    if (planOn) return 'Describe what to plan… (nothing changes until you approve)'
     if (isProductSurface || activeTab?.metadata?.agentProfileId === 'work') return 'Ask anything…'
     if (agentProfileWorkspace) return 'Describe the video you want to make…'
     if (isWorkflowPhaseChat) {
       return 'Chat with the automation builder…'
     }
     return 'Ask anything…'
-  }, [agentProfileWorkspace, isProductSurface, activeTab?.metadata?.agentProfileId, isViewOnly, viewOnlyWriter, isWorkflowPhaseChat, placeholderOverride, pendingNativeChoice])
+  }, [agentProfileWorkspace, isProductSurface, activeTab?.metadata?.agentProfileId, isViewOnly, viewOnlyWriter, isWorkflowPhaseChat, placeholderOverride, pendingNativeChoice, planOn])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.
@@ -2933,6 +2964,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             <span className="truncate rounded border border-border bg-muted px-2 py-1" title={requestedSkill ? `${requestedSkill.description} · ${requestedSkill.source}` : nativeSkillCatalog.error || nativeSkillCatalog.catalog.message}>Skill requested: {requestedSkill?.name || (nativeSkillCatalog.loading ? 'Loading…' : 'unavailable — refresh Skills')}</span>
             <button type="button" aria-label="Remove requested skill" onClick={() => activeTabId && setTabConfig(activeTabId, { requestedSkillId: undefined })}><X size={14} /></button>
           </div>}
+          {planOn && tabConfig?.planAwaitingStart && !isTurnInFlight && planNeedsStartButton(effectiveProviderForSteer) && <PlanStartBar onStart={startPlannedWork} />}
           {tabSessionId && activeTabId && !isViewOnly && <Suspense fallback={null}><DurableChatQueue ref={durableQueueRef} key={tabSessionId} sessionId={tabSessionId} tabId={activeTabId} busy={isTurnInFlight} canEdit={!queryToSubmit.trim() && !requestedSkillId && !isUploadingFiles} onEdit={restoreQueuedDraft} /></Suspense>}
         </>}>
             {uploadingFiles && uploadingFiles.tabId === activeTabId && <UploadingAttachments files={uploadingFiles.files} />}
@@ -3417,6 +3449,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     : label
                 })()}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
+                {nativePlanSupported && <PlanModeChip on={planOn} onToggle={togglePlanMode} />}
                 {agentProfileId === 'work' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
                 <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID

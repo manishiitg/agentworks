@@ -367,6 +367,8 @@ export interface ChatTabConfig {
   mcpOAuthNotificationIDs?: string[]
   conversationAcknowledged?: boolean
   requestedSkillId?: string  // One explicit native skill in this draft, not a Crew attachment
+  planMode?: boolean  // The Plan switch (#3699): each message plans first in the program's own plan mode
+  planAwaitingStart?: boolean  // A Codex/Cursor plan reply is waiting for "Start the work"
   composerRevision?: number  // Store-owned revision survives composer remounts
   inputText: string  // Chat input text
   useCodeExecutionMode: boolean  // Code execution mode toggle
