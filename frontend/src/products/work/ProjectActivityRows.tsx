@@ -9,7 +9,7 @@ import type { CrewPanelFeedItem, CrewPanelRow, CrewPanelSection } from './useCre
 const appIcon: Record<string, LucideIcon> = { slack: MessageSquare, mail: Mail, drive: FolderOpen, tasks: ListTodo }
 
 export const projectActivitySetupMessage = 'Set up Project activity for this project. Check which apps this project can reach (Slack, Gmail, Google Drive, GitHub or another task tracker), ask me which channels, mail, folders and task lists matter, then create one feed Watcher for each. Follow the project-activity guide in the automations skill.'
-export const projectActivityChangeMessage = 'I want to change what Project activity watches for this project. Show me what it watches now and ask what to add, change or remove.'
+export const projectActivityChangeMessage = 'I want to change Project activity for this project. Show me what it watches now and the steps and rules each source uses, then ask what to add, change or remove.'
 
 function ago(at: number): string {
   const minutes = Math.max(0, Math.round((Date.now() / 1000 - at) / 60))
@@ -35,7 +35,6 @@ export function projectActivityItemMessage(kind: 'ask' | 'mine' | 'team', source
   return `Make a Team task for this so a teammate's agent can take it: ${what}.${issue ? ` Put it under ${issue}.` : ''}${where}`
 }
 
-export const projectActivityStepsMessage = (source: string) => `I want to change the steps for ${source} in Project activity. Show me the steps and rules it uses now and ask what to change.`
 
 const taskWords: Record<string, string> = { open: 'asked', in_progress: 'working', blocked: 'blocked', needs_you: 'waiting on you', stalled: 'stalled', done: 'done' }
 const taskTone = (state: string) => state === 'done' ? 'text-emerald-600 dark:text-emerald-400' : state === 'in_progress' || state === 'open' ? 'text-sky-600 dark:text-sky-400' : 'font-medium text-amber-600 dark:text-amber-400'
@@ -84,10 +83,7 @@ function RowItems({ row, onAgent }: { row: CrewPanelRow; onAgent?: (message: str
   const working = items.filter(item => !item.done), done = items.filter(item => item.done)
   const last = row.steps?.[row.steps.length - 1] || 'done'
   return <>
-    {row.steps?.length ? <div className="flex flex-wrap items-center gap-x-1 px-1 pb-0.5 text-[10px] text-muted-foreground">
-      <span>{row.steps.join(' → ')}</span>
-      {onAgent && <button type="button" onClick={() => onAgent(projectActivityStepsMessage(row.label))} className="text-primary hover:underline">change</button>}
-    </div> : null}
+    {row.steps?.length ? <p className="px-1 pb-0.5 text-[10px] text-muted-foreground">{row.steps.join(' → ')}</p> : null}
     {working.map((item, index) => <ItemRow key={item.id || index} item={item} row={row} onAgent={onAgent}/>)}
     {row.done_count ? <button type="button" aria-expanded={showDone} onClick={() => setShowDone(value => !value)} className="px-1 py-0.5 text-[10px] text-muted-foreground hover:text-foreground">✓ {row.done_count} {last.toLowerCase()} {showDone ? '▾' : '▸'}</button> : null}
     {showDone && done.map((item, index) => <ItemRow key={item.id || index} item={item} row={row} onAgent={onAgent}/>)}
