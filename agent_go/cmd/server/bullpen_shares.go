@@ -516,6 +516,9 @@ func shareOwnerLabeler() func(string) string {
 		if userID == shareScopeServer {
 			return "everyone"
 		}
+		if project, ok := strings.CutPrefix(userID, crewTeamProjectMemberPrefix); ok {
+			return "Project: " + crewTeamProjectName(project) // an online project in a Team (#3664)
+		}
 		if err == nil && dir != nil {
 			if rec := dir.byID(userID); rec != nil && rec.Username != "" {
 				return rec.Username
