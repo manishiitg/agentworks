@@ -218,12 +218,21 @@ func TestCrewTeamOnlineProjectAgentReach(t *testing.T) {
 			t.Errorf("%s: full access=%v, want %v", c.name, got, c.want)
 		}
 	}
+	// The run decision deliverPublishedAgentMessage makes (review of #3744): the receiving chat runs as the project's
+	// main owner, and a teammate's ask is another person's turn there.
+	role := agentMessageEndpoint{UserID: "bob", ID: "srv", TeamAgentID: id}
+	if publishedAgentRunMode(role, role, agentMessageEndpoint{UserID: "ann"}) {
+		t.Fatal("a teammate's ask to the project's agent was delivered with Run rights, want full access")
+	}
 	team.Projects = []crewTeamProject{{ProjectID: "srv", AnswersOnly: []string{row.ChatKey}}}
 	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
 	if crewTeamProjectAskChanges(dest, agentMessageEndpoint{UserID: "ann"}) {
 		t.Fatal("an agent set to Answers only still made changes")
+	}
+	if !publishedAgentRunMode(role, role, agentMessageEndpoint{UserID: "ann"}) {
+		t.Fatal("an agent set to Answers only was delivered without Run rights")
 	}
 	// The other direction (Team Module Manager rule 2): only a Builder turn of the joined project asks the Team as the
 	// project; a Run turn, a guest, another project or a project that left asks as its person and is refused.

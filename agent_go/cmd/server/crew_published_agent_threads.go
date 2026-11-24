@@ -14,6 +14,18 @@ import (
 // Guest is stamped from the originating runtime, never supplied by message text.
 func publishedAsker(e agentMessageEndpoint) string { return firstNonEmptyTrimmed(e.Guest, e.UserID) }
 
+// publishedAgentRunMode says whether an ask delivered to a published agent runs with Run rights. role is the receiving
+// chat's current role, dest the published agent. An online project's agent is an AI teammate (#3664): a Team member's
+// ask works with the project's full access, unless the project set that agent to Answers only.
+func publishedAgentRunMode(role, dest, source agentMessageEndpoint) bool {
+	run := crewMessageRunMode(role, source, firstNonEmptyTrimmed(role.Guest, publishedAsker(source)))
+	if run && crewTeamProjectAskChanges(dest, source) {
+		log.Printf("[TEAM_ONLINE] project=%s agent=%s event=ask_full_access asker=%s", dest.ID, dest.TeamAgentID, logUsernameForUserID(publishedAsker(source)))
+		return false
+	}
+	return run
+}
+
 func publishedConversation(c agentConversation) bool {
 	return c.Endpoints[0].PublishedAgent != "" || c.Endpoints[1].PublishedAgent != ""
 }
@@ -190,12 +202,7 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	role := dest
 	role.ChatKey, role.Session = conversation.ConversationKey, conversation.SessionID
 	role = api.agentMessageDeliveryRole(role)
-	run := crewMessageRunMode(role, source, firstNonEmptyTrimmed(role.Guest, publishedAsker(source)))
-	// An online project's agent is an AI teammate (#3664): a Team member's ask works with the project's full access.
-	if run && crewTeamProjectAskChanges(dest, source) {
-		run = false
-		log.Printf("[TEAM_ONLINE] project=%s agent=%s event=ask_full_access asker=%s", dest.ID, dest.TeamAgentID, logUsernameForUserID(publishedAsker(source)))
-	}
+	run := publishedAgentRunMode(role, dest, source)
 	if run {
 		applyCrewGuestCaller(req, publishedAsker(source))
 		req["crew_ask_read_only"] = true
