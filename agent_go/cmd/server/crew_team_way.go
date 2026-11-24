@@ -200,7 +200,7 @@ func (api *StreamingAPI) handleCrewTeamWay(w http.ResponseWriter, r *http.Reques
 	}
 	team, err := readCrewTeam(project)
 	if err != nil || !team.On || !team.member(claims.UserID) || ownerOfCrewProjectID(project) != team.OwnerID || !crewTeamAccountActive(team.OwnerID) {
-		externalError(w, 403, "team_member_required", "Join this Crew's Team to see or change how it works.")
+		externalError(w, 403, "team_member_required", "Join this project's Team to see or change how it works.")
 		return
 	}
 	if IsLocalMode() {

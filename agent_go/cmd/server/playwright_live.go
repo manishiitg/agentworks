@@ -160,7 +160,7 @@ func (api *StreamingAPI) handlePlaywrightPublisher(w http.ResponseWriter, r *htt
 	run := mux.Vars(r)["session_id"]
 	user, workspace := api.playwrightWorkflowOwner(run)
 	if user == "" || (!strings.HasPrefix(workspace, "Workflow/") && !isProjectWorkspacePath(workspace)) {
-		http.Error(w, "An active workflow or Crew session is required", http.StatusNotFound)
+		http.Error(w, "An active workflow or project session is required", http.StatusNotFound)
 		return
 	}
 	workspace = playwrightScope(user, workspace)

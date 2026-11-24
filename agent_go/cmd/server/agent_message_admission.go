@@ -199,7 +199,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 		}
 		if e.Kind == triggerCallerWorkflow {
 			if strings.Contains(e.ChatKey, codeChatSideMarker) {
-				return admissionRefused("Workflow chat tabs are retired. Use a Crew agent instead.")
+				return admissionRefused("Workflow chat tabs are retired. Use a project agent instead.")
 			}
 			manifest, found, err := ReadWorkflowManifest(ctx, e.Path)
 			if err != nil || !found || manifest == nil || manifest.ID != e.ID {
@@ -211,12 +211,12 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 		} else if e.Kind == triggerCallerCrew {
 			check = "crew_runtime"
 			if api.projectActions == nil || api.projectActions.registry == nil {
-				return fmt.Errorf("Crew runtime unavailable")
+				return fmt.Errorf("Project runtime unavailable")
 			}
 			check = "crew_profile"
 			profile, err := api.projectActions.registry.Resolve(e.Profile, 0, actor)
 			if err != nil || !userAllowedProduct(&UserClaims{UserID: actor}, profile.Product) {
-				return fmt.Errorf("message participant no longer has Crew access")
+				return fmt.Errorf("message participant no longer has project access")
 			}
 			// A Team member on their Mac is an endpoint of a Crew they don't own (owner, 6 Nov: any two people in a Team can
 			// message each other's agents). Their Team record is the access, checked again at each delivery.

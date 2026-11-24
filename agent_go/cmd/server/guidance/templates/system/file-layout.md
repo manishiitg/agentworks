@@ -1,6 +1,6 @@
 ---
 name: "file-layout"
-description: "Current Crew and saved Python paths; preserve caller and file guards."
+description: "Current project and saved Python paths; preserve caller and file guards."
 external: true
 external_tools: ["files", "workspace"]
 ---
@@ -10,14 +10,14 @@ Use the exact logical file root and absolute working folder returned for this
 Crew. An existing selected local folder is used in place; do not move it into a
 new layout. Read `crew-laptop` for folder-backed creation. File APIs use their
 returned namespace and relative paths; shell commands use the authorized real
-folder. Never guess another Crew's path from its name.
+folder. Never guess another project's path from its name.
 
 In a private coding runtime, `project/` links to the real Crew. Scope search and
-reads to that link; commands needing a working directory use the absolute Crew
+reads to that link; commands needing a working directory use the absolute project
 path, never `cd project`. Generated CLI instructions, connection metadata and
 credentials stay in the private runtime. The link grants no extra file access.
 
-The Crew has one saved Python workflow. Discover it before creating or editing:
+The project has one saved Python workflow. Discover it before creating or editing:
 `script.json` declares typed inputs, saved settings and outputs; `main.py` and
 ordinary helper modules hold the program. Read `python-workflows` for the managed
 source writer and current returned paths. Do not infer source locations from

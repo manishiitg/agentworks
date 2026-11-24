@@ -42,7 +42,7 @@
     "family": "settings",
     "name": "profile",
     "member": "profile_picture",
-    "description": "Read, set or remove your own profile picture: an offered icon or an admitted Crew image."
+    "description": "Read, set or remove your own profile picture: an offered icon or an admitted project image."
   },
   {
     "family": "settings",

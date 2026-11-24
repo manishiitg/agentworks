@@ -46,11 +46,11 @@ func mirrorCrewReaderConversation(readerID, crewFolder, sessionID, sourcePath st
 	content, exists, err := readFileFromWorkspace(context.Background(), sourcePath)
 	if err != nil || !exists {
 		if err != nil {
-			log.Printf("[CHAT_HISTORY] Crew chat mirror: read %s: %v", sourcePath, err)
+			log.Printf("[CHAT_HISTORY] project chat mirror: read %s: %v", sourcePath, err)
 		}
 		return
 	}
 	if err := writeRawFileToWorkspace(context.Background(), target, content); err != nil {
-		log.Printf("[CHAT_HISTORY] Crew chat mirror: write %s: %v", target, err)
+		log.Printf("[CHAT_HISTORY] project chat mirror: write %s: %v", target, err)
 	}
 }

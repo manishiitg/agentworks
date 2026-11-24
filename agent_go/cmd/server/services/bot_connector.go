@@ -3344,7 +3344,7 @@ func (m *BotConversationManager) buildQueryRequest(query string, userID string, 
 		route = m.resolveThreadRoute(thread)
 	}
 	if route != nil && strings.TrimSpace(route.WorkflowID) != "" {
-		return map[string]interface{}{"_bot_prepare_error": "Workflows run directly. Connect this channel to a Crew agent instead."}
+		return map[string]interface{}{"_bot_prepare_error": "Workflows run directly. Connect this channel to a project agent instead."}
 	}
 
 	// Capabilities: prefer the user's saved multi-agent chat config
@@ -3422,7 +3422,7 @@ func (m *BotConversationManager) buildQueryRequestForActive(active *activeBotSes
 	agentMode, presetQueryID, workspacePath, botMeta := strings.TrimSpace(active.AgentMode), strings.TrimSpace(active.PresetQueryID), strings.TrimSpace(active.WorkspacePath), active.Metadata
 	active.mu.Unlock()
 	if agentMode == "workflow" || agentMode == "workflow_phase" {
-		return map[string]interface{}{"_bot_prepare_error": "Workflow conversations are retired. Connect this channel to a Crew agent instead."}
+		return map[string]interface{}{"_bot_prepare_error": "Workflow conversations are retired. Connect this channel to a project agent instead."}
 	}
 	applyBotQueryRequestMetadata(req, botMeta)
 	if agentMode != "" {

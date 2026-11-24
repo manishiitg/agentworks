@@ -43,10 +43,10 @@ func configurationExternalMembers(catalog []externalTool) ([]externalTool, error
 					return nil, err
 				}
 				keep := []string{"crew_id", "chat_id"}
-				member.Name, member.Description, member.mutates = "get_tab_models", "Read this Crew's tab models and offered account choices through its existing chat service.", false
+				member.Name, member.Description, member.mutates = "get_tab_models", "Read this project's tab models and offered account choices through its existing chat service.", false
 				member.InputSchema["required"] = []any{"crew_id"}
 				if set {
-					member.Name, member.Description, member.mutates = "set_tab_model", "Change one of your Crew chat models using its existing tab ownership and account checks. An empty engine uses the Crew default. idle_compaction changes that chat's Auto-compact when idle and claude_terminal a Claude chat's native terminal or chat view; without engine only they change.", true
+					member.Name, member.Description, member.mutates = "set_tab_model", "Change one of your project chat models using its existing tab ownership and account checks. An empty engine uses the project default. idle_compaction changes that chat's Auto-compact when idle and claude_terminal a Claude chat's native terminal or chat view; without engine only they change.", true
 					keep = append(keep, "engine", "model_id", "connection_id", "reasoning_effort", "idle_compaction", "compact_early", "claude_terminal")
 					member.InputSchema["required"] = []any{"crew_id", "chat_id"}
 					// The app's existing reset sends an empty engine.

@@ -92,7 +92,7 @@ func (store productConversationRegistryStore) editAgentGroups(ctx context.Contex
 			return fmt.Errorf("Choose the agent to move.")
 		}
 		if _, ok := members[key]; !ok && len(members) >= agentGroupMembersMax {
-			return fmt.Errorf("You can group up to %d agents in one Crew.", agentGroupMembersMax)
+			return fmt.Errorf("You can group up to %d agents in one project.", agentGroupMembersMax)
 		}
 		return nil
 	}
@@ -215,7 +215,7 @@ func (api *StreamingAPI) handleAgentGroups(w http.ResponseWriter, r *http.Reques
 	projectID := strings.TrimSpace(input.ProjectID)
 	if api.crewMacTwinForOwner(r, projectID) {
 		if r.Method == http.MethodPost {
-			writeAgentProfileError(w, http.StatusConflict, "Arrange this Crew's agents on your Mac.")
+			writeAgentProfileError(w, http.StatusConflict, "Arrange this project's agents on your Mac.")
 			return
 		}
 		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"groups": map[string]string{}})
@@ -226,7 +226,7 @@ func (api *StreamingAPI) handleAgentGroups(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if mux.Vars(r)["id"] != crewProfileID || !limitsSideChats(slot.profile.ID) {
-		writeAgentProfileError(w, http.StatusBadRequest, "only a Crew's agents can be grouped")
+		writeAgentProfileError(w, http.StatusBadRequest, "only a project's agents can be grouped")
 		return
 	}
 	store := defaultProductConversationRegistryStore()

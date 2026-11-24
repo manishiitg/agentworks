@@ -312,7 +312,7 @@ func (r conversationRegistryRows) workflowStepRun(ctx context.Context, session, 
 		return "", err
 	}
 	if len(selected) == 0 {
-		return "", errors.New("this chat is unavailable; reopen the Crew chat before running its steps")
+		return "", errors.New("this chat is unavailable; reopen the project chat before running its steps")
 	}
 	if len(selected) > 1 {
 		return "", errAmbiguousConversationRegistry

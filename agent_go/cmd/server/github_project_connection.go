@@ -24,7 +24,7 @@ func githubProjectID(ctx context.Context, root string) (string, error) {
 	raw, found, err := readFileFromWorkspace(ctx, root+"/product.json")
 	var manifest productProjectManifest
 	if err != nil || !found || json.Unmarshal([]byte(raw), &manifest) != nil || manifest.Product != crewProfileID || manifest.ID == "" {
-		return "", errors.New("This Crew is unavailable. Reopen it and try again.")
+		return "", errors.New("This project is unavailable. Reopen it and try again.")
 	}
 	return manifest.ID, nil
 }
@@ -39,12 +39,12 @@ func githubProjectContext(ctx context.Context, person, workspace string, write b
 	r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
 	scope, err := personalConnectionItemScope(r, workspace, write, "GitHub", "GitHub")
 	if err != nil || scope.UserID != person || !isProjectWorkspacePath(scope.Workspace) {
-		return ctx, errors.New("Open a Crew you build to choose its GitHub account.")
+		return ctx, errors.New("Open a project you build to choose its GitHub account.")
 	}
 	// Runtime resolves the main Crew owner's personal registry, not a joined
 	// builder's. Never persist an ID that runtime would look up as someone else.
 	if !crewProjectOwnedByCallerStrict(person, scope.Workspace) {
-		return ctx, errors.New("Only this Crew's owner can choose its GitHub account.")
+		return ctx, errors.New("Only this project's owner can choose its GitHub account.")
 	}
 	return context.WithValue(ctx, githubProjectRootKey{}, scope.Workspace), nil
 }
@@ -120,10 +120,10 @@ func projectGitHubConnection(ctx context.Context, owner, workspace string) (*git
 func selectProjectGitHubConnection(ctx context.Context, owner, id string) error {
 	root := githubProjectRoot(ctx)
 	if root == "" {
-		return errors.New("Choose a Crew for this GitHub connection.")
+		return errors.New("Choose a project for this GitHub connection.")
 	}
 	if !crewProjectOwnedByCallerStrict(owner, root) {
-		return errors.New("Only this Crew's owner can choose its GitHub account.")
+		return errors.New("Only this project's owner can choose its GitHub account.")
 	}
 	if id != "" && readGitHubConnection(owner, id) == nil {
 		return errors.New("Choose one of your saved GitHub connections.")

@@ -29,7 +29,7 @@ import (
 // a vault that does not exist yet as empty. A vault is made only by a Crew vault action (synchronously, for the person
 // who asked), or in the background, one Crew at a time, after a real turn of that Crew or a co-owner change.
 
-var errNotServerCrew = errors.New("Only a Crew made on the server has a Crew vault; a Crew on a Mac uses each person's own Vault and its Team.")
+var errNotServerCrew = errors.New("Only a project made on the server has a project vault; a project on a Mac uses each person's own Vault and its Team.")
 
 // crewVaultCache remembers each Crew's vault and the owners last sent, so a turn does not call the Vault service again
 // until the owners change.
@@ -176,9 +176,9 @@ func (api *StreamingAPI) ensureCrewVault(ctx context.Context, project string) (s
 		}
 	}
 	_, title := crewOwnerAndTitle(project)
-	name := "Crew vault"
+	name := "Project vault"
 	if title != "" {
-		name = "Crew vault · " + title
+		name = "Project vault · " + title
 	}
 	body, _ := json.Marshal(map[string]any{"project_id": project, "name": name, "owners": owners})
 	data, err := vaultServiceRequest(ctx, "", http.MethodPost, "/api/admin/crew-vaults", body)
@@ -190,7 +190,7 @@ func (api *StreamingAPI) ensureCrewVault(ctx context.Context, project string) (s
 		Created bool   `json:"created"`
 	}
 	if json.Unmarshal(data, &made) != nil || made.ID == "" {
-		return "", errors.New("The Crew vault could not be made.")
+		return "", errors.New("The project vault could not be made.")
 	}
 	if made.Created || !crewVaultSeeded(project) {
 		api.seedCrewVault(ctx, project, owners[0], made.ID)
@@ -258,7 +258,7 @@ func readCrewVaultNow(ctx context.Context, owner, id string) (crewVaultContents,
 		return out, err
 	}
 	if json.Unmarshal(data, &out) != nil {
-		return out, errors.New("The Crew vault could not be read.")
+		return out, errors.New("The project vault could not be read.")
 	}
 	out.VaultID = id
 	return out, nil
@@ -342,7 +342,7 @@ func (api *StreamingAPI) crewVaultFor(ctx context.Context, person, project strin
 		return "", errNotServerCrew
 	}
 	if !slices.Contains(crewVaultOwners(project), person) {
-		return "", errors.New("Only the Crew's owner and co-owners can change its Crew vault. Ask one of them.")
+		return "", errors.New("Only the project's owner and co-owners can change its project vault. Ask one of them.")
 	}
 	return api.ensureCrewVault(ctx, project)
 }

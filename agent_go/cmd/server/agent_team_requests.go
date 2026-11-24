@@ -445,7 +445,7 @@ func (api *StreamingAPI) agentTeamToolSend(ctx context.Context, userID string, c
 			out, err := api.desktopAgentNetworkMessage(ctx, userID, caller, "network:"+b.ConnectionID+":"+target, desktopAgentNetworkRequest{Message: message, SubmissionID: submission, Status: stringToolArg(args, "status"), ExpectsReply: true, TaskArgs: agentTaskArgs(args)})
 			return out, true, err
 		}
-		return nil, true, fmt.Errorf("This Crew isn't joined to a Team on a server, so there is no person to ask here")
+		return nil, true, fmt.Errorf("This project isn't joined to a Team on a server, so there is no person to ask here")
 	}
 	if inbox == "" {
 		out, err := api.sendAgentTeamRequest(ctx, userID, caller, target, message, submission, args)

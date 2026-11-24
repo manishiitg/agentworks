@@ -17,7 +17,7 @@ func (api *StreamingAPI) externalTerminalStatus(w http.ResponseWriter, r *http.R
 	}
 	t, row, joined, err := terminalCrewForNamed(named.ID)
 	if err != nil {
-		externalError(w, 503, "status_unavailable", "Crew status is unavailable.")
+		externalError(w, 503, "status_unavailable", "Project status is unavailable.")
 		return
 	}
 	out := map[string]any{"attached": true}
@@ -26,7 +26,7 @@ func (api *StreamingAPI) externalTerminalStatus(w http.ResponseWriter, r *http.R
 		return
 	}
 	if _, err = terminalCrewAdmission(t.ProjectID, claims.UserID); err != nil {
-		externalError(w, 403, "crew_unavailable", "Crew membership changed.")
+		externalError(w, 403, "crew_unavailable", "Project membership changed.")
 		return
 	}
 	current, err := currentCrewTeamTerminal(r.Context(), t, row)
@@ -37,7 +37,7 @@ func (api *StreamingAPI) externalTerminalStatus(w http.ResponseWriter, r *http.R
 	ownerCtx := context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: t.OwnerID, Username: t.OwnerID})
 	manifest, err := readCrewProjectMetadata(ownerCtx, crewProfileID, crewProjectRootByID(t.ProjectID))
 	if err != nil {
-		externalError(w, 503, "status_unavailable", "The Crew name is unavailable.")
+		externalError(w, 503, "status_unavailable", "The project name is unavailable.")
 		return
 	}
 	out["crew_name"] = firstNonEmptyTrimmed(manifest.Title, manifest.Label, t.Name, "Crew")
@@ -101,7 +101,7 @@ func (api *StreamingAPI) externalTerminalStatus(w http.ResponseWriter, r *http.R
 	latest, e := readCrewTeam(t.ProjectID)
 	latestRow, ok := latest.Agents[row.ID]
 	if e != nil || !ok || latest.Revision != t.Revision {
-		externalError(w, 403, "status_changed", "Crew status changed; try the next refresh.")
+		externalError(w, 403, "status_changed", "Project status changed; try the next refresh.")
 		return
 	}
 	if _, e = currentCrewTeamTerminal(r.Context(), latest, latestRow); e != nil {

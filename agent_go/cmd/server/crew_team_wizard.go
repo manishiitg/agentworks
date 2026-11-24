@@ -101,7 +101,7 @@ func (api *StreamingAPI) handleCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 	}
 	t, err := readCrewTeamOrNew(project, claims.UserID)
 	if err != nil || !crewTeamCanManage(t, claims.UserID) || t.OwnerID != ownerOfCrewProjectID(project) || !crewTeamAccountActive(t.OwnerID) {
-		externalError(w, 403, "team_owner_required", "Only this Crew's owner can set up its Team.")
+		externalError(w, 403, "team_owner_required", "Only this project's owner can set up its Team.")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -147,7 +147,7 @@ func (api *StreamingAPI) handleCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 func (api *StreamingAPI) finishCrewTeamSetup(w http.ResponseWriter, r *http.Request, claims *UserClaims, t crewTeam) {
 	project := t.ProjectID
 	if !crewTeamIsNew(t, claims.UserID) {
-		externalError(w, 409, "team_exists", "This Crew already has a Team. Change it on the Team tab.")
+		externalError(w, 409, "team_exists", "This project already has a Team. Change it on the Team tab.")
 		return
 	}
 	var in crewWizardChoice
@@ -185,7 +185,7 @@ func (api *StreamingAPI) finishCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 		}
 		if !hasPublishedDashboard(r.Context(), target.Root) {
 			if !in.CreateDashboard {
-				externalError(w, 409, "dashboard_needed", "This Crew has no dashboard yet. Create a standard dashboard for the people with Dashboards only access?")
+				externalError(w, 409, "dashboard_needed", "This project has no dashboard yet. Create a standard dashboard for the people with Dashboards only access?")
 				return
 			}
 			if _, _, err := api.ensureDefaultDashboard(r.Context(), claims, target); err != nil || !hasPublishedDashboard(r.Context(), target.Root) {

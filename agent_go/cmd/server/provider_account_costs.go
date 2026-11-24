@@ -152,7 +152,7 @@ func hiddenWorkName(kind string) string {
 	case costOverviewKindWorkflow:
 		return "a workflow you can't see"
 	case costOverviewKindCrew:
-		return "a Crew you can't see"
+		return "a project you can't see"
 	default:
 		return "work you can't see"
 	}

@@ -126,12 +126,12 @@ func readCodeAdminAudit(ctx context.Context, month time.Time) ([]codeAdminAuditE
 func (api *StreamingAPI) codeAdminProfile(w http.ResponseWriter, r *http.Request) (agentprofiles.Profile, *UserClaims, bool) {
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || !currentUserCanReviewCode(r) || api == nil || api.agentProfiles == nil {
-		writeWorkflowPermissionDenied(w, "admin or Crew reviewer")
+		writeWorkflowPermissionDenied(w, "admin or project reviewer")
 		return agentprofiles.Profile{}, nil, false
 	}
 	profile, err := api.agentProfiles.Resolve(workproduct.ProfileID, 0, claims.UserID)
 	if err != nil || !profile.AdminInspection {
-		writeAgentProfileError(w, http.StatusNotFound, "admin inspection is not enabled for Crew")
+		writeAgentProfileError(w, http.StatusNotFound, "admin inspection is not enabled for project")
 		return agentprofiles.Profile{}, nil, false
 	}
 	return profile, claims, true
@@ -194,17 +194,17 @@ func (api *StreamingAPI) codeAdminProject(w http.ResponseWriter, r *http.Request
 	ownerID := sanitizeUserIDForPath(strings.TrimSpace(vars["owner"]))
 	projectID := strings.TrimSpace(vars["project_id"])
 	if ownerID == "" || projectID == "" {
-		writeAgentProfileError(w, http.StatusNotFound, "Crew project not found")
+		writeAgentProfileError(w, http.StatusNotFound, "Project project not found")
 		return profile, nil, "", "", "", false
 	}
 	binding, err := resolveProductProjectBindingWithStore(r.Context(), ownerID, profile, projectID, defaultProductProjectStore())
 	if err != nil {
-		writeAgentProfileError(w, http.StatusNotFound, "Crew project not found")
+		writeAgentProfileError(w, http.StatusNotFound, "Project project not found")
 		return profile, nil, "", "", "", false
 	}
 	root := agentProfileRuntimeWorkspace(ownerID, binding.WorkspacePath)
 	if !crewAdminInspectionAllowed(root) {
-		writeAgentProfileError(w, http.StatusNotFound, "Crew project not found")
+		writeAgentProfileError(w, http.StatusNotFound, "Project project not found")
 		return profile, nil, "", "", "", false
 	}
 	return profile, claims, ownerID, projectID, root, true

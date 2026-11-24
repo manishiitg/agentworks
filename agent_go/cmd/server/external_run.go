@@ -81,7 +81,7 @@ func (api *StreamingAPI) externalRunSessionSetup(w http.ResponseWriter, r *http.
 // to a Crew agent; a workflow run does not create or instruct an assistant.
 func (api *StreamingAPI) externalScriptStart(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow) {
 	if !externalWorkflowIsScript(workflow) {
-		externalError(w, http.StatusBadRequest, "workflow_unavailable", "This workflow uses the retired plan engine. Ask the owner to convert it to a Python workflow in its Crew.")
+		externalError(w, http.StatusBadRequest, "workflow_unavailable", "This workflow uses the retired plan engine. Ask the owner to convert it to a Python workflow in its project.")
 		return
 	}
 	sessionID, persisted, ok := api.externalRunSessionSetup(w, r, args, workflow)

@@ -21,7 +21,7 @@ func (api *StreamingAPI) bindPythonAskExecutors(executors map[string]interface{}
 		name := strings.TrimSpace(externalArg(args, "crew"))
 		visible, err := api.externalCrewsVisible(ctx, &actor, "")
 		if err != nil {
-			return "", fmt.Errorf("Choose a Crew you can access by its exact name or ID.")
+			return "", fmt.Errorf("Choose a project you can access by its exact name or ID.")
 		}
 		matches := []string{}
 		for _, item := range visible {
@@ -31,19 +31,19 @@ func (api *StreamingAPI) bindPythonAskExecutors(executors map[string]interface{}
 			}
 		}
 		if len(matches) != 1 {
-			return "", fmt.Errorf("Choose a Crew you can access by its exact name or ID.")
+			return "", fmt.Errorf("Choose a project you can access by its exact name or ID.")
 		}
 		requestArgs := map[string]interface{}{"crew_id": matches[0], "chat_id": externalArg(args, "chat_id"), "message": externalArg(args, "message"), "submission_id": externalArg(args, "submission_id")}
 		crew, manifest, _, allowed := api.externalCrewResolve(ctx, &actor, matches[0])
 		if !allowed {
-			return "", fmt.Errorf("Choose a Crew you can access by its exact name or ID.")
+			return "", fmt.Errorf("Choose a project you can access by its exact name or ID.")
 		}
 		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: manifest.Title, CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: crew.OwnerID}
 		if err = checkTarget(ctx, target, true); err != nil {
 			return "", err
 		}
 		if caller.isTarget(target) {
-			return "", fmt.Errorf("This script cannot ask its own Crew. Use agent() for work inside this run.")
+			return "", fmt.Errorf("This script cannot ask its own project. Use agent() for work inside this run.")
 		}
 		if err := requireLinkedOwnCrew(ctx, actor.UserID, caller, target); err != nil {
 			return "", err

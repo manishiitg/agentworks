@@ -22,7 +22,7 @@ import (
 
 const (
 	// crewChangeOnMacLine is the one line of the refusal and of the screen.
-	crewChangeOnMacLine = "This Crew lives on your Mac. Change it in the app on your Mac."
+	crewChangeOnMacLine = "This project lives on your Mac. Change it in the app on your Mac."
 	// crewMacPairHeader carries the Crew's pair ID on the Mac's own calls to this server.
 	crewMacPairHeader = "X-AgentWorks-Mac-Pair"
 )

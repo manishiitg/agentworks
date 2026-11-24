@@ -199,7 +199,7 @@ func workspaceEditorURL(editor, target string, line int) string {
 func (api *StreamingAPI) externalWorkspaceEditor(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	project, _, ok := api.readExternalWorkspace(r.Context(), GetUserFromContext(r.Context()), externalArg(args, "workspace_id"))
 	if !ok {
-		externalError(w, 404, "not_found", "Choose your own Crew before opening its editor.")
+		externalError(w, 404, "not_found", "Choose your own project before opening its editor.")
 		return
 	}
 	line := 0

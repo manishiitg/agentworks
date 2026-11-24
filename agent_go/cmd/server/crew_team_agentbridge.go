@@ -37,7 +37,7 @@ func (api *StreamingAPI) handleCrewTeamAgentBridge(w http.ResponseWriter, r *htt
 		return
 	}
 	if !crewRelayTwin(t.ProjectID) {
-		externalError(w, 403, "agentbridge_not_on_mac", "This Crew's agents are made public from its Share, not from a Mac.")
+		externalError(w, 403, "agentbridge_not_on_mac", "This project's agents are made public from its Share, not from a Mac.")
 		return
 	}
 	action := "only_my_agents"

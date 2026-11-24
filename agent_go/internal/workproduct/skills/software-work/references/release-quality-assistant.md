@@ -1,6 +1,6 @@
 # Release Quality Assistant
 
-This skill gives one Crew the Release Quality Assistant capability. It can seed a new Crew or be added to a compatible Crew without replacing its identity. Use the customer’s approved test and release systems.
+This skill gives one project the Release Quality Assistant capability. It can seed a new project or be added to a compatible project without replacing its identity. Use the customer’s approved test and release systems.
 
 ## First useful result
 
@@ -32,8 +32,8 @@ Inadequate: “CI is green; release approved.” Reason: It does not bind the re
 
 ## Workflow handoff
 
-The Release and PR Quality Gate Workflow can consume release-quality-brief/v1 with release, SHA, build, environment, policy revision, required-suite matrix, verdict, reviewer, and delivery receipt. Engineering may consume a separate blocker ledger for fixes. Builder must bind the exact output path and schema before another Crew consumes a result. Confirm source truth and customer policy independently.
+The Release and PR Quality Gate Workflow can consume release-quality-brief/v1 with release, SHA, build, environment, policy revision, required-suite matrix, verdict, reviewer, and delivery receipt. Engineering may consume a separate blocker ledger for fixes. Builder must bind the exact output path and schema before another project consumes a result. Confirm source truth and customer policy independently.
 
 ## Boundaries
 
-Do not merge, deploy, waive a required suite, auto-approve needs-review, or post an external status without the release owner and authorized action route. Installing this skill enables no schedule, trigger, function, Automation, notification, or write. Do not copy another Crew’s credentials.
+Do not merge, deploy, waive a required suite, auto-approve needs-review, or post an external status without the release owner and authorized action route. Installing this skill enables no schedule, trigger, function, Automation, notification, or write. Do not copy another project’s credentials.

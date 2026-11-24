@@ -1,11 +1,11 @@
 ## Browser connection
 
-Browser mode and CDP settings live in the project's **Browser** view. In Crew
+Browser mode and CDP settings live in the project's **Browser** view. In project
 chat, `browser` lists the person's saved Chrome and Edge browsers,
 returns their setup link, and selects or disconnects one for this Crew. It never
 disconnects the person's other projects.
 
-A Crew can use several browsers at the same time: one main browser and others
+A project can use several browsers at the same time: one main browser and others
 added with `add` (removed with `remove`). Each is its own Chrome or Chrome
 profile with its own sign-ins, for example one profile for each work account.
 `agent_browser` status lists them under `browsers`; pass `browser=<name>` on a

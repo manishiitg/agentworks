@@ -65,7 +65,7 @@ const manageMyVaultsDescription = "Your own Vault items: your sign-ins (MCP apps
 	"set_secret {name, value, replace} stores a value the person gave you (replace=true to overwrite an existing name); the answer names the secret and never repeats the value, and you must not either; remove_secret {name}; " +
 	"github_status shows this project’s GitHub selection and reusable saved connections. github_connect {workspace_path, method: saved|gh|pat|oauth, connection_id?, login?, token?} offers gh first on a single-user local installation, PAT on local or server, and optional OAuth last. github_status lists gh_accounts on local installs and reusable connections; method=saved selects connection_id for this project only. With multiple accounts, ask which login to use and pass login. gh copies only that account into separate encrypted storage without switching the terminal account; later gh changes do not change it. pat takes the token you provide. Never repeat the token. github_disconnect unselects GitHub for this project only. Saved connections remain reusable. " +
 	"sync {connection_id}; remove_connection {connection_id}. " +
-	"A Crew made on the server uses only its own Crew vault, shared by its owner and co-owners: crew {crew_id} shows it, and connect, set_secret or remove_secret with crew_id change it. " +
+	"A project made on the server uses only its own project vault, shared by its owner and co-owners: crew {crew_id} shows it, and connect, set_secret or remove_secret with crew_id change it. " +
 	"A person can give you a secret value to store with set_secret, or run `agentworks secret set NAME` in their terminal."
 
 func manageMyVaultsParameters() map[string]interface{} {
@@ -77,11 +77,11 @@ func manageMyVaultsParameters() map[string]interface{} {
 		"required": []string{"operation"},
 		"properties": map[string]interface{}{
 			"operation":      map[string]interface{}{"type": "string", "enum": []string{"project", "project_select", "laptops", "github_status", "github_connect", "github_disconnect", "apps", "crew", "connect", "sign_in", "set_secret", "remove_secret", "sync", "remove_connection"}},
-			"crew_id":        str("A Crew made on the server: crew shows its Crew vault; with connect, set_secret or remove_secret the change goes to that Crew vault instead of your own (its owner and co-owners only)."),
+			"crew_id":        str("A project made on the server: crew shows its project vault; with connect, set_secret or remove_secret the change goes to that project vault instead of your own (its owner and co-owners only)."),
 			"kind":           str("project_select: mcp, shared_secret, google, slack or computer; all_vault_apps with selected true/false turns 'Use all my apps automatically' on or off."),
 			"item_id":        str("project_select: exact item ID from project inventory."),
 			"selected":       map[string]interface{}{"type": "boolean", "description": "project_select: whether this project uses the item."},
-			"workspace_path": str("project / project_select: the Crew or Goal folder; defaults to this chat's project. Access is rechecked."),
+			"workspace_path": str("project / project_select: the project or Goal folder; defaults to this chat's project. Access is rechecked."),
 			"name":           str("set_secret / remove_secret: the secret's name. connect with url: the custom server's name."),
 			"provider":       str("connect: the catalog server's name."),
 			"method":         str("github_connect: gh (local owner only), pat (personal access token), or oauth (browser sign-in)."),
@@ -209,7 +209,7 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 	switch operation {
 	case "crew":
 		if argString(args, "crew_id") == "" {
-			return "", errors.New("Name the Crew (crew_id) whose Crew vault to show.")
+			return "", errors.New("Name the project (crew_id) whose project vault to show.")
 		}
 		contents, err := api.readCrewVault(ctx, argString(args, "crew_id"))
 		if err != nil {
@@ -219,7 +219,7 @@ func (api *StreamingAPI) myVaultsOperation(ctx context.Context, person string, a
 		for _, name := range contents.SecretNames {
 			secrets = append(secrets, vaultSecretShortName(name))
 		}
-		raw, err := json.Marshal(map[string]any{"apps": contents.Apps, "secret_names": secrets, "note": "Every agent, chat and workflow of this Crew uses exactly these; values are never shown."})
+		raw, err := json.Marshal(map[string]any{"apps": contents.Apps, "secret_names": secrets, "note": "Every agent, chat and workflow of this project uses exactly these; values are never shown."})
 		return string(raw), err
 	case "apps":
 		// The Vault catalog: what connect accepts as provider. The gateway route is the admin catalog, which the host's

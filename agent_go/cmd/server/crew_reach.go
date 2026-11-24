@@ -19,7 +19,7 @@ type crewReach struct {
 }
 
 // crewReachNote is the one refusal line.
-const crewReachNote = "This agent isn't in this Crew or its Team, and its Crew is not linked to this one. Link its Crew (ask this chat, or use Linked projects), or ask from that Crew."
+const crewReachNote = "This agent isn't in this project or its Team, and its project is not linked to this one. Link its project (ask this chat, or use Linked projects), or ask from that project."
 
 // crewReachFrom is the reach of the Crew at here. nil means no limit: outside a Crew (MCP), or the person's AgentWorks
 // main agent (owner, 7 Nov). A link read failure still returns this Crew's own reach, with the error.

@@ -58,7 +58,7 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 	store := defaultProductProjectStore()
 	paths, err := listSharedCrewManifestPaths(ctx, store, ownerID, product.ProfileID)
 	if err != nil {
-		return nil, fmt.Errorf("list Crew projects: %w", err)
+		return nil, fmt.Errorf("list project projects: %w", err)
 	}
 	rootPrefix := strings.TrimSuffix(filepath.ToSlash(root), "/") + "/"
 	if len(paths) == 0 {
@@ -269,7 +269,7 @@ func (api *StreamingAPI) registerAccessibleWorkflowListTool(registrar definition
 		return context.WithValue(ctx, UserContextKey, &copy)
 	}
 
-	return register("list_accessible_workflows", "Search AgentWorks workflows the current user may read and every Crew project on the server (each Crew lists its owner). Each result includes its project name and display identity (identity name and icon). In Crew, pass an exact returned workspace_path to attach_workflow_reference for durable access. An empty query lists everything accessible.", map[string]interface{}{
+	return register("list_accessible_workflows", "Search AgentWorks workflows the current user may read and every project project on the server (each project lists its owner). Each result includes its project name and display identity (identity name and icon). In project, pass an exact returned workspace_path to attach_workflow_reference for durable access. An empty query lists everything accessible.", map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
 			"query": map[string]interface{}{"type": "string", "description": "Optional case-insensitive workflow/Crew project name, identity, id, icon, or path search."},
@@ -364,21 +364,21 @@ func (api *StreamingAPI) registerWorkWorkflowReferenceTools(registrar definition
 		return context.WithValue(ctx, UserContextKey, &copy)
 	}
 
-	if err := register("attach_workflow_reference", "Attach another Crew on the server to this Crew as durable context (read-write). Workflows cannot be attached: to use one, run it with run_workflow_trigger or ask its owner agent. Pass only an exact Crew workspace_path returned by list_accessible_workflows, and call only after the user explicitly asks to attach it.", map[string]interface{}{
+	if err := register("attach_workflow_reference", "Attach another project on the server to this project as durable context (read-write). Workflows cannot be attached: to use one, run it with run_workflow_trigger or ask its owner agent. Pass only an exact project workspace_path returned by list_accessible_workflows, and call only after the user explicitly asks to attach it.", map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
-			"workspace_path": map[string]interface{}{"type": "string", "description": "Exact Crew workspace_path returned by list_accessible_workflows."},
+			"workspace_path": map[string]interface{}{"type": "string", "description": "Exact project workspace_path returned by list_accessible_workflows."},
 		},
 		"required": []string{"workspace_path"},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
 		path, _ := args["workspace_path"].(string)
 		if strings.HasPrefix(strings.Trim(strings.TrimSpace(path), "/"), "Workflow/") {
-			return "", fmt.Errorf("a workflow cannot be attached to a Crew; run it with run_workflow_trigger, or call its functions")
+			return "", fmt.Errorf("a workflow cannot be attached to a project; run it with run_workflow_trigger, or call its functions")
 		}
 		canonicalCurrent := canonicalChatHistoryWorkspacePath(userID, workspacePath)
 		if strings.TrimSuffix(strings.TrimSpace(path), "/") == canonicalCurrent {
-			return "", fmt.Errorf("a Crew cannot attach itself as reference context")
+			return "", fmt.Errorf("a project cannot attach itself as reference context")
 		}
 		authorized, readRoots, err := authorizeWorkflowContextPathsWithReadRoots(ctx, []string{path})
 		if err != nil || len(authorized) != 1 {
@@ -397,14 +397,14 @@ func (api *StreamingAPI) registerWorkWorkflowReferenceTools(registrar definition
 		api.emitAgentProfileEvent(sessionID, map[string]interface{}{"type": "work_workflow_references_updated", "workflow_context_paths": paths})
 		encoded, err := json.MarshalIndent(map[string]interface{}{
 			"workflow_context_paths": paths,
-			"note":                   "The project is saved as durable context and file access is active now (Crew references are read-write, workflow references read-only).",
+			"note":                   "The project is saved as durable context and file access is active now (Project references are read-write, workflow references read-only).",
 		}, "", "  ")
 		return string(encoded), err
 	}); err != nil {
 		return err
 	}
 
-	return register("detach_workflow_reference", "Detach one durable Crew reference from this Crew. Pass the exact saved workspace_path.", map[string]interface{}{
+	return register("detach_workflow_reference", "Detach one durable project reference from this project. Pass the exact saved workspace_path.", map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
 			"workspace_path": map[string]interface{}{"type": "string"},
@@ -457,7 +457,7 @@ func readWorkWorkflowReferences(ctx context.Context, workspacePath string) ([]st
 		return nil, fmt.Errorf("decode Work product manifest: %w", err)
 	}
 	if !isProjectProfileID(productManifest.Product) {
-		return nil, fmt.Errorf("workspace is not a Crew or Code project")
+		return nil, fmt.Errorf("workspace is not a project or project")
 	}
 	raw, _, err := readProjectRuntimeManifest(ctx, "work", workspacePath)
 	if err != nil {

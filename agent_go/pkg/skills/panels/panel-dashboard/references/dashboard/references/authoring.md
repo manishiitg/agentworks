@@ -9,14 +9,14 @@ external_tools: ["dashboard"]
 Follow the user’s design and motion preferences. These instructions describe
 platform operations, data access and finished defaults when no design is supplied.
 
-Sharing a product means sharing its dashboard: people use the published work there through Ask and available function buttons. Crew includes projects formerly called Code; existing Builder and Run roles apply to both origins. Use the current dashboard sharing controls and returned links; a copied URL alone does not give access. Describe people as Builder or Run in replies, never as permission-level labels.
+Sharing a product means sharing its dashboard: people use the published work there through Ask and available function buttons. Project includes projects formerly called Code; existing Builder and Run roles apply to both origins. Use the current dashboard sharing controls and returned links; a copied URL alone does not give access. Describe people as Builder or Run in replies, never as permission-level labels.
 
-A private Crew has no automatic dashboard. When sharing needs one, ask before
+A private project has no automatic dashboard. When sharing needs one, ask before
 creating the standard starting page; listing and publishing Actions do not create it.
 That page shows the project content and actions first, with an **Ask about this dashboard**
 button for shared Run users that opens the existing chat. Builders use their existing project chat; dashboard Ask buttons and panels are hidden for them. This starting layout does not constrain
 authored dashboards: their designer can choose an open panel, a button, or both.
-Automatic Crew pages reflect the current callable functions without
+Automatic project pages reflect the current callable functions without
 republishing. Once the owner or their AI edits a page, its content and layout belong to them:
 new functions appear there only when they update the page. The platform does
 not add controls to custom dashboards. Exact revisions and exports stay saved
@@ -258,7 +258,7 @@ for HTML pages; TSX dashboards use the shared components instead.
 
 External connections need `dashboards:read` for discovery, source reads and links.
 Drafts and publication use existing product authoring consent: `builder:chat` for
-workflows, `crews:write` for Crews,
+workflows, `crews:write` for projects,
  Workflow authoring retains its
 companion read/run scopes and Builder enablement. Current account and project
 owner permissions (and workflow editor permissions), product access, connection bounds and folder grants apply.
@@ -306,7 +306,7 @@ export function ReviewAction({ report, item }) {
 ```
 
 The live website returns a `status: 'queued'` receipt; accepted or queued does
-not mean the work completed. An embedded Crew dashboard uses the chat beside
+not mean the work completed. An embedded project dashboard uses the chat beside
 it. Other website hosts use their supplied project-chat handler; the dashboard
 does not choose another project, user or session, or gain new permissions.
 Where the host supports it, optional `{requestId}` deduplicates the same
@@ -319,7 +319,7 @@ step rather than silently falling back or claiming completion.
 
 ## HTML pages: optional native chat widgets
 
-In a managed Crew or workflow dashboard, the designer may add an open
+In a managed project or workflow dashboard, the designer may add an open
 chat panel, a button, or both. Choose the placement, size, label, visibility and
 responsive layout in the dashboard's HTML/CSS. There is no required sidebar.
 For example (dimensions are only an example):
@@ -373,7 +373,7 @@ panel, to make the chat light or dark whatever the app's own mode is. Add
 `data-report-chat-fit="viewport"` to a panel to keep it inside the visible window so its
 composer never sits below the fold.
 
-Crew includes projects formerly called Code. Both use these same widgets and
+Project includes projects formerly called Code. Both use these same widgets and
 the signed-in person’s existing project conversation; Run access stays in Run
 mode. Keep the project identity returned by discovery; do not convert it to
 another origin. Dashboard widgets are for shared Run users only: `chat.available` is false for Builders and preview, even though Builders retain their ordinary project chat and contextual questions. Use the supplied AskButton/ChatPanel or marked HTML controls, never an unconditional custom Ask button. Check
@@ -382,7 +382,7 @@ host; loose HTML documents do not acquire native chat through markup alone.
 
 ## HTML pages: function buttons
 
-In a managed Crew or workflow dashboard, a button can open a native form for one
+In a managed project or workflow dashboard, a button can open a native form for one
 of this project's published functions. Mark it with the function's name:
 
 ```html
@@ -397,7 +397,7 @@ dialog. The page cannot run a function itself: there is no script method, only
 the person's click and Run. The function must be one the signed-in person can
 already use in this project (the owner's published functions); a button naming
 anything else shows that it is unavailable. Button text, placement and styling
-are the designer's choice. Both Crew project origins and workflow dashboards
+are the designer's choice. Both project project origins and workflow dashboards
 support these buttons. The chat’s `/` menu lists the same published functions.
 Current project access and each function’s allowed people are checked by the
 server when called.
@@ -449,11 +449,11 @@ Use dashboard action=export_static for Surge, Vercel, Netlify, Cloudflare Pages,
 
 ### Projects created by the current person
 
-For a Crew dashboard's personal project list, use a normal `created_by_user_id`
+For a project dashboard's personal project list, use a normal `created_by_user_id`
 column and the shared database parameter `{"$current_user_id":true}`. The backend
 resolves it from the signed-in website/MCP caller or the person whose function
-is executing, even when the Crew owner's account supplies execution resources.
-Do not ask a person for their internal ID or save the Crew owner as every creator.
+is executing, even when the project owner's account supplies execution resources.
+Do not ask a person for their internal ID or save the project owner as every creator.
 
 ```tsx
 export async function loadData(report) {

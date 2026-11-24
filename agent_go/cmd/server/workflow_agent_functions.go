@@ -58,7 +58,7 @@ func (api *StreamingAPI) workflowAgentFunctionToolsForRun(ctx context.Context) s
 				return triggerLinkCaller{}, err
 			}
 			if binding != nil && binding.Kind == "script" && resolved.Stamp.ID != binding.CrewID {
-				return triggerLinkCaller{}, fmt.Errorf("the source Crew no longer matches this automation")
+				return triggerLinkCaller{}, fmt.Errorf("the source project no longer matches this automation")
 			}
 			if token := actor.AccessToken; token != nil {
 				if !token.Allows("runs:execute") || !token.AllowsWorkflow(manifest.ID) {
@@ -89,7 +89,7 @@ func (api *StreamingAPI) workflowAgentFunctionToolsForRun(ctx context.Context) s
 						scope = "crews:run"
 					}
 					if !token.Allows(scope) || !token.AllowsCrew(target.CrewID) {
-						return fmt.Errorf("this connection does not allow %s on this Crew", scope)
+						return fmt.Errorf("this connection does not allow %s on this project", scope)
 					}
 				} else if !token.AllowsWorkflow(target.stampID()) || execute && !token.Allows("runs:execute") || !execute && !token.Allows("workflows:read") {
 					return fmt.Errorf("this connection does not allow this workflow function")

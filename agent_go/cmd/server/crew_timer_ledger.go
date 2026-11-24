@@ -19,20 +19,20 @@ func (s *ProjectActionDispatcher) recordCrewTimerAdmission(ctx context.Context, 
 		return nil, nil
 	}
 	if s.api == nil || s.api.scheduler == nil {
-		return nil, fmt.Errorf("Crew timer run ledger is unavailable")
+		return nil, fmt.Errorf("Project timer run ledger is unavailable")
 	}
 	scheduler := s.api.scheduler
 	scheduler.stateStoreMu.RLock()
 	defer scheduler.stateStoreMu.RUnlock()
 	if scheduler.stateStore == nil {
-		return nil, fmt.Errorf("Crew timer run ledger is unavailable")
+		return nil, fmt.Errorf("Project timer run ledger is unavailable")
 	}
 	if err := scheduler.stateStore.RecordAdmittedRun(ctx, schedulerstate.Run{
 		RunID: runID, ScopeType: "crew", ScopeID: job.ProjectID,
 		ScheduleID: job.Schedule.ID, TriggerSource: trigger,
 		ScheduledFor: occurrence, StartedAt: started,
 	}); err != nil {
-		return nil, fmt.Errorf("record Crew timer admission: %w", err)
+		return nil, fmt.Errorf("record project timer admission: %w", err)
 	}
 	scheduleLogf("[CREW_TIMER] admitted crew=%s schedule=%s run=%s trigger=%s", job.ProjectID, job.Schedule.ID, runID, trigger)
 	return scheduler, nil
@@ -43,18 +43,18 @@ func finishCrewTimerEvidence(ctx context.Context, scheduler *SchedulerService, j
 		return nil
 	}
 	terminal := schedulerstate.StateCompleted
-	reason := "Crew timer completed"
+	reason := "Project timer completed"
 	errText := ""
 	if runErr != nil {
 		terminal = schedulerstate.StateFailed
 		errText = runErr.Error()
-		reason = "Crew timer failed"
+		reason = "Project timer failed"
 		if errors.Is(runErr, context.Canceled) {
 			terminal = schedulerstate.StateStopped
-			reason = "Crew timer stopped"
+			reason = "Project timer stopped"
 		}
 	} else {
-		scheduler.transitionScheduleRun(ctx, nil, schedulerstate.Transition{RunID: runID, To: schedulerstate.StateWorkflowFinished, SessionID: sessionID, Reason: "Crew timer turn finished"})
+		scheduler.transitionScheduleRun(ctx, nil, schedulerstate.Transition{RunID: runID, To: schedulerstate.StateWorkflowFinished, SessionID: sessionID, Reason: "Project timer turn finished"})
 	}
 	scheduler.transitionScheduleRun(ctx, nil, schedulerstate.Transition{
 		RunID: runID, To: terminal, SessionID: strings.TrimSpace(sessionID),
@@ -65,7 +65,7 @@ func finishCrewTimerEvidence(ctx context.Context, scheduler *SchedulerService, j
 	scheduler.stateStoreMu.RUnlock()
 	if err != nil || saved.State != terminal {
 		scheduleLogf("[CREW_TIMER] terminal_persistence_failed crew=%s schedule=%s run=%s expected=%s error=%v", job.ProjectID, job.Schedule.ID, runID, terminal, err)
-		return fmt.Errorf("Crew timer terminal evidence was not saved: expected %s, found %s: %v", terminal, saved.State, err)
+		return fmt.Errorf("Project timer terminal evidence was not saved: expected %s, found %s: %v", terminal, saved.State, err)
 	}
 	scheduleLogf("[CREW_TIMER] finished crew=%s schedule=%s run=%s outcome=%s", job.ProjectID, job.Schedule.ID, runID, terminal)
 	return nil

@@ -120,7 +120,7 @@ runtime; a dashboard edit does not authorize workflow source or execution change
 
 ## Optional native chat widgets
 
-In a managed Crew or workflow<!-- product:relays --> or Flow<!-- /product --> dashboard, the designer may add an open
+In a managed project or workflow<!-- product:relays --> or Flow<!-- /product --> dashboard, the designer may add an open
 chat panel, a button, or both. Choose the placement, size, label, visibility and
 responsive layout in the dashboard's HTML/CSS. There is no required sidebar.
 For example (dimensions are only an example):
@@ -172,7 +172,7 @@ panel, to make the chat light or dark whatever the app's own mode is. Add
 `data-report-chat-fit="viewport"` to a panel to keep it inside the visible window so its
 composer never sits below the fold.
 
-Crew includes projects formerly called Code. Both use these same widgets and
+Project includes projects formerly called Code. Both use these same widgets and
 the signed-in person’s existing project conversation; Run access stays in Run
 mode. Keep the project identity returned by discovery; do not convert it to
 another origin. Preview has no conversation: `chat.available` is false. Check
@@ -261,7 +261,7 @@ run stored. Anyone who can open the workflow — owner or read-only — can
 trigger it. The workspace selects MCP servers/tools, secrets (`$SECRET_*`) and
 variables (`$VAR_*`); the authenticated viewer's live MCP<!-- product:mcp-gateway -->/Vault<!-- /product --> permissions
 still govern access. Viewing a workspace does not grant credentials.
-The same runner supports Workflow/Goals, <!-- product:relays -->Flows, <!-- /product -->Crew
+The same runner supports Workflow/Goals, <!-- product:relays -->Flows, <!-- /product -->Project
 project roots. Published static copies cannot run scripts.
 
 The script contract:
@@ -410,7 +410,7 @@ variables is invisible to it — prefer literal paths, or verify those yourself.
 
 ### Builder and Run boundaries
 
-The Crew's Builder owns Dashboard authoring and may create or edit `db/reports/index.html`.
+The project's Builder owns Dashboard authoring and may create or edit `db/reports/index.html`.
 Keep Dashboard-only changes presentational unless the user also asked to change
 workflow behavior or evaluation. Run mode never authors Dashboard pages; it only
 produces the durable data those pages read.
@@ -500,7 +500,7 @@ window.report.ready(async function () {
 
 ## Function buttons
 
-In a managed Crew or workflow dashboard, a button can open a native form for one
+In a managed project or workflow dashboard, a button can open a native form for one
 of this project's published functions. Mark it with the function's name:
 
 ```html
@@ -516,7 +516,7 @@ caller does not acquire those credentials. The page cannot run a function itself
 the person's click and Run. The function must be one the signed-in person can
 already use in this project (the owner's published functions); a button naming
 anything else shows that it is unavailable. Button text, placement and styling
-are the designer's choice. Both Crew project origins and workflow dashboards
+are the designer's choice. Both project project origins and workflow dashboards
 support these buttons. The chat’s `/` menu lists the same published functions.
 Current project access and each function’s allowed people are checked by the
 server when called.

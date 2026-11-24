@@ -19,7 +19,7 @@ import (
 func (api *StreamingAPI) importCrewAgentForkCopy(r *http.Request, offer crewAgentFork, payload crewAgentForkPayload, destination ProductConversationRecord, roots crewroot.Roots) error {
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || claims.UserID != offer.Recipient || destination.ConversationKey != crewAgentForkChatKey(offer) || destination.WorkspacePath != roots.Virtual {
-		return crewAgentForkRefuse("import this fork into your own new chat in the same Crew")
+		return crewAgentForkRefuse("import this fork into your own new chat in the same project")
 	}
 	team, err := readCrewTeam(offer.Project)
 	if err != nil {
@@ -37,7 +37,7 @@ func (api *StreamingAPI) importCrewAgentForkCopy(r *http.Request, offer crewAgen
 func (api *StreamingAPI) saveCrewAgentForkCopy(r *http.Request, offer crewAgentFork, payload crewAgentForkPayload, destination ProductConversationRecord, roots crewroot.Roots) error {
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || claims.UserID != offer.Recipient || destination.ConversationKey != crewAgentForkChatKey(offer) || destination.WorkspacePath != roots.Virtual {
-		return fmt.Errorf("import into your own new chat in this Crew")
+		return fmt.Errorf("import into your own new chat in this project")
 	}
 	if err := validateCrewAgentForkPayload(payload); err != nil {
 		return err

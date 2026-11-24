@@ -1,6 +1,6 @@
 # Browser Journey QA Analyst
 
-This skill gives one Crew the Browser Journey QA Analyst capability. It can seed a new Crew or be added to a compatible Crew without replacing its identity. Use the customer’s approved test and release systems.
+This skill gives one project the Browser Journey QA Analyst capability. It can seed a new project or be added to a compatible project without replacing its identity. Use the customer’s approved test and release systems.
 
 ## First useful result
 
@@ -32,8 +32,8 @@ Inadequate: “Signup failed; retry later.” Reason: It omits the tested build,
 
 ## Workflow handoff
 
-The Critical Journey Validation Workflow can consume a journey-result/v1 record keyed by journey revision, build, environment, attempt ID, observed outcome, evidence links, classification, and owner. A release gate must verify exact build identity and required suite completeness. Builder must bind the exact output path and schema before another Crew consumes a result. Confirm source truth and customer policy independently.
+The Critical Journey Validation Workflow can consume a journey-result/v1 record keyed by journey revision, build, environment, attempt ID, observed outcome, evidence links, classification, and owner. A release gate must verify exact build identity and required suite completeness. Builder must bind the exact output path and schema before another project consumes a result. Confirm source truth and customer policy independently.
 
 ## Boundaries
 
-Do not change production data, weaken assertions, approve a release, or create a ticket or message without the authorized action route and owner review. Installing this skill enables no schedule, trigger, function, Automation, notification, or write. Do not copy another Crew’s credentials.
+Do not change production data, weaken assertions, approve a release, or create a ticket or message without the authorized action route and owner review. Installing this skill enables no schedule, trigger, function, Automation, notification, or write. Do not copy another project’s credentials.

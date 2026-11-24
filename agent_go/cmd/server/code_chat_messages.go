@@ -64,7 +64,7 @@ type codeChatProject struct {
 // someone else's Crew never reaches the owner's tabs.
 func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, workspacePath string) (codeChatProject, error) {
 	denied := codeChatProject{}
-	unavailable := fmt.Errorf("messaging other chats is available only in your own Crew or Code project")
+	unavailable := fmt.Errorf("messaging other chats is available only in your own project or project")
 	if api == nil || api.agentProfiles == nil || strings.TrimSpace(userID) == "" || strings.TrimSpace(sessionID) == "" {
 		return denied, unavailable
 	}
@@ -369,14 +369,14 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				return jsonOut(map[string]interface{}{"chats": describe(project)})
 			}},
-		{"set_my_agent_identity", "Set this agent's own name and purpose (a few words and one short line; either alone keeps the other) so the other agents and people know what it is for. When its own person asks, also save this agent's own standing instructions (instructions). For Main this is the Crew identity (the same as set_work_identity); for a side tab it is that tab's own. An agent can be shared only with a purpose. Only this agent and the person change them; another agent can ask this one to.", map[string]interface{}{
+		{"set_my_agent_identity", "Set this agent's own name and purpose (a few words and one short line; either alone keeps the other) so the other agents and people know what it is for. When its own person asks, also save this agent's own standing instructions (instructions). For Main this is the project identity (the same as set_work_identity); for a side tab it is that tab's own. An agent can be shared only with a purpose. Only this agent and the person change them; another agent can ask this one to.", map[string]interface{}{
 			"type": "object", "properties": map[string]interface{}{
 				"name":            map[string]interface{}{"type": "string", "maxLength": productAgentNameMaxRunes},
 				"examples":        agentPurposeExamplesSchema(),
 				"purpose":         map[string]interface{}{"type": "string", "maxLength": productAgentPurposeMaxRunes},
-				"in_team":         map[string]interface{}{"type": "boolean", "description": "In a Crew with a Team: true (the default) lets the others who build this Crew see this agent and its chat; false is Only me. Only when the person asks."},
-				"when_others_ask": map[string]interface{}{"type": "string", "maxLength": whenOthersAskMaxRunes, "description": "In a Crew with a Team: the person's own rule for what this agent may do when someone else asks it (\"\" clears it). It is added to those turns only; an instruction, not a lock. Only when the person asks."},
-				"instructions":    map[string]interface{}{"type": "string", "maxLength": productAgentInstructionsMaxRunes, "description": "This agent's own standing instructions (several lines; \"\" clears them). Added to this agent's prompt only, after the platform, Crew and Team rules. Save the person's words; only when this agent's own person asks, from their own chat."},
+				"in_team":         map[string]interface{}{"type": "boolean", "description": "In a project with a Team: true (the default) lets the others who build this project see this agent and its chat; false is Only me. Only when the person asks."},
+				"when_others_ask": map[string]interface{}{"type": "string", "maxLength": whenOthersAskMaxRunes, "description": "In a project with a Team: the person's own rule for what this agent may do when someone else asks it (\"\" clears it). It is added to those turns only; an instruction, not a lock. Only when the person asks."},
+				"instructions":    map[string]interface{}{"type": "string", "maxLength": productAgentInstructionsMaxRunes, "description": "This agent's own standing instructions (several lines; \"\" clears them). Added to this agent's prompt only, after the platform, project and Team rules. Save the person's words; only when this agent's own person asks, from their own chat."},
 			}},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
 				ctx = trusted(ctx)
@@ -507,7 +507,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil {
 					if !claims.AccessToken.Allows("crews:write") || !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(project.ProjectID)) {
-						return "", fmt.Errorf("this connection does not allow forking this Crew chat")
+						return "", fmt.Errorf("this connection does not allow forking this project chat")
 					}
 				}
 				tabModel, err := newTabModelFromArgs(args)
@@ -572,7 +572,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil {
 					if !claims.AccessToken.Allows("crews:write") || !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(project.ProjectID)) {
-						return "", fmt.Errorf("this connection does not allow deleting this Crew's chats")
+						return "", fmt.Errorf("this connection does not allow deleting this project's chats")
 					}
 				}
 				chat, err := project.find(strings.TrimSpace(stringToolArg(args, "chat")))
@@ -639,7 +639,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				return jsonOut(map[string]interface{}{"moved_under": parentName, "name": chat.Name, "next": chat.Name + " is back under " + parentName + " in the left menu."})
 			}},
-		{"group_project_chats", "Arrange the person's own left-menu groups of this Crew's agents when they ask (\"put research and ui in a group called Design\"). op new puts chat in a new group called name; move puts chat in the existing group (empty group takes it out); rename renames group to name; ungroup removes group (its agents stay). chat is an id or name from list_project_chats and may be a teammate's agent shared with the Team. A fork follows its parent, so group the parent. Groups are layout only: they never change who can open or message an agent.", map[string]interface{}{
+		{"group_project_chats", "Arrange the person's own left-menu groups of this project's agents when they ask (\"put research and ui in a group called Design\"). op new puts chat in a new group called name; move puts chat in the existing group (empty group takes it out); rename renames group to name; ungroup removes group (its agents stay). chat is an id or name from list_project_chats and may be a teammate's agent shared with the Team. A fork follows its parent, so group the parent. Groups are layout only: they never change who can open or message an agent.", map[string]interface{}{
 			"type": "object", "required": []string{"op"}, "properties": map[string]interface{}{
 				"op":    map[string]interface{}{"type": "string", "enum": []string{"new", "move", "rename", "ungroup"}},
 				"chat":  map[string]interface{}{"type": "string", "description": "new, move: the agent's id or name."},

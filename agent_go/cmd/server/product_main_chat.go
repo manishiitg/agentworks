@@ -32,14 +32,14 @@ func originalMainChatKey(projectID, conversationID string) string {
 // The text never tells people to create an agent when Main is missing (Team
 // decision, 12 Nov): that wording pushed people to make agents they did not
 // need when they only wanted Main.
-var errChooseProjectAgent = errors.New("Main isn't ready yet. Open this Crew again in a moment.")
+var errChooseProjectAgent = errors.New("Main isn't ready yet. Open this project again in a moment.")
 
 // mainNotReadyError is errChooseProjectAgent for someone who is not the Crew's
 // owner: only the owner opening the Crew sets its Main up.
 type mainNotReadyError struct{ owner string }
 
 func (e mainNotReadyError) Error() string {
-	return e.owner + "'s Main isn't ready yet. Ask " + e.owner + " to open this Crew once, then try again."
+	return e.owner + "'s Main isn't ready yet. Ask " + e.owner + " to open this project once, then try again."
 }
 
 func (e mainNotReadyError) Is(target error) bool { return target == errChooseProjectAgent }

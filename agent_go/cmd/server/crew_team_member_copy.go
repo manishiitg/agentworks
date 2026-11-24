@@ -29,11 +29,11 @@ import (
 func crewTeamMemberCopyRoot(project, member string) (string, error) {
 	rec, ok := crewOwnerRecord(project)
 	if !ok || rec.Folder == "" {
-		return "", fmt.Errorf("this Crew's folder is unavailable")
+		return "", fmt.Errorf("this project's folder is unavailable")
 	}
 	roots, found, err := crewStorageRoots("Crew/" + rec.Folder)
 	if err == nil && !found {
-		err = fmt.Errorf("this Crew's folder is unavailable")
+		err = fmt.Errorf("this project's folder is unavailable")
 	}
 	if err != nil {
 		return "", err

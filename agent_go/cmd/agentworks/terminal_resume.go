@@ -103,13 +103,13 @@ func terminalLocalFolder(ref chatterminal.Reference, hint string) (string, error
 				continue
 			}
 			if hint != "" && hint != f.Root {
-				return "", fmt.Errorf("more than one local folder matches this chat; open its Crew in the Mac app")
+				return "", fmt.Errorf("more than one local folder matches this chat; open its project in the Mac app")
 			}
 			hint = f.Root
 		}
 	}
 	if !filepath.IsAbs(hint) {
-		return "", fmt.Errorf("this chat needs its Crew or synced Team folder on this laptop first")
+		return "", fmt.Errorf("this chat needs its project or synced Team folder on this laptop first")
 	}
 	root, e := filepath.EvalSymlinks(hint)
 	if e != nil {
@@ -143,7 +143,7 @@ func localCrewFolders() ([]localCrewFolder, error) {
 		e = json.Unmarshal(raw, &doc)
 	}
 	if e != nil {
-		return nil, fmt.Errorf("this server chat needs its project files on this laptop. Open its Crew or synced Team folder in the Mac app first")
+		return nil, fmt.Errorf("this server chat needs its project files on this laptop. Open its project or synced Team folder in the Mac app first")
 	}
 	var out []localCrewFolder
 	for _, record := range doc.Projects {

@@ -16,7 +16,7 @@ learnings, script context and KB contribution targets. The presence of a
 conditional section here does not grant access. Actual tool registration and
 the rendered Folder Guard determine the current session's permissions.
 
-These are shared runtime templates, not commands for starting work. Provider instructions, selected skills, account/browser context and supplementary sections are assembled separately. Read current saved run records, source snapshots and logs for execution evidence. A template is not a fully rendered conversation or a permission grant. New workflow authoring uses the saved Python program and its current Crew guide.
+These are shared runtime templates, not commands for starting work. Provider instructions, selected skills, account/browser context and supplementary sections are assembled separately. Read current saved run records, source snapshots and logs for execution evidence. A template is not a fully rendered conversation or a permission grant. New workflow authoring uses the saved Python program and its current project guide.
 
 {{define "execution"}}# {{if .StepTitle}}{{.StepTitle}}{{else}}Workflow step{{end}}
 
@@ -148,7 +148,7 @@ Use each helper's named tool for a result in the same call. Alternatively,
 end the turn to receive its completion notification. Never report completion
 while an owned script is running. Inspect an exact script with `query_sub_agent`
 or `get_sub_agent_conversation`; use `stop_sub_agent` to cancel it.
-LLM specialists belong to an agent step with the needed Crew configuration.
+LLM specialists belong to an agent step with the needed project configuration.
 {{end}}
 
 {{define "managed-db-read"}}## Workflow database

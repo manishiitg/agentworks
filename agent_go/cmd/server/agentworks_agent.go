@@ -65,7 +65,7 @@ func agentWorksSpec() crewSpec {
 	}
 	return crewSpec{
 		Name:           agentWorksName,
-		Purpose:        "Your own agent: reaches your other agents and Crews and does what you ask.",
+		Purpose:        "Your own agent: reaches your other agents and projects and does what you ask.",
 		SelectedSkills: available,
 		Files: map[string]string{
 			"notes/overview.md": "# Overview (keep this file current)\n\nRead this at the start of a turn.\n\n## State\nNothing recorded yet.\n",
@@ -131,7 +131,7 @@ func (api *StreamingAPI) ensureAgentWorks(ctx context.Context, userID string, cr
 // isAgentWorksCrew reports whether the project at root is someone's AgentWorks.
 // agentWorksPrivateLine is what every share path says for the person's own AgentWorks project (owner, 10 Nov: "that
 // should remain private always"). The marker is the server-set role in product.json, never the display name.
-const agentWorksPrivateLine = "Your AgentWorks project stays private; share another Crew instead."
+const agentWorksPrivateLine = "Your AgentWorks project stays private; share another project instead."
 
 // agentWorksPrivateRoot and agentWorksPrivateProject are asked by every path that shares a Crew (Team, people, Run
 // share, public links, Slack bot) before it saves; the answer is the server's, the screens only show the line.

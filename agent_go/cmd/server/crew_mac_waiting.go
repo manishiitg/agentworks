@@ -62,7 +62,7 @@ var (
 
 func crewMacWaitingPath(project string) (string, error) {
 	if project == "" || strings.ContainsAny(project, `/\`) || project == "." || project == ".." {
-		return "", fmt.Errorf("invalid Crew identity")
+		return "", fmt.Errorf("invalid project identity")
 	}
 	state, err := crewroot.StateRoot()
 	return filepath.Join(state, "crew-sync", project+"-mac-waiting.json"), err
@@ -459,7 +459,7 @@ func (api *StreamingAPI) refuseOrphanedMemberHeld(project string, people []strin
 		if held.Person == "" || slices.Contains(people, held.Person) {
 			continue
 		}
-		notice := "This agent didn't get your message: its person no longer works on their Mac in this Crew. Send it again to reach them where they work now."
+		notice := "This agent didn't get your message: its person no longer works on their Mac in this project. Send it again to reach them where they work now."
 		if held.Inbox != "" {
 			if err := api.appendMacAgentReply(held.Inbox, held.From, notice); err != nil && !errors.Is(err, os.ErrNotExist) {
 				continue

@@ -1288,7 +1288,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) createExecutionOnlyAgent(ctx context.
 					}
 				}
 				if !bound {
-					return nil, fmt.Errorf("This workflow's database tools are unavailable. Ask its Crew chat to reconnect them, then retry.")
+					return nil, fmt.Errorf("This workflow's database tools are unavailable. Ask its project chat to reconnect them, then retry.")
 				}
 			}
 		}

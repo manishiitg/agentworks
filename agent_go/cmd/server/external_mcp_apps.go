@@ -40,7 +40,7 @@ func dashboardAppSelectorSchema() json.RawMessage {
 }
 
 func externalDashboardAppDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("open_dashboard", "Open a published Crew dashboard inline or return its website link. Pass resource_id. Opening starts no work.", false, false, dashboardAppSelectorProperties())
+	add("open_dashboard", "Open a published project dashboard inline or return its website link. Pass resource_id. Opening starts no work.", false, false, dashboardAppSelectorProperties())
 }
 
 // The resource contains only application code. Project data is delivered by
@@ -64,7 +64,7 @@ func (api *StreamingAPI) registerExternalDashboardApp(s *server.MCPServer, r *ht
 		origin := base.Scheme + "://" + base.Host
 		return []mcp.ResourceContents{mcp.TextResourceContents{URI: dashboardAppURI, MIMEType: dashboardAppMIME, Text: page, Meta: map[string]any{"ui": map[string]any{"csp": map[string]any{"connectDomains": []string{}, "resourceDomains": []string{}, "frameDomains": []string{origin}}}}}}, nil
 	})
-	open := mcp.NewToolWithRawSchema("open_dashboard", "Open a published Crew dashboard inline. Pass resource_id. Opening starts no work and also returns its website link.", dashboardAppSelectorSchema())
+	open := mcp.NewToolWithRawSchema("open_dashboard", "Open a published project dashboard inline. Pass resource_id. Opening starts no work and also returns its website link.", dashboardAppSelectorSchema())
 	open.Meta = &mcp.Meta{AdditionalFields: map[string]any{"ui": map[string]any{"resourceUri": dashboardAppURI}}}
 	readOnly := true
 	open.Annotations.ReadOnlyHint = &readOnly
@@ -92,7 +92,7 @@ func (api *StreamingAPI) dashboardAppTarget(r *http.Request, args map[string]any
 		return resolved, err
 	}
 	if !resolved.Capability.CanView || resolved.Target.Kind != "crew" {
-		return resolvedDashboardQuestion{}, dashboardFailure(404, "Open an accessible Crew dashboard; other products use their website link.")
+		return resolvedDashboardQuestion{}, dashboardFailure(404, "Open an accessible project dashboard; other products use their website link.")
 	}
 	return resolved, nil
 }

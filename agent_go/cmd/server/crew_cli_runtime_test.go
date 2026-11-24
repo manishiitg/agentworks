@@ -86,7 +86,7 @@ func TestCrewChatModesSeparatePromptSkillsAndSessionIdentity(t *testing.T) {
 	if builder.Prompt == run.Prompt || agentProfileSessionKey(builder) == agentProfileSessionKey(run) {
 		t.Fatal("Run shares Builder prompt or session fingerprint")
 	}
-	if strings.Contains(run.Prompt, "set_work_identity") || strings.Contains(run.Prompt, "When asked for another Crew") {
+	if strings.Contains(run.Prompt, "set_work_identity") || strings.Contains(run.Prompt, "When asked for another project") {
 		t.Fatalf("Run prompt inherited authoring instructions: %s", run.Prompt)
 	}
 	if !slices.Contains(buildReq.SelectedSkills, "crew-builder") {

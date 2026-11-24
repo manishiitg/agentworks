@@ -76,23 +76,23 @@ func (api *StreamingAPI) handleCrewChatUpload(w http.ResponseWriter, r *http.Req
 	}
 	projectID := strings.TrimSpace(mux.Vars(r)["project_id"])
 	if mux.Vars(r)["id"] != "work" {
-		writeAgentProfileError(w, http.StatusNotFound, "Open an available Crew, then attach the file again.")
+		writeAgentProfileError(w, http.StatusNotFound, "Open an available project, then attach the file again.")
 		return
 	}
 	crew, _, _, ok := api.externalCrewResolve(r.Context(), claims, projectID)
 	if !ok {
-		writeAgentProfileError(w, http.StatusNotFound, "This Crew is unavailable. Ask its owner to share it with you, then attach the file again.")
+		writeAgentProfileError(w, http.StatusNotFound, "This project is unavailable. Ask its owner to share it with you, then attach the file again.")
 		return
 	}
 	if token := claims.AccessToken; token != nil && !token.Allows("crews:run") && !token.Allows("crews:write") {
-		writeAgentProfileError(w, http.StatusForbidden, "Allow this connection to use the Crew, then attach the file again.")
+		writeAgentProfileError(w, http.StatusForbidden, "Allow this connection to use the project, then attach the file again.")
 		return
 	}
 	folder, mode, limit := "uploads", "Builder", int64(10<<20)
 	if !crew.OwnedByCaller {
 		folder, mode, limit = "shared/"+sanitizeUserIDForPath(claims.UserID), "Run", crewSharedFileMaxBytes
 	} else if status, _ := externalCrewAuthorGate(claims); status != 0 {
-		writeAgentProfileError(w, status, "This account cannot add Crew files. Ask an administrator to allow file uploads.")
+		writeAgentProfileError(w, status, "This account cannot add project files. Ask an administrator to allow file uploads.")
 		return
 	}
 	// A chat attachment goes as chunks (chunk_transfer.go), after the checks above; a dashboard's small upload stays one

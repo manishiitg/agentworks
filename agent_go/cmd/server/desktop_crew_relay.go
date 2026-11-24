@@ -101,7 +101,7 @@ func (api *StreamingAPI) existingCrewRelayTwin(ctx context.Context, claims *User
 			// Unavailable settings or scoped consent do not mean the source
 			// needs another identity. Repair the existing project instead.
 			log.Printf("[CREW_RELAY] event=create_refused project=%s actor=%s reason=existing_twin_unavailable", id, logUsernameForUserID(claims.UserID))
-			return "", nil, fmt.Errorf("This Mac Crew already has a project on this server. Open it with a connection that can access it, or repair its settings.")
+			return "", nil, fmt.Errorf("This Mac project already has a project on this server. Open it with a connection that can access it, or repair its settings.")
 		}
 		return id, b, nil
 	}
@@ -112,7 +112,7 @@ func handleCrewSyncCapabilities(w http.ResponseWriter, r *http.Request) {
 	externalJSON(w, map[string]bool{"relay": true, "shared_agents": true})
 }
 
-const macCrewShareBlocked = "This Crew lives on your Mac. To let people use it while your Mac is off, share the agent they use with your Team: their asks wait for it, or after 10 minutes their agents can read its Live chat."
+const macCrewShareBlocked = "This project lives on your Mac. To let people use it while your Mac is off, share the agent they use with your Team: their asks wait for it, or after 10 minutes their agents can read its Live chat."
 
 // crewRelayTwin reports a server Crew that is only the empty twin of a Mac Crew.
 func crewRelayTwin(id string) bool {

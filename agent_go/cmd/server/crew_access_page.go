@@ -47,7 +47,7 @@ func crewAccessMacCardFor(online bool, status, line string, teamOn bool) *crewAc
 }
 
 func crewAccessMacOnline(mac string, teamOn bool) *crewAccessMacCard {
-	return crewAccessMacCardFor(true, "Online · "+mac, "Your files and chats are saved only on this Mac, never on the server. Your Mac does the work; use this Crew from the website and phone while it is on.", teamOn)
+	return crewAccessMacCardFor(true, "Online · "+mac, "Your files and chats are saved only on this Mac, never on the server. Your Mac does the work; use this project from the website and phone while it is on.", teamOn)
 }
 
 var crewAccessMacTabs = func() []crewAccessTab {
@@ -62,7 +62,7 @@ var crewAccessMacTabs = func() []crewAccessTab {
 // and AgentBridge. Slack stays in Connections (owner, 15 Nov).
 var crewAccessPeopleTabs = []crewAccessTab{
 	{ID: "team", Label: "Team", Detail: "people who work on it with you", Group: "team"},
-	{ID: "dashboards", Label: "Artifacts", Detail: "what this Crew publishes", Group: "online"},
+	{ID: "dashboards", Label: "Artifacts", Detail: "what this project publishes", Group: "online"},
 }
 
 var crewAccessTeamTab = crewAccessPeopleTabs
@@ -71,7 +71,7 @@ var crewAccessTeamTab = crewAccessPeopleTabs
 // the Access panel with Shared with and Co-owners.
 var crewAccessCoOwnerTabs = []crewAccessTab{
 	{ID: "team", Label: "Co-owners", Detail: "people who build it with you", Group: "team"},
-	{ID: "dashboards", Label: "Artifacts", Detail: "what this Crew publishes", Group: "online"},
+	{ID: "dashboards", Label: "Artifacts", Detail: "what this project publishes", Group: "online"},
 }
 
 // crewAccessPage fills the Access page's fields of a crew-sync status reply, from what the reply already says.
@@ -91,7 +91,7 @@ func crewAccessPage(out *crewSyncReply) {
 		}
 		switch {
 		case b == nil:
-			out.AccessMac = crewAccessMacCardFor(false, "Only on "+name, "Your files and chats are saved only on this Mac, never on the server. Turn on to use this Crew from the website and your phone.", teamOn)
+			out.AccessMac = crewAccessMacCardFor(false, "Only on "+name, "Your files and chats are saved only on this Mac, never on the server. Turn on to use this project from the website and your phone.", teamOn)
 		case b.Editing == "local":
 			out.AccessMac = crewAccessMacOnline(name, teamOn)
 		}
@@ -136,7 +136,7 @@ func crewAccessPage(out *crewSyncReply) {
 // is never taken offline on its own. The main owner turns the Team off first (only they can).
 const (
 	crewTeamOnlineLine       = "Stays on while the Team is on"
-	crewTeamOnOfflineRefused = "The Team is on, so this Crew stays online. Turn the Team off first to take it offline."
+	crewTeamOnOfflineRefused = "The Team is on, so this project stays online. Turn the Team off first to take it offline."
 )
 
 // crewTeamKeepsMacOnline: on the Mac, its copy of this Crew's Team record says the Team is on.

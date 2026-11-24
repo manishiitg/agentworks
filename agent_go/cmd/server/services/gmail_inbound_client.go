@@ -174,7 +174,7 @@ func (c GmailInboundClient) List(ctx context.Context, since int64, addresses []s
 				break
 			}
 			if n == 99 {
-				return nil, fmt.Errorf("Crew email backlog exceeds 100 pages; check position retained")
+				return nil, fmt.Errorf("Project email backlog exceeds 100 pages; check position retained")
 			}
 		}
 	}

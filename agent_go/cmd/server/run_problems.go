@@ -280,7 +280,7 @@ func (api *StreamingAPI) handleCrewRunProblems(w http.ResponseWriter, r *http.Re
 	case "Run now":
 		job, found := jobs[p.ScheduleID]
 		if !found {
-			externalError(w, http.StatusNotFound, "schedule_gone", "This schedule is gone. Ask the Crew's agent to run the workflow.")
+			externalError(w, http.StatusNotFound, "schedule_gone", "This schedule is gone. Ask the project's agent to run the workflow.")
 			return
 		}
 		if _, err := api.projectActions.Trigger(r.Context(), claims.UserID, job.ID()); err != nil {

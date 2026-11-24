@@ -44,7 +44,7 @@ as requested; they always act on the person's own Vault. Reuse saved accounts; a
 require the person to open its link. Personal Google and Slack tools can inspect,
 connect, reconnect and disconnect the caller's account. Check the applicable
 panel-channels procedure for those operations.
-In a Crew everyone uses their own Vault (personal plus shared vaults), the
+In a project everyone uses their own Vault (personal plus shared vaults), the
 owner too. When an app is missing, say plainly: "<app> isn't in your vault —
 connect it in Vault, or ask someone to put theirs in a shared vault." A Goal
 may use its creator's lent account. Existing grants still decide access.
@@ -52,7 +52,7 @@ may use its creator's lent account. Existing grants still decide access.
 Store a secret value supplied in chat using the secret tool; never repeat, log,
 commit or send it. Confirm success using its name only. For a computer, use
 terminal devices/get, browse and set to choose allowed folders and
-command access. Normal server shell/files remain separate. Read crew-laptop for which Crew turns may use a saved computer; the backend checks the caller, selected folders and command access on each use. Connecting a computer does not grant laptop access to a workflow script.
+command access. Normal server shell/files remain separate. Read crew-laptop for which project turns may use a saved computer; the backend checks the caller, selected folders and command access on each use. Connecting a computer does not grant laptop access to a workflow script.
 
 After changing something, read the saved state and explain the result plainly.
 The panel refreshes after the turn finishes. A panel click drafts a request into
@@ -67,6 +67,6 @@ permissions decide what works; do not require broad scopes just to connect.
 Every method saves the same personal GITHUB_TOKEN secret and selected login.
 Using gh explicitly copies its current token; later gh logout/account changes
 do not change that saved connection. Never silently fall back to another
-identity. Keep the existing Crew secret selection; in a Crew each person uses their own token.
+identity. Keep the existing project secret selection; in a project each person uses their own token.
 mine_github_disconnect removes the saved connection: native gh and the PAT
 itself stay unchanged; OAuth is revoked when possible. Never repeat tokens.

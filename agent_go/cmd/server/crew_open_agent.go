@@ -60,7 +60,7 @@ func (api *StreamingAPI) crewOpeningAgent(r *http.Request, profile agentprofiles
 				return requested, nil
 			}
 		}
-		return "", fmt.Errorf("Choose an available agent in this Crew.")
+		return "", fmt.Errorf("Choose an available agent in this project.")
 	}
 	for _, choice := range choices {
 		if choice.IsMain {

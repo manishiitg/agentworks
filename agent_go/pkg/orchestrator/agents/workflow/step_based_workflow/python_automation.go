@@ -335,7 +335,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 			}
 			execute, ok := hcpo.WorkspaceToolExecutors[name].(func(context.Context, map[string]interface{}) (string, error))
 			if !ok || execute == nil {
-				call.Reply = pythonHelperReply{Error: "This send tool is unavailable; check the automation's connected account in Crew chat."}
+				call.Reply = pythonHelperReply{Error: "This send tool is unavailable; check the automation's connected account in project chat."}
 			} else if result, err := execute(ctx, arguments); err != nil {
 				call.Reply = pythonHelperReply{Error: err.Error()}
 			} else {

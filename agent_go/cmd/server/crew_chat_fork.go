@@ -53,7 +53,7 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if slot.profile.ID != crewProfileID || !slot.canBuild || !canUseCapLayerProfile(r.Context(), slot.profile.ID) {
-		externalError(w, 403, "fork_unavailable", "Open one of your own Crew chats to fork it.")
+		externalError(w, 403, "fork_unavailable", "Open one of your own project chats to fork it.")
 		return
 	}
 	source, found, err := crewTabForKey(r.Context(), user, slot.profile.ID, slot.binding.ConversationKey, slot.binding.WorkspacePath)
@@ -206,7 +206,7 @@ func (api *StreamingAPI) forkCrewNativeRuntime(r *http.Request, source, destinat
 		return nil, err
 	}
 	if !found {
-		return nil, fmt.Errorf("Crew runtime unavailable")
+		return nil, fmt.Errorf("Project runtime unavailable")
 	}
 	return api.copyCrewNativeFork(r, roots, source, destination, original)
 }

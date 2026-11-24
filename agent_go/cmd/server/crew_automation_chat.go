@@ -34,7 +34,7 @@ func validateExecutableSchedule(ctx context.Context, sctx *ScheduleContext) erro
 	}
 	owner, ok := crewProjectOwnerID(sctx.CrewExecutable.CrewRoot)
 	if !ok || owner == "" || sctx.OwnerUserID != owner || directoryUserIsDisabled(&UserClaims{UserID: owner}) {
-		return fmt.Errorf("this Crew's execution owner is unavailable")
+		return fmt.Errorf("this project's execution owner is unavailable")
 	}
 	chat := strings.TrimSpace(sctx.Schedule.ChatID)
 	if chat == "" {
@@ -56,7 +56,7 @@ func prepareCrewExecutableSchedules(ctx context.Context, root string, manifest *
 	for i := range manifest.Schedules {
 		schedule := &manifest.Schedules[i]
 		if owner := workflowExecutionOwnerUserID(manifest); schedule.RunAs != "" && schedule.RunAs != owner {
-			return fmt.Errorf("automation must run as its Crew owner")
+			return fmt.Errorf("automation must run as its project owner")
 		}
 		// Script timers execute Python directly: no agent can fill missing inputs.
 		// Pausing stays possible; webhook/function caller values arrive later.
@@ -90,7 +90,7 @@ func (s *SchedulerService) openCrewAutomationChat(ctx context.Context, sctx *Sch
 		return nil, nil
 	}
 	if s.api == nil || s.api.projectActions == nil || s.api.projectActions.registry == nil {
-		return nil, fmt.Errorf("Crew chats are unavailable")
+		return nil, fmt.Errorf("Project chats are unavailable")
 	}
 	profile, err := s.api.projectActions.registry.Resolve("work", 0, sctx.OwnerUserID)
 	if err != nil {
@@ -108,7 +108,7 @@ func (s *SchedulerService) openCrewAutomationChat(ctx context.Context, sctx *Sch
 		return nil, err
 	}
 	if canonicalCrewWorkspaceRoot(binding.WorkspacePath) != sctx.CrewExecutable.CrewRoot {
-		return nil, fmt.Errorf("automation chat belongs to another Crew")
+		return nil, fmt.Errorf("automation chat belongs to another project")
 	}
 	record, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, sctx.OwnerUserID, profile, binding, "")
 	if err != nil {

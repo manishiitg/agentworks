@@ -35,12 +35,12 @@ type pendingPublication struct {
 
 func publishCommand(o *options) *cobra.Command {
 	var name, resume, crew, agentID string
-	cmd := &cobra.Command{Use: "publish", Short: "Publish this project's files and this exact chat to a hosted Crew", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "publish", Short: "Publish this project's files and this exact chat to a hosted project", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		return runPublish(cmd.Context(), o, name, resume, crew, agentID)
 	}}
-	cmd.Flags().StringVar(&name, "name", "", "Crew name (default: project folder name)")
-	cmd.Flags().StringVar(&crew, "crew", "", "Add an agent to this existing Crew (workspace ID from workspace list)")
-	cmd.Flags().StringVar(&agentID, "agent-id", "", "Republish this stable agent ID in the selected Crew")
+	cmd.Flags().StringVar(&name, "name", "", "Project name (default: project folder name)")
+	cmd.Flags().StringVar(&crew, "crew", "", "Add an agent to this existing project (workspace ID from workspace list)")
+	cmd.Flags().StringVar(&agentID, "agent-id", "", "Republish this stable agent ID in the selected project")
 	cmd.Flags().StringVar(&resume, "resume", "", "Resume this publication receipt after an interrupted upload")
 	return cmd
 }
@@ -150,9 +150,9 @@ func runPublish(ctx context.Context, o *options, name, resume, crew, agentID str
 		account, _ := json.Marshal(receipt["account"])
 		fmt.Fprintln(o.stderr, "Runs on the disclosed company account:", string(account))
 		if target == "" {
-			fmt.Fprintln(o.stderr, "New Crew starts Only me.")
+			fmt.Fprintln(o.stderr, "New project starts Only me.")
 		} else {
-			fmt.Fprintln(o.stderr, "Existing Crew instructions and Share are preserved.")
+			fmt.Fprintln(o.stderr, "Existing project instructions and Share are preserved.")
 		}
 		audience, _ := json.Marshal(receipt["share"])
 		fmt.Fprintln(o.stderr, "Share:", string(audience))
@@ -196,7 +196,7 @@ func runPublish(ctx context.Context, o *options, name, resume, crew, agentID str
 	_ = os.RemoveAll(filepath.Dir(pending.Archive))
 	_ = os.Remove(filepath.Join(state, pending.Operation+".json"))
 	if !o.jsonOutput {
-		fmt.Fprintln(o.stderr, "Published. Your Crew works while this computer is offline. Server chat continues from a private summary; native resume comes later.")
+		fmt.Fprintln(o.stderr, "Published. Your project works while this computer is offline. Server chat continues from a private summary; native resume comes later.")
 	}
 	return o.output(receipt)
 }

@@ -567,7 +567,7 @@ func ValidateManifest(m *WorkflowManifest) error {
 
 	if m.Capabilities.BrowserMode != "" {
 		if err := browser.ValidateMode(m.Capabilities.BrowserMode); err != nil {
-			return fmt.Errorf("capabilities.browser_mode: %w; in this Crew's chat, check upgrade status and use repair_browser_mode for a retired mode", err)
+			return fmt.Errorf("capabilities.browser_mode: %w; in this project's chat, check upgrade status and use repair_browser_mode for a retired mode", err)
 		}
 	}
 
@@ -797,7 +797,7 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 	}
 	if binding != nil {
 		if m.ID != binding.ID {
-			return nil, false, fmt.Errorf("executable identity does not match its registered Crew binding")
+			return nil, false, fmt.Errorf("executable identity does not match its registered project binding")
 		}
 		m.crewExecutable = binding
 		m.CreatedBy, _ = crewProjectOwnerID(binding.CrewRoot)

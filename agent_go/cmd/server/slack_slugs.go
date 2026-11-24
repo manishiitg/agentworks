@@ -127,7 +127,7 @@ func slackNamedTargets(ctx context.Context, registry *services.SlackTargetsRegis
 		// every agent tool build lists the targets.
 		if !slackTargetExists(ctx, ref) {
 			if _, seen := slackMissingTargetsLogged.LoadOrStore(ref.WorkspacePath, struct{}{}); !seen {
-				log.Printf("[SLACK_TARGETS] skipped %s: its workflow or Crew no longer exists (entry kept)", ref.WorkspacePath)
+				log.Printf("[SLACK_TARGETS] skipped %s: its workflow or project no longer exists (entry kept)", ref.WorkspacePath)
 			}
 			continue
 		}

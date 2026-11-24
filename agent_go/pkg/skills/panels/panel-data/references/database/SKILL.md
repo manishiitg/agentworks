@@ -4,4 +4,4 @@ Use `database action=query` to inspect rows, `describe` for tables/columns and `
 
 For database-backed dashboard data and project actions, Read [the detailed procedure](references/project-data.md).
 
-Crew Builder and Run chats receive the managed database as a direct tool. Shared people can query, describe and check its integrity; changing data stays with the existing Builder checks. A published function keeps its owner's authority. Use the offered tool directly; no terminal is needed.
+Project Builder and Run chats receive the managed database as a direct tool. Shared people can query, describe and check its integrity; changing data stays with the existing Builder checks. A published function keeps its owner's authority. Use the offered tool directly; no terminal is needed.

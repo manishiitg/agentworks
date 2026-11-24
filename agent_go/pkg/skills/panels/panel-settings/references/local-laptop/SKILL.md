@@ -1,8 +1,8 @@
 # Local laptop
 
-Use the Crew's Local laptop entry for its selected computer, folders and command access. Read panel-access for the current panel inventory and crew-laptop for the execution and account rules. A connected computer does not sync the Crew's files.
+Use the project's Local laptop entry for its selected computer, folders and command access. Read panel-access for the current panel inventory and crew-laptop for the execution and account rules. A connected computer does not sync the project's files.
 
-Use terminal devices/get first, browse to find a folder, then set the complete saved choice or remove it when requested. The devices reply gives install and connect instructions. External MCP selects the Crew with workspace_id. Read access and Read & write are separate from the command switch. Commands use the connected person's environment, files and logins; never expose sign-in files or send server secrets to the laptop. Read back the saved selection and grants before reporting success.
+Use terminal devices/get first, browse to find a folder, then set the complete saved choice or remove it when requested. The devices reply gives install and connect instructions. External MCP selects the project with workspace_id. Read access and Read & write are separate from the command switch. Commands use the connected person's environment, files and logins; never expose sign-in files or send server secrets to the laptop. Read back the saved selection and grants before reporting success.
 
 Use terminal action=local_files, local_write, local_copy (local_path to project_path) and local_execute only where offered for that Crew. Normal server files and shell remain separate. The backend's saved folder, command, caller and connection checks decide whether a particular turn can use the computer; follow crew-laptop rather than inferring access from a visible connection.
 

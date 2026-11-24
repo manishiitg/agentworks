@@ -75,12 +75,12 @@ func planCrewTeamFolderSelections(out io.Writer) error {
 				// only avoids EnsurePrivateRoot/EnsureAutomation writes during this preview.
 				roots, found, resolveErr := crewroot.LookupForRemoval(fsutil.WorkspaceDocsRoot(), crewProjectRootByID(saved.Project))
 				if resolveErr != nil {
-					return fmt.Errorf("project %s: Crew root resolution failed", saved.Project)
+					return fmt.Errorf("project %s: Project root resolution failed", saved.Project)
 				}
 				if found {
 					entries, readErr := os.ReadDir(roots.Files)
 					if readErr != nil && !os.IsNotExist(readErr) {
-						return fmt.Errorf("project %s: Crew root listing failed", saved.Project)
+						return fmt.Errorf("project %s: Project root listing failed", saved.Project)
 					}
 					if readErr == nil {
 						row.Root = "found"

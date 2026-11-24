@@ -7,8 +7,8 @@ menu destination instead of inventing a Secrets UI-open target. Opening a page
 is not a saved selection or successful secret write.
 
 - Call `vault action=list` before creating, replacing, or deleting a secret.
-- Whose Vault: in a Crew, everyone uses their own Vault, the owner included:
-  their personal vault (all their own apps and secrets, in every Crew) plus
+- Whose Vault: in a project, everyone uses their own Vault, the owner included:
+  their personal vault (all their own apps and secrets, in every project) plus
   the shared vaults they are in. A chosen secret or app means "my own one"
   (same secret name, same app). To let everyone use one, put it in a shared
   vault. A Goal uses its creator's.
@@ -27,7 +27,7 @@ is not a saved selection or successful secret write.
   `capabilities.selected_global_secret_names`, using the AgentWorks workflow contract.
   Secret values remain encrypted outside the manifest. <!-- product:mcp-gateway -->Shared Vault credentials also require the executing user's current group permission.<!-- /product --> Respect the user's
   selections under **Secrets**; do not attach an unrelated credential.
-- A reference to another workflow or Crew does not itself grant its secrets.
-<!-- product:mcp-gateway -->- All secrets are stored in Vault. In a Crew each person uses their own; a Goal's are lent by its creator. Credentials shared with colleagues go in a company Vault group, which a Vault administrator manages. Select exact Vault names with the product's secret selection; do not change grants without a request.
+- A reference to another workflow or project does not itself grant its secrets.
+<!-- product:mcp-gateway -->- All secrets are stored in Vault. In a project each person uses their own; a Goal's are lent by its creator. Credentials shared with colleagues go in a company Vault group, which a Vault administrator manages. Select exact Vault names with the product's secret selection; do not change grants without a request.
 <!-- /product -->- Never print, echo, store in project files, or otherwise reveal a secret
   value. Refer to secrets by name.

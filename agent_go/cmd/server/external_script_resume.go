@@ -34,7 +34,7 @@ func setRunResumeCapability(ctx context.Context, manifest *WorkflowManifest, wor
 
 func (api *StreamingAPI) externalScriptResume(w http.ResponseWriter, r *http.Request, item DiscoveredWorkflow, args map[string]any) {
 	if !canManagePythonResume(r.Context(), item.Manifest) {
-		externalError(w, 403, "forbidden", "Only this Crew's Builder can resume a failed run. Start a new run or ask its owner to resume it.")
+		externalError(w, 403, "forbidden", "Only this project's Builder can resume a failed run. Start a new run or ask its owner to resume it.")
 		return
 	}
 	if !externalWorkflowIsScript(item) {

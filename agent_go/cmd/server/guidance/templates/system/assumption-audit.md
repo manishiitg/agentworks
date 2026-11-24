@@ -10,13 +10,13 @@ prevents the workflow from reaching its goal.
 For each consequential restriction, classify it as exactly one of:
 
 1. **Explicit user constraint** — the user stated or approved it as durable.
-   Preserve it. The Crew's instructions, a User rule card, or direct user
+   Preserve it. The project's instructions, a User rule card, or direct user
    evidence should support this classification.
 2. **Verified external constraint** — a current platform/API/legal/business fact
    supported by evidence. Preserve it with source/freshness; schedule a re-check
    when it can change.
 3. **Current design choice** — an evidence-backed tactic or architecture that is
-   useful now but remains replaceable. Keep it out of the Crew's instructions; describe it as
+   useful now but remains replaceable. Keep it out of the project's instructions; describe it as
    the current approach, not a permanent truth.
 4. **Agent-inferred assumption** — hardcoded or inherited without user approval or
    current evidence. Challenge, remove, generalize, parameterize, or propose a
@@ -50,7 +50,7 @@ an outcome question. Do not confuse the two.
 
 ### Bounded action
 
-1. Read the Crew's instructions for stable intent, but do not trust architecture
+1. Read the project's instructions for stable intent, but do not trust architecture
    or an unproven assumption merely because older text contains it.
 2. Inspect only assumptions relevant to this command's artifact and direct
    consumers/producers. Do not turn targeted maintenance into a full audit.

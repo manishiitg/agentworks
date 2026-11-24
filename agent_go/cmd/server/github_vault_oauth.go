@@ -267,7 +267,7 @@ func startGitHubConnect(person, redirect, root, projectID string) (string, error
 	}
 	if root == "" {
 		githubPending.Unlock()
-		return "", errors.New("Choose a Crew for this GitHub connection.")
+		return "", errors.New("Choose a project for this GitHub connection.")
 	}
 	githubPending.m[state] = &githubPendingConnect{person: person, redirect: redirect, workspace: root, projectID: projectID, created: time.Now()}
 	githubPending.Unlock()

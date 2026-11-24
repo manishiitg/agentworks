@@ -393,7 +393,7 @@ func crewSkippedSecretsNote(ctx context.Context, userID, workspacePath string, s
 		return ""
 	}
 	names := strings.Join(missing, ", ")
-	return "\n\n[This Crew uses the secret(s) " + names + ", which are not in the vault of the person you are working for, so their $SECRET_ variables are empty in this chat. When a task needs one, or something fails for lack of it, tell the person once in plain words: this Crew uses NAME, which isn't in your vault, so I ran without it; add your own NAME in Vault (My accounts), or ask someone to put it in a shared vault you are in.]"
+	return "\n\n[This project uses the secret(s) " + names + ", which are not in the vault of the person you are working for, so their $SECRET_ variables are empty in this chat. When a task needs one, or something fails for lack of it, tell the person once in plain words: this project uses NAME, which isn't in your vault, so I ran without it; add your own NAME in Vault (My accounts), or ask someone to put it in a shared vault you are in.]"
 }
 
 // missingVaultSecrets lists the short names of selected secrets the person cannot use. A name with no stored value

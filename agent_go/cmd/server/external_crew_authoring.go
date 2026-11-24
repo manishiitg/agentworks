@@ -44,7 +44,7 @@ const (
 	crewSpecMaxFunctions  = 50
 	crewSpecMaxSchedules  = 20
 	crewPurposeLimit      = 1000
-	crewSharingModel      = "A Crew has one main owner (its creator). A Crew on the server has co-owners who build it too (crew_owners; only the owner adds or removes them); a Crew on a Mac has its Team instead. New Crews start Only me. Use Share (Only me / Chosen people / Everyone) to let others open it, ask it and call its functions; only its owner and co-owners or Team members edit it."
+	crewSharingModel      = "A project has one main owner (its creator). A project on the server has co-owners who build it too (crew_owners; only the owner adds or removes them); a project on a Mac has its Team instead. New projects start Only me. Use Share (Only me / Chosen people / Everyone) to let others open it, ask it and call its functions; only its owner and co-owners or Team members edit it."
 )
 
 // crewSpec is the portable Crew definition: create_crew's input, export_crew's
@@ -175,11 +175,11 @@ func crewIdentityChecks(name, purpose string) error {
 func crewSpecFilePath(root, rel string) (string, error) {
 	clean := strings.TrimSpace(rel)
 	if clean == "" || path.IsAbs(clean) || path.Clean(clean) != clean || strings.HasPrefix(clean, "../") || clean == crewFunctionsFileName || clean == ".git" || strings.HasPrefix(clean, ".git/") {
-		return "", fmt.Errorf("file path %q is not an editable Crew file", rel)
+		return "", fmt.Errorf("file path %q is not an editable project file", rel)
 	}
 	full, ok := confineSharedProjectPath(root, clean)
 	if !ok {
-		return "", fmt.Errorf("file path %q is not an editable Crew file", rel)
+		return "", fmt.Errorf("file path %q is not an editable project file", rel)
 	}
 	return full, nil
 }
@@ -252,7 +252,7 @@ func checkCrewSkillsAvailable(ctx context.Context, root string, names []string, 
 				continue
 			}
 		}
-		return fmt.Errorf("skill %q is not installed in this Crew; ship it under files as %s or install it in this Crew", name, crewLocalSkillManifest(name))
+		return fmt.Errorf("skill %q is not installed in this project; ship it under files as %s or install it in this project", name, crewLocalSkillManifest(name))
 	}
 	return nil
 }
@@ -268,14 +268,14 @@ func normalizeCrewSpec(spec crewSpec) (crewSpec, error) {
 		return spec, instructionsErr
 	}
 	if strings.TrimSpace(spec.Role) != "" {
-		return spec, fmt.Errorf("role is set by the platform; remove it from the Crew settings")
+		return spec, fmt.Errorf("role is set by the platform; remove it from the project settings")
 	}
 	if config := spec.LLMConfig; config != nil {
 		if config.SchemaVersion != 2 || config.Mode != workflowtypes.LLMConfigModeExplicit && config.Mode != workflowtypes.LLMConfigModeProviderProfile {
 			return spec, fmt.Errorf("choose an existing model configuration")
 		}
 		if config.Mode == workflowtypes.LLMConfigModeExplicit && (config.BuilderLLM == nil || strings.TrimSpace(config.BuilderLLM.Provider) == "" || strings.TrimSpace(config.BuilderLLM.ModelID) == "") || config.Mode == workflowtypes.LLMConfigModeProviderProfile && strings.TrimSpace(config.Provider) == "" {
-			return spec, fmt.Errorf("choose a provider and model for this Crew")
+			return spec, fmt.Errorf("choose a provider and model for this project")
 		}
 	}
 	if spec.Kind != "" && spec.Kind != crewSpecKind {
@@ -328,10 +328,10 @@ func externalCrewAuthorGate(claims *UserClaims) (int, string) {
 		return http.StatusForbidden, "This account is disabled."
 	}
 	if workflowAccessForClaims(claims) == WorkflowAccessRead {
-		return http.StatusForbidden, "Read-only accounts cannot create or edit Crews."
+		return http.StatusForbidden, "Read-only accounts cannot create or edit projects."
 	}
 	if !productEnabled("work") || !userAllowedProduct(claims, "work") {
-		return http.StatusForbidden, "The Crew product is not available to this account."
+		return http.StatusForbidden, "The project product is not available to this account."
 	}
 	return 0, ""
 }
@@ -343,7 +343,7 @@ func crewCreateGate(claims *UserClaims) (int, string) {
 		return status, message
 	}
 	if !userAccessForClaims(claims).CanCreateIn("work") {
-		return http.StatusForbidden, "This account cannot create Crews. An administrator can allow it under the account's create permissions."
+		return http.StatusForbidden, "This account cannot create projects. An administrator can allow it under the account's create permissions."
 	}
 	return 0, ""
 }
@@ -368,7 +368,7 @@ func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *htt
 		// A new Crew is outside any Crew list a bounded token names; only
 		// a connection reaching all of the user's Crews may mint one.
 		if claims.AccessToken != nil && !claims.AccessToken.AllCrews {
-			externalError(w, http.StatusForbidden, "insufficient_scope", "Creating a Crew needs a connection that covers all your Crews.")
+			externalError(w, http.StatusForbidden, "insufficient_scope", "Creating a project needs a connection that covers all your projects.")
 			return
 		}
 		var spec crewSpec
@@ -407,13 +407,13 @@ func (api *StreamingAPI) externalCrewAuthoringCall(w http.ResponseWriter, r *htt
 	case "update_crew", "export_crew":
 		crew, manifest, summary, ok := api.externalCrewResolve(ctx, claims, externalArg(args, "crew_id"))
 		if !ok {
-			externalError(w, http.StatusNotFound, "not_found", "Crew not found or not allowed for this connection.")
+			externalError(w, http.StatusNotFound, "not_found", "Project not found or not allowed for this connection.")
 			return
 		}
 		// Export carries the Crew's skill files and function instructions,
 		// which Run-mode users never see; only those who build the Crew (its owner and Team) may take it away.
 		if !crew.OwnedByCaller {
-			externalError(w, http.StatusForbidden, "forbidden", fmt.Sprintf("Only the people who build this Crew (its owner, %v, and its Team) can %s it.", summary["owner"], strings.TrimSuffix(name, "_crew")))
+			externalError(w, http.StatusForbidden, "forbidden", fmt.Sprintf("Only the people who build this project (its owner, %v, and its Team) can %s it.", summary["owner"], strings.TrimSuffix(name, "_crew")))
 			return
 		}
 		if name == "update_crew" && refuseCrewOwnerOnline(w, r, manifest.ID, claims.UserID) {
@@ -457,7 +457,7 @@ func externalCrewCreateError(crewID string, err error) string {
 	if crewID == "" {
 		return err.Error()
 	}
-	return fmt.Sprintf("Crew %s was created but not finished: %v. Fix it with workspace action=update.", crewID, err)
+	return fmt.Sprintf("Project %s was created but not finished: %v. Fix it with workspace action=update.", crewID, err)
 }
 
 func remarshalExternalArgs(raw any, out any) error {
@@ -505,7 +505,7 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 			return "", fmt.Errorf("%s", message)
 		}
 	} else if claims == nil || strings.TrimSpace(claims.UserID) == "" {
-		return "", fmt.Errorf("Sign in to create a Crew.")
+		return "", fmt.Errorf("Sign in to create a project.")
 	}
 	spec, err := normalizeCrewSpec(spec)
 	if err != nil {
@@ -517,7 +517,7 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 			return "", err
 		}
 		if creation.Role != "" {
-			return "", fmt.Errorf("platform Crews use managed folders")
+			return "", fmt.Errorf("platform projects use managed folders")
 		}
 	}
 	if err := checkCrewSkillsAvailable(ctx, "", spec.SelectedSkills, spec.Files); err != nil {
@@ -527,7 +527,7 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 		return "", fmt.Errorf("schedules are unavailable on this server")
 	}
 	if api.agentProfiles == nil {
-		return "", fmt.Errorf("the Crew product is unavailable")
+		return "", fmt.Errorf("the project product is unavailable")
 	}
 	userID := claims.UserID
 	profile, err := api.agentProfiles.Resolve(profileID, 0, userID)
@@ -536,7 +536,7 @@ func (api *StreamingAPI) createWorkspace(ctx context.Context, claims *UserClaims
 	}
 	projectsRoot, err := projectProfileProjectsRoot(profile, userID)
 	if err != nil {
-		return "", fmt.Errorf("invalid Crew projects root: %w", err)
+		return "", fmt.Errorf("invalid project projects root: %w", err)
 	}
 	runtimeRoot := crewCreationRoot(profileID, agentProfileRuntimeWorkspace(userID, projectsRoot))
 	crewID := uuid.NewString()
@@ -959,7 +959,7 @@ func externalCrewSpecSchemas() (map[string]any, map[string]any, map[string]any) 
 	fnSpec := map[string]any{"type": "object", "additionalProperties": false, "required": []any{"name", "description", "instructions"}, "properties": map[string]any{
 		"name":          str("snake_case function name, e.g. triage_ticket."),
 		"description":   str("What the function does, for callers."),
-		"instructions":  str("What the Crew does when this function is called."),
+		"instructions":  str("What the project does when this function is called."),
 		"input_schema":  jsonSchema,
 		"result_schema": jsonSchema,
 		"execution":     map[string]any{"type": "string", "enum": []any{"tab", runDestinationNew}, "description": crewFunctionExecutionHelp},
@@ -969,7 +969,7 @@ func externalCrewSpecSchemas() (map[string]any, map[string]any, map[string]any) 
 		"id":              str("Schedule ID (update only; from workspace action=get)."),
 		"name":            str("Schedule name."),
 		"description":     str("Optional note."),
-		"message":         str("The instruction sent to the Crew on each run."),
+		"message":         str("The instruction sent to the project on each run."),
 		"messages":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Several instructions, sent one turn at a time."},
 		"cron_expression": str("Five-field cron, e.g. 0 9 * * 1-5."),
 		"timezone":        str("IANA timezone, e.g. Asia/Kolkata."),
@@ -979,14 +979,14 @@ func externalCrewSpecSchemas() (map[string]any, map[string]any, map[string]any) 
 		"run_destination": map[string]any{"type": "string", "enum": runDestinationEnumAny(), "description": runDestinationHelp},
 	}}
 	props := map[string]any{
-		"root_path":         str("Local app only, at creation: full path of an existing folder to use directly. Crew resources are kept in its .agentworks folder; existing files and instructions are preserved. Omit for a managed folder."),
+		"root_path":         str("Local app only, at creation: full path of an existing folder to use directly. Project resources are kept in its .agentworks folder; existing files and instructions are preserved. Omit for a managed folder."),
 		"schema_version":    map[string]any{"type": "integer"},
 		"kind":              map[string]any{"type": "string", "enum": []any{crewSpecKind}},
 		"name":              map[string]any{"type": "string", "minLength": 1, "maxLength": 60, "description": "Display name."},
 		"chat_instructions": map[string]any{"type": "string", "maxLength": workflowtypes.ChatInstructionsLimit, "description": "Optional shared app chat guidance. No secrets; never grants authority."},
-		"purpose":           map[string]any{"type": "string", "minLength": 1, "maxLength": crewPurposeLimit, "description": "What the Crew is for and how it works; its standing instructions."},
+		"purpose":           map[string]any{"type": "string", "minLength": 1, "maxLength": crewPurposeLimit, "description": "What the project is for and how it works; its standing instructions."},
 		"selected_skills":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Skill folder names: built-in, installed on the server, or shipped under files as skills/<name>/SKILL.md."},
-		"files":             map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Crew-relative text files (path -> content), e.g. skills/<name>/SKILL.md. Manifests, functions.json, builder/ and db/ are refused."},
+		"files":             map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Project-relative text files (path -> content), e.g. skills/<name>/SKILL.md. Manifests, functions.json, builder/ and db/ are refused."},
 		"functions":         map[string]any{"type": "array", "items": fnSpec},
 		"schedules":         map[string]any{"type": "array", "items": scheduleSpec},
 	}
@@ -1054,7 +1054,7 @@ func (api *StreamingAPI) externalCrewWriteRequest(w http.ResponseWriter, r *http
 	refused := wf.WriteRequest{}
 	crew, _, _, ok := api.externalCrewResolve(ctx, claims, externalArg(args, "crew_id"))
 	if !ok {
-		externalError(w, http.StatusNotFound, "not_found", "Crew not found or not allowed for this connection.")
+		externalError(w, http.StatusNotFound, "not_found", "Project not found or not allowed for this connection.")
 		return refused, false
 	}
 	rel := externalArg(args, "path")
@@ -1064,7 +1064,7 @@ func (api *StreamingAPI) externalCrewWriteRequest(w http.ResponseWriter, r *http
 	sharedFolder := "shared/" + sanitizeUserIDForPath(claims.UserID)
 	inOwnShared := err == nil && strings.HasPrefix(clean, sharedFolder+"/")
 	if !crew.OwnedByCaller && !inOwnShared {
-		externalError(w, http.StatusForbidden, "forbidden", "Only the people who build this Crew (its owner and Team) can write its files; you can add files under "+sharedFolder+"/ .")
+		externalError(w, http.StatusForbidden, "forbidden", "Only the people who build this project (its owner and Team) can write its files; you can add files under "+sharedFolder+"/ .")
 		return refused, false
 	}
 	if crew.OwnedByCaller && !inOwnShared && claims.AccessToken != nil && !claims.AccessToken.Allows("crews:write") {
@@ -1072,7 +1072,7 @@ func (api *StreamingAPI) externalCrewWriteRequest(w http.ResponseWriter, r *http
 		return refused, false
 	}
 	if _, pathErr := crewSpecFilePath(root, rel); pathErr != nil || err != nil || wf.ProtectedWrite(clean) {
-		externalError(w, http.StatusForbidden, "protected_path", "That path is not an editable Crew file (manifests, functions.json, chats, databases and hidden folders are protected).")
+		externalError(w, http.StatusForbidden, "protected_path", "That path is not an editable project file (manifests, functions.json, chats, databases and hidden folders are protected).")
 		return refused, false
 	}
 	_, hasText := args["content"]

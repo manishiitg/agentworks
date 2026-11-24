@@ -45,7 +45,7 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 			}
 			_ = json.Unmarshal(raw, &failure)
 			log.Printf("[CREW_DASHBOARDS] project=%s action=list status=%d code=%q reason=%q", t.ProjectID, status, failure.Error.Code, failure.Error.Message)
-			externalError(w, http.StatusConflict, "dashboards_unavailable", "This Crew's dashboards can't be read right now.")
+			externalError(w, http.StatusConflict, "dashboards_unavailable", "This project's dashboards can't be read right now.")
 			return nil, false
 		}
 		if err := r.Context().Err(); err != nil {
@@ -53,7 +53,7 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 		}
 		if err := json.Unmarshal(raw, &page); err != nil {
 			log.Printf("[CREW_DASHBOARDS] project=%s action=list status=%d reason=%q", t.ProjectID, status, err)
-			externalError(w, http.StatusConflict, "dashboards_unavailable", "This Crew's dashboards can't be read right now.")
+			externalError(w, http.StatusConflict, "dashboards_unavailable", "This project's dashboards can't be read right now.")
 			return nil, false
 		}
 

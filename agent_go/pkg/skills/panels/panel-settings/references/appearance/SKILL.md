@@ -2,7 +2,7 @@
 
 Make original personal themes through `settings action=appearance` (or the
 native `appearance` tool: omit action), not app source edits. A theme changes
-only the signed-in person's own look, never a Crew, sharing, providers, files or
+only the signed-in person's own look, never a project, sharing, providers, files or
 other people. The screen is a small Light/Dark/saved-theme picker with Ask an
 agent, Text size (12–20px) and Font. Only Default Light and Default Dark are
 built in; every other look is the person's own data.
@@ -99,9 +99,9 @@ one-detail change.
 Write the file with your normal write tool, then pass
 `css_file={path:"themes/itachi.css"}` and/or `script_file={path:"themes/stars.js"}`
 on apply, save or preview, with `theme.background_script.fps` for a script. In a
-Crew's own chat `crew_id` is that Crew; elsewhere add `crew_id` from
-`list_crews`. Paths are relative to the Crew's folder; no `_files/`,
-`.agentworks/`, absolute host paths or URLs. Normal Crew file access applies.
+Project's own chat `crew_id` is that project; elsewhere add `crew_id` from
+`list_crews`. Paths are relative to the project's folder; no `_files/`,
+`.agentworks/`, absolute host paths or URLs. Normal project file access applies.
 CSS files hold at most 128 KiB, scripts 64 KiB. Do not combine `css_file` with
 `theme.css`, or `script_file` with `theme.background_script.code`.
 
@@ -368,7 +368,7 @@ person keeps up to 100 items: at the limit, delete one before importing.
 Themes using a deleted item show their normal background.
 
 **Images.** `import_image` with `image_file:{crew_id?,path}` (a PNG/JPEG/WebP in
-a Crew you can read) or, on the person's own Mac only, `image_path` with one
+a project you can read) or, on the person's own Mac only, `image_path` with one
 absolute or `~/` path (for “the beach photo in my Downloads”, look only in
 `~/Downloads` with the authorized file tools and ask when ambiguous). Up to
 5 MB and 16 million pixels; larger than 3840×2160 is fitted; metadata is

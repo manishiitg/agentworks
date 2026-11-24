@@ -17,20 +17,20 @@ func (api *StreamingAPI) externalLaptopRoot(w http.ResponseWriter, r *http.Reque
 	// The merged terminal tool passes the same Crew as crew_id.
 	if crewID := externalArg(args, "crew_id"); crewID != "" {
 		if workspaceID != "" {
-			externalError(w, 400, "invalid_arguments", "Pass workspace_id or crew_id for a Crew, not both.")
+			externalError(w, 400, "invalid_arguments", "Pass workspace_id or crew_id for a project, not both.")
 			return "", false
 		}
 		workspaceID = crewID
 	}
 	if workspaceID == "" {
-		externalError(w, 400, "invalid_arguments", "Choose a Crew with workspace_id or crew_id.")
+		externalError(w, 400, "invalid_arguments", "Choose a project with workspace_id or crew_id.")
 		return "", false
 	}
 	crew, _, ok := api.resolveExternalWorkspace(r.Context(), caller, workspaceID)
 	if ok && laptopProjectAllowed(r.Context(), caller, crew.Binding.WorkspacePath) {
 		return agentProfileRuntimeWorkspace(caller.UserID, crew.Binding.WorkspacePath), true
 	}
-	externalError(w, 403, "forbidden", "Choose a Crew you own with this connection.")
+	externalError(w, 403, "forbidden", "Choose a project you own with this connection.")
 	return "", false
 }
 

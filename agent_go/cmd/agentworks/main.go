@@ -76,7 +76,7 @@ var cliOperationGroups = []struct {
 	{"guidance", "Load server-owned external guidance", []struct{ command, tool string }{{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}, {"skills", "get_guidance_skills"}}},
 	{"knowledge", "Inspect workflow learnings, notes, and skills", []struct{ command, tool string }{{"list", "list_workflow_knowledge"}, {"read", "read_workflow_knowledge"}}},
 	{"functions", "List, call and manage project functions", []struct{ command, tool string }{{"triggers", "list_crew_attached_triggers"}, {"run-trigger", "run_crew_attached_trigger"}, {"trigger-status", "get_crew_attached_trigger_run"}, {"list", "project_functions_list"}, {"call", "project_functions_call"}, {"call-status", "project_functions_get_call"}, {"call-file", "project_functions_get_call"}}},
-	{"crews", "Discover, call, create, edit, export, and import Crews", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"search", "search_crew_files"}, {"read", "read_crew_file"}, {"ask", "ask_crew"}, {"create", "create_crew"}, {"update", "update_crew"}, {"put", "write_crew_file"}, {"export", "export_crew"}, {"import", "import_crew"}}},
+	{"crews", "Discover, call, create, edit, export, and import projects", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"search", "search_crew_files"}, {"read", "read_crew_file"}, {"ask", "ask_crew"}, {"create", "create_crew"}, {"update", "update_crew"}, {"put", "write_crew_file"}, {"export", "export_crew"}, {"import", "import_crew"}}},
 }
 
 func main() {
@@ -537,11 +537,11 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 		f.String("workflow", "", "Workflow ID (workflow_id)")
 	}
 	if crewTool && tool != "list_crews" && tool != "project_functions_get_call" && tool != "create_crew" && tool != "import_crew" {
-		f.String("crew", "", "Crew ID from crews list (crew_id)")
+		f.String("crew", "", "Project ID from crews list (crew_id)")
 	}
 	switch tool {
 	case "create_crew":
-		f.String("idempotency-key", "", "One key per intended Crew; reuse it for an unchanged retry")
+		f.String("idempotency-key", "", "One key per intended project; reuse it for an unchanged retry")
 
 	case "project_functions_call":
 		f.String("function", "", "Function name from functions list")
@@ -549,7 +549,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	case "project_functions_get_call":
 		f.String("call", "", "call_id returned by functions call")
 	case "ask_crew":
-		f.String("message", "", "Conversational message for the Crew")
+		f.String("message", "", "Conversational message for the project")
 		f.String("inbox", "", "Reuse the inbox_id returned by a previous send")
 		f.String("submission-id", "", "Unique message submission ID; reuse after uncertain delivery")
 	}
@@ -653,7 +653,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 		}
 		if cmd.Name() == "send" {
 			f.String("target", "", "Authorized target agent name")
-			f.String("crew", "", "Crew ID")
+			f.String("crew", "", "Project ID")
 			f.String("workflow", "", "Workflow ID")
 			f.String("message", "", "Message to send; no reply is required")
 			f.String("submission-id", "", "Unique message submission ID; reuse after uncertain delivery")

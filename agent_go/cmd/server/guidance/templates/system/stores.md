@@ -1,10 +1,10 @@
 # Files, knowledge and durable data
 
 Read `panel-data` and the relevant reference before changing a store. Inspect the
-Crew's current instructions, selected skills, permitted Brain notes, table
+Project's current instructions, selected skills, permitted Brain notes, table
 contracts and relevant run evidence rather than inventing a parallel store.
 
-- Standing rules belong in the Crew's instructions; verified project facts and
+- Standing rules belong in the project's instructions; verified project facts and
   decisions belong in its memory. Reusable procedures belong in a narrowly
   scoped `skills/<name>/SKILL.md`, with long detail in supporting files. Change
   a reusable procedure when the person asks; do not save raw chats or secrets.
@@ -27,13 +27,13 @@ contracts and relevant run evidence rather than inventing a parallel store.
   rows; never drop/recreate or replace an entire shared table to refresh data.
   Backend-owned concern, human-input, audit and schema tables are not workflow
   output tables. Historical evaluation rows are not new evaluation targets.
-- Durable files use the Crew's permitted artifact paths with metadata pointing
+- Durable files use the project's permitted artifact paths with metadata pointing
   to them where needed. Keep temporary run outputs separate from persistent
   records. Pass ordinary Python values between functions rather than inventing
   old plan `context_output`/dependency contracts. A persistence failure remains
   a failure even when analysis succeeded.
 
-Parent Python's `agentworks.files.read` uses the authorized own-Crew resolver;
+Parent Python's `agentworks.files.read` uses the authorized own-project resolver;
 it is not a general Brain reader. Native agents use file tools. Report scripts
 have their own permissions and do not inherit parent file helpers or durable
 workflow data access. Dashboards use the current managed query/get/run APIs;

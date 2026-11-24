@@ -7,9 +7,9 @@ description: Read before creating or changing a workflow in a Crew. New workflow
 
 A new workflow is a Python script: a `script.json` that declares its inputs and outputs, and a `main.py` that does the work with the `agentworks` helpers. There is no plan file to build. Ordinary Python decides the order: functions, `if`/`elif`, loops.
 
-## Several workflows per Crew
+## Several workflows per project
 
-A Crew can have several workflows, each with its own name (unique in the Crew), ID, files, runs and tasks. Make a separate workflow for a separate purpose (for example one for GitHub and one for Slack). A new task of the same job is a new path inside its workflow, not a new workflow:
+A project can have several workflows, each with its own name (unique in the project), ID, files, runs and tasks. Make a separate workflow for a separate purpose (for example one for GitHub and one for Slack). A new task of the same job is a new path inside its workflow, not a new workflow:
 
 - Add an input that picks the task (for example `TASK`) and an `if`/`elif` branch for it in `main.py`.
 - Save a preset (a saved setting) for that task, such as `{"name": "Weekly report", "values": {"TASK": "report"}}`.
@@ -27,7 +27,7 @@ import gate
 gate.run_gate()
 ```
 
-First list this Crew's workflows with `crew_workflow_files action=list`. Change the matching workflow for a new task of the same job; create another one for a different purpose. A name already used by another workflow of the Crew is refused (HTTP409), so pick a different name. To make one, use `crew_workflow_files action=create kind=script` with a `name` and a `description` (one or two plain sentences saying what the workflow is for; always give it), then write `script.json`, `main.py` and helper files with its `write` action. Run from Crew chat with the admitted bound `runs action=start`, or `functions action=run_trigger` using the returned workflow address, and inspect the saved result. The workflow page shows steps, files and runs; ask for changes in chat.
+First list this project's workflows with `crew_workflow_files action=list`. Change the matching workflow for a new task of the same job; create another one for a different purpose. A name already used by another workflow of the project is refused (HTTP409), so pick a different name. To make one, use `crew_workflow_files action=create kind=script` with a `name` and a `description` (one or two plain sentences saying what the workflow is for; always give it), then write `script.json`, `main.py` and helper files with its `write` action. Run from project chat with the admitted bound `runs action=start`, or `functions action=run_trigger` using the returned workflow address, and inspect the saved result. The workflow page shows steps, files and runs; ask for changes in chat.
 
 ## External MCP and CLI
 
@@ -39,11 +39,11 @@ for script kind, typed inputs and presets; `workflow action=save_inputs` replace
 `workflow action=outline` inspects saved source without running it and
 keeps Builder source-editor authority. `@step` labels are not independently runnable.
 
-In the owning Crew chat, use its bound `runs action=start` when offered:
+In the owning project chat, use its bound `runs action=start` when offered:
 optional `input_preset` selects saved values and `inputs` carries typed JSON
 values (numbers, booleans, objects and arrays stay typed). The workflow is
-selected by the Crew, so do not supply a path or workflow ID. This shortcut is
-bound to this Crew's workflow. A different task uses a declared input and saved
+selected by the project, so do not supply a path or workflow ID. This shortcut is
+bound to this project's workflow. A different task uses a declared input and saved
 setting in that same workflow. Inputs override
 the preset and defaults; unknown names and wrong types are refused before a
 run starts. Stop it through the chat's background work control. For different
@@ -139,8 +139,8 @@ else:
 - `@step("Title")` on a function: a label in the Steps and Runs views. The function runs normally every time; nothing is cached or retried.
 - A comment on the line above an `if`, `elif`, `else` or `with` names that branch in the outline, like a step title (`# Corporate accounts`); without one the outline words the condition itself.
 - `agent(name, task, apps=(...), tools=(...), browser=False, knowledge=None)`: one agent turn in the run folder. `reply.ok` means the turn finished, not that the work is right: pass `expect=` (files, `db` rows, or `answer` JSON checks; `reply.data` holds a checked JSON answer) or check its files or `reply.answer_file.read_text()` yourself. Keep task texts as module constants so Steps can show them. `apps=("google", "slack", "github")` selects existing connected apps; `tools` selects other named tools. Continuing a conversation keeps its original app choices. `browser=True` uses the workflow's browser; `knowledge="write"` lets it write notes (reading is the default).
-- `ask_agent(crew, message, wait_seconds=25)`: ask an accessible Crew by its exact name or ID. `ok` means sent; use `text` only when `status == "replied"`. Pending keeps its `inbox_id` and `message_id`: no reply yet, do not resend. The wait is at most 25 seconds within the run's deadline. Use a published function when you need a tracked result.
-- `call_function(crew, name, inputs)`: call another Crew's published function. A running receipt is not the answer; refresh it with `function_status(call_id)`.
+- `ask_agent(crew, message, wait_seconds=25)`: ask an accessible project by its exact name or ID. `ok` means sent; use `text` only when `status == "replied"`. Pending keeps its `inbox_id` and `message_id`: no reply yet, do not resend. The wait is at most 25 seconds within the run's deadline. Use a published function when you need a tracked result.
+- `call_function(crew, name, inputs)`: call another project's published function. A running receipt is not the answer; refresh it with `function_status(call_id)`.
 - `parallel(*calls, names=[...])`: run several zero-argument calls at the same time and get their results in call order. Each part is its own step, and the run's Timeline shows them side by side. Every part finishes; then the first error is raised.
   ```python
   acme, globex = parallel(lambda: agent("Acme researcher", RESEARCH.format(name="Acme")),
@@ -148,9 +148,9 @@ else:
                           names=["Research Acme", "Research Globex"])
   ```
 - `check(name, ok, detail)`: record a check in the run. A failed check stays visible; your code decides what happens next.
-- `notify(text)`: a progress line to the owner in the Crew chat.
+- `notify(text)`: a progress line to the owner in the project chat.
 - `send_email(to, subject, body, cc=(), html=None)` and `send_slack(route, text)`: explicit sends through the connected account or Slack route. Optional CC and email-safe HTML use the same selected mail account and recipient rules. Pass an empty plain body for HTML-only mail. Only send when the workflow's job is to reach people.
-- `from agentworks import google, slack, github`: call connected apps directly from Python, with the same accounts and permissions. `google.sheets.read(id, range)`, `.write(id, range, rows)` and `.append(...)`; `google.gmail.search(query)`; `google.calendar.list(start, end)` and `.create(title, start, end)`; `google.drive.read(doc_id)` saves Google Doc text in this run. `slack.read(route)` reads channel messages; `.send(route, text)` and `.reply(route, thread_ts, text)` use the tracked sender. `github.files(repo)`, `.read(repo, path)`, `.issues(repo)`, `.prs(repo)`, `.create_issue(repo, title, body)`, `.comment(repo, number, body)`, `.create_pr(repo, head, base, title)` and `.diff(repo, number)` use the Crew's GitHub connection. JSON results keep the service's shape; failures raise `AutomationError`. Sends and app calls do real work, including in mocked-agent runs.
+- `from agentworks import google, slack, github`: call connected apps directly from Python, with the same accounts and permissions. `google.sheets.read(id, range)`, `.write(id, range, rows)` and `.append(...)`; `google.gmail.search(query)`; `google.calendar.list(start, end)` and `.create(title, start, end)`; `google.drive.read(doc_id)` saves Google Doc text in this run. `slack.read(route)` reads channel messages; `.send(route, text)` and `.reply(route, thread_ts, text)` use the tracked sender. `github.files(repo)`, `.read(repo, path)`, `.issues(repo)`, `.prs(repo)`, `.create_issue(repo, title, body)`, `.comment(repo, number, body)`, `.create_pr(repo, head, base, title)` and `.diff(repo, number)` use the project's GitHub connection. JSON results keep the service's shape; failures raise `AutomationError`. Sends and app calls do real work, including in mocked-agent runs.
 
 For a script that needs a service key, add `"secrets": ["API_KEY"]` to its `script.json`, then read it in `main.py`:
 
@@ -168,7 +168,7 @@ api_key = secret("API_KEY")  # Pass to the service's client; never print or save
 - **One database per Crew.** In parent Python or platform-run scripts, use `agentworks_db` (`query`, `execute`, `transaction`). Create tables with `CREATE TABLE IF NOT EXISTS` and indexes with `CREATE INDEX IF NOT EXISTS`; ALTER and DROP are refused.
 - **Durable files** that later runs need go under `WORKFLOW_DATA_ROOT`; everything else stays in `run_folder`.
 - **Check command output.** For a Docker command that must return output, require both exit code zero and nonempty output. Empty output is a failed check, not evidence that a database has no rows. Record the return code and stdout/stderr byte counts without secret values.
-- **Collect answers before starting.** Ask for needed answers in Crew chat. A workflow runs without waiting for someone to answer; a missing required value fails with a clear reason.
+- **Collect answers before starting.** Ask for needed answers in project chat. A workflow runs without waiting for someone to answer; a missing required value fails with a clear reason.
 - **The run record is the summary.** Do not write a separate run summary; Activity records every outcome. Use `notify` for the owner and the send helpers only for people the workflow exists to reach.
 - **Mocked test runs.** Use this only when the installation's current start schema offers `mock_agents`; otherwise do not claim a mocked run. Put canned agent replies in `code/agent_mocks.json` as `{"Agent name": {"text": "...", "files": {"leads.json": "..."}}}` and start a run with mocked agents. Only the agents are mocked: scripts, databases, sends and app calls are real, and an agent missing from the file fails the run.
 
@@ -229,7 +229,7 @@ send explicitly through the current helpers. Do not keep a plan runner or read
 
 ### Calling from schedules, webhooks and Slack
 
-Read `agentworks-schedules-watchers` for timing. A Crew schedule can run this workflow with its saved setting and typed inputs, or send a message to an agent; these are different targets. Existing workflow timers may still need conversion to Crew schedules. Use one static saved input preset plus fixed inputs for each caller. For a raw
+Read `agentworks-schedules-watchers` for timing. A project schedule can run this workflow with its saved setting and typed inputs, or send a message to an agent; these are different targets. Existing workflow timers may still need conversion to project schedules. Use one static saved input preset plus fixed inputs for each caller. For a raw
 webhook body use `payload_mappings.inputs` with declared names selected in
 `allowed_variables`, and a fixed dotted `source` path per name. JSON types are
 preserved; optional `values`/`default` map body choices to typed values. Do not

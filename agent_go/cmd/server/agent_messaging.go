@@ -425,7 +425,7 @@ func agentReplySendStatus(status string, newTask bool) string {
 
 func validateMessageDestination(ctx context.Context, e agentMessageEndpoint) error {
 	if e.Kind == triggerCallerWorkflow {
-		return admissionRefused("Workflows run directly. Send your message to a Crew agent instead.")
+		return admissionRefused("Workflows run directly. Send your message to a project agent instead.")
 	}
 
 	if e.NamedAgentID != "" {
@@ -856,7 +856,7 @@ func agentMessageReceipt(id string, m agentMessage) map[string]interface{} {
 	if m.MessageType == "notification" && m.Kind == "" && m.ReplyStatus == "" {
 		out["message_type"] = "notification"
 		out["reply_expected"] = false
-		out["next"] = "FYI sent; no reply is requested and no follow-up task is opened. For work or a question that needs a reply, use messages action=ask (Crew chat: send with ask=true), or set expects_reply=true. Do not infer a request from words like 'please reply'."
+		out["next"] = "FYI sent; no reply is requested and no follow-up task is opened. For work or a question that needs a reply, use messages action=ask (Project chat: send with ask=true), or set expects_reply=true. Do not infer a request from words like 'please reply'."
 	}
 	return out
 }
@@ -1558,7 +1558,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 	session := dest.Session
 	{
 		if api.agentProfiles == nil {
-			return session, fmt.Errorf("Crew runtime unavailable")
+			return session, fmt.Errorf("Project runtime unavailable")
 		}
 		if replyInbox {
 			if paired, err := api.deliverPublishedReplyToMac(ctx, c, m, dest); paired {
@@ -2136,7 +2136,7 @@ func requireLinkedOwnCrew(ctx context.Context, userID string, caller triggerLink
 		return nil
 	}
 	if target.Kind == triggerCallerWorkflow && !manifestIsRelay(target.Manifest) {
-		return fmt.Errorf("old workflow projects can no longer be called; use a Crew's functions instead (list_agents shows the Crews you can reach)")
+		return fmt.Errorf("old workflow projects can no longer be called; use a project's functions instead (list_agents shows the projects you can reach)")
 	}
 	reach, err := crewReachFrom(ctx, here)
 	if reach == nil {
@@ -2145,7 +2145,7 @@ func requireLinkedOwnCrew(ctx context.Context, userID string, caller triggerLink
 	if err != nil {
 		// A read failure refuses rather than guesses; say so, so a linked Crew refused by a blip is not a mystery.
 		log.Printf("[CREW_LINK] could not read links of %s to check %s: %v", here, firstNonEmptyTrimmed(target.Path, target.NamedAgentID, target.TeamAgentID), err)
-		return fmt.Errorf("could not check this Crew's links just now; try again in a moment")
+		return fmt.Errorf("could not check this project's links just now; try again in a moment")
 	}
 	if reach.allowsTarget(ctx, userID, target, team) {
 		return nil

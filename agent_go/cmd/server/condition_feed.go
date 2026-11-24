@@ -121,7 +121,7 @@ func feedItem(ev conditiontrigger.Event, now time.Time) (conditionFeedItem, erro
 
 func (c *conditionService) saveFeedEvent(ctx context.Context, job productScheduleJob, ev conditiontrigger.Event) (string, error) {
 	if job.WatcherSource == nil {
-		return "", conditiontrigger.PermanentError{Err: errors.New("feed Watchers belong to a Crew")}
+		return "", conditiontrigger.PermanentError{Err: errors.New("feed Watchers belong to a project")}
 	}
 	item, err := feedItem(ev, time.Now())
 	if err != nil {

@@ -65,7 +65,7 @@ func workspaceSkillRoute(write bool, handler http.HandlerFunc) http.HandlerFunc 
 		if crew, ok := resolveCrewPath(r.Context(), claims.UserID, clean); ok {
 			access := crewAccessFor(claims, crew)
 			if crew.Rest != "" || access == crewAccessNone || (write && access != crewAccessOwner) {
-				http.Error(w, "Crew skill access denied", 403)
+				http.Error(w, "Project skill access denied", 403)
 				return
 			}
 			clean = crew.Root

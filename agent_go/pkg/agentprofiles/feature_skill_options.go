@@ -47,7 +47,7 @@ func FeatureSkillsForSession(profile Profile, attached []*llmtypes.Skill) []*llm
 					}
 					copy.SupportingFiles[i].Content = []byte(body)
 				}
-				copy.Content += "\n## Outbound-only session\n\nCall only accessible Crews and workflows. This workspace cannot define or answer functions; private workspaces are not valid targets.\n"
+				copy.Content += "\n## Outbound-only session\n\nCall only accessible projects and workflows. This workspace cannot define or answer functions; private workspaces are not valid targets.\n"
 			}
 		}
 		result = append(result, &copy)

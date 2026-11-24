@@ -92,7 +92,7 @@ func savePublicationUpload(upload *publicationUpload) error {
 	defer mu.Unlock()
 	if upload.State != "deleted" {
 		if prior, e := loadPublicationUpload(upload.ID, upload.ActorID); e == nil && prior.State == "deleted" {
-			return fmt.Errorf("This Crew was deleted; the old publication will not be replayed.")
+			return fmt.Errorf("This project was deleted; the old publication will not be replayed.")
 		}
 	}
 
@@ -132,13 +132,13 @@ func publicationReceipt(upload *publicationUpload) map[string]any {
 		if upload.TabError != "" {
 			out["tab_message"] = upload.TabError
 		}
-		out["account"] = map[string]any{"provider": upload.Record.Provider, "model": upload.Record.ModelID, "kind": "company", "use": "Company account quota and billing apply; activity is attributed to the person publishing or calling this Crew."}
+		out["account"] = map[string]any{"provider": upload.Record.Provider, "model": upload.Record.ModelID, "kind": "company", "use": "Company account quota and billing apply; activity is attributed to the person publishing or calling this project."}
 	}
 	if upload.State == "live" {
 		out["file_count"], out["excluded"], out["excluded_count"] = upload.FileCount, upload.Excluded, len(upload.Excluded)
 		out["history"] = map[string]any{"raw_saved": true, "raw_bytes": upload.RawBytes, "raw_sha256": upload.RawSHA256, "summary_ready": true, "audience": "builders"}
-		out["message"] = "Your files and chat are saved. This Crew works while your computer is offline and continues from a private summary. To change its source, publish again from your computer."
-		out["next"] = "Open the Crew or use Share to choose who can use it."
+		out["message"] = "Your files and chat are saved. This project works while your computer is offline and continues from a private summary. To change its source, publish again from your computer."
+		out["next"] = "Open the project or use Share to choose who can use it."
 	}
 	if upload.Error != "" {
 		out["error"] = upload.Error
@@ -148,7 +148,7 @@ func publicationReceipt(upload *publicationUpload) map[string]any {
 
 func publicationGate(claims *UserClaims) error {
 	if !externalWorkspaceAllowed(claims) || !userAccessForClaims(claims).CanEdit {
-		return fmt.Errorf("Publishing needs your existing Builder access. Ask an administrator to enable building, or use a Crew already shared with you.")
+		return fmt.Errorf("Publishing needs your existing Builder access. Ask an administrator to enable building, or use a project already shared with you.")
 	}
 	return nil
 }
@@ -158,7 +158,7 @@ func (api *StreamingAPI) publicationChoice(ctx context.Context, claims *UserClai
 		profileID = crewProfileID
 	}
 	if !isProjectProfileID(profileID) || !workspaceOriginAllowed(claims, profileID) || (len(existing) == 0 || !existing[0]) && (!userAccessForClaims(claims).CanCreateIn(profileID) || !workspaceCreateTokenAllowed(claims)) {
-		return nil, fmt.Errorf("This connection cannot create that Crew. Choose a product you may build in.")
+		return nil, fmt.Errorf("This connection cannot create that project. Choose a product you may build in.")
 	}
 	profile, err := api.agentProfiles.Resolve(profileID, 0, claims.UserID)
 	if err != nil {
@@ -250,13 +250,13 @@ func (api *StreamingAPI) handlePublicationUpload(w http.ResponseWriter, r *http.
 		return
 	}
 	if upload.Record == nil || !workspaceOriginAllowed(claims, upload.ProfileID) || !publicationOriginTokenAllowed(claims, upload.ProfileID, upload.WorkspaceID) {
-		externalError(w, 403, "forbidden", "This connection no longer permits publishing to that Crew.")
+		externalError(w, 403, "forbidden", "This connection no longer permits publishing to that project.")
 		return
 	}
 	if upload.WorkspaceID != "" {
 		binding, _, ok := api.resolveExternalWorkspace(r.Context(), claims, upload.ProfileID+":"+upload.WorkspaceID)
 		if !ok || !binding.OwnedByCaller {
-			externalError(w, 403, "forbidden", "You no longer have Builder access to this Crew.")
+			externalError(w, 403, "forbidden", "You no longer have Builder access to this project.")
 			return
 		}
 	}
@@ -358,7 +358,7 @@ func (api *StreamingAPI) findPublishedProject(ctx context.Context, claims *UserC
 		binding, _, ok := api.resolveExternalWorkspace(ctx, claims, rec.ProfileID+":"+rec.WorkspaceID)
 		if ok && binding.OwnedByCaller && canonicalCrewWorkspaceRoot(binding.Binding.WorkspacePath) == canonicalCrewWorkspaceRoot(rec.Root) {
 			if found != nil {
-				return nil, fmt.Errorf("This project was published to several Crews. Choose its destination with --crew or workspace_id.")
+				return nil, fmt.Errorf("This project was published to several projects. Choose its destination with --crew or workspace_id.")
 			}
 			copy := rec
 			found = &copy
@@ -438,7 +438,7 @@ func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims Us
 			binding, _, exists = api.resolveExternalWorkspace(ctx, &claims, upload.ProfileID+":"+id)
 		}
 		if !exists || !binding.OwnedByCaller {
-			finishError(fmt.Errorf("The new Crew could not be opened. Retry this publication."))
+			finishError(fmt.Errorf("The new project could not be opened. Retry this publication."))
 			return
 		}
 		record.WorkspaceID = id
@@ -449,7 +449,7 @@ func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims Us
 	} else {
 		binding, _, ok := api.resolveExternalWorkspace(ctx, &claims, record.ProfileID+":"+record.WorkspaceID)
 		if !ok || !binding.OwnedByCaller {
-			finishError(fmt.Errorf("You can no longer publish to this Crew."))
+			finishError(fmt.Errorf("You can no longer publish to this project."))
 			return
 		}
 	}
@@ -500,7 +500,7 @@ func (api *StreamingAPI) preparePublication(upload *publicationUpload, claims Us
 		for _, fn := range incoming.Functions {
 			for _, prior := range existing {
 				if prior.Name == fn.Name && (prior.publication == nil && record.AgentID != "" || prior.publication != nil && prior.publication.AgentID != record.AgentID) {
-					finishError(fmt.Errorf("Function %q already exists in this Crew. Rename the incoming function and publish again; the existing Crew was kept.", fn.Name))
+					finishError(fmt.Errorf("Function %q already exists in this project. Rename the incoming function and publish again; the existing project was kept.", fn.Name))
 					return
 				}
 			}
@@ -603,7 +603,7 @@ func validatePublishedFunctions(file string) error {
 		}
 		identities[record.ID] = true
 		if record.Action.Type != "message" || record.InputMapping != nil || len(record.AllowedCallers) > 0 {
-			return fmt.Errorf("published Crew functions need a message action; caller access comes from Share")
+			return fmt.Errorf("published project functions need a message action; caller access comes from Share")
 		}
 		fn, err := crewFunctionExecutionView(record)
 		if err != nil {
@@ -698,7 +698,7 @@ func preparePublicationRuntime(ctx context.Context, record *publishedProject, so
 			}
 			to := filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(record.runtimeRoot()), filepath.FromSlash(file.Path))
 			if _, e := os.Lstat(to); e == nil && seeds[file.Path] != file.SHA256 {
-				return fmt.Errorf("Runtime seed %q already exists. Exclude it or use a new Crew; live data was kept.", file.Path)
+				return fmt.Errorf("Runtime seed %q already exists. Exclude it or use a new project; live data was kept.", file.Path)
 			} else if e != nil && !errors.Is(e, os.ErrNotExist) {
 				return e
 			}

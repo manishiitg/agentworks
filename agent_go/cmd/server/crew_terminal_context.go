@@ -16,7 +16,7 @@ import (
 // context. Neither a command nor a shell ID/path is accepted from the caller.
 func (api *StreamingAPI) addTerminalChatContext(w http.ResponseWriter, r *http.Request, claims *UserClaims, project, workspace string, in crewChatContextRequest) (string, int, bool, string) {
 	if in.TerminalTab < 1 || in.TerminalTab > codeShellMaxTabs {
-		writeAgentProfileError(w, 400, "Choose this Crew's terminal tab, from 1 to 3.")
+		writeAgentProfileError(w, 400, "Choose this project's terminal tab, from 1 to 3.")
 		return "", 0, false, "terminal_tab"
 	}
 	source := r.Clone(r.Context())
@@ -27,7 +27,7 @@ func (api *StreamingAPI) addTerminalChatContext(w http.ResponseWriter, r *http.R
 	source.URL = &address
 	_, shellID, _, _, _, status, _ := api.codeShellTargetFull(source)
 	if status != 0 {
-		writeAgentProfileError(w, status, "Open an available terminal in this Crew.")
+		writeAgentProfileError(w, status, "Open an available terminal in this project.")
 		return "", 0, false, "terminal_access"
 	}
 	commands := []codeShellContextCommand{}

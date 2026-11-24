@@ -164,7 +164,7 @@ func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
 		f.API.externalCrewProjectCall(rec, req, map[string]any{"action": "delete", "confirm": fixtureCrewID}, fixtureCrewID)
 		return rec
 	}
-	if rec := call(fixtureUserB); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "Only the Crew's owner") {
+	if rec := call(fixtureUserB); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "Only the project's owner") {
 		t.Fatalf("Run deletion must refuse at owner check: %d %s", rec.Code, rec.Body.String())
 	}
 	if bindings, err := readCrewExecutables(); err != nil || len(bindings) != 3 {

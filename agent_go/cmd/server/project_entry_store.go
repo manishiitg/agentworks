@@ -312,7 +312,7 @@ func loadWorkflowEntryActions(ctx context.Context, root string, manifest *Workfl
 			return fmt.Errorf("webhook project does not match its folder")
 		}
 		if manifest.crewExecutable != nil && (workflowExecutionOwnerUserID(manifest) == "" || record.RunAs != workflowExecutionOwnerUserID(manifest)) {
-			return fmt.Errorf("webhook must run as its Crew owner")
+			return fmt.Errorf("webhook must run as its project owner")
 		}
 		owners := manifest.effectiveOwners()
 		if (len(owners) == 0 && (record.RunAs == "" || record.RunAs != workflowExecutionOwnerUserID(manifest))) || (len(owners) > 0 && !containsID(owners, record.RunAs)) {

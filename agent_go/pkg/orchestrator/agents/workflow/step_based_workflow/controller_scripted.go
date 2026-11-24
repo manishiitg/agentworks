@@ -886,7 +886,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	if !hasShared && !hcpo.hasValidLearnedScriptAPI(ctx, stepID) {
 		scriptRelPath := hcpo.scriptedSourceDir(stepID) + "/main.py"
 		existingScript, _ := hcpo.ReadWorkspaceFile(ctx, scriptRelPath)
-		hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted] No saved script for step %d (%s) — source must be created in Crew chat", stepIndex+1, stepID))
+		hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted] No saved script for step %d (%s) — source must be created in project chat", stepIndex+1, stepID))
 		return &ScriptedFastPathResult{RanScript: false, ExistingScript: existingScript}
 	}
 

@@ -132,7 +132,7 @@ func computerUseBinary() (string, error) {
 		Version string `json:"version"`
 	}
 	if err != nil || json.Unmarshal(data, &manifest) != nil || manifest.Version != computerUseVersion {
-		return "", errors.New("Install Computer use from this Crew's Computer use panel, or use action=install")
+		return "", errors.New("Install Computer use from this project's Computer use panel, or use action=install")
 	}
 	file := filepath.Join(pack, "bin", "agent-desktop-"+platform+"-"+arch+suffix)
 	if info, err := os.Stat(file); err != nil || !info.Mode().IsRegular() {
@@ -275,7 +275,7 @@ func computerUseArguments(in computerUseInput) ([]string, error) {
 
 func (api *StreamingAPI) computerUseAction(ctx context.Context, c *UserClaims, root, session string, in computerUseInput) (any, error) {
 	if !computerUseAllowed(c) || !crewProjectOwnedByCaller(c.UserID, root) {
-		return nil, errors.New("Computer use is available only in your own Crew running on this computer")
+		return nil, errors.New("Computer use is available only in your own project running on this computer")
 	}
 	settings, err := readComputerUse(root)
 	if err != nil {
@@ -324,7 +324,7 @@ func (api *StreamingAPI) computerUseAction(ctx context.Context, c *UserClaims, r
 		return computerUseExecute(ctx, session, args)
 	case "run":
 		if !settings.Enabled {
-			return nil, errors.New("Computer use is off for this Crew. Enable it in Integrations → Computer use, or ask to enable it in chat")
+			return nil, errors.New("Computer use is off for this project. Enable it in Integrations → Computer use, or ask to enable it in chat")
 		}
 		args, err := computerUseArguments(in)
 		if err != nil {
@@ -373,7 +373,7 @@ func (api *StreamingAPI) computerUseAction(ctx context.Context, c *UserClaims, r
 
 func (api *StreamingAPI) handleCrewComputerUse(w http.ResponseWriter, r *http.Request) {
 	if mux.Vars(r)["id"] != "work" || !computerUseAllowed(GetUserFromContext(r.Context())) {
-		externalError(w, 403, "local_computer_required", "Open your own local Crew to use your computer")
+		externalError(w, 403, "local_computer_required", "Open your own local project to use your computer")
 		return
 	}
 	root, ok := api.laptopSettingsRoot(w, r)
@@ -388,7 +388,7 @@ func (api *StreamingAPI) handleCrewComputerUse(w http.ResponseWriter, r *http.Re
 	// This setup endpoint does not dispatch desktop actions. Those belong to an
 	// admitted chat or personal MCP call, with their own private snapshot namespace.
 	if in.Action == "run" {
-		externalError(w, 400, "use_chat", "Ask this Crew to use your computer from chat")
+		externalError(w, 400, "use_chat", "Ask this project to use your computer from chat")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)

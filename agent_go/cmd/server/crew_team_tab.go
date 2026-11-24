@@ -214,7 +214,7 @@ func crewTeamHelp(r crewTeamTabReply) ([]crewTeamHelpLine, string) {
 		}
 	}
 	lines := []crewTeamHelpLine{}
-	agentText := "One chat in this Crew with its own job. An agent on the server works and answers even when your computer is off."
+	agentText := "One chat in this project with its own job. An agent on the server works and answers even when your computer is off."
 	if mac {
 		agentText += " An agent on your Mac stops when it is off; a shared one still answers your team from the server."
 	}
@@ -230,7 +230,7 @@ func crewTeamHelp(r crewTeamTabReply) ([]crewTeamHelpLine, string) {
 		if len(parts) > 0 {
 			lines = append(lines, crewTeamHelpLine{Title: "Agents here", Text: strings.Join(parts, " ")})
 		}
-		team := "Just you. A team is the people you work with on this Crew. Add people in Share, then Team."
+		team := "Just you. A team is the people you work with on this project. Add people in Share, then Team."
 		title := "Your team"
 		if r.Team.On && len(others) > 0 {
 			title = fmt.Sprintf("Your team (%d people)", len(others)+1)
@@ -253,7 +253,7 @@ func crewTeamHelp(r crewTeamTabReply) ([]crewTeamHelpLine, string) {
 		if len(others) > 0 {
 			text += ", with " + strings.Join(others, ", ")
 		}
-		text += ". A team is the people the owner shares this Crew with; you can use only what they share."
+		text += ". A team is the people the owner shares this project with; you can use only what they share."
 		if len(usable) > 0 {
 			text += " You can chat with: " + strings.Join(usable, ", ") + "."
 		}
@@ -262,7 +262,7 @@ func crewTeamHelp(r crewTeamTabReply) ([]crewTeamHelpLine, string) {
 	lines = append(lines, crewTeamHelpLine{Title: "Add an agent", Text: "Press + next to the names, or ask in chat: \"add an agent for bug triage\"."})
 	ask := ""
 	if mine || r.CanSwitch || r.CanAddFolder {
-		ask = "Explain how the agents and the team in this Crew work: which agents are shared with my team and which are only mine, who is on the team and what teammates can do through the agents. Then help me change any of it. Change it only when I say so."
+		ask = "Explain how the agents and the team in this project work: which agents are shared with my team and which are only mine, who is on the team and what teammates can do through the agents. Then help me change any of it. Change it only when I say so."
 	}
 	return lines, ask
 }
@@ -270,12 +270,12 @@ func crewTeamHelp(r crewTeamTabReply) ([]crewTeamHelpLine, string) {
 // crewTeamAskPrompts are the Access and Team cards' Ask messages (owner, 6 Nov: each looks at the current state
 // first, explains it plainly, suggests, and changes only when the person says so). The screen sends them as given.
 var crewTeamAskPrompts = map[string]string{
-	"team":        "Look at this Crew's Team: who is in it, who was invited and hasn't joined yet, and whether the Team is on. Explain it in plain words, tell me what each person can see and do, then help me add or remove people.",
-	"shares":      "Show me what this Crew's Team shares now: each chosen shared folder with its size. Go through the Crew's other folders and what is in them, point out anything private or too big to share (keys, personal notes, large data), and suggest what to share. Change it when I say so.",
-	"agents":      "List my agents in this Crew: for each, its purpose, whether it's shared with the Team, and what it uses (apps, secret names, my personal accounts, folders). Suggest which to share and which to keep to myself, and why. Change it when I say so.",
-	"sync":        "Check this Crew's Team sync: when each person last synced, files still waiting, and any clashes where two people changed the same lines. For each clash show both versions and help me keep mine, keep theirs, or merge them.",
-	"mac":         "Check this Crew's Mac online: is my Mac online now, when was it last seen, and does it stay on because the Team is on. Explain what works while my Mac is off and what is kept on the server, in plain words, and give me the link to open this Crew in a browser or on my phone. Change it when I say so.",
-	"agentbridge": "List my agents in this Crew with their purpose and whether discovery is on for each on AgentBridge. Explain what discovery means (other people's agents on this server can find and message it, and it answers as me with my rules for when others ask), suggest which to make discoverable and which purposes to improve, and change it when I say so. Also explain each agent's Copy line: pasted in Claude Code, Codex or Cursor, it lets my coding app reach that agent, with discovery on or off.",
+	"team":        "Look at this project's Team: who is in it, who was invited and hasn't joined yet, and whether the Team is on. Explain it in plain words, tell me what each person can see and do, then help me add or remove people.",
+	"shares":      "Show me what this project's Team shares now: each chosen shared folder with its size. Go through the project's other folders and what is in them, point out anything private or too big to share (keys, personal notes, large data), and suggest what to share. Change it when I say so.",
+	"agents":      "List my agents in this project: for each, its purpose, whether it's shared with the Team, and what it uses (apps, secret names, my personal accounts, folders). Suggest which to share and which to keep to myself, and why. Change it when I say so.",
+	"sync":        "Check this project's Team sync: when each person last synced, files still waiting, and any clashes where two people changed the same lines. For each clash show both versions and help me keep mine, keep theirs, or merge them.",
+	"mac":         "Check this project's Mac online: is my Mac online now, when was it last seen, and does it stay on because the Team is on. Explain what works while my Mac is off and what is kept on the server, in plain words, and give me the link to open this project in a browser or on my phone. Change it when I say so.",
+	"agentbridge": "List my agents in this project with their purpose and whether discovery is on for each on AgentBridge. Explain what discovery means (other people's agents on this server can find and message it, and it answers as me with my rules for when others ask), suggest which to make discoverable and which purposes to improve, and change it when I say so. Also explain each agent's Copy line: pasted in Claude Code, Codex or Cursor, it lets my coding app reach that agent, with discovery on or off.",
 	// An agent card's Automations…, sent to that agent's own chat (crew_tab_setup.go).
 	"automations": "Show this agent's schedules, watchers and webhooks and help me change them.",
 }
@@ -682,7 +682,7 @@ func crewTeamTabSyncFor(t crewTeam, viewer string) *crewTeamTabSync {
 				out.Line, out.Problem, out.Attention = line+" · "+clashLine, out.Problem || problem, attention || len(open) > 0
 				return out
 			}
-			out.Line = "Your copy is made when you first use this Crew · " + clashLine
+			out.Line = "Your copy is made when you first use this project · " + clashLine
 			return out
 		}
 	}

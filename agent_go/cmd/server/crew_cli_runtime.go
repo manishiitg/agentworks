@@ -53,7 +53,7 @@ func resolveCrewCLIWorkingDir(folder, user, session, provider string, readOnly, 
 	runtimeOwner := user
 	stateRoot, err := workflowCLIStateRoot()
 	if err != nil {
-		return "", fmt.Errorf("cannot isolate Crew CLI: %w", err)
+		return "", fmt.Errorf("cannot isolate project CLI: %w", err)
 	}
 	// A Crew whose owner holds a slot runs its CLI as that slot (PLAT-872-84), from the slot's state folder
 	// (slot_state_root/<slot>: the platform's and that slot's only, outside the documents; tmux already routes a
@@ -93,7 +93,7 @@ func resolveCrewCLIWorkingDir(folder, user, session, provider string, readOnly, 
 		dir, err = cliruntime.ExistingLinkedProject(stateRoot, fsutil.WorkspaceDocsRoot(), user, project, legacyRel, session, provider, crewCLIMode(readOnly))
 	}
 	if err != nil {
-		return "", fmt.Errorf("cannot isolate Crew CLI: %w", err)
+		return "", fmt.Errorf("cannot isolate project CLI: %w", err)
 	}
 	if prepare {
 		if err := prepareCrewGit(dir, project, provider, runtimeOwner); err != nil {
@@ -114,7 +114,7 @@ func prepareCrewGit(runtimeDir, project, provider, owner string) error {
 		return nil
 	}
 	if err := cliruntime.PrepareProjectGit(filepath.Clean(runtimeDir), cliHomeName(provider), project); err != nil {
-		return fmt.Errorf("cannot prepare Crew Git: %w", err)
+		return fmt.Errorf("cannot prepare project Git: %w", err)
 	}
 	return nil
 }
@@ -131,9 +131,9 @@ func ownerRunsInSlot(owner, runtimeDir string) bool {
 
 func crewCLIWorkspaceInstructions(folder string) string {
 	if roots, bound, err := localCrewRoots(folder); bound && err == nil {
-		return fmt.Sprintf("\nThis Crew works directly in %q. Native file tools and terminal commands start there. Crew skills, memory, reports, workflows with their runs and the Crew database live in %q; its schedules, webhooks and functions change only through their tools, and chats and logins stay in private AgentWorks storage. Workspace file tools use %q for the person's files and %q for Crew resources. Keep generated provider configuration and private session data in the supplied private runtime. Preserve the project's existing AGENTS.md, CLAUDE.md and provider configuration.\n", roots.Files, roots.Resources, roots.FilesPath(), roots.Virtual)
+		return fmt.Sprintf("\nThis project works directly in %q. Native file tools and terminal commands start there. Project skills, memory, reports, workflows with their runs and the project database live in %q; its schedules, webhooks and functions change only through their tools, and chats and logins stay in private AgentWorks storage. Workspace file tools use %q for the person's files and %q for project resources. Keep generated provider configuration and private session data in the supplied private runtime. Preserve the project's existing AGENTS.md, CLAUDE.md and provider configuration.\n", roots.Files, roots.Resources, roots.FilesPath(), roots.Virtual)
 	}
-	return fmt.Sprintf("\nCrew CLI runtime: your current directory holds this session's mode-specific instructions, skills and CLI configuration. `project/` links to the real Crew project at %q. Read project files through `project/<path>`; in Builder, create and edit durable files there too. For commands that require the project as their working directory, cd to that absolute path (`cd <that path> && ...`), never `cd project`, which the CLI's permission check refuses; do not put project outputs in the runtime root. Search and glob tools do not look inside the link unless you name it: always pass `project` (or `project/<folder>`) as the search path, because a search from the current directory finds none of the project's files. Workspace bridge paths remain relative to the real Crew project and must not include `project/`. Keep generated CLI instructions/configuration in the runtime root, preserve the project's own instructions, and obey this session's Run/Builder permissions even when reading project guidance.\n", codingAgentWorkspaceWorkingDir(folder)) + linkedProjectRuntimeSkillInstructions
+	return fmt.Sprintf("\nCrew CLI runtime: your current directory holds this session's mode-specific instructions, skills and CLI configuration. `project/` links to the real project project at %q. Read project files through `project/<path>`; in Builder, create and edit durable files there too. For commands that require the project as their working directory, cd to that absolute path (`cd <that path> && ...`), never `cd project`, which the CLI's permission check refuses; do not put project outputs in the runtime root. Search and glob tools do not look inside the link unless you name it: always pass `project` (or `project/<folder>`) as the search path, because a search from the current directory finds none of the project's files. Workspace bridge paths remain relative to the real project project and must not include `project/`. Keep generated CLI instructions/configuration in the runtime root, preserve the project's own instructions, and obey this session's Run/Builder permissions even when reading project guidance.\n", codingAgentWorkspaceWorkingDir(folder)) + linkedProjectRuntimeSkillInstructions
 }
 
 func crewPrivateRuntimeDir(folder, user, session, provider string, readOnly bool) (string, error) {
@@ -209,13 +209,13 @@ func applyCrewChatMode(profile *resolvedAgentProfile, req *QueryRequest, readOnl
 	req.SelectedSkills = appendUniqueStrings(req.SelectedSkills, modeSkills...)
 	rendered, err := agentprofiles.RenderPrompt(definition, req.AgentProfileContext)
 	if err != nil {
-		return fmt.Errorf("render Crew %s prompt: %w", crewCLIMode(readOnly), err)
+		return fmt.Errorf("render project %s prompt: %w", crewCLIMode(readOnly), err)
 	}
 	profile.Definition = definition
 	profile.Prompt = strings.TrimSpace(rendered) + profile.AgentRolePrompt
 	if profile.Publication != nil {
 		if profile.Publication.AgentID != "" {
-			profile.Prompt += "\n\nYour published source is " + profile.Publication.Name + ". Its instructions and working data are separate from Main. Use the Crew's existing resources within this turn's permissions."
+			profile.Prompt += "\n\nYour published source is " + profile.Publication.Name + ". Its instructions and working data are separate from Main. Use the project's existing resources within this turn's permissions."
 		}
 		profile.Prompt += "\n\n" + publishedSourceNotice + "\nThis published agent saves working data under " + profile.Publication.runtimeRoot() + ". Use AGENTWORKS_PUBLICATION_RUNTIME in scripts for working data; imported source is read-only."
 		if publishedBuilderHandoff(req, readOnly) {

@@ -25,14 +25,14 @@ func projectFunctionAuthoringSchema() map[string]interface{} {
 		"name":    externalString("snake_case function name."), "description": map[string]interface{}{"type": "string"},
 		"action": map[string]interface{}{"type": "object", "additionalProperties": false, "required": []interface{}{"type"}, "properties": map[string]interface{}{
 			"type": map[string]interface{}{"type": "string", "enum": []interface{}{"run", "message"}},
-			"step": externalString("Optional saved Goal step."), "tab": externalString("Crew tab; omit for the function's named tab."),
+			"step": externalString("Optional saved Goal step."), "tab": externalString("Project tab; omit for the function's named tab."),
 			"conversation": map[string]interface{}{"type": "string", "enum": []interface{}{runDestinationNew}},
 		}},
-		"input":           map[string]interface{}{"type": "object", "description": "Fixed values: inputs, input_preset, routes and payload for a workflow; messages for a Crew chat. Fixed input names cannot be supplied by callers."},
+		"input":           map[string]interface{}{"type": "object", "description": "Fixed values: inputs, input_preset, routes and payload for a workflow; messages for a project chat. Fixed input names cannot be supplied by callers."},
 		"inputs":          map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Workflow input names callers may supply. Define types, defaults and required fields once in workflow Inputs. Empty exposes none."},
 		"input_mapping":   scriptEntryInputMappingSchema(),
-		"input_schema":    map[string]interface{}{"type": "object", "description": "Only for Crew message functions. Workflow functions use inputs names instead."},
-		"result_schema":   map[string]interface{}{"type": "object", "description": "Crew result JSON Schema; Goals return their run outcome."},
+		"input_schema":    map[string]interface{}{"type": "object", "description": "Only for project message functions. Workflow functions use inputs names instead."},
+		"result_schema":   map[string]interface{}{"type": "object", "description": "Project result JSON Schema; Goals return their run outcome."},
 		"allowed_callers": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object"}},
 		"enabled":         map[string]interface{}{"type": "boolean"},
 	}}
@@ -216,10 +216,10 @@ func manageProjectFunction(ctx context.Context, claims *UserClaims, target trigg
 			}
 		} else {
 			if record.Action.Type != "message" {
-				return nil, fmt.Errorf("a Crew function sends instructions to its saved tab")
+				return nil, fmt.Errorf("a project function sends instructions to its saved tab")
 			}
 			if len(record.AllowedCallers) > 0 {
-				return nil, fmt.Errorf("Crew functions use the project's Share setting")
+				return nil, fmt.Errorf("Project functions use the project's Share setting")
 			}
 			fn, err := crewFunctionExecutionView(record)
 			if err != nil {

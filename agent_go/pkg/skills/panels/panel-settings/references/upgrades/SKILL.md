@@ -5,7 +5,7 @@ call removed migration/status/stamp actions or edit planning/config files to hid
 an old banner. Existing files and records can be inspected only through current
 authorized readers; their presence does not mean the old plan can run.
 
-For repeatable work, read `python-workflows`: the Crew has one saved Python
+For repeatable work, read `python-workflows`: the project has one saved Python
 workflow with typed inputs, task paths and ordinary helper files. Conversion of
 remaining old data is an operator task with its own approved scope and backup,
 not an automatic chat repair. Explain the actual unsupported state and next

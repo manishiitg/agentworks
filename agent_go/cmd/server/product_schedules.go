@@ -539,7 +539,7 @@ func (s *ProjectActionDispatcher) JobsForBuilder(ctx context.Context, userID str
 		other, err := s.JobsForUser(ctx, owner)
 		if err != nil {
 			// A Team member's own list must not fail because one owner's records could not be read for them.
-			log.Printf("[SCHEDULES] skipping the Crew owner's schedules for a Team member: %v", err)
+			log.Printf("[SCHEDULES] skipping the project owner's schedules for a Team member: %v", err)
 			continue
 		}
 		for _, job := range other {
@@ -571,7 +571,7 @@ func (s *ProjectActionDispatcher) projectBuilderOwner(ctx context.Context, calle
 		return "", err
 	}
 	if !project.OwnedByCaller {
-		return "", fmt.Errorf("Only a Crew owner can change its schedules")
+		return "", fmt.Errorf("Only a project owner can change its schedules")
 	}
 	return project.OwnerID, nil
 }
@@ -1394,7 +1394,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 			return "", err
 		}
 		if s.api == nil || s.api.scheduler == nil {
-			return "", fmt.Errorf("Crew timer run ledger is unavailable")
+			return "", fmt.Errorf("Project timer run ledger is unavailable")
 		}
 		decision, source := s.api.scheduler.crewTimerDependencyDecision(runCtx, current, time.Now().UTC())
 		if !decision.Run || source != "queued" || !decision.ScheduledFor.Equal(scheduledFor) {
@@ -1441,7 +1441,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 	if job.Profile.ID == "relays" && !productEnabled("relays") {
 		bindErr = errFlowsDisabled
 	} else if job.GuestCallerID != "" && !currentProductCallerHasAccess(runCtx, job.GuestCallerID, job.WorkspacePath) {
-		bindErr = fmt.Errorf("This Crew is no longer shared with the caller. Ask its owner for access.")
+		bindErr = fmt.Errorf("This project is no longer shared with the caller. Ask its owner for access.")
 		scheduleLogf("[PRODUCT_TRIGGER_ACCESS] actor=%s profile=%s project=%s result=denied reason=current_share", sanitizeUserIDForPath(job.GuestCallerID), job.Profile.ID, job.ProjectID)
 	} else if routeErr := s.validateProjectCallConversation(runCtx, job); routeErr != nil {
 		bindErr = routeErr
@@ -1503,7 +1503,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 	sessionID := conversation.SessionID
 	if ledger != nil {
 		ledger.stateStoreMu.RLock()
-		err := ledger.stateStore.Transition(runCtx, schedulerstate.Transition{RunID: runID, To: schedulerstate.StateWorkflowRunning, SessionID: sessionID, Reason: "Crew timer conversation ready"})
+		err := ledger.stateStore.Transition(runCtx, schedulerstate.Transition{RunID: runID, To: schedulerstate.StateWorkflowRunning, SessionID: sessionID, Reason: "Project timer conversation ready"})
 		ledger.stateStoreMu.RUnlock()
 		if err != nil {
 			return sessionID, err
@@ -1616,7 +1616,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 	}
 	for i := 0; i < len(messages); i++ {
 		if job.GuestCallerID != "" && !currentProductCallerHasAccess(runCtx, job.GuestCallerID, job.WorkspacePath) {
-			runErr = fmt.Errorf("This Crew is no longer shared with the caller. Ask its owner for access.")
+			runErr = fmt.Errorf("This project is no longer shared with the caller. Ask its owner for access.")
 			break
 		}
 		message := messages[i]
@@ -1992,4 +1992,4 @@ func crewScheduleWorkflowAllowed(caller, owner string, schedule productschedule.
 	return fmt.Errorf("%s", crewWorkflowScheduleOwnerOnly)
 }
 
-const crewWorkflowScheduleOwnerOnly = "Only the Crew owner can schedule its workflows, because they run with the owner's own keys. Ask the owner to schedule it."
+const crewWorkflowScheduleOwnerOnly = "Only the project owner can schedule its workflows, because they run with the owner's own keys. Ask the owner to schedule it."

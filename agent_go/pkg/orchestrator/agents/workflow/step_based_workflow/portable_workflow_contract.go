@@ -239,7 +239,7 @@ func portableReferences(value any, location, workspace string) error {
 	switch v := value.(type) {
 	case string:
 		if strings.Contains(v, "learnings/") || v == workspace || strings.Contains(v, workspace+"/") {
-			return fmt.Errorf("%s still names retired storage; review it in this Crew's chat and use the appropriate runtime anchor or workflow-relative value", location)
+			return fmt.Errorf("%s still names retired storage; review it in this project's chat and use the appropriate runtime anchor or workflow-relative value", location)
 		}
 	case []any:
 		for index, child := range v {

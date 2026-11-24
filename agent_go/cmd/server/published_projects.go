@@ -17,7 +17,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 )
 
-const publishedSourceNotice = "This Crew was published from its owner's computer. You can inspect it, answer questions and save working results here. To change its source files, instructions, skills, functions or dashboard, publish again from that computer. Native chat resume was not attempted; Builder context comes from a handoff summary."
+const publishedSourceNotice = "This project was published from its owner's computer. You can inspect it, answer questions and save working results here. To change its source files, instructions, skills, functions or dashboard, publish again from that computer. Native chat resume was not attempted; Builder context comes from a handoff summary."
 
 // This record is outside workspace-docs, not an editable project manifest.
 // A laptop project ID locates a target only within the authenticated owner's records.
@@ -97,7 +97,7 @@ func readPublishedAgent(ctx context.Context, root, agentID string) (*publishedPr
 	}
 	var record publishedProject
 	if json.Unmarshal(raw, &record) != nil || record.AgentID != agentID || canonicalCrewWorkspaceRoot(record.Root) != canonicalCrewWorkspaceRoot(ref.Root) || record.OwnerID == "" || record.Revision == "" || strings.ContainsAny(record.Revision, "/\\.") || resolveProjectOwner(ctx, ref.Root) != record.OwnerID {
-		return nil, fmt.Errorf("cannot verify this Crew's publication record")
+		return nil, fmt.Errorf("cannot verify this project's publication record")
 	}
 	record.Root = ref.Root
 	return &record, nil
@@ -184,13 +184,13 @@ func publishedWriteRefusal(ctx context.Context, raw string) string {
 	}
 	record, err := readPublishedProject(ctx, ref.Root)
 	if err != nil {
-		return "Cannot verify this Crew's published source. Try again or ask its owner to check publication status."
+		return "Cannot verify this project's published source. Try again or ask its owner to check publication status."
 	}
 	if record == nil {
 		return ""
 	}
 	if strings.HasPrefix(ref.Rest, ".published/") {
-		return "To change this Crew's source, publish again from your computer."
+		return "To change this project's source, publish again from your computer."
 	}
 	for _, p := range record.SourcePaths {
 		if ref.Rest == p || strings.HasPrefix(p, strings.TrimSuffix(ref.Rest, "/")+"/") {
@@ -205,7 +205,7 @@ func publishedWriteRefusal(ctx context.Context, raw string) string {
 	if ref.Rest == "product.json" || ref.Rest == "workflow.json" || ref.Rest == "project.json" || strings.HasPrefix(ref.Rest, "builder/") {
 		return ""
 	}
-	return "To change this Crew's source, publish again from your computer. You can still save working results in its runtime folders."
+	return "To change this project's source, publish again from your computer. You can still save working results in its runtime folders."
 }
 
 // Published file reads select one immutable source revision. Metadata and live

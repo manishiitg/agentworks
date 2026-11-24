@@ -81,7 +81,7 @@ func (api *StreamingAPI) failPendingChatUpload(key pendingChatUploadKey) {
 // send-while-uploading plans to an admitted, saved conversation, not a label.
 func (api *StreamingAPI) admitPendingChatUpload(w http.ResponseWriter, r *http.Request, project, conversation, session string) bool {
 	if conversation == "" || session == "" || crewResourceProjectID(conversation) != project {
-		writeAgentProfileError(w, 400, "Open this Crew chat, then attach the file again.")
+		writeAgentProfileError(w, 400, "Open this project chat, then attach the file again.")
 		return false
 	}
 	user, slot, ok := api.agentProfileConversationSlot(w, r, conversation)
@@ -89,7 +89,7 @@ func (api *StreamingAPI) admitPendingChatUpload(w http.ResponseWriter, r *http.R
 		return false
 	}
 	if slot.binding.ResourceID != project {
-		writeAgentProfileError(w, 403, "Attach files in their own Crew chat.")
+		writeAgentProfileError(w, 403, "Attach files in their own project chat.")
 		return false
 	}
 	current, has, previous, err := defaultProductConversationRegistryStore().history(r.Context(), user, slot.profile, slot.binding)
@@ -120,7 +120,7 @@ func (api *StreamingAPI) validatePendingChatAttachments(user, session string, re
 		return errors.New("Attach at most 100 files in one message.")
 	}
 	if req.AgentProfileID != crewProfileID || req.AgentProfileConversationKey == "" {
-		return errors.New("Attach these files in a Crew chat before sending.")
+		return errors.New("Attach these files in a project chat before sending.")
 	}
 	for _, file := range req.PendingAttachments {
 		if len(file.Hash) != 64 || strings.Trim(file.Hash, "0123456789abcdef") != "" {

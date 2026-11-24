@@ -85,7 +85,7 @@ func writeCrewTeamActivityPost(ctx context.Context, project, person, agentID, ki
 	}
 	agent, ok := team.Agents[agentID]
 	if !ok || agent.OwnerID != person {
-		return crewTeamActivityPost{}, fmt.Errorf("Post activity from your own agent in this Crew")
+		return crewTeamActivityPost{}, fmt.Errorf("Post activity from your own agent in this project")
 	}
 	return writeCrewTeamActivityPostAs(ctx, project, person, agent, kind, line, why, schedule)
 }
@@ -112,7 +112,7 @@ func writeCrewTeamActivityPostAs(ctx context.Context, project, person string, ac
 	defer mu.Unlock()
 	team, err := readCrewTeam(project)
 	if err != nil || !crewTeamAgentsVisible(team, person) {
-		return empty, fmt.Errorf("This Crew's Team is not available to you")
+		return empty, fmt.Errorf("This project's Team is not available to you")
 	}
 	agent, registered := team.Agents[actor.ID]
 	if !registered {
@@ -120,7 +120,7 @@ func writeCrewTeamActivityPostAs(ctx context.Context, project, person string, ac
 		agent.InTeam = false
 	}
 	if agent.OwnerID != person || agent.ChatKey == "" {
-		return empty, fmt.Errorf("Post activity from your own agent in this Crew")
+		return empty, fmt.Errorf("Post activity from your own agent in this project")
 	}
 	private := !registered || !agent.InTeam
 	if actor.InTeam && private {
@@ -203,7 +203,7 @@ func (api *StreamingAPI) handleCrewTeamActivityPosts(w http.ResponseWriter, r *h
 		return
 	}
 	if !team.On {
-		externalError(w, 403, "team_off", "Turn on this Crew's Team first")
+		externalError(w, 403, "team_off", "Turn on this project's Team first")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -235,7 +235,7 @@ func (api *StreamingAPI) handleCrewTeamActivityPosts(w http.ResponseWriter, r *h
 	// chosen display name. A person cannot post as another person's agent.
 	actor, err := api.crewTeamActivityActorForRequest(r, team, claims.UserID, body.AgentID, body.ChatKey, body.Agent)
 	if err != nil || body.SharedAsk && !actor.InTeam {
-		externalError(w, 403, "activity_forbidden", "Post activity from your own agent in this Crew")
+		externalError(w, 403, "activity_forbidden", "Post activity from your own agent in this project")
 		return
 	}
 

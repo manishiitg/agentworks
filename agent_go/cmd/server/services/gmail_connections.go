@@ -1162,7 +1162,7 @@ func (g *GmailService) AgentInboxConnection(owner string) (GmailConnection, erro
 			return c, nil
 		}
 	}
-	return GmailConnection{}, fmt.Errorf("Choose your Gmail inbox account in your project's Vault panel or in chat to give your Crews email addresses")
+	return GmailConnection{}, fmt.Errorf("Choose your Gmail inbox account in your project's Vault panel or in chat to give your projects email addresses")
 }
 
 // SetAgentInboxAccount uses the same encrypted connection store, without a second login.

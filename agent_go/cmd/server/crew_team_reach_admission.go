@@ -426,7 +426,7 @@ type crewTeamReachRefusal struct{ reason string }
 
 func (e crewTeamReachRefusal) Error() string {
 	if e.reason == "crew_joined" {
-		return "This agent works inside a Crew now; only that Crew's people can reach it. Leave the Crew to use its network sharing."
+		return "This agent works inside a project now; only that project's people can reach it. Leave the project to use its network sharing."
 	}
 	return "This agent is not shared with you now, or its attached session changed. Refresh the agent list."
 }

@@ -48,7 +48,7 @@ func (api *StreamingAPI) selfForkCrewAgent(t crewTeam, viewer, agentID string, n
 		return crewAgentFork{}, err
 	}
 	if !crewAgentForkRunsOnMac(t, viewer) {
-		return crewAgentFork{}, crewAgentCopyRefusal("Connect your own Mac to this Crew before forking an agent.")
+		return crewAgentFork{}, crewAgentCopyRefusal("Connect your own Mac to this project before forking an agent.")
 	}
 	return api.forkCrewAgentFromSyncedCopy(t, a, viewer, true, now)
 }

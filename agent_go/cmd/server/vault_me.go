@@ -170,12 +170,12 @@ func (api *StreamingAPI) handleVaultMeSecretCopy(w http.ResponseWriter, r *http.
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&in) != nil || in.Value == "" || !vaultMeIDPattern.MatchString(in.Crew) {
-		writeUsersError(w, http.StatusBadRequest, "Send the secret's name and value and the Crew.")
+		writeUsersError(w, http.StatusBadRequest, "Send the secret's name and value and the project.")
 		return
 	}
 	root := crewProjectRootByID(in.Crew)
 	if root == "" {
-		writeUsersError(w, http.StatusNotFound, "That Crew isn't on this server.")
+		writeUsersError(w, http.StatusNotFound, "That project isn't on this server.")
 		return
 	}
 	full, err := api.saveProjectSecret(r.Context(), person, root, in.Name, in.Value)

@@ -212,7 +212,7 @@
     "family": "integrations",
     "name": "github",
     "member": "github",
-    "description": "Read and change GitHub repositories with the GitHub login this workflow or Crew already uses."
+    "description": "Read and change GitHub repositories with the GitHub login this workflow or project already uses."
   },
   {
     "family": "integrations",
@@ -367,7 +367,7 @@
     "family": "workspace",
     "name": "team_invites",
     "member": "crew_team_sync__invites",
-    "description": "List the Crew Teams you are in and your open Team invites.",
+    "description": "List the project Teams you are in and your open Team invites.",
     "source": "crew_team_sync",
     "source_action": "invites"
   },
@@ -375,7 +375,7 @@
     "family": "workspace",
     "name": "team_accept",
     "member": "crew_team_sync__accept",
-    "description": "Accept your open invite to a Crew Team (crew_id from team_invites).",
+    "description": "Accept your open invite to a project Team (crew_id from team_invites).",
     "source": "crew_team_sync",
     "source_action": "accept"
   },
@@ -383,7 +383,7 @@
     "family": "workspace",
     "name": "team_decline",
     "member": "crew_team_sync__decline",
-    "description": "Decline your open invite to a Crew Team (crew_id from team_invites).",
+    "description": "Decline your open invite to a project Team (crew_id from team_invites).",
     "source": "crew_team_sync",
     "source_action": "decline"
   },
@@ -1263,7 +1263,7 @@
     "family": "workspace",
     "name": "open_chat",
     "member": "workspace__open_chat",
-    "description": "Create a new named agent tab in this Crew (name required), even when the Crew has no Main. Use ask with the returned chat_id to talk to it.",
+    "description": "Create a new named agent tab in this project (name required), even when the project has no Main. Use ask with the returned chat_id to talk to it.",
     "source": "workspace",
     "source_action": "open_chat"
   },
@@ -1287,7 +1287,7 @@
     "family": "workspace",
     "name": "new_chat",
     "member": "workspace__new_chat",
-    "description": "Reset an existing Main conversation, keeping the Crew. This does not create a named agent. To create an agent use open_chat with name.",
+    "description": "Reset an existing Main conversation, keeping the project. This does not create a named agent. To create an agent use open_chat with name.",
     "source": "workspace",
     "source_action": "new_chat"
   },
@@ -1399,7 +1399,7 @@
     "family": "workspace",
     "name": "add_context",
     "member": "workspace__add_context",
-    "description": "Capture an owned Crew browser element as ordinary chat attachments. Probe the current source first; never clicks, sends or queues a message.",
+    "description": "Capture an owned project browser element as ordinary chat attachments. Probe the current source first; never clicks, sends or queues a message.",
     "source": "workspace",
     "source_action": "add_context"
   },
@@ -1415,7 +1415,7 @@
     "family": "workspace",
     "name": "sync",
     "member": "workspace__sync",
-    "description": "Read or change this Crew’s Mac reach through the existing owner-only sync service; sync_action selects the operation.",
+    "description": "Read or change this project’s Mac reach through the existing owner-only sync service; sync_action selects the operation.",
     "source": "workspace",
     "source_action": "sync"
   },
@@ -1517,7 +1517,7 @@
     "family": "terminal",
     "name": "history",
     "member": "crew_execution__history",
-    "description": "Read the existing owner-only execution history for this Crew.",
+    "description": "Read the existing owner-only execution history for this project.",
     "source": "crew_execution",
     "source_action": "history"
   },
@@ -1525,7 +1525,7 @@
     "family": "workspace",
     "name": "automation_list",
     "member": "crew_workflows__list",
-    "description": "Use the Crew automation list operation.",
+    "description": "Use the project automation list operation.",
     "source": "crew_workflows",
     "source_action": "list"
   },
@@ -1533,7 +1533,7 @@
     "family": "workspace",
     "name": "automation_create",
     "member": "crew_workflows__create",
-    "description": "Use the Crew automation create operation.",
+    "description": "Use the project automation create operation.",
     "source": "crew_workflows",
     "source_action": "create"
   },
@@ -1541,7 +1541,7 @@
     "family": "workspace",
     "name": "automation_read",
     "member": "crew_workflows__read",
-    "description": "Use the Crew automation read operation.",
+    "description": "Use the project automation read operation.",
     "source": "crew_workflows",
     "source_action": "read"
   },
@@ -1549,7 +1549,7 @@
     "family": "workspace",
     "name": "automation_write",
     "member": "crew_workflows__write",
-    "description": "Use the Crew automation write operation.",
+    "description": "Use the project automation write operation.",
     "source": "crew_workflows",
     "source_action": "write"
   },
@@ -1557,7 +1557,7 @@
     "family": "workspace",
     "name": "automation_describe",
     "member": "crew_workflows__describe",
-    "description": "Use the Crew automation describe operation.",
+    "description": "Use the project automation describe operation.",
     "source": "crew_workflows",
     "source_action": "describe"
   },
@@ -1565,7 +1565,7 @@
     "family": "workspace",
     "name": "automation_edit",
     "member": "crew_workflows__edit",
-    "description": "Use the Crew automation edit operation.",
+    "description": "Use the project automation edit operation.",
     "source": "crew_workflows",
     "source_action": "edit"
   },
@@ -1573,7 +1573,7 @@
     "family": "workspace",
     "name": "automation_rename",
     "member": "crew_workflows__rename",
-    "description": "Rename this Crew's workflow (display name only; its files and runs stay).",
+    "description": "Rename this project's workflow (display name only; its files and runs stay).",
     "source": "crew_workflows",
     "source_action": "rename"
   },
@@ -1581,7 +1581,7 @@
     "family": "workspace",
     "name": "automation_delete",
     "member": "crew_workflows__delete",
-    "description": "Delete this Crew's workflow with its code, runs and saved settings. Cannot be undone; ask the person first and pass confirm=true.",
+    "description": "Delete this project's workflow with its code, runs and saved settings. Cannot be undone; ask the person first and pass confirm=true.",
     "source": "crew_workflows",
     "source_action": "delete"
   },
@@ -1597,7 +1597,7 @@
     "family": "workspace",
     "name": "team_fork_send",
     "member": "crew_team_sync__fork_send",
-    "description": "Send a copy of your own agent’s conversation to a teammate it is shared with in this Crew (share it in Team first). A very large chat sends its newest part. Their accepted copy starts Only me.",
+    "description": "Send a copy of your own agent’s conversation to a teammate it is shared with in this project (share it in Team first). A very large chat sends its newest part. Their accepted copy starts Only me.",
     "source": "crew_team_sync",
     "source_action": "fork_send"
   },
@@ -1605,7 +1605,7 @@
     "family": "workspace",
     "name": "team_forks",
     "member": "crew_team_sync__forks",
-    "description": "List your pending agent copies in this Crew.",
+    "description": "List your pending agent copies in this project.",
     "source": "crew_team_sync",
     "source_action": "forks"
   },

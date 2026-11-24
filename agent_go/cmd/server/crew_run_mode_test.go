@@ -107,7 +107,7 @@ func TestCrewSessionModeNotice(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"aman","can_create":true}]}`)
 	notice := crewSessionModeNotice(registerTestCrew(t, "alpha", "owner", true), "", false)
-	for _, marker := range []string{"shared user", "aman", "Change nothing", "ask the Crew's owner", "alone", "secret"} {
+	for _, marker := range []string{"shared user", "aman", "Change nothing", "ask the project's owner", "alone", "secret"} {
 		if !strings.Contains(notice, marker) {
 			t.Fatalf("session notice missing %q:\n%s", marker, notice)
 		}

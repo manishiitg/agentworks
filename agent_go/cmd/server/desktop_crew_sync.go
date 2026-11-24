@@ -29,7 +29,7 @@ func (api *StreamingAPI) handleDesktopCrewSync(w http.ResponseWriter, r *http.Re
 func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
 	if !IsLocalMode() {
-		externalError(w, 403, "local_app_required", "Open the Crew in the local AgentWorks app.")
+		externalError(w, 403, "local_app_required", "Open the project in the local AgentWorks app.")
 		return
 	}
 	connection, err := desktopConnectionFor(claims.UserID, mux.Vars(r)["connection"])
@@ -64,7 +64,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	if input.Action == "status" {
 		b, e := crewroot.ReadSync(id)
 		if e != nil || (b != nil && b.ConnectionID != connection.ID) {
-			externalError(w, 409, "wrong_connection", "Use this Crew's connected server.")
+			externalError(w, 409, "wrong_connection", "Use this project's connected server.")
 			return
 		}
 		out, e := api.crewSync(r.Context(), claims, id, crewSyncRequest{Action: "status"})
@@ -108,19 +108,19 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if binding != nil && (binding.Side != "local" || binding.ConnectionID != connection.ID) {
-		externalError(w, 409, "wrong_connection", "Use this Crew's paired server.")
+		externalError(w, 409, "wrong_connection", "Use this project's paired server.")
 		return
 	}
 	// Picking a Crew's server (several connected) creates its empty twin there; a Crew has one server.
 	if input.Action == "relay" {
 		if binding == nil && !desktopServerSupportsRelay(r.Context(), claims.UserID, connection) {
-			externalError(w, 409, "sync_unavailable", "This server needs an update before this Crew can be used from your phone.")
+			externalError(w, 409, "sync_unavailable", "This server needs an update before this project can be used from your phone.")
 			return
 		}
 		if binding == nil {
 			_, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, roots.ID)
 			if !ok {
-				externalError(w, 404, "sync_unavailable", "This Crew is unavailable.")
+				externalError(w, 404, "sync_unavailable", "This project is unavailable.")
 				return
 			}
 			if err = api.createDesktopCrewRelayTwin(r.Context(), claims.UserID, connection, roots.ID, manifest.displayTitle()); err != nil {
@@ -167,7 +167,7 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		if binding.Mode != "relay" || binding.Editing != "local" || binding.PendingAction != "" {
-			externalError(w, 409, "sync_unavailable", "This Crew lives online; it stays reachable from your phone and the web.")
+			externalError(w, 409, "sync_unavailable", "This project lives online; it stays reachable from your phone and the web.")
 			return
 		}
 		// While the Team is on, Mac online stays on (owner, 6 Nov): the main owner turns the Team off first.

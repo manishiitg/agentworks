@@ -162,7 +162,7 @@ func BuildMainPyAuthoringRules() string {
 func BuildBrowserAuthoringRules() string {
 	var sb strings.Builder
 	sb.WriteString("## Browser automation rules (this step has agent_browser)\n\n")
-	sb.WriteString("Read the attached `agent-browser` skill's **Selector Discipline** section before browser authoring. It is the shared contract for Crew chats, steps and scripts.\n\n")
+	sb.WriteString("Read the attached `agent-browser` skill's **Selector Discipline** section before browser authoring. It is the shared contract for project chats, steps and scripts.\n\n")
 	sb.WriteString("Start with a snapshot and use current refs for live actions. Saved main.py may resolve fresh refs at runtime or use verified durable locators; never hardcode a previous snapshot's ref. Use a scoped read-only eval only when the snapshot is insufficient. Verify the intended target and the action's outcome.\n\n")
 	sb.WriteString("- **Site-access resilience**: if a headless `open` returns \"Permission Denied\", a blank page, or a native-alert freeze, switch the workflow to CDP mode against an existing Chrome and document the precondition in the task or its selected skill. Register a dialog handler before interacting if the page shows native alerts.\n")
 	sb.WriteString("- Wait by polling snapshots in a loop checking for expected content / expected widget state (e.g. disabled→enabled). NOT `time.sleep(N)` for UI state (use short sleeps 1-2s only between polls).\n")

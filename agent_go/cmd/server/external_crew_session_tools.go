@@ -29,7 +29,7 @@ func (api *StreamingAPI) externalCrewSessionToolsCall(w http.ResponseWriter, r *
 		return
 	}
 	if claims.AccessToken != nil && claims.AccessToken.FileGuard != nil {
-		externalError(w, 403, "insufficient_scope", "Session tools require unrestricted Crew file consent.")
+		externalError(w, 403, "insufficient_scope", "Session tools require unrestricted project file consent.")
 		return
 	}
 	profile, err := api.agentProfiles.Resolve("work", 0, claims.UserID)

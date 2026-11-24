@@ -543,14 +543,14 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	if isProjectProfileID(profile.ID) {
 		agentID := publicationAgentID(req.AgentProfileConversationKey)
 		if agentID != "" && !crewOwned {
-			return nil, fmt.Errorf("Open a published agent from a Crew you may build. Use the shared dashboard for Run work.")
+			return nil, fmt.Errorf("Open a published agent from a project you may build. Use the shared dashboard for Run work.")
 		}
 		publication, err = readPublishedAgent(ctx, agentProfileRuntimeWorkspace(userID, workspacePath), agentID)
 		if err != nil {
 			return nil, err
 		}
 		if agentID != "" && publication == nil {
-			return nil, fmt.Errorf("This published agent is unavailable. Choose one from the Crew's Agents list.")
+			return nil, fmt.Errorf("This published agent is unavailable. Choose one from the project's Agents list.")
 		}
 		if publication != nil {
 			ctx = context.WithValue(ctx, publicationExecutionKey{}, publication)

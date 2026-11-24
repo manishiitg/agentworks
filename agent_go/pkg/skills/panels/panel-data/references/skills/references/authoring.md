@@ -44,13 +44,13 @@ requested scope first.
   creating another skill. Use `skills action=search` to discover an existing skill.
 - Use `skills action=install` for a discovered skill and `skills action=import` for a supplied
   skill source. Installation stays in the current workspace; selecting it for an agent is
-  a separate action. For Crew, call
+  a separate action. For project, call
   `skills action=select` with
   the exact folder returned by `skills action=list` and the offered selection fields.
-  Deselecting removes only this Crew's selection. A Python workflow chooses its already installed skills in agent() calls; it does not install packages for another person's account. The same Crew selection is managed through chat. **Build > Skills** (or Recent) shows
-  installed custom skills. In a Crew, owners can open a skill in Files to edit
+  Deselecting removes only this project's selection. A Python workflow chooses its already installed skills in agent() calls; it does not install packages for another person's account. The same project selection is managed through chat. **Build > Skills** (or Recent) shows
+  installed custom skills. In a project, owners can open a skill in Files to edit
   it, or uninstall it from this panel; selection is managed through chat.
-  Crew-local copies of another product's skills are ordinary project files:
+  Project-local copies of another product's skills are ordinary project files:
   edit or remove those copies without changing the original product. Only
   the current product's built-in platform guides remain protected.
 - When the user explicitly asks to preserve or improve a repeatable procedure,

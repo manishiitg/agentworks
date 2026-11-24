@@ -6,16 +6,16 @@ A marketing lead might ask for campaign reviews, a support lead for policy-based
 
 - **Build:** the website Builder and a person's AI app over MCP use the same current access. Builders create and improve the process; a shared project's Run experience is how teammates use it.
 - **Share:** choose **Only me / Chosen people / Everyone**. Sharing creates a standard dashboard when needed, with Ask and published actions; it does not make teammates Builders.
-- **Contribute:** teammates bring inputs, case context and suggestions through the shared entry points. Editing shared knowledge follows its existing folder access. When requested, use a Crew's Team, or existing Flow co-owner or workflow editor access, for people who will help build; explain that Builders can see Builder chats.
+- **Contribute:** teammates bring inputs, case context and suggestions through the shared entry points. Editing shared knowledge follows its existing folder access. When requested, use a project's Team, or existing Flow co-owner or workflow editor access, for people who will help build; explain that Builders can see Builder chats.
 
 Within shared work, current product access covers its runs, results, execution logs and token usage, plus permitted MCP file reads. Secret values, private logs and personal provider logins stay protected. Shared runs use the product's selected accounts under their existing grants. Use current tool evidence to distinguish a created project from a completed example or a working shared link. A five-minute first version is an aim to verify, not a guarantee for every process or missing connection.
 
-Supporting AI apps can follow long function calls as MCP Tasks, and show an elicitation form when work needs an ordinary answer. Crew Ask can also pause for questions in supporting apps; answer in the same chat, and the Crew continues with your existing access. Account sign-in opens a browser flow. These use the same project and account permissions; client support varies, so discover current capabilities and inspect actual completion.
+Supporting AI apps can follow long function calls as MCP Tasks, and show an elicitation form when work needs an ordinary answer. Project Ask can also pause for questions in supporting apps; answer in the same chat, and the project continues with your existing access. Account sign-in opens a browser flow. These use the same project and account permissions; client support varies, so discover current capabilities and inspect actual completion.
 
 | Product | Choose it for |
 |---|---|
-<!-- product:agentworks -->| Workflows | Scripts kept inside a Crew that run by themselves on a schedule, a webhook or a function call. |
-<!-- /product --><!-- product:crew -->| Crew | A reusable specialist or shared workspace for requests, knowledge, files and team actions; also coding work. |
+<!-- product:agentworks -->| Workflows | Scripts kept inside a project that run by themselves on a schedule, a webhook or a function call. |
+<!-- /product --><!-- product:crew -->| project | A reusable specialist or shared workspace for requests, knowledge, files and team actions; also coding work. |
 <!-- /product --><!-- product:relays -->| Flows | Repeatable code pipelines with a test, publish and production-run lifecycle. |
 <!-- /product --><!-- product:knowledgebase -->| Brain | Shared knowledge, files and reusable skill packages. |
 <!-- /product --><!-- product:mcp-gateway -->| Vault | Shared MCP integrations, secrets and centrally managed access. |
@@ -27,24 +27,24 @@ Products can work together when this installation enables them and current acces
 
 <!-- product:agentworks -->### Workflows
 
-A workflow is a script that lives inside a Crew and does a repeatable job by itself: it runs on a schedule, when a webhook arrives or when someone calls its function. Use one when the steps are known and should run the same way each time. Use the Crew's chat when the work needs judgment or a conversation.
+A workflow is a script that lives inside a project and does a repeatable job by itself: it runs on a schedule, when a webhook arrives or when someone calls its function. Use one when the steps are known and should run the same way each time. Use the project's chat when the work needs judgment or a conversation.
 
 - **Abilities:** write the workflow as a Python script (`script.json` for its inputs, presets and outputs, `main.py` for the steps, with `agent()` calls where a step needs an AI); run it; see each run's record, files and costs; set schedules, webhooks and function calls that start it.
-- **Start from chat:** ask your Crew's agent to create a workflow, with a name and what it should do. It runs directly, with no chat; a schedule can instead pick an existing agent to do the run if you want one involved.
-- **MCP route:** discover workflows with `workflow action=list`, start one with `runs action=start` and read its run records with the run tools. A workflow's code is edited through the Crew's files and automation tools.
+- **Start from chat:** ask your project's agent to create a workflow, with a name and what it should do. It runs directly, with no chat; a schedule can instead pick an existing agent to do the run if you want one involved.
+- **MCP route:** discover workflows with `workflow action=list`, start one with `runs action=start` and read its run records with the run tools. A workflow's code is edited through the project's files and automation tools.
 - **Access:** owners and workflow editors can build through MCP just as on the website. Running, sharing and integration access use the same server checks.
 - **Example:** every morning read the new support requests, count the unanswered ones and send a short summary.
 
-<!-- /product --><!-- product:crew -->### Crew
+<!-- /product --><!-- product:crew -->### project
 
-Crew combines the former Code and Crew products. Use it to work privately with an agent, develop a repository or build a specialist that other people can use. New projects start **Only me**; Share changes access to the same project.
+Project combines the former Code and project products. Use it to work privately with an agent, develop a repository or build a specialist that other people can use. New projects start **Only me**; Share changes access to the same project.
 
-- **Abilities:** project files and instructions, coding and review, named chat tabs, selected skills and integrations, browser and database tools, dashboards, typed functions, schedules and costs. Memory is optional: existing former Code projects keep it off and former Crew projects keep it on until a Builder changes the setting. A Builder can switch Memory on or off in Settings.
+- **Abilities:** project files and instructions, coding and review, named chat tabs, selected skills and integrations, browser and database tools, dashboards, typed functions, schedules and costs. Memory is optional: existing former projects keep it off and former project projects keep it on until a Builder changes the setting. A Builder can switch Memory on or off in Settings.
 - **MCP route:** start with `workspace action=list`, then `get` using its returned `workspace_id`. Use `create`, `update`, `ask` and the chat actions from the live schema. Load `crew-authoring` for setup and discover published functions with `functions action=list`. Keep the canonical `workspace_id` returned by discovery; do not construct retired product selectors.
 - **Access:** the main owner and, while the Team is on, its joined members build together and can see all Builder chats. Share offers **Only me / Chosen people / Everyone**. People with Run access see their own chat and the dashboard, can use published functions and read permitted files, runs and results over MCP. Owners may also explicitly select existing agents in Share: recipients can read those selected conversations from sharing onward, and message the existing agent with sender attribution from the website, MCP or another Crew. Unselected Builder chats, secret values and private logs remain excluded. Current connection, account and project checks still apply; sharing does not grant Builder access.
 - **Accounts and costs:** work uses the project's selected model and connected accounts under their current grants. Sharing does not switch accounts automatically. Show whose account will be used and attribute activity to the caller.
-- **Optional laptop access:** Crew runs on the server, including its files, shell, functions, schedules and background work. Connect your computer once (the project's Local laptop panel, or ask in chat), then choose it and its folders in the Crew's Local laptop panel. Each folder is Read (list and copy files into Crew) or Read & write (also write files); running terminal commands is a separate switch, "Run terminal commands", that also needs a Read & write folder. Use `manage_laptop_access` for settings and folder grants, `list_local_files`, `write_local_file`, `copy_local_file_to_project` for files and `execute_local_shell_command` for commands, using their live schemas. Laptop access belongs to the owner’s interactive Builder chat; Run callers and schedules do not inherit it. A disconnected laptop leaves normal server work available. There is no separate Publish copy, sync or copy back to the laptop; server secrets are not sent to laptop commands.
-- **Example:** develop an invoice assistant privately, expose a reconciliation function, then share the same Crew with the finance team. A workflow can call its published function.
+- **Optional laptop access:** project runs on the server, including its files, shell, functions, schedules and background work. Connect your computer once (the project's Local laptop panel, or ask in chat), then choose it and its folders in the project's Local laptop panel. Each folder is Read (list and copy files into project) or Read & write (also write files); running terminal commands is a separate switch, "Run terminal commands", that also needs a Read & write folder. Use `manage_laptop_access` for settings and folder grants, `list_local_files`, `write_local_file`, `copy_local_file_to_project` for files and `execute_local_shell_command` for commands, using their live schemas. Laptop access belongs to the owner’s interactive Builder chat; Run callers and schedules do not inherit it. A disconnected laptop leaves normal server work available. There is no separate Publish copy, sync or copy back to the laptop; server secrets are not sent to laptop commands.
+- **Example:** develop an invoice assistant privately, expose a reconciliation function, then share the same project with the finance team. A workflow can call its published function.
 
 <!-- /product --><!-- product:relays -->### Flows
 
@@ -91,16 +91,16 @@ No. Describe what the team does, the information it uses, the result it needs an
 
 ### Does sharing let everyone change how it works?
 
-Sharing gives people the current Run experience: Ask, published actions and their dashboard. They can supply work, add context and suggest improvements through those entry points. Shared knowledge edits need its existing folder access. Ask to add them to the Crew's Team, or as a Flow co-owner or workflow editor, when someone should help build; that access includes the project's Builder conversations. Use existing roles, not a new contribution permission.
+Sharing gives people the current Run experience: Ask, published actions and their dashboard. They can supply work, add context and suggest improvements through those entry points. Shared knowledge edits need its existing folder access. Ask to add them to the project's Team, or as a Flow co-owner or workflow editor, when someone should help build; that access includes the project's Builder conversations. Use existing roles, not a new contribution permission.
 
 
-<!-- product:agentworks --><!-- product:crew -->### Should I use a workflow or the Crew's chat?
+<!-- product:agentworks --><!-- product:crew -->### Should I use a workflow or the project's chat?
 
-Use a **workflow** for a job with known steps that should run the same way every time, on a schedule or when called. Use the **Crew's chat** when the work needs an agent's judgment, files or a conversation. Both live in the same Crew: the agent can run a workflow when you ask, and a schedule can choose an agent to run on.
+Use a **workflow** for a job with known steps that should run the same way every time, on a schedule or when called. Use the **Project's chat** when the work needs an agent's judgment, files or a conversation. Both live in the same project: the agent can run a workflow when you ask, and a schedule can choose an agent to run on.
 
-<!-- /product --><!-- /product --><!-- product:crew --><!-- product:relays -->### Should I use a Crew or a Flow?
+<!-- /product --><!-- /product --><!-- product:crew --><!-- product:relays -->### Should I use a project or a Flow?
 
-Use a **Crew** when the work needs an agent's judgment, standing instructions, files or conversation. Use a **Flow** for a Python process with simple inline agents or classifiers and a test/publish/run lifecycle. Flows do not call Crew; use a Goal when the process needs both Crew and Flow functions.
+Use a **Project** when the work needs an agent's judgment, standing instructions, files or conversation. Use a **Flow** for a Python process with simple inline agents or classifiers and a test/publish/run lifecycle. Flows do not call project; use a Goal when the process needs both project and Flow functions.
 
 <!-- /product --><!-- /product --><!-- product:knowledgebase --><!-- product:mcp-gateway -->### Should I put this in Brain or Vault?
 
@@ -108,11 +108,11 @@ Use **Brain** for reusable knowledge, documents, procedures and skills. Use **Va
 
 <!-- /product --><!-- /product --><!-- product:crew -->### Where did Code go?
 
-**Crew** is the combined product for private coding/project work and reusable agents. Find the current Crew with `workspace action=list` and retain its returned identity. Sharing a hosted project changes its audience, without copying it.
+**Project** is the combined product for private coding/project work and reusable agents. Find the current project with `workspace action=list` and retain its returned identity. Sharing a hosted project changes its audience, without copying it.
 
-<!-- /product --><!-- product:bullpen --><!-- product:crew -->### Should I use Crew or AgentBridge?
+<!-- /product --><!-- product:bullpen --><!-- product:crew -->### Should I use project or AgentBridge?
 
-Use **Crew** to work inside an AgentWorks project. Use **AgentBridge** to find and coordinate agents working in their external coding clients.
+Use **Project** to work inside an AgentWorks project. Use **AgentBridge** to find and coordinate agents working in their external coding clients.
 
 <!-- /product --><!-- /product --><!-- product:knowledgebase -->### Does Brain run the work described in a note or skill?
 
@@ -126,22 +126,22 @@ It may be disabled on this installation or outside your current website access. 
 
 The guide and MCP skill have source versions; package fingerprints identify the exact copy. Fetch current server guidance when a saved topic changes. <!-- product:knowledgebase -->Brain entry versions are separate: use the returned entry version as `expected_version` when updating a note. Starter notes and skills refresh only untouched platform-created copies; existing notes, customized packages and deliberately deleted copies are preserved. <!-- /product -->Local skill installation also preserves existing copies unless replacement is explicitly requested.
 
-<!-- product:work -->## Crew email inboxes
+<!-- product:work -->## project email inboxes
 
 <!-- product:work -->Crew inboxes are available on servers. Connect Gmail in your project's Vault panel or in chat, grant Gmail read access, and mark one account **Use for Crew inboxes**. Incoming email is on by default for each Crew once its owner selects the account; an explicit off choice stays off. Open **Inbox** in the Crew’s right panel to copy its address. Ask Builder to turn receiving off or back on for that Crew. Only enabled Crew addresses are checked, about every 60 seconds. Copy the address and read received conversations and attachments there. Ask Builder to disable receiving when needed; stored mail stays available. Only mail addressed to that Crew appears there, with existing Crew sharing. Other personal email stays private. No company receiving mailbox or Google Cloud receiving setup is needed. Disconnecting the selected account stops delivery to all your Crews. Receiving stores mail; optional Watchers choose what work to start. Local deployments do not have Crew inboxes.
 
 
 <!-- product:work -->### Watch your existing Gmail
 
-<!-- product:work -->Ask your Crew Builder to watch your personal Gmail and send only matching content to your Crew chat. It uses the same Watcher setup: check_mode=inbox, email_source=personal_gmail, with Python supplied through script_content. You must own the Crew and select your own Gmail inbox account in your project's Vault panel or in chat with read access. The server's email feature must be enabled. A dedicated Crew email address is optional for this use.
+<!-- product:work -->Ask your project Builder to watch your personal Gmail and send only matching content to your project chat. It uses the same Watcher setup: check_mode=inbox, email_source=personal_gmail, with Python supplied through script_content. You must own the project and select your own Gmail inbox account in your project's Vault panel or in chat with read access. The server's email feature must be enabled. A dedicated project email address is optional for this use.
 
-<!-- product:work -->It watches new received mail, including archived arrivals, about every60seconds; it excludes sent mail and drafts and does not import old mail. Private message bodies exist only in the temporary detector snapshot, up to20 at a time, then are deleted. Message identities and the Watcher cursor stay private; personal mail is never listed in the Crew Inbox. Only the event payload chosen by your Watcher is sent to your chat or published function. Use target kind=agent and a message for chat; functions must be declared entry points. Changing the selected Gmail requires a new Watcher.
+<!-- product:work -->It watches new received mail, including archived arrivals, about every60seconds; it excludes sent mail and drafts and does not import old mail. Private message bodies exist only in the temporary detector snapshot, up to20 at a time, then are deleted. Message identities and the Watcher cursor stay private; personal mail is never listed in the project Inbox. Only the event payload chosen by your Watcher is sent to your chat or published function. Use target kind=agent and a message for chat; functions must be declared entry points. Changing the selected Gmail requires a new Watcher.
 
 <!-- product:agentworks --><!-- product:crew -->
 ## Following up on workflows
 
 A workflow's runs are recorded in Activity with their files and outcome; the platform stores and serves them. A workflow can use
-`notifications.wake_tab` to message the chosen Crew chat when a run needs attention. A scheduled agent reads the run records through the
+`notifications.wake_tab` to message the chosen project chat when a run needs attention. A scheduled agent reads the run records through the
 ordinary run tools and raises recommendations through the shared entry points; it does not inherit Builder rights or owner approval. There are no automatic owner emails or daily digests. Use “Tell me when something breaks” (`notifications.break_alerts`, on by default) for informational run failures in Needs you.
 Inspect the saved schedule and the run records before saying that follow-up is configured or working.
 <!-- /product --><!-- /product -->

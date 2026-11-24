@@ -61,7 +61,7 @@ func functionFilesToRename(docs string, failures *[]error) []string {
 		}
 	}
 	if records, err := defaultProjectOwners().All(); err != nil {
-		*failures = append(*failures, fmt.Errorf("list Crews: %w", err))
+		*failures = append(*failures, fmt.Errorf("list projects: %w", err))
 	} else {
 		for _, rec := range records {
 			if rec.Product == crewProfileID {

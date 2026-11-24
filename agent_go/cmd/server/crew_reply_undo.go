@@ -34,7 +34,7 @@ func (api *StreamingAPI) serveCrewReplyUndo(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if !crewProjectOwnedByCaller(GetUserIDFromContext(r.Context()), root) {
-		externalError(w, 403, "forbidden", "Only the Crew's owner can revert saved file changes.")
+		externalError(w, 403, "forbidden", "Only the project's owner can revert saved file changes.")
 		return
 	}
 	if status, message := api.authorizeDurableChatRead(r, sessionID, root); status != 0 {
@@ -53,7 +53,7 @@ func (api *StreamingAPI) serveCrewReplyUndo(w http.ResponseWriter, r *http.Reque
 	}
 	project := r.URL.Query().Get("history_scope") == "project"
 	if apply && project && api.crewRevertBusy(root) {
-		externalError(w, http.StatusConflict, "turn_running", "Wait until the agents in this Crew finish, then revert.")
+		externalError(w, http.StatusConflict, "turn_running", "Wait until the agents in this project finish, then revert.")
 		return
 	}
 

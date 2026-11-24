@@ -119,7 +119,7 @@ func decideTurnRunAs(ctx context.Context, in turnRunAsInput, deps runAsDeps) llm
 			// Only the server's own account reaches a slot (from its environment). Any provider-connection account
 			// keeps its login in files the slot could read, so the turn stays on the app account.
 			if connection := strings.TrimSpace(in.ConnectionID); connection != "" && !strings.HasPrefix(connection, "global:") {
-				log.Printf("[RUN_AS] Crew %s stays on the app account: its account %s keeps its login in files, which cannot run in the owner's slot yet", in.WorkingFolder, connection)
+				log.Printf("[RUN_AS] project %s stays on the app account: its account %s keeps its login in files, which cannot run in the owner's slot yet", in.WorkingFolder, connection)
 				return appAccount
 			}
 			return owned(owner)
@@ -153,7 +153,7 @@ func decideTurnRunAs(ctx context.Context, in turnRunAsInput, deps runAsDeps) llm
 
 // errProjectOwnerMismatch is the launch refusal for a private Code whose server-controlled owner is not the person
 // the request admitted (PLAT-449).
-var errProjectOwnerMismatch = errors.New("this Crew workspace is registered to a different owner than you; it cannot be started")
+var errProjectOwnerMismatch = errors.New("this project workspace is registered to a different owner than you; it cannot be started")
 
 // checkProjectLaunchOwner refuses to start a private Code CLI when the owner the platform resolves for the project
 // (the registry, else the path; never the manifest) is not the caller whose own tree admitted it. It runs BEFORE

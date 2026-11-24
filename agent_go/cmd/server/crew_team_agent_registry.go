@@ -262,7 +262,7 @@ func crewTeamAgentsVisible(t crewTeam, person string) bool {
 func crewTeamAgentByID(ctx context.Context, project, caller, id string) (crewTeamAgent, string, error) {
 	t, err := readCrewTeam(project)
 	if err != nil || !crewTeamAgentsVisible(t, caller) {
-		return crewTeamAgent{}, "", fmt.Errorf("This Crew's Team is not available to you")
+		return crewTeamAgent{}, "", fmt.Errorf("This project's Team is not available to you")
 	}
 	compared := []string{}
 	for _, person := range teamAgentsByPerson(ctx, t, caller) {
@@ -276,7 +276,7 @@ func crewTeamAgentByID(ctx context.Context, project, caller, id string) (crewTea
 		}
 	}
 	log.Printf("[CREW_TEAM] project=%s event=agent_lookup_refused agent_id=%q caller_id=%q compared_agent_ids=%q", project, id, caller, compared)
-	return crewTeamAgent{}, "", fmt.Errorf("That agent isn't in this Crew's Team now")
+	return crewTeamAgent{}, "", fmt.Errorf("That agent isn't in this project's Team now")
 }
 
 func (api *StreamingAPI) resolveTeamAgentTarget(ctx context.Context, target triggerTarget, id string) (triggerTarget, error) {
@@ -294,7 +294,7 @@ func (api *StreamingAPI) resolveTeamAgentTarget(ctx context.Context, target trig
 	}
 	// Own-agent access is not a Team sharing grant.
 	if !crewProjectOwnedByCaller(caller, target.Path) {
-		return target, fmt.Errorf("own Crew unavailable")
+		return target, fmt.Errorf("own project unavailable")
 	}
 	key := crewTeamNativeChatKey(t.ProjectID, a.OwnerID, crewTeamAgent{Tab: a.Tab, ChatKey: a.ChatKey})
 	target.CrewOwner = a.OwnerID
@@ -312,7 +312,7 @@ func crewTeamNativeChatKey(project, owner string, agent crewTeamAgent) string {
 func crewTeamSendingAgent(ctx context.Context, project, person, chatKey string) (crewTeamAgent, error) {
 	t, err := readCrewTeam(project)
 	if err != nil || !crewTeamAgentsVisible(t, person) {
-		return crewTeamAgent{}, fmt.Errorf("This Crew's Team is not available to you")
+		return crewTeamAgent{}, fmt.Errorf("This project's Team is not available to you")
 	}
 	mainKey := crewOwnerMainChatKey(project)
 	for _, p := range teamAgentsByPersonWithMain(ctx, t, person, mainKey) {

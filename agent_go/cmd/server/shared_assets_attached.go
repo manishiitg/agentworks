@@ -23,7 +23,7 @@ func serveAttachedFolderAsset(w http.ResponseWriter, r *http.Request, full, oper
 		return
 	}
 	outside := func() {
-		externalError(w, 403, "outside_attached_folders", "This file is outside the folders attached to your chats. Attach its folder, or ask the agent to copy it into the Crew.")
+		externalError(w, 403, "outside_attached_folders", "This file is outside the folders attached to your chats. Attach its folder, or ask the agent to copy it into the project.")
 	}
 	// Account folders are a signed-in person's grant, not an access token's.
 	if claims.AccessToken != nil || operation != "read" {

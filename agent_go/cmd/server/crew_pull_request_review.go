@@ -145,7 +145,7 @@ func (api *StreamingAPI) servePullRequestReview(w http.ResponseWriter, r *http.R
 		token = githubTokenValue(rec)
 	}
 	if token == "" {
-		externalError(w, 409, "connect_github", "Connect GitHub in this Crew to see the pull request here.")
+		externalError(w, 409, "connect_github", "Connect GitHub in this project to see the pull request here.")
 		return
 	}
 	out, ok := githubPullRequestReview(ctx, token, repo, number)

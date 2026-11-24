@@ -43,18 +43,18 @@ func externalCodeReviewDefinitions(add func(name, description string, write, sco
 			props = map[string]any{}
 		}
 		props["owner_id"] = externalString("Owner ID from workspace_review action=workspaces.")
-		props["project_id"] = externalString("Crew project ID from workspace_review action=workspaces.")
+		props["project_id"] = externalString("Project project ID from workspace_review action=workspaces.")
 		return props
 	}
-	const suffix = " Read-only; every call is recorded in the Crew review audit log. Requires crews:review and an admin or Crew reviewer account."
-	add("list_review_workspaces", "List every user's Crew projects: owner, ID, title, last update, and who each is shared with."+suffix, false, false, nil)
-	add("get_review_costs", "Cost and token usage of every Crew project, split by person and by model, for a date range (YYYY-MM-DD, UTC; defaults to all recorded usage)."+suffix, false, false, map[string]any{
+	const suffix = " Read-only; every call is recorded in the project review audit log. Requires crews:review and an admin or project reviewer account."
+	add("list_review_workspaces", "List every user's project projects: owner, ID, title, last update, and who each is shared with."+suffix, false, false, nil)
+	add("get_review_costs", "Cost and token usage of every project project, split by person and by model, for a date range (YYYY-MM-DD, UTC; defaults to all recorded usage)."+suffix, false, false, map[string]any{
 		"from": map[string]any{"type": "string", "pattern": `^\d{4}-\d{2}-\d{2}$`},
 		"to":   map[string]any{"type": "string", "pattern": `^\d{4}-\d{2}-\d{2}$`},
 	})
-	add("list_review_files", "List a Crew project's files. Its HOME (git and CLI logins) and dependency folders are never shown."+suffix, false, false, project(nil), "owner_id", "project_id")
-	add("read_review_file", "Read one file of a Crew project (up to 512 KiB)."+suffix, false, false, project(map[string]any{"path": externalString("Workspace-relative path from workspace_review action=files.")}), "owner_id", "project_id", "path")
-	add("get_review_audit", "Read a month of the Crew review audit log: who viewed which Crew, what, and when (admins and reviewers)."+suffix, false, false, map[string]any{
+	add("list_review_files", "List a project project's files. Its HOME (git and CLI logins) and dependency folders are never shown."+suffix, false, false, project(nil), "owner_id", "project_id")
+	add("read_review_file", "Read one file of a project project (up to 512 KiB)."+suffix, false, false, project(map[string]any{"path": externalString("Workspace-relative path from workspace_review action=files.")}), "owner_id", "project_id", "path")
+	add("get_review_audit", "Read a month of the project review audit log: who viewed which project, what, and when (admins and reviewers)."+suffix, false, false, map[string]any{
 		"month": map[string]any{"type": "string", "pattern": `^\d{4}-\d{2}$`, "description": "YYYY-MM; defaults to the current month."},
 	})
 }
@@ -62,7 +62,7 @@ func externalCodeReviewDefinitions(add func(name, description string, write, sco
 // externalCodeReviewCall runs one tool through its inspection handler.
 func (api *StreamingAPI) externalCodeReviewCall(w http.ResponseWriter, r *http.Request, name string, args map[string]any) {
 	if !currentUserCanReviewCode(r) {
-		externalError(w, http.StatusForbidden, "forbidden", "Crew review needs an admin or Crew reviewer account.")
+		externalError(w, http.StatusForbidden, "forbidden", "Project review needs an admin or project reviewer account.")
 		return
 	}
 	vars := map[string]string{"owner": externalArg(args, "owner_id"), "project_id": externalArg(args, "project_id")}
@@ -129,7 +129,7 @@ func (api *StreamingAPI) externalCodeCosts(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := recordCodeAdminView(r.Context(), GetUserFromContext(r.Context()), "read_costs", "", "", strings.TrimSpace(from+".."+to)); err != nil {
-		externalError(w, http.StatusServiceUnavailable, "audit_unavailable", "The Crew review audit log is unavailable.")
+		externalError(w, http.StatusServiceUnavailable, "audit_unavailable", "The project review audit log is unavailable.")
 		return
 	}
 	summary, err := api.costLedger.Summarize(from, to)

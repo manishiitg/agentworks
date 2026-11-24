@@ -77,17 +77,17 @@ func (api *StreamingAPI) externalCrewDirectOwner(ctx context.Context, root strin
 	authority, ok := ctx.Value(externalCrewDirectAuthorityKey{}).(externalCrewDirectAuthority)
 	claims := GetUserFromContext(ctx)
 	if !ok || claims == nil || authority.root != root || authority.user != claims.UserID {
-		return fmt.Errorf("explicit authenticated Crew authoring context required")
+		return fmt.Errorf("explicit authenticated project authoring context required")
 	}
 	if status, _ := externalCrewAuthorGate(claims); status != 0 {
-		return fmt.Errorf("current Crew authoring access required")
+		return fmt.Errorf("current project authoring access required")
 	}
 	if token := claims.AccessToken; token != nil && (!token.Allows("crews:write") || !token.AllowsCrew(authority.crewID) || token.FileGuard != nil) {
-		return fmt.Errorf("current unrestricted Crew authoring consent required")
+		return fmt.Errorf("current unrestricted project authoring consent required")
 	}
 	crew, _, _, ok := api.externalCrewResolve(ctx, claims, authority.crewID)
 	if !ok || !crew.OwnedByCaller || agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath) != root {
-		return fmt.Errorf("current Crew ownership required")
+		return fmt.Errorf("current project ownership required")
 	}
 	return nil
 }

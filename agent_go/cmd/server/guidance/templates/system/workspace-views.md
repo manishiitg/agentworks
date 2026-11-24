@@ -6,7 +6,7 @@ admitted. Read `work-ui-control` in a Crew. Only an `applied` receipt means it
 opened; accepted, unavailable, expired or ambiguous results are not success.
 Scheduled, bot and background turns must not change the person's pane.
 
-For other pages, name the current Crew menu destination or use Search
+For other pages, name the current project menu destination or use Search
 (Cmd/Ctrl+K). Do authorized changes through management tools, not invented UI
 views. Opening a page changes presentation, not settings or permissions.
 

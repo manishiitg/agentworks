@@ -137,7 +137,7 @@ func (api *StreamingAPI) crewTeamKit(ctx context.Context, claims *UserClaims, pr
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(skills)) {
-		item := crewKitItem{Section: "skills", Kind: "skill", ID: "crew:" + name, Name: name, Line: "Part of this Crew; every agent in the Team has it.", Everyone: true, Mine: "auto"}
+		item := crewKitItem{Section: "skills", Kind: "skill", ID: "crew:" + name, Name: name, Line: "Part of this project; every agent in the Team has it.", Everyone: true, Mine: "auto"}
 		if v, ok := state.Versions["skills/"+name+"/SKILL.md"]; ok {
 			item.At = v.ModifiedAt
 			if by := firstBy("skills/" + name + "/"); by != "" {

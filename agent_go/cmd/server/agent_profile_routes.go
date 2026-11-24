@@ -172,7 +172,7 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 		return QueryRequest{}, fmt.Errorf("delivery_mode must be steer or queue")
 	}
 	if input.LaptopConnection != nil && (!isProjectProfileID(profile.ID) || !input.LaptopConnection.valid()) {
-		return QueryRequest{}, fmt.Errorf("Laptop connection requires a Crew and a valid device and folder")
+		return QueryRequest{}, fmt.Errorf("Laptop connection requires a project and a valid device and folder")
 	}
 	if input.KnowledgebaseFolderPath != nil && profile.ID != "knowledgebase" {
 		return QueryRequest{}, fmt.Errorf("this profile does not accept Brain context")
@@ -784,14 +784,14 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 	}
 	if agentID := publicationAgentID(requestedKey); agentID != "" {
 		if !owned {
-			return ProductConversationRecord{}, fmt.Errorf("Open this agent from a Crew you may build; shared use is through its dashboard and functions.")
+			return ProductConversationRecord{}, fmt.Errorf("Open this agent from a project you may build; shared use is through its dashboard and functions.")
 		}
 		record, err := readPublishedAgent(r.Context(), agentProfileRuntimeWorkspace(userID, binding.WorkspacePath), agentID)
 		if err != nil {
 			return ProductConversationRecord{}, err
 		}
 		if record == nil {
-			return ProductConversationRecord{}, fmt.Errorf("This agent is unavailable. Choose one from the Crew's Agents list.")
+			return ProductConversationRecord{}, fmt.Errorf("This agent is unavailable. Choose one from the project's Agents list.")
 		}
 	}
 

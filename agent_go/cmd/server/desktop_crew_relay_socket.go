@@ -67,14 +67,14 @@ func (api *StreamingAPI) startDesktopCrewChats() context.CancelFunc {
 				if workers[id] == nil {
 					child, stop := context.WithCancel(ctx)
 					workers[id] = stop
-					log.Printf("[CREW_RELAY] desktop connection=%s start: a Crew or attached terminal needs reach", id)
+					log.Printf("[CREW_RELAY] desktop connection=%s start: a project or attached terminal needs reach", id)
 					go api.runDesktopCrewRelay(child, id)
 				}
 			}
 			for id, stop := range workers {
 				if !live[id] {
 					// The Mac stops reaching this server when no Crew on it has Reach on; say so, it is otherwise silent.
-					log.Printf("[CREW_RELAY] desktop connection=%s stop: no Crew or attached terminal needs reach", id)
+					log.Printf("[CREW_RELAY] desktop connection=%s stop: no project or attached terminal needs reach", id)
 					stop()
 					delete(workers, id)
 				}
@@ -373,7 +373,7 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 			go func() {
 				callCtx, done := context.WithTimeout(context.WithoutCancel(session), 55*time.Second)
 				defer done()
-				result := crewChatResult{ID: call.ID, Status: 403, Body: json.RawMessage(`{"error":"This Mac does not offer that Crew."}`)}
+				result := crewChatResult{ID: call.ID, Status: 403, Body: json.RawMessage(`{"error":"This Mac does not offer that project."}`)}
 				if call.Operation == "native_terminal_read" || call.Operation == "native_terminal_status" {
 					// Exact attached-session reads need no Crew folder or sync pair.
 					// The saved server connection and helper tuple are checked locally.
@@ -564,7 +564,7 @@ func (api *StreamingAPI) desktopCrewFile(ctx context.Context, claims *UserClaims
 	}
 	roots, err := api.crewSyncRoots(ctx, claims, project)
 	if err != nil {
-		return fail(403, "This Crew is unavailable on your Mac.")
+		return fail(403, "This project is unavailable on your Mac.")
 	}
 	rel := strings.TrimPrefix(filepath.ToSlash(filepath.Clean("/"+call.Path)), "/")
 	// Reply cards name files relative to the Crew's files, with "_files/" in front when they live
@@ -577,18 +577,18 @@ func (api *StreamingAPI) desktopCrewFile(ctx context.Context, claims *UserClaims
 	}
 	root, err := os.OpenRoot(roots.Files)
 	if err != nil {
-		return fail(404, "The Crew's folder is unavailable on your Mac.")
+		return fail(404, "The project's folder is unavailable on your Mac.")
 	}
 	defer root.Close()
 	file, err := root.Open(rel)
 	if err != nil {
-		return fail(404, "That file is not in this Crew's folder.")
+		return fail(404, "That file is not in this project's folder.")
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	// Only regular files: a FIFO or device would block the read and hold the command.
 	if err != nil || !info.Mode().IsRegular() {
-		return fail(404, "That file is not in this Crew's folder.")
+		return fail(404, "That file is not in this project's folder.")
 	}
 	if info.Size() > crewRelayMaxFile {
 		return fail(413, "This file is too large to open from your phone. Open it on your Mac.")
@@ -648,7 +648,7 @@ func (api *StreamingAPI) repairDesktopCrewTwin(ctx context.Context, local, pair,
 	}
 	_, manifest, ok := api.resolveExternalWorkspace(ctx, &UserClaims{UserID: owner, Username: owner}, local)
 	if !ok {
-		log.Printf("[CREW_RELAY] project=%s stays offline: Crew unavailable", local)
+		log.Printf("[CREW_RELAY] project=%s stays offline: Project unavailable", local)
 		return
 	}
 	if err := api.createDesktopCrewRelayTwin(ctx, owner, saved, local, manifest.displayTitle()); err != nil {

@@ -1,26 +1,26 @@
 ---
 name: crew-run
-description: Inspect and use a Crew in Run mode, and route requested changes to its owner.
+description: Inspect and use a project in Run mode, and route requested changes to its owner.
 ---
 
 Read permitted project files through `project/` in the private CLI runtime;
-workspace bridge tools still use Crew-relative paths without that prefix.
+workspace bridge tools still use project-relative paths without that prefix.
 Answer using the app's purpose, saved Chat instructions and observed evidence. Describe useful work, not internal Run/Builder roles or a permission checklist; mention a limitation only for the request it affects. Inspect only what
 the task needs and keep other people's chats and secret values private.
 
 List attached workflows and their triggers with the available tools. Run a
 permitted trigger only when asked; the backend rechecks workflow permissions.
-Inspect its returned run tool for progress. Call another Crew’s declared Action only when requested or needed by an incoming typed call and admitted by the current session; never define or delete functions.
+Inspect its returned run tool for progress. Call another project’s declared Action only when requested or needed by an incoming typed call and admitted by the current session; never define or delete functions.
 For an incoming typed function, follow the execution’s supplied output contract:
 report progress with `report_function_progress` when provided, write required
 JSON to `FUNCTION_RESULT_FILE`, and explain the outcome in the final response.
 The platform records and validates the result.
 
-Your ask cannot write and uses no MCP tools; the way to make the Crew do something is to run a function its owner published (`functions action=list`, then `functions action=call`, then poll `functions action=status`). Check the function list before you answer from files: if a function fits the question, say which one and run it; run it directly only if its description says it is read-only; if it has side effects or says nothing, say what it will do and wait for a clear yes first (unknown means ask, not run); if none fits, answer from the files.
+Your ask cannot write and uses no MCP tools; the way to make the project do something is to run a function its owner published (`functions action=list`, then `functions action=call`, then poll `functions action=status`). Check the function list before you answer from files: if a function fits the question, say which one and run it; run it directly only if its description says it is read-only; if it has side effects or says nothing, say what it will do and wait for a clear yes first (unknown means ask, not run); if none fits, answer from the files.
 Run mode may write requested artifacts under `$CREW_OUTPUT_DIR`
 (`<crew>/outputs/`; `CREW_RUN_DIR` is its older name). It cannot change other
 project files, databases or setup. For a requested change, tell the person to
-ask the Crew's owner. Never retry a refused write through a linked path or
+ask the project's owner. Never retry a refused write through a linked path or
 another tool.
 
-Every agent you can use is in `messages` action=list_agents: this Crew, its Team and the Crews linked to it, with their agents and functions; Relays and agents shared with you; and your agents connected through AgentBridge such as local Claude Code. To reach another of your Crews or another Team, link it in Linked projects first. Call a function with `functions action=call(target=<id>, ...)`; message an agent with `messages action=send(target=<id>)`. They poll their inbox; a stored receipt does not wake the client or prove completion. Existing inbox replies remain optional.
+Every agent you can use is in `messages` action=list_agents: this project, its Team and the projects linked to it, with their agents and functions; Relays and agents shared with you; and your agents connected through AgentBridge such as local Claude Code. To reach another of your projects or another Team, link it in Linked projects first. Call a function with `functions action=call(target=<id>, ...)`; message an agent with `messages action=send(target=<id>)`. They poll their inbox; a stored receipt does not wake the client or prove completion. Existing inbox replies remain optional.

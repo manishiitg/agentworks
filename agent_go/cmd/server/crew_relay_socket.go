@@ -98,10 +98,10 @@ func (api *StreamingAPI) crewRelayAdmit(ctx context.Context, claims *UserClaims,
 		if owner, confirmed := crewRelayConfirmedOwner(crew.Project); confirmed && owner != claims.UserID {
 			return fmt.Errorf("not the owner")
 		}
-		return fmt.Errorf("Crew unavailable: %w", err)
+		return fmt.Errorf("Project unavailable: %w", err)
 	}
 	if err != nil || b == nil || b.Side != "server" || b.PairID != crew.Pair {
-		return fmt.Errorf("not this Crew's pair")
+		return fmt.Errorf("not this project's pair")
 	}
 	return nil
 }

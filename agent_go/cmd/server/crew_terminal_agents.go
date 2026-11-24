@@ -31,7 +31,7 @@ type crewOwnTerminalAgent struct {
 // rows are present; merely attached sessions remain in the network directory.
 func (api *StreamingAPI) handleCrewOwnTerminalAgents(w http.ResponseWriter, r *http.Request) {
 	if !websiteDeviceClaims(GetUserFromContext(r.Context())) {
-		externalError(w, 403, "terminal_forbidden", "Open your own Crew in AgentWorks.")
+		externalError(w, 403, "terminal_forbidden", "Open your own project in AgentWorks.")
 		return
 	}
 	t, claims, ok := crewTeamForTab(w, r, false)
@@ -98,7 +98,7 @@ func (api *StreamingAPI) handleCrewOwnTerminalAgents(w http.ResponseWriter, r *h
 	// Re-read after metadata I/O; leaving or revoking membership cannot leave rows.
 	current, err := terminalCrewAdmission(t.ProjectID, claims.UserID)
 	if err != nil {
-		externalError(w, 403, "terminal_forbidden", "This Crew is no longer available.")
+		externalError(w, 403, "terminal_forbidden", "This project is no longer available.")
 		return
 	}
 	// Only keys feed the existing pending-message projection; no bodies or

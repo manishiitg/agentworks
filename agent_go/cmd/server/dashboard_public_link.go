@@ -34,7 +34,7 @@ const (
 	// still parse from one embedded snapshot, and bounds what an unauthenticated visitor can pull per open; the 64 MB
 	// export limit is for files a Builder deploys to a host of their own.
 	dashboardPublicMaxBytes = 25 << 20
-	dashboardPublicMacCrew  = "A public link isn't available yet for a Crew that lives on a Mac. It is coming later."
+	dashboardPublicMacCrew  = "A public link isn't available yet for a project that lives on a Mac. It is coming later."
 )
 
 // Each open is about six requests, so this is some 40 opens a minute from one address, an office included.
@@ -281,12 +281,12 @@ func (api *StreamingAPI) dashboardPublicSecretIn(ctx context.Context, target das
 func (api *StreamingAPI) handleDashboardPublicLink(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, mode, id string) {
 	ctx := r.Context()
 	if target.Kind != "crew" {
-		externalError(w, 409, "crew_only", "Public links are for Crews for now.")
+		externalError(w, 409, "crew_only", "Public links are for projects for now.")
 		return
 	}
 	if !dashboardPublicMainOwner(ctx, claims, target) || !dashboardAuthoringAllowed(claims, &target) {
 		log.Printf("[DASHBOARD_PUBLIC] refused action=%q actor=%s project=%s dashboard=%q reason=not_owner", mode, sanitizeUserIDForPath(claims.UserID), target.ID, id)
-		externalError(w, 403, "forbidden", "Only this Crew's owner can change its public links.")
+		externalError(w, 403, "forbidden", "Only this project's owner can change its public links.")
 		return
 	}
 	if dashboardPublicMacCrewBlocked(target.ID) {
@@ -370,7 +370,7 @@ func (api *StreamingAPI) saveDashboardPublicLink(w http.ResponseWriter, r *http.
 	secret, checked := api.dashboardPublicSecretIn(r.Context(), target, claims.UserID, files["index.html"])
 	if !checked {
 		log.Printf("[DASHBOARD_PUBLIC] refused action=%s actor=%s project=%s dashboard=%s reason=secrets_unavailable", mode, actor, target.ID, id)
-		externalError(w, 409, "secrets_unavailable", "This Crew's secrets can't be checked right now, so nothing was made public. Check the secrets this Crew uses, then try again.")
+		externalError(w, 409, "secrets_unavailable", "This project's secrets can't be checked right now, so nothing was made public. Check the secrets this project uses, then try again.")
 		return
 	}
 	if secret != "" {

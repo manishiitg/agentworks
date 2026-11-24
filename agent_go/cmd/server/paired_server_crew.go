@@ -48,10 +48,10 @@ func pairedServerCrewForRoots(userID string, roots crewroot.Roots) (pairedServer
 	}
 	conn, err := desktopConnectionFor(userID, b.ConnectionID)
 	if err != nil {
-		return pairedServerCrew{}, false, fmt.Errorf("this Crew's server sign-in is missing; sign in to %s again", b.PeerServer)
+		return pairedServerCrew{}, false, fmt.Errorf("this project's server sign-in is missing; sign in to %s again", b.PeerServer)
 	}
 	if strings.TrimRight(conn.Server, "/") != strings.TrimRight(b.PeerServer, "/") {
-		return pairedServerCrew{}, false, fmt.Errorf("this Crew's server sign-in does not match its server")
+		return pairedServerCrew{}, false, fmt.Errorf("this project's server sign-in does not match its server")
 	}
 	return pairedServerCrew{conn: conn, crewID: b.PeerProjectID}, true, nil
 }
@@ -125,7 +125,7 @@ func (api *StreamingAPI) registerPairedServerAppTools(registrar definitionToolRe
 	current := func() (pairedServerCrew, error) {
 		p, paired, err := pairedServerCrewFor(userID, workspacePath)
 		if err == nil && !paired {
-			err = fmt.Errorf("this Crew is no longer linked to a server")
+			err = fmt.Errorf("this project is no longer linked to a server")
 		}
 		return p, err
 	}
@@ -138,7 +138,7 @@ func (api *StreamingAPI) registerPairedServerAppTools(registrar definitionToolRe
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"list_server_apps", "List the apps (Gmail, Slack, Notion and other Vault connections) of the server Crew this Crew is linked to. They run on that server with its sign-ins. Pass app to see that app's tools and their parameters; page with offset.", map[string]interface{}{
+		{"list_server_apps", "List the apps (Gmail, Slack, Notion and other Vault connections) of the server project this project is linked to. They run on that server with its sign-ins. Pass app to see that app's tools and their parameters; page with offset.", map[string]interface{}{
 			"type": "object", "properties": map[string]interface{}{
 				"app":    map[string]interface{}{"type": "string", "description": "App name from the list, e.g. vault_c-1234."},
 				"offset": map[string]interface{}{"type": "integer", "minimum": 0},
@@ -186,7 +186,7 @@ func (api *StreamingAPI) registerPairedServerAppTools(registrar definitionToolRe
 				}
 				return out(map[string]any{"server": p.conn.Name, "app": app, "tools": tools, "total": list["total"], "next_offset": list["next_offset"], "has_more": list["has_more"]})
 			}},
-		{"call_server_app", "Call a tool of one of the linked server Crew's apps (see list_server_apps). It runs on that server as you, with its sign-ins and checks; nothing is copied to this computer.", map[string]interface{}{
+		{"call_server_app", "Call a tool of one of the linked server project's apps (see list_server_apps). It runs on that server as you, with its sign-ins and checks; nothing is copied to this computer.", map[string]interface{}{
 			"type": "object", "required": []string{"app", "tool", "arguments"}, "properties": map[string]interface{}{
 				"app":       map[string]interface{}{"type": "string", "description": "App name from list_server_apps."},
 				"tool":      map[string]interface{}{"type": "string", "description": "Tool name from list_server_apps with app."},

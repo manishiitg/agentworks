@@ -128,7 +128,7 @@ func validateProductWebhook(trigger productWebhookTrigger) error {
 }
 
 // errCrewMessageWebhookRemoved answers a request for a Crew message webhook (#3286).
-var errCrewMessageWebhookRemoved = fmt.Errorf("a Crew webhook now starts the Crew's workflow: add the webhook to the workflow (its Webhooks tab, or ask the Crew's agent); other Crews and agents call this Crew's functions instead")
+var errCrewMessageWebhookRemoved = fmt.Errorf("a project webhook now starts the project's workflow: add the webhook to the workflow (its Webhooks tab, or ask the project's agent); other projects and agents call this project's functions instead")
 
 var productWebhookConfigMu sync.Mutex
 
@@ -377,10 +377,10 @@ func (s *ProjectActionDispatcher) saveProductWebhookConfig(ctx context.Context, 
 			caller.Type = triggerCallerCrew
 			caller.ProfileID = normalizeInternalProfileID(caller.ProfileID)
 			if strings.TrimSpace(caller.ID) == strings.TrimSpace(manifest.ID) && caller.ProfileID == normalizeInternalProfileID(profile.ID) {
-				return productWebhookResponse{}, false, fmt.Errorf("a Crew cannot bind a trigger to itself")
+				return productWebhookResponse{}, false, fmt.Errorf("a project cannot bind a trigger to itself")
 			}
 			if !s.crewProjectExists(ctx, userID, caller.ProfileID, caller.ID) {
-				return productWebhookResponse{}, false, fmt.Errorf("caller Crew not found")
+				return productWebhookResponse{}, false, fmt.Errorf("caller project not found")
 			}
 			trigger.Caller = &caller
 		} else {
@@ -668,7 +668,7 @@ func (s *ProjectActionDispatcher) dispatchInternalProductTrigger(ctx context.Con
 	}
 	if strings.EqualFold(strings.TrimSpace(call.Caller.Type), triggerCallerCrew) {
 		label := firstNonEmptyTrimmed(call.CallerLabel, call.Caller.ID)
-		sourceNote := "This turn was started by Crew \"" + label + "\" through an internal trigger; your final answer is returned to that Crew."
+		sourceNote := "This turn was started by project \"" + label + "\" through an internal trigger; your final answer is returned to that project."
 		return s.deliverProductTrigger(ctx, match, deliveryID, strings.TrimSpace(call.Event), call.Payload, sourceNote, nil)
 	}
 	sourceNote := "This turn was started by workflow \"" + firstNonEmptyTrimmed(call.CallerLabel, call.Caller.ID) + "\" through an internal trigger."

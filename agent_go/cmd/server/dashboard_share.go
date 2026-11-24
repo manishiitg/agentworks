@@ -225,7 +225,7 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 	stage = "dashboard"
 	if mode != runSharePrivate && !hasPublishedDashboard(ctx, target.Root) {
 		if target.Kind == "crew" && !createDashboard {
-			return runShareState{NeedsDashboard: true}, dashboardFailure(409, "Create a dashboard for this Crew before sharing it. Ask the owner whether to create a standard dashboard, then retry with create_dashboard=true only if they agree.")
+			return runShareState{NeedsDashboard: true}, dashboardFailure(409, "Create a dashboard for this project before sharing it. Ask the owner whether to create a standard dashboard, then retry with create_dashboard=true only if they agree.")
 		}
 		if _, generated, defaultErr := api.ensureDefaultDashboard(ctx, claims, target); defaultErr != nil || !hasPublishedDashboard(ctx, target.Root) {
 			cause = defaultErr
@@ -285,7 +285,7 @@ func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserCl
 		if err := registry.SetAudience(id.Product, id.Folder, mode != runShareEveryone, ids, keys); err != nil {
 			return runShareState{}, dashboardFailure(500, "could not save the sharing choice")
 		}
-		log.Printf("[RUN_SHARE] %s set Crew %s/%s share=%s", sanitizeUserIDForPath(claims.UserID), id.Product, id.Folder, mode)
+		log.Printf("[RUN_SHARE] %s set project %s/%s share=%s", sanitizeUserIDForPath(claims.UserID), id.Product, id.Folder, mode)
 		state, err := api.readRunShare(ctx, claims, target)
 		state.Unknown = unknown
 		return state, err

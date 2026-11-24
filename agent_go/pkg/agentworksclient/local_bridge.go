@@ -1600,7 +1600,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	switch in.Action {
 	case "crew_join", "crew_leave", "team_sync", "terminal_status", "team_pane":
 		if s.Attachment.Provider != "claude" && s.Attachment.Provider != "codex" {
-			return LocalBridgeReply{Error: "Crew join requires this attached Claude Code or Codex session."}
+			return LocalBridgeReply{Error: "Project join requires this attached Claude Code or Codex session."}
 		}
 		// The helper has just checked the current process, lease and offline state.
 		// Never forward caller identity, arbitrary tools, file paths or credentials.
@@ -1624,7 +1624,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			return LocalBridgeReply{Error: err.Error(), OwnServer: out.OwnServer}
 		}
 		if b.closed || b.sessions[key] != s || s.Offline {
-			return LocalBridgeReply{Error: "This session disconnected while changing its Crew membership; reconnect and check its Crew listing."}
+			return LocalBridgeReply{Error: "This session disconnected while changing its project membership; reconnect and check its project listing."}
 		}
 		if in.Action == "crew_join" && s.Attachment.ID == attachment.ID {
 			var joined struct {

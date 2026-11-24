@@ -29,7 +29,7 @@ type crewExecutableBinding = crewroot.ExecutableBinding
 
 var crewExecutablesMu sync.Mutex
 
-var errCrewWorkflowNameTaken = errors.New("this Crew already has a workflow with that name. Choose a different name")
+var errCrewWorkflowNameTaken = errors.New("this project already has a workflow with that name. Choose a different name")
 
 // crewWorkflowNamesMu makes "is this name free?" and "save it" one step, so two creates or renames cannot both take a name.
 var crewWorkflowNamesMu sync.Mutex
@@ -178,7 +178,7 @@ func findCrewExecutable(rawRoot string) (*crewExecutableBinding, error) {
 	}
 	owner, found := crewProjectOwnerID(binding.CrewRoot)
 	if !found || owner == "" {
-		return nil, fmt.Errorf("owning Crew is unavailable")
+		return nil, fmt.Errorf("owning project is unavailable")
 	}
 	return &binding, nil
 }
@@ -238,7 +238,7 @@ func registerCrewExecutable(binding crewExecutableBinding) error {
 // server-owned Crew ID, so a stale folder name cannot retain an orphan binding.
 func removeCrewExecutableBindings(crewID string) error {
 	if strings.TrimSpace(crewID) == "" {
-		return fmt.Errorf("Crew identity is required for executable cleanup")
+		return fmt.Errorf("Project identity is required for executable cleanup")
 	}
 	crewExecutablesMu.Lock()
 	defer crewExecutablesMu.Unlock()
@@ -265,7 +265,7 @@ func removeCrewExecutableBindings(crewID string) error {
 // workflow slot. Its files go first (crew_executables_manage.go), so a failed delete can be retried.
 func removeCrewExecutableBinding(crewID, id string) error {
 	if strings.TrimSpace(crewID) == "" || strings.TrimSpace(id) == "" {
-		return fmt.Errorf("Crew and workflow identity are required")
+		return fmt.Errorf("Project and workflow identity are required")
 	}
 	crewExecutablesMu.Lock()
 	defer crewExecutablesMu.Unlock()
@@ -295,18 +295,18 @@ const maxCrewWorkflowDescription = 500
 
 func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Request) {
 	if api.projectActions == nil || api.projectActions.registry == nil {
-		http.Error(w, "Crew services are unavailable", http.StatusServiceUnavailable)
+		http.Error(w, "Project services are unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	caller := GetUserIDFromContext(r.Context())
 	profile, err := api.projectActions.registry.Resolve("work", 0, caller)
 	if err != nil {
-		http.Error(w, "Crew is unavailable", http.StatusNotFound)
+		http.Error(w, "Project is unavailable", http.StatusNotFound)
 		return
 	}
 	project, err := resolveCrewProjectBinding(r.Context(), caller, profile, r.URL.Query().Get("crew_id"), "")
 	if err != nil || !project.OwnedByCaller {
-		http.Error(w, "Only this Crew's owners can manage its workflows.", http.StatusForbidden)
+		http.Error(w, "Only this project's owners can manage its workflows.", http.StatusForbidden)
 		return
 	}
 	root := project.Binding.WorkspacePath
@@ -362,7 +362,7 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		w.Header().Set("Content-Type", "application/json")
 		agents, err := crewExecutableAgentChoices(r.Context(), caller, project.OwnerID, project.Binding.ResourceID, root)
 		if err != nil {
-			http.Error(w, "Could not load this Crew's agents", http.StatusInternalServerError)
+			http.Error(w, "Could not load this project's agents", http.StatusInternalServerError)
 			return
 		}
 		json.NewEncoder(w).Encode(map[string]interface{}{"executables": entries, "agents": agents})
@@ -454,15 +454,15 @@ func crewExecutableKnowledgeAudience(root string, manifest workflowkb.Manifest) 
 		return manifest, err
 	}
 	if manifest.ID != binding.ID {
-		return manifest, fmt.Errorf("knowledge executable identity does not match its Crew")
+		return manifest, fmt.Errorf("knowledge executable identity does not match its project")
 	}
 	id, ok := projectIdentityOf(binding.CrewRoot)
 	if !ok {
-		return manifest, fmt.Errorf("knowledge Crew is unavailable")
+		return manifest, fmt.Errorf("knowledge project is unavailable")
 	}
 	record, found := defaultProjectOwners().Lookup(id.Product, id.Folder)
 	if !found || record.OwnerID == "" {
-		return manifest, fmt.Errorf("knowledge Crew owner is unavailable")
+		return manifest, fmt.Errorf("knowledge project owner is unavailable")
 	}
 	manifest.CreatedBy = record.OwnerID
 	// Keep source-specific writer opt-in; only audience/ownership are inherited.

@@ -42,7 +42,7 @@ func (api *StreamingAPI) relayTeamMemberWorkspace(w http.ResponseWriter, r *http
 		return refuse(403, "membership", "Join this Team with your own account to use your agents.")
 	}
 	if token := claims.AccessToken; token != nil && (!token.Allows(scope) || !token.AllowsCrew(project)) {
-		return refuse(403, "scope", "This connection does not allow that action on this Crew.")
+		return refuse(403, "scope", "This connection does not allow that action on this project.")
 	}
 	if action == "open_chat" && !userAccessForClaims(claims).CanEdit {
 		return refuse(403, "builder_required", "Creating an agent needs Builder access.")
@@ -57,7 +57,7 @@ func (api *StreamingAPI) relayTeamMemberWorkspace(w http.ResponseWriter, r *http
 	current, err := readCrewTeam(project)
 	now, stillOnMac := current.memberMac(claims.UserID)
 	if err != nil || !crewTeamReachOpen(current, claims.UserID) || !crewTeamAccountActive(claims.UserID) || !stillOnMac || now != pair {
-		return refuse(403, "pair_changed", "Your Team connection changed. Reopen the Crew and try again.")
+		return refuse(403, "pair_changed", "Your Team connection changed. Reopen the project and try again.")
 	}
 	if result.Status < 300 {
 		var out map[string]any

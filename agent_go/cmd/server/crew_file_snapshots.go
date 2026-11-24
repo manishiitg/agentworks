@@ -316,7 +316,7 @@ func (api *StreamingAPI) crewSnapshotReplyEnd(snapshot *crewTurnSnapshot) (int64
 // crewSnapshotUnavailableText is the reply's one line when its file changes
 // could not be captured at all.
 var crewSnapshotUnavailableText = map[string]string{
-	"setting_up": "File changes for this reply weren't saved (setting up file tracking for this Crew).",
+	"setting_up": "File changes for this reply weren't saved (setting up file tracking for this project).",
 	"busy":       "File changes for this reply weren't saved (the project was too busy to snapshot in time).",
 	"failed":     "Changes couldn't be saved for this reply. Your work is still available in Files.",
 	"timeout":    "File tracking ran out of time for this reply. Your work is still in Files; use a smaller project folder if this keeps happening.",
@@ -491,12 +491,12 @@ func (api *StreamingAPI) discardUnstartedCrewSnapshot(executionID string) {
 func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.Request, root, op, id, file string) {
 	roots, found, err := crewStorageRoots(root)
 	if err != nil || !found {
-		externalError(w, 404, "not_found", "File history is unavailable for this Crew.")
+		externalError(w, 404, "not_found", "File history is unavailable for this project.")
 		return
 	}
 	if claims := GetUserFromContext(r.Context()); claims != nil && claims.AccessToken != nil {
 		if !claims.AccessToken.Allows("crews:read") || !claims.AccessToken.AllowsCrew(roots.ID) {
-			externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
+			externalError(w, 404, "not_found", "Project not found or not allowed for this connection.")
 			return
 		}
 	}
@@ -598,7 +598,7 @@ func (api *StreamingAPI) handleCrewFileSnapshots(w http.ResponseWriter, r *http.
 	}
 	root, ok := workspaceGitCanonicalPath(r, requestWorkflowWorkspacePath(r))
 	if !ok {
-		externalError(w, 400, "invalid_path", "Choose a Crew to see its file history.")
+		externalError(w, 400, "invalid_path", "Choose a project to see its file history.")
 		return
 	}
 	// The route has the same file-read access gate as the existing Files panel.

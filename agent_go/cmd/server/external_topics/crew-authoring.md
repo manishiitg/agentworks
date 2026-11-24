@@ -1,27 +1,27 @@
 ---
 name: "crew-authoring"
-description: "Build a working specialist or team process over MCP: understand the outcome, create a Crew, verify an example, share it, and configure instructions, knowledge, functions and integrations."
+description: "Build a working specialist or team process over MCP: understand the outcome, create a project, verify an example, share it, and configure instructions, knowledge, functions and integrations."
 external: true
 external_tools: ["*crew*", "workspace"]
 external_scopes: ["crews:write"]
 ---
-# Authoring a Crew over MCP
+# Authoring a project over MCP
 
-Crew combines private project and coding work with reusable agents. Start with
+Project combines private project and coding work with reusable agents. Start with
 `workspace action=list` and keep the returned `workspace_id`; `get`, `create`,
 `update`, `ask` and chat actions use that same Crew.
-To delete a Crew when the person asks, discover `manage_project action=delete`; pass its `crew_id` and required `confirm` value using the current schema.
+To delete a project when the person asks, discover `manage_project action=delete`; pass its `crew_id` and required `confirm` value using the current schema.
 New projects start **Only me**. Share changes the same hosted project's audience;
 Use the current action families returned by discovery. Project and chat identities stay stable.
-A Crew can have standing instructions (`purpose`), skills, typed **functions**,
+A project can have standing instructions (`purpose`), skills, typed **functions**,
 schedules, a dashboard and project files. Memory is optional; existing projects
-keep their setting. A Crew runs where it is installed. Local workflows stay on the laptop; connecting or syncing a Crew does not move its workflows or schedules to another server.
-A Crew has one main owner. A Crew on the server has co-owners (`crew_owners`, only
+keep their setting. A project runs where it is installed. Local workflows stay on the laptop; connecting or syncing a project does not move its workflows or schedules to another server.
+A project has one main owner. A project on the server has co-owners (`crew_owners`, only
 the owner adds or removes them) who build it like the owner and see every chat in it;
-a Crew on a Mac has its Team instead. People using shared work keep their own caller
+a project on a Mac has its Team instead. People using shared work keep their own caller
 identity.
 Each person's tab controls remain theirs. Other agents send attributed requests,
-not instructions from the receiving person. There is no whole-Crew edit lock.
+not instructions from the receiving person. There is no whole-project edit lock.
 Files, conversations, accounts and secrets keep their current server checks;
 sharing never exposes secret values or unrelated private chats.
 
@@ -29,7 +29,7 @@ Read `panel-access` and its Sharing and Team references before changing access.
 Share separates working with a Team, sharing agents, Slack and dashboards. People
 have the current **Works with me** or **Dashboards only** level. Agent Ask,
 change permission and chat visibility are separate settings; Actions form one
-Crew-wide list. Discover the current tools, inspect saved state, preserve omitted
+Project-wide list. Discover the current tools, inspect saved state, preserve omitted
 people/settings and read back the result. An invitation is not an accepted Team
 membership. If a dashboard is needed, ask before creating it and pass
 `create_dashboard=true` only after agreement. Listing or publishing an Action
@@ -41,17 +41,17 @@ Start from the person's process, using the `agentworks-mcp` journey. Identify th
 
 For a simple specialist, `workspace action=create` can set its name, purpose and files, plus functions when a defined action is needed, in one spec. Keep sensible existing defaults. Give the team a useful Ask conversation or published action, with a standard dashboard when needed and agreed; a custom dashboard is optional. External actions need the actual selected connection; name any missing setup plainly.
 
-Try a representative request through the actual shared entry point and inspect the completed result. If the live tool offers a Run-mode preview, it uses the same real execution rules; it is not a simulation. Owner-only success does not prove another person's access. Use Share with the requested audience, read it back and retrieve the working dashboard/link. Return that link, one example request, who can use it and how teammates supply context or suggest improvements. Add someone to the Crew's Team only when the person wants others to help build; explain Builder-chat visibility. Shared knowledge editing retains its own access.
+Try a representative request through the actual shared entry point and inspect the completed result. If the live tool offers a Run-mode preview, it uses the same real execution rules; it is not a simulation. Owner-only success does not prove another person's access. Use Share with the requested audience, read it back and retrieve the working dashboard/link. Return that link, one example request, who can use it and how teammates supply context or suggest improvements. Add someone to the project's Team only when the person wants others to help build; explain Builder-chat visibility. Shared knowledge editing retains its own access.
 
-Example: a support lead provides a policy and asks for a reply-drafting assistant. Keep that policy as project knowledge, write clear instructions and a useful request entry point, verify one draft, then share with the named team. Do not claim policy accuracy, message delivery or another person's access unless checked. A created Crew alone is not a finished shared process.
+Example: a support lead provides a policy and asks for a reply-drafting assistant. Keep that policy as project knowledge, write clear instructions and a useful request entry point, verify one draft, then share with the named team. Do not claim policy accuracy, message delivery or another person's access unless checked. A created project alone is not a finished shared process.
 
 ## Create and edit
 
-Crew tools run directly without a Builder model turn, each through its one tool
+Project tools run directly without a Builder model turn, each through its one tool
 with `crew_id`: `terminal action=execute` for shell commands, `browser
 action=execute` for the browser, `database action=mutate|migrate|snapshot` for
-the Crew database and `mcp action=call` for a selected MCP tool. Read exact
-schemas with get_api_spec. For connected MCP, discover this Crew's actual
+the project database and `mcp action=call` for a selected MCP tool. Read exact
+schemas with get_api_spec. For connected MCP, discover this project's actual
 servers/tools first through `mcp action=list` and `mcp action=diagnostics`;
 live attachment, selected-tool and Vault checks apply; authorized Vault defaults
 remain available under their current account/group permissions. Shared Slack,
@@ -59,16 +59,16 @@ Google account and incoming-email actions are in `integrations` and `messages`.
 Attached workflows are in `functions`: list attachments/triggers with
 `functions action=triggers`, run one with `functions action=run_trigger` and a stable
 `delivery_id`, then poll its returned `run_id` and `trigger_id`. The attachment,
-exact Crew binding and current workflow access are checked. Workflow read/file
+exact project binding and current workflow access are checked. Workflow read/file
 consent and target bounds apply; a run additionally requires `runs:execute`.
 Function progress is reported only by the receiving execution, whose final
 message or checked result file completes the call; external callers use
 `functions action=status` and `reply` for their own pending questions. Account-wide Google grant
-changes require a current administrator and all-Crew consent; Google sign-in
-and company receiving setup retain their human consent flows. Every call requires Crew ownership,
+changes require a current administrator and all-project consent; Google sign-in
+and company receiving setup retain their human consent flows. Every call requires project ownership,
 existing `crews:write` consent and a current editable account. Shell commands
-run inside the Crew sandbox with the connection's file guard, default timeout
-25 seconds. Browser, database and connected integration operations require unrestricted Crew file
+run inside the project sandbox with the connection's file guard, default timeout
+25 seconds. Browser, database and connected integration operations require unrestricted project file
 consent. Create tables or indexes with `database action=mutate` and
 `CREATE TABLE IF NOT EXISTS` or `CREATE INDEX IF NOT EXISTS`; ALTER and DROP
 are refused. Database
@@ -78,25 +78,25 @@ start the owner's chat; inspect results before retrying a mutation. Use
 operation, timing and outcome, with commands, values and payloads withheld.
 
 - `workspace action=create` takes `name` and optional `spec` with
-  `purpose` (what the Crew is for; its standing instructions), `icon`, `selected_skills`, `files`,
-  `functions` and `schedules`. New Crews start Only me.
+  `purpose` (what the project is for; its standing instructions), `icon`, `selected_skills`, `files`,
+  `functions` and `schedules`. New projects start Only me.
 - `workspace action=update` takes `workspace_id` and `changes` for sections to
   edit: `skills` {set, add, remove}, `functions` {upsert, delete},
   `schedules` {add, update, remove}, `files` and `remove_files`. Omitted sections
   stay as they are. `action=export` returns a portable spec; `action=import`
-  creates a Crew from `spec`.
+  creates a project from `spec`.
 - Only owners edit. Needs `crews:write`.
 
 ## Custom commands
 
 - `manage_crew_commands` with `crew_id` and `action=list|create|update|delete`
-  uses the same custom-command tool as Crew chat, directly without a model turn.
+  uses the same custom-command tool as project chat, directly without a model turn.
   Create/update take `name`, `description`, `prompt` and optional `icon`
   (any Lucide icon name, such as `ticket` or `bug`; see lucide.dev/icons);
-  delete takes `name`. Custom commands appear in the Crew's slash menu.
+  delete takes `name`. Custom commands appear in the project's slash menu.
   `show_on_card=true` (default false) also shows the command as a button on
   each reply card; use it for only the few commands the person wants one click
-  away. Every Crew starts with one such command, "Simplify this change"; it can be
+  away. Every project starts with one such command, "Simplify this change"; it can be
   renamed, switched off or deleted and is not added back.
   Product-defined commands remain immutable. Listing needs `crews:read`;
   changes need `crews:write` and current Crew ownership. Accounts without editing access cannot change them, even if they own the Crew.
@@ -104,11 +104,11 @@ operation, timing and outcome, with commands, values and payloads withheld.
 ## Actions (published functions)
 
 A function is a typed entry point: `name` (snake_case), `description` (for callers), `instructions`
-(what the Crew does when called), `input_schema` and optionally `result_schema` (JSON Schema subset:
+(what the project does when called), `input_schema` and optionally `result_schema` (JSON Schema subset:
 type, properties, required, items, enum).
 
 - By default, a function runs in its own named tab, keeps earlier calls' conversation and queues
-  calls to take turns. It never runs in the Crew's main chat. Set `agent` to share a named tab
+  calls to take turns. It never runs in the project's main chat. Set `agent` to share a named tab
   between functions. Set `execution: "new"` for a new chat for every call, especially when inputs
   are private or untrusted: earlier input in a shared tab can influence later answers.
 - Inputs are checked before anything starts. Each call has its own output folder
@@ -125,27 +125,27 @@ type, properties, required, items, enum).
 
 ## Messages and memory
 
-- Builders change the Crew; people with Run access use its shared chat, dashboard and published functions under the current server checks. Share never grants Builder controls or access to unselected Builder conversations. Selected agents expose their existing conversation and accept attributed requests.
+- Builders change the project; people with Run access use its shared chat, dashboard and published functions under the current server checks. Share never grants Builder controls or access to unselected Builder conversations. Selected agents expose their existing conversation and accept attributed requests.
 - For a conversation, use `workspace action=ask` with the discovered workspace ID and optional `chat_id`. Keep the returned chat and submission receipt; read progress and replies with `workspace action=read_chat`, `chat_id`, `after` and `wait_seconds` (up to 25). Ask without a chat ID opens or uses the caller's own conversation. A started turn is not a finished answer; inspect its returned status.
-- Ask is available to people the Crew is shared with. Use an ordinary one-time schedule for a later check, targeting the intended Crew chat. Schedules respect the scheduler pause.
-- Use `models action=set` with `scope=tab`, `workspace_id`, `chat_id`, `engine`, `model_id` and optional `reasoning_effort` and `connection_id` to select your own chat's model and personal or available company account; `models action=list` with `scope=tab` reads it. `workspace action=chats` returns `provider_connections` with available account IDs. Omit `engine` to use the Crew's model again.
+- Ask is available to people the project is shared with. Use an ordinary one-time schedule for a later check, targeting the intended project chat. Schedules respect the scheduler pause.
+- Use `models action=set` with `scope=tab`, `workspace_id`, `chat_id`, `engine`, `model_id` and optional `reasoning_effort` and `connection_id` to select your own chat's model and personal or available company account; `models action=list` with `scope=tab` reads it. `workspace action=chats` returns `provider_connections` with available account IDs. Omit `engine` to use the project's model again.
 - Named function tabs keep earlier calls' conversation; `execution: "new"` starts without it.
-  Put lasting instructions and shared knowledge in `MEMORY.md` or the Crew's files,
+  Put lasting instructions and shared knowledge in `MEMORY.md` or the project's files,
   and say how to use them in `purpose` and function `instructions`.
 
 ## Files
 
-People using the shared Crew on the website see its dashboard and the selected existing agents. File-tool access follows the current MCP schema and server guards; this guide does not add access.
+People using the shared project on the website see its dashboard and the selected existing agents. File-tool access follows the current MCP schema and server guards; this guide does not add access.
 
 - `files` with `crew_id`: anyone with access reads; the owner writes anywhere except protected paths
-  (manifests, `functions.json`, `builder/`, `db/`); other callers who can run the Crew write under
+  (manifests, `functions.json`, `builder/`, `db/`); other callers who can run the project write under
   `shared/<their id>/`. Text in `content`, binary in `content_base64` (up to 11 MiB). Put input files
   there for a function to use, and pass their paths as arguments.
-- The owner can also write the Crew's `MEMORY.md` and project-local
+- The owner can also write the project's `MEMORY.md` and project-local
   `skills/<name>/SKILL.md` or supporting files through `files action=write`,
   with `crews:write`. Read first and pass `expected_revision` plus a stable
   `request_id` to detect concurrent edits and retry safely. Other users
-  cannot modify the Crew's memory or skills, even with a write-capable
+  cannot modify the project's memory or skills, even with a write-capable
   connection; their writable area remains `shared/<their id>/`.
   To select a newly authored skill, use `settings` or `workspace action=update`
   with `skills` after writing it. This does not edit server-wide or built-in skills.
@@ -153,8 +153,8 @@ People using the shared Crew on the website see its dashboard and the selected e
 ## File lifecycle, packages and references
 
 All tools below take `crew_id`. Reads require `crews:read`; changes require
-`crews:write`, current Crew ownership and an enabled editable account. The
-connection's Crew bounds apply. These calls execute directly without a model turn.
+`crews:write`, current project ownership and an enabled editable account. The
+connection's project bounds apply. These calls execute directly without a model turn.
 
 - `crew_files action=patch`: `path`, `diff`, `expected_revision` from `files`
   read and stable `request_id`. The shared diff parser and durable edit receipts
@@ -169,54 +169,54 @@ connection's Crew bounds apply. These calls execute directly without a model tur
   `source` for install (a public registry source or an authorized `brain:`
   folder), `github_url` and optional private-repository `token` for GitHub import,
   `folder_name` for uninstall.
-  Packages live in this Crew's `skills/` folder. Select them through existing
+  Packages live in this project's `skills/` folder. Select them through existing
   `settings`. Built-in skills stay immutable. File guards restrict inventory
   and installation; uninstall across native-provider folders needs unrestricted
-  Crew file consent.
+  Project file consent.
 - `crew_mcp action=list|search|install|remove|discover`: search takes `query`;
   install accepts the exact `name` returned by list, a catalog name (case-insensitive),
   or `catalog` alone, with optional `label`; use `name` and a
   custom remote HTTPS `url` for a server outside the catalog; remove/discover
   take the exact connection `name`. Install attaches the authenticated person's
   connection to this Crew. Complete sign-in and credentials in Integrations.
-  Remove detaches only this Crew, preserving other projects and its login.
+  Remove detaches only this project, preserving other projects and its login.
   Discovery is limited to attached connections; select through `settings`.
 - `crew_folders action=list|attach|detach` manages account-wide grants. Attach
   takes an existing absolute `path`, unique `alias`, `access` (`read_only` or
   `read_write`) and optional `reason`; detach takes the returned `id`. The
-  owner needs all-Crew consent without a file guard. Administrator-assigned
+  owner needs all-project consent without a file guard. Administrator-assigned
   roots still apply; revocation refreshes existing account runtimes.
 - `crew_references action=list|attach|detach`: optional `query` for discovery;
   attach/detach use the exact returned `workspace_path`. Lists include attached
   flags. Workflow references stay read-only and need workflow/file read consent
-  plus target bounds. Crew references enable shared writes and need Crew read
+  plus target bounds. Project references enable shared writes and need project read
   and write consent plus target bounds. A file guard cannot be widened through
   references. Detach permits cleanup of an obsolete saved reference.
 
 ## Schedules and settings
 
-- Use `automations scope=schedule` for Crew schedules. List first. A schedule
-  either runs the Crew's Python workflow with typed inputs and saved settings,
+- Use `automations scope=schedule` for project schedules. List first. A schedule
+  either runs the project's Python workflow with typed inputs and saved settings,
   or sends an agent a message. New message schedules default to their own
   persistent chat; ask whether to use that or an existing chat when unstated.
   Read `panel-automations`' timing procedure for dependencies, deadlines,
   local-day expiry, Run now overrides and the single administrator scheduler
-  pause. Existing standalone timers still need conversion into Crew schedules.
+  pause. Existing standalone timers still need conversion into project schedules.
 - `settings` (with `crew_id`): models, MCP servers and tools, skills, secrets (owner, write-only),
   browser mode.
 
 ## Checking your work
 
-Call `workspace` action=get for the Crew's functions, call a function with `wait_seconds` and read
+Call `workspace` action=get for the project's functions, call a function with `wait_seconds` and read
 `status`, then check the result against the schema. A function that finishes without a valid result
 is a failed call: read its `answer` and `files`, fix the instructions, and call again with a fresh
 `submission_id`.
 
 ## Existing file and folder links
 
-Use `files action=link` with `crew_id` and a canonical Crew-relative `path` for
+Use `files action=link` with `crew_id` and a canonical project-relative `path` for
 an existing artifact. This requires existing `crews:read` consent and current
-Crew access; connection Crew bounds and file guards also apply. File results
+Project access; connection project bounds and file guards also apply. File results
 include `preview_url`, `download_url`, size and content type; folder results
 include a browser preview. Recipients sign in with their own current access.
 Creating a link grants no access and never makes the artifact public.
@@ -230,7 +230,7 @@ remain protected. Check `shareable`/`warning` for a same-machine preview.
 ## MCP installation policy
 
 Catalog and custom remote MCP servers are allowed through the same authoring
-tools in Crew, workflow and Flow, including the owner's Crew chat, function and
+tools in project, workflow and Flow, including the owner's project chat, function and
 message runs and external MCP callers. Pass a catalog name or `name` plus an
 HTTPS `url`; reuse a saved custom connection by its exact name. Existing roles,
 product authoring consent and project bounds still apply. Setup reuses the
@@ -239,32 +239,32 @@ and arbitrary local process configuration remain refused. Complete MCP connectio
 
 ## Diagnostics
 
-`crew_diagnostics` uses existing `crews:read` consent and current Crew access.
-Use `action=browser` for configured mode, live capability status and the Crew's
+`crew_diagnostics` uses existing `crews:read` consent and current project access.
+Use `action=browser` for configured mode, live capability status and the project's
 scoped browser sessions. It does not launch or control a browser. The managed
-Crew browser and Crew Playwright sessions/recordings follow shared project
+Project browser and project Playwright sessions/recordings follow shared project
 access; these are labelled shared_crew, while private caller sessions are labelled
-caller. Unrelated Crew and other users' private sessions are excluded. Status
+caller. Unrelated project and other users' private sessions are excluded. Status
 omits host endpoints, ports, raw probe/recording errors, commands and owner chat
 IDs. Chrome extension status remains
-account scoped and is returned only to the Crew owner.
+account scoped and is returned only to the project owner.
 
 Use `action=connections` to list attached MCP connection status. Pass an exact
 attached `name` for cached tool names/descriptions, plus `include_tools=true`
-for parameter metadata (Crew owner only; Run callers receive 403 for this option).
+for parameter metadata (Project owner only; Run callers receive 403 for this option).
 Run callers can inspect attached names/status and cached tool names/descriptions,
-as in the Crew settings connection inventory. `limit`/`offset` page sessions, connection summaries or
+as in the project settings connection inventory. `limit`/`offset` page sessions, connection summaries or
 the named connection's tools. Cached metadata does not prove live reachability;
 refresh through `crew_mcp action=discover`. Credentials, endpoint configuration,
 unattached private accounts and server-wide raw logs are excluded.
 
 Agent-to-agent messages (AgentBridge) use an inbox for apps without a terminal, through their normal MCP sign-in and the discovered `messages` schema. Nothing is pushed; check when asked or at the start of a conversation. For live delivery, install the CLI from Connect AI agents and run `agentworks attach` for this chat. Recipients show Live now or Inbox. Named addresses do not bypass Crew/project scopes or access.
 
-Use `workspace action=chat_tools` with `workspace_id` and an explicit `chat_id` from your own live chat list for native UI/background schemas. Execute a returned `tool_name` through `action=chat_tool` and its exact `arguments`. UI actions are presentation only and return the existing browser receipt, including unavailable/ambiguous states. Starting background work needs editable Crew ownership, `crews:write`, unrestricted file consent and an initialized manual chat; retained filesystem grants must fit this connection. Native completion notifications return to that chat. Session status/cancellation never crosses to another person's session. Human confirmation and account sign-in continue through their existing Needs you/Integrations flows.
+Use `workspace action=chat_tools` with `workspace_id` and an explicit `chat_id` from your own live chat list for native UI/background schemas. Execute a returned `tool_name` through `action=chat_tool` and its exact `arguments`. UI actions are presentation only and return the existing browser receipt, including unavailable/ambiguous states. Starting background work needs editable project ownership, `crews:write`, unrestricted file consent and an initialized manual chat; retained filesystem grants must fit this connection. Native completion notifications return to that chat. Session status/cancellation never crosses to another person's session. Human confirmation and account sign-in continue through their existing Needs you/Integrations flows.
 
 ## Import work from your computer
 
-A Crew can use an existing local folder in place. Read `crew-laptop` for
+A project can use an existing local folder in place. Read `crew-laptop` for
 `root_path`, folder-bound native discovery and preview, and the actual provider's
 continuation behavior. Claude/Codex supported native imports open an independent
 copy; Cursor CLI continuation has different limits. Do not promise server-native
@@ -274,27 +274,27 @@ Recent imported display is bounded. Large native copies or insufficient storage
 are refused; **Import recent messages** explicitly starts a fresh provider chat
 with recent dialogue, leaving the original journal untouched. Account and exact
 folder boundaries still apply. Opening a tab starts no model turn. For moving an
-agent online, read `panel-access`' Crew-on-Mac procedure and inspect the returned
+agent online, read `panel-access`' project-on-Mac procedure and inspect the returned
 preview, destination account and supported provider before making any claim.
 Never copy CLI sign-in files as conversation history.
 
-A hosted Crew can separately use an authorized laptop connection for file and
+A hosted project can separately use an authorized laptop connection for file and
 command tools; this is not project sync or proof that a local native agent is
 running. Inspect the selected device, folders and commands switch. Follow the
 current caller checks and say when the computer is offline.
 
-## Crew email inboxes
+## Project email inboxes
 
-Crew inboxes are available on servers only; there is no company email switch. People connect Gmail in your project's Vault panel or in chat and choose one account with `integrations action=google_set_inbox_account`. Incoming email is on by default per Crew once its owner selects the inbox account. An explicit off setting stays off. When asked, turn receiving off or back on for just that Crew with `messages action=mail_configure` and `enabled: true`; use false to stop receiving while keeping stored mail. Only enabled Crew addresses are polled, about every 60 seconds. Selecting Gmail starts receiving for that owner’s enabled Crews; it never creates a Watcher. Read that Crew’s addressed mail with `get_agent_inbox` or `agent_inbox`; use the right-panel Inbox to see conversations and attachments. Other personal email stays private. No company mailbox or Google Cloud receiving setup is needed. Receiving stores mail only; optional ordinary Python Watchers decide what starts work.
+Project inboxes are available on servers only; there is no company email switch. People connect Gmail in your project's Vault panel or in chat and choose one account with `integrations action=google_set_inbox_account`. Incoming email is on by default per project once its owner selects the inbox account. An explicit off setting stays off. When asked, turn receiving off or back on for just that project with `messages action=mail_configure` and `enabled: true`; use false to stop receiving while keeping stored mail. Only enabled project addresses are polled, about every 60 seconds. Selecting Gmail starts receiving for that owner’s enabled projects; it never creates a Watcher. Read that project’s addressed mail with `get_agent_inbox` or `agent_inbox`; use the right-panel Inbox to see conversations and attachments. Other personal email stays private. No company mailbox or Google Cloud receiving setup is needed. Receiving stores mail only; optional ordinary Python Watchers decide what starts work.
 
 
 ### Watch your existing Gmail
 
-Ask your Crew Builder to watch your personal Gmail and send only matching content to your Crew chat. It uses the same Watcher setup: check_mode=inbox, email_source=personal_gmail, with Python supplied through script_content. You must own the Crew and select your own Gmail inbox account in your project's Vault panel or in chat with read access. The server's email feature must be enabled. A dedicated Crew email address is optional for this use.
+Ask your project Builder to watch your personal Gmail and send only matching content to your project chat. It uses the same Watcher setup: check_mode=inbox, email_source=personal_gmail, with Python supplied through script_content. You must own the project and select your own Gmail inbox account in your project's Vault panel or in chat with read access. The server's email feature must be enabled. A dedicated project email address is optional for this use.
 
-It watches new received mail, including archived arrivals, about every60seconds; it excludes sent mail and drafts and does not import old mail. Private message bodies exist only in the temporary detector snapshot, up to20 at a time, then are deleted. Message identities and the Watcher cursor stay private; personal mail is never listed in the Crew Inbox. Only the event payload chosen by your Watcher is sent to your chat or published function. Use target kind=agent and a message for chat; functions must be declared entry points. Changing the selected Gmail requires a new Watcher.
+It watches new received mail, including archived arrivals, about every60seconds; it excludes sent mail and drafts and does not import old mail. Private message bodies exist only in the temporary detector snapshot, up to20 at a time, then are deleted. Message identities and the Watcher cursor stay private; personal mail is never listed in the project Inbox. Only the event payload chosen by your Watcher is sent to your chat or published function. Use target kind=agent and a message for chat; functions must be declared entry points. Changing the selected Gmail requires a new Watcher.
 
-## Shared Crew agents
+## Shared project agents
 
 Read the current Sharing procedure in `panel-access`. Inspect the saved audience,
 selected agents and each agent's chat visibility before promising transcript
@@ -305,26 +305,26 @@ visibility. Published Main and last-shared-agent restrictions are server-owned;
 do not bypass a refused switch. Only the tab's owner controls its steering,
 Stop, reset, model and owner confirmations. Acceptance is not a completed answer.
 
-## The Crew's Python workflow
+## The project's Python workflow
 
 A Crew can have several Python workflows, each with a name unique in the Crew. Each one: `script.json` holds typed inputs, saved settings
 and outputs; `main.py` holds its work. Load `python-workflows` before writing it.
 Different tasks use input-selected paths and ordinary helper files. List with
-`workspace action=automation_list` before creating; a name already used in the Crew is
+`workspace action=automation_list` before creating; a name already used in the project is
 refused with HTTP 409. Read with `automation_read`, save through `automation_write`, and
 use `automation_describe` for currently supported management schemas. Old plan
 files are reference only and cannot run; do not teach new plan editing or Goals.
 
 Parent workflow Python can use `agentworks` and `agentworks_db` under its existing
-Crew guards. Native agents use tools or return artifacts to parent Python;
+Project guards. Native agents use tools or return artifacts to parent Python;
 helpers they execute must not import those parent-only modules. Read the Python
-topic for authorized own-Crew files, durable data and declared secret boundaries.
+topic for authorized own-project files, durable data and declared secret boundaries.
 
-Run with `functions action=run_trigger`, the exact returned Crew binding and
+Run with `functions action=run_trigger`, the exact returned project binding and
 typed inputs; inspect `trigger_status` and actual outputs. It starts the Python
 workflow directly without a model turn. Each invocation retains executed source,
 inputs and its own run folder. A schedule can run this workflow directly; it does
-not need an agent message as an intermediary. Collect required answers in Crew
+not need an agent message as an intermediary. Collect required answers in project
 chat first: workflow execution does not wait for a person to answer.
 
 CLI clients discover the same schemas through `agentworks tools spec` and

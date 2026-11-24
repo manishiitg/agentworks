@@ -5,7 +5,7 @@ description: "Use when a run looks wrong or a step may have failed quietly: did 
 
 # Review lens 1: QA (did it work, and if not, why)
 
-This is the old Autopilot 'technical review', now yours. Use it when a run looks wrong, a step may have failed quietly, or a number looks implausible. You find and diagnose; the Crew's Builder fixes (and only where you may act, see your prompt).
+This is the old Autopilot 'technical review', now yours. Use it when a run looks wrong, a step may have failed quietly, or a number looks implausible. You find and diagnose; the project's Builder fixes (and only where you may act, see your prompt).
 
 ## Where a run lives
 Each run has its own folder under `runs/` in the workflow's folder. Read it through the run tools, not by guessing paths:
@@ -27,4 +27,4 @@ Read the failing step's log and the error first. Compare with the last run that 
 When `main.py` or `script.json` changed while a report, dashboard, saved prompt or stored setting still describes the old behaviour, that is drift. Compare the current source with the artifacts that depend on it (reports, dashboards, agent prompts, schedules, inputs and presets). Name each stale artifact and what it should say.
 
 ## Hand off
-To the Crew's Builder: what broke, where (run, step, file), the evidence, the likely cause, and what 'fixed' looks like (which output or reading the next run must show). Then check that next run when it happens.
+To the project's Builder: what broke, where (run, step, file), the evidence, the likely cause, and what 'fixed' looks like (which output or reading the next run must show). Then check that next run when it happens.

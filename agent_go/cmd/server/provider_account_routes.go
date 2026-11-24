@@ -353,7 +353,7 @@ func sharingSummary(sharing *ProviderConnectionSharing) string {
 	if sharing == nil || sharing.Mode != providerSharingShared {
 		return "private"
 	}
-	return fmt.Sprintf("shared with %d workflows, %d Crews, %d people", len(sharing.Workflows), len(sharing.Crews), len(sharing.Users))
+	return fmt.Sprintf("shared with %d workflows, %d projects, %d people", len(sharing.Workflows), len(sharing.Crews), len(sharing.Users))
 }
 
 // PATCH  /api/provider-connections/{id} edits an account: a user account's
