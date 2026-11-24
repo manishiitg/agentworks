@@ -120,3 +120,81 @@ func (api *StreamingAPI) sendStartTask(ctx context.Context, userID string, proje
 	out["next"] = "It was made but its task was not sent. Send it with messages action=ask (find it with messages action=list_agents)."
 	return out
 }
+
+// spawnIdentity is the purpose and standing instructions a new agent is set up with in the same call that makes it
+// (#3655), so the person does not have to paste them into the new tab by hand.
+type spawnIdentity struct {
+	purpose, instructions *string
+}
+
+func (s spawnIdentity) empty() bool { return s.purpose == nil && s.instructions == nil }
+
+// spawnIdentityArgs reads and checks purpose and instructions before anything is made, so a refused value makes no tab.
+func (api *StreamingAPI) spawnIdentityArgs(ctx context.Context, sessionID, userID string, args map[string]interface{}) (spawnIdentity, error) {
+	var out spawnIdentity
+	if value, ok := args["purpose"].(string); ok && strings.TrimSpace(value) != "" {
+		if len([]rune(strings.Join(strings.Fields(value), " "))) > productAgentPurposeMaxRunes {
+			return out, fmt.Errorf("the purpose is longer than %d characters; nothing was made", productAgentPurposeMaxRunes)
+		}
+		out.purpose = &value
+	}
+	if value, ok := args["instructions"].(string); ok && strings.TrimSpace(value) != "" {
+		if len([]rune(strings.TrimSpace(value))) > productAgentInstructionsMaxRunes {
+			return out, fmt.Errorf("the instructions are longer than %d characters; nothing was made", productAgentInstructionsMaxRunes)
+		}
+		// The same rule as set_my_agent_identity: only the agent owner's own turn writes what an agent always follows.
+		api.lastQueryMu.RLock()
+		turn, known := api.lastQueryRequests[sessionID]
+		api.lastQueryMu.RUnlock()
+		if _, _, _, _, other := askerIsNotAgentOwner(ctx, &turn, userID, userID); known && other {
+			return out, fmt.Errorf("only this agent's own person sets a new agent's instructions, from their own chat; nothing was made")
+		}
+		out.instructions = &value
+	}
+	return out, nil
+}
+
+// saveSpawnIdentity writes the checked purpose and instructions on the new agent and reports what was saved.
+func saveSpawnIdentity(ctx context.Context, userID string, project codeChatProject, key string, identity spawnIdentity, out map[string]interface{}) {
+	if identity.empty() || key == "" {
+		return
+	}
+	actor := "agent " + firstNonEmptyTrimmed(project.Self.Name, "its maker")
+	store := defaultProductConversationRegistryStore()
+	if identity.purpose != nil {
+		saved, err := store.setAgentIdentity(ctx, userID, project.ProfileID, key, nil, identity.purpose, actor)
+		log.Printf("[AGENT_IDENTITY] store=tab tool=spawn tab=%s set=purpose err=%v", key, err)
+		if err != nil {
+			out["purpose_error"] = err.Error()
+		} else {
+			out["purpose"] = saved.Purpose
+		}
+	}
+	if identity.instructions != nil {
+		saved, err := store.setAgentInstructions(ctx, userID, project.ProfileID, key, *identity.instructions, actor)
+		log.Printf("[AGENT_IDENTITY] store=tab tool=spawn tab=%s set=instructions bytes=%d err=%v", key, len(saved.Instructions), err)
+		if err != nil {
+			out["instructions_error"] = err.Error()
+		} else {
+			out["instructions_saved"] = true
+		}
+	}
+}
+
+// saveSpawnIdentityJSON is saveSpawnIdentity for a fork, whose result is the fork handler's JSON body.
+func saveSpawnIdentityJSON(ctx context.Context, userID string, project codeChatProject, identity spawnIdentity, result []byte) []byte {
+	if identity.empty() {
+		return result
+	}
+	out := map[string]interface{}{}
+	if err := json.Unmarshal(result, &out); err != nil {
+		return result
+	}
+	key, _ := out["conversation_key"].(string)
+	saveSpawnIdentity(ctx, userID, project, key, identity, out)
+	raw, err := json.Marshal(out)
+	if err != nil {
+		return result
+	}
+	return raw
+}
