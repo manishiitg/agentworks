@@ -51,3 +51,27 @@ func TestProjectTasksNeedsYou(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectTaskChecklist(t *testing.T) {
+	task := projectTask{}
+	if changed, err := projectTaskChecklist(&task, map[string]interface{}{"checklist_add": []interface{}{"Server field", "Panel list", "Skill line"}}, "Docs agent", 1); err != nil || !changed || len(task.Checks) != 3 {
+		t.Fatalf("add: changed=%v err=%v checks=%v", changed, err, task.Checks)
+	}
+	if _, err := projectTaskChecklist(&task, map[string]interface{}{"checklist_done": float64(2)}, "Docs agent", 2); err != nil || !task.Checks[1].Done {
+		t.Fatalf("done: err=%v checks=%v", err, task.Checks)
+	}
+	if changed, _ := projectTaskChecklist(&task, map[string]interface{}{"checklist_done": float64(2)}, "Docs agent", 3); changed {
+		t.Fatal("ticking a ticked item again should change nothing")
+	}
+	if _, err := projectTaskChecklist(&task, map[string]interface{}{"checklist_open": float64(2), "checklist_remove": float64(1)}, "Docs agent", 4); err != nil || len(task.Checks) != 2 || task.Checks[0].Done || task.Checks[0].Text != "Panel list" {
+		t.Fatalf("open and remove: err=%v checks=%v", err, task.Checks)
+	}
+	for _, bad := range []map[string]interface{}{{"checklist_done": float64(9)}, {"checklist_done": 1.5}, {"checklist_remove": "one"}, {"checklist_add": []interface{}{" "}}} {
+		if _, err := projectTaskChecklist(&task, bad, "", 5); err == nil {
+			t.Fatalf("%v: want an error", bad)
+		}
+	}
+	if view := projectTaskView(projectTaskList{}, task, nil); len(view.Checks) != 2 {
+		t.Fatalf("view checklist = %v", view.Checks)
+	}
+}

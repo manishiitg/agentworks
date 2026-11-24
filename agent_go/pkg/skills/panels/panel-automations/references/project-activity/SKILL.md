@@ -51,6 +51,10 @@ The lead's instructions should say, in the person's words where they gave them:
 
 Any agent working a task may also update it (`task_update`): add links and activity lines, and move it when its part is done.
 
+Tasks don't only come from Watchers. When you start work in this project that has no task yet (nobody asked for it, or it came up mid-chat), add one yourself: `task_add {title, assignee: <your name>, step}`; read `tasks` first so you don't make a duplicate.
+
+Break a task into small steps with a checklist: `checklist_add: ["...", "..."]` on `task_add` or `task_update`, then `checklist_done: N` (1 is the first, as `tasks` lists them) as you finish each; `checklist_open` unticks and `checklist_remove` deletes one. Use the checklist for steps you do yourself; a piece of work another agent does is an ask linked with `task`.
+
 ## Controls in the panel
 
 The Project tasks row shows the lead line (auto or ask-first, last sorted, Pause), a Needs you group, and Reassign, Approve and Hold on each task. Each button drafts a message in the project chat; the agent who gets it does the change with the same actions:

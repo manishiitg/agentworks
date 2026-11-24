@@ -29,6 +29,7 @@ const (
 	projectTaskRefsMax    = 20
 	projectTaskEventsMax  = 30
 	projectTasksSortedMax = 100
+	projectTaskChecksMax  = 20
 )
 
 var projectTaskDefaultSteps = []string{"New", "Doing", "Review", "Done"}
@@ -39,6 +40,15 @@ type projectTaskRef struct {
 	URL   string `json:"url,omitempty"`
 	By    string `json:"by,omitempty"`
 	At    int64  `json:"at"`
+}
+
+// projectTaskCheck is one checklist item inside a task: a small step an agent
+// ticks off without handing work to anyone.
+type projectTaskCheck struct {
+	Text string `json:"text"`
+	Done bool   `json:"done,omitempty"`
+	By   string `json:"by,omitempty"`
+	At   int64  `json:"at"`
 }
 
 type projectTaskEvent struct {
@@ -62,6 +72,7 @@ type projectTask struct {
 	Waiting  string              `json:"waiting,omitempty"`  // what the lead needs the person to decide
 	Held     bool                `json:"held,omitempty"`     // the person put it on hold; the lead leaves it alone
 	Tasks    []projectTaskLink   `json:"tasks,omitempty"`
+	Checks   []projectTaskCheck  `json:"checklist,omitempty"`
 	Sources  []projectTaskRef    `json:"sources,omitempty"`
 	Links    []projectTaskRef    `json:"links,omitempty"`
 	Activity []projectTaskEvent  `json:"activity,omitempty"`
@@ -208,6 +219,7 @@ type crewPanelProjectTask struct {
 	Sources  []projectTaskRef   `json:"sources,omitempty"`
 	Links    []projectTaskRef   `json:"links,omitempty"`
 	Activity []projectTaskEvent `json:"activity,omitempty"`
+	Checks   []projectTaskCheck `json:"checklist,omitempty"`
 	Proposed string             `json:"proposed,omitempty"`
 	Held     bool               `json:"held,omitempty"`
 	// NeedsYou says what the person must do; the server decides it so the panel
@@ -237,7 +249,7 @@ func projectTaskView(list projectTaskList, t projectTask, tasks *conditionFeedTa
 			view.Tasks = append(view.Tasks, crewPanelFeedTask{Agent: link.Agent, State: "asked"})
 		}
 	}
-	view.Proposed, view.Held = t.Proposed, t.Held
+	view.Proposed, view.Held, view.Checks = t.Proposed, t.Held, t.Checks
 	if !view.Done && !t.Held {
 		for _, task := range view.Tasks {
 			if task.State == "needs_you" || task.State == "blocked" {
@@ -470,6 +482,9 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 			t.Tasks = []projectTaskLink{*link}
 			t.Assignee = firstNonEmptyTrimmed(t.Assignee, link.Agent)
 		}
+		if _, err := projectTaskChecklist(&t, args, by, now); err != nil {
+			return nil, err
+		}
 		t.History = []conditionFeedMove{{At: now, By: by, Step: step, Note: firstNonEmptyTrimmed(note, "Created")}}
 		list.Tasks = append(list.Tasks, t)
 		sortedText := title
@@ -557,6 +572,11 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 		}
 		changed = true
 	}
+	if ticked, err := projectTaskChecklist(t, args, by, now); err != nil {
+		return nil, err
+	} else if ticked {
+		changed = true
+	}
 	before := list.stepOf(*t)
 	if step != "" {
 		t.Step = step
@@ -569,7 +589,7 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 		changed = true
 	}
 	if !changed {
-		return nil, errors.New("task_update needs something to change: step, title, assignee, proposed, waiting, held, task, source, link, activity or note")
+		return nil, errors.New("task_update needs something to change: step, title, assignee, proposed, waiting, held, task, source, link, activity, checklist_add, checklist_done, checklist_open, checklist_remove or note")
 	}
 	t.Updated = now
 	saved := *t
@@ -578,6 +598,83 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 	}
 	log.Printf("[PROJECT_TASKS] update task=%s step=%q", saved.ID, list.stepOf(saved))
 	return map[string]interface{}{"steps": list.steps(), "task": projectTaskView(list, saved, tasks)}, nil
+}
+
+// projectTaskChecklist applies checklist_add (new items), checklist_done /
+// checklist_open (tick or untick, 1-based) and checklist_remove. It reports
+// whether anything changed.
+func projectTaskChecklist(t *projectTask, args map[string]interface{}, by string, now int64) (bool, error) {
+	changed := false
+	var adds []string
+	switch v := args["checklist_add"].(type) {
+	case nil:
+	case string:
+		adds = []string{v}
+	case []interface{}:
+		for _, item := range v {
+			text, _ := item.(string)
+			adds = append(adds, text)
+		}
+	default:
+		return false, errors.New("checklist_add is a list of short items")
+	}
+	for _, raw := range adds {
+		text := feedText(raw, 120)
+		if text == "" {
+			return false, errors.New("checklist_add items need text")
+		}
+		if len(t.Checks) >= projectTaskChecksMax {
+			return false, fmt.Errorf("a task keeps at most %d checklist items", projectTaskChecksMax)
+		}
+		t.Checks = append(t.Checks, projectTaskCheck{Text: text, By: by, At: now})
+		changed = true
+	}
+	item := func(key string) (int, bool, error) {
+		var v float64
+		switch raw := args[key].(type) {
+		case nil:
+			return 0, false, nil
+		case float64:
+			v = raw
+		case int:
+			v = float64(raw)
+		case json.Number:
+			f, err := raw.Float64()
+			if err != nil {
+				return 0, false, fmt.Errorf("%s is the item's number (1 is the first)", key)
+			}
+			v = f
+		default:
+			return 0, false, fmt.Errorf("%s is the item's number (1 is the first)", key)
+		}
+		n := int(v)
+		if float64(n) != v || n < 1 || n > len(t.Checks) {
+			return 0, false, fmt.Errorf("%s: no checklist item %v; this task has %d", key, v, len(t.Checks))
+		}
+		return n - 1, true, nil
+	}
+	for _, key := range []string{"checklist_done", "checklist_open"} {
+		at, ok, err := item(key)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			done := key == "checklist_done"
+			if t.Checks[at].Done != done {
+				t.Checks[at].Done, t.Checks[at].By, t.Checks[at].At = done, by, now
+				changed = true
+			}
+		}
+	}
+	at, ok, err := item("checklist_remove")
+	if err != nil {
+		return false, err
+	}
+	if ok {
+		t.Checks = append(t.Checks[:at], t.Checks[at+1:]...)
+		changed = true
+	}
+	return changed, nil
 }
 
 func validProjectTaskSteps(steps []string) error {
