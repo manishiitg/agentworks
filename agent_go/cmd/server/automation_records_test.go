@@ -95,6 +95,21 @@ func TestAutomationRecordsMoveInAndStayWithTheirFolder(t *testing.T) {
 	if backup, err := os.ReadFile(filepath.Join(filepath.Dir(dbFile), "automation-records.platform-scripts.jsonl")); err != nil || !strings.Contains(string(backup), "code/triggers/check.py") {
 		t.Fatalf("record backup: %q %v", backup, err)
 	}
+	// A person's own Watcher lives in their chat_history/product-schedules.json, which the scheduler also skipped.
+	personal := filepath.Join(docs, "_users", "person", "chat_history", productScheduleStateFile)
+	if err := os.MkdirAll(filepath.Dir(personal), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(personal, []byte(`{"w":{"script":"code/triggers/cond-1.py"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rewritePersonalWatcherScriptPaths(docs)
+	if raw, err := os.ReadFile(personal); err != nil || string(raw) != `{"w":{"script":"watchers/cond-1.py"}}` {
+		t.Fatalf("personal Watcher not rewritten: %q %v", raw, err)
+	}
+	if backups, _ := filepath.Glob(personal + ".before-platform-scripts-*.bak"); len(backups) != 1 {
+		t.Fatalf("personal Watcher backup: %v", backups)
+	}
 	if err := os.RemoveAll(folder); err != nil {
 		t.Fatal(err)
 	}
