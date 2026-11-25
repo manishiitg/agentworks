@@ -114,6 +114,9 @@ func (api *StreamingAPI) recordBackgroundOutput(output llmtypes.BackgroundOutput
 		delete(backgroundOutputs.tails, key)
 	}
 	backgroundOutputs.Unlock()
+	if output.Done && output.Provider == "claude-code" {
+		claudeFinishedTasks.noteOutput(sessionID, output.TaskID, shown.text)
+	}
 
 	if first || stopChanged || output.Done {
 		log.Printf("[BACKGROUND_OUTPUT] session=%s provider=%s tool=%s bytes=%d dropped=%t stoppable=%t done=%t", sessionID, output.Provider, output.ToolCallID, len(shown.text), shown.dropped, stopID != "", output.Done)

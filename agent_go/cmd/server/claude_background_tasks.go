@@ -8,6 +8,7 @@ import (
 	"time"
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 	agentevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
@@ -47,6 +48,7 @@ func (api *StreamingAPI) wireClaudeBackgroundTasks() {
 			return
 		}
 		task := update.Task
+		claudeFinishedTasks.noteState(update.Owner, task)
 		kind := task.Kind
 		if kind != "background_command" {
 			kind = "helper"
@@ -164,6 +166,11 @@ func (api *StreamingAPI) adoptQueuedClaudeWake(sessionID string) {
 	} else if reason = backgroundFollowUps.skipReason(sessionID, api.isSessionMarkedStopped(sessionID)); reason == "" && backgroundFollowUps.atLimit(sessionID) {
 		reason = "chain_limit"
 	}
+	if provider := api.storedChatAgentProvider(sessionID); reason == "" && provider != "" && provider != "claude-code" {
+		api.handClaudeWorkToChatAgent(sessionID, provider)
+		return
+	}
+	claudeFinishedTasks.take(sessionID)
 	if reason == "" && !api.executeSyntheticTurnWithContext(sessionID, claudeWakeMessage, "", nil, llmtypes.WithCodingProviderAdoptWake, storeevents.BackgroundWakePresentation{Kind: "background_work_finished"}) {
 		reason = "turn_not_started"
 	}
@@ -174,4 +181,129 @@ func (api *StreamingAPI) adoptQueuedClaudeWake(sessionID string) {
 	}
 	api.noteAutomaticFollowUpStarted(sessionID)
 	log.Printf("[SDK_BACKGROUND] follow_up session=%s action=adopted", sessionID)
+}
+
+// The person moved the chat to another agent (Codex, Cursor...) while Claude's
+// background work ran: Claude's own follow-up turn has nobody to show it, and
+// adopting it would send the new agent a note with no result. The new agent
+// gets the finished work's result instead, like a Codex command's follow-up,
+// and Claude's own turn is dropped (#3892).
+const claudeWorkForOtherAgentMessage = "[Background work finished] Work that Claude Code started earlier in this chat has finished. This chat now runs on you, so Claude Code will not follow up. Check the result below and carry on with what was promised. If nothing was promised, give the person a one-line summary.\n\n%s"
+
+// storedChatAgentProvider is the provider of the agent the chat's next
+// follow-up turn runs on.
+func (api *StreamingAPI) storedChatAgentProvider(sessionID string) string {
+	api.sessionAgentsMux.RLock()
+	wrapper := api.sessionAgents[sessionID]
+	api.sessionAgentsMux.RUnlock()
+	if wrapper == nil || wrapper.GetUnderlyingAgent() == nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(string(mcpagent.ReadAgentRuntimeInfo(wrapper.GetUnderlyingAgent()).Provider)))
+}
+
+func (api *StreamingAPI) handClaudeWorkToChatAgent(sessionID, provider string) {
+	claudecode.DismissClaudeSDKWake(sessionID, "chat_on_"+provider)
+	tasks := claudeFinishedTasks.take(sessionID)
+	if !api.executeSyntheticTurnWithContext(sessionID, fmt.Sprintf(claudeWorkForOtherAgentMessage, claudeFinishedTasksText(tasks)), "", nil, nil, storeevents.BackgroundWakePresentation{Kind: "background_work_finished"}) {
+		log.Printf("[SDK_BACKGROUND] follow_up session=%s action=skip reason=turn_not_started provider=%s", sessionID, provider)
+		return
+	}
+	api.noteAutomaticFollowUpStarted(sessionID)
+	log.Printf("[SDK_BACKGROUND] follow_up session=%s action=handed_to_chat_agent provider=%s tasks=%d", sessionID, provider, len(tasks))
+}
+
+// claudeFinishedTask is one of Claude's background tasks that ended since the
+// chat's last follow-up, with the tail of its output when it was a command.
+type claudeFinishedTask struct {
+	taskID, label, state, output string
+}
+
+const claudeFinishedTasksKept = 10
+
+// claudeFinishedTasks keeps a chat's recently finished Claude tasks until the
+// next follow-up takes them; Claude's own follow-up needs none, so it clears them.
+var claudeFinishedTasks = &claudeFinishedTaskList{tasks: map[string][]claudeFinishedTask{}, outputs: map[string]string{}}
+
+type claudeFinishedTaskList struct {
+	mu      sync.Mutex
+	tasks   map[string][]claudeFinishedTask
+	outputs map[string]string // session + "\x00" + task id -> last output
+}
+
+func (l *claudeFinishedTaskList) noteState(sessionID string, task claudecode.SDKHelperTask) {
+	switch task.State {
+	case "finished", "failed", "interrupted":
+	default:
+		return
+	}
+	label := strings.TrimSpace(task.Description)
+	if label == "" {
+		label = strings.TrimSpace(task.Command)
+	}
+	if label == "" {
+		label = "Background task"
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	key := sessionID + "\x00" + task.TaskID
+	list := append(l.tasks[sessionID], claudeFinishedTask{taskID: task.TaskID, label: label, state: task.State, output: l.outputs[key]})
+	delete(l.outputs, key)
+	if len(list) > claudeFinishedTasksKept {
+		list = list[len(list)-claudeFinishedTasksKept:]
+	}
+	l.tasks[sessionID] = list
+}
+
+// noteOutput keeps a finished Claude command's last output for its task.
+func (l *claudeFinishedTaskList) noteOutput(sessionID, taskID, output string) {
+	if taskID == "" || strings.TrimSpace(output) == "" {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	key := sessionID + "\x00" + taskID
+	list := l.tasks[sessionID]
+	for i := range list {
+		if list[i].taskID == taskID {
+			// The task's end was reported before its last output.
+			list[i].output = output
+			return
+		}
+	}
+	l.outputs[key] = output
+}
+
+func (l *claudeFinishedTaskList) take(sessionID string) []claudeFinishedTask {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	tasks := l.tasks[sessionID]
+	delete(l.tasks, sessionID)
+	prefix := sessionID + "\x00"
+	for key := range l.outputs {
+		if strings.HasPrefix(key, prefix) {
+			delete(l.outputs, key)
+		}
+	}
+	return tasks
+}
+
+func claudeFinishedTasksText(tasks []claudeFinishedTask) string {
+	if len(tasks) == 0 {
+		return "Its details stayed with Claude Code; tell the person it finished, and that switching back to Claude Code shows its result."
+	}
+	parts := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		state := map[string]string{"finished": "finished", "failed": "failed", "interrupted": "was stopped"}[task.state]
+		output := []rune(task.output)
+		if len(output) > codexCommandOutputTail {
+			output = append([]rune("..."), output[len(output)-codexCommandOutputTail:]...)
+		}
+		text := string(output)
+		if strings.TrimSpace(text) == "" {
+			text = "(no output kept)"
+		}
+		parts = append(parts, fmt.Sprintf("%s: %s\nLast output:\n%s", task.label, state, text))
+	}
+	return strings.Join(parts, "\n\n")
 }
