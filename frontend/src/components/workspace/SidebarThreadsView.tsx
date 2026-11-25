@@ -232,13 +232,13 @@ export function SidebarThreadsView({
     const isActive = selectedProjectId === item.projectId && activeTabMeta.projectId === item.projectId && activeTabMeta.conversationKey === item.chat.conversation_key
     const age = shortAgo(item.lastMessageAt)
     const statusSuffix = item.status === 'waiting' ? ' · Needs you' : ''
-    return <div key={item.id} className={`group/thread flex items-start gap-1 rounded-lg px-1 py-0.5 ${isActive ? 'bg-foreground/[0.06]' : 'hover:bg-muted'}`}>
+    return <div key={item.id} className={`group/thread flex items-start gap-0.5 rounded-lg py-0.5 ${isActive ? 'bg-foreground/[0.06]' : 'hover:bg-muted'}`}>
       <button type="button" role="listitem" aria-current={isActive ? 'page' : undefined} onClick={() => openThread(item)}
         className="flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground" title={item.name}>{item.name}</span>
-            {age && <span className="shrink-0 text-[11px] text-muted-foreground">{age}</span>}
+            {age && <span className="shrink-0 tabular-nums text-[11px] text-muted-foreground">{age}</span>}
             {item.status !== 'idle' && <span aria-hidden="true" data-thread-status-dot className={`h-2 w-2 shrink-0 rounded-full ${item.status === 'running' ? 'bg-info motion-safe:animate-pulse' : 'bg-[hsl(var(--warning))]'}`} />}
           </span>
           <span className="flex items-center gap-1 text-[11px] text-muted-foreground" title={`${item.projectName}${statusSuffix}`}>
@@ -248,7 +248,7 @@ export function SidebarThreadsView({
         </span>
       </button>
       <button type="button" onClick={() => togglePin(item.id)} aria-pressed={isPinned} aria-label={`${isPinned ? 'Unpin' : 'Pin'} ${item.name}`} title={isPinned ? 'Unpin thread' : 'Pin thread'}
-        className={`mt-1 grid h-6 w-6 shrink-0 place-items-center rounded-md hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isPinned ? 'text-primary' : 'text-muted-foreground [@media(hover:hover)]:opacity-0 group-hover/thread:opacity-100 group-focus-within/thread:opacity-100'}`}>
+        className={`mr-1 mt-1 h-6 w-6 shrink-0 place-items-center rounded-md hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isPinned ? 'grid text-primary' : 'hidden text-muted-foreground group-hover/thread:grid group-focus-within/thread:grid'}`}>
         <Pin className={`h-3 w-3 ${isPinned ? 'fill-current' : ''}`} aria-hidden="true" />
       </button>
     </div>
