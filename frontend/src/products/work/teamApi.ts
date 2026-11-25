@@ -122,8 +122,11 @@ export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string;
 export type TeamTabSetup = { next_automation?: string; when_offline?: { line: string }; reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
 export type TeamTabSync = { line: string; problem?: boolean; attention?: boolean; last?: string; state?: string; changed_by?: string; changed_ago?: string; stale?: string; size?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
 export type TeamReachableAgent = AvatarFields & { purpose?: string; examples?: string[]; task_state?:string; chat_share?: string; chat_readable?:boolean; offline_line?:string; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
+export type TeamAITeammate = { id: string; name: string; line: string }
 export type TeamTabView = {
  reachable?: TeamReachableAgent[]
+ // The Team's AI teammates (online projects); their agents are the reachable rows with person_id === id.
+ ai_teammates?: TeamAITeammate[]
   team: Team; intro: string; live?: TeamLiveView; people: TeamTabPerson[]; agents: TeamTabAgent[]
   sync?: TeamTabSync; can_switch: boolean; agents_line?: string; can_leave: boolean; leave_confirm?: string
   can_add_folder: boolean; can_remove_folder: boolean

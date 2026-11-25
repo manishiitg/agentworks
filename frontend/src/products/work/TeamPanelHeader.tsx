@@ -1,9 +1,9 @@
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Globe } from 'lucide-react'
 import { useState } from 'react'
 import { Avatar } from '../../components/ui/Avatar'
 import type { TeamTabView, TeamReachableAgent } from './teamApi'
 
-type HeaderView = { team: Pick<TeamTabView['team'], 'on' | 'name'>; people: TeamTabView['people']; reachable?: Pick<TeamReachableAgent, 'activity' | 'kind'>[] }
+type HeaderView = { team: Pick<TeamTabView['team'], 'on' | 'name'>; people: TeamTabView['people']; reachable?: Pick<TeamReachableAgent, 'activity' | 'kind'>[]; ai_teammates?: TeamTabView['ai_teammates'] }
 
 /** Metadata from the same admitted Team read as the panel; no second presence count. */
 export function TeamPanelHeader({view,connection,fallback='Team',selectedPerson,onPersonSelect,onOpen,onName,expanded=true,onToggle,needsCount=0}:{onName?:()=>void;expanded?:boolean;onToggle?:()=>void;needsCount?:number;view?:HeaderView;connection?:string;fallback?:string;selectedPerson?:string;onPersonSelect?:(id?:string)=>void;onOpen?:()=>void}) {
@@ -22,6 +22,12 @@ export function TeamPanelHeader({view,connection,fallback='Team',selectedPerson,
   {people.length>0&&<span role="group" aria-label="Team people" className="inline-flex shrink-0 items-center -space-x-1">
    {people.slice(0,3).map(avatar)}
    {people.length>3&&<button type="button" aria-label="More Team people" aria-expanded={more} onClick={()=>setMore(!more)} className="pl-1.5 text-[10px] text-muted-foreground">+{people.length-3}</button>}
+  </span>}
+  {!!view.ai_teammates?.length&&<span role="group" aria-label="AI teammates" className="inline-flex shrink-0 items-center -space-x-1">
+   {view.ai_teammates.slice(0,3).map(mate=><button key={mate.id} type="button" title={`${mate.name} · AI teammate · ${mate.line}`} aria-label={`Show ${mate.name}'s agents`} onClick={onToggle&&!expanded?toggle:undefined} className="relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full">
+    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-background bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"><Globe aria-hidden="true" className="h-2.5 w-2.5"/></span>
+    <span role="img" aria-label="Online" className="absolute -bottom-px -right-px h-1.5 w-1.5 rounded-full border border-background bg-emerald-500"/>
+   </button>)}
   </span>}
   <button type="button" aria-label={expanded?'Collapse Team':'Expand Team'} aria-expanded={expanded} onClick={toggle} className="ml-auto inline-flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground"><span>{working?`${working} working`:'no one working'}</span>{needsCount>0&&<span className="text-amber-700 dark:text-amber-300">· {needsCount} Needs you</span>}{onToggle&&<ChevronRight aria-hidden="true" className={`h-3 w-3 ${expanded?'rotate-90':''}`}/>}</button>
   {more&&<div role="group" aria-label="More Team people" className="absolute left-0 top-full z-20 flex flex-wrap gap-2 rounded-lg border border-border bg-popover p-2">{people.slice(3).map(avatar)}</div>}

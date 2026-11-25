@@ -204,6 +204,17 @@ use only the agents the owner shares.
 
 Team invitations appear as a quiet line above the chat, not a modal. **Join** creates the Team's own project using its automatic folder on this Mac (~/AgentWorks/<Team>); there is no project picker. On the website it joins online. **Not now** hides the line but keeps the invitation under Invites in the Team list; it does not decline or change membership. Several invitations offer **Join all** and **Review** in place. The server provides invitation counts and wording; successful joins show the actual folder or online confirmation with **Open**, then the line disappears. Automatic setup runs through the existing join flow. A folder can be moved later through Team settings or the agent.
 
+## AI teammates (a server project working for the Team)
+
+A project on the server can join a Team as an **AI teammate**: its agents work for the Team around the clock, even when Macs are off, with the Team's shared folders and instructions; its own files, chats and keys stay its own. When the person asks to "put agents online", "add an AI teammate" or "who's on the Team":
+
+1. **Who's on it:** `team_sync action=agents` (one call) lists people's agents and each AI teammate with its agents; `status` with project lists the AI teammates. The Team panel shows them under **AI teammates · online 24/7**. Answer from that one read; don't open each project.
+2. **Turn it on (once per project):** in that server project's own chat, `team_sync action=ai_teammate on=true`, or the **AI teammate** switch on its Access page. Off by default; its owner or a co-owner only. A Mac chat can't flip it: tell the person to open the project on the server.
+3. **Add it to the Team:** in the Team's project chat, `team_sync action=project_add project_id=…` (on the Mac, find the ID with `server_project_files action=projects`), or **+ Add a teammate** in the Team panel, then **Add an AI teammate**. Only the Team's owner adds one, and only switched-on projects are offered.
+4. **What its agents may do:** `project_agent_level` (changes, the default, or answers), chosen by that project's owner or co-owners.
+
+Turning the switch off, or `project_remove`, takes it out of the Team.
+
 ## Native sessions join the project
 
 Claude Code or Codex joins a project from the installed plugin project skill (Claude: `/agentworks:crew <project ID>`), or its `agentworks` tool `action=join` with `project=<project ID>`; explicit `action=leave` removes it. This exact session must already be connected. The person must own the project or be a current member of its active Team, not just have dashboard Run access. The server returns project instructions and an owner-admitted local folder or accepted Team copy; follow the instructions and work there. With no local copy it returns `copy=null`, `folders=[]`: the files stay on the server; ask its agents or add the project to this Mac in AgentWorks. Never supply or guess a server/local path or a native session. Keep the Mac app running for shared sync. A new join follows the project's Team: Shared with team, Answers only, no change permission when on; only the person and their own agents when off. Turning Team on later needs no rejoin; rejoin keeps Only me/Live choices. The owner can read their own exact terminal journal; other people's native text requires explicit Live. One terminal agent joins one project until it leaves. Saved Discovery stays saved but grants no audience while joined; leaving restores it. Team keys stay server-only.

@@ -1,10 +1,10 @@
 import { agentPurposeTooltip } from '../../utils/agentPurposeTooltip'
-import type { TeamTabPerson } from './teamApi'
+import type { TeamAITeammate, TeamTabPerson } from './teamApi'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 import { AgentPlaceMark } from '../../components/chat/AgentIcon'
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, Lock, Pencil, Users, X } from 'lucide-react'
+import { ArrowLeft, Globe, Lock, Pencil, Plus, Users, X } from 'lucide-react'
 
 /** All rows and live lines are already admitted/filtered by the server. */
 export type TeamPanelAgent = AvatarFields & {
@@ -29,8 +29,12 @@ const status = (row:TeamPanelAgent) => row.task_state==='needs_you' ? 'needs you
 const runtime = (row:TeamPanelAgent, includeHelper=false) => [person(row),row.place==='mac'?'Mac':'Server',row.cli||row.engine,includeHelper&&row.client_build&&`AgentWorks ${row.client_build}${row.update_needed?' · Update needed':''}`,row.model_id,row.reasoning_effort].filter(Boolean).join(' · ')
 
 /** Shared Mac/web live panel; detail views replace the right panel, not inline disclosures. */
-export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonSelect,onNavigate,view='live',shared=[],onShared,teamAgentAsk,askLabel,files}: {
+export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonSelect,onNavigate,view='live',shared=[],onShared,teamAgentAsk,askLabel,files,aiTeammates=[],onAdd}: {
  people?:TeamTabPerson[]; selectedPerson?:string; onPersonSelect?:(id?:string)=>void
+ /** The Team's AI teammates (online projects, from the server); their agents are the rows with person_id === id. */
+ aiTeammates?:TeamAITeammate[]
+ /** "+ Add a teammate": opens the People card (people and AI teammates); absent when the viewer can't add. */
+ onAdd?:()=>void
  scope:string; agents:TeamPanelAgent[]; onAsk:(row:TeamPanelAgent)=>void
  view?:TeamPanelView; onNavigate:(view:TeamPanelView)=>void; shared?:TeamPanelShared[]; onShared?:(row:TeamPanelShared)=>void
  teamAgentAsk?:ReactNode; askLabel?:string
@@ -38,10 +42,13 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
  files?:ReactNode
 }) {
  const [query,setQuery]=useState('')
- useEffect(()=>{setQuery('')},[scope,view])
+ const [allOf,setAllOf]=useState<string>()
+ useEffect(()=>{setQuery('');setAllOf(undefined)},[scope,view])
 
  const rows=agents.filter(row=>!row.mine)
- const busy=rows.filter(working)
+ const mates=new Set(aiTeammates.map(mate=>mate.id))
+ // AI teammates' agents show in their own group (below), so Working now lists people's agents only.
+ const busy=rows.filter(row=>working(row)&&!mates.has(row.person_id||''))
  const selected=people.find(person=>person.user_id===selectedPerson&&person.note!=='invited')
  const personal=selected?[...agents.filter(row=>row.person_id===selected.user_id)].sort((a,b)=>Number(working(b))-Number(working(a))):[]
  const button='flex w-full min-w-0 items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -80,6 +87,23 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
     {personal.map(row=>compactAgent(row,false))}
     {!personal.length&&<p className="px-1 py-2 text-xs text-muted-foreground">{selected.name} hasn't added an agent to this Team yet.</p>}
    </section>:busy.length>0?<section aria-label="Working now">{busy.map(row=>compactAgent(row))}</section>:null}
+   {!selected&&aiTeammates.length>0&&<section aria-label="AI teammates" className="pt-1">
+    <p className="px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">AI teammates · online 24/7</p>
+    {aiTeammates.map(mate=>{
+     const own=rows.filter(row=>row.person_id===mate.id)
+     const shown=allOf===mate.id?own:own.slice(0,4)
+     return <div key={mate.id}>
+      <div className="flex min-w-0 items-center gap-1.5 px-1 py-1" title={`${mate.name} · ${mate.line}`}>
+       <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"><Globe aria-hidden="true" className="h-2.5 w-2.5"/><span className="absolute -bottom-px -right-px h-1.5 w-1.5 rounded-full border border-background bg-emerald-500"/></span>
+       <span className="min-w-0 truncate font-medium">{mate.name}</span><span className="min-w-0 truncate text-[10px] text-muted-foreground">{mate.line}</span>
+      </div>
+      <div className="pl-3">{shown.map(row=>compactAgent(row,false))}
+       {own.length>4&&<button type="button" onClick={()=>setAllOf(allOf===mate.id?undefined:mate.id)} className="px-1 text-[11px] text-primary">{allOf===mate.id?'Show fewer':`+ ${own.length-4} more agents`}</button>}
+       {!own.length&&<p className="px-1 text-[11px] text-muted-foreground">No agents shared with the Team yet.</p>}
+      </div>
+     </div>})}
+   </section>}
+   {!selected&&onAdd&&<button type="button" onClick={onAdd} className="mx-1 my-1 inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] hover:bg-background/40"><Plus aria-hidden="true" className="h-3 w-3"/>Add a teammate</button>}
    {!selected&&files}
   </>}
   {view==='agents'&&<><input type="search" aria-label="Search Team agents" placeholder="Search agents or people…" value={query} onChange={e=>setQuery(e.target.value)} className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs"/><div aria-label="All Team agents" className="space-y-0.5">{results.map(row=>agent(row))}{!results.length&&<p className="text-xs text-muted-foreground">No matching agents.</p>}</div></>}
