@@ -7,7 +7,7 @@ import { SettingsMenuContext } from './productNavigationContexts'
 export { useProductSettingsMenu, useProductSetupTiles } from './productNavigationContexts'
 
 /** Existing actions remain mounted and enforce their own permissions. */
-export function ProductSettingsMenu({ children, activity, accountTrigger }: { children: ReactNode; activity?: ReactNode; accountTrigger?: ReactNode }) {
+export function ProductSettingsMenu({ children, activity, accountTrigger, attention }: { children: ReactNode; activity?: ReactNode; accountTrigger?: ReactNode; attention?: string }) {
   const target = useProductNavigationToolbarStore(state => state.settingsTarget)
   const sidebarTarget = useProductNavigationToolbarStore(state => state.sidebarSettingsTarget)
   const compactTarget = useProductNavigationToolbarStore(state => state.compactSettingsTarget)
@@ -56,11 +56,11 @@ export function ProductSettingsMenu({ children, activity, accountTrigger }: { ch
       </div>
     </SettingsMenuContext.Provider>, target)
   const menu = <div ref={root} data-product-settings className={accountMenu && !sidebarTarget && !compactTarget ? 'hidden' : 'relative'}>
-    <button ref={trigger} data-product-settings-trigger type="button" aria-label={menuLabel} aria-haspopup="menu" aria-expanded={open} aria-controls={id}
+    <button ref={trigger} data-product-settings-trigger type="button" aria-label={attention ? `${menuLabel} — ${attention}` : menuLabel} aria-haspopup="menu" aria-expanded={open} aria-controls={id}
       onClick={() => { window.dispatchEvent(new Event('close-workspace-picker')); setOpen(value => !value) }}
       onKeyDown={event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true); focusFirst() } }}
-      title={accountMenu ? 'Account & settings' : sidebarTarget ? 'AI accounts, connected tools and access' : 'Settings'} className={`${sidebarTarget ? `${accountMenu ? 'h-8' : 'h-10'} w-full justify-start gap-2.5 px-3 py-1.5` : 'h-8 w-8 justify-center'} flex items-center rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>
-      {accountMenu ? sidebarTarget ? accountTrigger : <UserRound className="h-4 w-4" aria-hidden="true" /> : <Settings className="h-4 w-4" aria-hidden="true" />}
+      title={attention || (accountMenu ? 'Account & settings' : sidebarTarget ? 'AI accounts, connected tools and access' : 'Settings')} className={`${sidebarTarget ? `${accountMenu ? 'h-8' : 'h-10'} w-full justify-start gap-2.5 px-3 py-1.5` : 'h-8 w-8 justify-center'} flex items-center rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>
+      {accountMenu ? sidebarTarget ? accountTrigger : <span className="relative inline-flex"><UserRound className="h-4 w-4" aria-hidden="true" />{attention && <span data-account-sign-in-dot className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-destructive" aria-hidden="true" />}</span> : <Settings className="h-4 w-4" aria-hidden="true" />}
       {sidebarTarget && <>{!accountMenu && <span className="flex-1 text-left">Setup</span>}<ChevronUp className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" /></>}
     </button>
     <SettingsMenuContext.Provider value="menu">
