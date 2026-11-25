@@ -13,7 +13,7 @@ const externalCrewCommandsTool = "manage_crew_commands"
 // The Crew factory owns both the schema and executor; the external transport
 // adds only the project selector and authenticates its role on each call.
 func externalCrewCommandDefinition(add func(string, string, bool, bool, map[string]any, ...string)) error {
-	tool, err := workproduct.CustomCommandsFactory("", "Project project")(agentprofiles.ToolRuntimeContext{}, nil)
+	tool, err := workproduct.CustomCommandsFactory("", "project")(agentprofiles.ToolRuntimeContext{}, nil)
 	if err != nil {
 		return err
 	}

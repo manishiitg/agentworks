@@ -56,11 +56,11 @@ async function renderStatus($, e, next) {
   ] });
 }
 
-// The CLI line is shared with terminals ("AgentWorks · Crew X · Shared with team · N online · M new");
-// the strip above the prompt keeps what changes: the Crew, who is online and what is new.
+// The CLI line is shared with terminals ("AgentWorks · Project X · Shared with team · N online · M new");
+// the strip above the prompt keeps what changes: the project, who is online and what is new.
 export function compactStatus(line) {
   const parts = line.split(' · ').slice(1).filter(p => p !== 'Shared with team' && p !== '0 new');
-  if (parts[0] && parts[0].startsWith('Crew ')) parts[0] = parts[0].slice(5);
+  if (parts[0] && parts[0].startsWith('Project ')) parts[0] = parts[0].slice(8);
   if (parts.length === 1 && parts[0] === 'connected') return 'Connected to AgentWorks';
   return parts.join(' · ') || line;
 }

@@ -58,7 +58,7 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 	store := defaultProductProjectStore()
 	paths, err := listSharedCrewManifestPaths(ctx, store, ownerID, product.ProfileID)
 	if err != nil {
-		return nil, fmt.Errorf("list project projects: %w", err)
+		return nil, fmt.Errorf("list projects: %w", err)
 	}
 	rootPrefix := strings.TrimSuffix(filepath.ToSlash(root), "/") + "/"
 	if len(paths) == 0 {

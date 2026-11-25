@@ -377,7 +377,7 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		if a.LastActiveLabel != "" {
 			info = append(info, clean(a.LastActiveLabel))
 		}
-		for _, field := range []struct{ label, value string }{{"Model", a.ModelID}, {"Effort", a.Effort}, {"Crew", a.Crew}} {
+		for _, field := range []struct{ label, value string }{{"Model", a.ModelID}, {"Effort", a.Effort}, {"Project", a.Crew}} {
 			if field.value != "" {
 				info = append(info, field.label+": "+clean(field.value))
 			}

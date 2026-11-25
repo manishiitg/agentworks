@@ -1790,7 +1790,7 @@ func (c whatsappDestinationCandidate) kindLabel() string {
 	case c.Kind != "crew":
 		return "Workflow"
 	}
-	return "Crew"
+	return "Project"
 }
 
 func (c whatsappDestinationCandidate) autoRouteKey() string {
