@@ -216,14 +216,16 @@ func addProjectTaskRef(refs []projectTaskRef, ref projectTaskRef) ([]projectTask
 // crewPanelProjectTask is one task as the side panel and the tool show it.
 type crewPanelProjectTask struct {
 	crewPanelFeedItem
-	Assignee string             `json:"assignee,omitempty"`
-	Sources  []projectTaskRef   `json:"sources,omitempty"`
-	Links    []projectTaskRef   `json:"links,omitempty"`
-	Activity []projectTaskEvent `json:"activity,omitempty"`
-	Checks   []projectTaskCheck `json:"checklist,omitempty"`
-	Proposed string             `json:"proposed,omitempty"`
-	Held     bool               `json:"held,omitempty"`
-	Choices  []string           `json:"choices,omitempty"`
+	Assignee string `json:"assignee,omitempty"`
+	// AssigneeCLI is the assignee's coding program, from its latest linked ask.
+	AssigneeCLI string             `json:"assignee_cli,omitempty"`
+	Sources     []projectTaskRef   `json:"sources,omitempty"`
+	Links       []projectTaskRef   `json:"links,omitempty"`
+	Activity    []projectTaskEvent `json:"activity,omitempty"`
+	Checks      []projectTaskCheck `json:"checklist,omitempty"`
+	Proposed    string             `json:"proposed,omitempty"`
+	Held        bool               `json:"held,omitempty"`
+	Choices     []string           `json:"choices,omitempty"`
 	// NeedsYou says what the person must do; the server decides it so the panel
 	// and the lead read the same "Needs you" list.
 	NeedsYou string `json:"needs_you,omitempty"`
@@ -249,6 +251,11 @@ func projectTaskView(list projectTaskList, t projectTask, tasks *conditionFeedTa
 		} else if link.Agent != "" {
 			// Someone else's ask: its thread is theirs, so only who has it shows.
 			view.Tasks = append(view.Tasks, crewPanelFeedTask{Agent: link.Agent, State: "asked"})
+		}
+	}
+	for _, task := range view.Tasks {
+		if task.CLI != "" && (task.Agent == t.Assignee || view.AssigneeCLI == "") {
+			view.AssigneeCLI = task.CLI
 		}
 	}
 	view.Proposed, view.Held, view.Checks = t.Proposed, t.Held, t.Checks
@@ -279,6 +286,31 @@ func projectTaskView(list projectTaskList, t projectTask, tasks *conditionFeedTa
 	return view
 }
 
+// teamAgentCLI names, by Team agent id, the coding program of each agent in this
+// project's Team (the same label the Team panel shows), read once on first use.
+// It only decorates asks the viewer already sees; it never admits an agent.
+func (s *ProjectActionDispatcher) teamAgentCLI(ctx context.Context, project string) func(string) string {
+	var names map[string]string
+	return func(id string) string {
+		if names == nil {
+			names = map[string]string{}
+			team, err := readCrewTeam(project)
+			if s.api != nil && err == nil {
+				agents := make([]crewTeamReachableAgent, 0, len(team.Agents))
+				for agentID := range team.Agents {
+					agents = append(agents, crewTeamReachableAgent{Team: project, ID: agentID, Address: agentID})
+				}
+				for _, row := range s.api.runtimeInfoForAdmittedReach(ctx, agents) {
+					if row.Info != nil {
+						names[row.Reach.ID] = firstNonEmptyTrimmed(row.Info.CLI, row.Info.Engine)
+					}
+				}
+			}
+		}
+		return names[id]
+	}
+}
+
 // projectTasksRow is the side panel's one Project tasks row, or false when the
 // project has no task list yet.
 func (c *conditionService) projectTasksRow(ctx context.Context, viewer, project string) (crewPanelRow, bool, error) {
@@ -292,6 +324,7 @@ func (c *conditionService) projectTasksRow(ctx context.Context, viewer, project 
 	}
 	row := crewPanelRow{ID: "project-tasks", Label: "Project tasks", Group: "project-tasks", Steps: list.steps(), Rules: list.Rules, Detail: "No tasks yet"}
 	tasks := conditionFeedTaskIndex(ctx, viewer)
+	tasks.cli = c.s.teamAgentCLI(ctx, project)
 	open, done := 0, 0
 	for i := len(list.Tasks) - 1; i >= 0; i-- {
 		t := list.Tasks[i]

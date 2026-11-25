@@ -40,6 +40,9 @@ type crewPanelFeedTask struct {
 	Agent string `json:"agent"`
 	Title string `json:"title"`
 	State string `json:"state"` // open, in_progress, blocked, needs_you, stalled, done
+	// CLI is the coding program the agent runs on (Claude Code, Codex...), from
+	// its Team record, so the panel can show its logo (#4027).
+	CLI string `json:"cli,omitempty"`
 }
 
 // conditionFeedTasks reads the person's own AgentBridge threads at most once,
@@ -49,6 +52,8 @@ type conditionFeedTasks struct {
 	owner  string
 	loaded bool
 	convs  map[string]agentConversation
+	// cli names a Team agent's coding program by its Team agent id; nil skips it.
+	cli func(teamAgentID string) string
 }
 
 func conditionFeedTaskIndex(ctx context.Context, owner string) *conditionFeedTasks {
@@ -87,7 +92,12 @@ func (t *conditionFeedTasks) view(link conditionFeedTask) (crewPanelFeedTask, bo
 	if state == "" {
 		state = "open"
 	}
-	return crewPanelFeedTask{Agent: firstNonEmptyTrimmed(c.Endpoints[1-m.From].Label, "an agent"), Title: agentTaskStallTitle(m), State: state}, true
+	to := c.Endpoints[1-m.From]
+	view := crewPanelFeedTask{Agent: firstNonEmptyTrimmed(to.Label, "an agent"), Title: agentTaskStallTitle(m), State: state}
+	if t.cli != nil && to.TeamAgentID != "" {
+		view.CLI = t.cli(to.TeamAgentID)
+	}
+	return view, true
 }
 
 func conditionFeedPanelItem(item conditionFeedItem, steps []string, tasks *conditionFeedTasks) crewPanelFeedItem {

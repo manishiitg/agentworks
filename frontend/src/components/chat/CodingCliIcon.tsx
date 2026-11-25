@@ -12,7 +12,7 @@ const programs: Record<string, { name: string; icon: string }> = {
 /** The server-resolved coding program, using the same logos in menus and Team rows. */
 export function CodingCliIcon({ provider, label, className = 'inline-flex shrink-0 items-center' }: { provider?: string; label?: string; className?: string }) {
   if (!provider) return null
-  const key = provider.trim().toLowerCase().replace(/-cli$/, '').replace(/^claude-code$/, 'claude').replace(/^antigravity$/, 'agy')
+  const key = provider.trim().toLowerCase().replace(/\s+/g, '-').replace(/-cli$/, '').replace(/^claude-code$/, 'claude').replace(/^antigravity$/, 'agy')
   const program = programs[key]
   const name = label || program?.name || provider
   return <span role="img" title={name} aria-label={name} className={className}>
