@@ -281,6 +281,7 @@ func externalTools() ([]externalTool, error) {
 		externalTokenLimitDefinitions(add)
 		externalUsersDefinition(add)
 		externalSignInAppsDefinition(add)
+		providerAccountsToolDefinition(add)
 		externalCostsDefinition(add)
 		externalBullpenAdminDefinition(add)
 		externalBrainAdminDefinition(add)
@@ -920,6 +921,10 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	if tool.Name == externalSignInAppsTool {
 		api.externalSignInAppsCall(w, r, call.Arguments)
+		return
+	}
+	if tool.Name == providerAccountsTool {
+		api.externalProviderAccountsCall(w, r, call.Arguments)
 		return
 	}
 	if tool.Name == externalUsersTool {

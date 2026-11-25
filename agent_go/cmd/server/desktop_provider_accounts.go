@@ -234,8 +234,14 @@ func (api *StreamingAPI) handleDesktopProviderAccountCopy(w http.ResponseWriter,
 	if !desktopConnectionGate(w, r) {
 		return
 	}
+	api.copyProviderAccountToServer(w, r, mux.Vars(r)["connection"])
+}
+
+// copyProviderAccountToServer is "Add on server" for the signed-in person: the Mac app's button and the ai_accounts
+// tool (provider_accounts_tool.go) both use it, so they follow the same rules.
+func (api *StreamingAPI) copyProviderAccountToServer(w http.ResponseWriter, r *http.Request, connectionID string) {
 	owner := GetUserFromContext(r.Context()).UserID
-	c, err := desktopConnectionFor(owner, mux.Vars(r)["connection"])
+	c, err := desktopConnectionFor(owner, connectionID)
 	if err != nil {
 		http.Error(w, `{"error":"Connection is unavailable. Connect to the server again."}`, 404)
 		return
