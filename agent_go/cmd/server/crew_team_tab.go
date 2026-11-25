@@ -154,6 +154,9 @@ type crewTeamTabSync struct {
 
 type crewTeamTabReply struct {
 	Reachable []crewTeamPanelReach `json:"reachable"`
+	// AITeammates are the Team's online projects (#3664) for the panel's Team section; their agents are the Reachable
+	// rows whose person_id is the teammate's ID (owner, 25 Nov: show AI teammates beside people).
+	AITeammates []crewTeamTabAITeammate `json:"ai_teammates,omitempty"`
 	Team      crewTeam             `json:"team"`
 	Intro     string               `json:"intro"`
 	People    []crewTeamTabPerson  `json:"people"`
@@ -186,6 +189,12 @@ type crewTeamTabReply struct {
 	// viewer's Main; empty for a viewer who changes nothing here, and then the page shows no button.
 	Help    []crewTeamHelpLine `json:"help"`
 	HelpAsk string             `json:"help_ask,omitempty"`
+}
+
+type crewTeamTabAITeammate struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Line string `json:"line"`
 }
 
 type crewTeamHelpLine struct {
@@ -379,6 +388,11 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	lap("live")
 	out.Reachable = crewTeamPanelReachFrom(ctx, t, viewer, byPerson, reachRows)
 	lap("reach")
+	for _, p := range byPerson {
+		if _, project := crewTeamMemberProjectID(p.UserID); project {
+			out.AITeammates = append(out.AITeammates, crewTeamTabAITeammate{ID: p.UserID, Name: strings.TrimPrefix(p.Name, "Project: "), Line: "Online 24/7 on the server"})
+		}
+	}
 	seen := map[string]crewTeamAgentsPerson{}
 	for _, p := range byPerson {
 		seen[p.UserID] = p
