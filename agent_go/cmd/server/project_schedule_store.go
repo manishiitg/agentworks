@@ -414,10 +414,11 @@ func pinCrewSchedulesToOwnChat(ctx context.Context, root string) {
 	log.Printf("[CREW_SCHEDULES] event=own_chat_move root=%s moved=%d error=%v", root, moved, err)
 }
 
-// crewScheduleNamesNoAgent: a stored Crew schedule with no conversation of its own and no agent tab (empty, or the bare
-// project key that meant Main). A Watcher (a condition) is not a schedule here.
+// crewScheduleNamesNoAgent: a stored Crew schedule with no conversation of its own and no agent: an empty tab or the
+// old "main" nickname. A tab id (a full chat key, or a short one such as Main's own id) names an agent and stays; it
+// is not a project key. A Watcher (a condition) is not a schedule here.
 func crewScheduleNamesNoAgent(s projectactions.Schedule) bool {
-	if s.Action.Conversation != "" || strings.Contains(s.Action.Tab, codeChatSideMarker) {
+	if tab := strings.TrimSpace(s.Action.Tab); s.Action.Conversation != "" || (tab != "" && !strings.EqualFold(tab, "main")) {
 		return false
 	}
 	var input scheduleExecutionInput

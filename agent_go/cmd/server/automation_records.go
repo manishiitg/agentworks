@@ -331,7 +331,7 @@ func importAllAutomationRecords(ctx context.Context) {
 	if !colocatedWorkspace() {
 		return
 	}
-	var roots, crewRoots []string
+	var roots, crewRoots, workflowRoots []string
 	if records, err := defaultProjectOwners().All(); err != nil {
 		log.Printf("[SERVER_STATE] event=import_all_failed table=automation_records error=%v", err)
 	} else {
@@ -347,6 +347,8 @@ func importAllAutomationRecords(ctx context.Context) {
 	} else {
 		for _, binding := range executables {
 			roots = append(roots, binding.Root)
+			// A Crew workflow's own timers follow the same rule as the Crew's schedules (#4046).
+			workflowRoots = append(workflowRoots, binding.Root)
 		}
 	}
 	failed := 0
@@ -363,6 +365,9 @@ func importAllAutomationRecords(ctx context.Context) {
 	for _, root := range crewRoots {
 		removeCrewMessageWebhooks(ctx, root)
 		// #4046: a schedule that names no agent runs in its own chat.
+		pinCrewSchedulesToOwnChat(ctx, root)
+	}
+	for _, root := range workflowRoots {
 		pinCrewSchedulesToOwnChat(ctx, root)
 	}
 }
