@@ -66,6 +66,13 @@ func TestClaudeNativeQuestionsEmittedOptions(t *testing.T) {
 							t.Fatalf("%s=%s, native question enabled=%v", key, tools, want)
 						}
 					}
+					// #3711: in plan mode Claude said "No such tool available: ExitPlanMode", so a plan could never
+					// reach the Approve / Reject card. The SDK offers it with the card; it is never pre-approved.
+					tools, _ := metadata[claudecode.MetadataKeyTools].(string)
+					allowed, _ := metadata[claudecode.MetadataKeyAllowedTools].(string)
+					if slices.Contains(strings.Split(tools, ","), "ExitPlanMode") != (want && sdk) || slices.Contains(strings.Split(allowed, ","), "ExitPlanMode") {
+						t.Fatalf("ExitPlanMode tools=%s allowed=%s, want offered=%v", tools, allowed, want && sdk)
+					}
 					settings, _ := metadata[claudecode.MetadataKeySettings].(string)
 					if strings.Contains(settings, `"matcher":"AskUserQuestion"`) != (want && !sdk) {
 						t.Fatalf("question hook settings enabled=%v: %s", want, settings)

@@ -145,6 +145,7 @@ import { loadProfileAtFiles } from '../utils/profileAtFiles'
 import { proxyCrewFileClient, sharedCrewFileClient } from '../products/work/sharedCrewFiles'
 import { chatSendMessageEvent } from '../products/work/ChatContextItems'
 import { PlanModeTag } from './chat/PlanModeControls'
+import { ContextRing } from './chat/ContextRing'
 import { isPlanToggleKey, PLAN_START_MESSAGE, planNeedsStartButton } from '../utils/planMode'
 
 // The person's chat/terminal choice for this tab. Not remembered: every
@@ -3483,8 +3484,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     : label
                 })()}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
-                {/* Plan first shows only while on; Shift+Tab, /plan or the chat menu turn it on (#3711). */}
-                {planOn && <PlanModeTag onToggle={togglePlanMode} onStart={planReady ? startPlannedWork : undefined} />}
+                {/* Like Claude Code's status line: model · effort, then the mode (Auto / Plan; Shift+Tab switches) and how full the context is (#3711). */}
+                {nativePlanSupported && <PlanModeTag on={planOn} onToggle={togglePlanMode} onStart={planReady ? startPlannedWork : undefined} />}
+                {agentProfileId === 'work' && tabSessionId && <ContextRing sessionId={tabSessionId} busy={isTurnInFlight} />}
                 {agentProfileId === 'work' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
                 <SharedTokenUsageChip accountProvider={sharedAccountProvider(activeTab?.metadata?.agentProfileConnectionID

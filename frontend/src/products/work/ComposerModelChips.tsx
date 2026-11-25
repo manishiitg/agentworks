@@ -40,17 +40,12 @@ export function ChoiceItems({ title, choices, value, onPick, keepOpenOnPick = fa
 }
 
 /**
- * Reasoning effort as four small bars after the model name. CLIs offer different scales (Claude low–max, Codex
- * low–ultra, Muse medium–max, Pi low–xhigh), so the bars show where the pick sits on that CLI's own scale; the
- * name ("Effort: High") is the hover text. CLIs whose model ID carries the effort (Antigravity, most Cursor
- * models) have no scale and show no bars.
+ * Reasoning effort as a word after the model ("Opus 5.5 · High"), like Claude Code's status line. CLIs whose model ID
+ * carries the effort (Antigravity, most Cursor models) have no scale and show none.
  */
-export function EffortBars({ index, count, label }: { index: number; count: number; label: string }) {
-  if (count < 2 || index < 0) return null
-  const filled = Math.max(1, Math.round(((index + 1) / count) * 4))
-  return <span role="img" aria-label={`Effort: ${label}`} title={`Effort: ${label}`} className="ml-1 inline-flex shrink-0 items-end gap-px" data-testid="chip-effort">
-    {[0, 1, 2, 3].map(bar => <span key={bar} className={`w-[2px] rounded-sm ${bar < filled ? 'bg-current' : 'bg-current opacity-25'}`} style={{ height: `${4 + bar * 2}px` }} />)}
-  </span>
+export function EffortLabel({ count, label }: { index: number; count: number; label: string }) {
+  if (count < 2 || !label) return null
+  return <span className="ml-1 shrink-0 text-muted-foreground/80" data-testid="chip-effort">· {label}</span>
 }
 
 export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide, tag, triggerExtra, onCloseAutoFocus, effort }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean; tag?: 'mac' | 'server'; triggerExtra?: ReactNode; onCloseAutoFocus?: (event: Event) => void; effort?: { index: number; count: number; label: string } }) {
@@ -60,7 +55,7 @@ export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange,
       {tag === 'mac' && <Laptop className="mr-1 h-3 w-3 shrink-0" aria-hidden="true" />}
       {tag === 'server' && <Server className="mr-1 h-3 w-3 shrink-0" aria-hidden="true" />}
       <span className="min-w-0 max-w-40 truncate">{label}</span>
-      {effort && <EffortBars {...effort} />}
+      {effort && <EffortLabel {...effort} />}
       {triggerExtra}
       <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />
     </Menu.Trigger>

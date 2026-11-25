@@ -154,6 +154,12 @@ func (a *Agent) appendClaudeCodeIntegrationOptions(opts []llmtypes.CallOption, m
 		allowedTools = strings.Join(claudeBridgeAllowedToolIdentifiers(a.additionalBridgeTools, a.admitsBridgeTool), ",") + "," + nativeTools
 	}
 	opts = append(opts, llm.WithAllowedTools(allowedTools))
+	// Plan mode (#3711): Claude hands its plan over with ExitPlanMode, which the SDK turns into the
+	// Approve / Reject card. Without it in the tool list Claude reported "No such tool available" and
+	// could never ask for approval. It stays off the allowed list so every call still reaches the card.
+	if sdk && nativeQuestions {
+		nativeTools += ",ExitPlanMode"
+	}
 
 	if a.nativeCodingToolsEnabled() {
 		// Full CLI: Claude's own reads, shell, edits, skills, todos, subagents
