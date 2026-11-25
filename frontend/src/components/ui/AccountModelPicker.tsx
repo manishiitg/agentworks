@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import type { DynamicModelEntry } from '../../services/llm-config-api'
 
-interface CursorModelPickerProps {
+interface AccountModelPickerProps {
   models: DynamicModelEntry[]
   selectedModelId: string
   onSelect: (modelId: string) => void
@@ -21,7 +21,7 @@ interface Family {
 // PLAT-872: a paid Cursor account lists hundreds of models. The server splits
 // each into family + variant (and maker, older); this only lays them out:
 // one row per family, its variants as chips, older versions folded away.
-export function CursorModelPicker({ models, selectedModelId, onSelect, selectionDisabled = false, className }: CursorModelPickerProps) {
+export function AccountModelPicker({ models, selectedModelId, onSelect, selectionDisabled = false, className }: AccountModelPickerProps) {
   const [search, setSearch] = useState('')
   const [showOlder, setShowOlder] = useState(false)
   const selectedFamily = models.find(model => model.model_id === selectedModelId)?.family
@@ -62,7 +62,7 @@ export function CursorModelPicker({ models, selectedModelId, onSelect, selection
       <div className="max-h-96 overflow-y-auto rounded-md border border-border">
         {makers.length === 0 && (
           <p className="px-3 py-4 text-center text-sm text-muted-foreground">
-            {search.trim() ? `No models match "${search}"` : 'Cursor listed no models for this account. Check the account in Providers, then refresh.'}
+            {search.trim() ? `No models match "${search}"` : 'This account listed no models. Check the account in Providers, then refresh.'}
           </p>
         )}
         {makers.map(([maker, families]) => (
