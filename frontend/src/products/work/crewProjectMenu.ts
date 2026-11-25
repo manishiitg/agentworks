@@ -25,9 +25,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   const add = (view: WorkWorkspaceView, group: CrewMenuGroup, label: string, icon: LucideIcon, target?: string, subgroup?: string) => {
     if (has(view)) items.push({ id: target ? `${view}:${target}` : view, view, group, label, icon, target, subgroup })
   }
-  // A project on a Mac has Dashboards and Motion, no Artifacts (owner, 25 Nov).
-  const pages = isLocalDeployment() ? 'Dashboards' : 'Artifacts'
-  add('dashboard', 'Build', pages, LayoutDashboard)
+  add('dashboard', 'Build', 'Artifacts', LayoutDashboard)
   add('workflow', 'Build', 'Workflow', Route)
   add('schedules', 'Build', 'Automations', Zap)
   if (!enabledPanels || enabledPanels.has('skills')) add('memory', 'Integrations', 'Skills', Sparkles, 'skills')
@@ -40,7 +38,7 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     // Online, how everyone else reaches it (Mac online, Online agents); your agents and actions are Team › Agents. Each opens its own page.
     add('mcp', 'Share', 'Team', UsersRound, 'team')
     add('mcp', 'Share', 'Mac online', Globe, 'online')
-    add('mcp', 'Share', pages, LayoutDashboard, 'artifacts')
+    add('mcp', 'Share', 'Artifacts', LayoutDashboard, 'artifacts')
     // The Slack bot row opens Connections → Slack bot (owner, 14 Nov).
     for (const item of projectChannelSections(bots, bots)) {
       add('mcp', item.id === 'slack' ? 'Integrations' : 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, item.id === 'slack' ? undefined : 'Use from other apps')

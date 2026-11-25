@@ -210,7 +210,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
           <span className="font-medium text-foreground">{line.title}</span>
           {line.count ? <span className="text-muted-foreground">{line.count}</span> : null}
         </button>
-        <button type="button" aria-label={`${dashboardsOpen ? 'Hide' : 'Show'} ${line.title.toLowerCase()}`} aria-expanded={dashboardsOpen} onClick={toggleDashboards} className="flex h-8 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <button type="button" aria-label={dashboardsOpen ? 'Hide artifacts' : 'Show artifacts'} aria-expanded={dashboardsOpen} onClick={toggleDashboards} className="flex h-8 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${dashboardsOpen ? 'rotate-90' : ''}`} />
         </button>
         </div>
@@ -253,7 +253,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     {activitySection}
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This project lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
-      <p>Its dashboards are only for you, on your Mac.</p>
+      <p>Artifacts work once this project is online. Move it online from your Mac.</p>
     </div> : <>
     {changes}
     {/* Project activity sits right under Git (owner, 21 Nov, #3476). */}

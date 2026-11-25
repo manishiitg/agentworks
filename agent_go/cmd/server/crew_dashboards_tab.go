@@ -67,27 +67,28 @@ type crewDashboardsTab struct {
 	Intro     string `json:"intro"`
 	// CanChange: this person is the Crew's main owner (who can open it and the public link are theirs).
 	CanChange bool `json:"can_change"`
-	// Title names the pane: Artifacts on a server Crew, Dashboards on a Mac Crew (it has no Artifacts).
-	Title string `json:"title"`
-	// OnMac: the Crew lives on its owner's Mac: its pages are for the owner only, with no sharing (owner, 25 Nov).
-	OnMac   bool                      `json:"on_mac,omitempty"`
-	Note    string                    `json:"note,omitempty"`
-	Filter  string                    `json:"filter"`
-	Filters []crewDashboardsTabFilter `json:"filters"`
-	Items   []crewDashboardsTabItem   `json:"items"`
-	Empty   *crewDashboardsTabEmpty   `json:"empty,omitempty"`
+	// OnMac: the Crew lives on its owner's Mac, so its public link and sharing outside the Team need it online first.
+	OnMac bool `json:"on_mac,omitempty"`
+	// PutOnline: the owner may put it online from the card (Mac Crews only).
+	PutOnline bool                      `json:"put_online,omitempty"`
+	Note      string                    `json:"note,omitempty"`
+	Filter    string                    `json:"filter"`
+	Filters   []crewDashboardsTabFilter `json:"filters"`
+	Items     []crewDashboardsTabItem   `json:"items"`
+	Empty     *crewDashboardsTabEmpty   `json:"empty,omitempty"`
 }
 
 const (
-	crewDashboardsMacOwnerNote = "Only you can open these. To share pages with other people, use a project on the server."
-	crewDashboardsTeammateNote = "Only the owner changes who can open these."
+	crewDashboardsMacOwnerNote    = "Buttons on these work on your Mac. To share with other people, or make a public link, put this project online."
+	crewDashboardsMacTeammateNote = "Buttons on these work on the owner's Mac for now."
+	crewDashboardsTeammateNote    = "Only the owner changes who can open these."
 )
 
-func crewDashboardKind(row crewTeamDashboard, onMac bool) (key, label string) {
+func crewDashboardKind(row crewTeamDashboard) (key, label string) {
 	switch {
 	case row.Motion:
 		return "motion", "Motion"
-	case row.Artifact && !onMac:
+	case row.Artifact:
 		return "artifact", "Artifact"
 	}
 	return "dashboard", "Dashboard"
@@ -133,34 +134,20 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	root := crewProjectRootByID(t.ProjectID)
 	owner := t.OwnerID == claims.UserID
 	onMac := dashboardPublicMacCrewBlocked(t.ProjectID)
-	if onMac && !owner {
-		// A Mac Crew's pages are its owner's only (owner, 25 Nov): a teammate gets none of them.
-		return crewDashboardsTab{Workspace: root, Title: "Dashboards", OnMac: true, Filter: "all", Filters: []crewDashboardsTabFilter{}, Items: []crewDashboardsTabItem{},
-			Empty: &crewDashboardsTabEmpty{Title: "Only for " + crewPersonShortName(t.OwnerID), Line: "This project lives on its owner's Mac, so its pages aren't shared."}}, true
-	}
-	rows, ok := api.crewTeamDashboardRows(w, r, t, root, owner && !onMac)
+	rows, ok := api.crewTeamDashboardRows(w, r, t, root, owner)
 	if !ok {
 		return crewDashboardsTab{}, false
 	}
 	switch filter {
-	case "dashboard", "motion":
-	case "artifact":
-		if onMac {
-			filter = "all"
-		}
+	case "dashboard", "artifact", "motion":
 	default:
 		filter = "all"
 	}
-	tab := crewDashboardsTab{Workspace: root, Title: "Artifacts", Intro: "Everything published from this project.", CanChange: owner && !onMac, OnMac: onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
-	who := "you"
-	if onMac {
-		tab.Title = "Dashboards"
-	} else {
-		who = api.crewDashboardsTabWho(r, root, owner)
-	}
+	tab := crewDashboardsTab{Workspace: root, Intro: "Everything published from this project.", CanChange: owner && !crewOwnerOnlineOfMacCrew(r, t.ProjectID, GetUserIDFromContext(r.Context())), OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
+	who := api.crewDashboardsTabWho(r, root, owner && !onMac)
 	counts := map[string]int{}
 	for _, row := range rows {
-		key, label := crewDashboardKind(row, onMac)
+		key, label := crewDashboardKind(row)
 		counts[key]++
 		if filter != "all" && filter != key {
 			continue
@@ -183,9 +170,6 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	}
 	tab.Filters = []crewDashboardsTabFilter{{Key: "all", Label: "All", Count: len(rows)}}
 	for _, kind := range crewDashboardsTabKinds {
-		if onMac && kind.key == "artifact" {
-			continue
-		}
 		filter := crewDashboardsTabFilter{Key: kind.key, Label: kind.label, Count: counts[kind.key], Hint: kind.hint}
 		if owner && counts[kind.key] == 0 {
 			filter.Ask = kind.ask
@@ -193,6 +177,8 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 		tab.Filters = append(tab.Filters, filter)
 	}
 	switch {
+	case !owner && onMac:
+		tab.Note = crewDashboardsMacTeammateNote + " " + crewDashboardsTeammateNote
 	case !owner:
 		tab.Note = crewDashboardsTeammateNote
 	case onMac:
@@ -200,13 +186,9 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	}
 	if len(rows) == 0 {
 		// Nothing to open: no lines about items that are not there, and one line for a teammate.
-		tab.Intro, tab.Note = "", ""
+		tab.Intro, tab.Note, tab.PutOnline = "", "", false
 		tab.Empty = &crewDashboardsTabEmpty{Line: crewPersonShortName(t.OwnerID) + " hasn't published anything from this project yet."}
-		switch {
-		case owner && onMac:
-			tab.Empty = &crewDashboardsTabEmpty{Title: "No dashboards yet", Line: "Ask the project to make a dashboard. Only you can open it.",
-				Ask: "Make a dashboard for this project from its results. Show me before you publish it."}
-		case owner:
+		if owner {
 			// The Dashboards tab (owner, 9 Nov mock): one line and "Ask the Crew", which opens Main with this draft.
 			tab.Empty = &crewDashboardsTabEmpty{Title: "No artifacts yet", Line: "Ask the project to make a report, proposal, demo or dashboard.",
 				Ask: "Make an artifact for this project from its results. Show me before you publish it."}
