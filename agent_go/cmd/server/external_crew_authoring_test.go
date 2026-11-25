@@ -39,7 +39,6 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 
 	create := map[string]any{
 		"name":            "Support Triage",
-		"purpose":         "Triage inbound tickets and route them to the right team.",
 		"selected_skills": []any{"triage"},
 		"files":           map[string]any{"skills/triage/SKILL.md": "---\nname: triage\n---\nSort tickets by severity.\n"},
 		"functions": []any{map[string]any{
@@ -54,8 +53,9 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 		t.Fatalf("create_crew = %d %v", code, out)
 	}
 	crewID, _ := out["crew_id"].(string)
-	if !strings.HasPrefix(out["purpose"].(string), "Triage inbound") {
-		t.Fatalf("created crew must carry its purpose: %v", out)
+	// A project has a name and no description (owner, 25 Nov, #4046).
+	if out["name"] != "Support Triage" || out["purpose"] != nil || out["description"] != nil {
+		t.Fatalf("created crew must carry its name and no description: %v", out)
 	}
 	access, _ := out["access"].(map[string]any)
 	if access["can_edit"] != true || access["your_access"] != "owner" {
@@ -95,7 +95,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	scheduleID := schedules[0].(map[string]any)["id"].(string)
 
 	// A new Crew is private. Another person cannot discover or edit it.
-	if code, out := externalCrewRequest(t, env, other, "update_crew", map[string]any{"crew_id": crewID, "purpose": "Hijacked"}); code != 404 {
+	if code, out := externalCrewRequest(t, env, other, "update_crew", map[string]any{"crew_id": crewID, "name": "Hijacked"}); code != 404 {
 		t.Fatalf("non-owner update = %d %v", code, out)
 	}
 	code, got = externalCrewRequest(t, env, other, "get_crew", map[string]any{"crew_id": crewID})
@@ -104,11 +104,11 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	}
 
 	// A bad section refuses the whole update before anything is written.
-	if code, _ := externalCrewRequest(t, env, owner, "update_crew", map[string]any{"crew_id": crewID, "purpose": "Changed", "schedules": map[string]any{"update": []any{map[string]any{"id": "missing", "enabled": false}}}}); code != 400 {
+	if code, _ := externalCrewRequest(t, env, owner, "update_crew", map[string]any{"crew_id": crewID, "name": "Changed", "schedules": map[string]any{"update": []any{map[string]any{"id": "missing", "enabled": false}}}}); code != 400 {
 		t.Fatalf("unknown schedule must refuse the update, got %d", code)
 	}
-	if _, got := externalCrewRequest(t, env, owner, "get_crew", map[string]any{"crew_id": crewID}); got["purpose"] != "Triage inbound tickets and route them to the right team." {
-		t.Fatalf("refused update must not change the purpose: %v", got["purpose"])
+	if _, got := externalCrewRequest(t, env, owner, "get_crew", map[string]any{"crew_id": crewID}); got["name"] != "Support Triage" {
+		t.Fatalf("refused update must not change the name: %v", got["name"])
 	}
 
 	// Removing the template feature must not uninstall existing local skills or user files.
@@ -116,7 +116,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	env.mock.files[root+"/templates/old/SETUP.md"] = "User notes from an existing Crew"
 	env.mock.mu.Unlock()
 	code, out = externalCrewRequest(t, env, owner, "update_crew", map[string]any{
-		"crew_id": crewID, "purpose": "Escalate the hard tickets.",
+		"crew_id":   crewID,
 		"functions": map[string]any{"upsert": []any{map[string]any{"name": "escalate", "description": "Escalate a ticket.", "instructions": "Page the on-call owner."}}},
 		"schedules": map[string]any{
 			"update": []any{map[string]any{"id": scheduleID, "enabled": false, "run_destination": "new"}},
@@ -125,7 +125,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 		"files":       map[string]any{"notes/runbook.md": "Escalation runbook"},
 		"return_spec": true,
 	})
-	if code != 200 || out["purpose"] != "Escalate the hard tickets." {
+	if code != 200 || out["chat_instructions"] == nil {
 		t.Fatalf("update_crew = %d %v", code, out)
 	}
 	if fns := out["functions"].([]any); len(fns) != 2 { // triage_ticket + escalate; messages are separate
@@ -149,7 +149,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 	if code != 200 || out["updated"] != true || len(out["files_written"].([]any)) != 1 || len(out["functions"].([]any)) != 2 {
 		t.Fatalf("compact update_crew reply = %d %v", code, out)
 	}
-	if _, has := out["purpose"]; has {
+	if _, has := out["chat_instructions"]; has {
 		t.Fatalf("the compact reply must not carry the whole spec: %v", out)
 	}
 	if first := out["functions"].([]any)[0]; first == nil || fmt.Sprintf("%T", first) != "string" {
@@ -183,7 +183,7 @@ func TestExternalCrewAuthoringRoundTrip(t *testing.T) {
 		t.Fatal("export ships only the skill files the Crew selects")
 	}
 	code, imported := externalCrewRequest(t, env, other, "import_crew", map[string]any{"spec": spec})
-	if code != 200 || imported["crew_id"] == crewID || imported["purpose"] != "Escalate the hard tickets." {
+	if code != 200 || imported["crew_id"] == crewID || imported["name"] != "Support Triage" {
 		t.Fatalf("import_crew = %d %v", code, imported)
 	}
 	if access := imported["access"].(map[string]any); access["can_edit"] != true {
@@ -204,7 +204,7 @@ func TestExternalCrewAuthoringAccess(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	env.api.agentProfiles = env.svc.registry
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","can_create":true},{"id":"viewer","username":"viewer","role":"viewer","products":["work"]},{"id":"editor","username":"editor","can_create":false,"can_edit":true,"products":["work"]}]}`)
-	spec := map[string]any{"name": "Probe", "purpose": "Probe access."}
+	spec := map[string]any{"name": "Probe"}
 
 	if code, out := externalCrewRequest(t, env, crewWriter("viewer"), "create_crew", spec); code != 403 {
 		t.Fatalf("read-only account create = %d %v", code, out)
@@ -228,18 +228,18 @@ func TestExternalCrewAuthoringAccess(t *testing.T) {
 	alpha := created["crew_id"].(string)
 	// A bounded token may still edit the Crew it names.
 	boundedAlpha := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:write"}, CrewIDs: []string{alpha}}}
-	if code, out := externalCrewRequest(t, env, boundedAlpha, "update_crew", map[string]any{"crew_id": alpha, "purpose": "Review changes."}); code != 200 || !strings.Contains(fmt.Sprint(out["changed"]), "purpose") {
+	if code, out := externalCrewRequest(t, env, boundedAlpha, "update_crew", map[string]any{"crew_id": alpha, "name": "Probe renamed"}); code != 200 || !strings.Contains(fmt.Sprint(out["changed"]), "name") {
 		t.Fatalf("owner update within the bound = %d %v", code, out)
 	}
-	if code, _ := externalCrewRequest(t, env, boundedAlpha, "update_crew", map[string]any{"crew_id": "beta", "purpose": "x"}); code != 404 {
+	if code, _ := externalCrewRequest(t, env, boundedAlpha, "update_crew", map[string]any{"crew_id": "beta", "name": "x"}); code != 404 {
 		t.Fatalf("Crew outside the token bound must be not-found, got %d", code)
 	}
 	// Another person's Crew cannot be changed through authoring; gamma is shared for use, so it is visible and the
 	// change is forbidden rather than not found.
-	if code, _ := externalCrewRequest(t, env, crewWriter("owner"), "update_crew", map[string]any{"crew_id": "gamma", "purpose": "x"}); code != 403 {
+	if code, _ := externalCrewRequest(t, env, crewWriter("owner"), "update_crew", map[string]any{"crew_id": "gamma", "name": "x"}); code != 403 {
 		t.Fatalf("another owner's Crew must be refused, got %d", code)
 	}
-	if code, _ := externalCrewRequest(t, env, crewWriter("owner"), "create_crew", map[string]any{"name": "Bad", "purpose": "y", "selected_skills": []any{"no-such-skill"}}); code != 400 {
+	if code, _ := externalCrewRequest(t, env, crewWriter("owner"), "create_crew", map[string]any{"name": "Bad", "selected_skills": []any{"no-such-skill"}}); code != 400 {
 		t.Fatalf("unknown skill must refuse creation, got %d", code)
 	}
 

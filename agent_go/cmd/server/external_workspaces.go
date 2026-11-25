@@ -63,7 +63,7 @@ func externalWorkspaceDefinitions(add func(string, string, bool, bool, map[strin
 		"before_seq": externalInteger(1, 1<<30),
 		"tool_name":  externalString("For chat_tool: exact native name from chat_tools."),
 		"arguments":  map[string]any{"type": "object"},
-		"changes":    map[string]any{"type": "object"}, "spec": map[string]any{"type": "object", "description": "Creation/import settings: name, purpose, llm_config, selected_skills, templates, files, functions and schedules."},
+		"changes":    map[string]any{"type": "object"}, "spec": map[string]any{"type": "object", "description": "Creation/import settings: name, chat_instructions, llm_config, selected_skills, templates, files, functions and schedules."},
 	}, "action")
 }
 
@@ -244,7 +244,7 @@ func (api *StreamingAPI) externalWorkspaceCall(w http.ResponseWriter, r *http.Re
 			externalFailure(w, err)
 			return
 		}
-		externalJSON(w, map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "published_agents": published, "id": manifest.ID, "profile_id": manifest.Product, "name": manifest.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller], "share": share, "ui_panels": panels, "identity": manifest.Identity, "purpose": manifest.Description})
+		externalJSON(w, map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "published_agents": published, "id": manifest.ID, "profile_id": manifest.Product, "name": manifest.displayTitle(), "mode": map[bool]string{true: "builder", false: "run"}[binding.OwnedByCaller], "share": share, "ui_panels": panels, "identity": manifest.Identity, "purpose": manifest.purpose()})
 		return
 	}
 	memberArgs := map[string]any{}

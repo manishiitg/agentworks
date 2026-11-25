@@ -13,7 +13,7 @@ Project combines private project and coding work with reusable agents. Start wit
 To delete a project when the person asks, discover `manage_project action=delete`; pass its `crew_id` and required `confirm` value using the current schema.
 New projects start **Only me**. Share changes the same hosted project's audience;
 Use the current action families returned by discovery. Project and chat identities stay stable.
-A project can have standing instructions (`purpose`), skills, typed **functions**,
+A project has a name and no description (each agent, Main included, has its own purpose). It can have standing instructions (`chat_instructions`), skills, typed **functions**,
 schedules, a dashboard and project files. Memory is optional; existing projects
 keep their setting. A project runs where it is installed. Local workflows stay on the laptop; connecting or syncing a project does not move its workflows or schedules to another server.
 A project has one main owner. A project on the server has co-owners (`crew_owners`, only
@@ -39,7 +39,7 @@ does not create a dashboard. A copied URL grants no access.
 
 Start from the person's process, using the `agentworks-mcp` journey. Identify the desired result, inputs/policy, intended team and timing from what they already said. Ask only for material missing details. Inspect existing work and available knowledge/connections; do not invent company rules or sign-ins.
 
-For a simple specialist, `workspace action=create` can set its name, purpose and files, plus functions when a defined action is needed, in one spec. Keep sensible existing defaults. Give the team a useful Ask conversation or published action, with a standard dashboard when needed and agreed; a custom dashboard is optional. External actions need the actual selected connection; name any missing setup plainly.
+For a simple specialist, `workspace action=create` can set its name, standing instructions and files, plus functions when a defined action is needed, in one spec. Keep sensible existing defaults. Give the team a useful Ask conversation or published action, with a standard dashboard when needed and agreed; a custom dashboard is optional. External actions need the actual selected connection; name any missing setup plainly.
 
 Try a representative request through the actual shared entry point and inspect the completed result. If the live tool offers a Run-mode preview, it uses the same real execution rules; it is not a simulation. Owner-only success does not prove another person's access. Use Share with the requested audience, read it back and retrieve the working dashboard/link. Return that link, one example request, who can use it and how teammates supply context or suggest improvements. Add someone to the project's Team only when the person wants others to help build; explain Builder-chat visibility. Shared knowledge editing retains its own access.
 
@@ -78,7 +78,7 @@ start the owner's chat; inspect results before retrying a mutation. Use
 operation, timing and outcome, with commands, values and payloads withheld.
 
 - `workspace action=create` takes `name` and optional `spec` with
-  `purpose` (what the project is for; its standing instructions), `icon`, `selected_skills`, `files`,
+  `chat_instructions` (its standing instructions), `icon`, `selected_skills`, `files`,
   `functions` and `schedules`. New projects start Only me.
 - `workspace action=update` takes `workspace_id` and `changes` for sections to
   edit: `skills` {set, add, remove}, `functions` {upsert, delete},
@@ -131,7 +131,7 @@ type, properties, required, items, enum).
 - Use `models action=set` with `scope=tab`, `workspace_id`, `chat_id`, `engine`, `model_id` and optional `reasoning_effort` and `connection_id` to select your own chat's model and personal or available company account; `models action=list` with `scope=tab` reads it. `workspace action=chats` returns `provider_connections` with available account IDs. Omit `engine` to use the project's model again.
 - Named function tabs keep earlier calls' conversation; `execution: "new"` starts without it.
   Put lasting instructions and shared knowledge in `MEMORY.md` or the project's files,
-  and say how to use them in `purpose` and function `instructions`.
+  and say how to use them in `chat_instructions` and function `instructions`.
 
 ## Files
 

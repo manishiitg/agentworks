@@ -207,8 +207,7 @@ func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaim
 		if len(name) > 60 {
 			name = name[:60]
 		}
-		purpose := "Your working copy of " + firstNonEmptyTrimmed(team.OwnerName, "a teammate") + "'s project. Your agents here work on this Mac."
-		id, err := api.createCrewFromSpec(ctx, claims, crewSpec{Name: string(name), Purpose: purpose, RootPath: folder}, false)
+		id, err := api.createCrewFromSpec(ctx, claims, crewSpec{Name: string(name), RootPath: folder}, false)
 		if err != nil {
 			// The server already recorded this Mac; without a copy here the member's agents would vanish from the
 			// Team, so their agents go back to the website until a copy exists.
