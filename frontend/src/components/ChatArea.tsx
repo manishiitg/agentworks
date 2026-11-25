@@ -34,7 +34,8 @@ import { ChatToolChanges } from './chat/ChatToolChanges'
 import { ChatLinkStatus } from './chat/ChatLinkStatus'
 import { NotifyNudge } from './chat/NotifyNudge'
 import { ComposerPendingPrompt } from './chat/ComposerPendingPrompt'
-import { codingAgentQuestionCards, takesTypedAnswer, typedAnswers, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
+import { currentTurnActivity } from '../utils/turnStart'
+import { codingAgentQuestionCards, questionsOfThisTurn, takesTypedAnswer, typedAnswers, withClosedQuestions, type CodingAgentQuestionAnswerHandler } from '../utils/codingAgentQuestions'
 import { StepInspectionTabs } from './chat/StepInspectionTabs'
 import { SessionStopButton } from './SessionStopButton'
 import { ReplyQuote, CHAT_INSERT_QUOTE_EVENT, type InsertQuoteDetail } from './chat/ReplyQuote'
@@ -932,17 +933,19 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // The tab's own flag: with two live chats of one project (PLAT-571) the
   // global isStreaming can belong to the other chat.
   const activeTabIsStreaming = !!activeTab?.isStreaming
+  const turnQuestions = useMemo(() => questionsOfThisTurn(transcriptEvents, currentTurnActivity(transcriptEvents)?.turnStartedAt), [transcriptEvents])
   const pendingCodingAgentChoice = useMemo(() => activeTabIsStreaming && buildCleanConversationItems(transcriptEvents).some(
-    (item) => item.codingAgentQuestion?.state === 'pending' && !closedCodingAgentQuestions.has(item.codingAgentQuestion.promptId),
-  ), [activeTabIsStreaming, transcriptEvents, closedCodingAgentQuestions])
+    (item) => item.codingAgentQuestion?.state === 'pending' && !closedCodingAgentQuestions.has(item.codingAgentQuestion.promptId) &&
+      turnQuestions.has(`${item.codingAgentQuestion.provider}:${item.codingAgentQuestion.promptId}`),
+  ), [activeTabIsStreaming, transcriptEvents, closedCodingAgentQuestions, turnQuestions])
 
   // The newest pending approval or question while the turn runs, docked above the message box
   // until it is answered (PLAT-746-158 A1). Same rule as the composer lock above.
   const dockedCodingAgentPrompt = useMemo(() => {
     if (!activeTabIsStreaming) return undefined
     const prompts = [...codingAgentQuestionCards(transcriptEvents).cards.values()].map(prompt => withClosedQuestions(prompt, closedCodingAgentQuestions))
-    return prompts.reverse().find(prompt => prompt.state === 'pending')
-  }, [activeTabIsStreaming, transcriptEvents, closedCodingAgentQuestions])
+    return prompts.reverse().find(prompt => prompt.state === 'pending' && turnQuestions.has(`${prompt.provider}:${prompt.promptId}`))
+  }, [activeTabIsStreaming, transcriptEvents, closedCodingAgentQuestions, turnQuestions])
 
   // Primitive deps only: the tab object changes on every composer keystroke,
   // and this callback is a prop of the memoized transcript.

@@ -88,6 +88,22 @@ export function codingAgentQuestionCards(events: PollingEvent[]) {
   return { cards, hiddenEvents }
 }
 
+// Questions that can be waiting on the person in the running turn: asked in it, or reloaded by the server after a
+// restart. An older card whose settlement is outside the loaded history page must not be pinned on every new turn.
+export function questionsOfThisTurn(events: PollingEvent[], turnStartedAt: number | undefined): Set<string> {
+  const keys = new Set<string>()
+  for (const event of events) {
+    if (event.type !== 'coding_agent_question') continue
+    const outer = record(event.data)
+    const payload = record(outer.data || outer)
+    const at = Date.parse(text(event.timestamp) || text(payload.timestamp))
+    if (turnStartedAt === undefined || payload.kind === 'recovered' || !Number.isFinite(at) || at >= turnStartedAt) {
+      keys.add(`${text(payload.provider)}:${text(payload.prompt_id)}`)
+    }
+  }
+  return keys
+}
+
 // A prompt the server answered "no longer pending" (it was lost with a server restart) is shown closed in
 // every view, never answerable again.
 export function withClosedQuestions<T extends { promptId: string; state: CodingAgentQuestionPrompt['state'] }>(
