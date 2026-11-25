@@ -20,10 +20,11 @@ const externalCrewOwnersTool = "crew_owners"
 const crewOwnersServerOnly = "Only a project on the server has co-owners and users. People work on a Mac project with you through its Team."
 
 func externalCrewOwnersDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(externalCrewOwnersTool, "List, add or remove the co-owners and users of a project on the server. Co-owners build it like its owner and change everything: files, agents, memory, instructions, skills, settings, automations and sharing; they see every chat in it. Users work in it through chat with the setup you made: they see only their own chats (the project's dashboard opens from its own link), run on the project's model, and cannot change its instructions, skills, settings, automations or sharing, nor the extra locked_paths you name (user_files). Only the project's owner adds or removes people; the owner cannot be removed. Give the person's account email or user id.", true, false, map[string]any{
+	add(externalCrewOwnersTool, "List, add or remove the co-owners and users of a project on the server. Co-owners build it like its owner and change everything: files, agents, memory, instructions, skills, settings, automations and sharing; they see every chat in it. Users work in it through chat with the setup you made: they see only their own chats (the project's dashboard opens from its own link), run on the project's model, and cannot change its instructions, skills, settings, automations or sharing, nor the extra locked_paths you name (user_files). A User can also be a whole Team: team_add puts a Team you are in (from list's team_choices) into the Users, so everyone in it works here as a User and its people's agents can ask this project's agents; team_remove takes it out. Only the project's owner adds or removes people and Teams; the owner cannot be removed. Give the person's account email or user id, or the Team's team_id.", true, false, map[string]any{
 		"crew_id":      externalString("Project ID from crew action=list."),
-		"action":       map[string]any{"type": "string", "enum": []any{"list", "add", "remove", "user_add", "user_remove", "user_files"}},
-		"email":        externalString("The person's account email or user id; every action except list."),
+		"action":       map[string]any{"type": "string", "enum": []any{"list", "add", "remove", "user_add", "user_remove", "user_files", "team_add", "team_remove"}},
+		"email":        externalString("The person's account email or user id; every action except list and the team ones."),
+		"team_id":      externalString("team_add, team_remove: the Team's team_id from list (teams or team_choices)."),
 		"locked_paths": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "user_files only: more files or folders (relative to the project) this user cannot change, besides the instructions, skills and settings. An empty list keeps only those."},
 	}, "crew_id", "action")
 }
@@ -37,6 +38,9 @@ type crewOwnersState struct {
 	// AlwaysLocked is what is locked for every User.
 	Users        []crewProjectUserState `json:"users"`
 	AlwaysLocked []string               `json:"always_locked"`
+	// Teams are the Teams in the project's Users (#4087); TeamChoices the Teams the viewer may add (only the owner gets any).
+	Teams       []crewProjectInTeam `json:"teams"`
+	TeamChoices []crewProjectInTeam `json:"team_choices"`
 }
 
 type crewProjectUserState struct {
@@ -53,11 +57,58 @@ func crewOwnersStateFor(root, ownerID, callerID string) crewOwnersState {
 	if people := peopleForIDs(dir, crewCoOwnersOnly(root)); people != nil {
 		state.CoOwners = people
 	}
-	for _, person := range peopleForIDs(dir, crewUserIDs(root)) {
+	// The Users list shows the people added one by one; a Team's people show as the Team.
+	rec, _ := crewOwnerRecordAt(root)
+	direct := []string{}
+	for _, id := range crewUserIDs(root) {
+		if containsID(rec.Users, id) {
+			direct = append(direct, id)
+		}
+	}
+	for _, person := range peopleForIDs(dir, direct) {
 		_, paths := crewSetupLockFor(root, person.ID)
 		state.Users = append(state.Users, crewProjectUserState{runSharePerson: person, LockedPaths: append([]string{}, paths...)})
 	}
+	state.Teams, state.TeamChoices = crewProjectInTeams(rec.ProjectID, callerID), crewProjectTeamChoices(rec.ProjectID, callerID)
+	if state.Teams == nil {
+		state.Teams = []crewProjectInTeam{}
+	}
 	return state
+}
+
+// changeCrewTeamUsers adds a Team the owner is in to the project's Users, or removes one (#4087). The Team record keeps
+// it (changeCrewTeamProject), with the same checks the Team panel's Remove uses.
+func (api *StreamingAPI) changeCrewTeamUsers(claims *UserClaims, root, ownerID, action, team string) (crewOwnersState, int, string, string) {
+	rec, found := crewOwnerRecordAt(root)
+	if !found || !crewLivesOnServer(rec.ProjectID) {
+		return crewOwnersState{}, http.StatusConflict, "mac_crew", crewOwnersServerOnly
+	}
+	team = strings.TrimSpace(team)
+	if team == "" {
+		return crewOwnersState{}, http.StatusBadRequest, "invalid_arguments", "Pick the Team (its team_id from list)."
+	}
+	verb := strings.TrimPrefix(action, "team_")
+	if _, status, code, refusal := changeCrewTeamProject(team, claims.UserID, verb, rec.ProjectID); refusal != "" {
+		return crewOwnersState{}, status, code, refusal
+	}
+	if verb == "remove" {
+		if t, err := readCrewTeam(team); err == nil {
+			for _, id := range append([]string{t.OwnerID}, crewTeamJoinedPeople(t)...) {
+				if !crewIsProjectUser(root, id) && !crewIsCoOwner(root, id) {
+					api.stopRemovedOwnerSessions(id, root)
+				}
+			}
+		}
+	}
+	log.Printf("[CREW_OWNERS] project=%s event=%s team=%s by=%s", rec.ProjectID, action, team, logUsernameForUserID(claims.UserID))
+	state := crewOwnersStateFor(root, ownerID, claims.UserID)
+	name := crewTeamProjectName(team)
+	if verb == "add" {
+		state.Note = "Everyone in " + name + " can now work in this project through chat, as Users, and their agents can ask its agents."
+	} else {
+		state.Note = name + " is no longer in this project's Users."
+	}
+	return state, 0, "", ""
 }
 
 // resolveCrewPerson finds one active account by email or user id.
@@ -242,7 +293,9 @@ func (api *StreamingAPI) handleDashboardCrewOwners(w http.ResponseWriter, r *htt
 			var next crewOwnersState
 			var status int
 			var code, message string
-			if strings.HasPrefix(action, "user_") {
+			if strings.HasPrefix(action, "team_") {
+				next, status, code, message = api.changeCrewTeamUsers(claims, ref.Root, ref.OwnerID, action, who)
+			} else if strings.HasPrefix(action, "user_") {
 				next, status, code, message = api.changeCrewUsers(claims, ref.Root, ref.OwnerID, action, strings.TrimSpace(who), lockedPaths)
 			} else {
 				next, status, code, message = api.changeCrewOwners(claims, ref.Root, ref.OwnerID, strings.TrimPrefix(action, "owner_"), strings.TrimSpace(who))
@@ -261,9 +314,9 @@ func (api *StreamingAPI) handleDashboardCrewOwners(w http.ResponseWriter, r *htt
 func (api *StreamingAPI) externalCrewOwnersCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
 	crewID, action, email := externalArg(args, "crew_id"), externalArg(args, "action"), strings.TrimSpace(externalArg(args, "email"))
-	write := action == "add" || action == "remove" || strings.HasPrefix(action, "user_")
+	write := action == "add" || action == "remove" || strings.HasPrefix(action, "user_") || action == "team_add" || action == "team_remove"
 	if action != "list" && !write {
-		externalError(w, http.StatusBadRequest, "invalid_arguments", "action must be list, add, remove, user_add, user_remove or user_files.")
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "action must be list, add, remove, user_add, user_remove, user_files, team_add or team_remove.")
 		return
 	}
 	if t := claims.AccessToken; t != nil {
@@ -299,7 +352,9 @@ func (api *StreamingAPI) externalCrewOwnersCall(w http.ResponseWriter, r *http.R
 	var state crewOwnersState
 	var status int
 	var code, message string
-	if strings.HasPrefix(action, "user_") {
+	if strings.HasPrefix(action, "team_") {
+		state, status, code, message = api.changeCrewTeamUsers(claims, root, crew.OwnerID, action, externalArg(args, "team_id"))
+	} else if strings.HasPrefix(action, "user_") {
 		var paths []string
 		if list, ok := args["locked_paths"].([]any); ok {
 			for _, item := range list {

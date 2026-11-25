@@ -35,6 +35,16 @@ func crewIsProjectUser(root, userID string) bool {
 	return false
 }
 
+// crewTurnSetupLockUser is whose setup lock a turn in the Crew at root follows: the person behind another person's agent
+// message (asked_by) when they are one of its Users, such as a Team member asking an agent of an online project the
+// Team uses (#4087), else the turn's own user. It only picks who is locked; it never unlocks anyone.
+func crewTurnSetupLockUser(root, currentUserID, askedBy string) string {
+	if asker := strings.TrimSpace(askedBy); asker != "" && crewIsProjectUser(root, asker) {
+		return asker
+	}
+	return currentUserID
+}
+
 // crewSetupLockFor says whether userID is a User of the Crew at root, and the extra paths the owner locked for them.
 // The main owner, co-owners and everyone else are never locked.
 func crewSetupLockFor(root, userID string) (bool, []string) {

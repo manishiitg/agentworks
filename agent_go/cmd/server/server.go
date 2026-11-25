@@ -986,7 +986,8 @@ type QueryRequest struct {
 	// them, so it never gets the receiving person's laptop.
 	AgentMessageFromOtherPerson bool `json:"agent_message_from_other_person,omitempty"`
 	// AskedBy is the person behind another person's agent message (set by agent_messaging.go). It only adds the
-	// "When others ask" note to the turn (askerIsNotAgentOwner); it never changes access.
+	// "When others ask" note to the turn (askerIsNotAgentOwner), and locks the project's setup when that person is one of
+	// its Users (crewTurnSetupLockUser); it can only narrow access, never widen it.
 	AskedBy string `json:"asked_by,omitempty"`
 	// Internal/system callers can force a real server-tracked turn instead of the
 	// retained coding-CLI live-input shortcut. Scheduler sequences rely on this so
@@ -6055,7 +6056,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				toolGate.DenyWhere(func(name string) bool { return !crewAskAllowedTools[strings.TrimSpace(name)] })
 			}
 		}
-		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && crewSetupLocked(strings.TrimSpace(req.SelectedFolder), currentUserID) {
+		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && crewSetupLocked(strings.TrimSpace(req.SelectedFolder), crewTurnSetupLockUser(strings.TrimSpace(req.SelectedFolder), currentUserID, req.AskedBy)) {
 			// A project User (crew_setup_lock.go) keeps every working tool, not the setup ones.
 			toolGate.DenyWhere(func(name string) bool { return crewSetupLockedTools[strings.TrimSpace(name)] })
 		}
@@ -6607,7 +6608,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						// including in owner Builder shells and attached Crew folders.
 						guardBlocked = append(guardBlocked, profileRoot+"/schedules.json", profileRoot+"/webhooks.json", profileRoot+"/schedule-runs.json")
 						// A project User (crew_setup_lock.go) cannot write the setup files (crew_setup_lock.go).
-						guardBlocked = append(guardBlocked, crewSetupLockedWritePaths(profileRoot, currentUserID)...)
+						guardBlocked = append(guardBlocked, crewSetupLockedWritePaths(profileRoot, crewTurnSetupLockUser(profileRoot, currentUserID, req.AskedBy))...)
 						for _, root := range crewRefWrite {
 							guardBlocked = append(guardBlocked, strings.TrimSuffix(root, "/")+"/schedules.json", strings.TrimSuffix(root, "/")+"/webhooks.json", strings.TrimSuffix(root, "/")+"/schedule-runs.json")
 						}

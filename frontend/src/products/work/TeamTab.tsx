@@ -12,7 +12,6 @@ import { openAppPage } from '../../utils/appNavigation'
 import ModalPortal from '../../components/ui/ModalPortal'
 import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamChanged, teamError, teamFailure, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderListing, type TeamTabAgent, type TeamTabPerson, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
-import { OnlineProjectsCard } from './OnlineProjectsCard'
 import { TeamActivity } from './TeamActivity'
 import { openCrewAccess, pendingCrewTeamSection, type CrewTeamSection } from './MacSharedAgents'
 import { CrewWhereRow } from './CrewWorksElsewhere'
@@ -185,7 +184,7 @@ export function TeamTab({ projectId, goOnline, onBack, agents }: { projectId: st
     <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-${selected}-panel`} aria-labelledby={team.on ? `${tabId}-${selected}` : undefined} tabIndex={0} className="space-y-3">
       {selected === 'setups' && (setups.error?<p role="alert" className="text-sm text-destructive">{setups.error}</p>:<TeamKit key={`${captureChatIdentity()}:${target.connection||''}:${target.project}`} target={target} projectId={projectId} list={setups.data} refreshKey={setups.version} folder={team.folder.folders?.find(item=>!item.file)?.path}/>)}
       {selected === 'activity' && <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />}
-      {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} projects={team.on ? <OnlineProjectsCard target={target} /> : null} />{view.can_leave && <LeaveTeam target={target} confirm={view.leave_confirm} />}</>}
+      {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} />{view.can_leave && <LeaveTeam target={target} confirm={view.leave_confirm} />}</>}
       {selected === 'agents' && <section aria-label="Agents" className="space-y-3">{agents}</section>}
       {selected === 'sync' && <><FolderLine view={view} target={target} projectId={projectId} />{team.on && <CrewWhereRow projectId={projectId} />}{team.folder_access ? <section aria-label="Sync" className={card}><div className="flex items-center gap-2"><h3 className="flex-1 font-semibold">Sync</h3><AskButton projectId={projectId} card="sync" /></div><TeamSyncPanel target={target} name={team.name} projectId={projectId} server={view.sync} /></section> : <p className="text-xs text-muted-foreground">Nothing to sync yet.</p>}</>}
     </div>
@@ -420,7 +419,7 @@ function AddPerson({ target, pending, known, onPick, everyone }: { target: TeamT
  * writes them (Works with me is the Team). People who only open the dashboards are not listed here: one line says how many,
  * and opens Online > Dashboards, where they are listed (owner's Team Module Manager, 12 Nov). Adding someone or moving
  * them always asks first with what they gain or lose; the server keeps both records and every line. */
-function PeopleCard({ view, target, projectId, projects }: { view: TeamTabView; target: TeamTarget; projectId: string; projects?: ReactNode }) {
+function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: TeamTarget; projectId: string }) {
   const { team } = view
   const change = usePeopleChange(target, () => undefined)
   const { pending, error, setError, run, note, setNote, ask, askError, propose, apply, cancel } = change
@@ -449,7 +448,6 @@ function PeopleCard({ view, target, projectId, projects }: { view: TeamTabView; 
       <div className={`divide-y divide-border ${closed ? 'opacity-60' : ''}`}>{everyone.map(person => <PersonLine connection={target.connection} key={person.user_id} person={person} people={people} activity={live(person.user_id)} pending={pending} closed={closed} onMove={to => void propose(person.user_id, person.name, to)} />)}</div>
       {people.more_dashboards && <button type="button" onClick={() => openCrewAccess(projectId, useChatStore.getState().activeTabId || '', 'dashboards')} className="text-xs text-primary hover:underline">{people.more_dashboards}</button>}
       {people.can_add && !closed && <AddPerson target={target} pending={pending} known={known} onPick={(id, name) => void propose(id, name, 'works')} />}
-      {projects}
     </>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {ask && <PeopleChangeDialog ask={ask} saving={pending === 'confirm'} error={askError} onCancel={cancel} onConfirm={createDashboard => void apply(createDashboard)} />}

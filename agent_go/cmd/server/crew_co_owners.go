@@ -56,7 +56,7 @@ func crewCoOwnerIDs(root string) []string {
 	}
 	ids := []string{}
 	if crewLivesOnServer(rec.ProjectID) {
-		for _, id := range append(append([]string{}, rec.CoOwners...), rec.Users...) {
+		for _, id := range append(append(append([]string{}, rec.CoOwners...), rec.Users...), crewProjectTeamUserIDs(rec)...) {
 			if id != rec.OwnerID && crewTeamAccountActive(id) && !containsID(ids, id) {
 				ids = append(ids, id)
 			}
@@ -98,12 +98,38 @@ func crewUserIDs(root string) []string {
 		return nil
 	}
 	ids := []string{}
-	for _, id := range rec.Users {
-		if id != rec.OwnerID && crewTeamAccountActive(id) {
+	for _, id := range append(append([]string{}, rec.Users...), crewProjectTeamUserIDs(rec)...) {
+		if id != rec.OwnerID && crewTeamAccountActive(id) && !containsID(ids, id) {
 			ids = append(ids, id)
 		}
 	}
 	return ids
+}
+
+// crewProjectTeamUserIDs are the people of the Teams in a server project's Users (#4087): each Team's owner and joined
+// members while it is on, read on every call so joining or leaving the Team takes effect at once. The project's owner
+// and co-owners keep their own place and are left out.
+func crewProjectTeamUserIDs(rec projectOwnerRecord) []string {
+	ids := []string{}
+	for _, t := range crewTeamsJoinedBy(rec.ProjectID) {
+		for _, id := range append([]string{t.OwnerID}, crewTeamJoinedPeople(t)...) {
+			if id != "" && id != rec.OwnerID && !containsID(rec.CoOwners, id) && !containsID(ids, id) {
+				ids = append(ids, id)
+			}
+		}
+	}
+	return ids
+}
+
+// crewTeamJoinedPeople are a Team's joined people (not open invites).
+func crewTeamJoinedPeople(t crewTeam) []string {
+	out := []string{}
+	for _, p := range t.People {
+		if !p.Invited && p.UserID != "" {
+			out = append(out, p.UserID)
+		}
+	}
+	return out
 }
 
 // crewIsCoOwner says whether userID builds the Crew at root besides its main owner (crewCoOwnerIDs).

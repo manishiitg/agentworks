@@ -75,10 +75,6 @@ type crewSyncReply struct {
 	AccessLaptop    bool   `json:"access_laptop,omitempty"`
 	// AccessCoOwners: a Crew on the server; its Team page is the Access panel with Shared with and Co-owners (21 Nov).
 	AccessCoOwners bool `json:"access_co_owners,omitempty"`
-	// AccessInTeams: the Teams this online project is in, on its Co-owners page with Remove from Team (#3664).
-	AccessInTeams []crewProjectInTeam `json:"access_in_teams,omitempty"`
-	// AccessAITeammate: the project's AI teammate switch, on its Access page (owner, 25 Nov).
-	AccessAITeammate *crewAITeammateView `json:"access_ai_teammate,omitempty"`
 }
 
 func crewSyncManifestPath(id string) (string, error) {
@@ -223,7 +219,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		if root := crewProjectRootByID(project); root != "" && crewLivesOnServer(project) && crewIsCoOwner(root, caller) {
 			w.Header().Set("Cache-Control", "no-store")
 			reply := crewSyncReply{ProjectID: project, Place: "online", Role: "co_owner", AccessView: "server_crew",
-				AccessTree: api.crewAccessTreeFor(r.Context(), GetUserFromContext(r.Context()), project, nil), AccessInTeams: crewProjectInTeams(project, caller), AccessAITeammate: crewAITeammateFor(project, caller)}
+				AccessTree: api.crewAccessTreeFor(r.Context(), GetUserFromContext(r.Context()), project, nil)}
 			crewAccessPage(&reply)
 			externalJSON(w, reply)
 			return
@@ -278,10 +274,6 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 			out.Asking = api.recentMacAsks(out.ProjectID)
 		}
 		crewAccessPage(&out)
-		if out.AccessCoOwners {
-			out.AccessInTeams = crewProjectInTeams(out.ProjectID, GetUserIDFromContext(r.Context()))
-			out.AccessAITeammate = crewAITeammateFor(out.ProjectID, GetUserIDFromContext(r.Context()))
-		}
 		if out.ChatOnly {
 			name := out.ProjectID
 			if _, doc, ok := api.resolveExternalWorkspace(r.Context(), GetUserFromContext(r.Context()), "work:"+out.ProjectID); ok {

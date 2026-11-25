@@ -122,11 +122,11 @@ export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string;
 export type TeamTabSetup = { next_automation?: string; when_offline?: { line: string }; reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
 export type TeamTabSync = { line: string; problem?: boolean; attention?: boolean; last?: string; state?: string; changed_by?: string; changed_ago?: string; stale?: string; size?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
 export type TeamReachableAgent = AvatarFields & { purpose?: string; examples?: string[]; task_state?:string; chat_share?: string; chat_readable?:boolean; offline_line?:string; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
-export type TeamAITeammate = { id: string; name: string; line: string }
+export type TeamOnlineProject = { id: string; name: string; line: string }
 export type TeamTabView = {
  reachable?: TeamReachableAgent[]
- // The Team's AI teammates (online projects); their agents are the reachable rows with person_id === id.
- ai_teammates?: TeamAITeammate[]
+ // Server projects with this Team in their Users (#4087); their agents are the reachable rows with person_id === id.
+ online_projects?: TeamOnlineProject[]
   team: Team; intro: string; live?: TeamLiveView; people: TeamTabPerson[]; agents: TeamTabAgent[]
   sync?: TeamTabSync; can_switch: boolean; agents_line?: string; can_leave: boolean; leave_confirm?: string
   can_add_folder: boolean; can_remove_folder: boolean
@@ -452,17 +452,13 @@ export function useTeamInvites() {
 export type TeamWizardView = {
   new_team: boolean; default_level: CrewPeopleLevelKey; levels: CrewPeopleLevel[]
   people: { user_id: string; name: string; email?: string }[]
-  folders: { default: string; folders: string[]; offline?: string; taken?: Record<string, string> }
+  folders: { default: string; folders: string[]; offline?: string }
   agents: { key: string; name: string; main?: boolean; in_team:boolean }[]
-  projects?: TeamProjectChoice[]
 }
-/** One of the person's projects on the server, as the server offers it to join a Team (available, or why not). */
-export type TeamProjectChoice = { project_id: string; name: string; owner?: string; available: boolean; why?: string }
-export type TeamWizardChoice = { people: { user_id: string; level: CrewPeopleLevelKey }[]; folder: string; agents: string[]; projects?: string[]; create_dashboard?: boolean }
-/** The setup's options; with picked projects the server marks the folders they already have and suggests a free one. */
-export function teamWizard(target: TeamTarget, projects: string[] = []): Promise<TeamWizardView> {
-  const query = projects.length ? `?projects=${encodeURIComponent(projects.join(','))}` : ''
-  return teamRequest<TeamWizardView>({ project: target.project, connection: target.connection }, `/setup${query}`)
+export type TeamWizardChoice = { people: { user_id: string; level: CrewPeopleLevelKey }[]; folder: string; agents: string[]; create_dashboard?: boolean }
+/** The setup's options. */
+export function teamWizard(target: TeamTarget): Promise<TeamWizardView> {
+  return teamRequest<TeamWizardView>({ project: target.project, connection: target.connection }, '/setup')
 }
 export async function finishTeamWizard(target: TeamTarget, choice: TeamWizardChoice): Promise<void> {
   try {

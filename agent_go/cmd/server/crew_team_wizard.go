@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -48,8 +46,6 @@ type crewWizardFolders struct {
 	Default string   `json:"default"`
 	Folders []string `json:"folders"`
 	Offline string   `json:"offline,omitempty"`
-	// Taken: folders a picked online project already has, with the line why it can't be shared (#3797).
-	Taken map[string]string `json:"taken,omitempty"`
 }
 
 type crewWizardView struct {
@@ -59,8 +55,6 @@ type crewWizardView struct {
 	DefaultLevel string             `json:"default_level"`
 	Folders      crewWizardFolders  `json:"folders"`
 	Agents       []crewWizardAgent  `json:"agents"`
-	// Projects: the owner's projects on this server that can join as online projects, and why the others can't.
-	Projects []crewTeamProjectChoice `json:"projects"`
 }
 
 type crewWizardChoice struct {
@@ -69,8 +63,7 @@ type crewWizardChoice struct {
 		Level  string `json:"level"`
 	} `json:"people"`
 	Folder          string   `json:"folder"`
-	Agents          []string `json:"agents"`   // explicit keys of the agents the Team may ask, Main included
-	Projects        []string `json:"projects"` // online projects to add, with the Team panel's add checks
+	Agents          []string `json:"agents"` // explicit keys of the agents the Team may ask, Main included
 	CreateDashboard bool     `json:"create_dashboard"`
 }
 
@@ -109,7 +102,7 @@ func (api *StreamingAPI) handleCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	view := crewWizardView{NewTeam: crewTeamIsNew(t, claims.UserID), People: []crewWizardPerson{}, Agents: []crewWizardAgent{}, DefaultLevel: crewPeopleWorks,
-		Levels: crewPeopleLevels(crewPeopleKind(project)), Folders: crewWizardFolders{Default: crewTeamDefaultFolder, Folders: []string{}}, Projects: []crewTeamProjectChoice{}}
+		Levels: crewPeopleLevels(crewPeopleKind(project)), Folders: crewWizardFolders{Default: crewTeamDefaultFolder, Folders: []string{}}}
 	if !view.NewTeam || crewOwnerOnlineOfMacCrew(r, project, claims.UserID) {
 		view.NewTeam = false
 		externalJSON(w, view)
@@ -135,77 +128,12 @@ func (api *StreamingAPI) handleCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 	if rec.Code < 300 && json.Unmarshal(rec.Body.Bytes(), &listing) == nil {
 		view.Folders.Folders, view.Folders.Offline = listing.Folders, listing.Offline
 	}
-	if !IsLocalMode() {
-		view.Projects, _ = crewTeamProjectChoices(r.Context(), claims, t, nil)
-	}
-	// Share comes after Who (#3797): with the picked projects (?projects=a,b) the server marks the folders they already
-	// have and suggests one that is free in all of them.
-	picked := crewWizardPickedRoots(view.Projects, strings.Split(r.URL.Query().Get("projects"), ","))
-	view.Folders.Default = crewWizardSuggestedFolder(crewTeamProjectName(project), picked)
+	view.Folders.Default = crewTeamDefaultFolder
 	if !slices.Contains(view.Folders.Folders, view.Folders.Default) {
 		view.Folders.Folders = append([]string{view.Folders.Default}, view.Folders.Folders...) // a missing one is made
 	}
-	for _, folder := range view.Folders.Folders {
-		if why := crewWizardFolderTaken(folder, picked); why != "" {
-			if view.Folders.Taken == nil {
-				view.Folders.Taken = map[string]string{}
-			}
-			view.Folders.Taken[folder] = why
-		}
-	}
 	view.Agents = crewWizardAgents(r.Context(), t)
 	externalJSON(w, view)
-}
-
-// crewWizardPickedRoot is one picked online project's name and files folder.
-type crewWizardPickedRoot struct{ name, files string }
-
-// crewWizardPickedRoots keeps only the picked projects the server offered as available.
-func crewWizardPickedRoots(choices []crewTeamProjectChoice, ids []string) []crewWizardPickedRoot {
-	out := []crewWizardPickedRoot{}
-	for _, c := range choices {
-		if !c.Available || !slices.Contains(ids, c.ProjectID) {
-			continue
-		}
-		if files, err := crewTeamProjectFilesRoot(c.ProjectID); err == nil {
-			out = append(out, crewWizardPickedRoot{name: c.Name, files: files})
-		}
-	}
-	return out
-}
-
-// crewWizardFolderTaken is why this folder can't be the Team's shared folder with these projects in it, or "".
-func crewWizardFolderTaken(folder string, picked []crewWizardPickedRoot) string {
-	for _, p := range picked {
-		if _, err := os.Lstat(filepath.Join(p.files, filepath.FromSlash(folder))); err == nil {
-			return fmt.Sprintf("%s already has %s/. Pick another so its own files stay its own.", p.name, folder)
-		}
-	}
-	return ""
-}
-
-// crewWizardSuggestedFolder is team/ when it is free in every picked project, else a name made from this project's.
-func crewWizardSuggestedFolder(name string, picked []crewWizardPickedRoot) string {
-	slug := strings.Trim(strings.Map(func(r rune) rune {
-		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
-			return r
-		}
-		return '-'
-	}, strings.ToLower(name)), "-")
-	candidates := []string{crewTeamDefaultFolder}
-	if slug != "" && slug != "project" {
-		candidates = append(candidates, slug+"-shared")
-	}
-	candidates = append(candidates, "team-shared")
-	for i := 2; i <= 9; i++ {
-		candidates = append(candidates, fmt.Sprintf("team-%d", i))
-	}
-	for _, c := range candidates {
-		if crewWizardFolderTaken(c, picked) == "" {
-			return c
-		}
-	}
-	return candidates[len(candidates)-1]
 }
 
 // finishCrewTeamSetup is the wizard's one save.
@@ -240,27 +168,6 @@ func (api *StreamingAPI) finishCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	team.Folder = crewTeamFolder{Folders: []string{firstNonEmptyTrimmed(in.Folder, crewTeamDefaultFolder)}}
-	// Online projects (#3797): refuse before anything is saved when one can't join, so the choices stay on screen.
-	if len(in.Projects) > crewTeamMaxProjects {
-		externalError(w, 400, "invalid_team", fmt.Sprintf("A Team has at most %d AI teammates.", crewTeamMaxProjects))
-		return
-	}
-	on := team
-	for _, member := range in.Projects {
-		if refusal := crewTeamProjectChangeRefusal(on, claims.UserID, member, crewProjectRootByID(member), "add"); refusal != "" {
-			externalError(w, 403, "team_forbidden", refusal)
-			return
-		}
-		files, err := crewTeamProjectFilesRoot(member)
-		if err != nil {
-			externalError(w, 409, "project_unavailable", "That project's folder is unavailable now. Try again in a minute.")
-			return
-		}
-		if taken := crewTeamPathsTaken(files, team.Folder.Folders); len(taken) > 0 {
-			externalError(w, 409, "project_has_team_paths", crewTeamTakenLine(crewTeamProjectName(member), taken))
-			return
-		}
-	}
 	// PLAT-746: ask for a dashboard before saving the Team, so the wizard and its choices stay available.
 	// This is the same explicit creation choice as People; checking Dashboards only is not creation consent.
 	if len(dashboards) > 0 {
@@ -298,11 +205,6 @@ func (api *StreamingAPI) finishCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 			left = append(left, fmt.Sprintf("%s: %s", crewPersonShortName(id), firstNonEmptyTrimmed(failure.Error.Message, "not added")))
 		}
 	}
-	for _, member := range in.Projects {
-		if _, _, _, refusal := changeCrewTeamProject(project, claims.UserID, "add", member); refusal != "" {
-			left = append(left, crewTeamProjectName(member)+": "+refusal)
-		}
-	}
 	// The owner's agents: apply the selection explicitly, including old Only me choices.
 	// Turn the checked agents on first, so hiding the others never hides the last shared agent.
 	fresh, err := readCrewTeam(project)
@@ -331,7 +233,7 @@ func (api *StreamingAPI) finishCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 			}
 		}
 	}
-	log.Printf("[CREW_TEAM] project=%s actor=%s event=wizard_finished works=%d dashboards=%d folders=%d projects=%d left=%d", project, logUsernameForUserID(claims.UserID), len(team.People), len(dashboards), len(team.Folder.Folders), len(in.Projects), len(left))
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=wizard_finished works=%d dashboards=%d folders=%d left=%d", project, logUsernameForUserID(claims.UserID), len(team.People), len(dashboards), len(team.Folder.Folders), len(left))
 	if len(left) > 0 {
 		externalError(w, 409, "setup_partial", "The Team is on, but some choices were not saved. "+strings.Join(left, " · "))
 		return

@@ -204,16 +204,14 @@ use only the agents the owner shares.
 
 Team invitations appear as a quiet line above the chat, not a modal. **Join** creates the Team's own project using its automatic folder on this Mac (~/AgentWorks/<Team>); there is no project picker. On the website it joins online. **Not now** hides the line but keeps the invitation under Invites in the Team list; it does not decline or change membership. Several invitations offer **Join all** and **Review** in place. The server provides invitation counts and wording; successful joins show the actual folder or online confirmation with **Open**, then the line disappears. Automatic setup runs through the existing join flow. A folder can be moved later through Team settings or the agent.
 
-## AI teammates (a server project working for the Team)
+## Online projects a Team uses
 
-A project on the server can join a Team as an **AI teammate**: its agents work for the Team around the clock, even when Macs are off, with the Team's shared folders and instructions; its own files, chats and keys stay its own. When the person asks to "put agents online", "add an AI teammate" or "who's on the Team":
+A project on the server works for a Team when its owner puts the Team in its **Users**. Everyone in the Team then works with it as a User (through chat and its agents; they can't change its setup), and its agents run on the server around the clock, even when Macs are off. Its own files, chats, setup and keys stay its own: keys are shared into its vault on purpose, never passed from the Team.
 
-1. **Who's on it:** `team_sync action=agents` (one call) lists people's agents and each AI teammate with its agents; `status` with project lists the AI teammates. The Team panel shows them under **AI teammates · online 24/7**. Answer from that one read; don't open each project.
-2. **Turn it on (once per project):** in that server project's own chat, `team_sync action=ai_teammate on=true`, or the **AI teammate** switch on its Access page. Off by default; its owner or a co-owner only. A Mac chat can't flip it: tell the person to open the project on the server.
-3. **Add it to the Team:** in the Team's project chat, `team_sync action=project_add project_id=…` (on the Mac, find the ID with `server_project_files action=projects`), or **+ Add a teammate** in the Team panel, then **Add an AI teammate**. Only the Team's owner adds one, and only switched-on projects are offered.
-4. **What its agents may do:** `project_agent_level` (changes, the default, or answers), chosen by that project's owner or co-owners.
-
-Turning the switch off, or `project_remove`, takes it out of the Team.
+1. **Which ones the Team uses:** `team_sync action=agents` (one call) lists people's agents and each online project with its agents; the Team panel shows them under **Online projects this Team uses**. Answer from that one read.
+2. **Add a Team to a project:** only on the server side, by the project's main owner: its Access page, **Users**, pick from "Teams you're in", or `crew_owners action=team_add team_id=…` in that project's chat (`crew_owners action=list` gives `team_choices`). A Mac chat cannot add one.
+3. **Ask its agents:** through your own agent, as any Team ask. The asker works there as a User.
+4. **Take it out:** `crew_owners action=team_remove` (the project's owner), or `team_sync action=project_remove project_id=…` (the Team's owner, or the project's owner or co-owners).
 
 ## Native sessions join the project
 
