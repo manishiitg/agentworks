@@ -15,6 +15,7 @@ import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { openAppProduct } from '../../utils/appNavigation'
 import { shortAgo } from '../chat/AgentIcon'
 import { CodingCliIcon } from '../chat/CodingCliIcon'
+import { agentRowThemeProps } from './SidebarAgentRowLine'
 
 export type SidebarViewMode = 'projects' | 'threads'
 type ThreadStatus = 'running' | 'waiting' | 'idle'
@@ -241,7 +242,7 @@ export function SidebarThreadsView({
     const isActive = selectedProjectId === item.projectId && activeTabMeta.projectId === item.projectId && activeTabMeta.conversationKey === item.chat.conversation_key
     const age = shortAgo(item.lastMessageAt)
     const statusSuffix = item.status === 'waiting' ? ' · Needs you' : ''
-    return <div key={item.id} className={`group/thread flex items-start gap-0.5 rounded-lg py-0.5 ${isActive ? 'bg-foreground/[0.06]' : 'hover:bg-muted'}`}>
+    return <div key={item.id} {...agentRowThemeProps(item.status === 'idle' ? null : item.status, isActive)} className={`group/thread flex items-start gap-0.5 rounded-lg py-0.5 ${isActive ? 'bg-foreground/[0.06]' : 'hover:bg-muted'}`}>
       <button type="button" role="listitem" aria-current={isActive ? 'page' : undefined} onClick={() => openThread(item)}
         className="flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span className="min-w-0 flex-1">

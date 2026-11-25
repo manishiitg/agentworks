@@ -15,7 +15,7 @@ it('terminates scripts when hidden or removed and reprojects only palette and ac
  const script={code:'function render(){}',fps:20}
  await act(async()=>root.render(<PersonalScript script={script} colors={{accent:'#123456'}} working/>))
  expect(document.documentElement.hasAttribute('data-appearance-script')).toBe(true)
- expect(fixture.mount.mock.calls[0][2]()).toEqual({colors:{accent:'#123456'},working:true})
+ expect(fixture.mount.mock.calls[0][2]()).toEqual({colors:{accent:'#123456'},working:true,anyWorking:true})
  vi.spyOn(document,'hidden','get').mockReturnValue(true)
  await act(async()=>document.dispatchEvent(new Event('visibilitychange')))
  expect(fixture.destroy).toHaveBeenCalledTimes(1)

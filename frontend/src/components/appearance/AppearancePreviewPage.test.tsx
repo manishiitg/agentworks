@@ -48,3 +48,26 @@ it('shows the agent preview in the requested mode, keeps the saved look and send
     host.remove()
   }
 })
+
+// #4075: the preview has a right-panel stub and the same html[data-right-panel-open] hook as the app.
+it('toggles the stub right panel and its html hook', async () => {
+  window.history.replaceState(null, '', '/appearance/preview?panel=closed')
+  const saved = { ...defaultAppearance(), name: 'Saved' }
+  fixture.get.mockResolvedValue({ data: { current: saved, saved: [saved], guide: { hooks: [] } } })
+  fixture.put.mockResolvedValue({ data: {} })
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host)
+  try {
+    await act(async () => root.render(<ThemeProvider><AppearancePreviewPage /></ThemeProvider>))
+    expect(document.documentElement.dataset.rightPanelOpen).toBe('false')
+    expect(host.querySelector('[aria-label="Sample workspace panel"]')).toBeNull()
+    const toggle = [...host.querySelectorAll('button')].find(button => button.textContent === 'Open right panel')!
+    await act(async () => toggle.click())
+    expect(document.documentElement.dataset.rightPanelOpen).toBe('true')
+    expect(host.querySelector('[aria-label="Sample workspace panel"]')).not.toBeNull()
+  } finally {
+    await act(async () => root.unmount())
+    host.remove()
+  }
+  expect(document.documentElement.dataset.rightPanelOpen).toBeUndefined()
+})

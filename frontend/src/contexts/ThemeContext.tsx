@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useState } from 'react'
 import { shownMode, shownTheme, useAppearanceStore } from '../stores/useAppearanceStore'
 import { applyAppearanceTokens } from './appThemeTokens'
+import { backgroundActiveInMode } from '../stores/appearanceTheme'
 import { useAuthStore } from '../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
 import { liveFeed } from '../services/liveFeed'
@@ -81,7 +82,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [css])
   // A custom CSS background also needs the page's inner opaque wrappers cleared.
   // Existing translucent materials opt in too: custom themes need no hidden page flag.
-  const hasBackdrop = !!current.background_video || !!current.background_image || !!current.background_script || !!current.background_shader
+  const hasBackdrop = !!current.background_video || !!current.background_image
+    || (!!current.background_script && backgroundActiveInMode(current.background_script.mode, profile))
+    || (!!current.background_shader && backgroundActiveInMode(current.background_shader.mode, profile))
     || !!current.decorations?.length || Object.values(current.materials ?? {}).some(material => (material.opacity ?? 1) < 1)
   useLayoutEffect(() => {
     if (!hasBackdrop) return

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import api from '../../services/api'
 import type { AppearanceProfile, AppearanceRead } from '../../stores/appearanceTheme'
 import { readDocument, shownMode, shownTheme, useAppearanceStore } from '../../stores/useAppearanceStore'
@@ -86,6 +86,13 @@ export default function AppearancePreviewPage() {
   const showing = useAppearanceStore(state => !!state.display)
   const hasThemeObjects = !!theme.background_script || !!theme.background_shader
   const other = mode === 'light' ? 'dark' : 'light'
+  // Right workspace panel stub, so corner art keyed on html[data-right-panel-open] can be checked (#4075).
+  const [panelOpen, setPanelOpen] = useState(() => new URLSearchParams(window.location.search).get('panel') !== 'closed')
+  useEffect(() => {
+    const root = document.documentElement
+    root.dataset.rightPanelOpen = panelOpen ? 'true' : 'false'
+    return () => { delete root.dataset.rightPanelOpen }
+  }, [panelOpen])
   return <div data-app-shell data-theme-surface="app" className="flex h-dvh min-h-0 overflow-hidden bg-surface-page text-foreground">
     {showing && <>
       <AppearanceVideo />
@@ -109,7 +116,8 @@ export default function AppearancePreviewPage() {
         <div role="status" className="sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-popover px-4 py-2 text-sm text-popover-foreground">
           <span className="font-medium">Theme preview — your app's look is unchanged</span>
           <span className="text-muted-foreground">{showing ? `${theme.name} · ${mode === 'light' ? 'Light' : 'Dark'}` : 'Loading…'}</span>
-          <a className="ml-auto underline" href={`?mode=${other}`}>Show {other === 'light' ? 'Light' : 'Dark'}</a>
+          <button type="button" className="ml-auto underline" aria-pressed={panelOpen} onClick={() => setPanelOpen(open => !open)}>{panelOpen ? 'Close' : 'Open'} right panel</button>
+          <a className="underline" href={`?mode=${other}`}>Show {other === 'light' ? 'Light' : 'Dark'}</a>
         </div>
         <div data-theme-surface="chat" className="mx-auto max-w-3xl space-y-8 px-4 py-6">
           <Section title="Messages">
@@ -170,5 +178,9 @@ export default function AppearancePreviewPage() {
         </div>
       </div>
     </div>
+    {panelOpen && <aside aria-label="Sample workspace panel" data-theme-surface="panel" className="w-80 shrink-0 border-l border-border bg-surface-panel p-4 text-sm max-lg:hidden">
+      <p className="font-medium">Workspace panel</p>
+      <p className="mt-1 text-muted-foreground">Sample right panel. Themes can key on html[data-right-panel-open].</p>
+    </aside>}
   </div>
 }

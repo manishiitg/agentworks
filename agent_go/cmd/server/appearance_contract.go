@@ -7,6 +7,9 @@ import "slices"
 const appearanceCSSMaxBytes = 128 << 10
 const appearanceRequestMaxBytes = 8 * appearanceCSSMaxBytes
 
+// A GLSL shader background, inline or from shader_file.
+const appearanceShaderMaxBytes = 16 << 10
+
 // One documented selector inventory. Values describe presentation only: they
 // never expose identifiers or create an execution/permission state machine.
 var appearanceHookGuide = map[string]string{
@@ -15,6 +18,7 @@ var appearanceHookGuide = map[string]string{
 	"[data-theme-script]":                      "Opaque sandbox canvas background. Personal code runs in a separate Worker, never in app DOM; no network, account or chat data. Never hide controls.",
 	"[data-theme-shader]":                      "Personal full-window WebGL background behind UI. No theme interaction; CSS fallback when compilation/context/budget fails.",
 	"[data-app-main]":                          "The main workspace; personal background art may be static here.",
+	"html[data-right-panel-open]":              "Whether the right workspace panel is shown, true/false. Absent outside a project. Presentation only.",
 	"[data-app-ambient]":                       "Empty full-window decorative layer. Pointer-events none; use pseudo-elements, not scripts or controls.",
 	"html[data-appearance-visible=\"true\"]":   "Document visibility, not focus or execution. Pause custom motion unless this is true.",
 	"[data-theme-surface]":                     "Core app/main/sidebar, panel, composer/composer-band, chat, tool, code, terminal, dialog, menu, popover and empty surfaces. Legacy dialogs/menus also expose their native role selectors below.",

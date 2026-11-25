@@ -4,7 +4,8 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { chatRuntimeActivity } from '../../utils/chatRuntimeActivity'
-import type { AppearanceShader } from '../../stores/appearanceTheme'
+import { hasActiveSessionWork } from '../../utils/activitySessions'
+import { backgroundActiveInMode, type AppearanceShader } from '../../stores/appearanceTheme'
 import { backgroundStatus } from './backgroundStatus'
 import { PersonalScript } from './PersonalScript'
 import { mountAppearanceShader } from './shaderEngine'
@@ -20,6 +21,14 @@ function useActiveChatRunning() {
   })
 }
 
+/** Whether any admitted agent or session in the sidebar is currently running. */
+function useAnyAgentRunning() {
+  return useChatStore(state =>
+    state.activeSessionsCache.some(hasActiveSessionWork) ||
+    Object.values(state.chatTabs).some(tab => chatRuntimeActivity(tab, state.activeSessionsCache.find(row => row.session_id === tab.sessionId)).state === 'running'),
+  )
+}
+
 /** Personal script or shader background, behind every app surface. */
 export default function AppearanceBackground() {
   const actor = useAuthStore(state => state.user?.id)
@@ -28,11 +37,14 @@ export default function AppearanceBackground() {
   const theme = useAppearanceStore(shownTheme)
   const profile = useAppearanceStore(shownMode)
   const working = useActiveChatRunning()
+  const anyWorking = useAnyAgentRunning()
   if (!actor || scope !== JSON.stringify([server, actor])) return null
   const colors = theme.colors[profile] ?? {}
+  const scriptActive = !!theme.background_script && backgroundActiveInMode(theme.background_script.mode, profile)
+  const shaderActive = !!theme.background_shader && backgroundActiveInMode(theme.background_shader.mode, profile)
   return <>
-    {theme.background_script && <PersonalScript key={JSON.stringify([actor, server, theme.background_script])} script={theme.background_script} colors={colors} working={working} />}
-    {theme.background_shader && <PersonalShader key={JSON.stringify([actor, server, theme.background_shader])} shader={theme.background_shader} accent={colors.accent} working={working} />}
+    {scriptActive && theme.background_script && <PersonalScript key={JSON.stringify([actor, server, theme.background_script])} script={theme.background_script} colors={colors} working={working} anyWorking={anyWorking} />}
+    {shaderActive && theme.background_shader && <PersonalShader key={JSON.stringify([actor, server, theme.background_shader])} shader={theme.background_shader} accent={colors.accent} working={working} anyWorking={anyWorking} />}
   </>
 }
 
@@ -49,7 +61,7 @@ function primaryTokenRGB(): RGB {
   return [channel(0), channel(8), channel(4)]
 }
 
-function PersonalShader({ shader, accent, working }: { shader: AppearanceShader; accent?: string; working: boolean }) {
+function PersonalShader({ shader, accent, working, anyWorking }: { shader: AppearanceShader; accent?: string; working: boolean; anyWorking: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null)
   const engine = useRef<ReturnType<typeof mountAppearanceShader>>(null)
   const [ready, setReady] = useState(false)
@@ -79,7 +91,7 @@ function PersonalShader({ shader, accent, working }: { shader: AppearanceShader;
     }
   }, [shader.code, shader.speed, shader.intensity])
   useEffect(() => {
-    engine.current?.setUniforms(accent ? hexToRGB(accent) : primaryTokenRGB(), working)
-  }, [accent, working])
+    engine.current?.setUniforms(accent ? hexToRGB(accent) : primaryTokenRGB(), working, anyWorking)
+  }, [accent, working, anyWorking])
   return <div data-theme-shader aria-hidden style={{ visibility: ready ? 'visible' : 'hidden' }}><canvas ref={canvas} /></div>
 }
