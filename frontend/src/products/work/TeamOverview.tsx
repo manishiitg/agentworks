@@ -6,8 +6,8 @@ import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 
 // What a Team is doing now and got done (#3900). The server builds every line, count and grouping; this only shows them.
 export type TeamOverviewCounts = { chats: number; files: number; commits: number; decisions: number; tokens: number }
-export type TeamOverviewNow = { agent: string; person: string; title?: string; team?: string }
-export type TeamOverviewItem = { kind: string; person: string; line: string; at: string }
+export type TeamOverviewNow = { agent: string; person: string; user_id?: string; title?: string; team?: string }
+export type TeamOverviewItem = { kind: string; person: string; user_id?: string; line: string; at: string }
 export type TeamOverviewPerson = { user_id: string; person: string; network?: string; working: number; now: TeamOverviewNow[]; teams: string[]; counts: TeamOverviewCounts; done?: string; last?: TeamOverviewItem | null }
 export type TeamOverview = {
   period: 'day' | 'week'; label: string; now: TeamOverviewNow[]; now_more?: number; quiet?: boolean; counts: TeamOverviewCounts; done?: string; last?: TeamOverviewItem | null

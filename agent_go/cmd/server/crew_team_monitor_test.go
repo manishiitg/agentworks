@@ -69,7 +69,7 @@ func TestCrewTeamMonitorSelfDeviceStaysOwnerOnly(t *testing.T) {
 		}
 	}
 	peer := crewTeamLiveFor(t.Context(), team, people, "owner")
-	if got := crewTeamMonitorWorkFor(peer, lastWork.Add(2*time.Hour)); got.LastWorkedLabel != "last worked 2h ago" {
+	if got := crewTeamMonitorWorkFor(peer, lastWork.Add(2*time.Hour)); got.LastWorkedLabel != "2h ago" {
 		t.Fatalf("private agent recency leaked: %+v", got)
 	}
 	raw, _ := json.Marshal(peer)
@@ -102,7 +102,7 @@ func TestCrewTeamMonitorWorkSummaryIsBoundedAndQuietRecencyIsReal(t *testing.T) 
 	}
 	live.Agents = nil
 	quiet := crewTeamMonitorWorkFor(live, now)
-	if quiet.Label != "" || quiet.LastWorkedLabel != "last worked 2h ago" {
+	if quiet.Label != "" || quiet.LastWorkedLabel != "2h ago" {
 		t.Fatalf("quiet Team invented work: %+v", quiet)
 	}
 	unknown := crewTeamMonitorWorkFor(crewTeamLiveView{}, now)
