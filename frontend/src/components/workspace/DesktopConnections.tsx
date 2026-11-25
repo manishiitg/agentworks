@@ -38,6 +38,7 @@ import { hasActiveSessionWork } from '../../utils/activitySessions'
 import { useChatStore } from '../../stores/useChatStore'
 import { useShallow } from 'zustand/react/shallow'
 import { isSharedProject, useMenuFilter } from './ProjectFilter'
+import { SidebarThreadsView, readSidebarViewMode, writeSidebarViewMode, type SidebarViewMode } from './SidebarThreadsView'
 
 
 type SidebarProject = { team_live?: TeamLiveView; id: string; name: string; shared_line?: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number } & CrewLocationFields
@@ -85,7 +86,14 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   const current = desktop && isChatIdentityCurrent(state.identity)
   const connections: DesktopConnection[] = desktop ? connectedLocations(state) : [{ id: active, name: '', server: '' }]
   const directoryError = desktop && current ? state.error : ''
+  const historyScope = connectedWorkHistoryScope()
   const { pinned, recent, canPin, setPinned, movePinned } = useWorkHistory()
+  const [sidebarMode, setSidebarMode] = useState<SidebarViewMode>(() => readSidebarViewMode(historyScope))
+  const selectSidebarMode = (next: SidebarViewMode) => {
+    setSidebarMode(next)
+    writeSidebarViewMode(historyScope, next)
+  }
+  const activeSessions = useChatStore(state => state.activeSessionsCache)
   const [query, setQuery] = useState('')
   const { error: filterError } = useMenuFilter(Boolean(directory))
   const open = (project: typeof rows[number]) => openSidebarProject(project.kind, project.id)
@@ -154,16 +162,51 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
       : <Fragment key={key}>{row()}</Fragment>
   }
   if (!directory) {
+    const projectIds = new Set(rows.map(project => project.id))
+    const activeProjectIds = new Set<string>()
+    let activeThreadCount = 0
+    let hasWaitingThread = false
+    for (const session of activeSessions) {
+      if (!session.crew_project_id || !projectIds.has(session.crew_project_id)) continue
+      const waiting = runtimeNeedsUserInput(session)
+      const running = !waiting && hasActiveSessionWork(session)
+      if (running || waiting) {
+        activeThreadCount += 1
+        activeProjectIds.add(session.crew_project_id)
+        if (waiting) hasWaitingThread = true
+      }
+    }
+    const threadProjects = [
+      ...pinnedRows,
+      ...recentRows,
+      ...rows.filter(project => activeProjectIds.has(project.id)),
+      ...(pinnedRows.length === 0 && recentRows.length === 0 ? rows.slice(0, 8) : []),
+    ].filter((project, index, all) => all.findIndex(other => other.id === project.id) === index).slice(0, 12)
     return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3" data-sidebar-project-scroll onPointerDownCapture={() => markSidebarInteraction()}>
         {top}
-        {pinnedRows.length > 0 && <section aria-label="Pinned projects" className="mb-3 shrink-0 space-y-1">
-          {pinnedRows.map(project => renderProject(project, true))}
-        </section>}
-        {recentRows.length > 0 && <section aria-labelledby="recent-projects-heading" className="mb-3 shrink-0 space-y-1">
-          <h2 id="recent-projects-heading" className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">Recent</h2>
-          {recentRows.map(project => renderProject(project, false))}
-        </section>}
+        {rows.length > 0 && <div role="tablist" aria-label="Sidebar view" className="mb-2 grid shrink-0 grid-cols-2 gap-0.5 rounded-lg bg-muted p-0.5 text-xs">
+          <button type="button" role="tab" aria-selected={sidebarMode === 'projects'} onClick={() => selectSidebarMode('projects')}
+            className={`rounded-md px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sidebarMode === 'projects' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            Projects
+          </button>
+          <button type="button" role="tab" aria-selected={sidebarMode === 'threads'} onClick={() => selectSidebarMode('threads')}
+            className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sidebarMode === 'threads' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            <span>Threads</span>
+            {activeThreadCount > 0 && <span className={`rounded-full px-1.5 text-[10px] font-semibold leading-4 ${hasWaitingThread ? 'bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))]' : 'bg-info/15 text-info'}`}>{activeThreadCount}</span>}
+          </button>
+        </div>}
+        {sidebarMode === 'threads' ? (
+          <SidebarThreadsView projects={threadProjects} scope={historyScope} />
+        ) : <>
+          {pinnedRows.length > 0 && <section aria-label="Pinned projects" className="mb-3 shrink-0 space-y-1">
+            {pinnedRows.map(project => renderProject(project, true))}
+          </section>}
+          {recentRows.length > 0 && <section aria-labelledby="recent-projects-heading" className="mb-3 shrink-0 space-y-1">
+            <h2 id="recent-projects-heading" className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">Recent</h2>
+            {recentRows.map(project => renderProject(project, false))}
+          </section>}
+        </>}
       </div>
     </div>
   }
