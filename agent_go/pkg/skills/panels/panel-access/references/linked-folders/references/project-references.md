@@ -17,11 +17,21 @@ by default; do not promise access to another owner's files.
 For a tagged project:
 
 - Start with the returned project identity and authorized reference context. Read relevant files on demand; use current workspace tools for managed settings rather than guessing a metadata-file path.
-- Read Dashboard source in `db/reports/`, commonly `index.html`, and query
-  its database read-only when needed. The Dashboard stays in the project's UI;
-  attaching it does not replace the current project's Dashboard. The current
-  project's `dashboard action=link` tool does not target another project: ask that project
+- Read another project's dashboards with `dashboard action=list` or `action=get`
+  and `from_project=<its workspace_path>`; your file tools cannot open its
+  `db/` folder. Other dashboard actions stay on this project: ask that project
   for its Dashboard link when needed.
+
+## Copying between projects
+
+- A workflow: `crew_workflow_files action=create copy_from=<workflow ID>` (the
+  ID from `workspace action=references_list`). The server copies script.json,
+  Python files and requirements.txt into a new workflow here. Runs, schedules,
+  webhooks and functions are not copied; select any secrets it names here.
+- A dashboard: `dashboard action=get from_project=...`, then `action=create`
+  here with the same files, then publish. Its data does not come along: the
+  page's queries need the same tables in this project's database.
+- Other files: `files action=copy`.
 - For schedules, current enablement and latest runs, send the project an explicit message and request its `automations action=list` result where offered. Your own `automations action=list` is
   bound to this project, not the tagged Crew.
 - Edit only when the user requests it and the runtime grants write access.

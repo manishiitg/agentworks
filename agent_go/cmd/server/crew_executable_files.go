@@ -16,7 +16,7 @@ import (
 // The owner's Crew agent edits child definitions through the existing workspace
 // writers. Its shell keeps the normal Crew sandbox; no extra folder grants.
 func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToolRegistrar, userID, crewRoot string) error {
-	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this project's saved Python workflows. Read the python-workflows skill first. create takes name and a short description of what the workflow is for. list returns workflow ID, workspace_path and agents. read takes workspace_path and file. write accepts script.json, Python source and one top-level requirements.txt through the managed writer; requirements do not support include or installer options. edit with operation manage_schedules or manage_webhooks manages schedules and webhooks; describe returns those schemas. rename takes workspace_path and name and changes only the display name. delete takes workspace_path and confirm=true and removes the workflow with all its runs; it cannot be undone, so ask the person first. Functions use functions with project=workspace_path. Run with functions action=run_trigger and inputs.", map[string]interface{}{
+	return registrar.RegisterCustomTool("crew_workflow_files", "Create and edit this project's saved Python workflows. Read the python-workflows skill first. create takes name and a short description of what the workflow is for; add copy_from (a workflow ID) to copy another workflow, including one in another project. list returns workflow ID, workspace_path and agents. read takes workspace_path and file. write accepts script.json, Python source and one top-level requirements.txt through the managed writer; requirements do not support include or installer options. edit with operation manage_schedules or manage_webhooks manages schedules and webhooks; describe returns those schemas. rename takes workspace_path and name and changes only the display name. delete takes workspace_path and confirm=true and removes the workflow with all its runs; it cannot be undone, so ask the person first. Functions use functions with project=workspace_path. Run with functions action=run_trigger and inputs.", map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
 			"action":         map[string]interface{}{"type": "string", "enum": []string{"list", "create", "read", "write", "describe", "edit", "rename", "delete"}},
 			"workspace_path": map[string]interface{}{"type": "string"},
@@ -31,6 +31,7 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			"name":           map[string]interface{}{"type": "string"},
 			"description":    map[string]interface{}{"type": "string", "description": "create only: one or two plain sentences saying what this workflow is for. Always provide it."},
 			"kind":           map[string]interface{}{"type": "string", "enum": []string{"script"}, "description": "create only: always script."},
+			"copy_from":      map[string]interface{}{"type": "string", "description": "create only: copy another workflow's code (script.json, Python files, requirements.txt) into the new one. The workflow ID from workspace action=references_list or this list; you must be able to open it. name defaults to the source's name. Runs, schedules, webhooks and functions are not copied."},
 			"confirm":        map[string]interface{}{"type": "boolean", "description": "delete only: must be true. Deleting removes the workflow's code, runs, saved settings and history and cannot be undone, so ask the person and wait for their yes first."},
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -64,11 +65,23 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 			}
 			method := http.MethodGet
 			body := ""
+			var copySource *crewExecutableBinding
+			name, _ := args["name"].(string)
+			description, _ := args["description"].(string)
 			if action == "create" {
 				method = http.MethodPost
-				name, _ := args["name"].(string)
+				if from, _ := args["copy_from"].(string); strings.TrimSpace(from) != "" {
+					source, label, err := crewWorkflowCopySource(ctx, claims, from)
+					if err != nil {
+						return "", err
+					}
+					copySource = source
+					if strings.TrimSpace(name) == "" {
+						name = label
+					}
+				}
 				kind, _ := args["kind"].(string)
-				encoded, _ := json.Marshal(map[string]string{"name": name, "kind": kind})
+				encoded, _ := json.Marshal(map[string]string{"name": name, "kind": kind, "description": description})
 				body = string(encoded)
 			}
 			request, _ := http.NewRequestWithContext(ctx, method, "/api/crew-executables?crew_id="+url.QueryEscape(record.ProjectID), strings.NewReader(body))
@@ -93,6 +106,21 @@ func (api *StreamingAPI) registerCrewExecutableFileTools(registrar definitionToo
 				}
 				encoded, err := json.Marshal(result)
 				return string(encoded), err
+			}
+			if copySource != nil {
+				var created crewExecutableBinding
+				if err := json.Unmarshal(response.body.Bytes(), &created); err != nil || created.ID == "" {
+					return "", fmt.Errorf("the new workflow was not returned; list this project's workflows and try again")
+				}
+				copied, err := copyCrewWorkflowSource(ctx, copySource, &created, strings.TrimSpace(name), strings.TrimSpace(description))
+				if err != nil {
+					return "", fmt.Errorf("created workflow %q (%s) but the copy stopped: %v. Fix it with write, or delete it and try again", strings.TrimSpace(name), created.Root, err)
+				}
+				var secrets []string
+				if definition, err := readCrewScript(ctx, created.Root); err == nil {
+					secrets = definition.Secrets
+				}
+				return crewWorkflowCopyReply(response.body.Bytes(), copied, secrets)
 			}
 			return response.body.String(), nil
 		}
