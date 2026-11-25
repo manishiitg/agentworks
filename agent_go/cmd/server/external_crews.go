@@ -19,7 +19,7 @@ import (
 // never exposed, whoever owns the Crew.
 
 var externalCrewTools = map[string]bool{
-	"list_crew_snapshots": true, "compare_crew_snapshot": true, "undo_crew_reply": true,
+	"list_crew_snapshots": true, "compare_crew_snapshot": true, "undo_crew_reply": true, "crew_file_limit": true,
 	// Git review reads (external_crew_git.go), the Files review panel's reads.
 	"crew_git_status": true, "crew_git_diff": true, "crew_git_branch_compare": true, "crew_git_branch_diff": true,
 	"list_crews": true, "get_crew": true, "list_crew_files": true, "search_crew_files": true, "read_crew_file": true,
@@ -333,6 +333,22 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			}
 		}
 		api.serveCrewFileSnapshots(w, r, crew.Binding.WorkspacePath, op, str("snapshot_id"), str("file"))
+	case "crew_file_limit":
+		// Too many files to track (#3878): read the stored verdict, check again, or move a folder out.
+		r = r.Clone(r.Context())
+		q := r.URL.Query()
+		op := "file_limit"
+		switch str("operation") {
+		case "check":
+			op, r.Method = "file_limit_check", http.MethodPost
+		case "move":
+			op, r.Method = "file_limit_move", http.MethodPost
+			q.Set("folder", str("folder"))
+		default:
+			r.Method = http.MethodGet
+		}
+		r.URL.RawQuery = q.Encode()
+		api.serveCrewFileSnapshots(w, r, crew.Binding.WorkspacePath, op, "", "")
 	case "crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff":
 		api.externalCrewGit(w, r, crew.Binding.WorkspacePath, name, args)
 	case "get_crew":

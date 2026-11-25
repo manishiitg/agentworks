@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"net/http"
 	"net/url"
 	"strings"
@@ -101,6 +102,12 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 					section.Rows = append(section.Rows, crewPanelRow{ID: "more", Label: "Not every repository was checked", Detail: "Open to check them all", Destination: "files"})
 				}
 				section.Detail += " · not every repository checked"
+			}
+			// Decided while saving replies, not here (filesnapshots.FileLimit).
+			if roots, found, rootErr := crewStorageRoots(workspace); rootErr == nil && found {
+				if report, known := (filesnapshots.Store{Root: roots.Files, Private: roots.Private}).FileLimit(); known && report.Over {
+					section.FileLimit = &crewPanelFileLimit{FileLimitReport: report, CanFix: owner && roots.Local}
+				}
 			}
 			return section, err
 		}},

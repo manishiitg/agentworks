@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"log"
 	"net/http"
 	"net/url"
@@ -74,9 +75,16 @@ type crewPanelSection struct {
 	Stale   bool             `json:"stale,omitempty"`
 	Error   string           `json:"error,omitempty"`
 	Access  *crewPanelAccess `json:"access,omitempty"`
+	// FileLimit: the project folder has too many files to track every reply's changes (Git only, #3878).
+	FileLimit *crewPanelFileLimit `json:"file_limit,omitempty"`
 	// shared is the dashboard's audience in the Share tree's words (the sharing section only).
 	shared    string
 	refreshAt time.Time // Server-only: a cached/in-flight snapshot needs one later read.
+}
+type crewPanelFileLimit struct {
+	filesnapshots.FileLimitReport
+	// CanFix: this person may move folders out (the owner, a project in a folder on a Mac).
+	CanFix bool `json:"can_fix"`
 }
 type crewPanelAccess struct {
 	Where   string `json:"where,omitempty"`

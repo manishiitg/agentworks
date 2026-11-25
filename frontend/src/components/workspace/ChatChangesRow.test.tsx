@@ -1,7 +1,14 @@
 // @vitest-environment happy-dom
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
+
+const { posted } = vi.hoisted(() => ({ posted: [] as Record<string, string>[] }))
+vi.mock('../../services/api', () => ({ default: { post: async (_url: string, _body: unknown, config: { params: Record<string, string> }) => {
+  const { op, folder } = config.params
+  posted.push(folder ? { op, folder } : { op })
+  return { data: { report: { over: false, files: 9200, limit: 10000, checkouts: 3, folders: [], checked_at: '', can_fix: true }, moved_to: 'demo-moved/tmp' } }
+} } }))
 import { ChatChangesRow, changedLabel, gitAgo, gitStaleDays, sortGitRows } from './ChatChangesRow'
 import type { CrewPanelSection } from '../../products/work/useCrewPanel'
 
@@ -105,4 +112,27 @@ it('sorts repositories with edits first, then by latest commit, keeping worktree
   // A worktree with edits brings its whole repository up, main checkout still first.
   rows[2] = { ...rows[2], changed: true }
   expect(sortGitRows(rows).map(r => r.label)).toEqual(['dev', 'fix', 'edited', 'new', 'old'])
+})
+
+it('#3878: over the file limit the Git row says so, lists the biggest folders and moves one out for the owner only', async () => {
+  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  localStorage.clear()
+  const limit = { over: true, files: 14200, limit: 10000, checkouts: 3, folders: [{ path: 'tmp', files: 5000 }, { path: 'downloads', files: 1400 }], checked_at: '', can_fix: true }
+  posted.length = 0
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  const root = createRoot(host)
+  act(() => root.render(<ChatChangesRow section={{ ...section, changed: 4, file_limit: limit }} workspacePath="Crew/demo" storageKey="test.git-limit" onOpen={() => {}} />))
+  expect(host.textContent).toContain('not fully tracked')
+  expect(host.textContent).not.toContain('±4')
+  expect(host.textContent).toContain('about 14,200 files')
+  const move = [...host.querySelectorAll('button')].find(b => b.textContent === 'Move out')!
+  await act(async () => { move.click() })
+  expect(posted).toEqual([{ op: 'file_limit_move', folder: 'tmp' }])
+  expect(host.textContent).toContain('Moved tmp to demo-moved/tmp. All changes are tracked again.')
+  // A teammate sees why, but no buttons.
+  act(() => root.render(<ChatChangesRow section={{ ...section, file_limit: { ...limit, can_fix: false } }} workspacePath="Crew/demo" storageKey="test.git-limit-2" onOpen={() => {}} />))
+  expect([...host.querySelectorAll('button')].some(b => b.textContent === 'Move out')).toBe(false)
+  expect(host.textContent).toContain('Only the project owner can move folders out')
+  act(() => root.unmount())
 })
