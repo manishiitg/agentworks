@@ -185,7 +185,7 @@ func TestGlobalSchedulerPauseKeepsAdminAuthorityAcrossChannels(t *testing.T) {
 	}
 	checkBoth(false)
 	w := mcp(owner, "list", nil)
-	if w.Code != 400 || !strings.Contains(w.Body.String(), "Choose the Crew or workflow") {
+	if w.Code != 400 || !strings.Contains(w.Body.String(), "Choose the project or workflow") {
 		t.Fatalf("project action no longer requires a project: %d %s", w.Code, w.Body.String())
 	}
 	raw, _, err := readFileFromWorkspace(ctx, schedulerConfigFilePath)

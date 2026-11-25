@@ -128,7 +128,7 @@ func TestTriggerTargetResolutionUsesCurrentRunAccess(t *testing.T) {
 	if target, err := resolveTriggerTarget(ctx, claims, "workflow:Shared"); err != nil || target.Kind != triggerCallerWorkflow {
 		t.Fatalf("shared workflow Run entry = %+v, err=%v", target, err)
 	}
-	if _, err := resolveTriggerTarget(ctx, claims, "nope"); err == nil || !strings.Contains(err.Error(), "no Crew or workflow you can use") {
+	if _, err := resolveTriggerTarget(ctx, claims, "nope"); err == nil || !strings.Contains(err.Error(), "no project or workflow you can use") {
 		t.Fatalf("unknown target: %v", err)
 	}
 }

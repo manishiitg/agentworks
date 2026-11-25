@@ -87,7 +87,7 @@ func customCommandMarkdown(name, description, icon, prompt string, modes []strin
 }
 
 func workCustomCommandsFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
-	return CustomCommandsFactory(workspaceAPIURL, "Project project")
+	return CustomCommandsFactory(workspaceAPIURL, "project")
 }
 
 // CustomCommandsFactory is the project slash-command tool shared by the

@@ -59,7 +59,7 @@ func (api *StreamingAPI) dashboardFunctionDispatch(w http.ResponseWriter, r *htt
 	}
 	// A viewer who lost access to the Crew gets the same readable message as the
 	// workflow branch, not the connection wording of the external tool.
-	if rec.Code == http.StatusNotFound && strings.Contains(rec.Body.String(), "Crew not found or not allowed") {
+	if rec.Code == http.StatusNotFound && strings.Contains(rec.Body.String(), "Project not found or not allowed") {
 		externalError(w, 404, "not_found", "You can no longer use this project's functions.")
 		return
 	}

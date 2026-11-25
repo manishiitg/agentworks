@@ -248,7 +248,7 @@ func TestUndoReplyApplyRefusedWhileTurnRunning(t *testing.T) {
 	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "alice"}))
 	w := httptest.NewRecorder()
 	api.serveCrewReplyUndo(w, req, root, "", "snapshot_undo", filesnapshots.ID("x"), store, all, all)
-	if w.Code != 409 || !strings.Contains(w.Body.String(), "agents in this Crew finish") {
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "agents in this project finish") {
 		t.Fatalf("project revert ignored another running chat: %d %s", w.Code, w.Body.String())
 	}
 	// A warm retained terminal after a finished chat is not an active writer.

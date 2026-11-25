@@ -152,9 +152,9 @@ func crewPeopleGetsTable() []crewPeopleGets {
 func crewPeopleGetsLines(level string) []string {
 	switch level {
 	case crewPeopleWorks:
-		return []string{"The shared files, with their own copy that syncs both ways", "Their own agents here, and your shared agents", "All this Crew's dashboards", "Asking this Crew"}
+		return []string{"The shared files, with their own copy that syncs both ways", "Their own agents here, and your shared agents", "All this project's dashboards", "Asking this project"}
 	case crewPeopleDashboards:
-		return []string{"All this Crew's dashboards", "Asking this Crew"}
+		return []string{"All this project's dashboards", "Asking this project"}
 	}
 	return nil
 }
@@ -327,7 +327,7 @@ func crewPeoplePreview(name, from, to string, teamOn, everyone bool) map[string]
 	if everyone && from != crewPeopleNone {
 		// Open to everyone: leaving a level does not take the dashboards or Ask away.
 		loses = slices.DeleteFunc(loses, func(line string) bool {
-			return line == "All this Crew's dashboards" || line == "Asking this Crew"
+			return line == "All this project's dashboards" || line == "Asking this project"
 		})
 		notes = append(notes, "This project is open to everyone on this server, so they can still open its dashboards and ask it.")
 	}

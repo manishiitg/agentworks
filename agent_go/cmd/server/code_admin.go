@@ -194,17 +194,17 @@ func (api *StreamingAPI) codeAdminProject(w http.ResponseWriter, r *http.Request
 	ownerID := sanitizeUserIDForPath(strings.TrimSpace(vars["owner"]))
 	projectID := strings.TrimSpace(vars["project_id"])
 	if ownerID == "" || projectID == "" {
-		writeAgentProfileError(w, http.StatusNotFound, "Project project not found")
+		writeAgentProfileError(w, http.StatusNotFound, "project not found")
 		return profile, nil, "", "", "", false
 	}
 	binding, err := resolveProductProjectBindingWithStore(r.Context(), ownerID, profile, projectID, defaultProductProjectStore())
 	if err != nil {
-		writeAgentProfileError(w, http.StatusNotFound, "Project project not found")
+		writeAgentProfileError(w, http.StatusNotFound, "project not found")
 		return profile, nil, "", "", "", false
 	}
 	root := agentProfileRuntimeWorkspace(ownerID, binding.WorkspacePath)
 	if !crewAdminInspectionAllowed(root) {
-		writeAgentProfileError(w, http.StatusNotFound, "Project project not found")
+		writeAgentProfileError(w, http.StatusNotFound, "project not found")
 		return profile, nil, "", "", "", false
 	}
 	return profile, claims, ownerID, projectID, root, true

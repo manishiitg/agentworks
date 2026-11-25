@@ -220,14 +220,14 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 func crewWorkflowRunCaller(ctx context.Context, crewWorkspacePath string) (triggerCaller, error) {
 	raw, exists, err := readFileFromWorkspace(ctx, strings.TrimSuffix(strings.TrimSpace(crewWorkspacePath), "/")+"/product.json")
 	if err != nil || !exists {
-		return triggerCaller{}, fmt.Errorf("Project project is unavailable")
+		return triggerCaller{}, fmt.Errorf("project is unavailable")
 	}
 	var manifest productProjectManifest
 	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return triggerCaller{}, fmt.Errorf("Project project is unavailable")
+		return triggerCaller{}, fmt.Errorf("project is unavailable")
 	}
 	if strings.TrimSpace(manifest.ID) == "" {
-		return triggerCaller{}, fmt.Errorf("Project project is unavailable")
+		return triggerCaller{}, fmt.Errorf("project is unavailable")
 	}
 	return triggerCaller{Type: triggerCallerCrew, ID: strings.TrimSpace(manifest.ID), ProfileID: normalizeInternalProfileID(manifest.Product)}, nil
 }
@@ -294,7 +294,7 @@ func workflowTriggerBinding(ctx context.Context, api *StreamingAPI, workspacePat
 	}
 	if caller.Type == triggerCallerCrew {
 		if api.projectActions == nil || !api.projectActions.crewProjectExists(ctx, productWorkspaceUserID(ctx), caller.ProfileID, caller.ID) {
-			return "", false, fmt.Errorf("caller project project not found")
+			return "", false, fmt.Errorf("caller project not found")
 		}
 	} else {
 		if manifest != nil && strings.TrimSpace(caller.ID) == strings.TrimSpace(manifest.ID) {
