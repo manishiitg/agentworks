@@ -35,3 +35,9 @@ export function ChatImage({ src, alt = '', workspace = false, className }: { src
     ? <WorkspaceImage key={src} path={src} alt={alt} renderImage={resolved => <ImagePreview key={resolved} src={resolved} alt={alt} className={className} />} />
     : <ImagePreview key={src} src={src} alt={alt} className={className} />
 }
+
+// A video in chat (Markdown image syntax with a video file) plays in place, so people who only see the chat can watch it.
+export function ChatVideo({ src, alt = '', workspace = false }: { src: string; alt?: string; workspace?: boolean }) {
+  const player = (url: string) => <video key={url} controls preload="metadata" playsInline src={url} aria-label={alt || 'Video'} className="my-2 block max-h-96 max-w-full rounded-lg bg-black" />
+  return workspace ? <WorkspaceImage key={src} path={src} alt={alt} noun="video" renderImage={player} /> : player(src)
+}
