@@ -65,6 +65,33 @@ func TestWorkspaceGitWatchStaleOnlyForAffectingChanges(t *testing.T) {
 		}
 	}
 
+	// #3878: macOS asks for a rescan of one folder when it coalesces changes below it. Only the checkouts at, below
+	// or around that folder go stale, not every checkout of the project.
+	rescans := []struct {
+		name  string
+		path  string
+		stale []string
+	}{
+		{"a busy folder inside the main checkout", filepath.Join(main, "node_modules"), []string{main}},
+		{"a folder outside every checkout", filepath.Join(root, "docs"), nil},
+		{"the repository's Git folder", common, []string{main, tree}},
+		{"Git's object store", filepath.Join(common, "objects"), nil},
+		{"the whole project", root, []string{main, tree, other}},
+	}
+	for _, tc := range rescans {
+		w := fresh()
+		w.rescan(tc.path)
+		want := map[string]bool{}
+		for _, dir := range tc.stale {
+			want[dir] = true
+		}
+		for _, dir := range []string{main, tree, other} {
+			if _, ok := w.cached(dir); ok == want[dir] {
+				t.Errorf("rescan %s: %s reused=%t, want stale=%t", tc.name, dir, ok, want[dir])
+			}
+		}
+	}
+
 	// A change during a read keeps the result stale; callers filter the returned files in place.
 	w := fresh()
 	token := w.begin(main)
