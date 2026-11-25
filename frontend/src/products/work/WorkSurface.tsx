@@ -466,8 +466,16 @@ export function useWorkChatTab(
         setPreparedProject(target.id)
         if (!agents.some(agent => agent.is_main)) {
           const state = useChatStore.getState()
+          // The server's list is what this person may open here. A chat kept from an earlier visit that it no
+          // longer lists (a project's User once saw the owner's chats) is closed, not left open and refused.
+          const listed = new Set(agents.map(agent => agent.session_id).filter(Boolean))
           for (const tab of Object.values(state.chatTabs)) {
-            if (belongsToWorkProject(tab, target.id) && tab.metadata?.agentProfileIsMainChat) {
+            if (!belongsToWorkProject(tab, target.id)) continue
+            if (tab.sessionId && !listed.has(tab.sessionId) && tab.metadata?.agentProfileTabCanWrite !== true) {
+              void state.closeTab(tab.tabId, false)
+              continue
+            }
+            if (tab.metadata?.agentProfileIsMainChat) {
               state.setTabMetadata(tab.tabId, { agentProfileIsMainChat: false })
             }
           }
