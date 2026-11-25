@@ -37,7 +37,7 @@ function SlackConnections({ workspacePath, noun = 'Project', allowBots = true, s
  const [bot, setBot] = useState<SlackBotOverview>({status:'Checking…',names:[]})
  const [account, setAccount] = useState('Checking…')
  return <div className="w-full max-w-3xl space-y-4">
-  <p className="text-sm text-muted-foreground">Use a bot, your own account, or both. Each connection keeps its own permissions.</p>
+  {allowBots && bot.allowed !== false && <p className="text-sm text-muted-foreground">Use a bot, your own account, or both. Each connection keeps its own permissions.</p>}
   {allowBots && bot.allowed !== false && <details open={section === 'bot'} aria-label="Slack bot connection" className="group rounded-lg border border-border p-4">
    <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2"><span className="flex items-center gap-2 text-sm font-semibold"><ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180"/>Let people message this {noun}</span><span className="text-xs text-muted-foreground">{bot.status}</span></summary>
    <div className="mt-4"><SlackBotChoice workspacePath={workspacePath} noun={noun} embedded onOverview={setBot}/></div>

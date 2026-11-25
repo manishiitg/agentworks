@@ -39,8 +39,9 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     add('mcp', 'Share', 'Team', UsersRound, 'team')
     add('mcp', 'Share', 'Phone', Globe, 'online')
     add('mcp', 'Share', 'Artifacts', LayoutDashboard, 'artifacts')
-    // The Slack bot row opens Connections → Slack bot (owner, 14 Nov).
-    for (const item of projectChannelSections(bots, bots)) {
+    // The Slack bot row opens Connections → Slack bot on server projects (owner, 14 Nov).
+    // Local Mac projects keep Slack as me only (owner, 25 Nov).
+    for (const item of projectChannelSections(bots && !isLocalDeployment(), bots)) {
       add('mcp', item.id === 'slack' ? 'Integrations' : 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, item.id === 'slack' ? undefined : 'Use from other apps')
     }
     for (const item of projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} })) {

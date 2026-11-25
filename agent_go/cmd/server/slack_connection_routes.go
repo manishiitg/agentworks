@@ -874,7 +874,7 @@ func registerSlackBotConnector(botManager *services.BotConversationManager, svc 
 // saves; the shared-bot and route conditions are handled by the Slack
 // config save and startup as before.
 func registerSlackBotConnectorForOwnedConnections(api *StreamingAPI, svc *services.SlackService) {
-	if api == nil || !slackHasOwnedEnabledConnection(svc) {
+	if api == nil || IsLocalMode() || !slackHasOwnedEnabledConnection(svc) {
 		return
 	}
 	if registerSlackBotConnector(api.botManager, svc) {
@@ -891,6 +891,9 @@ func registerSlackBotConnectorForOwnedConnections(api *StreamingAPI, svc *servic
 // the platform switch, any owner-saved channel route, or any enabled
 // workflow- or crew-owned connection.
 func slackBotConnectorWantedAtStartup(botConfig *chathistory.BotConnectorConfig, svc *services.SlackService) bool {
+	if IsLocalMode() {
+		return false
+	}
 	if botConfig != nil && (botConfig.BotMode || services.SlackBotConfigHasRoutes(botConfig)) {
 		return true
 	}

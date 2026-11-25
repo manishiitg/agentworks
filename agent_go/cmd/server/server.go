@@ -1965,13 +1965,17 @@ func runServer(cmd *cobra.Command, args []string) {
 	// BotConversationManager.RegisterConnector when Slack bot mode is enabled.
 	configureSlackCredentialCodec()
 	var slackSvc *services.SlackService
-	if os.Getenv("SLACK_ENABLED") != "false" {
+	if os.Getenv("SLACK_ENABLED") != "false" && !IsLocalMode() {
 		slackSvc, err = services.InitSlackService()
 	}
 	if err != nil {
 		log.Printf("⚠️  Failed to initialize Slack service: %v (Slack integration will be disabled)", err)
 	} else if slackSvc == nil {
-		log.Printf("[SLACK] Disabled via SLACK_ENABLED=false — skipping startup connections on this instance")
+		if IsLocalMode() {
+			log.Printf("[SLACK] Slack bot disabled in local mode — skipping startup connections (Slack as me remains available)")
+		} else {
+			log.Printf("[SLACK] Disabled via SLACK_ENABLED=false — skipping startup connections on this instance")
+		}
 	} else {
 		log.Printf("✅ Slack service initialized")
 	}
@@ -2933,7 +2937,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// crew-owned Slack app exists (its own socket needs the handler).
 	// Per-message and per-route gates still silence unrouted channels while
 	// the platform switch is off.
-	if slackSvc != nil {
+	if slackSvc != nil && !IsLocalMode() {
 		api.migrateCrewBotScopes(context.Background(), slackSvc)
 		botConfig, _ := chatStore.GetBotConnectorConfig(context.Background(), "slack")
 		if slackBotConnectorWantedAtStartup(botConfig, slackSvc) && registerSlackBotConnector(botManager, slackSvc) {
@@ -2980,7 +2984,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	virtualtools.SetSlackMessageHandler(api.sendSlackMessageFromTool)
 	virtualtools.SetSlackCLIHandler(api.slackCLIFromTool)
 	virtualtools.SetGitHubToolHandler(api.githubFromTool)
-	if slackSvc != nil {
+	if slackSvc != nil && !IsLocalMode() {
 		slackSvc.SetTriggerHandler(api.dispatchSlackTrigger)
 	}
 	if api.whatsappManager != nil {

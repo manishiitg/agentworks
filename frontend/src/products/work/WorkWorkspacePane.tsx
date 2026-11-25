@@ -1,6 +1,7 @@
 import { encodeSharedAssetPath } from '../../utils/sharedLinks'
 import { useAgentInboxEnabled } from '../../components/integrations/AgentInboxPanel'
 import { crewMenuTarget, crewProjectMenuItems } from './crewProjectMenu'
+import { isLocalDeployment } from '../productSurfaceConfig'
 import { projectMenuHistoryScope, useProjectMenuHistoryStore } from '../../stores/useProjectMenuHistoryStore'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { workWorkspacePanels } from './workWorkspacePanels'
@@ -83,7 +84,7 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ project
     ...menuItems.map(item => ({ id: item.id, label: item.label, group: item.group })),
   ], (key, section) => {
     if (key === 'context') { onViewChange('context'); return }
-    const raw = key === 'mcp:slack' ? 'mcp:slack-bot' : section ? key + ':' + section : key
+    const raw = key === 'mcp:slack' ? (isLocalDeployment() ? 'mcp:slack-account' : 'mcp:slack-bot') : section ? key + ':' + section : key
     const current = useAuthStore.getState().user
     const item = crewProjectMenuItems({ panels: admitted, allowedProducts: current?.allowed_products, enabledPanels, incomingEmail, projectId }).find(candidate => candidate.id === raw)
     if (!item || current?.id !== user?.id) return

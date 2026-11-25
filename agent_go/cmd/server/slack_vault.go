@@ -46,7 +46,7 @@ func (api *StreamingAPI) slackVaultTarget(r *http.Request, workspace string) (se
 			return ref, false, fmt.Errorf("Open an existing project to choose its Slack bot.")
 		}
 		ref.ProfileID = manifest.Product
-		return ref, true, nil
+		return ref, !IsLocalMode(), nil
 	}
 	manifest, found, err := ReadWorkflowManifest(r.Context(), scope.Workspace)
 	if err != nil || !found || manifest == nil {
@@ -195,6 +195,9 @@ func (api *StreamingAPI) slackVaultBotOperation(r *http.Request, workspace strin
 			return nil, err
 		}
 		if !allowed {
+			if IsLocalMode() && ref.ProfileID != "" {
+				return nil, fmt.Errorf("Local projects use Slack as me only. Connect your personal Slack account instead.")
+			}
 			return nil, fmt.Errorf("Flows support Act in Slack only. Choose a personal account on the Slack page.")
 		}
 		if err := requireSlackTargetOwner(r.Context(), api, ref); err != nil {
@@ -284,6 +287,9 @@ func (api *StreamingAPI) slackVaultBotOperation(r *http.Request, workspace strin
 					return nil, e
 				}
 				if !allowed {
+					if IsLocalMode() && ref.ProfileID != "" {
+						return nil, fmt.Errorf("Local projects use Slack as me only. Connect your personal Slack account instead.")
+					}
 					return nil, fmt.Errorf("Choose a project or Goal to manage this bot. Flows use personal Slack accounts only.")
 				}
 				payload["workspace_path"], payload["profile_id"] = ref.WorkspacePath, ref.ProfileID

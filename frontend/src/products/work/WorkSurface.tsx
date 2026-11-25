@@ -1587,7 +1587,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   if (initialRouteView.current === undefined) {
     const route = currentProductRoute()
     const view = route?.surface === product.profileId && route.id ? normalizeWorkWorkspaceView(route.view) : null
-    initialRouteView.current = view && route?.id ? { id: route.id, view, target: ({ share: 'share', slack: 'slack-bot', dashboards: 'dashboards' } as Record<string, string>)[route.view ?? ''] } : null
+    initialRouteView.current = view && route?.id ? { id: route.id, view, target: ({ share: 'share', slack: isLocalDeployment() ? 'slack-account' : 'slack-bot', dashboards: 'dashboards' } as Record<string, string>)[route.view ?? ''] } : null
   }
   const routeSuppliedView = selected
     ? (initialRouteView.current?.id === selected.id ? initialRouteView.current.view : routeView(product.profileId, selected.id, normalizeWorkWorkspaceView, product.defaultView))

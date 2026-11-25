@@ -12,6 +12,7 @@ import { WorkspacePanelActions } from '../workspace/WorkspacePanelHeaderSlots'
 import type { ProjectVaultInventory } from '../../api/projectVault'
 import type { VaultItemKind } from '../../api/projectVault'
 import { ProjectVaultPanel } from './ProjectVaultPanel'
+import { isLocalDeployment } from '../../products/productSurfaceConfig'
 
 export type IntegrationSection = 'connected' | 'available' | 'secrets' | 'gmail' | 'slack-account' | 'laptop' | 'github'
 export const INTEGRATION_LABELS: Record<IntegrationSection, string> = {
@@ -49,7 +50,7 @@ function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section =
     {section === 'secrets' && github && <GitHubVaultCard workspacePath={workspacePath} />}
     {section === 'secrets' && <><ProjectSecretsPanel workspacePath={workspacePath} tabId={tabId} onSelectionSaved={secrets.onSecretSelectionSaved} /></>}
     {section === 'gmail' && <><WorkflowEmailPanel workspacePath={workspacePath} /><CompanySignInSetup provider="Google" tabId={tabId} /></>}
-    {section === 'slack-account' && <><ProductSlackPanel workspacePath={workspacePath} noun={placeNoun} section="account" allowBots={placeNoun !== 'Flow'} tabId={tabId}/></>}
+    {section === 'slack-account' && <><ProductSlackPanel workspacePath={workspacePath} noun={placeNoun} section="account" allowBots={placeNoun !== 'Flow' && !isLocalDeployment()} tabId={tabId}/></>}
     {section === 'laptop' && laptop}
   </div>
 }
