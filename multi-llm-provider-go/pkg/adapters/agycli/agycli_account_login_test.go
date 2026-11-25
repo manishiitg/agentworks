@@ -29,6 +29,17 @@ func TestAgyGoogleAccountUsesItsOwnSignIn(t *testing.T) {
 	if login.home != account || login.keyMode {
 		t.Fatalf("Google account login = %+v, want its own home and no key mode", login)
 	}
+	// The person's own agy skills (their real ~/.gemini) reach the account's run too (#3973).
+	person := t.TempDir()
+	t.Setenv("HOME", person)
+	for _, skill := range []string{filepath.Join(person, ".gemini", "config", "skills", "review"), filepath.Join(account, ".gemini", "config", "skills", "deploy")} {
+		if err := os.MkdirAll(skill, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(skill, "SKILL.md"), []byte("---\nname: x\n---\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	home, cleanup, err := agyIsolatedHomeIn(nil, t.TempDir(), login, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -36,6 +47,11 @@ func TestAgyGoogleAccountUsesItsOwnSignIn(t *testing.T) {
 	defer cleanup()
 	if _, err := os.Stat(filepath.Join(home, ".gemini", "antigravity-acp", "login.json")); err != nil {
 		t.Fatalf("the account's sign-in was not carried into the run: %v", err)
+	}
+	for _, skill := range []string{"review", "deploy"} {
+		if _, err := os.Stat(filepath.Join(home, ".gemini", "config", "skills", skill, "SKILL.md")); err != nil {
+			t.Fatalf("skill %s is missing from the run: %v", skill, err)
+		}
 	}
 	settings, _ := os.ReadFile(agySettingsPath(home))
 	if strings.Contains(string(settings), `"modelProvider"`) {
