@@ -91,6 +91,10 @@ func runServer(cmd *cobra.Command, args []string) {
 		fmt.Printf("[PLATFORM_SCRIPTS_MIGRATION] Moving dashboard, Watcher and motion scripts out of code/ failed, so the workspace did not start: %v. Everything moved so far was copied first to %s. Fix the cause and start again to finish the move.\n", err, backup)
 		os.Exit(1)
 	}
+	if _, _, backup, err := crewroot.MigrateExecutablePlatformScripts(docsDir); err != nil {
+		fmt.Printf("[PLATFORM_SCRIPTS_MIGRATION] Moving project workflows' dashboard, Watcher and motion scripts out of code/ failed, so the workspace did not start: %v. Everything moved so far was copied first to %s. Fix the cause and start again to finish the move.\n", err, backup)
+		os.Exit(1)
+	}
 
 	// Create default workspace subdirectories.
 	// Root-level Chats/ and Downloads/ are kept for backwards compatibility with existing workspaces.

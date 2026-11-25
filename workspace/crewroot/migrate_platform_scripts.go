@@ -37,6 +37,7 @@ type platformScriptPlace struct {
 	label    string
 	from, to string
 	only     []string // when set, only these old folders move from here
+	inCode   bool     // from is itself a code/ folder (a project's workflow), so the old folders sit without "code/"
 	rewrite  []string
 }
 
@@ -56,7 +57,45 @@ func MigratePlatformScripts(docs string) (moved, rewritten int, backup string, e
 	if err != nil {
 		return 0, 0, "", err
 	}
-	backup = filepath.Join(state, "migration-backups", "platform-scripts-"+time.Now().UTC().Format("20060102T150405"))
+	return runPlatformScriptPlaces(state, marker, "platform-scripts-", places)
+}
+
+// MigrateExecutablePlatformScripts is the same move for each project's own workflows and scripts (#4009): their
+// code/ is .agentworks/code/<id>/ and their other folders .agentworks/workflows/<id>/, which the first pass missed.
+// It has its own marker because servers that already ran the first pass must still run this one.
+func MigrateExecutablePlatformScripts(docs string) (moved, rewritten int, backup string, err error) {
+	state, err := StateRoot()
+	if err != nil {
+		return 0, 0, "", err
+	}
+	marker := filepath.Join(state, "migrations", "platform-scripts-executables-v1.json")
+	if _, e := os.Stat(marker); e == nil {
+		return 0, 0, "", nil
+	} else if !os.IsNotExist(e) {
+		return 0, 0, "", e
+	}
+	layouts, err := ExecutableLayouts(docs)
+	if err != nil {
+		return 0, 0, "", err
+	}
+	var places []platformScriptPlace
+	for _, l := range layouts {
+		if l.Code == "" || l.Runtime == "" {
+			continue
+		}
+		db := filepath.Join(l.Runtime, "db")
+		if l.Crew.DatabaseRoot != "" {
+			db = filepath.Join(l.Crew.Automation, filepath.FromSlash(l.Crew.DatabaseRoot))
+		} else if l.Binding.Kind == "script" {
+			db = filepath.Join(l.Crew.Automation, "db")
+		}
+		places = append(places, platformScriptPlace{label: "project " + l.Crew.Virtual + " " + l.Binding.Kind + " " + l.Binding.ID, from: l.Code, to: l.Runtime, inCode: true, rewrite: []string{filepath.Join(db, "reports"), l.Settings}})
+	}
+	return runPlatformScriptPlaces(state, marker, "platform-scripts-executables-", places)
+}
+
+func runPlatformScriptPlaces(state, marker, name string, places []platformScriptPlace) (moved, rewritten int, backup string, err error) {
+	backup = filepath.Join(state, "migration-backups", name+time.Now().UTC().Format("20060102T150405"))
 	for i, p := range places {
 		m, r, e := migratePlatformScriptPlace(p, filepath.Join(backup, fmt.Sprintf("%03d", i)))
 		if e != nil {
@@ -132,7 +171,11 @@ func migratePlatformScriptPlace(p platformScriptPlace, backup string) (moved, re
 		if len(p.only) > 0 && !containsString(p.only, m.old) {
 			continue
 		}
-		source := filepath.Join(p.from, filepath.FromSlash(m.old))
+		old := m.old
+		if p.inCode {
+			old = strings.TrimPrefix(old, "code/")
+		}
+		source := filepath.Join(p.from, filepath.FromSlash(old))
 		info, e := os.Lstat(source)
 		if os.IsNotExist(e) {
 			continue
