@@ -45,6 +45,12 @@ type sessionSetup struct {
 		} `json:"availableModels"`
 	} `json:"models"`
 	ConfigOptions []configOption `json:"configOptions"`
+	Modes         *struct {
+		CurrentModeID  string `json:"currentModeId"`
+		AvailableModes []struct {
+			ID string `json:"id"`
+		} `json:"availableModes"`
+	} `json:"modes"`
 }
 
 type agentCapabilities struct {
@@ -90,6 +96,8 @@ type session struct {
 	configCurrent string
 	configModels  []Model
 	options       []configOption
+	modes         []string // the agent's session modes (session/set_mode), when it offers them
+	mode          string   // the session's current mode
 	status        *llmtypes.StatusLine
 	preamble      string // instructions sent ahead of the first prompt
 	fingerprint   string
@@ -434,6 +442,12 @@ func (s *session) rememberSetup(setup sessionSetup) {
 	if setup.ConfigOptions != nil {
 		s.options = append([]configOption(nil), setup.ConfigOptions...)
 	}
+	if setup.Modes != nil {
+		s.mode, s.modes = setup.Modes.CurrentModeID, s.modes[:0]
+		for _, m := range setup.Modes.AvailableModes {
+			s.modes = append(s.modes, m.ID)
+		}
+	}
 	if setup.Models != nil {
 		s.setModel = true
 		s.setCurrent = setup.Models.CurrentModelID
@@ -678,4 +692,35 @@ func (c *conn) stderrLine() string {
 		environment = c.cmd.Env
 	}
 	return stderrLine(c.stderr.String(), environment)
+}
+
+// planTurn runs this one turn in the agent's own plan mode (/plan or the Plan
+// switch) and returns how to go back to the chat's mode after it. An agent
+// without a plan mode refuses the turn rather than running it unplanned.
+// Called under turnMu.
+func (s *session) planTurn(ctx context.Context) (func(), error) {
+	s.mu.Lock()
+	// A loaded session may not repeat its modes: then set_mode itself answers.
+	sessionID, current, offered, known := s.sessionID, s.mode, false, len(s.modes) > 0
+	for _, m := range s.modes {
+		offered = offered || m == "plan"
+	}
+	s.mu.Unlock()
+	if !offered && known {
+		return nil, llmtypes.NativePlanUnavailable(s.agent.Label)
+	}
+	if current == "" {
+		current = "default"
+	}
+	if err := s.rpc.call(ctx, "session/set_mode", map[string]any{"sessionId": sessionID, "modeId": "plan"}, nil); err != nil {
+		return nil, err
+	}
+	log.Printf("[PLAN_MODE] provider=%s session=%s action=plan_turn", s.agent.providerID(), s.rpc.owner)
+	return func() {
+		back, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := s.rpc.call(back, "session/set_mode", map[string]any{"sessionId": sessionID, "modeId": current}, nil); err != nil {
+			log.Printf("[PLAN_MODE] provider=%s session=%s action=restore_failed err=%v", s.agent.providerID(), s.rpc.owner, err)
+		}
+	}, nil
 }

@@ -10,7 +10,7 @@ import (
 )
 
 // "/plan <task>": this one message runs in the coding program's own plan mode
-// (Claude Code, Codex, Cursor). The program reads and plans without changing
+// (Claude Code, Codex, Cursor, Antigravity). The program reads and plans without changing
 // anything; Claude asks to approve its plan, and the next ordinary message runs
 // in the chat's normal mode again. The saved message keeps its "/plan" text, so
 // a queued /plan message is recognised again when it runs; only the agent's
@@ -39,7 +39,7 @@ func nativePlanProgramCapabilities() map[string]bool {
 
 func nativePlanSupported(provider string) bool {
 	switch provider {
-	case "claude-code", "codex-cli", "cursor-cli":
+	case "claude-code", "codex-cli", "cursor-cli", "agy-cli":
 		return true
 	}
 	return false
@@ -62,7 +62,7 @@ func (api *StreamingAPI) prepareNativePlanQuery(w http.ResponseWriter, r *http.R
 	}
 	if !nativePlanSupported(provider) || !isToolBackedChatMode(req.AgentMode) {
 		log.Printf("[PLAN_MODE] session=%s provider=%s action=skipped reason=unsupported_program", sessionID, provider)
-		api.answerNativeGoalCommand(w, sessionID, "Plan mode works in Claude Code, Codex and Cursor chats. Send the message without /plan, or switch the chat to one of them.")
+		api.answerNativeGoalCommand(w, sessionID, "Plan mode works in Claude Code, Codex, Cursor and Antigravity chats. Send the message without /plan, or switch the chat to one of them.")
 		return r, true
 	}
 	if task == "" {
