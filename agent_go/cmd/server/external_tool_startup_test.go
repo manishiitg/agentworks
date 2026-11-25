@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/chatvisuals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	jsonschema "github.com/santhosh-tekuri/jsonschema/v6"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -50,6 +52,18 @@ func TestExternalToolCatalogInitializes(t *testing.T) {
 	}
 	if len(catalog) == 0 {
 		t.Fatal("startup tool catalog is empty")
+	}
+	visualSchema, err := chatvisuals.AuthorSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiler := jsonschema.NewCompiler()
+	const visualSchemaURI = "https://example.com/chat-visual-tool.json"
+	if err := compiler.AddResource(visualSchemaURI, visualSchema); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := compiler.Compile(visualSchemaURI); err != nil {
+		t.Fatal(err)
 	}
 	assertStartupComputerUseExposure(t)
 	// Being in the schema catalog is insufficient: Crew integrations also filters

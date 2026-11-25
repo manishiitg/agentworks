@@ -6068,6 +6068,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			toolGate.Declare(chatHistoryReadTool)
 			chatHistoryRead = toolGate.Admit(chatHistoryReadTool)
 		}
+		chatVisual := sessionID != ""
+		if chatVisual {
+			toolGate.Declare(chatVisualToolName)
+			chatVisual = toolGate.Admit(chatVisualToolName)
+		}
 		// A question in a turn another agent's message started gets the unattended answer after 5 minutes.
 		questionsUnansweredAfter := time.Duration(0)
 		if attendedTurn {
@@ -6099,6 +6104,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		if chatHistoryRead {
 			platformBridgeTools = append(platformBridgeTools, chatHistoryReadTool)
+		}
+		if chatVisual {
+			platformBridgeTools = append(platformBridgeTools, chatVisualToolName)
 		}
 		if resolvedProfile != nil {
 			for _, name := range resolvedProfile.Definition.Runtime.BridgeTools {
@@ -6759,6 +6767,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			if chatHistoryRead {
 				if err := api.registerChatHistoryReadTool(llmAgent, currentUserID, sessionID); err != nil {
 					sendError(fmt.Sprintf("Failed to register chat history tool: %v", err), true)
+					return
+				}
+			}
+			if chatVisual {
+				if err := registerChatVisualTool(llmAgent); err != nil {
+					sendError(fmt.Sprintf("Failed to register visual authoring tool: %v", err), true)
 					return
 				}
 			}
