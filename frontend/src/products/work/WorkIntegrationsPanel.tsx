@@ -46,8 +46,9 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
     // Slack bot stays in Connections, not Online (owner, 14 Nov).
     // Artifacts is its own page; the former dashboards target redirects here (owner, 14 Nov).
     // Team and Online (owner, 11 Nov) are the same page, each opened at its own tabs.
-    const next = ['team', 'online', 'share', 'computer', 'laptop', 'sync', 'agents', 'agentbridge', 'dashboards', 'artifacts'].includes(target) ? 'access' : target
-    if (next === 'computer-use' && (!canEdit || !isLocalDeployment())) return
+    const local = isLocalDeployment()
+    const next = ['team', 'online', 'share', 'computer', 'laptop', 'sync', 'agents', 'agentbridge', 'dashboards', 'artifacts'].includes(target) ? 'access' : target === 'slack-bot' && local ? 'slack-account' : target
+    if (next === 'computer-use' && (!canEdit || !local)) return
     if (!isWorkIntegrationTabEnabled(next === 'github' ? 'secrets' : next, enabledPanels) || next === 'brain' && !integrationProductAvailable('knowledgebase', allowedProducts)) return
     if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'github'].includes(next)) { setTab('apps'); setIntegrationSection(next as IntegrationSection); return }
     if (next === 'message-agents' && !integrationProductAvailable('bullpen', allowedProducts)) return
@@ -79,8 +80,8 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
           : <CodeLocalFilesSettings sessionId={sessionId} />)}
         {tab === 'message-agents' && <ProjectAgentBridgePanel target={`workspace:${product.profileId}:${projectId}`} tabId={tabId} onAsk={draft} view="others" />}
         {tab === 'cli' && <ProjectMcpSetupPanel workspacePath={workspacePath} />}
-        {/* Bot setup and personal Slack accounts keep their existing Connections entries. */}
-        {tab === 'slack-bot' && <CrewSlackSettings projectId={projectId} workspacePath={workspacePath} />}
+        {/* Bot setup (server projects only) and personal Slack accounts keep their existing Connections entries. */}
+        {tab === 'slack-bot' && !isLocalDeployment() && <CrewSlackSettings projectId={projectId} workspacePath={workspacePath} />}
         {tab === 'slack' && <SlackAccountsPanel workspacePath={workspacePath} noun="Project" tabId={tabId} />}
         {tab === 'whatsapp' && <WorkflowBotsPanel workspacePath={workspacePath} fixedChannel="whatsapp" scopeNoun="project" onAsk={onAsk} target={{ profileId: product.profileId, conversationKey: projectId, label: projectTitle }} />}
       </>

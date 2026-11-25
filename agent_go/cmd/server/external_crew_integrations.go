@@ -19,12 +19,18 @@ var crewIntegrationMembers = map[string]bool{
 }
 
 func (api *StreamingAPI) crewIntegrationRegistry(root, session string) (crewCapabilityRegistrar, error) {
+	return api.crewIntegrationRegistryForMode(root, session, !IsLocalMode())
+}
+
+func (api *StreamingAPI) crewIntegrationRegistryForMode(root, session string, includeSlackBot bool) (crewCapabilityRegistrar, error) {
 	reg := crewCapabilityRegistrar{}
 	if err := api.registerAgentInboxTools(reg, root, true); err != nil {
 		return nil, err
 	}
-	if err := api.registerSlackBotTools(reg, session, root, "work", true, true); err != nil {
-		return nil, err
+	if includeSlackBot {
+		if err := api.registerSlackBotTools(reg, session, root, "work", true, true); err != nil {
+			return nil, err
+		}
 	}
 	if err := api.registerGmailConnectionManagementTools(reg, session, root); err != nil {
 		return nil, err
@@ -33,6 +39,9 @@ func (api *StreamingAPI) crewIntegrationRegistry(root, session string) (crewCapa
 	executors["send_slack_message"] = api.sendSlackMessageFromTool
 	for _, tool := range virtualtools.CreateHumanTools() {
 		if tool.Function == nil || (tool.Function.Name != "send_slack_message" && tool.Function.Name != "google_workspace_cli") {
+			continue
+		}
+		if tool.Function.Name == "send_slack_message" && !includeSlackBot {
 			continue
 		}
 		schema, err := crewExecutionSchema(tool)
@@ -48,7 +57,7 @@ func (api *StreamingAPI) crewIntegrationRegistry(root, session string) (crewCapa
 
 func crewIntegrationDefinitions() ([]llmtypes.Tool, error) {
 	api := &StreamingAPI{}
-	reg, err := api.crewIntegrationRegistry("Crew/catalog", "")
+	reg, err := api.crewIntegrationRegistryForMode("Crew/catalog", "", true)
 	if err != nil {
 		return nil, err
 	}

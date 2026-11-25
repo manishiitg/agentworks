@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chathistory"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 )
@@ -138,5 +139,97 @@ func TestSlackVaultSelectionPermissionsAcrossSurfaces(t *testing.T) {
 	usage := api.slackVaultBotUsages(request, shared, true, map[string]*slackVaultBotUsage{})
 	if len(usage) != 1 || usage[0].Label != "Alpha" {
 		t.Fatalf("shared usage ignored access or explicit opt-out: %+v", usage)
+	}
+}
+
+func TestLocalModeDisablesSlackBotForProjects(t *testing.T) {
+	api, workspace := setupSlackConnectionTest(t)
+	projectManifest := `{"id":"local-project","product":"work","title":"Local Project"}`
+	workspace.files["Crew/local-project/product.json"] = projectManifest
+	workspace.files["_users/alice/Crew/local-project/product.json"] = projectManifest
+	prevOwners := crewOwners.read
+	crewOwners.read = func(_ context.Context, root string) string {
+		if root == "Crew/local-project" {
+			return "alice"
+		}
+		return ""
+	}
+	clearOwners := func() {
+		crewOwners.mu.Lock()
+		crewOwners.entries = map[string]crewOwnerEntry{}
+		crewOwners.mu.Unlock()
+	}
+	clearOwners()
+	t.Cleanup(func() {
+		crewOwners.read = prevOwners
+		clearOwners()
+	})
+	svc, err := ensureSlackService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := svc.CreateSlackConnection(context.Background(), services.SlackConnectionInput{
+		DisplayName: "Saved bot", BotToken: "xoxb-fixture-local", AppToken: "xapp-fixture-local",
+		Enabled: false, WorkspacePath: "Crew/local-project", ProfileID: "work",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+
+	if slackBotConnectorWantedAtStartup(&chathistory.BotConnectorConfig{BotMode: true}, svc) {
+		t.Fatal("local mode must not start the Slack bot connector at startup")
+	}
+
+	call := func(action string, id string) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(map[string]any{"action": action, "workspace_path": "Crew/local-project", "connection_id": id})
+		rec := httptest.NewRecorder()
+		api.handleSlackVaultBots(rec, adminRequest(http.MethodPost, "/api/integrations/slack/bots", string(body), slackConnectionClaims("alice"), nil))
+		return rec
+	}
+
+	listed := call("list_saved", "")
+	var state struct {
+		AllowBots *bool `json:"allow_bots"`
+		CanSelect bool  `json:"can_select"`
+	}
+	if listed.Code != http.StatusOK || json.Unmarshal(listed.Body.Bytes(), &state) != nil {
+		t.Fatalf("unexpected local list_saved response: %d %s", listed.Code, listed.Body)
+	}
+	if state.AllowBots == nil || *state.AllowBots || state.CanSelect {
+		t.Fatalf("local project must disallow Slack bots: %s", listed.Body)
+	}
+
+	selected := call("select", conn.ID)
+	if selected.Code != http.StatusForbidden || !strings.Contains(selected.Body.String(), "Slack as me only") {
+		t.Fatalf("local project must refuse Slack bot selection: %d %s", selected.Code, selected.Body)
+	}
+
+	reg, err := api.crewIntegrationRegistry("Crew/local-project", "session-local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, removed := range []string{"get_slack_bot_settings", "configure_slack_bot", "slack", "send_slack_message"} {
+		if _, found := reg[removed]; found {
+			t.Fatalf("local project integration registry must omit %q", removed)
+		}
+	}
+	if _, found := reg["google_workspace_cli"]; !found {
+		t.Fatal("local project integration registry must keep non-bot tools")
+	}
+
+	defs, err := crewIntegrationDefinitions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hasBotDef := false
+	for _, def := range defs {
+		if def.Function != nil && def.Function.Name == "get_slack_bot_settings" {
+			hasBotDef = true
+			break
+		}
+	}
+	if !hasBotDef {
+		t.Fatal("static external integration catalog must keep Slack bot definitions")
 	}
 }

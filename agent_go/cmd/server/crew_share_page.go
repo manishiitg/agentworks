@@ -649,9 +649,9 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		page.AgentsEmpty = "No agents to share yet."
 	}
 
-	// Slack lives under Connections (owner, 14 Nov); this reply supplies the
-	// unchanged Who can talk to it rules used by that settings panel.
-	if dashWorkspace != "" {
+	// Slack lives under Connections on server projects (owner, 14 Nov; local Mac projects keep Slack as me only, 25 Nov);
+	// this reply supplies the unchanged Who can talk to it rules used by that settings panel.
+	if dashWorkspace != "" && !IsLocalMode() {
 		if bot, err := api.crewSlackBotChoiceFor(r, dashWorkspace, nil); err == nil && bot.Allowed {
 			page.Slack = crewShareSlackRules(owner)
 		}

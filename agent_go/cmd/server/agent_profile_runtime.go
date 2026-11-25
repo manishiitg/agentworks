@@ -1166,9 +1166,12 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 		// Run mode keeps the Slack read tool, as a workflow's Run chat does:
 		// a crew answering in Slack reads its own thread (a bot turn's tool
 		// is held to the channel and destination it arrived on). Changing
-		// the bot's setup needs write access in the app.
-		if err := api.registerSlackBotTools(registrar, sessionID, workspacePath, resolved.Definition.ID, !readOnly && policy.Origin != "bot" && registerWorkUIAllowed(input), !readOnly); err != nil {
-			return err
+		// the bot's setup needs write access in the app. Local Mac projects
+		// keep Slack as me only (owner, 25 Nov).
+		if !IsLocalMode() {
+			if err := api.registerSlackBotTools(registrar, sessionID, workspacePath, resolved.Definition.ID, !readOnly && policy.Origin != "bot" && registerWorkUIAllowed(input), !readOnly); err != nil {
+				return err
+			}
 		}
 		// Google account tools: everywhere a product keeps its channels, and
 		// in a Code (gmail: own) for its owner's chats only.

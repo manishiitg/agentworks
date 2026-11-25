@@ -66,6 +66,20 @@ it('opens old Artifacts links as a standalone page and leaves only Online tabs',
   }
 })
 
+it('omits Slack bot from the project menu in local mode while keeping My Slack account', () => {
+  const runtimeWindow = window as Window & { __APP_RUNTIME_CONFIG__?: { deploymentMode?: string } }
+  const previous = runtimeWindow.__APP_RUNTIME_CONFIG__
+  runtimeWindow.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'local' }
+  try {
+    const panels: ProductPanel<WorkWorkspaceView>[] = [{ id: 'mcp', label: 'Connections', icon: Globe }]
+    const items = crewProjectMenuItems({ panels })
+    expect(items.find(item => item.id === 'mcp:slack-bot')).toBeUndefined()
+    expect(items.find(item => item.id === 'mcp:slack-account')?.group).toBe('Integrations')
+  } finally {
+    runtimeWindow.__APP_RUNTIME_CONFIG__ = previous
+  }
+})
+
 // Owner screenshot regression: never render both an Online group header and
 // a nested Mac online destination. The one row keeps status and its dot.
 it('shows one Phone destination with on and off status', async () => {
