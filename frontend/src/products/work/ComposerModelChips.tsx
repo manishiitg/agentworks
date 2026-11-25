@@ -15,7 +15,6 @@ import { AccountModelPicker } from '../../components/ui/AccountModelPicker'
 import { SharedTokenUsageItems } from '../../components/providers/SharedTokenUsageNotice'
 import { sharedAccountProvider } from '../../utils/tokenLimits'
 import { ACCOUNT_LISTED_PROVIDERS, ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
-import ClaudeTerminalToggle from './ClaudeTerminalToggle'
 
 import { changeChatContext, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
 import { openChatContextPanelEvent } from '../../components/workspace/ChatContextSection'
@@ -39,23 +38,13 @@ export function ChoiceItems({ title, choices, value, onPick, keepOpenOnPick = fa
   </>
 }
 
-/**
- * Reasoning effort as a word after the model ("Opus 5.5 · High"), like Claude Code's status line. CLIs whose model ID
- * carries the effort (Antigravity, most Cursor models) have no scale and show none.
- */
-export function EffortLabel({ count, label }: { index: number; count: number; label: string }) {
-  if (count < 2 || !label) return null
-  return <span className="ml-1 shrink-0 text-muted-foreground/80" data-testid="chip-effort">· {label}</span>
-}
-
-export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide, tag, triggerExtra, onCloseAutoFocus, effort }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean; tag?: 'mac' | 'server'; triggerExtra?: ReactNode; onCloseAutoFocus?: (event: Event) => void; effort?: { index: number; count: number; label: string } }) {
+export function Chip({ label, ariaLabel, disabled, children, open, onOpenChange, wide, tag, triggerExtra, onCloseAutoFocus }: { label: string; ariaLabel: string; disabled: boolean; children: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void; wide?: boolean; tag?: 'mac' | 'server'; triggerExtra?: ReactNode; onCloseAutoFocus?: (event: Event) => void }) {
   const width = wide ? ' w-[min(340px,calc(100vw-24px))]' : ''
   return <Menu.Root modal={false} open={open} onOpenChange={onOpenChange}>
     <Menu.Trigger type="button" disabled={disabled} aria-label={ariaLabel} title={ariaLabel} className={triggerExtra ? chipClass.replace('max-w-40', 'max-w-full') : chipClass}>
       {tag === 'mac' && <Laptop className="mr-1 h-3 w-3 shrink-0" aria-hidden="true" />}
       {tag === 'server' && <Server className="mr-1 h-3 w-3 shrink-0" aria-hidden="true" />}
       <span className="min-w-0 max-w-40 truncate">{label}</span>
-      {effort && <EffortLabel {...effort} />}
       {triggerExtra}
       <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />
     </Menu.Trigger>
@@ -146,7 +135,6 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const attach = actions ? <ComposerAttachButton uploading={actions.uploading} onAttach={actions.onAttach} /> : null
   const fallbackMenu = actions ? <>{attach}<Chip label={label} ariaLabel="Chat menu" disabled={false} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose} triggerExtra={triggerExtra}>
     <ComposerActionItems {...actions} attachOnBar deferAction={action => { afterClose.current = action }} />
-    {sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}
     <ComposerDisplayMenu busy={busy} />
   </Chip></> : fallback
   if (!selectedOption) return <>{fallbackMenu}</>
@@ -234,10 +222,12 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   </Menu.SubTrigger>
 
   if (workProviderIds.length < 2 && groups.length < 2 && models.length < 2 && levels.length < 2 && !sessionId) return <>{fallbackMenu}</>
-  // The chip names the model; effort is bars on the CLI's own scale, named in the hover and screen-reader text.
+  // The chip names the model; effort is its own dropdown beside it, so changing it is one click (owner, 25 Nov).
   const chipLabel = modelLabel
-  const effortIndex = levels.findIndex(level => level.id === currentEffort)
-  const chipEffort = effortLabel && levels.length > 1 ? { index: effortIndex, count: levels.length, label: effortLabel } : undefined
+  const effortChip = levels.length > 1 && effortLabel
+    ? <Chip label={effortLabel} ariaLabel={`Effort: ${effortLabel}`} disabled={saving}>
+      <ChoiceItems title="Effort" choices={levels} value={currentEffort} onPick={pickEffort} />
+    </Chip> : null
   // One composer trigger; the main list keeps the current model and account visible.
   const sourceText = sourceTag ? (sourceTag === 'Mac' ? 'Runs on this Mac' : `Runs on ${sourceTag} (company account)`) : ''
   const changesCLI = Boolean(pendingSwitch && pendingSwitch.option.id !== selectedOption.id)
@@ -264,7 +254,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const fieldClass = 'flex items-center justify-between gap-3 border-b border-border px-2.5 py-2 text-xs last:border-0'
   const selectClass = 'min-w-0 max-w-[190px] rounded bg-popover p-1 text-right text-popover-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const switchActionClass = 'flex cursor-pointer items-center rounded-md border px-3 py-2.5 text-left text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring'
-  return <>{attach}<Chip label={chipLabel} effort={chipEffort} ariaLabel={`Model: ${chipLabel}${effortLabel ? `, effort ${effortLabel}` : ''}${sourceText ? `. ${sourceText}` : ''}`} disabled={saving} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose}
+  return <>{attach}<Chip label={chipLabel} ariaLabel={`Model: ${chipLabel}${effortLabel ? `, effort ${effortLabel}` : ''}${sourceText ? `. ${sourceText}` : ''}`} disabled={saving} open={menuOpen} onOpenChange={onMenuOpen} onCloseAutoFocus={onMenuClose}
     triggerExtra={triggerExtra} wide tag={sourceTag ? (sourceTag === 'Mac' ? 'mac' : 'server') : undefined}>
     {pendingSwitch ? <div className="min-w-0 p-2.5" aria-label="Finish changing the model">
       <Menu.Label className="mb-1 text-base font-semibold leading-snug">Switch to {changesCLI ? pendingCLI : pendingModelLabel}?</Menu.Label>
@@ -325,12 +315,6 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         </Fragment>)}
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>
-    {levels.length > 1 && effortLabel && <Menu.Sub>
-      {subRow('Effort', effortLabel)}
-      <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
-        <ChoiceItems choices={levels} value={currentEffort} onPick={pickEffort} />
-      </Menu.SubContent></Menu.Portal>
-    </Menu.Sub>}
     <Menu.Sub>
       {subRow('CLI', selectedOption.label || selectedOption.provider || selectedOption.id)}
       <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} className={contentClass}>
@@ -374,7 +358,6 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         </Menu.Item>}
       </Menu.SubContent></Menu.Portal>
     </Menu.Sub>}
-    {sessionId && <ClaudeTerminalToggle sessionId={sessionId} modelKey={label} />}
     {companyServer
       ? <SharedTokenUsageItems accountProvider={selectedOption.provider} serverConnection={companyServer} />
       : <SharedTokenUsageItems accountProvider={sharedAccountProvider(connectionId
@@ -385,5 +368,5 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     {!sessionId && <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage history</Menu.Item>}
     <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Models & accounts</Menu.Item>
     </div>}
-  </Chip></>
+  </Chip>{effortChip}</>
 }
