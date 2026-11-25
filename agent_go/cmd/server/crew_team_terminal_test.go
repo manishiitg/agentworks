@@ -778,7 +778,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if err != nil || beta.On || beta.OwnerID != "owner" || len(beta.People) != 0 || len(beta.Agents) != 1 {
 				t.Fatalf("join did not persist one minimal Off registry: %+v %v", beta, err)
 			}
-			if _, err := sender.Call(t.Context(), "messages", map[string]any{"agent_name": "member-terminal", "action": "send", "target": "agent:owner/terminal", "message": "Must not use saved Discovery", "submission_id": "joined-discovery"}); err == nil || !strings.Contains(err.Error(), "Crew") {
+			if _, err := sender.Call(t.Context(), "messages", map[string]any{"agent_name": "member-terminal", "action": "send", "target": "agent:owner/terminal", "message": "Must not use saved Discovery", "submission_id": "joined-discovery"}); err == nil || !strings.Contains(err.Error(), "project") {
 				t.Fatalf("joined native terminal fell through to Discovery: %v", err)
 			}
 			if _, err := sender.Call(t.Context(), "messages", map[string]any{"agent_name": "member-terminal", "action": "read", "inbox_id": publicInbox}); err == nil {

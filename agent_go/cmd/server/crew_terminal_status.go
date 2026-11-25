@@ -45,13 +45,22 @@ func (api *StreamingAPI) externalTerminalStatus(w http.ResponseWriter, r *http.R
 	pane := externalArg(args, "action") == "team_pane"
 	if t.On && row.InTeam {
 		online := 0
-		reach := crewTeamReachableIn(r.Context(), t, claims.UserID)
+		people := teamAgentsByPersonWithMain(r.Context(), t, claims.UserID, crewOwnerMainChatKey(t.ProjectID))
+		reach := crewTeamReachableFrom(r.Context(), t, claims.UserID, people)
 		for _, a := range reach {
 			if a.Online {
 				online++
 			}
 		}
-		out["online"] = online
+		// People and agents are counted apart: teammates who are active now, and their agents that are online.
+		teammates := teamPanePeople(t, claims.UserID, people)
+		peopleOnline := 0
+		for _, p := range teammates {
+			if p.Online {
+				peopleOnline++
+			}
+		}
+		out["online"], out["people_online"] = online, peopleOnline
 		if pane && externalArg(args, "query") != "" {
 			// One agent opened in the pane (#3357): its row and, when shared Live, its last messages.
 			detail, ok := api.teamPaneAgentDetail(r.Context(), t, claims.UserID, externalArg(args, "query"))
@@ -65,7 +74,8 @@ func (api *StreamingAPI) externalTerminalStatus(w http.ResponseWriter, r *http.R
 			return
 		}
 		if pane {
-			out["agents"] = teamPaneAgents(crewTeamOwnSourceRows(r.Context(), t, claims.UserID), reach)
+			out["agents"] = teamPaneAgents(crewTeamOwnSourceRows(r.Context(), t, claims.UserID), reach, teamPaneRuntime(r.Context(), t, claims.UserID, people, reach))
+			out["people"] = teammates
 			out["kit"] = api.teamPaneKit(r.Context(), claims, t)
 			out["needs"] = teamPaneNeeds(crewWorkNeedsFromRequests(agentTeamRequests(r.Context(), t, claims.UserID), claims.UserID))
 		}

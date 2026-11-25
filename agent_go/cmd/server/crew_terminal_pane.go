@@ -53,6 +53,53 @@ type teamPaneAgent struct {
 	Offline  string `json:"offline_line,omitempty"`
 	// Address is the AgentBridge target the pane's Ask box sends to; admission still decides at send time.
 	Address string `json:"address,omitempty"`
+	// What it is for and what it runs on (program and model), as the Team panel shows them.
+	Purpose string `json:"purpose,omitempty"`
+	CLI     string `json:"cli,omitempty"`
+	Model   string `json:"model,omitempty"`
+}
+
+// teamPanePerson is one teammate (never the caller) and whether they are active now, the Team tab's people dot.
+type teamPanePerson struct {
+	Name   string `json:"name"`
+	Online bool   `json:"online"`
+	Line   string `json:"line,omitempty"`
+}
+
+func teamPanePeople(t crewTeam, viewer string, people []crewTeamAgentsPerson) []teamPanePerson {
+	out := []teamPanePerson{}
+	for _, p := range people {
+		if p.UserID == viewer || !crewTeamMemberCurrent(t, p.UserID) {
+			continue
+		}
+		out = append(out, teamPanePerson{Name: p.Name, Online: p.Active, Line: p.ActiveLabel})
+	}
+	return out
+}
+
+// teamPaneRuntime reads each listed agent's program and model the same way the Team panel does (cached 30 s there).
+func teamPaneRuntime(ctx context.Context, t crewTeam, viewer string, people []crewTeamAgentsPerson, reach []crewTeamReachableAgent) map[string]crewTeamPanelRuntime {
+	runtime := crewTeamTabReply{Team: t}
+	for _, row := range reach {
+		runtime.Reachable = append(runtime.Reachable, crewTeamPanelReach{crewTeamReachableAgent: row})
+	}
+	for _, p := range people {
+		if p.UserID != viewer {
+			continue
+		}
+		for _, a := range p.Agents {
+			runtime.Agents = append(runtime.Agents, crewTeamTabAgent{ID: a.ID, OwnerID: viewer, Key: a.ChatKey, Mine: true, Address: a.Address})
+		}
+	}
+	crewTeamPanelRuntimeFor(ctx, viewer, &runtime)
+	out := map[string]crewTeamPanelRuntime{}
+	for _, row := range runtime.Reachable {
+		out[row.ID] = row.crewTeamPanelRuntime
+	}
+	for _, row := range runtime.Agents {
+		out[row.ID] = row.crewTeamPanelRuntime
+	}
+	return out
 }
 
 func teamPaneNeeds(needs []*crewWorkNeed) []teamPaneNeed {
@@ -80,13 +127,15 @@ func teamPaneAsks(tasks []crewTeamTask, agentID string) []teamPaneAsk {
 
 // The person's own agents first (the same rows the Team panel shows them), then the
 // teammates' agents the Team admits; the pane groups them by person.
-func teamPaneAgents(own, reach []crewTeamReachableAgent) []teamPaneAgent {
+func teamPaneAgents(own, reach []crewTeamReachableAgent, runtime map[string]crewTeamPanelRuntime) []teamPaneAgent {
 	out := []teamPaneAgent{}
 	add := func(a crewTeamReachableAgent, mine bool) {
 		if len(out) < 2*teamPaneLimit {
 			// The pane keeps only how long it has been offline; the asker's choices are the Team panel's.
 			offline, _, _ := strings.Cut(a.OfflineLine, " · ")
-			out = append(out, teamPaneAgent{ID: a.ID, Mine: mine, Name: a.Name, Person: a.Person, Kind: a.Kind, Online: a.Online, Activity: a.Activity, Offline: offline, Address: a.Address})
+			labels := runtime[a.ID]
+			out = append(out, teamPaneAgent{ID: a.ID, Mine: mine, Name: a.Name, Person: a.Person, Kind: a.Kind, Online: a.Online, Activity: a.Activity, Offline: offline, Address: a.Address,
+				Purpose: a.Purpose, CLI: providerAccountProductName(firstNonEmptyTrimmed(labels.CLI, labels.Engine)), Model: labels.ModelID})
 		}
 	}
 	for _, a := range own {
@@ -124,7 +173,7 @@ const teamPaneDetailMessages = 20
 // the Team panel's own Live rule (crewTeamTerminalLiveRow) and is re-admitted after it.
 func (api *StreamingAPI) teamPaneAgentDetail(ctx context.Context, t crewTeam, viewer, id string) (teamPaneDetail, bool) {
 	var row *teamPaneAgent
-	for _, a := range teamPaneAgents(crewTeamOwnSourceRows(ctx, t, viewer), crewTeamReachableIn(ctx, t, viewer)) {
+	for _, a := range teamPaneAgents(crewTeamOwnSourceRows(ctx, t, viewer), crewTeamReachableIn(ctx, t, viewer), nil) {
 		if a.ID == id {
 			a := a
 			row = &a
