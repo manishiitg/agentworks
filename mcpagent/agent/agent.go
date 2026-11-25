@@ -65,7 +65,7 @@ func withCodingAgentSecretEnvironment(environment map[string]string) agentOption
 		// routes -- so the routes were dropped here and the provider below
 		// faithfully passed on an already-filtered environment. Nothing errored;
 		// the child just never saw MCP_CUSTOM. Do not reintroduce a local list.
-		if llmtypes.IsScopedCodingAgentEnvironmentKey(key) && value != "" {
+		if llmtypes.IsScopedCodingAgentEnvironmentEntry(key, value) {
 			copy[key] = value
 		}
 	}
