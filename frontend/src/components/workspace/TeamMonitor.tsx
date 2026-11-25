@@ -36,7 +36,9 @@ const newestTime=(team:MonitorTeam)=>Date.parse(team.work?.last_worked_at||'')||
 const ignoreOwnSummary=()=>{}
 
 /** Every Crew in the person's menu, on this network and each connected one, with its Team as the server words it. */
-type MonitorSource={connectionId:string;network:string;networkId:string;crews:Crew[];error?:string}
+// Admin only: someone working on that server outside your Teams, as the server words it (activity, never chat text).
+type AdminPerson={user_id:string;person:string;active?:boolean;last?:string;done?:string;projects?:string[];mac?:string}
+type MonitorSource={connectionId:string;network:string;networkId:string;crews:Crew[];others:AdminPerson[];error?:string}
 function useTeamCrews():{sources:MonitorSource[];notice:string;people:TeamOverviewPerson[];summary:string} {
  const user=useAuthStore(state=>state.user?.id||'')
  const active=getRawActiveWorkspaceId()
@@ -49,9 +51,9 @@ function useTeamCrews():{sources:MonitorSource[];notice:string;people:TeamOvervi
   if(!allowed||!user)return
   let disposed=false
   const identity=captureChatIdentity()
-  void api.get<{connections:{connection:string;network?:string;network_id?:string;teams:TeamLiveView[];error?:string}[];notice?:string;people?:TeamOverviewPerson[];summary?:string}>('/api/crew-team-monitor').then(({data})=>{
+  void api.get<{connections:{connection:string;network?:string;network_id?:string;teams:TeamLiveView[];others?:AdminPerson[];error?:string}[];notice?:string;people?:TeamOverviewPerson[];summary?:string}>('/api/crew-team-monitor').then(({data})=>{
    if(disposed||!isChatIdentityCurrent(identity))return
-   setLoaded({identity,notice:data.notice||'',people:data.people||[],summary:data.summary||'',sources:data.connections.map(source=>({connectionId:source.connection==='local'?active:source.connection,network:source.network||'',networkId:source.network_id||window.location.origin,crews:source.teams.map(live=>({id:live.project_id!,name:live.name||'Team',team_live:live})),error:source.error}))})
+   setLoaded({identity,notice:data.notice||'',people:data.people||[],summary:data.summary||'',sources:data.connections.map(source=>({connectionId:source.connection==='local'?active:source.connection,network:source.network||'',networkId:source.network_id||window.location.origin,crews:source.teams.map(live=>({id:live.project_id!,name:live.name||'Team',team_live:live})),others:source.others||[],error:source.error}))})
   }).catch(()=>{if(!disposed&&isChatIdentityCurrent(identity))setLoaded({identity,sources:[],people:[],summary:'',notice:'Teams temporarily unavailable. Try again.'})})
   return()=>{disposed=true}
  },[active,user,allowed,refresh])
@@ -161,10 +163,18 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
    {(p.done||p.teams.length>0)&&<p className="ml-6 truncate text-[10px] text-muted-foreground">{[p.done&&`Today: ${p.done}`,p.teams.join(', ')].filter(Boolean).join(' · ')}</p>}
    {p.now.slice(0,2).map((n,i)=><p key={i} title={nowLine(n,false)} className="ml-6 truncate text-[11px] text-muted-foreground">{`${n.agent}${n.title?` — ${n.title}`:''}${n.team?` · ${n.team}`:''}`}</p>)}
   </div>}
+ const adminView=sources.filter(source=>source.others.length>0).map(source=><div key={`others:${source.connectionId}`} className="min-w-0">
+   <h4 className={`${section} border-t border-border`}>Not in your Teams{multi&&source.network?` · ${source.network}`:''} <span className="ml-1 rounded bg-muted px-1 normal-case tracking-normal">admin</span></h4>
+   {source.others.map(p=><div key={p.user_id} className="min-w-0 rounded-md px-2 py-1.5 hover:bg-muted/50">
+    <div className="flex min-w-0 items-center gap-2"><span className="relative inline-flex shrink-0"><Avatar name={p.person} className="h-[18px] w-[18px] shrink-0 rounded-full text-[9px]"/>{p.active&&<span aria-label="Working" className="absolute -bottom-px -right-px h-1.5 w-1.5 rounded-full border border-popover bg-emerald-500"/>}</span><span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{p.person}</span>{status(p.active?'active now':undefined,p.last?timeAgo(p.last):undefined)}</div>
+    {p.done&&<p className="ml-6 truncate text-[10px] text-muted-foreground">{[`Today: ${p.done}`,(p.projects||[]).join(', ')].filter(Boolean).join(' · ')}</p>}
+    {p.mac&&<p className="ml-6 truncate text-[10px] text-muted-foreground">Mac app on the company account: {p.mac}</p>}
+   </div>)}
+  </div>)
  const busyPeople=people.filter(p=>p.working>0),earlier=people.filter(p=>!p.working&&(p.done||p.last)),quietPeople=people.filter(p=>!p.working&&!p.done&&!p.last)
  const listed=rows.filter(row=>row.personKey===only).sort((a,b)=>Number(workingRow(b))-Number(workingRow(a)))
  const [lead,...rest]=summary.split(' · ')
- if(!notice&&!teams.length)return <div ref={rootRef} className="flex items-center gap-1.5">{own}<AccountSignInBadge/></div>
+ if(!notice&&!teams.length&&!adminView.length)return <div ref={rootRef} className="flex items-center gap-1.5">{own}<AccountSignInBadge/></div>
  return <div ref={rootRef} className="relative flex items-center gap-1.5" data-theme-team-working={workingRows.length>0?'true':'false'} data-theme-team-waiting={needsInput>0?'true':'false'}>
   {own}
   <AccountSignInBadge/>
@@ -178,6 +188,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
      {byPerson?<>
       {busyPeople.length>0&&<><h4 className={`${section} border-t border-border`}>Working now</h4>{busyPeople.map(personView)}</>}
       {earlier.length>0&&<><h4 className={`${section} border-t border-border`}>Earlier</h4>{earlier.map(personView)}</>}
+      {adminView}
       {quietLine(quietPeople.map(p=>({key:`${p.network||''}:${p.user_id}`,name:p.person})),`${quietPeople.length} ${quietPeople.length===1?'person':'people'} quiet today`)}
      </>:byTeam}
     </section>
