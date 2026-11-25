@@ -184,7 +184,12 @@ func bridgeOrProductConversation(c agentConversation) bool {
 			return true
 		}
 	}
-	return (c.Endpoints[0].NamedAgentID != "" || c.Endpoints[0].TeamAgentID != "") && (c.Endpoints[1].NamedAgentID != "" || c.Endpoints[1].TeamAgentID != "")
+	agent := func(e agentMessageEndpoint) bool { return e.NamedAgentID != "" || e.TeamAgentID != "" }
+	// A person's own Team ask (the Ask box) has the person on one side, with no
+	// registered agent, and a Team agent on the other (#3822).
+	personAsk := func(p, t agentMessageEndpoint) bool { return p.External && !agent(p) && t.TeamAgentID != "" }
+	a, b := c.Endpoints[0], c.Endpoints[1]
+	return agent(a) && agent(b) || personAsk(a, b) || personAsk(b, a)
 }
 
 func requireCurrentBridgeInbox(ctx context.Context, id string) error {
