@@ -148,6 +148,8 @@ type crewTeamTabSync struct {
 	ChangedBy  string `json:"changed_by,omitempty"`
 	ChangedAgo string `json:"changed_ago,omitempty"`
 	Stale      string `json:"stale,omitempty"`
+	// Size is the Team folder's total size, short ("1.2 GB"), shown before the state word on the one-line row.
+	Size string `json:"size,omitempty"`
 }
 
 type crewTeamTabReply struct {
@@ -671,7 +673,7 @@ func crewTeamTabSyncFor(t crewTeam, viewer string) *crewTeamTabSync {
 	if len(open) > 0 {
 		clashLine = crewTeamClashLine(open)
 	}
-	out := &crewTeamTabSync{} // open clashes are on the line, not a failure
+	out := &crewTeamTabSync{Size: crewTeamSizeLabel(s.bytes)} // open clashes are on the line, not a failure
 	if s.last.Path != "" {
 		e := s.last
 		if at, err := time.Parse(time.RFC3339Nano, e.At); err == nil {
@@ -699,6 +701,20 @@ func crewTeamTabSyncFor(t crewTeam, viewer string) *crewTeamTabSync {
 	out.Attention = len(open) > 0
 	out.State = crewTeamSyncWord(crewTeamLocal{Downloaded: true}, false, out.Attention, nil)
 	return out
+}
+
+// crewTeamSizeLabel is a folder size in one short word for the Team files row: "640 KB", "12 MB", "1.2 GB".
+func crewTeamSizeLabel(n int64) string {
+	switch {
+	case n <= 0:
+		return ""
+	case n < 1<<20:
+		return fmt.Sprintf("%d KB", (n+1023)>>10)
+	case n < 1<<30:
+		return fmt.Sprintf("%d MB", (n+(1<<19))>>20)
+	default:
+		return fmt.Sprintf("%.1f GB", float64(n)/float64(1<<30))
+	}
 }
 
 // crewTeamSyncWord is the Team files row's one word for a copy (the full line stays for Team › Sync and the tooltip).
