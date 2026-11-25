@@ -1,5 +1,6 @@
 import { Button } from '../ui/Button'
 import { CliMcpSetupPanel } from '../integrations/CliMcpSetupPanel'
+import ConnectCodingAgents from '../providers/ConnectCodingAgents'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { visibleProductSurfaceIDs } from '../../products/productSurfaceConfig'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
@@ -16,6 +17,7 @@ export default function McpConnectBody({ codeReview, onNavigate }: { codeReview:
     <div className="space-y-6">
       <div className="space-y-5">
       <CliMcpSetupPanel />
+      <ConnectCodingAgents />
       {hasBullpen && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4"><p className="text-sm text-muted-foreground">For messages between your coding agents, open AgentBridge.</p><Button variant="outline" size="sm" onClick={() => { onNavigate?.(); openProductWorkspace('bullpen') }}>Open AgentBridge</Button></div>}
       <details className="rounded-lg border border-border p-4 text-sm"><summary className="cursor-pointer font-medium text-foreground">What your connections can access</summary><div className="mt-4 space-y-3">
       {codeReview && (
