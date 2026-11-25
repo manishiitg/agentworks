@@ -282,3 +282,39 @@ func TestRestartContinuationStorageDoesNotPersistPromptOrResolvedKey(t *testing.
 		}
 	}
 }
+
+// #3801: an idle chat with open requests nobody closed was woken after every app restart and repeated the same
+// "still waiting" reply. It gets one restart wake; the next restart skips it until a person or agent sends input.
+func TestRestartWakesIdleChatOnceUntilNewInput(t *testing.T) {
+	files := map[string]string{}
+	api := newConversationTurnQueueTestAPI(files)
+	api.eventStore = storeevents.NewEventStore(10)
+	defer api.eventStore.Stop()
+	ctx := context.Background()
+	record := func() restartContinueRecord {
+		document, err := api.readRestartContinueRecords(ctx, "owner")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return document.Chats["chat"]
+	}
+	if err := api.saveRestartContinueRequest(ctx, "owner", "chat", "person-turn", QueryRequest{Query: "work on it", AgentMode: "multi-agent"}); err != nil {
+		t.Fatal(err)
+	}
+	if reason := restartIdleResumeSkip(api, "chat", record(), nil, time.Now()); reason != "" {
+		t.Fatalf("first restart after a person's turn must wake the chat, skipped: %s", reason)
+	}
+	wake := restartContinueRequest(ctx, QueryRequest{AgentMode: "multi-agent"})
+	if err := api.saveRestartContinueRequest(ctx, "owner", "chat", "restart-idle:person-turn", wake); err != nil {
+		t.Fatal(err)
+	}
+	if reason := restartIdleResumeSkip(api, "chat", record(), nil, time.Now()); reason != "already_woken_no_new_input" {
+		t.Fatalf("second restart with no new input must not wake again, got %q", reason)
+	}
+	if err := api.saveRestartContinueRequest(ctx, "owner", "chat", "agent-message", QueryRequest{Query: "reply", AgentMode: "multi-agent", IsAutoNotification: true, TriggeredBy: "agent_message"}); err != nil {
+		t.Fatal(err)
+	}
+	if reason := restartIdleResumeSkip(api, "chat", record(), nil, time.Now()); reason != "" {
+		t.Fatalf("new agent input must allow the next restart wake, skipped: %s", reason)
+	}
+}
