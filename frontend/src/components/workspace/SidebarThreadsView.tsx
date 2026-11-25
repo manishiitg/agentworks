@@ -16,7 +16,6 @@ import { openAppProduct } from '../../utils/appNavigation'
 import { shortAgo } from '../chat/AgentIcon'
 
 export type SidebarViewMode = 'projects' | 'threads'
-type ThreadFilter = 'all' | 'active' | 'waiting'
 type ThreadStatus = 'running' | 'waiting' | 'idle'
 
 type ThreadItem = {
@@ -74,7 +73,6 @@ export function SidebarThreadsView({
   projects: ReadonlyArray<{ id: string; name: string }>
   scope: string
 }) {
-  const [filter, setFilter] = useState<ThreadFilter>('all')
   const [pinnedIds, setPinnedIds] = useState<string[]>(() => readPinnedThreads(scope))
   const [reload, setReload] = useState(0)
   const [loaded, setLoaded] = useState<{ identity: number; byProject: Record<string, AgentProfileSideChat[]>; loading: boolean; error: boolean }>(() => ({
@@ -221,15 +219,12 @@ export function SidebarThreadsView({
     </div>
   }
 
-  const filtered = threads.filter(item => {
-    if (filter === 'active') return item.status === 'running' || item.status === 'waiting'
-    if (filter === 'waiting') return item.status === 'waiting'
-    return true
-  })
   const pinnedOrder = new Map(pinnedIds.map((id, index) => [id, index]))
-  const pinned = filtered.filter(item => pinnedSet.has(item.id)).sort((a, b) => (pinnedOrder.get(a.id) ?? 0) - (pinnedOrder.get(b.id) ?? 0))
-  const attention = filtered.filter(item => !pinnedSet.has(item.id) && (item.status === 'running' || item.status === 'waiting'))
-  const recent = filtered.filter(item => !pinnedSet.has(item.id) && item.status === 'idle')
+  const pinned = threads.filter(item => pinnedSet.has(item.id)).sort((a, b) => (pinnedOrder.get(a.id) ?? 0) - (pinnedOrder.get(b.id) ?? 0))
+  const attention = threads
+    .filter(item => !pinnedSet.has(item.id) && (item.status === 'running' || item.status === 'waiting'))
+    .sort((a, b) => Number(b.status === 'waiting') - Number(a.status === 'waiting') || b.timestamp - a.timestamp)
+  const recent = threads.filter(item => !pinnedSet.has(item.id) && item.status === 'idle')
 
   const renderRow = (item: ThreadItem) => {
     const isPinned = pinnedSet.has(item.id)
@@ -256,33 +251,17 @@ export function SidebarThreadsView({
   }
 
   return <div aria-label="Threads" className="space-y-2">
-    <div role="group" aria-label="Filter threads" className="flex items-center gap-1 px-1">
-      {([['all', 'All'], ['active', 'Active'], ['waiting', 'Needs you']] as const).map(([value, label]) => (
-        <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)}
-          className={`rounded-full border px-2 py-0.5 text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filter === value ? 'border-border bg-background font-medium text-foreground' : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
-          {label}
-        </button>
-      ))}
-    </div>
-    {filtered.length === 0 ? (
-      <div className="mx-1 rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
-        <p className="font-medium text-foreground">Nothing matching this filter</p>
-        <p className="mt-0.5">All caught up here.</p>
-        <button type="button" onClick={() => setFilter('all')} className="mt-2 text-xs font-medium text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Show all threads</button>
-      </div>
-    ) : <>
-      {pinned.length > 0 && <section aria-label="Pinned threads" className="space-y-0.5">
-        <h2 className="px-2 pb-0.5 pt-1 text-[11px] font-medium text-muted-foreground">Pinned</h2>
-        <div role="list" className="space-y-0.5">{pinned.map(renderRow)}</div>
-      </section>}
-      {attention.length > 0 && <section aria-label="Active threads" className="space-y-0.5">
-        <h2 className="px-2 pb-0.5 pt-1 text-[11px] font-medium text-muted-foreground">Active now</h2>
-        <div role="list" className="space-y-0.5">{attention.map(renderRow)}</div>
-      </section>}
-      {recent.length > 0 && <section aria-label="Recent threads" className="space-y-0.5">
-        <h2 className="px-2 pb-0.5 pt-1 text-[11px] font-medium text-muted-foreground">Recent</h2>
-        <div role="list" className="space-y-0.5">{recent.map(renderRow)}</div>
-      </section>}
-    </>}
+    {pinned.length > 0 && <section aria-label="Pinned threads" className="space-y-0.5">
+      <h2 className="px-2 pb-0.5 pt-1 text-[11px] font-medium text-muted-foreground">Pinned</h2>
+      <div role="list" className="space-y-0.5">{pinned.map(renderRow)}</div>
+    </section>}
+    {attention.length > 0 && <section aria-label="Active threads" className="space-y-0.5">
+      <h2 className="px-2 pb-0.5 pt-1 text-[11px] font-medium text-muted-foreground">Active now</h2>
+      <div role="list" className="space-y-0.5">{attention.map(renderRow)}</div>
+    </section>}
+    {recent.length > 0 && <section aria-label="Recent threads" className="space-y-0.5">
+      <h2 className="px-2 pb-0.5 pt-1 text-[11px] font-medium text-muted-foreground">Recent</h2>
+      <div role="list" className="space-y-0.5">{recent.map(renderRow)}</div>
+    </section>}
   </div>
 }

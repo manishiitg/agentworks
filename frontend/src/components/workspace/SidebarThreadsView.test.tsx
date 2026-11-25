@@ -60,20 +60,13 @@ it('groups threads into Active now and Recent, filters, pins, and opens a thread
       await Promise.resolve()
     })
     expect(spy).toHaveBeenCalledTimes(2)
-    expect(host.querySelector('section[aria-label="Active threads"]')?.textContent).toContain('UI review')
-    expect(host.querySelector('section[aria-label="Active threads"]')?.textContent).toContain('Release check')
+    expect(host.querySelector('[aria-label="Filter threads"]')).toBeNull()
+    const activeItems = [...host.querySelectorAll('section[aria-label="Active threads"] [role="listitem"]')].map(el => el.textContent)
+    expect(activeItems[0]).toContain('Release check') // Needs you first
+    expect(activeItems[1]).toContain('UI review')
     expect(host.querySelector('section[aria-label="Recent threads"]')?.textContent).toContain('Main')
 
-    // Filter to Needs you shows only waiting thread.
-    const needsBtn = [...host.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === 'Needs you')!
-    await act(async () => needsBtn.click())
-    expect(host.textContent).toContain('Release check')
-    expect(host.textContent).not.toContain('UI review')
-    expect(host.textContent).not.toContain('Main')
-
-    // Reset filter to All, then pin Main.
-    const allBtn = [...host.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === 'All')!
-    await act(async () => allBtn.click())
+    // Pin Main.
     const pinMain = host.querySelector<HTMLButtonElement>('button[aria-label="Pin Main"]')!
     await act(async () => pinMain.click())
     expect(host.querySelector('section[aria-label="Pinned threads"]')?.textContent).toContain('Main')
