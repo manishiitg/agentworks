@@ -185,6 +185,13 @@ it('shows groups with their agents, forks under their parent without claiming mi
   expect(names('[aria-label="Group Design"]')).toEqual(['Parent', 'Parent (fork)', 'ATheir agent'])
   // Another person's agent outside any group is listed too, with their name (owner, 25 Nov).
   expect(names('[aria-label="Agents"] > div:not([aria-label^="Group"])')).toEqual(['Second', 'First', 'Third', 'BOther agent'])
+  // A local Mac project does not: Team members' agents stay in groups and the Team view.
+  const runtimeWindow = window as Window & { __APP_RUNTIME_CONFIG__?: { deploymentMode?: string } }
+  runtimeWindow.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'local' }
+  await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select} key="local"/>))
+  expect(names('[aria-label="Agents"] > div:not([aria-label^="Group"])')).toEqual(['Second', 'First', 'Third'])
+  delete runtimeWindow.__APP_RUNTIME_CONFIG__
+  await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
   // #3389: even a prolonged roster gap does not prove sharing was revoked.
   expect(host.textContent).not.toContain('no longer shared with you')
   await act(async () => { vi.advanceTimersByTime(3000) })
