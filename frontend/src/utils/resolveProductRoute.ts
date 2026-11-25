@@ -5,6 +5,7 @@ import api, { agentApi } from '../services/api'
 import { buildWorkflowPresetsFromManifests, useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
+import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 import { useModeStore } from '../stores/useModeStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import { openProductWorkspace } from './productWorkspaceNavigation'
@@ -101,7 +102,11 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
   }
   return () => {
     if (signal.aborted) return
+    // Opening the product the person just asked to create in (New project on the Projects page) keeps that request:
+    // the product shows its create form instead of finding nothing open and returning to Projects.
+    const { productCreateSurface, productCreateIntent, requestProductCreate } = useCommandDialogStore.getState()
     openProductWorkspace(route.surface)
+    if (!route.id && productCreateSurface === route.surface) requestProductCreate(productCreateSurface, productCreateIntent ?? undefined)
     if (!route.id) {
       const state = useProductSurfaceStore.getState()
       if (route.surface === 'work') state.setSelectedWorkProjectId(null)
