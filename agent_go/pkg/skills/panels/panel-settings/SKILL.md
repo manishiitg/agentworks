@@ -44,6 +44,7 @@ Start with the person's request and the current product. Read only the relevant 
 - Settings: read `references/settings/SKILL.md` when needed.
 - Models: read `references/models/SKILL.md` when needed.
 - Costs: read `references/costs/SKILL.md` when needed.
+- AI accounts (which are working or need a sign-in, sign in or out, remove one, add it on or move it to a server): use the `ai_accounts` tool, starting with `list`. Signing in returns a link the person approves in their browser; never ask for a login or key value in chat.
 - Appearance (the person's own theme, colours, fonts, background): read `references/appearance/SKILL.md` before changing it.
 - Local laptop: read `references/local-laptop/SKILL.md` when needed.
 - Terminal: read `references/terminal/SKILL.md` when needed.
