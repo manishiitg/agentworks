@@ -1,6 +1,6 @@
 import type { PollingEvent } from '../services/api-types'
 import { getTypedEventData } from '../generated/event-types'
-import { useChatStore } from '../stores/useChatStore'
+import { useChatStore, type ChatTab } from '../stores/useChatStore'
 import { useAuthStore } from '../stores/useAuthStore'
 import { activateTab } from './activateTab'
 import { CHAT_FOCUS_COMPOSER_EVENT, sendWorkspacePaneMessageToChat } from './workspacePaneChat'
@@ -43,20 +43,20 @@ export function fillOwnTabDraft(tabId:string,prompt:string):boolean {
  fillDraft(tabId,prompt);return true
 }
 
-/** The viewer's own Main tab in this Crew, when it is open here. */
-function ownMainTab(projectId: string) {
-  return Object.values(useChatStore.getState().chatTabs).find(tab => tab.metadata?.agentProfileProjectId === projectId && tab.metadata?.agentProfileIsMainChat && !tab.metadata?.isViewOnly && tab.metadata?.agentProfileTabCanWrite !== false)
+/** The viewer's own agent here that they used last (owner, 25 Nov, #4046: Main is not special). */
+function lastUsedTab(own: ChatTab[]) {
+  return [...own].sort((a, b) => (b.lastAccessedAt || 0) - (a.lastAccessedAt || 0))[0]
 }
 
 /** Each Access/Team card's Ask, the Team kit's Apply among them: sends the server's message to the chat the person has
  * open in this Crew (owner, 18 Nov, replacing "always their Main" of 6 Nov), through the one right-pane send, so it waits
  * behind a running turn and never touches what they are typing. When the open chat is not one of their own agents here,
- * it uses their Main, then their most recent own agent. False when none of their own agents is open in this Crew. */
+ * it uses the own agent they used last. False when none of their own agents is open in this Crew. */
 export function sendToOpenChat(projectId: string, prompt: string): boolean {
   if (!prompt.trim()) return false
   const own = ownWritableTabs(projectId)
   const active = useChatStore.getState().activeTabId
-  const target = own.find(tab => tab.tabId === active) || ownMainTab(projectId) || own[0]
+  const target = own.find(tab => tab.tabId === active) || lastUsedTab(own)
   if (!target) return false
   void sendWorkspacePaneMessageToChat({ tabId: target.tabId, message: prompt }).catch(error => console.warn('[TeamAsk] could not send to the open chat', error))
   return true
@@ -71,19 +71,19 @@ export function sendToTab(tabId: string, prompt: string): boolean {
   return true
 }
 
-/** "Answer from its chat" (#3577): the person's own Main (else their latest own agent here) opens and runs the
- * prompt, so their own agent answers from a teammate agent's chat backup without messaging it. */
+/** "Answer from its chat" (#3577): the person's own agent they used last here opens and runs the prompt, so their
+ * own agent answers from a teammate agent's chat backup without messaging it. */
 export function sendToOwnMain(projectId: string, prompt: string): boolean {
-  const main = ownMainTab(projectId) || ownWritableTabs(projectId)[0]
+  const main = lastUsedTab(ownWritableTabs(projectId))
   if (main && sendToTab(main.tabId, prompt)) return true
-  useChatStore.getState().addToast('Open your own Main tab in this project, then try again.', 'error')
+  useChatStore.getState().addToast('Open one of your own agents in this project, then try again.', 'error')
   return false
 }
 
-/** The viewer's own Main opens with the words in its chat box, not sent (the Share tree's Ask, written by the server).
- * False when their Main's tab is not open. */
+/** The viewer's own agent they used last here opens with the words in its chat box, not sent (the Share tree's Ask,
+ * written by the server). False when none of their agents is open here. */
 export function fillMainDraft(projectId: string, prompt: string): boolean {
-  const main = ownMainTab(projectId) || ownWritableTabs(projectId)[0]
+  const main = lastUsedTab(ownWritableTabs(projectId))
   if (!main) return false
   fillDraft(main.tabId, prompt)
   return true
@@ -113,13 +113,12 @@ export function fillOwnAgentDraft(prompt: string): boolean {
   return true
 }
 
-/** Use the existing agent-mediated Ask until a dedicated recipient chat exists.
- * Main is optional: without an open Main, reuse the person's most recently
- * accessed writable agent in this Crew. Never use a teammate's or watched tab.
+/** Use the existing agent-mediated Ask until a dedicated recipient chat exists:
+ * the person's open agent in this Crew, else the one they used last. Never use a teammate's or watched tab.
  * Opening only drafts the exact recipient; sending remains the person's choice. */
 export function fillAskFromMyAgentDraft(projectId: string, ownerName: string, agentName: string, address?: string, question = ''): boolean {
   const own = ownWritableTabs(projectId)
-  const sender = own.find(tab => tab.metadata?.agentProfileIsMainChat) || own[0]
+  const sender = own.find(tab => tab.tabId === useChatStore.getState().activeTabId) || lastUsedTab(own)
   if (!sender) return false
   const owner = ownerShortName(ownerName) || 'their'
   const recipient = ownerName === 'you' ? `your ${agentName}` : `${owner}'s ${agentName}`

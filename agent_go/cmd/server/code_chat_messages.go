@@ -111,9 +111,10 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 			chat.Examples = identity.Examples
 		}
 		chat.forkedFromKey = tab.Identity.ForkedFrom
-		chat.Hidden = !chat.IsMain && tab.Identity.Unpinned
+		// Main hides like any agent (owner, 25 Nov, #4046: Main is not special).
+		chat.Hidden = tab.Identity.Unpinned
 		if own, ok := mine[record.ConversationKey]; ok && tab.OwnerID != userID {
-			chat.Hidden = !chat.IsMain && own.Unpinned
+			chat.Hidden = own.Unpinned
 		}
 		if record.SessionID == sessionID && tab.OwnerID == userID {
 			project.Self, found = chat, true
@@ -159,9 +160,6 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 		}
 	}
 	sort.SliceStable(project.Chats, func(i, j int) bool {
-		if project.Chats[i].IsMain != project.Chats[j].IsMain {
-			return project.Chats[i].IsMain
-		}
 		return project.Chats[i].UpdatedAt > project.Chats[j].UpdatedAt
 	})
 	return project, nil
@@ -833,8 +831,6 @@ func fileForkUnderMaker(ctx context.Context, userID, profileID, makerKey, source
 // fork out from under it, the fork is no longer the chat's child and only the person removes it (owner, 2026-11-21).
 func childForkRefusal(ctx context.Context, userID string, project codeChatProject, chat codeChat) string {
 	switch {
-	case chat.IsMain || chat.Key == project.ProjectID:
-		return "Main can't be deleted"
 	case project.Self.Key == "" || chat.Key == project.Self.Key:
 		return "a chat can't delete itself"
 	case chat.OwnerID != "" && chat.OwnerID != userID:

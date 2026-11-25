@@ -227,7 +227,7 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		defaultChat := record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(projectID, tab.OwnerID)
 		ownMain := tab.OwnerID == userID && defaultChat
 		if ownMain && main == nil && r.URL.Query().Get("with_main") == "1" {
-			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: firstNonEmptyTrimmed(tab.Identity.Name, "Main"), Purpose: tab.Identity.Purpose, Examples: tab.Identity.Examples, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
+			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: firstNonEmptyTrimmed(tab.Identity.Name, "Main"), Purpose: tab.Identity.Purpose, Examples: tab.Identity.Examples, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: !tab.Identity.Unpinned, Position: tab.Identity.Position, IsMain: true, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
 			main.TeamNewInTeam = joinDefault(record)
 			if runtime, err := effectiveProfileChatModel(slot.profile, slot.binding, record, tab.Identity); err == nil {
 				main.Provider, main.ModelID = runtime.Provider, runtime.ModelID
@@ -268,6 +268,10 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 	timing.rows, step = time.Since(step), time.Now()
 	out = append(out, scheduleOwnChatRows(r.Context(), userID, slot.profile.ID, projectID, slot.binding.WorkspacePath, mine)...)
 	timing.schedules = time.Since(step)
+	// Main is placed, pinned and hidden like any agent (owner, 25 Nov, #4046: Main is not special).
+	if main != nil {
+		out = append(out, *main)
+	}
 	sort.SliceStable(out, func(i, j int) bool {
 		a, b := out[i].Position, out[j].Position
 		if (a > 0) != (b > 0) {
@@ -281,10 +285,7 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 	// Each agent's last message time, so the left menu still shows "2m" after an app restart, when no session is live
 	// yet (#3406). The time only: a teammate's message text follows their chat-sharing rule elsewhere.
 	if slot.profile.ID == crewProfileID {
-		withSideChatLastMessageAt(r.Context(), projectID, out, main)
-	}
-	if main != nil {
-		out = append([]AgentProfileSideChat{*main}, out...)
+		withSideChatLastMessageAt(r.Context(), projectID, out, nil)
 	}
 	return out, nil
 }
