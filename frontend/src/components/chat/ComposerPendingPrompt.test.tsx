@@ -3,7 +3,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it } from 'vitest'
 import { ComposerPendingPrompt } from './ComposerPendingPrompt'
-import { codingAgentQuestionCards, SKIPPED_QUESTION_ANSWER } from '../../utils/codingAgentQuestions'
+import { codingAgentQuestionCards, questionsOfThisTurn, SKIPPED_QUESTION_ANSWER } from '../../utils/codingAgentQuestions'
 import type { PollingEvent } from '../../services/api-types'
 import type { CodingAgentChoiceAnswer, CodingAgentQuestionPrompt } from '../../utils/codingAgentQuestions'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -126,4 +126,18 @@ it('skips a question the person does not want to answer', async () => {
     act(() => root.unmount())
     host.remove()
   }
+})
+
+// An answered question from an earlier turn whose settlement was outside the loaded
+// history was pinned above the message box on every new turn. Only this turn's
+// questions, or ones the server reloaded after a restart, can be waiting now.
+it('pins only questions from the running turn or reloaded after a restart', () => {
+  const turnStart = Date.parse('2026-01-02T10:00:00Z')
+  const event = (promptId: string, kind: string, timestamp: string): PollingEvent => ({ id: `${promptId}:${kind}`, type: 'coding_agent_question', timestamp, data: { data: { provider: 'codex-cli', prompt_id: promptId, kind } } } as PollingEvent)
+  const keys = questionsOfThisTurn([
+    event('old', 'requested', '2026-01-01T09:00:00Z'),
+    event('restored', 'recovered', '2026-01-01T09:00:00Z'),
+    event('now', 'requested', '2026-01-02T10:00:05Z'),
+  ], turnStart)
+  expect([...keys].sort()).toEqual(['codex-cli:now', 'codex-cli:restored'])
 })
