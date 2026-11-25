@@ -978,3 +978,27 @@ func TestTurnReposReuseUnchangedCheckouts(t *testing.T) {
 		t.Fatalf("edit in the changed checkout lost: %v %+v", err, comparison.Changes)
 	}
 }
+
+// #3878 proof run: checkouts first read together must not all be redone by one
+// reply when their reads age out; only the oldest few are.
+func TestTurnReposRedoAgedReadsAFewAtATime(t *testing.T) {
+	f := newCrew(t)
+	for _, name := range []string{"one", "two", "three"} {
+		f.repo(name, map[string]string{"a.txt": name})
+	}
+	f.s.Watch = &fakeRepoWatch{tokens: map[string]uint64{}}
+	if _, err := f.s.BeginGitTurn(t.Context(), "aged"); err != nil {
+		t.Fatal(err)
+	}
+	c := &f.s.state().repos
+	c.mu.Lock()
+	for dir, r := range c.reads {
+		r.at = r.at.Add(-2 * repoReuseFor)
+		c.reads[dir] = r
+	}
+	c.mu.Unlock()
+	after, err := f.s.FinishGitTurn(t.Context(), "aged")
+	if err != nil || after.AfterCapture.ReposReused != 3-repoRedoPerCapture {
+		t.Fatalf("aged reads not spread: %v %+v", err, after.AfterCapture)
+	}
+}

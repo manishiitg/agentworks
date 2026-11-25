@@ -42,6 +42,8 @@ type workspaceGitWatch struct {
 	lastUsed time.Time
 	repos    map[string]*workspaceGitCached // real checkout folder -> its last status
 
+	wideLogAt time.Time
+
 	listChanges, listRead uint64 // the checkout list is fresh while these match
 	list                  []string
 	listMore              bool
@@ -175,11 +177,30 @@ func (w *workspaceGitWatch) note(name string, structural bool) {
 			w.listChanges++
 		}
 	}
+	marked := 0
 	for dir, c := range w.repos {
 		if workspaceGitChangeAffects(dir, c, name) {
 			c.changes++
+			marked++
 		}
 	}
+	if marked > 3 {
+		w.logWide("change", name, marked)
+	}
+}
+
+// logWide names a change that made several checkouts read again (#3878 proof run: every checkout lost its reuse at
+// once), at most every 10 s per watch.
+func (w *workspaceGitWatch) logWide(kind, name string, marked int) {
+	if time.Since(w.wideLogAt) < 10*time.Second {
+		return
+	}
+	w.wideLogAt = time.Now()
+	rel, err := filepath.Rel(w.root, name)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		rel = filepath.Base(name)
+	}
+	log.Printf("[WORKSPACE_GIT] event=reread_many kind=%s path=%q checkouts=%d", kind, filepath.ToSlash(rel), marked)
 }
 
 // workspaceGitChangeAffects: a change at name can alter the status of the checkout at dir. Inside the checkout's own
@@ -226,6 +247,7 @@ func (w *workspaceGitWatch) overflow() {
 	for _, c := range w.repos {
 		c.changes++
 	}
+	w.logWide("dropped_events", w.root, len(w.repos))
 }
 
 // workspaceGitStatusChanged marks a checkout, and every checkout sharing its repository, changed: called after a Git
@@ -235,11 +257,15 @@ func workspaceGitStatusChanged(dir string) {
 		w := v.(*workspaceGitWatch)
 		w.mu.Lock()
 		if c := w.repos[dir]; c != nil {
-			common := c.common
+			common, marked := c.common, 0
 			for _, other := range w.repos {
 				if other == c || (common != "" && other.common == common) {
 					other.changes++
+					marked++
 				}
+			}
+			if marked > 3 {
+				w.logWide("git_action", dir, marked)
 			}
 		}
 		w.mu.Unlock()
