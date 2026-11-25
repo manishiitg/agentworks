@@ -7,7 +7,7 @@ export type SyncProgress = { direction: 'upload' | 'download'; files: number; by
 
 /** This Mac's copy of a team folder, from its sync client: the round in progress and the server-written line for it
  * (crew_team_desktop.go, worded like the website's). Polled every 2 s while a round runs, else every 10 s. */
-export type LocalSync = { line?: string; problem?: boolean; attention?: boolean; progress?: SyncProgress | null }
+export type LocalSync = { line?: string; problem?: boolean; attention?: boolean; progress?: SyncProgress | null; state?: string; stale?: string }
 export function useLocalSync(target?: TeamTarget, enabled = true): LocalSync | undefined {
   const [local, setLocal] = useState<LocalSync>()
   useEffect(() => {

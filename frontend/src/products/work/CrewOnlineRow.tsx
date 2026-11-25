@@ -1,8 +1,9 @@
 import { WorkspaceContextRow } from '../../components/workspace/WorkspaceContextCard'
 import { cloudStateIcon, type CloudState } from './YourComputerPanel'
 
-/** One destination, not an Online group with a second Mac online link. */
+/** One destination: whether this project opens from your phone and the website ("Phone & web", On or Off). */
 export function CrewOnlineRow({ state, theirs = false, onOpen }: { state?: CloudState; theirs?: boolean; onOpen: () => void }) {
-  const status = !state ? 'Checking…' : state === 'mac' || state === 'online' ? 'Online' : 'Offline'
-  return <WorkspaceContextRow icon={cloudStateIcon(state === 'offline' ? 'mac_off' : state, theirs)} detail={status} onClick={onOpen}>Mac online</WorkspaceContextRow>
+  const on = state === 'mac' || state === 'online'
+  const status = !state ? 'Checking…' : on ? 'On' : 'Off'
+  return <WorkspaceContextRow icon={cloudStateIcon(state === 'offline' ? 'mac_off' : state, theirs)} detail={status} hint={state && !on ? 'Turn on to use this project from your phone' : undefined} onClick={onOpen}>Phone &amp; web</WorkspaceContextRow>
 }
