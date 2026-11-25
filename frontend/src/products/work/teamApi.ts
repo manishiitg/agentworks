@@ -155,6 +155,7 @@ function watchTeamTab(project: string, key: string, workspace: string, listener:
     // A turn sends many crew_panel notices. Never recursively re-read after a slow
     // request: live notices wait for the shared refresh window instead.
     let reading = false
+    let again = false
     let last = ''
     const created: TabEntry = { state: { error: '' }, listeners: new Set(), load: async () => {}, stop: () => {} }
     const publish = (state: TeamTabState) => {
@@ -183,6 +184,8 @@ function watchTeamTab(project: string, key: string, workspace: string, listener:
         publish({ ...created.state, error: teamError(e) })
       }
       reading = false
+      // A save landed while this read was out: read once more so the screen shows it.
+      if (again) { again = false; void created.load() }
     }
     let refreshTimer: ReturnType<typeof setTimeout> | undefined
     let lastRead = 0
@@ -193,7 +196,13 @@ function watchTeamTab(project: string, key: string, workspace: string, listener:
     }
     const timer = window.setInterval(() => { if (!document.hidden) reload() }, 60000)
     document.addEventListener('visibilitychange', reload)
-    const teamUpdated = () => reload()
+    // The person's own change (saveTeam and the like) shows at once; other notices wait for the shared window.
+    const teamUpdated = (event: Event) => {
+      if (!(event as CustomEvent<{ own?: boolean }>).detail?.own) return reload()
+      clearTimeout(refreshTimer); refreshTimer = undefined
+      if (reading) again = true
+      else void created.load()
+    }
     window.addEventListener('agentworks:team-updated', teamUpdated)
     const unlive = liveFeed.subscribe(['crew_panel', 'sessions'], null, reload, project)
     created.stop = () => { document.removeEventListener('visibilitychange', reload); clearTimeout(refreshTimer); window.clearInterval(timer); window.removeEventListener('agentworks:team-updated', teamUpdated); unlive() }
@@ -227,7 +236,9 @@ export function useTeamTab(project?: string, connection?: string): TeamTabState 
   return { ...(loaded?.key === key ? loaded.state : { error: '' }), retry }
 }
 
-const changed = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
+/** The person changed the Team here: every Team screen re-reads now, not after the shared refresh window. */
+export const teamChanged = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated', { detail: { own: true } }))
+const changed = teamChanged
 
 export async function saveTeam(target: TeamTarget, team: Team): Promise<Team> {
   const saved = target.connection && target.localProject
