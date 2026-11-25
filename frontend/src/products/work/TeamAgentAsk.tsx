@@ -1,6 +1,6 @@
 import { randomUUID } from '../../utils/randomUUID'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowUp, BookOpen, Loader2, Square } from 'lucide-react'
+import { ArrowUp, Loader2, Square } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { ChatComposerArea, ChatComposerAttachmentTiles, ChatComposerBand, ChatComposerControls, ChatComposerForm, ChatComposerTextarea, resizeChatComposerTextarea } from '../../components/chat/ChatComposer'
 import { ComposerAttachButton } from '../../components/chat/ComposerActionsMenu'
@@ -13,7 +13,6 @@ import api, { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { type TeamTarget } from './teamApi'
 import { useTeammateChatIdentity } from './TeammateChatIdentity'
-import { sendToOwnMain } from '../../utils/agentPurposeDraft'
 
 type Reply = { message_id:string; message:string; sender?:string; files?:string[] }
 /** What the teammate's agent runs, as its Team row says; shown, never changeable (it is their agent). */
@@ -43,7 +42,9 @@ const fileBase64=(file:File)=>new Promise<string>((resolve,reject)=>{const reade
 
 /** One AgentBridge ask thread to an admitted address over the Team's saved connection; never a navigation or a turn in someone's own chat. */
 // answersAbove: the agent's live chat is shown above this box and already has the answer, so the box lists nothing twice.
-export function AgentAskThread({target,address,label,scope,enabled,sender,agent,children,answerFromChat,answersAbove=false}:{target?:TeamTarget;address?:string;label:string;scope:string;enabled:boolean;sender?:string;agent?:AskAgentRuntime;children?:ReactNode;answerFromChat?:(question:string)=>void;answersAbove?:boolean}) {
+// thread: which conversation the box is in (who is asked); changing it starts a new one but keeps what you typed.
+// wrap: the words actually sent (Quick answer sends your question inside an instruction to your own agent).
+export function AgentAskThread({target,address,label,scope,thread='',enabled,sender,agent,children,answersAbove=false,top,chip,placeholder,wrap,onQuick}:{target?:TeamTarget;address?:string;label:string;scope:string;thread?:string;enabled:boolean;sender?:string;agent?:AskAgentRuntime;children?:ReactNode;answersAbove?:boolean;top?:ReactNode;chip?:ReactNode;placeholder?:string;wrap?:(text:string)=>string;onQuick?:()=>void}) {
  const [threadScope,setThreadScope]=useState(scope)
  const [draft,setDraft]=useState(''),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false)
  const [replies,setReplies]=useState<Reply[]>([]),[inbox,setInbox]=useState('')
@@ -55,6 +56,8 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,agent,
  const cursor=useRef(0)
  const currentScope=useRef(scope);currentScope.current=scope
  useEffect(()=>{setThreadScope(scope);setDraft('');setInbox('');setReplies([]);setError('');setStatus('');setBusy(false);setOffline(null);setFiles([]);setRunning(null);cursor.current=0},[scope])
+ const firstThread=useRef(true)
+ useEffect(()=>{if(firstThread.current){firstThread.current=false;return}setInbox('');setReplies([]);setError('');setStatus('');setOffline(null);setRunning(null);cursor.current=0},[thread])
  useEffect(()=>{
   if(!enabled||!inbox||!address||!target) return
   const identity=captureChatIdentity()
@@ -86,7 +89,7 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,agent,
   setBusy(true);setError('');setOffline(null)
   try{
    const attachments=await Promise.all(sending.map(async file=>({file_name:file.name,file_base64:await fileBase64(file)})))
-   const data=await teamAgentMail(target,{action:'ask',...(inbox?{inbox_id:inbox}:{target:address}),message:text,submission_id:randomUUID(),...(attachments.length?{attachments}:{}),...(wait?{offline:'wait'}:{})})
+   const data=await teamAgentMail(target,{action:'ask',...(inbox?{inbox_id:inbox}:{target:address}),message:wrap?wrap(text):text,submission_id:randomUUID(),...(attachments.length?{attachments}:{}),...(wait?{offline:'wait'}:{})})
    if(!isChatIdentityCurrent(identity)||currentScope.current!==sendScope)return
    if(!data.inbox_id)throw new Error('No conversation receipt was returned. Check delivery before sending again.')
    const id=data.message_id||randomUUID()
@@ -132,21 +135,21 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,agent,
     {offline&&<div role="alert" className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-xs text-muted-foreground">
      <span className="min-w-0">{offline.line}{offline.readable?' Its earlier conversation may already have the answer.':''}</span>
      <Button type="button" variant="outline" size="xs" disabled={busy||(!draft.trim()&&!files.length)} onClick={()=>void send(true)}>Send when it's back</Button>
-     {answerFromChat&&offline.readable&&<Button type="button" variant="outline" size="xs" disabled={!draft.trim()} onClick={()=>{answerFromChat(draft.trim());setDraft('');setOffline(null)}}>Quick answer now</Button>}
+     {onQuick&&offline.readable&&<Button type="button" variant="outline" size="xs" onClick={()=>{setOffline(null);onQuick()}}>Quick answer now</Button>}
     </div>}
+    {top}
     <ChatComposerForm product onSubmit={event=>{event.preventDefault();if(running)void stop();else void send()}}>
      {files.length>0&&<ChatComposerAttachmentTiles files={files} onRemove={index=>setFiles(old=>old.filter((_,at)=>at!==index))}/>}
-     <ChatComposerTextarea product className="!min-h-[52px]" ref={box} aria-label={label} placeholder={`${label}…`} value={value} disabled={!admitted||busy}
+     <ChatComposerTextarea product className="!min-h-[52px]" ref={box} aria-label={label} placeholder={placeholder||`${label}…`} value={value} disabled={!admitted||busy}
       onChange={event=>{setDraft(event.target.value);if(offline)setOffline(null)}}
       onPaste={event=>{const images=getClipboardImageFiles(event.clipboardData);if(images.length&&admitted){event.preventDefault();addFiles(images)}}}
       onKeyDown={event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();if(!running)void send()}}}/>
      <ChatComposerControls>
       <span className="flex min-w-0 max-w-full flex-wrap items-center gap-1">
        <ComposerAttachButton uploading={busy&&files.length>0} onAttach={()=>{if(admitted&&!running)picker.current?.click()}}/>
-       {runtime&&<span title="This is their agent, so its AI is their choice" className="inline-flex min-w-0 max-w-48 items-center gap-1 truncate px-1 text-[11px] text-muted-foreground"><CodingCliIcon provider={agent?.cli||agent?.engine||'terminal'} className="inline-flex h-3 w-3 shrink-0 items-center"/><span className="truncate">{runtime}</span></span>}
+       {chip??(runtime&&<span title="This is their agent, so its AI is their choice" className="inline-flex min-w-0 max-w-48 items-center gap-1 truncate px-1 text-[11px] text-muted-foreground"><CodingCliIcon provider={agent?.cli||agent?.engine||'terminal'} className="inline-flex h-3 w-3 shrink-0 items-center"/><span className="truncate">{runtime}</span></span>)}
       </span>
       <span className="flex shrink-0 items-center gap-1">
-      {answerFromChat&&!running&&<Button type="button" variant="ghost" size="xs" title="Your own agent answers from what this agent has already said. Nothing is sent to it or its person." disabled={!admitted||!draft.trim()} onClick={()=>{answerFromChat(draft.trim());setDraft('')}} className="gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted [&_svg]:size-3.5"><BookOpen aria-hidden="true"/>Quick answer</Button>}
       {running
        ?<Button type="submit" variant="ghost" size="icon" aria-label="Stop your ask" title="Stop your ask" disabled={stopping} className="h-7 w-7 rounded-full p-0 bg-diff-del/15 text-diff-del hover:bg-diff-del/25 hover:text-diff-del">{stopping?<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true"/>:<Square className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true"/>}</Button>
        :<Button type="submit" variant="ghost" size="xs" aria-label={busy?'Sending':'Send'} title="Send (Enter)" disabled={!canSend} className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">{busy?<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true"/>:<ArrowUp className="h-3.5 w-3.5" aria-hidden="true"/>}</Button>}
@@ -160,24 +163,46 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,agent,
  </section>
 }
 
-/** The bottom of a teammate's agent view (owner, 20 Nov): one "Ask <agent>…" box. It sends an AgentBridge ask from
- * you to the agent's admitted address, and its answer shows here. The server decides whether you may ask. */
+/** The bottom of a teammate's agent view (owner, 20 Nov): one box with two ways to ask (owner, 25 Nov mockup).
+ * Ask <agent>: an AgentBridge ask to its admitted address; the server decides whether you may ask.
+ * Quick answer: one of your own agents answers from what this agent already said; it is not messaged. */
 export function TeamAgentAsk({tabId}:{tabId:string}) {
  const identity=useTeammateChatIdentity(tabId)
  if(!identity)return null
- const {name,person,place,online,ask,runtime,readable,project}=identity
- // A readable chat (Live chat, on the server), online or offline: the person may have their own agent answer from it
- // instead of asking the agent (#3577).
- const answerFromChat=readable&&project&&ask.address?(question:string)=>{
-  const prompt=`Answer my question from what ${person}'s agent ${name} has already said, without messaging that agent or ${person}: read its chat with read_agent_chat (target ${ask.address}; search a few key words, then read the matching lines), answer in plain words, and say the answer comes from what ${name} said earlier, so the last few minutes may be missing. My question: ${question}`
-  sendToOwnMain(project,prompt)
- }:undefined
- return <TeammateAsk target={ask.target} address={ask.address} name={name} where={place} online={online} enabled={ask.enabled} agent={runtime} scope={`${tabId}:${ask.address||''}`} answerFromChat={answerFromChat} answersAbove={online!==false&&readable}/>
+ const {name,person,place,online,ask,runtime,readable,own}=identity
+ // Its chat can be read (Live chat, on the server), online or offline, and you have an agent of your own in this Team (#3577).
+ const quick=readable&&ask.address&&own.length?{agents:own,prompt:(question:string)=>`Answer my question from what ${person}'s agent ${name} has already said, without messaging that agent or ${person}: read its chat with read_agent_chat (target ${ask.address}; search a few key words, then read the matching lines), answer in plain words, and say the answer comes from what ${name} said earlier, so the last few minutes may be missing. My question: ${question}`}:undefined
+ return <TeammateAsk target={ask.target} address={ask.address} name={name} where={place} online={online} enabled={ask.enabled} agent={runtime} scope={`${tabId}:${ask.address||''}`} quick={quick} answersAbove={online!==false&&readable}/>
 }
 
-export function TeammateAsk({target,address,name,where,online,enabled,scope,agent,answerFromChat,answersAbove}:{target?:TeamTarget;address?:string;name:string;where:string;online?:boolean;enabled:boolean;scope:string;agent?:AskAgentRuntime;answerFromChat?:(question:string)=>void;answersAbove?:boolean}) {
- const hint=!enabled?`You can't ask ${name} right now.`:online===false?`${where.charAt(0).toUpperCase()}${where.slice(1)} is offline. Your question reaches it when it is back${answerFromChat?', or choose Quick answer now to get an answer from what it has already said':''}.`:`Goes to ${name}. Its answer shows ${answersAbove?'in its chat above':'here'}.${answerFromChat?` Or choose Quick answer: your own agent answers from what ${name} has already said, without disturbing it.`:''}`
- return <AgentAskThread target={target} address={address} label={`Ask ${name}`} scope={scope} enabled={enabled} sender={name} agent={agent} answerFromChat={answerFromChat} answersAbove={answersAbove}>
-  {hint}
+export type OwnAskAgent={name:string;address:string;runtime:AskAgentRuntime}
+const QUICK_AGENT='agentworks:quick-answer-agent'
+
+export function TeammateAsk({target,address,name,where,online,enabled,scope,agent,quick,answersAbove}:{target?:TeamTarget;address?:string;name:string;where:string;online?:boolean;enabled:boolean;scope:string;agent?:AskAgentRuntime;quick?:{agents:OwnAskAgent[];prompt:(question:string)=>string};answersAbove?:boolean}) {
+ const offline=online===false,canQuick=!!quick?.agents.length
+ // Offline opens on Quick answer, online on asking the agent; you can switch either way.
+ const [mode,setMode]=useState<'agent'|'quick'>(offline&&canQuick?'quick':'agent')
+ useEffect(()=>{setMode(offline&&canQuick?'quick':'agent')},[scope,offline,canQuick])
+ const [picked,setPicked]=useState(()=>{try{return localStorage.getItem(QUICK_AGENT)||''}catch{return ''}})
+ const helper=quick?.agents.find(row=>row.address===picked)||quick?.agents[0]
+ const quickAgent=mode==='quick'?helper:undefined,isQuick=!!quickAgent
+ const choose=(address:string)=>{setPicked(address);try{localStorage.setItem(QUICK_AGENT,address)}catch{/* kept for this view only */}}
+ const top=canQuick?<div role="radiogroup" aria-label="How to ask" className="mb-1 ml-0.5 inline-flex rounded-full border border-border bg-background p-0.5 text-xs">
+  {([['agent',`Ask ${name}`],['quick','Quick answer']] as const).map(([value,text])=><button key={value} type="button" role="radio" aria-checked={mode===value} onClick={()=>setMode(value)}
+   title={value==='quick'?`One of your own agents answers from what ${name} already said. ${name} isn't messaged.`:`Your message goes to ${name}.`}
+   className={cn('rounded-full px-2.5 py-0.5 text-muted-foreground hover:text-foreground',mode===value&&'bg-muted font-semibold text-foreground')}>{text}</button>)}
+ </div>:undefined
+ const helperRuntime=quickAgent?[quickAgent.runtime.cli||quickAgent.runtime.engine,quickAgent.runtime.model_id].filter(Boolean).join(' · '):''
+ const chip=quickAgent?<label title="Which of your agents answers" className="inline-flex min-w-0 max-w-64 items-center gap-1 rounded px-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground">
+  <CodingCliIcon provider={quickAgent.runtime.cli||quickAgent.runtime.engine||'terminal'} className="inline-flex h-3 w-3 shrink-0 items-center"/>
+  <select aria-label="Which of your agents answers" value={quickAgent.address} onChange={event=>choose(event.target.value)} className="min-w-0 truncate bg-transparent outline-none">
+   {quick!.agents.map(row=><option key={row.address} value={row.address}>{row.name}{row.address===quickAgent.address&&helperRuntime?` · ${helperRuntime}`:''}</option>)}
+  </select>
+ </label>:undefined
+ const placeholder=quickAgent?`Your ${quickAgent.name} answers from what ${name} already said. ${name} isn't messaged.`
+  :offline?`Message ${name}. It answers when it's back online.`:`Message ${name}. It answers ${answersAbove?'in its chat above':'here'}.`
+ return <AgentAskThread target={target} address={quickAgent?quickAgent.address:address} label={`Ask ${name}`} scope={scope} thread={quickAgent?`quick:${quickAgent.address}`:'agent'} enabled={enabled} sender={quickAgent?quickAgent.name:name}
+  agent={isQuick?undefined:agent} answersAbove={!isQuick&&answersAbove} top={top} chip={chip} placeholder={placeholder} wrap={quickAgent&&quick?quick.prompt:undefined} onQuick={canQuick?()=>setMode('quick'):undefined}>
+  {!enabled?`You can't ask ${name} right now.`:offline&&!isQuick?`${where.charAt(0).toUpperCase()}${where.slice(1)} is offline. Your message reaches it when it's back.`:undefined}
  </AgentAskThread>
 }
