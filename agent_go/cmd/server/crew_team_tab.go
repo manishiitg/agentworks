@@ -154,15 +154,15 @@ type crewTeamTabSync struct {
 
 type crewTeamTabReply struct {
 	Reachable []crewTeamPanelReach `json:"reachable"`
-	// AITeammates are the Team's online projects (#3664) for the panel's Team section; their agents are the Reachable
-	// rows whose person_id is the teammate's ID (owner, 25 Nov: show AI teammates beside people).
-	AITeammates []crewTeamTabAITeammate `json:"ai_teammates,omitempty"`
-	Team      crewTeam             `json:"team"`
-	Intro     string               `json:"intro"`
-	People    []crewTeamTabPerson  `json:"people"`
-	Live      crewTeamLiveView     `json:"live"`
-	Agents    []crewTeamTabAgent   `json:"agents"`
-	Sync      *crewTeamTabSync     `json:"sync,omitempty"`
+	// OnlineProjects are the server projects with this Team in their Users (#4087), for the panel's Team section; their
+	// agents are the Reachable rows whose person_id is the project's ID.
+	OnlineProjects []crewTeamTabOnlineProject `json:"online_projects,omitempty"`
+	Team           crewTeam                   `json:"team"`
+	Intro          string                     `json:"intro"`
+	People         []crewTeamTabPerson        `json:"people"`
+	Live           crewTeamLiveView           `json:"live"`
+	Agents         []crewTeamTabAgent         `json:"agents"`
+	Sync           *crewTeamTabSync           `json:"sync,omitempty"`
 	// The Team's settings are the server's record, changed from the website, the Mac app, chat or MCP; the owner's Mac
 	// applies it when it syncs (crew_team_apply.go). CanSwitch: the Team on/off switch, the Crew's main owner only
 	// (owner, 5 Nov).
@@ -191,7 +191,7 @@ type crewTeamTabReply struct {
 	HelpAsk string             `json:"help_ask,omitempty"`
 }
 
-type crewTeamTabAITeammate struct {
+type crewTeamTabOnlineProject struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Line string `json:"line"`
@@ -384,7 +384,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	lap("reach")
 	for _, p := range byPerson {
 		if _, project := crewTeamMemberProjectID(p.UserID); project {
-			out.AITeammates = append(out.AITeammates, crewTeamTabAITeammate{ID: p.UserID, Name: strings.TrimPrefix(p.Name, "Project: "), Line: "Online 24/7 on the server"})
+			out.OnlineProjects = append(out.OnlineProjects, crewTeamTabOnlineProject{ID: p.UserID, Name: strings.TrimPrefix(p.Name, "Project: "), Line: "Online 24/7 on the server"})
 		}
 	}
 	seen := map[string]crewTeamAgentsPerson{}

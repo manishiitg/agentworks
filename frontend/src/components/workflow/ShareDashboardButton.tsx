@@ -24,7 +24,9 @@ type ShareState = {
 /** users: a project on the server only. Users work in it through chat with its setup and cannot change it; each has extra
  * locked paths besides always_locked. */
 type ProjectUser = Person & { locked_paths?: string[] }
-type OwnersState = { owner?: Person; co_owners: Person[]; can_manage: boolean; users?: ProjectUser[]; always_locked?: string[] }
+/** A Team in the project's Users (#4087): everyone in it works here as a User. */
+type ProjectTeam = { team_id: string; name: string; owner: string; people: number; can_remove: boolean }
+type OwnersState = { owner?: Person; co_owners: Person[]; can_manage: boolean; users?: ProjectUser[]; always_locked?: string[]; teams?: ProjectTeam[]; team_choices?: ProjectTeam[] }
 const who = (person: Person) => person.email || person.username || person.id
 const audience = (state: ShareState) => state.mode === 'everyone' ? 'Everyone' : state.mode === 'people' ? 'Chosen people' : state.has_owners ? 'Only owners' : 'Only me'
 const errorText = (cause: unknown, fallback: string) => {
@@ -159,7 +161,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     if (emails.includes(value)) return
     void run(() => shareList([...emails, value]))
   }
-  const changeUsers = async (action: 'user_add' | 'user_remove' | 'user_files', value: string, lockedPaths?: string[]) => {
+  const changeUsers = async (action: 'user_add' | 'user_remove' | 'user_files' | 'team_add' | 'team_remove', value: string, lockedPaths?: string[]) => {
     const { data } = await api.post<OwnersState & { note?: string }>('/api/dashboards', { workspace: workspacePath, action, emails: [value], locked_paths: lockedPaths })
     setOwnerSnapshot({ scope, owners: data })
     if (data.note) setNotice(data.note)
@@ -232,7 +234,19 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
           {owners.can_manage && person.email && <ProjectUserFiles person={person} alwaysLocked={owners.always_locked || []} busy={busy} change={paths => { void run(() => changeUsers('user_files', person.email as string, paths)) }} />}
         </li>)}
       </ul>}
+      {!!owners.teams?.length && <ul aria-label="Teams" className="space-y-2">
+        {owners.teams.map(team => <li key={team.team_id} className="flex min-w-0 items-center gap-2">
+          <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><Users className="h-3.5 w-3.5" /></span>
+          <span className="min-w-0 flex-1"><span className="block truncate">{team.name} <span className="text-xs text-muted-foreground">Team</span></span><span className="block truncate text-xs text-muted-foreground">{team.owner}'s Team · everyone in it · {team.people} {team.people === 1 ? 'person' : 'people'}</span></span>
+          {team.can_remove && <button type="button" aria-label={`Remove ${team.name}`} disabled={busy} onClick={() => void run(() => changeUsers('team_remove', team.team_id))} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>}
+        </li>)}
+      </ul>}
       {owners.can_manage && personPicker(taken, value => { void run(() => changeUsers('user_add', value)) }, 'Add a user')}
+      {owners.can_manage && !!owners.team_choices?.length && <select aria-label="Add a Team" value="" disabled={busy} onChange={event => { const id = event.target.value; if (id) void run(() => changeUsers('team_add', id)) }}
+        className="h-9 w-full rounded-md border border-dashed border-border bg-background px-2 text-sm text-primary">
+        <option value="">+ Add a Team you're in</option>
+        {owners.team_choices.map(team => <option key={team.team_id} value={team.team_id}>{team.name} · {team.owner}'s Team · {team.people} {team.people === 1 ? 'person' : 'people'}</option>)}
+      </select>}
     </section>}
     {state.has_owners && <section aria-label="Co-owners" className={`space-y-3${coOwnersOnly && !owners?.users ? '' : ' border-t border-border pt-4'}`}>
       <div><h3 className="font-semibold">Co-owners</h3><p className="text-xs text-muted-foreground">Can build and change it, like you.</p></div>

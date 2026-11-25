@@ -200,7 +200,7 @@ func productSelectedGlobalSecrets(ctx context.Context, profileID, workspacePath 
 	if profileID == crewProfileID {
 		// A server Crew uses only its Crew vault's keys, nobody's own (crew_vault.go).
 		if project := serverCrewForPath(workspacePath); project != "" && runningServerAPI != nil {
-			names := withCrewTeamProjectKeys(project, runningServerAPI.crewVaultSecretNames(ctx, project))
+			names := runningServerAPI.crewVaultSecretNames(ctx, project)
 			return &names, nil
 		}
 		_, team := teamWayPickup(ctx, workspacePath)

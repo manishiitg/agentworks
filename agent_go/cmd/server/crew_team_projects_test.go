@@ -13,8 +13,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 )
 
-// #3664: only the Team's owner adds an online project, and only one they own or co-own that lives on the server; the
-// Team's owner or the project's owners take it out. Only the in-process copy of a member project is admitted to the
+// #4087: a Team goes into a server project's Users only by the project's main owner, and only a Team they are in;
+// the Team's owner or the project's owners take it out. Everyone in the Team is then one of the project's Users. Only the in-process copy of a member project is admitted to the
 // Team folder, and removing the project deletes only the folders it holds for the Team.
 func TestCrewTeamOnlineProjectAccess(t *testing.T) {
 	state := t.TempDir()
@@ -26,39 +26,34 @@ func TestCrewTeamOnlineProjectAccess(t *testing.T) {
 	prev := defaultProjectOwnersOverride
 	defaultProjectOwnersOverride = registry
 	t.Cleanup(func() { defaultProjectOwnersOverride = prev })
-	// Owner, 25 Nov: only a project whose AI teammate switch is on can be added ("off" has it off).
-	for _, p := range []struct {
-		id, owner string
-		ai        bool
-	}{{"mac", "owner", false}, {"srv", "bob", true}, {"own", "owner", true}, {"other", "bob", true}, {"off", "owner", false}} {
-		if err := registry.Register(projectOwnerRecord{Product: "work", Folder: p.id + "-12345678", OwnerID: p.owner, Shared: true, ProjectID: p.id, AITeammate: p.ai}); err != nil {
+	for _, p := range []struct{ id, owner string }{{"mac", "owner"}, {"srv", "bob"}, {"own", "owner"}, {"other", "bob"}} {
+		if err := registry.Register(projectOwnerRecord{Product: "work", Folder: p.id + "-12345678", OwnerID: p.owner, Shared: true, ProjectID: p.id}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	macCrewOnlineCopy(t, "mac")
 	joinCrewTeam(t, "srv-12345678", "owner") // the Team's owner co-owns srv
-	if status, _, _, _ := setCrewProjectAITeammate("srv", "ann", false); status != http.StatusForbidden {
-		t.Fatalf("someone who neither owns nor co-owns the project changed its AI teammate switch: %d", status)
-	}
-	team := crewTeam{ProjectID: "mac", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}
+	team := crewTeam{ProjectID: "mac", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "ann"}, {UserID: "bob"}}, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}
 	root := func(p string) string { return crewProjectRootByID(p) }
 
 	for _, c := range []struct {
 		name, user, member, action string
 		on, allowed                bool
 	}{
-		{"owner adds a co-owned server project", "owner", "srv", "add", true, true},
-		{"owner adds an owned server project", "owner", "own", "add", true, true},
-		{"a teammate cannot add", "ann", "srv", "add", true, false},
-		{"owner cannot add someone else's project", "owner", "other", "add", true, false},
-		{"owner cannot add a Mac project's online copy", "owner", "mac", "add", true, false},
-		{"not while the Team is off", "owner", "srv", "add", false, false},
-		{"not while the project's AI teammate switch is off", "owner", "off", "add", true, false},
+		{"the project's owner adds a Team they are in", "bob", "srv", "add", true, true},
+		{"the Team's owner adds it to a project they own", "owner", "own", "add", true, true},
+		{"a co-owner of the project cannot add a Team", "owner", "srv", "add", true, false},
+		{"a Team member cannot add it to someone else's project", "ann", "srv", "add", true, false},
+		{"a Mac project's online copy cannot have a Team in its Users", "owner", "mac", "add", true, false},
+		{"not while the Team is off", "bob", "srv", "add", false, false},
 		{"the project's owner takes it out", "bob", "srv", "remove", true, true},
 		{"a stranger cannot take it out", "ann", "srv", "remove", true, false},
 	} {
 		tm := team
 		tm.On = c.on
+		if !c.on {
+			tm.People = nil
+		}
 		if got := crewTeamProjectChangeRefusal(tm, c.user, c.member, root(c.member), c.action) == ""; got != c.allowed {
 			t.Errorf("%s: allowed=%v, want %v", c.name, got, c.allowed)
 		}
@@ -90,21 +85,16 @@ func TestCrewTeamOnlineProjectAccess(t *testing.T) {
 		t.Fatalf("a stranger may not remove: %+v", in)
 	}
 
-	// Team keys: work lent by a member project's owner gets the Team's keys, the project's own key wins on a name
-	// clash, and someone who owns no project in the Team gets none.
-	if err := writeTeamWay("mac", teamWayRecord{Vault: "v-team1234", AddedBy: map[string]string{"secret:API_KEY": "owner", "secret:DB_URL": "owner"}}); err != nil {
-		t.Fatal(err)
+	// Everyone in the Team is one of the project's Users (its owner and co-owners keep their own place), and a Team
+	// member's ask locks the project's setup for them even though the turn runs in the owner's chat.
+	if users := crewUserIDs(root("srv")); !slices.Equal(users, []string{"ann"}) {
+		t.Fatalf("Team in Users gave users %v, want only ann (bob owns it, owner co-owns it)", users)
 	}
-	teamKey := func(name string) string { full, _ := vaultSecretName("v-team1234", name); return full }
-	if keys := crewTeamProjectLentKeys(context.Background(), "bob"); keys[teamKey("API_KEY")] != "mac" || len(keys) != 2 {
-		t.Fatalf("member project's owner got Team keys %v", keys)
+	if got := crewTurnSetupLockUser(root("srv"), "bob", "ann"); got != "ann" || !crewSetupLocked(root("srv"), got) {
+		t.Fatalf("a Team member's ask was not locked as a User: %q", got)
 	}
-	if keys := crewTeamProjectLentKeys(context.Background(), "ann"); len(keys) != 0 {
-		t.Fatalf("someone with no project in the Team got Team keys %v", keys)
-	}
-	ownKey, _ := vaultSecretName("v-srv12345", "API_KEY")
-	if got := withCrewTeamProjectKeys("srv", []string{ownKey}); !slices.Equal(got, []string{ownKey, teamKey("DB_URL")}) {
-		t.Fatalf("own key should win and the Team's other key be added: %v", got)
+	if got := crewTurnSetupLockUser(root("srv"), "bob", "carl"); got != "bob" {
+		t.Fatalf("someone outside the Team named as asker changed whose lock applies: %q", got)
 	}
 
 	// Taking it out removes the Team's files that are still as last synced, and nothing else: an edit since the last
@@ -233,8 +223,8 @@ func TestCrewTeamOnlineProjectAgentReach(t *testing.T) {
 	if address := crewTeamAgentAddress("srv", id); address != "agent:bob/"+id {
 		t.Fatalf("address %q is not under the account the chat runs as", address)
 	}
-	// Owner, 24 Nov: an online project's agent is an AI teammate. A member's own ask works with the project's full
-	// access unless the project set that agent to Answers only; outsiders and Run turns stay Run.
+	// #4087: a Team member's own ask to an agent of an online project the Team uses is their User turn there (not Run);
+	// outsiders and Run turns stay Run.
 	dest := agentMessageEndpoint{ID: "srv", TeamAgentID: id}
 	for _, c := range []struct {
 		name   string
@@ -248,24 +238,14 @@ func TestCrewTeamOnlineProjectAgentReach(t *testing.T) {
 		{"a guest using a teammate's agent does not", agentMessageEndpoint{UserID: "ann", Guest: "carl"}, false},
 	} {
 		if got := crewTeamProjectAskChanges(dest, c.source); got != c.want {
-			t.Errorf("%s: full access=%v, want %v", c.name, got, c.want)
+			t.Errorf("%s: User turn=%v, want %v", c.name, got, c.want)
 		}
 	}
 	// The run decision deliverPublishedAgentMessage makes (review of #3744): the receiving chat runs as the project's
 	// main owner, and a teammate's ask is another person's turn there.
 	role := agentMessageEndpoint{UserID: "bob", ID: "srv", TeamAgentID: id}
 	if publishedAgentRunMode(role, role, agentMessageEndpoint{UserID: "ann"}) {
-		t.Fatal("a teammate's ask to the project's agent was delivered with Run rights, want full access")
-	}
-	team.Projects = []crewTeamProject{{ProjectID: "srv", AnswersOnly: []string{row.ChatKey}}}
-	if err := writeCrewTeamAgentFixture(team); err != nil {
-		t.Fatal(err)
-	}
-	if crewTeamProjectAskChanges(dest, agentMessageEndpoint{UserID: "ann"}) {
-		t.Fatal("an agent set to Answers only still made changes")
-	}
-	if !publishedAgentRunMode(role, role, agentMessageEndpoint{UserID: "ann"}) {
-		t.Fatal("an agent set to Answers only was delivered without Run rights")
+		t.Fatal("a teammate's ask to the project's agent was delivered with Run rights, want their User turn")
 	}
 	// The other direction (Team Module Manager rule 2): only a Builder turn of the joined project asks the Team as the
 	// project; a Run turn, a guest, another project or a project that left asks as its person and is refused.

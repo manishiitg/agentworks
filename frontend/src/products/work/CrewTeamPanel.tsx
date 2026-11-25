@@ -8,6 +8,7 @@ import { TeammateAgentIdentity } from './TeammateChatIdentity'
 import { teamAgentChatTab } from './AgentSharingRow'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { openCrewAccess } from './MacSharedAgents'
+import { openOnServerWebsite } from '../../utils/openOnServerWebsite'
 import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
@@ -51,8 +52,10 @@ export function CrewTeamPanel({ scope, projectId, team, panelView='live', onPane
  }
  // Shared by you: the person's own agents shared with the team, with their mode and audience from the server rows.
  const shared:TeamPanelShared[]=team.view.agents.filter(agent=>agent.mine&&agent.in_team).map(agent=>({key:agent.key,name:agent.name,chosen:agent.audience==='chosen'?(agent.chosen_people||[]).length:undefined}))
+ // An online project opens on its own server's website (the Mac lists only Mac projects).
+ const openProject=(id:string)=>{const route=`/projects/${encodeURIComponent(id.replace(/^project:/,''))}`;if(target?.connection)void openOnServerWebsite(target.connection,route);else window.open(route,'_blank','noopener')}
  const openShared=(row:TeamPanelShared)=>{openCrewAccess(projectId,'','team','agents');window.setTimeout(()=>document.getElementById(`team-agent-card-${row.key}`)?.scrollIntoView({block:'center'}),300)}
- return <TeamPanel aiTeammates={team.view.ai_teammates} onAdd={team.view.team.can_manage?()=>openCrewAccess(projectId,'','team','people'):undefined} files={<TeamFilesRow projectId={projectId} target={target||undefined} sync={team.view.sync} enabled={!!team.view.team.folder_access}/>} selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} askLabel={askName} view={panelView} onNavigate={onPanelView} shared={shared} onShared={openShared} scope={scope} agents={rows} onAsk={ask} teamAgentAsk={direct ? <>
+ return <TeamPanel onlineProjects={team.view.online_projects} onOpenProject={openProject} files={<TeamFilesRow projectId={projectId} target={target||undefined} sync={team.view.sync} enabled={!!team.view.team.folder_access}/>} selectedPerson={selectedPerson} onPersonSelect={onPersonSelect} people={team.view.people} askLabel={askName} view={panelView} onNavigate={onPanelView} shared={shared} onShared={openShared} scope={scope} agents={rows} onAsk={ask} teamAgentAsk={direct ? <>
    {asked&&<><TeammateAgentIdentity identity={{name:asked.name,person:asked.person||'Team',place:asked.place==='mac'?`${asked.person||'their'}'s Mac`:'the server',online:asked.online,working:asked.activity==='running',hidden:true,avatar:asked,connection:team.target?.connection}}/>
     <p className="min-h-0 flex-1 px-4 py-8 text-sm text-muted-foreground">This agent's chat isn't shared. You can still ask it below.</p>
     <TeammateAsk target={target||undefined} address={asked.address} name={asked.name} where={asked.place==='mac'?`${asked.person||'their'}'s Mac`:'the server'} online={asked.online} enabled={!!asked.address} agent={asked} scope={`${scope}:${asked.address||''}`}/></>}

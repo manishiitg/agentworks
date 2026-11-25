@@ -15,12 +15,12 @@ import (
 func publishedAsker(e agentMessageEndpoint) string { return firstNonEmptyTrimmed(e.Guest, e.UserID) }
 
 // publishedAgentRunMode says whether an ask delivered to a published agent runs with Run rights. role is the receiving
-// chat's current role, dest the published agent. An online project's agent is an AI teammate (#3664): a Team member's
-// ask works with the project's full access, unless the project set that agent to Answers only.
+// chat's current role, dest the published agent. A Team member's ask to an agent of an online project the Team uses
+// (#4087) is their own User turn there, not Run: asked_by carries them, and the project's setup stays locked for them.
 func publishedAgentRunMode(role, dest, source agentMessageEndpoint) bool {
 	run := crewMessageRunMode(role, source, firstNonEmptyTrimmed(role.Guest, publishedAsker(source)))
 	if run && crewTeamProjectAskChanges(dest, source) {
-		log.Printf("[TEAM_ONLINE] project=%s agent=%s event=ask_full_access asker=%s", dest.ID, dest.TeamAgentID, logUsernameForUserID(publishedAsker(source)))
+		log.Printf("[TEAM_ONLINE] project=%s agent=%s event=ask_as_user asker=%s", dest.ID, dest.TeamAgentID, logUsernameForUserID(publishedAsker(source)))
 		return false
 	}
 	return run

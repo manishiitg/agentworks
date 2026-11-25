@@ -76,9 +76,6 @@ type projectOwnerRecord struct {
 	// RunPeople are the accounts a private Crew is shared with by name (dashboard sharing, PLAT-750). They use it as
 	// Run people do; everyone else is kept out as for any private Crew.
 	RunPeople []string `json:"run_people,omitempty"`
-	// AITeammate: the project's owner or a co-owner let Teams add this server project as an AI teammate (owner, 25 Nov:
-	// off by default; only switched-on projects are offered to a Team).
-	AITeammate bool `json:"ai_teammate,omitempty"`
 	// SharedAgents are the stable existing tabs exposed to the same Run audience.
 	SharedAgents []string `json:"shared_agents,omitempty"`
 	// SharedAgentSince is when each selected conversation became shared.
@@ -357,25 +354,6 @@ func (r *projectOwnerRegistry) SetPrivate(product, folder string, private bool) 
 		projects[key] = current
 		return true, nil
 	})
-}
-
-// SetAITeammate switches whether Teams may add the project as an AI teammate. Returns whether it changed.
-func (r *projectOwnerRegistry) SetAITeammate(product, folder string, on bool) (changed bool, err error) {
-	err = r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
-		key := projectOwnerKey(product, folder)
-		current, exists := projects[key]
-		if !exists {
-			return false, fmt.Errorf("%s is not registered", key)
-		}
-		if current.AITeammate == on {
-			return false, nil
-		}
-		current.AITeammate = on
-		projects[key] = current
-		changed = true
-		return true, nil
-	})
-	return changed, err
 }
 
 // SetRunPeople records the accounts a Crew is shared with by name; an empty list clears it.

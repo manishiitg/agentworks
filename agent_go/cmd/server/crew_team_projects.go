@@ -20,8 +20,9 @@ import (
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
-// An online project in a Mac project's Team (#3664): a project that lives on this server joins the Team as a member of
-// its own kind, "Project: <name>", identified by its project ID. While it is a member, the Team's shared folders (and
+// An online project a Mac project's Team uses (#3664; since 26 Nov, #4087, the Team is in the project's Users and is
+// added from the project's side: crew_team_projects_view.go, crew_owners.go). Inside the Team it is a member of its own
+// kind, "Project: <name>", identified by its project ID. While it is a member, the Team's shared folders (and
 // the Team instructions) sync into the project's own folder with the same protocol a member's server copy uses, run in
 // process as the project; the Team's setup and skills never enter it, so the project keeps its own. Removing it, or
 // the Team turning off, removes those folders from the project and nothing else.
@@ -32,13 +33,7 @@ type crewTeamProject struct {
 	AddedBy   string `json:"added_by,omitempty"`
 	AddedAt   string `json:"added_at,omitempty"`
 	Name      string `json:"name,omitempty"`
-	// AnswersOnly are the chat keys of its agents set to "Answers only" by the project's owner or co-owners; every other
-	// agent works for the Team with the project's full access (owner, 24 Nov, decisions log).
-	AnswersOnly []string `json:"answers_only,omitempty"`
 }
-
-// crewTeamMaxProjects keeps the list short enough to read.
-const crewTeamMaxProjects = 10
 
 // crewTeamProjectMemberPrefix is the author ID of a project's changes in the Team folder's history.
 const crewTeamProjectMemberPrefix = "project:"
@@ -136,16 +131,14 @@ func (api *StreamingAPI) handleCrewTeamProjects(w http.ResponseWriter, r *http.R
 	var in struct {
 		Action    string `json:"action"`
 		ProjectID string `json:"project_id"`
-		Agent     string `json:"agent"`
-		Level     string `json:"level"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
-	if json.NewDecoder(r.Body).Decode(&in) != nil || (in.Action != "add" && in.Action != "remove" && in.Action != "agent_level") || strings.TrimSpace(in.ProjectID) == "" {
-		externalError(w, 400, "invalid_arguments", "Give action add, remove or agent_level, and the online project's ID.")
+	if json.NewDecoder(r.Body).Decode(&in) != nil || strings.TrimSpace(in.ProjectID) == "" {
+		externalError(w, 400, "invalid_arguments", "Give action remove and the online project's ID.")
 		return
 	}
-	if in.Action == "agent_level" {
-		api.setCrewTeamProjectAgentLevel(w, r, claims.UserID, team, strings.TrimSpace(in.ProjectID), in.Agent, in.Level)
+	if in.Action != "remove" {
+		externalError(w, 400, "added_on_the_server", "An online project is added from its own side: its owner adds this Team to its Users on the server (Access, Users), or creates a new one from a Mac chat by asking for something to run online.")
 		return
 	}
 	t, status, code, refusal := changeCrewTeamProject(team, claims.UserID, in.Action, strings.TrimSpace(in.ProjectID))
@@ -211,26 +204,24 @@ func crewTeamTakenLine(name string, taken []string) string {
 
 // crewTeamProjectChangeRefusal is the sentence a person sees, or "" when the change is allowed.
 func crewTeamProjectChangeRefusal(t crewTeam, user, member, memberRoot, action string) string {
-	owns := memberRoot != "" && crewProjectOwnedByCaller(user, memberRoot)
+	// The project's main owner or a co-owner, not one of its Users (a Team's people are Users of it).
+	owns := memberRoot != "" && (crewProjectOwnedByCallerStrict(user, memberRoot) || containsID(crewCoOwnersOnly(memberRoot), user))
 	if action == "remove" {
 		if user == t.OwnerID || owns {
 			return ""
 		}
 		return "Only this Team's owner, or that project's owner or co-owners, can take it out of the Team."
 	}
+	// Adding: the project's main owner puts a Team they are in into the project's Users (#4087).
 	switch {
-	case user != t.OwnerID:
-		return fmt.Sprintf("Only %s, the Team's owner, can add an AI teammate.", crewPersonShortName(t.OwnerID))
-	case !t.On:
-		return "Turn the Team on first, then add the AI teammate."
 	case member == t.ProjectID || memberRoot == "" || !crewLivesOnServer(member):
-		return "Choose a project that lives on this server (one you made on the website or the server), not a Mac project or its online copy."
-	case !owns:
-		return "You can add only a project you own or co-own as an AI teammate. Ask its owner to make you a co-owner, or to add it."
-	case !t.hasProject(member) && !crewProjectAITeammate(member):
-		return "Turn on AI teammate on that project's Access page on the server first, then add it."
-	case !t.hasProject(member) && len(t.Projects) >= crewTeamMaxProjects:
-		return fmt.Sprintf("A Team has at most %d AI teammates. Remove one first.", crewTeamMaxProjects)
+		return "Only a project that lives on this server can have a Team in its Users, not a Mac project."
+	case !crewProjectOwnedByCallerStrict(user, memberRoot):
+		return fmt.Sprintf("Only the project's owner adds a Team to its Users. Ask %s.", crewOwnerDisplayName(ownerOfCrewProjectID(member)))
+	case !t.On:
+		return "That Team is turned off. Its owner turns it on first."
+	case !t.member(user):
+		return "You can add only a Team you are in."
 	}
 	return ""
 }

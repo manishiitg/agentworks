@@ -277,7 +277,7 @@ func dashboardOwnersAction(action string) bool {
 }
 
 func dashboardOwnersWrite(action string) bool {
-	return action == "owner_add" || action == "owner_remove" || action == "user_add" || action == "user_remove" || action == "user_files"
+	return action == "owner_add" || action == "owner_remove" || action == "user_add" || action == "user_remove" || action == "user_files" || action == "team_add" || action == "team_remove"
 }
 
 func (api *StreamingAPI) handleDashboardOwners(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action string, emails []string, lockedPaths []string) {
