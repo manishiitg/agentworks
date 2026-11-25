@@ -18,6 +18,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 )
@@ -521,7 +522,7 @@ func ProjectPromptVariables(workspaceAPIURL string, allowMissing bool) agentprof
 		result, err := client.ReadWorkspaceFile(ctx, workspace.ReadWorkspaceFileParams{Filepath: path.Join(runtime.WorkspacePath, "product.json")})
 		if err != nil {
 			if allowMissing && workspace.IsFileNotFound(err) {
-				return map[string]string{"WORK_IDENTITY": "", "WORK_IDENTITY_KEY": "\n", "CHAT_INSTRUCTIONS": ""}, nil
+				return map[string]string{"WORK_IDENTITY": "", "WORK_IDENTITY_KEY": "\n", "CHAT_INSTRUCTIONS": "", "PAGES_ON_MAC": pagesOnMac()}, nil
 			}
 			return nil, fmt.Errorf("read project identity: %w", err)
 		}
@@ -548,6 +549,15 @@ func ProjectPromptVariables(workspaceAPIURL string, allowMissing bool) agentprof
 		if instructions != "" {
 			key += "\nchat_instructions:\n" + instructions
 		}
-		return map[string]string{"WORK_IDENTITY": identity, "WORK_IDENTITY_KEY": key, "CHAT_INSTRUCTIONS": workflowtypes.ChatInstructionsPrompt(instructions)}, nil
+		return map[string]string{"WORK_IDENTITY": identity, "WORK_IDENTITY_KEY": key, "CHAT_INSTRUCTIONS": workflowtypes.ChatInstructionsPrompt(instructions), "PAGES_ON_MAC": pagesOnMac()}, nil
 	}
+}
+
+// pagesOnMac is "1" in the Mac app: a project there has Dashboards and Motion for its person only, no Artifacts and
+// no page sharing (owner, 25 Nov); pages to share live in a project on the server.
+func pagesOnMac() string {
+	if productpolicy.Local() {
+		return "1"
+	}
+	return ""
 }
