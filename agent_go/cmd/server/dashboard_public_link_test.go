@@ -112,6 +112,14 @@ func TestDashboardPublicLinkFrozenCopy(t *testing.T) {
 	if len(code) != 22 || !validDashboardPublicCode(code) { // the gateway admits exactly this shape
 		t.Fatalf("code shape: %q", code)
 	}
+	// The Artifacts page names each page by its id (its menu, Copy link and Delete use it) and shows the owner's
+	// public link; the list once came back with every id empty, so one click opened every row's menu.
+	tabW := httptest.NewRecorder()
+	f.api.handleCrewTeamDashboardsTab(tabW, adminRequest(http.MethodGet, "/api/crew-teams/team/dashboards-tab", "", owner, map[string]string{"project": "team"}))
+	var tab crewDashboardsTab
+	if tabW.Code != http.StatusOK || json.Unmarshal(tabW.Body.Bytes(), &tab) != nil || len(tab.Items) != 1 || tab.Items[0].ID != "sales" || tab.Items[0].When == "" || tab.Items[0].PublicLink == nil || !tab.Items[0].PublicLink.On {
+		t.Fatalf("Artifacts page: %d %s", tabW.Code, tabW.Body.String())
+	}
 	page := open("/p/" + code)
 	csp := page.Header().Get("Content-Security-Policy")
 	for _, want := range []string{"sandbox allow-scripts;", "connect-src 'none'", "form-action 'none'"} {

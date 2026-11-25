@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-
-	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
 // The Crew's published dashboards, artifacts and motion (owner, 6 Nov): everyone in the Team sees all of them, with
@@ -34,8 +32,17 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 	rows := []crewTeamDashboard{}
 	for offset := 0; root != ""; {
 		var page struct {
-			Dashboards []dashboards.Dashboard `json:"dashboards"`
-			HasMore    bool                   `json:"has_more"`
+			// The list sends discovery rows (dashboard_id, document_path), not the store's Dashboard.
+			Dashboards []struct {
+				ID           string `json:"dashboard_id"`
+				Title        string `json:"title"`
+				DocumentPath string `json:"document_path"`
+				Artifact     bool   `json:"artifact"`
+				Motion       bool   `json:"motion"`
+				Managed      bool   `json:"managed"`
+				UpdatedAt    int64  `json:"updated_at"`
+			} `json:"dashboards"`
+			HasMore bool `json:"has_more"`
 		}
 		status, raw := scheduleHandler(r, api.handleDashboards, http.MethodPost, "/api/dashboards", nil, nil, map[string]any{"workspace": root, "action": "list", "published_only": true, "limit": 100, "offset": offset})
 		if status < 200 || status >= 300 {
