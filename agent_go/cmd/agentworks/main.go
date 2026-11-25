@@ -79,6 +79,11 @@ var cliOperationGroups = []struct {
 	{"crews", "Discover, call, create, edit, export, and import projects", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"search", "search_crew_files"}, {"read", "read_crew_file"}, {"ask", "ask_crew"}, {"create", "create_crew"}, {"update", "update_crew"}, {"put", "write_crew_file"}, {"export", "export_crew"}, {"import", "import_crew"}}},
 }
 
+// defaultLoginServer is the address `agentworks login` uses when none is given. Builds set it with
+// -ldflags "-X main.defaultLoginServer=https://..." (the Mac app release reads AGENTWORKS_DEFAULT_SERVER);
+// empty means login asks for the address.
+var defaultLoginServer string
+
 func main() {
 	if handled, code := localShellLauncher(os.Args[1:]); handled {
 		os.Exit(code)
@@ -256,7 +261,10 @@ func (o *options) connection(forLogin bool) (agentworksclient.Config, string, er
 		requested = cfg.Server
 	}
 	if requested == "" && forLogin {
-		requested = "https://network.agentworkshq.com"
+		requested = defaultLoginServer
+	}
+	if requested == "" && forLogin {
+		return cfg, path, errors.New("give your AgentWorks address: agentworks login --server https://your-server (the one you open in your browser)")
 	}
 	if requested == "" {
 		return cfg, path, errors.New("sign in first with agentworks login")

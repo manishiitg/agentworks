@@ -92,6 +92,22 @@ func (api *StreamingAPI) handleCliDownload(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
+	if name == "install-agentworks.sh" || name == "install-agentworks.ps1" {
+		// The installers default to the server that serves them, so a bare download installs and signs in here.
+		body, err := io.ReadAll(f)
+		if err != nil {
+			http.Error(w, "Not found", http.StatusNotFound)
+			return
+		}
+		if self := strings.TrimRight(effectiveShareBaseURL(), "/"); self != "" {
+			body = []byte(strings.ReplaceAll(string(body), "__AGENTWORKS_SERVER__", self))
+		}
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
+		return
+	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
 	if contentType == "application/octet-stream" || contentType == "application/gzip" {

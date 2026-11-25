@@ -12,7 +12,9 @@ param(
   [switch]$NoLogin
 )
 $ErrorActionPreference = 'Stop'
-if (-not $Server) { $Server = 'https://network.agentworkshq.com' }
+# The serving AgentWorks server writes its own address in place of the marker below.
+if (-not $Server) { $Server = '__AGENTWORKS_SERVER__' }
+if ($Server -like '*__AGENTWORKS_SERVER__*') { throw 'Give your AgentWorks address with -Server https://your-server (the one you open in your browser).' }
 $Server = $Server.TrimEnd('/')
 
 function Test-AgentWorksDefenderBlock($Failure) {
