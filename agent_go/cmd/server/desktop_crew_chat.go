@@ -159,8 +159,18 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		if metadata {
 			previews = api.desktopCrewTeamMessagePreviews(ctx, claims.UserID, project, b.PeerProjectID, connection, tabs)
 		}
+		var usage map[string][2]int64
+		var commits []crewTeamOverviewCommit
+		if metadata {
+			keys := []string{}
+			for _, tab := range tabs {
+				keys = append(keys, tab.ConversationKey)
+			}
+			usage, commits = macCrewTeamUsage(ctx, claims.UserID, project, keys)
+		}
 		type tabRow struct {
 			crewTeamMessagePreview
+			crewMacTabUsage
 			IsMain          bool   `json:"is_main,omitempty"`
 			ConversationKey string `json:"conversation_key"`
 			ConversationID  string `json:"conversation_id"`
@@ -172,7 +182,11 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		}
 		rows := []tabRow{}
 		for _, tab := range tabs {
-			rows = append(rows, tabRow{crewTeamMessagePreview: previews[tab.ConversationKey], IsMain: metadata && tab.IsMain, ConversationKey: tab.ConversationKey, ConversationID: tab.ConversationID, Name: tab.Name, Purpose: tab.Purpose, Position: tab.Position, Pinned: tab.Pinned, ForkedFrom: tab.ForkedFrom})
+			use := crewMacTabUsage{TokensDay: usage[tab.ConversationKey][0], TokensWeek: usage[tab.ConversationKey][1]}
+			if len(rows) == 0 {
+				use.Commits = commits // the project folder's commits, once per answer
+			}
+			rows = append(rows, tabRow{crewTeamMessagePreview: previews[tab.ConversationKey], crewMacTabUsage: use, IsMain: metadata && tab.IsMain, ConversationKey: tab.ConversationKey, ConversationID: tab.ConversationID, Name: tab.Name, Purpose: tab.Purpose, Position: tab.Position, Pinned: tab.Pinned, ForkedFrom: tab.ForkedFrom})
 		}
 		data, _ := json.Marshal(rows)
 		return crewChatResult{ID: call.ID, Status: 200, Body: data}

@@ -235,9 +235,12 @@ func readPersonMacTabsNow(ctx context.Context, person, project, pair string, wit
 	if result.Status != http.StatusOK || json.Unmarshal(result.Body, &rows) != nil {
 		return nil, false
 	}
+	var usageRows []crewMacTabUsage
+	_ = json.Unmarshal(result.Body, &usageRows)
+	usage := crewMacTeamUsage{tokens: map[string][2]int64{}}
 	tabs := []crewMacTeamTab{}
 	present := map[string]bool{}
-	for _, row := range rows {
+	for i, row := range rows {
 		_, id, ok := strings.Cut(row.ConversationKey, codeChatSideMarker)
 		if row.IsMain {
 			id, ok = macMainTab, true
@@ -245,10 +248,17 @@ func readPersonMacTabsNow(ctx context.Context, person, project, pair string, wit
 		if ok {
 			present[id] = true
 		}
+		if i < len(usageRows) {
+			usage.commits = append(usage.commits, usageRows[i].Commits...)
+			if ok {
+				usage.tokens[id] = [2]int64{usageRows[i].TokensDay, usageRows[i].TokensWeek}
+			}
+		}
 		if ok && crewMacTabID(id) && row.ConversationID != "" {
 			tabs = append(tabs, crewMacTeamTab{InitialInTeam: row.TeamNewInTeam, crewTeamMessagePreview: row.crewTeamMessagePreview, Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name), Examples: row.Examples, Purpose: strings.TrimSpace(row.Purpose)})
 		}
 	}
+	crewMacTeamUsageCache.Store(project+"\x00"+person, usage)
 	// The Mac's own complete answer is the truth about which of its agents still exist.
 	pruneDeletedCrewMacAgents(project, person, present)
 	if !withMain {

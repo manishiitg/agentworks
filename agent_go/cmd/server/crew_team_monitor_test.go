@@ -127,3 +127,20 @@ func TestCrewTeamMonitorWorkSummaryIsBoundedAndQuietRecencyIsReal(t *testing.T) 
 		t.Fatal("idle sweep counted as work")
 	}
 }
+
+// #3900: Mac-run work is recorded on the Mac. A commit seen both here and from a Mac (or from two worktrees) counts
+// once, and a Mac agent's tokens add to the same person's tokens recorded here.
+func TestCrewTeamMonitorMacUsageCountsOnce(t *testing.T) {
+	now := time.Now()
+	here := []crewTeamOverviewCommit{{Hash: "a", Title: "Fix menu", At: now.Add(-time.Hour)}}
+	mac := []crewTeamOverviewCommit{{Hash: "a", Title: "Fix menu", At: now.Add(-time.Hour)}, {Hash: "b", Title: "Add tokens", At: now.Add(-2 * time.Hour)}, {Hash: "c", Title: "Old", At: now.Add(-48 * time.Hour)}}
+	if got := crewTeamOverviewMergeCommits(here, mac, now.Add(-24*time.Hour)); len(got) != 2 || got[1].Hash != "b" {
+		t.Fatalf("commits = %+v, want a and b once", got)
+	}
+	name := func(user string) string { return user }
+	out := crewTeamOverviewAddMacTokens([]crewTeamOverviewTokens{{Person: "owner", Tokens: 100, userID: "owner", Agents: []crewTeamOverviewAgentTokens{{Agent: "Main", Tokens: 100}}}},
+		map[string]map[string]int64{"owner": {"Main": 50, "Coder": 500}, "teammate": {"Main": 10}}, name)
+	if len(out) != 2 || out[0].Tokens != 650 || out[0].Agents[0].Agent != "Coder" || out[0].Agents[1].Tokens != 150 || out[1].Tokens != 10 {
+		t.Fatalf("tokens = %+v", out)
+	}
+}
