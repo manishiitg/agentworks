@@ -234,3 +234,32 @@ it('opens a Codex helper agent from its spawnAgent step', async () => {
     read.mockRestore()
   }
 })
+
+// #3919: Antigravity hands a long command to the background after ten seconds and keeps thinking and writing while it
+// runs. The step that has not ended stays the running step (with its timer) while the turn works, even with thinking
+// or reply text after it; once the turn is not working it is not advertised as running.
+it('keeps a running Antigravity command live when thinking and reply text come after it', async () => {
+  let sequence = 0
+  const event = (id: string, type: string, fields: Record<string, unknown>): PollingEvent => ({
+    id, type, sequence: ++sequence, session_id: 'agy-chat', timestamp: new Date(Date.now() - 90_000).toISOString(), data: { type, data: fields },
+  } as PollingEvent)
+  const events = [
+    event('user', 'user_message', { content: 'run the build' }),
+    event('start', 'tool_call_start', { tool_call_id: 'call_1', tool_name: 'sleep 1500 && echo done', server_name: 'agy-cli', tool_params: { arguments: '{"CommandLine":"sleep 1500 && echo done","toolSummary":"Wait for the build"}' } }),
+    event('thought', 'conversation_thinking', { thinking: 'The command is still running; I will wait for it.' }),
+  ]
+  const host = document.createElement('div'), root = createRoot(host)
+  const render = (state: 'running' | 'ready', streamingText = '') => act(async () => root.render(<TerminalEventTranscript terminal={null} events={events} searchable scrollKey="agy-running-step" runtimeActivity={{ state, label: state }} streamingText={streamingText} />))
+  try {
+    useChatDisplayStore.setState({ showThinking: true, showTools: false })
+    await render('running')
+    expect(host.querySelector('[data-theme-tools-running="true"]')?.textContent).toMatch(/^Running "Wait for the build"….*· 1m/)
+    await render('running', 'Waiting for the command to finish before replying.')
+    expect(host.querySelector('[data-theme-tools-running="true"]')).toBeTruthy()
+    await render('ready')
+    expect(host.querySelector('[data-theme-tools-running="true"]')).toBeNull()
+  } finally {
+    await act(async () => root.unmount())
+    useChatDisplayStore.setState({ showThinking: false, showTools: false })
+  }
+})
