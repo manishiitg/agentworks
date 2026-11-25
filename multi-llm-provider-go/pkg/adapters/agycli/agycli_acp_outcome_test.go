@@ -95,6 +95,8 @@ func TestAgyACPTypedErrorsClassifyQuotaRetryAndUnavailableModel(t *testing.T) {
 		{"Error 429, Message: wait, Status: RESOURCE_EXHAUSTED", llmerrors.KindRateLimit, true},
 		{"Error 503, Message: busy, Status: UNAVAILABLE", llmerrors.KindServerError, true},
 		{"native type-17 error", llmerrors.KindUnknown, false},
+		// Seen live: a company account's bad Gemini key showed only "Antigravity stopped this turn because of an error".
+		{"Error 400, Message: API key not valid. Please pass a valid API key., Status: INVALID_ARGUMENT, Details: [reason:API_KEY_INVALID]", llmerrors.KindAuth, false},
 		{"reason:QUOTA_EXHAUSTED quotaResetDelay:1h2m", llmerrors.KindQuotaExhausted, false},
 	} {
 		err := agyACPOutcomeError("example-model", "", tc.carrier, now)

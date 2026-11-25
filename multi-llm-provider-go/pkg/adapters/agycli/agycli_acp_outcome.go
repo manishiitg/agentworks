@@ -56,6 +56,12 @@ func agyACPOutcomeError(model, stop, carrier string, now time.Time) error {
 		default:
 			kind = llmerrors.KindInvalidRequest
 		}
+		// Google answers a bad Gemini key with 400 API_KEY_INVALID. It is the account's sign-in, not the request: say so,
+		// so the chat reads "This account's API key was rejected. Update this account's key in Providers." instead of a
+		// bare "stopped because of an error".
+		if strings.Contains(carrier, "API_KEY_INVALID") || strings.Contains(strings.ToLower(match[2]), "api key not valid") {
+			kind, message = llmerrors.KindAuth, "Antigravity's Gemini API key was rejected: API key not valid."
+		}
 	}
 	if quota {
 		kind = llmerrors.KindQuotaExhausted
