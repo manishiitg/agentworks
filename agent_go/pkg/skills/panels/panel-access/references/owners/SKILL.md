@@ -19,7 +19,7 @@ starters:
 # Welcome
 ```
 
-Show the person the result and read it back after changes. No file means the screen keeps its plain words.
+Make it fit one screen so the starters show without scrolling: a title, one or two short lines, at most one picture or one short video (the screen keeps it to about a third of the height), one short line on how to start, and up to six starters with short labels and notes (they show two to a row). Put longer help in a starter or the project's instructions, not on the page. Show the person the result and read it back after changes. No file means the screen keeps its plain words.
 
 Use `crew_owners` (list; add and remove for co-owners; user_add, user_remove and user_files for users) or the Access panel's Users and Co-owners sections, where the owner picks the person from the server's accounts. Only the main owner adds or removes people; anyone with a seat can list them. Over the tool, give the person's account email or user id; someone who has never signed in cannot be added yet. `user_files` sets a User's extra `locked_paths` (relative to the project); the instructions, skills and settings are always locked. Adding a User who is a co-owner moves them to Users, and the other way round.
 
