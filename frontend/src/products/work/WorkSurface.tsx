@@ -1241,7 +1241,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     : selected && conversationKey?.startsWith(`${selected.id}:schedule:`) ? conversationKey.slice(selected.id.length + 1)
     : selected && conversationKey === selected.id ? 'main'
       : requestedRoute?.surface === product.profileId && requestedRoute.id === selected?.id ? requestedRoute.agent : undefined
-  useProductUrlView(product.profileId, { id: selected?.id, view: selected ? workspaceView : undefined, agent: selectedAgent }, viewNavigationRevision)
+  // A Run person's project always opens on its dashboard pane, so the link names only the project and the agent, not
+  // "/dashboard" (owner, 25 Nov: a User's chat link read /projects/<id>/dashboard?agent=…).
+  useProductUrlView(product.profileId, { id: selected?.id, view: selected && !(isWorkSessionRun(selected) && workspaceView === 'dashboard') ? workspaceView : undefined, agent: selectedAgent }, viewNavigationRevision)
   const pendingWorkflowRun = useWorkflowRunNavigation(state => state.target)
   const pendingWorkView = useProductSurfaceStore(state => state.pendingWorkView)
   const setPendingWorkView = useProductSurfaceStore(state => state.setPendingWorkView)
