@@ -58,7 +58,7 @@ it('opens old Artifacts links as a standalone page and leaves only Online tabs',
     expect(host.querySelector('[aria-label="Artifacts page"]')).not.toBeNull()
     const panels: ProductPanel<WorkWorkspaceView>[] = [{ id: 'mcp', label: 'Connections', icon: Globe }]
     const items = crewProjectMenuItems({ panels })
-    expect(items.filter(item => item.group === 'Share').map(item => item.id)).toEqual(['mcp:team', 'mcp:online', 'mcp:artifacts'])
+    expect(items.filter(item => item.group === 'Share').map(item => item.id)).toEqual(['mcp:team', 'mcp:artifacts'])
     expect(items.find(item => item.id === 'mcp:slack-bot')?.group).toBe('Integrations')
   } finally {
     await act(async () => root.unmount())
@@ -66,7 +66,7 @@ it('opens old Artifacts links as a standalone page and leaves only Online tabs',
   }
 })
 
-it('omits Slack bot from the project menu in local mode while keeping My Slack account', () => {
+it('local mode: no Slack bot, keeps My Slack account and Phone', () => {
   const runtimeWindow = window as Window & { __APP_RUNTIME_CONFIG__?: { deploymentMode?: string } }
   const previous = runtimeWindow.__APP_RUNTIME_CONFIG__
   runtimeWindow.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'local' }
@@ -74,6 +74,8 @@ it('omits Slack bot from the project menu in local mode while keeping My Slack a
     const panels: ProductPanel<WorkWorkspaceView>[] = [{ id: 'mcp', label: 'Connections', icon: Globe }]
     const items = crewProjectMenuItems({ panels })
     expect(items.find(item => item.id === 'mcp:slack-bot')).toBeUndefined()
+    // Phone (reach a Mac project from your phone) shows only on the Mac; server projects are always on the web.
+    expect(items.find(item => item.id === 'mcp:online')?.group).toBe('Share')
     expect(items.find(item => item.id === 'mcp:slack-account')?.group).toBe('Integrations')
   } finally {
     runtimeWindow.__APP_RUNTIME_CONFIG__ = previous
