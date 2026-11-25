@@ -102,6 +102,17 @@ func TestCopyVaultConnectorIntoTeamVault(t *testing.T) {
 	if !strings.Contains(inventory(crew), inCrew.ID) {
 		t.Fatal("the Crew's own runtime did not get its Crew vault's app")
 	}
+	// Its keys follow the same rule (#3827): a project scope is left out of account-wide lists, so before this the
+	// Crew's own runtime never got its vault's keys either and fell back to same-named personal ones.
+	if err := st.VaultAddSecret("alice", crew, "VLT_CREW__DEPLOY_KEY"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(inventory(""), "VLT_CREW__DEPLOY_KEY") {
+		t.Fatal("a list that did not name the Crew vault showed its key")
+	}
+	if !strings.Contains(inventory(crew), "VLT_CREW__DEPLOY_KEY") {
+		t.Fatal("the Crew's own runtime did not get its Crew vault's key")
+	}
 	if _, err := a.copyVaultConnector(ctx, "alice", mine, src.ID, bobs, "alice"); err == nil {
 		t.Fatal("a copy went into another person's vault by naming the copier as its owner")
 	}
