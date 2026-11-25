@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -50,15 +51,36 @@ func TestProjectScheduleJobIDRoundTrip(t *testing.T) {
 	}
 }
 
-// A new Crew message schedule that names no place gets its own chat (owner, 9 Nov); a chosen chat, a tab or a
-// workflow timer keeps what was asked. The parser itself still reads an empty value as the chat.
-func TestRunDestinationParsingAndNewCrewMessageScheduleGetsItsOwnChat(t *testing.T) {
+// A new Crew schedule that names no place gets its own chat (owner, 9 Nov; workflow timers too, 25 Nov #4046); a
+// chosen chat or a tab keeps what was asked, and "main" is no stand-in for Main. The parser still reads an empty value
+// as the chat.
+func TestRunDestinationParsingAndNewCrewScheduleGetsItsOwnChat(t *testing.T) {
 	for _, test := range []struct {
-		workflow, destination, chatID string
-		own                           bool
-	}{{"", "", "", true}, {"", runDestinationChat, "", false}, {"", "", "tab1", false}, {"report", "", "", false}} {
-		if got := crewMessageScheduleDefaultsToOwnChat(crewProfileID, "team", test.workflow, test.destination, test.chatID); got != test.own {
-			t.Fatalf("workflow=%q destination=%q chat=%q own chat = %v, want %v", test.workflow, test.destination, test.chatID, got, test.own)
+		destination, chatID string
+		own                 bool
+	}{{"", "", true}, {runDestinationChat, "", false}, {"", "tab1", false}} {
+		if got := crewScheduleDefaultsToOwnChat(crewProfileID, "team", test.destination, test.chatID); got != test.own {
+			t.Fatalf("destination=%q chat=%q own chat = %v, want %v", test.destination, test.chatID, got, test.own)
+		}
+	}
+	if _, err := projectScheduleChatKey(context.Background(), "owner", crewProfileID, "team", "main"); err == nil || err.Error() != scheduleChooseAgentMessage {
+		t.Fatalf(`chat_id "main" = %v, want the choose-an-agent refusal`, err)
+	}
+	// The one-off move: a stored schedule with no agent (empty, or the project key that meant Main) gets its own chat;
+	// one on an agent, one with its own chat and a Watcher stay as they are.
+	for _, test := range []struct {
+		action projectactions.Action
+		input  string
+		move   bool
+	}{
+		{projectactions.Action{Type: "message"}, `{"messages":["hi"]}`, true},
+		{projectactions.Action{Type: "run", WorkflowID: "wf", Tab: "team"}, `{}`, true},
+		{projectactions.Action{Type: "message", Tab: "team:chat:abc"}, `{}`, false},
+		{projectactions.Action{Type: "message", Conversation: runDestinationIsolated}, `{}`, false},
+		{projectactions.Action{Type: "message"}, `{"condition":{"check_mode":"schedule"}}`, false},
+	} {
+		if got := crewScheduleNamesNoAgent(projectactions.Schedule{Action: test.action, Input: json.RawMessage(test.input)}); got != test.move {
+			t.Fatalf("%+v %s: move = %v, want %v", test.action, test.input, got, test.move)
 		}
 	}
 	for _, test := range []struct {
@@ -528,7 +550,7 @@ func TestChatScheduleToolDefaultsToTheChatItWasMadeFrom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(source), "crewMessageScheduleDefaultsToOwnChat(") {
+	if strings.Contains(string(source), "crewScheduleDefaultsToOwnChat(") {
 		t.Fatal("the chat schedule tool still gives a schedule with no place its own chat")
 	}
 }
@@ -550,15 +572,5 @@ func TestScheduleOwnChatRowIsWritableForItsOwner(t *testing.T) {
 	}
 	if !strings.Contains(body, "TabOwnerID: userID, CanWrite: true") || strings.Contains(body, "CanWrite: false") {
 		t.Fatal("a schedule's own chat is not writable for its owner")
-	}
-}
-
-// #4077: a workflow schedule saves the Main chat as "main", and the destination check refused it as an unknown tab,
-// so no schedule delivering to Main could be saved or updated. "main" and "" both mean the Main chat.
-func TestScheduleMainChatDestinationIsAccepted(t *testing.T) {
-	for _, id := range []string{"", "main", " main "} {
-		if key, err := projectScheduleChatKey(context.Background(), "owner", "work", "project", id); err != nil || key != "" {
-			t.Fatalf("chat_id %q: key %q, %v", id, key, err)
-		}
 	}
 }
