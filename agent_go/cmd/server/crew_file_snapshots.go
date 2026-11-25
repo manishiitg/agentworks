@@ -319,7 +319,7 @@ var crewSnapshotUnavailableText = map[string]string{
 	"setting_up": "File changes for this reply weren't saved (setting up file tracking for this project).",
 	"busy":       "File changes for this reply weren't saved (the project was too busy to snapshot in time).",
 	"failed":     "Changes couldn't be saved for this reply. Your work is still available in Files.",
-	"timeout":    "File tracking ran out of time for this reply. Your work is still in Files; use a smaller project folder if this keeps happening.",
+	"timeout":    "File tracking ran out of time for this reply. Your work is still in Files.",
 	"file_limit": "This project has too many files to track every change. Your work is in Files. See why and fix it on the Git row in the side panel.",
 	"filename":   "File tracking couldn't save a filename in this project. Your work is still in Files; update AgentWorks and try again.",
 	"access":     "File tracking couldn't read the project folder. Check its folder access, then try again. Your work is still in Files.",

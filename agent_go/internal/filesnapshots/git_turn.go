@@ -26,6 +26,10 @@ import (
 // copied projects, migration output or large untracked backup directories.
 const maxTurnPaths = 10000
 
+// newCheckoutMaxPaths caps the changed files of a checkout that appeared
+// during a reply; above it the checkout is still being created.
+const newCheckoutMaxPaths = 1000
+
 var errTurnPathLimit = errors.New("too many files to track for this reply")
 
 func turnFileLimited(stats CaptureStats) bool {
@@ -563,6 +567,15 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 					candidates[string(p)] = true
 				}
 			}
+		}
+		if !existed && len(candidates) > newCheckoutMaxPaths {
+			// A checkout that appeared during the reply with thousands of changed
+			// files is one being created (another agent's worktree mid-checkout),
+			// not this reply's edits. Reading it file by file ran the whole
+			// capture out of time (#3878), so it gets no review for this reply.
+			log.Printf("[FILE_SNAPSHOT] phase=new_checkout_skipped root=%q paths=%d", root, len(candidates))
+			r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
+			continue
 		}
 		if len(candidates) > maxTurnPaths {
 			if r.AfterCapture.Deferred == "" {
