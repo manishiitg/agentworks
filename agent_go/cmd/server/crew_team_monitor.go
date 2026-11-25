@@ -97,28 +97,21 @@ func (api *StreamingAPI) handleCrewTeamMonitor(w http.ResponseWriter, r *http.Re
 			go func(c desktopConnection) {
 				defer wg.Done()
 				result := crewTeamMonitorConnection{Connection: c.ID, Network: crewTeamMonitorServerName(c), NetworkID: c.Server, Teams: []crewTeamLiveView{}}
-				round, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-				defer cancel()
-				var reply crewTeamMonitorReply
-				if err := crewTeamRemoteJSON(round, claims.UserID, c, http.MethodGet, "/api/crew-team-monitor", nil, &reply); err != nil {
-					status, code, reason, transient := crewTeamMonitorFailure(err)
-					// One missed poll of a server that answered moments ago is not "unreachable".
-					if teams, ok := crewTeamMonitorLastGood(claims.UserID, c.ID, transient); ok {
-						result.Teams = teams
-						log.Printf("[TEAM_MONITOR] connection=%s viewer=%s outcome=reused_last_good status=%d code=%q", c.ID, claims.UserID, status, code)
-					} else {
-						result.Error = reason
-						log.Printf("[TEAM_MONITOR] connection=%s viewer=%s outcome=failed status=%d code=%q reason=%q", c.ID, claims.UserID, status, code, reason)
-					}
+				// A recent good read answers this poll at once and the server is read again in the background: one server
+				// that doesn't answer held every poll for its whole wait (17-20 s) and slowed the whole app.
+				if teams, ok := crewTeamMonitorLastGood(claims.UserID, c.ID, true); ok {
+					result.Teams = teams
+					crewTeamMonitorRefresh(claims.UserID, c, crewTeamMonitorRefreshWait)
+				} else if reason, failed := crewTeamMonitorRecentFailure(claims.UserID, c.ID); failed {
+					result.Error = reason
+					crewTeamMonitorRefresh(claims.UserID, c, crewTeamMonitorFirstWait)
 				} else {
-					for _, source := range reply.Connections {
-						for _, live := range source.Teams {
-							crewTeamLiveLocalSelf(&live, c)
-							live.Connection = c.ID
-							result.Teams = append(result.Teams, live)
-						}
+					teams, err := crewTeamMonitorRead(r.Context(), claims.UserID, c, crewTeamMonitorFirstWait)
+					if err != nil {
+						result.Error = err.Error()
+					} else {
+						result.Teams = teams
 					}
-					crewTeamMonitorRemember(claims.UserID, c.ID, result.Teams)
 				}
 				if result.Error != "" {
 					label := result.Network
@@ -148,6 +141,81 @@ func (api *StreamingAPI) handleCrewTeamMonitor(w http.ResponseWriter, r *http.Re
 	out.Notice = strings.Join(failed, " · ")
 	externalJSON(w, out)
 }
+
+// The first read of a server waits briefly; refreshes behind a recent good read may take longer.
+var (
+	crewTeamMonitorFirstWait   = 5 * time.Second
+	crewTeamMonitorRefreshWait = 30 * time.Second
+)
+
+var crewTeamMonitorRefreshing sync.Map // viewer\x00connection -> refresh in progress
+
+// A server that just failed is reported at once and retried in the background, not waited on by every poll.
+const crewTeamMonitorFailureFor = 30 * time.Second
+
+type crewTeamMonitorFailed struct {
+	at     time.Time
+	reason string
+}
+
+var crewTeamMonitorFailures sync.Map // viewer\x00connection -> crewTeamMonitorFailed
+
+func crewTeamMonitorRecentFailure(viewer, connection string) (string, bool) {
+	v, ok := crewTeamMonitorFailures.Load(viewer + "\x00" + connection)
+	if !ok || time.Since(v.(crewTeamMonitorFailed).at) > crewTeamMonitorFailureFor {
+		return "", false
+	}
+	return v.(crewTeamMonitorFailed).reason, true
+}
+
+// crewTeamMonitorRefresh reads one server again in the background, one read per server at a time.
+func crewTeamMonitorRefresh(viewer string, c desktopConnection, wait time.Duration) {
+	key := viewer + "\x00" + c.ID
+	if _, busy := crewTeamMonitorRefreshing.LoadOrStore(key, true); busy {
+		return
+	}
+	go func() {
+		defer crewTeamMonitorRefreshing.Delete(key)
+		if _, err := crewTeamMonitorRead(context.Background(), viewer, c, wait); err != nil {
+			// A server that keeps failing drops out once its last good read is older than crewTeamMonitorLastGoodFor.
+			if _, _, _, transient := crewTeamMonitorFailure(err); !transient {
+				crewTeamMonitorGoodReads.Delete(key)
+			}
+		}
+	}()
+}
+
+// crewTeamMonitorRead reads one saved server's Teams and remembers a good read.
+func crewTeamMonitorRead(ctx context.Context, viewer string, c desktopConnection, wait time.Duration) ([]crewTeamLiveView, error) {
+	round, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	var reply crewTeamMonitorReply
+	if err := crewTeamRemoteJSON(round, viewer, c, http.MethodGet, "/api/crew-team-monitor", nil, &reply); err != nil {
+		status, code, reason, _ := crewTeamMonitorFailure(err)
+		log.Printf("[TEAM_MONITOR] connection=%s viewer=%s outcome=failed status=%d code=%q reason=%q wait=%s", c.ID, viewer, status, code, reason, wait)
+		crewTeamMonitorFailures.Store(viewer+"\x00"+c.ID, crewTeamMonitorFailed{at: time.Now(), reason: reason})
+		return nil, &crewTeamMonitorReadError{reason: reason, cause: err}
+	}
+	teams := []crewTeamLiveView{}
+	for _, source := range reply.Connections {
+		for _, live := range source.Teams {
+			crewTeamLiveLocalSelf(&live, c)
+			live.Connection = c.ID
+			teams = append(teams, live)
+		}
+	}
+	crewTeamMonitorRemember(viewer, c.ID, teams)
+	crewTeamMonitorFailures.Delete(viewer + "\x00" + c.ID)
+	return teams, nil
+}
+
+type crewTeamMonitorReadError struct {
+	reason string
+	cause  error
+}
+
+func (e *crewTeamMonitorReadError) Error() string { return e.reason }
+func (e *crewTeamMonitorReadError) Unwrap() error { return e.cause }
 
 // crewTeamMonitorFailure turns one failed remote monitor read into its status,
 // code, a plain reason and whether it is the kind that clears on the next poll.

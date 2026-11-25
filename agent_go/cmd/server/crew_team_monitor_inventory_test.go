@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -77,18 +79,46 @@ func TestCrewTeamMonitorPartialConnectionsKeepListedTeams(t *testing.T) {
 	defer online.Close()
 	offline := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "unavailable", 503) }))
 	defer offline.Close()
-	if err := writeDesktopConnections("owner", []desktopConnection{{ID: "online", Name: "Example company", Server: online.URL, Token: "saved-sign-in"}, {ID: "offline", Name: "Server", Server: offline.URL, Token: "other-sign-in"}}); err != nil {
+	// A server that never answers held every poll for its whole wait (17-20 s) and slowed the whole app.
+	stop := make(chan struct{})
+	var silentReads atomic.Int32
+	silent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { silentReads.Add(1); <-stop }))
+	defer silent.Close()
+	defer close(stop)
+	first, refresh := crewTeamMonitorFirstWait, crewTeamMonitorRefreshWait
+	crewTeamMonitorFirstWait, crewTeamMonitorRefreshWait = 100*time.Millisecond, 100*time.Millisecond
+	t.Cleanup(func() {
+		crewTeamMonitorFirstWait, crewTeamMonitorRefreshWait = first, refresh
+		crewTeamMonitorGoodReads.Clear()
+		crewTeamMonitorFailures.Clear()
+	})
+	if err := writeDesktopConnections("owner", []desktopConnection{{ID: "online", Name: "Example company", Server: online.URL, Token: "saved-sign-in"}, {ID: "offline", Name: "Server", Server: offline.URL, Token: "other-sign-in"}, {ID: "silent", Name: "Quiet company", Server: silent.URL, Token: "third-sign-in"}}); err != nil {
 		t.Fatal(err)
 	}
-	w := httptest.NewRecorder()
-	f.api.handleCrewTeamMonitor(w, desktopTestRequest(http.MethodGet, "/api/crew-team-monitor", "", "owner"))
-	var reply crewTeamMonitorReply
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &reply) != nil {
-		t.Fatalf("partial listing failed: %d %s", w.Code, w.Body.String())
+	poll := func() crewTeamMonitorReply {
+		started := time.Now()
+		w := httptest.NewRecorder()
+		f.api.handleCrewTeamMonitor(w, desktopTestRequest(http.MethodGet, "/api/crew-team-monitor", "", "owner"))
+		var reply crewTeamMonitorReply
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &reply) != nil {
+			t.Fatalf("partial listing failed: %d %s", w.Code, w.Body.String())
+		}
+		if took := time.Since(started); took > time.Second {
+			t.Fatalf("a silent server held the poll for %s", took)
+		}
+		return reply
 	}
-	// The notice names the server and its reason, not only a count.
-	if reply.Notice != "A saved server: Teams didn't load" {
+	reply := poll()
+	// The notice names each server and its reason, not only a count.
+	if reply.Notice != "A saved server: Teams didn't load · Quiet company: didn't answer" {
 		t.Fatalf("missing named partial result: %+v", reply)
+	}
+	// The next poll reports the silent server at once instead of waiting on it again, and keeps the listed Team.
+	if again := poll(); again.Notice != reply.Notice {
+		t.Fatalf("second poll changed: %+v", again)
+	}
+	if reads := silentReads.Load(); reads > 2 {
+		t.Fatalf("every poll waited on the silent server: %d reads", reads)
 	}
 	listed := 0
 	for _, c := range reply.Connections {
