@@ -27,7 +27,7 @@ import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { openCrewAccess } from './MacSharedAgents'
 import { CrewOnlineRow } from './CrewOnlineRow'
 import { openCrewWorkflow } from './workflowRunNavigation'
-import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
+import { openWorkspacePaneChatWithDraft, sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { useTeamTab } from './teamApi'
 import { CrewTeamPanel } from './CrewTeamPanel'
 import { CrewActivitySection } from './ActivitySection'
@@ -167,7 +167,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       )}
     </WorkspaceContextCard>
   }
-  const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} section={section('changes')} storageKey={`agentworks.changes-panel.${workspacePath}`} onTerminal={allowed('shell') ? () => onOpen('shell') : undefined} onOpen={(repoRoot, changed) => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', repoRoot === undefined ? 'review-uncommitted' : changed === false ? `folder:${encodeURIComponent(repoRoot)}` : `review-uncommitted:${encodeURIComponent(repoRoot)}`); onOpen('files') }}/> : null
+  const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} onAskAgent={dashboardChatTarget ? message => sendWorkspacePaneMessageToChat({ ...dashboardChatTarget, message }).then(() => undefined) : undefined} section={section('changes')} storageKey={`agentworks.changes-panel.${workspacePath}`} onTerminal={allowed('shell') ? () => onOpen('shell') : undefined} onOpen={(repoRoot, changed) => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', repoRoot === undefined ? 'review-uncommitted' : changed === false ? `folder:${encodeURIComponent(repoRoot)}` : `review-uncommitted:${encodeURIComponent(repoRoot)}`); onOpen('files') }}/> : null
   const theirs = access?.role === 'member' || access?.role === 'shared'
   const macElsewhere = data?.mac_elsewhere === true
   // Team and Online (owner, 11 Nov: the Share row split in two): Team says Off or how many people, Online where the
