@@ -689,6 +689,26 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 	return nil, providerAccountUnavailable(run)
 }
 
+// providerAccountRemoved reports whether id names a stored account that no longer exists. Server and
+// company accounts are never "removed"; a read error is not treated as removal.
+func providerAccountRemoved(ctx context.Context, id string) bool {
+	if id == "" || strings.HasPrefix(id, "global:") || strings.HasPrefix(id, llmguard.ServerDefaultConnectionPrefix) {
+		return false
+	}
+	providerConnectionsMu.Lock()
+	records, err := loadProviderConnections(ctx)
+	providerConnectionsMu.Unlock()
+	if err != nil {
+		return false
+	}
+	for _, record := range records {
+		if record.ID == id {
+			return false
+		}
+	}
+	return true
+}
+
 // userAccountAdmission returns how a user account is admitted for principal
 // in run ("owner", "user", "workflow", "crew"), or "" when it is not.
 func (api *StreamingAPI) userAccountAdmission(ctx context.Context, record storedProviderConnection, principal string, run providerAccountRun) string {

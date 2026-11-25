@@ -505,6 +505,12 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 			externalError(w, 403, "tab_owner", err.Error())
 			return
 		}
+		// The picker can still send an account that was removed since it was saved; that used to refuse every
+		// switch with a 403, including the switch the refusal itself asks for. Switch onto the default account instead.
+		if id := strings.TrimSpace(input.ConnectionID); id != "" && providerAccountRemoved(r.Context(), id) {
+			log.Printf("[CHAT_MODELS] switch names removed account %s; using the default account project=%s", id, projectID)
+			input.ConnectionID = ""
+		}
 		if status, message := api.chatModelChoiceRefusal(r.Context(), userID, slot, input); status != 0 {
 			writeAgentProfileError(w, status, message)
 			return
