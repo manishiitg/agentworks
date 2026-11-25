@@ -6080,6 +6080,11 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 		attendedTurn = attendedTurn && toolGate.Admit("request_clarification")
 		log.Printf("[QUESTIONS] session=%s attended=%t trigger=%q agent_message=%t provider=%s", sessionID, attendedTurn, req.TriggeredBy, req.AgentMessageInbox != "", finalProvider)
+		// The person's own new message answers for any question card kept from before a restart.
+		if trigger := strings.TrimSpace(req.TriggeredBy); (trigger == "" || trigger == "interactive") && !req.IsAutoNotification && req.AgentMessageInbox == "" &&
+			codingAgentTurnAttended(GetUserFromContext(r.Context()), &req, sessionID) {
+			api.supersedeRecoveredQuestions(sessionID)
+		}
 		clarificationAvailable := attendedTurn
 		// Claude can wait on background tasks it started before it ends a reply (the chat's own task list).
 		claudeBackgroundWait := strings.EqualFold(finalProvider, "claude-code") && sessionID != ""

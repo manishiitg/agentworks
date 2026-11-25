@@ -708,6 +708,27 @@ func (api *StreamingAPI) recoveredQuestionRequest(r *http.Request, sessionID, pr
 	return &req, nil
 }
 
+// supersedeRecoveredQuestions closes the cards kept open across a restart when
+// the person sends a new message instead of answering them: the agent that
+// asked is gone, so the new message is their answer and the card would
+// otherwise stay on screen under every later turn.
+func (api *StreamingAPI) supersedeRecoveredQuestions(sessionID string) {
+	api.codingAgentClarificationsMu.Lock()
+	defer api.codingAgentClarificationsMu.Unlock()
+	for key, p := range api.codingAgentClarifications {
+		if p.sessionID != sessionID || !p.recovered {
+			continue
+		}
+		p.closureMessage = "You sent a new message instead, so this earlier question was closed."
+		if err := api.emitCodingAgentClarification(p, "settled", clarificationOutcomeUnanswered, nil); err != nil {
+			log.Printf("[HUMAN_INPUT] session=%s prompt=%s status=supersede_failed", sessionID, p.promptID)
+			continue
+		}
+		delete(api.codingAgentClarifications, key)
+		log.Printf("[HUMAN_INPUT] session=%s prompt=%s status=unanswered reason=new_message", sessionID, p.promptID)
+	}
+}
+
 func (api *StreamingAPI) hasRecoveredQuestion(sessionID string) bool {
 	api.codingAgentClarificationsMu.Lock()
 	defer api.codingAgentClarificationsMu.Unlock()

@@ -595,6 +595,18 @@ func TestNativeQuestionRestartRestoresOrdinaryAnswersWithoutRevivingApproval(t *
 			if fresh.codingAgentClarificationLocked(sid, p.promptID) != nil {
 				t.Fatal("answered question resurrected on replay")
 			}
+			// #4021: a new message instead of an answer closes a card kept across a restart for good.
+			later := &pendingCodingAgentClarification{sessionID: sid, provider: provider, promptID: "clarification:later", requestKind: "question", questions: questions}
+			if err := fresh.emitCodingAgentClarification(later, "requested", "", nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := fresh.restoreNativeQuestionsAfterRestart(sid); err != nil || fresh.codingAgentClarificationLocked(sid, later.promptID) == nil {
+				t.Fatalf("later question not kept across the restart: %v", err)
+			}
+			fresh.supersedeRecoveredQuestions(sid)
+			if err := fresh.restoreNativeQuestionsAfterRestart(sid); err != nil || fresh.codingAgentClarificationLocked(sid, later.promptID) != nil {
+				t.Fatalf("a question the person moved past came back: %v", err)
+			}
 		})
 	}
 }
