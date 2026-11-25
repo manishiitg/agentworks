@@ -266,3 +266,22 @@ func (s *MemoryStore) IsCrewVault(vaultID string) bool {
 	g, ok := s.groups[vaultID]
 	return ok && g.IsVault() && strings.HasPrefix(g.ProjectRoot, CrewVaultRootPrefix)
 }
+
+// CrewVaultSecrets are the secrets of one server Crew's vault for one of its owners. ListSecrets leaves every project
+// scope out of account-wide lists; a Crew's own runtime names its vault (X-Vault-Crew-Vault) and gets these instead.
+func (s *MemoryStore) CrewVaultSecrets(workspace, user, vaultID string) []SecretResource {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	g, ok := s.groups[vaultID]
+	if !ok || !g.IsVault() || g.WorkspaceID != workspace || !strings.HasPrefix(g.ProjectRoot, CrewVaultRootPrefix) || !s.members[vaultID][user] {
+		return nil
+	}
+	rows := []SecretResource{}
+	for name := range s.secretGrants[vaultID] {
+		if row, ok := s.secretResources[name]; ok && row.VaultID == vaultID && row.WorkspaceID == workspace && s.secretGrants[vaultID][name] {
+			rows = append(rows, row)
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
+	return rows
+}

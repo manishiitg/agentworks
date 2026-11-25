@@ -145,7 +145,7 @@ func (a *Admin) runtimeRoutes(mux *http.ServeMux) {
 				}
 			}
 			w.Header().Set("Cache-Control", "no-store")
-			writeJSON(w, 200, map[string]any{"servers": rows, "groups": groups, "secrets": visibleSecrets(a.Store.ListSecrets(a.WorkspaceID, actor, "", builder), hidden)})
+			writeJSON(w, 200, map[string]any{"servers": rows, "groups": groups, "secrets": a.runtimeSecrets(r, actor, builder)})
 		}
 	}
 	mux.HandleFunc("/api/admin/runtime/servers", inventory(false))
@@ -160,6 +160,25 @@ func (a *Admin) crewVaultHidden(r *http.Request, builder bool) func(string) bool
 	return func(vaultID string) bool {
 		return !builder && vaultID != "" && vaultID != allowed && a.Store.IsCrewVault(vaultID)
 	}
+}
+
+// runtimeSecrets are the secrets a runtime list gives actor: everything account-wide they may use outside other Crews'
+// vaults, plus the secrets of the Crew vault the request names, when actor is one of its owners.
+func (a *Admin) runtimeSecrets(r *http.Request, actor string, builder bool) []store.SecretResource {
+	rows := visibleSecrets(a.Store.ListSecrets(a.WorkspaceID, actor, "", builder), a.crewVaultHidden(r, builder))
+	if builder {
+		return rows
+	}
+	seen := map[string]bool{}
+	for _, row := range rows {
+		seen[row.Name] = true
+	}
+	for _, row := range a.Store.CrewVaultSecrets(a.WorkspaceID, actor, r.Header.Get("X-Vault-Crew-Vault")) {
+		if !seen[row.Name] {
+			rows = append(rows, row)
+		}
+	}
+	return rows
 }
 
 func visibleSecrets(rows []store.SecretResource, hidden func(string) bool) []store.SecretResource {
