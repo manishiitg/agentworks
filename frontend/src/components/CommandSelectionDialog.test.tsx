@@ -9,9 +9,9 @@ vi.mock('../commands', () => ({loadAndRegisterUserCommands: async () => {},findC
 vi.mock('../commands/registry', () => ({subscribeCommands: () => () => {},getCommandRevision: () => 0}))
 vi.mock('../hooks/useComposerPicker', () => ({useComposerPicker: () => {},isComposerPickerEvent: () => true}))
 
-// The / menu lists commands only, with one Skills entry last; skills are not
-// matched by search (their descriptions made unrelated skills show up).
-it('keeps app commands first and the Skills entry last', async () => {
+// The / menu lists commands first and the Skills entry last; skills whose name
+// matches the typed text sit between them (#3302: never by description).
+it('keeps app commands first, name-matched skills next and the Skills entry last', async () => {
  const host = document.createElement('div'); document.body.append(host)
  const root = createRoot(host)
  const cmd = (command:string,label?:string):CommandDefinition => ({command,label,description:command,icon:null,source:'builtin',execute:()=>{}})
@@ -23,6 +23,11 @@ it('keeps app commands first and the Skills entry last', async () => {
  const skills=options[2] as HTMLElement
  await act(async () => skills.click())
  expect(select).toHaveBeenCalledWith('__skills__')
+ await act(async () => root.render(<CommandSelectionDialog {...props} searchQuery="under" skillCommands={[cmd('__native_skill:opaque','plugin:understand'),cmd('__skills__','Skills…')]} />))
+ const skill=document.querySelector<HTMLElement>('[role="option"]')!
+ expect(skill.textContent).toContain('plugin:understand')
+ await act(async () => skill.click())
+ expect(select).toHaveBeenCalledWith('__native_skill:opaque')
  act(() => root.unmount()); host.remove()
 })
 
