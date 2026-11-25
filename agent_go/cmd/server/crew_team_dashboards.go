@@ -18,6 +18,8 @@ type crewTeamDashboard struct {
 	Path     string `json:"path"`
 	Artifact bool   `json:"artifact,omitempty"`
 	Motion   bool   `json:"motion,omitempty"`
+	// UpdatedAt is when the page last changed (Unix seconds), from the dashboard list.
+	UpdatedAt int64 `json:"updated_at,omitempty"`
 	// PublicLink is for the Crew's owner only; teammates see the same rows without it.
 	PublicLink *dashboardPublicView `json:"public_link,omitempty"`
 }
@@ -58,7 +60,7 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 		}
 
 		for _, d := range page.Dashboards {
-			row := crewTeamDashboard{ID: d.ID, Title: d.Title, Path: d.DocumentPath, Artifact: d.Artifact, Motion: d.Motion}
+			row := crewTeamDashboard{ID: d.ID, Title: d.Title, Path: d.DocumentPath, Artifact: d.Artifact, Motion: d.Motion, UpdatedAt: d.UpdatedAt}
 			if canShare && d.Managed {
 				var record *dashboardPublicRecord
 				if found, ok := links[d.ID]; ok {
@@ -80,24 +82,37 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 	return rows, true
 }
 
-// handleCrewTeamDashboardPublicLink is POST /crew-teams/{project}/dashboards/public-link: the card's switch, through the
-// Team's own route so the Mac app reaches a server Crew's. The dashboard tool's public_link action decides everything.
-func (api *StreamingAPI) handleCrewTeamDashboardPublicLink(w http.ResponseWriter, r *http.Request) {
+// handleCrewTeamDashboardAction is POST /crew-teams/{project}/dashboards/action: the Artifacts page's buttons for one
+// page (public_link with mode, link, delete, undelete), through the Team's own route so the Mac app reaches a server
+// Crew's. The dashboard tool decides who may do each, the same as from chat or MCP.
+func (api *StreamingAPI) handleCrewTeamDashboardAction(w http.ResponseWriter, r *http.Request) {
 	t, claims, ok := crewTeamForTab(w, r, false)
 	if !ok || refuseCrewOwnerOnline(w, r, t.ProjectID, claims.UserID) {
 		return
 	}
 	var args struct {
 		DashboardID string `json:"dashboard_id"`
+		Action      string `json:"action"`
 		Mode        string `json:"mode"`
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&args) != nil {
-		externalError(w, 400, "invalid_arguments", "invalid public link request")
+		externalError(w, 400, "invalid_arguments", "invalid dashboard request")
 		return
 	}
-	status, body := scheduleHandler(r, api.handleDashboards, http.MethodPost, "/api/dashboards", nil, nil, map[string]any{"workspace": crewProjectRootByID(t.ProjectID), "action": dashboardPublicAction, "mode": args.Mode, "dashboard_id": args.DashboardID})
+	body := map[string]any{"workspace": crewProjectRootByID(t.ProjectID), "dashboard_id": args.DashboardID}
+	switch args.Action {
+	case dashboardPublicAction:
+		body["action"], body["mode"] = dashboardPublicAction, args.Mode
+	case "link", "delete", "undelete":
+		body["action"] = args.Action
+	default:
+		externalError(w, 400, "invalid_arguments", "unknown dashboard action")
+		return
+	}
+	status, raw := scheduleHandler(r, api.handleDashboards, http.MethodPost, "/api/dashboards", nil, nil, body)
+	log.Printf("[CREW_DASHBOARDS] project=%s action=%s dashboard=%s status=%d", t.ProjectID, args.Action, args.DashboardID, status)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
-	_, _ = w.Write(body)
+	_, _ = w.Write(raw)
 }

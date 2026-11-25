@@ -3,67 +3,44 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 
-const state = vi.hoisted(() => ({
-  team: { error: 'unavailable', target: undefined as undefined | { project: string; connection: string } },
-  retry: vi.fn(), open: vi.fn(), remote: vi.fn(),
-}))
+const state = vi.hoisted(() => ({ remote: vi.fn(), action: vi.fn() }))
 vi.mock('./teamApi', () => ({
-  useTeamTab: () => ({ ...state.team, view: {team: {on: true, can_manage: true}}, retry: state.retry }),
+  useTeamTab: () => ({ target: { project: 'p', connection: 'server' }, error: '', retry: vi.fn() }),
   crewDashboardsTab: state.remote,
+  teamDashboardAction: state.action,
   teamFailure: (error: Error) => error,
   teamPublicLink: vi.fn(),
 }))
-vi.mock('../../stores/useCapabilitiesStore', () => ({ useCapabilitiesStore: (select: (value: unknown) => unknown) => select({ capabilities: { local_mode: true } }) }))
-vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (value: unknown) => unknown) => select({ activeWorkspaceId: 'local' }) }))
-vi.mock('../../services/dashboardDirectory', () => ({
-  loadDashboardDirectory: async () => ({ dashboards: [
-    { product: 'crew', project_id: 'local', dashboard_id: 'page', can_edit: true, title: 'Local proposal', workspace: 'Crew/local', document_path: 'db/reports/page.html' },
-    { product: 'crew', project_id: 'different', dashboard_id: 'other', title: 'Different project' },
-  ] }),
-  dashboardDisplayName: (row: { title: string }) => row.title,
-}))
+vi.mock('../../stores/useCapabilitiesStore', () => ({ useCapabilitiesStore: (select: (value: unknown) => unknown) => select({ capabilities: { local_mode: false } }) }))
+vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (value: unknown) => unknown) => select({ activeWorkspaceId: 'server' }) }))
 vi.mock('./TeamTab', () => ({ teamCard: 'card', DashboardPeopleCard: () => null }))
 vi.mock('../../components/workflow/PublicLinkControl', () => ({ PublicLinkControl: () => null }))
-vi.mock('../../components/workflow/reportDocuments', () => ({ selectReportDocument: state.open }))
+vi.mock('../../components/workflow/reportDocuments', () => ({ selectReportDocument: vi.fn() }))
 vi.mock('../../utils/agentPurposeDraft', () => ({ fillMainDraft: vi.fn() }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast: vi.fn() }) } }))
 import { CrewDashboardsTab } from './CrewDashboardsTab'
 
-afterEach(() => { vi.useRealTimers(); vi.clearAllMocks() })
+afterEach(() => { vi.clearAllMocks() })
 
-it('keeps local artifacts usable during Team failure, retries with backoff and recovers', async () => {
-  vi.useFakeTimers()
-  state.team = { error: 'unavailable', target: undefined }
+// Owner, 25 Nov: a simple delete. One click deletes on the server; Undo brings the same page back.
+it('deletes a page in one click and Undo brings it back', async () => {
+  const page = { id: 'plan', title: 'Release plan', path: 'db/reports/managed/plan/index.html', kind: 'artifact', line: '', who: '', when: '2 h ago', group: 'Today', can_delete: true }
+  state.remote.mockResolvedValue({ workspace: 'Crew/p', intro: '', can_change: true, filter: 'all', filters: [], items: [page] })
+  state.action.mockResolvedValue({ deleted: true })
   const container = document.createElement('div')
   const root = createRoot(container)
   try {
-    await act(async () => root.render(<CrewDashboardsTab projectId="local" />))
-    expect(container.textContent).toContain('Local proposal')
-    expect(container.textContent).not.toContain('Different project')
-    expect(container.textContent).toContain("Couldn't reach the Team server, retrying")
-    expect(state.remote).not.toHaveBeenCalled()
-    await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent?.includes('Local proposal'))!.click())
-    expect(state.open).toHaveBeenCalledWith('Crew/local', 'db/reports/page.html', true)
-    await act(async () => vi.advanceTimersByTime(1000))
-    expect(state.retry).toHaveBeenCalledTimes(1)
-    await act(async () => vi.advanceTimersByTime(1000))
-    expect(state.retry).toHaveBeenCalledTimes(1)
-    await act(async () => vi.advanceTimersByTime(1000))
-    expect(state.retry).toHaveBeenCalledTimes(2)
-    state.team = { error: '', target: { project: 'online', connection: 'server' } }
-    state.remote.mockResolvedValue({ workspace: 'Crew/online', intro: '', filter: 'all', filters: [], items: [{ id: 'online', title: 'Team film', kind: 'motion', path: 'db/reports/film.html' }], empty: { title: 'No items anywhere' } })
-    await act(async () => root.render(<CrewDashboardsTab projectId="local" />))
-    expect(container.textContent).toContain('On the Team')
-    expect(container.textContent).toContain('All 2')
-    expect(container.textContent).toContain('Dashboards 1')
-    expect(container.textContent).toContain('Motion 1')
-    expect(container.textContent).not.toContain('No items anywhere')
-    await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Motion 1')!.click())
-    expect(container.textContent).not.toContain('Local proposal')
-    expect(container.textContent).toContain('Team film')
-    expect(container.textContent).not.toContain('No items anywhere')
-    await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'All 2')!.click())
-    expect(container.textContent).toContain('Local proposal')
-    expect(container.textContent).not.toContain("Couldn't reach the Team server")
+    await act(async () => root.render(<CrewDashboardsTab projectId="p" />))
+    expect(container.textContent).toContain('Release plan')
+    expect(container.textContent).toContain('Today')
+    state.remote.mockResolvedValue({ workspace: 'Crew/p', intro: '', can_change: true, filter: 'all', filters: [], items: [] })
+    await act(async () => (container.querySelector('[aria-label="Delete Release plan"]') as HTMLButtonElement).click())
+    expect(state.action).toHaveBeenCalledWith({ project: 'p', connection: 'server' }, 'plan', 'delete')
+    expect(container.textContent).toContain('Deleted “Release plan”')
+    state.remote.mockResolvedValue({ workspace: 'Crew/p', intro: '', can_change: true, filter: 'all', filters: [], items: [page] })
+    await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Undo')!.click())
+    expect(state.action).toHaveBeenLastCalledWith({ project: 'p', connection: 'server' }, 'plan', 'undelete')
+    expect(container.textContent).toContain('Release plan')
+    expect(container.textContent).not.toContain('Deleted “Release plan”')
   } finally { await act(async () => root.unmount()) }
 })

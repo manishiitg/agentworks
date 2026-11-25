@@ -67,6 +67,17 @@ func TestDashboardDeleteKeepsFilesAndRefusesRunAccess(t *testing.T) {
 	if _, err = call(Request{Action: "resolve", DocumentPath: Document("overview", rev)}); err == nil {
 		t.Fatal("deleted revision still resolves")
 	}
+	// Undo of a delete (the Artifacts page's Undo): the page lists again with its published revision.
+	if _, err = call(Request{Action: "undelete", ID: "overview"}); wf.StatusCode(err) != 403 {
+		t.Fatalf("undelete without edit access: %v", err)
+	}
+	back, err := call(Request{Action: "undelete", ID: "overview", IncludeDraft: true})
+	if err != nil || back.Dashboard == nil || back.Dashboard.Published != rev {
+		t.Fatalf("undelete: %+v %v", back, err)
+	}
+	if listed, err = call(Request{Action: "list"}); err != nil || len(listed.Dashboards) != 1 {
+		t.Fatalf("undeleted page not listed: %+v %v", listed, err)
+	}
 }
 
 // This drives the durable bundle path, including readers while a new draft

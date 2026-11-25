@@ -67,9 +67,9 @@ func TestDashboardPublicLinkFrozenCopy(t *testing.T) {
 
 	change := func(user, mode string) *httptest.ResponseRecorder {
 		t.Helper()
-		body, _ := json.Marshal(map[string]string{"dashboard_id": "sales", "mode": mode})
+		body, _ := json.Marshal(map[string]string{"dashboard_id": "sales", "action": "public_link", "mode": mode})
 		w := httptest.NewRecorder()
-		f.api.handleCrewTeamDashboardPublicLink(w, adminRequest(http.MethodPost, "/api/crew-teams/team/dashboards/public-link", string(body), &UserClaims{UserID: user, Username: user}, map[string]string{"project": "team"}))
+		f.api.handleCrewTeamDashboardAction(w, adminRequest(http.MethodPost, "/api/crew-teams/team/dashboards/action", string(body), &UserClaims{UserID: user, Username: user}, map[string]string{"project": "team"}))
 		return w
 	}
 	direct := func(user string) *httptest.ResponseRecorder {
