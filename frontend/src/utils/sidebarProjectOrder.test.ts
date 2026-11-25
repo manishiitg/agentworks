@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {expect,it,vi} from 'vitest'
-import {revealSidebarTarget,sidebarProjectShortcuts} from './sidebarProjectOrder'
+import {markSidebarInteraction,resetSidebarInteraction,revealSidebarTarget,sidebarProjectShortcuts} from './sidebarProjectOrder'
 it('lists pins in saved order, then up to five recent ones that are not pinned, the open one first', () => {
  const rows = [{ id: 'a', selected: false }, { id: 'b', selected: true }, { id: 'c', selected: false }, { id: 'd', selected: false }]
  const order = (pins: string[], recent: string[]) => sidebarProjectShortcuts(rows, row => row.id, pins, recent, row => row.selected)
@@ -25,4 +25,24 @@ it('scrolls only an off-screen sidebar target into view',()=>{
  target.setAttribute('role','listitem');target.setAttribute('aria-current','page')
  project.append(header,target);scroll.mockClear()
  revealSidebarTarget(project,viewport);expect(scroll).toHaveBeenCalledOnce() // agent, not visible project header
+
+ // Scrolled down inside a tall project while no active agent listitem is mounted yet:
+ // must not yank back up to the off-screen project heading.
+ const tallProject=document.createElement('div'),tallHeader=document.createElement('button')
+ const headerScroll=vi.fn();tallHeader.scrollIntoView=headerScroll
+ tallHeader.setAttribute('aria-current','page')
+ tallHeader.getBoundingClientRect=()=>rect(-300,-270)
+ tallProject.getBoundingClientRect=()=>rect(-300,400)
+ tallProject.append(tallHeader)
+ revealSidebarTarget(tallProject,viewport)
+ expect(headerScroll).not.toHaveBeenCalled()
+
+ // Clicking directly inside the sidebar suppresses auto-scroll during the grace window.
+ scroll.mockClear()
+ markSidebarInteraction(1000)
+ revealSidebarTarget(project,viewport,1200)
+ expect(scroll).not.toHaveBeenCalled()
+ revealSidebarTarget(project,viewport,2000)
+ expect(scroll).toHaveBeenCalledOnce()
+ resetSidebarInteraction()
 })
