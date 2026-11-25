@@ -1,4 +1,5 @@
 import { requestSidebarProjectAction, type SidebarProjectAction } from '../../products/work/sidebarProjectActions'
+import { listProjectSideChats } from '../../products/work/sideChatListCache'
 import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 import { useTerminalConversationSelection } from '../../products/work/terminalConversationSelection'
 import { revealSidebarTarget, sidebarProjectShortcuts } from '../../utils/sidebarProjectOrder'
@@ -285,7 +286,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     const identity = captureChatIdentity()
     const load = async () => {
       try {
-        const result = await agentApi.listAgentProfileSideChats('work', projectId, true)
+        const result = await listProjectSideChats('work', projectId, true, reload > 0)
         // A failed Team read leaves the person's own agents listed (owner, 11 Nov: a Team failure hid them all), and
         // keeps the teammates' agents last read, so they do not drop out and come back (owner, 20 Nov).
         const teammates = await teamSideChats('work', projectId, connectionId).catch(() => undefined)
@@ -335,7 +336,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   // Use the matching tab's latest server-confirmed preference when switching from the live list back to this one.
   const openPins = useChatStore(useShallow(state => {
     const result: Record<string, boolean | undefined> = {}
-    if (!here) return result
+    if (!here || own.length === 0) return result
     const tabs = Object.values(state.chatTabs)
     for (const chat of own) {
       const tab = tabs.find(tab => matchesWorkConversation(tab, 'work', projectId, chat.conversation_key))

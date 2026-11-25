@@ -50,7 +50,14 @@ export function WorkspaceProjectsProvider({ children }: { children: ReactNode })
       if (!disposed && isChatIdentityCurrent(identity)) setDirectory({ scope, crews: [], error: true })
     })
     return () => { disposed = true }
-  }, [scope, refresh, canBrowse, crewId])
+  }, [scope, refresh, canBrowse])
+  // Refresh only if the selected project is missing from the loaded directory
+  // (e.g. just created), not on every switch between known projects.
+  useEffect(() => {
+    if (canBrowse && crewId && directory?.scope === scope && !directory.error && !directory.crews.some(crew => crew.id === crewId)) {
+      setRefresh(value => value + 1)
+    }
+  }, [canBrowse, crewId, directory, scope])
   const current = directory?.scope === scope ? directory : null
   const projects = [
     ...(canBrowse ? (current?.crews || []).filter(crew => crew.profile_id === 'work').map(crew => ({ id: crew.id, name: crew.name, icon: crew.icon, mode: crew.mode, owned_by_caller: crew.owned_by_caller, owner_name: crew.owner_name, shared_line: crew.shared_line, location: crew.location, mac: crew.mac, state: crew.state, where: crew.where, kind: 'crew' as const })) : []),

@@ -6,6 +6,7 @@ import { AgentActionsMenu, useCrewAgentsStore, type CrewAgentRow, type CrewClose
 import { AgentMark, latestTime } from '../chat/AgentIcon'
 import { useAgentMenuState } from '../chat/agentMenuState'
 import { useChatStore } from '../../stores/useChatStore'
+import { useShallow } from 'zustand/react/shallow'
 import { openAgentTab } from '../../utils/openAgentTab'
 import { teamAgentFor, useTeamTab } from '../../products/work/teamApi'
 import { openTeammateAgent } from '../../products/work/openTeammateAgent'
@@ -84,7 +85,14 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const [forkFailed, setForkFailed] = useState<{ message: string; retry: () => void } | null>(null)
   // The Team tab's one server reading: each agent's availability and every person, by account, with their name.
   const team = useTeamTab(projectId).view
-  const tabs = useChatStore(state => state.chatTabs)
+  // Select only teammate conversation keys so composer draft edits on chatTabs never re-render the sidebar.
+  const teammateKeys = useChatStore(useShallow(state => {
+    const keys: Record<string, string | undefined> = {}
+    for (const agent of crew.agents) {
+      if (agent.ownerId) keys[agent.tabId] = state.chatTabs[agent.tabId]?.metadata?.agentProfileConversationKey
+    }
+    return keys
+  }))
   // The roster can be incomplete. An absent row does not tell us that sharing
   // changed; keep the saved group so the row can reappear with the next list.
   if (crew.projectId !== projectId || !crew.agents.length) return <OwnTerminalAgents projectId={projectId} />
@@ -195,7 +203,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     reorderTop(id, topIds[index + (direction === -1 ? -1 : 2)] ?? null)
   }
 
-  const status = (agent: CrewAgentRow) => agent.ownerId ? teamAgentFor(team?.agents, tabs[agent.tabId]?.metadata?.agentProfileConversationKey)?.status_label || '' : ''
+  const status = (agent: CrewAgentRow) => agent.ownerId ? teamAgentFor(team?.agents, teammateKeys[agent.tabId])?.status_label || '' : ''
   const moveMenu = (agent: CrewAgentRow) => {
     if (!agent.key) return undefined
     const current = groupOf(agent)

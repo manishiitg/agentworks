@@ -44,6 +44,7 @@ import { UpdateProgressToast } from '../../components/UpdateProgressToast'
 import api, { agentApi } from '../../services/api'
 import type { AgentProfileSideChat, PollingEvent } from '../../services/api-types'
 import { agentIdentitySaved } from '../../utils/agentPurposeDraft'
+import { listProjectSideChats } from './sideChatListCache'
 import { useWorkChatModels } from './useWorkChatModels'
 import { useAppStore } from '../../stores/useAppStore'
 import { useChatStore, waitForChatStoreHydration, type ChatTab } from '../../stores/useChatStore'
@@ -463,7 +464,7 @@ export function useWorkChatTab(
 
         // Opening a project is not permission to create an agent. Only resolve
         // an existing Main; other agents are projected by WorkChatTabs below.
-        const agents = await agentApi.listAgentProfileSideChats(product.profileId, target.id, true)
+        const agents = await listProjectSideChats(product.profileId, target.id, true)
         if (cancelled) return
         setPreparedProject(target.id)
         if (!agents.some(agent => agent.is_main)) {
@@ -832,14 +833,14 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     let busy = false
     let refreshRequested = false
     let pendingTeamAgent: {projectId:string;key:string;owner?:string} | undefined = takeQueuedTeammateAgent(projectId)
-    const sync = async () => {
+    const sync = async (force = false) => {
       if (busy) { refreshRequested = true; return }
       if (openingRef.current || document.visibilityState === 'hidden') return
       busy = true
       try {
         // In the Mac app the Team members' own agents are listed from the Crew's online copy, as real tabs like on the
         // website (they are read from the server; only their owner types).
-        const [rows, teammates] = await Promise.all([agentApi.listAgentProfileSideChats(profileId, projectId, true), teamSideChats(profileId, projectId).catch(() => undefined)])
+        const [rows, teammates] = await Promise.all([listProjectSideChats(profileId, projectId, true, force), teamSideChats(profileId, projectId).catch(() => undefined)])
         if (teammates) lastTeammateAgents.set(projectId, teammates)
         rows.push(...(teammates ?? lastTeammateAgents.get(projectId) ?? []))
         if (cancelled) return
@@ -940,20 +941,20 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         // The list is a convenience; the next pass tries again.
       } finally {
         busy = false
-        if (refreshRequested && !cancelled) { refreshRequested = false; void sync() }
+        if (refreshRequested && !cancelled) { refreshRequested = false; void sync(true) }
       }
     }
     const onTeamAgent = (event: Event) => {
       const detail = (event as CustomEvent<{projectId:string;key:string;owner?:string}>).detail
       if (detail?.projectId !== projectId) return
       pendingTeamAgent = detail
-      void sync()
+      void sync(true)
     }
     window.addEventListener('agentworks:open-team-agent', onTeamAgent)
-    syncRef.current = sync
+    syncRef.current = () => sync(true)
     void sync()
-    const timer = window.setInterval(() => { void sync() }, 15000)
-    const onFocus = () => { void sync() }
+    const timer = window.setInterval(() => { void sync(true) }, 15000)
+    const onFocus = () => { void sync(true) }
     window.addEventListener('focus', onFocus)
     // Create can select the new Crew before its native copy finishes. The
     // subsequent agent deep link must refresh this already-mounted strip too.
