@@ -36,7 +36,7 @@ export async function forkTeammateAgent(target:TeamTarget,agent:string,onProgres
 
 /** Both entry points use the same server operation. Hidden is never inferred
  * from stale UI metadata: the current source is admitted on the server. */
-export function ForkTeammateAgent({target,agent,name,compact=false}:{target:TeamTarget;agent:string;name:string;compact?:boolean}) {
+export function ForkTeammateAgent({target,agent,name,compact=false,label='Fork to my Mac…'}:{target:TeamTarget;agent:string;name:string;compact?:boolean;label?:string}) {
  const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(''),[progress,setProgress]=useState<ForkProgress|null>(null)
  const local=hasDesktopConnections()
  const scope=`${captureChatIdentity()}:${target.connection}:${target.project}:${target.localProject}:${agent}`
@@ -67,7 +67,7 @@ export function ForkTeammateAgent({target,agent,name,compact=false}:{target:Team
   finally{if(current.current===requestScope){setBusy(false);setProgress(null)}}
  }
  return <>
-  <button type="button" title={`Fork ${name} to my Mac`} aria-label={`Fork ${name} to my Mac`} onClick={()=>{setOpen(true);setError('');setSaved('')}} className="shrink-0 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"><GitFork className={`inline h-3.5 w-3.5 ${busy?'animate-pulse text-primary':''}`}/>{!compact&&(busy&&progress?` Copying… ${progress.percent}%`:' Fork to my Mac…')}</button>
+  <button type="button" title={`Fork ${name} to my Mac`} aria-label={`Fork ${name} to my Mac`} onClick={()=>{setOpen(true);setError('');setSaved('')}} className="shrink-0 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"><GitFork className={`inline h-3.5 w-3.5 ${busy?'animate-pulse text-primary':''}`}/>{!compact&&(busy&&progress?` Copying… ${progress.percent}%`:` ${label}`)}</button>
   {open&&createPortal(<div className="fixed inset-0 z-[110] grid place-items-center bg-background/70 p-4" onClick={()=>setOpen(false)}>
    <section role="dialog" aria-modal="true" aria-label={`Fork ${name}`} className="w-full max-w-md space-y-3 rounded-xl border border-border bg-popover p-5 shadow-xl" onClick={event=>event.stopPropagation()}>
     <h2 className="font-semibold">Fork {name} to my Mac</h2>

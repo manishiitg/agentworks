@@ -1,3 +1,4 @@
+import { ForkTeammateAgent } from './ForkTeammateAgent'
 import { AgentDetailSection } from '../../components/chat/AgentDetailSection'
 import { Avatar } from '../../components/ui/Avatar'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -67,6 +68,8 @@ export function ShareCrew({ projectId, onBack, goOnline }: { projectId: string; 
 }
 
 /** Team › Agents: teammates first, then own sharing cards and actions, then "Who can use these". */
+const copySize = (bytes: number) => bytes < 1 << 20 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1 << 20)).toFixed(bytes < 10 << 20 ? 1 : 0)} MB`
+
 function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePage; target: TeamTarget; projectId: string; onPeople: () => void }) {
   const [wizard, setWizard] = useState('')
   const shared = page.shared_with_you || []
@@ -81,8 +84,9 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
           const watch = item.terminal_agent_id ? () => openTerminalConversation(projectId, target, { id: item.terminal_agent_id!, name: item.name }) : item.key ? () => openTeammateAgent(projectId, item.key!, item.owner_id) : undefined
           const ask = item.address ? () => toMain(projectId, `Ask ${person.name}'s ${item.name} (${item.address}): `) : undefined
           return <div key={person.name + item.name + item.line} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/50">
-            <span className="min-w-0 flex-1 truncate"><span className="font-medium">{item.name}</span> <span className={`text-xs ${item.working ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>· {item.line}</span></span>
+            <span className="min-w-0 flex-1 truncate"><span className="font-medium">{item.name}</span> <span className={`text-xs ${item.working ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>· {item.line}</span>{!!item.copy_bytes && <span className="text-xs text-muted-foreground" title="Size of its conversation copy online"> · {copySize(item.copy_bytes)} online</span>}</span>
             {item.watch && watch && <button type="button" title={`Watch ${person.name}'s ${item.name}`} onClick={watch} className="shrink-0 text-xs text-muted-foreground hover:text-primary">Watch</button>}
+            {item.agent_id && <ForkTeammateAgent target={target} agent={item.agent_id} name={item.name} label="Fork" />}
             {ask && <button type="button" title={`Ask ${person.name}'s ${item.name} from your agent`} onClick={ask} className="shrink-0 text-xs text-primary hover:underline">Ask</button>}
           </div>
         })}
