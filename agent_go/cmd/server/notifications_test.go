@@ -153,6 +153,6 @@ func TestNotifyMacFocusCoversOtherChatsAndRoutesNameExactAgent(t *testing.T) {
 	if notifyFocused(device, "owner", "chat-two", true) { t.Fatal("stale focus blocked a Mac alert") }
 	notifyFocus.Delete(device)
 	if notifyFocused(device, "owner", "chat-one", true) { t.Fatal("background device treated as focused") }
-	if got := notifyChatRoute("crew", "crew"); got != "/crew/projects/crew?agent=main" { t.Fatalf("Main route = %s", got) }
-	if got := notifyChatRoute("crew", "crew:chat:fork-example"); got != "/crew/projects/crew?agent=fork-example" { t.Fatalf("side route = %s", got) }
+	if got := notifyChatRoute("crew", "crew"); got != "/projects/crew?agent=main" { t.Fatalf("Main route = %s", got) }
+	if got := notifyChatRoute("crew", "crew:chat:fork-example"); got != "/projects/crew?agent=fork-example" { t.Fatalf("side route = %s", got) }
 }

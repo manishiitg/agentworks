@@ -220,7 +220,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
   // A network is named by its server's address, such as agents.example.com.
   const networkName = (id?: string) => { const item = connections.find(c => c.id === id); try { return item ? new URL(item.server).host : '' } catch { return item?.name || '' } }
   const reach = (via: string) => { setAsking(false); setReaching(true); void run('relay', via).finally(() => setReaching(false)) }
-  const link = binding?.peer_server ? `${binding.peer_server}/crew/projects/${encodeURIComponent(binding.peer_project_id)}` : ''
+  const link = binding?.peer_server ? `${binding.peer_server}/projects/${encodeURIComponent(binding.peer_project_id)}` : ''
   const run = async (action: 'relay' | 'offline', via = target) => {
     setBusy(true); setError('')
     try {
@@ -236,7 +236,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
     <div className="flex flex-wrap items-center gap-1.5">{action}</div>
   </div>
   // Website and phone: the Mac app opens its Crew on the paired server; the website is that server.
-  const reachLink = here ? link : `${window.location.origin}/crew/projects/${encodeURIComponent(projectId)}`
+  const reachLink = here ? link : `${window.location.origin}/projects/${encodeURIComponent(projectId)}`
   // Esc goes back too, unless the person is typing or a dialog is open.
   useEffect(() => {
     if (!onBack) return

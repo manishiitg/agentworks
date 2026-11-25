@@ -420,5 +420,5 @@ func notifyChatRoute(project, key string) string {
 	if isSideChatConversationKey(key) {
 		_, agent, _ = strings.Cut(key, codeChatSideMarker)
 	}
-	return "/crew/projects/" + url.PathEscape(project) + "?agent=" + url.QueryEscape(agent)
+	return "/projects/" + url.PathEscape(project) + "?agent=" + url.QueryEscape(agent)
 }

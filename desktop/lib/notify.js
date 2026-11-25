@@ -112,7 +112,7 @@ function notifyRoute(route, remote) {
   let url;
   try { url = new URL(value, 'https://notify.invalid'); } catch { return '/'; }
   if (url.origin !== 'https://notify.invalid') return '/';
-  const crew = /^\/crew\/projects\/[a-zA-Z0-9_-]+$/.exec(url.pathname);
+  const crew = /^\/projects\/[a-zA-Z0-9_-]+$/.exec(url.pathname);
   if (!crew) return '/';
   const agent = url.searchParams.get('agent');
   // Keep only the chat target the server named; never arbitrary query actions.

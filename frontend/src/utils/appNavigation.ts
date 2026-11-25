@@ -3,7 +3,8 @@ import { parseProductRoute, productRoutePath, type ProductRoute } from './produc
 
 /** Navigate a top-level app page without replacing the document or its shell. */
 export function openAppPage(path: '/' | '/dashboards' | '/projects'): void {
-  if (window.location.pathname + window.location.search === path) return
+  // Already at this address (no project selected lands on /projects): switch the page without a new history entry.
+  if (window.location.pathname + window.location.search === path) { window.dispatchEvent(new Event('product-navigation-changed')); return }
   window.history.pushState({}, '', path)
   window.dispatchEvent(new PopStateEvent('popstate'))
 }

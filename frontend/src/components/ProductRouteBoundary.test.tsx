@@ -40,13 +40,13 @@ describe('protected deep-link boundary', () => {
     const open = vi.fn().mockResolvedValue(undefined)
     window.electronAPI = { getDesktopConnection: () => 'saved', openDesktopConnection: open } as unknown as typeof window.electronAPI
     mocks.member.mockResolvedValue({ project_id: 'member-local' })
-    window.history.replaceState({}, '', '/crew/projects/team-online?agent=agent-stable&view=files')
+    window.history.replaceState({}, '', '/projects/team-online?agent=agent-stable&view=files')
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)
     try {
       await act(async () => root.render(<ProductRouteBoundary account="member" allowedProducts={['work']}>Server workspace</ProductRouteBoundary>))
       expect(mocks.member).toHaveBeenCalledWith('/saved/member-crew/team-online')
-      expect(open).toHaveBeenCalledWith('local', '/crew/projects/member-local?view=files&agent=agent-stable')
+      expect(open).toHaveBeenCalledWith('local', '/projects/member-local?view=files&agent=agent-stable')
       expect(mocks.resolve).not.toHaveBeenCalled()
       expect(host.textContent).not.toContain('Server workspace')
     } finally { await act(async () => root.unmount()); host.remove() }
@@ -62,7 +62,7 @@ describe('protected deep-link boundary', () => {
     mocks.resolve.mockResolvedValue(activate)
     const { useWorkspaceReturnStore } = await import('../stores/useWorkspaceReturnStore')
     useWorkspaceReturnStore.setState({ account: undefined, ready: false, record: null })
-    window.history.replaceState({}, '', '/crew/projects/team-online')
+    window.history.replaceState({}, '', '/projects/team-online')
     const host = document.createElement('div'); document.body.append(host)
     const root = createRoot(host)
     try {
@@ -73,7 +73,7 @@ describe('protected deep-link boundary', () => {
       expect(host.textContent).toContain('Admitted Crew')
       mocks.resolve.mockRejectedValueOnce({ response: { status: 403 } })
       await act(async () => {
-        window.history.pushState({}, '', '/crew/projects/denied')
+        window.history.pushState({}, '', '/projects/denied')
         window.dispatchEvent(new PopStateEvent('popstate'))
       })
       expect(host.textContent).not.toContain('Admitted Crew')
@@ -94,13 +94,13 @@ describe('protected deep-link boundary', () => {
     let complete: (activate: () => void) => void = () => {}
     const go = (path: string) => { window.history.pushState({}, '', path); window.dispatchEvent(new PopStateEvent('popstate')) }
     try {
-      window.history.replaceState({}, '', '/crew/projects/first')
+      window.history.replaceState({}, '', '/projects/first')
       mocks.resolve.mockResolvedValue(vi.fn())
       await act(async () => render('owner'))
       const workspace = host.querySelector('button')
       const activate = vi.fn()
       mocks.resolve.mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
-      await act(async () => go('/crew/projects/second'))
+      await act(async () => go('/projects/second'))
       expect(host.querySelector('button')).toBe(workspace)
       expect(host.querySelector('[inert]')).not.toBeNull()
       expect(activate).not.toHaveBeenCalled()
@@ -110,10 +110,10 @@ describe('protected deep-link boundary', () => {
       expect(host.querySelector('[inert]')).toBeNull()
 
       mocks.resolve.mockRejectedValueOnce({ response: { status: 403 } })
-      await act(async () => go('/crew/projects/denied'))
+      await act(async () => go('/projects/denied'))
       expect(host.textContent).not.toContain('Admitted workspace')
       mocks.resolve.mockResolvedValueOnce(vi.fn())
-      await act(async () => go('/crew/projects/first'))
+      await act(async () => go('/projects/first'))
       mocks.resolve.mockImplementationOnce(() => new Promise(() => {}))
       await act(async () => render('another-account'))
       expect(host.textContent).not.toContain('Admitted workspace')
@@ -133,10 +133,10 @@ describe('protected deep-link boundary', () => {
       expect(host.textContent).toBe('Workspace')
       expect(window.location.pathname).toBe('/agentbridge')
       mocks.resolve.mockRejectedValue({ response: { status: 401 } })
-      window.history.replaceState({}, '', '/crew/projects/example')
+      window.history.replaceState({}, '', '/projects/example')
       await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
       expect(mocks.checkAuth).toHaveBeenCalledOnce()
-      expect(window.location.pathname).toBe('/crew/projects/example')
+      expect(window.location.pathname).toBe('/projects/example')
       expect(host.textContent).not.toContain('not available')
       mocks.authValid = true
       await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
@@ -162,10 +162,10 @@ describe('protected deep-link boundary', () => {
       expect(window.location.pathname).toBe('/agentbridge/connect')
 
       mocks.resolve.mockRejectedValue({ response: { status: 404 } })
-      window.history.replaceState({}, '', '/crew/projects/missing')
+      window.history.replaceState({}, '', '/projects/missing')
       await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
       expect(host.querySelector('[role=alert]')?.textContent).toBe(deniedText)
-      expect(window.location.pathname).toBe('/crew/projects/missing')
+      expect(window.location.pathname).toBe('/projects/missing')
 
       window.history.replaceState({}, '', '/no-such-place')
       await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
@@ -196,7 +196,7 @@ describe('server workspace return', () => {
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {
       await act(async () => root.render(<ProductRouteBoundary account="alice">Workspace</ProductRouteBoundary>))
-      expect(window.location.pathname).toBe('/crew/projects/last')
+      expect(window.location.pathname).toBe('/projects/last')
       expect(workspaceStateApi.get).toHaveBeenCalled()
     } finally { await act(async () => root.unmount()); host.remove() }
   })
@@ -213,7 +213,7 @@ describe('server workspace return', () => {
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {
       await act(async () => root.render(<ProductRouteBoundary account="new-user">Workspace</ProductRouteBoundary>))
-      expect(window.location.pathname).toBe(existing ? '/crew/projects/existing' : '/crew')
+      expect(window.location.pathname).toBe(existing ? '/projects/existing' : '/projects')
     } finally { await act(async () => root.unmount()); host.remove() }
   })
 
@@ -232,8 +232,8 @@ describe('server workspace return', () => {
       await act(async () => root.render(<ProductRouteBoundary account="alice" allowedProducts={['work', 'bullpen']}>Workspace</ProductRouteBoundary>))
       expect(mocks.resolve).toHaveBeenCalledWith(saved, expect.any(AbortSignal))
       expect(restoreWorkspaceChat).toHaveBeenCalledWith(saved, expect.any(AbortSignal))
-      expect(window.location.pathname).toBe('/crew/projects/last')
-      window.history.replaceState({}, '', '/crew/projects/last?view=dashboard')
+      expect(window.location.pathname).toBe('/projects/last')
+      window.history.replaceState({}, '', '/projects/last?view=dashboard')
       await act(async () => window.dispatchEvent(new PopStateEvent('popstate')))
       expect(useWorkspaceReturnStore.getState().restore?.view).toBe('dashboard')
       expect(useWorkspaceReturnStore.getState().restore?.layout).toMatchObject({ panel_open: true, focused_pane: 'preview', split_ratio: 0.4 })
@@ -255,7 +255,7 @@ describe('server workspace return', () => {
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     try {
       await act(async () => root.render(<ProductRouteBoundary account="bob" allowedProducts={['work']}>Workspace</ProductRouteBoundary>))
-      expect(window.location.pathname).toBe('/crew')
+      expect(window.location.pathname).toBe('/projects')
       expect(useWorkspaceReturnStore.getState().note).toContain('no longer available')
       expect(mocks.resolve).toHaveBeenCalledWith({ surface: 'work' }, expect.any(AbortSignal))
     } finally { await act(async () => root.unmount()); host.remove() }
