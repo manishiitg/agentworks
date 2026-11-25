@@ -44,17 +44,43 @@ type crewTeamAdminCached struct {
 }
 
 var (
-	crewTeamAdminMu    sync.Mutex
-	crewTeamAdminCache crewTeamAdminCached
+	crewTeamAdminMu         sync.Mutex
+	crewTeamAdminCache      crewTeamAdminCached
+	crewTeamAdminRefreshing bool
 )
 
-// crewTeamAdminUsageToday reads the last 24 hours of the ledger once per 30 s for the whole server.
+// crewTeamAdminUsageToday is the last 24 hours of the ledger for the whole server. Only the first read waits; after
+// that an admin's poll gets the last summary at once and an older one is read again in the background, one read at
+// a time (reading on the poll made every admin's Team menu several times slower).
 func crewTeamAdminUsageToday(ctx context.Context) map[string]*crewTeamAdminUsage {
 	crewTeamAdminMu.Lock()
-	defer crewTeamAdminMu.Unlock()
-	if time.Since(crewTeamAdminCache.at) < crewTeamOverviewFor && crewTeamAdminCache.users != nil {
-		return crewTeamAdminCache.users
+	cached := crewTeamAdminCache
+	stale := time.Since(cached.at) >= crewTeamOverviewFor
+	start := stale && cached.users != nil && !crewTeamAdminRefreshing
+	if start {
+		crewTeamAdminRefreshing = true
 	}
+	crewTeamAdminMu.Unlock()
+	if cached.users == nil {
+		users := crewTeamAdminReadUsage(ctx)
+		crewTeamAdminMu.Lock()
+		crewTeamAdminCache = crewTeamAdminCached{at: time.Now(), users: users}
+		crewTeamAdminMu.Unlock()
+		return users
+	}
+	if start {
+		go func() {
+			users := crewTeamAdminReadUsage(context.Background())
+			crewTeamAdminMu.Lock()
+			crewTeamAdminCache = crewTeamAdminCached{at: time.Now(), users: users}
+			crewTeamAdminRefreshing = false
+			crewTeamAdminMu.Unlock()
+		}()
+	}
+	return cached.users
+}
+
+func crewTeamAdminReadUsage(ctx context.Context) map[string]*crewTeamAdminUsage {
 	users := map[string]*crewTeamAdminUsage{}
 	api := runningServerAPI
 	if api == nil || api.costLedger == nil {
@@ -90,12 +116,12 @@ func crewTeamAdminUsageToday(ctx context.Context) map[string]*crewTeamAdminUsage
 		if e.SessionID != "" {
 			u.sessions[e.SessionID] = true
 		}
-		if e.ProductID != "" {
-			u.projects[e.ProductID] = firstNonEmptyTrimmed(u.projects[e.ProductID], e.ProductName, crewTeamAdminProductName(e.ProductKind, e.ProductID))
+		// The name is looked up once per project, not on every entry: it reads the project's files.
+		if e.ProductID != "" && u.projects[e.ProductID] == "" {
+			u.projects[e.ProductID] = firstNonEmptyTrimmed(e.ProductName, crewTeamAdminProductName(e.ProductKind, e.ProductID))
 		}
 		return nil
 	})
-	crewTeamAdminCache = crewTeamAdminCached{at: now, users: users}
 	return users
 }
 
@@ -116,6 +142,7 @@ func crewTeamAdminPeople(ctx context.Context, viewer string, teams []crewTeamLiv
 		inTeams[team.ProjectID] = true
 	}
 	now := time.Now()
+	label := shareOwnerLabeler() // reads the user directory once, not once per person
 	out := []crewTeamAdminPerson{}
 	for user, u := range crewTeamAdminUsageToday(ctx) {
 		if user == viewer {
@@ -132,7 +159,7 @@ func crewTeamAdminPeople(ctx context.Context, viewer string, teams []crewTeamLiv
 		if len(projects) == 0 && u.macTokens == 0 {
 			continue
 		}
-		p := crewTeamAdminPerson{UserID: user, Person: firstNonEmptyTrimmed(shareOwnerLabel(user), "Someone"), Active: now.Sub(u.last) < crewTeamAdminActiveFor, Projects: projects}
+		p := crewTeamAdminPerson{UserID: user, Person: firstNonEmptyTrimmed(label(user), "Someone"), Active: now.Sub(u.last) < crewTeamAdminActiveFor, Projects: projects}
 		if !u.last.IsZero() {
 			p.Last = u.last.UTC().Format(time.RFC3339)
 		}
