@@ -16,8 +16,11 @@ import (
 
 // steerRequest is one message handed to the running turn.
 type steerRequest struct {
-	text  string
-	reply chan error
+	text string
+	// params carries the message's pictures, prepared before it reaches the turn; nil for text only.
+	params  any
+	cleanup func()
+	reply   chan error
 }
 
 // promptDone is one session/prompt's answer within a turn.
@@ -85,10 +88,6 @@ func SteerTurn(ctx context.Context, owner, agentID, text string) error {
 	if strings.TrimSpace(text) == "" {
 		return errSteerNotTaken("message is empty")
 	}
-	if len(llmtypes.NativeImageInputsForSession(ctx, owner)) > 0 {
-		// Images go with the next turn's prompt, where they are checked and attached.
-		return errSteerNotTaken("message has images")
-	}
 	sessions.Lock()
 	s := sessions.m[owner]
 	sessions.Unlock()
@@ -101,7 +100,17 @@ func SteerTurn(ctx context.Context, owner, agentID, text string) error {
 	if ch == nil {
 		return errSteerNotTaken("no running turn takes messages")
 	}
-	req := steerRequest{text: text, reply: make(chan error, 1)}
+	req := steerRequest{text: text, cleanup: func() {}, reply: make(chan error, 1)}
+	// Pictures go with the steered prompt itself, checked and attached like a turn's first prompt.
+	if len(llmtypes.NativeImageInputsForSession(ctx, owner)) > 0 {
+		base := map[string]any{"sessionId": s.currentSessionID(), "prompt": []any{map[string]any{"type": "text", "text": text}}}
+		params, cleanup, err := paramsWithImages(ctx, s.agent.providerID(), owner, base, nil, s.caps.PromptCapabilities.Image)
+		if err != nil {
+			return err
+		}
+		req.params, req.cleanup = params, cleanup
+	}
+	defer req.cleanup()
 	select {
 	case ch <- req:
 	case <-done:
