@@ -126,6 +126,16 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
   if(isChatIdentityCurrent(identity)){setRevision(v=>v+1);window.dispatchEvent(new Event('agentworks:team-updated'));if(hasDesktopConnections())void useConnectedWorkStore.getState().refresh(true)}
   return out
  }
+ const quiet=teams.filter(team=>team.overview?.quiet&&!team.work?.working),active=teams.filter(team=>!quiet.includes(team))
+ const teamView=(team:MonitorTeam)=><div key={team.key} className="min-w-0 px-2 py-1">
+     <div className="flex min-w-0 items-center gap-1.5"><button type="button" onClick={()=>{setOpen(false);team.open()}} className="min-w-0 flex-1 truncate text-left text-xs font-medium">{team.name}</button>{team.work?.label?<span className="shrink-0 text-[10px] text-emerald-600 dark:text-emerald-400">{team.work.label}</span>:team.work?.last_worked_label&&<span className="shrink-0 text-[10px] text-muted-foreground">{team.work.last_worked_label}</span>}{multi&&team.network&&<span title={team.network} className="max-w-20 truncate text-[9px] text-muted-foreground">{team.network}</span>}<span className="flex shrink-0 -space-x-1">{team.faces.slice(0,3).map(avatar)}</span>{team.faces.length>3&&<span className="text-[9px] text-muted-foreground">+{team.faces.length-3}</span>}</div>
+     {team.overview&&<div className="min-w-0 text-[10px] text-muted-foreground">
+      {team.overview.now.map((n,i)=><p key={i} title={nowLine(n)} className="truncate"><span className="text-foreground/50">Now </span>{nowLine(n)}</p>)}
+      {!!team.overview.now_more&&<button type="button" onClick={()=>{setOpen(false);team.openOverview()}} className="text-primary">+{team.overview.now_more} more working</button>}
+      {team.overview.done&&<p title={team.overview.done} className="truncate"><span className="text-foreground/50">Done </span>{team.overview.label}: {team.overview.done}</p>}
+      {team.overview.last&&<p title={team.overview.last.line} className="truncate"><span className="text-foreground/50">Last </span>{team.overview.last.person} {team.overview.last.line} · {timeAgo(team.overview.last.at)}</p>}
+     </div>}
+    </div>
  const section='px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground'
  const listed=rows.filter(row=>row.personKey===only).sort((a,b)=>Number(workingRow(b))-Number(workingRow(a)))
  if(!notice&&!teams.length)return <div ref={rootRef} className="flex items-center gap-1.5">{own}<AccountSignInBadge/></div>
@@ -142,15 +152,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
       {p.now.slice(0,2).map((n,i)=><p key={i} title={nowLine(n,false)} className="truncate text-[10px] text-muted-foreground"><span className="text-foreground/50">Now </span>{nowLine(n,false)}</p>)}
       {p.done&&<p title={p.done} className="truncate text-[10px] text-muted-foreground"><span className="text-foreground/50">Done </span>{p.done}</p>}
      </div>)}{!allTeams&&people.length>5&&<button type="button" className="px-2 py-1 text-xs text-muted-foreground" onClick={()=>setAllTeams(true)}>+ {people.length-5} more people</button>}</>
-     :<>{(allTeams?teams:teams.slice(0,3)).map(team=><div key={team.key} className="min-w-0 px-2 py-1">
-     <div className="flex min-w-0 items-center gap-1.5"><button type="button" onClick={()=>{setOpen(false);team.open()}} className="min-w-0 flex-1 truncate text-left text-xs font-medium">{team.name}</button>{team.work?.label?<span className="shrink-0 text-[10px] text-emerald-600 dark:text-emerald-400">{team.work.label}</span>:team.work?.last_worked_label&&<span className="shrink-0 text-[10px] text-muted-foreground">{team.work.last_worked_label}</span>}{multi&&team.network&&<span title={team.network} className="max-w-20 truncate text-[9px] text-muted-foreground">{team.network}</span>}<span className="flex shrink-0 -space-x-1">{team.faces.slice(0,3).map(avatar)}</span>{team.faces.length>3&&<span className="text-[9px] text-muted-foreground">+{team.faces.length-3}</span>}</div>
-     {team.overview&&<div className="min-w-0 text-[10px] text-muted-foreground">
-      {team.overview.now.map((n,i)=><p key={i} title={nowLine(n)} className="truncate"><span className="text-foreground/50">Now </span>{nowLine(n)}</p>)}
-      {!!team.overview.now_more&&<button type="button" onClick={()=>{setOpen(false);team.openOverview()}} className="text-primary">+{team.overview.now_more} more working</button>}
-      {team.overview.done&&<p title={team.overview.done} className="truncate"><span className="text-foreground/50">Done </span>{team.overview.label}: {team.overview.done}</p>}
-      {team.overview.last&&<p title={team.overview.last.line} className="truncate"><span className="text-foreground/50">Last </span>{team.overview.last.person} {team.overview.last.line} · {timeAgo(team.overview.last.at)}</p>}
-     </div>}
-    </div>)}{!allTeams&&teams.length>3&&<button type="button" className="px-2 py-1 text-xs text-muted-foreground" onClick={()=>setAllTeams(true)}>+ {teams.length-3} more Teams</button>}
+     :<>{active.map(teamView)}{quiet.length>0&&<button type="button" aria-expanded={allTeams} className="block px-2 py-1 text-left text-xs text-muted-foreground" onClick={()=>setAllTeams(v=>!v)}>{`${allTeams?'Hide ':''}${quiet.length} quiet ${quiet.length===1?'Team':'Teams'}${allTeams?'':`: ${quiet.map(team=>team.name).join(', ')}`}`}</button>}{allTeams&&quiet.map(teamView)}
      {teams[0]&&<button type="button" onClick={()=>{setOpen(false);teams[0].openOverview()}} className="block px-2 py-1 text-xs text-primary">Open overview →</button>}</>}
      {tokens&&<p className="px-2 pt-1 text-[10px] text-muted-foreground">{tokens}</p>}
     </section>
