@@ -1,7 +1,9 @@
 package crewroot
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,5 +82,28 @@ func TestPlatformScriptsMoveIntoAgentworksOnce(t *testing.T) {
 	write(filepath.Join(crew, "code/triggers/late.py"), "print(4)")
 	if again, _, _, err := MigratePlatformScripts(docs); err != nil || again != 0 {
 		t.Fatalf("second start moved=%d err=%v", again, err)
+	}
+
+	// A project's own workflow keeps its code in .agentworks/code/<id>/ and its pages in .agentworks/workflows/<id>/;
+	// the first pass missed it and a dashboard there still called code/reports/managed/ (#4009).
+	binding := ExecutableBinding{ID: "wf", Root: "Workflow/wf", CrewID: "crew", CrewRoot: "Crew/example", Kind: "workflow", RuntimeRoot: "workflows/wf"}
+	raw, _ := json.Marshal(binding)
+	write(filepath.Join(state, "ownership", "crew-executables", fmt.Sprintf("%x.json", sha256.Sum256([]byte(binding.Root)))), string(raw))
+	write(filepath.Join(crew, ".agentworks/code/wf/reports/managed/ops/r1/view.py"), "print(5)")
+	write(filepath.Join(crew, ".agentworks/code/wf/main.py"), "workflow")
+	wfPage := filepath.Join(crew, ".agentworks/workflows/wf/db/reports/managed/ops/r1/index.html")
+	write(wfPage, `report.run("code/reports/managed/ops/r1/view.py")`)
+	moved, rewritten, _, err = MigrateExecutablePlatformScripts(docs)
+	if err != nil || moved != 1 || rewritten != 1 {
+		t.Fatalf("workflow pass moved=%d rewritten=%d err=%v", moved, rewritten, err)
+	}
+	if read(filepath.Join(crew, ".agentworks/workflows/wf/dashboards/ops/r1/view.py")) != "print(5)" || read(filepath.Join(crew, ".agentworks/code/wf/main.py")) != "workflow" {
+		t.Fatal("workflow dashboard script not moved, or its own code touched")
+	}
+	if got := read(wfPage); got != `report.run("dashboards/ops/r1/view.py")` {
+		t.Fatalf("workflow page: %s", got)
+	}
+	if _, err := os.Stat(filepath.Join(crew, ".agentworks/code/wf/reports")); !os.IsNotExist(err) {
+		t.Fatalf("emptied reports/ still there: %v", err)
 	}
 }
