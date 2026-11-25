@@ -232,7 +232,7 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		defaultChat := record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(projectID, tab.OwnerID)
 		ownMain := tab.OwnerID == userID && defaultChat
 		if ownMain && main == nil && r.URL.Query().Get("with_main") == "1" {
-			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: "Main", Purpose: tab.Identity.Purpose, Examples: tab.Identity.Examples, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
+			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: mainChatName(tab.Identity), Purpose: tab.Identity.Purpose, Examples: tab.Identity.Examples, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: true, IsMain: true, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
 			main.TeamNewInTeam = joinDefault(record)
 			if runtime, err := effectiveProfileChatModel(slot.profile, slot.binding, record, tab.Identity); err == nil {
 				main.Provider, main.ModelID = runtime.Provider, runtime.ModelID
@@ -254,7 +254,7 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		// carries the Crew's purpose, anyone else's their own.
 		otherDefault := tab.OwnerID != userID && (defaultChat || strings.HasPrefix(id, "root-"))
 		if otherDefault {
-			name = "Main"
+			name = mainChatName(tab.Identity)
 		}
 		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, Purpose: tab.Identity.Purpose, ForkedFrom: tab.Identity.ForkedFrom, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
 		if tab.OwnerID == userID {

@@ -448,11 +448,11 @@ func agentDirectoryHowToCall(rows any) string {
 	return strings.Join(parts, ". ") + "."
 }
 
-// crewDirectoryChatName is a chat's name as the header shows it: a person's Main is "Main", never its saved title
+// crewDirectoryChatName is a chat's name as the header shows it: a person's Main is its own name or "Main", never its saved title
 // "<person> · Builder".
 func crewDirectoryChatName(tab crewOwnerChat) string {
 	if tab.Record.IsMainChat {
-		return "Main"
+		return mainChatName(tab.Identity)
 	}
 	return firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Main")
 }
