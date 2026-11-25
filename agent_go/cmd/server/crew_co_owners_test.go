@@ -192,6 +192,31 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	if crewSetupLocked(root, "owner") || len(crewSetupLockedWritePaths(root, "owner")) > 0 {
 		t.Fatal("the main owner's setup is locked")
 	}
+	// The same lock outside chat (#3796): a direct MCP setup tool is refused for ann while its read action and the
+	// owner stay open, and the website's file proxy refuses her write to the instructions but not to a work file.
+	if crewSetupLockExternalRefusal("ann", "install_skill", "install", map[string]any{"crew_id": "team-proj"}) == "" {
+		t.Fatal("a locked co-owner installed a skill over MCP")
+	}
+	if crewSetupLockExternalRefusal("ann", "crew_owners", "list", map[string]any{"crew_id": "team-proj"}) != "" || crewSetupLockExternalRefusal("owner", "install_skill", "install", map[string]any{"crew_id": "team-proj"}) != "" {
+		t.Fatal("the lock refused a read, or refused the owner")
+	}
+	proxyPut := func(user, rel string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPut, "/api/wp/api/documents/"+root+"/"+rel, strings.NewReader(`{"content":"x"}`))
+		r.Header.Set("Content-Type", "application/json")
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user, Username: user}))
+		w := httptest.NewRecorder()
+		workspaceProxyHandler().ServeHTTP(w, r)
+		return w
+	}
+	if w := proxyPut("ann", "PROJECT_INSTRUCTIONS.md"); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "controls this project's setup") {
+		t.Fatalf("a locked co-owner's instructions write through the website = %d %q", w.Code, w.Body.String())
+	}
+	if w := proxyPut("ann", "notes.md"); strings.Contains(w.Body.String(), "controls this project's setup") {
+		t.Fatal("a locked co-owner was refused an ordinary file")
+	}
+	if w := proxyPut("owner", "PROJECT_INSTRUCTIONS.md"); strings.Contains(w.Body.String(), "controls this project's setup") {
+		t.Fatal("the owner was refused their own instructions")
+	}
 	if _, err := registry.RemoveCoOwner("work", folder, "ann"); err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"log"
 	"path"
 	"strings"
 )
@@ -107,11 +109,111 @@ var crewSetupLockedTools = map[string]bool{
 
 // crewSetupLockedRefusal is the one plain line a locked co-owner sees when something would change the setup.
 func crewSetupLockedRefusal(root string) string {
-	owner := "the project's owner"
+	owner := "The project's owner"
 	if id, ok := crewProjectOwnerID(root); ok {
 		if name := crewOwnerDisplayName(id); name != "" {
 			owner = name
 		}
 	}
-	return "The project's setup (instructions, skills, settings, model and sharing) is set by " + owner + ". You can keep working here; ask them to change it."
+	return owner + " controls this project's setup (instructions, skills, settings, model, automations and sharing). You can keep working here; ask them to change it."
+}
+
+// The same lock on every path, not only in chat (#3796): the server's own file writes (settings, selections, skills,
+// identity and schedules all land in the locked setup files), the website's file proxy, direct MCP tools, sharing and
+// project schedules all ask crewSetupLockPathRefusal or crewSetupLockRefusalFor.
+
+// crewSetupLockRootAndRel splits a workspace path inside a server Crew ("Crew/<folder>/<rel>").
+func crewSetupLockRootAndRel(p string) (string, string, bool) {
+	p = strings.Trim(path.Clean("/"+strings.ReplaceAll(strings.TrimSpace(p), "\\", "/")), "/")
+	parts := strings.SplitN(p, "/", 3)
+	if len(parts) < 2 || parts[0] != "Crew" || parts[1] == "" {
+		return "", "", false
+	}
+	rel := ""
+	if len(parts) == 3 {
+		rel = parts[2]
+	}
+	return parts[0] + "/" + parts[1], rel, true
+}
+
+// crewSetupLockPathRefusal is the refusal when userID is a locked co-owner of the Crew at root and rel (relative to
+// the project folder) is one of its locked setup paths, else "".
+func crewSetupLockPathRefusal(root, rel, userID, op string) string {
+	locked, extra := crewSetupLockFor(root, userID)
+	if !locked {
+		return ""
+	}
+	rel = strings.Trim(path.Clean("/"+strings.ReplaceAll(rel, "\\", "/")), "/")
+	for _, lockedPath := range cleanCrewLockedPaths(append(append([]string{}, crewSetupLockedDefaultPaths...), extra...)) {
+		if rel == lockedPath || strings.HasPrefix(rel, lockedPath+"/") {
+			logCrewSetupLockRefusal(root, userID, op+" "+lockedPath)
+			return crewSetupLockedRefusal(root)
+		}
+	}
+	return ""
+}
+
+// crewSetupLockWorkspaceRefusal checks a full workspace path for the signed-in caller of ctx.
+func crewSetupLockWorkspaceRefusal(ctx context.Context, filePath, op string) string {
+	userID := GetUserIDFromContext(ctx)
+	if userID == "" {
+		return ""
+	}
+	root, rel, ok := crewSetupLockRootAndRel(filePath)
+	if !ok {
+		return ""
+	}
+	return crewSetupLockPathRefusal(root, rel, userID, op)
+}
+
+// crewSetupLockRefusalFor refuses a whole setup operation (sharing, schedules, a setup tool) for a locked co-owner.
+func crewSetupLockRefusalFor(root, userID, op string) string {
+	if !crewSetupLocked(root, userID) {
+		return ""
+	}
+	logCrewSetupLockRefusal(root, userID, op)
+	return crewSetupLockedRefusal(root)
+}
+
+func logCrewSetupLockRefusal(root, userID, op string) {
+	project := root
+	if id, ok := projectIdentityOf(root); ok {
+		project = id.Folder
+	}
+	log.Printf("[CREW_SETUP_LOCK] event=refused op=%q project=%s user=%s", op, project, logUsernameForUserID(userID))
+}
+
+// crewSetupLockedExternalTools are direct MCP tools (after a merged tool's action resolves to its member) that change
+// a project's setup, beyond crewSetupLockedTools. crew_execution runs the project's shell without a turn's folder
+// guard, so only its read actions stay open.
+var crewSetupLockedExternalTools = map[string]bool{
+	"install_skill": true, "import_skill": true, "uninstall_skill": true, "import_native_skill": true,
+	"attach_work_folder": true, "detach_work_folder": true,
+	"update_crew": true, "share_dashboard": true,
+	"manage_triggers": true, "manage_condition_triggers": true,
+	"crew_execution": true,
+}
+
+// crewSetupReadActions stay open on any tool: they change nothing.
+var crewSetupReadActions = map[string]bool{"": false, "list": true, "get": true, "search": true, "history": true, "status": true, "runs": true, "describe": true, "read": true}
+
+// crewSetupLockExternalRefusal refuses a direct MCP call that would change the setup of a project the caller has a
+// locked co-owner seat in. The project comes from crew_id or project.
+func crewSetupLockExternalRefusal(userID, toolName, action string, args map[string]any) string {
+	if !crewSetupLockedTools[toolName] && !crewSetupLockedExternalTools[toolName] {
+		return ""
+	}
+	if crewSetupReadActions[strings.TrimSpace(action)] {
+		return ""
+	}
+	for _, key := range []string{"crew_id", "project"} {
+		if id := strings.TrimSpace(externalArg(args, key)); id != "" {
+			if root := crewProjectRootByID(id); root != "" {
+				if refusal := crewSetupLockRefusalFor(root, userID, toolName+" "+action); refusal != "" {
+					return refusal
+				}
+			}
+		}
+	}
+	return ""
 }
