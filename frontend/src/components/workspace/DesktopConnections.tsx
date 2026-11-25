@@ -2,7 +2,7 @@ import { requestSidebarProjectAction, type SidebarProjectAction } from '../../pr
 import { listProjectSideChats } from '../../products/work/sideChatListCache'
 import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 import { useTerminalConversationSelection } from '../../products/work/terminalConversationSelection'
-import { revealSidebarTarget, sidebarProjectShortcuts } from '../../utils/sidebarProjectOrder'
+import { markSidebarInteraction, revealSidebarTarget, sidebarProjectShortcuts } from '../../utils/sidebarProjectOrder'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import type { TeamLiveView } from './TeamLiveAgents'
 import { agentSetupForTab, teamAgentForTab, teamSideChats, useTeamTab } from '../../products/work/teamApi'
@@ -155,7 +155,7 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   }
   if (!directory) {
     return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3" data-sidebar-project-scroll>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3" data-sidebar-project-scroll onPointerDownCapture={() => markSidebarInteraction()}>
         {top}
         {pinnedRows.length > 0 && <section aria-label="Pinned projects" className="mb-3 shrink-0 space-y-1">
           {pinnedRows.map(project => renderProject(project, true))}
