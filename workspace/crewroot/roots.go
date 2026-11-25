@@ -258,7 +258,7 @@ func (r Roots) ResourcePathRoot(rel string) string {
 		return r.Private
 	case settingsPath(rel):
 		return r.SettingsDir()
-	case automationDataPath(rel):
+	case automationDataPath(rel), platformScriptPath(rel):
 		return r.Automation
 	}
 	return r.Resources
@@ -423,7 +423,7 @@ func (q *Resolver) Reverse(physical string) (string, Roots, bool, error) {
 				root, prefix = settings, r.Virtual
 			}
 		} else if r.Automation != "" && Within(r.Automation, physical) {
-			if rel, _ := filepath.Rel(r.Automation, physical); automationDataPath(filepath.ToSlash(rel)) {
+			if rel, _ := filepath.Rel(r.Automation, physical); automationDataPath(filepath.ToSlash(rel)) || platformScriptPath(filepath.ToSlash(rel)) {
 				root, prefix = r.Automation, r.Virtual
 			}
 		}

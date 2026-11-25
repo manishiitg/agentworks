@@ -436,7 +436,7 @@ on-demand `motion-guide` for play/pause/seek, real historical data and refresh.
 Optional MP4 exports use `dashboard action=export_motion` (app Builder:
 `dashboard action=export_motion`) with the published `dashboard_id`, selected theme
 and viewport. It captures the existing page and freezes its data. A separate
-explainer remains explicit through `composition_path` under `code/motion/`
+explainer remains explicit through `composition_path` under `motion/`
 and `snapshot.json`. Export needs current authoring access and server
 rendering tools; it is never triggered by dashboard load/refresh. The returned
 video is a snapshot, played via `window.report.mediaUrl(path)`. Design, layout

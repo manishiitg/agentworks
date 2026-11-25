@@ -112,7 +112,7 @@ func (api *StreamingAPI) openDashboardApp(r *http.Request, args map[string]any) 
 		if guard := dashboardFileGuard(claims); guard != nil && !guard.Allows(prefix+"/"+name, false) {
 			continue
 		}
-		files[name] = strings.ReplaceAll(strings.ReplaceAll(content, "{{dashboard_assets}}", prefix), "{{dashboard_scripts}}", "code/reports/managed/"+resolved.Document.ID+"/"+resolved.Document.Published)
+		files[name] = strings.ReplaceAll(strings.ReplaceAll(content, "{{dashboard_assets}}", prefix), "{{dashboard_scripts}}", dashboards.ScriptsPrefix+resolved.Document.ID+"/"+resolved.Document.Published)
 	}
 	page, _, err := api.liveDefaultDashboard(r.Context(), claims, resolved.Target.Root, dashboards.Document(resolved.Document.ID, ""), []byte(files["index.html"]))
 	if err != nil {

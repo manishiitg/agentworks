@@ -38,6 +38,21 @@ func settingsPath(rel string) bool {
 	return false
 }
 
+// PlatformScriptFolders hold the platform's own scripts in .agentworks/ (#4009): dashboard scripts, Watcher checks
+// and motion compositions. code/ stays the person's own and holds workflow code. Unlike runtime data they are source,
+// so they sync like code/ did.
+var PlatformScriptFolders = []string{"dashboards", "watchers", "motion"}
+
+func platformScriptPath(rel string) bool {
+	first := strings.SplitN(strings.ToLower(rel), "/", 2)[0]
+	for _, name := range PlatformScriptFolders {
+		if first == name {
+			return true
+		}
+	}
+	return false
+}
+
 // automationDataPath: runtime data that lives directly in .agentworks/.
 func automationDataPath(rel string) bool {
 	switch strings.SplitN(strings.ToLower(rel), "/", 2)[0] {

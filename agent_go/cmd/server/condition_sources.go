@@ -274,7 +274,7 @@ func (c *conditionService) callerScript(ctx context.Context, job productSchedule
 	if job.WatcherSource != nil {
 		// The server chooses the path: a script cannot replace another
 		// watcher's source or read/write the associated product's files.
-		cfg.Script = path.Join("code/triggers", job.Schedule.ID+".py")
+		cfg.Script = path.Join(conditiontrigger.ScriptFolder, job.Schedule.ID+".py")
 		if content, ok := trigger["script_content"]; ok {
 			text, ok := content.(string)
 			if !ok || strings.TrimSpace(text) == "" || len(text) > conditiontrigger.MaxOutput {
@@ -285,7 +285,7 @@ func (c *conditionService) callerScript(ctx context.Context, job productSchedule
 	}
 	if job.WatcherSource == nil {
 		if _, ok := trigger["script_content"]; ok {
-			return "", errors.New("A project chat's own watchers use a saved Python file under code/triggers")
+			return "", errors.New("A project chat's own watchers use a saved Python file under watchers/")
 		}
 	}
 	raw, found, err := c.s.readFile(ctx, path.Join(conditionScriptRoot(job), cfg.Script))

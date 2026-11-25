@@ -80,7 +80,7 @@ try {
   const repeat=spawnSync('python3',[path.resolve('../deploy/rootless-linux/install-ffprobe.py')],{env:{...process.env,REMOTE_APP:root},encoding:'utf8',timeout:30000})
   assert.equal(repeat.status,0,repeat.stderr)
   assert.match(repeat.stdout,/unchanged/)
-  const source=path.join(root,'code/motion/check')
+  const source=path.join(root,'motion/check')
   await mkdir(source,{recursive:true})
   const gsap=await fetch('https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js')
   assert.ok(gsap.ok)
@@ -88,7 +88,7 @@ try {
   await writeFile(path.join(source,'snapshot.json'),JSON.stringify({as_of:'2026-10-15T00:00:00Z',source:'Recorded sample totals',data:[10,20]}))
   await writeFile(path.join(source,'index.html'),`<!doctype html><html><head><meta charset="utf-8"><script src="gsap.js"></script><style>body{margin:0;background:white;color:black}#root{width:320px;height:180px}#bar{height:80px;width:0;background:rgb(20,160,220)}#value{font:40px sans-serif}</style></head><body><div id="root" data-composition-id="main" data-width="320" data-height="180" data-duration="1"><div id="bar"></div><div id="value">0</div></div><script>window.__timelines=window.__timelines||{};const timeline=gsap.timeline({paused:true});timeline.fromTo('#bar',{width:0},{width:307,duration:1,ease:'none'},0);timeline.fromTo('#value',{textContent:0},{textContent:20,duration:1,ease:'none',snap:{textContent:1}},0);window.__timelines.main=timeline;</script></body></html>`)
   const runner=path.resolve('../agent_go/pkg/dashboardmotion/render.py')
-  const config={composition_path:'code/motion/check',output_path:'db/assets/motion/check',cache_path:'.sandbox-cache/dashboard-motion',caller:'test-author',renderer_version:'0.8.99'}
+  const config={composition_path:'motion/check',output_path:'db/assets/motion/check',cache_path:'.sandbox-cache/dashboard-motion',caller:'test-author',renderer_version:'0.8.99'}
   const rendered=spawnSync('python3',[runner,Buffer.from(JSON.stringify(config)).toString('base64')],{cwd:root,env:{...process.env,PATH:path.join(root,'tools/bin')+path.delimiter+process.env.PATH,AGENT_BROWSER_EXECUTABLE_PATH:chromium.executablePath()},encoding:'utf8',timeout:600000,maxBuffer:8*1024*1024})
   process.stdout.write(rendered.stderr||'')
   assert.equal(rendered.status,0,rendered.stdout)

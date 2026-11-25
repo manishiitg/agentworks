@@ -310,7 +310,7 @@ func TestRunReportScriptSendsSandboxedRequestAndParsesJSON(t *testing.T) {
 // open, and never inside the command text (logs, /proc cmdline).
 func TestReportRunInlineCommandPassesCodeInEnvironment(t *testing.T) {
 	code := "import os\nprint('{\"ok\": 1}')  # KEY-CANARY-123\n"
-	cmd, env, err := reportRunInlineCommand("/data/docs/Crew/x/code/reports/managed/d/rev/data.py", []byte(code))
+	cmd, env, err := reportRunInlineCommand("/data/docs/Crew/x/dashboards/d/rev/data.py", []byte(code))
 	if err != nil {
 		t.Fatal(err)
 	}

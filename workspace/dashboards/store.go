@@ -25,6 +25,10 @@ import (
 const MaxBytes = 8 << 20
 const Prefix = "db/reports/managed/"
 
+// ScriptsPrefix holds a dashboard's scripts, in .agentworks/dashboards/ (#4009): platform files stay out of code/,
+// which is the person's own and holds workflow code.
+const ScriptsPrefix = "dashboards/"
+
 var identifier = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 var revisionID = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
@@ -132,7 +136,7 @@ func snapshotPath(id, rev string) string {
 }
 func renderFile(id, rev, p string) string {
 	if strings.HasPrefix(p, "scripts/") {
-		return "code/reports/managed/" + id + "/" + rev + "/" + strings.TrimPrefix(p, "scripts/")
+		return ScriptsPrefix + id + "/" + rev + "/" + strings.TrimPrefix(p, "scripts/")
 	}
 	return Prefix + id + "/" + rev + "/" + p
 }
@@ -345,8 +349,8 @@ func executeLocked(ctx context.Context, docs string, req Request) (Result, error
 			return out, fail(403, "outside connection read grants")
 		}
 		prefix := Prefix
-		if strings.HasPrefix(p, "code/reports/managed/") {
-			prefix = "code/reports/managed/"
+		if strings.HasPrefix(p, ScriptsPrefix) {
+			prefix = ScriptsPrefix
 		}
 		if !strings.HasPrefix(p, prefix) {
 			out.ResolvedPath = p
@@ -583,7 +587,7 @@ func executeLocked(ctx context.Context, docs string, req Request) (Result, error
 	}
 	for p, content := range snap.Files {
 		content = strings.ReplaceAll(content, "{{dashboard_assets}}", Prefix+req.ID+"/"+rev)
-		content = strings.ReplaceAll(content, "{{dashboard_scripts}}", "code/reports/managed/"+req.ID+"/"+rev)
+		content = strings.ReplaceAll(content, "{{dashboard_scripts}}", ScriptsPrefix+req.ID+"/"+rev)
 		bytes, decodeErr := assetBytes(p, content)
 		if decodeErr != nil {
 			return out, decodeErr
