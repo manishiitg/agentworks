@@ -18,6 +18,9 @@ import (
 	"time"
 )
 
+// ScriptFolder holds Watcher check scripts, in the project's .agentworks/ (#4009).
+const ScriptFolder = "watchers"
+
 const (
 	MaxOutput      = 64 * 1024
 	MaxPayload     = 16 * 1024
@@ -222,8 +225,8 @@ func (c Config) Validate() error {
 			}
 		}
 	} else {
-		if !strings.HasPrefix(c.Script, "code/triggers/") || path.Clean(c.Script) != c.Script || !strings.HasSuffix(c.Script, ".py") || strings.ContainsAny(c.Script, "\\\x00\r\n") {
-			return errors.New("script must be a Python file under code/triggers")
+		if !strings.HasPrefix(c.Script, ScriptFolder+"/") || path.Clean(c.Script) != c.Script || !strings.HasSuffix(c.Script, ".py") || strings.ContainsAny(c.Script, "\\\x00\r\n") {
+			return errors.New("script must be a Python file under " + ScriptFolder + "/")
 		}
 		if b, err := hex.DecodeString(c.SHA256); err != nil || len(b) != sha256.Size {
 			return errors.New("save the script's SHA256 before enabling the watcher")

@@ -174,7 +174,7 @@ the shared clock; do not rebuild its layout, colors or values for export.
 Data calls are captured once before seeking. Frames reuse those saved results.
 
 A separately authored explainer remains explicit: pass
-`source_mode: "composition"` and `composition_path: "code/motion/sales-history"`
+`source_mode: "composition"` and `composition_path: "motion/sales-history"`
 (the existing composition_path alone also works). That folder needs HyperFrames
 `index.html`, local assets and `snapshot.json` with `as_of`, `source` and `data`.
 Read the composition contract when available. Use the same saved data and the
@@ -189,7 +189,7 @@ interactive dashboard motion still works. This capability has no dependency on
 a personal product. Limits: ten minutes per export, 128 MB source, 256 MB video.
 
 Use completed `result.path` exactly; it is under `db/assets/motion/`. Do not
-replace it with `outputs/` or `code/motion/` paths. Present the video through
+replace it with `outputs/` or `motion/` paths. Present the video through
 `window.report.mediaUrl(result.path)` and a native
 `<video controls playsinline preload="metadata">` element if requested. Obtain
 a fresh URL when opened, and keep the workspace path rather than an expiring

@@ -103,7 +103,7 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		"workspace":        externalString("Project root, for an owned project."),
 		"export_id":        externalString("Export ID from an earlier call; pass to check its progress/result without starting another export."),
 		"submission_id":    externalString("Stable unique request name for a new export (max 128 characters); reuse only to retry the same composition."),
-		"composition_path": externalString("Folder under code/motion/ with a standalone HyperFrames index.html, local assets and snapshot.json containing as_of, source and data."),
+		"composition_path": externalString("Folder under motion/ with a standalone HyperFrames index.html, local assets and snapshot.json containing as_of, source and data."),
 		"source_mode":      map[string]any{"type": "string", "enum": []any{"dashboard", "composition"}, "description": "dashboard is the default; composition explicitly exports a separately authored video. Passing composition_path also selects the separate video for compatibility."},
 		"dashboard_id":     externalString("Published dashboard slug to export. May be omitted when the project has one published dashboard."),
 		"revision":         externalString("Exact published revision; defaults to the current publication. Retries retain the original snapshot."),

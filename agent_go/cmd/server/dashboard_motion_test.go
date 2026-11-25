@@ -54,7 +54,7 @@ func TestDashboardMotionExportBindsCallerAndGrants(t *testing.T) {
 		if r.Header.Get("X-User-ID") != "owner" || command.WorkingDirectory != "Workflow/invoices" {
 			t.Errorf("caller/workspace lost: %s %+v", r.Header.Get("X-User-ID"), command)
 		}
-		if command.FolderGuard == nil || !command.FolderGuard.Enabled || len(command.FolderGuard.ReadPaths) != 3 || command.FolderGuard.ReadPaths[0] != "Workflow/invoices/code/motion/sales" || len(command.FolderGuard.WritePaths) != 2 {
+		if command.FolderGuard == nil || !command.FolderGuard.Enabled || len(command.FolderGuard.ReadPaths) != 3 || command.FolderGuard.ReadPaths[0] != "Workflow/invoices/motion/sales" || len(command.FolderGuard.WritePaths) != 2 {
 			t.Fatalf("unbounded export guard: %+v", command.FolderGuard)
 		}
 		if len(command.FolderGuard.BlockedPaths) != 1 || command.FolderGuard.BlockedPaths[0] != "Workflow/invoices/private" {
@@ -91,7 +91,7 @@ func TestDashboardMotionExportBindsCallerAndGrants(t *testing.T) {
 		f.api.externalDashboardCall(w, r, "export_dashboard_motion", map[string]any{"workflow_id": "invoices", "composition_path": composition, "submission_id": "motion-test-request", "export_id": exportID})
 		return w
 	}
-	first := call(owner, "code/motion/sales", "")
+	first := call(owner, "motion/sales", "")
 	if first.Code != http.StatusOK {
 		t.Fatalf("start: %d %s", first.Code, first.Body)
 	}
@@ -102,7 +102,7 @@ func TestDashboardMotionExportBindsCallerAndGrants(t *testing.T) {
 	if receipt.ID == "" || receipt.Status != "running" {
 		t.Fatalf("receipt: %+v", receipt)
 	}
-	retry := call(owner, "code/motion/sales", "")
+	retry := call(owner, "motion/sales", "")
 	if retry.Code != http.StatusOK || !strings.Contains(retry.Body.String(), receipt.ID) {
 		t.Fatalf("retry: %d %s", retry.Code, retry.Body)
 	}
@@ -129,20 +129,20 @@ func TestDashboardMotionExportBindsCallerAndGrants(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if got := call(owner, "code/motion/../../planning", ""); got.Code != 400 {
+	if got := call(owner, "motion/../../planning", ""); got.Code != 400 {
 		t.Fatalf("traversal: %d %s", got.Code, got.Body)
 	}
-	owner.AccessToken.FileGuard = &wf.FolderGuard{ReadPaths: []string{"code/motion/sales"}, WritePaths: []string{"docs"}}
-	if got := call(owner, "code/motion/sales", ""); got.Code != 403 {
+	owner.AccessToken.FileGuard = &wf.FolderGuard{ReadPaths: []string{"motion/sales"}, WritePaths: []string{"docs"}}
+	if got := call(owner, "motion/sales", ""); got.Code != 403 {
 		t.Fatalf("write grant: %d %s", got.Code, got.Body)
 	}
 	owner.AccessToken.FileGuard = nil
 	owner.AccessToken.Scopes = []string{"dashboards:read", "workflows:read", "files:read", "builder:chat"}
-	if got := call(owner, "code/motion/sales", ""); got.Code != 403 {
+	if got := call(owner, "motion/sales", ""); got.Code != 403 {
 		t.Fatalf("execute consent: %d %s", got.Code, got.Body)
 	}
 	runPerson := &UserClaims{UserID: "reader", Username: "reader"}
-	if got := call(runPerson, "code/motion/sales", ""); got.Code != 403 {
+	if got := call(runPerson, "motion/sales", ""); got.Code != 403 {
 		t.Fatalf("Run person: %d %s", got.Code, got.Body)
 	}
 	if commands.Load() != 1 {

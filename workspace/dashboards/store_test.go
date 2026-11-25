@@ -158,7 +158,7 @@ func TestDashboardScriptsStayPrivate(t *testing.T) {
 	if err != nil || page.Mode().Perm() != 0600 {
 		t.Fatalf("non-slot page must stay 0600: %v %v", page, err)
 	}
-	script, err := os.Stat(filepath.Join(docs, root, "code/reports/managed/status", out.Dashboard.Revision, "data.py"))
+	script, err := os.Stat(filepath.Join(docs, root, "dashboards/status", out.Dashboard.Revision, "data.py"))
 	if err != nil || script.Mode().Perm() != 0600 {
 		t.Fatalf("script must stay 0600: %v %v", script, err)
 	}

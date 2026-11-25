@@ -141,7 +141,7 @@ func reportHTMLRunScripts(content string) []string {
 // .py/.js/.mjs script under the workflow's code/ folder.
 func reportRunScriptAllowed(scriptPath string) bool {
 	clean := path.Clean(scriptPath)
-	if clean != scriptPath || !strings.HasPrefix(clean, "code/") || strings.Contains(clean, "/.") {
+	if clean != scriptPath || !(strings.HasPrefix(clean, "code/") || strings.HasPrefix(clean, "dashboards/")) || strings.Contains(clean, "/.") {
 		return false
 	}
 	switch path.Ext(clean) {
@@ -678,11 +678,11 @@ func ValidateDashboardHTML(ctx context.Context, relativePath, content string, ho
 			}
 		}
 	}
-	// Live-data scripts: the server only runs scripts under code/.
+	// Live-data scripts: the server only runs scripts under code/ or a dashboard's scripts (dashboards/).
 	runScripts := reportHTMLRunScripts(content)
 	for _, script := range runScripts {
 		if !reportRunScriptAllowed(script) {
-			errors = append(errors, fmt.Sprintf("window.report.run(%q): only a .py or .js script under code/ can run (e.g. code/reports/pipeline.py)", script))
+			errors = append(errors, fmt.Sprintf("window.report.run(%q): only a .py or .js script under code/ or a dashboard's scripts can run (e.g. code/reports/pipeline.py)", script))
 			continue
 		}
 		if hooks.FileExists == nil {

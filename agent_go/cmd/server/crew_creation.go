@@ -490,14 +490,7 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	if err := writeCrewCreationManifest(ctx, manifestPath, manifest); err != nil {
 		return CreatedCrew{}, err
 	}
-	// Raw folder create, not the guarded workspace client: this is a
-	// server-side privileged write outside the Builder session's sandbox
-	// (the session guard confines the model's direct file access, not the
-	// server's own authorized tool implementations). The guarded client
-	// denies the crew path with ACCESS DENIED in every Builder session.
-	if err := createWorkspaceFolder(ctx, filepath.ToSlash(filepath.Join(workspacePath, "code"))); err != nil {
-		return CreatedCrew{}, fmt.Errorf("initialize crew code folder: %w", err)
-	}
+	// No code/ folder (#4009): it is the person's own; the platform keeps its scripts in .agentworks/.
 	// Restored projects receive their own authored commands through sync.
 	if !settings.Restore {
 		// Every new Crew starts with one reply-card command and the marker that keeps it deleted once removed.

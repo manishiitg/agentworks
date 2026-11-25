@@ -41,9 +41,9 @@ func TestDashboardExportPublicationAndRetryIdentity(t *testing.T) {
 	if identity != repeat {
 		t.Fatal("retry identity depends on mutable publication state")
 	}
-	_, legacy, err := normalizeDashboardExport(dashboardExportOptions{}, "code/motion/explainer")
-	if err != nil || legacy != "code/motion/explainer" {
-		t.Fatal("legacy explicit composition compatibility changed")
+	_, legacy, err := normalizeDashboardExport(dashboardExportOptions{}, "motion/explainer")
+	if err != nil || legacy != "motion/explainer" {
+		t.Fatal("explicit composition path changed")
 	}
 }
 

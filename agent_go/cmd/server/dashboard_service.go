@@ -200,7 +200,7 @@ func publishedDashboardSource(publication *publishedProject) bool {
 	return false
 }
 func (api *StreamingAPI) resolveDashboardDocument(r *http.Request, root, p string) (string, error) {
-	if !strings.HasPrefix(p, dashboards.Prefix) && !strings.HasPrefix(p, "code/reports/managed/") {
+	if !strings.HasPrefix(p, dashboards.Prefix) && !strings.HasPrefix(p, dashboards.ScriptsPrefix) {
 		return p, nil
 	}
 	claims := GetUserFromContext(r.Context())
