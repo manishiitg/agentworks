@@ -30,7 +30,9 @@ type AccessTab = { id: CrewAccessSection; label: string; detail?: string; group?
 type MacCard = { online: boolean; status: string; line: string; kept?: string; reach?: { who: string; how: string }[] }
 type SyncStatus = { place?: CloudState; message?: string; binding: Binding | null; shared_agents?: number
   access_view?: string; access_summary?: string; access_here?: 'mac'; access_tabs?: AccessTab[]; access_mac?: MacCard; access_mac_locked?: string; access_laptop?: boolean; access_co_owners?: boolean
-  access_in_teams?: { team_id: string; name: string; owner: string; can_remove: boolean }[] }
+  access_in_teams?: { team_id: string; name: string; owner: string; can_remove: boolean }[]
+  // The AI teammate switch of a project on the server (owner, 25 Nov), as the server words it (crew_ai_teammate.go).
+  access_ai_teammate?: { on: boolean; can_change: boolean; line: string } }
 type LaptopSettings = { device_id: string; folders: { id: string; path: string; access: 'read' | 'write' }[]; commands: boolean }
 
 /** In the AgentWorks app a Crew lives on this Mac or online (owner, 3 Nov); on a server the page is its laptop access. */
@@ -266,6 +268,17 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
     catch (cause) { setError(teamFailure(cause).message) }
     finally { setBusy(false); setReload(value => value + 1); refreshCrewPlace(projectId) }
   }
+  // The server decides who may switch it and takes the project out of its Teams when it goes off (crew_ai_teammate.go).
+  const setAITeammate = async (on: boolean) => {
+    setBusy(true); setError('')
+    try {
+      const reply = await teamRequest<{ note?: string }>({ project: projectId }, '/ai-teammate', 'POST', { on })
+      if (reply.note) setError(reply.note)
+      teamChanged()
+    }
+    catch (cause) { setError(teamFailure(cause).message) }
+    finally { setBusy(false); setReload(value => value + 1); refreshCrewPlace(projectId) }
+  }
   return <div className="space-y-3.5 text-sm">
     {/* No title row (owner, 4 Nov): a small back arrow beside the tabs, and Esc, return to the workspace. */}
     {(tabs.length > 1 || shown !== 'team') && <div className="flex items-stretch gap-2">
@@ -332,9 +345,14 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
       {/* A Crew on the server has co-owners instead of a Team (owner, 21 Nov): the Access panel with Shared with and Co-owners. */}
       {status.access_co_owners && workspacePath
         ? <><ShareDashboardButton workspacePath={workspacePath} variant="panel" coOwnersOnly />
-          {!!status.access_in_teams?.length && <section aria-label="In a Team" className="space-y-1 border-t border-border pt-4">
-            <div><h3 className="font-semibold">In a Team</h3><p className="text-xs text-muted-foreground">Its agents work with this Team and its shared folders sync here.</p></div>
-            {status.access_in_teams.map(item => <div key={item.team_id}>{way(item.name, `${item.owner}'s Team`, item.can_remove ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void leaveTeam(item.team_id)}>Remove from Team</Button> : null)}</div>)}
+          {status.access_ai_teammate && <section aria-label="AI teammate" className="space-y-1 border-t border-border pt-4">
+            <div className="flex items-start gap-3">
+              <div className="min-w-0 flex-1"><h3 className="font-semibold">AI teammate</h3><p className="text-xs text-muted-foreground">Your Teams can add this project's agents. They work for the Team 24/7.</p></div>
+              <Switch aria-label="AI teammate" checked={status.access_ai_teammate.on} disabled={busy || !status.access_ai_teammate.can_change} onCheckedChange={on => void setAITeammate(on)} />
+            </div>
+            <p className="text-xs text-muted-foreground">{status.access_ai_teammate.line}</p>
+            {status.access_in_teams?.map(item => <div key={item.team_id}>{way(item.name, `${item.owner}'s Team`, item.can_remove ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void leaveTeam(item.team_id)}>Remove from Team</Button> : null)}</div>)}
+            {status.access_ai_teammate.on && !!status.access_in_teams?.length && status.access_ai_teammate.can_change && <p className="text-xs text-amber-600">Turning it off takes it out of {status.access_in_teams.map(item => item.name).join(', ')}.</p>}
           </section>}</>
         : <ShareCrew projectId={projectId} onBack={tabs.length > 1 ? undefined : onBack} goOnline={here ? { servers: connections.map(item => ({ id: item.id, name: item.name || networkName(item.id) })), go: via => run('relay', via), signIn: () => { setSection('mac'); setAsking(true) } } : undefined} />}
     </section>}

@@ -34,8 +34,8 @@ func crewTeamProjectChoices(ctx context.Context, claims *UserClaims, t crewTeam,
 	choices := []crewTeamProjectChoice{}
 	for _, row := range rows {
 		id, path := stringField(row["id"]), stringField(row["workspace_path"])
-		if id == "" || id == t.ProjectID || t.hasProject(id) || !crewLivesOnServer(id) {
-			continue // a Mac project's online copy is not an online project of its own
+		if id == "" || id == t.ProjectID || t.hasProject(id) || !crewLivesOnServer(id) || !crewProjectAITeammate(id) {
+			continue // a Mac project's online copy is not an online project of its own; only switched-on projects are offered
 		}
 		c := crewTeamProjectChoice{ProjectID: id, Name: stringField(row["name"]), Owner: stringField(row["owner"])}
 		if !crewProjectOwnedByCaller(claims.UserID, path) {

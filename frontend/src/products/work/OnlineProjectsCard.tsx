@@ -62,17 +62,18 @@ export function OnlineProjectsCard({ target }: { target: TeamTarget }) {
       : view.add_line && <p className="text-xs text-muted-foreground">{view.add_line}</p>}
     {picking && <div className="rounded-xl border border-border bg-popover">
       <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
-        <p>Pick a project {where.toLowerCase()} that you own or co-own. Its agents join as AI teammates.</p>
+        <p>Your projects {where.toLowerCase()} with AI teammate on</p>
         <p className="mt-1 text-foreground">Everyone in this Team can ask Main and its named agents, and they can make changes in this project.</p>
       </div>
       <div className="max-h-56 overflow-auto">
-        {(view.choices || []).length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">You have no projects on this server yet. Make one on the website, then add it here as an AI teammate.</p>}
+        {(view.choices || []).length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">None yet. Turn on AI teammate on a project's Access page on the server, then add it here.</p>}
         {(view.choices || []).map(choice => <button key={choice.project_id} type="button" disabled={!choice.available || Boolean(pending)} onClick={() => void change('add', choice.project_id)}
           className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent">
           <span className="min-w-0 flex-1"><span className="block truncate text-sm text-foreground">{choice.name}</span>{choice.why && <span className="block text-muted-foreground">{choice.why}</span>}</span>
           {pending === `add:${choice.project_id}` && <Loader2 aria-label="Adding" className="h-3.5 w-3.5 animate-spin" />}
         </button>)}
       </div>
+      {(view.choices || []).length > 0 && <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">Don't see a project? Turn on AI teammate on its Access page on the server.</p>}
     </div>}
     {error && !removing && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {removing && <RemoveDialog name={removing.name || 'Project'} saving={pending === `remove:${removing.project_id}`} error={error} onCancel={() => { setRemoving(undefined); setError('') }} onConfirm={() => void change('remove', removing.project_id)} />}
