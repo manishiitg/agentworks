@@ -229,10 +229,12 @@ func TestExternalCrewChatsAreYourOwn(t *testing.T) {
 	if code, out := chats(owner, map[string]any{"crew_id": "beta", "action": "set_model", "chat_id": "main", "engine": ""}); code != 200 {
 		t.Fatalf("MCP main model alias = %d %v", code, out)
 	}
-	for _, action := range []string{"side_close", "side_rename"} {
-		if code, _ := chats(owner, map[string]any{"crew_id": "beta", "action": action, "chat_id": mainChat.ChatID, "name": "Renamed"}); code != 404 {
-			t.Fatalf("main physical ID allowed %s: %d", action, code)
-		}
+	if code, _ := chats(owner, map[string]any{"crew_id": "beta", "action": "side_close", "chat_id": mainChat.ChatID}); code != 404 {
+		t.Fatalf("main physical ID allowed side_close: %d", code)
+	}
+	// Main renames like any agent (#4046): it is no longer refused as "not a side chat".
+	if code, out := chats(owner, map[string]any{"crew_id": "beta", "action": "side_rename", "chat_id": mainChat.ChatID, "name": "Renamed"}); code == 404 {
+		t.Fatalf("Main's rename was refused: %v", out)
 	}
 
 	bounded := &UserClaims{UserID: "owner", Username: "owner", AccessToken: &accesstokens.Token{Name: "laptop", Scopes: []string{"crews:read", "crews:run"}, CrewIDs: []string{"beta"}}}

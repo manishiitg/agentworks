@@ -34,11 +34,10 @@ export type WorkChatOrder = {
   conversationKey: string
 }
 
-/** Render the server's main role and saved order, independent of chat activity. */
+/** Render the server's saved order, independent of chat activity; Main has no first place (#4046). */
 export function compareWorkChatOrder(a: WorkChatOrder, b: WorkChatOrder): number {
   const position = (row: WorkChatOrder) => row.position && row.position > 0 ? row.position : Number.MAX_SAFE_INTEGER
-  return Number(!!b.isMainChat) - Number(!!a.isMainChat) ||
-    position(a) - position(b) ||
+  return position(a) - position(b) ||
     (a.conversationKey === b.conversationKey ? 0 : a.conversationKey < b.conversationKey ? -1 : 1)
 }
 

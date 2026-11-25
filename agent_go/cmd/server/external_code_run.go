@@ -79,9 +79,6 @@ func (api *StreamingAPI) externalCodeRunChats(ctx context.Context, userID, proje
 		chats = append(chats, chat)
 	}
 	sort.SliceStable(chats, func(i, j int) bool {
-		if chats[i].IsMain != chats[j].IsMain {
-			return chats[i].IsMain
-		}
 		return chats[i].UpdatedAt > chats[j].UpdatedAt
 	})
 	return chats, nil

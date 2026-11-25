@@ -416,9 +416,9 @@ func (store productConversationRegistryStore) setSideChatOrder(ctx context.Conte
 		document.Agents = map[string]ProductAgentIdentity{}
 	}
 	project := productConversationRegistryEntryKey(profileID, projectID)
-	// A tab is a side chat or a message schedule's own chat (listed with the side chats).
+	// A tab is any agent of the project, Main included (#4046), or a message schedule's own chat.
 	isTab := func(entryKey string) bool {
-		return strings.HasPrefix(entryKey, project+codeChatSideMarker) || strings.HasPrefix(entryKey, project+scheduleOwnChatMarker)
+		return entryKey == project || strings.HasPrefix(entryKey, project+codeChatSideMarker) || strings.HasPrefix(entryKey, project+scheduleOwnChatMarker)
 	}
 	positions := map[string]int{}
 	for i, key := range conversationKeys {
@@ -459,7 +459,7 @@ func (store productConversationRegistryStore) setSideChatPinned(ctx context.Cont
 	}
 	entryKey := productConversationRegistryEntryKey(profileID, strings.TrimSpace(conversationKey))
 	project := productConversationRegistryEntryKey(profileID, strings.TrimSpace(projectID))
-	isTab := strings.HasPrefix(entryKey, project+codeChatSideMarker) || strings.HasPrefix(entryKey, project+scheduleOwnChatMarker)
+	isTab := entryKey == project || strings.HasPrefix(entryKey, project+codeChatSideMarker) || strings.HasPrefix(entryKey, project+scheduleOwnChatMarker)
 	if _, ok := document.Entries[entryKey]; (!ok && !otherOwners) || !isTab {
 		return fmt.Errorf("that tab is not open in this project")
 	}
@@ -506,7 +506,9 @@ func (store productConversationRegistryStore) renameCurrentSideChat(ctx context.
 		return err
 	}
 	for key, record := range document.Entries {
-		if record.SessionID != sessionID || !isProjectProfileID(record.ProfileID) || !isSideChatConversationKey(record.ConversationKey) {
+		// Any agent of the project, Main included: an older Main's key is the bare project id (#4046).
+		agentKey := isSideChatConversationKey(record.ConversationKey) || !strings.ContainsAny(strings.TrimSpace(record.ConversationKey), ":")
+		if record.SessionID != sessionID || !isProjectProfileID(record.ProfileID) || !agentKey {
 			continue
 		}
 		if document.Agents == nil {

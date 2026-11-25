@@ -42,10 +42,11 @@ export function TeammateChatIdentity({tabId}:{tabId?:string|null}) {
    && (!m.agentProfileTabOwnerID || m.agentProfileTabOwnerID===viewer)
  })
  const previous=own.filter(tab=>!!tab.lastAccessedAt).sort((a,b)=>(b.lastAccessedAt||0)-(a.lastAccessedAt||0))[0]
- const back=previous||own.find(tab=>tab.metadata?.agentProfileProjectId===project&&tab.metadata?.agentProfileIsMainChat)
+ // The last agent you used, else your first agent here (owner, 25 Nov, #4046: Main is not special).
+ const back=previous||own.find(tab=>tab.metadata?.agentProfileProjectId===project)
  if(!identity)return null
  return <div className="flex min-w-0 flex-1 items-center gap-1">
-  {project&&<button type="button" aria-label={`Back to ${back?.name||'Main'}`} title={`Back to ${back?.name||'Main'}`} onClick={()=>back?openAgentTab(back.tabId):openAppProduct({surface:'work',id:project,agent:'main'})} className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><ArrowLeft className="h-4 w-4"/></button>}
+  {project&&<button type="button" aria-label={back?`Back to ${back.name}`:'Back'} title={back?`Back to ${back.name}`:'Back'} onClick={()=>back?openAgentTab(back.tabId):openAppProduct({surface:'work',id:project})} className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><ArrowLeft className="h-4 w-4"/></button>}
   <TeammateAgentIdentity identity={identity}/>
   {identity.fork&&<ForkTeammateAgent compact target={identity.fork.target} agent={identity.fork.agent} name={identity.name}/>}
  </div>

@@ -55,10 +55,11 @@ it('identifies the observed person and Mac in one line and asks the agent direct
  await act(async()=>root.render(<TeammateChatIdentity tabId="watch"/>))
  await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Back to Main"]')!.click())
  expect(f.open).toHaveBeenLastCalledWith('main')
+ // No own agent open here: Back opens the project and the server picks its default agent (#4046: Main is not special).
  delete f.tabs.main
  await act(async()=>root.render(<TeammateChatIdentity tabId="watch"/>))
- await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Back to Main"]')!.click())
- expect(f.navigate).toHaveBeenCalledWith({surface:'work',id:'crew',agent:'main'})
+ await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Back"]')!.click())
+ expect(f.navigate).toHaveBeenCalledWith({surface:'work',id:'crew'})
  // The ask goes to the admitted address as the viewer; the server decides access.
  f.post.mockResolvedValue({data:{inbox_id:'inbox-1',message_id:'m1',delivery:'delivered'}})
  await render();await type('Is the release ready?')
