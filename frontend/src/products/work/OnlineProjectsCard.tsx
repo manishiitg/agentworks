@@ -40,33 +40,33 @@ export function OnlineProjectsCard({ target }: { target: TeamTarget }) {
       setPicking(false); setRemoving(undefined); load()
     } catch (cause) { setError(teamFailure(cause).message) } finally { setPending('') }
   }
-  if (!view) return error ? <section aria-label="Projects" className={block}><h4 className="text-xs font-semibold text-muted-foreground">Projects</h4><p role="alert" className="text-xs text-destructive">{error}</p></section> : null
+  if (!view) return error ? <section aria-label="AI teammates" className={block}><h4 className="text-xs font-semibold text-muted-foreground">AI teammates</h4><p role="alert" className="text-xs text-destructive">{error}</p></section> : null
   const projects = view.projects || []
   const full = projects.length >= view.max
-  return <section aria-label="Projects" className={block}>
-    <h4 className="text-xs font-semibold text-muted-foreground">Projects {where.toLowerCase()}</h4>
-    <p className="text-xs text-muted-foreground">They get the Team's shared folders and instructions in their own files; everything else stays their own.</p>
+  return <section aria-label="AI teammates" className={block}>
+    <h4 className="text-xs font-semibold text-muted-foreground">AI teammates {where.toLowerCase()}</h4>
+    <p className="text-xs text-muted-foreground">Agents of your projects on the server. They work for the Team around the clock, even when your Mac is off, with the Team's shared folders and instructions; their own files, chats and keys stay theirs.</p>
     {projects.length === 0
-      ? <p className="text-xs text-muted-foreground">No projects yet.</p>
+      ? <p className="text-xs text-muted-foreground">No AI teammates yet.</p>
       : <div className="divide-y divide-border">{projects.map(project => <div key={project.project_id} className="flex items-center gap-2 py-2">
           <Globe aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm">Project: {project.name || 'Project'}</p>
-            <p className="text-xs text-muted-foreground">{where}</p>
+            <p className="truncate text-sm">{project.name || 'Project'}</p>
+            <p className="text-xs text-muted-foreground">AI teammate · online 24/7 {where.toLowerCase()}</p>
           </div>
           <button type="button" disabled={Boolean(pending)} onClick={() => setRemoving(project)} className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-50">Remove</button>
         </div>)}</div>}
     {view.can_add
-      ? full ? <p className="text-xs text-muted-foreground">A Team has at most {view.max} online projects. Remove one to add another.</p>
-        : <button type="button" disabled={Boolean(pending)} onClick={() => setPicking(!picking)} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Add a project</button>
+      ? full ? <p className="text-xs text-muted-foreground">A Team has at most {view.max} AI teammates. Remove one to add another.</p>
+        : <button type="button" disabled={Boolean(pending)} onClick={() => setPicking(!picking)} className="rounded-full border border-dashed border-border px-3 py-1 text-xs hover:bg-muted">+ Add an AI teammate</button>
       : view.add_line && <p className="text-xs text-muted-foreground">{view.add_line}</p>}
     {picking && <div className="rounded-xl border border-border bg-popover">
       <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
-        <p>Your projects {where.toLowerCase()} that you own or co-own</p>
+        <p>Pick a project {where.toLowerCase()} that you own or co-own. Its agents join as AI teammates.</p>
         <p className="mt-1 text-foreground">Everyone in this Team can ask Main and its named agents, and they can make changes in this project.</p>
       </div>
       <div className="max-h-56 overflow-auto">
-        {(view.choices || []).length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">You have no projects on this server yet. Make one on the website, then add it here.</p>}
+        {(view.choices || []).length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">You have no projects on this server yet. Make one on the website, then add it here as an AI teammate.</p>}
         {(view.choices || []).map(choice => <button key={choice.project_id} type="button" disabled={!choice.available || Boolean(pending)} onClick={() => void change('add', choice.project_id)}
           className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent">
           <span className="min-w-0 flex-1"><span className="block truncate text-sm text-foreground">{choice.name}</span>{choice.why && <span className="block text-muted-foreground">{choice.why}</span>}</span>
