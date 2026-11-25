@@ -103,11 +103,14 @@ func (s Store) captureTurnFiles(ctx context.Context, ref, boundary string, loose
 // for the Git row. That verdict and its checkouts are then reused until the
 // project's layout changes (file_limit.go), so later replies skip the walk.
 func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose []string, err error) {
-	signature := s.layoutSignature()
-	if cached, ok := s.cachedOverLimit(signature); ok {
+	if cached, ok := s.cachedOverLimit(ctx); ok {
 		stats.Deferred = "loose_file_limit"
+		stats.LimitReused = true
 		return cached, nil, nil
 	}
+	walkStarted := time.Now()
+	defer func() { stats.WalkMS = time.Since(walkStarted).Milliseconds() }()
+	folderSet := s.layoutFolders()
 	files, perFolder := 0, map[string]int{}
 	err = filepath.WalkDir(s.Root, func(p string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -150,7 +153,7 @@ func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose 
 		return nil
 	})
 	if err == nil {
-		s.rememberFileLimit(signature, dirs, files, perFolder)
+		s.rememberFileLimit(folderSet, dirs, files, perFolder)
 	}
 	if stats.Deferred == "loose_file_limit" {
 		// An arbitrary prefix cannot be a trustworthy before/after boundary.

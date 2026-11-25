@@ -2,10 +2,11 @@ package filesnapshots
 
 import (
 	"context"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,11 +37,11 @@ type FileLimitReport struct {
 }
 
 type fileLimitCache struct {
-	mu        sync.Mutex
-	signature string
-	dirs      []string
-	report    FileLimitReport
-	valid     bool
+	mu      sync.Mutex
+	folders map[string]bool
+	dirs    []string
+	report  FileLimitReport
+	valid   bool
 }
 
 // FileLimit returns the last decided verdict for this project, if any.
@@ -60,18 +61,112 @@ func (s Store) RecheckFileLimit() {
 }
 
 // cachedOverLimit returns the remembered checkouts while the project is still
-// known to be over the limit and its layout has not changed.
-func (s Store) cachedOverLimit(signature string) ([]string, bool) {
+// known to be over the limit. The verdict survives everyday churn (#3878 proof
+// run): files saved near the root and worktrees agents add or remove keep it.
+// Only removed folders' checkouts are dropped and added folders are searched
+// for new ones, so a reply skips the full walk. Removing one of the biggest
+// folders (Move out) or the 10-minute age decides the verdict again.
+func (s Store) cachedOverLimit(ctx context.Context) ([]string, bool) {
+	current := s.layoutFolders()
 	c := &s.state().limit
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if !c.valid || !c.report.Over || c.signature != signature || time.Since(c.report.CheckedAt) > fileLimitRecheck {
+	if !c.valid || !c.report.Over || time.Since(c.report.CheckedAt) > fileLimitRecheck {
 		return nil, false
+	}
+	big := map[string]bool{}
+	for _, f := range c.report.Folders {
+		big[f.Path] = true
+	}
+	var removed, added []string
+	for p := range c.folders {
+		if !current[p] {
+			if big[p] {
+				return nil, false // a big folder left: the count may be under now
+			}
+			removed = append(removed, p)
+		}
+	}
+	for p := range current {
+		parent := path.Dir(p)
+		if !c.folders[p] && !(current[parent] && !c.folders[parent]) {
+			added = append(added, p) // topmost new folder; its subtree is searched
+		}
+	}
+	if len(removed) > 0 || len(added) > 0 {
+		dirs := c.dirs[:0:0]
+		for _, dir := range c.dirs {
+			rel, _ := filepath.Rel(s.Root, dir)
+			rel = filepath.ToSlash(rel)
+			gone := false
+			for _, r := range removed {
+				if rel == r || strings.HasPrefix(rel, r+"/") {
+					gone = true
+					break
+				}
+			}
+			if !gone {
+				dirs = append(dirs, dir)
+			}
+		}
+		known := map[string]bool{}
+		for _, dir := range dirs {
+			known[dir] = true
+		}
+		sort.Strings(added)
+		for _, rel := range added {
+			found, err := s.findCheckouts(ctx, rel)
+			if err != nil {
+				return nil, false
+			}
+			for _, dir := range found {
+				if !known[dir] {
+					known[dir] = true
+					dirs = append(dirs, dir)
+				}
+			}
+		}
+		c.dirs, c.folders = dirs, current
+		c.report.Checkouts = len(dirs)
 	}
 	return append([]string(nil), c.dirs...), true
 }
 
-func (s Store) rememberFileLimit(signature string, dirs []string, files int, perFolder map[string]int) {
+// findCheckouts lists the checkouts at or below one added folder, by the same
+// rules as the full walk in turnPaths.
+func (s Store) findCheckouts(ctx context.Context, rel string) ([]string, error) {
+	var dirs []string
+	start := filepath.Join(s.Root, filepath.FromSlash(rel))
+	err := filepath.WalkDir(start, func(p string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if os.IsNotExist(walkErr) {
+				return filepath.SkipDir // removed again meanwhile
+			}
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !entry.IsDir() {
+			return nil
+		}
+		r, err := filepath.Rel(s.Root, p)
+		if err != nil {
+			return err
+		}
+		if excluded(filepath.ToSlash(r), true) {
+			return filepath.SkipDir
+		}
+		if _, err := os.Lstat(filepath.Join(p, ".git")); err == nil {
+			dirs = append(dirs, p)
+			return filepath.SkipDir
+		}
+		return nil
+	})
+	return dirs, err
+}
+
+func (s Store) rememberFileLimit(folderSet map[string]bool, dirs []string, files int, perFolder map[string]int) {
 	folders := make([]FolderFiles, 0, len(perFolder))
 	for p, n := range perFolder {
 		folders = append(folders, FolderFiles{Path: p, Files: n})
@@ -88,28 +183,18 @@ func (s Store) rememberFileLimit(signature string, dirs []string, files int, per
 	c := &s.state().limit
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.signature, c.dirs, c.valid = signature, append([]string(nil), dirs...), true
+	c.folders, c.dirs, c.valid = folderSet, append([]string(nil), dirs...), true
 	c.report = FileLimitReport{Over: files > maxTurnPaths, Files: files, Limit: maxTurnPaths, Checkouts: len(dirs), Folders: folders, CheckedAt: time.Now().UTC()}
 }
 
-// layoutSignature changes when a folder is added, removed or renamed in the
-// project folder or one or two levels below it, which is where checkouts and
-// worktrees get created. Reading these few folders costs milliseconds.
-func (s Store) layoutSignature() string {
-	var b strings.Builder
+// layoutFolders names the folders in the project folder and one level below
+// it, checkouts included, which is where checkouts and worktrees get created.
+// Names, not modification times: saving a file must not count as a change.
+// Reading these few folders costs milliseconds.
+func (s Store) layoutFolders() map[string]bool {
+	out := map[string]bool{}
 	var visit func(dir, rel string, depth int)
 	visit = func(dir, rel string, depth int) {
-		info, err := os.Stat(dir)
-		if err != nil {
-			return
-		}
-		b.WriteString(rel)
-		b.WriteByte('@')
-		b.WriteString(strconv.FormatInt(info.ModTime().UnixNano(), 36))
-		b.WriteByte('\n')
-		if depth == 2 {
-			return
-		}
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			return
@@ -125,6 +210,10 @@ func (s Store) layoutSignature() string {
 			if excluded(child, true) {
 				continue
 			}
+			out[child] = true
+			if depth == 1 {
+				continue
+			}
 			if _, err := os.Lstat(filepath.Join(dir, entry.Name(), ".git")); err == nil {
 				continue // a checkout's own folders are Git's business
 			}
@@ -132,7 +221,7 @@ func (s Store) layoutSignature() string {
 		}
 	}
 	visit(s.Root, "", 0)
-	return b.String()
+	return out
 }
 
 // CheckFileLimit decides the verdict again now ("Check again" on the Git row).
