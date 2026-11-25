@@ -1,9 +1,28 @@
-import { useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Check, Copy, Download, Loader2 } from 'lucide-react'
 import { diagramPng, downloadDiagram } from './exportChatDiagram'
 
-export function ChatDiagramFrame({ title, width, height, kind = 'diagram', viewportRef, description, children }: {
-  title: string; width: number; height: number; kind?: 'diagram' | 'swimlane' | 'sequence'
+export function useDiagramViewportWidth(viewportRef: RefObject<HTMLDivElement | null>, active = true) {
+  const [width, setWidth] = useState<number | null>(null)
+  useLayoutEffect(() => {
+    if (!active) return
+    const host = viewportRef.current
+    if (!host) return
+    const measure = () => {
+      const next = Math.floor(host.clientWidth)
+      if (next > 0) setWidth(prev => (prev === next ? prev : next))
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(host)
+    return () => observer.disconnect()
+  }, [viewportRef, active])
+  return width
+}
+
+export function ChatDiagramFrame({ title, width, height, kind = 'diagram', direction, viewportRef, description, children }: {
+  title: string; width: number; height: number; kind?: 'diagram' | 'swimlane' | 'sequence'; direction?: 'vertical' | 'horizontal'
   viewportRef?: RefObject<HTMLDivElement | null>; description: ReactNode; children: ReactNode
 }) {
   const figure = useRef<HTMLElement>(null)
@@ -33,7 +52,7 @@ export function ChatDiagramFrame({ title, width, height, kind = 'diagram', viewp
       } else setExportStatus('Could not create the image. Try again.')
     } finally { setExporting(false) }
   }
-  return <figure ref={figure} className="not-prose my-4 w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-muted/20 text-foreground" data-chat-element={kind}>
+  return <figure ref={figure} className="not-prose my-4 w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-border bg-muted/20 text-foreground" data-chat-element={kind} data-diagram-direction={direction}>
     <figcaption className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 text-sm font-semibold">
       <span className="min-w-0 flex-1">{title}</span>
       <span data-diagram-export-controls className="flex flex-wrap items-center gap-2">
