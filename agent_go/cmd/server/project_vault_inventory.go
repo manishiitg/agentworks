@@ -31,6 +31,7 @@ type projectVaultItem struct {
 	Status    string `json:"status"`
 	Selected  bool   `json:"selected"`
 	CanSelect bool   `json:"can_select"`
+	CanReveal bool   `json:"can_reveal,omitempty"`
 	// UsedIn names the person's own projects that use this item (only for Yours), so they know what removing it affects.
 	UsedIn []string `json:"used_in,omitempty"`
 }
@@ -426,6 +427,7 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 		return strings.ToLower(groups[ids[i]].Name) < strings.ToLower(groups[ids[j]].Name)
 	})
 	seen := map[string]bool{}
+	isAdmin := canManageGlobalSecrets(person)
 	for _, id := range ids {
 		group, heading := groups[id], &headings[order[category[id]]]
 		source := group.Name
@@ -438,6 +440,9 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 			if key := item.Kind + ":" + item.ID; !seen[key] {
 				seen[key] = true
 				item.Source = source
+				if item.Kind == "shared_secret" {
+					item.CanReveal = category[id] == "yours" || (isAdmin && category[id] != "project")
+				}
 				heading.Items = append(heading.Items, item)
 			}
 		}

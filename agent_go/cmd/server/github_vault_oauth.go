@@ -448,9 +448,13 @@ func gitHubStatus(ctx context.Context, person string) map[string]any {
 			out["approval_page"] = "https://github.com/settings/connections/applications/" + url.PathEscape(clientID)
 		}
 	}
-	connections := []map[string]string{}
+	connections := []map[string]any{}
 	for _, rec := range gitHubConnections(person) {
-		connections = append(connections, map[string]string{"id": rec.ID, "login": rec.Login, "source": rec.Source})
+		entry := map[string]any{"id": rec.ID, "login": rec.Login, "source": rec.Source}
+		if len(rec.Orgs) > 0 {
+			entry["orgs"] = rec.Orgs
+		}
+		connections = append(connections, entry)
 	}
 	out["connections"] = connections
 	if rec, err := projectGitHubConnection(ctx, person, githubProjectRoot(ctx)); err != nil {
@@ -505,6 +509,9 @@ func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Reques
 			out := map[string]any{"connected": false}
 			if rec, _ := projectGitHubConnection(r.Context(), person, githubProjectRoot(r.Context())); rec != nil {
 				out["connected"], out["login"] = true, rec.Login
+				if len(rec.Orgs) > 0 {
+					out["orgs"] = rec.Orgs
+				}
 			}
 			writeAgentProfileJSON(w, http.StatusOK, out)
 			return
@@ -516,6 +523,7 @@ func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Reques
 			writeAgentProfileError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		publishCrewPanelForPerson(person)
 		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"removed": true, "revoked_at_github": revoked, "message": "Disconnected from this project. Saved connections and other projects are unchanged."})
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/connect"):
 		var body struct {
@@ -537,6 +545,7 @@ func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Reques
 				writeAgentProfileError(w, 400, err.Error())
 				return
 			}
+			publishCrewPanelForPerson(person)
 			writeAgentProfileJSON(w, 200, gitHubStatus(r.Context(), person))
 			return
 		}
@@ -545,6 +554,7 @@ func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Reques
 			writeAgentProfileError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		publishCrewPanelForPerson(person)
 		writeAgentProfileJSON(w, http.StatusOK, result)
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/complete"):
 		var body struct {

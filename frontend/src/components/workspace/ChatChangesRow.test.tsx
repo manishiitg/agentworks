@@ -143,3 +143,30 @@ it('#3878: over the file limit the Git row says so; Move out asks the agent in c
   expect(host.textContent).toContain('Only the project owner can move folders out')
   act(() => root.unmount())
 })
+
+it('#3979: expanded Git row shows active GitHub account strip, flags org mismatches, and opens GitHub settings', () => {
+  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  localStorage.clear()
+  const gitSection = { ...section, rows: [
+    { id: 'a', label: 'platform', detail: 'dev', count: 'up to date', path: 'platform', github_repo: 'acme-core/platform' },
+    { id: 'b', label: 'portal-web', detail: 'main', count: 'up to date', path: 'portal-web', github_repo: 'partner-org/portal-web' },
+  ] } as unknown as CrewPanelSection
+  let openedGitHub = 0
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  const root = createRoot(host)
+  act(() => root.render(<ChatChangesRow section={gitSection} storageKey="test.git-gh" onOpen={() => {}} github={{ connected: true, login: 'alex-dev', orgs: ['acme-core'], onOpen: () => { openedGitHub++ } }} />))
+  expect(host.textContent).toContain('@alex-dev')
+  expect(host.textContent).toContain('1 repo needs another account')
+  expect(host.textContent).toContain('Not in @alex-dev’s organizations')
+  const switchBtn = [...host.querySelectorAll('button')].find(b => b.textContent === 'Switch')!
+  act(() => switchBtn.click())
+  expect(openedGitHub).toBe(1)
+
+  act(() => root.render(<ChatChangesRow section={gitSection} storageKey="test.git-gh" onOpen={() => {}} github={{ connected: false, onOpen: () => { openedGitHub++ } }} />))
+  expect(host.textContent).toContain('GitHub: Not connected')
+  const connectBtn = [...host.querySelectorAll('button')].find(b => b.textContent === 'Connect')!
+  act(() => connectBtn.click())
+  expect(openedGitHub).toBe(2)
+  act(() => root.unmount())
+})

@@ -62,7 +62,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 					branch = "No commits yet"
 				}
 				folder := crewPanelName(repo.Root, workspace)
-				row := crewPanelRow{ID: repo.Root, Label: folder, Detail: branch, Count: crewPanelSyncState(repo), Destination: "files", Path: repo.Root, CommitAt: repo.CommitAt, Commit: repo.Commit, Changed: len(repo.Files) > 0, ChangedFiles: len(repo.Files)}
+				row := crewPanelRow{ID: repo.Root, Label: folder, Detail: branch, Count: crewPanelSyncState(repo), Destination: "files", Path: repo.Root, CommitAt: repo.CommitAt, Commit: repo.Commit, GitHubRepo: repo.GitHubRepo, Changed: len(repo.Files) > 0, ChangedFiles: len(repo.Files)}
 				section.Changed += len(repo.Files)
 				if repo.Upstream != "" && !repo.Detached {
 					row.FetchedAt = repo.FetchedAt
@@ -266,6 +266,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			var data struct {
 				Connected bool
 				Login     string
+				Orgs      []string `json:"orgs"`
 			}
 			err := read(ctx, api.handleGitHubVault, "/api/vault/github", url.Values{"view": {"summary"}, "workspace_path": {workspace}}, &data)
 			label := "Not connected"
@@ -275,7 +276,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 					label = data.Login + " · " + label
 				}
 			}
-			return crewPanelSection{Rows: []crewPanelRow{{ID: "github", Label: "GitHub", Detail: label, Destination: "mcp:github", Connected: data.Connected}}}, err
+			return crewPanelSection{Rows: []crewPanelRow{{ID: "github", Label: "GitHub", Detail: label, Destination: "mcp:github", Connected: data.Connected, Login: data.Login, Orgs: data.Orgs}}}, err
 		}},
 		{id: "slack_bot", title: "Slack bot", allowed: connections && !IsLocalMode(), noCache: true, read: func(ctx context.Context) (crewPanelSection, error) {
 			// Connections → Slack bot reads the same choice (crewSlackBotChoiceFor).

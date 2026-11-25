@@ -8,6 +8,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/safegit"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -90,11 +91,12 @@ type workspaceGitRepo struct {
 	// The last commit on HEAD (Unix seconds and its first line), and when the
 	// repository last fetched from its remote (FETCH_HEAD's time; 0 when it
 	// never fetched): "N behind" and "up to date" are only as new as that.
-	CommitAt  int64  `json:"commit_at,omitempty"`
-	Commit    string `json:"commit,omitempty"`
-	FetchedAt int64  `json:"fetched_at,omitempty"`
-	oid       string // HEAD commit, for the Unpushed cache.
-	common    string // The repository's shared Git folder, for FetchedAt.
+	CommitAt   int64  `json:"commit_at,omitempty"`
+	Commit     string `json:"commit,omitempty"`
+	FetchedAt  int64  `json:"fetched_at,omitempty"`
+	GitHubRepo string `json:"github_repo,omitempty"`
+	oid        string // HEAD commit, for the Unpushed cache.
+	common     string // The repository's shared Git folder, for FetchedAt.
 }
 
 type workspaceGitBranch struct {
@@ -516,6 +518,48 @@ func workspaceGitFetchedAt(common string) int64 {
 	return info.ModTime().Unix()
 }
 
+// workspaceGitOriginGitHubRepo reads only the public "owner/repo" identity of
+// remote "origin" from the repository's local Git config file, with no
+// subprocess or network call. Credentials and non-GitHub remotes return "".
+func workspaceGitOriginGitHubRepo(common string) string {
+	if common == "" {
+		return ""
+	}
+	f, err := os.Open(filepath.Join(common, "config"))
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, 256<<10))
+	if err != nil {
+		return ""
+	}
+	inOrigin := false
+	for _, rawLine := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section := strings.TrimSpace(line[1 : len(line)-1])
+			inOrigin = strings.EqualFold(section, `remote "origin"`)
+			continue
+		}
+		if !inOrigin {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || !strings.EqualFold(strings.TrimSpace(key), "url") {
+			continue
+		}
+		if gh := workspaceGitHubURL(strings.TrimSpace(value)); gh != "" {
+			return strings.TrimPrefix(gh, "https://github.com/")
+		}
+		return ""
+	}
+	return ""
+}
+
 // workspaceGitUnpushedCache keeps each checkout's Unpushed count until its
 // HEAD, upstream or ahead/behind counts move: comparing patches takes up to
 // a second per stale worktree and the Changes row reads every checkout often.
@@ -736,6 +780,7 @@ func workspaceGitStatusRepos(ctx context.Context, realBase string) (_ []workspac
 				repo.Repository = workspaceGitRepositoryName(common)
 				repo.common = common
 				repo.FetchedAt = workspaceGitFetchedAt(common)
+				repo.GitHubRepo = workspaceGitOriginGitHubRepo(common)
 			}
 			if watch != nil {
 				watch.store(real, token, repo, gitDir, common)

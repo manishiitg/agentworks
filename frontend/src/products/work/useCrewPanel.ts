@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import api from '../../services/api'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
+import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 import type { CloudState, CrewAccessLine, CrewAsk } from './YourComputerPanel'
 
-export type CrewPanelRow = { id: string; label: string; detail?: string; destination?: string; connected?: boolean; attention?: boolean; path?: string; group?: string; count?: string; commit_at?: number; commit?: string; fetched_at?: number; changed?: boolean; changed_files?: number; motion?: boolean; artifact?: boolean; items?: CrewPanelFeedItem[]; steps?: string[]; rules?: string; done_count?: number; tasks?: ProjectTask[]; lead?: string; tasks_mode?: 'auto' | 'ask'; paused?: boolean; needs_you_count?: number; open_count?: number }
+export type CrewPanelRow = { id: string; label: string; detail?: string; destination?: string; connected?: boolean; attention?: boolean; path?: string; group?: string; count?: string; commit_at?: number; commit?: string; fetched_at?: number; github_repo?: string; login?: string; orgs?: string[]; changed?: boolean; changed_files?: number; motion?: boolean; artifact?: boolean; items?: CrewPanelFeedItem[]; steps?: string[]; rules?: string; done_count?: number; tasks?: ProjectTask[]; lead?: string; tasks_mode?: 'auto' | 'ask'; paused?: boolean; needs_you_count?: number; open_count?: number }
 // A Project activity item (#3625): its step on the row, the tasks it became as their threads have them now, and who moved it when.
 export type ProjectTaskRef = { kind: string; title: string; url?: string; by?: string; at: number }
 export type ProjectTask = CrewPanelFeedItem & { assignee?: string; sources?: ProjectTaskRef[]; links?: ProjectTaskRef[]; activity?: { kind: string; text: string; url?: string; at: number }[]; proposed?: string; held?: boolean; needs_you?: string; choices?: string[]; checklist?: { text: string; done?: boolean; by?: string; at: number }[] }
@@ -54,8 +55,10 @@ export function useCrewPanel(scope: string, project: string, workspace: string) 
       }
     }
     refreshRef.current = () => { void read() }
+    const onGitHubChanged = () => { void read() }
+    window.addEventListener(githubConnectionChanged, onGitHubChanged)
     void read()
-    return () => { controller.abort(); clearTimeout(retryTimer); refreshRef.current = () => {} }
+    return () => { controller.abort(); clearTimeout(retryTimer); window.removeEventListener(githubConnectionChanged, onGitHubChanged); refreshRef.current = () => {} }
   }, [key, project])
   const data = state?.key === key ? state.data : lastKnown.get(key)
   // At most one read per 3s: every running chat sends 'sessions' notices, and at 0.5s several running chats kept
