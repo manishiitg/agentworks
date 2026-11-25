@@ -18,6 +18,6 @@ export function SidebarActions() {
     <NewProjectMenu label="New project" />
     <button data-theme-row="navigation" type="button" className={rowClass} onClick={() => window.dispatchEvent(new CustomEvent('open-quick-switcher'))}><Search aria-hidden="true" className="h-4 w-4" /><span className="flex-1">Search</span><kbd className="text-[10px] text-muted-foreground">{navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl K'}</kbd></button>
     {canBrowse && <button data-theme-row="navigation" type="button" className={rowClass} aria-current={projectsOpen ? 'page' : undefined} onClick={() => { openAppPage('/projects'); window.dispatchEvent(new Event('close-app-sidebar')) }}><Folder aria-hidden="true" className="h-4 w-4" />Projects</button>}
-    {schedules && <button data-theme-row="navigation" type="button" className={rowClass} onClick={() => { openQuickNavigation(schedules); window.dispatchEvent(new Event('close-app-sidebar')) }}><Zap aria-hidden="true" className="h-4 w-4" />Automations</button>}
+    {schedules && <button data-theme-row="navigation" type="button" className={rowClass} onClick={() => { openQuickNavigation(schedules); window.dispatchEvent(new Event('close-app-sidebar')) }}><Zap aria-hidden="true" className="h-4 w-4" />Workflows</button>}
   </nav>
 }
