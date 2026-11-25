@@ -22,7 +22,9 @@ type crewTeamMonitorConnection struct {
 	Network    string             `json:"network,omitempty"`
 	NetworkID  string             `json:"network_id,omitempty"`
 	Teams      []crewTeamLiveView `json:"teams"`
-	Error      string             `json:"error,omitempty"`
+	// Others is, for an admin of that server only, everyone working there outside the viewer's Teams.
+	Others []crewTeamAdminPerson `json:"others,omitempty"`
+	Error  string                `json:"error,omitempty"`
 }
 type crewTeamMonitorReply struct {
 	Connections []crewTeamMonitorConnection `json:"connections"`
@@ -95,6 +97,9 @@ func (api *StreamingAPI) handleCrewTeamMonitor(w http.ResponseWriter, r *http.Re
 		return
 	}
 	local := crewTeamMonitorConnection{Connection: "local", Teams: teams}
+	if !IsLocalMode() && claimsIsAdmin(claims) {
+		local.Others = crewTeamAdminPeople(r.Context(), claims.UserID, teams)
+	}
 	out := crewTeamMonitorReply{Connections: []crewTeamMonitorConnection{local}}
 	failed := []string{}
 	if IsLocalMode() {
@@ -126,6 +131,9 @@ func (api *StreamingAPI) handleCrewTeamMonitor(w http.ResponseWriter, r *http.Re
 					} else {
 						result.Teams = teams
 					}
+				}
+				if v, ok := crewTeamMonitorOthers.Load(claims.UserID + "\x00" + c.ID); ok {
+					result.Others = v.([]crewTeamAdminPerson)
 				}
 				if result.Error != "" {
 					label := result.Network
@@ -213,7 +221,9 @@ func crewTeamMonitorRead(ctx context.Context, viewer string, c desktopConnection
 		return nil, &crewTeamMonitorReadError{reason: reason, cause: err}
 	}
 	teams := []crewTeamLiveView{}
+	others := []crewTeamAdminPerson{}
 	for _, source := range reply.Connections {
+		others = append(others, source.Others...)
 		for _, live := range source.Teams {
 			crewTeamLiveLocalSelf(&live, c)
 			live.Connection = c.ID
@@ -221,6 +231,7 @@ func crewTeamMonitorRead(ctx context.Context, viewer string, c desktopConnection
 		}
 	}
 	crewTeamMonitorRemember(viewer, c.ID, teams)
+	crewTeamMonitorOthers.Store(viewer+"\x00"+c.ID, others)
 	crewTeamMonitorFailures.Delete(viewer + "\x00" + c.ID)
 	return teams, nil
 }
@@ -271,6 +282,8 @@ type crewTeamMonitorGood struct {
 }
 
 var crewTeamMonitorGoodReads sync.Map // viewer\x00connection -> crewTeamMonitorGood
+
+var crewTeamMonitorOthers sync.Map // viewer\x00connection -> []crewTeamAdminPerson from that server's last good read
 
 func crewTeamMonitorRemember(viewer, connection string, teams []crewTeamLiveView) {
 	crewTeamMonitorGoodReads.Store(viewer+"\x00"+connection, crewTeamMonitorGood{at: time.Now(), teams: teams})
