@@ -37,7 +37,7 @@ const (
 	crewPeopleEveryoneLine = "Anyone with an account on this server can open this project's dashboards and ask it. No files."
 
 	crewPeopleNeverOnlineLine = "Turn on Mac online to share this project."
-	crewPeoplePutOnlineLine   = "Dashboards only is for projects on the server. Pages in a project on your Mac are only for you."
+	crewPeoplePutOnlineLine   = "To give someone dashboards only, with Ask and buttons, put this project online first."
 )
 
 type crewPeopleLevel struct {
