@@ -29,7 +29,7 @@ func dashboardFailure(status int, message string) error {
 	return &wf.FileError{Status: status, Message: message}
 }
 func dashboardMutation(action string) bool {
-	return action == "create" || action == "update" || action == "publish" || action == "restore" || action == "delete"
+	return action == "create" || action == "update" || action == "publish" || action == "restore" || action == "delete" || action == "undelete"
 }
 
 // dashboardExportAction renders the dashboard in the server's browser with the caller's data.

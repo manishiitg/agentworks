@@ -2,8 +2,7 @@ package server
 
 import (
 	"net/http"
-	"os"
-	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -25,6 +24,12 @@ type crewDashboardsTabItem struct {
 	Who string `json:"who"`
 	// PublicLink is the owner's, on a Crew that lives on the server only.
 	PublicLink *dashboardPublicView `json:"public_link,omitempty"`
+	// When is "2 h ago" and Group is Today, This week or Older (owner, 25 Nov mockup); items come newest first.
+	When  string `json:"when,omitempty"`
+	Group string `json:"group"`
+	// CanDelete: this person may delete it (the owner); the page then offers Delete with Undo.
+	CanDelete bool `json:"can_delete,omitempty"`
+	updated   time.Time
 }
 
 type crewDashboardsTabFilter struct {
@@ -152,29 +157,33 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 		if filter != "all" && filter != key {
 			continue
 		}
-		when := ""
-		if when == "" && root != "" && row.Path != "" {
-			if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(row.Path))); err == nil {
-				when = "updated " + roughAgo(time.Since(info.ModTime()))
-			}
+		var updated time.Time
+		if row.UpdatedAt > 0 {
+			updated = time.Unix(row.UpdatedAt, 0)
 		}
-		line := label
-		if when != "" {
-			line += " · " + when
+		line, when := label, ""
+		if !updated.IsZero() {
+			when = roughAgo(time.Since(updated))
+			line += " · updated " + when
 		}
-		item := crewDashboardsTabItem{ID: row.ID, Title: row.Title, Path: row.Path, Kind: key, Line: line, Who: who}
+		item := crewDashboardsTabItem{ID: row.ID, Title: row.Title, Path: row.Path, Kind: key, Line: line, Who: who, When: when, Group: crewDashboardsGroup(updated, time.Now()), CanDelete: tab.CanChange, updated: updated}
 		if !onMac && owner {
 			item.PublicLink = row.PublicLink
 		}
 		tab.Items = append(tab.Items, item)
 	}
-	tab.Filters = []crewDashboardsTabFilter{{Key: "all", Label: "All", Count: len(rows)}}
+	sort.SliceStable(tab.Items, func(i, j int) bool { return tab.Items[i].updated.After(tab.Items[j].updated) })
+	// Filters only when they help (owner, 25 Nov mockup): one per kind that has items, and none when there is one kind.
+	tab.Filters = []crewDashboardsTabFilter{}
 	for _, kind := range crewDashboardsTabKinds {
-		filter := crewDashboardsTabFilter{Key: kind.key, Label: kind.label, Count: counts[kind.key], Hint: kind.hint}
-		if owner && counts[kind.key] == 0 {
-			filter.Ask = kind.ask
+		if counts[kind.key] > 0 {
+			tab.Filters = append(tab.Filters, crewDashboardsTabFilter{Key: kind.key, Label: kind.label, Count: counts[kind.key], Hint: kind.hint})
 		}
-		tab.Filters = append(tab.Filters, filter)
+	}
+	if len(tab.Filters) > 1 {
+		tab.Filters = append([]crewDashboardsTabFilter{{Key: "all", Label: "All", Count: len(rows)}}, tab.Filters...)
+	} else {
+		tab.Filters = []crewDashboardsTabFilter{}
 	}
 	switch {
 	case !owner && onMac:
@@ -195,6 +204,19 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 		}
 	}
 	return tab, true
+}
+
+// crewDashboardsGroup is the heading an item sits under: Today, This week (the last seven days) or Older.
+func crewDashboardsGroup(updated, now time.Time) string {
+	switch {
+	case updated.IsZero():
+		return "Older"
+	case updated.Year() == now.Year() && updated.YearDay() == now.YearDay():
+		return "Today"
+	case now.Sub(updated) < 7*24*time.Hour:
+		return "This week"
+	}
+	return "Older"
 }
 
 // handleCrewTeamDashboardsTab is GET /crew-teams/{project}/dashboards-tab?kind=all|dashboard|artifact|motion.

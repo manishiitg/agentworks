@@ -326,16 +326,20 @@ export type TeamFolderListing = { folders: string[]; path: string; files: number
 /** The Dashboards tab (crew_dashboards_tab.go): everything the Crew publishes, each with who can open it and, on a
  * server Crew, its public link. Every line is the server's; the card shows them. */
 export type CrewDashboardsTab = {
-  workspace: string; intro: string; can_change: boolean; on_mac?: boolean; put_online?: boolean; note?: string; filter: string
+  workspace: string; intro: string; can_change: boolean; on_mac?: boolean; note?: string; filter: string
   filters: { key: string; label: string; count: number; hint?: string; ask?: string }[]
-  items: { workspace?: string; id: string; title: string; path: string; kind: 'dashboard' | 'artifact' | 'motion'; line: string; who: string; public_link?: PublicLink; shared_by?: { user_id: string; name: string } }[]
+  items: { workspace?: string; id: string; title: string; path: string; kind: 'dashboard' | 'artifact' | 'motion'; line: string; who: string; when?: string; group: string; can_delete?: boolean; public_link?: PublicLink }[]
   empty?: { title: string; line: string; kinds?: { name: string; line: string }[]; ask?: string; example?: string }
 }
 export function crewDashboardsTab(target: TeamTarget, kind: string): Promise<CrewDashboardsTab> {
   return teamRequest<CrewDashboardsTab>({ project: target.project, connection: target.connection }, `/dashboards-tab?kind=${encodeURIComponent(kind)}`)
 }
+/** One page's buttons on the Artifacts page: the server's dashboard tool decides who may do each. */
 export function teamPublicLink(target: TeamTarget, id: string, mode: PublicLinkMode): Promise<PublicLink> {
-  return teamRequest<PublicLink>({ project: target.project, connection: target.connection }, '/dashboards/public-link', 'POST', { dashboard_id: id, mode })
+  return teamRequest<PublicLink>({ project: target.project, connection: target.connection }, '/dashboards/action', 'POST', { dashboard_id: id, action: 'public_link', mode })
+}
+export function teamDashboardAction(target: TeamTarget, id: string, action: 'link' | 'delete' | 'undelete'): Promise<{ url?: string; deleted?: boolean }> {
+  return teamRequest<{ url?: string; deleted?: boolean }>({ project: target.project, connection: target.connection }, '/dashboards/action', 'POST', { dashboard_id: id, action })
 }
 export function teamFolders(target: TeamTarget, query: string): Promise<TeamFolderListing> {
   return teamRequest<TeamFolderListing>({ project: target.project, connection: target.connection }, `/folders?${query}`)

@@ -59,6 +59,8 @@ type Dashboard struct {
 	History      []string `json:"history,omitempty"`
 	DocumentPath string   `json:"document_path"`
 	Managed      bool     `json:"managed"`
+	// UpdatedAt is when the definition last changed (a save or publish), in Unix seconds; set by list.
+	UpdatedAt int64 `json:"updated_at,omitempty"`
 }
 type Result struct {
 	Deleted      bool        `json:"deleted,omitempty"`
@@ -116,6 +118,9 @@ func safeFile(p string) bool {
 	return false
 }
 func StatePath(id string) string { return "db/reports/.dashboard-state/" + id + "/state.json" }
+
+// deletedStatePath keeps a deleted dashboard's definition so undelete can bring it back (its revisions stay anyway).
+func deletedStatePath(id string) string { return "db/reports/.dashboard-state/" + id + "/deleted.json" }
 func Document(id, rev string) string {
 	if rev == "" {
 		return Prefix + id + "/index.html"
@@ -317,7 +322,11 @@ func executeLocked(ctx context.Context, docs string, req Request) (Result, error
 					return out, e
 				}
 				if req.Guard == nil || req.Guard.Allows(Document(s.ID, rev), false) {
-					out.Dashboards = append(out.Dashboards, summary(s, snap, req.IncludeDraft))
+					d := summary(s, snap, req.IncludeDraft)
+					if info, e := root.Stat(StatePath(s.ID)); e == nil {
+						d.UpdatedAt = info.ModTime().Unix()
+					}
+					out.Dashboards = append(out.Dashboards, d)
 				}
 			}
 		}
@@ -367,6 +376,39 @@ func executeLocked(ctx context.Context, docs string, req Request) (Result, error
 	}
 	if !identifier.MatchString(req.ID) {
 		return out, fail(400, "dashboard id must be a lowercase slug of at most 64 characters")
+	}
+	if req.Action == "undelete" {
+		// Undo of a delete: the kept definition comes back as it was; links made before the delete stay off.
+		if !req.IncludeDraft {
+			return out, fail(403, "project edit access required")
+		}
+		if req.Guard != nil && !req.Guard.Allows(StatePath(req.ID), true) {
+			return out, fail(403, "outside connection write grants")
+		}
+		if _, e := root.Stat(StatePath(req.ID)); e == nil {
+			return out, fail(409, "this page is already there")
+		}
+		if e := root.Rename(deletedStatePath(req.ID), StatePath(req.ID)); e != nil {
+			if os.IsNotExist(e) {
+				return out, fail(404, "nothing to bring back for this page")
+			}
+			return out, e
+		}
+		restored, e := loadState(root, req.ID)
+		if e != nil {
+			return out, e
+		}
+		rev := restored.Published
+		if rev == "" {
+			rev = restored.Draft
+		}
+		snap, e := loadSnapshot(root, req.ID, rev)
+		if e != nil {
+			return out, e
+		}
+		d := summary(restored, snap, true)
+		out.Dashboard = &d
+		return out, nil
 	}
 	s, err := loadState(root, req.ID)
 	if req.Action == "create" {
@@ -419,7 +461,7 @@ func executeLocked(ctx context.Context, docs string, req Request) (Result, error
 		if req.Guard != nil && !req.Guard.Allows(StatePath(req.ID), true) {
 			return out, fail(403, "outside connection write grants")
 		}
-		if err := root.Remove(StatePath(req.ID)); err != nil {
+		if err := root.Rename(StatePath(req.ID), deletedStatePath(req.ID)); err != nil {
 			return out, err
 		}
 		out.Deleted = true
