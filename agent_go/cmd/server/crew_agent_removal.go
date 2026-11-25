@@ -109,6 +109,7 @@ func (api *StreamingAPI) planCrewAgentRemoval(ctx context.Context, caller string
 		}
 	}
 	sort.Strings(roots)
+	ownChatSchedules := 0
 	seen := map[string]bool{}
 	for _, root := range roots {
 		if seen[root] {
@@ -154,6 +155,12 @@ func (api *StreamingAPI) planCrewAgentRemoval(ctx context.Context, caller string
 				if input, ok := record["input"].(map[string]any); ok && input["condition"] != nil {
 					kind = "watcher"
 				}
+				// A schedule whose agent is removed runs in its own chat (owner, 25 Nov, #4046): nothing to choose, so it
+				// is not a dependency; the preview only says so.
+				if kind == "schedules" {
+					ownChatSchedules++
+					continue
+				}
 				plan.preview.Dependencies = append(plan.preview.Dependencies, crewAgentRemovalDependency{ID: dependency, Kind: kind, Name: name, CanReassign: reassign})
 				state.choices[index] = dependency
 				state.references[index] = objects
@@ -161,6 +168,9 @@ func (api *StreamingAPI) planCrewAgentRemoval(ctx context.Context, caller string
 			}
 			plan.files = append(plan.files, state)
 		}
+	}
+	if ownChatSchedules > 0 {
+		plan.preview.Effects = append(plan.preview.Effects, fmt.Sprintf("Its %d %s will run in their own chat", ownChatSchedules, map[bool]string{true: "schedule", false: "schedules"}[ownChatSchedules == 1]))
 	}
 	plan.addDependentFunctionCalls()
 	plan.addDependentSchedules()

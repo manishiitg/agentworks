@@ -15,10 +15,11 @@ const buttonClass = 'rounded-md border border-border px-2 py-1 text-xs hover:bg-
 function messageOf(error: unknown) { return axios.isAxiosError(error) && typeof error.response?.data === 'string' ? error.response.data : error instanceof Error ? error.message : 'Watcher request failed' }
 type SideChat = { id: string; name: string }
 const NEW_CHAT = 'new'
-const MAIN_CHAT = 'main'
-function chatChoice(t: ConditionTrigger['target']) { return !t.chat_id || t.chat_id === MAIN_CHAT ? MAIN_CHAT : t.chat_id }
+// A Watcher names the agent it sends to (any of the project's agents, Main included, by its id) or a new chat for each
+// event; there is no implicit Main (owner, 25 Nov, #4046).
+function chatChoice(t: ConditionTrigger['target']) { return t.chat_id && t.chat_id !== 'main' ? t.chat_id : '' }
 function chatLabel(chatId: string | undefined, sideChats: SideChat[]) {
-  if (!chatId || chatId === MAIN_CHAT) return 'main chat'
+  if (!chatId || chatId === 'main') return 'no agent chosen'
   if (chatId === NEW_CHAT) return 'a new chat for each event'
   return sideChats.find(chat => chat.id === chatId)?.name || `chat ${chatId}`
 }
@@ -50,10 +51,10 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
     document.addEventListener('visibilitychange', visible)
     return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', visible) }
   }, [refresh])
-  // The Code chats a watcher can send to: the open side chats of this project (the main chat and "a new chat" are always offered).
+  // The agents a watcher can send to: this project's agents ("a new chat for each event" is always offered).
   const chatTabs = useChatStore(state => state.chatTabs)
   const sideChats = useMemo<SideChat[]>(() => {
-    const names = new Map(savedChats.filter(chat => chat.id !== MAIN_CHAT).map(chat => [chat.id, chat]))
+    const names = new Map(savedChats.filter(chat => chat.id !== 'main').map(chat => [chat.id, chat]))
     for (const tab of Object.values(chatTabs).filter(tab => isWorkSideChatTab(tab, scope.projectId))) {
       const id = String(tab.metadata?.agentProfileConversationKey).slice(workSideChatKey(scope.projectId, '').length)
       names.set(id, { id, name: tab.name })
@@ -110,11 +111,11 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
           className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
           disabled={busy}
           value={chatChoice(t.target)}
-          onChange={event => void manage('update', t.id, { target: { ...t.target, chat_id: event.target.value === MAIN_CHAT ? '' : event.target.value } })}
+          onChange={event => void manage('update', t.id, { target: { ...t.target, chat_id: event.target.value } })}
         >
-          <option value={MAIN_CHAT}>Main chat</option>
+          {!chatChoice(t.target) && <option value="" disabled>Choose an agent</option>}
           {sideChats.map(chat => <option key={chat.id} value={chat.id}>{chat.name}</option>)}
-          {chatChoice(t.target) !== MAIN_CHAT && chatChoice(t.target) !== NEW_CHAT && !sideChats.some(chat => chat.id === t.target.chat_id) && <option value={t.target.chat_id}>{`Chat ${t.target.chat_id}`}</option>}
+          {chatChoice(t.target) !== '' && chatChoice(t.target) !== NEW_CHAT && !sideChats.some(chat => chat.id === t.target.chat_id) && <option value={t.target.chat_id}>{`Chat ${t.target.chat_id}`}</option>}
           <option value={NEW_CHAT}>A new chat for each event</option>
         </select>
       </label>}

@@ -251,7 +251,7 @@ func TestExternalCrewSessionToolsOverMCP(t *testing.T) {
 	// Session tools are grouped by family (ui, sessions); the family takes the old tool's name as its action.
 	for _, tc := range []struct{ name, tool, action string }{{"capabilities", "ui", "capabilities"}, {"state", "ui", "get"}} {
 		name := tc.name
-		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "workspace", "arguments": map[string]any{"workspace_id": "work:team", "chat_id": "main", "action": "chat_tool", "tool_name": tc.tool, "arguments": map[string]any{"action": tc.action}}})
+		result := callRemoteTool(t, ctx, cli, "call_tool", map[string]any{"name": "workspace", "arguments": map[string]any{"workspace_id": "work:team", "chat_id": record.SessionID, "action": "chat_tool", "tool_name": tc.tool, "arguments": map[string]any{"action": tc.action}}})
 		requireRemoteSuccess(t, result, name)
 		raw, _ := json.Marshal(result)
 		if name == "state" && !strings.Contains(string(raw), "browser_disconnected") {
@@ -281,5 +281,5 @@ func TestExternalCrewSessionToolsOverMCP(t *testing.T) {
 	}
 	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "another-person-session", "tool_name": "ui", "arguments": map[string]any{"action": "capabilities"}}, 404)
 	call(crewWriter("other"), map[string]any{"action": "tools", "chat_id": "own-session"}, 404)
-	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": "main", "tool_name": "ui", "arguments": map[string]any{"action": "get", "session_id": "another-person-session"}}, 400)
+	call(crewWriter("owner"), map[string]any{"action": "tool", "chat_id": record.SessionID, "tool_name": "ui", "arguments": map[string]any{"action": "get", "session_id": "another-person-session"}}, 400)
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/gorilla/mux"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 )
 
@@ -39,7 +40,8 @@ func TestAgentRemovalRequiresCurrentPreviewAndEveryChoice(t *testing.T) {
 // PLAT-746-886: exercise the HTTP preview/confirm endpoint with real workspace
 // storage. Preview leaves the agent and schedule untouched; confirm preserves
 // unrelated agents and reassigns only the selected linked work.
-func TestAgentRemovalHTTPPreviewsThenReassignsAndDeletes(t *testing.T) {
+// #4046: a removed agent's schedules need no choice; they run in their own chat and the preview says so.
+func TestAgentRemovalHTTPPreviewsThenRemovesAndSchedulesRunInOwnChat(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	ctx := internalBotRequestContext(t.Context(), "owner")
 	profile, err := f.api.agentProfiles.Resolve("work", 0, "owner")
@@ -88,13 +90,13 @@ func TestAgentRemovalHTTPPreviewsThenReassignsAndDeletes(t *testing.T) {
 	if err = json.Unmarshal(response.Body.Bytes(), &preview); err != nil {
 		t.Fatal(err)
 	}
-	if len(preview.Dependencies) != 2 || preview.Dependencies[0].Name != "Daily check" {
-		t.Fatalf("missing named dependency: %+v", preview.Dependencies)
+	if len(preview.Dependencies) != 0 || !slices.Contains(preview.Effects, "Its 2 schedules will run in their own chat") {
+		t.Fatalf("schedules offered as choices, or not said: %+v %v", preview.Dependencies, preview.Effects)
 	}
 	if f.read(t, externalCommandCrewSettings+"/schedules.json") != schedule || !projectChatExists(ctx, "owner", "work", "team", "team:chat:remove") {
 		t.Fatal("preview changed work")
 	}
-	response = call(AgentProfileConversationRequest{ConversationKey: "team:chat:remove", RemovalConfirmation: preview.Confirmation, RemovalChoices: map[string]string{preview.Dependencies[0].ID: "team:chat:keep", preview.Dependencies[1].ID: "team:chat:keep"}})
+	response = call(AgentProfileConversationRequest{ConversationKey: "team:chat:remove", RemovalConfirmation: preview.Confirmation, RemovalChoices: map[string]string{}})
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("confirm: %d %s", response.Code, response.Body.String())
 	}
@@ -117,15 +119,15 @@ func TestAgentRemovalHTTPPreviewsThenReassignsAndDeletes(t *testing.T) {
 	if err = json.Unmarshal([]byte(f.read(t, externalCommandCrewSettings+"/schedules.json")), &saved); err != nil {
 		t.Fatal(err)
 	}
-	if len(saved.Schedules) != 1 || saved.Schedules[0].Action.Tab != "team:chat:keep" || saved.Schedules[0].Enabled {
-		t.Fatal("linked work was lost, not reassigned, or enabled")
+	if len(saved.Schedules) != 1 || saved.Schedules[0].Action.Tab != "team:chat:remove" || saved.Schedules[0].Enabled {
+		t.Fatal("a schedule was lost, moved to another agent, or enabled")
 	}
 	if err = json.Unmarshal([]byte(f.read(t, externalCommandCrewSettings+"/workflow.json")), &workflow); err != nil {
 		t.Fatal(err)
 	}
 	notify := workflow["schedules"].([]any)[0].(map[string]any)
-	if notify["chat_id"] != "team:chat:keep" || notify["enabled"] != false {
-		t.Fatal("script destination not reassigned with its full physical key")
+	if notify["chat_id"] != "team:chat:remove" || notify["enabled"] != false {
+		t.Fatal("a workflow schedule was moved to another agent or enabled")
 	}
 }
 

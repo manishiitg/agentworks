@@ -107,13 +107,9 @@ func (api *StreamingAPI) handleProjectAskConversation(w http.ResponseWriter, r *
 			}
 		}
 		key, name := strings.TrimSpace(body.AgentKey), ""
-		if key == "" {
-			candidate := crewOwnerMainChatKey(target.ID)
-			for _, item := range choices {
-				if item.Key == candidate {
-					key = candidate
-				}
-			}
+		// No agent named: the only one answers; with several, the person chooses (no implicit Main, #4046).
+		if key == "" && len(choices) == 1 {
+			key = choices[0].Key
 		}
 		if key == "" {
 			message := "Choose an agent to answer."

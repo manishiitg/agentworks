@@ -222,12 +222,22 @@ func TestExternalCrewChatsAreYourOwn(t *testing.T) {
 	}
 	// The migrated main is listed by physical ID, with its role separate.
 	mainRows := env.api.crewChats(httptest.NewRequest("GET", "/", nil), owner.UserID, "beta", linkBetaPath)
-	mainChat, found := findCrewChat(mainRows, "main")
+	// "main" is no alias any more (#4046): Main is found by its own listed role.
+	var mainChat externalCrewChat
+	found := false
+	for _, row := range mainRows {
+		if row.IsMain {
+			mainChat, found = row, true
+		}
+	}
+	if _, aliased := findCrewChat(mainRows, "main"); aliased {
+		t.Fatal(`"main" still addresses Main`)
+	}
 	if !found || !mainChat.IsMain || !strings.HasPrefix(mainChat.ChatID, "root-") || crewSideChatCount(mainRows) != 0 {
 		t.Fatalf("migrated main discovery = %+v, found=%v", mainRows, found)
 	}
-	if code, out := chats(owner, map[string]any{"crew_id": "beta", "action": "set_model", "chat_id": "main", "engine": ""}); code != 200 {
-		t.Fatalf("MCP main model alias = %d %v", code, out)
+	if code, out := chats(owner, map[string]any{"crew_id": "beta", "action": "set_model", "chat_id": mainChat.ChatID, "engine": ""}); code != 200 {
+		t.Fatalf("MCP main model by id = %d %v", code, out)
 	}
 	if code, _ := chats(owner, map[string]any{"crew_id": "beta", "action": "side_close", "chat_id": mainChat.ChatID}); code != 404 {
 		t.Fatalf("main physical ID allowed side_close: %d", code)

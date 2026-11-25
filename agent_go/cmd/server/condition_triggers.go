@@ -565,7 +565,7 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 		if !projectChatExists(ctx, job.UserID, job.Profile.ID, job.ProjectID, chatKey) {
 			return "", conditiontrigger.PermanentError{Err: errors.New("the original PR Watcher agent was removed")}
 		}
-	} else if chatID != codeChatMainName {
+	} else {
 		chatKey += codeChatSideMarker + chatID
 		switch {
 		case projectChatExists(ctx, job.UserID, job.Profile.ID, job.ProjectID, chatKey):

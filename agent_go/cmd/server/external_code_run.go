@@ -234,11 +234,6 @@ func findCodeChat(chats []codeChat, key string) *codeChat {
 		return nil
 	}
 	for i := range chats {
-		if strings.EqualFold(key, codeChatMainName) && chats[i].IsMain {
-			alias := chats[i]
-			alias.Key, _, _ = strings.Cut(alias.Key, codeChatSideMarker)
-			return &alias
-		}
 		if strings.EqualFold(chats[i].ID, key) {
 			return &chats[i]
 		}

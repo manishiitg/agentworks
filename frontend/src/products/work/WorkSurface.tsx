@@ -902,10 +902,13 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         const currentState = useChatStore.getState()
         const active = currentState.activeTabId ? currentState.chatTabs[currentState.activeTabId] : undefined
         const destination = currentProductRoute()
+        // A link with no agent, or to an agent that is gone, opens the person's most recent agent, never an implicit
+        // Main (owner, 25 Nov, #4046).
+        const recent = [...listed].filter(chat => chat.can_write !== false)
+          .sort((a, b) => (b.last_message_at || '').localeCompare(a.last_message_at || ''))[0] ?? listed[0]
+        const recentTab = recent && Object.values(currentState.chatTabs).find(tab => tab.metadata?.agentProfileConversationKey === recent.conversation_key)
         if (!canonicalTabId && (!active || !belongsToWorkProject(active, projectId)) && destination?.id === projectId && !destination.agent) {
-          const first = listed[0]
-          const next = first && Object.values(currentState.chatTabs).find(tab => tab.metadata?.agentProfileConversationKey === first.conversation_key)
-          if (next) activateTab(next.tabId)
+          if (recentTab) activateTab(recentTab.tabId)
         }
         // A different Crew's link can be checking access while this strip is
         // still mounted. Only consume an agent deep link for this Crew.
@@ -920,8 +923,8 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
           } else if (!available) {
             // The fresh server list no longer contains the requested chat.
             // Replace its stale route; do not wait forever for a removed tab.
-            window.history.replaceState({}, '', productRoutePath({ ...route!, agent: 'main' }))
-            activateTab(canonicalTabId)
+            window.history.replaceState({}, '', productRoutePath({ ...route!, agent: undefined }))
+            activateTab(recentTab?.tabId ?? canonicalTabId)
           }
         }
 
