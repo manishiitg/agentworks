@@ -1,7 +1,7 @@
 // Add your own AI account to a connected server from the Mac app, and see the ones you have there (#3807).
 // Everything goes to the server's own routes through the Mac's connection (serverAccounts.ts): the server checks the
 // key, who you are there, whether it allows your own accounts and who you may share with. This page only shows it.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, UserRound, X } from 'lucide-react'
 import GuidedProviderTerminal from './GuidedProviderTerminal'
 import { Segmented } from './ChoiceChips'
@@ -77,12 +77,14 @@ async function startSignIn(server: DesktopConnection, provider: string, accountI
 export function ServerSignIn({ server, provider, accountId, onDone }: { server: DesktopConnection; provider: string; accountId: string; onDone: () => void }) {
   const [session, setSession] = useState<ProviderSetupSession | null>(null)
   const [error, setError] = useState('')
+  const startedKey = useRef('')
   useEffect(() => {
-    let cancelled = false
-    startSignIn(server, provider, accountId).then(next => { if (!cancelled) setSession(next) })
-      .catch(() => { if (!cancelled) setError(`Could not start the sign-in on ${server.name}. Try again.`) })
-    return () => { cancelled = true }
-  }, [server, provider, accountId])
+    const key = `${server.id}:${provider}:${accountId}`
+    if (startedKey.current === key) return
+    startedKey.current = key
+    startSignIn(server, provider, accountId).then(next => { if (startedKey.current === key) setSession(next) })
+      .catch(() => { if (startedKey.current === key) setError(`Could not start the sign-in on ${server.name}. Try again.`) })
+  }, [server.id, provider, accountId])
   if (error) return <p role="alert" className="mt-2 w-full text-xs text-destructive">{error}</p>
   return session ? <SignInWindow server={server} session={session} onDone={onDone} /> : <p className="mt-2 w-full text-xs text-muted-foreground">Starting the sign-in on {server.name}…</p>
 }
