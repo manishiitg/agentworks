@@ -1269,7 +1269,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
 
   // The server's can_build response keeps owners/co-owners in the Builder
   // workspace. People the Crew is only shared with use its dashboard.
-  // A User of a server project gets their chat and the project's dashboard only; the server says so (crew_setup_lock.go).
+  // A User of a server project gets their chat alone; the server says so (crew_setup_lock.go).
   const projectUser = useCrewProjectUser(product.profileId === 'work' ? selected?.id : undefined)
   const showShell = product.hasTerminal && !isWorkSessionRun(selected) && !projectUser
   // Ctrl+` opens the terminal, or closes the pane when the terminal is showing, as in code editors (owner, 20 Nov).

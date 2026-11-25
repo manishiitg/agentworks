@@ -11,7 +11,7 @@ import (
 // for this type of user who have limited permission"; replacing the 24 Nov per-co-owner switch). The main owner adds a
 // User from the Access panel or crew_owners. A User works in the project with a co-owner's working power (shell,
 // files, tools, functions; never Run mode), but:
-//   - the screen shows the chat and the project's dashboard, nothing else (crew-sync project_user);
+//   - the screen shows only their own chats, nothing beside them; the dashboard opens from its own link (crew-sync);
 //   - the project's setup files are locked for their turns: the project instructions, skills, settings and any extra
 //     paths the owner chose (crewSetupLockedWritePaths, enforced by the folder guard in every file layer);
 //   - the setup tools are refused on every path (crewSetupLockedTools and the checks below);

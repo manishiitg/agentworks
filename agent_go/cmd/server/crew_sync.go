@@ -44,8 +44,8 @@ type crewSyncReply struct {
 	ChatOnly bool `json:"chat_only,omitempty"`
 	// ChatOnlyLine is the one line above that chat: which copy this is and what stays on the Mac (owner, 12 Nov).
 	ChatOnlyLine string `json:"chat_only_line,omitempty"`
-	// ProjectUser: the viewer is a User of this server project (crew_setup_lock.go): the screen is their chat and the
-	// project's dashboard, nothing else; ChatOnly is set too when the project has no dashboard.
+	// ProjectUser: the viewer is a User of this server project (crew_setup_lock.go): the screen is their chat alone
+	// (ChatOnly); the project's dashboard opens from its own link.
 	ProjectUser bool                  `json:"project_user,omitempty"`
 	Role        string                `json:"role,omitempty"`
 	Message     string                `json:"message,omitempty"`
@@ -206,18 +206,14 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	// A User of a Crew on the server gets their chat and the project's dashboard, with one line on who controls the
-	// setup (crew_setup_lock.go). Checked before the co-owner page: a User also holds a seat there.
+	// A User of a Crew on the server gets their chat alone, with one line on who controls the setup (crew_setup_lock.go).
+	// The dashboard is its own link (owner, 25 Nov: "keep dashboard separate... on right he won't see anything"). Checked before the co-owner page: a User also holds a seat there.
 	if r.Method == http.MethodGet && !IsLocalMode() {
 		project, caller := mux.Vars(r)["project"], GetUserIDFromContext(r.Context())
 		if root := crewProjectRootByID(project); root != "" && crewLivesOnServer(project) && crewIsProjectUser(root, caller) {
 			w.Header().Set("Cache-Control", "no-store")
-			hasDashboard, err := crewHasPublishedDashboardEntry(r.Context(), root)
-			if err != nil {
-				hasDashboard = false
-			}
 			externalJSON(w, crewSyncReply{ProjectID: project, Place: "online", Role: crewRoleUser, AccessView: "summary", AccessSummary: crewSetupLockedRefusal(root),
-				ProjectUser: true, ChatOnly: !hasDashboard, ChatOnlyLine: crewSetupLockedRefusal(root)})
+				ProjectUser: true, ChatOnly: true, ChatOnlyLine: crewSetupLockedRefusal(root)})
 			return
 		}
 	}
