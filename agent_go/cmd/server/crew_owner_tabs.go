@@ -42,7 +42,8 @@ func crewOwnerTabPeople(caller, workspace string) []string {
 
 func crewOwnerChatRecords(ctx context.Context, caller, profile, project, workspace string) ([]crewOwnerChat, error) {
 	people := crewOwnerTabPeople(caller, workspace)
-	if len(people) == 0 {
+	// A User lists only their own chats (crew_setup_lock.go); the owner's newest chat opened for them and was refused.
+	if len(people) == 0 || crewIsProjectUser(workspace, caller) {
 		people = []string{caller}
 	}
 	store := defaultProductConversationRegistryStore()
