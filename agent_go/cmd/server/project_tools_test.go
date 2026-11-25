@@ -105,7 +105,7 @@ func projectCreateTestArgs(kind, key string) map[string]any {
 	var spec map[string]any
 	switch kind {
 	case "crew":
-		spec = map[string]any{"name": "Research " + key}
+		spec = map[string]any{"name": "Research " + key, "purpose": "Research sample work"}
 	}
 	return map[string]any{"kind": kind, "spec": spec, "idempotency_key": key}
 }
@@ -212,7 +212,7 @@ func TestProjectCreationNativeAndMCPUseTheSameAction(t *testing.T) {
 	deviceServer := serveExternalMCP(t, f.api, deviceClaims)
 	deviceClient := dialExternalMCP(t, t.Context(), deviceServer.URL+externalMCPPath)
 	initializeExternalMCP(t, t.Context(), deviceClient)
-	denied := callRemoteTool(t, t.Context(), deviceClient, "call_tool", map[string]any{"name": "workspace", "arguments": testWorkspaceCreate("crew", map[string]any{"name": "Refused"})})
+	denied := callRemoteTool(t, t.Context(), deviceClient, "call_tool", map[string]any{"name": "workspace", "arguments": testWorkspaceCreate("crew", map[string]any{"name": "Refused", "purpose": "Device cannot author"})})
 	if !denied.IsError || !strings.Contains(marshalContent(t, denied)+marshalStructured(t, denied), "insufficient_scope") {
 		t.Fatal("device refusal did not come from its real tool scope")
 	}
@@ -316,7 +316,7 @@ func TestProjectCreateRejectsChangedRetryAndCallerSubstitution(t *testing.T) {
 	if _, err := tool.exec(context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "other"}), args); err == nil {
 		t.Fatal("substituted another caller")
 	}
-	for _, spec := range []map[string]any{{"selected_skills": []any{}}, {"name": "Invalid skill", "selected_skills": []any{"not-an-installed-skill"}}} {
+	for _, spec := range []map[string]any{{"purpose": "Missing name"}, {"name": "Invalid skill", "purpose": "Check", "selected_skills": []any{"not-an-installed-skill"}}} {
 		if _, err := tool.exec(t.Context(), map[string]any{"kind": "crew", "spec": spec, "idempotency_key": fmt.Sprint(spec)}); err == nil {
 			t.Fatal("accepted invalid Crew spec")
 		}

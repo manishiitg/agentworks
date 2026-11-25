@@ -277,9 +277,6 @@ func productProjectLabel(ctx context.Context, profileID, workspacePath string) s
 // productProjectDescription returns a product project's one-line description, or "". A Crew's description lives in its
 // product.json; the runtime manifest read first does not carry it.
 func productProjectDescription(ctx context.Context, profileID, workspacePath string) string {
-	if profileID == crewProfileID {
-		return "" // a project has a name and no description (owner, 25 Nov, #4046)
-	}
 	read := func(raw string) string {
 		var manifest struct {
 			Description string `json:"description"`

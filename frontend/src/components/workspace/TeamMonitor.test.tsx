@@ -3,7 +3,8 @@ import React,{act} from 'react'
 import {createRoot} from 'react-dom/client'
 import {expect,it,vi} from 'vitest'
 import {TeamMonitor} from './TeamMonitor'
-const f=vi.hoisted(()=>({list:vi.fn(),request:vi.fn(),draft:vi.fn(()=>true),openTeam:vi.fn(),openProject:vi.fn()}))
+const f=vi.hoisted(()=>({list:vi.fn(),request:vi.fn(),draft:vi.fn(()=>true),openTeam:vi.fn(),openProject:vi.fn(),page:vi.fn()}))
+vi.mock('../../stores/useAppStore',()=>({useAppStore:{getState:()=>({setAdminPage:f.page})}}))
 vi.mock('../../services/api',()=>({default:{get:f.list},getAuthToken:()=>'',getDesktopApiBaseUrl:()=>'',getLocalApiBaseUrl:()=>'',agentApi:{listWorkspaceNavigation:vi.fn()}}))
 vi.mock('../../stores/useAuthStore',()=>({useAuthStore:(select:(s:unknown)=>unknown)=>select({user:{id:'viewer',allowed_products:['work']}})}))
 vi.mock('../../stores/useConnectedWorkStore',()=>({hasDesktopConnections:()=>false,useConnectedWorkPolling:()=>{},connectedLocations:()=>[],useConnectedWorkStore:()=>({connections:[]})}))
@@ -42,7 +43,8 @@ it('groups server-admitted working agents by Team, pins personal needs, and expa
   expect(f.openTeam).toHaveBeenLastCalledWith('crew','','team','agents')
   await act(async()=>host.querySelector('button')!.click())
   await act(async()=>button('Open overview').click())
-  expect(f.openTeam).toHaveBeenLastCalledWith('crew','','team','overview')
+  // Open overview is one page for every Team, not one Team's tab (owner, 25 Nov).
+  expect(f.page).toHaveBeenLastCalledWith('teams')
   await act(async()=>host.querySelector('button')!.click())
   await act(async()=>panel().querySelector<HTMLButtonElement>('[aria-label="Show Colleague\'s agents"]')!.click())
   expect(panel().querySelectorAll('[role="menuitem"]')).toHaveLength(2)

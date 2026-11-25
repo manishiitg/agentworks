@@ -43,11 +43,12 @@ function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; works
 }
 
 /** One tab-management view; each product supplies its existing server operations. */
-export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, allowSideChats, opening, surface,
+export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, mainPurpose, allowSideChats, opening, surface,
   onImportLocalChat, checkingLocalImport = false, projectActionReady = true, onDiscoverSkills, onOpenIdentity, onOrder, onForkParent, onSetSidebarHidden, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, createRequest = 0, projectId,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
   /** The person's own Main chat's purpose; undefined when Main is not theirs. */
+  mainPurpose?: string
   createRequest?: number
   projectId?: string
   allowSideChats: boolean; opening: boolean; surface: ProductSurface
@@ -114,8 +115,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   }
   // The purpose icon, for the tab's owner only (owner, 3 Nov): it fills the chat box; the agent saves the line itself.
   const purposeOf = (tab: ChatTab): string | undefined => {
-    // Main's purpose is its own chat's, like any agent's (owner, 25 Nov, #4046: a project has no description).
-    const chat = tab.tabId === canonicalTabId ? listed.find(row => row.is_main) : listedFor(tab)
+    if (tab.tabId === canonicalTabId) return mainPurpose
+    const chat = listedFor(tab)
     return chat && chat.can_write !== false && isAgentTab(tab) ? chat.purpose || '' : undefined
   }
   const activeTab = tabs.find(tab => tab.tabId === activeTabId)

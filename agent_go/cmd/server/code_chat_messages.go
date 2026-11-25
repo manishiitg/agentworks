@@ -460,6 +460,24 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 						return "", err
 					}
 				}
+				if project.Self.IsMain && project.Workspace != "" {
+					// Main's name is its own chat's, like any tab (owner, 25 Nov, #4030: renaming Main renamed the project);
+					// its purpose stays the Crew identity (crew_main_identity.go), the one set_work_identity writes.
+					chatName := "Main"
+					if name != nil {
+						identity, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, project.ProfileID, project.Self.Key, name, nil, "agent Main")
+						if err != nil {
+							return "", err
+						}
+						chatName = firstNonEmptyTrimmed(identity.Name, "Main")
+					}
+					saved, err := writeCrewMainPurpose(ctx, project.Workspace, purpose)
+					if err != nil {
+						return "", err
+					}
+					go api.refreshMacSharedPurposes(context.WithoutCancel(ctx), project.ProjectID)
+					return jsonOut(map[string]interface{}{"name": chatName, "purpose": saved.Purpose})
+				}
 				identity, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, project.ProfileID, project.Self.Key, name, purpose, "agent "+project.Self.Name)
 				var fields []string
 				for label, value := range map[string]*string{"name": name, "purpose": purpose} {

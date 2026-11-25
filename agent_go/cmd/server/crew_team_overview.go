@@ -637,7 +637,7 @@ func crewTeamOverviewTokensFor(ctx context.Context, project string, since time.T
 		}
 		var a costledger.Aggregate
 		a.AddEntry(e)
-		tokens := int64(a.InputTokens + a.CompletionTokens)
+		tokens := crewTeamWorkTokens(a)
 		if tokens <= 0 {
 			return nil
 		}
@@ -733,7 +733,7 @@ func macCrewTeamUsage(ctx context.Context, owner, project string, keys []string)
 			}
 			var a costledger.Aggregate
 			a.AddEntry(e)
-			n := int64(a.InputTokens + a.CompletionTokens)
+			n := crewTeamWorkTokens(a)
 			row := tokens[key]
 			row[1] += n
 			if !e.Timestamp.Before(dayAgo) {
@@ -817,4 +817,10 @@ func crewTeamOverviewAddMacTokens(out []crewTeamOverviewTokens, mac map[string]m
 	}
 	slices.SortFunc(out, func(a, b crewTeamOverviewTokens) int { return int(b.Tokens - a.Tokens) })
 	return out
+}
+
+// crewTeamWorkTokens is the work an overview counts: new input and output. Cached prompt tokens are read again on
+// every turn, so counting them made a day of work look like a billion tokens (#3900).
+func crewTeamWorkTokens(a costledger.Aggregate) int64 {
+	return int64(max(a.InputTokens-a.CacheReadTokens, 0) + a.CompletionTokens)
 }

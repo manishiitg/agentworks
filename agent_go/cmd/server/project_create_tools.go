@@ -40,7 +40,7 @@ func projectCreateSpecSchema(kind string) map[string]any {
 	switch kind {
 	case "crew":
 		props, _, _ := externalCrewSpecSchemas()
-		return map[string]any{"type": "object", "properties": props, "required": []any{"name"}, "additionalProperties": false}
+		return map[string]any{"type": "object", "properties": props, "required": []any{"name", "purpose"}, "additionalProperties": false}
 	}
 	return nil
 }

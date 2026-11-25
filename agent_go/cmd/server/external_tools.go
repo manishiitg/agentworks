@@ -232,10 +232,11 @@ func externalTools() ([]externalTool, error) {
 		// Crew authoring (crews:write; owner-only edits). One spec shape
 		// serves create_crew, export_crew and import_crew.
 		specProps, fnSpec, scheduleSpec := externalCrewSpecSchemas()
-		add("create_crew", "Create a project you own from a spec: name, standing instructions (chat_instructions), skills, functions, schedules, project files. A project has no description; each agent keeps its own purpose. Returns the new project as workspace action=get does. Requires crews:write on a connection covering all your projects.", false, false, specProps, "name")
+		add("create_crew", "Create a project you own from a spec: name, purpose (what the project is for; its standing instructions), skills, functions, schedules, project files. Returns the new project as workspace action=get does. Requires crews:write on a connection covering all your projects.", false, false, specProps, "name", "purpose")
 		strList := map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
 		add("update_crew", "Edit a project you own. Every field is optional; omitted parts stay as they are. skills: set/add/remove names. functions: upsert specs / delete names. schedules: add specs (an add whose name already exists counts as already added), update specs by id, remove ids (an id that is already gone counts as removed), so a retry after a dropped connection is safe. files: write project files; remove_files deletes them. Requires crews:write.", false, false, crewID(map[string]any{
 			"name":         map[string]any{"type": "string", "maxLength": 60},
+			"purpose":      map[string]any{"type": "string", "maxLength": crewPurposeLimit},
 			"skills":       map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"set": strList, "add": strList, "remove": strList}},
 			"functions":    map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"upsert": map[string]any{"type": "array", "items": fnSpec}, "delete": strList}},
 			"schedules":    map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"add": map[string]any{"type": "array", "items": scheduleSpec}, "update": map[string]any{"type": "array", "items": scheduleSpec}, "remove": strList}},
