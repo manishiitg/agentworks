@@ -327,7 +327,7 @@ export type TeamFolderListing = { folders: string[]; path: string; files: number
 export type CrewDashboardsTab = {
   workspace: string; intro: string; can_change: boolean; on_mac?: boolean; note?: string; filter: string
   filters: { key: string; label: string; count: number; hint?: string; ask?: string }[]
-  items: { workspace?: string; id: string; title: string; path: string; kind: 'dashboard' | 'artifact' | 'motion'; line: string; who: string; when?: string; group: string; can_delete?: boolean; public_link?: PublicLink }[]
+  items: { workspace?: string; id: string; title: string; path: string; kind: 'dashboard' | 'artifact' | 'motion'; line: string; who: string; when?: string; group: string; can_delete?: boolean; can_share_team?: boolean; team_shared?: boolean; from_team?: boolean; public_link?: PublicLink }[]
   empty?: { title: string; line: string; kinds?: { name: string; line: string }[]; ask?: string; example?: string }
 }
 export function crewDashboardsTab(target: TeamTarget, kind: string): Promise<CrewDashboardsTab> {
@@ -339,6 +339,14 @@ export function teamPublicLink(target: TeamTarget, id: string, mode: PublicLinkM
 }
 export function teamDashboardAction(target: TeamTarget, id: string, action: 'link' | 'delete' | 'undelete'): Promise<{ url?: string; deleted?: boolean }> {
   return teamRequest<{ url?: string; deleted?: boolean }>({ project: target.project, connection: target.connection }, '/dashboards/action', 'POST', { dashboard_id: id, action })
+}
+/** Share an Artifact with the Team (a self-contained copy in the Team's shared folder) or take the copy back. */
+export function teamShareArtifact(target: TeamTarget, id: string, on: boolean): Promise<{ team_shared: boolean; note?: string }> {
+  return teamRequest<{ team_shared: boolean; note?: string }>({ project: target.project, connection: target.connection }, '/dashboards/action', 'POST', { dashboard_id: id, action: 'team_share', mode: on ? 'on' : 'off' })
+}
+/** A Team copy's page, to show in the Artifacts pane. */
+export function teamArtifactPage(target: TeamTarget, id: string): Promise<{ html: string }> {
+  return teamRequest<{ html: string }>({ project: target.project, connection: target.connection }, '/dashboards/action', 'POST', { dashboard_id: id, action: 'team_open' })
 }
 export function teamFolders(target: TeamTarget, query: string): Promise<TeamFolderListing> {
   return teamRequest<TeamFolderListing>({ project: target.project, connection: target.connection }, `/folders?${query}`)

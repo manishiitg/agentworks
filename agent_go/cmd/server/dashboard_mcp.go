@@ -13,7 +13,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
-var dashboardActions = map[string]string{"upload_dashboard_asset": "upload", "get_dashboard_catalog": "catalog", "export_dashboard_motion": "export_motion", "export_dashboard_static": "export_static", "set_dashboard_public_link": dashboardPublicAction, "list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "delete_dashboard": "delete", "undelete_dashboard": "undelete", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link", "get_dashboard_share": "share_status", "share_dashboard": "share"}
+var dashboardActions = map[string]string{"upload_dashboard_asset": "upload", "get_dashboard_catalog": "catalog", "export_dashboard_motion": "export_motion", "export_dashboard_static": "export_static", "set_dashboard_public_link": dashboardPublicAction, "share_dashboard_with_team": dashboardTeamAction, "list_dashboards": "list", "get_dashboard": "get", "create_dashboard": "create", "update_dashboard": "update", "validate_dashboard": "validate", "preview_dashboard": "preview", "publish_dashboard": "publish", "delete_dashboard": "delete", "undelete_dashboard": "undelete", "restore_dashboard": "restore", "get_dashboard_link": "link", "get_report_link": "link", "get_dashboard_share": "share_status", "share_dashboard": "share"}
 
 func isDashboardTool(name string) bool { return dashboardActions[name] != "" }
 func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
@@ -120,6 +120,13 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		"dashboard_id": externalString("Published dashboard slug from the dashboard list. Needed for on, update and off."),
 		"mode":         map[string]any{"type": "string", "enum": []any{"on", "update", "off", "status"}},
 	}, "mode")
+	add("share_dashboard_with_team", "Share one published Artifact with this project's Team, or stop sharing it. mode on saves the page as one self-contained HTML file (styles, images and fonts inside) in the Team's shared folder under artifacts/; the folder sync carries it to every teammate, whose Artifacts page lists it under From the Team. Share again after changing the page. mode off removes the Team copy; the page itself stays. Only Artifacts: a dashboard shows live data a copy can't carry. Needs the project's Team to be on. People who build the project only.", true, false, map[string]any{
+		"crew_id":      externalString("Project ID from workspace action=list or the dashboard list."),
+		"workspace":    externalString("Existing project root."),
+		"workspace_id": externalString("Stable work:<id> from workspace list/get. Pass exactly one project selector."),
+		"dashboard_id": externalString("Published Artifact slug from the dashboard list."),
+		"mode":         map[string]any{"type": "string", "enum": []any{"on", "off"}},
+	}, "dashboard_id", "mode")
 	shareProps := map[string]any{
 		"workflow_id":  externalString("Goal/workflow ID from workflow action=list. Also accepts an existing Flow ID for compatibility. Pass exactly one project selector."),
 		"flow_id":      externalString("Flow ID from workflow action=list or relay. Pass exactly one of workflow_id, flow_id, crew_id or workspace."),

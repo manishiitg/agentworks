@@ -165,7 +165,7 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 
 		action := ""
 		switch tool {
-		case "publish_dashboard", "delete_dashboard", "undelete_dashboard", "publish_relay":
+		case "publish_dashboard", "delete_dashboard", "undelete_dashboard", "share_dashboard_with_team", "publish_relay":
 			action = "publish"
 		}
 		if action != "" && strings.HasPrefix(req.SelectedFolder, "Workflow/") {

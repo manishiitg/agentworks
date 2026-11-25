@@ -1,14 +1,15 @@
 import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useEffect, useRef, useState } from 'react'
-import { FileText, Film, LayoutDashboard, Link2, MoreHorizontal, Search, Trash2, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, FileText, Film, LayoutDashboard, Link2, MoreHorizontal, Search, Trash2, Users, type LucideIcon } from 'lucide-react'
+import { HtmlRenderer } from '../../components/ui/HtmlRenderer'
 import { Button } from '../../components/ui/Button'
 import { PublicLinkControl } from '../../components/workflow/PublicLinkControl'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import { DashboardPeopleCard, teamCard } from './TeamTab'
 import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { useChatStore } from '../../stores/useChatStore'
-import { crewDashboardsTab, teamDashboardAction, teamFailure, teamPublicLink, useTeamTab, type CrewDashboardsTab as DashboardsTab, type TeamTarget } from './teamApi'
+import { crewDashboardsTab, teamArtifactPage, teamDashboardAction, teamFailure, teamPublicLink, teamShareArtifact, useTeamTab, type CrewDashboardsTab as DashboardsTab, type TeamTarget } from './teamApi'
 
 const kindIcon: Record<string, LucideIcon> = { dashboard: LayoutDashboard, artifact: FileText, motion: Film }
 type Item = DashboardsTab['items'][number]
@@ -30,6 +31,7 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
   const [error, setError] = useState('')
   const [attempt, setAttempt] = useState(0)
   const [undo, setUndo] = useState<{ id: string; title: string }>()
+  const [viewing, setViewing] = useState<{ title: string; html: string }>()
   const undoTimer = useRef<number | undefined>(undefined)
   const reload = useRef<() => void>(() => undefined)
   useEffect(() => {
@@ -72,6 +74,23 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
       reload.current()
     } catch (e) { fail(e) }
   }
+  async function shareWithTeam(item: Item, on: boolean) {
+    if (!where) return
+    try {
+      await teamShareArtifact(where, item.id, on)
+      console.info('[CREW_ARTIFACTS]', { event: on ? 'team_shared' : 'team_unshared', project: projectId, dashboard: item.id })
+      toast(on ? 'Shared with the Team' : 'Removed from the Team', 'success')
+      reload.current()
+    } catch (e) { fail(e) }
+  }
+  async function open(item: Item) {
+    if (!item.from_team) { selectReportDocument(item.workspace || tab!.workspace, item.path, true); return }
+    if (!where) return
+    try {
+      const { html } = await teamArtifactPage(where, item.id)
+      setViewing({ title: item.title, html })
+    } catch (e) { fail(e) }
+  }
   async function bringBack() {
     if (!where || !undo) return
     const back = undo
@@ -88,6 +107,13 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
   const shown = items.filter(item => (kind === 'all' || item.kind === kind) && item.title.toLowerCase().includes(query.trim().toLowerCase()))
   const chosen = filters.find(filter => filter.key === kind)
   let group = ''
+  if (viewing) return <section aria-label={viewing.title} className={`${teamCard} flex h-full min-h-[70vh] flex-col`}>
+    <div className="flex items-center gap-2">
+      <button type="button" aria-label="Back to Artifacts" onClick={() => setViewing(undefined)} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><ArrowLeft className="h-4 w-4" /></button>
+      <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{viewing.title}</h2>
+    </div>
+    <div className="flex min-h-0 flex-1"><HtmlRenderer content={viewing.html} /></div>
+  </section>
   return <div className="space-y-3">
     <section aria-label="Artifacts" className={teamCard}>
       <div className="flex flex-wrap items-center gap-2">
@@ -121,19 +147,21 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
           return <div key={item.path}>
             {heading && <p className="mb-1 mt-3 text-[11px] uppercase tracking-wide text-muted-foreground">{heading}</p>}
             <div className="group relative flex items-center gap-2 rounded-md px-1 hover:bg-muted">
-              <button type="button" className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left focus-visible:ring-2 focus-visible:ring-ring" onClick={() => selectReportDocument(item.workspace || tab!.workspace, item.path, true)}>
+              <button type="button" className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left focus-visible:ring-2 focus-visible:ring-ring" onClick={() => void open(item)}>
                 <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1 truncate text-sm">{item.title}</span>
+                {item.team_shared && !item.from_team && <Users aria-label="Shared with the Team" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                 {item.when && <span className="shrink-0 text-[11px] text-muted-foreground">{item.when}</span>}
               </button>
               <span className="flex shrink-0 items-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
-                <button type="button" aria-label={`Copy link to ${item.title}`} title="Copy link" onClick={() => void copyLink(item)} className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"><Link2 className="h-3.5 w-3.5" /></button>
+                {!item.from_team && <button type="button" aria-label={`Copy link to ${item.title}`} title="Copy link" onClick={() => void copyLink(item)} className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"><Link2 className="h-3.5 w-3.5" /></button>}
                 {item.can_delete && <button type="button" aria-label={`Delete ${item.title}`} title="Delete" onClick={() => void remove(item)} className="rounded p-1 text-muted-foreground hover:bg-background hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>}
                 <button type="button" aria-label={`More for ${item.title}`} aria-expanded={menu === item.path} onClick={() => setMenu(menu === item.path ? '' : item.path)} className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"><MoreHorizontal className="h-3.5 w-3.5" /></button>
               </span>
               {menu === item.path && <div role="menu" className="absolute right-0 top-full z-10 min-w-44 rounded-md border border-border bg-background p-1 text-sm shadow-md">
-                <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left hover:bg-muted" onClick={() => { setMenu(''); selectReportDocument(item.workspace || tab!.workspace, item.path, true) }}>Open</button>
-                <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left hover:bg-muted" onClick={() => { setMenu(''); void copyLink(item) }}>Copy link</button>
+                <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left hover:bg-muted" onClick={() => { setMenu(''); void open(item) }}>Open</button>
+                {!item.from_team && <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left hover:bg-muted" onClick={() => { setMenu(''); void copyLink(item) }}>Copy link</button>}
+                {item.can_share_team && <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left hover:bg-muted" onClick={() => { setMenu(''); void shareWithTeam(item, !item.team_shared) }}>{item.team_shared ? 'Remove from Team' : 'Share with Team'}</button>}
                 {item.public_link && where && <div className="px-2 py-1"><PublicLinkControl link={item.public_link} change={mode => teamPublicLink(where, item.id, mode)} /></div>}
                 {item.can_delete && <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left text-destructive hover:bg-muted" onClick={() => { setMenu(''); void remove(item) }}>Delete</button>}
               </div>}
