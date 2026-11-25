@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -74,6 +75,26 @@ type state struct {
 }
 
 func fail(status int, message string) error { return &wf.FileError{Status: status, Message: message} }
+
+// An Artifact is a finished page: HTML with its styles, images and fonts, and no live data (owner, 25 Nov: "restrict
+// them to use just html not db"). No TSX, scripts or project data calls; a page that needs data is a dashboard.
+var artifactStaticExt = map[string]bool{".html": true, ".htm": true, ".css": true, ".svg": true, ".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".ico": true, ".woff": true, ".woff2": true}
+var artifactDataCall = regexp.MustCompile(`\breport\.(query|run)\s*\(|\bloadData\b`)
+
+const artifactStaticLine = "An Artifact is one HTML page with its styles, images and fonts, and no data from the project. Remove %s, or make it a dashboard (artifact=false) to show live data."
+
+func artifactStatic(files map[string]string) error {
+	for p, content := range files {
+		if !artifactStaticExt[strings.ToLower(path.Ext(p))] {
+			return fail(400, fmt.Sprintf(artifactStaticLine, p))
+		}
+		if artifactDataCall.MatchString(content) {
+			return fail(400, fmt.Sprintf(artifactStaticLine, "the project data call in "+p))
+		}
+	}
+	return nil
+}
+
 func safeFile(p string) bool {
 	clean, err := wf.CleanRelative(p)
 	if err != nil || clean != p || p == "." || len(p) > 240 {
@@ -488,6 +509,11 @@ func executeLocked(ctx context.Context, docs string, req Request) (Result, error
 	}
 	if len(snap.Files) > 100 || len(input) > MaxBytes {
 		return out, fail(413, "dashboard exceeds 100 files or 8 MiB")
+	}
+	if snap.Artifact {
+		if err := artifactStatic(snap.Files); err != nil {
+			return out, err
+		}
 	}
 	if err := prepareTSXSnapshot(&snap); err != nil {
 		return out, err
