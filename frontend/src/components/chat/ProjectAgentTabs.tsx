@@ -110,7 +110,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   const tabLabel = (tab: ChatTab) => {
     const owner = tab.metadata?.agentProfileTabOwnerName
     // Other people's agents sit under their name (left menu headings, tab strip groups), so the name alone (owner, 5 Nov).
-    return compactOwnerChatName(tab.tabId === canonicalTabId ? 'Main' : sideChatName(tab), owner)
+    // Main's name is its own chat's, from the server (Main until renamed, #4030).
+    return compactOwnerChatName(tab.tabId === canonicalTabId ? listed.find(chat => chat.is_main)?.name || 'Main' : sideChatName(tab), owner)
   }
   // The purpose icon, for the tab's owner only (owner, 3 Nov): it fills the chat box; the agent saves the line itself.
   const purposeOf = (tab: ChatTab): string | undefined => {

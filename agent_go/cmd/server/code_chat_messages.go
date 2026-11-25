@@ -372,7 +372,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				return jsonOut(map[string]interface{}{"chats": describe(project)})
 			}},
-		{"set_my_agent_identity", "Set this agent's own name and purpose (a few words and one short line; either alone keeps the other) so the other agents and people know what it is for. When its own person asks, also save this agent's own standing instructions (instructions). Main takes only a purpose (it shows the project's name; set_work_identity renames the project); a side tab has its own name and purpose. An agent can be shared only with a purpose. Only this agent and the person change them; another agent can ask this one to.", map[string]interface{}{
+		{"set_my_agent_identity", "Set this agent's own name and purpose (a few words and one short line; either alone keeps the other) so the other agents and people know what it is for. When its own person asks, also save this agent's own standing instructions (instructions). The name is this chat's own (its tab), for Main too; it never renames the project (only set_work_identity does, when the person explicitly asks to rename the project). An agent can be shared only with a purpose. Only this agent and the person change them; another agent can ask this one to.", map[string]interface{}{
 			"type": "object", "properties": map[string]interface{}{
 				"name":            map[string]interface{}{"type": "string", "maxLength": productAgentNameMaxRunes},
 				"examples":        agentPurposeExamplesSchema(),
@@ -407,11 +407,6 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				project, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
 				if err != nil {
 					return "", err
-				}
-				// Main shows its project's name; it has no name of its own. A Main chat that named itself "Main" here renamed
-				// the whole project, so renaming the project stays with set_work_identity.
-				if project.Self.IsMain && name != nil {
-					return "", fmt.Errorf("Main has no name of its own: it shows this project's name, so pass only a purpose here. To rename the project, use set_work_identity when the person asks")
 				}
 				// An owner's agent on a server turn (a teammate's thread on a Mac Crew) changes nothing of the Crew here.
 				if !IsLocalMode() && crewRelayTwin(project.ProjectID) && userID == ownerOfCrewProjectID(project.ProjectID) {
@@ -466,13 +461,22 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					}
 				}
 				if project.Self.IsMain && project.Workspace != "" {
-					// Main's identity is the Crew identity (crew_main_identity.go), the one set_work_identity writes.
+					// Main's name is its own chat's, like any tab (owner, 25 Nov, #4030: renaming Main renamed the project);
+					// its purpose stays the Crew identity (crew_main_identity.go), the one set_work_identity writes.
+					chatName := "Main"
+					if name != nil {
+						identity, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, project.ProfileID, project.Self.Key, name, nil, "agent Main")
+						if err != nil {
+							return "", err
+						}
+						chatName = firstNonEmptyTrimmed(identity.Name, "Main")
+					}
 					saved, err := writeCrewMainPurpose(ctx, project.Workspace, purpose)
 					if err != nil {
 						return "", err
 					}
 					go api.refreshMacSharedPurposes(context.WithoutCancel(ctx), project.ProjectID)
-					return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(saved.Name, project.Self.Name), "purpose": saved.Purpose})
+					return jsonOut(map[string]interface{}{"name": chatName, "purpose": saved.Purpose})
 				}
 				identity, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, userID, project.ProfileID, project.Self.Key, name, purpose, "agent "+project.Self.Name)
 				var fields []string

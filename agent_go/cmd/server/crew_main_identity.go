@@ -10,10 +10,9 @@ import (
 	"time"
 )
 
-// Main's name and purpose have one home: the Crew identity in product.json ("identity" and "description"),
-// which set_work_identity writes and which Main's purpose already came from. Main's name is the project's name, so
-// Main's own identity tool saves only the purpose; renaming the project is set_work_identity's. Side tabs keep their own tab identity
-// (PLAT-856-509). Agents have no icon (owner, 5 Nov): an agent is its name and purpose.
+// Main's purpose has one home: the Crew identity in product.json ("description"), which set_work_identity writes.
+// Main's name is its own chat's (its tab identity), like every tab's; it is not the project's name (owner, 25 Nov,
+// #4030), and only set_work_identity renames the project. Side tabs keep their own tab identity. Agents have no icon (owner, 5 Nov): an agent is its name and purpose.
 
 type crewMainIdentity struct {
 	Name, Purpose string
