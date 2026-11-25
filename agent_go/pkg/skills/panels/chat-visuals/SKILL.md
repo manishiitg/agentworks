@@ -31,9 +31,10 @@ the visual. This skill changes presentation only; it grants no tools or access.
 ## The format: one line per item, so it streams
 
 Write a fenced `chat-ui` block of Vercel json-render SpecStream: one complete
-JSON patch per line. Line 1 sets the root; line 2 adds the widget with its title
-and EMPTY lists; then add one row, node, step or event per line at the list's
-`/-` path. The person sees the visual grow as each line arrives.
+JSON patch per line. Set `/root` to the string `visual` and add the widget at
+`/elements/visual` with its title and empty lists. Use the literal
+`/elements/visual` prefix for every later patch. Append one row, node, step or
+event per line at the list's `/-` path so the visual grows as lines arrive.
 
 ```chat-ui
 {"op":"add","path":"/root","value":"visual"}
@@ -106,6 +107,18 @@ with a letter, unique in their list.
 {"op":"add","path":"/elements/visual/props/lanes/-","value":{"id":"agent","title":"AI teammate"}}
 {"op":"add","path":"/elements/visual/props/steps/-","value":{"id":"ask","lane":"person","title":"Send request"}}
 {"op":"add","path":"/elements/visual/props/steps/-","value":{"id":"prepare","lane":"agent","title":"Prepare the work"}}
+```
+
+For a sequence, each participant has `id` and `title`. Each message has `from`,
+`to` and `label`. Declare both participants before appending their messages.
+
+```chat-ui
+{"op":"add","path":"/root","value":"visual"}
+{"op":"add","path":"/elements/visual","value":{"type":"sequence","props":{"title":"Task handoff","participants":[],"messages":[]},"children":[]}}
+{"op":"add","path":"/elements/visual/props/participants/-","value":{"id":"lead","title":"Lead agent"}}
+{"op":"add","path":"/elements/visual/props/participants/-","value":{"id":"worker","title":"Worker agent"}}
+{"op":"add","path":"/elements/visual/props/messages/-","value":{"from":"lead","to":"worker","label":"Ask for a review"}}
+{"op":"add","path":"/elements/visual/props/messages/-","value":{"from":"worker","to":"lead","label":"Send findings","reply":true}}
 ```
 
 The examples are fictional; use the person's real facts.
