@@ -118,7 +118,7 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
         {shown.map(item => {
           const Icon = kindIcon[item.kind] || LayoutDashboard
           const heading = item.group !== group ? (group = item.group) : ''
-          return <div key={item.id}>
+          return <div key={item.path}>
             {heading && <p className="mb-1 mt-3 text-[11px] uppercase tracking-wide text-muted-foreground">{heading}</p>}
             <div className="group relative flex items-center gap-2 rounded-md px-1 hover:bg-muted">
               <button type="button" className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left focus-visible:ring-2 focus-visible:ring-ring" onClick={() => selectReportDocument(item.workspace || tab!.workspace, item.path, true)}>
@@ -129,9 +129,9 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
               <span className="flex shrink-0 items-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
                 <button type="button" aria-label={`Copy link to ${item.title}`} title="Copy link" onClick={() => void copyLink(item)} className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"><Link2 className="h-3.5 w-3.5" /></button>
                 {item.can_delete && <button type="button" aria-label={`Delete ${item.title}`} title="Delete" onClick={() => void remove(item)} className="rounded p-1 text-muted-foreground hover:bg-background hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>}
-                <button type="button" aria-label={`More for ${item.title}`} aria-expanded={menu === item.id} onClick={() => setMenu(menu === item.id ? '' : item.id)} className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"><MoreHorizontal className="h-3.5 w-3.5" /></button>
+                <button type="button" aria-label={`More for ${item.title}`} aria-expanded={menu === item.path} onClick={() => setMenu(menu === item.path ? '' : item.path)} className="rounded p-1 text-muted-foreground hover:bg-background hover:text-foreground"><MoreHorizontal className="h-3.5 w-3.5" /></button>
               </span>
-              {menu === item.id && <div role="menu" className="absolute right-0 top-full z-10 min-w-44 rounded-md border border-border bg-background p-1 text-sm shadow-md">
+              {menu === item.path && <div role="menu" className="absolute right-0 top-full z-10 min-w-44 rounded-md border border-border bg-background p-1 text-sm shadow-md">
                 <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left hover:bg-muted" onClick={() => { setMenu(''); selectReportDocument(item.workspace || tab!.workspace, item.path, true) }}>Open</button>
                 <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left hover:bg-muted" onClick={() => { setMenu(''); void copyLink(item) }}>Copy link</button>
                 {item.public_link && where && <div className="px-2 py-1"><PublicLinkControl link={item.public_link} change={mode => teamPublicLink(where, item.id, mode)} /></div>}
