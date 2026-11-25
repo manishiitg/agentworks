@@ -101,6 +101,10 @@ type LaunchSpec struct {
 	// AutoApprove answers every permission request allowed (the agent's own
 	// hook decides what may run).
 	AutoApprove bool
+	// QuestionIDPrefix marks the agent's own questions to the person: it asks them as permission requests
+	// whose tool call id starts with this, and their options are answers, not approvals. They always go to
+	// the person, even when AutoApprove answers real permission requests.
+	QuestionIDPrefix string
 	// NoSessionMCP sends no MCP servers in session/new (the agent reads its
 	// own MCP catalogue).
 	NoSessionMCP bool

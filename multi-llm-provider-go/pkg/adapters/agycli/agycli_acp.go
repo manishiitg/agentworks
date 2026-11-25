@@ -140,10 +140,12 @@ func agyACPLaunch(req acpcli.LaunchRequest) (*acpcli.LaunchSpec, error) {
 		Confine: func(cmd *exec.Cmd) (func(), error) {
 			return agyLandlockCmd(opts, cmd, req.WorkDir, privateHome)
 		},
-		Release:      func() { releaseHook(); releaseHome() },
-		AutoApprove:  true, // agy's tool-mode hook decides what may run, as on its other lanes
-		NoSessionMCP: true, // the MCP catalogue is in agy's private home
-		Outcome:      agyACPOutcome{home: agyTranscriptHome(opts)},
+		Release:     func() { releaseHook(); releaseHome() },
+		AutoApprove: true, // agy's tool-mode hook decides what may run, as on its other lanes
+		// agy asks the person its own questions as permission requests with these ids (T3 Code reads them the same way).
+		QuestionIDPrefix: "interaction_",
+		NoSessionMCP:     true, // the MCP catalogue is in agy's private home
+		Outcome:          agyACPOutcome{home: agyTranscriptHome(opts)},
 	}, nil
 }
 

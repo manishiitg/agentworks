@@ -212,6 +212,7 @@ func launch(ctx context.Context, agent Agent, opts *llmtypes.CallOptions, owner,
 	s := &session{agent: agent, rpc: rpc, env: env, workdir: workdir, autoApprove: auto, fullTools: full}
 	if spec != nil {
 		s.autoApprove = s.autoApprove || spec.AutoApprove
+		s.questionPrefix = spec.QuestionIDPrefix
 		s.outcome = spec.Outcome
 		if spec.NoSessionMCP {
 			servers = []mcpServer{}

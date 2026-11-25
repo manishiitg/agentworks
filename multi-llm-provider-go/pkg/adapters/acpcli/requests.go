@@ -63,6 +63,12 @@ func (s *session) answer(ctx context.Context, msg message, requests *nativeinput
 			_ = s.rpc.reply(msg.ID, cancelledOutcome())
 			return
 		}
+		if s.questionPrefix != "" && strings.HasPrefix(req.ToolCall.ToolCallID, s.questionPrefix) {
+			requests.Start(ctx, string(msg.ID), func(qctx context.Context) {
+				_ = s.rpc.reply(msg.ID, s.askQuestion(qctx, req))
+			})
+			return
+		}
 		if s.autoApprove {
 			// The chat's tools mode already allows the agent's tools, the
 			// same rule the other coding agents launch with.
@@ -82,6 +88,41 @@ func (s *session) answer(ctx context.Context, msg message, requests *nativeinput
 		log.Printf("[ACP_CLI] session=%s agent=%s method=%s action=refused reason=unsupported_client_method", s.rpc.owner, s.agent.ID, msg.Method)
 		_ = s.rpc.replyError(msg.ID, -32601, "method not supported by this client")
 	}
+}
+
+// askQuestion asks the person the agent's own question (agy sends them as permission requests whose options
+// are the answers) and replies with the option they chose. Unanswered or cancelled questions answer nothing.
+func (s *session) askQuestion(ctx context.Context, req permissionRequest) map[string]any {
+	question := nativeinput.Question{ID: req.ToolCall.ToolCallID, Header: "Question", Question: strings.TrimSpace(req.ToolCall.Title)}
+	if question.Question == "" {
+		question.Question = "Choose an option."
+	}
+	byLabel := map[string]string{}
+	for _, o := range req.Options {
+		id := strings.TrimSpace(o.OptionID)
+		if id == "" {
+			continue
+		}
+		label := strings.TrimSpace(o.Name)
+		if label == "" {
+			label = id
+		}
+		if _, taken := byLabel[label]; taken {
+			label += " (" + id + ")"
+		}
+		byLabel[label] = id
+		question.Options = append(question.Options, nativeinput.Option{Label: label})
+	}
+	if len(question.Options) == 0 {
+		return cancelledOutcome()
+	}
+	answers, err := nativeinput.Ask(ctx, []nativeinput.Question{question})
+	if err != nil || len(answers) != 1 || len(answers[0].SelectedLabels) != 1 {
+		log.Printf("[NATIVE_APPROVAL] provider=%s agent=%s kind=question action=unanswered", s.agent.providerID(), s.agent.ID)
+		return cancelledOutcome()
+	}
+	log.Printf("[NATIVE_APPROVAL] provider=%s agent=%s kind=question action=answered", s.agent.providerID(), s.agent.ID)
+	return selected(byLabel[answers[0].SelectedLabels[0]])
 }
 
 // askPermission shows the agent's permission request as the chat's approval
