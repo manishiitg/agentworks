@@ -1753,6 +1753,12 @@ function showErrorAndExit(message) {
 }
 
 function createWindow(initialUrl) {
+  // One app window: the Dock's activate can open it while the local agent is still starting, so startup reuses it.
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    return;
+  }
   const targetUrl = withDesktopVersionCacheBust(initialUrl || `http://127.0.0.1:${dynamicAgentPort}`);
   console.log('[main] Creating main window for:', targetUrl);
 
@@ -1877,9 +1883,11 @@ function createWindow(initialUrl) {
     }, 1200);
   }
   
-  mainWindow.on('closed', () => {
+  const closingWindow = mainWindow;
+  closingWindow.on('closed', () => {
     console.log('[main] Main window closed');
-    mainWindow = null;
+    // Only forget the window that closed: the open one keeps its access to saved servers.
+    if (mainWindow === closingWindow) mainWindow = null;
     updateDockActivityAnimation();
   });
 }
