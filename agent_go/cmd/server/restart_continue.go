@@ -33,7 +33,9 @@ type restartContinueRecord struct {
 	FollowUps         int                         `json:"follow_ups"`
 	RecoveredQueryID  string                      `json:"recovered_query_id,omitempty"`
 	RestartContinues  []time.Time                 `json:"restart_continues,omitempty"`
-	SavedAt           time.Time                   `json:"saved_at"`
+	// The chat's last turn was itself a restart continuation, with no person or agent input since (#3801).
+	LastTurnRestartWake bool      `json:"last_turn_restart_wake,omitempty"`
+	SavedAt             time.Time `json:"saved_at"`
 }
 
 type restartContinueDocument struct {
@@ -114,7 +116,7 @@ func (api *StreamingAPI) saveRestartContinueRequest(ctx context.Context, userID,
 		previous.NativeGoalRestore.Recovered = true
 	}
 
-	document.Chats[sessionID] = restartContinueRecord{NativeGoalRestore: previous.NativeGoalRestore, RestartContinues: previous.RestartContinues, SessionID: sessionID, QueryID: queryID, Request: restartContinueRequest(ctx, req), Principal: principal, SavedAt: time.Now().UTC(), FollowUps: backgroundFollowUps.value(sessionID)}
+	document.Chats[sessionID] = restartContinueRecord{NativeGoalRestore: previous.NativeGoalRestore, RestartContinues: previous.RestartContinues, SessionID: sessionID, QueryID: queryID, Request: restartContinueRequest(ctx, req), Principal: principal, SavedAt: time.Now().UTC(), FollowUps: backgroundFollowUps.value(sessionID), LastTurnRestartWake: req.IsAutoNotification && req.TriggeredBy == "restart_continue"}
 	raw, err := json.Marshal(document)
 	if err != nil {
 		return err
@@ -552,6 +554,10 @@ func restartIdleResumeSkip(api *StreamingAPI, sessionID string, record restartCo
 		return "stopped_by_person"
 	case waitingPersonTurn(kept, sessionID):
 		return "person_message_queued"
+	case record.LastTurnRestartWake:
+		// An idle chat already had its one restart wake and nothing new arrived since: waking it again after every
+		// restart only repeats the same "still waiting" reply over requests nobody closed (#3801).
+		return "already_woken_no_new_input"
 	case len(recentRestartContinues(record.RestartContinues, now)) >= restartContinueLimit:
 		return "restart_loop_limit"
 	}
