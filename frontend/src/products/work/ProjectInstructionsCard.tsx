@@ -12,7 +12,7 @@ export const PROJECT_INSTRUCTIONS_FILE = 'PROJECT_INSTRUCTIONS.md'
 const PROJECT_INSTRUCTIONS_MAX_BYTES = 32 * 1024
 
 /** Code and Crew "Project instructions" editor (owners only), reading and writing PROJECT_INSTRUCTIONS.md at the project root. */
-type InstructionFile = { name: string; bytes: number; method: 'injected' | 'native' | 'found' }
+type InstructionFile = { name: string; bytes: number; method: 'injected' | 'native' | 'found' | 'link' }
 export function ProjectInstructionsCard({ workspacePath, projectId, provider, model }: { workspacePath: string; projectId?: string; provider?: string; model?: string }) {
   const path = `${workspacePath.replace(/\/+$/, '')}/${PROJECT_INSTRUCTIONS_FILE}`
   const [files, setFiles] = useState<InstructionFile[]>([])
@@ -82,7 +82,7 @@ export function ProjectInstructionsCard({ workspacePath, projectId, provider, mo
       {error && <StatusBanner tone="error">{error}</StatusBanner>}
       {files.length > 0 && <div className="space-y-1 text-xs text-muted-foreground">
         <p className="font-medium text-foreground">Found in the project folder</p>
-        {files.map(file => <p key={file.name}><span className="font-mono">{file.name}</span> · {file.method === 'injected' ? 'Will be added to the agent’s instructions' : file.method === 'native' ? 'Handled by the selected AI program; reading is not confirmed' : 'Found only; not added for this AI program'}{file.method === 'injected' && file.bytes > PROJECT_INSTRUCTIONS_MAX_BYTES ? ' · first 32 KB only' : ''}</p>)}
+        {files.map(file => <p key={file.name}><span className="font-mono">{file.name}</span> · {file.method === 'injected' ? 'Will be added to the agent’s instructions' : file.method === 'native' ? 'Handled by the selected AI program; reading is not confirmed' : file.method === 'link' ? 'Points to AGENTS.md; nothing extra to add' : 'Found only; not added for this AI program'}{file.method === 'injected' && file.bytes > PROJECT_INSTRUCTIONS_MAX_BYTES ? ' · first 32 KB only' : ''}</p>)}
         <p>Based on the selected AI program for the next turn. Folder-specific rules keep their scope. Existing files are not changed.</p>
       </div>}
       {folderError && <p className="text-xs text-muted-foreground">{folderError}</p>}

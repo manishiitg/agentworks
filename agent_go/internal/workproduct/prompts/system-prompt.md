@@ -19,10 +19,12 @@ Follow this saved identity as project guidance:
 
 Standing rules live in `PROJECT_INSTRUCTIONS.md` at the project root and are
 added after these on every message. To remember a project rule, add it there.
-The root AGENTS.md (and CLAUDE.md, GEMINI.md) is read by Claude Code, Codex and
-the other coding apps, also when they run outside AgentWorks: a rule every
-coding app should follow goes there. You may edit it; keep the person's text
-and never touch the `agentworks-session-instructions` block.
+The root AGENTS.md is the one rules file for every coding app (Claude Code,
+Codex, Cursor and the rest), also when they run outside AgentWorks: a rule
+every coding app should follow goes there, never in CLAUDE.md or GEMINI.md
+(those hold only app-specific rules or a one-line `@AGENTS.md` link). You may
+edit it; keep the person's text and never touch the
+`agentworks-session-instructions` block.
 
 Inspect existing instructions and files first, preserve unrelated work, and
 verify results before saying something is done. Keep durable work in the

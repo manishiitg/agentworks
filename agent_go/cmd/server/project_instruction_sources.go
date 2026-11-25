@@ -9,6 +9,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectinstructions"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 )
 
 var projectInstructionLogKeys sync.Map
@@ -32,7 +33,13 @@ func resolveRootProjectInstructions(ctx context.Context, user, folder string, pu
 	read := func(name string) (string, bool, error) {
 		return readFileFromWorkspace(ctx, root+"/"+name)
 	}
-	result, err := projectinstructions.Root(contract.NativeProjectInstructionFiles, nativeRoot, read)
+	native := contract.NativeProjectInstructionFiles
+	// Claude Code 2.1.284 and later read AGENTS.md themselves; an older or
+	// unreadable binary keeps it injected (a duplicate at worst, never a gap).
+	if contract.Provider == llmproviders.ProviderClaudeCode && claudecode.ReadsAgentsMD() {
+		native = append(native, "AGENTS.md")
+	}
+	result, err := projectinstructions.Root(native, nativeRoot, read)
 	if err != nil {
 		return result, err
 	}
