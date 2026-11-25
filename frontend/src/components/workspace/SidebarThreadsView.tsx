@@ -14,6 +14,7 @@ import { openAgentTab } from '../../utils/openAgentTab'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { openAppProduct } from '../../utils/appNavigation'
 import { shortAgo } from '../chat/AgentIcon'
+import { CodingCliIcon } from '../chat/CodingCliIcon'
 
 export type SidebarViewMode = 'projects' | 'threads'
 type ThreadStatus = 'running' | 'waiting' | 'idle'
@@ -240,7 +241,10 @@ export function SidebarThreadsView({
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground" title={item.name}>{item.name}</span>
             {age && <span className="shrink-0 text-[11px] text-muted-foreground">{age}</span>}
           </span>
-          <span className="block truncate text-[11px] text-muted-foreground" title={`${item.projectName}${statusSuffix}`}>{item.projectName}{statusSuffix}</span>
+          <span className="flex items-center gap-1 text-[11px] text-muted-foreground" title={`${item.projectName}${statusSuffix}`}>
+            <CodingCliIcon provider={item.chat.provider} className="inline-flex h-3.5 w-3.5 shrink-0 items-center" />
+            <span className="min-w-0 truncate">{item.projectName}{statusSuffix}</span>
+          </span>
         </span>
       </button>
       <button type="button" onClick={() => togglePin(item.id)} aria-pressed={isPinned} aria-label={`${isPinned ? 'Unpin' : 'Pin'} ${item.name}`} title={isPinned ? 'Unpin thread' : 'Pin thread'}

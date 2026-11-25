@@ -35,7 +35,7 @@ it('groups threads into Active now and Recent, filters, pins, and opens a thread
     if (projectId === 'p1') {
       return [
         { conversation_key: 'p1', name: 'Main', is_main: true, session_id: 's-main', last_message_at: '2026-11-25T10:00:00Z' },
-        { conversation_key: 'p1:chat:ui', name: 'UI review', session_id: 's-ui', last_message_at: '2026-11-25T12:00:00Z' },
+        { conversation_key: 'p1:chat:ui', name: 'UI review', session_id: 's-ui', provider: 'claude-code', last_message_at: '2026-11-25T12:00:00Z' },
       ]
     }
     return [
@@ -61,9 +61,10 @@ it('groups threads into Active now and Recent, filters, pins, and opens a thread
     })
     expect(spy).toHaveBeenCalledTimes(2)
     expect(host.querySelector('[aria-label="Filter threads"]')).toBeNull()
-    const activeItems = [...host.querySelectorAll('section[aria-label="Active threads"] [role="listitem"]')].map(el => el.textContent)
-    expect(activeItems[0]).toContain('Release check') // Needs you first
-    expect(activeItems[1]).toContain('UI review')
+    const activeItems = [...host.querySelectorAll('section[aria-label="Active threads"] [role="listitem"]')]
+    expect(activeItems[0].textContent).toContain('Release check') // Needs you first
+    expect(activeItems[1].textContent).toContain('UI review')
+    expect(activeItems[1].querySelector('svg, img, [aria-label]')).toBeTruthy()
     expect(host.querySelector('section[aria-label="Recent threads"]')?.textContent).toContain('Main')
 
     // Pin Main.
