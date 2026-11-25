@@ -10,6 +10,8 @@ import { ProjectAgentTabs } from '../../components/chat/ProjectAgentTabs'
 import { useCrewAgentsStore, useOpenAgentStore } from '../../components/chat/AgentCard'
 import DiscoverSkillsDialog from '../../components/skills/DiscoverSkillsDialog'
 import { crewProjectMenuItems } from './crewProjectMenu'
+import { requestSidebarProjectAction, useSidebarProjectAction } from './sidebarProjectActions'
+import { openAppProduct } from '../../utils/appNavigation'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 
@@ -76,6 +78,37 @@ it('opens local chat import from Crew actions only for this project', async()=>{
  await click('Import local chat…')
  expect(f.importChat).toHaveBeenCalledOnce()
  expect(f.opened).not.toHaveBeenCalled()
+})
+
+it('waits for the exact project and local import check before opening its picker', async()=>{
+ const route=(id:string)=>()=>openAppProduct({surface:'work',id})
+ const render=(id:string,ready:boolean,checking:boolean,allowed:boolean)=>root.render(<ProjectAgentTabs
+  key={id} tabs={[]} listed={[]} canonicalTabId="" projectName="Example" projectId={id} allowSideChats={allowed}
+  checkingLocalImport={checking} projectActionReady={ready} opening={false} surface="work" onOrder={async()=>{}}
+  onRename={async()=>{}} onOpen={f.opened} onCloseTab={()=>{}} onSelectTab={()=>{}} onImportLocalChat={allowed&&!checking?f.importChat:undefined}/>)
+ try{
+  await act(async()=>render('other',true,false,true))
+  await act(async()=>requestSidebarProjectAction('example','chat',route('example')))
+  expect(window.location.pathname).toBe('/crew/projects/example')
+  expect(f.importChat).not.toHaveBeenCalled()
+  await act(async()=>render('example',false,true,true))
+  await act(async()=>render('example',true,true,true))
+  expect(f.importChat).not.toHaveBeenCalled()
+  await act(async()=>render('example',true,false,true))
+  expect(f.importChat).toHaveBeenCalledOnce()
+  expect(useSidebarProjectAction.getState().request).toBeNull()
+
+  await act(async()=>render('example',true,true,true))
+  await act(async()=>requestSidebarProjectAction('example','chat',route('example')))
+  await act(async()=>route('other')())
+  await act(async()=>{route('example')();render('example',true,false,true)})
+  expect(f.importChat).toHaveBeenCalledOnce()
+
+  await act(async()=>render('example',true,false,false))
+  await act(async()=>requestSidebarProjectAction('example','chat',route('example')))
+  expect(f.importChat).toHaveBeenCalledOnce()
+  expect(f.state.addToast).toHaveBeenCalledWith('That action isn’t available in this project.','error')
+ }finally{await act(async()=>route('other')());window.history.replaceState({},'','/')}
 })
 
 it('retains the caller-provided own-only action and feature-filtered Skills destination',async()=>{

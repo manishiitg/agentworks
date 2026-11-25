@@ -12,6 +12,7 @@ import { connectedWorkHistoryScope, useProjectMenuHistoryStore } from '../../sto
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { openAppProduct } from '../../utils/appNavigation'
 import { agentApi } from '../../services/api'
+import { useSidebarProjectAction } from '../../products/work/sidebarProjectActions'
 
 const f = vi.hoisted(() => ({
   open: vi.fn(),
@@ -46,7 +47,7 @@ vi.mock('./TeamInviteRow', () => ({ TeamInvites: () => null }))
 vi.mock('./WorkspaceTopToolbar', () => ({ WorkspaceTopToolbar: ({ children }: { children: React.ReactNode }) => <header>{children}</header> }))
 vi.mock('./SidebarServerGroup', () => ({
   openSidebarProject: f.open,
-  SidebarProjectRow: ({ name }: { name: string }) => <div>{name}</div>,
+  SidebarProjectRow: ({ name, onNewAgent }: { name: string; onNewAgent?: () => void }) => <div>{name}{onNewAgent && <button onClick={onNewAgent}>Add agent in {name}</button>}</div>,
 }))
 vi.mock('../../products/work/teamApi', () => ({
   useTeamTab: () => null, teamSideChats: async () => [],
@@ -138,6 +139,12 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
     const openBeta = [...page().querySelectorAll<HTMLButtonElement>('li button')].find(row => row.title === 'Beta')!
     await act(async () => openBeta.click())
     expect(f.open).toHaveBeenCalledWith('crew', 'b')
+    f.open.mockImplementationOnce((_kind: string, id: string) => openAppProduct({ surface: 'work', id }))
+    await click('Add agent in Beta', side())
+    expect(window.location.pathname).toBe('/crew/projects/b')
+    expect(useSidebarProjectAction.getState().request).toMatchObject({ projectId: 'b', action: 'new' })
+    await act(async () => openAppProduct({ surface: 'work', id: 'a' }))
+    expect(useSidebarProjectAction.getState().request).toBeNull()
   } finally {
     await act(async () => root.unmount())
     host.remove()

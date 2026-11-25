@@ -1,3 +1,4 @@
+import { takeSidebarProjectAction, useSidebarProjectAction } from '../../products/work/sidebarProjectActions'
 import { randomUUID } from '../../utils/randomUUID'
 import { TeammateChatIdentity } from '../../products/work/TeammateChatIdentity'
 import { PendingAgentForks } from './PendingAgentForks'
@@ -43,7 +44,7 @@ function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; works
 
 /** One tab-management view; each product supplies its existing server operations. */
 export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, mainPurpose, allowSideChats, opening, surface,
-  onImportLocalChat, onDiscoverSkills, onOpenIdentity, onOrder, onForkParent, onSetSidebarHidden, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, createRequest = 0, projectId,
+  onImportLocalChat, checkingLocalImport = false, projectActionReady = true, onDiscoverSkills, onOpenIdentity, onOrder, onForkParent, onSetSidebarHidden, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, createRequest = 0, projectId,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
   /** The person's own Main chat's purpose; undefined when Main is not theirs. */
@@ -59,6 +60,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
   /** Opens a listed agent that has no tab here again and switches to it; without it, onOpen by name. */
   onReopen?: (chat: AgentProfileSideChat) => Promise<void>
   onImportLocalChat?: () => void
+  checkingLocalImport?: boolean
+  projectActionReady?: boolean
   onDiscoverSkills?: () => void
   onOpenIdentity?: () => void
   onCloseTab: (tabId: string) => void; onSelectTab: (tabId: string) => void
@@ -135,6 +138,16 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, ma
 
   const canImportChat = !!onImportLocalChat && !opening
   const canDiscoverSkills = !!onDiscoverSkills && !opening
+  const sidebarAction = useSidebarProjectAction(state => state.request)
+  useEffect(() => {
+    if (!sidebarAction || surface !== 'work' || sidebarAction.projectId !== placeProject || !projectActionReady || opening ||
+      (sidebarAction.action === 'chat' && checkingLocalImport)) return
+    if (!takeSidebarProjectAction(sidebarAction)) return
+    if (sidebarAction.action === 'new' && sideChatsHere) setAddMode('choose')
+    else if (sidebarAction.action === 'chat' && canImportChat) onImportLocalChat?.()
+    else if (sidebarAction.action === 'skills' && canDiscoverSkills) onDiscoverSkills?.()
+    else useChatStore.getState().addToast('That action isn’t available in this project.', 'error')
+  }, [sidebarAction, surface, placeProject, projectActionReady, opening, checkingLocalImport, sideChatsHere, canImportChat, canDiscoverSkills, onImportLocalChat, onDiscoverSkills])
   useEffect(() => {
     const onImport = (event: Event) => {
       const request = (event as CustomEvent<{ projectId: string; kind: 'chat' | 'skills' }>).detail
