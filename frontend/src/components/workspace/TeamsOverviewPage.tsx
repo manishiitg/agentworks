@@ -14,7 +14,7 @@ type Card = { key: string; source: MonitorSource; crewId: string; live: TeamLive
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 const short = (at?: string) => at ? timeAgo(at).replace(/ ago$/, '') : ''
 const section = 'mb-2 mt-6 text-[10px] font-medium uppercase tracking-wide text-muted-foreground'
-const grid = 'grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(20rem,1fr))]'
+const grid = 'grid items-start gap-3 [grid-template-columns:repeat(auto-fill,minmax(20rem,1fr))]'
 const card = 'min-w-0 rounded-xl border border-border bg-card p-3'
 const sub = 'truncate text-[11px] text-muted-foreground'
 
@@ -44,7 +44,8 @@ function TeamCard({ c, period }: { c: Card; period: 'day' | 'week' }) {
   const [open, setOpen] = useState(false)
   const o = c.live.overview, work = c.live.work
   const target = { project: c.live.project_id || c.crewId, connection: c.live.connection || c.source.connectionId }
-  return <div className={card}>
+  // An opened card takes the whole row, so its chats, commits, files and tokens have room.
+  return <div className={`${card} ${open ? 'col-span-full' : ''}`}>
     <div className="flex min-w-0 items-baseline gap-2"><button type="button" onClick={() => openCrewTeam(c.source.connectionId, c.crewId)} className="min-w-0 flex-1 truncate text-left text-sm font-semibold hover:underline">{c.live.name || 'Team'}</button><Status working={work?.working ? work.label : undefined} quiet={work?.last_worked_label} /></div>
     {o?.done && <p className={sub} title={o.done}>{capital(o.label)}: {o.done}</p>}
     {o?.now.map((n, i) => <p key={i} title={`${n.person} · ${n.agent}`} className="mt-1.5 flex min-w-0 items-center gap-1.5 text-xs"><Face name={n.person} working /><span className="shrink-0 font-medium">{n.person}</span><span className="min-w-0 flex-1 truncate text-muted-foreground">{n.agent}{n.title ? ` — “${n.title}”` : ''}</span><span className="shrink-0 text-[11px] text-muted-foreground">now</span></p>)}

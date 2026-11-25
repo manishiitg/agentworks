@@ -169,7 +169,7 @@ func crewTeamOverviewOf(ctx context.Context, t crewTeam, live crewTeamLiveView, 
 	chats := crewTeamOverviewChats(ctx, t, live, since)
 	files := crewTeamOverviewFileChanges(t, since, name)
 	commits := crewTeamOverviewCommits(ctx, t.ProjectID, since)
-	macTokens, macCommits := crewTeamOverviewMacUsage(t, live, period)
+	macTokens, macCommits, macCommitCount := crewTeamOverviewMacUsage(t, live, period)
 	commits = crewTeamOverviewMergeCommits(commits, macCommits, since)
 	decisions := []crewTeamOverviewItem{}
 	decisionOwners := []string{}
@@ -183,7 +183,7 @@ func crewTeamOverviewOf(ctx context.Context, t crewTeam, live crewTeamLiveView, 
 	}
 	tokens := crewTeamOverviewAddMacTokens(crewTeamOverviewTokensFor(ctx, t.ProjectID, since, chats, name), macTokens, name)
 
-	out.Counts = crewTeamOverviewCounts{Chats: len(chats), Commits: len(commits), Decisions: len(decisions)}
+	out.Counts = crewTeamOverviewCounts{Chats: len(chats), Commits: max(len(commits), macCommitCount), Decisions: len(decisions)}
 	for _, group := range files {
 		out.Counts.Files += group.Files
 	}
@@ -585,7 +585,7 @@ func crewTeamOverviewCommits(ctx context.Context, project string, since time.Tim
 	seen := map[string]bool{}
 	for _, repo := range repos {
 		run, cancel := context.WithTimeout(ctx, 3*time.Second)
-		data, err := exec.CommandContext(run, "git", "-C", repo, "log", "-n", "200", "--since="+since.UTC().Format(time.RFC3339), "--format=%H%x1f%an%x1f%aI%x1f%s").Output()
+		data, err := exec.CommandContext(run, "git", "-C", repo, "log", "-n", "1000", "--since="+since.UTC().Format(time.RFC3339), "--format=%H%x1f%an%x1f%aI%x1f%s").Output()
 		cancel()
 		if err != nil {
 			continue
@@ -687,6 +687,7 @@ func (api *StreamingAPI) handleCrewTeamOverview(w http.ResponseWriter, r *http.R
 type crewMacTeamUsage struct {
 	tokens  map[string][2]int64 // tab -> tokens in the last day, last 7 days
 	commits []crewTeamOverviewCommit
+	counts  [2]int // commits in the last day, last 7 days
 }
 
 var crewMacTeamUsageCache sync.Map // project\x00person -> crewMacTeamUsage
@@ -696,22 +697,27 @@ type crewMacTabUsage struct {
 	TokensDay  int64                    `json:"tokens_day,omitempty"`
 	TokensWeek int64                    `json:"tokens_week,omitempty"`
 	Commits    []crewTeamOverviewCommit `json:"commits,omitempty"`
+	// The real number of commits in the last day and week: the list above stops at the newest 100 (#3900).
+	CommitsDay  int `json:"commits_day,omitempty"`
+	CommitsWeek int `json:"commits_week,omitempty"`
 }
 
 type crewMacUsageCached struct {
 	at      time.Time
 	tokens  map[string][2]int64
 	commits []crewTeamOverviewCommit
+	counts  [2]int
 }
 
 var crewMacUsageLocal sync.Map // owner\x00project -> crewMacUsageCached
 
 // macCrewTeamUsage is, on the Mac, the tokens of each of this Crew's chats (by conversation key) in the last day and
 // week, and the commits of the last week in the project folder. Read at most once a minute.
-func macCrewTeamUsage(ctx context.Context, owner, project string, keys []string) (map[string][2]int64, []crewTeamOverviewCommit) {
+func macCrewTeamUsage(ctx context.Context, owner, project string, keys []string) (map[string][2]int64, []crewTeamOverviewCommit, [2]int) {
 	cacheKey := owner + "\x00" + project
 	if v, ok := crewMacUsageLocal.Load(cacheKey); ok && time.Since(v.(crewMacUsageCached).at) < time.Minute {
-		return v.(crewMacUsageCached).tokens, v.(crewMacUsageCached).commits
+		c := v.(crewMacUsageCached)
+		return c.tokens, c.commits, c.counts
 	}
 	now := time.Now()
 	weekAgo, dayAgo := now.Add(-7*24*time.Hour), now.Add(-24*time.Hour)
@@ -744,16 +750,23 @@ func macCrewTeamUsage(ctx context.Context, owner, project string, keys []string)
 		})
 	}
 	commits := crewTeamOverviewCommits(ctx, project, weekAgo)
+	counts := [2]int{0, len(commits)}
+	for _, c := range commits {
+		if !c.At.Before(dayAgo) {
+			counts[0]++
+		}
+	}
 	commits = commits[:min(len(commits), 100)]
-	crewMacUsageLocal.Store(cacheKey, crewMacUsageCached{at: now, tokens: tokens, commits: commits})
-	return tokens, commits
+	crewMacUsageLocal.Store(cacheKey, crewMacUsageCached{at: now, tokens: tokens, commits: commits, counts: counts})
+	return tokens, commits, counts
 }
 
 // crewTeamOverviewMacUsage is, for the agents the viewer sees in the live view, the tokens each used on its Mac in the
 // period (by owner, then agent name) and the commits those Macs sent.
-func crewTeamOverviewMacUsage(t crewTeam, live crewTeamLiveView, period string) (map[string]map[string]int64, []crewTeamOverviewCommit) {
+func crewTeamOverviewMacUsage(t crewTeam, live crewTeamLiveView, period string) (map[string]map[string]int64, []crewTeamOverviewCommit, int) {
 	tokens := map[string]map[string]int64{}
 	commits := []crewTeamOverviewCommit{}
+	count := 0
 	read := map[string]bool{}
 	for _, row := range append(slices.Clone(live.Agents), live.Idle...) {
 		v, ok := crewMacTeamUsageCache.Load(t.ProjectID + "\x00" + row.OwnerID)
@@ -764,6 +777,12 @@ func crewTeamOverviewMacUsage(t crewTeam, live crewTeamLiveView, period string) 
 		if !read[row.OwnerID] {
 			read[row.OwnerID] = true
 			commits = append(commits, usage.commits...)
+			n := usage.counts[1]
+			if period == "day" {
+				n = usage.counts[0]
+			}
+			// Macs sharing one project folder see the same commits, so the largest count is the Team's.
+			count = max(count, n)
 		}
 		n := usage.tokens[row.Tab][1]
 		if period == "day" {
@@ -776,7 +795,7 @@ func crewTeamOverviewMacUsage(t crewTeam, live crewTeamLiveView, period string) 
 			tokens[row.OwnerID][row.Name] += n
 		}
 	}
-	return tokens, commits
+	return tokens, commits, count
 }
 
 // crewTeamOverviewMergeCommits adds the Macs' commits since the time, each commit once.
