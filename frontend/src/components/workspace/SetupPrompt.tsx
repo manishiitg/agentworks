@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Info, X, type LucideIcon } from 'lucide-react'
+import { X, type LucideIcon } from 'lucide-react'
 
-// A feature that is not set up yet (approved mockup 24 Nov, #3780): one row with
-// its one next step and an ⓘ. The ⓘ opens a small card saying in plain words what
-// it is, with Set up and Hide; Hide moves the row into Connections.
+// A feature that is not set up yet (#3780, #3838): one row with its one next step.
+// That button opens a small card saying in plain words what it is, with Set up
+// (which starts it) and Hide; Hide moves the row into Connections.
 export function SetupPrompt({ icon: Icon, title, line, action, onAction, what, points, onHide }: {
   icon: LucideIcon
   title: string
@@ -29,9 +29,7 @@ export function SetupPrompt({ icon: Icon, title, line, action, onAction, what, p
     <div className="flex min-h-8 items-center gap-2 text-xs text-foreground/85">
       <Icon aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground"/>
       <span className="min-w-0 flex-1 truncate">{title}</span>
-      <button type="button" onClick={() => { setOpen(false); onAction() }} className={`shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-background/40 ${ring}`}>{action}</button>
-      <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open} aria-label={`What is ${title}?`} title={`What is ${title}?`}
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground/70 hover:bg-background/40 hover:text-foreground ${open ? 'bg-background/40 text-foreground' : ''} ${ring}`}><Info aria-hidden="true" className="h-3 w-3"/></button>
+      <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open} aria-haspopup="dialog" className={`shrink-0 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-background/40 ${open ? 'bg-background/40' : ''} ${ring}`}>{action}</button>
     </div>
     <p className="truncate pl-[22px] text-[10px] text-muted-foreground">{line}</p>
     {open && <div role="dialog" aria-label={title} className="mt-1 rounded-lg border border-border bg-popover px-3 py-2 text-[11px] text-popover-foreground shadow-lg">
