@@ -75,6 +75,7 @@ type crewTeamOverviewFiles struct {
 }
 
 type crewTeamOverviewCommit struct {
+	Hash   string    `json:"hash,omitempty"`
 	Title  string    `json:"title"`
 	Author string    `json:"author"`
 	Repo   string    `json:"repo,omitempty"`
@@ -168,6 +169,8 @@ func crewTeamOverviewOf(ctx context.Context, t crewTeam, live crewTeamLiveView, 
 	chats := crewTeamOverviewChats(ctx, t, live, since)
 	files := crewTeamOverviewFileChanges(t, since, name)
 	commits := crewTeamOverviewCommits(ctx, t.ProjectID, since)
+	macTokens, macCommits := crewTeamOverviewMacUsage(t, live, period)
+	commits = crewTeamOverviewMergeCommits(commits, macCommits, since)
 	decisions := []crewTeamOverviewItem{}
 	decisionOwners := []string{}
 	_, posts, _ := crewTeamRequestPosts(ctx, t, viewer)
@@ -178,7 +181,7 @@ func crewTeamOverviewOf(ctx context.Context, t crewTeam, live crewTeamLiveView, 
 		decisions = append(decisions, crewTeamOverviewItem{Kind: "decision", Person: name(post.OwnerID), UserID: post.OwnerID, Line: crewTeamMessageLine(post.Line), At: post.At})
 		decisionOwners = append(decisionOwners, post.OwnerID)
 	}
-	tokens := crewTeamOverviewTokensFor(ctx, t.ProjectID, since, chats, name)
+	tokens := crewTeamOverviewAddMacTokens(crewTeamOverviewTokensFor(ctx, t.ProjectID, since, chats, name), macTokens, name)
 
 	out.Counts = crewTeamOverviewCounts{Chats: len(chats), Commits: len(commits), Decisions: len(decisions)}
 	for _, group := range files {
@@ -579,24 +582,27 @@ func crewTeamOverviewCommits(ctx context.Context, project string, since time.Tim
 			}
 		}
 	}
+	seen := map[string]bool{}
 	for _, repo := range repos {
 		run, cancel := context.WithTimeout(ctx, 3*time.Second)
-		data, err := exec.CommandContext(run, "git", "-C", repo, "log", "-n", "200", "--since="+since.UTC().Format(time.RFC3339), "--format=%an%x1f%aI%x1f%s").Output()
+		data, err := exec.CommandContext(run, "git", "-C", repo, "log", "-n", "200", "--since="+since.UTC().Format(time.RFC3339), "--format=%H%x1f%an%x1f%aI%x1f%s").Output()
 		cancel()
 		if err != nil {
 			continue
 		}
 		name := filepath.Base(repo)
 		for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
-			f := strings.SplitN(line, "\x1f", 3)
-			if len(f) != 3 {
+			f := strings.SplitN(line, "\x1f", 4)
+			if len(f) != 4 || seen[f[0]] {
 				continue
 			}
-			at, err := time.Parse(time.RFC3339, f[1])
+			at, err := time.Parse(time.RFC3339, f[2])
 			if err != nil {
 				continue
 			}
-			out = append(out, crewTeamOverviewCommit{Title: crewTeamMessageLine(f[2]), Author: f[0], Repo: name, At: at})
+			// A worktree shares its repository's commits: count each commit once.
+			seen[f[0]] = true
+			out = append(out, crewTeamOverviewCommit{Hash: f[0], Title: crewTeamMessageLine(f[3]), Author: f[1], Repo: name, At: at})
 		}
 	}
 	slices.SortFunc(out, func(a, b crewTeamOverviewCommit) int { return b.At.Compare(a.At) })
@@ -671,4 +677,144 @@ func (api *StreamingAPI) handleCrewTeamOverview(w http.ResponseWriter, r *http.R
 	w.Header().Set("Cache-Control", "no-store")
 	live := crewTeamLiveFor(r.Context(), t, teamAgentsByPerson(r.Context(), t, claims.UserID), claims.UserID)
 	externalJSON(w, crewTeamOverviewOf(r.Context(), t, live, claims.UserID, r.URL.Query().Get("period"), true))
+}
+
+// Work that runs on a person's Mac is recorded on that Mac, not here: with its agent list (the "tabs" read the server
+// already makes) the Mac sends each agent's tokens and the commits in its project folder (#3900).
+
+// crewMacTeamUsage is one Mac's answer for one Crew, kept in memory only: it changes on every turn, and the agent list
+// it rides on is saved and compared to tell the Team tab when agents change.
+type crewMacTeamUsage struct {
+	tokens  map[string][2]int64 // tab -> tokens in the last day, last 7 days
+	commits []crewTeamOverviewCommit
+}
+
+var crewMacTeamUsageCache sync.Map // project\x00person -> crewMacTeamUsage
+
+// crewMacTabUsage rides on each row of the Mac's tab list.
+type crewMacTabUsage struct {
+	TokensDay  int64                    `json:"tokens_day,omitempty"`
+	TokensWeek int64                    `json:"tokens_week,omitempty"`
+	Commits    []crewTeamOverviewCommit `json:"commits,omitempty"`
+}
+
+type crewMacUsageCached struct {
+	at      time.Time
+	tokens  map[string][2]int64
+	commits []crewTeamOverviewCommit
+}
+
+var crewMacUsageLocal sync.Map // owner\x00project -> crewMacUsageCached
+
+// macCrewTeamUsage is, on the Mac, the tokens of each of this Crew's chats (by conversation key) in the last day and
+// week, and the commits of the last week in the project folder. Read at most once a minute.
+func macCrewTeamUsage(ctx context.Context, owner, project string, keys []string) (map[string][2]int64, []crewTeamOverviewCommit) {
+	cacheKey := owner + "\x00" + project
+	if v, ok := crewMacUsageLocal.Load(cacheKey); ok && time.Since(v.(crewMacUsageCached).at) < time.Minute {
+		return v.(crewMacUsageCached).tokens, v.(crewMacUsageCached).commits
+	}
+	now := time.Now()
+	weekAgo, dayAgo := now.Add(-7*24*time.Hour), now.Add(-24*time.Hour)
+	wanted := map[string]bool{}
+	for _, k := range keys {
+		wanted[k] = true
+	}
+	keyOf := map[string]string{}
+	for _, s := range crewTeamChatSessions(ctx, owner, project, func(key string) bool { return wanted[key] }) {
+		keyOf[s.SessionID] = s.key
+	}
+	tokens := map[string][2]int64{}
+	if api := runningServerAPI; api != nil && api.costLedger != nil && len(keyOf) > 0 {
+		loc := costledger.DayLocation()
+		_ = api.costLedger.VisitEntries(ctx, weekAgo.In(loc).Format("2006-01-02"), now.In(loc).Format("2006-01-02"), func(e costledger.Entry) error {
+			key := keyOf[e.SessionID]
+			if key == "" || e.ProductKind != "crew" || e.ProductID != project || e.Timestamp.Before(weekAgo) {
+				return nil
+			}
+			var a costledger.Aggregate
+			a.AddEntry(e)
+			n := int64(a.InputTokens + a.CompletionTokens)
+			row := tokens[key]
+			row[1] += n
+			if !e.Timestamp.Before(dayAgo) {
+				row[0] += n
+			}
+			tokens[key] = row
+			return nil
+		})
+	}
+	commits := crewTeamOverviewCommits(ctx, project, weekAgo)
+	commits = commits[:min(len(commits), 100)]
+	crewMacUsageLocal.Store(cacheKey, crewMacUsageCached{at: now, tokens: tokens, commits: commits})
+	return tokens, commits
+}
+
+// crewTeamOverviewMacUsage is, for the agents the viewer sees in the live view, the tokens each used on its Mac in the
+// period (by owner, then agent name) and the commits those Macs sent.
+func crewTeamOverviewMacUsage(t crewTeam, live crewTeamLiveView, period string) (map[string]map[string]int64, []crewTeamOverviewCommit) {
+	tokens := map[string]map[string]int64{}
+	commits := []crewTeamOverviewCommit{}
+	read := map[string]bool{}
+	for _, row := range append(slices.Clone(live.Agents), live.Idle...) {
+		v, ok := crewMacTeamUsageCache.Load(t.ProjectID + "\x00" + row.OwnerID)
+		if !ok {
+			continue
+		}
+		usage := v.(crewMacTeamUsage)
+		if !read[row.OwnerID] {
+			read[row.OwnerID] = true
+			commits = append(commits, usage.commits...)
+		}
+		n := usage.tokens[row.Tab][1]
+		if period == "day" {
+			n = usage.tokens[row.Tab][0]
+		}
+		if n > 0 {
+			if tokens[row.OwnerID] == nil {
+				tokens[row.OwnerID] = map[string]int64{}
+			}
+			tokens[row.OwnerID][row.Name] += n
+		}
+	}
+	return tokens, commits
+}
+
+// crewTeamOverviewMergeCommits adds the Macs' commits since the time, each commit once.
+func crewTeamOverviewMergeCommits(commits, more []crewTeamOverviewCommit, since time.Time) []crewTeamOverviewCommit {
+	seen := map[string]bool{}
+	for _, c := range commits {
+		seen[c.Hash] = true
+	}
+	for _, c := range more {
+		if c.At.Before(since) || (c.Hash != "" && seen[c.Hash]) {
+			continue
+		}
+		seen[c.Hash] = true
+		commits = append(commits, c)
+	}
+	slices.SortFunc(commits, func(a, b crewTeamOverviewCommit) int { return b.At.Compare(a.At) })
+	return commits
+}
+
+// crewTeamOverviewAddMacTokens adds the Macs' tokens to this server's, per person and agent.
+func crewTeamOverviewAddMacTokens(out []crewTeamOverviewTokens, mac map[string]map[string]int64, name func(string) string) []crewTeamOverviewTokens {
+	for user, agents := range mac {
+		i := slices.IndexFunc(out, func(r crewTeamOverviewTokens) bool { return r.userID == user })
+		if i < 0 {
+			out = append(out, crewTeamOverviewTokens{Person: name(user), userID: user})
+			i = len(out) - 1
+		}
+		for agent, n := range agents {
+			out[i].Tokens += n
+			j := slices.IndexFunc(out[i].Agents, func(a crewTeamOverviewAgentTokens) bool { return a.Agent == agent })
+			if j < 0 {
+				out[i].Agents = append(out[i].Agents, crewTeamOverviewAgentTokens{Agent: agent})
+				j = len(out[i].Agents) - 1
+			}
+			out[i].Agents[j].Tokens += n
+		}
+		slices.SortFunc(out[i].Agents, func(a, b crewTeamOverviewAgentTokens) int { return int(b.Tokens - a.Tokens) })
+	}
+	slices.SortFunc(out, func(a, b crewTeamOverviewTokens) int { return int(b.Tokens - a.Tokens) })
+	return out
 }
