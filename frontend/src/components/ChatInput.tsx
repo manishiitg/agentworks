@@ -1481,14 +1481,24 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const [showNativeSkillPicker, setShowNativeSkillPicker] = useState(false)
   useEffect(() => { setShowNativeSkillPicker(false) }, [activeTabId])
   const nativeSkillCatalog = useNativeSkillCatalog(customCommandWorkspacePath, tabSessionId || undefined, effectiveProviderForSteer || undefined,
-    activeTab?.metadata?.agentProfileId === 'work' && !slashCommands && (showNativeSkillPicker || Boolean(requestedSkillId)))
+    activeTab?.metadata?.agentProfileId === 'work' && !slashCommands && (showNativeSkillPicker || Boolean(requestedSkillId) || (showCommandDialog && commandSearchQuery.trim() !== '')))
   const requestedSkill = nativeSkillCatalog.catalog.skills.find(skill => skill.id === requestedSkillId)
-  // The / menu lists commands only; the agent picks skills by itself, and
-  // "Skills…" opens the full picker to force one for a message.
+  // The / menu lists commands, then skills whose NAME starts with the typed
+  // text (also after a plugin's "plugin:" prefix), never description matches
+  // (#3302: those showed unrelated skills). A bare "/" lists no skills.
+  // "Skills…" stays last and opens the full picker.
   const nativeSkillCommands = useMemo<CommandDefinition[]>(() => {
     if (activeTab?.metadata?.agentProfileId !== 'work' || slashCommands) return []
-    return [{ command: '__skills__', label: 'Skills…', description: 'Choose one skill for this message', icon: <Wand2 size={16} />, source: 'builtin', execute: () => {} }]
-  }, [activeTab?.metadata?.agentProfileId, slashCommands])
+    const query = commandSearchQuery.toLowerCase().trim()
+    const matches: CommandDefinition[] = query ? nativeSkillCatalog.catalog.skills.filter(skill => {
+      const name = skill.name.toLowerCase()
+      return name.startsWith(query) || (name.split(':').pop() ?? '').startsWith(query)
+    }).slice(0, 8).map(skill => ({
+      command: `__native_skill:${skill.id}`, label: skill.name, description: `${skill.description} · ${skill.source}`,
+      icon: <Wand2 size={16} />, source: 'builtin', execute: () => {},
+    })) : []
+    return [...matches, { command: '__skills__', label: 'Skills…', description: 'Choose one skill for this message', icon: <Wand2 size={16} />, source: 'builtin', execute: () => {} }]
+  }, [activeTab?.metadata?.agentProfileId, slashCommands, commandSearchQuery, nativeSkillCatalog.catalog.skills])
   const [skillPopupPosition, setSkillPopupPosition] = useState({ bottom: 0, left: 0 })
   const [skillPopupSearchQuery, setSkillPopupSearchQuery] = useState('')
   const [exclamationPosition, setExclamationPosition] = useState(-1)
@@ -2345,9 +2355,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       : inputText.trim()
     closeComposerPickers()
 
-    if (command === '__skills__') {
+    if (command === '__skills__' || command.startsWith('__native_skill:')) {
       writeComposerText(beforeSlash)
-      setShowNativeSkillPicker(true)
+      if (command === '__skills__') setShowNativeSkillPicker(true)
+      else if (nativeSkillCatalog.catalog.skills.some(skill => `__native_skill:${skill.id}` === command)) {
+        setTabConfig(activeTabId, { requestedSkillId: command.slice('__native_skill:'.length) })
+        setTimeout(() => textareaRef.current?.focus(), 0)
+      }
       return
     }
 
