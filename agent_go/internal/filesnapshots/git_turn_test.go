@@ -1002,3 +1002,27 @@ func TestTurnReposRedoAgedReadsAFewAtATime(t *testing.T) {
 		t.Fatalf("aged reads not spread: %v %+v", err, after.AfterCapture)
 	}
 }
+
+// #3878: another agent's worktree being created inside the project while a
+// reply ends showed thousands of files; reading them one by one ran the
+// capture out of time and lost the reply's own changes too.
+func TestTurnSkipsCheckoutCreatedDuringReplyWithThousandsOfFiles(t *testing.T) {
+	f := newCrew(t)
+	f.put("notes.md", "before")
+	if _, err := f.s.BeginGitTurn(t.Context(), "busy"); err != nil {
+		t.Fatal(err)
+	}
+	f.repo("wt-other", map[string]string{"README.md": "x"})
+	for i := 0; i <= newCheckoutMaxPaths; i++ {
+		f.put(fmt.Sprintf("wt-other/src/f-%04d.txt", i), "")
+	}
+	f.put("notes.md", "after")
+	after, err := f.s.FinishGitTurn(t.Context(), "busy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	comparison, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "notes.md" {
+		t.Fatalf("reply's own edit lost or new checkout read: %v %d changes", err, len(comparison.Changes))
+	}
+}
