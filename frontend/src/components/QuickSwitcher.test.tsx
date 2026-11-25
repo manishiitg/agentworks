@@ -3,6 +3,8 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { QuickSwitcher } from './QuickSwitcher'
+import { usePanelSwitcherStore } from '../stores/usePanelSwitcherStore'
+import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 
 const fixture = vi.hoisted(() => ({
   post: vi.fn(async () => ({
@@ -14,7 +16,10 @@ const fixture = vi.hoisted(() => ({
   findFiles: vi.fn(),
   chats: {
     activeTabId: null,
-    chatTabs: { release: { tabId: 'release', name: 'Release review', metadata: { mode: 'multi-agent' } } },
+    chatTabs: {
+      release: { tabId: 'release', name: 'Release review', metadata: { mode: 'multi-agent' } },
+      monitor: { tabId: 'monitor', name: 'Watch release', isStreaming: true, metadata: { mode: 'multi-agent' } },
+    },
     activeSessionsCache: [],
     getActiveSessions: vi.fn(async () => []),
   },
@@ -38,20 +43,33 @@ vi.mock('../stores/useAuthStore', async importOriginal => ({
 }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
-it('keeps names in All and looks up saved messages only while Chats is selected', async () => {
+it('opens on Quick, keeps All for broader navigation, and searches messages only in Chats', async () => {
   const host = document.createElement('div'), root = createRoot(host)
   const input = () => host.querySelector<HTMLInputElement>('[role="combobox"]')!
   const tab = (name: string) => [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent === name)!
   const message = () => host.querySelector('[data-navigation-id="message:chat:one"]')
+  const project = () => host.querySelector('[data-navigation-id="crew-project:planning"]')
   const flushDebounce = () => act(async () => { await vi.advanceTimersByTimeAsync(400) })
+  const panel = { panels: [{ id: 'release', label: 'Release panel' }], open: vi.fn() }
+  const surface = useProductSurfaceStore.getState().productSurface
+  usePanelSwitcherStore.getState().register(surface, panel)
   vi.useFakeTimers()
   try {
     await act(async () => root.render(<QuickSwitcher isOpen onClose={() => {}} initialQuery="release" />))
     await act(async () => { await vi.dynamicImportSettled() })
     await flushDebounce()
-    expect(tab('All').getAttribute('aria-selected')).toBe('true')
+    expect(tab('Quick').getAttribute('aria-selected')).toBe('true')
+    expect(host.querySelector('[role="option"]')?.getAttribute('data-navigation-id')).toBe('chat:monitor')
     expect(host.querySelector('[data-navigation-id="chat:release"]')).not.toBeNull()
-    expect(host.querySelector('[data-navigation-id="crew-project:planning"]')).not.toBeNull()
+    expect(host.querySelector('[data-navigation-id="panel:release"]')).not.toBeNull()
+    expect(project()).toBeNull()
+    expect(fixture.post).not.toHaveBeenCalled()
+    expect(fixture.findFiles).not.toHaveBeenCalled()
+
+    await act(async () => tab('All').click())
+    await flushDebounce()
+    expect(input().value).toBe('release')
+    expect(project()).not.toBeNull()
     expect(fixture.post).not.toHaveBeenCalled()
     expect(fixture.findFiles).not.toHaveBeenCalled()
 
@@ -62,13 +80,17 @@ it('keeps names in All and looks up saved messages only while Chats is selected'
     expect(message()).not.toBeNull()
     expect(host.querySelector('[data-navigation-id="chat:release"]')).not.toBeNull()
 
-    await act(async () => tab('All').click())
+    await act(async () => tab('Quick').click())
     await flushDebounce()
     expect(input().value).toBe('release')
     expect(message()).toBeNull()
     expect(fixture.post).toHaveBeenCalledTimes(1)
+
+    await act(async () => root.render(<QuickSwitcher isOpen onClose={() => {}} initialQuery="@crew release" />))
+    expect(project()).not.toBeNull()
   } finally {
     await act(async () => root.unmount())
+    usePanelSwitcherStore.getState().unregister(surface, panel.open)
     vi.useRealTimers()
   }
 })

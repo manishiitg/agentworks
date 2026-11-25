@@ -135,9 +135,11 @@ type ChatFindItem = Omit<PanelItem, 'type' | 'panelId' | 'sectionId'> & { type: 
 const chatFindItem: ChatFindItem = { type: 'chat-find', id: 'chat:find', label: 'Find in this chat', subtitle: 'Search loaded messages and steps · Ctrl/Cmd+F', searchText: 'search conversation find text', isActive: false, lastAccessedAt: 0, hasLocalActivity: false }
 
 type ResourceItem = { chatId?: string; sender?: string; at?: string; filepath?: string; type: 'artifact' | 'schedule' | 'message' | 'file'; id: string; label: string; subtitle: string; searchText: string; href?: string; scheduledProduct?: 'work' | 'agentworks'; isActive: false; lastAccessedAt: 0; activeSession?: undefined; hasLocalActivity: false }
-type SearchCategory = 'all' | 'chat' | 'crew' | 'artifact' | 'schedule' | 'file'
-const searchCategories: { id: SearchCategory; label: string }[] = [{ id: 'all', label: 'All' }, { id: 'chat', label: 'Chats' }, { id: 'crew', label: 'Projects' }, { id: 'file', label: 'Files' }, { id: 'artifact', label: 'Artifacts' }, { id: 'schedule', label: 'Schedules' }]
+type SearchCategory = 'quick' | 'all' | 'chat' | 'crew' | 'artifact' | 'schedule' | 'file'
+const searchCategories: { id: SearchCategory; label: string }[] = [{ id: 'quick', label: 'Quick' }, { id: 'all', label: 'All' }, { id: 'chat', label: 'Chats' }, { id: 'crew', label: 'Projects' }, { id: 'file', label: 'Files' }, { id: 'artifact', label: 'Artifacts' }, { id: 'schedule', label: 'Schedules' }]
 type QuickSwitcherItem = ResourceItem | ChatFindItem | PanelItem | WorkflowItem | ChatTabItem | CrewChatItem | ActiveWorkItem | QuickNavigationItem
+
+const isChatDestination = (item: QuickSwitcherItem) => item.type === 'chat' || (item.type === 'crew' && !!item.tabId)
 
 type QuickSwitcherRow = QuickSwitcherItem & { treeChild?: boolean; treeLastChild?: boolean; treeParentLabel?: string }
 
@@ -307,7 +309,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   initialQuery = '',
 }) => {
   const [query, setQuery] = useState('')
-  const [category, setCategory] = useState<SearchCategory>('all')
+  const [category, setCategory] = useState<SearchCategory>('quick')
   const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const [resources, setResources] = useState<{ scope: string; items: ResourceItem[]; error: string; loading: boolean }>({ scope: '', items: [], error: '', loading: false })
   const [resourceAttempt, setResourceAttempt] = useState(0)
@@ -454,7 +456,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   useEffect(() => {
     if (isOpen) {
       setQuery(initialQuery)
-      setCategory('all')
+      setCategory('quick')
       setScopeFilter(null)
       setSelectedIndex(0)
       // Paint from the subscribed cache immediately. The normal TTL still
@@ -669,17 +671,29 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           if (scope === 'panel' || scope === 'panels') return item.type === 'panel'
           if (scope === 'menu' || scope === 'menus') return item.type === 'menu' || item.type === 'panel' || item.type === 'chat-find'
           if (scope === 'crew') return creates('work') || creates('work') || item.type === 'crew' || (item.type === 'active' && !item.activeScopeOnly && (isWorkProductSession(item.session) || isWorkProductSession(item.session)))
-          if (scope === 'chat' || scope === 'chats') return item.type === 'chat' || (item.type === 'crew' && !!item.tabId)
+          if (scope === 'chat' || scope === 'chats') return isChatDestination(item)
           return item.type === 'chat' || item.type === 'workflow' || item.type === 'crew'
         })
       : allItems.filter(item => item.type !== 'active' || !item.activeScopeOnly)
 
-    const categorized = scoped.filter(item => category === 'all' || (category === 'chat' ? item.type === 'chat' || (item.type === 'crew' && !!item.tabId) : category === 'crew' ? (item.type === 'crew' && !item.tabId) || item.type === 'workflow' : item.type === category))
+    const quick = category === 'quick' && !scope
+    const categorized = scoped.filter(item => {
+      if (category === 'quick') return !quick || isChatDestination(item) || item.type === 'panel' ||
+        (item.type === 'active' && item.mode === 'multi-agent' && itemHasRunningWork(item))
+      if (category === 'all') return true
+      if (category === 'chat') return isChatDestination(item)
+      if (category === 'crew') return (item.type === 'crew' && !item.tabId) || item.type === 'workflow'
+      return item.type === category
+    })
     if (!q) return categorized
 
     const filtered = categorized.filter(item => quickSwitcherMatches(item, q))
 
     filtered.sort((a, b) => {
+      if (quick) {
+        const runningOrder = Number(itemHasRunningWork(b)) - Number(itemHasRunningWork(a))
+        if (runningOrder) return runningOrder
+      }
       const aRank = itemSearchMatchRank(a, q)
       const bRank = itemSearchMatchRank(b, q)
       const matchOrder = aRank - bRank
@@ -696,7 +710,12 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
   const filteredItems = useMemo<QuickSwitcherRow[]>(() => {
     const explicitScope = query.trim().match(/^@(active|workflows?|chats?|tabs|crew|products?|menus?|panels?|create)\s*/i)?.[1]?.toLowerCase()
-    const navigation = category === 'chat' || (explicitScope || scopeFilter) === 'active' ? matchingItems : projectChatTree(matchingItems, allItems)
+    const scope = explicitScope || scopeFilter
+    // Quick is a flat list: show the project as context without adding a project destination.
+    const navigation = category === 'quick' && !scope
+      ? matchingItems.map(item => item.type === 'crew' && item.projectLabel && item.projectId
+        ? { ...item, subtitle: [item.projectLabel, item.subtitle].filter(Boolean).join(' · ') } : item)
+      : category === 'chat' || scope === 'active' ? matchingItems : projectChatTree(matchingItems, allItems)
     const messages = messageEnabled && messageSearch.key === messageKey ? messageSearch.items : []
     const grouped = new Map<string, ResourceItem[]>()
     for (const hit of messages) { const key = hit.chatId || hit.id; grouped.set(key, [...(grouped.get(key) || []), hit]) }
@@ -865,8 +884,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     {messageSearch.loading ? <span role="status">Searching messages…</span> : messageSearch.error ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>Message search could not finish. Retry</button> : messageSearch.cursor ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>{messageSearch.items.length ? 'Search older messages' : 'No matches in messages searched so far · Search older messages'}</button> : <span>{messageSearch.items.length ? 'Message search complete' : 'No matching messages'}</span>}
   </div>
 
-  const placeholder = category === 'chat' ? 'Search chat names and messages…' : category === 'file' ? 'Search files in this project…' : 'Search…'
-  const emptyText = query ? 'No matching items' : scopeFilter ? 'No items in this list' : 'No work to switch to. Search for a product or menu.'
+  const placeholder = category === 'quick' && !scopeFilter ? 'Find agents and panels…' : category === 'chat' ? 'Search chat names and messages…' : category === 'file' ? 'Search files in this project…' : 'Search…'
+  const emptyText = query ? 'No matching items' : scopeFilter ? 'No items in this list' : category === 'quick' ? 'No agents or panels to switch to.' : 'No work to switch to. Search for a product or menu.'
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]"
