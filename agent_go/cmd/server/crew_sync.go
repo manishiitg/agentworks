@@ -206,14 +206,14 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	// A User of a Crew on the server gets their chat alone, with one line on who controls the setup (crew_setup_lock.go).
+	// A User of a Crew on the server gets their chat alone, with no line above it (owner, 25 Nov: "don't show this ... controls this project's setup").
 	// The dashboard is its own link (owner, 25 Nov: "keep dashboard separate... on right he won't see anything"). Checked before the co-owner page: a User also holds a seat there.
 	if r.Method == http.MethodGet && !IsLocalMode() {
 		project, caller := mux.Vars(r)["project"], GetUserIDFromContext(r.Context())
 		if root := crewProjectRootByID(project); root != "" && crewLivesOnServer(project) && crewIsProjectUser(root, caller) {
 			w.Header().Set("Cache-Control", "no-store")
 			externalJSON(w, crewSyncReply{ProjectID: project, Place: "online", Role: crewRoleUser, AccessView: "summary", AccessSummary: crewSetupLockedRefusal(root),
-				ProjectUser: true, ChatOnly: true, ChatOnlyLine: crewSetupLockedRefusal(root)})
+				ProjectUser: true, ChatOnly: true})
 			return
 		}
 	}
