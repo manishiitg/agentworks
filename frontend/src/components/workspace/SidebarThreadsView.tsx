@@ -234,12 +234,12 @@ export function SidebarThreadsView({
     const statusSuffix = item.status === 'running' ? ' · Working' : item.status === 'waiting' ? ' · Needs you' : ''
     return <div key={item.id} className={`group/thread flex items-start gap-1 rounded-lg px-1 py-0.5 ${isActive ? 'bg-foreground/[0.06]' : 'hover:bg-muted'}`}>
       <button type="button" role="listitem" aria-current={isActive ? 'page' : undefined} onClick={() => openThread(item)}
-        className="flex min-w-0 flex-1 items-start gap-2 rounded-md px-1.5 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <span aria-hidden="true" className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.status === 'running' ? 'bg-info motion-safe:animate-pulse' : item.status === 'waiting' ? 'bg-[hsl(var(--warning))]' : 'border border-border'}`} />
+        className="flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground" title={item.name}>{item.name}</span>
             {age && <span className="shrink-0 text-[11px] text-muted-foreground">{age}</span>}
+            {item.status !== 'idle' && <span aria-hidden="true" data-thread-status-dot className={`h-2 w-2 shrink-0 rounded-full ${item.status === 'running' ? 'bg-info motion-safe:animate-pulse' : 'bg-[hsl(var(--warning))]'}`} />}
           </span>
           <span className="flex items-center gap-1 text-[11px] text-muted-foreground" title={`${item.projectName}${statusSuffix}`}>
             <CodingCliIcon provider={item.chat.provider} className="inline-flex h-3.5 w-3.5 shrink-0 items-center" />

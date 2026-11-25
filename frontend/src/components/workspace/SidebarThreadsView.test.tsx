@@ -63,9 +63,12 @@ it('groups threads into Active now and Recent, filters, pins, and opens a thread
     expect(host.querySelector('[aria-label="Filter threads"]')).toBeNull()
     const activeItems = [...host.querySelectorAll('section[aria-label="Active threads"] [role="listitem"]')]
     expect(activeItems[0].textContent).toContain('Release check') // Needs you first
+    expect(activeItems[0].querySelector('[data-thread-status-dot]')).toBeTruthy()
     expect(activeItems[1].textContent).toContain('UI review')
     expect(activeItems[1].querySelector('svg, img, [aria-label]')).toBeTruthy()
-    expect(host.querySelector('section[aria-label="Recent threads"]')?.textContent).toContain('Main')
+    const recentSection = host.querySelector('section[aria-label="Recent threads"]')!
+    expect(recentSection.textContent).toContain('Main')
+    expect(recentSection.querySelector('[data-thread-status-dot]')).toBeNull()
 
     // Pin Main.
     const pinMain = host.querySelector<HTMLButtonElement>('button[aria-label="Pin Main"]')!
