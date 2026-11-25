@@ -26,3 +26,28 @@ func TestNativeCodingAgentEnvironmentKeepsOnlyScopedMCPAPIValues(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeCodingAgentEnvironmentKeepsGitHubCLIValues(t *testing.T) {
+	a := &Agent{}
+	withCodingAgentSecretEnvironment(map[string]string{
+		"SECRET_GITHUB_TOKEN": "ghp_project",
+		"GH_TOKEN":            "ghp_project",
+		"GIT_CONFIG_COUNT":    "2",
+		"GIT_CONFIG_KEY_0":    "credential.https://github.com.helper",
+		"GIT_CONFIG_VALUE_0":  "",
+		"GIT_CONFIG_KEY_1":    "credential.https://github.com.helper",
+		"GIT_CONFIG_VALUE_1":  "!helper",
+	})(a)
+	if a.codingAgentSecretEnvironment["GH_TOKEN"] != "ghp_project" {
+		t.Fatalf("missing GH_TOKEN: %#v", a.codingAgentSecretEnvironment)
+	}
+	if a.codingAgentSecretEnvironment["GIT_CONFIG_COUNT"] != "2" {
+		t.Fatalf("missing GIT_CONFIG_COUNT: %#v", a.codingAgentSecretEnvironment)
+	}
+	if val, present := a.codingAgentSecretEnvironment["GIT_CONFIG_VALUE_0"]; !present || val != "" {
+		t.Fatalf("empty GIT_CONFIG_VALUE_0 must be preserved: present=%v val=%q", present, val)
+	}
+	if a.codingAgentSecretEnvironment["GIT_CONFIG_VALUE_1"] != "!helper" {
+		t.Fatalf("missing GIT_CONFIG_VALUE_1: %#v", a.codingAgentSecretEnvironment)
+	}
+}

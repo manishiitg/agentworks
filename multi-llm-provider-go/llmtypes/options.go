@@ -232,7 +232,7 @@ func WithCodingAgentSecretEnvironment(environment map[string]string) CallOption 
 	copy := map[string]string{}
 	for key, value := range environment {
 		key = strings.TrimSpace(key)
-		if IsScopedCodingAgentEnvironmentKey(key) && value != "" {
+		if IsScopedCodingAgentEnvironmentEntry(key, value) {
 			copy[key] = value
 		}
 	}
@@ -291,7 +291,53 @@ func IsScopedCodingAgentEnvironmentKey(key string) bool {
 	if key == "CLAUDE_CODE_DISABLE_AUTO_MEMORY" {
 		return true
 	}
-	return isScopedCodingAgentMCPEnvironmentKey(key) || isScopedWorkflowEnvironmentKey(key)
+	return isScopedCodingAgentMCPEnvironmentKey(key) || isScopedWorkflowEnvironmentKey(key) || isScopedGitHubCLIKey(key)
+}
+
+// IsScopedCodingAgentEnvironmentEntry reports whether (key, value) is admitted
+// into a coding agent's scoped environment. Most keys require a non-empty value;
+// GIT_CONFIG_VALUE_<n> permits an empty string because git uses an empty value
+// to reset multi-valued config lists such as credential.https://github.com.helper.
+func IsScopedCodingAgentEnvironmentEntry(key, value string) bool {
+	key = strings.TrimSpace(key)
+	if !IsScopedCodingAgentEnvironmentKey(key) {
+		return false
+	}
+	if value != "" {
+		return true
+	}
+	if suffix, ok := strings.CutPrefix(key, "GIT_CONFIG_VALUE_"); ok {
+		return isDecimalDigits(suffix)
+	}
+	return false
+}
+
+// isScopedGitHubCLIKey names the environment keys gitcred.AddGitHub sets so
+// git and gh in a coding CLI act as the project's connected GitHub account
+// (PLAT-746-158 B8).
+func isScopedGitHubCLIKey(key string) bool {
+	if key == "GH_TOKEN" || key == "GIT_CONFIG_COUNT" {
+		return true
+	}
+	if suffix, ok := strings.CutPrefix(key, "GIT_CONFIG_KEY_"); ok {
+		return isDecimalDigits(suffix)
+	}
+	if suffix, ok := strings.CutPrefix(key, "GIT_CONFIG_VALUE_"); ok {
+		return isDecimalDigits(suffix)
+	}
+	return false
+}
+
+func isDecimalDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // These names are built by the workflow runtime. Admission here does not
@@ -366,7 +412,7 @@ func isServerOwnedSecretKey(key string) bool {
 
 func isScopedCredentialEnvironmentKey(key string) bool {
 	key = strings.TrimSpace(key)
-	if strings.HasPrefix(key, "SECRET_") || strings.HasPrefix(key, "VAR_") {
+	if strings.HasPrefix(key, "SECRET_") || strings.HasPrefix(key, "VAR_") || isScopedGitHubCLIKey(key) {
 		return true
 	}
 	// MCP_* splits in two, and treating the whole prefix as "routing metadata"
@@ -415,7 +461,7 @@ func CodingAgentSecretEnvironmentFromOptions(opts *CallOptions) map[string]strin
 	environment, _ := opts.Metadata.Custom[CodingAgentSecretEnvironmentMetadataKey].(map[string]string)
 	copy := make(map[string]string, len(environment))
 	for key, value := range environment {
-		if IsScopedCodingAgentEnvironmentKey(key) && value != "" {
+		if IsScopedCodingAgentEnvironmentEntry(key, value) {
 			copy[key] = value
 		}
 	}
@@ -500,10 +546,12 @@ func ScopedCodingAgentEnvironmentPlan(ambient, alreadySet []string, opts *CallOp
 // from a precomputed list. Keep them in step with
 // isScopedCredentialEnvironmentKey -- that function and these are the same
 // policy expressed for two consumers (Go filtering, and shell matching).
-func ScopedCredentialPrefixes() []string { return []string{"SECRET_", "VAR_"} }
+func ScopedCredentialPrefixes() []string {
+	return []string{"SECRET_", "VAR_", "GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"}
+}
 
 func ScopedCredentialNames() []string {
-	return []string{"MCP_API_TOKEN", "MCP_AUTH", "MCP_SESSION_ID"}
+	return []string{"MCP_API_TOKEN", "MCP_AUTH", "MCP_SESSION_ID", "GH_TOKEN", "GIT_CONFIG_COUNT"}
 }
 
 // CodingAgentScopeFingerprint deterministically identifies the credential
@@ -596,7 +644,7 @@ func MergeCodingAgentSecretEnvironment(base []string, opts *CallOptions) []strin
 	out := make([]string, 0, len(base)+len(secrets))
 	for _, entry := range base {
 		key, _, found := strings.Cut(entry, "=")
-		if found && secrets[key] != "" {
+		if _, present := secrets[key]; found && present {
 			continue
 		}
 		if found && isScopedCredentialEnvironmentKey(key) {
