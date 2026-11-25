@@ -131,6 +131,18 @@ func TestDesktopAppRecipientRequiresCurrentOwnedConversation(t *testing.T) {
 	if _, err := desktopAppAgentRecipient(ctx, "owner", foreign); err == nil {
 		t.Fatal("another person's chat advertised as own")
 	}
+	// A function's own tab is the owner's agent: opened and typed in by the owner, it sends as itself. It was left
+	// out, so its sends failed as "removed or replaced". The Team still never lists it (crewTeam.agentInTeam).
+	fnTab := record
+	fnTab.ConversationKey = "alpha:chat:" + crewFunctionTabPrefix + "replies"
+	fnTab.ConversationID, fnTab.SessionID = "conversation-fn", "session-fn"
+	doc.Entries[productConversationRegistryEntryKey(crewProfileID, fnTab.ConversationKey)] = fnTab
+	if err := store.writeDocument(ctx, path, doc); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := desktopAppAgentRecipient(ctx, "owner", fnTab); err != nil {
+		t.Fatalf("owner's function tab is not an agent: %v", err)
+	}
 }
 
 // PLAT-746-890: a published visitor must not borrow the owner's private reach.

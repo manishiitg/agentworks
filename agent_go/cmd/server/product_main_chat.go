@@ -18,6 +18,13 @@ func ordinaryProjectChatKey(projectID, key string) bool {
 	return key != id && id != "" && !strings.Contains(id, ":") && !strings.HasPrefix(id, "fn.") && !strings.HasPrefix(id, "agent-")
 }
 
+// appAgentChatKey is a Crew tab that is the owner's agent on their AgentBridge network: an ordinary tab, or a
+// function's own tab, which the owner talks to and which may message the owner's other agents. The Team never
+// lists or reaches a function tab (crewTeam.agentInTeam); other people use the function instead.
+func appAgentChatKey(projectID, key string) bool {
+	return ordinaryProjectChatKey(projectID, key) || strings.HasPrefix(key, projectID+codeChatSideMarker+crewFunctionTabPrefix) && len(key) > len(projectID+codeChatSideMarker+crewFunctionTabPrefix)
+}
+
 func validProjectMainRecord(userID, profileID, projectID, workspace string, record ProductConversationRecord) bool {
 	return record.SessionID != "" && record.ProfileID == profileID && (record.ConversationKey == projectID || ordinaryProjectChatKey(projectID, record.ConversationKey)) && workspacePathsMatchForUser(userID, record.WorkspacePath, workspace)
 }
