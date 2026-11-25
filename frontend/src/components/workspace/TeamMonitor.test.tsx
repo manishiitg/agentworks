@@ -59,7 +59,7 @@ it('groups server-admitted working agents by Team, pins personal needs, and expa
 // navigation. #3900: Teams the server marks quiet fold into one line that still names them.
 it('lists active Teams under their server and folds the quiet ones into one line',async()=>{
  const teams=Array.from({length:6},(_,i)=>({work:{working:0,last_worked_at:`2026-11-17T0${i}:00:00Z`,last_worked_label:`${6-i}h ago`},overview:i<3?{period:'day',label:'last 24 hours',now:[],counts:{chats:1,files:0,commits:0,decisions:0,tokens:0},done:'1 chat',people:[]}:{period:'day',label:'last 24 hours',now:[],counts:{chats:0,files:0,commits:0,decisions:0,tokens:0},quiet:true,people:[]},project_id:`team-${i}`,name:`Team ${i}`,people:[],agents:[],idle:[],needs:[]}))
- f.list.mockResolvedValue({data:{notice:'2 servers unreachable',connections:[{connection:'saved-a',network:'Example North',network_id:'https://north.example.com',teams:teams.slice(0,3),others:[{user_id:'teammate',person:'Teammate',last:'2026-11-17T05:00:00Z',done:'2 chats',projects:['Invoice tool'],mac:'340K tokens · Claude'}]},{connection:'saved-b',network:'Example South',network_id:'https://south.example.com',teams:teams.slice(3)},{connection:'offline-a',teams:[],error:'Teams could not be loaded. Try again.'},{connection:'offline-b',teams:[],error:'Teams could not be loaded. Try again.'}]}})
+ f.list.mockResolvedValue({data:{notice:'2 servers unreachable',connections:[{connection:'saved-a',network:'Example North',network_id:'https://north.example.com',teams:teams.slice(0,3),others:[{user_id:'teammate',person:'Teammate',last:'2026-11-17T05:00:00Z',done:'2 chats',projects:['Invoice tool'],mac:'340K tokens · Claude'},{user_id:'quiet-one',person:'Quiet One',quiet:true}]},{connection:'saved-b',network:'Example South',network_id:'https://south.example.com',teams:teams.slice(3)},{connection:'offline-a',teams:[],error:'Teams could not be loaded. Try again.'},{connection:'offline-b',teams:[],error:'Teams could not be loaded. Try again.'}]}})
  const host=document.createElement('div'),root=createRoot(host);document.body.append(host)
  try{
   await act(async()=>{root.render(<TeamMonitor/>);await Promise.resolve()})
@@ -81,5 +81,7 @@ it('lists active Teams under their server and folds the quiet ones into one line
   expect(section().textContent).toContain('Not in your Teams · Example North')
   expect(section().textContent).toContain('Today: 2 chats · Invoice tool')
   expect(section().textContent).toContain('Mac app on the company account: 340K tokens · Claude')
+  // Accounts with no work this week fold into one line instead of a row each.
+  expect(section().textContent).toContain('1 quiet this week')
  }finally{await act(async()=>root.unmount());host.remove()}
 })
