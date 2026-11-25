@@ -1,10 +1,12 @@
 package server
 
 import (
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"log"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -28,9 +30,12 @@ const (
 // workspaceGitWatches: real folder the Changes view shows -> its watch.
 var workspaceGitWatches sync.Map
 
+var workspaceGitWatchGen atomic.Uint64
+
 type workspaceGitWatch struct {
 	root string
 	w    crewTeamWatcher
+	gen  uint64 // tells this watch's counters from an earlier, closed watch's
 
 	mu       sync.Mutex
 	closed   bool
@@ -73,7 +78,7 @@ func workspaceGitWatchFor(root string) *workspaceGitWatch {
 		w.mu.Unlock()
 		return w
 	}
-	w := &workspaceGitWatch{root: root, lastUsed: now, repos: map[string]*workspaceGitCached{}, listChanges: 1}
+	w := &workspaceGitWatch{root: root, gen: workspaceGitWatchGen.Add(1), lastUsed: now, repos: map[string]*workspaceGitCached{}, listChanges: 1}
 	fw, err := newCrewTeamWatcher(root, w)
 	if err != nil {
 		log.Printf("[WORKSPACE_GIT] event=watch_off reason=%q", err)
@@ -240,4 +245,68 @@ func workspaceGitStatusChanged(dir string) {
 		w.mu.Unlock()
 		return true
 	})
+}
+
+// Reply captures share the Changes view's watch (#3878): a checkout nothing touched since a capture read it reuses
+// that read. crewSnapshotWatch adapts the watch to filesnapshots.RepoWatch.
+type crewSnapshotWatch struct{ w *workspaceGitWatch }
+
+// newCrewSnapshotWatch is the watch for a project folder; nil when this system has no tree watcher (Linux servers),
+// so every checkout is read as before.
+func newCrewSnapshotWatch(root string) filesnapshots.RepoWatch {
+	real, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return nil
+	}
+	w := workspaceGitWatchFor(real)
+	if w == nil {
+		return nil
+	}
+	return crewSnapshotWatch{w: w}
+}
+
+func (c crewSnapshotWatch) Token(dir string) (uint64, bool) {
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return 0, false
+	}
+	w := c.w
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed || !workspaceGitUnder(real, w.root) {
+		return 0, false
+	}
+	e := w.repos[real]
+	if e == nil {
+		e = &workspaceGitCached{}
+		w.repos[real] = e
+	}
+	return w.gen<<40 | e.changes, true
+}
+
+func (c crewSnapshotWatch) Located(dir, gitDir, common string) {
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return
+	}
+	w := c.w
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if e := w.repos[real]; e != nil && e.common == "" {
+		if g, err := filepath.EvalSymlinks(gitDir); err == nil {
+			gitDir = g
+		}
+		if g, err := filepath.EvalSymlinks(common); err == nil {
+			common = g
+		}
+		e.gitDir, e.common = filepath.Clean(gitDir), filepath.Clean(common)
+	}
+}
+
+func (c crewSnapshotWatch) Settle() {
+	if s, ok := c.w.w.(interface{ settle() }); ok {
+		s.settle()
+		return
+	}
+	time.Sleep(100 * time.Millisecond) // Windows reports at once; let its reader note what arrived
 }

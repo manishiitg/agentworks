@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -35,6 +36,8 @@ type gitTurnRepo struct {
 	Label CheckoutLabel `json:"label"`
 	Head  string        `json:"head"`
 	Dirty []string      `json:"dirty"`
+	// gitDir is where Git keeps this checkout's state; not saved.
+	gitDir string
 }
 type turnBlob struct {
 	mode string
@@ -270,8 +273,23 @@ func (s Store) turnRepos(ctx context.Context, dirs []string, stats *CaptureStats
 		}
 		results[i].root = filepath.ToSlash(rel)
 	}
+	if s.Watch != nil {
+		s.Watch.Settle()
+	}
+	var reused atomic.Int64
 	_ = parallel(len(dirs), func(i int) error {
 		started := time.Now()
+		var token uint64
+		watched := false
+		if s.Watch != nil {
+			if token, watched = s.Watch.Token(dirs[i]); watched {
+				if repo, ok := s.reusedRepo(dirs[i], token); ok {
+					results[i].repo = repo
+					reused.Add(1)
+					return nil
+				}
+			}
+		}
 		repoCtx, stop := context.WithTimeout(discovery, 10*time.Second)
 		defer stop()
 		var shared bool
@@ -281,9 +299,16 @@ func (s Store) turnRepos(ctx context.Context, dirs []string, stats *CaptureStats
 		if repoCtx.Err() != nil {
 			results[i].err = repoCtx.Err()
 		}
+		if watched && results[i].err == nil {
+			if results[i].repo.gitDir != "" {
+				s.Watch.Located(dirs[i], results[i].repo.gitDir, commonGitDir(results[i].repo.gitDir))
+			}
+			s.rememberRepo(dirs[i], token, results[i].repo)
+		}
 		log.Printf("[FILE_SNAPSHOT] phase=checkout_discovery dir=%q elapsed_ms=%d success=%t shared=%t", results[i].root, time.Since(started).Milliseconds(), results[i].err == nil, shared)
 		return nil
 	})
+	stats.ReposReused = int(reused.Load())
 	out, skipped := map[string]gitTurnRepo{}, map[string]bool{}
 	count := 0
 	for _, r := range results {
@@ -337,7 +362,7 @@ func (s Store) turnRepo(ctx context.Context, dir, root string) (gitTurnRepo, err
 		}
 	}
 	remote, _ := gitIn(ctx, s.Root, dir, "config", "--get", "remote.origin.url").Output()
-	repo := gitTurnRepo{Head: head, Dirty: dirty, Label: CheckoutLabel{ID: identity, Root: root, Name: filepath.Base(dir), Branch: branch, GitHubRepo: GitHubRepo(string(remote))}}
+	repo := gitTurnRepo{Head: head, Dirty: dirty, gitDir: gitdir, Label: CheckoutLabel{ID: identity, Root: root, Name: filepath.Base(dir), Branch: branch, GitHubRepo: GitHubRepo(string(remote))}}
 	if repo.Label.Branch == "" && len(repo.Head) >= 8 {
 		repo.Label.Branch = "detached@" + repo.Head[:8]
 	}

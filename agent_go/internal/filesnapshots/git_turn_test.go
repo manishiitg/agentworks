@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -936,5 +937,44 @@ func TestTurnFileLimitRemovingABigFolderDecidesAgain(t *testing.T) {
 	}
 	if report, _ := f.s.FileLimit(); report.Over {
 		t.Fatalf("still over after moving the folder out: %+v", report)
+	}
+}
+
+type fakeRepoWatch struct {
+	mu      sync.Mutex
+	tokens  map[string]uint64
+	settled int
+}
+
+func (f *fakeRepoWatch) Token(dir string) (uint64, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.tokens[dir], true
+}
+func (f *fakeRepoWatch) Located(string, string, string) {}
+func (f *fakeRepoWatch) Settle()                        { f.mu.Lock(); f.settled++; f.mu.Unlock() }
+func (f *fakeRepoWatch) touch(dir string)               { f.mu.Lock(); f.tokens[dir]++; f.mu.Unlock() }
+
+// #3878: a checkout the file watcher saw no change in reuses its last read;
+// one it saw change is read again, so the reply's edit is still captured.
+func TestTurnReposReuseUnchangedCheckouts(t *testing.T) {
+	f := newCrew(t)
+	f.repo("idle", map[string]string{"a.txt": "a"})
+	f.repo("busy", map[string]string{"b.txt": "b"})
+	watch := &fakeRepoWatch{tokens: map[string]uint64{}}
+	f.s.Watch = watch
+	before, err := f.s.BeginGitTurn(t.Context(), "w1")
+	if err != nil || before.BeforeCapture.ReposReused != 0 || len(before.GitTurn) != 2 {
+		t.Fatalf("first read: %v %+v", err, before.BeforeCapture)
+	}
+	f.put("busy/b.txt", "edited")
+	watch.touch(filepath.Join(f.s.Root, "busy"))
+	after, err := f.s.FinishGitTurn(t.Context(), "w1")
+	if err != nil || after.AfterCapture.ReposReused != 1 || watch.settled < 2 {
+		t.Fatalf("idle checkout not reused: %v %+v settled=%d", err, after.AfterCapture, watch.settled)
+	}
+	comparison, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "busy/b.txt" {
+		t.Fatalf("edit in the changed checkout lost: %v %+v", err, comparison.Changes)
 	}
 }

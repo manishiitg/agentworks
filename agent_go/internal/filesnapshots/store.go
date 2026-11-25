@@ -85,8 +85,11 @@ type CaptureStats struct {
 	// WalkMS is the part of DiscoveryMS spent walking the project for loose
 	// files and checkouts; LimitReused means the stored too-many-files verdict
 	// skipped that walk (#3878).
-	WalkMS        int64 `json:"walk_ms,omitempty"`
-	LimitReused   bool  `json:"limit_reused,omitempty"`
+	WalkMS      int64 `json:"walk_ms,omitempty"`
+	LimitReused bool  `json:"limit_reused,omitempty"`
+	// ReposReused counts checkouts whose last read was reused because the
+	// file watcher saw nothing change in them (repo_watch.go).
+	ReposReused   int   `json:"repos_reused,omitempty"`
 	IndexMS       int64 `json:"index_ms,omitempty"`
 	ImportMS      int64 `json:"import_ms,omitempty"`
 	ComposeMS     int64 `json:"compose_ms,omitempty"`
@@ -164,12 +167,15 @@ type Comparison struct {
 }
 type Store struct {
 	Root, Private string
+	// Watch, when set, lets unchanged checkouts reuse their last read (repo_watch.go).
+	Watch RepoWatch
 }
 
 type storeState struct {
 	gate    chan struct{}
 	warming atomic.Bool
 	limit   fileLimitCache
+	repos   repoReads
 }
 
 // ErrWarming means the background index build (Warm) holds this Crew's gate;
