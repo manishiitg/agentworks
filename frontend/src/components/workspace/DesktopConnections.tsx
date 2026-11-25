@@ -30,7 +30,7 @@ import { TeamInvites } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
 import { SidebarAgentLayout, SidebarCrewAgents, SidebarHiddenAgents } from './SidebarCrewAgents'
 import { sidebarAgentDisclosureClass, sidebarAgentListClass } from './sidebarAgentLayout'
-import { ChevronRight, Folder, MessageSquare, Pin, Search } from 'lucide-react'
+import { ChevronRight, Pin, Search } from 'lucide-react'
 import { mostInTeam } from '../chat/AgentInTeamMark'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
@@ -185,15 +185,13 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
     return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3" data-sidebar-project-scroll onPointerDownCapture={() => markSidebarInteraction()}>
         {top}
-        {rows.length > 0 && <div role="tablist" aria-label="Sidebar view" className="mb-2.5 grid shrink-0 grid-cols-2 gap-1 rounded-lg border border-border/80 bg-foreground/[0.04] p-1 text-xs">
+        {rows.length > 0 && <div role="tablist" aria-label="Sidebar view" className="mb-2 grid shrink-0 grid-cols-2 gap-0.5 rounded-lg bg-muted p-0.5 text-xs">
           <button type="button" role="tab" aria-selected={sidebarMode === 'projects'} onClick={() => selectSidebarMode('projects')}
-            className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sidebarMode === 'projects' ? 'bg-background font-semibold text-foreground shadow-sm ring-1 ring-border/70' : 'font-medium text-muted-foreground hover:bg-background/60 hover:text-foreground'}`}>
-            <Folder className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden="true" />
-            <span>Projects</span>
+            className={`rounded-md px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sidebarMode === 'projects' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            Projects
           </button>
           <button type="button" role="tab" aria-selected={sidebarMode === 'threads'} onClick={() => selectSidebarMode('threads')}
-            className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sidebarMode === 'threads' ? 'bg-background font-semibold text-foreground shadow-sm ring-1 ring-border/70' : 'font-medium text-muted-foreground hover:bg-background/60 hover:text-foreground'}`}>
-            <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden="true" />
+            className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sidebarMode === 'threads' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             <span>Threads</span>
             {activeThreadCount > 0 && <span className={`rounded-full px-1.5 text-[10px] font-semibold leading-4 ${hasWaitingThread ? 'bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))]' : 'bg-info/15 text-info'}`}>{activeThreadCount}</span>}
           </button>

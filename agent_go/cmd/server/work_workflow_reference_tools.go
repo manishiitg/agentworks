@@ -123,7 +123,7 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 			"name":           name,
 			"identity":       accessibleProjectIdentity{Name: identityName},
 			"profile_id":     product.ProfileID,
-			"description":    manifest.purpose(),
+			"description":    strings.TrimSpace(manifest.Description),
 			"workspace_path": workspacePath,
 			"access":         itemAccess,
 			"owner":          ownerLabel,

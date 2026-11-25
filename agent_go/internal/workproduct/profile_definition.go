@@ -223,20 +223,22 @@ func RegisterFeatureSkills(profileID, productName string) error {
 	return nil
 }
 
-// workIdentity is the Crew's name. A project has no description (owner, 25 Nov, #4046): each agent, Main included, has
-// its own name and purpose. A Crew and its agents have no icon (owner, 5 Nov).
+// workIdentity is the Crew's name; its purpose is the project description. A Crew and its agents have no icon
+// (owner, 5 Nov): an agent is its name and purpose.
 type workIdentity struct {
 	Name string `json:"name,omitempty"`
 }
 
 type workProjectManifest struct {
+	Description      string        `json:"description,omitempty"`
 	ChatInstructions string        `json:"chat_instructions,omitempty"`
 	Identity         *workIdentity `json:"identity,omitempty"`
 	UpdatedAt        string        `json:"updated_at,omitempty"`
 }
 
 const (
-	workIdentityNameLimit = 60
+	workIdentityNameLimit    = 60
+	workIdentityPurposeLimit = 1000
 )
 
 func normalizeWorkIdentity(identity workIdentity) workIdentity {
@@ -297,16 +299,19 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 		return agentprofiles.ToolSpec{
 			Name:     "set_work_identity",
 			Category: "work_identity",
-			Description: "Rename this project, or clear its name, only when the user explicitly asks to rename the project. A project has a name and no description (owner, 25 Nov): each agent, Main included, keeps its own name and purpose with set_my_agent_identity, which never renames the project. " +
-				"Store it in product.json, preserve omitted fields, and never invent a name.",
+			Description: "Set, update, or clear this project's identity (its name and purpose) when the user explicitly asks to rename the project or change its purpose. Main's purpose comes from it; renaming an agent or chat, Main included, is set_my_agent_identity and never renames the project. " +
+				"A short name and purpose keep the agent consistent across project chats, schedules, bots, and background work; they change presentation and behavior, never permissions. " +
+				"The purpose is required: ask the user for it before the first save, and refuse to clear it. " +
+				"Store it in product.json, preserve omitted fields, and never invent an identity.",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"operation": map[string]interface{}{
 						"type": "string", "enum": []string{"set", "clear"},
-						"description": "Use set to rename the project, or clear to remove its name.",
+						"description": "Use set to create or update the identity, or clear to remove its name. The purpose is required and clear never removes it.",
 					},
-					"name": map[string]interface{}{"type": "string", "maxLength": workIdentityNameLimit, "description": "Short display name. Pass empty to remove."},
+					"name":    map[string]interface{}{"type": "string", "maxLength": workIdentityNameLimit, "description": "Short display name. Omit to preserve; pass empty to remove."},
+					"purpose": map[string]interface{}{"type": "string", "maxLength": workIdentityPurposeLimit, "description": "Required: what this project is for, in one short line. Saved as the project description. Omit to preserve."},
 				},
 				"required": []string{"operation"},
 			},
@@ -322,6 +327,8 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 				operation, _ := args["operation"].(string)
 				operation = strings.ToLower(strings.TrimSpace(operation))
 				if operation == "clear" {
+					// Clear removes the name only. The purpose lives in the
+					// top-level description and is never touched by clear.
 					delete(manifest, "identity")
 				} else if operation == "set" {
 					identity := workIdentity{}
@@ -336,6 +343,19 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 					if validationError := validateWorkIdentity(identity); validationError != "" {
 						return validationError, nil
 					}
+					purpose, _ := manifest["description"].(string)
+					if value, ok := args["purpose"].(string); ok {
+						purpose = strings.TrimSpace(value)
+					} else {
+						purpose = strings.TrimSpace(purpose)
+					}
+					if utf8.RuneCountInString(purpose) > workIdentityPurposeLimit {
+						return fmt.Sprintf("The identity purpose must be at most %d characters.", workIdentityPurposeLimit), nil
+					}
+					if purpose == "" {
+						return "A purpose is required for the project identity. Ask the user what this project is for before saving.", nil
+					}
+					manifest["description"] = purpose
 					manifest["identity"] = identity
 				} else {
 					return "operation must be set or clear.", nil
@@ -350,13 +370,13 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 				}
 				if operation == "clear" {
 					emitIdentityUpdated(operation)
-					return "The project name was removed.", nil
+					return "The project name was removed. The required purpose is preserved and still applies.", nil
 				}
 				var saved workIdentity
 				encodedIdentity, _ := json.Marshal(manifest["identity"])
 				_ = json.Unmarshal(encodedIdentity, &saved)
 				emitIdentityUpdated(operation)
-				return "The project's name is saved.\n\n" + renderWorkIdentity(saved), nil
+				return "The project bot identity is saved. Adopt it immediately in this chat. It will be included automatically in generated provider project instructions on future provider sessions.\n\n" + renderWorkIdentity(saved), nil
 			},
 		}, nil
 	}
@@ -373,13 +393,14 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 			Category: "work_projects",
 			Description: "Create another basic project project for the signed-in user when they ask. " +
 				"The new project has its own durable conversation, files, runtime configuration, and display name. " +
-				"This does not replace or rename the active project. After creation, tell the user to select the new project from the top project menu; its agents keep their own purposes.",
+				"This does not replace or rename the active project. After creation, tell the user to select the new project from the top project menu; it asks for its purpose on first chat.",
 			Parameters: map[string]interface{}{
 				"type":                 "object",
 				"additionalProperties": false,
 				"properties": map[string]interface{}{
-					"name":      map[string]interface{}{"type": "string", "maxLength": workIdentityNameLimit, "description": "Project display name and project title."},
-					"root_path": map[string]interface{}{"type": "string", "description": "Local app only: full path to an existing folder the person chose for this new project. Files stay there; project resources use .agentworks."},
+					"name":        map[string]interface{}{"type": "string", "maxLength": workIdentityNameLimit, "description": "Project display name and project title."},
+					"description": map[string]interface{}{"type": "string", "maxLength": 1000, "description": "Optional short purpose for this project."},
+					"root_path":   map[string]interface{}{"type": "string", "description": "Local app only: full path to an existing folder the person chose for this new project. Files stay there; project resources use .agentworks."},
 				},
 				"required": []string{"name"},
 			},
@@ -388,9 +409,14 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 				if name == "" || name == "<nil>" {
 					return "", fmt.Errorf("name is required")
 				}
+				description, _ := args["description"].(string)
 				identity := normalizeWorkIdentity(workIdentity{Name: name})
 				if validationError := validateWorkIdentity(identity); validationError != "" {
 					return validationError, nil
+				}
+				description = strings.TrimSpace(description)
+				if utf8.RuneCountInString(description) > 1000 {
+					return "The project description must be at most 1000 characters.", nil
 				}
 
 				id := uuid.NewString()
@@ -419,6 +445,7 @@ func createCrewProjectFactory(workspaceAPIURL string) agentprofiles.ToolFactory 
 					"product":        "work",
 					"id":             id,
 					"title":          name,
+					"description":    description,
 					"identity":       identity,
 					"created_at":     now,
 					"updated_at":     now,
@@ -506,10 +533,18 @@ func ProjectPromptVariables(workspaceAPIURL string, allowMissing bool) agentprof
 		if manifest.Identity != nil {
 			identity = renderWorkIdentity(*manifest.Identity)
 		}
-		// Always return the key because the Crew prompt uses missingkey=error. A project has no description (owner,
-		// 25 Nov): each agent's purpose is its own. Refresh retained sessions for behavioral guidance, not cosmetic edits.
+		purpose := strings.TrimSpace(manifest.Description)
+		if purpose != "" {
+			if identity != "" {
+				identity = "Purpose: " + purpose + "\n" + identity
+			} else {
+				identity = "Purpose: " + purpose
+			}
+		}
+		// Always return the key because the Crew prompt uses missingkey=error.
+		// Refresh retained sessions for behavioral guidance, not cosmetic edits.
 		instructions := strings.TrimSpace(manifest.ChatInstructions)
-		key := ""
+		key := purpose
 		if instructions != "" {
 			key += "\nchat_instructions:\n" + instructions
 		}

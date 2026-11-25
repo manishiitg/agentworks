@@ -38,7 +38,7 @@ type crewTeamMonitorReply struct {
 }
 
 // Team membership, not the own-project sidebar, is the monitor's inventory.
-func crewTeamMonitorFor(ctx context.Context, viewer string) ([]crewTeamLiveView, error) {
+func crewTeamMonitorFor(ctx context.Context, viewer, period string) ([]crewTeamLiveView, error) {
 	out := []crewTeamLiveView{}
 	root, err := crewroot.StateRoot()
 	if err != nil {
@@ -70,7 +70,7 @@ func crewTeamMonitorFor(ctx context.Context, viewer string) ([]crewTeamLiveView,
 		go func(i int, team crewTeam) {
 			defer wg.Done()
 			out[i] = crewTeamLiveFor(ctx, team, teamAgentsByPerson(ctx, team, viewer), viewer)
-			overview := crewTeamOverviewOf(ctx, team, out[i], viewer, "day", false)
+			overview := crewTeamOverviewOf(ctx, team, out[i], viewer, period, false)
 			out[i].Overview = &overview
 			// The overview's newest item (a file change, a chat, a commit) is also work: after a restart no agent may have
 			// worked yet, and the Team still shows when it last did.
@@ -91,7 +91,9 @@ func (api *StreamingAPI) handleCrewTeamMonitor(w http.ResponseWriter, r *http.Re
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	teams, err := crewTeamMonitorFor(r.Context(), claims.UserID)
+	// The Team menu reads today; the Teams overview page also reads the last 7 days (period=week).
+	period, _, _ := crewTeamOverviewWindow(r.URL.Query().Get("period"))
+	teams, err := crewTeamMonitorFor(r.Context(), claims.UserID, period)
 	if err != nil {
 		externalError(w, 503, "team_unavailable", "Your Teams could not be loaded. Try again.")
 		return
@@ -118,21 +120,21 @@ func (api *StreamingAPI) handleCrewTeamMonitor(w http.ResponseWriter, r *http.Re
 				result := crewTeamMonitorConnection{Connection: c.ID, Network: crewTeamMonitorServerName(c), NetworkID: c.Server, Teams: []crewTeamLiveView{}}
 				// A recent good read answers this poll at once and the server is read again in the background: one server
 				// that doesn't answer held every poll for its whole wait (17-20 s) and slowed the whole app.
-				if teams, ok := crewTeamMonitorLastGood(claims.UserID, c.ID, true); ok {
+				if teams, ok := crewTeamMonitorLastGood(claims.UserID, c.ID, period, true); ok {
 					result.Teams = teams
-					crewTeamMonitorRefresh(claims.UserID, c, crewTeamMonitorRefreshWait)
-				} else if reason, failed := crewTeamMonitorRecentFailure(claims.UserID, c.ID); failed {
+					crewTeamMonitorRefresh(claims.UserID, c, period, crewTeamMonitorRefreshWait)
+				} else if reason, failed := crewTeamMonitorRecentFailure(claims.UserID, c.ID, period); failed {
 					result.Error = reason
-					crewTeamMonitorRefresh(claims.UserID, c, crewTeamMonitorFirstWait)
+					crewTeamMonitorRefresh(claims.UserID, c, period, crewTeamMonitorFirstWait)
 				} else {
-					teams, err := crewTeamMonitorRead(r.Context(), claims.UserID, c, crewTeamMonitorFirstWait)
+					teams, err := crewTeamMonitorRead(r.Context(), claims.UserID, c, period, crewTeamMonitorFirstWait)
 					if err != nil {
 						result.Error = err.Error()
 					} else {
 						result.Teams = teams
 					}
 				}
-				if v, ok := crewTeamMonitorOthers.Load(claims.UserID + "\x00" + c.ID); ok {
+				if v, ok := crewTeamMonitorOthers.Load(crewTeamMonitorKey(claims.UserID, c.ID, period)); ok {
 					result.Others = v.([]crewTeamAdminPerson)
 				}
 				if result.Error != "" {
@@ -162,7 +164,7 @@ func (api *StreamingAPI) handleCrewTeamMonitor(w http.ResponseWriter, r *http.Re
 	slices.Sort(failed)
 	out.Notice = strings.Join(failed, " · ")
 	out.People, out.Tokens = crewTeamMonitorPeople(out.Connections)
-	out.Summary = crewTeamMonitorSummary(out.Connections, out.Tokens)
+	out.Summary = crewTeamMonitorSummary(out.Connections, out.Tokens, period)
 	externalJSON(w, out)
 }
 
@@ -184,8 +186,13 @@ type crewTeamMonitorFailed struct {
 
 var crewTeamMonitorFailures sync.Map // viewer\x00connection -> crewTeamMonitorFailed
 
-func crewTeamMonitorRecentFailure(viewer, connection string) (string, bool) {
-	v, ok := crewTeamMonitorFailures.Load(viewer + "\x00" + connection)
+// crewTeamMonitorKey keys what the monitor remembers per viewer, saved server and period.
+func crewTeamMonitorKey(viewer, connection, period string) string {
+	return viewer + "\x00" + connection + "\x00" + period
+}
+
+func crewTeamMonitorRecentFailure(viewer, connection, period string) (string, bool) {
+	v, ok := crewTeamMonitorFailures.Load(crewTeamMonitorKey(viewer, connection, period))
 	if !ok || time.Since(v.(crewTeamMonitorFailed).at) > crewTeamMonitorFailureFor {
 		return "", false
 	}
@@ -193,14 +200,14 @@ func crewTeamMonitorRecentFailure(viewer, connection string) (string, bool) {
 }
 
 // crewTeamMonitorRefresh reads one server again in the background, one read per server at a time.
-func crewTeamMonitorRefresh(viewer string, c desktopConnection, wait time.Duration) {
-	key := viewer + "\x00" + c.ID
+func crewTeamMonitorRefresh(viewer string, c desktopConnection, period string, wait time.Duration) {
+	key := crewTeamMonitorKey(viewer, c.ID, period)
 	if _, busy := crewTeamMonitorRefreshing.LoadOrStore(key, true); busy {
 		return
 	}
 	go func() {
 		defer crewTeamMonitorRefreshing.Delete(key)
-		if _, err := crewTeamMonitorRead(context.Background(), viewer, c, wait); err != nil {
+		if _, err := crewTeamMonitorRead(context.Background(), viewer, c, period, wait); err != nil {
 			// A server that keeps failing drops out once its last good read is older than crewTeamMonitorLastGoodFor.
 			if _, _, _, transient := crewTeamMonitorFailure(err); !transient {
 				crewTeamMonitorGoodReads.Delete(key)
@@ -210,14 +217,15 @@ func crewTeamMonitorRefresh(viewer string, c desktopConnection, wait time.Durati
 }
 
 // crewTeamMonitorRead reads one saved server's Teams and remembers a good read.
-func crewTeamMonitorRead(ctx context.Context, viewer string, c desktopConnection, wait time.Duration) ([]crewTeamLiveView, error) {
+func crewTeamMonitorRead(ctx context.Context, viewer string, c desktopConnection, period string, wait time.Duration) ([]crewTeamLiveView, error) {
+	key := crewTeamMonitorKey(viewer, c.ID, period)
 	round, cancel := context.WithTimeout(ctx, wait)
 	defer cancel()
 	var reply crewTeamMonitorReply
-	if err := crewTeamRemoteJSON(round, viewer, c, http.MethodGet, "/api/crew-team-monitor", nil, &reply); err != nil {
+	if err := crewTeamRemoteJSON(round, viewer, c, http.MethodGet, "/api/crew-team-monitor?period="+period, nil, &reply); err != nil {
 		status, code, reason, _ := crewTeamMonitorFailure(err)
 		log.Printf("[TEAM_MONITOR] connection=%s viewer=%s outcome=failed status=%d code=%q reason=%q wait=%s", c.ID, viewer, status, code, reason, wait)
-		crewTeamMonitorFailures.Store(viewer+"\x00"+c.ID, crewTeamMonitorFailed{at: time.Now(), reason: reason})
+		crewTeamMonitorFailures.Store(key, crewTeamMonitorFailed{at: time.Now(), reason: reason})
 		return nil, &crewTeamMonitorReadError{reason: reason, cause: err}
 	}
 	teams := []crewTeamLiveView{}
@@ -230,9 +238,9 @@ func crewTeamMonitorRead(ctx context.Context, viewer string, c desktopConnection
 			teams = append(teams, live)
 		}
 	}
-	crewTeamMonitorRemember(viewer, c.ID, teams)
-	crewTeamMonitorOthers.Store(viewer+"\x00"+c.ID, others)
-	crewTeamMonitorFailures.Delete(viewer + "\x00" + c.ID)
+	crewTeamMonitorGoodReads.Store(key, crewTeamMonitorGood{at: time.Now(), teams: teams})
+	crewTeamMonitorOthers.Store(key, others)
+	crewTeamMonitorFailures.Delete(key)
 	return teams, nil
 }
 
@@ -283,17 +291,13 @@ type crewTeamMonitorGood struct {
 
 var crewTeamMonitorGoodReads sync.Map // viewer\x00connection -> crewTeamMonitorGood
 
-var crewTeamMonitorOthers sync.Map // viewer\x00connection -> []crewTeamAdminPerson from that server's last good read
+var crewTeamMonitorOthers sync.Map // crewTeamMonitorKey -> []crewTeamAdminPerson from that server's last good read
 
-func crewTeamMonitorRemember(viewer, connection string, teams []crewTeamLiveView) {
-	crewTeamMonitorGoodReads.Store(viewer+"\x00"+connection, crewTeamMonitorGood{at: time.Now(), teams: teams})
-}
-
-func crewTeamMonitorLastGood(viewer, connection string, transient bool) ([]crewTeamLiveView, bool) {
+func crewTeamMonitorLastGood(viewer, connection, period string, transient bool) ([]crewTeamLiveView, bool) {
 	if !transient {
 		return nil, false
 	}
-	v, ok := crewTeamMonitorGoodReads.Load(viewer + "\x00" + connection)
+	v, ok := crewTeamMonitorGoodReads.Load(crewTeamMonitorKey(viewer, connection, period))
 	if !ok || time.Since(v.(crewTeamMonitorGood).at) > crewTeamMonitorLastGoodFor {
 		return nil, false
 	}
@@ -394,7 +398,11 @@ func crewTeamMonitorPeople(connections []crewTeamMonitorConnection) ([]crewTeamO
 }
 
 // crewTeamMonitorSummary says in one line how much is going on across the viewer's Teams, leaving out what is zero.
-func crewTeamMonitorSummary(connections []crewTeamMonitorConnection, tokens int64) string {
+func crewTeamMonitorSummary(connections []crewTeamMonitorConnection, tokens int64, period string) string {
+	_, label, _ := crewTeamOverviewWindow(period)
+	if period == "week" {
+		label = "this week"
+	}
 	working, active := 0, 0
 	for _, source := range connections {
 		for _, team := range source.Teams {
@@ -410,9 +418,9 @@ func crewTeamMonitorSummary(connections []crewTeamMonitorConnection, tokens int6
 	}
 	switch {
 	case active == 1:
-		parts = append(parts, "1 Team active today")
+		parts = append(parts, "1 Team active "+label)
 	case active > 1:
-		parts = append(parts, fmt.Sprintf("%d Teams active today", active))
+		parts = append(parts, fmt.Sprintf("%d Teams active %s", active, label))
 	}
 	if tokens > 0 {
 		parts = append(parts, crewTeamOverviewTokensLabel(tokens)+" tokens")

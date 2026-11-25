@@ -102,7 +102,7 @@ func crewTeamAdminReadUsage(ctx context.Context) map[string]*crewTeamAdminUsage 
 		}
 		var a costledger.Aggregate
 		a.AddEntry(e)
-		n := int64(a.InputTokens + a.CompletionTokens)
+		n := crewTeamWorkTokens(a)
 		u := users[user]
 		if u == nil {
 			u = &crewTeamAdminUsage{sessions: map[string]bool{}, projects: map[string]string{}, macPrograms: map[string]bool{}}

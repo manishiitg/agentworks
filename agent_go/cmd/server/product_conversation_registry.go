@@ -1333,16 +1333,6 @@ func (m productProjectManifest) receivesEmail() bool {
 	return m.EmailInboxEnabled == nil || *m.EmailInboxEnabled
 }
 
-// purpose is a product project's one-line description for people and prompts. A Crew has none (owner, 25 Nov, #4046:
-// a project has a name; each agent, Main included, keeps its own purpose); an old description in its product.json is
-// ignored.
-func (m productProjectManifest) purpose() string {
-	if strings.TrimSpace(m.Product) == crewProfileID {
-		return ""
-	}
-	return strings.TrimSpace(m.Description)
-}
-
 type productProjectManifest struct {
 	EmailInboxEnabled            *bool           `json:"email_inbox_enabled,omitempty"`
 	MainChatKey                  string          `json:"main_chat_key,omitempty"`
@@ -1552,7 +1542,7 @@ func resolveProductProjectBindingInRoot(
 			ManifestPath:                candidate,
 			ResourceID:                  resourceProjectID,
 			Title:                       strings.TrimSpace(manifest.Title),
-			Description:                 manifest.purpose(),
+			Description:                 strings.TrimSpace(manifest.Description),
 			AuthoritativeSessionID:      strings.TrimSpace(manifest.SessionID),
 			ProjectLLMConfig:            manifest.Capabilities.LLMConfig,
 			ProjectSelectedServers:      teamWayServers(ctx, workspacePath, manifest.Capabilities.SelectedServers, manifest.Capabilities.ChosenVaultAppsOnly),

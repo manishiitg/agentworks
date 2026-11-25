@@ -383,7 +383,7 @@ func summarizeSharedProject(ctx context.Context, claims *UserClaims, ownerID, pr
 		CanBuild:        crewProjectOwnedByCaller(claims.UserID, projectRoot),
 		ID:              manifest.ID,
 		Title:           manifest.Title,
-		Description:     manifest.purpose(),
+		Description:     strings.TrimSpace(manifest.Description),
 		Name:            strings.TrimSpace(manifest.Identity.Name),
 		OwnerID:         ownerID,
 		OwnerUsername:   crewOwnerDisplayName(ownerID),

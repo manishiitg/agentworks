@@ -8,6 +8,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from 'react-dom'
 import api from '../../services/api'
 import { useAuthStore } from '../../stores/useAuthStore'
+import { useAppStore } from '../../stores/useAppStore'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
@@ -29,20 +30,21 @@ type Face = AvatarFields & { connection?: string; key: string; name: string; net
 
 
 type Member=AvatarFields&{name:string;connection?:string;faceKey?:string}
-type MonitorTeam={members:Map<string,Member>;overview?:TeamOverview;openOverview:()=>void;work?:TeamMonitorWork;key:string;name:string;network:string;networkId:string;faces:Face[];rows:Row[];needs:TeamNeed[];target:TeamTarget;open:()=>void}
+type MonitorTeam={members:Map<string,Member>;overview?:TeamOverview;work?:TeamMonitorWork;key:string;name:string;network:string;networkId:string;faces:Face[];rows:Row[];needs:TeamNeed[];target:TeamTarget;open:()=>void}
 const workingRow=(row:Row)=>row.activity==='running'||row.activity==='waiting'
 const newestTime=(team:MonitorTeam)=>Date.parse(team.work?.last_worked_at||'')||0
 const ignoreOwnSummary=()=>{}
 
 /** Every Crew in the person's menu, on this network and each connected one, with its Team as the server words it. */
 // Admin only: someone working on that server outside your Teams, as the server words it (activity, never chat text).
-type AdminPerson={user_id:string;person:string;active?:boolean;last?:string;done?:string;projects?:string[];mac?:string;online?:boolean;quiet?:boolean}
-type MonitorSource={connectionId:string;network:string;networkId:string;crews:Crew[];others:AdminPerson[];error?:string}
-function useTeamCrews():{sources:MonitorSource[];notice:string;people:TeamOverviewPerson[];summary:string} {
+export type AdminPerson={user_id:string;person:string;active?:boolean;last?:string;done?:string;projects?:string[];mac?:string;online?:boolean;quiet?:boolean}
+export type MonitorSource={connectionId:string;network:string;networkId:string;crews:Crew[];others:AdminPerson[];error?:string}
+// period=week is the Teams overview page's "This week"; the menu always reads today.
+export function useTeamCrews(period:'day'|'week'='day'):{sources:MonitorSource[];notice:string;people:TeamOverviewPerson[];summary:string;loading:boolean} {
  const user=useAuthStore(state=>state.user?.id||'')
  const active=getRawActiveWorkspaceId()
  const allowed=(useAuthStore(state=>state.user?.allowed_products)||['work']).includes('work')
- const [loaded,setLoaded]=useState<{identity:number;sources:MonitorSource[];notice:string;people:TeamOverviewPerson[];summary:string}>()
+ const [loaded,setLoaded]=useState<{identity:number;period:string;sources:MonitorSource[];notice:string;people:TeamOverviewPerson[];summary:string}>()
  const [refresh,setRefresh]=useState(0)
  useLiveRefetch(()=>setRefresh(v=>v+1),{kinds:['sessions','crew_panel'],fallbackMs:60000,safetyMs:60000,minIntervalMs:5000,enabled:allowed&&!!user})
  useEffect(()=>{const reload=()=>setRefresh(v=>v+1);window.addEventListener('agentworks:team-updated',reload);return()=>window.removeEventListener('agentworks:team-updated',reload)},[])
@@ -50,21 +52,24 @@ function useTeamCrews():{sources:MonitorSource[];notice:string;people:TeamOvervi
   if(!allowed||!user)return
   let disposed=false
   const identity=captureChatIdentity()
-  void api.get<{connections:{connection:string;network?:string;network_id?:string;teams:TeamLiveView[];others?:AdminPerson[];error?:string}[];notice?:string;people?:TeamOverviewPerson[];summary?:string}>('/api/crew-team-monitor').then(({data})=>{
+  void api.get<{connections:{connection:string;network?:string;network_id?:string;teams:TeamLiveView[];others?:AdminPerson[];error?:string}[];notice?:string;people?:TeamOverviewPerson[];summary?:string}>(`/api/crew-team-monitor${period==='week'?'?period=week':''}`).then(({data})=>{
    if(disposed||!isChatIdentityCurrent(identity))return
-   setLoaded({identity,notice:data.notice||'',people:data.people||[],summary:data.summary||'',sources:data.connections.map(source=>({connectionId:source.connection==='local'?active:source.connection,network:source.network||'',networkId:source.network_id||window.location.origin,crews:source.teams.map(live=>({id:live.project_id!,name:live.name||'Team',team_live:live})),others:source.others||[],error:source.error}))})
-  }).catch(()=>{if(!disposed&&isChatIdentityCurrent(identity))setLoaded({identity,sources:[],people:[],summary:'',notice:'Teams temporarily unavailable. Try again.'})})
+   setLoaded({identity,period,notice:data.notice||'',people:data.people||[],summary:data.summary||'',sources:data.connections.map(source=>({connectionId:source.connection==='local'?active:source.connection,network:source.network||'',networkId:source.network_id||window.location.origin,crews:source.teams.map(live=>({id:live.project_id!,name:live.name||'Team',team_live:live})),others:source.others||[],error:source.error}))})
+  }).catch(()=>{if(!disposed&&isChatIdentityCurrent(identity))setLoaded({identity,period,sources:[],people:[],summary:'',notice:'Teams temporarily unavailable. Try again.'})})
   return()=>{disposed=true}
- },[active,user,allowed,refresh])
- return loaded&&isChatIdentityCurrent(loaded.identity)?loaded:{sources:[],notice:'',people:[],summary:''}
+ },[active,user,allowed,refresh,period])
+ return loaded&&isChatIdentityCurrent(loaded.identity)&&loaded.period===period?{...loaded,loading:false}:{sources:[],notice:'',people:[],summary:'',loading:true}
 }
 
-function openCrewTeam(connectionId: string, crewId: string, section:'agents'|'overview'='agents') {
+export function openCrewTeam(connectionId: string, crewId: string) {
   // A Crew on a server opens on that server's website (#3779): the Mac app shows only this Mac's projects.
   if (connectionId !== getRawActiveWorkspaceId()) { void openOnServerWebsite(connectionId, `/projects/${encodeURIComponent(crewId)}`); return }
   openSidebarProject('crew', crewId)
-  openCrewAccess(crewId, '', 'team', section)
+  openCrewAccess(crewId, '', 'team', 'agents')
 }
+
+// Open overview: one full page for every Team and person, not a tab in one Team (owner, 25 Nov).
+export const openTeamsOverview=()=>useAppStore.getState().setAdminPage('teams')
 
 /** The header's Team (owner, 12 Nov, mockup "Monitor with Team" v4): the faces of teammates across every Crew, a
  * ring on those whose agents work or wait, and a panel of who is working where. The server decides every state and
@@ -97,7 +102,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
    }
    const members=new Map<string,Member>()
    for(const p of live.people||[])if(!members.has(p.user_id))members.set(p.user_id,{...p,connection:source.connectionId,faceKey:p.you?undefined:personKey(p.user_id,p.device)})
-   found.set(key,{members,overview:live.overview,openOverview:()=>openCrewTeam(source.connectionId,crew.id,'overview'),work:live.work,key,name:live.name||crew.name,network,networkId,faces:[...faces.values()],rows,needs:live.needs||[],target:{project:live.project_id||crew.id,connection:live.connection||source.connectionId},open:()=>openCrewTeam(source.connectionId,crew.id)})
+   found.set(key,{members,overview:live.overview,work:live.work,key,name:live.name||crew.name,network,networkId,faces:[...faces.values()],rows,needs:live.needs||[],target:{project:live.project_id||crew.id,connection:live.connection||source.connectionId},open:()=>openCrewTeam(source.connectionId,crew.id)})
   }
   return [...found.values()].sort((a,b)=>Number((b.work?.working||0)>0)-Number((a.work?.working||0)>0)||newestTime(b)-newestTime(a)||a.name.localeCompare(b.name))
  },[sources,revision])
@@ -144,7 +149,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
    <div className="flex min-w-0 items-baseline gap-2"><button type="button" onClick={()=>{setOpen(false);team.open()}} className="min-w-0 flex-1 truncate text-left text-[13px] font-semibold">{team.name}</button>{status(team.work?.label,team.work?.last_worked_label)}</div>
    {o?.done&&<p title={o.done} className="truncate text-[10px] text-muted-foreground">{capital(o.label)}: {o.done}</p>}
    {o?.now.map((n,i)=>act(i,who(team,n.user_id,n.person,true),n.person,`${n.agent}${n.title?` — ${n.title}`:''}`,'now'))}
-   {!!o?.now_more&&<button type="button" onClick={()=>{setOpen(false);team.openOverview()}} className="ml-6 mt-0.5 text-[10px] text-emerald-700 dark:text-emerald-400">+{o.now_more} more working</button>}
+   {!!o?.now_more&&<button type="button" onClick={()=>{setOpen(false);openTeamsOverview()}} className="ml-6 mt-0.5 text-[10px] text-emerald-700 dark:text-emerald-400">+{o.now_more} more working</button>}
    {o&&!o.now.length&&o.last&&act('last',who(team,o.last.user_id,o.last.person,false),o.last.person,o.last.line,short(o.last.at))}
   </div>}
  const quietLine=(names:{key:string;name:string;when?:string;open?:()=>void}[],label:string)=>names.length>0&&<details className="group px-2 py-1"><summary className="cursor-pointer list-none text-[11px] text-muted-foreground hover:text-foreground">{label} <span className="inline-block transition-transform group-open:rotate-90">›</span></summary><div className="mt-1 flex flex-wrap gap-1">{names.map(n=><button key={n.key} type="button" disabled={!n.open} onClick={()=>{setOpen(false);n.open?.()}} className="rounded-full border border-border bg-background px-2 py-px text-[11px] hover:border-muted-foreground">{n.name}{n.when?` · ${n.when}`:''}</button>)}</div></details>
@@ -193,7 +198,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
      </>:byTeam}
     </section>
    </>}
-   {!selected&&(teams[0]||notice)&&<div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-2 pt-2 text-[11px]">{teams[0]&&<button type="button" onClick={()=>{setOpen(false);teams[0].openOverview()}} className="flex-1 text-left font-medium text-emerald-700 dark:text-emerald-400">Open overview →</button>}{notice&&<span role="status" className="text-[10px] text-warning">{notice}</span>}</div>}
+   {!selected&&(teams[0]||notice)&&<div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-2 pt-2 text-[11px]">{teams[0]&&<button type="button" onClick={()=>{setOpen(false);openTeamsOverview()}} className="flex-1 text-left font-medium text-emerald-700 dark:text-emerald-400">Open overview →</button>}{notice&&<span role="status" className="text-[10px] text-warning">{notice}</span>}</div>}
   </div>,document.body)}
  </div>
 }

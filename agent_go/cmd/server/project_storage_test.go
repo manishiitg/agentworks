@@ -80,7 +80,7 @@ func TestCrewWorkspaceCanonicalLifecycle(t *testing.T) {
 		env.api.handleExternalCall(w, adminRequest(http.MethodPost, "/api/external/v1/call", string(raw), connections[user], nil))
 		return w
 	}
-	w := call("owner", "workspace", testWorkspaceCreate("crew", map[string]any{"name": "Private example"}))
+	w := call("owner", "workspace", testWorkspaceCreate("crew", map[string]any{"name": "Private example", "purpose": "Check private Crew access"}))
 	var created map[string]any
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &created) != nil || created["kind"] != "crew" {
 		t.Fatalf("canonical create: %d %s", w.Code, w.Body.String())

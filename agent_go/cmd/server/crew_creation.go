@@ -203,7 +203,7 @@ func (s *ProjectActionDispatcher) CreateCrewProject(ctx context.Context, req Cre
 			// The receipt outlived its manifests (a crash between the
 			// receipt write and the manifest writes, or deleted
 			// manifests): rebuild under the frozen identity.
-			created, err = writeCrewCreationManifests(ctx, userID, profile, profileID, workflowPath, title, receipt.CrewID, receipt.WorkspacePath, inheritedLLM)
+			created, err = writeCrewCreationManifests(ctx, userID, profile, profileID, workflowPath, title, req.Purpose, receipt.CrewID, receipt.WorkspacePath, inheritedLLM)
 			if err != nil {
 				return CreatedCrew{}, err
 			}
@@ -211,7 +211,7 @@ func (s *ProjectActionDispatcher) CreateCrewProject(ctx context.Context, req Cre
 			created.Pending = pending
 		}
 	} else {
-		created, err = writeCrewCreationManifests(ctx, userID, profile, profileID, workflowPath, title, receipt.CrewID, receipt.WorkspacePath, inheritedLLM)
+		created, err = writeCrewCreationManifests(ctx, userID, profile, profileID, workflowPath, title, req.Purpose, receipt.CrewID, receipt.WorkspacePath, inheritedLLM)
 		if err != nil {
 			return CreatedCrew{}, err
 		}
@@ -343,12 +343,13 @@ type crewCreationOptions struct {
 	LLMConfig   *workflowtypes.PresetLLMConfig
 }
 
-func writeCrewCreationManifests(ctx context.Context, userID string, profile agentprofiles.Profile, profileID, workflowPath, title, crewID, workspacePath string, inheritedLLM *workflowtypes.AgentLLMConfig, options ...crewCreationOptions) (created CreatedCrew, createErr error) {
+func writeCrewCreationManifests(ctx context.Context, userID string, profile agentprofiles.Profile, profileID, workflowPath, title, purpose, crewID, workspacePath string, inheritedLLM *workflowtypes.AgentLLMConfig, options ...crewCreationOptions) (created CreatedCrew, createErr error) {
 	var settings crewCreationOptions
 	if len(options) > 0 {
 		settings = options[0]
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	purpose = strings.TrimSpace(purpose)
 	capabilities := map[string]interface{}{
 		"selected_servers":             []string{},
 		"selected_tools":               []string{},
@@ -385,6 +386,7 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		"owner_id":       sanitizeUserIDForPath(userID),
 		"id":             crewID,
 		"title":          title,
+		"description":    purpose,
 		"created_at":     now,
 		"updated_at":     now,
 		"identity":       map[string]interface{}{"name": title},

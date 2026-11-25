@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
 )
 
 // #2917: self devices are the viewer's metadata only; another member never gets them.
@@ -142,5 +144,14 @@ func TestCrewTeamMonitorMacUsageCountsOnce(t *testing.T) {
 		map[string]map[string]int64{"owner": {"Main": 50, "Coder": 500}, "teammate": {"Main": 10}}, name)
 	if len(out) != 2 || out[0].Tokens != 650 || out[0].Agents[0].Agent != "Coder" || out[0].Agents[1].Tokens != 150 || out[1].Tokens != 10 {
 		t.Fatalf("tokens = %+v", out)
+	}
+}
+
+// A Team showed 1,311M tokens for one day: cached prompt tokens, re-read on every turn, were counted as work (#3900).
+func TestCrewTeamMonitorTokensLeaveOutCachedPrompt(t *testing.T) {
+	var a costledger.Aggregate
+	a.AddEntry(costledger.Entry{Provider: "claude-code", PromptTokens: 1_000, CacheReadTokens: 90_000, CacheWriteTokens: 2_000, CompletionTokens: 500})
+	if got := crewTeamWorkTokens(a); got != 3_500 {
+		t.Fatalf("work tokens = %d, want new input (prompt + cache write) and output only", got)
 	}
 }
