@@ -60,6 +60,7 @@ it('opens old Artifacts links as a standalone page and leaves only Online tabs',
     const items = crewProjectMenuItems({ panels })
     expect(items.filter(item => item.group === 'Share').map(item => item.id)).toEqual(['mcp:team', 'mcp:artifacts'])
     expect(items.find(item => item.id === 'mcp:slack-bot')?.group).toBe('Integrations')
+    expect(items.find(item => item.id === 'mcp:message-agents')).toBeUndefined()
   } finally {
     await act(async () => root.unmount())
     localStorage.removeItem('agentworks:crew-access-tab:artifacts-test')
