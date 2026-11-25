@@ -10,6 +10,10 @@ import (
 	"time"
 )
 
+// Reading another project's dashboard is how an agent copies one: the page source sits in that project's private
+// data folder, which its file tools cannot open.
+var dashboardReadsOtherProject = map[string]bool{"list_dashboards": true, "get_dashboard": true}
+
 // The app Builder and external MCP call the same authorized service. The app
 // authoring tools stay bound to their project.
 func (api *StreamingAPI) registerDashboardTools(reg definitionToolRegistrar, userID, root string, caller *UserClaims) error {
@@ -29,6 +33,9 @@ func (api *StreamingAPI) registerDashboardTools(reg definitionToolRegistrar, use
 				keys = append(keys, key)
 			}
 		}
+		if dashboardReadsOtherProject[name] {
+			props["from_project"] = map[string]any{"type": "string", "description": "Read another project's dashboards instead of this one's: its workspace_path from workspace action=references_list. To copy one, get it there and create it here with its files."}
+		}
 		definitions = append(definitions, externalTool{Name: name, Description: description, InputSchema: map[string]any{"type": "object", "properties": props, "required": keys, "additionalProperties": false}})
 	})
 	for _, def := range definitions {
@@ -40,7 +47,12 @@ func (api *StreamingAPI) registerDashboardTools(reg definitionToolRegistrar, use
 					payload[key] = value
 				}
 			}
+			delete(payload, "from_project")
 			payload["workspace"], payload["action"] = root, dashboardActions[def.Name]
+			// Reads may name another project; the service checks the caller can open it. Edits stay on this project.
+			if from, _ := args["from_project"].(string); dashboardReadsOtherProject[def.Name] && strings.TrimSpace(from) != "" {
+				payload["workspace"] = strings.TrimRight(strings.TrimSpace(from), "/")
+			}
 			data, err := json.Marshal(payload)
 			if err != nil {
 				return "", err
