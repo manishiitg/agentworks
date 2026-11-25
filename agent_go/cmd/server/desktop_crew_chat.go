@@ -161,12 +161,13 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		}
 		var usage map[string][2]int64
 		var commits []crewTeamOverviewCommit
+		var commitCounts [2]int
 		if metadata {
 			keys := []string{}
 			for _, tab := range tabs {
 				keys = append(keys, tab.ConversationKey)
 			}
-			usage, commits = macCrewTeamUsage(ctx, claims.UserID, project, keys)
+			usage, commits, commitCounts = macCrewTeamUsage(ctx, claims.UserID, project, keys)
 		}
 		type tabRow struct {
 			crewTeamMessagePreview
@@ -185,6 +186,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 			use := crewMacTabUsage{TokensDay: usage[tab.ConversationKey][0], TokensWeek: usage[tab.ConversationKey][1]}
 			if len(rows) == 0 {
 				use.Commits = commits // the project folder's commits, once per answer
+				use.CommitsDay, use.CommitsWeek = commitCounts[0], commitCounts[1]
 			}
 			rows = append(rows, tabRow{crewTeamMessagePreview: previews[tab.ConversationKey], crewMacTabUsage: use, IsMain: metadata && tab.IsMain, ConversationKey: tab.ConversationKey, ConversationID: tab.ConversationID, Name: tab.Name, Purpose: tab.Purpose, Position: tab.Position, Pinned: tab.Pinned, ForkedFrom: tab.ForkedFrom})
 		}

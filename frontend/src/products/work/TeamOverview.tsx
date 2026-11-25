@@ -25,6 +25,7 @@ export const nowLine = (n: TeamOverviewNow, withPerson = true) => `${n.agent}${w
 const box = 'min-w-0 rounded-lg border border-border/70 p-2.5'
 const head = 'mb-1 flex items-baseline justify-between text-[11px] font-semibold text-muted-foreground'
 const sub = 'text-[11px] text-muted-foreground'
+const shown = 10 // each list shows its newest 10; the count says how many there were
 const row = 'flex gap-2 border-t border-border/50 py-1 text-xs first:border-t-0'
 
 /** One Team's chats, files, commits, tokens and decisions in the period, opened from its card on the Teams overview
@@ -44,16 +45,17 @@ export function TeamOverviewDetails({ target, period }: { target: TeamTarget; pe
   if (error && !data) return <p role="alert" className={sub}>{error}</p>
   if (!data) return <p role="status" className={sub}>Loading details…</p>
   const top = data.tokens?.[0]?.tokens || 1
-  return <div className="mt-2 grid gap-2 border-t border-border pt-2 sm:grid-cols-2">
+  const more = (n: number, listed?: number) => n > Math.min(listed || 0, shown) ? <p className={`pt-1 ${sub}`}>+{n - Math.min(listed || 0, shown)} more</p> : null
+  return <div className="mt-2 grid gap-2 border-t border-border pt-2 sm:grid-cols-2 xl:grid-cols-4">
     <div className={box}><div className={head}>Chats<small className="font-normal">{data.counts.chats}</small></div>
-      {data.chats?.length ? data.chats.map((c, i) => <div key={i} className={row}><div className="min-w-0 flex-1 truncate">{c.title ? `“${c.title}”` : <span className="text-muted-foreground">A chat</span>}<p className={`truncate ${sub}`}>{c.agent} · {c.person}{c.messages ? ` · ${c.messages} messages` : ''}</p></div><time className={sub}>{timeAgo(c.at)}</time></div>) : <p className={sub}>No chats.</p>}
+      {data.chats?.length ? data.chats.slice(0, shown).map((c, i) => <div key={i} className={row}><div className="min-w-0 flex-1 truncate">{c.title ? `“${c.title}”` : <span className="text-muted-foreground">A chat</span>}<p className={`truncate ${sub}`}>{c.agent} · {c.person}{c.messages ? ` · ${c.messages} messages` : ''}</p></div><time className={sub}>{timeAgo(c.at)}</time></div>) : <p className={sub}>No chats.</p>}{more(data.counts.chats, data.chats?.length)}
     </div>
     <div className={box}><div className={head}>Commits<small className="font-normal">{data.counts.commits}</small></div>
-      {data.commits?.length ? data.commits.map((c, i) => <div key={i} className={row}><div className="min-w-0 flex-1 truncate">{c.title}<p className={`truncate ${sub}`}>{c.author}{c.repo ? ` · ${c.repo}` : ''}</p></div><time className={sub}>{timeAgo(c.at)}</time></div>) : <p className={sub}>No commits.</p>}
+      {data.commits?.length ? data.commits.slice(0, shown).map((c, i) => <div key={i} className={row}><div className="min-w-0 flex-1 truncate">{c.title}<p className={`truncate ${sub}`}>{c.author}{c.repo ? ` · ${c.repo}` : ''}</p></div><time className={sub}>{timeAgo(c.at)}</time></div>) : <p className={sub}>No commits.</p>}{more(data.counts.commits, data.commits?.length)}
     </div>
     <div className={box}><div className={head}>Files changed<small className="font-normal">{data.counts.files}</small></div>
-      {data.files?.length ? data.files.map((f, i) => <details key={i} className={row}><summary className="flex min-w-0 flex-1 cursor-pointer list-none gap-2"><div className="min-w-0 flex-1 truncate"><b>{f.person}</b> {f.line}</div><time className={sub}>{timeAgo(f.at)}</time></summary>
-        <div className="mt-1 space-y-0.5 pl-2">{f.paths?.map(p => <p key={p.path} className={`truncate ${sub}`}>{p.path}{p.saves > 1 ? ` · ${p.saves} saves` : ''}</p>)}{f.files > (f.paths?.length || 0) && <p className={sub}>+{f.files - (f.paths?.length || 0)} more</p>}</div></details>) : <p className={sub}>No Team file changes.</p>}
+      {data.files?.length ? data.files.slice(0, shown).map((f, i) => <details key={i} className={row}><summary className="flex min-w-0 flex-1 cursor-pointer list-none gap-2"><div className="min-w-0 flex-1 truncate"><b>{f.person}</b> {f.line}</div><time className={sub}>{timeAgo(f.at)}</time></summary>
+        <div className="mt-1 space-y-0.5 pl-2">{f.paths?.map(p => <p key={p.path} className={`truncate ${sub}`}>{p.path}{p.saves > 1 ? ` · ${p.saves} saves` : ''}</p>)}{f.files > (f.paths?.length || 0) && <p className={sub}>+{f.files - (f.paths?.length || 0)} more</p>}</div></details>) : <p className={sub}>No Team file changes.</p>}{more(data.files?.length || 0, data.files?.length)}
     </div>
     <div className={box}><div className={head}>Tokens<small className="font-normal">{tokensLabel(data.counts.tokens)}</small></div>
       {data.tokens?.length ? data.tokens.map((t, i) => <div key={i} className={row}><div className="min-w-0 flex-1">{t.person} · {tokensLabel(t.tokens)}<div className="mt-1 h-1.5 rounded bg-muted"><div className="h-1.5 rounded bg-primary" style={{ width: `${Math.max(2, Math.round(t.tokens / top * 100))}%` }} /></div>{t.agents?.length ? <p className={`truncate ${sub}`}>{t.agents.map(a => `${a.agent} ${tokensLabel(a.tokens)}`).join(' · ')}</p> : null}</div></div>) : <p className={sub}>No tokens recorded.</p>}

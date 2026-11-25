@@ -250,6 +250,7 @@ func readPersonMacTabsNow(ctx context.Context, person, project, pair string, wit
 		}
 		if i < len(usageRows) {
 			usage.commits = append(usage.commits, usageRows[i].Commits...)
+			usage.counts = [2]int{max(usage.counts[0], usageRows[i].CommitsDay), max(usage.counts[1], usageRows[i].CommitsWeek)}
 			if ok {
 				usage.tokens[id] = [2]int64{usageRows[i].TokensDay, usageRows[i].TokensWeek}
 			}
