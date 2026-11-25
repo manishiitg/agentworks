@@ -431,7 +431,7 @@ func TestAppearanceCSSFileReadsNativeSelectedFolder(t *testing.T) {
 	}
 	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
 	const logical = "Crew/native-css"
-	if _, err := writeCrewCreationManifests(ctx, "owner", workCrewTestProfile(nil), "work", "", "Native CSS", "", "native-css", logical, nil, crewCreationOptions{LocalRoot: selected}); err != nil {
+	if _, err := writeCrewCreationManifests(ctx, "owner", workCrewTestProfile(nil), "work", "", "Native CSS", "native-css", logical, nil, crewCreationOptions{LocalRoot: selected}); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(project, "themes"), 0700); err != nil {
