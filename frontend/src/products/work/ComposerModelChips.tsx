@@ -8,6 +8,7 @@ import * as Menu from '@radix-ui/react-dropdown-menu'
 import { ArrowRight, BarChart3, Check, ChevronDown, ChevronRight, Laptop, LogIn, Server, Settings2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { agentApi } from '../../services/api'
+import { llmConfigService } from '../../services/llm-config-api'
 import { useChatStore } from '../../stores/useChatStore'
 import { workChatModelsQueryKey } from './useWorkChatModels'
 import type { AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
@@ -126,7 +127,18 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     inUseConnectionId: destinationConnection, workspacePath, accountProduct: profileId,
   })
 
-  const onMenuOpen = (open: boolean) => { setMenuOpen(open); if (!open) setPendingSwitch(null); actions?.onOpenChange?.(open) }
+  // Cursor and Antigravity list models by running their program (agy takes seconds); ask as the menu opens so the
+  // list is ready, from the server's cache, by the time someone switches to them.
+  const warmAccountModelLists = () => {
+    for (const option of sources.options) {
+      const provider = option.provider || ''
+      if (!ACCOUNT_LISTED_PROVIDERS.has(provider) || option.id === selectedOption?.id || !workProviderIds.includes(provider)) continue
+      void llmConfigService.getProviderModels(provider, false, false, {
+        connection_id: switchAccountFor(option) || `global:${provider}`, workspace_path: workspacePath, product: profileId,
+      }).catch(() => undefined)
+    }
+  }
+  const onMenuOpen = (open: boolean) => { setMenuOpen(open); if (open) warmAccountModelLists(); else setPendingSwitch(null); actions?.onOpenChange?.(open) }
   const onMenuClose = (event: Event) => { const action = afterClose.current; afterClose.current = null; if (action) { event.preventDefault(); action() } }
   const triggerExtra = <>
   </>
@@ -271,8 +283,8 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         <label className={fieldClass}><span className="text-muted-foreground">Account</span><select className={selectClass} value={destinationConnection} onChange={event => stageDestination(pendingSwitch.option, event.target.value)}>
           {cliGroups.find(group => group.option.id === pendingSwitch.option.id)?.accounts.map(account => <option key={account.id} value={account.id}>{accountOptionLabel(account)}</option>)}
         </select></label>
-        <label className={fieldClass}><span className="text-muted-foreground">Model</span><select className={selectClass} value={destinationReady ? pendingModelID : ''} disabled={destination.accountSelectionDisabled || !destinationModels.length} onChange={event => setPendingSwitch({ ...pendingSwitch, modelId: event.target.value, effort: undefined })}>
-          {!destinationReady && <option value="">Choose a model</option>}
+        <label className={fieldClass}><span className="text-muted-foreground">Model</span><select className={selectClass} value={destination.accountModelsLoading ? '' : destinationReady ? pendingModelID : ''} disabled={destination.accountModelsLoading || destination.accountSelectionDisabled || !destinationModels.length} onChange={event => setPendingSwitch({ ...pendingSwitch, modelId: event.target.value, effort: undefined })}>
+          {destination.accountModelsLoading ? <option value="">Loading models…</option> : !destinationReady && <option value="">Choose a model</option>}
           {modelOptionGroups(destinationModels).map(group => group.label
             ? <optgroup key={group.label} label={group.label}>{group.models.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}</optgroup>
             : group.models.map(model => <option key={model.id} value={model.id}>{model.label}</option>))}
@@ -285,7 +297,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
       <p className="mb-4 text-xs leading-relaxed text-muted-foreground">{changesCLI
         ? `${pendingCLI} starts with recent messages and access to the full saved conversation. It can search older history when needed—not load it all upfront.`
         : `${contextTokens > 0 ? `This chat has ${formatTokens(contextTokens)} tokens. ` : ''}Continue with the current context, or summarize it first to make it smaller.`}</p>
-      <Menu.Item disabled={changesCLI && !destinationReady} ref={confirmSwitchRef} className={`${switchActionClass} mb-2 border-foreground/80 bg-foreground text-background data-[highlighted]:opacity-90`}
+      <Menu.Item disabled={changesCLI && (!destinationReady || destination.accountModelsLoading)} ref={confirmSwitchRef} className={`${switchActionClass} mb-2 border-foreground/80 bg-foreground text-background data-[highlighted]:opacity-90`}
         onSelect={() => void finishSwitch(!changesCLI)}>{changesCLI ? `Switch to ${pendingCLI}` : 'Summarize & switch'}</Menu.Item>
       {!changesCLI && <Menu.Item className={`${switchActionClass} border-border data-[highlighted]:bg-muted`} onSelect={() => void finishSwitch(false)}>Keep full history & switch</Menu.Item>}
       <p className="mt-2 text-[11px] text-muted-foreground">{changesCLI ? 'Your chat stays here. No automatic summary.' : 'A summary keeps the key context, not every detail.'}</p>
