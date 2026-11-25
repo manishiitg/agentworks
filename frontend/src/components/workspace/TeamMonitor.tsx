@@ -163,7 +163,8 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
    {(p.done||p.teams.length>0)&&<p className="ml-6 truncate text-[10px] text-muted-foreground">{[p.done&&`Today: ${p.done}`,p.teams.join(', ')].filter(Boolean).join(' · ')}</p>}
    {p.now.slice(0,2).map((n,i)=><p key={i} title={nowLine(n,false)} className="ml-6 truncate text-[11px] text-muted-foreground">{`${n.agent}${n.title?` — ${n.title}`:''}${n.team?` · ${n.team}`:''}`}</p>)}
   </div>}
- const adminView=sources.filter(source=>source.others.length>0).map(source=><div key={`others:${source.connectionId}`} className="min-w-0">
+// A live reload can keep a Team list fetched before others existed; skip it instead of crashing the app.
+ const adminView=sources.filter(source=>source.others?.length).map(source=><div key={`others:${source.connectionId}`} className="min-w-0">
    <h4 className={`${section} border-t border-border`}>Not in your Teams{multi&&source.network?` · ${source.network}`:''} <span className="ml-1 rounded bg-muted px-1 normal-case tracking-normal">admin</span></h4>
    {source.others.map(p=><div key={p.user_id} className="min-w-0 rounded-md px-2 py-1.5 hover:bg-muted/50">
     <div className="flex min-w-0 items-center gap-2"><span className="relative inline-flex shrink-0"><Avatar name={p.person} className="h-[18px] w-[18px] shrink-0 rounded-full text-[9px]"/>{p.active&&<span aria-label="Working" className="absolute -bottom-px -right-px h-1.5 w-1.5 rounded-full border border-popover bg-emerald-500"/>}</span><span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{p.person}</span>{status(p.active?'active now':undefined,p.last?timeAgo(p.last):undefined)}</div>
