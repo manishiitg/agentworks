@@ -13,7 +13,7 @@ type Card = { key: string; source: MonitorSource; crewId: string; live: TeamLive
 
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 const short = (at?: string) => at ? timeAgo(at).replace(/ ago$/, '') : ''
-const section = 'mb-2 mt-5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground first:mt-0'
+const section = 'mb-2 mt-6 text-[10px] font-medium uppercase tracking-wide text-muted-foreground'
 const grid = 'grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(20rem,1fr))]'
 const card = 'min-w-0 rounded-xl border border-border bg-card p-3'
 const sub = 'truncate text-[11px] text-muted-foreground'
@@ -104,7 +104,7 @@ export default function TeamsOverviewPage() {
           <Segmented label="Group" value={byPerson ? 'person' : 'team'} onChange={v => setByPerson(v === 'person')} options={[['team', 'By Team'], ['person', 'By person']]} />
         </div>
         {notice && <p role="status" className="mt-2 text-xs text-warning">{notice}</p>}
-        <div className="mt-4">
+        <div className="-mt-2">
           {!byPerson ? servers.map(id => {
             const group = cards.filter(c => c.networkId === id), quiet = group.filter(isQuiet)
             return <div key={id}>
