@@ -10,9 +10,9 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 )
 
-// claudePluginSkill is one skill from a Claude Code plugin the person installed
-// and turned on. Claude loads these itself in every chat it starts; the picker
-// lists them so a person can choose one, by its plugin-qualified name.
+// claudePluginSkill is one skill the program loads from the person's own setup:
+// their personal skills folder, or (Plugin set) a Claude Code plugin they
+// installed and turned on. The picker lists them so a person can choose one.
 type claudePluginSkill struct {
 	Name, Description, Plugin, Path string
 }
@@ -28,6 +28,52 @@ func claudeConfigHome() string {
 		return ""
 	}
 	return filepath.Join(home, ".claude")
+}
+
+// personalNativeSkills lists what the program loads from the person's own
+// setup on this Mac: ~/.claude/skills and turned-on plugins for Claude,
+// ~/.agents/skills for Codex.
+func personalNativeSkills(provider, projectDir string) []claudePluginSkill {
+	switch provider {
+	case "claude-code":
+		home := claudeConfigHome()
+		if home == "" {
+			return nil
+		}
+		return append(skillsInFolder(filepath.Join(home, "skills"), ""), claudePluginSkills(home, projectDir)...)
+	case "codex-cli":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil
+		}
+		return skillsInFolder(filepath.Join(home, ".agents", "skills"), "")
+	}
+	return nil
+}
+
+// skillsInFolder reads <dir>/*/SKILL.md (following links, as the programs do),
+// skipping skills marked not user-invocable. A plugin's skills are named
+// <plugin>:<skill>.
+func skillsInFolder(dir, plugin string) []claudePluginSkill {
+	files, _ := filepath.Glob(filepath.Join(dir, "*", "SKILL.md"))
+	sort.Strings(files)
+	var out []claudePluginSkill
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			continue
+		}
+		front, _, err := skills.ParseSkillFile(string(content))
+		if err != nil || front == nil || front.UserInvocable != nil && !*front.UserInvocable {
+			continue
+		}
+		name := firstNonEmptyTrimmed(front.Name, filepath.Base(filepath.Dir(file)))
+		if plugin != "" {
+			name = plugin + ":" + name
+		}
+		out = append(out, claudePluginSkill{Name: name, Description: front.Description, Plugin: plugin, Path: file})
+	}
+	return out
 }
 
 func readClaudeEnabledPlugins(path string, into map[string]bool) {
@@ -88,20 +134,7 @@ func claudePluginSkills(configHome, projectDir string) []claudePluginSkill {
 			if entry.Scope != "user" && (projectDir == "" || filepath.Clean(entry.ProjectPath) != filepath.Clean(projectDir)) {
 				continue
 			}
-			files, _ := filepath.Glob(filepath.Join(entry.InstallPath, "skills", "*", "SKILL.md"))
-			sort.Strings(files)
-			for _, file := range files {
-				content, err := os.ReadFile(file)
-				if err != nil {
-					continue
-				}
-				front, _, err := skills.ParseSkillFile(string(content))
-				if err != nil || front == nil || front.UserInvocable != nil && !*front.UserInvocable {
-					continue
-				}
-				name := firstNonEmptyTrimmed(front.Name, filepath.Base(filepath.Dir(file)))
-				out = append(out, claudePluginSkill{Name: plugin + ":" + name, Description: front.Description, Plugin: plugin, Path: file})
-			}
+			out = append(out, skillsInFolder(filepath.Join(entry.InstallPath, "skills"), plugin)...)
 			break
 		}
 	}

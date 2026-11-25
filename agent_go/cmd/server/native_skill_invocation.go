@@ -95,25 +95,29 @@ func currentNativeSkillChoices(snapshot runtimeSkillsResponse, requestedProvider
 		hash := sha256.Sum256([]byte(snapshot.SessionID + "\x00" + snapshot.Provider + "\x00" + snapshot.Directory + "\x00" + skill.FilePath))
 		out.Skills = append(out.Skills, nativeSkillChoice{ID: hex.EncodeToString(hash[:16]), Name: name, Description: skill.Frontmatter.Description, Source: "Prepared for this chat", Provider: snapshot.Provider, NativePath: native.Path})
 	}
-	// Claude also loads the skills of plugins the person installed and turned on
-	// in their own Claude Code (on this Mac, where that setup is theirs).
-	if snapshot.Provider == "claude-code" && IsLocalMode() {
+	// On a Mac the program also loads the person's own skills: their personal
+	// skills folder and, for Claude, the plugins they installed and turned on.
+	if IsLocalMode() {
 		listed := map[string]bool{}
 		for _, skill := range out.Skills {
 			listed[skill.Name] = true
 		}
-		for _, skill := range claudePluginSkills(claudeConfigHome(), snapshot.WorkingDirectory) {
-			if listed[skill.Name] || !claudecode.NativeSkillInvocable(skill.Name) || llmtypes.ValidateNativeSkill(llmtypes.NativeSkill{Name: skill.Name, Path: skill.Path}) != nil {
+		for _, skill := range personalNativeSkills(snapshot.Provider, snapshot.WorkingDirectory) {
+			if listed[skill.Name] || snapshot.Provider == "claude-code" && !claudecode.NativeSkillInvocable(skill.Name) || llmtypes.ValidateNativeSkill(llmtypes.NativeSkill{Name: skill.Name, Path: skill.Path}) != nil {
 				continue
 			}
 			listed[skill.Name] = true
-			hash := sha256.Sum256([]byte(snapshot.SessionID + "\x00" + snapshot.Provider + "\x00plugin\x00" + skill.Path))
-			out.Skills = append(out.Skills, nativeSkillChoice{ID: hex.EncodeToString(hash[:16]), Name: skill.Name, Description: skill.Description, Source: "From plugin: " + skill.Plugin, Provider: snapshot.Provider, NativePath: skill.Path})
+			source := "Your skills"
+			if skill.Plugin != "" {
+				source = "From plugin: " + skill.Plugin
+			}
+			hash := sha256.Sum256([]byte(snapshot.SessionID + "\x00" + snapshot.Provider + "\x00personal\x00" + skill.Path))
+			out.Skills = append(out.Skills, nativeSkillChoice{ID: hex.EncodeToString(hash[:16]), Name: skill.Name, Description: skill.Description, Source: source, Provider: snapshot.Provider, NativePath: skill.Path})
 		}
 	}
-	out.Message = "Choose one skill for this message. Selection requests native invocation; it is not proof the skill ran. This chat's prepared skills and, for Claude on this Mac, skills from your turned-on plugins are listed."
+	out.Message = "Choose one skill for this message. Selection requests native invocation; it is not proof the skill ran. This chat's prepared skills and, on this Mac, your own skills and turned-on plugins are listed."
 	if projectOnly {
-		out.Message = "Claude can explicitly invoke native project skills and skills from your turned-on plugins here. Private attached instructions are not native slash skills; they remain available through read_skill."
+		out.Message = "Claude can explicitly invoke project skills, your own skills and your turned-on plugins here. Private attached instructions are not native slash skills; they remain available through read_skill."
 	}
 	return out
 }
