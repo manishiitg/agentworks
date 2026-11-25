@@ -342,7 +342,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   const [messageSearch, setMessageSearch] = useState<{ key: string; items: ResourceItem[]; cursor: string; loading: boolean; error: boolean }>({ key: '', items: [], cursor: '', loading: false, error: false })
   const messageBatch = useRef({ key: '', items: [] as ResourceItem[], cursor: '', page: 0 })
   const messageKey = `${resourceScope}:${query.trim()}`
-  const messageEnabled = isOpen && !!user && (category === 'all' || category === 'chat') && !scopeFilter && !query.trim().startsWith('@') && [...query.trim()].length >= 2 && [...query.trim()].length <= 200
+  // All still matches chat names, but only Chats searches the saved messages.
+  const messageEnabled = isOpen && !!user && category === 'chat' && !scopeFilter && !query.trim().startsWith('@') && [...query.trim()].length >= 2 && [...query.trim()].length <= 200
   useEffect(() => {
     if (!messageEnabled) {
       // Reopening search must get fresh admission, not resurface snippets
@@ -864,7 +865,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     {messageSearch.loading ? <span role="status">Searching messages…</span> : messageSearch.error ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>Message search could not finish. Retry</button> : messageSearch.cursor ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>{messageSearch.items.length ? 'Search older messages' : 'No matches in messages searched so far · Search older messages'}</button> : <span>{messageSearch.items.length ? 'Message search complete' : 'No matching messages'}</span>}
   </div>
 
-  const placeholder = filesFolder ? 'Search chats, projects, files, artifacts, schedules, panels and pages…' : 'Search chats, projects, artifacts, schedules, panels and pages…'
+  const placeholder = category === 'chat' ? 'Search chat names and messages…' : category === 'file' ? 'Search files in this project…' : 'Search…'
   const emptyText = query ? 'No matching items' : scopeFilter ? 'No items in this list' : 'No work to switch to. Search for a product or menu.'
   return (
     <div
