@@ -200,3 +200,25 @@ func TestMotionLabelFollowsPublishedRevision(t *testing.T) {
 		t.Fatal("restore lost revisioned motion metadata")
 	}
 }
+
+// An Artifact is a finished page with no project data (owner rule): TSX, scripts and data calls are refused; plain HTML saves.
+func TestArtifactIsStaticHTML(t *testing.T) {
+	docs := t.TempDir()
+	root := "Crew/example"
+	if err := os.MkdirAll(filepath.Join(docs, root), 0755); err != nil {
+		t.Fatal(err)
+	}
+	yes := true
+	for name, files := range map[string]map[string]string{
+		"tsx":       {"index.tsx": "export default function Page() { return null }"},
+		"script":    {"index.html": "<p>hi</p>", "scripts/data.py": "print(1)"},
+		"data call": {"index.html": "<script>window.report.query('select 1')</script>"},
+	} {
+		if _, err := Execute(context.Background(), docs, Request{Root: root, Action: "create", ID: "page", Title: "Page", IncludeDraft: true, Artifact: &yes, Files: files}); err == nil {
+			t.Fatalf("%s: artifact with project data must be refused", name)
+		}
+	}
+	if _, err := Execute(context.Background(), docs, Request{Root: root, Action: "create", ID: "page", Title: "Page", IncludeDraft: true, Artifact: &yes, Files: map[string]string{"index.html": "<h1>Plan</h1><style>h1{color:red}</style>"}}); err != nil {
+		t.Fatalf("plain HTML artifact refused: %v", err)
+	}
+}
