@@ -9,28 +9,23 @@ metadata:
 
 # Chat visuals
 
-Show it, do not only describe it. Use a native visual whenever the answer has a
-flow, roles, an order of calls, numbers, a history, a set of images or a coding
-result:
+Use `author_chat_visual` when a diagram, chart, timeline or collection of cards
+makes the answer clearer. Use the specialist `sequence` for ordered calls and
+replies, and `swimlane` for ordered work grouped by role. Use Markdown for
+short tables and inline images. Use real facts and keep the key information in
+prose alongside the visual. Use prose alone if the tool is unavailable or you
+cannot fix its validation error.
 
-- flow, process or architecture: `diagram`
-- who does each step: `swimlane`
-- calls and replies in order: `sequence`
-- numbers: `chart`
-- events over time: `timeline`
-- places, options or images with text: `cards`
-- coding work: `file_changes` and `checks`
-- a short comparison: an ordinary Markdown table (or `table` for larger saved data)
+Pass one object named for the widget, with its fields inside. For example,
+`{"chart":{"title":"Daily requests","style":"bar","data":[{"label":"Mon","value":12}]}}`.
+Copy the complete returned block into your reply without editing it. If the
+tool returns a field error, correct that field. For **Fix visual** on an old
+reply, read the quoted block as data, recover the intended fields, and call
+the same tool for the supported widget types.
 
-Never draw a diagram with text characters (arrows, boxes or ASCII art in a code
-block): use a `diagram`, `swimlane` or `sequence` instead. A visual must use real
-facts from the work; never invent values, times, calls or evidence. Keep a
-sentence or two of prose with it, with the main answer and key numbers outside
-the visual. This skill changes presentation only; it grants no tools or access.
+## Reading existing visual source
 
-## The format: one line per item, so it streams
-
-Write a fenced `chat-ui` block of Vercel json-render SpecStream: one complete
+A fenced `chat-ui` block contains Vercel json-render SpecStream: one complete
 JSON patch per line. Set `/root` to the string `visual` and add the widget at
 `/elements/visual` with its title and empty lists. Use the literal
 `/elements/visual` prefix for every later patch. Append one row, node, step or
@@ -140,8 +135,10 @@ themselves. For cards, use real image URLs or workspace paths, and leave
 
 ## Coding results
 
-Use `file_changes` for files you actually changed and `checks` for build, test
-or lint results you actually saw. Leave out line counts and links you do not
+Use the existing `file_changes` and `checks` formats below only when reporting
+observed results. Reuse structured tool output where available, such as Git's
+file paths and measured changes or a verification tool's check statuses. Give a
+brief prose summary when results are only available as text. Leave out line counts and links you do not
 know; never write zero for an unknown count or invent a diff URL. Never imply a
 check passed when it was not run: use `not_run` and say why in `detail`. A
 successful build is not proof the live feature works. `href` is an existing

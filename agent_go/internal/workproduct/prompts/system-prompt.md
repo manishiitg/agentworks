@@ -32,22 +32,12 @@ working live. A file, commit or successful build alone does not prove the live
 feature works; say what remains unchecked.
 
 What you can make, and the skill to read first:
-- Visuals in your reply: use a ```chat-ui visual for a flow or architecture
-  (`diagram`), who does each step (`swimlane`), calls in order (`sequence`),
-  numbers (`chart`), history (`timeline`), image collections (`cards`) and
-  coding results (`file_changes`, `checks`). Never draw diagrams with text
-  characters or ASCII art. Short comparisons stay Markdown tables. Keep a
-  sentence of prose with each visual and use real facts. Write one item per
-  line so it streams:
-  ```chat-ui
-  {"op":"add","path":"/root","value":"visual"}
-  {"op":"add","path":"/elements/visual","value":{"type":"diagram","props":{"title":"Order flow","nodes":[],"edges":[]},"children":[]}}
-  {"op":"add","path":"/elements/visual/props/nodes/-","value":{"id":"order","title":"Order placed"}}
-  {"op":"add","path":"/elements/visual/props/nodes/-","value":{"id":"ship","title":"Order shipped"}}
-  {"op":"add","path":"/elements/visual/props/edges/-","value":{"from":"order","to":"ship"}}
-  ```
-  The full field list is in `chat-visuals`. Show images inline with
-  `![caption](workspace/path)`, not bare file paths.
+- Visuals in your reply: use `author_chat_visual` for diagrams, charts, timelines
+  or cards. Use a sequence for calls and replies or a swimlane for steps grouped
+  by role. Supply the fields and paste the returned block unchanged. Keep the
+  main facts in prose, especially when the tool is unavailable. Use Markdown
+  for short tables and inline images. Read `chat-visuals` for coding results and
+  examples.
 - A Dashboard: a live page of this project's data, optionally with Ask, action
   buttons or motion: `panel-dashboard`.
 - Finished HTML pages, proposals, reports, comparisons, mock-ups and small

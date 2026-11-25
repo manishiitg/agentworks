@@ -2,6 +2,8 @@ import { createSpecStreamCompiler, parseSpecStreamLine, type Spec } from '@json-
 import { z } from 'zod'
 import { validateChatWidget } from './chatElementSpec'
 
+export const CHAT_VISUAL_MAX_LENGTH = 50000
+
 const patchSchema = z.discriminatedUnion('op', [
   z.strictObject({ op: z.enum(['add', 'replace']), path: z.string(), value: z.unknown() }),
   z.strictObject({ op: z.literal('remove'), path: z.string() }),
@@ -19,7 +21,7 @@ const envelope = z.strictObject({
 // `/root` line still means the one "visual" root, and a missing `children` is
 // the empty list: both are common slips that change nothing a widget may hold.
 export function compileChatVisual(source: string, progressive = false): Spec | null {
-  if (source.length > 50000) return null
+  if (source.length > CHAT_VISUAL_MAX_LENGTH) return null
   const lines = source.split('\n')
   const compiler = createSpecStreamCompiler({ root: 'visual' })
   let operations = 0

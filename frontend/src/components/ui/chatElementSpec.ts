@@ -26,7 +26,7 @@ export type ChatElement =
   | { type: 'sequence'; title: string; participants: DiagramParticipant[]; messages: SequenceMessage[] }
   | { type: 'diagram'; title: string; direction: 'vertical' | 'horizontal'; nodes: DiagramNode[]; edges: DiagramEdge[] }
 
-const text = (max: number) => z.string().min(1).max(max).refine(value => value.trim().length > 0)
+const text = (max: number) => z.string().min(1).max(max).refine(value => value.trim().length > 0, 'Use non-blank text')
 const webURL = text(2048).refine(value => {
   if (/[\s<>\\\u0000-\u001f\u007f]/.test(value)) return false
   try { return ['http:', 'https:'].includes(new URL(value).protocol) } catch { return false }
@@ -40,8 +40,33 @@ const lineCount = z.number().int().min(0).max(1e9)
 
 const nodeID = text(48).regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/)
 const actor = z.strictObject({ id: nodeID, title: text(80) })
-const unique = (items: { id: string }[]) => new Set(items.map(item => item.id)).size === items.length
-const actors = z.array(actor).min(1).max(6).refine(unique)
+function uniqueIDs(items: { id: string }[], ctx: z.RefinementCtx) {
+  const seen = new Set<string>()
+  items.forEach(({ id }, index) => {
+    if (seen.has(id)) ctx.addIssue({ code: 'custom', path: [index, 'id'], message: 'Use a unique ID' })
+    seen.add(id)
+  })
+}
+
+function checkReferences(
+  ctx: z.RefinementCtx,
+  list: string,
+  records: Record<string, string | boolean | undefined>[],
+  fields: string[],
+  targets: { id: string }[],
+  targetList: string,
+) {
+  const ids = new Set(targets.map(item => item.id))
+  records.forEach((record, index) => {
+    for (const field of fields) {
+      if (!ids.has(String(record[field]))) {
+        ctx.addIssue({ code: 'custom', path: [list, index, field], message: `Use an ID from ${targetList}` })
+      }
+    }
+  })
+}
+
+const actors = z.array(actor).min(1).max(6).superRefine(uniqueIDs)
 
 export const chatWidgetSchemas = {
   file_changes: z.strictObject({ title: text(160), files: z.array(z.strictObject({
@@ -65,15 +90,15 @@ export const chatWidgetSchemas = {
   diagram: z.strictObject({ title: text(160), direction: z.enum(['vertical', 'horizontal']).default('vertical'),
     nodes: z.array(z.strictObject({ id: nodeID, title: text(100), description: text(280).optional(), emphasis: z.boolean().optional(),
       items: z.array(z.strictObject({ title: text(80), description: text(160).optional() })).min(1).max(6).optional(),
-    })).min(1).max(16).refine(unique),
+    })).min(1).max(16).superRefine(uniqueIDs),
     edges: z.array(z.strictObject({ from: nodeID, to: nodeID, label: text(80).optional(), bidirectional: z.boolean().optional() })).max(24).default([]),
-  }).refine(value => value.edges.every(edge => value.nodes.some(node => node.id === edge.from) && value.nodes.some(node => node.id === edge.to))),
+  }).superRefine((value, ctx) => checkReferences(ctx, 'edges', value.edges, ['from', 'to'], value.nodes, 'nodes')),
   swimlane: z.strictObject({ title: text(160), lanes: actors,
-    steps: z.array(z.strictObject({ id: nodeID, lane: nodeID, title: text(100), description: text(280).optional() })).min(1).max(16).refine(unique),
-  }).refine(value => value.steps.every(step => value.lanes.some(lane => lane.id === step.lane))),
+    steps: z.array(z.strictObject({ id: nodeID, lane: nodeID, title: text(100), description: text(280).optional() })).min(1).max(16).superRefine(uniqueIDs),
+  }).superRefine((value, ctx) => checkReferences(ctx, 'steps', value.steps, ['lane'], value.lanes, 'lanes')),
   sequence: z.strictObject({ title: text(160), participants: actors,
     messages: z.array(z.strictObject({ from: nodeID, to: nodeID, label: text(120), reply: z.boolean().optional() })).min(1).max(24),
-  }).refine(value => value.messages.every(message => value.participants.some(actor => actor.id === message.from) && value.participants.some(actor => actor.id === message.to))),
+  }).superRefine((value, ctx) => checkReferences(ctx, 'messages', value.messages, ['from', 'to'], value.participants, 'participants')),
 }
 
 // A deliberately compact chat catalog; registered widgets keep their existing
