@@ -167,3 +167,44 @@ func TestAgyNativeRejectsLinksForeignStateAndUnfinishedTurns(t *testing.T) {
 		t.Fatal("exported an unknown table")
 	}
 }
+
+// Edit and resend (#3134) on an agy chat: the staged copy ends just before the edited
+// prompt, counting matches from the newest, and the original conversation is untouched.
+func TestCutBeforeAgyDropsThePromptAndEverythingAfter(t *testing.T) {
+	store := t.TempDir()
+	path := writeAgyConversation(t, store, agyTestID)
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for idx, step := range []struct {
+		kind int
+		text string
+	}{{14, "<instructions>x</instructions> fix the login"}, {15, "done"}, {14, "add dark mode"}, {15, "added"}, {14, "fix the login"}, {15, "fixed"}} {
+		if _, err := db.Exec("INSERT INTO steps (idx, step_type, status, step_payload) VALUES (?,?,3,?)", idx, step.kind, []byte(step.text)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.Close()
+	b, err := ExportAgy("acp", store, t.TempDir(), agyTestID, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept, err := CutBefore(b, "fix the login", 2)
+	if err != nil || kept != 0 {
+		t.Fatalf("older match: kept=%d err=%v", kept, err)
+	}
+	staged, _ := Path(b.Root, agyRoot, false)
+	count := func(p string) (n int) {
+		d, _ := sql.Open("sqlite", "file:"+p)
+		defer d.Close()
+		d.QueryRow("SELECT COUNT(*) FROM steps").Scan(&n)
+		return n
+	}
+	if count(staged) != 0 || count(path) != 6 {
+		t.Fatalf("staged=%d original=%d", count(staged), count(path))
+	}
+	if _, err := CutBefore(b, "add dark mode", 1); err != ErrCutNotFound {
+		t.Fatalf("cut prompt still found: %v", err)
+	}
+}
