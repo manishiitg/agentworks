@@ -291,6 +291,10 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 				}
 				continue
 			}
+			llmtypes.AgentTurnStage(s.owner, "codex-cli", "cli_output")
+			if msg.Method == "item/agentMessage/delta" || msg.Method == "item/reasoning/summaryTextDelta" || msg.Method == "item/reasoning/textDelta" {
+				llmtypes.AgentTurnStage(s.owner, "codex-cli", "first_delta")
+			}
 			metadata := map[string]any{"codex_thread_id": thread, "codex_turn_id": turn, "codex_stream_source": "app-server"}
 			switch msg.Method {
 			case "turn/plan/updated":
