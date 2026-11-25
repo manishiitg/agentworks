@@ -121,7 +121,7 @@ func writeCrewTeamOfflineChoice(w http.ResponseWriter, e crewTeamOfflineChoiceNe
 		who = e.Person + "'s " + e.Name
 	}
 	offFor := crewTeamOfflineFor(time.Since(e.Since))
-	line := fmt.Sprintf("%s has been offline for %s, so nothing was sent yet.", who, offFor)
+	line := fmt.Sprintf("%s has been offline for %s, so your question has not been sent yet.", who, offFor)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusConflict)
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "offline_choice", "message": e.Error(), "line": line, "offline_for": offFor, "readable": e.Readable}})
