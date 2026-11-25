@@ -65,8 +65,8 @@ export const LLMGenerationWithRetryEventDisplay: React.FC<LLMGenerationWithRetry
                   </span>
                 </div>
                 {isUsageExpanded && (
-                  <div className="mt-1 bg-white dark:bg-gray-800 dark-plus:bg-gray-800 border border-gray-200 dark:border-gray-700 dark-plus:border-gray-700 rounded p-1.5 max-h-32 overflow-y-auto">
-                    <div className="text-xs font-mono text-gray-700 dark:text-gray-300 dark-plus:text-gray-300">
+                  <div className="mt-1 bg-card border border-border rounded p-1.5 max-h-32 overflow-y-auto">
+                    <div className="text-xs font-mono text-foreground">
                       {typeof event.usage === 'string' ? event.usage : JSON.stringify(event.usage, null, 2)}
                     </div>
                   </div>
@@ -104,13 +104,13 @@ export const LLMGenerationWithRetryEventDisplay: React.FC<LLMGenerationWithRetry
             <div className="mb-2">
               <div className="grid grid-cols-2 gap-2">
                 {event.primary_model && (
-                  <div className="bg-white dark:bg-blue-900/20 dark-plus:bg-blue-900/20 rounded p-2">
+                  <div className="bg-card dark:bg-blue-900/20 dark-plus:bg-blue-900/20 rounded p-2">
                     <span className="text-xs font-medium text-blue-600 dark:text-blue-400 dark-plus:text-blue-400 block">Primary Model</span>
                     <span className="text-sm font-semibold text-blue-700 dark:text-blue-300 dark-plus:text-blue-300">{event.primary_model}</span>
                   </div>
                 )}
                 {event.current_llm && (
-                  <div className="bg-white dark:bg-blue-900/20 dark-plus:bg-blue-900/20 rounded p-2">
+                  <div className="bg-card dark:bg-blue-900/20 dark-plus:bg-blue-900/20 rounded p-2">
                     <span className="text-xs font-medium text-blue-600 dark:text-blue-400 dark-plus:text-blue-400 block">Current LLM</span>
                     <span className="text-sm font-semibold text-blue-700 dark:text-blue-300 dark-plus:text-blue-300">{event.current_llm}</span>
                   </div>

@@ -538,10 +538,10 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     // only when the durable cursor says there is another page to fetch.
     if (agentEvent?.data?.has_more_history !== true) return null
     return (
-      <div className={`flex items-center gap-2 ${compact ? 'py-1' : 'py-2'} ${compact ? 'text-[10px]' : 'text-xs'} text-gray-400 dark:text-gray-500`}>
-        <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+      <div className={`flex items-center gap-2 ${compact ? 'py-1' : 'py-2'} ${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground`}>
+        <div className="flex-1 border-t border-border" />
         <span className="shrink-0 px-2">Previous conversation{count > 0 ? ` (${count} events)` : ''}</span>
-        <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+        <div className="flex-1 border-t border-border" />
       </div>
     )
   }
@@ -702,17 +702,17 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
               {data.preferred_tier_label}
             </span>
           )}
-          <span className={`font-medium ${actionColors[data.next_action || ''] || 'text-gray-700 dark:text-gray-300'}`}>
+          <span className={`font-medium ${actionColors[data.next_action || ''] || 'text-foreground'}`}>
             {data.next_action || 'unknown'}
           </span>
           {/* Iteration is deliberately not shown: it is identical for every
               route in a run, so repeating it per row is the same noise this
               layout exists to remove. It stays available in the run header. */}
           {data.todo_title && (
-            <span className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-400">{data.todo_title}</span>
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">{data.todo_title}</span>
           )}
           {data.progress_summary && (
-            <span className="w-full truncate text-[11px] text-gray-500 dark:text-gray-500">{data.progress_summary}</span>
+            <span className="w-full truncate text-[11px] text-muted-foreground">{data.progress_summary}</span>
           )}
         </div>
       </CompactWrapper>
@@ -735,17 +735,17 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
           </div>
           <div className={`space-y-1 ${compact ? 'text-xs' : 'text-sm'}`}>
             <div className="flex items-center gap-2">
-              <span className="text-gray-500 dark:text-gray-400">Todos:</span>
+              <span className="text-muted-foreground">Todos:</span>
               <span className="text-purple-600 dark:text-purple-400">
                 {data.completed_count}/{data.total_todos_count} completed
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-gray-500 dark:text-gray-400">Iterations:</span>
+              <span className="text-muted-foreground">Iterations:</span>
               <span className="text-purple-600 dark:text-purple-400">{data.total_iterations}</span>
             </div>
             {data.completion_reason && (
-              <div className={`${compact ? 'text-[10px]' : 'text-xs'} text-gray-600 dark:text-gray-400 italic mt-1`}>
+              <div className={`${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground italic mt-1`}>
                 {data.completion_reason}
               </div>
             )}
@@ -1004,7 +1004,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
                 </span>
               )}
               {reasoningLevel && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${reasoningColors[reasoningLevel] || 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${reasoningColors[reasoningLevel] || 'bg-muted text-muted-foreground'}`}>
                   {reasoningLevel}
                 </span>
               )}
@@ -1244,11 +1244,11 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
 
     const bgColor = isSuccess ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' :
                     isFailed ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' :
-                    'bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-800'
+                    'bg-muted/50 border-border'
     const textColor = isSuccess ? 'text-green-700 dark:text-green-300' :
                       isFailed ? 'text-red-700 dark:text-red-300' :
-                      'text-gray-700 dark:text-gray-300'
-    const dotColor = isSuccess ? 'bg-green-500' : isFailed ? 'bg-red-500' : 'bg-gray-400'
+                      'text-foreground'
+    const dotColor = isSuccess ? 'bg-green-500' : isFailed ? 'bg-red-500' : 'bg-muted-foreground/40'
     const statusLabel = isSuccess ? 'completed' : isFailed ? 'failed' : status
 
     return (
@@ -1274,7 +1274,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
               <div className="text-red-600 dark:text-red-400 whitespace-pre-wrap">{error}</div>
             )}
             {result && (
-              <div className="text-gray-600 dark:text-gray-400 max-h-40 overflow-y-auto overscroll-y-contain">
+              <div className="text-muted-foreground max-h-40 overflow-y-auto overscroll-y-contain">
                 <MarkdownRenderer content={result} />
               </div>
             )}
@@ -1292,13 +1292,13 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
 
     return (
       <CompactWrapper compact={compact}>
-        <div className={`bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-800 rounded-md ${compact ? 'p-2' : 'p-3'}`}>
+        <div className={`bg-muted/50 border border-border rounded-md ${compact ? 'p-2' : 'p-3'}`}>
           <div className="flex items-center gap-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-gray-400" />
-            <span className={`${compact ? 'text-xs' : 'text-sm'} font-medium text-gray-500 dark:text-gray-400`}>
+            <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground/40" />
+            <span className={`${compact ? 'text-xs' : 'text-sm'} font-medium text-muted-foreground`}>
               {displayName}
             </span>
-            <span className={`${compact ? 'text-[10px]' : 'text-xs'} text-gray-400 dark:text-gray-500`}>
+            <span className={`${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground`}>
               cancelled
             </span>
             <InspectExecutionButton target={fields.metadata?.inspection} />
@@ -1398,7 +1398,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
         <div className={`border rounded-md ${statusColor} ${compact ? 'p-2' : 'p-3'}`}>
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`${compact ? 'text-xs' : 'text-sm'} font-medium ${textColor}`}>{label}</span>
-            <span className={`${compact ? 'text-[10px]' : 'text-xs'} text-gray-500 dark:text-gray-400`}>{d?.step_title || d?.step_path}</span>
+            <span className={`${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground`}>{d?.step_title || d?.step_path}</span>
             {success
               ? <span className={`${compact ? 'text-[10px]' : 'text-xs'} text-green-600 dark:text-green-400`}>✓ passed</span>
               : <span className={`${compact ? 'text-[10px]' : 'text-xs'} text-red-600 dark:text-red-400`}>✗ {exitLabel}</span>
@@ -1414,7 +1414,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
                 </div>
                 {isTruncated && (
                   <details className="mt-2">
-                    <summary className={`cursor-pointer ${compact ? 'text-[10px]' : 'text-xs'} text-gray-500 dark:text-gray-400 select-none`}>
+                    <summary className={`cursor-pointer ${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground select-none`}>
                       View full error
                     </summary>
                     <pre className={`mt-1 font-mono ${compact ? 'text-[10px]' : 'text-xs'} text-red-600 dark:text-red-400 whitespace-pre-wrap break-all bg-red-50 dark:bg-red-950/20 rounded p-2 max-h-64 overflow-y-auto`}>
@@ -1427,20 +1427,20 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
           })()}
           {successOutput && (
             <details className="mt-2">
-              <summary className={`cursor-pointer ${compact ? 'text-[10px]' : 'text-xs'} text-gray-500 dark:text-gray-400 select-none`}>
+              <summary className={`cursor-pointer ${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground select-none`}>
                 Output
               </summary>
-              <pre className={`mt-1 font-mono ${compact ? 'text-[10px]' : 'text-xs'} text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-all bg-gray-50 dark:bg-gray-800 rounded p-2 max-h-64 overflow-y-auto`}>
+              <pre className={`mt-1 font-mono ${compact ? 'text-[10px]' : 'text-xs'} text-foreground whitespace-pre-wrap break-all bg-muted/50 rounded p-2 max-h-64 overflow-y-auto`}>
                 {successOutput}
               </pre>
             </details>
           )}
           {d?.script_content && (
             <details className="mt-1">
-              <summary className={`cursor-pointer ${compact ? 'text-[10px]' : 'text-xs'} text-gray-500 dark:text-gray-400 select-none`}>
+              <summary className={`cursor-pointer ${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground select-none`}>
                 View main.py
               </summary>
-              <pre className={`mt-1 font-mono ${compact ? 'text-[10px]' : 'text-xs'} text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-all bg-gray-50 dark:bg-gray-800 rounded p-2 max-h-64 overflow-y-auto`}>
+              <pre className={`mt-1 font-mono ${compact ? 'text-[10px]' : 'text-xs'} text-foreground whitespace-pre-wrap break-all bg-muted/50 rounded p-2 max-h-64 overflow-y-auto`}>
                 {d.script_content}
               </pre>
             </details>

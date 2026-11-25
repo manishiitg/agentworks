@@ -90,7 +90,7 @@ export const CodeExecutionToolCallEndDisplay: React.FC<CodeExecutionToolCallEndD
   const renderHeaderRight = () => (
     <div className="flex items-center gap-2 flex-shrink-0">
       {event.timestamp && (
-        <div className="text-xs text-gray-600 dark:text-gray-400">
+        <div className="text-xs text-muted-foreground">
           {new Date(event.timestamp).toLocaleTimeString()}
         </div>
       )}
@@ -98,7 +98,7 @@ export const CodeExecutionToolCallEndDisplay: React.FC<CodeExecutionToolCallEndD
       {/* Output Toggle */}
       <button
         onClick={toggle}
-        className="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300 transition-colors flex items-center gap-1"
+        className="p-0.5 hover:bg-muted rounded text-foreground transition-colors flex items-center gap-1"
         title={isOutputExpanded ? "Collapse output (Alt+Click for all)" : "Expand output (Alt+Click for all)"}
       >
         <span className="text-[10px] uppercase font-bold">Output</span>
@@ -177,16 +177,16 @@ export const CodeExecutionToolCallEndDisplay: React.FC<CodeExecutionToolCallEndD
 
         {isOutputExpanded && (
           <div className="mt-2">
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-3">
+            <div className="bg-card border border-border rounded-md p-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-xs font-medium text-indigo-700 dark:text-indigo-300">
                   OpenAPI Spec
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
+                <div className="text-xs text-muted-foreground">
                   {lineCount} line{lineCount !== 1 ? 's' : ''} • {specLength} chars
                 </div>
               </div>
-              <pre className="text-xs text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap overflow-x-auto bg-gray-50 dark:bg-gray-900 p-3 rounded max-h-48 overflow-y-auto">
+              <pre className="text-xs text-foreground font-mono whitespace-pre-wrap overflow-x-auto bg-muted/50 p-3 rounded max-h-48 overflow-y-auto">
                 {resultText || eventResultText}
               </pre>
             </div>
@@ -239,15 +239,15 @@ export const CodeExecutionToolCallEndDisplay: React.FC<CodeExecutionToolCallEndD
 
     const bgColor = isError
       ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-      : 'bg-slate-100 dark:bg-slate-800/50 border-slate-300 dark:border-slate-700'
+      : 'bg-muted border-border'
 
     const textColor = isError
       ? 'text-red-700 dark:text-red-300'
-      : 'text-slate-700 dark:text-slate-300'
+      : 'text-foreground'
 
     const secondaryTextColor = isError
       ? 'text-red-600 dark:text-red-400'
-      : 'text-slate-500 dark:text-slate-400'
+      : 'text-muted-foreground'
 
     const statusIcon = isError ? '❌' : isSyntheticSettle ? '○' : '✅'
     const statusText = isError
@@ -296,13 +296,13 @@ export const CodeExecutionToolCallEndDisplay: React.FC<CodeExecutionToolCallEndD
 
         {output.trim() && isOutputExpanded && (
           <div className="mt-2">
-            <div className={`border rounded-md p-3 ${isFormatted ? 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700' : 'bg-gray-900 dark:bg-gray-950 border-gray-700'}`}>
+            <div className={`border rounded-md p-3 ${isFormatted ? 'bg-card border-border' : 'bg-muted border-border'}`}>
               <div className="flex items-center justify-between mb-2">
-                <div className={`text-xs font-medium ${isError ? 'text-red-400' : isFormatted ? 'text-gray-600 dark:text-gray-400' : 'text-gray-400'}`}>
+                <div className={`text-xs font-medium ${isError ? 'text-red-400' : isFormatted ? 'text-muted-foreground' : 'text-muted-foreground'}`}>
                   {isError ? 'Error Output' : 'Shell Output'}
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className={`text-xs ${isFormatted ? 'text-gray-400 dark:text-gray-500' : 'text-gray-500'}`}>
+                  <div className={`text-xs ${isFormatted ? 'text-muted-foreground' : 'text-muted-foreground'}`}>
                     {output.split('\n').length} line{output.split('\n').length !== 1 ? 's' : ''} • {output.length} chars
                   </div>
                   {detectedFormat && (
@@ -311,7 +311,7 @@ export const CodeExecutionToolCallEndDisplay: React.FC<CodeExecutionToolCallEndD
                       className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors ${
                         isFormatted
                           ? 'bg-blue-600 border-blue-500 text-white hover:bg-blue-700'
-                          : 'bg-gray-600 border-gray-500 text-white hover:bg-gray-500'
+                          : 'bg-muted border-border text-foreground hover:bg-muted/80'
                       }`}
                       title={isFormatted ? 'Show raw text' : `Render as ${detectedFormat}`}
                     >
@@ -425,22 +425,22 @@ export const CodeExecutionToolCallEndDisplay: React.FC<CodeExecutionToolCallEndD
             <div className="mt-2 space-y-3">
               {/* MCP Servers */}
               {data.servers && data.servers.length > 0 && (
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-3">
+                <div className="bg-card border border-border rounded-md p-3">
                   <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-2">
                     📦 MCP Servers ({data.servers.length})
                   </div>
                   <div className="space-y-2 max-h-96 overflow-y-auto">
                     {data.servers.map((server, idx) => (
                       <div key={idx} className="border-l-2 border-blue-300 dark:border-blue-700 pl-2">
-                        <div className="font-mono text-sm font-semibold text-gray-800 dark:text-gray-200">
+                        <div className="font-mono text-sm font-semibold text-foreground">
                           {server.name}
                         </div>
-                        <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                        <div className="text-xs text-muted-foreground mt-1">
                           Package: <span className="font-mono">{server.package}</span>
                         </div>
                         {server.tools && server.tools.length > 0 && (
                           <div className="mt-1">
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                            <div className="text-xs text-muted-foreground mb-1">
                               Tools ({server.tools.length}):
                             </div>
                             <div className="flex flex-wrap gap-1">
@@ -463,11 +463,11 @@ export const CodeExecutionToolCallEndDisplay: React.FC<CodeExecutionToolCallEndD
 
               {/* Custom Tools */}
               {data.custom_tools && (
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-3">
+                <div className="bg-card border border-border rounded-md p-3">
                   <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-2">
                     🔧 Custom Tools
                   </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                  <div className="text-xs text-muted-foreground">
                     Package: <span className="font-mono">{data.custom_tools.package}</span>
                   </div>
                   {data.custom_tools.tools && data.custom_tools.tools.length > 0 && (
@@ -487,11 +487,11 @@ export const CodeExecutionToolCallEndDisplay: React.FC<CodeExecutionToolCallEndD
 
               {/* Virtual Tools */}
               {data.virtual_tools && (
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-3">
+                <div className="bg-card border border-border rounded-md p-3">
                   <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-2">
                     ⚡ Virtual Tools
                   </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                  <div className="text-xs text-muted-foreground">
                     Package: <span className="font-mono">{data.virtual_tools.package}</span>
                   </div>
                   {data.virtual_tools.tools && data.virtual_tools.tools.length > 0 && (
@@ -575,22 +575,22 @@ export const CodeExecutionToolCallEndDisplay: React.FC<CodeExecutionToolCallEndD
             <div className="mt-2 space-y-3">
               {/* MCP Servers */}
               {data.servers && data.servers.length > 0 && (
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-3">
+                <div className="bg-card border border-border rounded-md p-3">
                   <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-2">
                     📦 MCP Servers ({data.servers.length})
                   </div>
                   <div className="space-y-2 max-h-96 overflow-y-auto">
                     {data.servers.map((server, idx) => (
                       <div key={idx} className="border-l-2 border-blue-300 dark:border-blue-700 pl-2">
-                        <div className="font-mono text-sm font-semibold text-gray-800 dark:text-gray-200">
+                        <div className="font-mono text-sm font-semibold text-foreground">
                           {server.name}
                         </div>
-                        <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                        <div className="text-xs text-muted-foreground mt-1">
                           Package: <span className="font-mono">{server.package}</span>
                         </div>
                         {server.tools && server.tools.length > 0 && (
                           <div className="mt-1">
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                            <div className="text-xs text-muted-foreground mb-1">
                               Tools ({server.tools.length}):
                             </div>
                             <div className="flex flex-wrap gap-1">
@@ -613,11 +613,11 @@ export const CodeExecutionToolCallEndDisplay: React.FC<CodeExecutionToolCallEndD
 
               {/* Custom Tools */}
               {data.custom_tools && (
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-3">
+                <div className="bg-card border border-border rounded-md p-3">
                   <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-2">
                     🔧 Custom Tools
                   </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                  <div className="text-xs text-muted-foreground">
                     Package: <span className="font-mono">{data.custom_tools.package}</span>
                   </div>
                   {data.custom_tools.tools && data.custom_tools.tools.length > 0 && (
@@ -637,11 +637,11 @@ export const CodeExecutionToolCallEndDisplay: React.FC<CodeExecutionToolCallEndD
 
               {/* Virtual Tools */}
               {data.virtual_tools && (
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-3">
+                <div className="bg-card border border-border rounded-md p-3">
                   <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-2">
                     ⚡ Virtual Tools
                   </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                  <div className="text-xs text-muted-foreground">
                     Package: <span className="font-mono">{data.virtual_tools.package}</span>
                   </div>
                   {data.virtual_tools.tools && data.virtual_tools.tools.length > 0 && (
@@ -700,16 +700,16 @@ export const CodeExecutionToolCallEndDisplay: React.FC<CodeExecutionToolCallEndD
 
           {isOutputExpanded && (
             <div className="mt-2">
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-3">
+              <div className="bg-card border border-border rounded-md p-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-xs font-medium text-blue-700 dark:text-blue-300">
                     💻 Go Source Code
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                  <div className="text-xs text-muted-foreground">
                     {lineCount} line{lineCount !== 1 ? 's' : ''} • {resultText.length} chars
                   </div>
                 </div>
-                <pre className="text-xs text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap overflow-x-auto bg-gray-50 dark:bg-gray-900 p-3 rounded max-h-48 overflow-y-auto">
+                <pre className="text-xs text-foreground font-mono whitespace-pre-wrap overflow-x-auto bg-muted/50 p-3 rounded max-h-48 overflow-y-auto">
                   {resultText}
                 </pre>
               </div>
@@ -785,19 +785,19 @@ export const CodeExecutionToolCallEndDisplay: React.FC<CodeExecutionToolCallEndD
         {/* Display output or error */}
         {resultText && resultText.trim() && isOutputExpanded && (
           <div className="mt-2">
-            <div className={`bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-3`}>
+            <div className={`bg-card border border-border rounded-md p-3`}>
               <div className="flex items-center justify-between mb-2">
                 <div className={`text-xs font-medium ${isError ? 'text-red-700 dark:text-red-300' : 'text-purple-700 dark:text-purple-300'}`}>
                   {isError ? '🔨 Error Details' : '📝 Execution Output'}
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
+                <div className="text-xs text-muted-foreground">
                   {resultText.length} chars
                 </div>
               </div>
               <pre className={`text-xs font-mono whitespace-pre-wrap overflow-x-auto p-3 rounded max-h-96 overflow-y-auto ${ 
                 isError 
                   ? 'text-red-800 dark:text-red-200 bg-red-50 dark:bg-red-900/30' 
-                  : 'text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900'
+                  : 'text-foreground bg-muted/50'
               }`}> 
                 {resultText}
               </pre>

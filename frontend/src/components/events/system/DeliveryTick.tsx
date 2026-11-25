@@ -27,14 +27,14 @@ export const DeliveryTick: React.FC<{ metadata: Record<string, unknown> | undefi
   // Debug-level visibility: near-invisible grays. Failed keeps only a
   // faint red whisper.
   const tone = state === 'confirmed'
-    ? 'text-slate-300 dark:text-slate-500'
+    ? 'text-muted-foreground'
     : state === 'queued'
       ? 'text-amber-400 dark:text-amber-500'
       : state === 'unflushed'
-      ? 'text-stone-300 dark:text-stone-600'
+      ? 'text-muted-foreground'
       : state === 'failed'
         ? 'text-red-300/70 dark:text-red-400/50'
-        : 'text-slate-300 dark:text-slate-600'
+        : 'text-muted-foreground'
   return (
     <span data-testid="delivery-tick" data-state={state} title={title} className={`inline-flex shrink-0 select-none items-center gap-1 leading-none ${tone}`} aria-label={title}>
       <Icon className={`h-3 w-3 ${state === 'sending' ? 'animate-spin' : ''}`} aria-hidden="true" />

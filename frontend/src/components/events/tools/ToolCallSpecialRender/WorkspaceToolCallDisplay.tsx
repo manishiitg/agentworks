@@ -52,7 +52,7 @@ export const WorkspaceToolCallDisplay: React.FC<WorkspaceToolCallDisplayProps> =
   const toolName = event.tool_name || ''
 
   const parallelBadge = event.is_parallel ? (
-    <span className="ml-1.5 text-[10px] text-gray-500 dark:text-gray-400 font-normal opacity-75">
+    <span className="ml-1.5 text-[10px] text-muted-foreground font-normal opacity-75">
       (parallel)
     </span>
   ) : null
@@ -98,9 +98,9 @@ export const WorkspaceToolCallDisplay: React.FC<WorkspaceToolCallDisplayProps> =
 
         {showContent && filepath && (
           <div className="mt-2">
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+            <div className="bg-card border border-border rounded-md p-2">
               <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">📁 File Path:</div>
-              <div className="text-sm font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 px-2 py-1 rounded">
+              <div className="text-sm font-mono text-foreground bg-muted/50 px-2 py-1 rounded">
                 {filepath}
               </div>
             </div>
@@ -135,19 +135,19 @@ export const WorkspaceToolCallDisplay: React.FC<WorkspaceToolCallDisplayProps> =
 
         {showContent && (
           <div className="mt-2">
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+            <div className="bg-card border border-border rounded-md p-2">
               <div className="grid grid-cols-1 gap-2">
                 {folder && (
                   <div>
                     <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">📁 Folder:</div>
-                    <div className="text-sm font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 px-2 py-1 rounded">
+                    <div className="text-sm font-mono text-foreground bg-muted/50 px-2 py-1 rounded">
                       {folder}
                     </div>
                   </div>
                 )}
                 <div>
                   <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">📏 Max Depth:</div>
-                  <div className="text-sm text-gray-800 dark:text-gray-200">
+                  <div className="text-sm text-foreground">
                     {maxDepth} levels
                   </div>
                 </div>
@@ -188,9 +188,9 @@ export const WorkspaceToolCallDisplay: React.FC<WorkspaceToolCallDisplayProps> =
             {/* File path */}
             {filepath && (
               <div className="mt-2">
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+                <div className="bg-card border border-border rounded-md p-2">
                   <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">📁 File Path:</div>
-                  <div className="text-sm font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 px-2 py-1 rounded">
+                  <div className="text-sm font-mono text-foreground bg-muted/50 px-2 py-1 rounded">
                     {filepath}
                   </div>
                 </div>
@@ -200,9 +200,9 @@ export const WorkspaceToolCallDisplay: React.FC<WorkspaceToolCallDisplayProps> =
             {/* Commit message */}
             {commitMessage && (
               <div className="mt-2">
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+                <div className="bg-card border border-border rounded-md p-2">
                   <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">💬 Commit Message:</div>
-                  <div className="text-sm text-gray-800 dark:text-gray-200">
+                  <div className="text-sm text-foreground">
                     {commitMessage}
                   </div>
                 </div>
@@ -212,7 +212,7 @@ export const WorkspaceToolCallDisplay: React.FC<WorkspaceToolCallDisplayProps> =
             {/* Diff content */}
             {diff && (
               <div className="mt-2">
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+                <div className="bg-card border border-border rounded-md p-2">
                   <div className="flex items-center justify-between mb-1">
                     <div className="text-xs font-medium text-blue-700 dark:text-blue-300">
                       📝 Unified Diff Format
@@ -262,9 +262,9 @@ export const WorkspaceToolCallDisplay: React.FC<WorkspaceToolCallDisplayProps> =
             {/* File path */}
             {filepath && (
               <div className="mt-2">
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+                <div className="bg-card border border-border rounded-md p-2">
                   <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">📁 File Path:</div>
-                  <div className="text-sm font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 px-2 py-1 rounded">
+                  <div className="text-sm font-mono text-foreground bg-muted/50 px-2 py-1 rounded">
                     {filepath}
                   </div>
                 </div>
@@ -274,9 +274,9 @@ export const WorkspaceToolCallDisplay: React.FC<WorkspaceToolCallDisplayProps> =
             {/* Commit message */}
             {commitMessage && (
               <div className="mt-2">
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+                <div className="bg-card border border-border rounded-md p-2">
                   <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">💬 Commit Message:</div>
-                  <div className="text-sm text-gray-800 dark:text-gray-200">
+                  <div className="text-sm text-foreground">
                     {commitMessage}
                   </div>
                 </div>
@@ -286,7 +286,7 @@ export const WorkspaceToolCallDisplay: React.FC<WorkspaceToolCallDisplayProps> =
             {/* Content preview */}
             {content && (
               <div className="mt-2">
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+                <div className="bg-card border border-border rounded-md p-2">
               <div className="flex items-center justify-between mb-1">
                 <div className="text-xs font-medium text-blue-700 dark:text-blue-300">
                   📄 Content {isMarkdownContent(content) && <span className="text-blue-600 dark:text-blue-400">(Markdown)</span>}
@@ -299,11 +299,11 @@ export const WorkspaceToolCallDisplay: React.FC<WorkspaceToolCallDisplayProps> =
                 </button>
               </div>
                   
-                  <div className="text-xs text-gray-800 dark:text-gray-200 mt-2">
+                  <div className="text-xs text-foreground mt-2">
                     {isMarkdownContent(content) ? (
                       <ToolMarkdownRenderer content={content} maxHeight="400px" />
                     ) : (
-                      <pre className="text-xs whitespace-pre-wrap font-mono bg-gray-50 dark:bg-gray-900 p-2 rounded border max-h-96 overflow-y-auto">
+                      <pre className="text-xs whitespace-pre-wrap font-mono bg-muted/50 p-2 rounded border max-h-96 overflow-y-auto">
                         {content}
                       </pre>
                     )}
@@ -347,9 +347,9 @@ export const WorkspaceToolCallDisplay: React.FC<WorkspaceToolCallDisplayProps> =
             {/* File path */}
             {filepath && (
               <div className="mt-2">
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+                <div className="bg-card border border-border rounded-md p-2">
                   <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">📁 File Path:</div>
-                  <div className="text-sm font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 px-2 py-1 rounded">
+                  <div className="text-sm font-mono text-foreground bg-muted/50 px-2 py-1 rounded">
                     {filepath}
                   </div>
                 </div>
@@ -359,9 +359,9 @@ export const WorkspaceToolCallDisplay: React.FC<WorkspaceToolCallDisplayProps> =
             {/* Commit message */}
             {commitMessage && (
               <div className="mt-2">
-                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+                <div className="bg-card border border-border rounded-md p-2">
                   <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">💬 Commit Message:</div>
-                  <div className="text-sm text-gray-800 dark:text-gray-200">
+                  <div className="text-sm text-foreground">
                     {commitMessage}
                   </div>
                 </div>
@@ -395,9 +395,9 @@ export const WorkspaceToolCallDisplay: React.FC<WorkspaceToolCallDisplayProps> =
       {/* Show JSON for other workspace tools */}
       {showContent && (
         <div className="mt-2">
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+          <div className="bg-card border border-border rounded-md p-2">
             <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">Arguments:</div>
-            <pre className="text-xs text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap overflow-x-auto">
+            <pre className="text-xs text-foreground font-mono whitespace-pre-wrap overflow-x-auto">
               {JSON.stringify(parsedArgs, null, 2)}
             </pre>
           </div>

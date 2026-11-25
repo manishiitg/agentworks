@@ -84,14 +84,14 @@ export function AgentStartEventComponent({ event, compact = false }: AgentStartE
         <div className="mt-3 space-y-2">
           {/* Model Information */}
           {(event.model_id || event.provider) && (
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
-              <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Model Details:</div>
-              <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+            <div className="bg-card border border-border rounded-md p-2">
+              <div className="text-xs font-medium text-foreground mb-1">Model Details:</div>
+              <div className="text-xs text-muted-foreground space-y-1">
                 {event.model_id && (
-                  <div>Model: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{modelDisplayName}</code></div>
+                  <div>Model: <code className="bg-muted px-1 rounded">{modelDisplayName}</code></div>
                 )}
                 {event.provider && (
-                  <div>Provider: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{event.provider}</code></div>
+                  <div>Provider: <code className="bg-muted px-1 rounded">{event.provider}</code></div>
                 )}
               </div>
             </div>
@@ -99,27 +99,27 @@ export function AgentStartEventComponent({ event, compact = false }: AgentStartE
 
           {/* Hierarchy Information */}
           {event.parent_id && (
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
-              <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Hierarchy:</div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">
-                Parent ID: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{event.parent_id}</code>
+            <div className="bg-card border border-border rounded-md p-2">
+              <div className="text-xs font-medium text-foreground mb-1">Hierarchy:</div>
+              <div className="text-xs text-muted-foreground">
+                Parent ID: <code className="bg-muted px-1 rounded">{event.parent_id}</code>
               </div>
             </div>
           )}
 
           {/* Trace Information */}
           {(event.trace_id || event.span_id || event.event_id) && (
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
-              <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Trace Info:</div>
-              <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+            <div className="bg-card border border-border rounded-md p-2">
+              <div className="text-xs font-medium text-foreground mb-1">Trace Info:</div>
+              <div className="text-xs text-muted-foreground space-y-1">
                 {event.trace_id && (
-                  <div>Trace: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{event.trace_id}</code></div>
+                  <div>Trace: <code className="bg-muted px-1 rounded">{event.trace_id}</code></div>
                 )}
                 {event.span_id && (
-                  <div>Span: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{event.span_id}</code></div>
+                  <div>Span: <code className="bg-muted px-1 rounded">{event.span_id}</code></div>
                 )}
                 {event.event_id && (
-                  <div>Event: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{event.event_id}</code></div>
+                  <div>Event: <code className="bg-muted px-1 rounded">{event.event_id}</code></div>
                 )}
               </div>
             </div>

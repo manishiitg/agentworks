@@ -69,7 +69,7 @@ export const ConversationTurnEventDisplay: React.FC<ConversationTurnEventProps> 
         {event.question && (
           <div className="mt-3 border-t border-blue-200 dark:border-blue-700 pt-3">
             <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">💬 Last Message:</div>
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+            <div className="bg-card border border-border rounded-md p-2">
               <ConversationMarkdownRenderer content={event.question} framed={false} />
             </div>
           </div>
@@ -89,7 +89,7 @@ export const ConversationTurnEventDisplay: React.FC<ConversationTurnEventProps> 
             </div>
             
             {isToolsExpanded && (
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2 max-h-40 overflow-y-auto">
+              <div className="bg-card border border-border rounded-md p-2 max-h-40 overflow-y-auto">
                 {(() => {
                   // Group tools by server
                   const toolsByServer = (event.tools || []).reduce((acc, tool) => {
@@ -104,12 +104,12 @@ export const ConversationTurnEventDisplay: React.FC<ConversationTurnEventProps> 
                   return (
                     <div className="space-y-3">
                       {Object.entries(toolsByServer).map(([serverName, tools]) => (
-                        <div key={serverName} className="border-b border-gray-200 dark:border-gray-600 pb-2 last:border-b-0">
+                        <div key={serverName} className="border-b border-border pb-2 last:border-b-0">
                           <div className="flex items-center gap-2 mb-2">
                             <span className="text-xs font-semibold text-purple-700 dark:text-purple-300">
                               {serverName}
                             </span>
-                            <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-1 rounded">
+                            <span className="text-xs text-muted-foreground bg-muted px-1 rounded">
                               {tools?.length || 0} tools
                             </span>
                           </div>
@@ -131,7 +131,7 @@ export const ConversationTurnEventDisplay: React.FC<ConversationTurnEventProps> 
                                     </span>
                                   </div>
                                   {description && (
-                                    <div className="text-gray-600 dark:text-gray-400 mt-1 text-xs">
+                                    <div className="text-muted-foreground mt-1 text-xs">
                                       {displayDescription}
                                       {shouldTruncate && (
                                         <button
@@ -171,21 +171,21 @@ export const ConversationTurnEventDisplay: React.FC<ConversationTurnEventProps> 
             </div>
             
             {isExpanded && (
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2 space-y-2">
+              <div className="bg-card border border-border rounded-md p-2 space-y-2">
                 {event.messages.map((message, index) => (
-                  <div key={index} className="border-b border-gray-200 dark:border-gray-600 pb-2 last:border-b-0">
+                  <div key={index} className="border-b border-border pb-2 last:border-b-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-medium px-2 py-1 rounded bg-gray-100 dark:bg-gray-700">
+                      <span className="text-xs font-medium px-2 py-1 rounded bg-muted">
                         {message.role}
                       </span>
-                      <span className="text-xs text-gray-500">Message {index + 1}</span>
+                      <span className="text-xs text-muted-foreground">Message {index + 1}</span>
                     </div>
                     <div className="text-sm">
                       {message.parts && message.parts.length > 0 ? (
                         message.parts.map((part, partIndex: number) => (
                           <div key={partIndex} className="mb-1">
-                            <span className="text-xs text-gray-500">Part {partIndex + 1} ({part.type}):</span>
-                            <div className="mt-1 p-2 bg-gray-50 dark:bg-gray-900 rounded text-xs font-mono overflow-x-auto">
+                            <span className="text-xs text-muted-foreground">Part {partIndex + 1} ({part.type}):</span>
+                            <div className="mt-1 p-2 bg-muted/50 rounded text-xs font-mono overflow-x-auto">
                               {typeof part.content === 'string' ? (
                                 <div className="whitespace-pre-wrap">{part.content}</div>
                               ) : (
@@ -195,7 +195,7 @@ export const ConversationTurnEventDisplay: React.FC<ConversationTurnEventProps> 
                           </div>
                         ))
                       ) : (
-                        <div className="text-gray-400 italic">No parts</div>
+                        <div className="text-muted-foreground italic">No parts</div>
                       )}
                     </div>
                   </div>
@@ -233,7 +233,7 @@ export const ConversationTurnEventDisplay: React.FC<ConversationTurnEventProps> 
             </div>
             
             {/* Question with markdown rendering - always shown */}
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+            <div className="bg-card border border-border rounded-md p-2">
               <ConversationMarkdownRenderer content={event.question} framed={false} />
             </div>
           </div>
@@ -262,27 +262,27 @@ export const ConversationTurnEventDisplay: React.FC<ConversationTurnEventProps> 
             </div>
             
             {/* Brief messages preview */}
-            <div className="text-gray-600 dark:text-gray-400">
+            <div className="text-muted-foreground">
               {event.messages.length} messages in conversation history
             </div>
             
             {/* Expanded messages with detailed view */}
             {isExpanded && (
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2 space-y-2">
+              <div className="bg-card border border-border rounded-md p-2 space-y-2">
                 {event.messages.map((message, index) => (
-                  <div key={index} className="border-b border-gray-200 dark:border-gray-600 pb-2 last:border-b-0">
+                  <div key={index} className="border-b border-border pb-2 last:border-b-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-medium px-2 py-1 rounded bg-gray-100 dark:bg-gray-700">
+                      <span className="text-xs font-medium px-2 py-1 rounded bg-muted">
                         {message.role}
                       </span>
-                      <span className="text-xs text-gray-500">Message {index + 1}</span>
+                      <span className="text-xs text-muted-foreground">Message {index + 1}</span>
                     </div>
                     <div className="text-sm">
                       {message.parts && message.parts.length > 0 ? (
                         message.parts.map((part, partIndex: number) => (
                           <div key={partIndex} className="mb-1">
-                            <span className="text-xs text-gray-500">Part {partIndex + 1} ({part.type}):</span>
-                            <div className="mt-1 p-2 bg-gray-50 dark:bg-gray-900 rounded text-xs font-mono overflow-x-auto">
+                            <span className="text-xs text-muted-foreground">Part {partIndex + 1} ({part.type}):</span>
+                            <div className="mt-1 p-2 bg-muted/50 rounded text-xs font-mono overflow-x-auto">
                               {typeof part.content === 'string' ? (
                                 <div className="whitespace-pre-wrap">{part.content}</div>
                               ) : (
@@ -292,7 +292,7 @@ export const ConversationTurnEventDisplay: React.FC<ConversationTurnEventProps> 
                           </div>
                         ))
                       ) : (
-                        <div className="text-gray-400 italic">No parts</div>
+                        <div className="text-muted-foreground italic">No parts</div>
                       )}
                     </div>
                   </div>
@@ -332,13 +332,13 @@ export const ConversationTurnEventDisplay: React.FC<ConversationTurnEventProps> 
             </div>
             
             {/* Brief tools preview */}
-            <div className="text-gray-600 dark:text-gray-400">
+            <div className="text-muted-foreground">
               {event.tools?.length || 0} tools available for this conversation turn
             </div>
             
             {/* Expanded tools with detailed view - Grouped by MCP Server */}
             {isToolsExpanded && (
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2 max-h-60 overflow-y-auto">
+              <div className="bg-card border border-border rounded-md p-2 max-h-60 overflow-y-auto">
                 {(() => {
                   // Group tools by server
                   const toolsByServer = (event.tools || []).reduce((acc, tool) => {
@@ -353,12 +353,12 @@ export const ConversationTurnEventDisplay: React.FC<ConversationTurnEventProps> 
                   return (
                     <div className="space-y-3">
                       {Object.entries(toolsByServer).map(([serverName, tools]) => (
-                        <div key={serverName} className="border-b border-gray-200 dark:border-gray-600 pb-2 last:border-b-0">
+                        <div key={serverName} className="border-b border-border pb-2 last:border-b-0">
                           <div className="flex items-center gap-2 mb-2">
                             <span className="text-xs font-semibold text-purple-700 dark:text-purple-300">
                               {serverName}
                             </span>
-                            <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-1 rounded">
+                            <span className="text-xs text-muted-foreground bg-muted px-1 rounded">
                               {tools?.length || 0} tools
                             </span>
                           </div>
@@ -380,7 +380,7 @@ export const ConversationTurnEventDisplay: React.FC<ConversationTurnEventProps> 
                                     </span>
                                   </div>
                                   {description && (
-                                    <div className="text-gray-600 dark:text-gray-400 mt-1 text-xs">
+                                    <div className="text-muted-foreground mt-1 text-xs">
                                       {displayDescription}
                                       {shouldTruncate && (
                                         <button

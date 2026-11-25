@@ -20,7 +20,7 @@ export const ConversationThinkingEventDisplay: React.FC<ConversationThinkingEven
   if (!thinking) return null
 
   return (
-    <p className="whitespace-pre-wrap break-words px-1 text-sm leading-6 text-neutral-500 dark:text-neutral-400">
+    <p className="whitespace-pre-wrap break-words px-1 text-sm leading-6 text-muted-foreground">
       {thinking}
     </p>
   )

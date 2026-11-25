@@ -38,32 +38,32 @@ export const RoutingEvaluatedEventDisplay: React.FC<RoutingEvaluatedEventDisplay
   const selectedRoute = event.routes?.find(r => r.route_id === selectedRouteId)
 
   return (
-    <div className={`bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-md ${compact ? 'p-2' : 'p-3'}`}>
-      <div className={`${compact ? 'text-xs' : 'text-sm'} text-slate-700 dark:text-slate-300`}>
+    <div className={`bg-muted/50 border border-border rounded-md ${compact ? 'p-2' : 'p-3'}`}>
+      <div className={`${compact ? 'text-xs' : 'text-sm'} text-foreground`}>
         <div className="font-medium flex items-center gap-2">
           <span>🔀 Routing Evaluated</span>
           {selectedRoute && (
-            <span className="px-2 py-0.5 rounded text-xs font-semibold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+            <span className="px-2 py-0.5 rounded text-xs font-semibold bg-muted text-foreground">
               {selectedRoute.route_name || selectedRouteId}
             </span>
           )}
         </div>
 
         {event.step_title && (
-          <div className={`${compact ? 'text-[10px]' : 'text-xs'} text-slate-500 dark:text-slate-400 mt-1`}>
+          <div className={`${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground mt-1`}>
             Step: {event.step_title}
           </div>
         )}
 
         {event.routing_question && (
-          <div className={`${compact ? 'text-[10px]' : 'text-xs'} text-slate-500 dark:text-slate-400 mt-2`}>
+          <div className={`${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground mt-2`}>
             <div className="font-medium">Question:</div>
             <div className="mt-0.5">{event.routing_question}</div>
           </div>
         )}
 
         {selectedRoute && (
-          <div className={`${compact ? 'text-[10px]' : 'text-xs'} text-slate-500 dark:text-slate-400 mt-2`}>
+          <div className={`${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground mt-2`}>
             <div className="font-medium">Selected: {selectedRoute.route_name || selectedRouteId}</div>
             {selectedRoute.condition && (
               <div className="mt-0.5">Condition: {selectedRoute.condition}</div>
@@ -75,7 +75,7 @@ export const RoutingEvaluatedEventDisplay: React.FC<RoutingEvaluatedEventDisplay
         )}
 
         {reasoning && (
-          <div className={`${compact ? 'text-[10px]' : 'text-xs'} text-slate-500 dark:text-slate-400 mt-2`}>
+          <div className={`${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground mt-2`}>
             <div className="font-medium">Reasoning:</div>
             <div className="mt-0.5 whitespace-pre-wrap">{reasoning}</div>
           </div>

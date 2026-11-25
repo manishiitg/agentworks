@@ -249,11 +249,11 @@ const GenericToolCallEndEventDisplay: React.FC<ToolCallEndEventProps> = ({ event
   // an outcome no one measured. Red would be equally wrong — nothing failed.
   const isSyntheticSettle = event.synthetic_settle === true
 
-  const bgColor = isError ? 'bg-red-50 dark:bg-red-950/25' : isSyntheticSettle ? 'bg-gray-50 dark:bg-gray-800/40' : theme === 'blue' ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-green-50 dark:bg-green-900/20'
-  const borderColor = isError ? 'border-red-300 dark:border-red-800' : isSyntheticSettle ? 'border-gray-300 dark:border-gray-700' : theme === 'blue' ? 'border-blue-200 dark:border-blue-800' : 'border-green-200 dark:border-green-800'
-  const textColor = isError ? 'text-red-700 dark:text-red-300' : isSyntheticSettle ? 'text-gray-700 dark:text-gray-300' : theme === 'blue' ? 'text-blue-700 dark:text-blue-300' : 'text-green-700 dark:text-green-300'
-  const textSecondaryColor = isError ? 'text-red-600 dark:text-red-400' : isSyntheticSettle ? 'text-gray-500 dark:text-gray-400' : theme === 'blue' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'
-  const hoverBgColor = isError ? 'hover:bg-red-100 dark:hover:bg-red-900/40' : isSyntheticSettle ? 'hover:bg-gray-100 dark:hover:bg-gray-700' : theme === 'blue' ? 'hover:bg-blue-200 dark:hover:bg-blue-800' : 'hover:bg-green-200 dark:hover:bg-green-800'
+  const bgColor = isError ? 'bg-red-50 dark:bg-red-950/25' : isSyntheticSettle ? 'bg-muted/50' : theme === 'blue' ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-green-50 dark:bg-green-900/20'
+  const borderColor = isError ? 'border-red-300 dark:border-red-800' : isSyntheticSettle ? 'border-border' : theme === 'blue' ? 'border-blue-200 dark:border-blue-800' : 'border-green-200 dark:border-green-800'
+  const textColor = isError ? 'text-red-700 dark:text-red-300' : isSyntheticSettle ? 'text-foreground' : theme === 'blue' ? 'text-blue-700 dark:text-blue-300' : 'text-green-700 dark:text-green-300'
+  const textSecondaryColor = isError ? 'text-red-600 dark:text-red-400' : isSyntheticSettle ? 'text-muted-foreground' : theme === 'blue' ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'
+  const hoverBgColor = isError ? 'hover:bg-red-100 dark:hover:bg-red-900/40' : isSyntheticSettle ? 'hover:bg-muted' : theme === 'blue' ? 'hover:bg-blue-200 dark:hover:bg-blue-800' : 'hover:bg-green-200 dark:hover:bg-green-800'
 
   // Single-line layout following design guidelines
   return (
@@ -313,13 +313,13 @@ const GenericToolCallEndEventDisplay: React.FC<ToolCallEndEventProps> = ({ event
 
       {/* Output panel */}
       {resultInfo && isExpanded && (
-        <div className={`border rounded-md mt-2 p-3 ${isError ? 'border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/25' : isFormatted ? 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700' : 'bg-gray-900 dark:bg-gray-950 border-gray-700'}`}>
+        <div className={`border rounded-md mt-2 p-3 ${isError ? 'border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/25' : isFormatted ? 'bg-card border-border' : 'bg-muted border-border'}`}>
           <div className="flex items-center justify-between mb-2">
-            <div className={`text-xs font-medium ${isError ? 'text-red-700 dark:text-red-300' : isFormatted ? 'text-gray-600 dark:text-gray-400' : 'text-gray-400'}`}>
+            <div className={`text-xs font-medium ${isError ? 'text-red-700 dark:text-red-300' : isFormatted ? 'text-muted-foreground' : 'text-muted-foreground'}`}>
               {isError ? 'Error output' : 'Output'}
             </div>
             <div className="flex items-center gap-2">
-              <div className={`text-xs ${isFormatted ? 'text-gray-400 dark:text-gray-500' : 'text-gray-500'}`}>
+              <div className={`text-xs ${isFormatted ? 'text-muted-foreground' : 'text-muted-foreground'}`}>
                 {outputLineCount} line{outputLineCount !== 1 ? 's' : ''} • {resultInfo.textContent.length} chars
               </div>
               {detectedFormat && (
@@ -328,7 +328,7 @@ const GenericToolCallEndEventDisplay: React.FC<ToolCallEndEventProps> = ({ event
                   className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors ${
                     isFormatted
                       ? 'bg-blue-600 border-blue-500 text-white hover:bg-blue-700'
-                      : 'bg-gray-600 border-gray-500 text-white hover:bg-gray-500'
+                      : 'bg-muted border-border text-foreground hover:bg-muted/80'
                   }`}
                   title={isFormatted ? 'Show raw text' : `Render as ${detectedFormat}`}
                 >

@@ -79,7 +79,7 @@ export const ToolCallErrorEventDisplay: React.FC<ToolCallErrorEventDisplayProps>
           
           {/* Error details */}
           {event.error && (
-            <div className="mt-1 p-2 bg-white dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded text-xs text-red-800 dark:text-red-200 font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+            <div className="mt-1 p-2 bg-card dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded text-xs text-red-800 dark:text-red-200 font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
               {event.error}
             </div>
           )}

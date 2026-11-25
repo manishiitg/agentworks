@@ -40,7 +40,7 @@ export const ConversationStartEventDisplay: React.FC<ConversationStartEventProps
             </div>
             
             {/* Full user message with markdown rendering */}
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+            <div className="bg-card border border-border rounded-md p-2">
               <ConversationMarkdownRenderer content={event.question} framed={false} />
             </div>
           </div>
