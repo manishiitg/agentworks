@@ -81,7 +81,12 @@ type Record struct {
 // CaptureStats explains partial captures without exposing file names or contents.
 type CaptureStats struct {
 	// Phase timings distinguish Git change detection from queue and history work.
-	DiscoveryMS   int64 `json:"discovery_ms,omitempty"`
+	DiscoveryMS int64 `json:"discovery_ms,omitempty"`
+	// WalkMS is the part of DiscoveryMS spent walking the project for loose
+	// files and checkouts; LimitReused means the stored too-many-files verdict
+	// skipped that walk (#3878).
+	WalkMS        int64 `json:"walk_ms,omitempty"`
+	LimitReused   bool  `json:"limit_reused,omitempty"`
 	IndexMS       int64 `json:"index_ms,omitempty"`
 	ImportMS      int64 `json:"import_ms,omitempty"`
 	ComposeMS     int64 `json:"compose_ms,omitempty"`

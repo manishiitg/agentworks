@@ -881,11 +881,60 @@ func TestTurnFileLimitFindsLaterCheckoutsAndIsDecidedOnce(t *testing.T) {
 	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "z-later/app/edit.txt" {
 		t.Fatalf("later checkout's edit lost: %v %+v", err, comparison.Changes)
 	}
+	// Everyday churn keeps the verdict: files saved at the root and one level
+	// down, and a worktree an agent adds, are not a reason to walk again.
+	f.put("notes.md", "x")
+	f.put("a-data/top.txt", "x")
+	f.repo("wt-new", map[string]string{"a.txt": "a"})
+	churn, err := f.s.BeginGitTurn(t.Context(), "churn")
+	if err != nil || !churn.BeforeCapture.LimitReused {
+		t.Fatalf("churn walked again: %v %+v", err, churn.BeforeCapture)
+	}
+	if _, ok := churn.GitTurn["wt-new"]; !ok {
+		t.Fatalf("added worktree not found: %v", turnKeys(churn.GitTurn))
+	}
+	if again, _ := f.s.FileLimit(); !again.CheckedAt.Equal(report.CheckedAt) || again.Checkouts != 2 {
+		t.Fatalf("verdict not kept through churn: %+v", again)
+	}
+	if err := os.RemoveAll(filepath.Join(f.s.Root, "wt-new")); err != nil {
+		t.Fatal(err)
+	}
+	gone, err := f.s.FinishGitTurn(t.Context(), "churn")
+	if err != nil || !gone.AfterCapture.LimitReused {
+		t.Fatalf("removed worktree walked again: %v %+v", err, gone.AfterCapture)
+	}
+	if again, _ := f.s.FileLimit(); again.Checkouts != 1 {
+		t.Fatalf("removed worktree kept: %+v", again)
+	}
 	f.s.RecheckFileLimit()
 	if _, err := f.s.BeginGitTurn(t.Context(), "recheck"); err != nil {
 		t.Fatal(err)
 	}
-	if again, _ := f.s.FileLimit(); again.Files != maxTurnPaths+2 {
+	if again, _ := f.s.FileLimit(); again.Files != maxTurnPaths+4 {
 		t.Fatalf("check again did not count afresh: %+v", again)
+	}
+}
+
+// Moving out one of the biggest folders decides the verdict again at once.
+func TestTurnFileLimitRemovingABigFolderDecidesAgain(t *testing.T) {
+	f := newCrew(t)
+	for i := 0; i <= maxTurnPaths; i++ {
+		f.put(fmt.Sprintf("a-data/s/f-%05d", i), "")
+	}
+	if _, err := f.s.BeginGitTurn(t.Context(), "big"); err != nil {
+		t.Fatal(err)
+	}
+	if report, _ := f.s.FileLimit(); !report.Over {
+		t.Fatalf("limit not reached: %+v", report)
+	}
+	if err := os.RemoveAll(filepath.Join(f.s.Root, "a-data")); err != nil {
+		t.Fatal(err)
+	}
+	after, err := f.s.FinishGitTurn(t.Context(), "big")
+	if err != nil || after.AfterCapture.LimitReused || after.AfterCapture.Deferred == "loose_file_limit" {
+		t.Fatalf("big folder gone but verdict reused: %v %+v", err, after.AfterCapture)
+	}
+	if report, _ := f.s.FileLimit(); report.Over {
+		t.Fatalf("still over after moving the folder out: %+v", report)
 	}
 }
