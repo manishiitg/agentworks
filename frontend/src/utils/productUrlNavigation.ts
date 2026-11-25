@@ -96,7 +96,8 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
       if (path !== window.location.pathname + window.location.search) {
         if (replaceEntry) window.history.replaceState({}, '', path)
         else window.history.pushState({}, '', path)
-        if (fromDashboards || fromProjects || fromSettings) window.dispatchEvent(new PopStateEvent('popstate'))
+        // No project selected is the Projects page (/projects), which the route boundary must open itself.
+        if (fromDashboards || fromProjects || fromSettings || path === '/projects') window.dispatchEvent(new PopStateEvent('popstate'))
       }
     }, 0)
   }

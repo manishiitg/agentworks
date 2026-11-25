@@ -21,7 +21,7 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 		return string(data), nil
 	}
 	if action == "links" {
-		link := binding.PeerServer + "/crew/projects/" + binding.PeerProjectID
+		link := binding.PeerServer + "/projects/" + binding.PeerProjectID
 		return out(map[string]any{
 			"website":           link,
 			"phone":             link + " (open it on the phone, or scan the code in Share, Phone, Show code)",

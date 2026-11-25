@@ -84,7 +84,7 @@ try {
   assert.equal(await page.getByRole('menu', { name: 'New project', exact: true }).count(), 0)
   await draft.fill('Help me plan my week')
   await home.getByRole('button', { name: 'Send to AgentWorks' }).click()
-  await page.waitForURL('**/crew/projects/my-agentworks')
+  await page.waitForURL('**/projects/my-agentworks')
   assert.deepEqual(sent, [{ message: 'Help me plan my week' }])
   await page.getByRole('button', { name: 'New project', exact: true }).click()
   await draft.waitFor()

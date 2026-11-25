@@ -62,7 +62,7 @@ function useTeamCrews():{sources:MonitorSource[];notice:string;people:TeamOvervi
 
 function openCrewTeam(connectionId: string, crewId: string, section:'agents'|'overview'='agents') {
   // A Crew on a server opens on that server's website (#3779): the Mac app shows only this Mac's projects.
-  if (connectionId !== getRawActiveWorkspaceId()) { void openOnServerWebsite(connectionId, `/crew/projects/${encodeURIComponent(crewId)}`); return }
+  if (connectionId !== getRawActiveWorkspaceId()) { void openOnServerWebsite(connectionId, `/projects/${encodeURIComponent(crewId)}`); return }
   openSidebarProject('crew', crewId)
   openCrewAccess(crewId, '', 'team', section)
 }

@@ -89,7 +89,7 @@ it('waits for the exact project and local import check before opening its picker
  try{
   await act(async()=>render('other',true,false,true))
   await act(async()=>requestSidebarProjectAction('example','chat',route('example')))
-  expect(window.location.pathname).toBe('/crew/projects/example')
+  expect(window.location.pathname).toBe('/projects/example')
   expect(f.importChat).not.toHaveBeenCalled()
   await act(async()=>render('example',false,true,true))
   await act(async()=>render('example',true,true,true))

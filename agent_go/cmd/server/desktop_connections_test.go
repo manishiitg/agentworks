@@ -119,7 +119,7 @@ func TestDesktopConnectionBrowserHandoffAndOneUseVerifier(t *testing.T) {
 			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { api.handleDesktopConnectExchange(w, r) }))
 			defer remote.Close()
 			w := httptest.NewRecorder()
-			api.handleDesktopConnections(w, desktopTestRequest("POST", "/api/desktop-connections", `{"server":"`+remote.URL+`/crew/projects/example?view=context#details"}`, "owner"))
+			api.handleDesktopConnections(w, desktopTestRequest("POST", "/api/desktop-connections", `{"server":"`+remote.URL+`/projects/example?view=context#details"}`, "owner"))
 			if w.Code != 200 {
 				t.Fatalf("begin: %d %s", w.Code, w.Body.String())
 			}
@@ -286,10 +286,10 @@ func TestDesktopConnectionDevelopmentOrigin(t *testing.T) {
 // PLAT-746: pasted page URLs connect to the origin; credentials and insecure remote URLs stay refused.
 func TestDesktopServerURLAcceptsBrowserLinks(t *testing.T) {
 	for _, tc := range []struct{ input, want string }{
-		{" https://example.com/crew/projects/example?view=context#details ", "https://example.com"},
+		{" https://example.com/projects/example?view=context#details ", "https://example.com"},
 		{"https://example.com:8443/path%2Ffile?", "https://example.com:8443"},
 		{"https://example.com/", "https://example.com"},
-		{"http://localhost:18743/crew?view=context", "http://localhost:18743"},
+		{"http://localhost:18743/projects?view=context", "http://localhost:18743"},
 		{"https://person:password@example.com/crew", ""},
 		{"http://example.com/crew", ""},
 		{"javascript:alert(1)", ""},

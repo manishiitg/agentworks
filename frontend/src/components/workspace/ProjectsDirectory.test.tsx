@@ -141,7 +141,7 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
     expect(f.open).toHaveBeenCalledWith('crew', 'b')
     f.open.mockImplementationOnce((_kind: string, id: string) => openAppProduct({ surface: 'work', id }))
     await click('Add agent in Beta', side())
-    expect(window.location.pathname).toBe('/crew/projects/b')
+    expect(window.location.pathname).toBe('/projects/b')
     expect(useSidebarProjectAction.getState().request).toMatchObject({ projectId: 'b', action: 'new' })
     await act(async () => openAppProduct({ surface: 'work', id: 'a' }))
     expect(useSidebarProjectAction.getState().request).toBeNull()

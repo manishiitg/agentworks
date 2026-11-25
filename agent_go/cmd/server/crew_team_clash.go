@@ -37,7 +37,7 @@ func notifyCrewTeamClashes(project, round string, team crewTeam, notices []crewT
 		return
 	}
 	title := "Clash in " + firstNonEmptyTrimmed(team.Name, "your team's shared folder")
-	route := "/crew/projects/" + url.PathEscape(project)
+	route := "/projects/" + url.PathEscape(project)
 	type told struct {
 		bodies []string
 		paths  []string
