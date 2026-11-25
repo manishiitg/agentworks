@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 )
 
 // This is presentation and dispatch eligibility, never an authorization grant.
@@ -114,6 +115,11 @@ func (api *StreamingAPI) projectQueuedMessageDelivery(sessionID string, turns []
 		message.QueueReason, message.CanSteer = api.queuedMessageDeliveryState(sessionID, turn.Request)
 		message.Refreshing = message.QueueReason == "refreshing"
 		message.QueueDetail = api.queuedMessageWaitDetail(sessionID, message.QueueReason)
+		// #3920: the person sent it to go in now, but the chat's Antigravity is older than 1.5 and has no way in until
+		// its reply ends (1.5+ takes it into the running reply). Say so on the message instead of a bare clock.
+		if waitsOnOldAgy(sessionID, *message, turn.Request) {
+			message.QueueDetail, message.ShowDetail = queuedNoSteerDetail, true
+		}
 		// Steer now is only for a message the person queued on purpose (queue mode). In steer mode the server hands the
 		// message in by itself as soon as it can, so offering the button there only adds a choice.
 		if !message.CanManage || message.Started || message.Steering || message.DeliveryError != "" || turn.Request.DeliveryMode != "queue" {
@@ -167,6 +173,18 @@ func (api *StreamingAPI) queuedMessageWaitDetail(sessionID, reason string) strin
 	}
 	return "Waiting for " + label
 }
+
+// queuedNoSteerDetail says why a message waits behind an Antigravity reply that cannot take it.
+const queuedNoSteerDetail = "This version of Antigravity can't take a message during a reply (agy 1.5 or later can). This sends when the reply ends, or press Stop to send it now."
+
+// waitsOnOldAgy: a message sent to go in now waits behind a running reply of an agy too old to take it.
+func waitsOnOldAgy(sessionID string, message PendingQueuedMessage, req QueryRequest) bool {
+	return message.QueueReason == "running" && !message.CanSteer && message.QueueDetail == "" && message.DeliveryError == "" &&
+		req.DeliveryMode != "queue" && strings.EqualFold(strings.TrimSpace(queuedRequestProvider(req)), "agy-cli") && agyTooOldToSteer(sessionID)
+}
+
+// agyTooOldToSteer: the chat runs an agy older than 1.5, which queues a mid-reply message (tests replace it).
+var agyTooOldToSteer = agycli.AgyACPSessionTooOldToSteer
 
 type queuedMessageSteerKey struct{}
 type queuedMessageRecoveredInputKey struct{}

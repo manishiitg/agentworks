@@ -306,7 +306,8 @@ var (
 // steersNatively reports whether the transport takes a message in the middle of a turn (the Claude and Cursor
 // SDKs, the Codex app server). Only the others (tmux, ACP, structured) use the steer queue.
 func steersNatively(transport llm.CodingAgentTransport) bool {
-	return transport == llm.CodingAgentTransportSDK || transport == llm.CodingAgentTransportAppServer
+	// ACP: Antigravity takes a prompt sent mid-turn into the running turn (#3920).
+	return transport == llm.CodingAgentTransportSDK || transport == llm.CodingAgentTransportAppServer || transport == llm.CodingAgentTransportACP
 }
 
 // turnTakesInput: a turn is open and has not taken its last step (after the final drain it only closes).

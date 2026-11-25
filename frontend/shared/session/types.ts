@@ -110,6 +110,8 @@ export interface PendingQueuedMessage {
   queue_reason?: 'starting' | 'running' | 'waiting' | 'refreshing' | 'provider_limit'
   /** Server-projected source of the work this message is waiting for. */
   queue_detail?: string
+  /** queue_detail is shown on the message itself, not only on the clock (#3920). */
+  show_detail?: boolean
   can_manage: boolean
   can_dismiss?: boolean
   can_steer?: boolean

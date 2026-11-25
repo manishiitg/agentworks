@@ -609,11 +609,13 @@ func GetCodingAgentProviderContractForTransport(provider Provider, modelID, clau
 		}
 	}
 	if normalizedProvider == ProviderAgyCLI && agycli.AgyACPSelected() {
-		// agy acp: protocol events, no screen; ACP has no mid-turn input, so a
-		// message sent during a turn waits for the next one.
+		// agy acp: protocol events, no screen. agy 1.5.0+ takes a prompt sent mid-turn into the running turn
+		// (#3920); an older agy refuses the send (its session does not steer), so the message waits for the next turn.
+		// The send returns once agy has the prompt, so there is no transcript proof to wait for.
 		contract.Transport = CodingAgentTransportACP
 		contract.SupportsTerminalStream = false
-		contract.SupportsLiveInput = false
+		contract.SupportsLiveInput = true
+		contract.SupportsDurableAck = false
 		contract.LaunchesViaLoginShell = false
 	}
 	if normalizedProvider == ProviderMuseCLI && musecli.MuseMSPSelected() {

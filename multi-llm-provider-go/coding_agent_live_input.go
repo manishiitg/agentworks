@@ -3,6 +3,7 @@ package llmproviders
 import (
 	"context"
 	"fmt"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
 	"strings"
@@ -76,6 +77,12 @@ func sendCodingAgentInput(ctx context.Context, provider Provider, modelID, owner
 	case ProviderMuseCLI:
 		return SendMuseCLIInteractiveInput(ctx, ownerSessionID, message)
 	case ProviderAgyCLI:
+		if contract.Transport == CodingAgentTransportACP {
+			if retainedTurn {
+				return fmt.Errorf("Antigravity idle turns use the normal Run path")
+			}
+			return agycli.SendAgyACPInput(ctx, ownerSessionID, message)
+		}
 		return SendAgyCLIInteractiveInput(ctx, ownerSessionID, message)
 	default:
 		return &CodingAgentContinuationError{

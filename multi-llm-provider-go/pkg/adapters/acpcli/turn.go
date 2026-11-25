@@ -123,12 +123,32 @@ func (s *session) turn(ctx context.Context, prompt string, emit func(llmtypes.St
 	if s.outcome != nil {
 		outcome = s.outcome.BeginTurn(sessionID)
 	}
-	var result promptResult
-	complete := make(chan error, 1)
-	go func() {
-		// The prompt's own lifetime, not ctx: on Stop it is cancelled and waits for the agent's answer.
-		complete <- s.rpc.call(context.Background(), "session/prompt", params, &result)
-	}()
+	// Every prompt of this turn answers here; a steer adds one (seq counts them) and only the latest ends the turn.
+	complete := make(chan promptDone, 16)
+	seq := 1
+	sendPrompt := func(n int, params any) {
+		go func() {
+			// The prompt's own lifetime, not ctx: on Stop it is cancelled and waits for the agent's answer.
+			var result promptResult
+			err := s.rpc.call(context.Background(), "session/prompt", params, &result)
+			complete <- promptDone{seq: n, err: err, result: result}
+		}()
+	}
+	sendPrompt(seq, params)
+	var steers chan steerRequest
+	if s.steersWithPrompt {
+		steers = make(chan steerRequest)
+		s.mu.Lock()
+		s.steer, s.steerDone = steers, make(chan struct{})
+		s.mu.Unlock()
+		defer func() {
+			s.mu.Lock()
+			close(s.steerDone)
+			s.steer, s.steerDone = nil, nil
+			s.mu.Unlock()
+		}()
+	}
+	var steeredUsage *llmtypes.Usage
 	if image, ok := params.(*imageParams); ok {
 		if err := <-image.wrote; err != nil {
 			return nil, err
@@ -160,7 +180,25 @@ func (s *session) turn(ctx context.Context, prompt string, emit func(llmtypes.St
 		select {
 		case msg := <-events:
 			handle(msg)
-		case err := <-complete:
+		case req := <-steers:
+			if cancelled {
+				req.reply <- errSteerNotTaken("the turn is stopping")
+				continue
+			}
+			seq++
+			sendPrompt(seq, map[string]any{"sessionId": sessionID, "prompt": []any{map[string]any{"type": "text", "text": req.text}}})
+			log.Printf("[ACP_CLI] session=%s agent=%s action=steered prompt=%d", s.rpc.owner, s.agent.ID, seq)
+			req.reply <- nil
+		case done := <-complete:
+			if done.seq != seq {
+				// A steer took over this prompt: the agent answered it end_turn and carries the turn on.
+				steeredUsage = addUsage(steeredUsage, promptUsage(done.result))
+				if done.err != nil {
+					log.Printf("[ACP_CLI] session=%s agent=%s action=steered_prompt_failed prompt=%d err=%v", s.rpc.owner, s.agent.ID, done.seq, done.err)
+				}
+				continue
+			}
+			err, result := done.err, done.result
 			for len(events) > 0 {
 				handle(<-events)
 			}
@@ -185,11 +223,7 @@ func (s *session) turn(ctx context.Context, prompt string, emit func(llmtypes.St
 			if failure := s.stopFailure(result.StopReason); failure != nil {
 				return nil, failure
 			}
-			var usage *llmtypes.Usage
-			if u := result.Usage; u != nil {
-				cached, reasoning := u.CachedRead, u.Thought
-				usage = &llmtypes.Usage{InputTokens: u.Input, OutputTokens: u.Output, TotalTokens: u.Total, CacheTokens: &cached, ReasoningTokens: &reasoning}
-			}
+			usage := addUsage(steeredUsage, promptUsage(result))
 			if strings.TrimSpace(text.String()) == "" && len(tools) == 0 {
 				return nil, fmt.Errorf("%s returned no answer (stop reason: %s)", s.agent.Label, result.StopReason)
 			}

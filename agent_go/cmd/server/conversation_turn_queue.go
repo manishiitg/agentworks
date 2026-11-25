@@ -1214,9 +1214,11 @@ type PendingQueuedMessage struct {
 	Refreshing  bool   `json:"refreshing,omitempty"`
 	QueueReason string `json:"queue_reason"`
 	QueueDetail string `json:"queue_detail,omitempty"`
-	CanSteer    bool   `json:"can_steer"`
-	CanDismiss  bool   `json:"can_dismiss"`
-	CanManage   bool   `json:"can_manage"` // Only messages typed by the person in chat get composer actions.
+	// ShowDetail: QueueDetail is shown on the message itself, not only on the clock's hover (#3920).
+	ShowDetail bool `json:"show_detail,omitempty"`
+	CanSteer   bool `json:"can_steer"`
+	CanDismiss bool `json:"can_dismiss"`
+	CanManage  bool `json:"can_manage"` // Only messages typed by the person in chat get composer actions.
 	// Started: the queue handed this message to its turn, which has not finished. The chat keeps showing it as being sent
 	// until the turn's own user row arrives, instead of it vanishing between the queue and the chat.
 	Started bool `json:"started,omitempty"`

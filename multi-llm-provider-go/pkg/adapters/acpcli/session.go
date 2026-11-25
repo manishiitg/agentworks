@@ -72,6 +72,8 @@ type session struct {
 	caps        agentCapabilities
 	authMethods []string
 	outcome     Outcome
+	// steersWithPrompt: this agent's release takes a prompt sent mid-turn as a message into the running turn.
+	steersWithPrompt bool
 
 	turnMu        sync.Mutex
 	mu            sync.Mutex
@@ -92,6 +94,9 @@ type session struct {
 	parts         map[string][32]byte
 	listener      chan message
 	release       func()
+	// steer takes messages for the running turn (nil when none takes them); steerDone closes when that turn ends.
+	steer     chan steerRequest
+	steerDone chan struct{}
 }
 
 var sessions = struct {
@@ -318,11 +323,18 @@ func (s *session) handshake(ctx context.Context, resume string, servers []mcpSer
 		AuthMethods       []struct {
 			ID string `json:"id"`
 		} `json:"authMethods"`
+		AgentInfo struct {
+			Version string `json:"version"`
+		} `json:"agentInfo"`
 	}
 	if err := s.rpc.call(ctx, "initialize", init, &initialized); err != nil {
 		return s.setupError(err)
 	}
 	s.caps = initialized.AgentCapabilities
+	s.steersWithPrompt = s.agent.SteersWithPrompt != nil && s.agent.SteersWithPrompt(initialized.AgentInfo.Version)
+	if s.steersWithPrompt {
+		log.Printf("[ACP_CLI] session=%s agent=%s version=%s steers_with_prompt=true", s.rpc.owner, s.agent.ID, initialized.AgentInfo.Version)
+	}
 	for _, method := range initialized.AuthMethods {
 		s.authMethods = append(s.authMethods, method.ID)
 	}
