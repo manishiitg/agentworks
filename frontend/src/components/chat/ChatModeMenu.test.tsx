@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
-import { ChatModeMenu } from './ChatModeMenu'
+import { ChatModeMenu, openCrewMacFoldersEvent } from './ChatModeMenu'
 import { changeChatContext } from '../../products/work/ChatContextItems'
 import type { ChatContextView } from '../../services/api-types'
 
@@ -61,4 +61,19 @@ it('says when a saved mode runs as This project, and picking Plan only turns Pla
   await act(async () => { (document.querySelector('[data-testid="chat-mode-plan"]') as HTMLElement).click() })
   expect(toggle).toHaveBeenCalledTimes(1)
   expect(changeChatContext).not.toHaveBeenCalled()
+})
+
+// #3946: in a Crew project, Manage folders asks that project's side panel to open Folders on this Mac.
+it('Manage folders opens the Crew project side panel', async () => {
+  view = codexView('project')
+  const seen: unknown[] = []
+  const listen = (event: Event) => seen.push((event as CustomEvent).detail)
+  window.addEventListener(openCrewMacFoldersEvent, listen)
+  try {
+    await openMenu(<ChatModeMenu sessionId="s1" projectId="p1" onPlanToggle={() => {}} />)
+    await act(async () => { (document.querySelector('[data-testid="chat-mode-manage-folders"]') as HTMLElement).click() })
+    expect(seen).toEqual([{ projectId: 'p1' }])
+  } finally {
+    window.removeEventListener(openCrewMacFoldersEvent, listen)
+  }
 })

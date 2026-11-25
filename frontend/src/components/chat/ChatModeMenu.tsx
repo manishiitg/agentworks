@@ -37,8 +37,12 @@ function useReach(open: boolean) {
   return reach
 }
 
-export function ChatModeMenu({ sessionId, plan, planReady, onPlanToggle, onStart }: {
+export const openCrewMacFoldersEvent = 'agentworks:open-crew-mac-folders'
+
+export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanToggle, onStart }: {
   sessionId?: string
+  // The Crew project this chat belongs to: its side panel opens Folders on this Mac.
+  projectId?: string
   // Plan: shown only when this chat's coding app can plan first.
   plan?: { on: boolean }
   planReady?: boolean
@@ -86,7 +90,10 @@ export function ChatModeMenu({ sessionId, plan, planReady, onPlanToggle, onStart
   const fallback = access && access.mode !== access.effective && !plan?.on
   const wholeMac = Boolean(reach?.home) && Boolean(reach?.folders.some(folder => folder.path.replace(/\/+$/, '') === reach?.home && folder.access === 'read_write'))
   const others = (reach?.folders || []).filter(folder => folder.path.replace(/\/+$/, '') !== reach?.home)
-  const openFolders = () => useWorkflowStore.getState().openWorkspaceView('mcp', 'mac-folders')
+  // A Crew project's side panel is its own (WorkSurface listens for this event); other chats use the workflow pane.
+  const openFolders = () => projectId
+    ? window.dispatchEvent(new CustomEvent(openCrewMacFoldersEvent, { detail: { projectId } }))
+    : useWorkflowStore.getState().openWorkspaceView('mcp', 'mac-folders')
 
   return <Menu.Root modal={false} open={open} onOpenChange={setOpen}>
     <Menu.Trigger type="button" data-testid="plan-mode-chip" aria-pressed={plan?.on} aria-label={`Mode: ${row.label}. ${row.detail}`} title={`${row.label}: ${row.detail}${plan ? ' Shift+Tab switches Plan.' : ''}`} className={chipClass}>
@@ -123,7 +130,7 @@ export function ChatModeMenu({ sessionId, plan, planReady, onPlanToggle, onStart
                   ? 'Can reach: your whole Mac (this chat only).'
                   : `Can reach: this project${others.length ? ` · ${others.map(folder => folder.alias || folder.path).join(' · ')}` : ''}`}
           </div>
-          <Menu.Item className={menuRowClass} onSelect={openFolders}>Manage folders</Menu.Item>
+          <Menu.Item className={menuRowClass} data-testid="chat-mode-manage-folders" onSelect={openFolders}>Manage folders</Menu.Item>
         </>}
       </Menu.Content>
     </Menu.Portal>
