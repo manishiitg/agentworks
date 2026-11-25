@@ -543,6 +543,9 @@ func (c *CursorCLIAdapter) launchSDK(ctx context.Context, opts *llmtypes.CallOpt
 	if artifacts != cwd {
 		start["dirs"] = []string{artifacts}
 	}
+	if llmtypes.CodingAgentAutoReviewForSession(ctx, owner) {
+		start["auto_review"] = true
+	}
 	// Pass this chat's own MCP servers (with the AgentWorks bridge) explicitly, from the files prepared for
 	// it above. Those files are always in this chat's own folder (never a shared working folder): the SDK
 	// merges the MCP servers of every project folder it loads.
@@ -695,6 +698,11 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 				config[k] = v
 			}
 		}
+	}
+	// Auto-review (the chat's access mode): Cursor's own classifier runs safe tool calls and refuses the rest.
+	// It is a launch setting, so a changed mode restarts the bridge, which resumes the same Cursor agent.
+	if llmtypes.CodingAgentAutoReviewForSession(ctx, owner) {
+		config["auto_review"] = true
 	}
 	raw, err := json.Marshal(config)
 	if err != nil {

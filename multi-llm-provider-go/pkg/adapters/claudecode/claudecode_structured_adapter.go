@@ -252,6 +252,13 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 			permissionMode = "bypassPermissions"
 		}
 	}
+	// Auto-review (the chat's access mode): Claude's own classifier approves or
+	// blocks each action. Tools on the allowed list skip it, so the ones that
+	// change things come off the list for this chat.
+	if c.sdkTransport && llmtypes.CodingAgentAutoReviewForSession(ctx, claudeInteractiveSessionIDFromOptions(opts)) {
+		permissionMode = "auto"
+		allowedTools = claudeAutoReviewAllowedTools(allowedTools)
+	}
 	// /plan: this turn runs in Claude's own plan mode. The SDK switches the warm
 	// process per turn and back to permissionMode once the plan is approved; a
 	// one-shot launch starts in plan mode.

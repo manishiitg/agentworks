@@ -333,7 +333,10 @@ async function main() {
       // Task subagents get this agent's tool allowlist; without it a child gets Cursor's full toolset.
       subagentInherit: {},
       // Retry transport errors and stalls inside the SDK (1.3 reads this; pinned so a default change cannot drop it).
-      enableAgentRetries: true },
+      enableAgentRetries: true,
+      // Auto-review (the chat's access mode): Cursor's classifier runs safe tool calls; a local SDK run cannot ask
+      // the person, so it refuses the rest and the agent says why.
+      ...(start.auto_review ? { autoReview: true } : {}) },
     ...(start.mode ? { mode: start.mode } : {}),
     ...(start.tools ? { tools: start.tools } : {}),
     ...(start.mcp_servers ? { mcpServers: start.mcp_servers } : {}),

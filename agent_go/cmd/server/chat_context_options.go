@@ -82,7 +82,9 @@ type chatContextView struct {
 	IdleCompaction *chatContextSwitch `json:"idle_compaction,omitempty"`
 	// ClaudeTerminal: on runs Claude Code as the native terminal, off as the chat view. Claude chats only.
 	ClaudeTerminal *chatContextSwitch `json:"claude_terminal,omitempty"`
-	CanCompact     bool               `json:"can_compact"`
+	// Access is the chat's access mode menu (chat_access_mode.go); absent for a chat no coding app runs.
+	Access     *chatAccessView `json:"access,omitempty"`
+	CanCompact bool            `json:"can_compact"`
 	// CanNewChat offers "New chat": this tab starts a new conversation and the current one moves to its earlier chats.
 	CanNewChat bool   `json:"can_new_chat"`
 	Hint       string `json:"idle_compaction_hint,omitempty"`
@@ -471,6 +473,9 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 	if strings.EqualFold(strings.TrimSpace(subject.provider), string(llmproviders.ProviderClaudeCode)) {
 		view.ClaudeTerminal = &chatContextSwitch{On: tab.Identity.ClaudeTerminal}
 	}
+	if isCodingAgentProvider(subject.provider, subject.model) && productChatTab(tab) {
+		view.Access = chatAccessViewFor(tab.Identity.AccessMode, subject.provider, cliPersonalMac())
+	}
 	if api.costLedger != nil {
 		if cost, err := api.costLedger.SessionCost(sessionID); err == nil && (cost.TotalUSD > 0 || cost.UnpricedCalls > 0) {
 			labelChatCost(cost)
@@ -647,7 +652,11 @@ type chatContextRequest struct {
 	IdleCompaction *bool  `json:"idle_compaction,omitempty"`
 	CompactEarly   *bool  `json:"compact_early,omitempty"`
 	ClaudeTerminal *bool  `json:"claude_terminal,omitempty"`
-	Action         string `json:"action,omitempty"` // "compact"
+	// AccessMode: project, auto_review or full_access (chat_access_mode.go).
+	AccessMode *string `json:"access_mode,omitempty"`
+	Action     string  `json:"action,omitempty"` // "compact"
+	// fromTool marks an agent tool's call (chatContextArgs): it can lower the chat's access, never raise it.
+	fromTool bool
 }
 
 // applyChatContext changes one of the caller's own chats and answers with its view. The status is the HTTP status.
@@ -676,6 +685,13 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 			return http.StatusUnprocessableEntity, map[string]any{"error": err.Error()}
 		}
 		tab.Identity = identity
+	}
+	if input.AccessMode != nil {
+		changed, err := setChatAccessMode(ctx, owner, tab, *input.AccessMode, input.fromTool)
+		if err != nil {
+			return http.StatusUnprocessableEntity, map[string]any{"error": err.Error()}
+		}
+		tab = changed
 	}
 	if runtimeChanged && !afterTurn {
 		// The next message launches Claude on the chosen transport and resumes the same conversation; a change
@@ -747,7 +763,16 @@ func (api *StreamingAPI) handleChatContext(w http.ResponseWriter, r *http.Reques
 // chatContextArgs reads the switches of a models/sessions tool call (idle_compaction, claude_terminal): a
 // boolean, or "true"/"false" text from callers that pass every argument as a string.
 func chatContextArgs(args map[string]any) (chatContextRequest, error) {
-	var out chatContextRequest
+	out := chatContextRequest{fromTool: true}
+	if value, exists := args["access_mode"]; exists && value != nil {
+		mode, ok := value.(string)
+		if !ok {
+			return out, fmt.Errorf("access_mode must be project, auto_review or full_access")
+		}
+		if strings.TrimSpace(mode) != "" {
+			out.AccessMode = &mode
+		}
+	}
 	for name, target := range map[string]**bool{"idle_compaction": &out.IdleCompaction, "compact_early": &out.CompactEarly, "claude_terminal": &out.ClaudeTerminal} {
 		value, exists := args[name]
 		if !exists || value == nil {
@@ -773,7 +798,7 @@ func chatContextArgs(args map[string]any) (chatContextRequest, error) {
 }
 
 func (r chatContextRequest) changesSwitch() bool {
-	return r.IdleCompaction != nil || r.CompactEarly != nil || r.ClaudeTerminal != nil
+	return r.IdleCompaction != nil || r.CompactEarly != nil || r.ClaudeTerminal != nil || r.AccessMode != nil
 }
 
 // externalChatContext answers an MCP call that changes one of the caller's chats, with the same checks as the screen.

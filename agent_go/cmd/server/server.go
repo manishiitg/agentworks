@@ -5697,6 +5697,20 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				sendError("Could not load your attached folders. Please retry this turn.", true)
 				return
 			}
+			// The chat's access mode (#3885): a whole-Mac mode adds the person's home folder for this turn only, and
+			// Auto-review hands approvals to the coding app's own reviewer. Only the chat owner's own turns on their
+			// own Mac get it: a shared ask, a guest or a read-only caller runs as This project.
+			if cliPersonalMac() && !currentUserIsReadOnly && !crewAskOnly && req.SharedAgentSender == "" {
+				saved := chatAccessSavedMode(streamCtx, currentUserID, sessionID)
+				accessMode := chatAccessEffective(saved, finalProvider, true)
+				turnFolderGrants = withChatAccessGrant(turnFolderGrants, accessMode)
+				if accessMode == chatAccessAutoReview {
+					streamCtx = llmtypes.WithCodingAgentAutoReview(streamCtx, sessionID)
+				}
+				if saved != "" {
+					logfWithContext(queryLogCtx, "[CHAT_ACCESS] session=%s provider=%s saved=%q effective=%q", sessionID, finalProvider, saved, accessMode)
+				}
+			}
 			logfWithContext(queryLogCtx, "[WORK FOLDER GUARD] event=resolved session=%s grants=%d", sessionID, len(turnFolderGrants))
 			// Scratch belongs to this admitted turn, never to the person's attachments.
 			common.SetSessionBrowserScratch(sessionID, "")
