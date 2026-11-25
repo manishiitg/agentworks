@@ -27,7 +27,10 @@ export function useProjectWelcome(projectId?: string, profileId = 'work'): Proje
 /** A project's welcome page: its Markdown (images and videos from the project folder) and its starter buttons. */
 export function ProjectWelcome({ page, onStart }: { page: ProjectWelcomePage; onStart: (message: string) => void }) {
   return <div data-theme-surface="empty" className="mx-auto w-full max-w-2xl space-y-4 p-6 text-left text-sm">
-    {page.body && <ConversationImageRoot.Provider value={page.root}><MarkdownRenderer content={page.body} /></ConversationImageRoot.Provider>}
+    {/* Pictures and videos stay within about a third of the screen so the starters show without scrolling (owner, 25 Nov). */}
+    {page.body && <div className="[&_img]:mx-auto [&_img]:max-h-[35vh] [&_img]:w-auto [&_video]:mx-auto [&_video]:max-h-[35vh] [&_video]:w-auto">
+      <ConversationImageRoot.Provider value={page.root}><MarkdownRenderer content={page.body} /></ConversationImageRoot.Provider>
+    </div>}
     {page.starters.length > 0 && <div className="grid gap-2 sm:grid-cols-2">
       {page.starters.map((starter, index) => <button key={index} type="button" onClick={() => onStart(starter.message)}
         className="rounded-lg border border-border bg-card px-3 py-2.5 text-left text-foreground hover:border-primary">
