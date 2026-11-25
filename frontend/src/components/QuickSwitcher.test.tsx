@@ -59,6 +59,9 @@ it('opens on Quick, keeps All for broader navigation, and searches messages only
     await act(async () => { await vi.dynamicImportSettled() })
     await flushDebounce()
     expect(tab('Quick').getAttribute('aria-selected')).toBe('true')
+    const shortcuts = host.querySelector('[aria-label="Quick navigation shortcuts"]')!
+    expect(shortcuts.querySelector('[aria-label="All chats"]')).not.toBeNull()
+    expect(shortcuts.querySelector('[aria-label="All Goals"]')).toBeNull()
     expect(host.querySelector('[role="option"]')?.getAttribute('data-navigation-id')).toBe('chat:monitor')
     expect(host.querySelector('[data-navigation-id="chat:release"]')).not.toBeNull()
     expect(host.querySelector('[data-navigation-id="panel:release"]')).not.toBeNull()

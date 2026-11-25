@@ -59,7 +59,7 @@ export function quickNavigationItems(
     items.push({ ...common, type: 'menu', id: `browse:${scope}`, label, subtitle: 'Browse · show the full list', isActive: false, action: scope === 'active' ? 'active' : 'browse', scope })
   }
   browse('active', 'Running work')
-  if (products.includes('agentworks')) { browse('workflows', 'All Goals'); browse('chats', 'All chats') }
+  if (products.includes('agentworks')) browse('chats', 'All chats')
   if (products.includes('work')) browse('crew', 'All projects')
   if (products.length) browse('products', 'All products')
   if (products.includes(current)) browse('panels', 'All panels and tabs')
