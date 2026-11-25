@@ -1,3 +1,4 @@
+import { isLocalDeployment } from '../../products/productSurfaceConfig'
 import { mostInTeam } from '../chat/AgentInTeamMark'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import { Fragment, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
@@ -338,10 +339,11 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     {naming?.kind === 'new' && nameBox('New group name', draft => edit({ op: 'new', key: naming.key, name: draft }))}
     {top.map(({ id, value }) => <Fragment key={id}>{between(id)}{typeof value === 'string' ? groupBlock(value) : tree(value)}</Fragment>)}
     {between(null)}
-    {/* Other people's agents in this project, each with its person's name, as in a project that is not open (owner,
-        25 Nov: "i should see other users chats"; they were listed only inside a group). */}
-    {teammates.filter(agent => !groupOf(agent)).map(agent => <div key={agent.tabId}>{row(agent, true)}</div>)}
-    {theirClosed.filter(agent => !groups[agent.key]).map(closedRow)}
+    {/* An online project lists its other people's chats, each with its person's name (owner, 25 Nov: "i should see
+        other users chats", for online projects only). A local Mac project keeps Team members' agents in groups and
+        the Team view. */}
+    {!isLocalDeployment() && teammates.filter(agent => !groupOf(agent)).map(agent => <div key={agent.tabId}>{row(agent, true)}</div>)}
+    {!isLocalDeployment() && theirClosed.filter(agent => !groups[agent.key]).map(closedRow)}
     {draggedGrouped && <div className={`mx-1 my-1 rounded-md border border-dashed px-2 py-2 text-center text-[11px] text-muted-foreground ${dropOn === 'out' ? 'border-primary bg-primary/10' : 'border-border'}`}
       {...dropZone('out', key => { void edit({ op: 'move', key, group: '' }) })}>Drop here to take it out of the group</div>}
     {draggedParent && <div className={`mx-1 my-1 rounded-md border border-dashed px-2 py-2 text-center text-[11px] text-muted-foreground ${dropOn === 'fork-out' ? 'border-primary bg-primary/10' : 'border-border'}`}
