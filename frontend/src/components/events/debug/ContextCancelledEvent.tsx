@@ -15,7 +15,7 @@ export const ContextCancelledEventDisplay: React.FC<ContextCancelledEventDisplay
   if (event.duration !== undefined) parts.push(formatDuration(event.duration))
 
   return (
-    <span className="text-[11px] text-gray-400 dark:text-gray-500 italic">
+    <span className="text-[11px] text-muted-foreground italic">
       {parts.join(' · ')}
     </span>
   )

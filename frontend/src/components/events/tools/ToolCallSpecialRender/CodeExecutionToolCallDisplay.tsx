@@ -16,7 +16,7 @@ export const CodeExecutionToolCallDisplay: React.FC<CodeExecutionToolCallDisplay
   const mcpServerName = getMCPServerName(toolName)
 
   const parallelBadge = event.is_parallel ? (
-    <span className="ml-1.5 text-[10px] text-gray-500 dark:text-gray-400 font-normal opacity-75">
+    <span className="ml-1.5 text-[10px] text-muted-foreground font-normal opacity-75">
       (parallel)
     </span>
   ) : null
@@ -55,8 +55,8 @@ export const CodeExecutionToolCallDisplay: React.FC<CodeExecutionToolCallDisplay
         </div>
 
         <div className="mt-2">
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
-            <div className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="bg-card border border-border rounded-md p-2">
+            <div className="text-xs text-muted-foreground">
               Fetching OpenAPI spec{specificToolName ? ` for ${specificToolName}` : serverName ? ` for ${serverName}` : ''}...
             </div>
           </div>
@@ -74,13 +74,13 @@ export const CodeExecutionToolCallDisplay: React.FC<CodeExecutionToolCallDisplay
     } catch { /* ignore */ }
 
     return (
-      <div className="bg-slate-100 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded p-2">
+      <div className="bg-muted border border-border rounded p-2">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center">
+              <div className="text-sm font-medium text-foreground flex items-center">
                 <span className="mr-1">▶</span> Execute Shell Command{parallelBadge}{' '}
-                <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                <span className="text-xs font-normal text-muted-foreground">
                   {event.turn !== undefined && `• Turn: ${event.turn}`}
                 </span>
               </div>
@@ -89,14 +89,14 @@ export const CodeExecutionToolCallDisplay: React.FC<CodeExecutionToolCallDisplay
 
           <div className="flex items-center gap-2 flex-shrink-0">
             {event.timestamp && (
-              <div className="text-xs text-slate-500 dark:text-slate-400">
+              <div className="text-xs text-muted-foreground">
                 {new Date(event.timestamp).toLocaleTimeString()}
               </div>
             )}
             {command && (
               <button
                 onClick={toggle}
-                className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-700 dark:text-slate-300 transition-colors"
+                className="p-0.5 hover:bg-muted rounded text-foreground transition-colors"
                 title={isExpanded ? "Collapse (Alt+Click for all)" : "Expand (Alt+Click for all)"}
               >
                 {isExpanded ? <Minus className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
@@ -108,12 +108,12 @@ export const CodeExecutionToolCallDisplay: React.FC<CodeExecutionToolCallDisplay
         {command && (
           <div className={isExpanded ? 'mt-2' : 'mt-1'}>
             {isExpanded ? (
-              <div className="bg-gray-900 dark:bg-gray-950 border border-gray-700 rounded-md p-2">
+              <div className="bg-muted border border-border rounded-md p-2">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-xs font-medium text-gray-400">
+                  <div className="text-xs font-medium text-muted-foreground">
                     $ Command
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-muted-foreground">
                     {command.split('\n').length} line{command.split('\n').length !== 1 ? 's' : ''}
                   </div>
                 </div>
@@ -122,7 +122,7 @@ export const CodeExecutionToolCallDisplay: React.FC<CodeExecutionToolCallDisplay
                 </pre>
               </div>
             ) : (
-              <div className="bg-gray-900 dark:bg-gray-950 border border-gray-700 rounded-md px-2 py-1">
+              <div className="bg-muted border border-border rounded-md px-2 py-1">
                 <pre className="text-xs text-green-300 font-mono truncate">
                   $ {command.split('\n')[0]}{command.split('\n').length > 1 ? ' ...' : ''}
                 </pre>
@@ -159,8 +159,8 @@ export const CodeExecutionToolCallDisplay: React.FC<CodeExecutionToolCallDisplay
         </div>
 
         <div className="mt-2">
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
-            <div className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="bg-card border border-border rounded-md p-2">
+            <div className="text-xs text-muted-foreground">
               Discovering available servers, tools, and code structure...
             </div>
           </div>
@@ -220,15 +220,15 @@ export const CodeExecutionToolCallDisplay: React.FC<CodeExecutionToolCallDisplay
         {isExpanded && (
           <div className="mt-2 space-y-2">
             {serverName && (
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+              <div className="bg-card border border-border rounded-md p-2">
                 <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">📦 Server:</div>
-                <div className="text-sm font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 px-2 py-1 rounded">
+                <div className="text-sm font-mono text-foreground bg-muted/50 px-2 py-1 rounded">
                   {serverName}
                 </div>
               </div>
             )}
             {Array.isArray(toolNames) && toolNames.length > 0 && (
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-1.5">
+              <div className="bg-card border border-border rounded-md p-1.5">
                 <div className="text-[10px] font-medium text-blue-700 dark:text-blue-300 mb-0.5">
                   🔧 Tools ({toolNames.length}):
                 </div>
@@ -236,7 +236,7 @@ export const CodeExecutionToolCallDisplay: React.FC<CodeExecutionToolCallDisplay
                   {toolNames.map((tool, index) => (
                     <span
                       key={index}
-                      className="text-[10px] font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700"
+                      className="text-[10px] font-mono text-foreground bg-muted/50 px-1.5 py-0.5 rounded border border-border"
                     >
                       {tool}
                     </span>
@@ -245,7 +245,7 @@ export const CodeExecutionToolCallDisplay: React.FC<CodeExecutionToolCallDisplay
               </div>
             )}
             {(serverName || (Array.isArray(toolNames) && toolNames.length > 0)) && (
-              <div className="text-xs text-gray-500 dark:text-gray-400 px-2">
+              <div className="text-xs text-muted-foreground px-2">
                 Fetching Go source code...
               </div>
             )}
@@ -306,19 +306,19 @@ export const CodeExecutionToolCallDisplay: React.FC<CodeExecutionToolCallDisplay
         {isExpanded && (
           <div className="mt-2 space-y-2">
             {filename && (
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+              <div className="bg-card border border-border rounded-md p-2">
                 <div className="text-xs font-medium text-purple-700 dark:text-purple-300 mb-1">📄 Filename:</div>
-                <div className="text-sm font-mono text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 px-2 py-1 rounded">
+                <div className="text-sm font-mono text-foreground bg-muted/50 px-2 py-1 rounded">
                   {filename}
                 </div>
               </div>
             )}
 
             {cliArgs.length > 0 && (
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+              <div className="bg-card border border-border rounded-md p-2">
                 <div className="text-xs font-medium text-purple-700 dark:text-purple-300">
                   🔧 CLI Arguments:{' '}
-                  <span className="font-mono text-gray-800 dark:text-gray-200">
+                  <span className="font-mono text-foreground">
                     {cliArgs.join(', ')}
                   </span>
                 </div>
@@ -326,16 +326,16 @@ export const CodeExecutionToolCallDisplay: React.FC<CodeExecutionToolCallDisplay
             )}
 
             {code && (
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+              <div className="bg-card border border-border rounded-md p-2">
                 <div className="flex items-center justify-between mb-1">
                   <div className="text-xs font-medium text-purple-700 dark:text-purple-300">
                     💻 Go Code Preview
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                  <div className="text-xs text-muted-foreground">
                     {lineCount} line{lineCount !== 1 ? 's' : ''} • {code.length} chars
                   </div>
                 </div>
-                <pre className="text-xs text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap overflow-x-auto bg-gray-50 dark:bg-gray-900 p-2 rounded max-h-48 overflow-y-auto">
+                <pre className="text-xs text-foreground font-mono whitespace-pre-wrap overflow-x-auto bg-muted/50 p-2 rounded max-h-48 overflow-y-auto">
                   {code}
                 </pre>
               </div>

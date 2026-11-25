@@ -74,13 +74,13 @@ export const ConversationEndEventDisplay: React.FC<ConversationEndEventProps> = 
             </div>
             
             {/* Brief question preview */}
-            <div className="text-gray-600 dark:text-gray-400">
+            <div className="text-muted-foreground">
               {event.question.length > 80 ? `${event.question.substring(0, 80)}...` : event.question}
             </div>
             
             {/* Expanded question with markdown rendering */}
             {isQuestionExpanded && (
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+              <div className="bg-card border border-border rounded-md p-2">
                 <ConversationMarkdownRenderer content={event.question} framed={false} />
               </div>
             )}
@@ -95,7 +95,7 @@ export const ConversationEndEventDisplay: React.FC<ConversationEndEventProps> = 
             </div>
             
             {/* Full result with markdown rendering - always visible */}
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-3">
+            <div className="bg-card border border-border rounded-md p-3">
               <ConversationMarkdownRenderer content={event.result} framed={false} />
             </div>
           </div>
@@ -123,8 +123,8 @@ export const ConversationEndEventDisplay: React.FC<ConversationEndEventProps> = 
         
         {/* Optional metadata fields */}
         {event.timestamp && <div><strong>Timestamp:</strong> {new Date(event.timestamp).toLocaleString()}</div>}
-        {event.trace_id && <div><strong>Trace ID:</strong> <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">{event.trace_id}</code></div>}
-        {event.correlation_id && <div><strong>Correlation ID:</strong> <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">{event.correlation_id}</code></div>}
+        {event.trace_id && <div><strong>Trace ID:</strong> <code className="text-xs bg-muted px-1 rounded">{event.trace_id}</code></div>}
+        {event.correlation_id && <div><strong>Correlation ID:</strong> <code className="text-xs bg-muted px-1 rounded">{event.correlation_id}</code></div>}
       </div>
     </div>
   )

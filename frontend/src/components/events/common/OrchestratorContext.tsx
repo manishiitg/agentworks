@@ -77,23 +77,23 @@ export const OrchestratorContext: React.FC<OrchestratorContextProps> = ({
       'emerald': 'bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200',
       'violet': 'bg-violet-100 dark:bg-violet-900 text-violet-800 dark:text-violet-200',
       'amber': 'bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200',
-      'gray': 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200'
+      'gray': 'bg-muted text-foreground'
     };
     return colorMap[color as keyof typeof colorMap] || colorMap.gray;
   };
 
   return (
-    <div className={`text-xs text-gray-600 dark:text-gray-400 mb-2 flex items-center ${className}`}>
+    <div className={`text-xs text-muted-foreground mb-2 flex items-center ${className}`}>
       <span className={`${getPhaseColorClasses(phaseInfo.color)} px-2 py-1 rounded mr-2 font-medium`}>
         {phaseInfo.name}
       </span>
       {agentName && (
-        <span className="text-gray-500 dark:text-gray-500 mr-2">
+        <span className="text-muted-foreground mr-2">
           {agentName}
         </span>
       )}
       {step !== undefined && (
-        <span className="text-gray-500 dark:text-gray-500 mr-2">
+        <span className="text-muted-foreground mr-2">
           {getStepDisplay(orchestratorPhase, step)}
         </span>
       )}

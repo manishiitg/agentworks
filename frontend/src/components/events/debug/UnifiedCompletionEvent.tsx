@@ -66,7 +66,7 @@ export const UnifiedCompletionEventDisplay: React.FC<UnifiedCompletionEventDispl
           </div>
           {interrupted && <div role="status" className="mt-2 pl-4 text-sm text-muted-foreground">{interrupted}</div>}
           {event.duration != null && (
-            <div className="mt-2 pl-4 text-[10px] tabular-nums text-neutral-500">
+            <div className="mt-2 pl-4 text-[10px] tabular-nums text-muted-foreground">
               {formatDuration(event.duration)}
             </div>
           )}
@@ -110,15 +110,15 @@ export const UnifiedCompletionEventDisplay: React.FC<UnifiedCompletionEventDispl
 
   // No final_result: minimal completion indicator
   return (
-    <div className="bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-800 rounded p-2">
+    <div className="bg-muted/50 border border-border rounded p-2">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-xs text-gray-500 dark:text-gray-400">
+        <div className="text-xs text-muted-foreground">
           Completed
           {event.duration != null && ` in ${formatDuration(event.duration)}`}
           {event.turns && ` (${event.turns} turns)`}
         </div>
         {event.timestamp && (
-          <div className="text-xs text-gray-400 dark:text-gray-500">
+          <div className="text-xs text-muted-foreground">
             {new Date(event.timestamp).toLocaleTimeString()}
           </div>
         )}

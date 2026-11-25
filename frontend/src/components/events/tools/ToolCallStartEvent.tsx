@@ -91,7 +91,7 @@ export const ToolCallStartEventDisplay: React.FC<ToolCallStartEventProps> = ({ e
             <div className="text-sm font-medium text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
               Tool Call Start{' '}
               {event.is_parallel && (
-                <span className="ml-1.5 text-[10px] text-gray-500 dark:text-gray-400 font-normal opacity-75">
+                <span className="ml-1.5 text-[10px] text-muted-foreground font-normal opacity-75">
                   (parallel)
                 </span>
               )}
@@ -127,9 +127,9 @@ export const ToolCallStartEventDisplay: React.FC<ToolCallStartEventProps> = ({ e
       {/* Tool arguments visibility controlled by isExpanded */}
       {hasArguments && isExpanded && (
         <div className="mt-2">
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+          <div className="bg-card border border-border rounded-md p-2">
             <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">Arguments:</div>
-            <pre className="text-xs text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap overflow-x-auto">
+            <pre className="text-xs text-foreground font-mono whitespace-pre-wrap overflow-x-auto">
               {event.tool_params?.arguments ? formatArguments(event.tool_params.arguments) : '(no arguments)'}
             </pre>
           </div>

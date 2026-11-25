@@ -197,7 +197,7 @@ export const BlockingHumanFeedbackDisplay: React.FC<BlockingHumanFeedbackDisplay
               <span className="group-open:hidden">+ Show details</span>
               <span className="hidden group-open:inline">− Hide details</span>
             </summary>
-            <div className="mt-1.5 p-3 bg-white dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded max-h-[500px] overflow-y-auto">
+            <div className="mt-1.5 p-3 bg-card border border-border rounded max-h-[500px] overflow-y-auto">
               <MarkdownRenderer content={context} className="text-xs" />
             </div>
           </details>
@@ -245,7 +245,7 @@ export const BlockingHumanFeedbackDisplay: React.FC<BlockingHumanFeedbackDisplay
                 <button
                   onClick={handleReject}
                   disabled={isApproving || isSubmittingFeedback}
-                  className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-xs font-medium rounded transition-colors disabled:opacity-50"
+                  className="px-3 py-1.5 bg-muted hover:bg-muted text-foreground text-xs font-medium rounded transition-colors disabled:opacity-50"
                 >
                   {isSubmittingFeedback ? 'Processing...' : noLabel}
                 </button>
@@ -253,7 +253,7 @@ export const BlockingHumanFeedbackDisplay: React.FC<BlockingHumanFeedbackDisplay
               <button
                 onClick={handleApprove}
                 disabled={isApproving || isSubmittingFeedback}
-                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 bg-success hover:bg-success/90 text-success-foreground text-xs font-medium rounded transition-colors disabled:opacity-50"
               >
                 {isApproving || isSubmittingFeedback ? 'Processing...' : yesLabel}
               </button>
@@ -270,7 +270,7 @@ export const BlockingHumanFeedbackDisplay: React.FC<BlockingHumanFeedbackDisplay
             onChange={(e) => setFeedback(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Type feedback here if changes are needed... (Enter to submit)"
-            className="w-full px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800/80 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+            className="w-full px-2.5 py-1.5 text-xs border border-border rounded bg-card text-foreground placeholder-muted-foreground focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
             rows={5}
             disabled={isApproving || isSubmittingFeedback}
           />
@@ -279,7 +279,7 @@ export const BlockingHumanFeedbackDisplay: React.FC<BlockingHumanFeedbackDisplay
               <button
                 onClick={handleApprove}
                 disabled={isApproving || isSubmittingFeedback}
-                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 bg-success hover:bg-success/90 text-success-foreground text-xs font-medium rounded transition-colors disabled:opacity-50"
               >
                 {isApproving ? 'Processing...' : yesLabel || 'Approve & Continue'}
               </button>
@@ -288,7 +288,7 @@ export const BlockingHumanFeedbackDisplay: React.FC<BlockingHumanFeedbackDisplay
               <button
                 onClick={handleSubmitFeedback}
                 disabled={isSubmittingFeedback || isApproving || !feedback.trim()}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium rounded transition-colors disabled:opacity-50"
               >
                 {isSubmittingFeedback ? 'Submitting...' : 'Submit Feedback'}
               </button>
@@ -304,7 +304,7 @@ export const BlockingHumanFeedbackDisplay: React.FC<BlockingHumanFeedbackDisplay
             <span className="group-open:hidden">+ Show details</span>
             <span className="hidden group-open:inline">− Hide details</span>
           </summary>
-          <div className="mt-1.5 p-3 bg-white dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded max-h-[500px] overflow-y-auto">
+          <div className="mt-1.5 p-3 bg-card border border-border rounded max-h-[500px] overflow-y-auto">
             <MarkdownRenderer content={context} className="text-xs" />
           </div>
         </details>

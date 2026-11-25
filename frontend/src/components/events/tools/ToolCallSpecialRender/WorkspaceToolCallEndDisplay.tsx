@@ -103,15 +103,15 @@ export const WorkspaceToolCallEndDisplay: React.FC<WorkspaceToolCallEndDisplayPr
         return (
           <div key={`${name}-${index}`}>
             <div 
-              className="flex items-center gap-2 py-1 px-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-xs"
+              className="flex items-center gap-2 py-1 px-2 hover:bg-muted rounded text-xs"
               style={{ paddingLeft: `${indent + 8}px` }}
             >
               <span>{icon}</span>
-              <span className="font-mono text-gray-800 dark:text-gray-200">
+              <span className="font-mono text-foreground">
                 {name}
               </span>
               {size && !isFolder && (
-                <span className="text-gray-500 dark:text-gray-400 text-xs ml-auto">
+                <span className="text-muted-foreground text-xs ml-auto">
                   {(size / 1024).toFixed(1)} KB
                 </span>
               )}
@@ -171,7 +171,7 @@ export const WorkspaceToolCallEndDisplay: React.FC<WorkspaceToolCallEndDisplayPr
         {/* File tree */}
         {showContent && files.length > 0 && (
           <div className="mt-2">
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+            <div className="bg-card border border-border rounded-md p-2">
               <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-2">
                 📋 Found {files.length} {files.length === 1 ? 'item' : 'items'}
               </div>
@@ -243,24 +243,24 @@ export const WorkspaceToolCallEndDisplay: React.FC<WorkspaceToolCallEndDisplayPr
         {/* File metadata */}
         {showContent && (
           <div className="mt-2">
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+            <div className="bg-card border border-border rounded-md p-2">
               <div className="grid grid-cols-1 gap-2 text-xs">
                 {filepath && (
                   <div>
                     <span className="font-medium text-blue-700 dark:text-blue-300">📁 File: </span>
-                    <span className="font-mono text-gray-800 dark:text-gray-200">{filepath}</span>
+                    <span className="font-mono text-foreground">{filepath}</span>
                   </div>
                 )}
                 {folder && (
                   <div>
                     <span className="font-medium text-blue-700 dark:text-blue-300">📂 Folder: </span>
-                    <span className="font-mono text-gray-800 dark:text-gray-200">{folder}</span>
+                    <span className="font-mono text-foreground">{folder}</span>
                   </div>
                 )}
                 {lastModified && (
                   <div>
                     <span className="font-medium text-blue-700 dark:text-blue-300">🕒 Modified: </span>
-                    <span className="text-gray-800 dark:text-gray-200">{new Date(lastModified).toLocaleString()}</span>
+                    <span className="text-foreground">{new Date(lastModified).toLocaleString()}</span>
                   </div>
                 )}
               </div>
@@ -271,7 +271,7 @@ export const WorkspaceToolCallEndDisplay: React.FC<WorkspaceToolCallEndDisplayPr
         {/* File content */}
         {showContent && content && (
           <div className="mt-2">
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+            <div className="bg-card border border-border rounded-md p-2">
               <div className="flex items-center justify-between mb-1">
                 <div className="text-xs font-medium text-blue-700 dark:text-blue-300">
                   📄 Content {isMarkdownContent(content) && <span className="text-blue-600 dark:text-blue-400">(Markdown)</span>}
@@ -347,30 +347,30 @@ export const WorkspaceToolCallEndDisplay: React.FC<WorkspaceToolCallEndDisplayPr
         {/* File metadata */}
         {showContent && (
           <div className="mt-2">
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+            <div className="bg-card border border-border rounded-md p-2">
               <div className="grid grid-cols-1 gap-2 text-xs">
                 {filepath && (
                   <div>
                     <span className="font-medium text-green-700 dark:text-green-300">📁 File: </span>
-                    <span className="font-mono text-gray-800 dark:text-gray-200">{filepath}</span>
+                    <span className="font-mono text-foreground">{filepath}</span>
                   </div>
                 )}
                 {folder && (
                   <div>
                     <span className="font-medium text-green-700 dark:text-green-300">📂 Folder: </span>
-                    <span className="font-mono text-gray-800 dark:text-gray-200">{folder}</span>
+                    <span className="font-mono text-foreground">{folder}</span>
                   </div>
                 )}
                 {lastModified && (
                   <div>
                     <span className="font-medium text-green-700 dark:text-green-300">🕒 Modified: </span>
-                    <span className="text-gray-800 dark:text-gray-200">{new Date(lastModified).toLocaleString()}</span>
+                    <span className="text-foreground">{new Date(lastModified).toLocaleString()}</span>
                   </div>
                 )}
                 {applied && (
                   <div>
                     <span className="font-medium text-green-700 dark:text-green-300">✅ Status: </span>
-                    <span className="text-gray-800 dark:text-gray-200">Changes applied successfully</span>
+                    <span className="text-foreground">Changes applied successfully</span>
                   </div>
                 )}
               </div>
@@ -434,24 +434,24 @@ export const WorkspaceToolCallEndDisplay: React.FC<WorkspaceToolCallEndDisplayPr
         {/* File metadata */}
         {showContent && (
           <div className="mt-2">
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+            <div className="bg-card border border-border rounded-md p-2">
               <div className="grid grid-cols-1 gap-2 text-xs">
                 {filepath && (
                   <div>
                     <span className="font-medium text-green-700 dark:text-green-300">📁 File: </span>
-                    <span className="font-mono text-gray-800 dark:text-gray-200">{filepath}</span>
+                    <span className="font-mono text-foreground">{filepath}</span>
                   </div>
                 )}
                 {folder && (
                   <div>
                     <span className="font-medium text-green-700 dark:text-green-300">📂 Folder: </span>
-                    <span className="font-mono text-gray-800 dark:text-gray-200">{folder}</span>
+                    <span className="font-mono text-foreground">{folder}</span>
                   </div>
                 )}
                 {deleted && (
                   <div>
                     <span className="font-medium text-green-700 dark:text-green-300">✅ Status: </span>
-                    <span className="text-gray-800 dark:text-gray-200">File deleted successfully</span>
+                    <span className="text-foreground">File deleted successfully</span>
                   </div>
                 )}
               </div>

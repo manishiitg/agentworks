@@ -46,7 +46,7 @@ export const MCPServerSelectionEventDisplay: React.FC<MCPServerSelectionEventPro
             <strong>Selected Servers:</strong>
             <div className="mt-1 space-y-1">
               {event.selected_servers.map((server, index) => (
-                <div key={index} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+                <div key={index} className="bg-card border border-border rounded-md p-2">
                   <div className="font-medium">{server}</div>
                 </div>
               ))}
@@ -66,9 +66,9 @@ export const MCPServerSelectionEventDisplay: React.FC<MCPServerSelectionEventPro
         
         {/* Query */}
         {event.query && (
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+          <div className="bg-card border border-border rounded-md p-2">
             <div className="font-medium">Query:</div>
-            <div className="mt-1 text-gray-800 dark:text-gray-200">{event.query}</div>
+            <div className="mt-1 text-foreground">{event.query}</div>
           </div>
         )}
         

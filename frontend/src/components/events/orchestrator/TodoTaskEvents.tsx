@@ -40,14 +40,14 @@ export const TodoTaskRouteSelectedEventDisplay: React.FC<TodoTaskEventProps<Todo
       {event.next_action === 'delegate' && (
         <div className="space-y-1 mt-2">
           <div className="flex items-center gap-2">
-            <span className="text-gray-500">Agent:</span>
+            <span className="text-muted-foreground">Agent:</span>
             <span className="font-semibold text-blue-600 dark:text-blue-400">
               {event.use_generic_agent ? 'Generic Agent' : (event.selected_route_name || event.selected_route_id)}
             </span>
           </div>
           {event.preferred_tier_label && (
             <div className="flex items-center gap-2">
-              <span className="text-gray-500">Tier:</span>
+              <span className="text-muted-foreground">Tier:</span>
               <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-medium ${
                 event.preferred_tier === 1 ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300' :
                 event.preferred_tier === 2 ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' :
@@ -58,26 +58,26 @@ export const TodoTaskRouteSelectedEventDisplay: React.FC<TodoTaskEventProps<Todo
             </div>
           )}
           <div className="flex items-center gap-2">
-            <span className="text-gray-500">Task:</span>
+            <span className="text-muted-foreground">Task:</span>
             <span className="font-medium">{event.todo_title || event.todo_id_to_execute}</span>
           </div>
           {event.instructions_to_sub_agent && (
             <div className="mt-2">
               <button
                 onClick={() => setInstructionsExpanded(!instructionsExpanded)}
-                className="flex items-center gap-1 text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 text-[11px] font-medium transition-colors"
+                className="flex items-center gap-1 text-muted-foreground hover:text-purple-600 dark:hover:text-purple-400 text-[11px] font-medium transition-colors"
               >
                 <span className={`transform transition-transform ${instructionsExpanded ? 'rotate-90' : ''}`}>▶</span>
                 <span>Instructions</span>
               </button>
               {instructionsExpanded && (
-                <div className="mt-1 text-gray-700 dark:text-gray-300 bg-white/50 dark:bg-gray-800/50 p-2 rounded border border-purple-100 dark:border-purple-900/30 italic text-xs">
+                <div className="mt-1 text-foreground bg-card/50 p-2 rounded border border-purple-100 dark:border-purple-900/30 italic text-xs">
                   "{event.instructions_to_sub_agent}"
                 </div>
               )}
               {!instructionsExpanded && (
                 <div
-                  className="mt-1 text-gray-500 dark:text-gray-400 text-[11px] truncate max-w-md cursor-pointer italic"
+                  className="mt-1 text-muted-foreground text-[11px] truncate max-w-md cursor-pointer italic"
                   onClick={() => setInstructionsExpanded(true)}
                 >
                   "{event.instructions_to_sub_agent}"
@@ -89,7 +89,7 @@ export const TodoTaskRouteSelectedEventDisplay: React.FC<TodoTaskEventProps<Todo
       )}
 
       {event.next_action === 'complete' && event.completion_reason && (
-        <div className="mt-1 text-gray-600 dark:text-gray-400 italic">
+        <div className="mt-1 text-muted-foreground italic">
           {event.completion_reason}
         </div>
       )}
@@ -102,7 +102,7 @@ export const TodoTaskRouteSelectedEventDisplay: React.FC<TodoTaskEventProps<Todo
       )}
       
       {event.model && !compact && (
-        <div className="mt-2 text-[10px] text-gray-400 dark:text-gray-500 flex items-center gap-1">
+        <div className="mt-2 text-[10px] text-muted-foreground flex items-center gap-1">
           <span>🧠</span>
           <span>{event.model}</span>
         </div>
@@ -126,7 +126,7 @@ export const TodoTaskStepCompletedEventDisplay: React.FC<TodoTaskEventProps<Todo
         </div>
       </div>
       {event.completion_reason && (
-        <div className={`${compact ? 'text-[11px]' : 'text-xs'} text-purple-800 dark:text-purple-200 bg-white/40 dark:bg-black/20 p-2 rounded mt-1`}>
+        <div className={`${compact ? 'text-[11px]' : 'text-xs'} text-purple-800 dark:text-purple-200 bg-card/40 p-2 rounded mt-1`}>
           {event.completion_reason}
         </div>
       )}

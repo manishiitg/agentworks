@@ -45,7 +45,7 @@ export const PlanApprovalDisplay: React.FC<PlanApprovalDisplayProps> = ({
         {context && (
           <details className="mt-2">
             <summary className="text-[10px] text-green-600 dark:text-green-400 cursor-pointer">Show plan</summary>
-            <div className="mt-1 p-3 bg-white dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded max-h-[500px] overflow-y-auto">
+            <div className="mt-1 p-3 bg-card border border-border rounded max-h-[500px] overflow-y-auto">
               <MarkdownRenderer content={context} className="text-xs" />
             </div>
           </details>
@@ -63,7 +63,7 @@ export const PlanApprovalDisplay: React.FC<PlanApprovalDisplayProps> = ({
         </span>
         <button
           onClick={handleApprove}
-          className="px-3 py-1.5 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white text-xs font-medium rounded transition-colors flex-shrink-0"
+          className="px-3 py-1.5 bg-success hover:bg-success/90 text-success-foreground text-xs font-medium rounded transition-colors flex-shrink-0"
         >
           {yesLabel}
         </button>
@@ -71,7 +71,7 @@ export const PlanApprovalDisplay: React.FC<PlanApprovalDisplayProps> = ({
 
       {/* Plan content */}
       {context && (
-        <div className="mt-2 p-3 bg-white dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded max-h-[500px] overflow-y-auto">
+        <div className="mt-2 p-3 bg-card border border-border rounded max-h-[500px] overflow-y-auto">
           <MarkdownRenderer content={context} className="text-xs" />
         </div>
       )}

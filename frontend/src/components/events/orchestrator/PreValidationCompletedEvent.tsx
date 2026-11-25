@@ -8,9 +8,9 @@ interface PreValidationCompletedEventDisplayProps {
   compact?: boolean
 }
 
-export const PreValidationCompletedEventDisplay: React.FC<PreValidationCompletedEventDisplayProps> = ({ 
-  event, 
-  compact = false 
+export const PreValidationCompletedEventDisplay: React.FC<PreValidationCompletedEventDisplayProps> = ({
+  event,
+  compact = false
 }) => {
   const [isExpanded, setIsExpanded] = useState(false)
 
@@ -20,23 +20,23 @@ export const PreValidationCompletedEventDisplay: React.FC<PreValidationCompleted
   const overallPass = event.overall_pass ?? false
   const filesCheckedCount = event.files_checked?.length ?? 0
   const isSkipped = totalChecks === 0 && passedChecks === 0 && failedChecks === 0 && filesCheckedCount === 0
-  const passRate = totalChecks > 0 
-    ? Math.round((passedChecks / totalChecks) * 100) 
+  const passRate = totalChecks > 0
+    ? Math.round((passedChecks / totalChecks) * 100)
     : 0
 
   return (
     <div className={`${
       isSkipped
-        ? 'bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-700'
+        ? 'bg-muted/50 border border-border'
         : overallPass
-        ? 'bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-700'
+        ? 'bg-muted/50 border border-border'
         : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
     } rounded-md ${compact ? 'p-2' : 'p-3'}`}>
       <div className={`${compact ? 'text-xs' : 'text-sm'} ${
         isSkipped
-          ? 'text-gray-700 dark:text-gray-300'
+          ? 'text-foreground'
           : overallPass
-          ? 'text-gray-700 dark:text-gray-300'
+          ? 'text-foreground'
           : 'text-red-700 dark:text-red-300'
       }`}>
         <div className="flex flex-wrap items-center gap-2">
@@ -44,22 +44,22 @@ export const PreValidationCompletedEventDisplay: React.FC<PreValidationCompleted
             <span>🔍 Pre-Validation {isSkipped ? 'Skipped' : overallPass ? 'Passed' : 'Failed'}</span>
           </div>
           {isSkipped ? (
-            <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+            <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted text-foreground">
               No checks configured
             </span>
           ) : (
             <>
               <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                overallPass 
-                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300' 
+                overallPass
+                  ? 'bg-muted text-foreground'
                   : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
               }`}>
                 {passedChecks}/{totalChecks} checks passed ({passRate}%)
               </span>
-              <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+              <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted text-foreground">
                 {totalChecks} total
               </span>
-              <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+              <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted text-foreground">
                 {passedChecks} passed
               </span>
               {failedChecks > 0 && (
@@ -74,9 +74,9 @@ export const PreValidationCompletedEventDisplay: React.FC<PreValidationCompleted
         {(event.step_title || event.step_id) && (
           <div className={`${compact ? 'text-[10px]' : 'text-xs'} mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 ${
             isSkipped
-              ? 'text-gray-600 dark:text-gray-400'
+              ? 'text-muted-foreground'
               : overallPass
-              ? 'text-gray-600 dark:text-gray-400'
+              ? 'text-muted-foreground'
               : 'text-red-600 dark:text-red-400'
           }`}>
             {event.step_title && (
@@ -85,7 +85,7 @@ export const PreValidationCompletedEventDisplay: React.FC<PreValidationCompleted
               </div>
             )}
             {event.step_id && (
-              <div className={isSkipped ? 'text-gray-500 dark:text-gray-500' : overallPass ? 'text-gray-500 dark:text-gray-400' : 'text-red-500 dark:text-red-500'}>
+              <div className={isSkipped ? 'text-muted-foreground' : overallPass ? 'text-muted-foreground' : 'text-red-500 dark:text-red-500'}>
                 <span className="font-medium">ID:</span> {event.step_id}
               </div>
             )}
@@ -98,30 +98,30 @@ export const PreValidationCompletedEventDisplay: React.FC<PreValidationCompleted
             <button
               onClick={() => setIsExpanded(!isExpanded)}
               className={`${compact ? 'text-[10px]' : 'text-xs'} ${
-                event.overall_pass 
-                  ? 'text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300' 
+                event.overall_pass
+                  ? 'text-muted-foreground hover:text-foreground'
                   : 'text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300'
               } font-medium`}
             >
               {isExpanded ? '▼' : '▶'} {event.files_checked.length} file(s) checked
             </button>
-            
+
             {isExpanded && (
               <div className="mt-2 space-y-2">
                 {event.files_checked.map((fileCheck: FileCheckResultForEvent, idx: number) => (
-                  <div 
+                  <div
                     key={idx}
-                    className={`${compact ? 'text-[10px]' : 'text-xs'} bg-white dark:bg-gray-800 rounded p-2 border ${
-                      fileCheck.exists 
-                        ? 'border-gray-200 dark:border-gray-700' 
+                    className={`${compact ? 'text-[10px]' : 'text-xs'} bg-card rounded p-2 border ${
+                      fileCheck.exists
+                        ? 'border-border'
                         : 'border-red-200 dark:border-red-800'
                     }`}
                   >
                     <div className="font-medium flex items-center gap-2">
                       <span>{fileCheck.file_name}</span>
                       <span className={`px-1.5 py-0.5 rounded text-[10px] ${
-                        fileCheck.exists 
-                          ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300' 
+                        fileCheck.exists
+                          ? 'bg-muted text-foreground'
                           : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
                       }`}>
                         {fileCheck.exists ? 'EXISTS' : 'MISSING'}
@@ -132,21 +132,21 @@ export const PreValidationCompletedEventDisplay: React.FC<PreValidationCompleted
                         </span>
                       )}
                     </div>
-                    
+
                     {fileCheck.json_checks && fileCheck.json_checks.length > 0 && (
                       <div className="mt-1 space-y-1">
                         {fileCheck.json_checks.map((check, checkIdx) => (
-                          <div 
+                          <div
                             key={checkIdx}
                             className={`flex items-center gap-2 ${
-                              check.passed 
-                                ? 'text-gray-600 dark:text-gray-400' 
+                              check.passed
+                                ? 'text-muted-foreground'
                                 : 'text-red-600 dark:text-red-400'
                             }`}
                           >
                             <span>{check.passed ? '✅' : '❌'}</span>
                             <span className="font-mono">{check.path}</span>
-                            <span className="text-gray-500 dark:text-gray-400">({check.check_type})</span>
+                            <span className="text-muted-foreground">({check.check_type})</span>
                             {check.error_msg && (
                               <span className="text-red-600 dark:text-red-400">- {check.error_msg}</span>
                             )}
@@ -169,16 +169,16 @@ export const PreValidationCompletedEventDisplay: React.FC<PreValidationCompleted
             </div>
             <div className="mt-1 space-y-1">
               {event.errors.map((error: ValidationErrorForEvent, idx: number) => (
-                <div 
+                <div
                   key={idx}
                   className={`${compact ? 'text-[10px]' : 'text-xs'} bg-red-50 dark:bg-red-900/20 rounded p-2 border border-red-200 dark:border-red-800`}
                 >
                   <div className="font-medium">{error.check_type}</div>
                   {error.file && (
-                    <div className="text-gray-600 dark:text-gray-400">File: {error.file}</div>
+                    <div className="text-muted-foreground">File: {error.file}</div>
                   )}
                   {error.path && (
-                    <div className="text-gray-600 dark:text-gray-400">Path: {error.path}</div>
+                    <div className="text-muted-foreground">Path: {error.path}</div>
                   )}
                   <div className="mt-1">
                     <div>Expected: {error.expected}</div>

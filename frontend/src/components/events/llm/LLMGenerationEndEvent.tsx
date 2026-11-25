@@ -25,15 +25,15 @@ export const LLMGenerationEndEventDisplay: React.FC<LLMGenerationEndEventProps> 
   // of the UI uses; colour is reserved for failure, so a red card actually stands
   // out in a long transcript instead of competing with a wall of green.
   const bgColor = isSuccess
-    ? 'bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-800'
+    ? 'bg-muted/50 border-border'
     : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
 
   const textColor = isSuccess
-    ? 'text-gray-700 dark:text-gray-300'
+    ? 'text-foreground'
     : 'text-red-700 dark:text-red-300'
 
   const iconColor = isSuccess
-    ? 'text-gray-500 dark:text-gray-400'
+    ? 'text-muted-foreground'
     : 'text-red-600'
 
   const Icon = isSuccess ? CheckCircle : AlertCircle
@@ -47,9 +47,9 @@ export const LLMGenerationEndEventDisplay: React.FC<LLMGenerationEndEventProps> 
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <Icon className={`w-4 h-4 ${iconColor} flex-shrink-0`} />
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-gray-700 dark:text-gray-200">
+              <div className="text-sm font-medium text-foreground">
                 LLM Generation End{' '}
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
+                <span className="text-xs font-normal text-muted-foreground">
                   {event.turn != null && `• Turn ${event.turn}`}
                   {event.duration != null && ` • ${formatDuration(event.duration)}`}
                   {event.tool_calls !== undefined && ` • ${event.tool_calls} tool calls`}
@@ -87,7 +87,7 @@ export const LLMGenerationEndEventDisplay: React.FC<LLMGenerationEndEventProps> 
           </div>
           {/* Right side: Time */}
           {event.timestamp && (
-            <div className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
+            <div className="text-xs text-muted-foreground flex-shrink-0">
               {new Date(event.timestamp).toLocaleTimeString()}
             </div>
           )}
@@ -95,12 +95,12 @@ export const LLMGenerationEndEventDisplay: React.FC<LLMGenerationEndEventProps> 
         
         {/* Content with markdown rendering - show even if empty */}
         <div className="space-y-2 mt-2">
-          <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Content:</div>
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2">
+          <div className="text-xs font-medium text-foreground">Content:</div>
+          <div className="bg-card border border-border rounded-md p-2">
             {event.content ? (
               <ConversationMarkdownRenderer content={event.content} maxHeight="none" framed={false} />
             ) : (
-              <div className="text-xs text-gray-500 dark:text-gray-400 italic">
+              <div className="text-xs text-muted-foreground italic">
                 {event.tool_calls && event.tool_calls > 0 
                   ? `No text content (${event.tool_calls} tool call${event.tool_calls > 1 ? 's' : ''} made)` 
                   : 'No content generated'}

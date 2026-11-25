@@ -27,13 +27,13 @@ export const BrokenPipeEventDisplay: React.FC<BrokenPipeEventDisplayProps> = ({ 
   };
 
   return (
-    <div className="p-2 bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-800 rounded">
+    <div className="p-2 bg-muted/50 border border-border rounded">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <div className="min-w-0 flex-1">
             <div className={`text-sm font-medium ${getStatusColor(event.operation)}`}>
               {getOperationLabel(event.operation)}{' '}
-              <span className="text-xs font-normal text-gray-600 dark:text-gray-400">
+              <span className="text-xs font-normal text-muted-foreground">
                 {event.tool_name && `Tool: ${event.tool_name}`}
                 {event.server_name && ` | Server: ${event.server_name}`}
                 {event.duration != null && ` | ${event.duration}`}
@@ -43,7 +43,7 @@ export const BrokenPipeEventDisplay: React.FC<BrokenPipeEventDisplayProps> = ({ 
         </div>
 
         {event.timestamp && (
-          <div className="text-xs text-gray-600 dark:text-gray-400 flex-shrink-0">
+          <div className="text-xs text-muted-foreground flex-shrink-0">
             {formatTimestamp(event.timestamp)}
           </div>
         )}

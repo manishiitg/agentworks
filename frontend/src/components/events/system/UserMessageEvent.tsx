@@ -74,7 +74,7 @@ export const UserMessageEventDisplay: React.FC<UserMessageEventDisplayProps> = (
             Auto
           </span>
           <div className="min-w-0 flex-1">
-            <div className="whitespace-pre-wrap break-words text-slate-700 dark:text-slate-300">
+            <div className="whitespace-pre-wrap break-words text-foreground">
               {shownSummary}
             </div>
             {(hasDetail || isSummaryTruncated) && (
@@ -105,7 +105,7 @@ export const UserMessageEventDisplay: React.FC<UserMessageEventDisplayProps> = (
             Ask AI
           </span>
           <div className="min-w-0 flex-1">
-            <div className="whitespace-pre-wrap break-words text-slate-700 dark:text-slate-300">
+            <div className="whitespace-pre-wrap break-words text-foreground">
               {shown}
             </div>
             <button
@@ -127,9 +127,9 @@ export const UserMessageEventDisplay: React.FC<UserMessageEventDisplayProps> = (
 
   if (isLiveCodingAgentInput) {
     return (
-      <div className="ml-6 flex items-baseline gap-2 py-1 text-xs text-slate-500 dark:text-slate-400">
-        <span className="text-slate-400 dark:text-slate-500">↳</span>
-        <span className="max-w-full whitespace-pre-wrap break-words text-slate-700 dark:text-slate-200">
+      <div className="ml-6 flex items-baseline gap-2 py-1 text-xs text-muted-foreground">
+        <span className="text-muted-foreground">↳</span>
+        <span className="max-w-full whitespace-pre-wrap break-words text-foreground">
           {event.content || 'No message content'}
         </span>
         <DeliveryTick metadata={event.metadata as Record<string, unknown> | undefined} />
@@ -141,18 +141,18 @@ export const UserMessageEventDisplay: React.FC<UserMessageEventDisplayProps> = (
     return (
       <div
         data-testid="terminal-execution-prompt"
-        className="rounded border border-neutral-800 bg-neutral-900/45 px-3 py-2"
+        className="rounded border border-border bg-muted/45 px-3 py-2"
       >
         <div className="flex items-start gap-2.5">
           <ListTodo className="mt-0.5 h-4 w-4 shrink-0 text-cyan-400" aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">Task</div>
+            <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Task</div>
             {/* The terminal header already carries the step name with its
                 context ("... · Orchestrator · updated 54s ago"). Repeating it
                 verbatim one line below made a 55-character title appear twice
                 in the same viewport. */}
             {!hideContext && (
-              <div className="mt-0.5 break-words text-sm font-medium text-neutral-100">
+              <div className="mt-0.5 break-words text-sm font-medium text-muted-foreground">
                 {stepName || 'Execute this workflow step'}
               </div>
             )}
@@ -171,9 +171,9 @@ export const UserMessageEventDisplay: React.FC<UserMessageEventDisplayProps> = (
         {content && (
           <details
             open={content.length <= EXECUTION_PROMPT_AUTO_OPEN_CHARS}
-            className="group mt-2 border-t border-neutral-800 pt-2"
+            className="group mt-2 border-t border-border pt-2"
           >
-            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-muted-foreground hover:text-muted-foreground">
               <ChevronDown
                 className="h-3.5 w-3.5 transition-transform group-open:rotate-180"
                 aria-hidden="true"
@@ -190,7 +190,7 @@ export const UserMessageEventDisplay: React.FC<UserMessageEventDisplayProps> = (
                 the syntax literally -- "## Orchestrator Instructions" with the
                 hashes visible -- which is the hardest possible way to read the
                 one thing the card exists to show. */}
-            <div className="mt-2 max-h-96 overflow-auto rounded border border-neutral-800/80 bg-black/40 px-3 py-2">
+            <div className="mt-2 max-h-96 overflow-auto rounded border border-border/80 bg-muted/40 px-3 py-2">
               <PlainMarkdown content={content} />
             </div>
           </details>
@@ -201,13 +201,13 @@ export const UserMessageEventDisplay: React.FC<UserMessageEventDisplayProps> = (
 
   if (mode === 'compact') {
     return (
-      <div className="bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700 rounded p-2">
+      <div className="bg-muted/50 border border-border rounded p-2">
         <div className="flex items-start gap-2">
-          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">👤</span>
+          <span className="text-xs font-bold text-foreground">👤</span>
           <div className="flex-1 min-w-0">
             {event.content ? (
               <>
-                <div className="text-xs text-slate-900 dark:text-slate-100 leading-tight">
+                <div className="text-xs text-foreground leading-tight">
                   {isExpanded || event.content.length <= CHAR_LIMIT
                     ? event.content
                     : `${event.content.substring(0, CHAR_LIMIT)}...`
@@ -216,7 +216,7 @@ export const UserMessageEventDisplay: React.FC<UserMessageEventDisplayProps> = (
                 {shouldShowExpand && (
                   <button
                     onClick={() => setIsExpanded(!isExpanded)}
-                    className="text-xs text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 mt-1"
+                    className="text-xs text-muted-foreground hover:text-foreground mt-1"
                   >
                     {isExpanded ? '↑ Collapse' : '↓ Expand'}
                   </button>
@@ -234,19 +234,19 @@ export const UserMessageEventDisplay: React.FC<UserMessageEventDisplayProps> = (
   }
 
   return (
-    <div className="bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700 rounded p-2">
+    <div className="bg-muted/50 border border-border rounded p-2">
       <div className="flex items-start gap-2">
-        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">👤</span>
+        <span className="text-xs font-bold text-foreground">👤</span>
         <div className="flex-1 min-w-0">
           {event.content ? (
             <>
-              <div className="text-xs text-slate-900 dark:text-slate-100 leading-tight whitespace-pre-wrap bg-white dark:bg-slate-700/50 rounded p-2 border border-slate-100 dark:border-slate-600">
+              <div className="text-xs text-foreground leading-tight whitespace-pre-wrap bg-card rounded p-2 border border-border">
                 {isExpanded || !shouldShowExpand ? event.content : `${event.content.substring(0, CHAR_LIMIT)}...`}
               </div>
               {shouldShowExpand && (
                 <button
                   onClick={() => setIsExpanded(!isExpanded)}
-                  className="text-xs text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 mt-1"
+                  className="text-xs text-muted-foreground hover:text-foreground mt-1"
                 >
                   {isExpanded ? '↑ Collapse' : '↓ Expand'}
                 </button>
@@ -259,7 +259,7 @@ export const UserMessageEventDisplay: React.FC<UserMessageEventDisplayProps> = (
           )}
 
           {event.timestamp && (
-            <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+            <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
               {new Date(event.timestamp).toLocaleString()}
               <DeliveryTick metadata={event.metadata as Record<string, unknown> | undefined} />
             </div>
