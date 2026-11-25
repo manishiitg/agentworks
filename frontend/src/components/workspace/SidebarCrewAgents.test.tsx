@@ -81,6 +81,19 @@ it('lists own agents directly in their normal order without group controls', asy
  } finally { await act(async () => root.unmount()) }
 })
 
+it('keeps the private row lock without a Team visibility footnote', async () => {
+ const host = document.createElement('div'), root = createRoot(host)
+ f.extra = Array.from({ length: 5 }, (_, index) => ({
+  tabId: `shared-${index}`, name: `Shared agent ${index}`, inTeam: true,
+ }))
+ try {
+  await act(async () => root.render(<SidebarCrewAgents projectId="crew" />))
+  expect(host.querySelector('[aria-current="page"] [aria-label="Only you"]')).not.toBeNull()
+  expect(host.textContent).toContain('Shared agent 0')
+  expect(host.textContent).not.toMatch(/In team unless marked with a lock|All in team/)
+ } finally { f.extra = []; await act(async () => root.unmount()) }
+})
+
 it('marks an agent unread from its actions menu without opening the chat', async () => {
  const host = document.createElement('div'), root = createRoot(host)
  f.select.mockClear()
