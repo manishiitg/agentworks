@@ -2,7 +2,9 @@ package acpcli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmerrors"
@@ -34,7 +36,7 @@ func agyCall(owner, workdir, effort string, extra ...llmtypes.CallOption) *llmty
 func withAgyLaunch(t *testing.T, env ...string) {
 	t.Helper()
 	SetLaunch("agy", func(LaunchRequest) (*LaunchSpec, error) {
-		return &LaunchSpec{Env: env, AutoApprove: true, NoSessionMCP: true, Outcome: refusalOutcome{}}, nil
+		return &LaunchSpec{Env: env, AutoApprove: true, QuestionIDPrefix: "interaction_", NoSessionMCP: true, Outcome: refusalOutcome{}}, nil
 	})
 	t.Cleanup(func() { SetLaunch("agy", nil) })
 }
@@ -51,11 +53,21 @@ func TestAgyRunsThroughTheConnector(t *testing.T) {
 	withAgyLaunch(t, "GEMINI_API_KEY=test-only")
 	workdir, owner := t.TempDir(), "chat-agy"
 	peer := installReplay(t, "agy_session", workdir)
-	ctx := context.Background()
+	// agy asks the person its own questions as permission requests; auto-approve must not answer them for the
+	// person (it picked the first option), the person's choice goes back.
+	asked := ""
+	ctx := llmtypes.WithCodingAgentQuestionHandler(context.Background(), "agy-cli", owner, func(_ context.Context, args map[string]any) (string, error) {
+		raw, _ := json.Marshal(args)
+		asked = string(raw)
+		return `{"status":"answered","answers":[{"id":"interaction_9960062f","selected_labels":["Needs review"]}]}`, nil
+	})
 
 	first, err := Generate(ctx, "agy", "gemini-4-pro-high", human("hello"), agyCall(owner, workdir, ""))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(asked, "Which result label should be used?") || !strings.Contains(asked, "Verified") {
+		t.Fatalf("the person was not asked agy's question: %s", asked)
 	}
 	if first.Choices[0].Content != "ok" {
 		t.Fatalf("answer = %q", first.Choices[0].Content)

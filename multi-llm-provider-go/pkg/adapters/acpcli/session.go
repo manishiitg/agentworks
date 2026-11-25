@@ -68,10 +68,12 @@ type session struct {
 	env         []string
 	workdir     string
 	autoApprove bool
-	fullTools   bool
-	caps        agentCapabilities
-	authMethods []string
-	outcome     Outcome
+	// questionPrefix marks permission requests that are the agent's questions to the person.
+	questionPrefix string
+	fullTools      bool
+	caps           agentCapabilities
+	authMethods    []string
+	outcome        Outcome
 	// steersWithPrompt: this agent's release takes a prompt sent mid-turn as a message into the running turn.
 	steersWithPrompt bool
 
