@@ -348,9 +348,9 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	if !reflect.DeepEqual(rebound.Agents[mainID], old) || !reflect.DeepEqual(rebound.Agents[secondID], second) {
 		t.Fatalf("Main movement changed more than role: %+v", rebound.Agents)
 	}
-	view := crewTeamTabFor(ctx, rebound, "owner")
-	if !strings.Contains(view.Intro, "Main is not shared") {
-		t.Fatal("Team tab did not explain its private Main")
+	// Main is an agent like any other (#4046): no extra line about it on the Team tab.
+	if view := crewTeamTabFor(ctx, rebound, "owner"); strings.Contains(view.Intro, "Main is not shared") {
+		t.Fatal("Team tab still singles out Main")
 	}
 	for _, person := range teamAgentsByPerson(ctx, rebound, "member") {
 		for _, agent := range person.Agents {

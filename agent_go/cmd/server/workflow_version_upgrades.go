@@ -296,7 +296,7 @@ EXECUTION CONTEXT. This is a manual platform migration started by the workflow o
 
 const upgradePortableWorkflow = `WORKFLOW UPDATE: PORTABLE CODE AND RECORDS (1.0.52).
 
-Work from the owning project's main chat. Do not execute the workflow or enable a timer. Read every current step, route, follow-up, named script/helper and referenced guide before editing. Preserve business rules, approvals, quality checks, inputs/outputs, function targets, sharing, timer timing and paused state.
+Work from one of the owning project's agents. Do not execute the workflow or enable a timer. Read every current step, route, follow-up, named script/helper and referenced guide before editing. Preserve business rules, approvals, quality checks, inputs/outputs, function targets, sharing, timer timing and paused state.
 
 Use WORKFLOW_CODE_ROOT for native code, VAR_WORKSPACE_PATH for native records/data and VAR_WORKFLOW_PATH for workspace API addresses. Python reads os.environ. Do not derive records from WORKFLOW_CODE_ROOT.parent or rewrite __file__ imports blindly. JSON defaults, read grants and regexes do not expand shell variables: grants stay workflow-relative (code/shared/helper.py), outputs and their validation patterns agree on db/assets/... values. Do not widen folder permissions or turn a denied-path probe into an allowed write.
 

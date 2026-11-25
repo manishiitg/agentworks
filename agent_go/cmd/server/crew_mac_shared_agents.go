@@ -652,8 +652,8 @@ func (api *StreamingAPI) macAgentRows(ctx context.Context, claims *UserClaims, p
 	if err != nil {
 		return nil, err
 	}
-	// Main first: the owner decides which agents to share, Main included (owner, 3 Nov). A purpose is optional.
-	rows := []macAgentRow{{Tab: macMainTab, Name: "Main", Examples: main.Examples, Purpose: strings.TrimSpace(main.Purpose)}}
+	// The owner decides which agents to share, the default one (Main) included (owner, 3 Nov). A purpose is optional.
+	rows := []macAgentRow{{Tab: macMainTab, Name: defaultAgentName(main.Name, false), Examples: main.Examples, Purpose: strings.TrimSpace(main.Purpose)}}
 	for _, tab := range tabs {
 		if _, id, ok := strings.Cut(tab.ConversationKey, codeChatSideMarker); ok {
 			rows = append(rows, macAgentRow{Tab: id, Name: tab.Name, Purpose: tab.Purpose, Examples: tab.Examples})

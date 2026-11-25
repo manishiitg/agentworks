@@ -161,7 +161,7 @@ func crewTeamProjectAgents(ctx context.Context, t crewTeam, project string) []cr
 		identity := doc.Agents[entryKey]
 		name := strings.TrimSpace(identity.Name)
 		if record.ConversationKey == mainKey {
-			name, tab = "Main", macMainTab
+			name, tab = defaultAgentName(identity.Name, identity.GeneratedName), macMainTab
 		} else if name == "" || identity.GeneratedName || strings.EqualFold(name, "Main") {
 			continue // an unnamed chat is not one of the project's agents
 		}

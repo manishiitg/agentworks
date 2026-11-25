@@ -104,6 +104,16 @@ type crewTeamAgentsPerson struct {
 	Agents      []crewTeamAgent `json:"agents"`
 }
 
+// defaultAgentName is a person's default agent (Main) as the Team names it, like any agent (owner, 25 Nov, #4046): the
+// name its person gave it, else "Main"; never an import label or the automatic chat title "<person> · Builder".
+func defaultAgentName(name string, generated bool) string {
+	name = strings.TrimSpace(name)
+	if name == "" || generated || name == "Builder" || strings.HasSuffix(name, " · Builder") {
+		return "Main"
+	}
+	return name
+}
+
 // teamAgentsByPerson lists the team's in-team agents, the owner first: the owner's from this Crew's Mac, each member's
 // from their own tabs in the server copy (they run on the server; Only me ones are left out for everyone else).
 func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTeamAgentsPerson {
@@ -137,10 +147,10 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 			continue
 		}
 		place := "mac"
-		// Named like the left menu: its own name, Main for the Crew's Main, never an email.
+		// Named like the left menu: its own name, never an email or a saved chat title.
 		name := firstNonEmptyTrimmed(agent.Name, "Agent")
 		if agent.Tab == macMainTab {
-			name = "Main" // never the saved chat title "<person> · Builder"
+			name = defaultAgentName(agent.Name, false)
 		}
 		row := crewTeamAgent{lastMessage: ownerPreviews[agent.Tab], Tab: agent.Tab, Name: name, Purpose: agent.Purpose, Examples: agent.Examples, Place: place, ChatKey: macSharedAgentChatKey(t.ProjectID, agent.Tab), InTeam: t.agentInTeam(t.OwnerID, agent.Tab)}
 		if agent.Tab == macMainTab {
@@ -180,7 +190,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 			for _, tab := range crewMacTabsFor(ctx, p.UserID, t.ProjectID, caller) {
 				name := firstNonEmptyTrimmed(tab.Name, "Agent")
 				if tab.Tab == macMainTab {
-					name = "Main"
+					name = defaultAgentName(tab.Name, false)
 				}
 				row := crewTeamAgent{initialInTeam: tab.InitialInTeam, lastMessage: tab.crewTeamMessagePreview, Tab: tab.Tab, Name: name, Place: "mac", ChatKey: crewMacTabRow(t.ProjectID, tab).ConversationKey, InTeam: !tab.OnlyMe}
 				// The same chip as the owner's Mac agents (owner, 6 Nov: Team members are equal).
@@ -342,11 +352,11 @@ func memberTeamAgentsWithMain(ctx context.Context, t crewTeam, member, caller, o
 		if !side {
 			continue // the Crew's own Main record and Builder chats are not this member's agents
 		}
-		// Named like the left menu (sideChatsFor, owner 5 Nov): their default chat is their Main, a tab its own name;
+		// Named like the left menu (sideChatsFor): every agent by its own name, their default one "Main" until renamed;
 		// never a raw chat title or an email.
 		name := firstNonEmptyTrimmed(identity.Name, "Agent")
 		if record.ConversationKey == mainKey {
-			name, tab = "Main", macMainTab
+			name, tab = defaultAgentName(identity.Name, identity.GeneratedName), macMainTab
 		}
 		activity := ""
 		if crewServerChatRunning(record.SessionID) {

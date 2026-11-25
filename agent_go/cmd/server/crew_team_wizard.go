@@ -39,7 +39,7 @@ type crewWizardPerson struct {
 type crewWizardAgent struct {
 	Key  string `json:"key"`
 	Name string `json:"name"`
-	// Main is a role, not a forced sharing choice.
+	// Main marks the default agent (it gets work nobody addressed); not a forced sharing choice or a first place.
 	Main   bool `json:"main,omitempty"`
 	InTeam bool `json:"in_team"`
 }
@@ -74,7 +74,8 @@ type crewWizardChoice struct {
 	CreateDashboard bool     `json:"create_dashboard"`
 }
 
-// crewWizardAgents are the owner's own agents as the Team tab lists them while the Team is off, Main first.
+// crewWizardAgents are the owner's own agents as the Team tab lists them while the Team is off, in their own order;
+// Main marks the default agent (#4046: it is an agent like any other).
 func crewWizardAgents(ctx context.Context, t crewTeam) []crewWizardAgent {
 	mainKey := crewOwnerMainChatKey(t.ProjectID)
 	out := []crewWizardAgent{}
@@ -85,15 +86,6 @@ func crewWizardAgents(ctx context.Context, t crewTeam) []crewWizardAgent {
 		}
 		out = append(out, crewWizardAgent{Key: a.Key, Name: a.Name, InTeam: inTeam, Main: a.Tab == macMainTab || crewTeamMainAgentWithKey(t, t.OwnerID, a.WatchKey, mainKey)})
 	}
-	slices.SortStableFunc(out, func(a, b crewWizardAgent) int {
-		switch {
-		case a.Main == b.Main:
-			return 0
-		case a.Main:
-			return -1
-		}
-		return 1
-	})
 	return out
 }
 

@@ -370,12 +370,6 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 		return out
 	}
-	for _, a := range t.Agents {
-		if a.OwnerID == t.OwnerID && a.ChatKey == mainKey && !a.InTeam {
-			out.Intro += " Main is not shared with the Team."
-			break
-		}
-	}
 	byPerson := teamAgentsByPersonWithMain(ctx, t, viewer, mainKey)
 	lap("agents")
 	// One reach answer per request for the header and the panel (#2965 speed).
@@ -645,7 +639,7 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 		for _, tab := range ownerMacTabsAll(ctx, t.ProjectID) {
 			a := crewTeamAgent{Tab: tab.Tab, Name: firstNonEmptyTrimmed(tab.Name, "Agent"), Purpose: firstNonEmptyTrimmed(tab.Purpose, bridges.mac[tab.Tab].Purpose), Examples: tab.Examples, Place: "mac", ChatKey: macSharedAgentChatKey(t.ProjectID, tab.Tab)}
 			if tab.Tab == macMainTab {
-				a.Name, a.ChatKey = "Main", mainKey
+				a.Name, a.ChatKey = defaultAgentName(tab.Name, false), mainKey
 			}
 			agents = append(agents, a)
 		}
