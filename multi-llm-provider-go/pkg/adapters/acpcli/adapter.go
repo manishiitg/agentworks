@@ -169,7 +169,17 @@ func generate(ctx context.Context, agent Agent, model string, messages []llmtype
 	if strings.TrimSpace(prompt) == "" && !hasPendingImages(ctx, owner, messages) {
 		return nil, fmt.Errorf("%s prompt is empty", agent.Label)
 	}
-	if s.preamble != "" {
+	if llmtypes.NativePlanModeForSession(ctx, owner) {
+		restore, err := s.planTurn(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer restore()
+	}
+	// A slash command (agy's /compact) must reach the agent first in the prompt;
+	// the instructions then wait for the next ordinary prompt.
+	command := strings.HasPrefix(strings.TrimSpace(prompt), "/")
+	if s.preamble != "" && !command {
 		// ACP has no system prompt field: a new session gets the chat's
 		// instructions ahead of its first prompt.
 		prompt = "<instructions>\n" + s.preamble + "\n</instructions>\n\n" + prompt
@@ -183,7 +193,7 @@ func generate(ctx context.Context, agent Agent, model string, messages []llmtype
 		}
 	}
 	response, err := s.turn(ctx, prompt, emit, turnImages{owner: owner, messages: messages})
-	if err == nil {
+	if err == nil && !command {
 		s.preamble = ""
 	}
 	return response, err

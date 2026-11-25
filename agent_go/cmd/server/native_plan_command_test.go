@@ -19,7 +19,7 @@ func TestNativePlanCommand(t *testing.T) {
 	if nativePlanPrompt("/plan add dark mode") != "add dark mode" || nativePlanPrompt("hello") != "hello" {
 		t.Fatal("plan prompt")
 	}
-	for provider, want := range map[string]bool{"claude-code": true, "codex-cli": true, "cursor-cli": true, "gemini-cli": false, "openai": false} {
+	for provider, want := range map[string]bool{"claude-code": true, "codex-cli": true, "cursor-cli": true, "agy-cli": true, "gemini-cli": false, "openai": false} {
 		if nativePlanSupported(provider) != want {
 			t.Fatalf("%s support", provider)
 		}

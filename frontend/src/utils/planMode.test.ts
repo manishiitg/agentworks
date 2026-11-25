@@ -15,6 +15,7 @@ describe('Plan switch (#3699)', () => {
   it('offers Start for Codex and Cursor, and for Claude when its plan card never came', () => {
     expect(planNeedsStartButton('codex-cli')).toBe(true)
     expect(planNeedsStartButton('cursor-cli')).toBe(true)
+    expect(planNeedsStartButton('agy-cli')).toBe(true)
     expect(planNeedsStartButton('claude-code')).toBe(true)
     expect(planNeedsStartButton(undefined)).toBe(false)
   })
