@@ -157,6 +157,19 @@ func (s *session) turn(ctx context.Context, prompt string, emit func(llmtypes.St
 	emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypePromptAccepted, Metadata: meta})
 	var text strings.Builder
 	tools := map[string]*toolCall{}
+	// A step the agent never reports finished (agy leaves some open) must not stay "running" once the turn is over.
+	defer func() {
+		for id, t := range tools {
+			if t.open && !t.ended {
+				t.ended = true
+				unfinished := map[string]any{"tool_unfinished": true}
+				for k, v := range meta {
+					unfinished[k] = v
+				}
+				emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeToolCallEnd, ToolCallID: id, ToolName: t.name, ToolArgs: t.args, ToolResult: t.result, ToolDuration: time.Since(t.started), Metadata: unfinished})
+			}
+		}
+	}()
 	turnCtx := ctx
 	handle := func(msg message) {
 		if msg.isRequest() {

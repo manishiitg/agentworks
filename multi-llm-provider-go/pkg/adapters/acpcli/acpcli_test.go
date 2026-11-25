@@ -104,12 +104,16 @@ func TestACPReplayTurns(t *testing.T) {
 			},
 		},
 		{
-			// Tool calls open and close once each, with text or diff results; a plan streams.
+			// Tool calls open and close once each, with text or diff results; a plan streams. A step the agent
+			// never reports finished (agy leaves some open) is closed when the turn ends, not left "running".
 			scenario: "tool_call", model: "grok",
 			check: func(t *testing.T, run replayRun) {
 				starts, ends := chunksOf(run.chunks, llmtypes.StreamChunkTypeToolCallStart), chunksOf(run.chunks, llmtypes.StreamChunkTypeToolCallEnd)
-				if len(starts) != 2 || len(ends) != 2 {
+				if len(starts) != 3 || len(ends) != 3 {
 					t.Fatalf("starts=%d ends=%d", len(starts), len(ends))
+				}
+				if ends[2].ToolCallID != "call-bg" || ends[2].Metadata["tool_unfinished"] != true {
+					t.Fatalf("the unfinished step must close at turn end: %+v", ends[2])
 				}
 				if ends[0].ToolCallID != "call-read" || ends[0].ToolResult != "line one" || !strings.Contains(ends[1].ToolResult, "notes.txt (+2 -1") {
 					t.Fatalf("tool results: %q / %q", ends[0].ToolResult, ends[1].ToolResult)
