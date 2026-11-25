@@ -120,10 +120,13 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
   const listedAccountId = accountListedProvider ? inUseConnectionId || `global:${accountListedProvider}` : undefined
   const [accountModelsError, setAccountModelsError] = useState('')
   const [accountSelectionDisabled, setAccountSelectionDisabled] = useState(false)
+  // Listing runs the program (agy takes seconds); until it answers only the default models are known.
+  const [accountModelsLoading, setAccountModelsLoading] = useState(false)
   useEffect(() => {
     let cancelled = false
-    setAccountModels([]); setAccountModelsError(''); setAccountSelectionDisabled(false)
+    setAccountModels([]); setAccountModelsError(''); setAccountSelectionDisabled(false); setAccountModelsLoading(false)
     if (accountListedProvider && listedAccountId) {
+      setAccountModelsLoading(true)
       void llmConfigService.getProviderModels(accountListedProvider, false, false, {
         connection_id: listedAccountId, workspace_path: workspacePath, product: accountProduct,
       }).then(result => {
@@ -133,6 +136,7 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
           setAccountSelectionDisabled(result.selection_disabled === true)
         }
       }).catch(() => { if (!cancelled) setAccountModelsError('Models could not be loaded. Check this account in Providers, then refresh.') })
+        .finally(() => { if (!cancelled) setAccountModelsLoading(false) })
     }
     return () => { cancelled = true }
   }, [accountListedProvider, listedAccountId, accounts, workspacePath, accountProduct])
@@ -223,7 +227,7 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
     : effortForModel(modelId, requested, option)
 
   return {
-    workProviderIds, inUseAccount, keyService, accountModels, accountModelsError, accountSelectionDisabled,
+    workProviderIds, inUseAccount, keyService, accountModels, accountModelsError, accountModelsLoading, accountSelectionDisabled,
     defaultForOption, selectedAllowedModels, selectableModels, modelsForOption, switchAccountFor, levelsForModel, effortForModel, effortForPick,
   }
 }
