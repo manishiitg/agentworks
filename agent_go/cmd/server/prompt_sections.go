@@ -85,6 +85,7 @@ type promptContext struct {
 	WorkflowUIAvailable bool
 	WorkflowContext     string
 	WorkFolders         string
+	ConnectedTools      string
 	ChannelFormatting   string
 	BrowserPointer      string
 	GrantSections       []string
@@ -162,6 +163,13 @@ var promptSections = []promptSection{
 		Name:    "work-folders",
 		Applies: func(c promptContext) bool { return isProjectProfileID(c.ProfileID) },
 		Build:   func(c promptContext) string { return c.WorkFolders },
+	},
+	{
+		// Compact local-only summary of integrations connected to this project
+		// (GitHub, Slack as me, Google apps, Computer use, server Slack bot).
+		Name:    "connected-tools",
+		Applies: func(c promptContext) bool { return isProjectProfileID(c.ProfileID) },
+		Build:   func(c promptContext) string { return c.ConnectedTools },
 	},
 	{
 		// Which markup subset the bot platform renders, so replies do not arrive
