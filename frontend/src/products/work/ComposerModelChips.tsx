@@ -273,7 +273,9 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         </select></label>
         <label className={fieldClass}><span className="text-muted-foreground">Model</span><select className={selectClass} value={destinationReady ? pendingModelID : ''} disabled={destination.accountSelectionDisabled || !destinationModels.length} onChange={event => setPendingSwitch({ ...pendingSwitch, modelId: event.target.value, effort: undefined })}>
           {!destinationReady && <option value="">Choose a model</option>}
-          {destinationModels.map(model => <option key={model.model_id} value={model.model_id}>{model.model_name || model.model_id}</option>)}
+          {modelOptionGroups(destinationModels).map(group => group.label
+            ? <optgroup key={group.label} label={group.label}>{group.models.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}</optgroup>
+            : group.models.map(model => <option key={model.id} value={model.id}>{model.label}</option>))}
         </select></label>
         {destinationLevels.length > 0 && <label className={fieldClass}><span className="text-muted-foreground">Reasoning effort</span><select className={selectClass} value={destinationEffort || ''} onChange={event => setPendingSwitch({ ...pendingSwitch, effort: event.target.value })}>
           {destinationLevels.map(level => <option key={level.id} value={level.id}>{level.label}</option>)}
@@ -368,4 +370,24 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Models & accounts</Menu.Item>
     </div>}
   </Chip>{effortChip}</>
+}
+
+/** "Gemini 4 Neon (High)" and "Gemini 4 Neon (Low)" become one "Gemini 4 Neon" group with High and Low, so a long
+ * account list (Antigravity, Cursor) reads as one row per model; a model with one entry stays a plain option. */
+function modelOptionGroups(models: { model_id: string; model_name?: string }[]) {
+  const groups: { label: string; models: { id: string; label: string }[] }[] = []
+  const byFamily = new Map<string, { id: string; label: string; name: string }[]>()
+  for (const model of models) {
+    const name = model.model_name || model.model_id
+    const match = name.match(/^(.*\S)\s*\(([^)]+)\)$/)
+    const family = match ? match[1] : name
+    if (!byFamily.has(family)) byFamily.set(family, [])
+    byFamily.get(family)!.push({ id: model.model_id, label: match ? match[2] : name, name })
+  }
+  for (const [family, entries] of byFamily) {
+    groups.push(entries.length > 1
+      ? { label: family, models: entries.map(({ id, label }) => ({ id, label })) }
+      : { label: '', models: entries.map(({ id, name }) => ({ id, label: name })) })
+  }
+  return groups
 }

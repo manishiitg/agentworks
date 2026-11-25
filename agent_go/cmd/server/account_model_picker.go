@@ -36,8 +36,13 @@ var accountModelListers = map[string]accountModelLister{
 
 var accountModelCatalog = struct {
 	sync.Mutex
-	models map[string][]dynamicModelEntry
-}{models: make(map[string][]dynamicModelEntry)}
+	models  map[string][]dynamicModelEntry
+	fetched map[string]time.Time
+}{models: make(map[string][]dynamicModelEntry), fetched: make(map[string]time.Time)}
+
+// accountModelsFresh is how long an account's own list is reused: listing runs the CLI (agy takes seconds), and
+// every model menu and account card asks for it. A plan change shows up after this.
+const accountModelsFresh = 10 * time.Minute
 
 // The product picker discovers the selected account, never another account's
 // cached inventory. Admission and allowed-model rules are the execution rules.
@@ -72,12 +77,22 @@ func (api *StreamingAPI) handleAccountModelPicker(w http.ResponseWriter, r *http
 		http.Error(w, lister.name+" is still being set up. Try again shortly.", http.StatusServiceUnavailable)
 		return
 	}
-	out, err := runProviderAccountCommand(ctx, target, spec, 20*time.Second)
-	models := lister.parse(out)
+	cacheKey := id + "\x00" + target.Home + "\x00" + spec.command + "\x00" + strings.Join(spec.args, "\x00")
+	accountModelCatalog.Lock()
+	cached, fetchedAt := accountModelCatalog.models[cacheKey], accountModelCatalog.fetched[cacheKey]
+	accountModelCatalog.Unlock()
+	var models []dynamicModelEntry
+	if len(cached) > 0 && time.Since(fetchedAt) < accountModelsFresh {
+		models = append([]dynamicModelEntry(nil), cached...)
+	} else {
+		out, runErr := runProviderAccountCommand(ctx, target, spec, 20*time.Second)
+		if models = lister.parse(out); runErr != nil {
+			models = nil
+		}
+	}
 	// PLAT-872-64: losing SDK authentication must not erase the account's
 	// model display. Cached rows never establish readiness or execution rights.
-	cacheKey := id + "\x00" + target.Home + "\x00" + spec.command + "\x00" + strings.Join(spec.args, "\x00")
-	selectionDisabled := err != nil || len(models) == 0
+	selectionDisabled := len(models) == 0
 	source, detail := "cli_account", ""
 	accountModelCatalog.Lock()
 	if selectionDisabled {
@@ -89,8 +104,9 @@ func (api *StreamingAPI) handleAccountModelPicker(w http.ResponseWriter, r *http
 		if configured, ok := cachedProviderAccountConfigured(id); ok && configured != nil && !*configured {
 			detail = lister.name + " — sign in again in Providers. Models are shown for reference."
 		}
-	} else {
+	} else if len(cached) == 0 || time.Since(fetchedAt) >= accountModelsFresh {
 		accountModelCatalog.models[cacheKey] = append([]dynamicModelEntry(nil), models...)
+		accountModelCatalog.fetched[cacheKey] = time.Now()
 	}
 	accountModelCatalog.Unlock()
 	allowed, _, err := accountAllowedModels(withModelLimitPerson(r.Context(), caller), provider, id)

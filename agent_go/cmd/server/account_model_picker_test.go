@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // PLAT-872: a paid Cursor account lists 270 models, each family as up to twenty
@@ -113,6 +114,12 @@ esac
 	if err := os.WriteFile(sdk, []byte(`exports.Cursor={models:{list:async()=>{throw Error('sign in again')}}};`), 0600); err != nil {
 		t.Fatal(err)
 	}
+	// Lists are reused for a few minutes; let them run out so the signed-out account is asked again.
+	accountModelCatalog.Lock()
+	for key := range accountModelCatalog.fetched {
+		accountModelCatalog.fetched[key] = time.Time{}
+	}
+	accountModelCatalog.Unlock()
 	for _, tc := range []struct {
 		user, id, want string
 		status         int
