@@ -91,6 +91,23 @@ func (api *StreamingAPI) observeNativeAsyncQuestion(sessionID string, record llm
 // Restart never recreates a provider callback or permission decision. Ordinary
 // questions can become explicit new-message answers under the current owner.
 // The caller has checked the checkpoint against the journal's chat owner.
+// restoreQuestionsOnce reloads a chat's open question cards from its saved
+// history the first time this process needs them: at startup for chats with a
+// saved native session, else when the person answers a card or sends a
+// message. Without it a card whose question this process never loaded stays
+// open on screen and every answer is refused (#4021).
+func (api *StreamingAPI) restoreQuestionsOnce(sessionID string) {
+	if sessionID == "" || api.eventStore == nil {
+		return
+	}
+	if _, done := api.questionsRestored.LoadOrStore(sessionID, true); done {
+		return
+	}
+	if err := api.restoreNativeQuestionsAfterRestart(sessionID); err != nil {
+		log.Printf("[HUMAN_INPUT] session=%s status=restart_restore_failed", sessionID)
+	}
+}
+
 func (api *StreamingAPI) restoreNativeQuestionsAfterRestart(sessionID string) error {
 	started := time.Now()
 	scanned, closed := 0, 0
@@ -140,6 +157,12 @@ func (api *StreamingAPI) restoreNativeQuestionsAfterRestart(sessionID string) er
 		after = page.LatestSequence
 	}
 	for promptID, question := range pending {
+		api.codingAgentClarificationsMu.Lock()
+		live := api.codingAgentClarificationLocked(sessionID, promptID) != nil
+		api.codingAgentClarificationsMu.Unlock()
+		if live {
+			continue // Asked by this process and still waiting: not a card from before the restart.
+		}
 		kind, _ := question.Metadata["native_request_kind"].(string)
 		nativeAsync := question.Provider == "codex-cli" && strings.HasPrefix(promptID, clarificationPromptPrefix+"async-")
 		expiresAt, _ := time.Parse(time.RFC3339Nano, fmt.Sprint(question.Metadata["expires_at"]))

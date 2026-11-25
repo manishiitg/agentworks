@@ -380,6 +380,8 @@ type StreamingAPI struct {
 	localDevices                sync.Map // user/device -> authenticated outbound executor
 	codingAgentClarificationsMu sync.Mutex
 	codingAgentClarifications   map[string]*pendingCodingAgentClarification
+	// questionsRestored marks chats whose saved question cards this process has reloaded (sessionID -> true).
+	questionsRestored sync.Map
 
 	internalExternalBuilderTurn func(context.Context, map[string]interface{}, string, string) (internalSessionTurnResult, error)
 	postSlackMessage            func(context.Context, string, string, string) (string, error) // test seam; production uses SlackService
@@ -6083,7 +6085,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// The person's own new message answers for any question card kept from before a restart.
 		if trigger := strings.TrimSpace(req.TriggeredBy); (trigger == "" || trigger == "interactive") && !req.IsAutoNotification && req.AgentMessageInbox == "" &&
 			codingAgentTurnAttended(GetUserFromContext(r.Context()), &req, sessionID) {
-			api.supersedeRecoveredQuestions(sessionID)
+			go func() {
+				api.restoreQuestionsOnce(sessionID)
+				api.supersedeRecoveredQuestions(sessionID)
+			}()
 		}
 		clarificationAvailable := attendedTurn
 		// Claude can wait on background tasks it started before it ends a reply (the chat's own task list).

@@ -600,9 +600,26 @@ func TestNativeQuestionRestartRestoresOrdinaryAnswersWithoutRevivingApproval(t *
 			if err := fresh.emitCodingAgentClarification(later, "requested", "", nil); err != nil {
 				t.Fatal(err)
 			}
-			if err := fresh.restoreNativeQuestionsAfterRestart(sid); err != nil || fresh.codingAgentClarificationLocked(sid, later.promptID) == nil {
-				t.Fatalf("later question not kept across the restart: %v", err)
+			// The chat's history still shows it open while this process holds no question, as when a chat's
+			// native session was not reloaded at startup: answering or a new message reloads it first.
+			fresh.restoreQuestionsOnce(sid)
+			if fresh.codingAgentClarificationLocked(sid, later.promptID) == nil {
+				t.Fatal("open card from history not reloaded on demand")
 			}
+			// A question this process asked and still waits on is not taken for a card from before the restart.
+			live := &pendingCodingAgentClarification{sessionID: sid, provider: provider, promptID: "clarification:live", requestKind: "question", questions: questions}
+			fresh.codingAgentClarificationsMu.Lock()
+			fresh.codingAgentClarifications[sid] = live
+			fresh.codingAgentClarificationsMu.Unlock()
+			if err := fresh.emitCodingAgentClarification(live, "requested", "", nil); err != nil {
+				t.Fatal(err)
+			}
+			if err := fresh.restoreNativeQuestionsAfterRestart(sid); err != nil || fresh.codingAgentClarificationLocked(sid, live.promptID) != live || live.recovered {
+				t.Fatalf("restore took over a question still being asked: %v", err)
+			}
+			fresh.codingAgentClarificationsMu.Lock()
+			delete(fresh.codingAgentClarifications, sid)
+			fresh.codingAgentClarificationsMu.Unlock()
 			fresh.supersedeRecoveredQuestions(sid)
 			if err := fresh.restoreNativeQuestionsAfterRestart(sid); err != nil || fresh.codingAgentClarificationLocked(sid, later.promptID) != nil {
 				t.Fatalf("a question the person moved past came back: %v", err)

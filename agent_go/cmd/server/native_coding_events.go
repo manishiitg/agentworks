@@ -132,9 +132,7 @@ func (api *StreamingAPI) restoreNativeCodingObservers() {
 		// Every chat, not only those still on an app that asks questions: a chat
 		// that moved to another app keeps its earlier app's open question cards,
 		// and they must stay answerable (or close) after a restart.
-		if err := api.restoreNativeQuestionsAfterRestart(saved.SessionID); err != nil {
-			log.Printf("[HUMAN_INPUT] session=%s status=restart_restore_failed", saved.SessionID)
-		}
+		api.restoreQuestionsOnce(saved.SessionID)
 		go func() { o.poll(true); close(o.ready); go o.run() }()
 		log.Printf("[NATIVE_RECORD] restored session=%s provider=%s native=%s", saved.SessionID, saved.Provider, saved.NativeID)
 	}

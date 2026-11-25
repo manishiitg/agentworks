@@ -47,6 +47,8 @@ func (api *StreamingAPI) handleCodingAgentQuestionAnswer(w http.ResponseWriter, 
 		provider = "muse-cli"
 	}
 	if strings.HasPrefix(req.PromptID, clarificationPromptPrefix) {
+		// A card this process never loaded is reloaded (answerable) or closed now, never left open and refused.
+		api.restoreQuestionsOnce(sessionID)
 		recovered, restoreErr := api.recoveredQuestionRequest(r, sessionID, req.PromptID)
 		if restoreErr != nil {
 			http.Error(w, restoreErr.Error(), http.StatusForbidden)
