@@ -2,92 +2,54 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log"
-	"os"
 	"path"
-	"path/filepath"
-	"time"
-
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
-	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// One-off on a Mac (#4078): a project on a Mac has no functions, because functions are online only and a Mac project
-// can no longer move online. Each Crew's functions.json is copied beside itself first, then rewritten with only the
-// records that are caller bindings (input_mapping), not functions. Their tabs stay and are ordinary agents on a Mac
-// (crewFunctionTabKey). A done marker is written last. Remove this file once every Mac has started on this version.
-
-const (
-	crewFunctionMacRemovalMarker = "_system/mac-functions-removed-2.done"
-	crewFunctionMacRemovalBackup = ".before-mac-functions-removed"
-)
-
-func removeMacCrewFunctions() error {
+// A project on a Mac has no functions (#4078): functions are online only and a Mac project can no longer move
+// online. A Crew's functions are rows of its functions.json automation record, so on every Mac start, with the
+// automation-records import, each Crew's record keeps only its caller bindings (input_mapping), after its whole
+// content goes to the private automation-records backup. Once removed there is nothing left to do. Their tabs stay
+// and are ordinary agents on a Mac (crewFunctionTabKey). Remove this once every Mac has started on this version.
+func removeMacCrewFunctions(ctx context.Context, root string) {
 	if !IsLocalMode() {
-		return nil
+		return
 	}
-	docs := fsutil.WorkspaceDocsRoot()
-	marker := filepath.Join(docs, filepath.FromSlash(crewFunctionMacRemovalMarker))
-	if _, err := os.Stat(marker); err == nil {
-		return nil
-	}
-	var failures []error
-	records, err := defaultProjectOwners().All()
-	if err != nil {
-		return fmt.Errorf("list projects: %w", err)
-	}
-	resolver, err := crewroot.NewReadResolver(docs)
-	if err != nil {
-		return err
-	}
-	for id, rec := range records {
-		if rec.Product != crewProfileID {
-			continue
-		}
-		// A Crew's functions.json lives in its .agentworks/settings/, so the project path is resolved, not joined.
-		file, ok, err := resolver.Resolve(path.Join(projectStorageRoot(rec), crewFunctionsFileName))
+	file := path.Join(root, crewFunctionsFileName)
+	raw, found, err := readFileFromWorkspace(ctx, file)
+	if err != nil || !found {
 		if err != nil {
-			failures = append(failures, fmt.Errorf("%s: %w", id, err))
-			continue
+			log.Printf("[CREW_FUNCTIONS] event=mac_functions_removal_failed root=%s error=%v", root, err)
 		}
-		if !ok {
-			continue
-		}
-		removed, err := removeFunctionsFromFile(file)
+		return
+	}
+	kept, removed, err := withoutFunctions(raw)
+	if err != nil || len(removed) == 0 {
 		if err != nil {
-			failures = append(failures, fmt.Errorf("%s: %w", file, err))
-			continue
+			log.Printf("[CREW_FUNCTIONS] event=mac_functions_removal_failed root=%s error=%v", root, err)
 		}
-		if len(removed) > 0 {
-			log.Printf("[CREW_FUNCTIONS] event=mac_functions_removed project=%s functions=%q backup=%s", id, removed, crewFunctionsFileName+crewFunctionMacRemovalBackup)
-		}
+		return
 	}
-	if err := errors.Join(failures...); err != nil {
-		return err // no marker: the next start tries again
+	if err := backupAutomationFile(file, "", raw); err != nil {
+		log.Printf("[CREW_FUNCTIONS] event=mac_functions_removal_failed root=%s reason=backup error=%v", root, err)
+		return
 	}
-	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
-		return err
+	if err := writeFileToWorkspace(ctx, file, kept); err != nil {
+		log.Printf("[CREW_FUNCTIONS] event=mac_functions_removal_failed root=%s error=%v", root, err)
+		return
 	}
-	return os.WriteFile(marker, []byte(time.Now().UTC().Format(time.RFC3339)+"\n"), 0o600)
+	log.Printf("[CREW_FUNCTIONS] event=mac_functions_removed root=%s functions=%q", root, removed)
 }
 
-// removeFunctionsFromFile keeps only caller bindings and returns the names of the functions it removed.
-func removeFunctionsFromFile(file string) ([]string, error) {
-	raw, err := os.ReadFile(file)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
+// withoutFunctions keeps only caller bindings (records with input_mapping) and names the functions it dropped.
+func withoutFunctions(raw string) (string, []string, error) {
+	decoder := json.NewDecoder(bytes.NewReader([]byte(raw)))
 	decoder.UseNumber()
 	var document map[string]any
 	if err := decoder.Decode(&document); err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	items, _ := document["functions"].([]any)
 	kept, removed := []any{}, []string{}
@@ -100,16 +62,7 @@ func removeFunctionsFromFile(file string) ([]string, error) {
 		name, _ := record["name"].(string)
 		removed = append(removed, name)
 	}
-	if len(removed) == 0 {
-		return nil, nil
-	}
-	if err := os.WriteFile(file+crewFunctionMacRemovalBackup, raw, 0o600); err != nil {
-		return nil, err
-	}
 	document["functions"] = kept
 	out, err := json.MarshalIndent(document, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	return removed, os.WriteFile(file, out, 0o644)
+	return string(out), removed, err
 }
