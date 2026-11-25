@@ -215,16 +215,18 @@ func crewTeamFirstName(name string) string {
 	return string(runes)
 }
 
-// crewAccessDashboardLine is the Crew's dashboards in the Online tree (owner, 5 Nov: one place for Share and the
-// dashboard): who it is shared with, or, with none, an Ask to make one. Nothing creates a dashboard on its own.
-// One header (owner, 9 Nov mock): "Dashboards", how many and who can open them, then each dashboard by name.
-func crewAccessDashboardLine(items []crewAccessDashboard) crewAccessLine {
-	if len(items) == 0 {
-		return crewAccessLine{Kind: "dashboard", Group: "online", Title: "No artifacts yet · ask AI to make one", Ask: "Help me make an artifact for this project", Target: "dashboards"}
+// crewAccessDashboardLine is the Crew's published pages in the side menu: a header with how many, then each page by
+// name, or, with none, an Ask to make one. Nothing creates a page on its own. A project on a Mac has Dashboards and
+// Motion for its person only (owner, 25 Nov): no Artifacts and no sharing, so its header says Dashboards.
+func crewAccessDashboardLine(items []crewAccessDashboard, onMac bool) crewAccessLine {
+	title, empty, ask := "Artifacts", "No artifacts yet · ask AI to make one", "Help me make an artifact for this project"
+	if onMac {
+		title, empty, ask = "Dashboards", "No dashboards yet · ask AI to make one", "Help me make a dashboard for this project"
 	}
-	// A header "Artifacts  N", then one row per artifact. No who-can-open tag on the header (owner, 19 Nov, #2993):
-	// each row says itself whether it is on the Team.
-	return crewAccessLine{Kind: "dashboard", Group: "online", Title: "Artifacts", Count: len(items), Path: items[0].Path, Target: "dashboards", Dashboards: items}
+	if len(items) == 0 {
+		return crewAccessLine{Kind: "dashboard", Group: "online", Title: empty, Ask: ask, Target: "dashboards"}
+	}
+	return crewAccessLine{Kind: "dashboard", Group: "online", Title: title, Count: len(items), Path: items[0].Path, Target: "dashboards", Dashboards: items}
 }
 
 // crewAccessDashboard is one dashboard under the dashboard line: its name, the document it opens and its ID.

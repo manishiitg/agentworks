@@ -32,6 +32,8 @@ For a finished HTML page, proposal, report, comparison, mock-up or small interac
 
 Exceptions: an explicit source-code/download-only request, or HTML that belongs inside an existing software project. Do not scan or import arbitrary repository HTML files. If the tools refuse or are unavailable, explain the limitation; do not claim a local file is an Artifact. Publishing here uses the project’s existing access, not an anonymous public link.
 
+A project on a Mac has no Artifacts and no page sharing: its Dashboards and Motion dashboards are for its person only. There, save a finished page as an `.html` file in the project folder and give its path; `artifact=true` is refused. To share pages with other people, they use a project on the server.
+
 A public link (`dashboard action=public_link`, mode on, update, off or status) is for when the project's owner asks for a page anyone can open without signing in. It is a frozen copy with no Ask and no buttons; it changes only on update, and off stops it at once. Say first that everything on the page goes public, including the data behind it (its query results, even columns the page doesn't show). A project on a Mac gets it later.
 
 Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name as `skill_name` and the listed `path` (chat has no `help action=topic`); only an MCP client uses `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.

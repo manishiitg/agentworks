@@ -15,9 +15,8 @@ const kindIcon: Record<string, LucideIcon> = { dashboard: LayoutDashboard, artif
 
 /** The standalone Artifacts page (owner, 14 Nov): everything this
  * Crew publishes (dashboards, artifacts, motion), each with who can open it and, on a server Crew, its public link. The server's
- * /dashboards-tab writes every line and says what this person may change (owner: Change and the link; a teammate: the
- * list), and a Crew on a Mac says it needs to be online first; this only shows them. The same tab in the Mac app and on
- * the website. */
+ * /dashboards-tab writes every line, the title and the kinds, and says what this person may change. A Crew on a Mac has
+ * Dashboards and Motion for its owner only, with no Artifacts and no sharing (owner, 25 Nov). This only shows them. */
 export function CrewDashboardsTab({ projectId }: { projectId: string }) {
   const { target, unbound, error: reachError, retry: retryTeam } = useTeamTab(projectId)
   const localMode = useCapabilitiesStore(s => Boolean(s.capabilities?.local_mode))
@@ -31,7 +30,7 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
     setLocalRows(undefined); setLocalError('')
     if (onThisMac) void loadDashboardDirectory(controller.signal).then(result => {
       if (!controller.signal.aborted) setLocalRows(result.dashboards.filter(row => row.product === 'crew' && row.project_id === projectId))
-    }).catch(() => { if (!controller.signal.aborted) setLocalError('Could not read the local artifacts. Reopen this pane to try again.') })
+    }).catch(() => { if (!controller.signal.aborted) setLocalError('Could not read the dashboards on this Mac. Reopen this pane to try again.') })
     return () => controller.abort()
   }, [projectId, onThisMac, host])
   // A Mac Crew that was never online has no server copy: its own Mac app's server answers.
@@ -55,27 +54,30 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
   }, [failure, attempt, retryTeam])
   // Fetch all once: filters and counts describe both places, not just the last server response.
   const rows = [
-    ...(onThisMac ? (localRows || []).map(row => ({ id: `local:${row.dashboard_id}`, sourceId: row.dashboard_id, title: dashboardDisplayName(row), kind: row.motion ? 'motion' : row.artifact ? 'artifact' : 'dashboard', workspace: row.workspace, path: row.document_path, place: 'This Mac', publicLink: undefined as DashboardsTab['items'][number]['public_link'] })) : []),
+    ...(onThisMac ? (localRows || []).map(row => ({ id: `local:${row.dashboard_id}`, sourceId: row.dashboard_id, title: dashboardDisplayName(row), kind: row.motion ? 'motion' : 'dashboard', workspace: row.workspace, path: row.document_path, place: 'This Mac', publicLink: undefined as DashboardsTab['items'][number]['public_link'] })) : []),
     ...((!onThisMac || !unbound) && tab ? tab.items.map(item => ({ id: `remote:${item.workspace || tab.workspace}:${item.id}`, sourceId: item.id, title: item.title, kind: item.kind, workspace: item.workspace || tab.workspace, path: item.path, place: tab.on_mac ? 'This Mac' : 'On the Team', publicLink: item.public_link })) : []),
   ]
   function openRow(row: typeof rows[number]) {
     selectReportDocument(row.workspace, row.path, true)
   }
   const complete = Boolean(tab) && (!onThisMac || Boolean(localRows)) && !failure && !localError
-  const filters = [{ key: 'all', label: 'All' }, { key: 'dashboard', label: 'Dashboards' }, { key: 'artifact', label: 'Artifacts' }, { key: 'motion', label: 'Motion' }]
+  // The server lists the kinds this project has (a Mac Crew has no Artifacts); counts cover both places.
+  const filters = [{ key: 'all', label: 'All' }, ...(tab?.filters || []).filter(filter => filter.key !== 'all')]
+  const title = tab?.title || 'Artifacts'
   const chosen = tab?.filters.find(filter => filter.key === kind)
   return <div className="space-y-3">
-    <section aria-label="Artifacts" className={teamCard}>
+    <section aria-label={title} className={teamCard}>
       <div role="group" aria-label="Show" className="flex flex-wrap gap-1.5">
         {filters.map(filter => <button key={filter.key} type="button" aria-pressed={kind === filter.key} onClick={() => setKind(filter.key)}
           className={`rounded-full border px-2.5 py-0.5 text-xs ${kind === filter.key ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted'}`}>{filter.label} {rows.filter(row => filter.key === 'all' || row.kind === filter.key).length}</button>)}
       </div>
       {failure && <p role="status" className="text-xs text-muted-foreground">Couldn't reach the Team server, retrying</p>}
       {localError && <p role="alert" className="text-xs text-muted-foreground">{localError}</p>}
-      {!failure && !localError && !complete && <p role="status" className="text-xs text-muted-foreground">Loading artifacts…</p>}
+      {!failure && !localError && !complete && <p role="status" className="text-xs text-muted-foreground">Loading…</p>}
       {chosen?.hint && <p className="text-xs text-muted-foreground">{chosen.hint}</p>}
+      {complete && rows.length > 0 && tab?.note && <p className="text-xs text-muted-foreground">{tab.note}</p>}
       {complete && !rows.length && <div className="rounded-lg bg-muted/40 px-3 py-3 text-sm">
-        <p>{tab?.empty?.title || 'No artifacts yet'}</p>
+        <p>{tab?.empty?.title || `No ${title.toLowerCase()} yet`}</p>
         <p className="text-muted-foreground">{tab?.empty?.line}</p>
         {tab?.empty?.ask && <Button size="sm" onClick={() => { if (!fillMainDraft(projectId, tab.empty?.ask || '')) useChatStore.getState().addToast('Open your own Main tab in this project, then ask from there.', 'error') }}>Ask the project</Button>}
       </div>}

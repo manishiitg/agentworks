@@ -25,6 +25,9 @@ type dashboardTarget struct {
 	Edit                  bool
 }
 
+// Projects on a Mac have Dashboards and Motion for their person only (owner, 25 Nov): no Artifacts and no page sharing.
+const dashboardArtifactOnMacLine = "Artifacts are for projects on the server. On your Mac, save the page as an .html file in the project folder, or make it a dashboard."
+
 func dashboardFailure(status int, message string) error {
 	return &wf.FileError{Status: status, Message: message}
 }
@@ -376,6 +379,11 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		if len(parts) > 2 {
 			args.Revision = parts[1]
 		}
+	}
+	if (args.Action == "create" || args.Action == "update") && args.Artifact != nil && *args.Artifact && dashboardPublicMacCrewBlocked(target.ID) {
+		log.Printf("[DASHBOARD_REQUEST] refused: action=%q project_id=%q dashboard_id=%q reason=artifact_on_mac", args.Action, target.ID, args.ID)
+		externalError(w, http.StatusConflict, "artifacts_server_only", dashboardArtifactOnMacLine)
+		return
 	}
 	req := dashboards.Request{Root: target.Root, Action: args.Action, ID: args.ID, Title: args.Title, Motion: args.Motion, Artifact: args.Artifact, Files: args.Files, Remove: args.Remove, ExpectedRevision: args.Expected, Revision: args.Revision, DocumentPath: args.Document, IncludeDraft: includeDraft}
 	if args.Action == "list" && args.PublishedOnly {

@@ -543,7 +543,7 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 			section.Detail = strings.Trim(section.Detail+" · "+sharing, " ·")
 		}
 	}
-	crewPanelDashboardLine(out.Sections)
+	crewPanelDashboardLine(out.Sections, dashboardPublicMacCrewBlocked(project))
 	out.Details = crewPanelDetails(sections)
 	w.Header().Set("Cache-Control", "no-store")
 	externalJSON(w, out)
@@ -551,7 +551,7 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 
 // crewPanelDashboardLine adds the Crew's dashboards to the Online tree, from the panel's own dashboards read
 // (owner, 5 Nov: the side menu's separate Dashboards item moved here).
-func crewPanelDashboardLine(sections []crewPanelSection) {
+func crewPanelDashboardLine(sections []crewPanelSection, onMac bool) {
 	var access *crewPanelAccess
 	accessAt := -1
 	listed, items := false, []crewAccessDashboard{}
@@ -573,7 +573,7 @@ func crewPanelDashboardLine(sections []crewPanelSection) {
 	}
 	// A copy: the cached section shares its Access, and adding the line in place would add it again on every read.
 	shown := *access
-	shown.Tree = crewAccessWithDashboard(access.Tree, crewAccessDashboardLine(items))
+	shown.Tree = crewAccessWithDashboard(access.Tree, crewAccessDashboardLine(items, onMac))
 	sections[accessAt].Access = &shown
 }
 
