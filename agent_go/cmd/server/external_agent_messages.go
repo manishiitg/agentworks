@@ -280,10 +280,16 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	productAskChannel, _ := r.Context().Value(productAskChannelKey{}).(bool)
-	if !productAskChannel && caller.NamedAgentID == "" {
+	// A person asks a Team agent as themselves (the Ask box under a teammate's agent): Team admission below is the
+	// check. Every other unnamed send is refused (#2762).
+	teamAsk := false
+	refuseUnnamed := func() bool {
+		if productAskChannel || caller.NamedAgentID != "" || teamAsk {
+			return false
+		}
 		log.Printf("[AGENT-MESSAGE] action=refused reason=named_sender_required")
 		externalError(w, 403, "named_sender_required", "Use your registered AgentBridge identity to send messages.")
-		return
+		return true
 	}
 	if (externalArg(args, "action") == "ask" || agentMessageQueueArgs(args)) && externalArg(args, "inbox_id") == "" {
 		target, err = crewTeamAskTarget(r.Context(), claims.UserID, target, externalArg(args, "offline"))
@@ -296,6 +302,10 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 			externalCommunicationError(w, 409, "ask_unavailable", err)
 			return
 		}
+		teamAsk = target.TeamAgentID != ""
+	}
+	if externalArg(args, "inbox_id") == "" && refuseUnnamed() {
+		return
 	}
 	productAsk, _ := r.Context().Value(productAskChannelKey{}).(bool)
 	caller.OwnerAuthority = !productAsk && caller.NamedAgentID == "" && externalOwnerAuthority(claims, target)
@@ -304,6 +314,15 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		peer, err := api.externalMessagePeerForCaller(r.Context(), claims, caller, inbox, true)
 		if err != nil {
 			externalCommunicationError(w, 404, "not_found", err)
+			return
+		}
+		if caller.NamedAgentID == "" && !productAskChannel {
+			if address, err := crewTeamEndpointAddress(r.Context(), peer); err == nil {
+				_, _, err = crewTeamAdmitAddress(r.Context(), claims.UserID, address)
+				teamAsk = err == nil
+			}
+		}
+		if refuseUnnamed() {
 			return
 		}
 		if target.Kind != "" && (target.NamedAgentID != "" && peer.NamedAgentID != target.NamedAgentID || target.NamedAgentID == "" && (peer.Kind != target.Kind || peer.ID != target.stampID() || peer.Profile != normalizeInternalProfileID(target.CrewProfile) || target.Chat != nil && peer.Session != target.Chat.SessionID)) {
