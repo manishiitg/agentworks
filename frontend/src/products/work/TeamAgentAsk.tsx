@@ -2,7 +2,8 @@ import { randomUUID } from '../../utils/randomUUID'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowUp, BookOpen, Loader2, Square } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
-import { ChatComposerArea, ChatComposerAttachButton, ChatComposerAttachmentTiles, ChatComposerBand, ChatComposerControls, ChatComposerForm, ChatComposerTextarea, resizeChatComposerTextarea } from '../../components/chat/ChatComposer'
+import { ChatComposerArea, ChatComposerAttachmentTiles, ChatComposerBand, ChatComposerControls, ChatComposerForm, ChatComposerTextarea, resizeChatComposerTextarea } from '../../components/chat/ChatComposer'
+import { ComposerAttachButton } from '../../components/chat/ComposerActionsMenu'
 import { getClipboardImageFiles } from '../../components/clipboardImages'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
@@ -134,17 +135,17 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,agent,
     </div>}
     <ChatComposerForm product onSubmit={event=>{event.preventDefault();if(running)void stop();else void send()}}>
      {files.length>0&&<ChatComposerAttachmentTiles files={files} onRemove={index=>setFiles(old=>old.filter((_,at)=>at!==index))}/>}
-     <ChatComposerTextarea product ref={box} aria-label={label} placeholder={`${label}…`} value={value} disabled={!admitted||busy}
+     <ChatComposerTextarea product className="!min-h-[52px]" ref={box} aria-label={label} placeholder={`${label}…`} value={value} disabled={!admitted||busy}
       onChange={event=>{setDraft(event.target.value);if(offline)setOffline(null)}}
       onPaste={event=>{const images=getClipboardImageFiles(event.clipboardData);if(images.length&&admitted){event.preventDefault();addFiles(images)}}}
       onKeyDown={event=>{if(event.key==='Enter'&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();if(!running)void send()}}}/>
      <ChatComposerControls>
       <span className="flex min-w-0 max-w-full flex-wrap items-center gap-1">
-       <ChatComposerAttachButton disabled={!admitted||!!running} busy={busy&&files.length>0} onClick={()=>picker.current?.click()} tip="Add files or photos (or paste, or drag them here)"/>
+       <ComposerAttachButton uploading={busy&&files.length>0} onAttach={()=>{if(admitted&&!running)picker.current?.click()}}/>
        {runtime&&<span title="This is their agent, so its AI is their choice" className="inline-flex min-w-0 max-w-48 items-center gap-1 truncate px-1 text-[11px] text-muted-foreground"><CodingCliIcon provider={agent?.cli||agent?.engine||'terminal'} className="inline-flex h-3 w-3 shrink-0 items-center"/><span className="truncate">{runtime}</span></span>}
       </span>
       <span className="flex shrink-0 items-center gap-1">
-      {answerFromChat&&!running&&<Button type="button" variant="ghost" size="xs" title="Your own agent answers from this chat's backup. Nothing is sent to the agent or its person." disabled={!admitted||!draft.trim()} onClick={()=>{answerFromChat(draft.trim());setDraft('')}} className="gap-1 rounded-md border border-border px-2 text-xs text-muted-foreground hover:bg-muted [&_svg]:size-3.5"><BookOpen aria-hidden="true"/>Answer from its chat</Button>}
+      {answerFromChat&&!running&&<Button type="button" variant="ghost" size="xs" title="Your own agent answers from this chat's backup. Nothing is sent to the agent or its person." disabled={!admitted||!draft.trim()} onClick={()=>{answerFromChat(draft.trim());setDraft('')}} className="gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted [&_svg]:size-3.5"><BookOpen aria-hidden="true"/>Answer from its chat</Button>}
       {running
        ?<Button type="submit" variant="ghost" size="icon" aria-label="Stop your ask" title="Stop your ask" disabled={stopping} className="h-7 w-7 rounded-full p-0 bg-diff-del/15 text-diff-del hover:bg-diff-del/25 hover:text-diff-del">{stopping?<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true"/>:<Square className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true"/>}</Button>
        :<Button type="submit" variant="ghost" size="xs" aria-label={busy?'Sending':'Send'} title="Send (Enter)" disabled={!canSend} className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">{busy?<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true"/>:<ArrowUp className="h-3.5 w-3.5" aria-hidden="true"/>}</Button>}
