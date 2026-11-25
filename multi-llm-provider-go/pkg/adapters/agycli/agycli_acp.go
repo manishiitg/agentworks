@@ -96,7 +96,20 @@ func (a *AgyCLIAdapter) generateContentACP(ctx context.Context, messages []llmty
 		metadata.Custom[to] = agyStringMetadata(opts, from)
 	}
 	call.Metadata = &metadata
-	return acpcli.Generate(ctx, agyACPAgent, model, messages, &call)
+	home := agyTranscriptHome(opts)
+	agyACPCompactionFloor(home, agyStringMetadata(opts, MetadataKeyResumeSessionID))
+	if llmtypes.CodingProviderIdleCompactFromOptions(opts) {
+		return agyACPCompact(ctx, model, home, messages, &call)
+	}
+	resp, err := acpcli.Generate(ctx, agyACPAgent, model, messages, &call)
+	if err == nil && opts.StreamChan != nil {
+		if handle, ok := llmtypes.ExtractCodingProviderSessionHandleFromResponse(resp); ok {
+			for _, compaction := range agyACPTurnCompactions(home, handle.NativeSessionID) {
+				opts.StreamChan <- llmtypes.ContextCompactionChunk(compaction)
+			}
+		}
+	}
+	return resp, err
 }
 
 // agyACPLaunch is agy's process setup for one chat: its own private home
@@ -182,4 +195,39 @@ func agyPinHome(env []string, home string) []string {
 		}
 	}
 	return append(out, "HOME="+home)
+}
+
+// agyACPCompact runs only agy's own compaction on the chat's conversation
+// (idle compaction, compact early, Compact now): agy's /compact command, sent
+// without streaming anything into the chat. agy's conversation store decides
+// whether it compacted.
+func agyACPCompact(ctx context.Context, model, home string, messages []llmtypes.MessageContent, call *llmtypes.CallOptions) (*llmtypes.ContentResponse, error) {
+	prompt := append(append([]llmtypes.MessageContent{}, messages...), llmtypes.MessageContent{Role: llmtypes.ChatMessageTypeHuman, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "/compact"}}})
+	call.StreamChan = nil
+	resp, err := acpcli.Generate(ctx, agyACPAgent, model, prompt, call)
+	session := agyStringMetadata(call, acpcli.MetadataKeyResumeSessionID)
+	if handle, ok := llmtypes.ExtractCodingProviderSessionHandleFromResponse(resp); ok && handle.NativeSessionID != "" {
+		session = handle.NativeSessionID
+	}
+	result := llmtypes.IdleCompactResult{Reason: llmtypes.IdleCompactReasonNothing}
+	for _, compaction := range agyACPTurnCompactions(home, session) {
+		if compaction.Outcome == llmtypes.ContextCompactionOutcomeSuccess {
+			result = llmtypes.IdleCompactResult{Compacted: true, Reason: llmtypes.IdleCompactReasonCompacted}
+		} else if !result.Compacted {
+			result.Reason = llmtypes.IdleCompactReasonFailed
+		}
+	}
+	if err != nil && !result.Compacted {
+		log.Printf("[AGY_ACP] action=compact_failed err=%v", err)
+		result.Reason = llmtypes.IdleCompactReasonFailed
+	}
+	if resp == nil || len(resp.Choices) == 0 || resp.Choices[0] == nil {
+		resp = llmtypes.IdleCompactSkipResponse("agy-cli", result.Reason)
+	}
+	if resp.Choices[0].GenerationInfo == nil {
+		resp.Choices[0].GenerationInfo = &llmtypes.GenerationInfo{}
+	}
+	resp.Choices[0].Content = ""
+	llmtypes.AttachIdleCompactResult(resp.Choices[0].GenerationInfo, result)
+	return resp, nil
 }

@@ -204,7 +204,8 @@ func CompactCodingAgentSession(ctx context.Context, model llmtypes.Model, handle
 // native compaction trigger: Claude Code (/compact on its SDK, stream-json and
 // tmux transports), Codex app-server (thread/compact/start), Pi RPC
 // (compact), Muse serve (session/compact) and the Cursor SDK (summarize).
-// Codex tmux/exec, Cursor tmux, Muse tmux/exec and AGY have none.
+// agy over ACP (/compact). Codex tmux/exec, Cursor tmux, Muse tmux/exec and
+// agy's terminal lane have none.
 func IdleCompactSupported(provider Provider, transport string) bool {
 	switch normalizeCodingAgentProvider(provider) {
 	case ProviderClaudeCode:
@@ -221,6 +222,9 @@ func IdleCompactSupported(provider Provider, transport string) bool {
 	case ProviderCursorCLI:
 		// Cursor SDK 1.3 agent.summarize() (agentworks#3135).
 		return transport == llmtypes.CodingProviderTransportSDK
+	case ProviderAgyCLI:
+		// agy acp offers its own /compact command.
+		return transport == llmtypes.CodingProviderTransportACP
 	}
 	return false
 }

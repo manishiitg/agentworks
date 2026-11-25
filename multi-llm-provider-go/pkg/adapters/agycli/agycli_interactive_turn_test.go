@@ -323,6 +323,20 @@ func TestAgyCheckpointStepCompaction(t *testing.T) {
 		got.DurationMs != 791 || got.TokensBefore != 0 || got.TokensAfter != 0 {
 		t.Fatalf("unexpected compaction chunk %+v", got)
 	}
+	// ACP chats: a resumed conversation reports only compactions after its first turn here, each once.
+	agyACPCompactionFloor(home, "c1")
+	if got := agyACPTurnCompactions(home, "c1"); len(got) != 0 {
+		t.Fatalf("replayed an earlier compaction: %+v", got)
+	}
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO steps VALUES (2, 23, 3, ?)`, compacting); err != nil {
+		t.Fatal(err)
+	}
+	if got := agyACPTurnCompactions(home, "c1"); len(got) != 1 || got[0].ID != "c1:2" {
+		t.Fatalf("missed this turn's compaction: %+v", got)
+	}
+	if got := agyACPTurnCompactions(home, "c1"); len(got) != 0 {
+		t.Fatalf("reported a compaction twice: %+v", got)
+	}
 }
 
 // AGY ends a turn it cannot finish by writing an error step (type 17) and
