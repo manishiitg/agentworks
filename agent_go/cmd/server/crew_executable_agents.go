@@ -94,7 +94,7 @@ func (r *crewWorkflowResources) ResolveCrewAgentConfiguration(ctx context.Contex
 			return result, err
 		}
 		if strings.TrimSpace(parent.Description) != "" {
-			result.Instructions += "\n\n## project purpose\n" + parent.Description
+			result.Instructions += "\n\n## Project purpose\n" + parent.Description
 		}
 		result.Instructions += "\n\n" + workflowtypes.ChatInstructionsPrompt(parent.ChatInstructions)
 		result.Servers = append([]string{}, runtimeAppSelection(parent.Capabilities.SelectedServers, parent.Capabilities.ChosenVaultAppsOnly)...)

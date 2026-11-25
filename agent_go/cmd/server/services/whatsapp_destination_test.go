@@ -96,7 +96,7 @@ func TestWhatsAppDestinationListIncludesWorkflowsAndCrews(t *testing.T) {
 		{Number: 2, Kind: "workflow", ID: "wf-invoices", Label: "Invoice Processing"},
 	}
 	message := formatWhatsAppDestinationList(candidates)
-	for _, want := range []string{"Goals, Crews and Flows:", "1. Crew: Company CA", "2. Workflow: Invoice Processing"} {
+	for _, want := range []string{"Goals, projects and Flows:", "1. Project: Company CA", "2. Workflow: Invoice Processing"} {
 		if !strings.Contains(message, want) {
 			t.Fatalf("destination list %q does not contain %q", message, want)
 		}

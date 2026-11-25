@@ -67,7 +67,7 @@ func TestDeclaredCrewEntryAndLinksRecheckCurrentAccess(t *testing.T) {
 					t.Fatal("private target fixture is accessible")
 				}
 				_, err := invoke()
-				if err == nil || (!strings.Contains(err.Error(), "no Crew or workflow you can use") && !strings.Contains(err.Error(), "no longer have access") && !strings.Contains(err.Error(), "access denied")) {
+				if err == nil || (!strings.Contains(err.Error(), "no project or workflow you can use") && !strings.Contains(err.Error(), "no longer have access") && !strings.Contains(err.Error(), "access denied")) {
 					t.Errorf("%s %s admitted private target or missed intended access rule: %v", stage, surface, err)
 				}
 			}

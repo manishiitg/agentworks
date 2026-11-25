@@ -43,7 +43,7 @@ func externalCodeReviewDefinitions(add func(name, description string, write, sco
 			props = map[string]any{}
 		}
 		props["owner_id"] = externalString("Owner ID from workspace_review action=workspaces.")
-		props["project_id"] = externalString("Project project ID from workspace_review action=workspaces.")
+		props["project_id"] = externalString("Project ID from workspace_review action=workspaces.")
 		return props
 	}
 	const suffix = " Read-only; every call is recorded in the project review audit log. Requires crews:review and an admin or project reviewer account."

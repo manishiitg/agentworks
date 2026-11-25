@@ -252,11 +252,11 @@ func attachCrewProjectToWorkflow(ctx context.Context, svc *ProjectActionDispatch
 		}
 	}
 	if svc == nil {
-		return "", false, fmt.Errorf("Project project is unavailable or access denied")
+		return "", false, fmt.Errorf("project is unavailable or access denied")
 	}
 	_, binding, _, err := svc.projectManifest(ctx, userID, profileID, projectID)
 	if err != nil {
-		return "", false, fmt.Errorf("Project project is unavailable or access denied")
+		return "", false, fmt.Errorf("project is unavailable or access denied")
 	}
 	previousRoots := crewAttachmentStoredRoots(manifest.CrewAttachments)
 	root := filepath.ToSlash(binding.WorkspacePath)
@@ -345,7 +345,7 @@ func (api *StreamingAPI) registerCrewAttachmentTool(reg definitionToolRegistrar,
 			if !created {
 				return "", fmt.Errorf("alias %q is already attached", alias)
 			}
-			return fmt.Sprintf("Project project %q attached as %q (read-only). Downstream steps read crew files as %s/<path>.", projectID, alias, alias), nil
+			return fmt.Sprintf("Project %q attached as %q (read-only). Downstream steps read crew files as %s/<path>.", projectID, alias, alias), nil
 		case "detach":
 			alias := strings.TrimSpace(fmt.Sprint(args["alias"]))
 			kept := make([]workflowtypes.CrewAttachment, 0, len(manifest.CrewAttachments))

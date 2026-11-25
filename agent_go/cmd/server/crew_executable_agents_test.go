@@ -198,7 +198,7 @@ func TestCrewExecutableAgentConfigurationCannotCrossCrewOrImportChatHistory(t *t
 	if strings.Contains(string(encoded), chat.SessionID) || strings.Contains(string(encoded), "PERSONAL_HISTORY") {
 		t.Fatal("configuration imported a private chat")
 	}
-	if _, err := runner.ResolveCrewAgentConfiguration(ctx, child.Root, foreign.ConversationKey); err == nil || !strings.Contains(err.Error(), "selected Crew agent") {
+	if _, err := runner.ResolveCrewAgentConfiguration(ctx, child.Root, foreign.ConversationKey); err == nil || !strings.Contains(err.Error(), "selected project agent") {
 		t.Fatalf("cross-Crew selection did not fail at the intended rule: %v", err)
 	}
 	if _, err := newCrewWorkflowResources(svc, "stranger").ResolveCrewAgentConfiguration(context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "stranger", Username: "stranger"}), child.Root, chat.ConversationKey); err == nil || err.Error() != "this Crew is unavailable" {
