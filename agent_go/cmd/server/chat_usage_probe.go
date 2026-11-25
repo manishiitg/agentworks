@@ -39,7 +39,7 @@ var chatUsageProbes = struct {
 
 // chatProbeProvider is the provider name the quota request knows for a chat's provider; "" when it has none.
 func chatProbeProvider(provider string) string {
-	for _, known := range []string{"claude-code", "codex-cli", "cursor-cli", "muse-cli"} {
+	for _, known := range []string{"claude-code", "codex-cli", "cursor-cli", "muse-cli", "agy-cli"} {
 		if sameChatProvider(known, provider) {
 			return known
 		}
