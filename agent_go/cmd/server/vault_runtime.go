@@ -682,6 +682,9 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 	picks := append([]string(nil), names...)
 	ctx, names, rows, remote, inventoryErr := api.vaultAppCandidates(ctx, lender, sessionID, names)
 	recordLaunchedVaultApps(sessionID, person, lender, picks, vaultAppLabels(names, rows, remote), inventoryErr)
+	// A User of a server Crew starts and calls the Crew vault's apps as its main owner (crewVaultReader); the rows are
+	// already only that vault's apps.
+	lender = crewVaultReader(ctx, lender)
 	aliasRows := make([]vaultRuntimeServer, 0, len(rows)+len(remote))
 	for _, row := range rows {
 		row.Name = vaultServerName(row.ID)

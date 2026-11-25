@@ -478,6 +478,18 @@ func crewVaultRowsOnly(ctx context.Context, rows []globalSecretEntry) []globalSe
 	return out
 }
 
+// crewVaultAppRowsOnly keeps the apps a server Crew's turn picked from its Crew vault (crewVaultServers), so a User's
+// turn that reads as the main owner never gets one of the owner's own apps.
+func crewVaultAppRowsOnly(rows []vaultRuntimeServer, picks []string) []vaultRuntimeServer {
+	out := rows[:0:0]
+	for _, row := range rows {
+		if slices.Contains(picks, vaultServerName(row.ID)) {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
 // withCrewVaultScopeForNames scopes a key lookup to the Crew vault its selected names come from: a server Crew's
 // selection is its Crew vault's names (crewVaultSecretNames), each starting with that vault's prefix.
 func withCrewVaultScopeForNames(ctx context.Context, names []string) context.Context {
