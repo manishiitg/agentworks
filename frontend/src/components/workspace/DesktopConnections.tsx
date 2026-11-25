@@ -30,7 +30,7 @@ import { TeamInvites } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
 import { SidebarAgentLayout, SidebarCrewAgents, SidebarHiddenAgents } from './SidebarCrewAgents'
 import { sidebarAgentDisclosureClass, sidebarAgentListClass } from './sidebarAgentLayout'
-import { ChevronRight, Pin, Search } from 'lucide-react'
+import { ArrowLeftRight, ChevronRight, Pin, Search } from 'lucide-react'
 import { mostInTeam } from '../chat/AgentInTeamMark'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
@@ -182,30 +182,37 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
       ...rows.filter(project => activeProjectIds.has(project.id)),
       ...(pinnedRows.length === 0 && recentRows.length === 0 ? rows.slice(0, 8) : []),
     ].filter((project, index, all) => all.findIndex(other => other.id === project.id) === index).slice(0, 12)
+    const switchButtonClass = 'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+    const switchToThreads = rows.length > 0 && <button type="button" onClick={() => selectSidebarMode('threads')} aria-label="Switch to Threads view" className={switchButtonClass}>
+      <ArrowLeftRight className="h-3 w-3 shrink-0" aria-hidden="true" />
+      <span>Threads</span>
+      {activeThreadCount > 0 && <span className={`rounded-full px-1 text-[10px] font-semibold leading-4 ${hasWaitingThread ? 'bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))]' : 'bg-info/15 text-info'}`}>{activeThreadCount}</span>}
+    </button>
+    const switchToProjects = <button type="button" onClick={() => selectSidebarMode('projects')} aria-label="Switch to Projects view" className={switchButtonClass}>
+      <ArrowLeftRight className="h-3 w-3 shrink-0" aria-hidden="true" />
+      <span>Projects</span>
+    </button>
     return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3" data-sidebar-project-scroll onPointerDownCapture={() => markSidebarInteraction()}>
         {top}
-        {rows.length > 0 && <div role="tablist" aria-label="Sidebar view" className="mb-2 flex shrink-0 items-center gap-4 border-b border-border/60 px-2 text-xs">
-          <button type="button" role="tab" aria-selected={sidebarMode === 'projects'} onClick={() => selectSidebarMode('projects')}
-            className={`-mb-px border-b-2 pb-1.5 pt-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sidebarMode === 'projects' ? 'border-foreground font-semibold text-foreground' : 'border-transparent font-medium text-muted-foreground hover:text-foreground'}`}>
-            Projects
-          </button>
-          <button type="button" role="tab" aria-selected={sidebarMode === 'threads'} onClick={() => selectSidebarMode('threads')}
-            className={`-mb-px flex items-center gap-1.5 border-b-2 pb-1.5 pt-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sidebarMode === 'threads' ? 'border-foreground font-semibold text-foreground' : 'border-transparent font-medium text-muted-foreground hover:text-foreground'}`}>
-            <span>Threads</span>
-            {activeThreadCount > 0 && <span className={`rounded-full px-1.5 text-[10px] font-semibold leading-4 ${hasWaitingThread ? 'bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))]' : 'bg-info/15 text-info'}`}>{activeThreadCount}</span>}
-          </button>
-        </div>}
         {sidebarMode === 'threads' ? (
-          <SidebarThreadsView projects={threadProjects} scope={historyScope} />
+          <SidebarThreadsView projects={threadProjects} scope={historyScope} switchControl={switchToProjects} />
         ) : <>
           {pinnedRows.length > 0 && <section aria-label="Pinned projects" className="mb-3 shrink-0 space-y-1">
+            <div className="flex items-center justify-between px-2 pb-1 pt-2">
+              <h2 className="text-xs font-medium text-muted-foreground">Pinned</h2>
+              {switchToThreads}
+            </div>
             {pinnedRows.map(project => renderProject(project, true))}
           </section>}
           {recentRows.length > 0 && <section aria-labelledby="recent-projects-heading" className="mb-3 shrink-0 space-y-1">
-            <h2 id="recent-projects-heading" className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">Recent</h2>
+            <div className="flex items-center justify-between px-2 pb-1 pt-2">
+              <h2 id="recent-projects-heading" className="text-xs font-medium text-muted-foreground">Recent</h2>
+              {pinnedRows.length === 0 && switchToThreads}
+            </div>
             {recentRows.map(project => renderProject(project, false))}
           </section>}
+          {pinnedRows.length === 0 && recentRows.length === 0 && switchToThreads && <div className="flex justify-end px-2 pt-2">{switchToThreads}</div>}
         </>}
       </div>
     </div>
