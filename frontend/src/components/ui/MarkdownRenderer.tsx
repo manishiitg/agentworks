@@ -64,7 +64,7 @@ const workspaceStandardPrefixes = ['Chats/', 'Downloads/', 'skills/', 'Workflow/
 const linkableWorkspaceFileExtensions = [
   'md', 'markdown', 'txt', 'json', 'jsonl', 'csv', 'tsv', 'yaml', 'yml', 'xml',
   'ipynb', 'html', 'htm', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'png', 'jpg', 'jpeg',
-  'gif', 'webp', 'svg', 'bmp', 'ico', 'log', 'diff', 'patch'
+  'gif', 'webp', 'svg', 'bmp', 'ico', 'log', 'diff', 'patch', 'mp4', 'webm', 'mov', 'm4v'
 ]
 
 const linkableWorkspaceFileExtensionPattern = linkableWorkspaceFileExtensions.join('|')
@@ -1329,8 +1329,10 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
           },
           img: ({ src, alt }) => {
             if (untrustedContent) return <span className="text-muted-foreground">[Image{alt ? `: ${alt}` : ''}]</span>
-            const workspacePrefixes = ['Crew/', 'Chats/', 'Downloads/', 'skills/', 'Workflow/', 'knowledgebase/', '_users/', 'learnings/', 'db/assets/', 'assets/']
-            const workspaceFilepath = (src?.startsWith('/') && !src.startsWith('//') ? src : null) || resolveWorkspaceHref(src)?.filepath || (src && workspacePrefixes.some(p => src.startsWith(p)) ? src : null) || (src && conversationImageRoot && isLikelyRelativeWorkspaceFile(src) && !src.startsWith('/') ? resolveRelativeWorkspacePath(src, `${conversationImageRoot}/__chat__.md`) : null)
+            const workspacePrefixes = ['Crew/', 'Chats/', 'Downloads/', 'skills/', 'Workflow/', 'knowledgebase/', '_users/', 'learnings/']
+            // In a project chat, db/assets/… and assets/… are the project's own folders, not workspace top-level ones
+            // ("This workspace folder is not shareable" for a reply's own contact sheet).
+            const workspaceFilepath = (src?.startsWith('/') && !src.startsWith('//') ? src : null) || resolveWorkspaceHref(src)?.filepath || (src && workspacePrefixes.some(p => src.startsWith(p)) ? src : null) || (src && conversationImageRoot && isLikelyRelativeWorkspaceFile(src) && !src.startsWith('/') ? resolveRelativeWorkspacePath(src, `${conversationImageRoot}/__chat__.md`) : null) || (src && ['db/assets/', 'assets/'].some(p => src.startsWith(p)) ? src : null)
             if (!src) return <span className="text-muted-foreground">Image not found</span>
             if (isVideoPath(src.split(/[?#]/)[0])) return <ChatVideo src={workspaceFilepath || src} alt={alt} workspace={!!workspaceFilepath} />
             return <ChatImage src={workspaceFilepath || src} alt={alt} workspace={!!workspaceFilepath} className={compactImages

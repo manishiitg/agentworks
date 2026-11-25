@@ -1,6 +1,6 @@
 ---
 name: chat-visuals
-description: Present useful images, coding summaries, diagrams, swimlanes, sequences, charts, cards, timelines or tables in app chat or Slack. Use when a visual makes the answer clearer.
+description: Present useful images, videos that play in the chat, coding summaries, diagrams, swimlanes, sequences, charts, cards, timelines or tables in app chat or Slack. Use when a visual makes the answer clearer.
 metadata:
   version: 2.0.0
   panel-tools: {}
