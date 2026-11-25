@@ -71,7 +71,7 @@ export function TeamWizard({ target, onNo, offset = 0 }: { target: TeamTarget; o
   }
   const total = STEPS + offset
   const heading = ['Who is in the Team?', 'What does the Team share?', 'Which agents can the Team ask?'][step - 1]
-  const sub = ['Pick people and your projects on the server. You can add more later.', 'One folder everyone works in. Only this folder is shared; you can add more later.', 'New agents start in the Team. Your saved choices stay the same. Untick any you want to keep to yourself.'][step - 1]
+  const sub = ['Pick people, and AI teammates from your projects on the server. You can add more later.', 'One folder everyone works in. Only this folder is shared; you can add more later.', 'New agents start in the Team. Your saved choices stay the same. Untick any you want to keep to yourself.'][step - 1]
   const choices = options.projects || []
   const typedTaken = typed !== undefined && shared ? taken[shared] || '' : ''
   const canNext = step !== 2 || (Boolean(shared) && !taken[shared])
@@ -95,9 +95,9 @@ export function TeamWizard({ target, onNo, offset = 0 }: { target: TeamTarget; o
             </select>} />
         })}
         {options.projects && <>
-          <p className="pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Projects on the server</p>
+          <p className="pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">AI teammates · online 24/7 on the server</p>
           <p className="text-xs text-muted-foreground">Everyone in the Team can ask its Main and named agents, and they can make changes in it.</p>
-          {choices.length === 0 && <p className="text-xs text-muted-foreground">You have no projects on the server yet. You can add one later.</p>}
+          {choices.length === 0 && <p className="text-xs text-muted-foreground">You have no projects on the server yet. You can add one as an AI teammate later.</p>}
           {choices.map(choice => <Option key={choice.project_id} kind="check" on={projects.includes(choice.project_id)} title={choice.name} line={choice.why || 'You own it'} disabled={!choice.available}
             onClick={() => setProjects(current => current.includes(choice.project_id) ? current.filter(id => id !== choice.project_id) : [...current, choice.project_id])} />)}
         </>}

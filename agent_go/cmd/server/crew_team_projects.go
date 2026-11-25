@@ -221,15 +221,15 @@ func crewTeamProjectChangeRefusal(t crewTeam, user, member, memberRoot, action s
 	}
 	switch {
 	case user != t.OwnerID:
-		return fmt.Sprintf("Only %s, the Team's owner, can add an online project.", crewPersonShortName(t.OwnerID))
+		return fmt.Sprintf("Only %s, the Team's owner, can add an AI teammate.", crewPersonShortName(t.OwnerID))
 	case !t.On:
-		return "Turn the Team on first, then add the online project."
+		return "Turn the Team on first, then add the AI teammate."
 	case member == t.ProjectID || memberRoot == "" || !crewLivesOnServer(member):
 		return "Choose a project that lives on this server (one you made on the website or the server), not a Mac project or its online copy."
 	case !owns:
-		return "You can add only an online project you own or co-own. Ask its owner to make you a co-owner, or to add it."
+		return "You can add only a project you own or co-own as an AI teammate. Ask its owner to make you a co-owner, or to add it."
 	case !t.hasProject(member) && len(t.Projects) >= crewTeamMaxProjects:
-		return fmt.Sprintf("A Team has at most %d online projects. Remove one first.", crewTeamMaxProjects)
+		return fmt.Sprintf("A Team has at most %d AI teammates. Remove one first.", crewTeamMaxProjects)
 	}
 	return ""
 }

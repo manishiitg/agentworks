@@ -250,7 +250,7 @@ func (api *StreamingAPI) finishCrewTeamSetup(w http.ResponseWriter, r *http.Requ
 	team.Folder = crewTeamFolder{Folders: []string{firstNonEmptyTrimmed(in.Folder, crewTeamDefaultFolder)}}
 	// Online projects (#3797): refuse before anything is saved when one can't join, so the choices stay on screen.
 	if len(in.Projects) > crewTeamMaxProjects {
-		externalError(w, 400, "invalid_team", fmt.Sprintf("A Team has at most %d online projects.", crewTeamMaxProjects))
+		externalError(w, 400, "invalid_team", fmt.Sprintf("A Team has at most %d AI teammates.", crewTeamMaxProjects))
 		return
 	}
 	on := team

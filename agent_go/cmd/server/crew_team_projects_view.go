@@ -75,15 +75,15 @@ func (api *StreamingAPI) handleCrewTeamProjectChoices(w http.ResponseWriter, r *
 		return
 	}
 	if claims.UserID != t.OwnerID && !t.member(claims.UserID) {
-		externalError(w, 403, "team_forbidden", "Join this Team to see its online projects.")
+		externalError(w, 403, "team_forbidden", "Join this Team to see its AI teammates.")
 		return
 	}
 	out := map[string]any{"projects": t.withProjectNames().Projects, "can_add": claims.UserID == t.OwnerID && t.On, "max": crewTeamMaxProjects}
 	switch {
 	case claims.UserID != t.OwnerID:
-		out["add_line"] = "Only " + crewPersonShortName(t.OwnerID) + ", the Team's owner, can add an online project."
+		out["add_line"] = "Only " + crewPersonShortName(t.OwnerID) + ", the Team's owner, can add an AI teammate."
 	case !t.On:
-		out["add_line"] = "Turn the Team on first, then add an online project."
+		out["add_line"] = "Turn the Team on first, then add an AI teammate."
 	}
 	if claims.UserID == t.OwnerID {
 		choices, err := crewTeamProjectChoices(r.Context(), claims, t, t.Folder.Folders)
