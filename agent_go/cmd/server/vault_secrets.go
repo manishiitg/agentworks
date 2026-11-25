@@ -258,7 +258,11 @@ func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID strin
 		return scoped
 	}
 	ctx = withCrewVaultScopeForNames(ctx, *selection)
-	rows := visibleGlobalSecrets(ctx, userID)
+	reader := crewVaultReader(ctx, userID) // a User reads the Crew vault as its main owner; GitHub and Team keys stay their own
+	rows := visibleGlobalSecrets(ctx, reader)
+	if reader != userID {
+		rows = crewVaultRowsOnly(ctx, rows)
+	}
 	wanted := map[string]bool{}
 	for _, n := range *selection {
 		wanted[n] = true
@@ -430,10 +434,15 @@ func missingVaultSecrets(ctx context.Context, userID string, selection *[]string
 	if len(wanted) == 0 {
 		return nil, nil
 	}
-	rows, err := permittedGlobalSecrets(ctx, userID)
+	ctx = withCrewVaultScopeForNames(ctx, *selection)
+	reader := crewVaultReader(ctx, userID)
+	rows, err := permittedGlobalSecrets(ctx, reader)
 	if err != nil {
 		log.Printf("[VAULT_SECRETS] permission lookup failed user=%s selected=%d err=%v", userID, len(*selection), err)
 		return nil, errors.New("Vault secret permissions are unavailable; execution was stopped")
+	}
+	if reader != userID {
+		rows = crewVaultRowsOnly(ctx, rows)
 	}
 	visible := map[string]bool{}
 	for _, s := range rows {
