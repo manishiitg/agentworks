@@ -137,3 +137,17 @@ esac
 		}
 	}
 }
+
+// `agy models` output: a status line, then "<id>\t<name>" per model the
+// signed-in account may run. The fixed catalog missed models a plan offered.
+func TestAgyPickerReadsAccountModelList(t *testing.T) {
+	models := parseAgyModelList("Fetching available models...\ngemini-4-neon-high\tGemini 4 Neon (High)\ngemini-pro-orchestrator-neon\tOrchestrator (Neon)\nclaude-opus-5-5-low\tClaude Opus 5.5 (Low)\n")
+	var got []string
+	for _, m := range models {
+		got = append(got, m.ModelID+"|"+m.Family+"|"+m.Variant+"|"+m.Group)
+	}
+	want := []string{"gemini-4-neon-high|Gemini 4 Neon|High|Google", "gemini-pro-orchestrator-neon|Orchestrator|Neon|Google", "claude-opus-5-5-low|Claude Opus 5.5|Low|Anthropic"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("agy models parsed as %v", got)
+	}
+}

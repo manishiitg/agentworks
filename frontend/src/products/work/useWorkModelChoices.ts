@@ -6,6 +6,9 @@ import { byokServiceOf } from '../../utils/byok'
 import { readyCodingProviders } from '../../utils/providerCatalogFilter'
 import { allowedModelOrFirst, filterAllowedModels } from '../../utils/allowedModels'
 
+/** Programs whose models come from the selected account itself (`cursor-agent --list-models`, `agy models`). */
+export const ACCOUNT_LISTED_PROVIDERS = new Set(['cursor-cli', 'agy-cli'])
+
 // The server data both the Models page and the composer chips choose from:
 // the profile's provider options, the provider catalog and this person's accounts.
 export function useWorkModelSources({ profileId, profileVersion, accountProduct, workspacePath, enabled = true }: {
@@ -79,26 +82,28 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
   workspacePath: string
   accountProduct: string
 }) {
-  const [cursorModels, setCursorModels] = useState<DynamicModelEntry[]>([])
+  const [accountModels, setAccountModels] = useState<DynamicModelEntry[]>([])
+  const accountListedProvider = ACCOUNT_LISTED_PROVIDERS.has(selectedOption?.provider || '') ? selectedOption?.provider : undefined
   const readyProviders = useMemo(() => accounts === null ? [] : readyCodingProviders(providerManifest, accounts), [providerManifest, accounts])
   const modelCatalog = useMemo(() => {
-    const models = readyProviders.flatMap(provider => provider.id === 'cursor-cli' ? [] : provider.models || [])
-    // Cursor's selected-account inventory is authoritative. Static metadata
-    // must not reintroduce unavailable models (PLAT-872 / PLAT-387).
-    for (const model of cursorModels) {
+    // The selected account's own list is authoritative for Cursor and Antigravity: the static catalog must not
+    // reintroduce models the account cannot run, nor hide ones it can (PLAT-872 / PLAT-387).
+    const liveProvider = accountModels.length ? accountListedProvider : undefined
+    const models = readyProviders.flatMap(provider => provider.id === 'cursor-cli' || provider.id === liveProvider ? [] : provider.models || [])
+    for (const model of liveProvider ? accountModels : []) {
       models.push({
-        provider: 'cursor-cli', model_id: model.model_id, model_name: model.model_name,
+        provider: liveProvider!, model_id: model.model_id, model_name: model.model_name,
         context_window: model.context_window || 0, input_cost_per_1m: model.cost_input || 0, output_cost_per_1m: model.cost_output || 0,
       })
     }
     return models
-  }, [readyProviders, cursorModels])
+  }, [readyProviders, accountModels, accountListedProvider])
   const engineGroups = useMemo(
-    // Use the platform catalog; Cursor's catalog comes from this account.
-    // Do not reinsert a profile default that Cursor did not offer.
+    // Use the platform catalog; Cursor's and Antigravity's come from this account.
+    // Do not reinsert a profile default that the account did not offer.
     () => buildAgentProfileEngineGroups(options
       .filter(option => readyProviders.some(provider => provider.id === option.provider))
-      .map(option => ({ ...option, models: undefined, model_id: option.provider === 'cursor-cli' ? '' : option.model_id })), modelCatalog),
+      .map(option => ({ ...option, models: undefined, model_id: ACCOUNT_LISTED_PROVIDERS.has(option.provider || '') ? '' : option.model_id })), modelCatalog),
     [readyProviders, modelCatalog, options],
   )
   // Only providers this person may run here: one with a usable account (the server's, if it is available to them,
@@ -112,25 +117,25 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
 
   // A model key account (PLAT-717): its own models (the person's picks), with the live catalog's free and price data.
   const inUseAccount = accounts?.find(account => account.id === inUseConnectionId)
-  const cursorAccountId = selectedOption?.provider === 'cursor-cli' ? inUseConnectionId || 'global:cursor-cli' : undefined
-  const [cursorModelsError, setCursorModelsError] = useState('')
-  const [cursorSelectionDisabled, setCursorSelectionDisabled] = useState(false)
+  const listedAccountId = accountListedProvider ? inUseConnectionId || `global:${accountListedProvider}` : undefined
+  const [accountModelsError, setAccountModelsError] = useState('')
+  const [accountSelectionDisabled, setAccountSelectionDisabled] = useState(false)
   useEffect(() => {
     let cancelled = false
-    setCursorModels([]); setCursorModelsError(''); setCursorSelectionDisabled(false)
-    if (cursorAccountId) {
-      void llmConfigService.getProviderModels('cursor-cli', false, false, {
-        connection_id: cursorAccountId, workspace_path: workspacePath, product: accountProduct,
+    setAccountModels([]); setAccountModelsError(''); setAccountSelectionDisabled(false)
+    if (accountListedProvider && listedAccountId) {
+      void llmConfigService.getProviderModels(accountListedProvider, false, false, {
+        connection_id: listedAccountId, workspace_path: workspacePath, product: accountProduct,
       }).then(result => {
         if (!cancelled) {
-          setCursorModels(result.models || [])
-          setCursorModelsError(result.error || '')
-          setCursorSelectionDisabled(result.selection_disabled === true)
+          setAccountModels(result.models || [])
+          setAccountModelsError(result.error || '')
+          setAccountSelectionDisabled(result.selection_disabled === true)
         }
-      }).catch(() => { if (!cancelled) setCursorModelsError('Cursor models could not be loaded. Check this account in Providers, then refresh.') })
+      }).catch(() => { if (!cancelled) setAccountModelsError('Models could not be loaded. Check this account in Providers, then refresh.') })
     }
     return () => { cancelled = true }
-  }, [cursorAccountId, accounts, workspacePath, accountProduct])
+  }, [accountListedProvider, listedAccountId, accounts, workspacePath, accountProduct])
 
   const keyService = selectedOption?.provider === 'pi-cli' ? byokServiceOf(inUseAccount) : undefined
   const [keyModels, setKeyModels] = useState<ByokModel[]>([])
@@ -196,10 +201,10 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
       || (usable.some(account => account.id === `global:${option.provider}`) ? undefined : usable[0]?.id)
   }
   // Another provider's models for the composer's switcher, as allowed on the account it would switch to.
-  // Cursor and key accounts list their models per account; switching to them starts on their default model.
+  // Cursor, Antigravity and key accounts list their models per account; switching to them starts on their default model.
   const modelsForOption = (option: AgentProfileProviderOption) => {
     if (option.id === selectedOption?.id) return selectableModels
-    if (option.provider === 'cursor-cli' || option.provider === 'pi-cli') return []
+    if (ACCOUNT_LISTED_PROVIDERS.has(option.provider || '') || option.provider === 'pi-cli') return []
     const group = engineGroups.find(candidate => candidate.option.id === option.id)
     return filterAllowedModels((group?.models || []).map(({ id, label }) => ({
       model_id: id, model_name: label, provider: option.provider || '', context_window: 0, input_cost_per_1m: 0, output_cost_per_1m: 0,
@@ -218,7 +223,7 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
     : effortForModel(modelId, requested, option)
 
   return {
-    workProviderIds, inUseAccount, keyService, cursorModels, cursorModelsError, cursorSelectionDisabled,
+    workProviderIds, inUseAccount, keyService, accountModels, accountModelsError, accountSelectionDisabled,
     defaultForOption, selectedAllowedModels, selectableModels, modelsForOption, switchAccountFor, levelsForModel, effortForModel, effortForPick,
   }
 }

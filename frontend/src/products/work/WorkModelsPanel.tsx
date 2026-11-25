@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react
 import { BrainCircuit, ChevronDown, Cpu, KeyRound } from 'lucide-react'
 import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 import { TierModelSelector } from '../../components/ui/TierModelSelector'
-import { CursorModelPicker } from '../../components/ui/CursorModelPicker'
+import { AccountModelPicker } from '../../components/ui/AccountModelPicker'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
 import { WorkspaceViewActions } from '../../components/workflow/WorkspaceViewActions'
 import WorkflowLLMConfigurationPanel from '../../components/workflow/WorkflowLLMConfigurationPanel'
@@ -22,7 +22,7 @@ import { workLLMSelectionFromConfig } from './workSessions'
 import type { WorkRuntimeSelection } from './workTabs'
 import { ProviderChangeNotice } from '../../components/chat/ProviderChangeNotice'
 import { allowedModelOrFirst } from '../../utils/allowedModels'
-import { ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
+import { ACCOUNT_LISTED_PROVIDERS, ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
 import { SharedTokenUsageNotice } from '../../components/providers/SharedTokenUsageNotice'
 import { sharedAccountProvider } from '../../utils/tokenLimits'
 
@@ -144,7 +144,7 @@ export function WorkModelsPanel({
   // A company account from a connected server counts on that server: its limits are shown from there.
   const companyServer = accounts?.find(account => account.id === inUseConnectionId)?.via_connection
   const {
-    workProviderIds, inUseAccount, keyService, cursorModels, cursorModelsError, cursorSelectionDisabled,
+    workProviderIds, inUseAccount, keyService, accountModels, accountModelsError, accountSelectionDisabled,
     defaultForOption, selectedAllowedModels, selectableModels, levelsForModel, effortForModel, effortForPick,
   } = useWorkModelChoices(sources, { selectedOption, selectedConnectionId, inUseConnectionId, workspacePath, accountProduct: effectiveAccountProduct })
   const [keyBrowserOpen, setKeyBrowserOpen] = useState(false)
@@ -303,13 +303,13 @@ export function WorkModelsPanel({
                   <button type="button" disabled={keyPicksDraft.length === 0} onClick={() => void saveKeyPicks(keyPicksDraft)} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50">Save picks</button>
                 </div>
               )}
-              {cursorModelsError && <p role="alert" className="text-sm text-destructive">{cursorModelsError}</p>}
-              {selectedOption?.provider === 'cursor-cli' && !keyService
-                ? <CursorModelPicker
-                    models={cursorSelectionDisabled ? cursorModels : cursorModels.filter(model => selectableModels.some(choice => choice.model_id === model.model_id))}
+              {accountModelsError && <p role="alert" className="text-sm text-destructive">{accountModelsError}</p>}
+              {ACCOUNT_LISTED_PROVIDERS.has(selectedOption?.provider || '') && !keyService
+                ? <AccountModelPicker
+                    models={accountSelectionDisabled ? accountModels : accountModels.filter(model => selectableModels.some(choice => choice.model_id === model.model_id))}
                     selectedModelId={currentModelId}
                     onSelect={selectModel}
-                    selectionDisabled={cursorSelectionDisabled}
+                    selectionDisabled={accountSelectionDisabled}
                     className="mt-3"
                   />
                 : <TierModelSelector

@@ -5,7 +5,7 @@ import * as Menu from '@radix-ui/react-dropdown-menu'
 import { Settings2 } from 'lucide-react'
 import { Chip, ChoiceItems, useOpenFromStatusBar, type Choice } from '../../products/work/ComposerModelChips'
 import ChatContextItems, { menuRowClass } from '../../products/work/ChatContextItems'
-import { CursorModelPicker } from '../ui/CursorModelPicker'
+import { AccountModelPicker } from '../ui/AccountModelPicker'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
@@ -162,7 +162,7 @@ export default function BuilderModelChips({ workspacePath, sessionId, label, fal
     return <Chip label={cursorLabel} ariaLabel={`Model: ${cursorLabel}`} disabled={saving} open={cursorOpen} onOpenChange={setCursorOpen} wide>
       {/* The menu's type-to-jump would take the search box's keys. */}
       <div onKeyDown={event => event.stopPropagation()}>
-        <CursorModelPicker models={cursorChoices} selectedModelId={builder.model_id} onSelect={modelId => {
+        <AccountModelPicker models={cursorChoices} selectedModelId={builder.model_id} onSelect={modelId => {
           setCursorOpen(false)
           if (modelId !== builder.model_id) void save({ provider: 'cursor-cli' as LLMProvider, model_id: modelId })
         }} />

@@ -11,68 +11,89 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 )
 
-var cursorAccountCatalog = struct {
+// accountModelLister is how one program lists the models a signed-in account
+// may run. Cursor and Antigravity both answer per account (PLAT-872), so the
+// picker asks the selected account rather than a fixed catalog.
+type accountModelLister struct {
+	name     string
+	command  func(context.Context) (providerSetupCommand, error)
+	parse    func(string) []dynamicModelEntry
+	fallback func() []dynamicModelEntry
+	choices  func([]dynamicModelEntry) []dynamicModelEntry
+}
+
+var accountModelListers = map[string]accountModelLister{
+	"cursor-cli": {name: "Cursor", command: func(ctx context.Context) (providerSetupCommand, error) { return cursorAccountCommand(ctx, "models") },
+		parse: func(out string) []dynamicModelEntry { models, _ := parseCursorModelList(out); return models }, fallback: cursorFallbackModels, choices: cursorModelChoices},
+	"agy-cli": {name: "Antigravity", command: func(context.Context) (providerSetupCommand, error) {
+		return providerSetupCommand{command: "agy", args: []string{"models"}}, nil
+	}, parse: parseAgyModelList, fallback: agyFallbackModels, choices: func(models []dynamicModelEntry) []dynamicModelEntry { return models }},
+}
+
+var accountModelCatalog = struct {
 	sync.Mutex
 	models map[string][]dynamicModelEntry
 }{models: make(map[string][]dynamicModelEntry)}
 
 // The product picker discovers the selected account, never another account's
 // cached inventory. Admission and allowed-model rules are the execution rules.
-func (api *StreamingAPI) handleCursorModelPicker(w http.ResponseWriter, r *http.Request) {
+func (api *StreamingAPI) handleAccountModelPicker(w http.ResponseWriter, r *http.Request, provider string) {
+	lister := accountModelListers[provider]
 	caller, ok := requireSignedIn(w, r)
 	if !ok {
 		return
 	}
 	id := strings.TrimSpace(r.URL.Query().Get("connection_id"))
 	if id == "" {
-		id = "global:cursor-cli"
+		id = "global:" + provider
 	}
 	scope := providerAccountScope{Principal: caller, WorkspacePath: r.URL.Query().Get("workspace_path"), Product: r.URL.Query().Get("product")}
-	if _, err := api.admitProviderAccount(r.Context(), scope, "cursor-cli", id); err != nil {
+	if _, err := api.admitProviderAccount(r.Context(), scope, provider, id); err != nil {
 		http.Error(w, "This account is unavailable here. Choose another account in Models.", http.StatusForbidden)
 		return
 	}
-	target, err := api.resolveProviderAccountTarget(r.Context(), id, "cursor-cli")
+	target, err := api.resolveProviderAccountTarget(r.Context(), id, provider)
 	if err != nil {
 		http.Error(w, "Account could not be loaded. Reopen Models to retry.", http.StatusServiceUnavailable)
 		return
 	}
-	_, err = runtimeAvailableForProvider("cursor-cli")
-	if err != nil {
-		http.Error(w, "Cursor is not installed. Set it up in Providers.", http.StatusServiceUnavailable)
+	if _, err = runtimeAvailableForProvider(provider); err != nil {
+		http.Error(w, lister.name+" is not installed. Set it up in Providers.", http.StatusServiceUnavailable)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	spec, err := cursorAccountCommand(ctx, "models")
+	spec, err := lister.command(ctx)
 	if err != nil {
-		http.Error(w, "Cursor is still being set up. Try again shortly.", http.StatusServiceUnavailable)
+		http.Error(w, lister.name+" is still being set up. Try again shortly.", http.StatusServiceUnavailable)
 		return
 	}
-	out, err := runProviderAccountCommand(ctx, target, spec, 15*time.Second)
-	models, _ := parseCursorModelList(string(out))
+	out, err := runProviderAccountCommand(ctx, target, spec, 20*time.Second)
+	models := lister.parse(out)
 	// PLAT-872-64: losing SDK authentication must not erase the account's
 	// model display. Cached rows never establish readiness or execution rights.
 	cacheKey := id + "\x00" + target.Home + "\x00" + spec.command + "\x00" + strings.Join(spec.args, "\x00")
 	selectionDisabled := err != nil || len(models) == 0
 	source, detail := "cli_account", ""
-	cursorAccountCatalog.Lock()
+	accountModelCatalog.Lock()
 	if selectionDisabled {
-		models = append([]dynamicModelEntry(nil), cursorAccountCatalog.models[cacheKey]...)
-		source, detail = "account_cache", "Cursor models could not be refreshed. Check this account in Providers."
+		models = append([]dynamicModelEntry(nil), accountModelCatalog.models[cacheKey]...)
+		source, detail = "account_cache", lister.name+" models could not be refreshed. Check this account in Providers."
 		if len(models) == 0 {
-			models, source = cursorFallbackModels(), "fallback_metadata"
+			models, source = lister.fallback(), "fallback_metadata"
 		}
 		if configured, ok := cachedProviderAccountConfigured(id); ok && configured != nil && !*configured {
-			detail = "Cursor — sign in again in Providers. Models are shown for reference."
+			detail = lister.name + " — sign in again in Providers. Models are shown for reference."
 		}
 	} else {
-		cursorAccountCatalog.models[cacheKey] = append([]dynamicModelEntry(nil), models...)
+		accountModelCatalog.models[cacheKey] = append([]dynamicModelEntry(nil), models...)
 	}
-	cursorAccountCatalog.Unlock()
-	allowed, _, err := accountAllowedModels(withModelLimitPerson(r.Context(), caller), "cursor-cli", id)
+	accountModelCatalog.Unlock()
+	allowed, _, err := accountAllowedModels(withModelLimitPerson(r.Context(), caller), provider, id)
 	if err != nil {
 		http.Error(w, "Account model settings could not be loaded. Reopen Models to retry.", http.StatusServiceUnavailable)
 		return
@@ -84,7 +105,7 @@ func (api *StreamingAPI) handleCursorModelPicker(w http.ResponseWriter, r *http.
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(dynamicModelsResponse{Provider: "cursor-cli", ModelSelectionMode: "dynamic", Models: cursorModelChoices(filtered), Source: source, Error: detail, SelectionDisabled: selectionDisabled})
+	json.NewEncoder(w).Encode(dynamicModelsResponse{Provider: provider, ModelSelectionMode: "dynamic", Models: lister.choices(filtered), Source: source, Error: detail, SelectionDisabled: selectionDisabled})
 }
 
 var cursorModelVersion = regexp.MustCompile(`[0-9]+`)
@@ -237,4 +258,39 @@ func cursorModelMaker(family string) string {
 		return "DeepSeek"
 	}
 	return strings.SplitN(family, " ", 2)[0]
+}
+
+// parseAgyModelList reads `agy models`: one "<id>\t<name>" line per model the
+// signed-in account may run, e.g. "gemini-4-neon-high\tGemini 4 Neon (High)".
+// The name's parenthesis is the variant, so the picker shows one row per model
+// with its levels as chips, under the company that makes it.
+func parseAgyModelList(output string) []dynamicModelEntry {
+	var models []dynamicModelEntry
+	for _, line := range strings.Split(output, "\n") {
+		id, name, ok := strings.Cut(strings.TrimSpace(line), "\t")
+		id, name = strings.TrimSpace(id), strings.TrimSpace(name)
+		if !ok || id == "" || name == "" || strings.ContainsAny(id, " /") {
+			continue
+		}
+		family, variant := name, ""
+		if open := strings.LastIndex(name, " ("); open > 0 && strings.HasSuffix(name, ")") {
+			family, variant = name[:open], name[open+2:len(name)-1]
+		}
+		group := cursorModelMaker(family)
+		if strings.EqualFold(strings.SplitN(family, " ", 2)[0], "orchestrator") {
+			group = "Google"
+		}
+		models = append(models, dynamicModelEntry{ModelID: id, ModelName: name, Family: family, Variant: variant, Group: group})
+	}
+	return models
+}
+
+// agyFallbackModels is the built-in Antigravity catalog, shown for reference
+// when the account cannot list its own models.
+func agyFallbackModels() []dynamicModelEntry {
+	var models []dynamicModelEntry
+	for _, m := range agycli.GetAllAgyCLIModels() {
+		models = append(models, dynamicModelEntry{ModelID: m.ModelID, ModelName: m.ModelName, Group: "Google"})
+	}
+	return models
 }

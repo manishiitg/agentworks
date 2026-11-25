@@ -11,10 +11,10 @@ import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
 import { workChatModelsQueryKey } from './useWorkChatModels'
 import type { AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
-import { CursorModelPicker } from '../../components/ui/CursorModelPicker'
+import { AccountModelPicker } from '../../components/ui/AccountModelPicker'
 import { SharedTokenUsageItems } from '../../components/providers/SharedTokenUsageNotice'
 import { sharedAccountProvider } from '../../utils/tokenLimits'
-import { ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
+import { ACCOUNT_LISTED_PROVIDERS, ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
 import ClaudeTerminalToggle from './ClaudeTerminalToggle'
 
 import { changeChatContext, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
@@ -128,7 +128,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const connectionId = meta?.agentProfileConnectionID || undefined
   // A company account from a connected server counts on that server: its limits come from there.
   const companyServer = sources.accounts?.find(account => account.id === (connectionId || meta?.agentProfileChatConnectionID))?.via_connection
-  const { workProviderIds, selectableModels, switchAccountFor, cursorModels, cursorSelectionDisabled, defaultForOption, levelsForModel, effortForModel, effortForPick } = useWorkModelChoices(sources, {
+  const { workProviderIds, selectableModels, switchAccountFor, accountModels, accountSelectionDisabled, defaultForOption, levelsForModel, effortForModel, effortForPick } = useWorkModelChoices(sources, {
     selectedOption, selectedConnectionId: connectionId,
     inUseConnectionId: connectionId || ownDefaultConnectionId(sources.accounts, selectedOption?.provider),
     workspacePath, accountProduct: profileId,
@@ -162,7 +162,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const sourceTag = inUseAccount && programAccounts.some(account => account.via_connection) && programAccounts.some(account => !account.via_connection)
     ? inUseAccount.via_connection ? (inUseAccount.display_name.split(' · ')[0]?.trim() || 'Server') : 'Mac'
     : undefined
-  const models: Choice[] = cursorSelectionDisabled ? [] : selectableModels.map(model => ({ id: model.model_id, label: model.model_name || model.model_id }))
+  const models: Choice[] = accountSelectionDisabled ? [] : selectableModels.map(model => ({ id: model.model_id, label: model.model_name || model.model_id }))
   const currentModel = meta?.agentProfileModelID || defaultForOption(selectedOption, connectionId).modelId
   const levels = levelsForModel(currentModel)
   const currentEffort = effortForModel(currentModel, meta?.agentProfileReasoningEffort)
@@ -213,7 +213,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     if (compactFirst && !(await changeChatContext(sessionId, { action: 'compact' }))) return
     if (pending.option.id !== selectedOption.id) {
       const model = pending.modelId || destination.defaultForOption(pending.option, destinationConnection).modelId
-      if (!destination.selectableModels.some(item => item.model_id === model) || destination.cursorSelectionDisabled) return
+      if (!destination.selectableModels.some(item => item.model_id === model) || destination.accountSelectionDisabled) return
       void save(pending.option, model, destination.effortForPick(model, pending.effort, pending.option), destinationConnection)
     } else switchTo(pending.option, pending.modelId, pending.connectionId)
   }
@@ -221,12 +221,12 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   // Optional setup and defaults on the Models page and this project's usage.
   const openModels = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId, conversationKey } }))
   const openUsage = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-usage', { detail: { projectId } }))
-  // Cursor lists every variant of a model as its own entry; show them the way the Models page does:
+  // Cursor and Antigravity list every variant of a model as its own entry; show them the way the Models page does:
   // by company, one row per model, variants as chips, older versions folded away.
-  const cursorChoices = selectedOption.provider === 'cursor-cli' && !cursorSelectionDisabled
-    ? cursorModels.filter(model => models.some(choice => choice.id === model.model_id)) : []
+  const accountChoices = ACCOUNT_LISTED_PROVIDERS.has(selectedOption.provider || '') && !accountSelectionDisabled
+    ? accountModels.filter(model => models.some(choice => choice.id === model.model_id)) : []
   const separator = <Menu.Separator className="my-1 h-px bg-border" />
-  const subContentClass = cursorChoices.length > 1 ? `${contentClass} w-[min(340px,calc(100vw-24px))]` : contentClass
+  const subContentClass = accountChoices.length > 1 ? `${contentClass} w-[min(340px,calc(100vw-24px))]` : contentClass
   // This chat's account, one row in the menu: which account it uses and where that login works (PLAT-856-441).
   const currentAccounts = cliGroups.find(group => group.option.id === selectedOption.id)?.accounts || []
   const inUseAccountChoice = currentAccounts.find(account => account.id === currentAccountId)
@@ -260,7 +260,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const destinationModels = destination.selectableModels
   const destinationLevels = destination.levelsForModel(pendingModelID, pendingSwitch?.option)
   const destinationEffort = destination.effortForPick(pendingModelID, pendingSwitch?.effort, pendingSwitch?.option)
-  const destinationReady = !destination.cursorSelectionDisabled && destinationModels.some(model => model.model_id === pendingModelID)
+  const destinationReady = !destination.accountSelectionDisabled && destinationModels.some(model => model.model_id === pendingModelID)
   const stageDestination = (option: AgentProfileProviderOption, account?: string) => {
     const nextAccount = account || switchAccountFor(option) || `global:${option.provider}`
     const defaults = defaultForOption(option, nextAccount)
@@ -287,14 +287,14 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         <label className={fieldClass}><span className="text-muted-foreground">Account</span><select className={selectClass} value={destinationConnection} onChange={event => stageDestination(pendingSwitch.option, event.target.value)}>
           {cliGroups.find(group => group.option.id === pendingSwitch.option.id)?.accounts.map(account => <option key={account.id} value={account.id}>{accountOptionLabel(account)}</option>)}
         </select></label>
-        <label className={fieldClass}><span className="text-muted-foreground">Model</span><select className={selectClass} value={destinationReady ? pendingModelID : ''} disabled={destination.cursorSelectionDisabled || !destinationModels.length} onChange={event => setPendingSwitch({ ...pendingSwitch, modelId: event.target.value, effort: undefined })}>
+        <label className={fieldClass}><span className="text-muted-foreground">Model</span><select className={selectClass} value={destinationReady ? pendingModelID : ''} disabled={destination.accountSelectionDisabled || !destinationModels.length} onChange={event => setPendingSwitch({ ...pendingSwitch, modelId: event.target.value, effort: undefined })}>
           {!destinationReady && <option value="">Choose a model</option>}
           {destinationModels.map(model => <option key={model.model_id} value={model.model_id}>{model.model_name || model.model_id}</option>)}
         </select></label>
         {destinationLevels.length > 0 && <label className={fieldClass}><span className="text-muted-foreground">Reasoning effort</span><select className={selectClass} value={destinationEffort || ''} onChange={event => setPendingSwitch({ ...pendingSwitch, effort: event.target.value })}>
           {destinationLevels.map(level => <option key={level.id} value={level.id}>{level.label}</option>)}
         </select></label>}
-        {destination.cursorModelsError && <p className="px-2.5 py-2 text-xs text-muted-foreground">{destination.cursorModelsError}</p>}
+        {destination.accountModelsError && <p className="px-2.5 py-2 text-xs text-muted-foreground">{destination.accountModelsError}</p>}
       </div>}
       <p className="mb-4 text-xs leading-relaxed text-muted-foreground">{changesCLI
         ? `${pendingCLI} starts with recent messages and access to the full saved conversation. It can search older history when needed—not load it all upfront.`
@@ -316,10 +316,10 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
         {groups.map((group, index) => <Fragment key={group.option.id}>
           {index > 0 && separator}
           <Menu.Label className={labelClass}>{group.option.label || group.option.provider || group.option.id}</Menu.Label>
-          {group.current && cursorChoices.length > 1
+          {group.current && accountChoices.length > 1
             // The menu's type-to-jump would take the search box's keys.
             ? <div onKeyDown={event => event.stopPropagation()}>
-              <CursorModelPicker models={cursorChoices} selectedModelId={currentModel} onSelect={modelId => { if (!pickModel(selectedOption, modelId)) setMenuOpen(false) }} />
+              <AccountModelPicker models={accountChoices} selectedModelId={currentModel} onSelect={modelId => { if (!pickModel(selectedOption, modelId)) setMenuOpen(false) }} />
             </div>
             : group.models.length > 0
               ? <ChoiceItems choices={group.models} value={group.current ? currentModel : ''} onPick={modelId => { pickModel(group.option, modelId) }} keepOpenOnPick={Boolean(switchNote)} />

@@ -485,8 +485,8 @@ func (api *StreamingAPI) handleGetProviderModels(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if provider == "cursor-cli" && r.URL.Query().Get("latest") == "true" {
-		api.handleCursorModelPicker(w, r)
+	if _, listed := accountModelListers[provider]; listed && r.URL.Query().Get("latest") == "true" {
+		api.handleAccountModelPicker(w, r, provider)
 		return
 	}
 
