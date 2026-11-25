@@ -34,6 +34,8 @@ type crewTeamOverviewCounts struct {
 type crewTeamOverviewNow struct {
 	Agent  string `json:"agent"`
 	Person string `json:"person"`
+	// UserID lets the menu show the person's face next to the line.
+	UserID string `json:"user_id,omitempty"`
 	Title  string `json:"title,omitempty"`
 	Team   string `json:"team,omitempty"`
 }
@@ -41,6 +43,7 @@ type crewTeamOverviewNow struct {
 type crewTeamOverviewItem struct {
 	Kind   string    `json:"kind"`
 	Person string    `json:"person"`
+	UserID string    `json:"user_id,omitempty"`
 	Line   string    `json:"line"`
 	At     time.Time `json:"at"`
 }
@@ -126,7 +129,7 @@ func crewTeamOverviewWindow(period string) (string, string, time.Duration) {
 	if period == "week" {
 		return "week", "last 7 days", 7 * 24 * time.Hour
 	}
-	return "day", "last 24 hours", 24 * time.Hour
+	return "day", "today", 24 * time.Hour
 }
 
 type crewTeamOverviewCached struct {
@@ -147,7 +150,7 @@ func crewTeamOverviewOf(ctx context.Context, t crewTeam, live crewTeamLiveView, 
 	now := time.Now()
 	out := crewTeamOverview{Period: period, Label: label, Now: []crewTeamOverviewNow{}, People: []crewTeamOverviewPerson{}}
 	for _, row := range live.Agents {
-		out.Now = append(out.Now, crewTeamOverviewNow{Agent: row.Name, Person: crewTeamOverviewWho(row), Title: row.Title})
+		out.Now = append(out.Now, crewTeamOverviewNow{Agent: row.Name, Person: crewTeamOverviewWho(row), UserID: row.OwnerID, Title: row.Title})
 	}
 	if v, ok := crewTeamOverviewCache.Load(key); ok && now.Sub(v.(crewTeamOverviewCached).at) < crewTeamOverviewFor {
 		cached := v.(crewTeamOverviewCached).out
@@ -172,7 +175,7 @@ func crewTeamOverviewOf(ctx context.Context, t crewTeam, live crewTeamLiveView, 
 		if post.Private || post.At.Before(since) || strings.TrimSpace(post.Line) == "" {
 			continue
 		}
-		decisions = append(decisions, crewTeamOverviewItem{Kind: "decision", Person: name(post.OwnerID), Line: crewTeamMessageLine(post.Line), At: post.At})
+		decisions = append(decisions, crewTeamOverviewItem{Kind: "decision", Person: name(post.OwnerID), UserID: post.OwnerID, Line: crewTeamMessageLine(post.Line), At: post.At})
 		decisionOwners = append(decisionOwners, post.OwnerID)
 	}
 	tokens := crewTeamOverviewTokensFor(ctx, t.ProjectID, since, chats, name)
@@ -186,16 +189,16 @@ func crewTeamOverviewOf(ctx context.Context, t crewTeam, live crewTeamLiveView, 
 	}
 	items := []crewTeamOverviewItem{}
 	for _, c := range chats {
-		items = append(items, crewTeamOverviewItem{Kind: "chat", Person: c.Person, Line: crewTeamOverviewChatLine(c), At: c.At})
+		items = append(items, crewTeamOverviewItem{Kind: "chat", Person: c.Person, UserID: c.ownerID, Line: crewTeamOverviewChatLine(c), At: c.At})
 	}
 	for _, f := range files {
-		items = append(items, crewTeamOverviewItem{Kind: "files", Person: f.Person, Line: f.Line, At: f.At})
+		items = append(items, crewTeamOverviewItem{Kind: "files", Person: f.Person, UserID: f.actor, Line: f.Line, At: f.At})
 	}
 	for _, c := range commits {
 		items = append(items, crewTeamOverviewItem{Kind: "commit", Person: c.Author, Line: "committed “" + c.Title + "”", At: c.At})
 	}
 	for _, d := range decisions {
-		items = append(items, crewTeamOverviewItem{Kind: "decision", Person: d.Person, Line: "decided “" + d.Line + "”", At: d.At})
+		items = append(items, crewTeamOverviewItem{Kind: "decision", Person: d.Person, UserID: d.UserID, Line: "decided “" + d.Line + "”", At: d.At})
 	}
 	if newest := crewTeamOverviewNewest(items); newest != nil {
 		out.Last = newest
@@ -215,7 +218,7 @@ func crewTeamOverviewOf(ctx context.Context, t crewTeam, live crewTeamLiveView, 
 	for _, row := range live.Agents {
 		p := person(row.OwnerID)
 		p.Working++
-		p.Now = append(p.Now, crewTeamOverviewNow{Agent: row.Name, Person: p.Person, Title: row.Title, Team: live.Name})
+		p.Now = append(p.Now, crewTeamOverviewNow{Agent: row.Name, Person: p.Person, UserID: row.OwnerID, Title: row.Title, Team: live.Name})
 	}
 	personItems := map[string][]crewTeamOverviewItem{}
 	for _, c := range chats {
@@ -254,7 +257,7 @@ func crewTeamOverviewOf(ctx context.Context, t crewTeam, live crewTeamLiveView, 
 func crewTeamOverviewFinish(out crewTeamOverview, live crewTeamLiveView, detail bool) crewTeamOverview {
 	working := map[string][]crewTeamOverviewNow{}
 	for _, row := range live.Agents {
-		working[row.OwnerID] = append(working[row.OwnerID], crewTeamOverviewNow{Agent: row.Name, Person: crewTeamOverviewWho(row), Title: row.Title, Team: live.Name})
+		working[row.OwnerID] = append(working[row.OwnerID], crewTeamOverviewNow{Agent: row.Name, Person: crewTeamOverviewWho(row), UserID: row.OwnerID, Title: row.Title, Team: live.Name})
 	}
 	people := slices.Clone(out.People)
 	for i := range people {

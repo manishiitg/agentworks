@@ -29,9 +29,10 @@ type crewTeamMonitorReply struct {
 	Notice      string                      `json:"notice,omitempty"`
 	// People is the "By person" view: everyone in the viewer's Teams, across servers, with what they did.
 	People []crewTeamOverviewPerson `json:"people"`
-	// Tokens is the tokens used in the last 24 hours across all the listed Teams; TokensLabel says it in words.
-	Tokens      int64  `json:"tokens"`
-	TokensLabel string `json:"tokens_label,omitempty"`
+	// Tokens is the tokens used in the last 24 hours across all the listed Teams.
+	Tokens int64 `json:"tokens"`
+	// Summary is the menu's top line: "3 working now · 4 Teams active today · 2.4M tokens".
+	Summary string `json:"summary,omitempty"`
 }
 
 // Team membership, not the own-project sidebar, is the monitor's inventory.
@@ -148,9 +149,7 @@ func (api *StreamingAPI) handleCrewTeamMonitor(w http.ResponseWriter, r *http.Re
 	slices.Sort(failed)
 	out.Notice = strings.Join(failed, " · ")
 	out.People, out.Tokens = crewTeamMonitorPeople(out.Connections)
-	if out.Tokens > 0 {
-		out.TokensLabel = crewTeamOverviewTokensLabel(out.Tokens) + " tokens in the last 24 hours across your Teams"
-	}
+	out.Summary = crewTeamMonitorSummary(out.Connections, out.Tokens)
 	externalJSON(w, out)
 }
 
@@ -309,13 +308,13 @@ func crewTeamMonitorWorkFor(live crewTeamLiveView, now time.Time) *crewTeamMonit
 		age := max(time.Duration(0), now.Sub(at))
 		switch {
 		case age < time.Minute:
-			out.LastWorkedLabel = "last worked just now"
+			out.LastWorkedLabel = "just now"
 		case age < time.Hour:
-			out.LastWorkedLabel = fmt.Sprintf("last worked %dm ago", int(age/time.Minute))
+			out.LastWorkedLabel = fmt.Sprintf("%dm ago", int(age/time.Minute))
 		case age < 24*time.Hour:
-			out.LastWorkedLabel = fmt.Sprintf("last worked %dh ago", int(age/time.Hour))
+			out.LastWorkedLabel = fmt.Sprintf("%dh ago", int(age/time.Hour))
 		default:
-			out.LastWorkedLabel = fmt.Sprintf("last worked %dd ago", int(age/(24*time.Hour)))
+			out.LastWorkedLabel = fmt.Sprintf("%dd ago", int(age/(24*time.Hour)))
 		}
 	}
 	return out
@@ -374,4 +373,31 @@ func crewTeamMonitorPeople(connections []crewTeamMonitorConnection) ([]crewTeamO
 	}
 	crewTeamOverviewSortPeople(out)
 	return out, tokens
+}
+
+// crewTeamMonitorSummary says in one line how much is going on across the viewer's Teams, leaving out what is zero.
+func crewTeamMonitorSummary(connections []crewTeamMonitorConnection, tokens int64) string {
+	working, active := 0, 0
+	for _, source := range connections {
+		for _, team := range source.Teams {
+			working += len(team.Agents)
+			if team.Overview != nil && !team.Overview.Quiet {
+				active++
+			}
+		}
+	}
+	parts := []string{}
+	if working > 0 {
+		parts = append(parts, fmt.Sprintf("%d working now", working))
+	}
+	switch {
+	case active == 1:
+		parts = append(parts, "1 Team active today")
+	case active > 1:
+		parts = append(parts, fmt.Sprintf("%d Teams active today", active))
+	}
+	if tokens > 0 {
+		parts = append(parts, crewTeamOverviewTokensLabel(tokens)+" tokens")
+	}
+	return strings.Join(parts, " · ")
 }
