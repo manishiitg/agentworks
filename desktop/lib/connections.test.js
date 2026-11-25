@@ -15,6 +15,13 @@ test('saved remote sessions are available only to the app top frame, never dashb
     { url: 'https://example.com/api/connections/abc/api/events' },
     { url: origin + '/api/auth/me' },
   ]) assert.equal(connectionRequest({ ...request, ...change }, contents, origin), false);
+  // #3807: a socket gets proof only for an account's sign-in window on a connected server.
+  const ws = origin.replace('http:', 'ws:');
+  const signIn = { ...request, resourceType: 'webSocket', url: ws + '/api/connections/abc/api/provider-setup/sessions/s1/stream' };
+  assert.equal(connectionRequest(signIn, contents, origin), true);
+  for (const url of [signIn.url.replace('/stream', ''), ws + '/api/connections/abc/api/events'])
+    assert.equal(connectionRequest({ ...signIn, url }, contents, origin), false);
+  assert.equal(connectionRequest({ ...signIn, frame: { url: frame.url } }, contents, origin), false);
 
   let beforeHeaders;
   installDesktopConnections({ session: { webRequest: { onBeforeSendHeaders: (_, cb) => { beforeHeaders = cb; } } },

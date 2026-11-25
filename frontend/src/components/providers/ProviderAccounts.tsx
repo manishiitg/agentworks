@@ -5,6 +5,8 @@ import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
 import { AvailabilityFields, SharingFields, sharingSummary } from './SharingEditor'
 import AllowedModelsEditor from './AllowedModelsEditor'
+import { AddOnServerForm, YourAccountsOnServer } from './ServerAccounts'
+import { Segmented } from './ChoiceChips'
 // Loaded on first use: the key setup is rare and kept the eager bundle over budget (PLAT-717).
 const ByokSetup = lazy(() => import('./ByokSetup'))
 const ByokModelBrowser = lazy(() => import('./ByokModelBrowser'))
@@ -142,6 +144,9 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const [sessionRowId, setSessionRowId] = useState<string | null>(null)
   const [statuses, setStatuses] = useState<Record<string, ProviderAccountStatus | 'loading'>>({})
   const [adding, setAdding] = useState(false)
+  // Where a new account goes: this Mac, or one of your connected servers (its id). Read again after a change there.
+  const [addWhere, setAddWhere] = useState('local')
+  const [serverAccountsVersion, setServerAccountsVersion] = useState(0)
   const [name, setName] = useState('')
   const [credential, setCredential] = useState('')
   const [newSharing, setNewSharing] = useState<ProviderAccountSharing>({ mode: 'private' })
@@ -391,7 +396,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const secondaryButtonClass = 'inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
   const badgeClass = 'rounded-md px-1.5 py-0.5 text-[10px] font-medium'
   const cancel = () => { setAdding(false); setEditingId(null); resetForm() }
-  const openAdd = () => { setAdding(true); setEditingId(null); resetForm() }
+  const openAdd = () => { setAdding(true); setEditingId(null); setAddWhere('local'); resetForm() }
 
   // Per-account actions. The server enforces who may run each one.
   // One status line: a dot and a few words, checked automatically on load.
@@ -689,12 +694,28 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
       }} /></Suspense>
     </div>
   )
+  // "Where": on the Mac app, a new account can go straight onto one of your connected servers (#3807).
+  const whereServers = onThisMac && manage && !editingId && provider !== 'pi-cli' ? servers : []
+  const addServer = whereServers.find(item => item.id === addWhere)
+  const whereChoice = whereServers.length > 0 && <div className="space-y-1.5"><p className="text-xs font-medium text-foreground">Where</p>
+    <Segmented label="Where" value={addServer ? addServer.id : 'local'} options={[{ value: 'local', label: 'This Mac' }, ...whereServers.map(item => ({ value: item.id, label: item.name }))]} onChange={setAddWhere} disabled={busy} /></div>
+  // This Mac's own account to reuse there: Codex moves its login (one copy, used by both); a key is copied.
+  const macCopyFor = (target: DesktopConnection) => {
+    const login = [server, ...own].find(record => record && record.can_manage && canMoveToServer(record))
+    if (login) return { label: "Use this Mac's login", note: `Moves this Mac's ${providerLabel || provider} login to ${target.name}. The Mac then uses it through ${target.name}, so there is one login and no second sign-in. It is added for you only.`, run: () => moveToServer(login, target) }
+    const key = own.find(record => record.can_manage && record.auth_method !== 'cli_login' && record.auth_method !== 'server_login')
+    if (key) return { label: "Use this Mac's key", note: `Copies the key of "${key.display_name}" to ${target.name} as your account there, for you only. Change who can use it there afterwards.`, run: () => addToServer(key, target) }
+    return undefined
+  }
   const addForm = keySetup || adding && (
     <form className={formOnly ? 'space-y-4' : 'mt-4 space-y-4 border-t border-gray-200 pt-4 dark:border-gray-700'} onSubmit={event => { event.preventDefault(); void save() }}>
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">{editingId ? 'Edit your account' : 'Add your account'}</h4>
         <button disabled={busy} type="button" aria-label="Cancel account form" className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800" onClick={cancel}><X className="h-4 w-4" /></button>
       </div>
+      {whereChoice}
+      {addServer ? <AddOnServerForm key={addServer.id} server={addServer} provider={provider} providerLabel={providerLabel || provider} macCopy={macCopyFor(addServer)}
+        onSaved={() => { setAdding(false); setAddWhere('local'); setServerAccountsVersion(value => value + 1); void loadOnServer(addServer.id); setNotice(null) }} onCancel={cancel} /> : <>
       <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Account name<input required maxLength={120} placeholder="e.g. Personal account" value={name} onChange={event => setName(event.target.value)} className={inputClass} /></label>
       {!editingId && BROWSER_LOGIN_PROVIDERS.has(provider) && <label className="block text-xs font-medium text-foreground">Authentication<select value={authMethod} onChange={event => { setAuthMethod(event.target.value); setCredential('') }} className={inputClass}>{serverLoginChoice && <option value="server_login">Sign in once on this server (works on your Mac and online)</option>}<option value="cli_login">{serverLoginChoice ? 'Browser login on this server only' : 'Browser login (sign in with your own account)'}</option><option value="api_key">API key</option></select></label>}
       {authMethod === 'server_login' && <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">You sign in once with a link and a code. This server keeps the login: your online agents use it, and so does the Mac app when it is connected here. Uses your own plan, not API billing. Only you can use it.</p>}
@@ -707,6 +728,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
         <button disabled={busy || disabled || !personalAllowed} type="submit" className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50">{busy && <Loader2 className="h-4 w-4 animate-spin" />}{busy ? 'Saving…' : editingId ? 'Update account' : authMethod === 'cli_login' || authMethod === 'server_login' ? 'Save and sign in' : 'Save account'}</button>
         <button disabled={busy} type="button" className={secondaryButtonClass} onClick={cancel}>Cancel</button>
       </div>
+      </>}
     </form>
   )
   const addButton = !disabled && personalAllowed && !adding && (
@@ -760,6 +782,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
           {provider === 'pi-cli' && own.length === 0 && !adding && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">OpenRouter, NVIDIA NIM, Groq, Google AI Studio… many have free models.</p>}
           {addForm}
           {companySection}
+          {onThisMac && servers.map(item => <YourAccountsOnServer key={item.id} server={item} provider={provider} version={serverAccountsVersion} onChanged={() => setServerAccountsVersion(value => value + 1)} />)}
           {group('Shared with you', connections.filter(record => accountRelation(record) === 'shared_with_you'))}
           {group('Other people\'s accounts', connections.filter(record => accountRelation(record) === 'admin_view'))}
           {errorLine}

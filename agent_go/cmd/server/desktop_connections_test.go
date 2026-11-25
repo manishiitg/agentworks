@@ -492,13 +492,16 @@ func TestDesktopProjectTerminalWebSocketKeepsRemoteRouteAndCredentials(t *testin
 	}
 }
 
-// #3383: the relay passes query sign-in only for a server project's Terminal and live browser view streams; any
+// #3383: the relay passes query sign-in only for a server project's Terminal and live browser view streams (and, #3807,
+// an account's sign-in window); any
 // other socket or a plain request to the same path is refused it.
 func TestDesktopRelayAdmitsOnlyProjectStreams(t *testing.T) {
 	for path, want := range map[string]bool{
 		"api/agent-profiles/work/projects/project/shell/stream": true,
 		"api/browser/live/session/stream":                       true,
 		"api/browser/live/session/recording":                    false,
+		"api/provider-setup/sessions/setup/stream":              true, // #3807: an account's sign-in window
+		"api/provider-setup/sessions/setup":                     false,
 		"api/browser/live/a/b/stream":                           false,
 		"api/sessions/session/stream":                           false,
 	} {
