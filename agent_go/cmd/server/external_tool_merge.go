@@ -27,7 +27,7 @@ type externalToolMerge struct {
 }
 
 var externalToolMerges = []externalToolMerge{
-	{"share", "Share a project or workflow. get inspects the current audience; set is owner-only and keeps the existing product authoring consent. " + runShareAccessDescription, dashboardMergeActions("share")},
+	{"share", "Share a project or workflow. get inspects the current audience; set is owner-only and keeps the existing product authoring consent. " + runShareAccessDescription + " Co-owners and Users of a project on the server (people who build it, or work in it through chat with your setup and locked files) are not Share: list and change them with crew_owners.", dashboardMergeActions("share")},
 	{"dashboard", "Live dashboards of workflows and projects: find them, read and edit drafts, check and publish revisions, and get links.", dashboardMergeActions("dashboard")},
 	{"settings", "Read or change this product's setup, accounts, linked knowledge and team delivery using its existing access.", platformMergeActions("settings")},
 	{"models", "Read or change project model defaults with existing Builder and account access; other model actions appear only where already available.", platformMergeActions("models")},
