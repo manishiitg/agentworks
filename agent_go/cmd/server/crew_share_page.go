@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -256,6 +258,9 @@ type crewShareSharedEntry struct {
 	// agent (owner, 12 Nov); empty for an action. OwnerID picks that person's view of the chat.
 	Key     string `json:"key,omitempty"`
 	OwnerID string `json:"owner_id,omitempty"`
+	// AgentID is the Team agent's ID for Fork; CopyBytes is the size of its conversation copy on this server.
+	AgentID   string `json:"agent_id,omitempty"`
+	CopyBytes int64  `json:"copy_bytes,omitempty"`
 }
 
 // crewShareSharedWithYou lists the agents other people share with the viewer, from the Team tab's own rows, and the
@@ -310,6 +315,10 @@ func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, 
 			p.Where = "agents on the server"
 		}
 		entry := crewShareSharedEntry{Name: a.Name, Line: line, Working: a.Activity == "running", Watch: a.ChatShare == crewChatShareLive, Address: a.Address, Key: firstNonEmptyTrimmed(a.WatchKey, a.Key), OwnerID: a.OwnerID}
+		if registered, ok := t.Agents[a.Key]; ok {
+			entry.AgentID = registered.ID
+			entry.CopyBytes = crewOfflineCopyBytes(t.ProjectID, registered.ID)
+		}
 		if registered, ok := t.Agents[a.Key]; ok && registered.Kind == "terminal" {
 			entry.TerminalAgentID = registered.ID
 			entry.Key = "" // never open a native UUID through app-chat routing
@@ -808,4 +817,22 @@ func crewShareAgentUses(a crewTeamTabAgent) string {
 		line += fmt.Sprintf(" (%d connections)", connections)
 	}
 	return line
+}
+
+// crewOfflineCopyBytes is the size of an agent's conversation copy on this server; 0 when it has none.
+func crewOfflineCopyBytes(project, agent string) int64 {
+	dir, err := crewOfflineDirectory(project, agent)
+	if err != nil {
+		return 0
+	}
+	var total int64
+	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			if info, e := d.Info(); e == nil {
+				total += info.Size()
+			}
+		}
+		return nil
+	})
+	return total
 }
