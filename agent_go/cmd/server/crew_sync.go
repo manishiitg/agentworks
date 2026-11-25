@@ -43,12 +43,15 @@ type crewSyncReply struct {
 	// 6 Nov: "mac online.. just reach my agent.. from phone"; crew_owner_on_mac.go).
 	ChatOnly bool `json:"chat_only,omitempty"`
 	// ChatOnlyLine is the one line above that chat: which copy this is and what stays on the Mac (owner, 12 Nov).
-	ChatOnlyLine string                `json:"chat_only_line,omitempty"`
-	Role         string                `json:"role,omitempty"`
-	Message      string                `json:"message,omitempty"`
-	ProjectID    string                `json:"project_id"`
-	Workspace    string                `json:"workspace,omitempty"` // the Crew's folder on this server, for its Slack setup from the Mac app
-	Binding      *crewroot.SyncBinding `json:"binding"`
+	ChatOnlyLine string `json:"chat_only_line,omitempty"`
+	// ProjectUser: the viewer is a User of this server project (crew_setup_lock.go): the screen is their chat and the
+	// project's dashboard, nothing else; ChatOnly is set too when the project has no dashboard.
+	ProjectUser bool                  `json:"project_user,omitempty"`
+	Role        string                `json:"role,omitempty"`
+	Message     string                `json:"message,omitempty"`
+	ProjectID   string                `json:"project_id"`
+	Workspace   string                `json:"workspace,omitempty"` // the Crew's folder on this server, for its Slack setup from the Mac app
+	Binding     *crewroot.SyncBinding `json:"binding"`
 	// Place is where the Crew lives for the Access row: mac, mac_off, offline or online (the server decides).
 	Place string `json:"place,omitempty"`
 	// Agents: share_agents' answer, each with the address the server gave it.
@@ -203,6 +206,21 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
+	// A User of a Crew on the server gets their chat and the project's dashboard, with one line on who controls the
+	// setup (crew_setup_lock.go). Checked before the co-owner page: a User also holds a seat there.
+	if r.Method == http.MethodGet && !IsLocalMode() {
+		project, caller := mux.Vars(r)["project"], GetUserIDFromContext(r.Context())
+		if root := crewProjectRootByID(project); root != "" && crewLivesOnServer(project) && crewIsProjectUser(root, caller) {
+			w.Header().Set("Cache-Control", "no-store")
+			hasDashboard, err := crewHasPublishedDashboardEntry(r.Context(), root)
+			if err != nil {
+				hasDashboard = false
+			}
+			externalJSON(w, crewSyncReply{ProjectID: project, Place: "online", Role: crewRoleUser, AccessView: "summary", AccessSummary: crewSetupLockedRefusal(root),
+				ProjectUser: true, ChatOnly: !hasDashboard, ChatOnlyLine: crewSetupLockedRefusal(root)})
+			return
+		}
+	}
 	// A co-owner of a Crew on the server gets the same Access page as its owner, without the owner's laptop access.
 	if r.Method == http.MethodGet && !IsLocalMode() {
 		project, caller := mux.Vars(r)["project"], GetUserIDFromContext(r.Context())
@@ -252,13 +270,6 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 		// A Crew that lives on the server has the same Team tab (owner, 5 Nov) under its normal Access page.
 		out.AccessView = "server_crew"
 	}
-	setupLocked := false
-	if !IsLocalMode() && crewLivesOnServer(out.ProjectID) {
-		if root := crewProjectRootByID(out.ProjectID); root != "" && crewSetupLocked(root, GetUserIDFromContext(r.Context())) {
-			// A co-owner whose "Can change project setup" is off gets the chat alone (crew_setup_lock.go).
-			setupLocked, out.ChatOnly = true, true
-		}
-	}
 	if r.Method == http.MethodGet && out.Place == "" {
 		out.Place = crewPlace(GetUserIDFromContext(r.Context()), out.ProjectID, out.Binding)
 	}
@@ -275,9 +286,7 @@ func (api *StreamingAPI) handleCrewSync(w http.ResponseWriter, r *http.Request) 
 			out.AccessInTeams = crewProjectInTeams(out.ProjectID, GetUserIDFromContext(r.Context()))
 			out.AccessAITeammate = crewAITeammateFor(out.ProjectID, GetUserIDFromContext(r.Context()))
 		}
-		if setupLocked {
-			out.ChatOnlyLine = crewSetupLockedRefusal(crewProjectRootByID(out.ProjectID))
-		} else if out.ChatOnly {
+		if out.ChatOnly {
 			name := out.ProjectID
 			if _, doc, ok := api.resolveExternalWorkspace(r.Context(), GetUserFromContext(r.Context()), "work:"+out.ProjectID); ok {
 				if title := doc.displayTitle(); title != "" {

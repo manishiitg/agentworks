@@ -10,7 +10,6 @@ import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIden
 import { OnlineOnlyNote } from '../../products/work/useMacCrew'
 import { WorkspaceContextRow as Row } from '../workspace/WorkspaceContextCard'
 import { PublicLinkControl, type PublicLink } from './PublicLinkControl'
-import { Switch } from '../ui/Switch'
 
 type Person = { id: string; email?: string; username?: string }
 /** One account from GET /api/users/directory. */
@@ -22,8 +21,10 @@ type ShareState = {
   accounts?: { kind: string; name: string; use: string }[]
   public_links?: PublicLink[]
 }
-/** setup_locked: co-owners whose "Can change project setup" is off (a project on the server only), with their extra locked paths. */
-type OwnersState = { owner?: Person; co_owners: Person[]; can_manage: boolean; setup_locked?: { id: string; locked_paths: string[] }[]; always_locked?: string[] }
+/** users: a project on the server only. Users work in it through chat with its setup and cannot change it; each has extra
+ * locked paths besides always_locked. */
+type ProjectUser = Person & { locked_paths?: string[] }
+type OwnersState = { owner?: Person; co_owners: Person[]; can_manage: boolean; users?: ProjectUser[]; always_locked?: string[] }
 const who = (person: Person) => person.email || person.username || person.id
 const audience = (state: ShareState) => state.mode === 'everyone' ? 'Everyone' : state.mode === 'people' ? 'Chosen people' : state.has_owners ? 'Only owners' : 'Only me'
 const errorText = (cause: unknown, fallback: string) => {
@@ -158,8 +159,8 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     if (emails.includes(value)) return
     void run(() => shareList([...emails, value]))
   }
-  const changeSetup = async (person: Person, canChange: boolean, lockedPaths: string[] = []) => {
-    const { data } = await api.post<OwnersState & { note?: string }>('/api/dashboards', { workspace: workspacePath, action: 'owner_setup', emails: [person.email], can_change_setup: canChange, locked_paths: lockedPaths })
+  const changeUsers = async (action: 'user_add' | 'user_remove' | 'user_files', value: string, lockedPaths?: string[]) => {
+    const { data } = await api.post<OwnersState & { note?: string }>('/api/dashboards', { workspace: workspacePath, action, emails: [value], locked_paths: lockedPaths })
     setOwnerSnapshot({ scope, owners: data })
     if (data.note) setNotice(data.note)
   }
@@ -174,7 +175,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     : null
   // Pick a person from the server's accounts, like the Team's "+ Add person" (owner, 25 Nov): no typed email, so no
   // browser autofill. People already added and the owner are left out.
-  const taken = new Set([user, owners?.owner?.id, ...(owners?.co_owners || []).map(person => person.id), ...(state.people || []).map(person => person.id)].filter(Boolean))
+  const taken = new Set([user, owners?.owner?.id, ...(owners?.co_owners || []).map(person => person.id), ...(owners?.users || []).map(person => person.id), ...(state.people || []).map(person => person.id)].filter(Boolean))
   const personPicker = (exclude: Set<string | undefined>, pick: (email: string) => void, label: string) => {
     if (!users) return <p role="status" className="text-xs text-muted-foreground">Loading people…</p>
     const options = users.filter(person => person.email && !exclude.has(person.id))
@@ -223,17 +224,21 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
       </div>
     </section>}
     </>}
-    {state.has_owners && <section aria-label="Co-owners" className={`space-y-3${coOwnersOnly ? '' : ' border-t border-border pt-4'}`}>
+    {state.has_owners && owners?.users && <section aria-label="Users" className={`space-y-3${coOwnersOnly ? '' : ' border-t border-border pt-4'}`}>
+      <div><h3 className="font-semibold">Users</h3><p className="text-xs text-muted-foreground">Work in it through chat with your setup. They can't change it.</p></div>
+      {owners.users.length > 0 && <ul aria-label="Users" className="space-y-3">
+        {owners.users.map(person => <li key={person.id} className="space-y-2">
+          <div className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{owners.can_manage && removeButton(person, value => changeUsers('user_remove', value))}</div>
+          {owners.can_manage && person.email && <ProjectUserFiles person={person} alwaysLocked={owners.always_locked || []} busy={busy} change={paths => { void run(() => changeUsers('user_files', person.email as string, paths)) }} />}
+        </li>)}
+      </ul>}
+      {owners.can_manage && personPicker(taken, value => { void run(() => changeUsers('user_add', value)) }, 'Add a user')}
+    </section>}
+    {state.has_owners && <section aria-label="Co-owners" className={`space-y-3${coOwnersOnly && !owners?.users ? '' : ' border-t border-border pt-4'}`}>
       <div><h3 className="font-semibold">Co-owners</h3><p className="text-xs text-muted-foreground">Can build and change it, like you.</p></div>
       <ul aria-label="Owners" className="space-y-2">
         {owners?.owner && <li className="flex min-w-0 items-center gap-2">{avatar(owners.owner)}<span className="min-w-0 flex-1 truncate" title={who(owners.owner)}>{who(owners.owner)}</span><span className="shrink-0 text-xs text-muted-foreground">Created it</span></li>}
-        {(owners?.co_owners || []).map(person => {
-          const lock = owners?.setup_locked?.find(item => item.id === person.id)
-          return <li key={person.id} className="space-y-2">
-            <div className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{!owners?.can_manage && lock && <span className="shrink-0 text-xs text-muted-foreground">Chat only</span>}{owners?.can_manage && removeButton(person, value => changeOwners('owner_remove', value))}</div>
-            {owners?.can_manage && owners.setup_locked && person.email && <CoOwnerSetup person={person} lock={lock} alwaysLocked={owners.always_locked || []} busy={busy} change={(canChange, paths) => { void run(() => changeSetup(person, canChange, paths)) }} />}
-          </li>
-        })}
+        {(owners?.co_owners || []).map(person => <li key={person.id} className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{owners?.can_manage && removeButton(person, value => changeOwners('owner_remove', value))}</li>)}
       </ul>
       {ownersError && <p role="alert" className="text-xs text-destructive">{ownersError} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p>}
       {owners?.can_manage && personPicker(taken, addOwner, 'Add a co-owner')}
@@ -255,31 +260,26 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   </>
 }
 
-/** One co-owner's "Can change project setup" (a project on the server; the main owner only). Off: they see only the
- * chat, run on the project's model and cannot change its instructions, skills, settings or the files listed here. */
-function CoOwnerSetup({ person, lock, alwaysLocked, busy, change }: {
-  person: Person; lock?: { locked_paths: string[] }; alwaysLocked: string[]; busy: boolean
-  change: (canChange: boolean, lockedPaths?: string[]) => void
+/** One User's locked files (a project on the server; the main owner only): always the instructions, skills and
+ * settings, plus the files or folders added here. */
+function ProjectUserFiles({ person, alwaysLocked, busy, change }: {
+  person: ProjectUser; alwaysLocked: string[]; busy: boolean; change: (lockedPaths: string[]) => void
 }) {
   const [path, setPath] = useState('')
-  const extra = lock?.locked_paths || []
-  const name = person.username || person.email || 'This co-owner'
-  return <div className="ml-9 space-y-2 text-xs">
-    <label className="flex items-center justify-between gap-2">
-      <span className="min-w-0"><span className="block text-foreground">Can change project setup</span>
-        <span className="block text-muted-foreground">{lock ? `${name} sees only the chat and uses the project's model.` : 'Instructions, skills, settings, model and sharing.'}</span></span>
-      <Switch aria-label={`${name} can change project setup`} checked={!lock} disabled={busy} onCheckedChange={on => change(on, extra)} />
-    </label>
-    {lock && <div className="space-y-1.5 rounded-md border border-border p-2">
-      <p className="text-muted-foreground">Locked files: {alwaysLocked.join(', ')}</p>
+  const extra = person.locked_paths || []
+  const name = person.username || person.email || 'This user'
+  return <details className="ml-9 text-xs">
+    <summary className="cursor-pointer text-muted-foreground">Locked files{extra.length ? ` · ${extra.length} more` : ''}</summary>
+    <div className="mt-1.5 space-y-1.5 rounded-md border border-border p-2">
+      <p className="text-muted-foreground">Always: {alwaysLocked.join(', ')}</p>
       {extra.length > 0 && <ul aria-label={`More locked files for ${name}`} className="flex flex-wrap gap-1.5">
         {extra.map(item => <li key={item} className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5">{item}
-          <button type="button" aria-label={`Unlock ${item}`} disabled={busy} onClick={() => change(false, extra.filter(other => other !== item))} className="text-muted-foreground hover:text-foreground"><X aria-hidden="true" className="h-3 w-3" /></button></li>)}
+          <button type="button" aria-label={`Unlock ${item}`} disabled={busy} onClick={() => change(extra.filter(other => other !== item))} className="text-muted-foreground hover:text-foreground"><X aria-hidden="true" className="h-3 w-3" /></button></li>)}
       </ul>}
-      <form className="flex gap-2" onSubmit={event => { event.preventDefault(); const value = path.trim(); if (!value) return; change(false, [...extra, value]); setPath('') }}>
+      <form className="flex gap-2" onSubmit={event => { event.preventDefault(); const value = path.trim(); if (!value) return; change([...extra, value]); setPath('') }}>
         <input aria-label={`Lock another file or folder for ${name}`} placeholder="briefs/ or docs/plan.md" value={path} disabled={busy} onChange={event => setPath(event.target.value)} className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2" />
         <button type="submit" disabled={busy || !path.trim()} className="h-8 rounded-md border border-border px-2.5 hover:bg-muted disabled:opacity-50">Lock</button>
       </form>
-    </div>}
-  </div>
+    </div>
+  </details>
 }

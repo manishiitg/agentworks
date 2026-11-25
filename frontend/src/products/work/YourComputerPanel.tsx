@@ -46,7 +46,7 @@ export type CloudState = 'mac' | 'mac_off' | 'online' | 'offline'
 export type CrewAsk = { tab: string; agent: string; sender: string; channel?: string; conversation_key: string; session_id: string; started_at: string; active: boolean }
 /** One line of the Access tree under the side panel's Access row, written by the server (owner, 5 Nov mockup). */
 export type CrewAccessLine = { kind: 'mac' | 'team' | 'team_live' | 'in_team' | 'dashboard' | 'public' | 'folder' | 'clash'; group?: 'team' | 'online'; title: string; detail?: string; path?: string; ask?: string; target?: string; dashboards?: { id?: string; name: string; path: string }[]; count?: number; tag?: string; progress?: { direction: string; bytes_done: number; bytes_total: number } }
-type PlaceEntry = { place?: CloudState; chatOnly?: boolean; chatOnlyLine?: string; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
+type PlaceEntry = { place?: CloudState; chatOnly?: boolean; chatOnlyLine?: string; projectUser?: boolean; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 
 function watchCrewPlace(projectId: string, listener: (place?: CloudState) => void) {
@@ -58,16 +58,18 @@ function watchCrewPlace(projectId: string, listener: (place?: CloudState) => voi
     const load = () => {
       created.abort?.abort()
       created.abort = new AbortController()
-      void api.get<{ place?: CloudState; chat_only?: boolean; chat_only_line?: string; shared_agents?: number; asking?: CrewAsk[] }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
+      void api.get<{ place?: CloudState; chat_only?: boolean; chat_only_line?: string; project_user?: boolean; shared_agents?: number; asking?: CrewAsk[] }>(`/api/crew-sync/${encodeURIComponent(projectId)}`, { signal: created.abort.signal, skipSessionContext: true })
         .then(({ data }) => {
           const shared = data.shared_agents || 0
           const asking = data.asking || []
           const chatOnly = data.chat_only === true
           const chatOnlyLine = typeof data.chat_only_line === 'string' && data.chat_only_line ? data.chat_only_line : undefined
-          if (!data.place || (data.place === created.place && chatOnly === Boolean(created.chatOnly) && chatOnlyLine === created.chatOnlyLine && shared === created.shared && JSON.stringify(asking) === JSON.stringify(created.asking || []))) return
+          const projectUser = data.project_user === true
+          if (!data.place || (data.place === created.place && chatOnly === Boolean(created.chatOnly) && chatOnlyLine === created.chatOnlyLine && projectUser === Boolean(created.projectUser) && shared === created.shared && JSON.stringify(asking) === JSON.stringify(created.asking || []))) return
           created.place = data.place
           created.chatOnly = chatOnly
           created.chatOnlyLine = chatOnlyLine
+          created.projectUser = projectUser
           created.shared = shared
           created.asking = asking
           created.listeners.forEach(notify => notify(data.place))
@@ -122,6 +124,18 @@ export function useCrewChatOnly(projectId?: string): boolean {
     return watchCrewPlace(projectId, () => setChatOnly(placeCache.get(projectId)?.chatOnly === true))
   }, [projectId])
   return chatOnly
+}
+
+/** The server's flag: this person is a User of this server project (crew_setup_lock.go), so the screen is their chat
+ * and the project's dashboard, nothing else. */
+export function useCrewProjectUser(projectId?: string): boolean {
+  const [projectUser, setProjectUser] = useState(false)
+  useEffect(() => {
+    setProjectUser(false)
+    if (!projectId) return
+    return watchCrewPlace(projectId, () => setProjectUser(placeCache.get(projectId)?.projectUser === true))
+  }, [projectId])
+  return projectUser
 }
 
 /** Who asked this Crew's shared agents on this Mac lately, newest first (owner, 3 Nov). */

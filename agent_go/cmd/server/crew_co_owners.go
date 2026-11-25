@@ -20,6 +20,7 @@ import (
 const (
 	crewRoleOwner   = "owner"
 	crewRoleCoOwner = "co_owner"
+	crewRoleUser    = "user"
 	crewRoleReader  = "reader"
 	crewRoleNone    = "none"
 )
@@ -41,8 +42,10 @@ func crewLivesOnServer(projectID string) bool {
 	return ownerOfCrewProjectID(projectID) != ""
 }
 
-// crewCoOwnerIDs are the Crew's builders besides its main owner: a server Crew's co-owners, or the joined, active
-// members of a Mac Crew's Team while it is on; none on a Mac. Read on every call, so a removal takes effect at once.
+// crewCoOwnerIDs are everyone with a seat in the Crew besides its main owner, for PERMISSION: a server Crew's
+// co-owners and its Users (a User works in the project like a co-owner, with its setup locked: crew_setup_lock.go), or
+// the joined, active members of a Mac Crew's Team while it is on; none on a Mac. Read on every call, so a removal takes
+// effect at once. Lists of who builds the Crew use crewCoOwnersOnly instead.
 func crewCoOwnerIDs(root string) []string {
 	if IsLocalMode() {
 		return nil
@@ -53,8 +56,8 @@ func crewCoOwnerIDs(root string) []string {
 	}
 	ids := []string{}
 	if crewLivesOnServer(rec.ProjectID) {
-		for _, id := range rec.CoOwners {
-			if id != rec.OwnerID && crewTeamAccountActive(id) {
+		for _, id := range append(append([]string{}, rec.CoOwners...), rec.Users...) {
+			if id != rec.OwnerID && crewTeamAccountActive(id) && !containsID(ids, id) {
 				ids = append(ids, id)
 			}
 		}
@@ -67,6 +70,37 @@ func crewCoOwnerIDs(root string) []string {
 	for _, p := range t.People {
 		if !p.Invited && p.UserID != t.OwnerID && crewTeamAccountActive(p.UserID) {
 			ids = append(ids, p.UserID)
+		}
+	}
+	return ids
+}
+
+// crewCoOwnersOnly are the people who build the Crew besides its main owner and may change everything: crewCoOwnerIDs
+// without the Users. The co-owner list, the side panel's names and the Crew vault's owners use it.
+func crewCoOwnersOnly(root string) []string {
+	users := crewUserIDs(root)
+	out := []string{}
+	for _, id := range crewCoOwnerIDs(root) {
+		if !containsID(users, id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// crewUserIDs are a server Crew's active Users (crew_setup_lock.go).
+func crewUserIDs(root string) []string {
+	if IsLocalMode() {
+		return nil
+	}
+	rec, found := crewOwnerRecordAt(root)
+	if !found || !crewLivesOnServer(rec.ProjectID) {
+		return nil
+	}
+	ids := []string{}
+	for _, id := range rec.Users {
+		if id != rec.OwnerID && crewTeamAccountActive(id) {
+			ids = append(ids, id)
 		}
 	}
 	return ids
@@ -90,6 +124,9 @@ func crewIsCoOwner(root, userID string) bool {
 func crewRoleOf(root, userID string) string {
 	if owner, ok := crewProjectOwnerID(root); ok && owner == sanitizeUserIDForPath(userID) {
 		return crewRoleOwner
+	}
+	if crewIsProjectUser(root, userID) {
+		return crewRoleUser
 	}
 	if crewIsCoOwner(root, userID) {
 		return crewRoleCoOwner

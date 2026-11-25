@@ -474,7 +474,7 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		return
 	}
 	slotDone := time.Now()
-	// A co-owner whose "Can change project setup" is off sees the project's model and cannot change it.
+	// A project User (crew_setup_lock.go) sees the project's model and cannot change it.
 	if crewSetupLocked(slot.binding.WorkspacePath, userID) {
 		slot.canBuild = false
 		if r.Method == http.MethodPost {

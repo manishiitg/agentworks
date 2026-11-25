@@ -135,7 +135,7 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"ann","username":"ann","email":"ann@example.com","products":["work"]},{"id":"bob","username":"bob","email":"bob@example.com","products":["work"]}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"ann","username":"ann","email":"ann@example.com","products":["work"]},{"id":"bob","username":"bob","email":"bob@example.com","products":["work"]},{"id":"cara","username":"cara","email":"cara@example.com","products":["work"]}]}`)
 	registry := newTestRegistry(t)
 	prev := defaultProjectOwnersOverride
 	defaultProjectOwnersOverride = registry
@@ -170,35 +170,41 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	if crewProjectOwnedByCaller("bob", root) || crewProjectOwnedByCallerStrict("ann", root) {
 		t.Fatal("a Team member built a server Crew, or a co-owner became its owner")
 	}
-	// "Can change project setup" off (owner, 24 Nov): ann still builds, but her turns cannot write the project's
-	// instructions, skills, settings or the extra paths the owner locked; other files stay writable, and nobody else
-	// is locked.
-	if err := registry.SetCoOwnerSetupLock("work", folder, "ann", true, []string{"briefs/", "../escape"}); err != nil {
+	// A User (owner, 25 Nov: a role with limited permission; co-owners always change everything): cara works in the
+	// project but her turns cannot write its instructions, skills, settings or the extra paths the owner locked; other
+	// files stay writable. ann, a co-owner, is never locked.
+	if _, err := registry.AddUser("work", folder, "cara"); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.SetCoOwnerSetupLock("work", folder, "bob", true, nil); err == nil {
-		t.Fatal("locked the setup of someone who is not a co-owner")
+	if err := registry.SetUserLockedPaths("work", folder, "cara", cleanCrewLockedPaths([]string{"briefs/", "../escape"})); err != nil {
+		t.Fatal(err)
 	}
-	blocked := crewSetupLockedWritePaths(root, "ann")
-	if !crewProjectOwnedByCaller("ann", root) || !slices.Contains(blocked, root+"/PROJECT_INSTRUCTIONS.md") || !slices.Contains(blocked, root+"/skills") || !slices.Contains(blocked, root+"/briefs") {
-		t.Fatalf("a locked co-owner's blocked writes = %v", blocked)
+	if err := registry.SetUserLockedPaths("work", folder, "ann", nil); err == nil {
+		t.Fatal("set locked paths for someone who is not a user")
+	}
+	blocked := crewSetupLockedWritePaths(root, "cara")
+	if !crewProjectOwnedByCaller("cara", root) || crewRoleOf(root, "cara") != crewRoleUser || !slices.Contains(blocked, root+"/PROJECT_INSTRUCTIONS.md") || !slices.Contains(blocked, root+"/skills") || !slices.Contains(blocked, root+"/briefs") {
+		t.Fatalf("a user's blocked writes = %v", blocked)
 	}
 	for _, p := range blocked {
 		// "../escape" is cleaned to a path inside the project; nothing may point outside it.
 		if p == root+"/notes.md" || strings.Contains(p, "..") || !strings.HasPrefix(p, root+"/") {
-			t.Fatalf("a locked co-owner is blocked from %q", p)
+			t.Fatalf("a user is blocked from %q", p)
 		}
 	}
-	if crewSetupLocked(root, "owner") || len(crewSetupLockedWritePaths(root, "owner")) > 0 {
-		t.Fatal("the main owner's setup is locked")
+	if crewSetupLocked(root, "owner") || crewSetupLocked(root, "ann") || len(crewSetupLockedWritePaths(root, "ann")) > 0 {
+		t.Fatal("the owner's or a co-owner's setup is locked")
 	}
-	// The same lock outside chat (#3796): a direct MCP setup tool is refused for ann while its read action and the
-	// owner stay open, and the website's file proxy refuses her write to the instructions but not to a work file.
-	if crewSetupLockExternalRefusal("ann", "install_skill", "install", map[string]any{"crew_id": "team-proj"}) == "" {
-		t.Fatal("a locked co-owner installed a skill over MCP")
+	if slices.Contains(crewCoOwnersOnly(root), "cara") || !slices.Contains(crewCoOwnersOnly(root), "ann") {
+		t.Fatalf("co-owners list = %v", crewCoOwnersOnly(root))
 	}
-	if crewSetupLockExternalRefusal("ann", "crew_owners", "list", map[string]any{"crew_id": "team-proj"}) != "" || crewSetupLockExternalRefusal("owner", "install_skill", "install", map[string]any{"crew_id": "team-proj"}) != "" {
-		t.Fatal("the lock refused a read, or refused the owner")
+	// The same lock outside chat (#3796): a direct MCP setup tool is refused for cara while its read action, a co-owner
+	// and the owner stay open, and the website's file proxy refuses her write to the instructions but not a work file.
+	if crewSetupLockExternalRefusal("cara", "install_skill", "install", map[string]any{"crew_id": "team-proj"}) == "" {
+		t.Fatal("a user installed a skill over MCP")
+	}
+	if crewSetupLockExternalRefusal("cara", "crew_owners", "list", map[string]any{"crew_id": "team-proj"}) != "" || crewSetupLockExternalRefusal("ann", "install_skill", "install", map[string]any{"crew_id": "team-proj"}) != "" || crewSetupLockExternalRefusal("owner", "install_skill", "install", map[string]any{"crew_id": "team-proj"}) != "" {
+		t.Fatal("the lock refused a read, a co-owner or the owner")
 	}
 	proxyPut := func(user, rel string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPut, "/api/wp/api/documents/"+root+"/"+rel, strings.NewReader(`{"content":"x"}`))
@@ -208,23 +214,30 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 		workspaceProxyHandler().ServeHTTP(w, r)
 		return w
 	}
-	if w := proxyPut("ann", "PROJECT_INSTRUCTIONS.md"); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "controls this project's setup") {
-		t.Fatalf("a locked co-owner's instructions write through the website = %d %q", w.Code, w.Body.String())
+	if w := proxyPut("cara", "PROJECT_INSTRUCTIONS.md"); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "controls this project's setup") {
+		t.Fatalf("a user's instructions write through the website = %d %q", w.Code, w.Body.String())
 	}
-	if w := proxyPut("ann", "notes.md"); strings.Contains(w.Body.String(), "controls this project's setup") {
-		t.Fatal("a locked co-owner was refused an ordinary file")
+	if w := proxyPut("cara", "notes.md"); strings.Contains(w.Body.String(), "controls this project's setup") {
+		t.Fatal("a user was refused an ordinary file")
 	}
-	if w := proxyPut("owner", "PROJECT_INSTRUCTIONS.md"); strings.Contains(w.Body.String(), "controls this project's setup") {
-		t.Fatal("the owner was refused their own instructions")
+	if w := proxyPut("ann", "PROJECT_INSTRUCTIONS.md"); strings.Contains(w.Body.String(), "controls this project's setup") {
+		t.Fatal("a co-owner was refused the instructions")
+	}
+	// Making cara a co-owner lifts the lock; removing ann as co-owner ends her access.
+	if _, err := registry.AddCoOwner("work", folder, "cara"); err != nil {
+		t.Fatal(err)
+	}
+	if crewSetupLocked(root, "cara") {
+		t.Fatal("a user made co-owner is still locked")
 	}
 	if _, err := registry.RemoveCoOwner("work", folder, "ann"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := registry.RemoveCoOwner("work", folder, "cara"); err != nil {
+		t.Fatal(err)
+	}
 	if crewProjectOwnedByCaller("ann", root) {
 		t.Fatal("a removed co-owner still builds the Crew")
-	}
-	if rec, _ := registry.Lookup("work", folder); len(rec.SetupLocked) != 0 {
-		t.Fatal("removing a co-owner kept their setup lock")
 	}
 	// The online copy of a Mac Crew keeps its Team.
 	if err := crewroot.WriteSync("team-proj", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "owner-pair", PeerProjectID: "mac-crew"}); err != nil {

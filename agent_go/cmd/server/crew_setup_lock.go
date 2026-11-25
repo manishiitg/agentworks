@@ -7,35 +7,47 @@ import (
 	"strings"
 )
 
-// A co-owner's "Can change project setup" (owner, 24 Nov: "i setup a project for some one.. to do specific stuff with
-// limited options to change"). It is on by default. When the main owner switches it off for a co-owner, that person
-// still works in the project with a co-owner's full power (shell, files, tools, functions; never Run mode), but:
-//   - the screen shows only the chat (crew-sync chat_only);
+// Users of a server project (owner, 25 Nov: "co-owners can always change everything... we should define a user role
+// for this type of user who have limited permission"; replacing the 24 Nov per-co-owner switch). The main owner adds a
+// User from the Access panel or crew_owners. A User works in the project with a co-owner's working power (shell,
+// files, tools, functions; never Run mode), but:
+//   - the screen shows the chat and the project's dashboard, nothing else (crew-sync project_user);
 //   - the project's setup files are locked for their turns: the project instructions, skills, settings and any extra
 //     paths the owner chose (crewSetupLockedWritePaths, enforced by the folder guard in every file layer);
-//   - the setup tools are not offered (crewSetupLockedTools);
+//   - the setup tools are refused on every path (crewSetupLockedTools and the checks below);
 //   - every chat runs on the project's default model; they cannot pick another (crew_chat_provider_accounts.go).
+// Co-owners always change everything.
 
-// crewSetupLockedDefaultPaths are always locked for such a co-owner, relative to the project folder.
+// crewSetupLockedDefaultPaths are always locked for a User, relative to the project folder.
 var crewSetupLockedDefaultPaths = []string{"PROJECT_INSTRUCTIONS.md", "AGENTS.md", "CLAUDE.md", "skills", ".agentworks/skills", ".agentworks/settings", "workflow.json", "product.json"}
 
-// crewSetupLockFor says whether userID is a co-owner of the Crew at root whose setup the main owner locked, and the
-// extra paths the owner chose. The main owner, other co-owners and everyone else are never locked.
-func crewSetupLockFor(root, userID string) (bool, []string) {
+// crewIsProjectUser says whether userID is one of the Users of the server Crew at root.
+func crewIsProjectUser(root, userID string) bool {
 	userID = strings.TrimSpace(userID)
-	if userID == "" || !crewIsCoOwner(root, userID) {
+	if userID == "" {
+		return false
+	}
+	for _, id := range crewUserIDs(root) {
+		if sanitizeUserIDForPath(id) == sanitizeUserIDForPath(userID) {
+			return true
+		}
+	}
+	return false
+}
+
+// crewSetupLockFor says whether userID is a User of the Crew at root, and the extra paths the owner locked for them.
+// The main owner, co-owners and everyone else are never locked.
+func crewSetupLockFor(root, userID string) (bool, []string) {
+	if !crewIsProjectUser(root, userID) {
 		return false, nil
 	}
-	rec, found := crewOwnerRecordAt(root)
-	if !found {
-		return false, nil
-	}
-	for id, paths := range rec.SetupLocked {
+	rec, _ := crewOwnerRecordAt(root)
+	for id, paths := range rec.UserLockedPaths {
 		if sanitizeUserIDForPath(id) == sanitizeUserIDForPath(userID) {
 			return true, paths
 		}
 	}
-	return false, nil
+	return true, nil
 }
 
 // crewSetupLocked is crewSetupLockFor without the paths.
@@ -60,7 +72,7 @@ func cleanCrewLockedPaths(paths []string) []string {
 	return out
 }
 
-// crewSetupLockedWritePaths are the blocked-write paths for a locked co-owner's turn in the Crew at root (the project
+// crewSetupLockedWritePaths are the blocked-write paths for a User's turn in the Crew at root (the project
 // folder as the turn names it), or nil for everyone else.
 func crewSetupLockedWritePaths(root, userID string) []string {
 	locked, extra := crewSetupLockFor(root, userID)
@@ -75,7 +87,7 @@ func crewSetupLockedWritePaths(root, userID string) []string {
 	return out
 }
 
-// crewSetupLockedTools change the project's setup. A locked co-owner's turn never gets them; the folder guard keeps
+// crewSetupLockedTools change the project's setup. A User's turn never gets them; the folder guard keeps
 // the setup files themselves.
 var crewSetupLockedTools = map[string]bool{
 	// Selections: apps, secrets, skills.
@@ -107,7 +119,7 @@ var crewSetupLockedTools = map[string]bool{
 	"detach_workflow_reference": true,
 }
 
-// crewSetupLockedRefusal is the one plain line a locked co-owner sees when something would change the setup.
+// crewSetupLockedRefusal is the one plain line a User sees when something would change the setup.
 func crewSetupLockedRefusal(root string) string {
 	owner := "The project's owner"
 	if id, ok := crewProjectOwnerID(root); ok {
@@ -136,7 +148,7 @@ func crewSetupLockRootAndRel(p string) (string, string, bool) {
 	return parts[0] + "/" + parts[1], rel, true
 }
 
-// crewSetupLockPathRefusal is the refusal when userID is a locked co-owner of the Crew at root and rel (relative to
+// crewSetupLockPathRefusal is the refusal when userID is a User of the Crew at root and rel (relative to
 // the project folder) is one of its locked setup paths, else "".
 func crewSetupLockPathRefusal(root, rel, userID, op string) string {
 	locked, extra := crewSetupLockFor(root, userID)
@@ -166,7 +178,7 @@ func crewSetupLockWorkspaceRefusal(ctx context.Context, filePath, op string) str
 	return crewSetupLockPathRefusal(root, rel, userID, op)
 }
 
-// crewSetupLockRefusalFor refuses a whole setup operation (sharing, schedules, a setup tool) for a locked co-owner.
+// crewSetupLockRefusalFor refuses a whole setup operation (sharing, schedules, a setup tool) for a User.
 func crewSetupLockRefusalFor(root, userID, op string) string {
 	if !crewSetupLocked(root, userID) {
 		return ""
@@ -197,8 +209,8 @@ var crewSetupLockedExternalTools = map[string]bool{
 // crewSetupReadActions stay open on any tool: they change nothing.
 var crewSetupReadActions = map[string]bool{"": false, "list": true, "get": true, "search": true, "history": true, "status": true, "runs": true, "describe": true, "read": true}
 
-// crewSetupLockExternalRefusal refuses a direct MCP call that would change the setup of a project the caller has a
-// locked co-owner seat in. The project comes from crew_id or project.
+// crewSetupLockExternalRefusal refuses a direct MCP call that would change the setup of a project the caller is a
+// User of. The project comes from crew_id or project.
 func crewSetupLockExternalRefusal(userID, toolName, action string, args map[string]any) string {
 	if !crewSetupLockedTools[toolName] && !crewSetupLockedExternalTools[toolName] {
 		return ""
