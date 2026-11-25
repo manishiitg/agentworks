@@ -274,7 +274,11 @@ func crewTeamMessageWaitStarts(ctx context.Context, project string, people []cre
 }
 
 // Local navigation fetches the same server projection once per saved connection,
-// not once per Crew. This memo lives only for this request, not a busy cache.
+// not once per Crew, and never waits on the network for it: the left menu asked
+// the Team server on every refresh, so each list took about half a second and up
+// to 6 s (speed check, 25 Nov). The last projection is kept per connection and
+// refreshed in the background once it is older than crewTeamNavLiveFresh; the
+// very first read waits at most crewTeamNavLiveFirstWait for it.
 func crewTeamLocalNavigationLive(ctx context.Context, owner, project string, reads map[string]map[string]crewTeamLiveView) *crewTeamLiveView {
 	binding, err := crewroot.ReadSync(project)
 	if err != nil || binding == nil || binding.Side != "local" || binding.ConnectionID == "" || ownerOfCrewProjectID(project) != owner {
@@ -286,27 +290,14 @@ func crewTeamLocalNavigationLive(ctx context.Context, owner, project string, rea
 	}
 	rows, read := reads[connection.ID]
 	if !read {
-		rows = map[string]crewTeamLiveView{}
+		rows = crewTeamNavLiveRows(owner, connection)
 		reads[connection.ID] = rows
-		var reply struct {
-			Workspaces []struct {
-				ID   string            `json:"id"`
-				Live *crewTeamLiveView `json:"team_live"`
-			} `json:"workspaces"`
-		}
-		round, cancel := context.WithTimeout(ctx, 6*time.Second)
-		defer cancel()
-		if err := crewTeamRemoteJSON(round, owner, connection, http.MethodPost, "/api/workspaces", map[string]string{"action": "list"}, &reply); err != nil {
-			log.Printf("[CREW_TEAM_LIVE] project=%s event=navigation_read_failed", project)
-			return nil
-		}
-		for _, row := range reply.Workspaces {
-			if row.Live != nil {
-				rows[row.ID] = *row.Live
-			}
-		}
 	}
 	if live, ok := rows[binding.PeerProjectID]; ok {
+		// The rows are shared between requests: relabel copies, never the kept slices.
+		live.People = append(live.People[:0:0], live.People...)
+		live.Agents = append(live.Agents[:0:0], live.Agents...)
+		live.Idle = append(live.Idle[:0:0], live.Idle...)
 		crewTeamLiveLocalSelf(&live, connection)
 		live.Connection = connection.ID
 		live.Network = connection.Name
@@ -345,4 +336,74 @@ func crewTeamLiveLocalSelf(live *crewTeamLiveView, connection desktopConnection)
 			}
 		}
 	}
+}
+
+const (
+	crewTeamNavLiveFresh     = 5 * time.Second
+	crewTeamNavLiveFirstWait = 300 * time.Millisecond
+)
+
+// crewTeamNavLive: owner + connection -> the Team server's last navigation projection.
+var crewTeamNavLive sync.Map
+
+type crewTeamNavLiveEntry struct {
+	mu      sync.Mutex
+	rows    map[string]crewTeamLiveView
+	at      time.Time
+	loading chan struct{} // open while a refresh runs
+}
+
+func crewTeamNavLiveRows(owner string, connection desktopConnection) map[string]crewTeamLiveView {
+	v, _ := crewTeamNavLive.LoadOrStore(owner+"\x00"+connection.ID, &crewTeamNavLiveEntry{})
+	e := v.(*crewTeamNavLiveEntry)
+	e.mu.Lock()
+	rows, at, loading := e.rows, e.at, e.loading
+	if time.Since(at) > crewTeamNavLiveFresh && loading == nil {
+		loading = make(chan struct{})
+		e.loading = loading
+		go e.refresh(owner, connection, loading)
+	}
+	e.mu.Unlock()
+	if rows == nil && loading != nil {
+		select { // first read: a short wait, then the menu shows without the live line
+		case <-loading:
+			e.mu.Lock()
+			rows = e.rows
+			e.mu.Unlock()
+		case <-time.After(crewTeamNavLiveFirstWait):
+		}
+	}
+	if rows == nil {
+		return map[string]crewTeamLiveView{}
+	}
+	return rows
+}
+
+func (e *crewTeamNavLiveEntry) refresh(owner string, connection desktopConnection, done chan struct{}) {
+	defer close(done)
+	var reply struct {
+		Workspaces []struct {
+			ID   string            `json:"id"`
+			Live *crewTeamLiveView `json:"team_live"`
+		} `json:"workspaces"`
+	}
+	round, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	started := time.Now()
+	err := crewTeamRemoteJSON(round, owner, connection, http.MethodPost, "/api/workspaces", map[string]string{"action": "list"}, &reply)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.loading = nil
+	if err != nil {
+		log.Printf("[CREW_TEAM_LIVE] connection=%s event=navigation_read_failed ms=%d", connection.ID, time.Since(started).Milliseconds())
+		e.at = time.Now() // keep the last rows; try again after crewTeamNavLiveFresh
+		return
+	}
+	rows := map[string]crewTeamLiveView{}
+	for _, row := range reply.Workspaces {
+		if row.Live != nil {
+			rows[row.ID] = *row.Live
+		}
+	}
+	e.rows, e.at = rows, time.Now()
 }

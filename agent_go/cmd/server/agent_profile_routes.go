@@ -451,6 +451,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		return
 	}
 
+	stages := newQueryStages(w)
 	decoder := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes))
 	decoder.DisallowUnknownFields()
 	var input AgentProfileChatRequest
@@ -485,9 +486,11 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	// due schedule back. Scheduled runs enter through Run, never here, so a
 	// check-in's own turns are not mistaken for family activity.
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
+	stages.mark("profile")
 	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "send", Message: input.Message, DeliveryMode: input.DeliveryMode, RequestedSkillID: input.RequestedSkillID, PlanMode: input.PlanMode, PendingAttachments: input.PendingAttachments}) {
 		return
 	}
+	stages.mark("route")
 	// A Mac Crew runs on its Mac; published agents have their own server workspace.
 	if crewLivesOnMac(profile.ID, input.ConversationKey, productWorkspaceUserID(r.Context())) {
 		writeAgentProfileError(w, http.StatusConflict, crewOnMacRefusalFor(input.ConversationKey, productWorkspaceUserID(r.Context())))
@@ -499,6 +502,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		writeAgentProfileQueryError(w, err)
 		return
 	}
+	stages.mark("resolve")
 	if err := crewTabWriteError(r.Context(), productWorkspaceUserID(r.Context()), profile.ID, conversation.ConversationKey, conversation.WorkspacePath); err != nil {
 		externalError(w, http.StatusForbidden, "tab_owner", err.Error())
 		return
@@ -522,6 +526,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 			log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=turn_sync seconds=%.1f failed=%t", project, logUsernameForUserID(caller), time.Since(started).Seconds(), err != nil)
 		}()
 	}
+	stages.mark("tab")
 	query, err := prepareProductConversationTurn(r.Context(), productWorkspaceUserID(r.Context()), profile, input, conversation)
 	if err != nil {
 		log.Printf("[PRODUCT_CONVERSATION] stage=query-prepare profile=%s key=%q caller=%q cause=%v", profile.ID, input.ConversationKey, productWorkspaceUserID(r.Context()), err)
@@ -576,6 +581,8 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	forwarded.Header = r.Header.Clone()
 	forwarded.Header.Set("Content-Type", "application/json")
 	forwarded.Header.Set("X-Session-ID", conversation.SessionID)
+	stages.mark("prepare")
+	stages.log(conversation.SessionID)
 	api.handleQuery(w, forwarded)
 }
 
@@ -1444,4 +1451,37 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 	publishCrewPanelChanged(binding.ResourceID)
 	log.Printf("[CREW_AGENT_REMOVE] profile=%s sessions=%d history_deleted=true", profile.ID, len(sessionIDs))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// queryStages times the steps before a sent message reaches the turn runner
+// (speed check, 25 Nov: sending waited 1-6 s with no log saying where). One
+// [QUERY_ACCEPT] line when the steps take 300 ms or more; before_ms is the time
+// spent before this handler (other middleware), when known.
+type queryStages struct {
+	start, last time.Time
+	before      time.Duration
+	parts       []string
+}
+
+func newQueryStages(w http.ResponseWriter) *queryStages {
+	now := time.Now()
+	q := &queryStages{start: now, last: now, before: -1}
+	if rec, ok := w.(*statusCapturingResponseWriter); ok && !rec.start.IsZero() {
+		q.before = now.Sub(rec.start)
+	}
+	return q
+}
+
+func (q *queryStages) mark(name string) {
+	now := time.Now()
+	q.parts = append(q.parts, fmt.Sprintf("%s_ms=%d", name, now.Sub(q.last).Milliseconds()))
+	q.last = now
+}
+
+func (q *queryStages) log(session string) {
+	total := time.Since(q.start)
+	if total < 300*time.Millisecond && q.before < 300*time.Millisecond {
+		return
+	}
+	log.Printf("[QUERY_ACCEPT] session=%s before_ms=%d %s total_ms=%d", session, q.before.Milliseconds(), strings.Join(q.parts, " "), total.Milliseconds())
 }
