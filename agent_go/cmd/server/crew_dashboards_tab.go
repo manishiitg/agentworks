@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -29,7 +30,12 @@ type crewDashboardsTabItem struct {
 	Group string `json:"group"`
 	// CanDelete: this person may delete it (the owner); the page then offers Delete with Undo.
 	CanDelete bool `json:"can_delete,omitempty"`
-	updated   time.Time
+	// Team sharing (owner, 25 Nov): CanShareTeam offers Share with Team on an Artifact of a project whose Team is on;
+	// TeamShared says its copy is in the Team's folder. FromTeam marks a copy someone shared, opened from that folder.
+	CanShareTeam bool `json:"can_share_team,omitempty"`
+	TeamShared   bool `json:"team_shared,omitempty"`
+	FromTeam     bool `json:"from_team,omitempty"`
+	updated      time.Time
 }
 
 type crewDashboardsTabFilter struct {
@@ -151,6 +157,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	tab := crewDashboardsTab{Workspace: root, Intro: "Everything published from this project.", CanChange: owner && !crewOwnerOnlineOfMacCrew(r, t.ProjectID, GetUserIDFromContext(r.Context())), OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
 	who := api.crewDashboardsTabWho(r, root, owner && !onMac)
 	counts := map[string]int{}
+	teamItems := 0
 	for _, row := range rows {
 		key, label := crewDashboardKind(row)
 		counts[key]++
@@ -173,6 +180,38 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 		tab.Items = append(tab.Items, item)
 	}
 	sort.SliceStable(tab.Items, func(i, j int) bool { return tab.Items[i].updated.After(tab.Items[j].updated) })
+	// Pages in the Team's shared artifacts/ folder: this project's own copies mark their row; the rest are listed
+	// under From the Team, newest first, after this project's own pages.
+	if roots, found, err := crewStorageRoots(root); err == nil && found {
+		_, teamErr := crewTeamArtifactsDir(roots.ID)
+		shared := crewTeamArtifacts(dashboardTeamRoots{ID: roots.ID, Files: roots.Files})
+		sort.SliceStable(shared, func(i, j int) bool { return shared[i].Updated.After(shared[j].Updated) })
+		for i := range tab.Items {
+			tab.Items[i].CanShareTeam = teamErr == nil && tab.CanChange && tab.Items[i].Kind == "artifact"
+		}
+		for _, a := range shared {
+			if at := slices.IndexFunc(tab.Items, func(item crewDashboardsTabItem) bool { return item.ID == a.ID }); at >= 0 {
+				tab.Items[at].TeamShared = true
+				continue
+			}
+			if at := slices.IndexFunc(rows, func(row crewTeamDashboard) bool { return row.ID == a.ID }); at >= 0 {
+				continue // this project's own page, filtered out of view
+			}
+			counts["artifact"]++
+			teamItems++
+			if filter != "all" && filter != "artifact" {
+				continue
+			}
+			line, when := "Artifact · shared with the Team", ""
+			if !a.Updated.IsZero() {
+				when = roughAgo(time.Since(a.Updated))
+			}
+			if a.By != "" {
+				line = "Artifact · shared by " + a.By
+			}
+			tab.Items = append(tab.Items, crewDashboardsTabItem{ID: a.ID, Title: a.Title, Path: a.Path, Kind: "artifact", Line: line, Who: "Everyone in the Team", When: when, Group: "From the Team", FromTeam: true, CanShareTeam: tab.CanChange, TeamShared: true, updated: a.Updated})
+		}
+	}
 	// Filters only when they help (owner, 25 Nov mockup): one per kind that has items, and none when there is one kind.
 	tab.Filters = []crewDashboardsTabFilter{}
 	for _, kind := range crewDashboardsTabKinds {
@@ -181,7 +220,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 		}
 	}
 	if len(tab.Filters) > 1 {
-		tab.Filters = append([]crewDashboardsTabFilter{{Key: "all", Label: "All", Count: len(rows)}}, tab.Filters...)
+		tab.Filters = append([]crewDashboardsTabFilter{{Key: "all", Label: "All", Count: len(rows) + teamItems}}, tab.Filters...)
 	} else {
 		tab.Filters = []crewDashboardsTabFilter{}
 	}
@@ -193,7 +232,7 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	case onMac:
 		tab.Note = crewDashboardsMacOwnerNote
 	}
-	if len(rows) == 0 {
+	if len(rows) == 0 && teamItems == 0 {
 		// Nothing to open: no lines about items that are not there, and one line for a teammate.
 		tab.Intro, tab.Note, tab.PutOnline = "", "", false
 		tab.Empty = &crewDashboardsTabEmpty{Line: crewPersonShortName(t.OwnerID) + " hasn't published anything from this project yet."}

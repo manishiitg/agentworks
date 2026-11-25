@@ -112,6 +112,22 @@ func (api *StreamingAPI) handleCrewTeamDashboardAction(w http.ResponseWriter, r 
 		body["action"], body["mode"] = dashboardPublicAction, args.Mode
 	case "link", "delete", "undelete":
 		body["action"] = args.Action
+	case dashboardTeamAction:
+		body["action"], body["mode"] = dashboardTeamAction, args.Mode
+	case "team_open":
+		// A Team copy is a file in the Team's shared folder; anyone who sees this project's Artifacts page may open it.
+		roots, found, err := crewStorageRoots(crewProjectRootByID(t.ProjectID))
+		if err != nil || !found {
+			externalError(w, 409, "project_unavailable", "This project's files can't be reached right now.")
+			return
+		}
+		page, err := crewTeamArtifactPage(r.Context(), dashboardTeamRoots{ID: roots.ID, Files: roots.Files}, args.DashboardID+".html")
+		if err != nil {
+			dashboardError(w, err)
+			return
+		}
+		externalJSON(w, map[string]any{"html": string(page)})
+		return
 	default:
 		externalError(w, 400, "invalid_arguments", "unknown dashboard action")
 		return

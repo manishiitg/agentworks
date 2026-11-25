@@ -88,7 +88,7 @@ func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if claims == nil || userAccessForClaims(claims).Disabled {
 		return false
 	}
-	if (dashboardMutation(action) || action == "share" || dashboardOwnersWrite(action) || dashboardExportAction(action)) && !userAccessForClaims(claims).CanEdit {
+	if (dashboardMutation(action) || action == "share" || action == dashboardTeamAction || dashboardOwnersWrite(action) || dashboardExportAction(action)) && !userAccessForClaims(claims).CanEdit {
 		return false
 	}
 	if claims.AccessToken == nil {
@@ -97,7 +97,7 @@ func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if !claims.AccessToken.Allows("dashboards:read") {
 		return false
 	}
-	if (dashboardMutation(action) || action == "share" || dashboardOwnersWrite(action) || dashboardExportAction(action)) && !dashboardAuthoringAllowed(claims, nil) {
+	if (dashboardMutation(action) || action == "share" || action == dashboardTeamAction || dashboardOwnersWrite(action) || dashboardExportAction(action)) && !dashboardAuthoringAllowed(claims, nil) {
 		return false
 	}
 	if (action == "preview" || dashboardExportAction(action)) && !claims.AccessToken.Allows("runs:execute") {
@@ -333,6 +333,10 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	}
 	if args.Action == dashboardPublicAction {
 		api.handleDashboardPublicLink(w, r, claims, target, args.Mode, args.ID)
+		return
+	}
+	if args.Action == dashboardTeamAction {
+		api.handleDashboardTeamShare(w, r, claims, target, args.Mode, args.ID)
 		return
 	}
 	if args.Action == "export_static" {
