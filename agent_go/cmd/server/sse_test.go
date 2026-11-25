@@ -241,7 +241,8 @@ func TestDurableSSEBackfillStreamsEveryPageWithoutSkipping(t *testing.T) {
 	if err := store.SetSessionPersistenceClass(sessionID, events.SessionPersistenceInteractiveChat); err != nil {
 		t.Fatal(err)
 	}
-	for i := 1; i <= events.MaxPollingLimit+5; i++ {
+	total := events.MaxPollingLimit + 5
+	for i := 1; i <= total; i++ {
 		if _, _, err := journal.Append(sessionID, events.Event{
 			ID: fmt.Sprintf("message-%d", i), Type: "user_message", Timestamp: time.Now(),
 		}); err != nil {
@@ -266,6 +267,21 @@ func TestDurableSSEBackfillStreamsEveryPageWithoutSkipping(t *testing.T) {
 	}
 	if !strings.Contains(body, "id: 1000\n") || !strings.Contains(body, "id: 1005\n") {
 		t.Fatal("durable backfill did not advance one page at a time")
+	}
+	// A chat reopened far behind its tip reloads its saved history instead of replaying every event (a busy chat
+	// streamed 63 MB for 88 s before it showed). The frame id moves the cursor to the tip so a reconnect resumes there.
+	gap := durableReplayMaxGap
+	durableReplayMaxGap = 100
+	defer func() { durableReplayMaxGap = gap }()
+	stale := httptest.NewRequest("GET", "/api/sessions/"+sessionID+"/events/stream?durable_chat=1&since=2", nil)
+	stale = mux.SetURLVars(stale, map[string]string{"session_id": sessionID})
+	staleCtx, staleCancel := context.WithTimeout(stale.Context(), 100*time.Millisecond)
+	defer staleCancel()
+	sw := httptest.NewRecorder()
+	api.handleSSEStream(sw, stale.WithContext(staleCtx))
+	staleBody := sw.Body.String()
+	if !strings.Contains(staleBody, `"last_processed_index":-1`) || !strings.Contains(staleBody, fmt.Sprintf("id: %d\n", total)) || strings.Contains(staleBody, `"id":"message-3"`) {
+		t.Fatalf("a far-behind chat replayed its events instead of reloading: %.300s", staleBody)
 	}
 }
 

@@ -35,6 +35,9 @@ type sseStatusMessage struct {
 	RuntimeState               *RuntimeSnapshot `json:"runtime_state,omitempty"`
 }
 
+// durableReplayMaxGap is how far behind a reconnecting chat may be before it reloads its history instead of replaying.
+var durableReplayMaxGap int64 = 2000
+
 // handleSSEStream serves a Server-Sent Events stream of session events.
 //
 // Query params:
@@ -149,6 +152,20 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 			if err != nil {
 				log.Printf("[SSE] durable backfill failed for session %s: %v", sessionID, err)
 				return false
+			}
+			// A chat far behind its tip reloads its saved history instead of replaying every event: a busy chat
+			// reopened 105,000 events behind streamed 63 MB for 88 s before it showed. LastProcessedIndex -1 is the
+			// app's existing "reload from the durable transcript" signal; the frame id moves its cursor to the tip.
+			if sinceIndex == requestedIndex && requestedIndex > 0 && page.JournalLatestSequence-int64(requestedIndex) > durableReplayMaxGap {
+				tip := int(page.JournalLatestSequence)
+				msg := sseEventMessage{Events: []events.Event{}, SessionStatus: sessionStatus, LastProcessedIndex: -1}
+				if err := writeSSEEvent(w, "event", tip, api.nativeUsageResponse(r, sessionID, msg)); err != nil {
+					return false
+				}
+				flusher.Flush()
+				log.Printf("[CHAT_STREAM_REPLAY] session=%s result=reload_history since=%d tip=%d", sessionID, requestedIndex, tip)
+				sinceIndex = tip
+				return true
 			}
 			if len(page.Events) == 0 {
 				if page.JournalLatestSequence < int64(requestedIndex) {
