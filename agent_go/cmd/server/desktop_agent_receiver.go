@@ -68,7 +68,7 @@ func desktopAppAgentRecords(ctx context.Context, owner string) (map[string]Produ
 	out := map[string]ProductConversationRecord{}
 	ownedRoots := map[string]bool{}
 	for _, record := range document.Entries {
-		if record.ProfileID != crewProfileID || record.ResourceID == "" || record.ConversationID == "" || record.SessionID == "" || !ordinaryProjectChatKey(record.ResourceID, record.ConversationKey) {
+		if record.ProfileID != crewProfileID || record.ResourceID == "" || record.ConversationID == "" || record.SessionID == "" || !appAgentChatKey(record.ResourceID, record.ConversationKey) {
 			continue
 		}
 		owned, checked := ownedRoots[record.WorkspacePath]
@@ -103,7 +103,7 @@ func (api *StreamingAPI) loadDesktopAppAgentRecords(ctx context.Context, owner s
 	previews := map[string]agentOwnerStatusSnapshot{}
 	ownedRoots := map[string]bool{}
 	for _, record := range document.Entries {
-		if record.ProfileID != crewProfileID || record.ResourceID == "" || record.ConversationID == "" || record.SessionID == "" || !ordinaryProjectChatKey(record.ResourceID, record.ConversationKey) {
+		if record.ProfileID != crewProfileID || record.ResourceID == "" || record.ConversationID == "" || record.SessionID == "" || !appAgentChatKey(record.ResourceID, record.ConversationKey) {
 			continue
 		}
 		owned, checked := ownedRoots[record.WorkspacePath]
