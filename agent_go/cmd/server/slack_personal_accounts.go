@@ -23,11 +23,14 @@ func isPersonalSlack(server placeMCPServer) bool {
 
 type slackAccountRow struct {
 	personalConnectionPermissions
-	ID        string `json:"id"`
-	Owner     string `json:"owner"`
-	Label     string `json:"label"`
-	Selected  bool   `json:"selected"`
-	Connected bool   `json:"connected"`
+	ID         string `json:"id"`
+	Owner      string `json:"owner"`
+	Label      string `json:"label"`
+	TeamName   string `json:"team_name,omitempty"`
+	TeamDomain string `json:"team_domain,omitempty"`
+	UserName   string `json:"user_name,omitempty"`
+	Selected   bool   `json:"selected"`
+	Connected  bool   `json:"connected"`
 	// Mine marks the caller's own account; others appear only when added here.
 	Mine bool `json:"mine"`
 	// Problem is why the account last failed to connect, in Slack's own words; empty once it connects again.

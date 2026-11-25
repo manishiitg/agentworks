@@ -288,7 +288,11 @@ func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string
 		selected := selectedNames[vaultServerName(c.ID)]
 		out := slackAccountRow{personalConnectionPermissions: personalConnectionAccess(r, owner, workspace, selected, "Slack", "your project's Vault panel"),
 			ID: c.ID, Owner: owner, Label: label, Selected: selected, Connected: c.Status == "active", Mine: owner == actor}
-		if c.Status != "active" {
+		if c.Status == "active" {
+			if id := api.vaultSlackIdentityCached(ctx, c.ID, true); !id.empty() {
+				out.TeamName, out.TeamDomain, out.UserName = id.TeamName, id.TeamDomain, id.UserName
+			}
+		} else {
 			if outcome, ok := vaultSignInOutcomes.Load(c.ID); ok {
 				if o := outcome.(vaultSignInOutcome); !o.ok {
 					out.Problem = o.reason
