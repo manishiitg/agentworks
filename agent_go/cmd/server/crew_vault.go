@@ -431,6 +431,53 @@ func crewVaultScope(ctx context.Context) string {
 	return scope
 }
 
+// crewVaultReader is whose access a turn reads its server Crew vault with. A User of that Crew works with its keys and
+// apps but is not one of the vault's owners (crewVaultOwners), so their turn reads it as the Crew's main owner; the
+// scope still limits the read to this one Crew vault and the turn takes only the Crew's own selection from it. Everyone
+// else reads as themselves.
+func crewVaultReader(ctx context.Context, person string) string {
+	scope := crewVaultScope(ctx)
+	if scope == "" || person == "" {
+		return person
+	}
+	project := ""
+	crewVaultContentsCache.Range(func(key, _ any) bool {
+		if crewVaultID(key.(string)) == scope {
+			project = key.(string)
+			return false
+		}
+		return true
+	})
+	if project == "" {
+		return person
+	}
+	root := crewProjectRootByID(project)
+	if root == "" || !crewIsProjectUser(root, person) {
+		return person
+	}
+	if owner := ownerOfCrewProjectID(project); owner != "" {
+		return owner
+	}
+	return person
+}
+
+// crewVaultRowsOnly keeps the rows that are in the scoped Crew vault itself, so a User's turn that reads as the main
+// owner never takes one of the owner's own keys (not even as a same-named stand-in).
+func crewVaultRowsOnly(ctx context.Context, rows []globalSecretEntry) []globalSecretEntry {
+	prefix, err := vaultSecretName(crewVaultScope(ctx), "x")
+	if err != nil {
+		return nil
+	}
+	prefix = strings.TrimSuffix(prefix, "x")
+	out := rows[:0:0]
+	for _, row := range rows {
+		if strings.HasPrefix(row.Name, prefix) {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
 // withCrewVaultScopeForNames scopes a key lookup to the Crew vault its selected names come from: a server Crew's
 // selection is its Crew vault's names (crewVaultSecretNames), each starting with that vault's prefix.
 func withCrewVaultScopeForNames(ctx context.Context, names []string) context.Context {

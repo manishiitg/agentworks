@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
@@ -197,6 +198,23 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	}
 	if slices.Contains(crewCoOwnersOnly(root), "cara") || !slices.Contains(crewCoOwnersOnly(root), "ann") {
 		t.Fatalf("co-owners list = %v", crewCoOwnersOnly(root))
+	}
+	// A User's turn gets the project's keys (#4008): cara is not a vault owner, so her turn reads the Crew vault as the
+	// main owner, and only rows from that Crew vault, never the owner's own same-named key. A co-owner and a stranger
+	// read as themselves.
+	crewVaultContentsCache.Store("team-proj", crewVaultContentsCached{at: time.Now()})
+	t.Cleanup(func() { forgetCrewVaultContents("team-proj") })
+	vaultCtx := withCrewVaultScope(context.Background(), crewVaultID("team-proj"))
+	if crewVaultReader(vaultCtx, "cara") != "owner" || crewVaultReader(vaultCtx, "ann") != "ann" || crewVaultReader(vaultCtx, "zed") != "zed" || crewVaultReader(context.Background(), "cara") != "cara" {
+		t.Fatal("a User does not read the project vault as its main owner, or someone else does")
+	}
+	crewKey, err := vaultSecretName(crewVaultID("team-proj"), "FAL_AI_KEY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownKey, _ := vaultSecretName("v-owner-personal", "FAL_AI_KEY")
+	if rows := crewVaultRowsOnly(vaultCtx, []globalSecretEntry{{Name: ownKey}, {Name: crewKey}}); len(rows) != 1 || rows[0].Name != crewKey {
+		t.Fatalf("a User's rows from the owner's Vault = %v", rows)
 	}
 	// The same lock outside chat (#3796): a direct MCP setup tool is refused for cara while its read action, a co-owner
 	// and the owner stay open, and the website's file proxy refuses her write to the instructions but not a work file.
