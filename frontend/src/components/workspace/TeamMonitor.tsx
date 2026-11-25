@@ -37,7 +37,7 @@ const ignoreOwnSummary=()=>{}
 
 /** Every Crew in the person's menu, on this network and each connected one, with its Team as the server words it. */
 // Admin only: someone working on that server outside your Teams, as the server words it (activity, never chat text).
-type AdminPerson={user_id:string;person:string;active?:boolean;last?:string;done?:string;projects?:string[];mac?:string}
+type AdminPerson={user_id:string;person:string;active?:boolean;last?:string;done?:string;projects?:string[];mac?:string;online?:boolean;quiet?:boolean}
 type MonitorSource={connectionId:string;network:string;networkId:string;crews:Crew[];others:AdminPerson[];error?:string}
 function useTeamCrews():{sources:MonitorSource[];notice:string;people:TeamOverviewPerson[];summary:string} {
  const user=useAuthStore(state=>state.user?.id||'')
@@ -166,11 +166,12 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
 // A live reload can keep a Team list fetched before others existed; skip it instead of crashing the app.
  const adminView=sources.filter(source=>source.others?.length).map(source=><div key={`others:${source.connectionId}`} className="min-w-0">
    <h4 className={`${section} border-t border-border`}>Not in your Teams{multi&&source.network?` · ${source.network}`:''} <span className="ml-1 rounded bg-muted px-1 normal-case tracking-normal">admin</span></h4>
-   {source.others.map(p=><div key={p.user_id} className="min-w-0 rounded-md px-2 py-1.5 hover:bg-muted/50">
-    <div className="flex min-w-0 items-center gap-2"><span className="relative inline-flex shrink-0"><Avatar name={p.person} className="h-[18px] w-[18px] shrink-0 rounded-full text-[9px]"/>{p.active&&<span aria-label="Working" className="absolute -bottom-px -right-px h-1.5 w-1.5 rounded-full border border-popover bg-emerald-500"/>}</span><span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{p.person}</span>{status(p.active?'active now':undefined,p.last?timeAgo(p.last):undefined)}</div>
-    {p.done&&<p className="ml-6 truncate text-[10px] text-muted-foreground">{[`Today: ${p.done}`,(p.projects||[]).join(', ')].filter(Boolean).join(' · ')}</p>}
+   {source.others.filter(p=>!p.quiet).map(p=><div key={p.user_id} className="min-w-0 rounded-md px-2 py-1.5 hover:bg-muted/50">
+    <div className="flex min-w-0 items-center gap-2"><span className="relative inline-flex shrink-0"><Avatar name={p.person} className="h-[18px] w-[18px] shrink-0 rounded-full text-[9px]"/>{p.active&&<span aria-label="Working" className="absolute -bottom-px -right-px h-1.5 w-1.5 rounded-full border border-popover bg-emerald-500"/>}</span><span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{p.person}</span>{status(p.active?'active now':undefined,p.last?timeAgo(p.last):p.online?'Mac app open':undefined)}</div>
+    {(p.done||p.projects?.length||(p.online&&p.last))&&<p className="ml-6 truncate text-[10px] text-muted-foreground">{[p.done&&`Today: ${p.done}`,(p.projects||[]).join(', '),p.online&&p.last&&'Mac app open'].filter(Boolean).join(' · ')}</p>}
     {p.mac&&<p className="ml-6 truncate text-[10px] text-muted-foreground">Mac app on the company account: {p.mac}</p>}
    </div>)}
+   {quietLine(source.others.filter(p=>p.quiet).map(p=>({key:`quiet:${source.connectionId}:${p.user_id}`,name:p.person})),`${source.others.filter(p=>p.quiet).length} quiet this week`)}
   </div>)
  const busyPeople=people.filter(p=>p.working>0),earlier=people.filter(p=>!p.working&&(p.done||p.last)),quietPeople=people.filter(p=>!p.working&&!p.done&&!p.last)
  const listed=rows.filter(row=>row.personKey===only).sort((a,b)=>Number(workingRow(b))-Number(workingRow(a)))
