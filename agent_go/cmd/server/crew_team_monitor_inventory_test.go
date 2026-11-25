@@ -74,11 +74,18 @@ func TestCrewTeamMonitorPartialConnectionsKeepListedTeams(t *testing.T) {
 			http.Error(w, "unauthorized", 401)
 			return
 		}
-		externalJSON(w, crewTeamMonitorReply{Connections: []crewTeamMonitorConnection{{Teams: []crewTeamLiveView{{ProjectID: "joined", Name: "Example", Work: &crewTeamMonitorWork{Lines: []string{}}}}}}})
+		externalJSON(w, crewTeamMonitorReply{Connections: []crewTeamMonitorConnection{{Teams: []crewTeamLiveView{{ProjectID: "joined", Name: "Example", Work: &crewTeamMonitorWork{}}}}}})
 	}))
 	defer online.Close()
 	offline := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "unavailable", 503) }))
 	defer offline.Close()
+	// #3900: a server on an older build answered the missing route with its web page (200, HTML) and the menu said
+	// only "Teams didn't load"; it must say the server needs an update.
+	old := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<!doctype html><html></html>"))
+	}))
+	defer old.Close()
 	// A server that never answers held every poll for its whole wait (17-20 s) and slowed the whole app.
 	stop := make(chan struct{})
 	var silentReads atomic.Int32
@@ -92,7 +99,7 @@ func TestCrewTeamMonitorPartialConnectionsKeepListedTeams(t *testing.T) {
 		crewTeamMonitorGoodReads.Clear()
 		crewTeamMonitorFailures.Clear()
 	})
-	if err := writeDesktopConnections("owner", []desktopConnection{{ID: "online", Name: "Example company", Server: online.URL, Token: "saved-sign-in"}, {ID: "offline", Name: "Server", Server: offline.URL, Token: "other-sign-in"}, {ID: "silent", Name: "Quiet company", Server: silent.URL, Token: "third-sign-in"}}); err != nil {
+	if err := writeDesktopConnections("owner", []desktopConnection{{ID: "online", Name: "Example company", Server: online.URL, Token: "saved-sign-in"}, {ID: "offline", Name: "Server", Server: offline.URL, Token: "other-sign-in"}, {ID: "silent", Name: "Quiet company", Server: silent.URL, Token: "third-sign-in"}, {ID: "old", Name: "Old company", Server: old.URL, Token: "fourth-sign-in"}}); err != nil {
 		t.Fatal(err)
 	}
 	poll := func() crewTeamMonitorReply {
@@ -110,7 +117,7 @@ func TestCrewTeamMonitorPartialConnectionsKeepListedTeams(t *testing.T) {
 	}
 	reply := poll()
 	// The notice names each server and its reason, not only a count.
-	if reply.Notice != "A saved server: Teams didn't load · Quiet company: didn't answer" {
+	if reply.Notice != "A saved server: Teams didn't load · Old company: needs an update to show Teams · Quiet company: didn't answer" {
 		t.Fatalf("missing named partial result: %+v", reply)
 	}
 	// The next poll reports the silent server at once instead of waiting on it again, and keeps the listed Team.

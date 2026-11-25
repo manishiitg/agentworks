@@ -357,6 +357,14 @@
   },
   {
     "family": "workspace",
+    "name": "team_overview",
+    "member": "crew_team_sync__overview",
+    "description": "What a project Team is doing now and got done in the last day or week: who is working, chats, Team file changes, commits, decisions and tokens used, also per person.",
+    "source": "crew_team_sync",
+    "source_action": "overview"
+  },
+  {
+    "family": "workspace",
     "name": "team_dashboards",
     "member": "crew_team_sync__dashboards",
     "description": "Use the current workspace team dashboards operation.",

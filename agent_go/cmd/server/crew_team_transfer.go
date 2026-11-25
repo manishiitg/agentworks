@@ -347,6 +347,7 @@ func (api *StreamingAPI) registerCrewTeamRoutes(r *mux.Router) {
 	r.HandleFunc("/crew-teams/{project}/agent-forks", api.handleCrewAgentFork).Methods("GET", "POST")
 	r.HandleFunc("/crew-teams/{project}/agent-forks/{fork}/{op:plan|chunks|commit|download|accept|complete|cancel}", api.handleCrewAgentFork).Methods("POST", "PUT")
 	r.HandleFunc("/crew-teams/{project}/activity", api.handleCrewTeamActivity).Methods("GET", "POST")
+	r.HandleFunc("/crew-teams/{project}/overview", api.handleCrewTeamOverview).Methods("GET")
 	r.HandleFunc("/crew-teams/{project}/activity-posts", api.handleCrewTeamActivityPosts).Methods("GET", "POST")
 	r.HandleFunc("/crew-teams/{project}/work", api.handleCrewWorkLog).Methods("GET", "POST")
 	r.HandleFunc("/crew-teams/{project}/checklists", api.handleCrewTeamChecklists).Methods("GET", "POST")

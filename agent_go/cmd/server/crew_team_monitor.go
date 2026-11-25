@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -26,6 +27,11 @@ type crewTeamMonitorConnection struct {
 type crewTeamMonitorReply struct {
 	Connections []crewTeamMonitorConnection `json:"connections"`
 	Notice      string                      `json:"notice,omitempty"`
+	// People is the "By person" view: everyone in the viewer's Teams, across servers, with what they did.
+	People []crewTeamOverviewPerson `json:"people"`
+	// Tokens is the tokens used in the last 24 hours across all the listed Teams; TokensLabel says it in words.
+	Tokens      int64  `json:"tokens"`
+	TokensLabel string `json:"tokens_label,omitempty"`
 }
 
 // Team membership, not the own-project sidebar, is the monitor's inventory.
@@ -62,6 +68,8 @@ func crewTeamMonitorFor(ctx context.Context, viewer string) ([]crewTeamLiveView,
 			defer wg.Done()
 			out[i] = crewTeamLiveFor(ctx, team, teamAgentsByPerson(ctx, team, viewer), viewer)
 			out[i].Work = crewTeamMonitorWorkFor(out[i], time.Now())
+			overview := crewTeamOverviewOf(ctx, team, out[i], viewer, "day", false)
+			out[i].Overview = &overview
 		}(i, team)
 	}
 	wg.Wait()
@@ -139,6 +147,10 @@ func (api *StreamingAPI) handleCrewTeamMonitor(w http.ResponseWriter, r *http.Re
 	// Name each server and its real reason; a count alone is not actionable.
 	slices.Sort(failed)
 	out.Notice = strings.Join(failed, " · ")
+	out.People, out.Tokens = crewTeamMonitorPeople(out.Connections)
+	if out.Tokens > 0 {
+		out.TokensLabel = crewTeamOverviewTokensLabel(out.Tokens) + " tokens in the last 24 hours across your Teams"
+	}
 	externalJSON(w, out)
 }
 
@@ -222,7 +234,11 @@ func (e *crewTeamMonitorReadError) Unwrap() error { return e.cause }
 func crewTeamMonitorFailure(err error) (status int, code, reason string, transient bool) {
 	var httpErr *crewRemoteHTTPError
 	var transport *crewRemoteTransportError
+	var syntax *json.SyntaxError
 	switch {
+	case errors.As(err, &syntax):
+		// An older server answers a route it doesn't have with its web page (#3900).
+		return 0, "not_json", "needs an update to show Teams", false
 	case errors.As(err, &transport):
 		return 0, "transport", "didn't answer", true
 	case errors.As(err, &httpErr):
@@ -270,28 +286,16 @@ func crewTeamMonitorLastGood(viewer, connection string, transient bool) ([]crewT
 // One Team-level summary, built only from the viewer-admitted live projection.
 // Hidden/terminal journals are never read here; their explicit posts may appear.
 type crewTeamMonitorWork struct {
-	Working         int      `json:"working"`
-	Label           string   `json:"label,omitempty"`
-	Lines           []string `json:"lines"`
-	More            string   `json:"more,omitempty"`
-	LastWorkedAt    string   `json:"last_worked_at,omitempty"`
-	LastWorkedLabel string   `json:"last_worked_label,omitempty"`
+	Working         int    `json:"working"`
+	Label           string `json:"label,omitempty"`
+	LastWorkedAt    string `json:"last_worked_at,omitempty"`
+	LastWorkedLabel string `json:"last_worked_label,omitempty"`
 }
 
 func crewTeamMonitorWorkFor(live crewTeamLiveView, now time.Time) *crewTeamMonitorWork {
-	out := &crewTeamMonitorWork{Working: len(live.Agents), Lines: []string{}}
-	rows := slices.Clone(live.Agents)
-	// Stable order: a map-backed registry must not shuffle the two summary lines.
-	slices.SortFunc(rows, func(a, b crewTeamLiveAgent) int { return strings.Compare(a.OwnerID+"/"+a.ID, b.OwnerID+"/"+b.ID) })
-	for _, row := range rows[:min(2, len(rows))] {
-		line := firstNonEmptyTrimmed(row.LastMessage, row.Doing, row.Waiting, row.Activity)
-		out.Lines = append(out.Lines, row.Name+" · "+crewTeamMessageLine(line)+" · "+row.Person)
-	}
+	out := &crewTeamMonitorWork{Working: len(live.Agents)}
 	if out.Working > 0 {
 		out.Label = fmt.Sprintf("%d working", out.Working)
-	}
-	if out.Working > 2 {
-		out.More = fmt.Sprintf("+%d more", out.Working-2)
 	}
 	at := live.lastWorkedAt
 	// Preserve observed activity for stable recency ordering. Current work is
@@ -323,4 +327,51 @@ func crewTeamMonitorServerName(c desktopConnection) string {
 		return ""
 	}
 	return name
+}
+
+// crewTeamMonitorPeople merges each Team's people into one row per person and server, adding up what they did in
+// all of the viewer's Teams, and the tokens of every listed Team.
+func crewTeamMonitorPeople(connections []crewTeamMonitorConnection) ([]crewTeamOverviewPerson, int64) {
+	merged := map[string]*crewTeamOverviewPerson{}
+	order := []string{}
+	var tokens int64
+	for _, source := range connections {
+		for _, team := range source.Teams {
+			if team.Overview == nil {
+				continue
+			}
+			tokens += team.Overview.Counts.Tokens
+			for _, p := range team.Overview.People {
+				key := source.Connection + "\x00" + p.UserID
+				m := merged[key]
+				if m == nil {
+					m = &crewTeamOverviewPerson{UserID: p.UserID, Person: p.Person, Network: source.Network, Now: []crewTeamOverviewNow{}, Teams: []string{}}
+					merged[key] = m
+					order = append(order, key)
+				}
+				m.Working += p.Working
+				m.Now = append(m.Now, p.Now...)
+				if p.Working > 0 || p.Counts != (crewTeamOverviewCounts{}) {
+					m.Teams = append(m.Teams, team.Name)
+				}
+				m.Counts.Chats += p.Counts.Chats
+				m.Counts.Files += p.Counts.Files
+				m.Counts.Commits += p.Counts.Commits
+				m.Counts.Decisions += p.Counts.Decisions
+				m.Counts.Tokens += p.Counts.Tokens
+				if p.Last != nil && (m.Last == nil || p.Last.At.After(m.Last.At)) {
+					last := *p.Last
+					last.Line += " in " + team.Name
+					m.Last = &last
+				}
+			}
+		}
+	}
+	out := []crewTeamOverviewPerson{}
+	for _, key := range order {
+		merged[key].Done = crewTeamOverviewDoneLine(merged[key].Counts)
+		out = append(out, *merged[key])
+	}
+	crewTeamOverviewSortPeople(out)
+	return out, tokens
 }

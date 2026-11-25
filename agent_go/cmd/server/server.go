@@ -781,6 +781,12 @@ func spaStaticFileHandler(root string) http.Handler {
 			serveShell(w, r)
 			return
 		}
+		// An address under /api that no route answers is "not found", never the web page: a client reading data from
+		// an older server must learn the route is missing instead of failing to read HTML (#3900).
+		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+			externalError(w, http.StatusNotFound, "not_found", "This server doesn't have this feature yet. It needs an update.")
+			return
+		}
 
 		relativePath := filepath.Clean(strings.TrimPrefix(r.URL.Path, "/"))
 		if relativePath != "." && !strings.HasPrefix(relativePath, "..") {

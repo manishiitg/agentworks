@@ -14,6 +14,7 @@ import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamChanged, teamEr
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { OnlineProjectsCard } from './OnlineProjectsCard'
 import { TeamActivity } from './TeamActivity'
+import { TeamOverviewPanel } from './TeamOverview'
 import { openCrewAccess, pendingCrewTeamSection, type CrewTeamSection } from './MacSharedAgents'
 import { CrewWhereRow } from './CrewWorksElsewhere'
 import { TeamWizard } from './TeamWizard'
@@ -152,9 +153,9 @@ export function TeamTab({ projectId, goOnline, onBack, agents }: { projectId: st
   if (settlingServer && (!view || !target)) return <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />Putting this project online on {settlingServer}…</p>
   if (!view || !target) return error ? <p role="alert" className="text-xs text-muted-foreground">{error}</p> : <p role="status" className="text-sm text-muted-foreground">Loading Team…</p>
   const { team } = view
-  const requested=team.on ? (section?.project===projectId?section.tab:'activity'):'people'
+  const requested=team.on ? (section?.project===projectId?section.tab:'overview'):'people'
   // Kit always has a tab: the Team instructions, skills, tools and keys, and setup steps (#3141).
-  const tabs:CrewTeamSection[]=['people','agents','activity','sync','setups']
+  const tabs:CrewTeamSection[]=['overview','people','agents','activity','sync','setups']
   const selected=requested
   if (team.on) wentOnline.delete(projectId)
   if (view.new_team && !noTeam) return <TeamWizard target={target} onNo={() => setNoTeam(true)} offset={settling ? 1 : 0} />
@@ -163,7 +164,7 @@ export function TeamTab({ projectId, goOnline, onBack, agents }: { projectId: st
     {/* The tabs as on every side panel page (YourComputerPanel): one segmented row, a small back arrow beside it. */}
     {team.on && <div className="flex items-stretch gap-2">
       {back}
-      <div role="tablist" aria-label="Team" className={`grid min-w-0 flex-1 grid-cols-5 gap-1 rounded-xl border border-border bg-muted/30 p-1 text-sm`}>
+      <div role="tablist" aria-label="Team" className={`grid min-w-0 flex-1 grid-cols-6 gap-1 rounded-xl border border-border bg-muted/30 p-1 text-sm`}>
         {tabs.map(tab => <button key={tab} type="button" role="tab"
           id={`${tabId}-${tab}`} aria-controls={`${tabId}-${tab}-panel`} aria-selected={selected === tab}
           tabIndex={selected === tab ? 0 : -1}
@@ -176,13 +177,14 @@ export function TeamTab({ projectId, goOnline, onBack, agents }: { projectId: st
             document.getElementById(`${tabId}-${next}`)?.focus()
           }}
           className={`min-w-0 rounded-lg px-1 text-xs py-2 text-center ${selected === tab ? 'bg-background text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-muted'}`}>
-          <span className="block font-semibold">{({ people: 'People', agents: 'Agents', activity: 'Activity', sync: 'Sync',setups:'Kit' })[tab]}{tab==='setups'&&setups.data&&<span className="ml-1 text-[10px] font-normal text-muted-foreground">{setups.data.to_do}</span>}</span>
+          <span className="block font-semibold">{({ overview: 'Overview', people: 'People', agents: 'Agents', activity: 'Activity', sync: 'Sync',setups:'Kit' })[tab]}{tab==='setups'&&setups.data&&<span className="ml-1 text-[10px] font-normal text-muted-foreground">{setups.data.to_do}</span>}</span>
 
         </button>)}
       </div>
     </div>}
     <div role={team.on ? 'tabpanel' : undefined} id={`${tabId}-${selected}-panel`} aria-labelledby={team.on ? `${tabId}-${selected}` : undefined} tabIndex={0} className="space-y-3">
       {selected === 'setups' && (setups.error?<p role="alert" className="text-sm text-destructive">{setups.error}</p>:<TeamKit key={`${captureChatIdentity()}:${target.connection||''}:${target.project}`} target={target} projectId={projectId} list={setups.data} refreshKey={setups.version} folder={team.folder.folders?.find(item=>!item.file)?.path}/>)}
+      {selected === 'overview' && <TeamOverviewPanel key={`${target.connection || ''}:${target.project}`} target={target} />}
       {selected === 'activity' && <TeamActivity key={`${target.connection || ''}:${target.project}`} target={target} projectId={projectId} />}
       {selected === 'people' && <><PeopleCard view={view} target={target} projectId={projectId} projects={team.on ? <OnlineProjectsCard target={target} /> : null} />{view.can_leave && <LeaveTeam target={target} confirm={view.leave_confirm} />}</>}
       {selected === 'agents' && <section aria-label="Agents" className="space-y-3">{agents}</section>}
