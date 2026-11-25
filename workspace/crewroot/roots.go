@@ -4,6 +4,7 @@ package crewroot
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -67,6 +68,10 @@ func records() (map[string]Record, error) {
 
 // Removal accepts absent directories after a partial cleanup, but an existing
 // parent must still be the original directory, never a replacement symlink.
+// ErrCrewFolderMissing: a registered Crew whose folder no longer exists. It wraps fs.ErrNotExist so readers
+// answer "file does not exist" instead of a server error.
+var ErrCrewFolderMissing = fmt.Errorf("the Crew folder no longer exists: %w", fs.ErrNotExist)
+
 func unchangedDirectory(dir string, allowMissing bool) error {
 	for current := dir; ; current = filepath.Dir(current) {
 		info, err := os.Lstat(current)
@@ -76,6 +81,10 @@ func unchangedDirectory(dir string, allowMissing bool) error {
 				return fmt.Errorf("the Crew folder is unavailable or has changed; restore its original folder")
 			}
 			return nil
+		}
+		if !allowMissing && os.IsNotExist(err) {
+			// A deleted Crew still in the registry: its files are simply not there (#4105).
+			return ErrCrewFolderMissing
 		}
 		if !allowMissing || !os.IsNotExist(err) || filepath.Dir(current) == current {
 			return fmt.Errorf("the Crew folder is unavailable or has changed; restore its original folder")

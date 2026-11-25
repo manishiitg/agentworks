@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"mime"
 	"net/http"
@@ -704,7 +705,7 @@ func GetDocument(c *gin.Context) {
 
 	// Resolve path with user isolation
 	filePath, err := resolveUserPath(c, filePathParam)
-	if err != nil {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
 			Success: false,
 			Message: "Failed to resolve path",
@@ -714,7 +715,7 @@ func GetDocument(c *gin.Context) {
 	}
 
 	// Validate file path for security
-	if !utils.IsValidFilePath(filePath, docsDir) {
+	if err == nil && !utils.IsValidFilePath(filePath, docsDir) {
 		c.JSON(http.StatusBadRequest, models.APIResponse[any]{
 			Success: false,
 			Message: "Invalid file path",
@@ -723,9 +724,12 @@ func GetDocument(c *gin.Context) {
 		return
 	}
 
-	// Check if file exists
-	info, err := os.Stat(filePath)
-	if os.IsNotExist(err) {
+	// Check if file exists (a deleted Crew's folder resolves to fs.ErrNotExist, #4105)
+	var info os.FileInfo
+	if err == nil {
+		info, err = os.Stat(filePath)
+	}
+	if os.IsNotExist(err) || errors.Is(err, fs.ErrNotExist) {
 		// File doesn't exist - return 200 with message indicating file doesn't exist
 		c.JSON(http.StatusOK, models.APIResponse[models.Document]{
 			Success: true,
