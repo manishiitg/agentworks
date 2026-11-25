@@ -438,6 +438,13 @@ func (s *session) response(text string, usage *llmtypes.Usage) *llmtypes.Content
 		gi.PromptTokens, gi.CompletionTokens, gi.TotalTokens = &prompt, &usage.OutputTokens, &usage.TotalTokens
 		gi.CachedContentTokens = usage.CacheTokens
 		gi.ReasoningTokens = usage.ReasoningTokens
+		// ACP leaves open whether inputTokens counts cached input. agy reports
+		// fresh input apart from cache (its total is input + output + cache);
+		// pricing would otherwise subtract the cache again and bill fresh
+		// input as nothing. The total tells the two shapes apart.
+		if inclusive, known := promptIncludesCache(usage); known {
+			gi.Additional["prompt_tokens_include_cache"] = inclusive
+		}
 	}
 	if status != nil {
 		for _, key := range []string{llmtypes.ContextUsedTokensMetaKey, llmtypes.ContextWindowTokensMetaKey} {
@@ -451,4 +458,13 @@ func (s *session) response(text string, usage *llmtypes.Usage) *llmtypes.Content
 		WorkingDir: s.workdir, Model: model, Status: llmtypes.CodingProviderSessionStatusIdle,
 	})
 	return &llmtypes.ContentResponse{Choices: []*llmtypes.ContentChoice{{Content: text, StopReason: "stop", GenerationInfo: gi}}, Usage: usage}
+}
+
+// promptIncludesCache reports whether usage.InputTokens already counts cached
+// input; known is false when the turn read nothing from cache.
+func promptIncludesCache(usage *llmtypes.Usage) (inclusive, known bool) {
+	if usage == nil || usage.CacheTokens == nil || *usage.CacheTokens <= 0 {
+		return false, false
+	}
+	return usage.TotalTokens < usage.InputTokens+usage.OutputTokens+*usage.CacheTokens, true
 }
