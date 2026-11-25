@@ -1,13 +1,14 @@
 ---
 name: crew-agents
-description: "Read before working with this project's other tabs (agents) or the person's own agents - asking, opening, forking and naming tabs, starting helpers with a task (fresh or forked, under or beside you), the main chat's lead role, answers that arrive later, function tabs and AgentBridge agents."
+description: "Read before working with this project's other tabs (agents) or the person's own agents - asking, opening, forking and naming tabs, starting helpers with a task (fresh or forked, under or beside you), coordinating work across agents, answers that arrive later, function tabs and AgentBridge agents."
 ---
 
 # Agents in this project
 
 Each chat (tab) is its own named agent with the same skills, memory, Brain,
 tools and access, and its own conversation. `sessions action=list` lists them
-with their purposes, marks which tab is you and which is the main chat.
+with their purposes, marks which tab is you and which is the default agent (Main
+until renamed).
 "All agents" (a status round, a broadcast) means the tabs it lists: tabs the
 person hid are left out, and removed ones are gone. Include hidden tabs only
 when the person asks for them (`include_hidden`).
@@ -30,21 +31,24 @@ only when that kind of delegation is requested or allowed by the current
 instructions. Forking a project tab and spawning a CLI helper are different
 operations; do not describe one as the other.
 
-## Who leads
+## Who coordinates
 
-Chat IDs stay fixed. `main` is the calling owner’s default chat address (external channels retain the project’s main chat); use a listed ID to keep addressing the same agent after the main chat changes.
+Every agent is equal, the first one (Main) included: it is simply the project's
+default agent, which gets work nobody addressed to an agent. Chat IDs stay fixed.
+`main` addresses the calling owner's default agent; use a listed ID to keep
+addressing the same agent.
 
-Use Main as the coordinator for work that spans several areas: keep the overall
-request and decisions there, hand off focused work when useful, collect results,
-and resolve dependencies or overlapping file changes. Main can do small tasks
-itself; it does not have to delegate every request.
+When work spans several areas, the agent the person asked coordinates it (or the
+one the person names): it keeps the overall request and decisions, hands off
+focused work when useful, collects results and resolves dependencies or
+overlapping file changes. It can do small tasks itself; it does not have to
+delegate every request.
 
-Use other tabs as independent specialists with clear names and purposes, such
-as UI/UX, GitHub or review. Reuse a suitable existing tab before making another.
-A person can work directly in a specialist tab; it owns that task end to end
-and does not need Main's approval for routine work the person requested.
-Coordinate with Main when the task affects the broader plan or another tab's
-work. Main is a coordination role, not extra permissions or an edit lock.
+Give agents clear names and purposes, such as UI/UX, GitHub or review. Reuse a
+suitable existing agent before making another. A person can work directly with
+any agent; it owns that task end to end and needs no other agent's approval for
+routine work the person requested. Coordinating is a role for the task, not
+extra permissions or an edit lock.
 
 When handing off work, give the source of context, a focused task, expected
 result, relevant files and constraints. Agree who edits overlapping files.
@@ -101,7 +105,7 @@ There is no whole-project edit lock; coordinate overlapping file changes through
 - When a fork or helper you made has finished, you may delete it with
   `sessions action=delete chat="<id>"` (preview, then call again with the
   returned `confirmation`). Only while it is still under you in the left menu;
-  never Main, yourself or another agent's fork. Its saved chats go, files stay.
+  never yourself or another agent's fork. Its saved chats go, files stay.
 - When the person asks, move one of their forks out from under its agent with
   `sessions action=move_out chat="<id>"` (it becomes an agent of its own; its
   parent can then no longer delete it); add `under="<id>"` to put it back.
@@ -116,10 +120,10 @@ There is no whole-project edit lock; coordinate overlapping file changes through
   and, when needed, `connection_id` (choices from `models action=list`) to the same
   call: do not open it and then set its model. Reuse a tab by name before opening another. Coordinate overlapping
   changes through messages; there is no whole-project edit lock. Do not split a small task.
-- `sessions action=new` archives the existing Main's conversation and starts a
+- `sessions action=new` archives the default agent's conversation and starts a
   fresh one in that same agent. It does not create a named tab or restore a
-  missing Main. Main is optional; use `sessions action=open name="<purpose>"`
-  to create a named agent tab instead.
+  missing default agent; use `sessions action=open name="<purpose>"` to create
+  a named agent tab instead.
 - Answers are not instant. The ask returns at once with a reply address, and
   the answer arrives later as a new message that starts a new turn in this
   chat. Do not wait, sleep or keep checking; carry on with other work, or end

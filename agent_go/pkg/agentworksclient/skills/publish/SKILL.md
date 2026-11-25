@@ -12,7 +12,7 @@ account while the computer is offline. This CLI import path uses the returned co
 Use the current AgentWorks connection. Discover destinations with the existing
 workspace list tool if the person wants an existing Crew. Preserve their choice:
 New project starts Only me; adding a named agent to an existing project keeps that
-Project's Main, instructions and Share. Imported raw chat remains private to
+project's other agents, instructions and Share. Imported raw chat remains private to
 Builders. Login files and .env are excluded.
 
 From this native Claude Code or Codex chat, run `agentworks publish --name NAME`

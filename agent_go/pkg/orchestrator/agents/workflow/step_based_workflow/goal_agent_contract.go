@@ -15,7 +15,7 @@ func goalScriptHelperTool(name string) bool {
 }
 
 func retiredAgentHelperError(name string) error {
-	return fmt.Errorf("This workflow still has an old agent helper (%s). Ask the project's main chat to convert its agent helpers into normal agent steps before running it. Saved script helpers are still supported.", name)
+	return fmt.Errorf("This workflow still has an old agent helper (%s). Ask one of the project's agents to convert its agent helpers into normal agent steps before running it. Saved script helpers are still supported.", name)
 }
 
 func validateGoalScriptedRouteAuthoring(routes []PlanOrchestrationRoute, plans ...*PlanningResponse) error {

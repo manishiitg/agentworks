@@ -53,12 +53,12 @@ func runDestinationEnumAny() []any {
 }
 
 // runDestinationHelp is the one description every tool gives the run_destination argument.
-const runDestinationHelp = `Where the messages run. "chat" (default): the project's main chat, or one of its chats with chat_id. "new": a new conversation for every run. "isolated": one conversation of its own, kept for this schedule or trigger.`
+const runDestinationHelp = `Where the messages run. "chat" (default): the project's default agent, or one of its agents with chat_id. "new": a new conversation for every run. "isolated": one conversation of its own, kept for this schedule or trigger.`
 
 // A Crew schedule that sends a message offers two places: an existing chat (the default from chat: the chat it was
 // made from, owner 22 Nov) or its own chat, a new chat for this schedule kept across runs and listed with the Crew's
 // chats. "new" still works for schedules saved with it, and for functions and webhooks, but is not offered here.
-const messageScheduleDestinationHelp = `Where the message goes. "chat" (the default): an existing chat; with no chat_id it is the chat the schedule is made from, else the main chat or one of the project's chats by chat_id. "isolated": its own chat, a new chat for this schedule that every run continues, listed with the project's chats; use it only when the person asks for that.`
+const messageScheduleDestinationHelp = `Where the message goes. "chat" (the default): an existing chat; with no chat_id it is the chat the schedule is made from, else the default agent or one of the project's agents by chat_id. "isolated": its own chat, a new chat for this schedule that every run continues, listed with the project's chats; use it only when the person asks for that.`
 
 // messageScheduleDestinationEnum is the run_destination values the schedule tools offer for a message schedule.
 func messageScheduleDestinationEnum() []string {

@@ -41,7 +41,7 @@ func macTeammateChats(ctx context.Context, userID, projectID string) []codeChat 
 	}
 	var out []codeChat
 	for _, row := range rows {
-		if row.CanWrite || row.OnYourMac || row.TabOwnerID == "" || row.SessionID == "" || row.IsMain || !strings.Contains(row.ConversationKey, codeChatSideMarker) {
+		if row.CanWrite || row.OnYourMac || row.TabOwnerID == "" || row.SessionID == "" || !strings.Contains(row.ConversationKey, codeChatSideMarker) {
 			continue
 		}
 		id := row.ConversationKey[strings.LastIndex(row.ConversationKey, codeChatSideMarker)+len(codeChatSideMarker):]

@@ -105,7 +105,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 	}
 
 	if !readOnly {
-		if err := register("create_project_schedule", "Repeat work using cron_expression: every 5 minutes is */5 * * * *, every hour is 0 * * * *, with timezone. Use in_minutes or run_at ONLY for a one-time reminder (for example, check the deploy in 3 hours). in_minutes:5 means once in five minutes, NEVER every five minutes. Confirm the saved timing_summary to the person. Where the message goes: chat (the default) is an existing chat: this chat when no chat_id is given, or the main chat or a tab by chat_id, steering it if already running. isolated is its own chat, a new chat for this schedule that every run continues, only when the person asks for that.", map[string]interface{}{
+		if err := register("create_project_schedule", "Repeat work using cron_expression: every 5 minutes is */5 * * * *, every hour is 0 * * * *, with timezone. Use in_minutes or run_at ONLY for a one-time reminder (for example, check the deploy in 3 hours). in_minutes:5 means once in five minutes, NEVER every five minutes. Confirm the saved timing_summary to the person. Where the message goes: chat (the default) is an existing chat: this chat when no chat_id is given, or the default agent or a tab by chat_id, steering it if already running. isolated is its own chat, a new chat for this schedule that every run continues, only when the person asks for that.", map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"name":            map[string]interface{}{"type": "string"},
@@ -117,7 +117,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				"timezone":        map[string]interface{}{"type": "string", "description": "IANA timezone, for example Asia/Kolkata. Required with cron_expression; for a one-time schedule it only sets how the time is shown."},
 				"enabled":         map[string]interface{}{"type": "boolean"},
 				"run_destination": map[string]interface{}{"type": "string", "enum": messageScheduleDestinationEnum(), "description": messageScheduleDestinationHelp},
-				"chat_id":         map[string]interface{}{"type": "string", "description": "With run_destination chat: run in this tab of the project (a chat_id from the project's chat list) instead of the main chat. With run_destination chat and no chat_id, it runs in the chat this is called from."},
+				"chat_id":         map[string]interface{}{"type": "string", "description": "With run_destination chat: run in this tab of the project (a chat_id from the project's chat list) instead of the default agent. With run_destination chat and no chat_id, it runs in the chat this is called from."},
 			},
 			"required": []string{"name"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -187,7 +187,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				"in_minutes": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": oneTimeMaxMinutes, "description": "Make it one-time: run once this many minutes from now. Replaces the recurring timing."},
 				"run_at":     map[string]interface{}{"type": "string", "description": "Make it one-time: run once at this RFC3339 moment. Replaces the recurring timing."}, "enabled": map[string]interface{}{"type": "boolean"},
 				"run_destination": map[string]interface{}{"type": "string", "enum": messageScheduleDestinationEnum(), "description": messageScheduleDestinationHelp},
-				"chat_id":         map[string]interface{}{"type": "string", "description": "Move the schedule to this tab of the project (a chat_id from the project's chat list). An empty string moves it back to the main chat."},
+				"chat_id":         map[string]interface{}{"type": "string", "description": "Move the schedule to this tab of the project (a chat_id from the project's chat list). An empty string moves it back to the default agent."},
 			},
 			"required": []string{"id"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
