@@ -103,3 +103,41 @@ func TestImportedRootUsesNativeOnlyAtActualWorkingRoot(t *testing.T) {
 		t.Fatal("native changes must refresh identity without duplicate injection")
 	}
 }
+
+// #3936: AGENTS.md is the one rules file. A CLAUDE.md or GEMINI.md that only
+// links to it adds nothing, and a CLI that natively reads the link at the
+// working root reads AGENTS.md too, so AGENTS.md is not injected twice.
+func TestAgentsLinkFilesAreNotInjectedTwice(t *testing.T) {
+	files := map[string]string{"AGENTS.md": "shared rules", "CLAUDE.md": "@AGENTS.md\n", "GEMINI.md": "\n@./AGENTS.md\n"}
+	read := func(name string) (string, bool, error) { v, ok := files[name]; return v, ok, nil }
+	method := func(r RootResult, name string) string {
+		for _, f := range r.Files {
+			if f.Name == name {
+				return f.Method
+			}
+		}
+		return ""
+	}
+	local, _ := Root([]string{"CLAUDE.md"}, true, read)
+	if local.Section != "" || method(local, "AGENTS.md") != "native" || method(local, "CLAUDE.md") != "link" || method(local, "GEMINI.md") != "link" {
+		t.Fatalf("Claude at its root reads AGENTS.md through the link: %+v", local)
+	}
+	linked, _ := Root([]string{"CLAUDE.md"}, false, read)
+	if strings.Count(linked.Section, "shared rules") != 1 || strings.Contains(linked.Section, "@AGENTS.md") {
+		t.Fatalf("a linked runtime injects AGENTS.md once and never the link: %q", linked.Section)
+	}
+	agy, _ := Root(nil, true, read)
+	if strings.Count(agy.Section, "shared rules") != 1 {
+		t.Fatalf("a CLI with no native files still gets AGENTS.md: %q", agy.Section)
+	}
+	files["CLAUDE.md"] = "@AGENTS.md\nClaude-only rule"
+	own, _ := Root([]string{"CLAUDE.md"}, true, read)
+	if method(own, "CLAUDE.md") != "native" || method(own, "AGENTS.md") != "injected" {
+		t.Fatalf("a CLAUDE.md with its own rules is not a link: %+v", own)
+	}
+	for _, c := range []string{"", "  \n", "@AGENTS.md extra", "@OTHER.md"} {
+		if IsAgentsLink(c) {
+			t.Fatalf("%q is not a link", c)
+		}
+	}
+}
