@@ -384,6 +384,19 @@ func TestAppearanceLargeCSSFileUsesAdmittedCrewAcrossToolPaths(t *testing.T) {
 	if exported := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "export"}); !strings.Contains(exported.Body.String(), "function render(frame) {}") {
 		t.Fatal("script_file did not reach background_script")
 	}
+	f.write(t, externalCommandCrewRoot+"/bg.glsl", "vec3 theme(vec2 uv){return vec3(uv,u_any_working);}")
+	if _, err := panels.tools["appearance"].exec(ctx, map[string]any{"operation": "apply", "shader_file": map[string]any{"path": "bg.glsl"}, "theme": map[string]any{"background_script": nil, "background_shader": map[string]any{"speed": 1, "intensity": 0.5, "mode": "light"}}}); err != nil {
+		t.Fatalf("shader_file apply: %v", err)
+	}
+	if exported := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "export"}); !strings.Contains(exported.Body.String(), "u_any_working") || !strings.Contains(exported.Body.String(), "light") {
+		t.Fatalf("shader_file did not reach background_shader: %s", exported.Body.String())
+	}
+	if both := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "apply", "shader_file": map[string]any{"path": "bg.glsl"}, "theme": map[string]any{"background_shader": map[string]any{"code": "x", "speed": 1, "intensity": 1}}}); both.Code < 400 {
+		t.Fatal("shader_file combined with inline code")
+	}
+	if _, err := panels.tools["appearance"].exec(ctx, map[string]any{"operation": "apply", "theme": map[string]any{"background_shader": nil}}); err != nil {
+		t.Fatalf("clear shader: %v", err)
+	}
 	if missing := f.call(t, "owner", "settings", map[string]any{"action": "appearance", "operation": "apply", "css_file": map[string]any{"path": "theme.css"}}); missing.Code < 400 || !strings.Contains(missing.Body.String(), "crew_id") {
 		t.Fatalf("missing crew_id refusal: %d %s", missing.Code, missing.Body.String())
 	}

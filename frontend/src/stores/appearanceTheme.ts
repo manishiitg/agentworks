@@ -22,9 +22,11 @@ export type AppearanceBorderSurface = 'panel' | 'card' | 'composer' | 'input' | 
 export interface AppearanceBorder { width_px?: number; radius_px?: number; style?: 'solid' | 'dashed' | 'dotted' }
 export interface AppearanceChat { user_style?: 'bubble' | 'plain' | 'card'; assistant_style?: 'bubble' | 'plain' | 'card'; spacing_px?: number; reading_width_px?: number }
 export interface AppearanceLayout { density?: 'compact' | 'normal' | 'roomy'; sidebar_width_px?: number; right_panel_open?: boolean }
+export type AppearanceBackgroundMode = 'dark' | 'light' | 'both'
 export interface AppearanceDecoration { id: string; children?: AppearanceDecoration[] }
-export interface AppearanceScript { code: string; fps: number }
-export interface AppearanceShader { code: string; speed: number; intensity: number }
+export interface AppearanceScript { code: string; fps: number; mode?: AppearanceBackgroundMode }
+export interface AppearanceShader { code: string; speed: number; intensity: number; mode?: AppearanceBackgroundMode }
+export const backgroundActiveInMode = (mode: AppearanceBackgroundMode | undefined, profile: AppearanceProfile) => !mode || mode === 'both' || mode === profile
 export interface AppearanceImage {asset_id:string;fit:'cover'|'contain'|'tile';position_x:number;position_y:number;brightness:number}
 export interface AppearanceTheme {
   name: string

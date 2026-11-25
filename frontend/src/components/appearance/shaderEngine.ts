@@ -16,7 +16,7 @@ type TimerExtension = {
 
 const vertex = 'attribute vec2 a_position;void main(){gl_Position=vec4(a_position,0.,1.);}'
 export const shaderFragment = (code: string) => `precision mediump float;
-uniform float u_time;uniform vec2 u_resolution;uniform vec3 u_accent;uniform float u_working;uniform float u_intensity;
+uniform float u_time;uniform vec2 u_resolution;uniform vec3 u_accent;uniform float u_working;uniform float u_any_working;uniform float u_intensity;
 ${code}
 void main(){gl_FragColor=vec4(clamp(theme(gl_FragCoord.xy/u_resolution),0.,1.)*u_intensity,1.);}`
 
@@ -67,7 +67,7 @@ export function mountAppearanceShader(canvas: HTMLCanvasElement, config: Appeara
     status('failed')
     return null
   }
-  const uniforms = Object.fromEntries(['u_time', 'u_resolution', 'u_accent', 'u_working'].map(name => [name, gl.getUniformLocation(program!, name)]))
+  const uniforms = Object.fromEntries(['u_time', 'u_resolution', 'u_accent', 'u_working', 'u_any_working'].map(name => [name, gl.getUniformLocation(program!, name)]))
   gl.uniform1f(gl.getUniformLocation(program, 'u_intensity'), config.intensity)
   const timer = gl.getExtension('EXT_disjoint_timer_query') as TimerExtension | null
   const meter = frameRateMeter(onFps)
@@ -76,7 +76,7 @@ export function mountAppearanceShader(canvas: HTMLCanvasElement, config: Appeara
   let raf: number | undefined
   let disposed = false, stopped = false, ready = false
   let fps = 30, overSince: number | undefined, due = 0, lastAt = 0, time = 0, gpuMS = 0
-  let working = 0
+  let working = 0, anyWorking = 0
   let accent: [number, number, number] = [.3, .7, 1]
   const motion = matchMedia('(prefers-reduced-motion: reduce)')
   const cancel = () => {
@@ -132,6 +132,7 @@ export function mountAppearanceShader(canvas: HTMLCanvasElement, config: Appeara
     gl.uniform2f(uniforms.u_resolution, width, height)
     gl.uniform3f(uniforms.u_accent, ...accent)
     gl.uniform1f(uniforms.u_working, working)
+    gl.uniform1f(uniforms.u_any_working, anyWorking)
     gl.drawArrays(gl.TRIANGLES, 0, 3)
     if (measuring) timer.endQueryEXT(timer.TIME_ELAPSED_EXT)
     meter.frame(start)
@@ -171,9 +172,10 @@ export function mountAppearanceShader(canvas: HTMLCanvasElement, config: Appeara
   canvas.addEventListener('webglcontextlost', lost)
   refresh()
   return {
-    setUniforms: (nextAccent: [number, number, number], nextWorking: boolean) => {
+    setUniforms: (nextAccent: [number, number, number], nextWorking: boolean, nextAnyWorking = nextWorking) => {
       accent = nextAccent
       working = Number(nextWorking)
+      anyWorking = Number(nextAnyWorking)
       if (motion.matches || config.speed === 0) {
         lastAt = 0
         draw()

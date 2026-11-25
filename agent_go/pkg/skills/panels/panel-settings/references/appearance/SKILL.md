@@ -70,8 +70,12 @@ you just applied; an old report describes an earlier look.
 | `decorations` | Inert div tree `[{id,children:[…]}]`, up to 64 nodes, depth 6, unique ids `[a-z][a-z0-9_-]{0,31}`. Style `[data-theme-decoration="id"]`. No HTML, events or scripts. |
 | `background_image` | Own `asset_id`, `fit` cover/contain/tile, `position_x`/`position_y` 0–100, `brightness` 0.25–1.5. |
 | `background_video` | Direct HTTPS MP4/WebM `url` or own `asset_id`, `dim` 0.35–0.95, `playback_rate` 0.25–1. Muted, looping, paused when hidden. |
-| `background_shader` | `{code,speed,intensity}`: 1–16384 bytes of GLSL, speed 0–2, intensity 0–1. |
-| `background_script` | `{code,fps}`: 1–65536 bytes of JavaScript defining `render(frame)`, fps 1–30. |
+| `background_shader` | `{code,speed,intensity,mode?}`: 1–16384 bytes of GLSL, speed 0–2, intensity 0–1. |
+| `background_script` | `{code,fps,mode?}`: 1–65536 bytes of JavaScript defining `render(frame)`, fps 1–30. |
+
+`mode` on a shader or script background is `dark`, `light` or `both` (default).
+A dark-only background runs no GPU or Worker work while the app shows Light, and
+the page's CSS background shows instead.
 | `css` | Up to 131,072 UTF-8 bytes (128 KiB). |
 
 Use one background at a time: image, video, shader and script exclude each
@@ -94,16 +98,20 @@ one-detail change.
   never overwrites another name), `delete` (current look unchanged), `reset`
   (Default Dark; saved themes kept).
 
-## Large CSS and script code as files
+## Large CSS, script and shader code as files
 
 Write the file with your normal write tool, then pass
-`css_file={path:"themes/itachi.css"}` and/or `script_file={path:"themes/stars.js"}`
-on apply, save or preview, with `theme.background_script.fps` for a script. In a
+`css_file={path:"themes/itachi.css"}`, `script_file={path:"themes/stars.js"}` and/or
+`shader_file={path:"themes/stars.glsl"}` on apply, save or preview, with
+`theme.background_script.fps` for a script and `theme.background_shader.speed`
+and `intensity` for a shader. In a
 Project's own chat `crew_id` is that project; elsewhere add `crew_id` from
 `list_crews`. Paths are relative to the project's folder; no `_files/`,
 `.agentworks/`, absolute host paths or URLs. Normal project file access applies.
-CSS files hold at most 128 KiB, scripts 64 KiB. Do not combine `css_file` with
-`theme.css`, or `script_file` with `theme.background_script.code`.
+CSS files hold at most 128 KiB, scripts 64 KiB, shaders 16 KiB. Do not combine
+a file with the same inline field (`css_file` with `theme.css`, `script_file`
+with `theme.background_script.code`, `shader_file` with
+`theme.background_shader.code`).
 
 The bridge error `arguments must be a JSON object: unexpected end of JSON input`
 means an incomplete JSON-string argument, not a size refusal: pass an object or
@@ -126,11 +134,12 @@ Use these, not generated class names; `guide.hook_guide` is the inventory.
 | `[data-theme-surface="composer"]`, `"composer-band"`, `[data-theme-composer-controls]`, `[data-theme-action]` | Composer and its send/stop/attach/microphone/composer-menu actions. Never hide or cover them. |
 | `[data-theme-control]` | Shared button/input/textarea/select. Native `:disabled`, `:focus-visible`, `aria-*` keep their meaning. |
 | `[data-theme-surface="dialog"]`, `"menu"`, `"popover"`, `[role="dialog"]`, `[role="menu"]` | Shared and legacy dialogs/menus; rows are `role="menuitem"`. |
-| `[data-theme-agent-state]`, `[data-theme-agent-selected]` | `running/waiting/failed/done/quiet`, selected `true/false`. Quiet is not proof of idle. Rows in the open project carry both on the row; rows in other projects carry the state only on their status dot. Match both with `:is([data-theme-agent-state="running"],:has([data-theme-agent-state="running"]))`. |
+| `[data-theme-agent-state]`, `[data-theme-agent-selected]` | `running/waiting/failed/done/quiet`, selected `true/false`. Quiet is not proof of idle. Every agent row in the left menu (open project, other projects, terminal agents and Threads) carries both on the row; status dots also carry the state. |
 | `[data-theme-turn-live]`, `[data-theme-tools-running]`, `[data-theme-team-working]`, `[data-theme-team-waiting]` | Existing live booleans. Absence (unmounted rows) is unknown. |
 | `[data-theme-loader]`, `svg.lucide` | Shared loading glyph; outline icons. |
 | `[data-app-ambient]`, `[data-theme-decoration]` | Full-window passive layers; never take clicks. |
 | `html[data-appearance-visible="true"]` | Document visibility, not focus. Pause custom motion unless true. |
+| `html[data-right-panel-open]` | `true`/`false`: the right workspace panel is shown. Absent outside a project. Move corner art with it instead of matching `aria-label`s. The preview page has a stub panel to check both. |
 
 `.conversation-markdown`, `[data-chat-find-scope]`, `[data-chat-composer-card]`,
 `[data-testid="transcript-user-bubble"]`, `[data-product-settings]` and
@@ -307,7 +316,8 @@ style those hooks.
 GLSL defining `vec3 theme(vec2 uv)` returning RGB 0–1 (uv 0–1 across the
 canvas). Uniforms: `u_time` (seconds times speed), `u_resolution` (pixels),
 `u_accent` (current accent, RGB 0–1), `u_working` (0/1, the current chat is
-working), `u_intensity`. No textures, network or app data.
+working), `u_any_working` (0/1, any agent in the left menu is working),
+`u_intensity`. No textures, network or app data.
 
 ```glsl
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
@@ -332,7 +342,8 @@ network, imports, input or popups. Canvas2D and OffscreenCanvas WebGL are
 available; Three.js is not, so supply self-contained code.
 
 `frame` holds `canvas`, `width`/`height` (at most 1280×720, 1x DPR), `time` and
-`delta` in seconds, `working` (the current chat is working), `reducedMotion`, and
+`delta` in seconds, `working` (the current chat is working), `anyWorking` (any
+agent in the left menu is working), `reducedMotion`, and
 `colors`. `colors` contains only the colour roles this theme sets for the current
 mode, keyed by the role names in `guide.colour_roles` (for example `background`,
 `foreground`, `accent`, `working`), each `#rrggbb`. Roles the theme does not set

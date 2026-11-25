@@ -2,7 +2,7 @@ import { randomUUID } from '../../utils/randomUUID'
 import type { AppearanceScript } from '../../stores/appearanceTheme'
 import { frameRateMeter } from './frameRate'
 
-export type ScriptInputs = { colors: Record<string,string>; working: boolean }
+export type ScriptInputs = { colors: Record<string,string>; working: boolean; anyWorking?: boolean }
 // These strings are PRODUCT code. Personal code is sent over a transferred port,
 // never interpolated in HTML, evaluated by the app, or executed on the frame thread.
 const workerPrefix = `'use strict';
@@ -123,6 +123,7 @@ export function mountScriptSandbox(host: HTMLElement, script: AppearanceScript, 
       delta: time === 0 ? 0 : Math.min(.1, (now - lastDraw) / 1000),
       colors,
       working: !!source.working,
+      anyWorking: !!(source.anyWorking ?? source.working),
       reducedMotion: reduced,
     })
     lastDraw = now

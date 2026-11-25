@@ -5,10 +5,10 @@ import { mountScriptSandbox } from './scriptSandbox'
 
 /** The script background's host. Window resizes need no rebuild: every frame
  * already carries the current size and the Worker resizes its canvas (#3085). */
-export function PersonalScript({ script, colors, working }: { script: AppearanceScript; colors: Record<string, string>; working: boolean }) {
+export function PersonalScript({ script, colors, working, anyWorking = working }: { script: AppearanceScript; colors: Record<string, string>; working: boolean; anyWorking?: boolean }) {
   const host = useRef<HTMLDivElement>(null)
-  const latest = useRef({ colors, working })
-  latest.current = { colors, working }
+  const latest = useRef({ colors, working, anyWorking })
+  latest.current = { colors, working, anyWorking }
   const [ready, setReady] = useState(false)
   useEffect(() => {
     const motion = matchMedia('(prefers-reduced-motion: reduce)')

@@ -23,9 +23,9 @@ func TestAppearanceShaderAndDecorationsArePersonal(t *testing.T) {
 		f.api.handleAppearance(w, r)
 		return w
 	}
-	saved := invoke("owner", `{"operation":"save","theme":{"name":"Hologram","background_shader":{"code":"vec3 theme(vec2 uv){return vec3(uv,u_working);}","speed":0.5,"intensity":0.4},"decorations":[{"id":"ship","children":[{"id":"hull"}]}]}}`)
+	saved := invoke("owner", `{"operation":"save","theme":{"name":"Hologram","background_shader":{"code":"vec3 theme(vec2 uv){return vec3(uv,u_working*u_any_working);}","speed":0.5,"intensity":0.4,"mode":"dark"},"decorations":[{"id":"ship","children":[{"id":"hull"}]}]}}`)
 	var doc appearanceDocument
-	if saved.Code != 200 || json.Unmarshal(saved.Body.Bytes(), &doc) != nil || doc.Current.BackgroundShader == nil || doc.Current.BackgroundShader.Speed != .5 || len(doc.Current.Decorations) != 1 {
+	if saved.Code != 200 || json.Unmarshal(saved.Body.Bytes(), &doc) != nil || doc.Current.BackgroundShader == nil || doc.Current.BackgroundShader.Speed != .5 || doc.Current.BackgroundShader.Mode != "dark" || len(doc.Current.Decorations) != 1 {
 		t.Fatalf("shader save failed: %d %s", saved.Code, saved.Body.String())
 	}
 	other := invoke("other", `{"operation":"read"}`)
@@ -37,6 +37,7 @@ func TestAppearanceShaderAndDecorationsArePersonal(t *testing.T) {
 		{"background_shader": map[string]any{"code": strings.Repeat("x", 16385), "speed": 1, "intensity": 1}},
 		{"background_shader": map[string]any{"speed": 3}},
 		{"background_shader": map[string]any{"intensity": -1}},
+		{"background_shader": map[string]any{"code": "vec3 theme(vec2 uv){return vec3(uv,0.);}", "speed": 1, "intensity": 1, "mode": "sepia"}},
 		{"background_video": map[string]any{"url": "https://example.com/a.mp4", "dim": .7, "playback_rate": .5}},
 		{"decorations": []any{map[string]any{"id": "ship", "onClick": "example"}}},
 		{"decorations": []any{map[string]any{"id": "ship", "html": "<button>example</button>"}}},

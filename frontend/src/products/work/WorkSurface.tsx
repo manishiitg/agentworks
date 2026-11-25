@@ -1229,6 +1229,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   // On a phone, opening an agent (from the drawer or a shortcut) shows its chat.
   useEffect(() => { if (isMobile && tabId) setMobilePane('chat') }, [isMobile, tabId])
   const openChatPane = useCallback(() => { setChatOpen(true); setMobilePane('chat') }, [])
+  // A stable personal-theme hook for the right workspace panel (#4075); presentation only.
+  const rightPanelShown = isMobile ? mobilePane === 'workspace' : panelOpen
+  useEffect(() => {
+    const root = document.documentElement
+    root.dataset.rightPanelOpen = rightPanelShown ? 'true' : 'false'
+    return () => { delete root.dataset.rightPanelOpen }
+  }, [rightPanelShown])
   const [workspaceView, setWorkspaceView] = useState<WorkWorkspaceView>(() => routeView(product.profileId, selected?.id, normalizeWorkWorkspaceView, product.defaultView) ?? readWorkWorkspaceView(selected?.id, product.profileId) ?? product.defaultView)
   const [viewNavigationRevision, setViewNavigationRevision] = useState(0)
   const conversationKey = useChatStore(state => tabId ? state.chatTabs[tabId]?.metadata?.agentProfileConversationKey : undefined)

@@ -83,6 +83,7 @@ type appearanceRequest struct {
 	WallpaperID string             `json:"wallpaper_id,omitempty"`
 	CSSFile     *appearanceCSSFile `json:"css_file,omitempty"`
 	ScriptFile  *appearanceCSSFile `json:"script_file,omitempty"`
+	ShaderFile  *appearanceCSSFile `json:"shader_file,omitempty"`
 	Report      json.RawMessage    `json:"report,omitempty"`
 	Operation   string             `json:"operation"`
 	Theme       map[string]any     `json:"theme,omitempty"`
@@ -229,8 +230,8 @@ func appearanceGuide() map[string]any {
 		"icons":             map[string]any{"styles": []string{"round", "square"}, "stroke_width": "0.75-3", "scale": "0.75-1.5; 1 keeps each glyph's existing size", "color": "colors.light.icon / colors.dark.icon", "coverage": "Existing Lucide outline glyphs only, not brand logos, authored documents or the separate loading indicator. This is stroke styling, not another icon library."},
 		"borders":           map[string]any{"surfaces": appearanceBorderSurfaces, "width_px": "0-4", "radius_px": "0-9999; 0 sharp, 9999 pill", "styles": []string{"solid", "dashed", "dotted"}, "colors": "colors.light/dark.<surface>_border; card falls back to panel. Running overrides selected on a working selected agent. Only existing admitted state hooks, no new status queries."},
 		"status_colors":     "colors.light or colors.dark: working, waiting, done, error. Shared agent marks, semantic status controls and toasts use these roles; unavailable/quiet is not done.",
-		"background_script": map[string]any{"code": "1–65536 UTF-8 bytes JavaScript defining function render(frame). Runs only in an opaque sandbox Worker with OffscreenCanvas, not in the app. No DOM, account, network or imported libraries.", "fps": "1–30", "inputs": "frame: canvas, width, height, time and delta (seconds), colors, working (boolean), reducedMotion (boolean). colors holds only the colour roles this theme sets for the current mode (keys from colour_roles, values #rrggbb); give every role a fallback. Runtime owns scheduling; do not create timers.", "file": "script_file={path} on apply/save/preview supplies code from a project file (64 KiB); pass fps in theme.background_script.", "runtime": "1280x720 max, <=1x DPR; hidden terminates Worker; reduced motion one still frame then terminates. Slow frames throttle then stop; hung Worker is terminated after 1500ms. CSS fallback. Clear with background_script:null or Disable script background in Appearance. Mutually exclusive with image/video/shader."},
-		"background_shader": map[string]any{"code": "1–16384 bytes GLSL defining vec3 theme(vec2 uv). Uniforms u_time (seconds), u_resolution (pixels), u_accent (RGB 0–1), u_working (active admitted chat 0/1), u_intensity (0–1). No theme JS/network/textures.", "speed": "0–2", "intensity": "0–1", "runtime": "at most 1280x720 / 1x DPR / 30 fps; hidden pause, reduced-motion still; sustained slow frames throttle then CSS fallback. Cannot combine with background_video. Clear with null."},
+		"background_script": map[string]any{"code": "1–65536 UTF-8 bytes JavaScript defining function render(frame). Runs only in an opaque sandbox Worker with OffscreenCanvas, not in the app. No DOM, account, network or imported libraries.", "fps": "1–30", "inputs": "frame: canvas, width, height, time and delta (seconds), colors, working (boolean: the open chat is running), anyWorking (boolean: any agent in the left menu is running), reducedMotion (boolean). colors holds only the colour roles this theme sets for the current mode (keys from colour_roles, values #rrggbb); give every role a fallback. Runtime owns scheduling; do not create timers.", "mode": "Optional dark, light or both (default). The script runs only while the app shows that mode; otherwise no Worker starts.", "file": "script_file={path} on apply/save/preview supplies code from a project file (64 KiB); pass fps in theme.background_script.", "runtime": "1280x720 max, <=1x DPR; hidden terminates Worker; reduced motion one still frame then terminates. Slow frames throttle then stop; hung Worker is terminated after 1500ms. CSS fallback. Clear with background_script:null or Disable script background in Appearance. Mutually exclusive with image/video/shader."},
+		"background_shader": map[string]any{"code": "1–16384 bytes GLSL defining vec3 theme(vec2 uv). Uniforms u_time (seconds), u_resolution (pixels), u_accent (RGB 0–1), u_working (active admitted chat 0/1), u_any_working (any left-menu agent running 0/1), u_intensity (0–1). No theme JS/network/textures.", "speed": "0–2", "intensity": "0–1", "mode": "Optional dark, light or both (default). The shader runs only while the app shows that mode; otherwise no GPU work.", "file": "shader_file={path} on apply/save/preview supplies code from a project file (16 KiB); pass speed and intensity in theme.background_shader.", "runtime": "at most 1280x720 / 1x DPR / 30 fps; hidden pause, reduced-motion still; sustained slow frames throttle then CSS fallback. Cannot combine with background_video. Clear with null."},
 		"decorations":       "Optional [{id,children:[…]}] tree. At most 64 inert divs, depth 6, unique IDs matching [a-z][a-z0-9_-]{0,31}. Style with [data-theme-decoration=ID] using existing CSS/3D. No HTML, React, scripts, events or controls. Drawn above the main background and below content.",
 		"background_image":  map[string]any{"asset_id": "Own uploaded image ID", "fit": "cover/contain/tile", "position_x": "0–100, usually50", "position_y": "0–100, usually50", "brightness": "0.25–1.5; usually0.6 for dark or1 for light", "import": "import_image image_file={crew_id,path}, optional blur_px0–20 baked into copy. PNG/JPEG/WebP <=5MB, <=16M pixels; resized only above3840x2160. Original untouched. On your own Mac, import_image can instead use image_path with one absolute or ~/ path, behind the existing OS-owner gate. No picker UI or host scan. Clear other background fields with null."},
 		"material_surfaces": map[string]string{
@@ -240,11 +241,11 @@ func appearanceGuide() map[string]any {
 		"hooks":         appearanceHookSelectors(),
 		"hook_guide":    appearanceHookGuide,
 		"css_max_bytes": appearanceCSSMaxBytes,
-		"instructions":  "Personal appearance only: it changes the signed-in person's own look, never projects, files or other people. Read first: current in full, saved names with saved_count and saved_limit, any active preview, and last_report (what the browser dropped, hook match counts and background state). preview tries a look on the test page /appearance/preview for 30 minutes without changing the person's app (end_preview clears it), apply changes the live look, and save stores a named theme and applies it. Pass large CSS or background_script code as a file with css_file or script_file {path} (crew_id defaults to the current project) instead of inline text. Before designing, read_skill panel-settings references/appearance for fields, hooks, stacking order, frame.colors keys and readability rules.",
+		"instructions":  "Personal appearance only: it changes the signed-in person's own look, never projects, files or other people. Read first: current in full, saved names with saved_count and saved_limit, any active preview, and last_report (what the browser dropped, hook match counts and background state). preview tries a look on the test page /appearance/preview for 30 minutes without changing the person's app (end_preview clears it), apply changes the live look, and save stores a named theme and applies it. Pass large CSS, background_script or background_shader code as a file with css_file, script_file or shader_file {path} (crew_id defaults to the current project) instead of inline text. Before designing, read_skill panel-settings references/appearance for fields, hooks, stacking order, frame.colors keys and readability rules.",
 	}
 }
 func (api *StreamingAPI) appearance(w http.ResponseWriter, r *http.Request, request appearanceRequest) {
-	if request.CSSFile != nil || request.ScriptFile != nil || request.ImageFile != nil || request.ImagePath != "" {
+	if request.CSSFile != nil || request.ScriptFile != nil || request.ShaderFile != nil || request.ImageFile != nil || request.ImagePath != "" {
 		http.Error(w, "Use the appearance tool to read a project file.", 400)
 		return
 	}
@@ -349,16 +350,16 @@ func (api *StreamingAPI) appearanceTool(w http.ResponseWriter, r *http.Request, 
 		http.Error(result, "The app screen sends reports; read returns them as last_report.", 400)
 		return
 	}
-	for _, ref := range []*appearanceCSSFile{request.CSSFile, request.ScriptFile, request.ImageFile} {
+	for _, ref := range []*appearanceCSSFile{request.CSSFile, request.ScriptFile, request.ShaderFile, request.ImageFile} {
 		if ref != nil && strings.TrimSpace(ref.CrewID) == "" {
 			ref.CrewID = crewID
 		}
 	}
-	if request.CSSFile != nil || request.ScriptFile != nil {
+	if request.CSSFile != nil || request.ScriptFile != nil || request.ShaderFile != nil {
 		source = "file"
 		if !slices.Contains([]string{"apply", "save", "preview"}, request.Operation) {
 			reason = "invalid_source"
-			http.Error(result, "Use css_file or script_file with apply, save or preview.", 400)
+			http.Error(result, "Use css_file, script_file or shader_file with apply, save or preview.", 400)
 			return
 		}
 		theme := make(map[string]any, len(request.Theme)+2)
@@ -400,6 +401,26 @@ func (api *StreamingAPI) appearanceTool(w http.ResponseWriter, r *http.Request, 
 				merged[key] = value
 			}
 			theme["background_script"] = merged
+		}
+		if ref := request.ShaderFile; ref != nil {
+			shader, _ := theme["background_shader"].(map[string]any)
+			if _, inline := shader["code"]; inline {
+				reason = "invalid_source"
+				http.Error(result, "Use shader_file instead of theme.background_shader.code, not both.", 400)
+				return
+			}
+			code, status, why, httpStatus, refusal := api.appearanceCrewText(r, *ref, appearanceShaderMaxBytes)
+			readStatus = status
+			if refusal != "" {
+				reason = why
+				http.Error(result, refusal, httpStatus)
+				return
+			}
+			merged := map[string]any{"code": code}
+			for key, value := range shader {
+				merged[key] = value
+			}
+			theme["background_shader"] = merged
 		}
 		request.Theme = theme
 	}
@@ -719,7 +740,7 @@ func appearanceToolDefinition(add func(string, string, bool, bool, map[string]an
 	crewFile := func(what string) map[string]any {
 		return map[string]any{"type": "object", "additionalProperties": false, "required": []any{"path"}, "properties": map[string]any{"crew_id": externalString("Project that holds the file. Omit in a project's own chat to use that project; elsewhere use an id from list_crews."), "path": externalString(what), "agent_id": externalString("Publication agent context when required by read_crew_file.")}}
 	}
-	add("appearance", "Change how the app looks for the signed-in person only: colours, fonts, materials, custom CSS, decorations and an image, video, shader or script background. Never projects, files or other people. Read first: current, saved names, saved_count/saved_limit, any preview and last_report (what the browser dropped, hook counts, background frame rate). preview tries a look on the test page /appearance/preview for 30 minutes without changing the person's app (end_preview clears it); apply changes the live look; save stores a named theme and applies it; apply with only name selects a saved theme. delete, rename, duplicate (new_name), export, import and reset manage saved themes. Use css_file or script_file for large CSS or script code. list_images, import_image and delete_image manage personal images and clips; mac_wallpapers and import_mac_wallpaper make clips from Mac aerials. For design guidance read_skill panel-settings references/appearance.", true, false, map[string]any{
+	add("appearance", "Change how the app looks for the signed-in person only: colours, fonts, materials, custom CSS, decorations and an image, video, shader or script background. Never projects, files or other people. Read first: current, saved names, saved_count/saved_limit, any preview and last_report (what the browser dropped, hook counts, background frame rate). preview tries a look on the test page /appearance/preview for 30 minutes without changing the person's app (end_preview clears it); apply changes the live look; save stores a named theme and applies it; apply with only name selects a saved theme. delete, rename, duplicate (new_name), export, import and reset manage saved themes. Use css_file, script_file or shader_file for large CSS, script or shader code. list_images, import_image and delete_image manage personal images and clips; mac_wallpapers and import_mac_wallpaper make clips from Mac aerials. For design guidance read_skill panel-settings references/appearance.", true, false, map[string]any{
 		"operation":    map[string]any{"type": "string", "enum": operations},
 		"image_id":     externalString("Own media asset ID from list_images, for delete_image (images and clips). Does not select another person."),
 		"image_path":   externalString("import_image only: one absolute or ~/ local PNG/JPEG/WebP path on your OWN Mac. Same local OS-owner admission as Mac aerial import; never a server or another person path. Do not print it in logs."),
@@ -728,6 +749,7 @@ func appearanceToolDefinition(add func(string, string, bool, bool, map[string]an
 		"wallpaper_id": externalString("Opaque ID from mac_wallpapers, for import_mac_wallpaper on your own local Mac. Creates a short personal clip without changing the theme."),
 		"css_file":     crewFile("Project-relative UTF-8 CSS file, at most 128 KiB. For apply/save/preview instead of theme.css."),
 		"script_file":  crewFile("Project-relative UTF-8 JavaScript file, at most 64 KiB, used as background_script.code for apply/save/preview. Put fps in theme.background_script."),
+		"shader_file":  crewFile("Project-relative UTF-8 GLSL file, at most 16 KiB, used as background_shader.code for apply/save/preview. Put speed and intensity in theme.background_shader."),
 		"theme":        map[string]any{"type": "object", "description": "Partial current theme fields returned by read and its guide. Colours are nested under colors.light/colors.dark. materials.<page|panel|popover|sidebar|composer> has opacity 0-1 and blur 0-24 (not on page; use only over still artwork). One background at a time: background_image, background_video, background_shader or background_script; clear others with null. CSS max 128 KiB (131,072 UTF-8 bytes); no [value] selectors. Unspecified fields stay as saved."},
 		"replace":      map[string]any{"type": "boolean", "description": "Replace from Default instead of merging; use for a full theme or to clear omitted colour overrides."},
 		"name":         externalString("Saved theme name for apply/preview/delete/export/rename/duplicate; save/import may override the imported name. Omit to export/duplicate current. Up to 60 characters."),
