@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -174,20 +175,48 @@ func (api *StreamingAPI) handleManageGlobalSecret(w http.ResponseWriter, r *http
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
-// handleRevealGlobalSecret returns one global's value to admins, so the
-// Secrets UI can offer the same eye-icon reveal for globals that
-// workflow boxes get through /api/secrets/decrypt. Covers managed and
-// environment globals alike.
+// canRevealGlobalSecret allows server admins to reveal shared/global secrets
+// and allows any signed-in user to reveal secrets in a personal Vault they own.
+// External access tokens are never permitted to reveal secret values.
+func canRevealGlobalSecret(ctx context.Context, userID, name string) bool {
+	if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil {
+		return false
+	}
+	if canManageGlobalSecrets(userID) {
+		return true
+	}
+	if !isVaultSecretName(name) {
+		return false
+	}
+	list, err := personalVaults(ctx, userID)
+	if err != nil {
+		return false
+	}
+	for _, v := range list.Vaults {
+		if v.Role == "owner" && slices.Contains(v.SecretNames, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// handleRevealGlobalSecret returns one secret's value to an authorized viewer
+// (server admins for global secrets, and vault owners for their own Vault
+// secrets), so the Secrets UI can offer eye-icon reveal and copy on demand.
 // GET /api/secrets/global/reveal?name=X
 func (api *StreamingAPI) handleRevealGlobalSecret(w http.ResponseWriter, r *http.Request) {
 	userID := GetUserIDFromContext(r.Context())
-	if !canManageGlobalSecrets(userID) {
-		globalSecretError(w, errGlobalAdmin)
-		return
-	}
 	name := strings.TrimSpace(r.URL.Query().Get("name"))
 	if name == "" {
+		if !canManageGlobalSecrets(userID) {
+			globalSecretError(w, errGlobalAdmin)
+			return
+		}
 		http.Error(w, "name is required", http.StatusBadRequest)
+		return
+	}
+	if !canRevealGlobalSecret(r.Context(), userID, name) {
+		globalSecretError(w, errGlobalAdmin)
 		return
 	}
 	for _, secret := range sortedGlobalSecrets() {

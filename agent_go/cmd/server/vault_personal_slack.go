@@ -33,7 +33,8 @@ type personalVault struct {
 		// ProjectRoot is set on a project vault; "crew:<project>" marks a server Crew's vault (crew_vault.go).
 		ProjectRoot string
 	} `json:"group"`
-	Role        string `json:"role"`
+	Role        string   `json:"role"`
+	SecretNames []string `json:"secret_names"`
 	Connections []struct {
 		ID       string `json:"id"`
 		Label    string `json:"label"`

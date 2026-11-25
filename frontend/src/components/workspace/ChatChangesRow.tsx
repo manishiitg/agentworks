@@ -116,33 +116,73 @@ export function FileLimitBox({ limit, workspacePath, onAskAgent }: { limit: Crew
   </section>
 }
 
-export function ChatChangesRow({ section, storageKey, onOpen, onTerminal, workspacePath, onAskAgent }: { section?: CrewPanelSection; storageKey: string; onOpen: (repoRoot?: string, changed?: boolean) => void; onTerminal?: () => void; workspacePath?: string; onAskAgent?: (message: string) => Promise<void> }) {
+/** Returns true if active GitHub login/orgs reach repo's owner, false if orgs are known and don't match, or null when unknown. */
+export function isGitHubRepoReachable(githubRepo?: string, login?: string, orgs?: string[]): boolean | null {
+  if (!githubRepo || !login) return null
+  const owner = githubRepo.split('/')[0]?.trim().toLowerCase()
+  if (!owner) return null
+  if (owner === login.trim().toLowerCase()) return true
+  if (!orgs || orgs.length === 0) return null
+  return orgs.some(org => org.trim().toLowerCase() === owner)
+}
+
+export type ChatChangesGitHub = {
+  connected: boolean
+  login?: string
+  orgs?: string[]
+  onOpen?: () => void
+}
+
+export function ChatChangesRow({ section, storageKey, onOpen, onTerminal, workspacePath, onAskAgent, github }: { section?: CrewPanelSection; storageKey: string; onOpen: (repoRoot?: string, changed?: boolean) => void; onTerminal?: () => void; workspacePath?: string; onAskAgent?: (message: string) => Promise<void>; github?: ChatChangesGitHub }) {
   const [state, setState] = usePersistentTab(storageKey, 'open', states)
   if (!section || (!section.error && !section.rows.length)) return null
   const open = state === 'open'
   const stale = (repo: CrewPanelRow) => gitStaleDays(repo.fetched_at)
-  const repoRow = (repo: CrewPanelRow) => <button type="button" key={repo.id} onClick={() => onOpen(repo.path || '', Boolean(repo.changed) || !repo.path)} title={repo.changed ? `Review the edits not committed yet in ${repo.path || repo.label}` : `Open the folder ${repo.path || repo.label}`}
-    className={`group/repo flex w-full min-w-0 items-start gap-2 rounded-lg py-2 pr-1.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${repo.group ? 'pl-5' : 'pl-1.5'}`}>
-    <GitBranch className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-    <span className="min-w-0 flex-1 space-y-0.5">
-      {/* Line 1: name and its state; lines 2 and 3 use the full width so names and messages are not squeezed. */}
-      <span className="flex min-w-0 items-baseline gap-2">
-        <span className="min-w-0 flex-1 truncate text-xs font-medium">{repo.label}</span>
-        {(repo.count || Boolean(repo.changed_files)) && <span title={[changedLabel(repo.changed_files, 'changed'), repo.count].filter(Boolean).join(' · ')} className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">
-          {repo.changed_files ? <span className="font-medium text-amber-600 underline-offset-2 group-hover/repo:underline dark:text-amber-400">{changedLabel(repo.changed_files, 'changed')}</span> : null}
-          {repo.changed_files && repo.count ? ' · ' : ''}{repo.count}
+  const mismatchedRepos = new Set<string>()
+  if (github?.connected && github.login) {
+    for (const repo of section.rows) {
+      if (repo.github_repo && isGitHubRepoReachable(repo.github_repo, github.login, github.orgs) === false) {
+        mismatchedRepos.add(repo.github_repo.toLowerCase())
+      }
+    }
+  }
+  const repoRow = (repo: CrewPanelRow) => {
+    const unreachable = github?.connected && github.login && isGitHubRepoReachable(repo.github_repo, github.login, github.orgs) === false
+    return <button type="button" key={repo.id} onClick={() => onOpen(repo.path || '', Boolean(repo.changed) || !repo.path)} title={repo.changed ? `Review the edits not committed yet in ${repo.path || repo.label}` : `Open the folder ${repo.path || repo.label}`}
+      className={`group/repo flex w-full min-w-0 items-start gap-2 rounded-lg py-2 pr-1.5 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${repo.group ? 'pl-5' : 'pl-1.5'}`}>
+      <GitBranch className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="min-w-0 flex-1 space-y-0.5">
+        {/* Line 1: name and its state; lines 2 and 3 use the full width so names and messages are not squeezed. */}
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="min-w-0 flex-1 truncate text-xs font-medium">{repo.label}</span>
+          {(repo.count || Boolean(repo.changed_files)) && <span title={[changedLabel(repo.changed_files, 'changed'), repo.count].filter(Boolean).join(' · ')} className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">
+            {repo.changed_files ? <span className="font-medium text-amber-600 underline-offset-2 group-hover/repo:underline dark:text-amber-400">{changedLabel(repo.changed_files, 'changed')}</span> : null}
+            {repo.changed_files && repo.count ? ' · ' : ''}{repo.count}
+          </span>}
+        </span>
+        {(repo.detail || repo.commit_at || stale(repo) > 0) && <span className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
+          <span className="min-w-0 truncate">{[repo.detail, repo.commit_at ? gitAgo(repo.commit_at) : ''].filter(Boolean).join(' · ')}</span>
+          {stale(repo) > 0 && <span title={`Last fetched from its remote (such as GitHub) ${stale(repo)} ${stale(repo) === 1 ? 'day' : 'days'} ago, so this may be out of date. Ask the agent to fetch to refresh it.`} className="ml-auto flex shrink-0 items-center gap-0.5 whitespace-nowrap text-amber-600 dark:text-amber-400"><Clock className="h-2.5 w-2.5" aria-hidden="true" />checked {stale(repo)}d ago</span>}
         </span>}
+        {repo.commit && <span title={repo.commit} className="block truncate text-[11px] italic text-muted-foreground/80">“{repo.commit}”</span>}
+        {unreachable && <span className="block truncate text-[11px] font-medium text-amber-600 dark:text-amber-400">Not in @{github.login}’s organizations</span>}
       </span>
-      {(repo.detail || repo.commit_at || stale(repo) > 0) && <span className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
-        <span className="min-w-0 truncate">{[repo.detail, repo.commit_at ? gitAgo(repo.commit_at) : ''].filter(Boolean).join(' · ')}</span>
-        {stale(repo) > 0 && <span title={`Last fetched from its remote (such as GitHub) ${stale(repo)} ${stale(repo) === 1 ? 'day' : 'days'} ago, so this may be out of date. Ask the agent to fetch to refresh it.`} className="ml-auto flex shrink-0 items-center gap-0.5 whitespace-nowrap text-amber-600 dark:text-amber-400"><Clock className="h-2.5 w-2.5" aria-hidden="true" />checked {stale(repo)}d ago</span>}
-      </span>}
-      {repo.commit && <span title={repo.commit} className="block truncate text-[11px] italic text-muted-foreground/80">“{repo.commit}”</span>}
+      {/* A checkout with edits opens their review, so it shows a diff icon; a clean one opens its files. */}
+      {repo.changed ? <FileDiff className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" aria-label="Changes" />
+        : <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-label="Files" />}
+    </button>
+  }
+  const githubStrip = github && <div className={`ml-3 mt-1 flex items-center justify-between gap-2 rounded-md border px-2 py-1 text-[11px] ${mismatchedRepos.size > 0 ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
+    <span className="flex min-w-0 items-center gap-1.5 truncate">
+      <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${mismatchedRepos.size > 0 ? 'bg-amber-500' : github.connected ? 'bg-emerald-500' : 'bg-muted-foreground/50'}`} />
+      {github.connected && github.login
+        ? mismatchedRepos.size > 0
+          ? <span className="truncate"><strong className="font-medium text-foreground">@{github.login}</strong> · {mismatchedRepos.size === 1 ? '1 repo needs another account' : `${mismatchedRepos.size} repos need another account`}</span>
+          : <span className="truncate">GitHub: <strong className="font-medium text-foreground">@{github.login}</strong></span>
+        : <span className="truncate">GitHub: Not connected</span>}
     </span>
-    {/* A checkout with edits opens their review, so it shows a diff icon; a clean one opens its files. */}
-    {repo.changed ? <FileDiff className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" aria-label="Changes" />
-      : <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-label="Files" />}
-  </button>
+    {github.onOpen && <button type="button" onClick={github.onOpen} className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-foreground hover:bg-background/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{github.connected ? 'Switch' : 'Connect'}</button>}
+  </div>
   const rows: ReactNode[] = []
   const sorted = sortGitRows(section.rows)
   sorted.forEach((repo, i) => {
@@ -167,6 +207,7 @@ export function ChatChangesRow({ section, storageKey, onOpen, onTerminal, worksp
     {onTerminal && <button type="button" onClick={onTerminal} aria-label="Open terminal" title="Open a terminal in this project folder (Ctrl+`)" className="flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-background/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><SquareTerminal className="h-3.5 w-3.5" aria-hidden="true" /></button>}
     </div>
     {open && section.file_limit?.over && <FileLimitBox key={`${section.file_limit.checked_at}:${section.file_limit.can_fix}`} limit={section.file_limit} workspacePath={workspacePath} onAskAgent={onAskAgent} />}
+    {open && githubStrip}
     {open && rows.length > 0 && <div className="mt-1 space-y-0.5 pl-3">{rows}</div>}
   </div>
 }

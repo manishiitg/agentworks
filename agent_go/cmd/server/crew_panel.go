@@ -38,9 +38,13 @@ type crewPanelRow struct {
 	// Git rows: the last commit (Unix seconds, first line) and, for a branch
 	// that tracks a remote, when the repository last fetched; the panel says
 	// how old that check is once it is more than a day old.
-	CommitAt  int64  `json:"commit_at,omitempty"`
-	Commit    string `json:"commit,omitempty"`
-	FetchedAt int64  `json:"fetched_at,omitempty"`
+	CommitAt   int64  `json:"commit_at,omitempty"`
+	Commit     string `json:"commit,omitempty"`
+	FetchedAt  int64  `json:"fetched_at,omitempty"`
+	GitHubRepo string `json:"github_repo,omitempty"`
+	// GitHub connection row: active login and cached reachable orgs (display only).
+	Login string   `json:"login,omitempty"`
+	Orgs  []string `json:"orgs,omitempty"`
 	// Changed: the checkout has edits not committed yet. Opening the row
 	// reviews them; a clean checkout opens its folder instead.
 	Changed bool `json:"changed,omitempty"`
