@@ -156,6 +156,35 @@ func (s *session) turn(ctx context.Context, prompt string, emit func(llmtypes.St
 	}
 	emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypePromptAccepted, Metadata: meta})
 	var text strings.Builder
+	// Reply text is framed in blocks that a steer closes: text written before a
+	// message sent mid-turn stays above that message, and the rest goes below it.
+	blockN, blockOpen, answered := 1, false, false
+	blockID := func() string { return fmt.Sprintf("acp:%s:%s:%d", s.agent.ID, sessionID, blockN) }
+	turnEmit := emit
+	emit = func(chunk llmtypes.StreamChunk) {
+		if chunk.Type == llmtypes.StreamChunkTypeContent && chunk.Content != "" {
+			if !blockOpen {
+				blockOpen = true
+				turnEmit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeAssistantBlock, Metadata: map[string]any{llmtypes.AssistantBlockIDMetadataKey: blockID(), llmtypes.AssistantBlockPhaseMetadataKey: "start"}})
+			}
+			if chunk.Metadata == nil {
+				chunk.Metadata = map[string]any{}
+			}
+			chunk.Metadata[llmtypes.AssistantBlockIDMetadataKey] = blockID()
+			answered = true
+		}
+		turnEmit(chunk)
+	}
+	endBlock := func() {
+		if blockOpen {
+			blockOpen = false
+			turnEmit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeAssistantBlock, Content: text.String(), Metadata: map[string]any{llmtypes.AssistantBlockIDMetadataKey: blockID(), llmtypes.AssistantBlockPhaseMetadataKey: "end"}})
+			blockN++
+			// Like a native reply split by a steer, the final answer is the text after the last steer.
+			text.Reset()
+		}
+	}
+	defer endBlock()
 	tools := map[string]*toolCall{}
 	// A step the agent never reports finished (agy leaves some open) must not stay "running" once the turn is over.
 	defer func() {
@@ -198,6 +227,7 @@ func (s *session) turn(ctx context.Context, prompt string, emit func(llmtypes.St
 				req.reply <- errSteerNotTaken("the turn is stopping")
 				continue
 			}
+			endBlock()
 			seq++
 			params := req.params
 			if params == nil {
@@ -247,7 +277,7 @@ func (s *session) turn(ctx context.Context, prompt string, emit func(llmtypes.St
 				return nil, failure
 			}
 			usage := addUsage(steeredUsage, promptUsage(result))
-			if strings.TrimSpace(text.String()) == "" && len(tools) == 0 {
+			if !answered && len(tools) == 0 {
 				return nil, fmt.Errorf("%s returned no answer (stop reason: %s)", s.agent.Label, result.StopReason)
 			}
 			return s.response(text.String(), usage), nil
