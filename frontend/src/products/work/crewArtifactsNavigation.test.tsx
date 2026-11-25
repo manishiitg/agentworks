@@ -33,7 +33,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 it('opens old Artifacts links as a standalone page and leaves only Online tabs', async () => {
   vi.mocked(api.get).mockResolvedValue({ data: {
     access_here: 'server', access_tabs: [
-      { id: 'mac', label: 'Mac online', group: 'online' },
+      { id: 'mac', label: 'Phone & web', group: 'online' },
       { id: 'agentbridge', label: 'AgentBridge', detail: 'your agents and discovery', group: 'online' },
       { id: 'dashboards', label: 'Artifacts', group: 'online' },
     ],
@@ -45,7 +45,7 @@ it('opens old Artifacts links as a standalone page and leaves only Online tabs',
     expect(host.querySelector('[aria-label="Artifacts page"]')?.textContent).toContain('Artifacts for artifacts-test')
     expect(host.querySelector('[role="tablist"]')).toBeNull()
     await act(async () => openCrewAccess('artifacts-test', '', 'mac'))
-    expect([...host.querySelectorAll('[role="tab"]')].map(tab => tab.textContent)).toEqual(['Mac online', 'AgentBridgeyour agents and discovery'])
+    expect([...host.querySelectorAll('[role="tab"]')].map(tab => tab.textContent)).toEqual(['Phone & web', 'AgentBridgeyour agents and discovery'])
     expect(host.textContent).not.toContain('AgentBridge content')
     await act(async () => openCrewAccess('artifacts-test', '', 'agentbridge'))
     expect(host.querySelector('[role="tabpanel"]')?.textContent).toContain('AgentBridge content')
@@ -68,17 +68,17 @@ it('opens old Artifacts links as a standalone page and leaves only Online tabs',
 
 // Owner screenshot regression: never render both an Online group header and
 // a nested Mac online destination. The one row keeps status and its dot.
-it('shows one Mac online destination with reachable and offline status', async () => {
+it('shows one Phone & web destination with on and off status', async () => {
   const host = document.createElement('div'), root = createRoot(host), onOpen = vi.fn()
   try {
     await act(async () => root.render(<CrewOnlineRow state="mac" onOpen={onOpen} />))
     expect(host.querySelectorAll('button')).toHaveLength(1)
-    expect(host.textContent).toBe('Mac onlineOnline')
+    expect(host.textContent).toBe('Phone & webOn')
     expect(host.querySelector('.bg-emerald-500')).not.toBeNull()
     await act(async () => host.querySelector('button')!.click())
     expect(onOpen).toHaveBeenCalledOnce()
     await act(async () => root.render(<CrewOnlineRow state="offline" onOpen={onOpen} />))
-    expect(host.textContent).toBe('Mac onlineOffline')
+    expect(host.textContent).toBe('Phone & webOff')
     expect(host.querySelector('.bg-muted-foreground')).not.toBeNull()
   } finally { await act(async () => root.unmount()) }
 })

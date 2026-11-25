@@ -14,6 +14,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
@@ -112,7 +113,7 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 	line, problem, attention, progress := crewTeamMacCopyLine(r.Context(), owner, c, project, t, dir, b, err == nil)
 	externalJSON(w, map[string]any{"project_id": project, "local_folder": b.Root, "local_project_id": b.LocalProject, "status": status, "message": message, "last_synced": b.LastSynced, "file_count": len(b.Files),
 		"skipped": skipped, "skipped_files": choosable, "synced_on_purpose": mine, "too_large": b.TooLarge, "previous_folders": crewTeamPreviousLocalFolders(dir, b), "progress": progress,
-		"line": line, "problem": problem, "attention": attention})
+		"line": line, "problem": problem, "attention": attention, "state": crewTeamSyncWord(b, problem, attention, progress), "stale": crewTeamSyncStale(b, problem || progress != nil, time.Now())})
 }
 
 // setCrewTeamSyncAnyway is this person's own choice for one file that looks like it holds passwords or keys (owner,

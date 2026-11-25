@@ -141,6 +141,13 @@ type crewTeamTabSync struct {
 	Attention bool           `json:"attention,omitempty"`
 	Last      string         `json:"last,omitempty"` // "Last change 4 min ago by tester-b: team/notes.md"
 	Progress  *crewTeamRound `json:"progress,omitempty"`
+	// The Team files row's short form, written here so the panel only shows it: State is one word (Synced, Syncing 40%,
+	// Needs a look, Stopped), ChangedBy/ChangedAgo the last change's author and age, Stale an amber note when the copy
+	// has not been checked for over an hour.
+	State      string `json:"state,omitempty"`
+	ChangedBy  string `json:"changed_by,omitempty"`
+	ChangedAgo string `json:"changed_ago,omitempty"`
+	Stale      string `json:"stale,omitempty"`
 }
 
 type crewTeamTabReply struct {
@@ -274,7 +281,7 @@ var crewTeamAskPrompts = map[string]string{
 	"shares":      "Show me what this project's Team shares now: each chosen shared folder with its size. Go through the project's other folders and what is in them, point out anything private or too big to share (keys, personal notes, large data), and suggest what to share. Change it when I say so.",
 	"agents":      "List my agents in this project: for each, its purpose, whether it's shared with the Team, and what it uses (apps, secret names, my personal accounts, folders). Suggest which to share and which to keep to myself, and why. Change it when I say so.",
 	"sync":        "Check this project's Team sync: when each person last synced, files still waiting, and any clashes where two people changed the same lines. For each clash show both versions and help me keep mine, keep theirs, or merge them.",
-	"mac":         "Check this project's Mac online: is my Mac online now, when was it last seen, and does it stay on because the Team is on. Explain what works while my Mac is off and what is kept on the server, in plain words, and give me the link to open this project in a browser or on my phone. Change it when I say so.",
+	"mac":         "Check this project's Phone & web: is my Mac online now, when was it last seen, and does it stay on because the Team is on. Explain what works while my Mac is off and what is kept on the server, in plain words, and give me the link to open this project in a browser or on my phone. Change it when I say so.",
 	"agentbridge": "List my agents in this project with their purpose and whether discovery is on for each on AgentBridge. Explain what discovery means (other people's agents on this server can find and message it, and it answers as me with my rules for when others ask), suggest which to make discoverable and which purposes to improve, and change it when I say so. Also explain each agent's Copy line: pasted in Claude Code, Codex or Cursor, it lets my coding app reach that agent, with discovery on or off.",
 	// An agent card's Automations…, sent to that agent's own chat (crew_tab_setup.go).
 	"automations": "Show this agent's schedules, watchers and webhooks and help me change them.",
@@ -668,27 +675,61 @@ func crewTeamTabSyncFor(t crewTeam, viewer string) *crewTeamTabSync {
 	if s.last.Path != "" {
 		e := s.last
 		if at, err := time.Parse(time.RFC3339Nano, e.At); err == nil {
-			out.Last = fmt.Sprintf("Last change %s by %s: %s", crewAccessAgo(at), crewPersonShortName(firstNonEmptyTrimmed(e.Author, e.Actor)), e.Path)
+			out.ChangedBy, out.ChangedAgo = crewPersonShortName(firstNonEmptyTrimmed(e.Author, e.Actor)), crewAccessAgo(at)
+			out.Last = fmt.Sprintf("Last change %s by %s: %s", out.ChangedAgo, out.ChangedBy, e.Path)
 		}
 	}
 	if _, onMac := t.memberMac(viewer); viewer != t.OwnerID && !onMac && crewRelayTwin(t.ProjectID) && t.Folder.ID != "" {
 		if dir, err := crewTeamServerCopyDir(viewer, t.ProjectID, t.Folder.ID); err == nil {
 			if p := crewTeamRoundFor(dir); p != nil {
-				out.Line, out.Progress = crewAccessProgressLine(*p), p
+				out.Line, out.Progress, out.State = crewAccessProgressLine(*p), p, crewTeamSyncWord(crewTeamLocal{Downloaded: true}, false, false, p)
 				return out
 			}
 			if b, err := readCrewTeamLocal(dir); err == nil {
 				line, problem, attention := crewTeamCopyLine(b, t.Folder)
 				out.Line, out.Problem, out.Attention = line+" · "+clashLine, out.Problem || problem, attention || len(open) > 0
+				out.State, out.Stale = crewTeamSyncWord(b, out.Problem, out.Attention, nil), crewTeamSyncStale(b, out.Problem, time.Now())
 				return out
 			}
-			out.Line = "Your copy is made when you first use this project · " + clashLine
+			out.Line, out.State = "Your copy is made when you first use this project · "+clashLine, "Not started"
 			return out
 		}
 	}
 	out.Line = fmt.Sprintf("Kept on the server · %d %s · %s", files, plural(files, "file", "files"), clashLine)
 	out.Attention = len(open) > 0
+	out.State = crewTeamSyncWord(crewTeamLocal{Downloaded: true}, false, out.Attention, nil)
 	return out
+}
+
+// crewTeamSyncWord is the Team files row's one word for a copy (the full line stays for Team › Sync and the tooltip).
+func crewTeamSyncWord(b crewTeamLocal, problem, attention bool, p *crewTeamRound) string {
+	switch {
+	case p != nil:
+		if p.BytesTotal > 0 {
+			return fmt.Sprintf("Syncing %d%%", min(100, p.BytesDone*100/p.BytesTotal))
+		}
+		return "Syncing"
+	case problem:
+		return "Stopped"
+	case !b.Downloaded:
+		return "Syncing"
+	case attention:
+		return "Needs a look"
+	}
+	return "Synced"
+}
+
+// crewTeamSyncStale is an amber note when a working copy has not been checked for over an hour; empty otherwise, so
+// the row no longer shows "checked N min ago" on every normal line.
+func crewTeamSyncStale(b crewTeamLocal, problem bool, now time.Time) string {
+	at, err := time.Parse(time.RFC3339Nano, b.LastSynced)
+	if problem || err != nil || now.Sub(at) < time.Hour {
+		return ""
+	}
+	if h := int(now.Sub(at).Hours()); h < 48 {
+		return fmt.Sprintf("Not checked for %d h", h)
+	}
+	return fmt.Sprintf("Not checked for %d days", int(now.Sub(at).Hours()/24))
 }
 
 // crewTeamCopyLine is one copy's sync state in plain words, and whether it is a problem: the one line the Mac app and

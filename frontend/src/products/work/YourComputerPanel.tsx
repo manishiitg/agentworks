@@ -296,8 +296,8 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
             <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{status.access_mac?.status}</span>
             {status.access_mac_locked
               ? <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-xs text-muted-foreground"><Lock aria-hidden="true" className="h-3 w-3" />{status.access_mac_locked}</span>
-              : here ? <Switch aria-label="Mac online" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
-                : <span title="Turn this off in the Mac app."><Switch aria-label="Mac online" checked disabled /></span>}
+              : here ? <Switch aria-label="Phone & web" checked={Boolean(binding) || reaching || asking} disabled={busy || !connections.length} onCheckedChange={on => { if (!on) { if (asking) setAsking(false); else void run('offline') } else if (target) reach(target); else setAsking(true) }} />
+                : <span title="Turn this off in the Mac app."><Switch aria-label="Phone & web" checked disabled /></span>}
           </div>
           {connections.length > 1 && pairedHost && <p className="break-words text-[12.5px] text-muted-foreground">Network · <span className="text-foreground">{pairedName}</span>{pairedName !== pairedHost && <> · {pairedHost}</>}</p>}
           <p className="text-[12.5px] text-muted-foreground">{status.access_mac?.line}</p>
@@ -319,7 +319,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
             </>)}
             {open === 'code' && reachLink && <div id={`crew-phone-code-${projectId}`} className="flex justify-center p-3"><LinkCode link={reachLink} /></div>}
           </div>
-          {!reachLink && <p className="text-xs text-muted-foreground">Turn on Mac online to open this project in a browser or on your phone.</p>}
+          {!reachLink && <p className="text-xs text-muted-foreground">Turn on Phone & web to open this project in a browser or on your phone.</p>}
         </section>
 
       </>}
