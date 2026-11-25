@@ -299,7 +299,7 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 		return agentprofiles.ToolSpec{
 			Name:     "set_work_identity",
 			Category: "work_identity",
-			Description: "Set, update, or clear this project project's agent identity when the user asks. It is also Main's name and purpose; a side tab sets its own with set_my_agent_identity. " +
+			Description: "Set, update, or clear this project's identity (its name and purpose) when the user explicitly asks to rename the project or change its purpose. Main's purpose comes from it; renaming an agent or chat, Main included, is set_my_agent_identity and never renames the project. " +
 				"A short name and purpose keep the agent consistent across project chats, schedules, bots, and background work; they change presentation and behavior, never permissions. " +
 				"The purpose is required: ask the user for it before the first save, and refuse to clear it. " +
 				"Store it in product.json, preserve omitted fields, and never invent an identity.",
