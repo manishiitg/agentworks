@@ -569,12 +569,12 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             ]} />
           </div>
         )}
+        {modelsEditor(record)}
         {serverRow(record)}
         {serverSignInFor(record)}
         {serverLoginPanel(record)}
         {noticeFor(record)}
         {sharingEditor(record)}
-        {modelsEditor(record)}
         {keyModelsEditor(record)}
         {terminalFor(record)}
       </li>
@@ -651,6 +651,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             </div>
           )}
         </div>
+        {modelsEditor(record)}
         {serverRow(record)}
         {serverSignInFor(record)}
         {macAppRow(record)}
@@ -658,7 +659,10 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
         {availabilityDraft !== null && record.availability_editable && (
           <form className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-700" onSubmit={event => { event.preventDefault(); void saveAvailability(availabilityDraft) }} onKeyDown={event => { if (event.key === 'Escape') setAvailabilityDraft(null) }}>
             <AvailabilityFields value={availabilityDraft} onChange={setAvailabilityDraft} disabled={busy} />
-            <button disabled={busy} type="submit" className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>
+            <div className="flex gap-2">
+              <button disabled={busy} type="submit" className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>
+              <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setAvailabilityDraft(null)}>Cancel</button>
+            </div>
           </form>
         )}
         {limitsDraft !== null && record.can_manage && (
@@ -678,7 +682,6 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             </div>
           </form>
         )}
-        {modelsEditor(record)}
         {terminalFor(record)}
       </div>
     )
