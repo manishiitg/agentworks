@@ -185,13 +185,13 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
     return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3" data-sidebar-project-scroll onPointerDownCapture={() => markSidebarInteraction()}>
         {top}
-        {rows.length > 0 && <div role="tablist" aria-label="Sidebar view" className="mb-2 grid shrink-0 grid-cols-2 gap-0.5 rounded-lg bg-muted p-0.5 text-xs">
+        {rows.length > 0 && <div role="tablist" aria-label="Sidebar view" className="mb-2 flex shrink-0 items-center gap-4 border-b border-border/60 px-2 text-xs">
           <button type="button" role="tab" aria-selected={sidebarMode === 'projects'} onClick={() => selectSidebarMode('projects')}
-            className={`rounded-md px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sidebarMode === 'projects' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            className={`-mb-px border-b-2 pb-1.5 pt-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sidebarMode === 'projects' ? 'border-foreground font-semibold text-foreground' : 'border-transparent font-medium text-muted-foreground hover:text-foreground'}`}>
             Projects
           </button>
           <button type="button" role="tab" aria-selected={sidebarMode === 'threads'} onClick={() => selectSidebarMode('threads')}
-            className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sidebarMode === 'threads' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+            className={`-mb-px flex items-center gap-1.5 border-b-2 pb-1.5 pt-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${sidebarMode === 'threads' ? 'border-foreground font-semibold text-foreground' : 'border-transparent font-medium text-muted-foreground hover:text-foreground'}`}>
             <span>Threads</span>
             {activeThreadCount > 0 && <span className={`rounded-full px-1.5 text-[10px] font-semibold leading-4 ${hasWaitingThread ? 'bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))]' : 'bg-info/15 text-info'}`}>{activeThreadCount}</span>}
           </button>
