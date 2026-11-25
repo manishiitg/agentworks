@@ -241,13 +241,13 @@ export function AgentHeaderLine({ agent: row, crewName, onOpenIdentity, onReturn
       <AgentPlaceMark place={row?.place} />
       {/* Watching a teammate's agent: your own agent's name takes you back to it. */}
       {onReturn ? <button type="button" onClick={onReturn} title={`Back to your ${name}`} aria-label={`Back to your ${name}`}
-        className="block min-w-0 max-w-48 truncate rounded-sm font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{name}</button>
+        className="block min-w-0 max-w-48 sm:max-w-xs md:max-w-[28rem] lg:max-w-[36rem] truncate rounded-sm font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{name}</button>
       : info ? <AgentHoverCard info={info} clickToOpen automationShortcut shortcut={row?.shortcut} actions={row?.actions}>
         {open => <button type="button" aria-label={`About ${name}`} title={name} aria-expanded={open} aria-haspopup="dialog"
-          className="inline-flex min-w-0 max-w-48 items-center gap-1 rounded-md px-1.5 py-1 font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10">
+          className="inline-flex min-w-0 max-w-48 sm:max-w-xs md:max-w-[28rem] lg:max-w-[36rem] items-center gap-1 rounded-md px-1.5 py-1 font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10">
           <span className="min-w-0 truncate">{name}</span><ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         </button>}
-      </AgentHoverCard> : <span title={name} className="min-w-0 max-w-48 truncate font-semibold">{name}</span>}
+      </AgentHoverCard> : <span title={name} className="min-w-0 max-w-48 sm:max-w-xs md:max-w-[28rem] lg:max-w-[36rem] truncate font-semibold">{name}</span>}
     </>}
   </div>
 }
