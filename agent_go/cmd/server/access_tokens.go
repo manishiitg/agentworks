@@ -453,6 +453,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	if tool.Name == externalUsersTool || tool.Name == externalSignInAppsTool {
 		return externalUsersAllowed(c)
 	}
+	if tool.Name == providerAccountsTool {
+		return providerAccountsToolAllowed(c)
+	}
 	if tool.actions != nil {
 		return externalMergedAllows(c, tool)
 	}
