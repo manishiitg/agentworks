@@ -198,3 +198,57 @@ func saveSpawnIdentityJSON(ctx context.Context, userID string, project codeChatP
 	}
 	return raw
 }
+
+// spawnGroupArg reads the optional group for a new fork or helper (owner, 25 Nov), checked before anything is made.
+func spawnGroupArg(args map[string]interface{}) (string, error) {
+	if strings.TrimSpace(stringToolArg(args, "group")) == "" {
+		return "", nil
+	}
+	return agentGroupName(stringToolArg(args, "group"))
+}
+
+// placeInGroup puts a new agent in one of the person's left-menu groups: it joins the group of that name, or starts
+// it. A fork follows its parent's group, so a grouped agent hangs under no one. Layout only; a failure is reported
+// in out and the agent stays where it was placed.
+func placeInGroup(ctx context.Context, userID string, project codeChatProject, key, group string, out map[string]interface{}) {
+	if key == "" || group == "" {
+		return
+	}
+	store := defaultProductConversationRegistryStore()
+	top := ""
+	if _, err := store.setChatContextOptions(ctx, userID, project.ProfileID, key, chatContextChange{ForkedFrom: &top}, userID); err != nil {
+		log.Printf("[CHAT_FORK] %s: could not take it out from under its maker for group %q: %v", key, group, err)
+		out["group_error"] = "It was made, but could not be put in the group; use sessions action=group."
+		return
+	}
+	edit := agentGroupEdit{Op: "new", Key: key, Name: group}
+	if groups, err := store.agentGroups(ctx, userID, project.ProfileID, project.ProjectID); err == nil {
+		if saved, ok := agentGroupFind(groups, group); ok {
+			edit, group = agentGroupEdit{Op: "move", Key: key, Group: saved}, saved
+		}
+	}
+	if _, err := store.editAgentGroups(ctx, userID, project.ProfileID, project.ProjectID, edit); err != nil {
+		log.Printf("[CHAT_FORK] %s: could not put it in group %q: %v", key, group, err)
+		out["group_error"] = err.Error()
+		return
+	}
+	out["group"] = group
+}
+
+// placeInGroupJSON is placeInGroup for the fork tool's JSON result.
+func placeInGroupJSON(ctx context.Context, userID string, project codeChatProject, group string, result []byte) []byte {
+	if group == "" {
+		return result
+	}
+	out := map[string]interface{}{}
+	if err := json.Unmarshal(result, &out); err != nil {
+		return result
+	}
+	key, _ := out["conversation_key"].(string)
+	placeInGroup(ctx, userID, project, key, group, out)
+	raw, err := json.Marshal(out)
+	if err != nil {
+		return result
+	}
+	return raw
+}
