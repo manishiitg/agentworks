@@ -2,6 +2,8 @@ package crewroot
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -116,6 +118,10 @@ func TestBoundCrewPreservesProjectAndConfinesIssuedPaths(t *testing.T) {
 	}
 	if _, _, err := Lookup(docs, "Crew/example"); err == nil {
 		t.Fatal("missing resource root granted access")
+	}
+	// #4105: a deleted Crew still in the registry reads as "file does not exist", not a server error.
+	if _, _, err := Resolve(docs, "Crew/example/product.json"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("missing Crew folder: %v", err)
 	}
 	if err := os.Symlink(outside, filepath.Join(project, ".agentworks")); err != nil {
 		t.Fatal(err)
