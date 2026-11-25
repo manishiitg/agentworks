@@ -25,17 +25,17 @@ export function loadShareTargets(): Promise<ProviderShareTargets> {
 /** Test hook: forget the cached share targets. */
 export function resetShareTargetsCache() { targetsPromise = null }
 
-export function useShareTargets(enabled = true) {
+export function useShareTargets(enabled = true, load: () => Promise<ProviderShareTargets> = loadShareTargets) {
   const [targets, setTargets] = useState<ProviderShareTargets>(EMPTY_TARGETS)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
-    loadShareTargets()
+    load()
       .then(value => { if (!cancelled) setTargets(value) })
       .catch(() => { if (!cancelled) setError('Could not load workflows, projects and people to share with.') })
     return () => { cancelled = true }
-  }, [enabled])
+  }, [enabled, load])
   return { targets, error }
 }
 
@@ -96,19 +96,23 @@ const userOptions = (targets: ProviderShareTargets) => targets.users.filter(item
 /** A member may share their own account with this many named colleagues (PLAT-715). */
 export const MEMBER_SHARE_USER_LIMIT = 10
 
-export function SharingFields({ value, onChange, disabled, peopleOnly = false }: {
+export function SharingFields({ value, onChange, disabled, peopleOnly = false, loadTargets, place }: {
   value: ProviderAccountSharing
   onChange: (value: ProviderAccountSharing) => void
   disabled?: boolean
   /** A member's account: named colleagues only, at most 10; workflows and Crews are for admins. */
   peopleOnly?: boolean
+  /** Another place's people, workflows and projects (an account on a connected server, from the Mac app). */
+  loadTargets?: () => Promise<ProviderShareTargets>
+  /** That place's name, said in the label. */
+  place?: string
 }) {
   const shared = value.mode === 'shared'
   const overLimit = peopleOnly && (value.users?.length ?? 0) > MEMBER_SHARE_USER_LIMIT
-  const { targets, error } = useShareTargets(shared)
+  const { targets, error } = useShareTargets(shared, loadTargets)
   return (
     <fieldset className="space-y-3" disabled={disabled}>
-      <legend className="mb-2 text-xs font-medium text-gray-700 dark:text-gray-300">Who can use it</legend>
+      <legend className="mb-2 text-xs font-medium text-foreground">{place ? `Who can use it on ${place}` : 'Who can use it'}</legend>
       <Segmented label="Who can use it" value={shared ? 'shared' : 'private'} disabled={disabled}
         options={[{ value: 'private', label: 'Only me' }, { value: 'shared', label: peopleOnly ? 'Chosen colleagues' : 'Chosen workflows, projects and people' }]}
         onChange={next => onChange(next === 'private' ? { mode: 'private' } : peopleOnly ? { mode: 'shared', users: value.users ?? [] } : { mode: 'shared', workflows: value.workflows ?? [], crews: value.crews ?? [], users: value.users ?? [] })} />

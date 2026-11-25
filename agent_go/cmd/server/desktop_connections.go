@@ -92,8 +92,8 @@ type desktopSignIn struct {
 	Error        string
 }
 
-// Query credentials are already verified by AuthMiddleware. Only the two streams a server project opens in place,
-// its Terminal and its live browser view (#3383), may use them, and only with the normal app proof.
+// Query credentials are already verified by AuthMiddleware. Only the streams a server project opens in place, its
+// Terminal and its live browser view (#3383), and an account's sign-in window may use them, with the normal app proof.
 func desktopProjectStreamUpgrade(r *http.Request) bool {
 	parts := strings.Split(mux.Vars(r)["path"], "/")
 	if !websocket.IsWebSocketUpgrade(r) || len(parts) < 1 || parts[0] != "api" {
@@ -102,7 +102,9 @@ func desktopProjectStreamUpgrade(r *http.Request) bool {
 	terminal := len(parts) == 7 && parts[1] == "agent-profiles" && parts[2] != "" && parts[3] == "projects" &&
 		parts[4] != "" && parts[5] == "shell" && parts[6] == "stream"
 	browser := len(parts) == 5 && parts[1] == "browser" && parts[2] == "live" && parts[3] != "" && parts[4] == "stream"
-	return terminal || browser
+	// The sign-in window of your own AI account on that server, added from the Mac app (#3807).
+	signIn := len(parts) == 5 && parts[1] == "provider-setup" && parts[2] == "sessions" && parts[3] != "" && parts[4] == "stream"
+	return terminal || browser || signIn
 }
 
 func desktopConnectionGate(w http.ResponseWriter, r *http.Request) bool {

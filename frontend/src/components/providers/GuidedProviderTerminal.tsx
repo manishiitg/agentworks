@@ -12,6 +12,8 @@ interface GuidedProviderTerminalProps {
   session: ProviderSetupSession
   onFinished: (session: ProviderSetupSession) => void
   onClose: () => void
+  /** A connected server's sign-in, reached from the Mac app through its connection (serverAccounts.ts). */
+  remote?: { streamUrl: (sessionId: string) => string; cancel: (sessionId: string) => Promise<void> }
 }
 
 const terminalTheme = {
@@ -48,7 +50,7 @@ const latestURL = (text: string): string | null => {
   return matches[matches.length - 1].replace(/[),.;]+$/, '')
 }
 
-export default function GuidedProviderTerminal({ session, onFinished, onClose }: GuidedProviderTerminalProps) {
+export default function GuidedProviderTerminal({ session, onFinished, onClose, remote }: GuidedProviderTerminalProps) {
   const displayName = providerName(session.provider)
   const isInspection = session.action === 'inspect'
   const isInstallation = session.action === 'install'
@@ -110,7 +112,7 @@ export default function GuidedProviderTerminal({ session, onFinished, onClose }:
     resizeObserver.observe(mount)
     scheduleResize()
 
-    const socket = new WebSocket(llmConfigService.getProviderSetupStreamUrl(session.id))
+    const socket = new WebSocket(remote ? remote.streamUrl(session.id) : llmConfigService.getProviderSetupStreamUrl(session.id))
     socket.binaryType = 'arraybuffer'
     socketRef.current = socket
     socket.onopen = () => {
@@ -174,7 +176,7 @@ export default function GuidedProviderTerminal({ session, onFinished, onClose }:
     setCancelling(true)
     setTerminalError(null)
     try {
-      await llmConfigService.cancelProviderSetup(session.id)
+      await (remote ? remote.cancel(session.id) : llmConfigService.cancelProviderSetup(session.id))
       setConnection('finished')
       onFinished({ ...sessionRef.current, status: 'cancelled', error: 'Cancelled by user' })
     } catch (error) {
