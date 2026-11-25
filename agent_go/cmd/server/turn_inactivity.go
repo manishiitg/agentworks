@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -50,6 +51,10 @@ var mainCLIPaneChanging = func(api *StreamingAPI, sessionID string) bool {
 type idleTool struct {
 	name string
 	open bool
+	// label is what the person reads for a long-running step: the agent's own
+	// summary of it when it gave one, else the tool name.
+	label   string
+	started time.Time
 }
 type turnInactivityState struct {
 	sessionID, executionID  string
@@ -59,6 +64,7 @@ type turnInactivityState struct {
 	tools                   map[string]idleTool
 	waiting, ending         bool
 	quietMinute             int
+	waitingFor              string // the open step a quiet turn is waiting on, set under the lock
 	warnedTools             bool
 	context                 context.Context
 	eligible                func() bool
@@ -89,7 +95,7 @@ func (state *turnInactivityState) observe(event events.Event, now time.Time) boo
 			old, known := state.tools[key]
 			if tool.Status == "running" {
 				if !known {
-					state.tools[key] = idleTool{name: tool.ToolName, open: true}
+					state.tools[key] = idleTool{name: tool.ToolName, open: true, label: idleToolLabel(tool), started: now}
 				}
 			} else {
 				state.tools[key] = idleTool{name: tool.ToolName, open: false}
@@ -128,8 +134,42 @@ func (state *turnInactivityState) observe(event events.Event, now time.Time) boo
 	}
 	wasQuiet := state.quietMinute > 0
 	state.quietMinute = 0
+	state.waitingFor = ""
 	state.warnedTools = false
 	return wasQuiet
+}
+
+// waitingOn names the longest-running open step, for the working line.
+func (state *turnInactivityState) waitingOn() string {
+	label, since := "", time.Time{}
+	for _, tool := range state.tools {
+		if tool.open && tool.label != "" && (label == "" || tool.started.Before(since)) {
+			label, since = tool.label, tool.started
+		}
+	}
+	return label
+}
+
+// idleToolLabel prefers the agent's own one-line summary of a step (a shell
+// step's description), since a command's first line ("set -e") says nothing.
+func idleToolLabel(tool unifiedevents.ToolCallRecord) string {
+	var args map[string]any
+	if json.Unmarshal([]byte(tool.Arguments), &args) == nil {
+		for _, key := range []string{"description", "toolSummary"} {
+			if text, ok := args[key].(string); ok && strings.TrimSpace(text) != "" {
+				return shortStepLabel(text)
+			}
+		}
+	}
+	return shortStepLabel(tool.ToolName)
+}
+
+func shortStepLabel(text string) string {
+	text = strings.Join(strings.Fields(text), " ")
+	if runes := []rune(text); len(runes) > 80 {
+		return string(runes[:79]) + "…"
+	}
+	return text
 }
 
 func (state *turnInactivityState) openToolNames() []string {
@@ -273,9 +313,11 @@ func (api *StreamingAPI) watchTurnInactivityMode(ctx context.Context, sessionID,
 					state.warnedTools = true
 				}
 				quietMinute := int(idle / time.Minute)
-				quiet := current && !state.waiting && len(tools) == 0 && idle >= turnQuietAfter && quietMinute != state.quietMinute
+				// Quiet with a step still open is a turn waiting on that step; the line then names it.
+				quiet := current && !state.waiting && (len(tools) == 0 || state.waitingOn() != "") && idle >= turnQuietAfter && quietMinute != state.quietMinute
 				if quiet {
 					state.quietMinute = quietMinute
+					state.waitingFor = state.waitingOn()
 				}
 				activityChanged := current && !state.lastOutputAt.Equal(state.lastAnnouncedActivity)
 				if activityChanged {
@@ -348,6 +390,9 @@ func (api *StreamingAPI) emitTurnActivityState(state *turnInactivityState) {
 		phase, text = "waiting_for_you", "Waiting for your answer"
 	} else if state.quietMinute > 0 {
 		phase, text = "quiet", fmt.Sprintf("Still working · no update for %d min", state.quietMinute)
+		if state.waitingFor != "" {
+			text = fmt.Sprintf("Waiting for: %s · %d min", state.waitingFor, state.quietMinute)
+		}
 	}
 	origin := state.turnStartedAt
 	if origin.IsZero() {
