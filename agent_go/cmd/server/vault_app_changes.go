@@ -42,8 +42,14 @@ func (api *StreamingAPI) vaultAppCandidates(ctx context.Context, lender, session
 		// The turn takes the vault's apps as they are now (it may have been made just above), not the binding's earlier copy.
 		names = api.crewVaultServers(ctx, project, names)
 	}
-	rows, inventoryErr := vaultServersFor(ctx, lender)
-	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{lender, rows, inventoryErr})
+	// A User of a server Crew uses its apps but is not one of the vault's owners: the turn reads the Crew vault as the
+	// main owner and keeps only that vault's own apps (crewVaultReader), never one of the owner's personal apps.
+	reader := crewVaultReader(ctx, lender)
+	rows, inventoryErr := vaultServersFor(ctx, reader)
+	if reader != lender {
+		rows = crewVaultAppRowsOnly(rows, names)
+	}
+	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{reader, rows, inventoryErr})
 	names = append([]string(nil), names...)
 	picksVault := slices.ContainsFunc(names, func(name string) bool { return strings.HasPrefix(strings.TrimSpace(name), "vault_") })
 	explicitNone := slices.Contains(names, mcpclient.NoServers)

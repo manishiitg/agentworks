@@ -216,6 +216,10 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	if rows := crewVaultRowsOnly(vaultCtx, []globalSecretEntry{{Name: ownKey}, {Name: crewKey}}); len(rows) != 1 || rows[0].Name != crewKey {
 		t.Fatalf("a User's rows from the owner's Vault = %v", rows)
 	}
+	// The same for apps: only the Crew vault's picked apps, never one of the owner's own.
+	if apps := crewVaultAppRowsOnly([]vaultRuntimeServer{{ID: "owner-mail"}, {ID: "crew-drive"}}, []string{vaultServerName("crew-drive"), "none"}); len(apps) != 1 || apps[0].ID != "crew-drive" {
+		t.Fatalf("a User's apps from the owner's Vault = %v", apps)
+	}
 	// The same lock outside chat (#3796): a direct MCP setup tool is refused for cara while its read action, a co-owner
 	// and the owner stay open, and the website's file proxy refuses her write to the instructions but not a work file.
 	if crewSetupLockExternalRefusal("cara", "install_skill", "install", map[string]any{"crew_id": "team-proj"}) == "" {
