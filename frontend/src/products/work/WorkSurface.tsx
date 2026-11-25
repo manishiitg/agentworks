@@ -77,7 +77,8 @@ import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspa
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
 import { parseProductInteraction } from '../../../shared/session/interactions'
 import { retireWorkActivityCopies, belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, type WorkRuntimeSelection } from './workTabs'
-import { ChatEmptyState, useChatShareLines } from './ChatEmptyState'
+import { ChatEmptyState, startInChat, useChatShareLines } from './ChatEmptyState'
+import { ProjectWelcome, useProjectWelcome } from './ProjectWelcome'
 import { teamSideChats } from './teamApi'
 import { useTeammateChatIdentity } from './TeammateChatIdentity'
 import { TeamAgentAsk } from './TeamAgentAsk'
@@ -1163,6 +1164,16 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [importAgentRequest, setImportAgentRequest] = useState(0)
   const [importAvailableProject, setImportAvailableProject] = useState('')
   const { tabId, canonicalTabId, projectReady, error: chatError } = useWorkChatTab(product, selected, persistLegacyRuntime)
+  // An empty project shows its welcome page; a starter there opens Create agent and its request waits for the new chat's message box.
+  const welcome = useProjectWelcome(product.profileId === 'work' && !tabId ? selected?.id : undefined)
+  const pendingStart = useRef('')
+  useEffect(() => {
+    const text = pendingStart.current
+    if (!tabId || !text) return
+    let tries = 0
+    const timer = window.setInterval(() => { if (startInChat(tabId, text) || ++tries > 40) { pendingStart.current = ''; window.clearInterval(timer) } }, 150)
+    return () => window.clearInterval(timer)
+  }, [tabId])
 
   // A browser reload loses transient tab metadata while the durable references
   // remain in workflow.json. Force the first follow-up through the full profile
@@ -1864,7 +1875,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                       </div>
                   ) : (
                     <div className="grid h-full place-items-center p-6 text-center text-sm text-muted-foreground">
-                      {projectReady ? <div className="max-w-sm space-y-4"><h2 className="text-lg font-medium text-foreground">Add your first agent</h2><p>Your project is ready. Create an agent to start working{importAvailableProject === selected?.id ? ', or import an existing chat.' : '.'}</p><div className="flex flex-wrap justify-center gap-3"><button type="button" className="rounded-md bg-primary px-4 py-2 text-primary-foreground" onClick={() => setCreateAgentRequest(value => value + 1)}>Create agent</button>{importAvailableProject === selected?.id && <button type="button" className="rounded-md border px-4 py-2" onClick={() => setImportAgentRequest(value => value + 1)}>Import a chat</button>}</div></div> : <span><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening project…</span>}
+                      {projectReady && welcome ? <div className="w-full self-start"><ProjectWelcome page={welcome} onStart={text => { pendingStart.current = text; setCreateAgentRequest(value => value + 1) }} /><div className="mx-auto max-w-2xl px-6 text-left"><button type="button" className="rounded-md bg-primary px-4 py-2 text-primary-foreground" onClick={() => setCreateAgentRequest(value => value + 1)}>Start a chat</button></div></div> : projectReady ? <div className="max-w-sm space-y-4"><h2 className="text-lg font-medium text-foreground">Add your first agent</h2><p>Your project is ready. Create an agent to start working{importAvailableProject === selected?.id ? ', or import an existing chat.' : '.'}</p><div className="flex flex-wrap justify-center gap-3"><button type="button" className="rounded-md bg-primary px-4 py-2 text-primary-foreground" onClick={() => setCreateAgentRequest(value => value + 1)}>Create agent</button>{importAvailableProject === selected?.id && <button type="button" className="rounded-md border px-4 py-2" onClick={() => setImportAgentRequest(value => value + 1)}>Import a chat</button>}</div></div> : <span><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening project…</span>}
                     </div>
                   )}
               </>}

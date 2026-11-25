@@ -7,6 +7,20 @@ A project has one main owner (its creator). A project on the server also has:
 
 A project on a Mac has its Team instead and neither.
 
+**Welcome page.** `WELCOME.md` in the project folder is what people see on an empty project and at the top of each new chat, instead of the plain empty screen. The owner or a co-owner asks the project's chat for it; the agent writes the file (Users cannot change it). Write it in Markdown (title, a few short lines, images or a video from the project folder, e.g. `![How to start](media/how-to.mp4)`), with up to six starter buttons in its front matter; a starter puts its `message` in the message box, ready to finish and send:
+
+```
+---
+starters:
+  - label: Make a promo
+    note: From a short brief
+    message: "Make a 30-second promo for "
+---
+# Welcome
+```
+
+Show the person the result and read it back after changes. No file means the screen keeps its plain words.
+
 Use `crew_owners` (list; add and remove for co-owners; user_add, user_remove and user_files for users) or the Access panel's Users and Co-owners sections, where the owner picks the person from the server's accounts. Only the main owner adds or removes people; anyone with a seat can list them. Over the tool, give the person's account email or user id; someone who has never signed in cannot be added yet. `user_files` sets a User's extra `locked_paths` (relative to the project); the instructions, skills and settings are always locked. Adding a User who is a co-owner moves them to Users, and the other way round.
 
 Read the list before changing it and read it back afterward. Neither is Share: Share (Only me / Chosen people / Everyone) is who can open and ask the Crew in Run mode. An account administrator is not automatically the owner of someone else's private Crew.

@@ -31,6 +31,7 @@ still require the person's provider login or phone.
 | Chat history; named agents and their owners, models, pins or ordering | `panel-runs`, `crew-agents`, `panel-settings` |
 | Share: people, Team, agents, Actions, Slack and dashboards | `panel-access` |
 | Suggestions from people using this project | `panel-access` |
+| Welcome page (what people see on an empty project and in a new chat: `WELCOME.md`); co-owners and Users | `panel-access` (owners reference) |
 | Actions | `panel-dashboard`, `panel-access` |
 | Schedules; Watchers; Webhooks | `panel-automations` |
 | Email inbox or personal Gmail monitoring | `panel-channels`, `panel-channels`, `panel-automations` |

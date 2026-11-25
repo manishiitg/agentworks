@@ -19,7 +19,7 @@ import (
 // Co-owners always change everything.
 
 // crewSetupLockedDefaultPaths are always locked for a User, relative to the project folder.
-var crewSetupLockedDefaultPaths = []string{"PROJECT_INSTRUCTIONS.md", "AGENTS.md", "CLAUDE.md", "skills", ".agentworks/skills", ".agentworks/settings", "workflow.json", "product.json"}
+var crewSetupLockedDefaultPaths = []string{"PROJECT_INSTRUCTIONS.md", "WELCOME.md", "AGENTS.md", "CLAUDE.md", "skills", ".agentworks/skills", ".agentworks/settings", "workflow.json", "product.json"}
 
 // crewIsProjectUser says whether userID is one of the Users of the server Crew at root.
 func crewIsProjectUser(root, userID string) bool {
