@@ -140,6 +140,27 @@ func agyIsolatedHomeIn(servers []agyMCPServer, conversationHome string, login ag
 			return "", nil, err
 		}
 	}
+	// An account that signs in from its own home still gets the person's own agy skills (their real
+	// ~/.gemini, the folders T3 Code links too); a skill of the same name in the account's home wins (#3973).
+	if loginHome != base {
+		for _, rel := range []string{filepath.Join("config", "skills"), filepath.Join("antigravity-cli", "skills")} {
+			src, dst := filepath.Join(base, ".gemini", rel), filepath.Join(privateGemini, rel)
+			entries, err := os.ReadDir(src)
+			if err != nil {
+				continue
+			}
+			for _, entry := range entries {
+				to := filepath.Join(dst, entry.Name())
+				if _, err := os.Lstat(to); !entry.IsDir() || err == nil {
+					continue
+				}
+				if err := agyCopyHomeTree(filepath.Join(src, entry.Name()), to, nil); err != nil {
+					cleanup()
+					return "", nil, err
+				}
+			}
+		}
+	}
 	privateRuntime := filepath.Join(privateGemini, "antigravity-cli")
 	if err := os.MkdirAll(privateRuntime, 0o700); err != nil {
 		cleanup()
