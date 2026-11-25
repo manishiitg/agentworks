@@ -108,6 +108,19 @@ func workspaceProxyHandler() http.Handler {
 			http.NotFound(w, r)
 			return
 		}
+		// A co-owner whose setup the owner locked cannot change the project's setup files through the Files proxy
+		// either (#3796); the server's own writers check the same rule.
+		if r.Method == http.MethodPut || r.Method == http.MethodPatch || r.Method == http.MethodPost || r.Method == http.MethodDelete {
+			rel := workspaceProxyRelativePath(r)
+			for _, prefix := range []string{"api/documents/", "api/folders/"} {
+				if strings.HasPrefix(rel, prefix) {
+					if refusal := crewSetupLockWorkspaceRefusal(r.Context(), strings.TrimPrefix(rel, prefix), "files "+strings.ToLower(r.Method)); refusal != "" {
+						http.Error(w, refusal, http.StatusForbidden)
+						return
+					}
+				}
+			}
+		}
 		// Live browser access must go through workflow ownership and input gating.
 		if strings.HasPrefix(workspaceProxyRelativePath(r), "api/browser/live/") {
 			http.NotFound(w, r)

@@ -186,6 +186,11 @@ func logDashboardShareRefusal(claims *UserClaims, target dashboardTarget, mode, 
 }
 
 func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, target dashboardTarget, mode string, emails []string, createDashboard bool, changes ...crewAgentShareChange) (state runShareState, err error) {
+	if target.Kind == "crew" && claims != nil {
+		if refusal := crewSetupLockRefusalFor(target.Root, claims.UserID, "share"); refusal != "" {
+			return runShareState{}, dashboardFailure(http.StatusForbidden, refusal)
+		}
+	}
 	// One agent switched from the Team tab (shared_agent) with no mode: who it is shared with stays as it is.
 	if strings.TrimSpace(mode) == "" && len(changes) > 0 && changes[0].Agent != "" {
 		current, readErr := api.readRunShare(ctx, claims, target)

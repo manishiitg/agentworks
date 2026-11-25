@@ -348,6 +348,9 @@ func deleteWorkspaceFile(ctx context.Context, configPath string) error {
 	if reason := publishedWriteRefusal(ctx, configPath); reason != "" {
 		return fmt.Errorf("%s", reason)
 	}
+	if refusal := crewSetupLockWorkspaceRefusal(ctx, configPath, "delete"); refusal != "" {
+		return fmt.Errorf("%s", refusal)
+	}
 	if e := teamStructuralMutation(ctx, configPath); e != nil {
 		return e
 	}
@@ -411,6 +414,9 @@ func deleteWorkspaceDocument(ctx context.Context, configPath string) error {
 // writeFileToWorkspace writes content to a file in the workspace via the workspace API
 func writeFileToWorkspace(ctx context.Context, filePath, content string) error {
 	if refusal := publishedWriteRefusal(ctx, filePath); refusal != "" {
+		return fmt.Errorf("%s", refusal)
+	}
+	if refusal := crewSetupLockWorkspaceRefusal(ctx, filePath, "write"); refusal != "" {
 		return fmt.Errorf("%s", refusal)
 	}
 	content = keepWorkflowCreator(ctx, filePath, content)
@@ -3597,6 +3603,9 @@ func deleteWorkspaceFolder(ctx context.Context, folderPath string) error {
 }
 
 func deleteWorkspaceFolderWithCleanup(ctx context.Context, folderPath string) (bool, error) {
+	if refusal := crewSetupLockWorkspaceRefusal(ctx, folderPath, "delete folder"); refusal != "" {
+		return false, fmt.Errorf("%s", refusal)
+	}
 	if e := teamStructuralMutation(ctx, folderPath); e != nil {
 		return false, e
 	}

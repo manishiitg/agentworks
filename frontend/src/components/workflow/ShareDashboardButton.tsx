@@ -13,6 +13,8 @@ import { PublicLinkControl, type PublicLink } from './PublicLinkControl'
 import { Switch } from '../ui/Switch'
 
 type Person = { id: string; email?: string; username?: string }
+/** One account from GET /api/users/directory. */
+type DirectoryUser = { id: string; username?: string; email?: string }
 type ShareState = {
   mode: 'everyone' | 'people' | 'private'; people?: Person[]; can_share: boolean; share_blocked?: string; needs_dashboard?: boolean
   /** Goals and Flows keep an owner list; a Crew's builders are its Team. */
@@ -47,7 +49,9 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   const state = snapshot?.scope === scope ? snapshot.state : null
   const [ownerSnapshot, setOwnerSnapshot] = useState<{ scope: string; owners: OwnersState } | null>(null)
     const owners = ownerSnapshot?.scope === scope ? ownerSnapshot.owners : undefined
-  const [ownerEmail, setOwnerEmail] = useState('')
+  // Everyone who can be picked: the server's account list (GET /api/users/directory), the same people as the Team's picker.
+  const [directory, setDirectory] = useState<{ scope: string; users: DirectoryUser[] } | null>(null)
+  const users = directory?.scope === scope ? directory.users : undefined
   const [choosing, setChoosing] = useState(false)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
@@ -55,7 +59,6 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   const [attempt, setAttempt] = useState(0)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
-  const [email, setEmail] = useState('')
   const [pendingShare, setPendingShare] = useState<{ scope: string; mode: ShareState['mode']; emails?: string[] }>()
   const confirmation = pendingShare?.scope === scope ? pendingShare : undefined
   const trigger = useRef<HTMLButtonElement>(null)
@@ -85,6 +88,15 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     return () => { disposed = true }
   }, [expanded, state?.can_share, state?.has_owners, workspacePath, user, server, scope, streaming, attempt])
   useEffect(() => {
+    if (!expanded || !state?.can_share) return
+    const identity = captureChatIdentity()
+    let disposed = false
+    void api.get<{ users?: DirectoryUser[] }>('/api/users/directory')
+      .then(({ data }) => { if (!disposed && isChatIdentityCurrent(identity)) setDirectory({ scope, users: data.users || [] }) })
+      .catch(() => { if (!disposed && isChatIdentityCurrent(identity)) setDirectory({ scope, users: [] }) })
+    return () => { disposed = true }
+  }, [expanded, state?.can_share, scope])
+  useEffect(() => {
     if (!open) return
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); close() } }
     document.addEventListener('keydown', escape)
@@ -101,7 +113,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     try {
       const { data } = await api.post<ShareState & { unknown_emails?: string[] }>('/api/dashboards', { workspace: workspacePath, action: 'share', mode: next, ...(list ? { emails: list } : {}), ...(createDashboard ? { create_dashboard: true } : {}) })
       if (!isChatIdentityCurrent(identity)) return
-      setSnapshot({ scope, state: data }); setEmail(''); setPendingShare(undefined)
+      setSnapshot({ scope, state: data }); setPendingShare(undefined)
       if (createDashboard) window.dispatchEvent(new CustomEvent(WORKFLOW_REPORT_REFRESH_EVENT, { detail: { workspacePath } }))
       if (data.unknown_emails?.length) setNotice(`No account for ${data.unknown_emails.join(', ')}.`)
     } catch (cause) {
@@ -135,19 +147,15 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   const companyWide = state.mode === 'everyone'
   const shareList = (list: string[]) => putShare('people', list)
   const choice: 'private' | 'people' | 'everyone' = companyWide ? 'everyone' : state.mode === 'people' || choosing ? 'people' : 'private'
-  const addOwner = () => {
-    const value = ownerEmail.trim().toLowerCase()
-    if (!value) return
+  const addOwner = (value: string) => {
     void run(async () => {
       await changeOwners('owner_add', value)
       const { data } = await api.post<ShareState>('/api/dashboards', { workspace: workspacePath, action: 'share_status' })
-      setSnapshot({ scope, state: data }); setOwnerEmail('')
+      setSnapshot({ scope, state: data })
     })
   }
-  const addPerson = () => {
-    const value = email.trim().toLowerCase()
-    if (!value) return
-    if (emails.includes(value)) { setEmail(''); return }
+  const addPerson = (value: string) => {
+    if (emails.includes(value)) return
     void run(() => shareList([...emails, value]))
   }
   const changeSetup = async (person: Person, canChange: boolean, lockedPaths: string[] = []) => {
@@ -164,10 +172,20 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   const removeButton = (person: Person, remove: (value: string) => Promise<void>) => person.email
     ? <button type="button" aria-label={`Remove ${who(person)}`} disabled={busy} onClick={() => void run(() => remove(person.email as string))} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
     : null
-  const emailForm = (value: string, setValue: (next: string) => void, submit: () => void, label: string) => <form onSubmit={event => { event.preventDefault(); submit() }} className="flex gap-2">
-    <input type="email" aria-label={label} placeholder="name@company.com" value={value} disabled={busy} onChange={event => setValue(event.target.value)} className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm" />
-    <button type="submit" disabled={busy || !value.trim()} className="h-9 rounded-md border border-border px-3 text-sm hover:bg-muted disabled:opacity-50">Add</button>
-  </form>
+  // Pick a person from the server's accounts, like the Team's "+ Add person" (owner, 25 Nov): no typed email, so no
+  // browser autofill. People already added and the owner are left out.
+  const taken = new Set([user, owners?.owner?.id, ...(owners?.co_owners || []).map(person => person.id), ...(state.people || []).map(person => person.id)].filter(Boolean))
+  const personPicker = (exclude: Set<string | undefined>, pick: (email: string) => void, label: string) => {
+    if (!users) return <p role="status" className="text-xs text-muted-foreground">Loading people…</p>
+    const options = users.filter(person => person.email && !exclude.has(person.id))
+    if (!users.some(person => person.id !== user)) return <p className="text-xs text-muted-foreground">Nobody else has signed in to this server yet.</p>
+    if (!options.length) return <p className="text-xs text-muted-foreground">Everyone on this server is already added.</p>
+    return <select aria-label={label} value="" disabled={busy} onChange={event => { if (event.target.value) pick(event.target.value) }}
+      className="h-9 w-full rounded-md border border-dashed border-border bg-background px-2 text-sm text-primary">
+      <option value="">+ Add person</option>
+      {options.map(person => <option key={person.id} value={person.email}>{person.username && person.username !== person.email ? `${person.username} (${person.email})` : person.email}</option>)}
+    </select>
+  }
   const choices = [['private', 'Only me'], ['people', 'Chosen people'], ['everyone', 'Everyone']] as const
   const peopleContent = <div className="space-y-6 text-sm">
     {!coOwnersOnly && <><OnlineOnlyNote projectId={crewProjectId} />
@@ -186,7 +204,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
         <ul aria-label="People it is shared with" className="space-y-2">
           {(state.people || []).map(person => <li key={person.id} className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{removeButton(person, value => shareList(emails.filter(item => item !== value)))}</li>)}
         </ul>
-        {emailForm(email, setEmail, addPerson, 'Share with a person by email')}
+        {personPicker(taken, addPerson, 'Share with a person')}
       </>}
     </section>
     {!!state.public_links?.length && <section aria-label="Public links" className="space-y-3 border-t border-border pt-4">
@@ -218,7 +236,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
         })}
       </ul>
       {ownersError && <p role="alert" className="text-xs text-destructive">{ownersError} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p>}
-      {owners?.can_manage && emailForm(ownerEmail, setOwnerEmail, addOwner, 'Add a co-owner by email')}
+      {owners?.can_manage && personPicker(taken, addOwner, 'Add a co-owner')}
     </section>}
     {notice && <p role="status" className="text-xs text-muted-foreground">{notice}</p>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}

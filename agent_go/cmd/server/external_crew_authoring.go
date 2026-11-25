@@ -1052,6 +1052,10 @@ func (api *StreamingAPI) externalCrewWriteRequest(w http.ResponseWriter, r *http
 		externalError(w, http.StatusForbidden, "forbidden", "Only the people who build this project (its owner and Team) can write its files; you can add files under "+sharedFolder+"/ .")
 		return refused, false
 	}
+	if refusal := crewSetupLockPathRefusal(crew.Binding.WorkspacePath, clean, claims.UserID, "write_crew_file"); err == nil && refusal != "" {
+		externalError(w, http.StatusForbidden, "setup_locked", refusal)
+		return refused, false
+	}
 	if crew.OwnedByCaller && !inOwnShared && claims.AccessToken != nil && !claims.AccessToken.Allows("crews:write") {
 		externalError(w, http.StatusForbidden, "insufficient_scope", "Writing outside "+sharedFolder+"/ needs crews:write.")
 		return refused, false

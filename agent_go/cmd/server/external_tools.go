@@ -612,6 +612,10 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 		}
 		tool, call.Name, call.Arguments = &member, member.Name, args
 	}
+	if refusal := crewSetupLockExternalRefusal(GetUserIDFromContext(r.Context()), tool.Name, action, call.Arguments); refusal != "" {
+		externalError(w, 403, "setup_locked", refusal)
+		return
+	}
 	if !externalTokenAllows(GetUserFromContext(r.Context()), *tool) {
 		externalError(w, 403, "insufficient_scope", "This access token does not allow this operation."+externalMissingScopeHint(GetUserFromContext(r.Context()), *tool))
 		return

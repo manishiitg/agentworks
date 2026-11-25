@@ -814,6 +814,9 @@ func (s *ProjectActionDispatcher) CreateProjectSchedule(ctx context.Context, use
 	if ownerErr != nil {
 		return productScheduleJob{}, ownerErr
 	}
+	if refusal := crewSetupLockRefusalFor(crewProjectRootByID(projectID), caller, "create schedule"); refusal != "" {
+		return productScheduleJob{}, errors.New(refusal)
+	}
 	if err := crewScheduleWorkflowAllowed(caller, userID, schedule); err != nil {
 		return productScheduleJob{}, err
 	}
@@ -860,6 +863,9 @@ func (s *ProjectActionDispatcher) UpdateProjectSchedule(ctx context.Context, use
 		return job, firstError(err, fmt.Errorf("not a project schedule"))
 	}
 	caller := userID
+	if refusal := crewSetupLockRefusalFor(crewProjectRootByID(job.ProjectID), caller, "update schedule"); refusal != "" {
+		return job, errors.New(refusal)
+	}
 	userID = firstNonEmptyTrimmed(job.CrewOwner, job.UserID)
 	_, binding, manifest, err := s.projectManifest(ctx, userID, job.Profile.ID, job.ProjectID)
 	if err != nil {
@@ -915,6 +921,9 @@ func (s *ProjectActionDispatcher) DeleteProjectSchedule(ctx context.Context, use
 	}
 	if job.ProjectID == "" {
 		return fmt.Errorf("not a project schedule")
+	}
+	if refusal := crewSetupLockRefusalFor(crewProjectRootByID(job.ProjectID), userID, "delete schedule"); refusal != "" {
+		return errors.New(refusal)
 	}
 	if err := crewScheduleWorkflowAllowed(userID, firstNonEmptyTrimmed(job.CrewOwner, job.UserID), job.Schedule); err != nil {
 		return err
