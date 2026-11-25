@@ -15,6 +15,8 @@ const broken = [
   '{"op":"add","path":"/elements/visual/props/participants/-","value":{"id":"lead","label":"Lead"}}',
   '{"op":"add","path":"/elements/visual/props/messages/-","value":{"from":"lead","to":"lead","label":"Note"}}',
 ].join('\n')
+// The reported sequence combined a custom key with participant label fields (#3882).
+const reportedShape = broken.replace('"value":"visual"', '"value":"s"').replaceAll('/elements/visual', '/elements/s')
 const render = (source: string, send?: FixChatVisual, stream?: 'progressive') => root.render(
   <ChatVisualRepairContext.Provider value={send}>
     <ChatVisualRenderer source={source} stream={stream} renderMarkdown={text => text} />
@@ -26,14 +28,14 @@ it('sends only the broken block on click, suppresses a repeat click, and lets th
   const send = vi.fn<FixChatVisual>()
     .mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
     .mockResolvedValueOnce(true)
-  await act(async () => render(broken, send))
+  await act(async () => render(reportedShape, send))
   expect(send).not.toHaveBeenCalled()
   await act(async () => host.querySelector('summary')!.click())
   expect(send).not.toHaveBeenCalled()
   const button = host.querySelector('button')!
   await act(async () => { button.click(); button.click() })
   expect(send).toHaveBeenCalledTimes(1)
-  expect(send).toHaveBeenCalledWith(broken)
+  expect(send).toHaveBeenCalledWith(reportedShape)
   expect(button.disabled).toBe(true)
   await act(async () => finish(false))
   expect(button.disabled).toBe(false)
@@ -41,7 +43,7 @@ it('sends only the broken block on click, suppresses a repeat click, and lets th
   await act(async () => button.click())
   expect(send).toHaveBeenCalledTimes(2)
   expect(button.textContent).toBe('Request sent')
-  expect(host.querySelector('pre')?.textContent).toBe(broken)
+  expect(host.querySelector('pre')?.textContent).toBe(reportedShape)
 })
 
 it('offers no repair for a pending or valid visual, or outside a chat that can send', async () => {

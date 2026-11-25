@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { compileChatVisual } from './chatVisualSpec'
 
@@ -127,4 +128,21 @@ describe('common slips that change nothing a widget may hold (#3528)', () => {
     expect(compileChatVisual(op('/elements/visual', { ...chart, children: ['other'] }))).toBeNull()
     expect(compileChatVisual(op('/elements/visual/props/__proto__', {}))).toBeNull()
   })
+})
+
+it('renders the sequence example shipped in the chat-visuals guide (#3882)', () => {
+  const guide = readFileSync(new URL('../../../../agent_go/pkg/skills/panels/chat-visuals/SKILL.md', import.meta.url), 'utf8')
+  const sequence = Array.from(guide.matchAll(/^```chat-ui\n([\s\S]*?)^```/gm), match => match[1])
+    .find(source => source.includes('"type":"sequence"'))
+  expect(sequence).toBeDefined()
+  const lines = sequence!.trim().split('\n')
+  const firstMessage = compileChatVisual(lines.slice(0, -1).join('\n'), true)
+  expect(firstMessage?.elements.visual.props.participants).toEqual([
+    { id: 'lead', title: 'Lead agent' },
+    { id: 'worker', title: 'Worker agent' },
+  ])
+  expect(firstMessage?.elements.visual.props.messages).toHaveLength(1)
+  const final = compileChatVisual(sequence!)
+  expect(final?.elements.visual.props.messages).toHaveLength(2)
+  expect(compileChatVisual(sequence!, true)).toEqual(final)
 })
