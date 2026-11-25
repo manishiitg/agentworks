@@ -39,9 +39,8 @@ const IDENTITY_TABS: Array<{ value: WorkIdentityTab; label: string }> = [
   { value: 'location', label: 'Laptop access' },
 ]
 
-function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpdateIdentity }: {
+function WorkGeneralPanel({ projectTitle, projectIdentity, onUpdateIdentity }: {
   projectTitle: string
-  projectPurpose: string
   projectIdentity?: ProductIdentity
   onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>
 }) {
@@ -52,7 +51,7 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
   useEffect(() => {
     setNameDraft(projectIdentity?.name ?? '')
     setError(null)
-  }, [projectIdentity?.name, projectPurpose])
+  }, [projectIdentity?.name])
 
   const dirty = nameDraft.trim() !== (projectIdentity?.name ?? '')
 
@@ -61,10 +60,8 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
     setSaving(true)
     setError(null)
     try {
-      await onUpdateIdentity({
-        name: nameDraft.trim(),
-        purpose: projectPurpose, // unchanged here; Main's card edits it
-      })
+      // A project has a name and no description (owner, 25 Nov, #4046).
+      await onUpdateIdentity({ name: nameDraft.trim() })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to save.')
     } finally {
@@ -283,14 +280,13 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTitle, projectDescription, projectIdentity, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false, settingsView = 'identity', skillsPanel, memoryPanel, onSettingsTabChange }: {
+export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTitle, projectIdentity, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false, settingsView = 'identity', skillsPanel, memoryPanel, onSettingsTabChange }: {
   workspacePath: string
   /** A Crew opened by a reader: the project instructions editor is the owner's. */
   shared?: boolean
   /** The project's id. */
   projectId?: string
   projectTitle: string
-  projectDescription: string
   projectIdentity?: ProductIdentity
   tabId: string
   modelsOnly?: boolean
@@ -356,7 +352,6 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
         {activeTab === 'memory' && memoryPanel}
         {activeTab === 'general' && product.hasIdentity && <WorkGeneralPanel
           projectTitle={projectTitle}
-          projectPurpose={projectDescription}
           projectIdentity={projectIdentity}
           onUpdateIdentity={onUpdateIdentity}
         />}

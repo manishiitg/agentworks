@@ -122,7 +122,7 @@ func (api *StreamingAPI) defaultDashboardInfoFor(ctx context.Context, claims *Us
 		if !ok {
 			return info, dashboardFailure(404, "project unavailable")
 		}
-		info.Description = manifest.Description
+		info.Description = manifest.purpose()
 		label := target.Title
 		if name, _ := summary["name"].(string); name != "" {
 			label = name

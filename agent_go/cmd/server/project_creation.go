@@ -157,7 +157,7 @@ func (api *StreamingAPI) projectCreationTool(profileID, userID, sessionID string
 			return "", fmt.Errorf("open your project's Builder to create another project")
 		}
 		ctx = context.WithValue(ctx, UserContextKey, claims)
-		spec := crewSpec{Name: externalArg(args, "name"), Purpose: externalArg(args, "description"), RootPath: externalArg(args, "root_path")}
+		spec := crewSpec{Name: externalArg(args, "name"), RootPath: externalArg(args, "root_path")}
 		id, setupErr := api.createWorkspaceFromSpec(ctx, claims, profileID, spec, false)
 		if setupErr != nil && id == "" {
 			return "", fmt.Errorf("%s", externalCrewCreateError(id, setupErr))
