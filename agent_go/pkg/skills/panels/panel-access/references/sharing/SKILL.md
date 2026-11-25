@@ -5,6 +5,8 @@ admitted tools and exact people/agents returned by the server. A link grants no
 access by itself. The server decides what the caller can change; a guide does
 not grant permission or another person's tab controls.
 
+On a project on the server, people who build it (co-owners) or work in it through chat with your setup (Users, with locked files) are not Share: use `crew_owners` and read `references/owners/SKILL.md`.
+
 The project menu has two rows (the old Share row split in two):
 
 - **Team:** the people who work on this project with you. People lists **Works with
