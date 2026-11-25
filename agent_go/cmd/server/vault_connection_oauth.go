@@ -292,6 +292,11 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 			if err := syncErr; err != nil {
 				return errors.New(vaultSyncProblem(name, err))
 			}
+			if strings.EqualFold(name, "slack") || strings.EqualFold(cfg.URL, "https://mcp.slack.com/mcp") {
+				_ = os.Remove(vaultSlackIdentityPath(id))
+				vaultSlackIdentityMiss.Delete(id)
+				_ = api.refreshVaultSlackIdentity(context.Background(), id)
+			}
 			completeMCPURLSignIn(flow.State, id)
 			return nil
 		},
@@ -445,7 +450,8 @@ func (api *StreamingAPI) vaultConnectionOAuthStatus(w http.ResponseWriter, r *ht
 func removeVaultCredentialFiles(id string) {
 	vaultSignInOutcomes.Delete(id)
 	vaultSignInStarts.Delete(id)
-	for _, path := range []string{getUserTokenFilePath(platformMCPTokenUserID, vaultCredentialName(id)), vaultCredentialConfigPath(id), getUserClientFilePath(platformMCPTokenUserID, vaultCredentialName(id))} {
+	vaultSlackIdentityMiss.Delete(id)
+	for _, path := range []string{getUserTokenFilePath(platformMCPTokenUserID, vaultCredentialName(id)), vaultCredentialConfigPath(id), getUserClientFilePath(platformMCPTokenUserID, vaultCredentialName(id)), vaultSlackIdentityPath(id)} {
 		_ = os.Remove(path)
 	}
 }

@@ -49,7 +49,7 @@ func (api *StreamingAPI) buildConnectedToolsPrompt(ctx context.Context, profileI
 				if err != nil || !ok || conn.Status != "active" || !projectVaultAppInUse(vaultCtx, servers, chosenOnly, conn.ID) {
 					return false
 				}
-				label := firstNonBlank(strings.TrimSpace(conn.Label), "Slack")
+				label := firstNonBlank(formatSlackIdentity(readVaultSlackIdentity(conn.ID)), strings.TrimSpace(conn.Label), "Slack")
 				if isOwner {
 					lines = append(lines, "- **Slack as me**: "+label+" (full access via Slack MCP tools)")
 				} else {

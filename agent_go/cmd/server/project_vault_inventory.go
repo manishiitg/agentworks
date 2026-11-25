@@ -382,7 +382,8 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 				if a.Connected && a.Problem == "" {
 					status = "connected"
 				}
-				personal.Items = append(personal.Items, projectVaultItem{ID: a.ID, Name: a.Label, Provider: "Slack", Owner: a.Owner, Kind: "slack", Status: status, Selected: a.Selected, CanSelect: a.CanAdd || a.CanDetach})
+				identity := formatSlackIdentity(vaultSlackIdentity{TeamName: a.TeamName, UserName: a.UserName})
+				personal.Items = append(personal.Items, projectVaultItem{ID: a.ID, Name: a.Label, AccountEmail: identity, Provider: "Slack", Owner: a.Owner, Kind: "slack", Status: status, Selected: a.Selected, CanSelect: a.CanAdd || a.CanDetach})
 			}
 		}
 	} else {
