@@ -126,7 +126,8 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 	// The fork remembers its parent, so the left menu draws it under that agent (#3288).
 	parent := source.Record.ConversationKey
 	parentName := firstNonEmptyTrimmed(source.Identity.Name, source.Record.Title, "Chat")
-	forkNote := forkFirstTurnNote(parentName, name, source.Identity.Purpose)
+	// A fork is its own agent unless an agent made it as its helper (the fork tool then replaces this note).
+	forkNote := forkFirstTurnNote(parentName, name, source.Identity.Purpose, true)
 	change := chatContextChange{ForkedFrom: &parent, ForkNote: &forkNote}
 	if source.Identity.ClaudeTerminal && query.Provider == "claude-code" {
 		terminal := true
@@ -386,8 +387,14 @@ func (api *StreamingAPI) seedForkChatJournal(user string, destination ProductCon
 
 // forkFirstTurnNote is what a new fork's agent reads on its first turn. The copied conversation is the parent's, so
 // without it the fork can believe it is the parent and carry on the parent's role.
-func forkFirstTurnNote(parentName, forkName, parentPurpose string) string {
-	note := fmt.Sprintf("[This chat is a fork. It is %q, a separate agent forked from %q. The conversation above is a copy of %q up to the fork: its earlier replies were written by that agent, not by you. You are not %q: do not carry on its role or its unfinished work unless the person asks you to. %q keeps working on its own and does not see what you do here. To reach it, find it with messages action=list_agents and send through AgentBridge; send only a hand-off, a blocker or a result.]", forkName, parentName, parentName, parentName, parentName)
+// own is a fork of its own (the person's fork, or place=beside or a group; owner 25 Nov): it works with the person and
+// does not report back to the agent it came from. A helper fork (place=under) sends a hand-off, blocker or result.
+func forkFirstTurnNote(parentName, forkName, parentPurpose string, own bool) string {
+	reach := "To reach it, find it with messages action=list_agents and send through AgentBridge; send only a hand-off, a blocker or a result."
+	if own {
+		reach = fmt.Sprintf("You are your own agent: work with the person here. Do not report to %q or send it updates unless the person asks.", parentName)
+	}
+	note := fmt.Sprintf("[This chat is a fork. It is %q, a separate agent forked from %q. The conversation above is a copy of %q up to the fork: its earlier replies were written by that agent, not by you. You are not %q: do not carry on its role or its unfinished work unless the person asks you to. %q keeps working on its own and does not see what you do here. %s]", forkName, parentName, parentName, parentName, parentName, reach)
 	if purpose := strings.TrimSpace(parentPurpose); purpose != "" {
 		note = strings.TrimSuffix(note, "]") + fmt.Sprintf(" The parent's job was: %s", purpose) + "]"
 	}

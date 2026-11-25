@@ -37,6 +37,12 @@ func forkCopyFirstTurnNote(agentName, maker string) string {
 
 // helperFirstTurnNote is what a fresh helper agent reads on its first turn. It has no copy of the opener's
 // conversation: the task it is sent is all it knows.
+// ownAgentFirstTurnNote is helperFirstTurnNote for a new agent opened as its own (place=beside or a group, owner
+// 25 Nov): it works with the person directly and does not report back to its opener.
+func ownAgentFirstTurnNote(agentName, openerName string) string {
+	return fmt.Sprintf("[This chat is %q, its own agent, opened by %q. You start without that agent's conversation: the task you are sent has everything you need. You are not %q. Work with the person here; do not report to %q or send it updates unless the person asks.]", agentName, openerName, openerName, openerName)
+}
+
 func helperFirstTurnNote(helperName, openerName string) string {
 	return fmt.Sprintf("[This chat is %q, a helper agent opened by %q to do part of its work. You start without that agent's conversation: the task you are sent has everything you need. You are not %q. When you finish, report back in the same AgentBridge thread with one short message: what you did and where the results are.]", helperName, openerName, openerName)
 }

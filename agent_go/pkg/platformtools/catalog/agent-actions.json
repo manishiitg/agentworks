@@ -1296,7 +1296,7 @@
     "family": "sessions",
     "name": "fork",
     "member": "fork_project_chat",
-    "description": "Fork a caller-owned chat into an independent tab carrying its saved context. Prefer fork for related work. With task, the fork starts on it at once and answers you; place=beside puts it at your level; group puts it in a named group of the person's; purpose and instructions set it up in the same call; without task no turn starts.",
+    "description": "Fork a caller-owned chat into an independent tab carrying its saved context. Prefer fork for related work. With task, the fork starts on it at once and answers you; place=beside makes it its own agent that does not report back; group puts it in a named group of the person's; purpose and instructions set it up in the same call; without task no turn starts.",
     "external_members": "sessions_fork_crew"
   },
   {
@@ -1310,7 +1310,7 @@
     "family": "sessions",
     "name": "open",
     "member": "open_project_chat",
-    "description": "Open a named agent tab for separate work (name required); with task it starts at once and answers you, place=beside puts it at your level, group puts it in a named group of the person's, purpose and instructions set it up in the same call. Use new only to start a fresh conversation in an existing Main.",
+    "description": "Open a named agent tab for separate work (name required); with task it starts at once and answers you, place=beside makes it its own agent that does not report back, group puts it in a named group of the person's, purpose and instructions set it up in the same call. Use new only to start a fresh conversation in an existing Main.",
     "external_members": "sessions_open_crew"
   },
   {

@@ -492,7 +492,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 			}},
 		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. The fork is shown in the person's left menu under you (or under its source when you fork your own chat), or beside you with place=beside, and follows that agent's group; group puts it in a named group instead. With task, the fork starts on it at once as your AgentBridge ask and its answer comes back to you; without task no turn starts. purpose and instructions set the fork up in the same call when the person asks for an agent with its own rules.", map[string]interface{}{
 			"type": "object", "required": []string{"chat"}, "properties": map[string]interface{}{
-				"place":            map[string]interface{}{"type": "string", "enum": []string{"under", "beside"}, "description": "Where it sits in the person's left menu: under (the default) as your helper that reports back, or beside you as its own agent at your level (other work that needs this context but stands on its own)."},
+				"place":            map[string]interface{}{"type": "string", "enum": []string{"under", "beside"}, "description": "Where it sits in the person's left menu: under (the default) as your helper that reports back, or beside you as its own agent at your level that works with the person and does not report back (other work that needs this context but stands on its own)."},
 				"group":            map[string]interface{}{"type": "string", "maxLength": agentGroupNameMaxRunes, "description": "Optional: put the new agent in this group of the person's left menu (see group in sessions action=list): it joins the group of that name or starts it, as its own agent under no one. Only when the person names a group."},
 				"purpose":          map[string]interface{}{"type": "string", "maxLength": productAgentPurposeMaxRunes, "description": "Optional: the new agent's one-line purpose, saved on it."},
 				"instructions":     map[string]interface{}{"type": "string", "maxLength": productAgentInstructionsMaxRunes, "description": "Optional: the new agent's own standing instructions (several lines), saved on it before it starts, as sessions action=identity would from its own chat. Pass them when the person asks you to set up an agent with rules, in their words; only from the person's own chat."},
@@ -548,12 +548,18 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					return "", fmt.Errorf("%s", laptopActionErrorText(string(body)))
 				}
 				fileForkUnderMaker(ctx, userID, project.ProfileID, project.Self.Key, chat.Key, body)
-				if place == spawnBeside {
-					var made struct {
-						Key string `json:"conversation_key"`
-					}
-					if json.Unmarshal(body, &made) == nil && made.Key != "" {
+				// beside or a group: its own agent, which does not report back (owner, 25 Nov); under: a helper that does.
+				own := place == spawnBeside || group != ""
+				var made struct {
+					Key  string `json:"conversation_key"`
+					Name string `json:"name"`
+				}
+				if json.Unmarshal(body, &made) == nil && made.Key != "" {
+					if place == spawnBeside {
 						placeBesideMaker(ctx, userID, project, made.Key)
+					}
+					if !own {
+						setFirstTurnNote(ctx, userID, project, made.Key, forkFirstTurnNote(chat.Name, firstNonEmptyTrimmed(made.Name, chat.Name+" (fork)"), chat.Purpose, false))
 					}
 				}
 				out := api.applyForkModel(request, project.ProfileID, project.ProjectID, tabModel, body)
@@ -563,7 +569,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				if task == "" {
 					return string(out), nil
 				}
-				return api.sendForkTask(ctx, userID, project, messages, task, out), nil
+				return api.sendForkTask(ctx, userID, project, messages, task, own, out), nil
 			}},
 		{"delete_project_chat", "Delete a fork or helper tab you made, while it is still under you in the person's left menu, when its work is done or the person asks. Call once without confirmation to see what goes, then again with the returned confirmation. Its saved chats and queued messages are deleted; project files and other agents stay. Refused for Main, for yourself, for a tab you did not make, and for one the person has moved out from under you in the left menu (then the person removes it in the app).", map[string]interface{}{
 			"type": "object", "required": []string{"chat"}, "properties": map[string]interface{}{
@@ -702,7 +708,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				"purpose":          map[string]interface{}{"type": "string", "maxLength": productAgentPurposeMaxRunes, "description": "Optional: the new agent's one-line purpose, saved on it (also on an existing tab with that name)."},
 				"instructions":     map[string]interface{}{"type": "string", "maxLength": productAgentInstructionsMaxRunes, "description": "Optional: the new agent's own standing instructions (several lines), saved on it before it starts (also on an existing tab with that name), as sessions action=identity would from its own chat. Pass them when the person asks you to set up an agent with rules, in their words; only from the person's own chat."},
 				"task":             map[string]interface{}{"type": "string", "description": "Its first task, in full: everything it needs, since it starts without this conversation. It starts right away and replies to you. Ignored for a tab that already exists; message that one instead."},
-				"place":            map[string]interface{}{"type": "string", "enum": []string{"under", "beside"}, "description": "Where it sits in the person's left menu: under (the default) as your helper that reports back, or beside you as its own agent at your level (other work that stands on its own)."},
+				"place":            map[string]interface{}{"type": "string", "enum": []string{"under", "beside"}, "description": "Where it sits in the person's left menu: under (the default) as your helper that reports back, or beside you as its own agent at your level that works with the person and does not report back (other work that stands on its own)."},
 				"group":            map[string]interface{}{"type": "string", "maxLength": agentGroupNameMaxRunes, "description": "Optional: put the new agent in this group of the person's left menu (see group in sessions action=list): it joins the group of that name or starts it, as its own agent under no one. Only when the person names a group."},
 				"engine":           map[string]interface{}{"type": "string", "description": "Optional: start the new tab on this provider (an engine from models action=list, e.g. claude-code). Same checks as models action=set scope=tab; a refused choice opens nothing. Ignored for a tab that already exists."},
 				"model_id":         map[string]interface{}{"type": "string", "description": "With engine: a model that provider offers."},
@@ -777,6 +783,9 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					// The helper is nested under the agent that opened it (or beside it, when asked) and told once, on
 					// its first turn, who opened it.
 					parentKey, note := project.Self.Key, helperFirstTurnNote(chat.Name, firstNonEmptyTrimmed(project.Self.Name, "its opener"))
+					if place == spawnBeside || group != "" {
+						note = ownAgentFirstTurnNote(chat.Name, firstNonEmptyTrimmed(project.Self.Name, "its opener"))
+					}
 					if _, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, userID, project.ProfileID, chat.Key, chatContextChange{ForkedFrom: &parentKey, ForkNote: &note}, userID); err != nil {
 						log.Printf("[CHAT_CONTEXT] helper %s: could not record who opened it: %v", chat.Key, err)
 					}
@@ -792,7 +801,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				// Saved before the task is sent, so the new agent's first turn already follows them.
 				saveSpawnIdentity(ctx, userID, project, chat.Key, identity, out)
 				if task != "" && !reused {
-					for key, value := range api.sendStartTask(ctx, userID, project, messages, chat.Key, task) {
+					for key, value := range api.sendStartTask(ctx, userID, project, messages, chat.Key, task, place == spawnBeside || group != "") {
 						out[key] = value
 					}
 					return jsonOut(out)
