@@ -110,7 +110,8 @@ func (api *StreamingAPI) liveSteerProviderTransportReady(sessionID, provider str
 	case "muse-cli":
 		return musecli.InteractiveSessionRegistered(sessionID)
 	case "agy-cli":
-		return agycli.AgyInteractiveSessionActive(sessionID)
+		// ACP: only a running turn on agy 1.5.0+ takes a message (#3920); the tmux lane types into its pane.
+		return agycli.AgyACPTurnSteerable(sessionID) || agycli.AgyInteractiveSessionActive(sessionID)
 	default:
 		return true
 	}

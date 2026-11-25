@@ -36,6 +36,21 @@ func CloseAgyACPSession(owner string) { acpcli.CloseAgentSession(owner, agyACPAg
 // AgyACPSessionActive reports whether a chat runs on `agy acp` now.
 func AgyACPSessionActive(owner string) bool { return acpcli.AgentSessionActive(owner, agyACPAgent) }
 
+// AgyACPTurnSteerable reports whether a chat's running `agy acp` turn takes messages now (agy 1.5.0+, #3920).
+func AgyACPTurnSteerable(owner string) bool { return acpcli.TurnSteerable(owner, agyACPAgent) }
+
+// AgyACPSessionTooOldToSteer reports whether a chat runs on an `agy acp` older than 1.5.0, which queues a message
+// sent mid-turn instead of reading it into the running turn.
+func AgyACPSessionTooOldToSteer(owner string) bool {
+	return AgyACPSessionActive(owner) && !acpcli.SessionSteersWithPrompt(owner, agyACPAgent)
+}
+
+// SendAgyACPInput hands a message to a chat's running `agy acp` turn as another session/prompt, which agy reads
+// into the running turn. The error wraps llmtypes.ErrCodingAgentInputNotSent when no running turn took it.
+func SendAgyACPInput(ctx context.Context, owner, message string) error {
+	return acpcli.SteerTurn(ctx, owner, agyACPAgent, message)
+}
+
 func closeAllAgyACPSessions() { acpcli.CloseAgentSessions(agyACPAgent) }
 
 // GetStatusLine returns only this owner's active native session context record.

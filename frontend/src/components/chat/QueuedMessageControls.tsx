@@ -81,7 +81,7 @@ export const QueuedMessageNotice: React.FC<{ sessionId?: string; metadata?: Reco
   const message = useQueuedMessageControlsStore(state => sessionId && clientId ? state.bySession[sessionId]?.messages[clientId] : undefined)
   if (queuedMessageDelivered(metadata)) return null
   if (!message) return metadata?.delivery_status === 'unconfirmed' ? <p className="mt-0.5 text-[11px] text-amber-500">Delivery unconfirmed. It will not be sent again automatically.</p> : null
-  const text = message.delivery_error ? `Not sent. ${message.delivery_error}` : message.queue_reason === 'provider_limit' ? message.queue_detail : ''
+  const text = message.delivery_error ? `Not sent. ${message.delivery_error}` : message.queue_reason === 'provider_limit' || message.show_detail ? message.queue_detail : ''
   return text ? <p className="mt-0.5 max-w-full text-[11px] text-amber-500">{text}</p> : null
 }
 
