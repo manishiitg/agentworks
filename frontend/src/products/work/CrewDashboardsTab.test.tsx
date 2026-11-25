@@ -51,7 +51,7 @@ it('keeps local artifacts usable during Team failure, retries with backoff and r
     await act(async () => vi.advanceTimersByTime(1000))
     expect(state.retry).toHaveBeenCalledTimes(2)
     state.team = { error: '', target: { project: 'online', connection: 'server' } }
-    state.remote.mockResolvedValue({ workspace: 'Crew/online', intro: '', filter: 'all', filters: [], items: [{ id: 'online', title: 'Team film', kind: 'motion', path: 'db/reports/film.html' }], empty: { title: 'No items anywhere' } })
+    state.remote.mockResolvedValue({ workspace: 'Crew/online', intro: '', filter: 'all', filters: [{ key: 'all', label: 'All', count: 1 }, { key: 'dashboard', label: 'Dashboards', count: 0 }, { key: 'motion', label: 'Motion', count: 1 }], items: [{ id: 'online', title: 'Team film', kind: 'motion', path: 'db/reports/film.html' }], empty: { title: 'No items anywhere' } })
     await act(async () => root.render(<CrewDashboardsTab projectId="local" />))
     expect(container.textContent).toContain('On the Team')
     expect(container.textContent).toContain('All 2')
