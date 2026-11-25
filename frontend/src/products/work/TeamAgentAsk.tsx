@@ -42,7 +42,8 @@ export async function teamAgentMail(target: TeamTarget, args: Record<string,unkn
 const fileBase64=(file:File)=>new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]||'');reader.onerror=()=>reject(new Error(`${file.name} could not be read.`));reader.readAsDataURL(file)})
 
 /** One AgentBridge ask thread to an admitted address over the Team's saved connection; never a navigation or a turn in someone's own chat. */
-export function AgentAskThread({target,address,label,scope,enabled,sender,agent,children,answerFromChat}:{target?:TeamTarget;address?:string;label:string;scope:string;enabled:boolean;sender?:string;agent?:AskAgentRuntime;children?:ReactNode;answerFromChat?:(question:string)=>void}) {
+// answersAbove: the agent's live chat is shown above this box and already has the answer, so the box lists nothing twice.
+export function AgentAskThread({target,address,label,scope,enabled,sender,agent,children,answerFromChat,answersAbove=false}:{target?:TeamTarget;address?:string;label:string;scope:string;enabled:boolean;sender?:string;agent?:AskAgentRuntime;children?:ReactNode;answerFromChat?:(question:string)=>void;answersAbove?:boolean}) {
  const [threadScope,setThreadScope]=useState(scope)
  const [draft,setDraft]=useState(''),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false)
  const [replies,setReplies]=useState<Reply[]>([]),[inbox,setInbox]=useState('')
@@ -66,7 +67,7 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,agent,
     if(!active||!isChatIdentityCurrent(identity))return
     cursor.current=data.next_cursor||cursor.current
     const fresh=(data.messages||[])
-    if(fresh.length)setRunning(null)
+    if(fresh.length){setRunning(null);setStatus(answersAbove?'Answered in its chat above.':'')}
     setReplies(old=>[...old,...fresh.filter(row=>!old.some(item=>item.message_id===row.message_id))]);setError('')
    }catch(cause){if(active&&isChatIdentityCurrent(identity)){setReplies([]);setError(cause instanceof Error?cause.message:'Could not read replies.')}}
    finally{reading=false}
@@ -90,7 +91,7 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,agent,
    if(!data.inbox_id)throw new Error('No conversation receipt was returned. Check delivery before sending again.')
    const id=data.message_id||randomUUID()
    setInbox(data.inbox_id);setReplies(old=>[...old,{message_id:id,sender:'You',message:text,files:sending.map(file=>file.name)}]);setDraft('');setFiles([]);if(data.message_id)setRunning({inbox:data.inbox_id,message:data.message_id})
-   setStatus(wait?'Sent. It answers here when it is back online.':data.delivery==='delivered'?'Delivered.':'Sent; waiting for delivery. Replies appear here.')
+   setStatus(wait?'Sent. It answers here when it is back online.':data.delivery==='delivered'?'Delivered.':`Sent; waiting for delivery. ${answersAbove?'Its answer shows in its chat above.':'Replies appear here.'}`)
   }catch(cause){if(isChatIdentityCurrent(identity)&&currentScope.current===sendScope){
    if(cause instanceof TeamAgentMailError&&cause.refusal.code==='offline_choice')setOffline(cause.refusal)
    else setError(cause instanceof Error?cause.message:'Could not send this message.')
@@ -116,7 +117,7 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,agent,
   onDragLeave={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node))setDragging(false)}}
   onDrop={event=>{if(!event.dataTransfer?.files?.length)return;event.preventDefault();setDragging(false);if(admitted&&!running)addFiles(Array.from(event.dataTransfer.files))}}>
   {dragging&&<div aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-xl border-2 border-dashed border-primary bg-primary/10 text-sm font-medium text-primary">Drop files to add them to your ask</div>}
-  {admitted&&threadScope===scope&&replies.length>0&&<div ref={list} className="max-h-72 space-y-2 overflow-y-auto border-t border-border px-4 py-3 text-sm">{replies.map(row=>{
+  {!answersAbove&&admitted&&threadScope===scope&&replies.length>0&&<div ref={list} className="max-h-72 space-y-2 overflow-y-auto border-t border-border px-4 py-3 text-sm">{replies.map(row=>{
    const mine=row.sender==='You'
    return <div key={row.message_id} className={cn('flex',mine?'justify-end':'justify-start')}>
     <div className={cn('max-w-[85%] min-w-0 break-words rounded-2xl px-3 py-2',mine?'bg-primary/10':'bg-muted')}>
@@ -171,12 +172,12 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
   const prompt=`Answer my question from ${person}'s ${name} chat backup, without messaging that agent or ${person}: read it with read_agent_chat (target ${ask.address}; search a few key words, then read the matching lines), answer, and say the answer comes from its backup, which may miss the last few minutes. My question: ${question}`
   sendToOwnMain(project,prompt)
  }:undefined
- return <TeammateAsk target={ask.target} address={ask.address} name={name} where={place} online={online} enabled={ask.enabled} agent={runtime} scope={`${tabId}:${ask.address||''}`} answerFromChat={answerFromChat}/>
+ return <TeammateAsk target={ask.target} address={ask.address} name={name} where={place} online={online} enabled={ask.enabled} agent={runtime} scope={`${tabId}:${ask.address||''}`} answerFromChat={answerFromChat} answersAbove={online!==false&&readable}/>
 }
 
-export function TeammateAsk({target,address,name,where,online,enabled,scope,agent,answerFromChat}:{target?:TeamTarget;address?:string;name:string;where:string;online?:boolean;enabled:boolean;scope:string;agent?:AskAgentRuntime;answerFromChat?:(question:string)=>void}) {
- const hint=!enabled?`You can't ask ${name} right now.`:online===false?`${where.charAt(0).toUpperCase()}${where.slice(1)} is offline. Your ask waits until it is back${answerFromChat?', or your own agent can answer from its chat backup now':''}.`:`Goes to ${name} as your ask. Its answer shows here.${answerFromChat?' Or use Answer from its chat: your own agent answers from its chat backup without asking it.':''}`
- return <AgentAskThread target={target} address={address} label={`Ask ${name}`} scope={scope} enabled={enabled} sender={name} agent={agent} answerFromChat={answerFromChat}>
+export function TeammateAsk({target,address,name,where,online,enabled,scope,agent,answerFromChat,answersAbove}:{target?:TeamTarget;address?:string;name:string;where:string;online?:boolean;enabled:boolean;scope:string;agent?:AskAgentRuntime;answerFromChat?:(question:string)=>void;answersAbove?:boolean}) {
+ const hint=!enabled?`You can't ask ${name} right now.`:online===false?`${where.charAt(0).toUpperCase()}${where.slice(1)} is offline. Your ask waits until it is back${answerFromChat?', or your own agent can answer from its chat backup now':''}.`:`Goes to ${name} as your ask. Its answer shows ${answersAbove?'in its chat above':'here'}.${answerFromChat?' Or use Answer from its chat: your own agent answers from its chat backup without asking it.':''}`
+ return <AgentAskThread target={target} address={address} label={`Ask ${name}`} scope={scope} enabled={enabled} sender={name} agent={agent} answerFromChat={answerFromChat} answersAbove={answersAbove}>
   {hint}
  </AgentAskThread>
 }

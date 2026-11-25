@@ -136,12 +136,11 @@ func (api *StreamingAPI) handleAgentMessageIdentity(w http.ResponseWriter, r *ht
 			address = firstNonEmptyTrimmed(peer.ChatKey, peer.ID)
 		}
 		avatar := agentMessageAvatarFor(peer)
-		out := map[string]interface{}{"label": label, "address": address, "avatar_url": avatar.AvatarURL, "avatar_icon": avatar.AvatarIcon, "avatar_color": avatar.AvatarColor}
-		// A Mac's own person has no photo locally; it lives on the server they are signed in to.
-		if _, connection, ok := macSenderAccount(peer); ok && avatar == (userAvatarFields{}) {
-			photo := macSenderAvatar(r.Context(), peer.UserID, connection)
-			out["avatar_url"], out["avatar_icon"], out["avatar_color"], out["avatar_connection"] = photo.AvatarURL, photo.AvatarIcon, photo.AvatarColor, connection
+		// Your own agents' messages show an agent icon, not your own photo back to you.
+		if peer.UserID == claims.UserID {
+			avatar = userAvatarFields{AvatarIcon: "bot"}
 		}
+		out := map[string]interface{}{"label": label, "address": address, "avatar_url": avatar.AvatarURL, "avatar_icon": avatar.AvatarIcon, "avatar_color": avatar.AvatarColor}
 		externalJSON(w, out)
 		return
 	}

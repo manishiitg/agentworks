@@ -17,10 +17,10 @@ it('shows current server names and keeps raw addresses in the tooltip', async ()
   const host = document.createElement('div'), root = createRoot(host)
   try {
     await act(async () => root.render(<AgentMessageIdentity inboxID="inbox-example" messageID="message" sent />))
-    expect(host.textContent).toBe('You → Example Person · Reviewer')
+    expect(host.querySelector('.truncate')?.textContent).toBe('You → Example Person · Reviewer')
     expect(host.textContent).not.toContain('app-opaque')
     await act(async () => { window.dispatchEvent(new Event('focus')) })
-    expect(host.textContent).toBe('You → Example Person · Updated reviewer')
+    expect(host.querySelector('.truncate')?.textContent).toBe('You → Example Person · Updated reviewer')
     expect(host.querySelector('[title="agent:app-opaque"]')).not.toBeNull()
     expect(get).toHaveBeenCalledTimes(2)
   } finally { await act(async () => root.unmount()) }
