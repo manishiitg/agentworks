@@ -316,7 +316,6 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   const setupOf = (chat: AgentProfileSideChat) => { const setup = agentSetupForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false); return setup && { ...setup, reach: '' as const } }
   const teammateChats = chats.filter(chat => chat.can_write === false)
   const mostIn = mostInTeam(own.map(inTeam))
-  const anyPrivate = own.some(chat => !inTeam(chat))
   const chatRow = (chat: AgentProfileSideChat) => {
     const session = sessions.find(item => item.session_id === chat.session_id)
     const teamAgent = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false)
@@ -359,7 +358,6 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
       {showHidden && hidden.map(chatRow)}
     </SidebarHiddenAgents>
     <OwnTerminalAgents projectId={projectId} connection={connectionId} nested mostIn={mostIn} />
-    {mostIn && <p className="px-2 pt-1 text-[11px] text-muted-foreground/80">{anyPrivate ? 'In team unless marked with a lock' : 'All in team'}</p>}
     </div>)}</div>
 }
 

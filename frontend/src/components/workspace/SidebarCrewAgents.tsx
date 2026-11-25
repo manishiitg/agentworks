@@ -101,7 +101,6 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   // Mark only the odd one out (owner, 18 Nov): a lock on private agents when most are in the team.
   const own = [...ownAgents, ...ownClosed]
   const mostIn = mostInTeam(own.map(agent => agent.inTeam))
-  const anyPrivate = own.some(agent => !agent.inTeam)
 
   const edit = async (change: Parameters<ReturnType<typeof useAgentGroupsStore.getState>['edit']>[1]) => {
     setFailed('')
@@ -353,7 +352,6 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
       {showHidden && hidden.map(agent => 'tabId' in agent ? row(agent, false) : closedRow(agent))}
     </SidebarHiddenAgents>
     <OwnTerminalAgents projectId={projectId} nested mostIn={mostIn} />
-    {mostIn && !popup && <p className="px-2 pt-1 text-[11px] text-muted-foreground/80">{anyPrivate ? 'In team unless marked with a lock' : 'All in team'}</p>}
   </div>
 
   function closedRow(agent: CrewClosedAgent) {
