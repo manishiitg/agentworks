@@ -36,7 +36,7 @@ const (
 	crewPeopleEveryoneName = "Everyone on this server"
 	crewPeopleEveryoneLine = "Anyone with an account on this server can open this project's dashboards and ask it. No files."
 
-	crewPeopleNeverOnlineLine = "Turn on Phone & web to share this project."
+	crewPeopleNeverOnlineLine = "Turn on Phone to share this project."
 	crewPeoplePutOnlineLine   = "To give someone dashboards only, with Ask and buttons, put this project online first."
 )
 

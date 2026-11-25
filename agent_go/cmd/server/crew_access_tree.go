@@ -98,7 +98,7 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 		// A Crew on the server has no Mac (owner, 5 Nov), and a teammate's tree is about their Team: it starts there.
 	case f.MacOnline:
 		// One line, no detail (owner, 5 Nov).
-		lines = append(lines, crewAccessLine{Kind: "mac", Title: "Phone & web"})
+		lines = append(lines, crewAccessLine{Kind: "mac", Title: "Phone"})
 	}
 	if f.CoOwners != nil {
 		title := "Co-owners · only you"
