@@ -55,6 +55,31 @@ func agyNativeSubagentIDs(payload []byte) []string {
 	return ids
 }
 
+// agyNativeSubagentTitle is the name agy gave the subagents an invoke_subagent call started ("Directory
+// Lister"), from the AGY 1.5 InvokeSubagent result; "" when the payload has none.
+func agyNativeSubagentTitle(payload []byte) string {
+	result := payload
+	for _, field := range []protowire.Number{140, 2, 6} {
+		var ok bool
+		if result, ok = agyProtoSubmessage(result, field); !ok {
+			return ""
+		}
+	}
+	if typeURL, _ := agyProtoStringField(result, 1); !strings.HasSuffix(typeURL, ".InvokeSubagent") {
+		return ""
+	}
+	value, ok := agyProtoSubmessage(result, 2)
+	if !ok {
+		return ""
+	}
+	spec, ok := agyProtoSubmessage(value, 1)
+	if !ok {
+		return ""
+	}
+	title, _ := agyProtoStringField(spec, 2)
+	return strings.TrimSpace(title)
+}
+
 // Wait for both a finished child trail and its message to reach the parent.
 // That message must precede the parent's settled final assistant row. Missing
 // or interrupted child records never turn an interim answer into completion.

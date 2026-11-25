@@ -100,6 +100,7 @@ func readDatabase(ctx context.Context, provider, session, path string, c Cursor)
 				case 3:
 					r.State = "finished"
 					// invoke_subagent launches children; each one is a row until its own conversation ends.
+					title := agycli.NativeSubagentTitle(payload)
 					for _, id := range agycli.NativeSubagentIDs(payload) {
 						if _, known := b.Next.Tasks[id]; !known {
 							b.Next.Tasks[id] = "launched"
@@ -109,7 +110,7 @@ func readDatabase(ctx context.Context, provider, session, path string, c Cursor)
 								turn, origin = b.Next.TurnID, b.Next.Origin
 							}
 							b.Next.Lineage[id] = Lineage{TurnID: turn, Origin: origin}
-							emit(&b, llmtypes.NativeRecord{Provider: provider, SessionID: session, ID: "subagent:" + id + ":started", Kind: "helper", State: "started", TaskID: id, ToolID: id, Name: "Subagent", HelperType: "invoke_subagent", TurnID: turn, Origin: origin})
+							emit(&b, llmtypes.NativeRecord{Provider: provider, SessionID: session, ID: "subagent:" + id + ":started", Kind: "helper", State: "started", TaskID: id, ToolID: id, Name: "Subagent", HelperType: "invoke_subagent", HelperDescription: title, TurnID: turn, Origin: origin})
 						}
 					}
 				case 6:

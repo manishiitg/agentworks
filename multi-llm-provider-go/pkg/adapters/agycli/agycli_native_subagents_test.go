@@ -45,6 +45,10 @@ func TestAgyNativeSubagentCompletionRequiresChildAndParentReceipt(t *testing.T) 
 	if ids := agyNativeSubagentIDs(agy15("child", "other-child")); len(ids) != 2 || ids[0] != "child" || ids[1] != "other-child" {
 		t.Fatalf("AGY 1.5 child references = %v", ids)
 	}
+	// The helper row shows the name agy gave the subagent, not "invoke_subagent" (#3970).
+	if title := agyNativeSubagentTitle(agy15("child")); title != "Directory Lister" {
+		t.Fatalf("subagent title = %q", title)
+	}
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "parent.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -96,5 +100,16 @@ func TestAgyNativeSubagentCompletionRequiresChildAndParentReceipt(t *testing.T) 
 	}
 	if !agyPendingNativeSubagents(read(), 0) {
 		t.Fatal("interrupted child accepted as complete")
+	}
+	// The chat's helper row opens the child's own conversation by its id (#3970); another id finds nothing.
+	if _, err := child.ExecContext(context.Background(), `UPDATE steps SET status = 3`); err != nil {
+		t.Fatal(err)
+	}
+	conversation, ok := AgySubagentConversation("parent", "child", home)
+	if !ok || conversation.Status != "completed" || conversation.ParentID != "parent" || conversation.Provider != "agy-cli" {
+		t.Fatalf("subagent conversation = %+v, %t", conversation, ok)
+	}
+	if _, ok := AgySubagentConversation("parent", "unknown-child", home); ok {
+		t.Fatal("a child the conversation never started was found")
 	}
 }
