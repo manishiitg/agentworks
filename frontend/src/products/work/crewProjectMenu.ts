@@ -2,7 +2,7 @@ import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Glob
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
-import { isLocalDeployment, visibleProductSurfaceIDs } from '../productSurfaceConfig'
+import { isLocalDeployment } from '../productSurfaceConfig'
 import { isWorkIdentityTabEnabled, isWorkIntegrationTabEnabled } from './workViewGating'
 import { PROJECT_MENU_GROUPS } from '../../components/workspace/projectMenuGroups'
 import { hasDesktopConnections } from '../../stores/useConnectedWorkStore'
@@ -51,7 +51,6 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
       add('mcp', 'Integrations', item.id === 'mcp:folders' ? 'Linked projects' : item.label, item.icon, item.id.slice(4), item.subgroup)
     }
     if (hasDesktopConnections() || isLocalDeployment()) add('mcp', 'Integrations', 'Folders on this Mac', Folder, 'mac-folders')
-    if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Use', 'Message other agents', MessageSquareText, 'message-agents')
     if (isWorkIntegrationTabEnabled('secrets', enabledPanels)) add('mcp', 'Integrations', 'GitHub', Github, 'github')
     if (isLocalDeployment()) add('mcp', 'Integrations', 'Computer use', MonitorCog, 'computer-use')
     if (!enabledPanels || enabledPanels.has('bots')) add('mcp', 'Integrations', 'My Slack account', MessageSquareText, 'slack-account')
@@ -79,7 +78,7 @@ export function crewFullMenuGroups(inventory: CrewMenuItem[]) {
     ['mcp:artifacts', 'dashboard', 'files', 'database', 'shell'],
     ['workflow', 'schedules'],
     ['browser', 'mcp:connected', 'mcp:cli', 'mcp:gmail', 'mcp:github', 'mcp:slack-account', 'mcp:slack-bot', 'mcp:whatsapp', 'mcp:folders', 'mcp:mac-folders', 'mcp:computer-use', 'mcp:secrets', 'memory:skills'],
-    ['mcp:team', 'mcp:online', 'mcp:message-agents'],
+    ['mcp:team', 'mcp:online'],
     ['identity:general', 'identity:models', 'memory:memory', 'history', 'costs'],
   ]
   const hasSharedArtifacts = inventory.some(item => item.id === 'mcp:artifacts')
