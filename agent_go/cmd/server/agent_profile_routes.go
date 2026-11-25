@@ -1105,7 +1105,7 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		}
 	}
 	if crewSetupLocked(conversation.WorkspacePath, userID) {
-		// A co-owner whose "Can change project setup" is off always runs on the project's default model, whatever the
+		// A project User (crew_setup_lock.go) always runs on the project's default model, whatever the
 		// request or a saved per-chat choice says (crew_setup_lock.go). The account is theirs or the company's, never
 		// the project owner's personal one (decisions log, 24 Nov).
 		input.Engine, input.ModelID, input.ReasoningEffort, input.ConnectionID = "", "", "", ""

@@ -46,7 +46,8 @@ func crewVaultOwners(project string) []string {
 		return nil
 	}
 	owners := []string{owner}
-	for _, id := range crewCoOwnerIDs(crewProjectRootByID(project)) {
+	// Co-owners only: a User works with the project's keys but does not manage them (crew_setup_lock.go).
+	for _, id := range crewCoOwnersOnly(crewProjectRootByID(project)) {
 		if !slices.Contains(owners, id) {
 			owners = append(owners, id)
 		}

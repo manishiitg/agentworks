@@ -6023,7 +6023,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && crewSetupLocked(strings.TrimSpace(req.SelectedFolder), currentUserID) {
-			// A co-owner whose "Can change project setup" is off keeps every working tool, not the setup ones.
+			// A project User (crew_setup_lock.go) keeps every working tool, not the setup ones.
 			toolGate.DenyWhere(func(name string) bool { return crewSetupLockedTools[strings.TrimSpace(name)] })
 		}
 		if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) && macCrewWorkflowToolsDenied(req, claims) {
@@ -6557,7 +6557,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						// Scheduled callers change only through typed schedule tools,
 						// including in owner Builder shells and attached Crew folders.
 						guardBlocked = append(guardBlocked, profileRoot+"/schedules.json", profileRoot+"/webhooks.json", profileRoot+"/schedule-runs.json")
-						// A co-owner whose "Can change project setup" is off cannot write the setup files (crew_setup_lock.go).
+						// A project User (crew_setup_lock.go) cannot write the setup files (crew_setup_lock.go).
 						guardBlocked = append(guardBlocked, crewSetupLockedWritePaths(profileRoot, currentUserID)...)
 						for _, root := range crewRefWrite {
 							guardBlocked = append(guardBlocked, strings.TrimSuffix(root, "/")+"/schedules.json", strings.TrimSuffix(root, "/")+"/webhooks.json", strings.TrimSuffix(root, "/")+"/schedule-runs.json")

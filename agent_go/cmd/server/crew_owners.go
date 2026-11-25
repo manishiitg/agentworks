@@ -10,21 +10,21 @@ import (
 	"time"
 )
 
-// Co-owners of a server Crew (owner, 21 Nov: "server Crews have co-owners and no Team"). Co-owners build the Crew like
-// its main owner (crew_co_owners.go); only the main owner adds or removes them. The Access panel's Co-owners section
-// (the dashboards endpoint: owners, owner_add, owner_remove, owner_setup) and the MCP tool crew_owners reach the same
-// code. owner_setup / action=setup switch one co-owner's "Can change project setup" (crew_setup_lock.go).
+// Co-owners and Users of a server Crew. Co-owners build the Crew like its main owner and change everything (owner, 21
+// Nov: "server Crews have co-owners and no Team"; crew_co_owners.go). Users work in it through chat with the setup the
+// owners made and cannot change that setup (owner, 25 Nov; crew_setup_lock.go). Only the main owner adds or removes
+// either. The Access panel (the dashboards endpoint: owners, owner_add, owner_remove, user_add, user_remove,
+// user_files) and the MCP tool crew_owners reach the same code.
 const externalCrewOwnersTool = "crew_owners"
 
-const crewOwnersServerOnly = "Only a project on the server has co-owners. People work on a Mac project with you through its Team."
+const crewOwnersServerOnly = "Only a project on the server has co-owners and users. People work on a Mac project with you through its Team."
 
 func externalCrewOwnersDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(externalCrewOwnersTool, "List, add or remove the co-owners of a project on the server. Co-owners build it like its owner: files, agents, memory, instructions and automations, and they see every chat in it. Only the project's owner adds or removes co-owners; the owner cannot be removed. Turns still run in the owner's server account. action=setup switches one co-owner's \"Can change project setup\": off means they keep working in the project with full access but see only the chat, use the project's model, and cannot change its instructions, skills, settings, sharing or the locked_paths you name.", true, false, map[string]any{
-		"crew_id":          externalString("Project ID from crew action=list."),
-		"action":           map[string]any{"type": "string", "enum": []any{"list", "add", "remove", "setup"}},
-		"email":            externalString("The person's account email; add, remove and setup only."),
-		"can_change_setup": map[string]any{"type": "boolean", "description": "setup only: false locks the project's setup for this co-owner; true gives it back."},
-		"locked_paths":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "setup only, with can_change_setup=false: more files or folders (relative to the project) they cannot change, besides the instructions, skills and settings."},
+	add(externalCrewOwnersTool, "List, add or remove the co-owners and users of a project on the server. Co-owners build it like its owner and change everything: files, agents, memory, instructions, skills, settings, automations and sharing; they see every chat in it. Users work in it through chat with the setup you made: they see their chat and the project's dashboard, run on the project's model, and cannot change its instructions, skills, settings, automations or sharing, nor the extra locked_paths you name (user_files). Only the project's owner adds or removes people; the owner cannot be removed. Give the person's account email or user id.", true, false, map[string]any{
+		"crew_id":      externalString("Project ID from crew action=list."),
+		"action":       map[string]any{"type": "string", "enum": []any{"list", "add", "remove", "user_add", "user_remove", "user_files"}},
+		"email":        externalString("The person's account email or user id; every action except list."),
+		"locked_paths": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "user_files only: more files or folders (relative to the project) this user cannot change, besides the instructions, skills and settings. An empty list keeps only those."},
 	}, "crew_id", "action")
 }
 
@@ -33,43 +33,53 @@ type crewOwnersState struct {
 	CoOwners  []runSharePerson `json:"co_owners"`
 	CanManage bool             `json:"can_manage"`
 	Note      string           `json:"note,omitempty"`
-	// SetupLocked lists the co-owners whose "Can change project setup" is off, with the extra paths locked for them;
-	// AlwaysLocked is what is locked for every one of them.
-	SetupLocked  []crewOwnerSetup `json:"setup_locked"`
-	AlwaysLocked []string         `json:"always_locked"`
+	// Users work through chat with the project's setup (crew_setup_lock.go), each with the extra paths locked for them;
+	// AlwaysLocked is what is locked for every User.
+	Users        []crewProjectUserState `json:"users"`
+	AlwaysLocked []string               `json:"always_locked"`
 }
 
-type crewOwnerSetup struct {
-	ID          string   `json:"id"`
+type crewProjectUserState struct {
+	runSharePerson
 	LockedPaths []string `json:"locked_paths"`
-}
-
-// crewOwnerSetupChange is one "Can change project setup" switch from the Access panel or the MCP tool.
-type crewOwnerSetupChange struct {
-	CanChangeSetup *bool
-	LockedPaths    []string
 }
 
 func crewOwnersStateFor(root, ownerID, callerID string) crewOwnersState {
 	dir, _ := readUserDirectoryFile()
-	state := crewOwnersState{CanManage: crewProjectOwnedByCallerStrict(callerID, root), CoOwners: []runSharePerson{}}
+	state := crewOwnersState{CanManage: crewProjectOwnedByCallerStrict(callerID, root), CoOwners: []runSharePerson{}, Users: []crewProjectUserState{}, AlwaysLocked: append([]string{}, crewSetupLockedDefaultPaths...)}
 	if people := peopleForIDs(dir, []string{ownerID}); len(people) == 1 {
 		state.Owner = people[0]
 	}
-	if people := peopleForIDs(dir, crewCoOwnerIDs(root)); people != nil {
+	if people := peopleForIDs(dir, crewCoOwnersOnly(root)); people != nil {
 		state.CoOwners = people
 	}
-	state.SetupLocked, state.AlwaysLocked = []crewOwnerSetup{}, append([]string{}, crewSetupLockedDefaultPaths...)
-	for _, person := range state.CoOwners {
-		if locked, paths := crewSetupLockFor(root, person.ID); locked {
-			state.SetupLocked = append(state.SetupLocked, crewOwnerSetup{ID: person.ID, LockedPaths: append([]string{}, paths...)})
-		}
+	for _, person := range peopleForIDs(dir, crewUserIDs(root)) {
+		_, paths := crewSetupLockFor(root, person.ID)
+		state.Users = append(state.Users, crewProjectUserState{runSharePerson: person, LockedPaths: append([]string{}, paths...)})
 	}
 	return state
 }
 
-// changeCrewOwnerSetup switches one co-owner's "Can change project setup", by the Crew's main owner only.
-func (api *StreamingAPI) changeCrewOwnerSetup(claims *UserClaims, root, ownerID, email string, change crewOwnerSetupChange) (crewOwnersState, int, string, string) {
+// resolveCrewPerson finds one active account by email or user id.
+func resolveCrewPerson(value string) (runSharePerson, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return runSharePerson{}, false
+	}
+	dir, _ := readUserDirectoryFile()
+	if people, _ := resolveShareEmails(dir, []string{value}); len(people) == 1 {
+		return people[0], true
+	}
+	if dir != nil {
+		if user := dir.byID(value); user != nil && !user.Disabled {
+			return runSharePerson{ID: user.ID, Email: user.Email, Username: user.Username}, true
+		}
+	}
+	return runSharePerson{}, false
+}
+
+// changeCrewUsers adds or removes a User, or sets a User's extra locked paths, by the Crew's main owner only.
+func (api *StreamingAPI) changeCrewUsers(claims *UserClaims, root, ownerID, action, who string, lockedPaths []string) (crewOwnersState, int, string, string) {
 	id, ok := projectIdentityOf(root)
 	if !ok || !isProjectProfileID(id.Product) {
 		return crewOwnersState{}, http.StatusConflict, "unsupported", crewOwnersServerOnly
@@ -79,36 +89,67 @@ func (api *StreamingAPI) changeCrewOwnerSetup(claims *UserClaims, root, ownerID,
 		return crewOwnersState{}, http.StatusConflict, "mac_crew", crewOwnersServerOnly
 	}
 	if !crewProjectOwnedByCallerStrict(claims.UserID, root) {
-		return crewOwnersState{}, http.StatusForbidden, "owner_only", "Only the project's owner changes what co-owners can do. Ask " + crewOwnerDisplayName(ownerID) + "."
+		return crewOwnersState{}, http.StatusForbidden, "owner_only", "Only the project's owner adds or removes users. Ask " + crewOwnerDisplayName(ownerID) + "."
 	}
-	if email == "" || change.CanChangeSetup == nil {
-		return crewOwnersState{}, http.StatusBadRequest, "invalid_arguments", "Give the co-owner's email and whether they can change the project's setup."
+	target, ok := resolveCrewPerson(who)
+	if !ok {
+		return crewOwnersState{}, http.StatusNotFound, "not_found", "That person hasn't signed in to this server yet. Ask them to sign in once, then add them."
 	}
-	dir, _ := readUserDirectoryFile()
-	people, _ := resolveShareEmails(dir, []string{email})
-	if len(people) != 1 || !crewIsCoOwner(root, people[0].ID) {
-		return crewOwnersState{}, http.StatusNotFound, "not_co_owner", email + " is not a co-owner of this project. Add them as a co-owner first."
+	name := firstNonEmptyTrimmed(target.Username, target.Email)
+	if sanitizeUserIDForPath(target.ID) == sanitizeUserIDForPath(ownerID) {
+		return crewOwnersState{}, http.StatusConflict, "creator", "The project's owner builds it and cannot be a user."
 	}
-	target := people[0]
-	locked := !*change.CanChangeSetup
-	paths := cleanCrewLockedPaths(change.LockedPaths)
+	if action == "user_add" && !crewTeamAccountActive(target.ID) {
+		return crewOwnersState{}, http.StatusConflict, "inactive", name + " can't use projects on this server. Ask an admin to give them project access first."
+	}
 	storedID := target.ID
-	for _, existing := range rec.CoOwners {
+	for _, existing := range rec.Users {
 		if sanitizeUserIDForPath(existing) == sanitizeUserIDForPath(target.ID) {
 			storedID = existing
 		}
 	}
-	if err := defaultProjectOwners().SetCoOwnerSetupLock(id.Product, id.Folder, storedID, locked, paths); err != nil {
-		log.Printf("[CREW_OWNERS] project=%s event=setup_failed reason=%q", rec.ProjectID, err.Error())
+	var changed bool
+	var err error
+	switch action {
+	case "user_add":
+		changed, err = defaultProjectOwners().AddUser(id.Product, id.Folder, target.ID)
+	case "user_remove":
+		changed, err = defaultProjectOwners().RemoveUser(id.Product, id.Folder, storedID)
+	case "user_files":
+		if !crewIsProjectUser(root, target.ID) {
+			return crewOwnersState{}, http.StatusNotFound, "not_user", name + " is not a user of this project. Add them as a user first."
+		}
+		changed, err = true, defaultProjectOwners().SetUserLockedPaths(id.Product, id.Folder, storedID, cleanCrewLockedPaths(lockedPaths))
+	default:
+		return crewOwnersState{}, http.StatusBadRequest, "invalid_arguments", "action must be user_add, user_remove or user_files."
+	}
+	if err != nil {
+		log.Printf("[CREW_OWNERS] project=%s event=failed action=%s reason=%q", rec.ProjectID, action, err.Error())
 		return crewOwnersState{}, http.StatusInternalServerError, "failed", "The change could not be saved. Try again."
 	}
-	log.Printf("[CREW_OWNERS] project=%s event=setup co_owner=%s can_change_setup=%t locked_paths=%d by=%s", rec.ProjectID, logUsernameForUserID(target.ID), !locked, len(paths), logUsernameForUserID(claims.UserID))
+	log.Printf("[CREW_OWNERS] project=%s event=%s user=%s locked_paths=%d by=%s changed=%t", rec.ProjectID, action, logUsernameForUserID(target.ID), len(lockedPaths), logUsernameForUserID(claims.UserID), changed)
+	if changed && action != "user_files" {
+		if action == "user_remove" {
+			api.stopRemovedOwnerSessions(target.ID, root)
+		}
+		// Moving someone from co-owner to user also takes them off the Crew vault's owners.
+		if vaultConfigured() {
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			if _, err := api.ensureCrewVault(ctx, rec.ProjectID); err != nil {
+				log.Printf("[CREW_VAULT] project=%s owners not updated after %s, queued: %v", rec.ProjectID, action, err)
+				api.requestCrewVault(rec.ProjectID)
+			}
+			cancel()
+		}
+	}
 	state := crewOwnersStateFor(root, ownerID, claims.UserID)
-	name := firstNonEmptyTrimmed(target.Username, target.Email)
-	if locked {
-		state.Note = name + " now sees only the chat and works with the project's setup as you made it."
-	} else {
-		state.Note = name + " can change the project's setup again."
+	switch {
+	case action == "user_add" && !changed:
+		state.Note = name + " is already a user."
+	case action == "user_add":
+		state.Note = name + " can now work in this project through chat, with the setup as you made it."
+	case action == "user_files":
+		state.Note = "Saved what " + name + " cannot change."
 	}
 	return state, 0, "", ""
 }
@@ -130,12 +171,10 @@ func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, root, ownerID, act
 	if email == "" {
 		return crewOwnersState{}, http.StatusBadRequest, "invalid_arguments", "Give the person's email."
 	}
-	dir, _ := readUserDirectoryFile()
-	people, unknown := resolveShareEmails(dir, []string{email})
-	if len(people) != 1 {
-		return crewOwnersState{}, http.StatusNotFound, "not_found", strings.Join(unknown, ", ") + " hasn't signed in to AgentWorks yet. Ask them to sign in once, then add them."
+	target, found := resolveCrewPerson(email)
+	if !found {
+		return crewOwnersState{}, http.StatusNotFound, "not_found", "That person hasn't signed in to this server yet. Ask them to sign in once, then add them."
 	}
-	target := people[0]
 	if action == "add" && !crewTeamAccountActive(target.ID) {
 		return crewOwnersState{}, http.StatusConflict, "inactive", firstNonEmptyTrimmed(target.Username, target.Email) + " can't use projects on this server, so they can't be a co-owner. Ask an admin to give them project access first."
 	}
@@ -179,7 +218,7 @@ func (api *StreamingAPI) changeCrewOwners(claims *UserClaims, root, ownerID, act
 	return state, 0, "", ""
 }
 
-func (api *StreamingAPI) handleDashboardCrewOwners(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action string, emails []string, setup crewOwnerSetupChange) {
+func (api *StreamingAPI) handleDashboardCrewOwners(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action string, emails []string, lockedPaths []string) {
 	ref, ok := resolveCrewPath(r.Context(), claims.UserID, target.Root)
 	if !ok || crewAccessFor(claims, ref) != crewAccessOwner {
 		externalError(w, http.StatusNotFound, "not_found", "Project not found or not allowed.")
@@ -190,33 +229,24 @@ func (api *StreamingAPI) handleDashboardCrewOwners(w http.ResponseWriter, r *htt
 		return
 	}
 	state := crewOwnersStateFor(ref.Root, ref.OwnerID, claims.UserID)
-	if action == "owner_setup" {
-		if !dashboardAuthoringAllowed(claims, &target) {
-			externalError(w, http.StatusForbidden, "insufficient_scope", "Changing what co-owners can do needs the project's owner and existing authoring consent.")
-			return
-		}
-		email := ""
-		if len(emails) > 0 {
-			email = strings.TrimSpace(emails[0])
-		}
-		next, status, code, message := api.changeCrewOwnerSetup(claims, ref.Root, ref.OwnerID, email, setup)
-		if status != 0 {
-			externalError(w, status, code, message)
-			return
-		}
-		state = next
-	}
 	if dashboardOwnersWrite(action) {
 		if !dashboardAuthoringAllowed(claims, &target) {
-			externalError(w, http.StatusForbidden, "insufficient_scope", "Changing co-owners needs the project's owner and existing authoring consent.")
+			externalError(w, http.StatusForbidden, "insufficient_scope", "Changing co-owners and users needs the project's owner and existing authoring consent.")
 			return
 		}
 		if len(emails) == 0 {
-			externalError(w, http.StatusBadRequest, "invalid_arguments", "Give the person's email.")
+			externalError(w, http.StatusBadRequest, "invalid_arguments", "Pick the person.")
 			return
 		}
-		for _, email := range emails {
-			next, status, code, message := api.changeCrewOwners(claims, ref.Root, ref.OwnerID, strings.TrimPrefix(action, "owner_"), strings.TrimSpace(email))
+		for _, who := range emails {
+			var next crewOwnersState
+			var status int
+			var code, message string
+			if strings.HasPrefix(action, "user_") {
+				next, status, code, message = api.changeCrewUsers(claims, ref.Root, ref.OwnerID, action, strings.TrimSpace(who), lockedPaths)
+			} else {
+				next, status, code, message = api.changeCrewOwners(claims, ref.Root, ref.OwnerID, strings.TrimPrefix(action, "owner_"), strings.TrimSpace(who))
+			}
 			if status != 0 {
 				externalError(w, status, code, message)
 				return
@@ -231,9 +261,9 @@ func (api *StreamingAPI) handleDashboardCrewOwners(w http.ResponseWriter, r *htt
 func (api *StreamingAPI) externalCrewOwnersCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
 	crewID, action, email := externalArg(args, "crew_id"), externalArg(args, "action"), strings.TrimSpace(externalArg(args, "email"))
-	write := action == "add" || action == "remove" || action == "setup"
+	write := action == "add" || action == "remove" || strings.HasPrefix(action, "user_")
 	if action != "list" && !write {
-		externalError(w, http.StatusBadRequest, "invalid_arguments", "action must be list, add, remove or setup.")
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "action must be list, add, remove, user_add, user_remove or user_files.")
 		return
 	}
 	if t := claims.AccessToken; t != nil {
@@ -242,7 +272,7 @@ func (api *StreamingAPI) externalCrewOwnersCall(w http.ResponseWriter, r *http.R
 			scope = "crews:write"
 		}
 		if !t.Allows(scope) || !t.AllowsCrew(crewID) {
-			externalError(w, http.StatusForbidden, "insufficient_scope", "This connection does not allow "+action+" on this project's co-owners.")
+			externalError(w, http.StatusForbidden, "insufficient_scope", "This connection does not allow "+action+" on this project's co-owners and users.")
 			return
 		}
 	}
@@ -269,19 +299,16 @@ func (api *StreamingAPI) externalCrewOwnersCall(w http.ResponseWriter, r *http.R
 	var state crewOwnersState
 	var status int
 	var code, message string
-	if action == "setup" {
-		change := crewOwnerSetupChange{}
-		if v, ok := args["can_change_setup"].(bool); ok {
-			change.CanChangeSetup = &v
-		}
+	if strings.HasPrefix(action, "user_") {
+		var paths []string
 		if list, ok := args["locked_paths"].([]any); ok {
 			for _, item := range list {
 				if p, ok := item.(string); ok {
-					change.LockedPaths = append(change.LockedPaths, p)
+					paths = append(paths, p)
 				}
 			}
 		}
-		state, status, code, message = api.changeCrewOwnerSetup(claims, root, crew.OwnerID, email, change)
+		state, status, code, message = api.changeCrewUsers(claims, root, crew.OwnerID, action, email, paths)
 	} else {
 		state, status, code, message = api.changeCrewOwners(claims, root, crew.OwnerID, action, email)
 	}
@@ -292,7 +319,7 @@ func (api *StreamingAPI) externalCrewOwnersCall(w http.ResponseWriter, r *http.R
 	externalJSON(w, state)
 }
 
-// crewOwnerNamesFor names a server Crew's owner and co-owners other than the viewer, for the side panel's line.
+// crewOwnerNamesFor names a server Crew's owner and co-owners (not its Users) other than the viewer, for the side panel's line.
 func crewOwnerNamesFor(projectID, viewer string) []string {
 	root := crewProjectRootByID(projectID)
 	if root == "" {
@@ -300,7 +327,7 @@ func crewOwnerNamesFor(projectID, viewer string) []string {
 	}
 	names := []string{}
 	owner := ownerOfCrewProjectID(projectID)
-	for _, id := range append([]string{owner}, crewCoOwnerIDs(root)...) {
+	for _, id := range append([]string{owner}, crewCoOwnersOnly(root)...) {
 		if id == "" || sanitizeUserIDForPath(id) == sanitizeUserIDForPath(viewer) {
 			continue
 		}

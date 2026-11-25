@@ -65,7 +65,7 @@ import { requestFileSearch } from '../../utils/fileSearchRequest'
 import { OPEN_PROJECT_FILE_EVENT, findProjectFile, registerProjectFileOpener, requestOpenProjectFile, type OpenProjectFileRequest } from '../../utils/projectFileLinks'
 import { openWorkspaceFile } from '../../utils/openWorkspaceFile'
 import { useWorkspaceStore } from '../../stores/useWorkspaceStore'
-import { useCrewChatOnly, useCrewChatOnlyLine } from './YourComputerPanel'
+import { useCrewChatOnly, useCrewChatOnlyLine, useCrewProjectUser } from './YourComputerPanel'
 import { isWorkWorkspaceViewEnabled } from './workViewGating'
 import { openChatContextPanelEvent } from '../../components/workspace/ChatContextSection'
 import { localFileError } from './codeLocalFiles'
@@ -1268,10 +1268,12 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
 
   // The server's can_build response keeps owners/co-owners in the Builder
   // workspace. People the Crew is only shared with use its dashboard.
-  const showShell = product.hasTerminal && !isWorkSessionRun(selected)
+  // A User of a server project gets their chat and the project's dashboard only; the server says so (crew_setup_lock.go).
+  const projectUser = useCrewProjectUser(product.profileId === 'work' ? selected?.id : undefined)
+  const showShell = product.hasTerminal && !isWorkSessionRun(selected) && !projectUser
   // Ctrl+` opens the terminal, or closes the pane when the terminal is showing, as in code editors (owner, 20 Nov).
   // Capture phase, so the key reaches here before xterm turns it into a character for the shell.
-  const shellShortcutAllowed = showShell && !!selected && !selected.shared
+  const shellShortcutAllowed = showShell && !!selected && !selected.shared && !projectUser
   useEffect(() => {
     if (!shellShortcutAllowed) return
     const onKey = (event: KeyboardEvent) => {
@@ -1285,7 +1287,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [shellShortcutAllowed, panelOpen, workspaceView, selectWorkspaceView, setPanelOpen])
   // ⌘P and ⌘⇧F open the Files tab with its search box ready.
-  const fileSearchAllowed = product.profileId === 'work' && !!selected && !selected.shared && !isWorkSessionRun(selected)
+  const fileSearchAllowed = product.profileId === 'work' && !!selected && !selected.shared && !isWorkSessionRun(selected) && !projectUser
   useEffect(() => {
     if (!fileSearchAllowed) return
     const onKey = (event: KeyboardEvent) => {
@@ -1351,10 +1353,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     open: (ref: Parameters<typeof requestOpenProjectFile>[0]) => requestOpenProjectFile(ref, false, true),
   } : null, [canLinkChatFiles, currentCrewPath, currentCrewConnection])
 
-  const chatOnlyLine = useCrewChatOnlyLine(product.profileId === 'work' && chatOnly ? selected?.id : undefined)
+  const chatOnlyLine = useCrewChatOnlyLine(product.profileId === 'work' && (chatOnly || projectUser) ? selected?.id : undefined)
   const { private: chatPrivateLine } = useChatShareLines(tabId)
   const sharedPanels = SHARED_CREW_WORKSPACE_PANELS
-  const workspacePanels = useMemo(() => isShared ? sharedPanels : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, sharedPanels])
+  const workspacePanels = useMemo(() => isShared || projectUser ? sharedPanels : enabledWorkspacePanels, [enabledWorkspacePanels, isShared, projectUser, sharedPanels])
   useEffect(() => {
     const open = (event: Event) => {
       const session = (event as CustomEvent<{ sessionId: string }>).detail?.sessionId
@@ -1629,8 +1631,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [selected?.workspacePath])
 
   useEffect(() => {
-    if (isWorkSessionRun(selected)) {
-      // Identity is always "enabled", so shared Crews need their own
+    if (isWorkSessionRun(selected) || projectUser) {
+      // Identity is always "enabled", so shared Crews (and a project's Users) need their own
       // fallback: a stale saved view must land on the inspect surface.
       if (!SHARED_CREW_WORKSPACE_PANELS.has(workspaceView)) selectWorkspaceView('dashboard', false)
       return
@@ -1644,7 +1646,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       if (readWorkWorkspaceView(selected?.id, product.profileId)) selectWorkspaceView(product.defaultView, false)
       else setWorkspaceView(product.defaultView)
     }
-  }, [enabledWorkspacePanels, product.defaultView, product.profileId, selectWorkspaceView, selected?.id, selected?.shared, showShell, workspaceView, routeSuppliedView])
+  }, [enabledWorkspacePanels, product.defaultView, product.profileId, projectUser, selectWorkspaceView, selected?.id, selected?.shared, showShell, workspaceView, routeSuppliedView])
 
   const setSplitRatio = useCallback((next: number, persist = false) => {
     const width = splitLayoutRef.current?.getBoundingClientRect().width || window.innerWidth
@@ -1820,7 +1822,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               chat={<>
                   {terminalConversation ? <TerminalConversation key={`${terminalConversation.identity}:${terminalConversation.target.connection}:${terminalConversation.target.project}:${terminalConversation.agent.id}`} selection={terminalConversation} /> : tabId ? (
                       <div className="relative flex min-h-0 flex-1 flex-col">
-                        {chatOnly && chatOnlyLine ? <p role="note" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">{chatOnlyLine}</p> : null}
+                        {(chatOnly || projectUser) && chatOnlyLine ? <p role="note" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">{chatOnlyLine}</p> : null}
                         <ChatFilePaths.Provider value={chatFileScope}>
                         <ConversationImageRoot.Provider value={selected.filesPath || selected.workspacePath}>
                         <div data-teammate-transcript={teammateIdentity ? true : undefined} className="min-h-0 flex-1">
