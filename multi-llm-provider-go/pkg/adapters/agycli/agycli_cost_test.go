@@ -16,3 +16,17 @@ func TestAgyAttachCostPricesDefaultModel(t *testing.T) {
 		t.Fatalf("cost_usd_estimated = %v, want 4.50 (0.75 input + 3.75 output)", cost)
 	}
 }
+
+// Regression: an Antigravity chat on Gemini 4 Neon or a Claude model through agy
+// showed "Cost so far $0.00": only a fixed list of slugs had rates.
+func TestAgyPricesSlugsFromTheAccountList(t *testing.T) {
+	for _, slug := range []string{"gemini-4-neon-high", "gemini-4-hydrogen-xhigh", "gemini-pro-orchestrator-argon", "claude-opus-5-5-high"} {
+		meta, err := GetAgyModelMetadata(slug)
+		if err != nil || meta.InputCostPer1MTokens <= 0 || meta.OutputCostPer1MTokens <= 0 {
+			t.Fatalf("%s: unpriced (%+v, %v)", slug, meta, err)
+		}
+	}
+	if meta, _ := GetAgyModelMetadata("gpt-oss-120b-medium"); meta.InputCostPer1MTokens != 0 {
+		t.Fatalf("a model with no known rate must stay unpriced, got %+v", meta)
+	}
+}
