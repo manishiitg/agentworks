@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // One-off on a Mac (#4078): a project on a Mac has no functions, because functions are online only and a Mac project
@@ -19,7 +21,7 @@ import (
 // (crewFunctionTabKey). A done marker is written last. Remove this file once every Mac has started on this version.
 
 const (
-	crewFunctionMacRemovalMarker = "_system/mac-functions-removed.done"
+	crewFunctionMacRemovalMarker = "_system/mac-functions-removed-2.done"
 	crewFunctionMacRemovalBackup = ".before-mac-functions-removed"
 )
 
@@ -37,11 +39,23 @@ func removeMacCrewFunctions() error {
 	if err != nil {
 		return fmt.Errorf("list projects: %w", err)
 	}
+	resolver, err := crewroot.NewReadResolver(docs)
+	if err != nil {
+		return err
+	}
 	for id, rec := range records {
 		if rec.Product != crewProfileID {
 			continue
 		}
-		file := filepath.Join(docs, filepath.FromSlash(projectStorageRoot(rec)), crewFunctionsFileName)
+		// A Crew's functions.json lives in its .agentworks/settings/, so the project path is resolved, not joined.
+		file, ok, err := resolver.Resolve(path.Join(projectStorageRoot(rec), crewFunctionsFileName))
+		if err != nil {
+			failures = append(failures, fmt.Errorf("%s: %w", id, err))
+			continue
+		}
+		if !ok {
+			continue
+		}
 		removed, err := removeFunctionsFromFile(file)
 		if err != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", file, err))
