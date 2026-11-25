@@ -1011,7 +1011,11 @@ const crewTeamDownloadBatch = 200
 // left alone.
 func crewTeamDownload(ctx context.Context, owner string, c desktopConnection, route, query, dir string, b *crewTeamLocal, files []crewTeamRemoteFile) (bool, error) {
 	op := b.diskPurpose()
-	files = slices.DeleteFunc(files, func(f crewTeamRemoteFile) bool { return f.Version == nil && b.diskRel(f.Path) == "" })
+	// The Team's setup and skills are skipped in an online project's copy, not an error: refusing them stopped its
+	// whole sync on the first round (#3664).
+	files = slices.DeleteFunc(files, func(f crewTeamRemoteFile) bool {
+		return (f.Version == nil || b.memberKeepsOwn(f.Path)) && b.diskRel(f.Path) == ""
+	})
 	for _, f := range files {
 		if b.diskRel(f.Path) == "" {
 			return false, fmt.Errorf("the Team has not supplied a folder identity for %s", f.Path)
