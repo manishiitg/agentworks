@@ -124,7 +124,7 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,agent,
      {mine?<>{row.message&&<p className="whitespace-pre-wrap">{row.message}</p>}{!!row.files?.length&&<p className="mt-1 flex flex-wrap gap-1">{row.files.map((name,index)=><span key={index} className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs">📎 {name}</span>)}</p>}</>:<MarkdownRenderer content={row.message} untrustedContent disablePathLinking copyableCode />}
     </div>
    </div>})}</div>}
-  <ChatComposerBand product>
+  <ChatComposerBand product className="shadow-none">
    <ChatComposerArea product className="px-3">
     {error&&<p role="alert" className="mb-1 px-1 text-xs text-destructive">{error}</p>}
     {status&&!error&&!offline&&<p role="status" className="mb-1 px-1 text-xs text-muted-foreground">{status}</p>}
