@@ -6,8 +6,10 @@ import (
 	"strings"
 )
 
-// managedCodingAgentProjectionFiles are the instruction files the adapters write at the workspace root.
-var managedCodingAgentProjectionFiles = []string{"AGENTS.md", "CLAUDE.md", "GEMINI.md"}
+// The root AGENTS.md, CLAUDE.md and GEMINI.md are NOT protected: they are the person's own instruction files, shared
+// with Claude Code, Codex and the other CLIs when they run outside AgentWorks, and agents may edit them like
+// PROJECT_INSTRUCTIONS.md (owner, 25 Nov). The platform's own part is a marked block that projectfile strips and writes
+// again whenever a session starts, so a change to that block never reaches a new session.
 
 // managedCodingAgentProjectionChildren are the files and folders each CLI reads its policy from. Everything here is
 // ours: the adapter writes it every turn and a tool that changed it would change the policy the CLI runs under. They
@@ -27,11 +29,11 @@ var managedCodingAgentProjectionChildren = map[string][]string{
 	".pi":     {"settings.json", "APPEND_SYSTEM.md", "SYSTEM.md", "prompts", "extensions"},
 }
 
-// managedProjectionRelatives lists the workspace-relative paths to protect: the root files, the named children, and
+// managedProjectionRelatives lists the workspace-relative paths to protect: the named children, and
 // whatever else already sits in a projection folder (except skills/), so an adapter's file the list above does not
 // know is still covered when it exists.
 func managedProjectionRelatives(workspaceRoot string) []string {
-	out := append([]string{}, managedCodingAgentProjectionFiles...)
+	var out []string
 	for dir, children := range managedCodingAgentProjectionChildren {
 		names := append([]string{}, children...)
 		if entries, err := os.ReadDir(filepath.Join(workspaceRoot, dir)); err == nil {

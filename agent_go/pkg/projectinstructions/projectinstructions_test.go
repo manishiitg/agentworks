@@ -12,7 +12,8 @@ import (
 
 // PLAT-692: the owner's section lands after the platform part of the projected
 // AGENTS.md on every regeneration, is capped, cannot break the managed block,
-// and the guard still protects AGENTS.md but not PROJECT_INSTRUCTIONS.md.
+// and the guard blocks neither the root AGENTS.md nor PROJECT_INSTRUCTIONS.md
+// (both are the person's files that agents may edit, owner 25 Nov).
 func TestProjectInstructionsAppendAfterPlatformAndStayEditable(t *testing.T) {
 	root := t.TempDir()
 	agents := filepath.Join(root, "AGENTS.md")
@@ -53,8 +54,8 @@ func TestProjectInstructionsAppendAfterPlatformAndStayEditable(t *testing.T) {
 	}
 
 	blocked := strings.Join(common.CodingAgentProjectionBlockedWrites(root), "\n")
-	if !strings.Contains(blocked, filepath.Join(root, "AGENTS.md")) || strings.Contains(blocked, FileName) {
-		t.Fatalf("guard must block AGENTS.md and allow %s:\n%s", FileName, blocked)
+	if strings.Contains(blocked, filepath.Join(root, "AGENTS.md")) || strings.Contains(blocked, FileName) {
+		t.Fatalf("guard must allow the root AGENTS.md and %s:\n%s", FileName, blocked)
 	}
 }
 

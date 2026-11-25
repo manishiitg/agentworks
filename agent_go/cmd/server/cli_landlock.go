@@ -75,7 +75,7 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, personID, prov
 		failClosedToBridgeOnly(llmAgent, sessionID, fmt.Sprintf("the Landlock policy could not be attached (%v)", err))
 		return
 	}
-	// Blocked paths (planning/, the raw database, AGENTS.md) are enforced inside
+	// Blocked paths (planning/, the raw database, CLI policy files) are enforced inside
 	// the lock: multi-llm-provider-go splits the grants around them (PLAT-385).
 	if upgraded, err := llmAgent.UpgradeCodingAgentToolsToFull(); err != nil {
 		log.Printf("[CLI_LANDLOCK] session %s: could not turn on Full CLI: %v", sessionID, err)
