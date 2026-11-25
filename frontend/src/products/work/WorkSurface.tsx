@@ -647,7 +647,7 @@ export function useWorkChatTab(
   }
 }
 
-const workAgentLists = new Map<string, { listed: AgentProfileSideChat[]; mainPurpose?: string }>()
+const workAgentLists = new Map<string, { listed: AgentProfileSideChat[] }>()
 // Each project's last read of teammates' agents (a second read, through the online copy). A failed read or the
 // route's first list (without them) keeps these, so their rows do not drop out of their groups and come back on
 // the next read (owner, 20 Nov).
@@ -658,9 +658,8 @@ export function rememberWorkAgentList(projectId: string, rows: AgentProfileSideC
   const user = useAuthStore.getState().user?.id ?? 'local'
   const workspace = useWorkspaceConnectionStore.getState().activeWorkspaceId
   const key = JSON.stringify([workspace, user, 'work', projectId])
-  const main = rows.find(row => row.is_main)
   // Main is one of the server's agent rows, listed like every other (PLAT-746-885).
-  workAgentLists.set(key, { listed: [...rows, ...(lastTeammateAgents.get(projectId) ?? [])], mainPurpose: main ? main.purpose || '' : undefined })
+  workAgentLists.set(key, { listed: [...rows, ...(lastTeammateAgents.get(projectId) ?? [])] })
 }
 
 // Shared project setup is independent of any agent's browser tab.
@@ -731,10 +730,9 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   const listCacheKey = JSON.stringify([workspaceId, userId, profileId, projectId])
   const [listed, setListed] = useState<AgentProfileSideChat[] | null>(() => workAgentLists.get(listCacheKey)?.listed ?? null)
   // Reuse only this account/connection/project's last server list while refreshing.
-  const [mainPurpose, setMainPurpose] = useState<string | undefined>(() => workAgentLists.get(listCacheKey)?.mainPurpose)
   useEffect(() => {
-    if (listed) workAgentLists.set(listCacheKey, { listed, mainPurpose })
-  }, [listCacheKey, listed, mainPurpose])
+    if (listed) workAgentLists.set(listCacheKey, { listed })
+  }, [listCacheKey, listed])
   const allTabs = Object.values(chatTabs)
   const sideChats = (listed || [])
     .map(chat => allTabs.find(tab => tab.tabId !== canonicalTabId && matchesWorkConversation(tab, profileId, projectId, chat.conversation_key)))
@@ -844,8 +842,6 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         if (teammates) lastTeammateAgents.set(projectId, teammates)
         rows.push(...(teammates ?? lastTeammateAgents.get(projectId) ?? []))
         if (cancelled) return
-        const main = rows.find(chat => chat.is_main)
-        setMainPurpose(main ? main.purpose || '' : undefined)
         // Main is one of the server's agent rows, listed like every other (PLAT-746-885): a browser tab whose
         // main-chat mark was lost no longer hides it.
         const listed = rows
@@ -1021,7 +1017,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     openAgentTab(tab.tabId)
     void syncRef.current()
   }
-  return <><AgentRemovalDialog projectId={projectId} />{header || <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose} createRequest={createRequest} projectId={projectId}
+  return <><AgentRemovalDialog projectId={projectId} />{header || <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} createRequest={createRequest} projectId={projectId}
     allowSideChats={allowSideChats} opening={opening} surface="work" onOpenIdentity={onOpenIdentity}
     onImportLocalChat={localImportProject === projectId ? () => setImportLocalChat(true) : undefined} checkingLocalImport={localImportProject === null} projectActionReady={projectActionReady} projectActivity={projectActivity}
     onDiscoverSkills={allowSideChats ? () => setDiscoverSkills(true) : undefined}
@@ -1904,7 +1900,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         filesName={selected.filesName}
                         projectId={selected.id}
                         projectTitle={selected.title}
-                        projectDescription={selected.description}
                         projectIdentity={selected.identity}
                         tabId={tabId ?? ''}
                         onOpenChat={openChatPane}

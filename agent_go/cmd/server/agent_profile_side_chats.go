@@ -214,15 +214,10 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 	timing.identities, step = time.Since(step), time.Now()
 	out := []AgentProfileSideChat{}
 	var main *AgentProfileSideChat
-	// Every person's default chat in a Crew is their Main (owner, 5 Nov); only the Crew's identity (its purpose)
-	// is the Crew owner's. The left menu's person headings tell two people's Mains apart.
-	crewOwner := ownerOfCrewProjectID(projectID)
+	// Every person's default chat in a Crew is their Main (owner, 5 Nov), named and described on its own chat like any
+	// agent (owner, 25 Nov, #4046: a project has no description). The left menu's person headings tell two people's
+	// Mains apart.
 	joinDefault := crewTeamJoinAgentDefaults(userID, projectID, slot.binding.WorkspacePath)
-	crewMain := func(row *AgentProfileSideChat) {
-		if crew, ok := readCrewMainIdentity(r.Context(), slot.binding.WorkspacePath); ok {
-			row.Purpose = firstNonEmptyTrimmed(crew.Purpose, row.Purpose)
-		}
-	}
 	for _, tab := range owned {
 		record := tab.Record
 		// Dashboard user-view chats belong to that page, not the Builder tab strip.
@@ -237,9 +232,6 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 			if runtime, err := effectiveProfileChatModel(slot.profile, slot.binding, record, tab.Identity); err == nil {
 				main.Provider, main.ModelID = runtime.Provider, runtime.ModelID
 			}
-			if crewOwner == "" || crewOwner == userID {
-				crewMain(main) // Main's purpose is the Crew identity (crew_main_identity.go).
-			}
 		}
 		if ownMain || !isSideChatConversationKey(record.ConversationKey) || !workspacePathsMatchForUser(userID, record.WorkspacePath, slot.binding.WorkspacePath) {
 			continue
@@ -250,8 +242,7 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		}
 		id := strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
 		name := firstNonEmptyTrimmed(tab.Identity.Name, "Chat "+id)
-		// Another person's default chat is their Main, never its key ("Chat root-…", owner 5 Nov); the Crew owner's
-		// carries the Crew's purpose, anyone else's their own.
+		// Another person's default chat is their Main, never its key ("Chat root-…", owner 5 Nov), with its own purpose.
 		otherDefault := tab.OwnerID != userID && (defaultChat || strings.HasPrefix(id, "root-"))
 		if otherDefault {
 			name = "Main"
@@ -265,9 +256,6 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		}
 		if own, ok := mine[record.ConversationKey]; ok && tab.OwnerID != userID {
 			row.Pinned = !own.Unpinned
-		}
-		if otherDefault && tab.OwnerID == crewOwner {
-			crewMain(&row)
 		}
 		if agentID := publicationAgentID(record.ConversationKey); agentID != "" {
 			if p, e := readPublishedAgent(contextWithoutPublication(r.Context()), agentProfileRuntimeWorkspace(userID, slot.binding.WorkspacePath), agentID); e == nil && p != nil {
