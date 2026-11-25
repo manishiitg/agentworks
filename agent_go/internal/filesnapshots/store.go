@@ -164,6 +164,7 @@ type Store struct {
 type storeState struct {
 	gate    chan struct{}
 	warming atomic.Bool
+	limit   fileLimitCache
 }
 
 // ErrWarming means the background index build (Warm) holds this Crew's gate;

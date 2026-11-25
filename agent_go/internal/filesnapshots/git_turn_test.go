@@ -847,3 +847,45 @@ func TestTurnNotesAnotherChatChangingTheSameCheckout(t *testing.T) {
 // #2922: a chat's own branch folder sits in the repository's hidden
 // .worktrees folder, which the walk skips. Started during the reply, its edits
 // still belong to that reply, and nothing from the main checkout is added.
+
+// #3878: over the file limit, (1) a checkout after the big folder was skipped,
+// so its edits were never tracked, and (2) every reply walked the whole folder
+// again. The verdict is now decided once and reused until the layout changes.
+func TestTurnFileLimitFindsLaterCheckoutsAndIsDecidedOnce(t *testing.T) {
+	f := newCrew(t)
+	for i := 0; i <= maxTurnPaths; i++ {
+		f.put(fmt.Sprintf("a-data/s/t/f-%05d", i), "")
+	}
+	f.repo("z-later/app", map[string]string{"edit.txt": "original"})
+	before, err := f.s.BeginGitTurn(t.Context(), "once")
+	if err != nil || before.BeforeCapture.Deferred != "loose_file_limit" {
+		t.Fatalf("limit not reached: %v %+v", err, before.BeforeCapture)
+	}
+	if _, ok := before.GitTurn["z-later/app"]; !ok {
+		t.Fatalf("checkout after the big folder was skipped: %v", turnKeys(before.GitTurn))
+	}
+	report, ok := f.s.FileLimit()
+	if !ok || !report.Over || report.Files != maxTurnPaths+1 || len(report.Folders) == 0 || report.Folders[0].Path != "a-data" {
+		t.Fatalf("verdict not stored: %+v", report)
+	}
+	f.put("a-data/s/t/one-more", "")
+	f.put("z-later/app/edit.txt", "after")
+	after, err := f.s.FinishGitTurn(t.Context(), "once")
+	if err != nil || after.AfterCapture.Deferred != "loose_file_limit" {
+		t.Fatalf("after capture: %v %+v", err, after.AfterCapture)
+	}
+	if again, _ := f.s.FileLimit(); !again.CheckedAt.Equal(report.CheckedAt) {
+		t.Fatal("an unchanged layout walked the folder again")
+	}
+	comparison, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "z-later/app/edit.txt" {
+		t.Fatalf("later checkout's edit lost: %v %+v", err, comparison.Changes)
+	}
+	f.s.RecheckFileLimit()
+	if _, err := f.s.BeginGitTurn(t.Context(), "recheck"); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := f.s.FileLimit(); again.Files != maxTurnPaths+2 {
+		t.Fatalf("check again did not count afresh: %+v", again)
+	}
+}
