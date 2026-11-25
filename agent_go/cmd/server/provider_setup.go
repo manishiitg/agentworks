@@ -597,6 +597,7 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 		// A user account: its owner and admins sign it in and inspect it.
 		record, err := api.providerSetupAccount(r.Context(), request, caller, admin)
 		if err != nil {
+			log.Printf("[PROVIDER_SETUP] refused provider=%s account=%s caller=%s reason=%v", request.Provider, request.ConnectionID, caller, err)
 			http.Error(w, "connection unavailable or unauthorized", http.StatusForbidden)
 			return
 		}
@@ -809,15 +810,19 @@ func (api *StreamingAPI) providerSetupAccount(ctx context.Context, request start
 		if record.ID != request.ConnectionID {
 			continue
 		}
-		if record.Provider != request.Provider || !providerEnabled(record.Provider) || personalProviderConnectionsLocked(record.Provider) {
-			return nil, fmt.Errorf("connection unavailable")
-		}
-		if record.OwnerUserID == caller || admin {
+		switch {
+		case record.Provider != request.Provider:
+			return nil, fmt.Errorf("account is for %s", record.Provider)
+		case !providerEnabled(record.Provider):
+			return nil, fmt.Errorf("program not enabled")
+		case personalProviderConnectionsLocked(record.Provider):
+			return nil, fmt.Errorf("personal accounts locked")
+		case record.OwnerUserID == caller || admin:
 			return &record, nil
 		}
-		return nil, fmt.Errorf("connection unavailable")
+		return nil, fmt.Errorf("owned by another person")
 	}
-	return nil, fmt.Errorf("connection unavailable")
+	return nil, fmt.Errorf("no such account")
 }
 
 // serverAccountAvailableToCaller reports whether the server account of
