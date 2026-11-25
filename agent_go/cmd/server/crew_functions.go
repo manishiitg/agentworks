@@ -100,8 +100,12 @@ const (
 const crewFunctionTabPrefix = "fn."
 
 // crewFunctionTabKey is a function's own tab (fn.<name>). It is the owner's agent: a function is how everyone else uses
-// a Crew, so the Team never lists, shares or lets anyone message that tab (owner, 7 Nov).
+// a Crew, so the Team never lists, shares or lets anyone message that tab (owner, 7 Nov). A Mac has no functions
+// (#4078): there an fn. tab is an ordinary agent tab.
 func crewFunctionTabKey(key string) bool {
+	if IsLocalMode() {
+		return false
+	}
 	_, id, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker)
 	return ok && strings.HasPrefix(id, crewFunctionTabPrefix)
 }
@@ -1468,6 +1472,10 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		return context.WithValue(ctx, UserContextKey, &copy)
 	}
 	register := func(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error)) error {
+		// Functions are online only and a Mac project has none (#4078): its chats get no function tools.
+		if IsLocalMode() && crewFunctionToolName(name) {
+			return nil
+		}
 		if name == "project_functions_define" || name == "project_functions_call" {
 			run := execute
 			execute = func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -1914,4 +1922,9 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 	}
 
 	return nil
+}
+
+// crewFunctionToolName is a tool for defining, calling or answering functions.
+func crewFunctionToolName(name string) bool {
+	return strings.HasPrefix(name, "project_functions_") || name == "ask_function_update" || name == "report_function_progress"
 }

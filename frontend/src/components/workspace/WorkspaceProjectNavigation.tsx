@@ -1,5 +1,6 @@
 import { Braces, CalendarClock, Mail, MessageCircle, Plug, Slack, Webhook, Zap } from 'lucide-react'
 import { workspaceIntegrationShortcuts } from './workspaceIntegrationShortcuts'
+import { isLocalDeployment } from '../../products/productSurfaceConfig'
 
 
 export function projectConnectionSections(options: Parameters<typeof workspaceIntegrationShortcuts>[0]) {
@@ -24,7 +25,8 @@ export const PROJECT_AUTOMATIONS = [
 
 export function projectAutomationSections({ triggers = true, incomingEmail = false }: { triggers?: boolean; incomingEmail?: boolean } = {}) {
   return [
-    ...PROJECT_AUTOMATIONS.filter(item => (triggers || item.id === 'schedules')),
+    // Functions are online only: a project on a Mac has none (#4078).
+    ...PROJECT_AUTOMATIONS.filter(item => (triggers || item.id === 'schedules') && !(item.id === 'functions' && isLocalDeployment())),
     ...(incomingEmail ? [{ id: 'email', label: 'Inbox', icon: Mail }] : []),
   ]
 }

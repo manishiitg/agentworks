@@ -13,16 +13,11 @@ import (
 
 var errInvalidMainChat = errors.New("the project main chat has an invalid ID")
 
+// ordinaryProjectChatKey is one of a Crew's own agent tabs. On a server a function's tab (fn.<name>) is not one; on a
+// Mac there are no functions (#4078), so an old fn. tab is an ordinary agent.
 func ordinaryProjectChatKey(projectID, key string) bool {
 	id := strings.TrimPrefix(key, projectID+codeChatSideMarker)
-	return key != id && id != "" && !strings.Contains(id, ":") && !strings.HasPrefix(id, "fn.") && !strings.HasPrefix(id, "agent-")
-}
-
-// appAgentChatKey is a Crew tab that is the owner's agent on their AgentBridge network: an ordinary tab, or a
-// function's own tab, which the owner talks to and which may message the owner's other agents. The Team never
-// lists or reaches a function tab (crewTeam.agentInTeam); other people use the function instead.
-func appAgentChatKey(projectID, key string) bool {
-	return ordinaryProjectChatKey(projectID, key) || strings.HasPrefix(key, projectID+codeChatSideMarker+crewFunctionTabPrefix) && len(key) > len(projectID+codeChatSideMarker+crewFunctionTabPrefix)
+	return key != id && id != "" && !strings.Contains(id, ":") && !crewFunctionTabKey(key) && !strings.HasPrefix(id, "agent-")
 }
 
 func validProjectMainRecord(userID, profileID, projectID, workspace string, record ProductConversationRecord) bool {

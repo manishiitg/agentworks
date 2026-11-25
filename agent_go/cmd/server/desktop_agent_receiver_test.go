@@ -131,8 +131,9 @@ func TestDesktopAppRecipientRequiresCurrentOwnedConversation(t *testing.T) {
 	if _, err := desktopAppAgentRecipient(ctx, "owner", foreign); err == nil {
 		t.Fatal("another person's chat advertised as own")
 	}
-	// A function's own tab is the owner's agent: opened and typed in by the owner, it sends as itself. It was left
-	// out, so its sends failed as "removed or replaced". The Team still never lists it (crewTeam.agentInTeam).
+	// #4071/#4078: a Mac has no functions, so an old function tab (fn.<name>) is an ordinary agent there and sends as
+	// itself. Its sends once failed as "removed or replaced".
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	fnTab := record
 	fnTab.ConversationKey = "alpha:chat:" + crewFunctionTabPrefix + "replies"
 	fnTab.ConversationID, fnTab.SessionID = "conversation-fn", "session-fn"
@@ -141,7 +142,7 @@ func TestDesktopAppRecipientRequiresCurrentOwnedConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := desktopAppAgentRecipient(ctx, "owner", fnTab); err != nil {
-		t.Fatalf("owner's function tab is not an agent: %v", err)
+		t.Fatalf("old function tab on a Mac is not an agent: %v", err)
 	}
 }
 

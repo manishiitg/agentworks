@@ -36,7 +36,7 @@ func (api *StreamingAPI) handleAgentMessageIdentity(w http.ResponseWriter, r *ht
 			// This selects a Live-view authorization identity, not cached labels.
 			if doc, err := defaultProductConversationRegistryStore().loadDocument(r.Context(), productConversationRegistryPath(claims.UserID)); err == nil {
 				for _, record := range doc.Entries {
-					if record.SessionID == session && record.ProfileID == crewProfileID && record.ResourceID != "" && record.ConversationID != "" && appAgentChatKey(record.ResourceID, record.ConversationKey) && crewProjectOwnedByCallerStrict(claims.UserID, record.WorkspacePath) {
+					if record.SessionID == session && record.ProfileID == crewProfileID && record.ResourceID != "" && record.ConversationID != "" && ordinaryProjectChatKey(record.ResourceID, record.ConversationKey) && crewProjectOwnedByCallerStrict(claims.UserID, record.WorkspacePath) {
 						query.Set("viewer_agent_name", desktopAppAgentName(desktopMachineID(), record.ConversationID))
 						break
 					}
