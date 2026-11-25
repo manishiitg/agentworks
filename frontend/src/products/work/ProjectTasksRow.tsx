@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ExternalLink, MoreHorizontal } from 'lucide-react'
 import type { CrewPanelRow, ProjectTask, ProjectTaskRef } from './useCrewPanel'
+import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 
 // Project tasks (approved mockups 24 Nov; tidy list and task page #3788): one
 // shared, curated list per project. The list shows Needs you first, then the
@@ -85,7 +86,7 @@ function TaskLine({ task, onOpen }: { task: ProjectTask; onOpen: () => void }) {
     <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 pl-5 text-[10.5px]">
       {task.done ? <span className="text-emerald-600 dark:text-emerald-400">✓ {task.step}</span>
         : task.needs_you ? <span className="min-w-0 font-medium text-amber-600 dark:text-amber-400">{task.needs_you}</span>
-        : <span className="min-w-0 text-muted-foreground">{task.step} · <span className={task.assignee && !task.held ? 'text-sky-600 dark:text-sky-400' : ''}>{who(task)}</span></span>}
+        : <span className="inline-flex min-w-0 items-center gap-1 text-muted-foreground">{task.step} ·{task.assignee && !task.held && !task.proposed ? <CodingCliIcon provider={task.assignee_cli} className="inline-flex h-3 w-3 shrink-0 items-center"/> : null}<span className={task.assignee && !task.held ? 'text-sky-600 dark:text-sky-400' : ''}>{who(task)}</span></span>}
       {checks.length ? <span className="rounded bg-muted px-1 text-[10px] text-muted-foreground" title="Checklist done">☑ {checks.filter(c => c.done).length}/{checks.length}</span> : null}
       {task.links?.length ? <span className="text-muted-foreground">{task.links.length} linked</span> : null}
       {fresh ? <span className="text-sky-600 dark:text-sky-400">{fresh} new</span> : null}
@@ -197,7 +198,7 @@ export function ProjectTaskPage({ row, task, onAgent }: { row: CrewPanelRow; tas
     {task.tasks?.length ? <>
       <p className={head}>Who is working on it</p>
       <ul className="space-y-1">{task.tasks.map((t, i) => <li key={i}>
-        <span className="flex items-center gap-2"><span className="min-w-0 flex-1 truncate text-foreground">{t.agent}</span><span className={`shrink-0 rounded-full px-1.5 text-[10px] ${taskTone[t.state] || 'bg-muted text-muted-foreground'}`}>{taskWords[t.state] || t.state}</span></span>
+        <span className="flex items-center gap-2"><CodingCliIcon provider={t.cli} className="inline-flex h-3.5 w-3.5 shrink-0 items-center"/><span className="min-w-0 flex-1 truncate text-foreground">{t.agent}</span><span className={`shrink-0 rounded-full px-1.5 text-[10px] ${taskTone[t.state] || 'bg-muted text-muted-foreground'}`}>{taskWords[t.state] || t.state}</span></span>
         {t.title ? <span className="block truncate text-[10.5px] text-muted-foreground">{t.title}</span> : null}
       </li>)}</ul>
     </> : null}
