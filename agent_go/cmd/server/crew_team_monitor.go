@@ -68,9 +68,14 @@ func crewTeamMonitorFor(ctx context.Context, viewer string) ([]crewTeamLiveView,
 		go func(i int, team crewTeam) {
 			defer wg.Done()
 			out[i] = crewTeamLiveFor(ctx, team, teamAgentsByPerson(ctx, team, viewer), viewer)
-			out[i].Work = crewTeamMonitorWorkFor(out[i], time.Now())
 			overview := crewTeamOverviewOf(ctx, team, out[i], viewer, "day", false)
 			out[i].Overview = &overview
+			// The overview's newest item (a file change, a chat, a commit) is also work: after a restart no agent may have
+			// worked yet, and the Team still shows when it last did.
+			if overview.Last != nil && overview.Last.At.After(out[i].lastWorkedAt) {
+				out[i].lastWorkedAt = overview.Last.At
+			}
+			out[i].Work = crewTeamMonitorWorkFor(out[i], time.Now())
 		}(i, team)
 	}
 	wg.Wait()
