@@ -74,7 +74,9 @@ func TestRunDestinationParsingAndNewCrewScheduleGetsItsOwnChat(t *testing.T) {
 		move   bool
 	}{
 		{projectactions.Action{Type: "message"}, `{"messages":["hi"]}`, true},
-		{projectactions.Action{Type: "run", WorkflowID: "wf", Tab: "team"}, `{}`, true},
+		{projectactions.Action{Type: "run", WorkflowID: "wf", Tab: "main"}, `{}`, true},
+		// A short tab id (Main's own id) names an agent: it stays (a server listed every such timer as one to move).
+		{projectactions.Action{Type: "run", WorkflowID: "wf", Tab: "imported-abc123"}, `{}`, false},
 		{projectactions.Action{Type: "message", Tab: "team:chat:abc"}, `{}`, false},
 		{projectactions.Action{Type: "message", Conversation: runDestinationIsolated}, `{}`, false},
 		{projectactions.Action{Type: "message"}, `{"condition":{"check_mode":"schedule"}}`, false},
