@@ -86,7 +86,7 @@ func (api *StreamingAPI) turnMacOnlineOnForTeam(ctx context.Context, claims *Use
 			for _, item := range saved {
 				names = append(names, desktopConnectionLabel(item))
 			}
-			return fmt.Errorf("Which network should the team use? %s. Turn on Phone & web with that network, then the Team.", strings.Join(names, ", "))
+			return fmt.Errorf("Which network should the team use? %s. Turn on Phone with that network, then the Team.", strings.Join(names, ", "))
 		}
 		connection = saved[0].ID
 	}
@@ -101,7 +101,7 @@ func (api *StreamingAPI) turnMacOnlineOnForTeam(ctx context.Context, claims *Use
 	if capture.status >= 300 {
 		var failure map[string]any
 		_ = json.Unmarshal(capture.body.Bytes(), &failure)
-		return fmt.Errorf("%s", externalErrorMessage(failure, "Phone & web could not be turned on. Try again."))
+		return fmt.Errorf("%s", externalErrorMessage(failure, "Phone could not be turned on. Try again."))
 	}
 	return nil
 }

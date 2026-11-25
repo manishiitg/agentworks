@@ -10,7 +10,7 @@ The project menu has two rows (the old Share row split in two):
 - **Team:** the people who work on this project with you. People lists **Works with
   me** and **Dashboards only**, then the Team's agents and the shared folder.
   Read the Team procedure before invitations, level or folder changes.
-- **Online:** how everyone else reaches the project, in tabs: **Phone & web** (with
+- **Online:** how everyone else reaches the project, in tabs: **Phone** (with
   AgentBridge) on a Mac project, **Share agents**, **Slack** and **Dashboards**.
 
 - **Share agents** (an Online tab): each of your agents is one card: its name and where it runs,

@@ -48,7 +48,7 @@ function useSave() {
 const askTitle = 'Ask your AI agent how to set this up'
 // Before Mac online pairs the Mac app's own Crew there is no server reply with the cards' messages yet.
 const UNPAIRED_ASKS: Record<string, string> = {
-  mac: 'Explain Phone & web for this project: is it on, and what turning it on lets me do from the website, my phone and my other apps. Help me turn it on.',
+  mac: 'Explain Phone for this project: is it on, and what turning it on lets me do from the website, my phone and my other apps. Help me turn it on.',
   publish: 'Help me publish this project to the server.',
 }
 
