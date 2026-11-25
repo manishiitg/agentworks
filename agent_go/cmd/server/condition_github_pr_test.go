@@ -166,7 +166,24 @@ func TestPRWatcherManagementPinsOwnerAccountAndChat(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := env.svc.conditionService()
-	args := map[string]interface{}{"action": "create", "request_id": "pr-watch", "trigger": map[string]interface{}{"name": "Watch PR", "github_pr": map[string]interface{}{"repository": "example/project", "number": 7, "mode": "autofix", "worktree": "code", "login": "forged"}, "target": map[string]interface{}{"kind": "agent", "chat_id": "main", "message": "placeholder"}}}
+	// A PR Watcher names its agent like any Watcher; "main" is no stand-in (#4046).
+	main := map[string]interface{}{"action": "create", "request_id": "pr-watch-main", "trigger": map[string]interface{}{"name": "Watch PR", "github_pr": map[string]interface{}{"repository": "example/project", "number": 7, "mode": "autofix", "worktree": "code"}, "target": map[string]interface{}{"kind": "agent", "chat_id": "main", "message": "placeholder"}}}
+	if _, err := c.manage(ctx, "owner", "work", "mail-checks", main); err == nil || !strings.Contains(err.Error(), "choose an existing agent") {
+		t.Fatalf("PR Watcher accepted \"main\": %v", err)
+	}
+	profile, err := env.svc.registry.Resolve("work", 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, _, err := resolveConversationBindingForUser(ctx, "owner", profile, "mail-checks:chat:watch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", profile, binding, ""); err != nil {
+		t.Fatal(err)
+	}
+	agent := "watch"
+	args := map[string]interface{}{"action": "create", "request_id": "pr-watch", "trigger": map[string]interface{}{"name": "Watch PR", "github_pr": map[string]interface{}{"repository": "example/project", "number": 7, "mode": "autofix", "worktree": "code", "login": "forged"}, "target": map[string]interface{}{"kind": "agent", "chat_id": agent, "message": "placeholder"}}}
 	result, err := c.manage(ctx, "owner", "work", "mail-checks", args)
 	if err != nil {
 		t.Fatal(err)
@@ -177,7 +194,7 @@ func TestPRWatcherManagementPinsOwnerAccountAndChat(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := job.Schedule.Condition
-	if cfg.GitHubPR.Login != "selected-owner" || cfg.GitHubPR.HeadSHA != "abc" || cfg.Target.ChatID != "main" || cfg.Script != "" || job.Schedule.CronExpression != "* * * * *" {
+	if cfg.GitHubPR.Login != "selected-owner" || cfg.GitHubPR.HeadSHA != "abc" || cfg.Target.ChatID != agent || cfg.Script != "" || job.Schedule.CronExpression != "* * * * *" {
 		t.Fatalf("wrong binding: %+v", cfg)
 	}
 	if err := c.engine.Store.Save(ctx, conditionKey(job), conditiontrigger.Ledger{Done: true, CompletedAt: time.Now().UTC()}); err != nil {

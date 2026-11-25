@@ -133,7 +133,7 @@ func (api *StreamingAPI) crewChats(r *http.Request, userID, crewID, workspace st
 
 func findCrewChat(chats []externalCrewChat, id string) (externalCrewChat, bool) {
 	for _, chat := range chats {
-		if (id == "main" && chat.IsMain) || chat.ChatID == id || chat.SessionID == id {
+		if chat.ChatID == id || chat.SessionID == id {
 			return chat, true
 		}
 	}
@@ -488,19 +488,6 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 	default:
 		externalError(w, 400, "invalid_arguments", "Unknown action.")
 	}
-}
-
-// crewAskChat resolves ask_crew's optional chat_id to one of the caller's
-// live chats with the Crew.
-func (api *StreamingAPI) crewAskChat(r *http.Request, userID, crewID, workspace, chatID string) (*codeChat, bool) {
-	if chatID == "" {
-		chatID = "main"
-	}
-	chat, found := findCrewChat(api.crewChats(r, userID, crewID, workspace), chatID)
-	if !found || !chat.CanWrite {
-		return nil, false
-	}
-	return &codeChat{OwnerID: chat.OwnerID, IsMain: chat.IsMain, Key: chat.key, ID: chat.ChatID, Name: chat.Name, SessionID: chat.SessionID, UpdatedAt: chat.UpdatedAt}, true
 }
 
 func crewSideChatCount(chats []externalCrewChat) int {

@@ -102,12 +102,14 @@ func (c *conditionService) prepareGitHubPR(ctx context.Context, job productSched
 		if err != nil {
 			return err
 		}
-		key := job.ProjectID
-		if cfg.Target.ChatID != codeChatMainName {
-			key += codeChatSideMarker + cfg.Target.ChatID
-			if !projectChatExists(ctx, job.UserID, crewProfileID, job.ProjectID, key) {
-				return errors.New("choose one of your existing project chats")
-			}
+		// The PR Watcher names its agent like any Watcher; "main" is no stand-in (#4046).
+		chatID := strings.TrimSpace(cfg.Target.ChatID)
+		if chatID == "" || chatID == codeChatMainName {
+			return errors.New("choose an existing agent for this Watcher")
+		}
+		key := job.ProjectID + codeChatSideMarker + chatID
+		if !projectChatExists(ctx, job.UserID, crewProfileID, job.ProjectID, key) {
+			return errors.New("choose one of your existing project chats")
 		}
 		binding, err := resolveProductConversationBinding(ctx, job.UserID, profile, key)
 		if err != nil {

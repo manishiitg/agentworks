@@ -165,22 +165,11 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 	return project, nil
 }
 
-// find returns the chat named by id ("main", a side chat id) or exact name.
+// find returns the chat named by its id or exact name; "main" is no alias (#4046), only a name an agent may have.
 func (p codeChatProject) find(raw string) (codeChat, error) {
 	want := strings.ToLower(strings.TrimSpace(raw))
 	if want == "" {
 		return codeChat{}, fmt.Errorf("chat is required: pass an id or name from list_project_chats")
-	}
-	if want == "primary" || want == "main chat" {
-		want = codeChatMainName
-	}
-	if want == codeChatMainName {
-		for _, chat := range p.Chats {
-			if chat.IsMain {
-				chat.Key = p.ProjectID // Explicit main is an address, not the physical ID listed to callers.
-				return chat, nil
-			}
-		}
 	}
 	var matches []codeChat
 	for _, chat := range p.Chats {
@@ -280,7 +269,7 @@ func agentRolePrompt(ctx context.Context, userID, profileID, conversationKey, wo
 			}
 		}
 	}
-	defaultName := "Main chat"
+	defaultName := "Main"
 	if tab != "" {
 		defaultName = "Chat"
 	}
