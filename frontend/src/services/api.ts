@@ -2167,37 +2167,38 @@ export const agentApi = {
   prepareCrewChatFile: async (file: File, projectId: string, scope?: { sessionId: string; conversationKey: string }): Promise<{ attachment: { hash: string; name: string }; upload: () => Promise<{ filepath: string }> }> => {
     const route = `/api/agent-profiles/work/projects/${encodeURIComponent(projectId)}/uploads`
     const hex = (digest: ArrayBuffer) => Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
-    try {
-      const bytes = new Uint8Array(await file.arrayBuffer())
-      const pieces: { id: string; data: Uint8Array }[] = []
-      for (let at = 0; at < bytes.length; at += UPLOAD_CHUNK_BYTES) {
-        const data = bytes.subarray(at, at + UPLOAD_CHUNK_BYTES)
-        pieces.push({ id: hex(await crypto.subtle.digest('SHA-256', data)), data })
+    const serverMessage = (error: unknown) => {
+      if (axios.isAxiosError(error)) {
+        const message = error.response?.data?.error?.message || error.response?.data?.error || error.response?.data?.message
+        if (typeof message === 'string') return new Error(message)
       }
-      const version = { hash: hex(await crypto.subtle.digest('SHA-256', bytes)), size: bytes.length, chunks: pieces.map(piece => ({ id: piece.id, n: piece.data.length })) }
-      const binding = scope ? { session_id: scope.sessionId, conversation_key: scope.conversationKey } : {}
-      const plan = await api.post(`${route}/plan`, { file: version, ...binding })
-      if (scope && plan.data.pending_attachments !== true) {
-        throw new Error('This server needs an update to send while files upload. Ask its owner to update it, then attach the file again.')
-      }
-      const missing = new Set<string>(plan.data.missing)
-      const send = pieces.filter(piece => missing.delete(piece.id))
-      return {
-        attachment: { hash: version.hash, name: file.name },
-        upload: async () => {
+      return error
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const pieces: { id: string; data: Uint8Array }[] = []
+    for (let at = 0; at < bytes.length; at += UPLOAD_CHUNK_BYTES) {
+      const data = bytes.subarray(at, at + UPLOAD_CHUNK_BYTES)
+      pieces.push({ id: hex(await crypto.subtle.digest('SHA-256', data)), data })
+    }
+    const version = { hash: hex(await crypto.subtle.digest('SHA-256', bytes)), size: bytes.length, chunks: pieces.map(piece => ({ id: piece.id, n: piece.data.length })) }
+    const binding = scope ? { session_id: scope.sessionId, conversation_key: scope.conversationKey } : {}
+    // The hash is all a message needs: it can be sent now, and the server waits for the plan and upload below.
+    return {
+      attachment: { hash: version.hash, name: file.name },
+      upload: async () => {
+        try {
+          const plan = await api.post(`${route}/plan`, { file: version, ...binding })
+          const missing = new Set<string>(plan.data.missing)
+          const send = pieces.filter(piece => missing.delete(piece.id))
           for (let at = 0; at < send.length; at += UPLOAD_CHUNKS_PER_REQUEST) {
             await api.put(`${route}/chunks`, uploadFrames(send.slice(at, at + UPLOAD_CHUNKS_PER_REQUEST)), { headers: { 'Content-Type': 'application/octet-stream' } })
           }
           const response = await api.post(route, { name: file.name, file: version, ...binding })
           return response.data
-        },
-      }
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const message = error.response?.data?.error?.message || error.response?.data?.error || error.response?.data?.message
-        if (typeof message === 'string') throw new Error(message)
-      }
-      throw error
+        } catch (error) {
+          throw serverMessage(error)
+        }
+      },
     }
   },
 

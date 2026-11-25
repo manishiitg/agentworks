@@ -7,37 +7,39 @@ import (
 	"time"
 )
 
-// PLAT-746-828: an upload planned by someone else, in another Crew/tab/session,
-// or never planned must not become an attachment to this person's message.
+// PLAT-746-828: an upload made by someone else, or in another Crew/tab/session, must not become an attachment to this
+// person's message. The message may arrive before its plan: the composer sends as soon as it has the file's hash.
 func TestPendingChatAttachmentRequiresSameCallerProjectConversationAndSession(t *testing.T) {
 	hash := strings.Repeat("a", 64)
 	conversation := "project-example:chat:side"
-	req := QueryRequest{AgentProfileID: crewProfileID, AgentProfileConversationKey: conversation, Query: "Read the image", PendingAttachments: []pendingChatAttachment{{Hash: hash, Name: "ignored-client-path"}}}
+	req := QueryRequest{AgentProfileID: crewProfileID, AgentProfileConversationKey: conversation, Query: "", PendingAttachments: []pendingChatAttachment{{Hash: hash, Name: "ignored-client-path"}}}
 	key := pendingAttachmentKey("person", "session", req, hash)
 	api := &StreamingAPI{}
-	api.planPendingChatUpload(key)
 	if err := api.validatePendingChatAttachments("person", "session", req); err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct{ name, user, session, conversation, hash string }{
-		{"other person", "other", "session", conversation, hash},
-		{"other project", "person", "session", "other-project:chat:side", hash},
-		{"other tab", "person", "session", "project-example:chat:another", hash},
-		{"other session", "person", "another", conversation, hash},
-		{"unplanned hash", "person", "session", conversation, strings.Repeat("b", 64)},
+	api.planPendingChatUpload(key)
+	api.finishPendingChatUpload(key, "Crew/example/uploads/image.png", 100)
+	for _, tc := range []struct{ name, user, session, conversation string }{
+		{"other person", "other", "session", conversation},
+		{"other project", "person", "session", "other-project:chat:side"},
+		{"other tab", "person", "session", "project-example:chat:another"},
+		{"other session", "person", "another", conversation},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			input := req
 			input.AgentProfileConversationKey = tc.conversation
-			input.PendingAttachments = []pendingChatAttachment{{Hash: tc.hash}}
-			if err := api.validatePendingChatAttachments(tc.user, tc.session, input); err == nil {
-				t.Fatal("accepted an upload outside its planned conversation identity")
+			input.PendingAttachments = []pendingChatAttachment{{Hash: hash}}
+			_ = api.validatePendingChatAttachments(tc.user, tc.session, input)
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+			defer cancel()
+			if err := api.resolvePendingChatAttachments(ctx, tc.user, tc.session, &input); err == nil || strings.Contains(input.Query, "image.png") {
+				t.Fatalf("received an upload outside its conversation identity: %v %q", err, input.Query)
 			}
 		})
 	}
-	// Only the authorized writer's committed path reaches the prompt, not Name.
-	req.Query = "" // A screenshot may be sent without a caption (PLAT-746-938).
-	api.finishPendingChatUpload(key, "Crew/example/uploads/image.png", 100)
+	// Only the authorized writer's committed path reaches the prompt, not Name. A screenshot may be sent without a
+	// caption (PLAT-746-938).
 	if err := api.resolvePendingChatAttachments(context.Background(), "person", "session", &req); err != nil {
 		t.Fatal(err)
 	}

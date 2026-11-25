@@ -45,6 +45,23 @@ func (api *StreamingAPI) planPendingChatUpload(key pendingChatUploadKey) {
 	}
 	api.pendingChatUploads[key] = &pendingChatUpload{Ready: make(chan struct{}), Expires: now.Add(pendingChatUploadTTL)}
 }
+
+// expectPendingChatUpload lets a message arrive before its file's plan: the composer sends as soon as it knows the
+// file's hash, and the plan and upload follow. The entry names only this caller's own conversation and grants nothing
+// until the authorized upload for it finishes; the turn waits for that (pendingChatAttachmentWait).
+func (api *StreamingAPI) expectPendingChatUpload(key pendingChatUploadKey) error {
+	api.pendingChatUploadsMu.Lock()
+	item := api.pendingChatUploads[key]
+	api.pendingChatUploadsMu.Unlock()
+	if item == nil || time.Now().After(item.Expires) {
+		api.planPendingChatUpload(key)
+		return nil
+	}
+	if item.Error != "" {
+		return errors.New(item.Error)
+	}
+	return nil
+}
 func (api *StreamingAPI) pendingChatUpload(key pendingChatUploadKey) (*pendingChatUpload, error) {
 	api.pendingChatUploadsMu.Lock()
 	defer api.pendingChatUploadsMu.Unlock()
@@ -126,7 +143,7 @@ func (api *StreamingAPI) validatePendingChatAttachments(user, session string, re
 		if len(file.Hash) != 64 || strings.Trim(file.Hash, "0123456789abcdef") != "" {
 			return errors.New("The attachment was not understood. Attach it again.")
 		}
-		if _, err := api.pendingChatUpload(pendingAttachmentKey(user, session, req, file.Hash)); err != nil {
+		if err := api.expectPendingChatUpload(pendingAttachmentKey(user, session, req, file.Hash)); err != nil {
 			return err
 		}
 	}
