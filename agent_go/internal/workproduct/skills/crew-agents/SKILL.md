@@ -82,6 +82,9 @@ There is no whole-project edit lock; coordinate overlapping file changes through
   `place=under` (default) makes it your helper under you in the left menu;
   `place=beside` makes it its own agent at your level (other work that stands on
   its own; you cannot delete it later). Both take `task` and start at once.
+  Your own group shows in `sessions action=list`; under and beside keep it. When
+  the person names a group ("fork this into Design"), pass `group`: it joins that
+  group, or starts it, as its own agent under no one.
   - Other work that needs this context: fork with `place=beside` and `task`.
   - Several parallel agents: open each fresh with its own `name` and a complete
     `task`; they work at the same time and each answers in its own thread.

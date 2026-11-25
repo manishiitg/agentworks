@@ -134,7 +134,7 @@ func TestCrewTabsFindEachOtherOnlyForTheOwner(t *testing.T) {
 	// #3655: making an agent also sets it up, with the same limits and owner rule as sessions action=identity.
 	for name, tool := range map[string]recordedTool{"fork_project_chat": fork, "open_project_chat": open} {
 		properties := tool.params["properties"].(map[string]interface{})
-		for _, field := range []string{"purpose", "instructions"} {
+		for _, field := range []string{"purpose", "instructions", "group"} {
 			if _, offered := properties[field]; !offered {
 				t.Fatalf("%s does not offer %s", name, field)
 			}
@@ -142,6 +142,10 @@ func TestCrewTabsFindEachOtherOnlyForTheOwner(t *testing.T) {
 	}
 	if _, err := open.exec(ctx, map[string]interface{}{"name": "Issue lead", "instructions": strings.Repeat("x", productAgentInstructionsMaxRunes+1)}); err == nil || !strings.Contains(err.Error(), "nothing was made") {
 		t.Fatalf("over-long instructions = %v", err)
+	}
+	// A named group is checked before anything is made, as purpose and instructions are.
+	if _, err := open.exec(ctx, map[string]interface{}{"name": "Issue lead", "group": strings.Repeat("g", agentGroupNameMaxRunes+1)}); err == nil {
+		t.Fatal("an over-long group name opened a tab")
 	}
 	purpose, rules := "Leads the issues row", "Fixer done -> Reviewer checks it.\nAnyone stuck -> ask me."
 	setUp, err := env.api.spawnIdentityArgs(ctx, conversation.SessionID, "owner", map[string]interface{}{"purpose": purpose, "instructions": rules})
