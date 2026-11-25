@@ -426,10 +426,11 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     const who = signedInAs(server) ? ` for ${signedInAs(server)}` : ''
     setBusy(true); setError(null); setNotice(null)
     try {
-      const result = await desktopRequest<{ status: 'copied' | 'sign_in' | 'exists'; server_url: string }>(`/${encodeURIComponent(server.id)}/provider-accounts`, 'POST', { account_id: record.id })
-      if (result.status === 'sign_in' || signInAgain) {
-        setNotice({ id: record.id, text: signInAgain ? `Sign in on ${server.name} with the same login as this Mac.` : `Added to ${server.name} as a private account${who}. Sign in to it on the page that opened.`, signInUrl: result.server_url })
-        window.electronAPI?.openExternal?.(result.server_url)
+      const result = await desktopRequest<{ status: 'copied' | 'sign_in' | 'exists'; account_id?: string; server_url: string }>(`/${encodeURIComponent(server.id)}/provider-accounts`, 'POST', { account_id: record.id })
+      if ((result.status === 'sign_in' || signInAgain) && result.account_id) {
+        setServerSignIn({ recordId: record.id, serverId: server.id, accountId: result.account_id })
+      } else if (result.status === 'sign_in' || signInAgain) {
+        openAddOn(server)
       } else setNotice({ id: record.id, text: result.status === 'exists' ? `Already on ${server.name} as a private account${who}.` : `Added to ${server.name} as a private account${who}. It is ready to use there.` })
     } catch (addError) { setError(addError instanceof Error ? addError.message : 'Could not add the account.') }
     finally { setBusy(false); void loadOnServer(server.id) }
@@ -457,6 +458,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   }
   // A browser login is added in the app's own form (paste a key or token, or sign in in a window here); a key is
   // copied straight over. Neither opens the server's website.
+  const isKeyAccount = (record: ProviderConnection) => record.auth_method !== 'cli_login' && record.auth_method !== 'server_login' && record.auth_method !== 'server'
   const openAddOn = (server: DesktopConnection) => { setAdding(true); setEditingId(null); setAddWhere(server.id); resetForm() }
   const signInOnServer = (record: ProviderConnection, server: DesktopConnection, account: ServerAccount) => account.server_account_id
     ? setServerSignIn({ recordId: record.id, serverId: server.id, accountId: account.server_account_id })
@@ -485,7 +487,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
               <button type="button" disabled={busy} className="font-medium text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => signInOnServer(record, server, account)}>Sign in again</button>
             </>}
             {(state === 'missing' || state === 'sign_in') && canMoveToServer(record) && <button type="button" disabled={busy} title="Moves this login to the server: it then works on this Mac and for your online agents, with no second sign-in" className="font-medium text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => void moveToServer(record, server)}>Move login here</button>}
-            {state === 'missing' && !canMoveToServer(record) && <button type="button" disabled={busy} className="font-medium text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => record.auth_method === 'cli_login' ? openAddOn(server) : void addToServer(record, server)}>Add</button>}
+            {state === 'missing' && !canMoveToServer(record) && <button type="button" disabled={busy} className="font-medium text-primary hover:underline disabled:opacity-50" onClick={() => isKeyAccount(record) ? void addToServer(record, server) : openAddOn(server)}>Add</button>}
             {state === 'loading' && <span className="text-gray-400">…</span>}
             {state === 'unavailable' && <span className="text-gray-400">Status unknown</span>}
           </span>
