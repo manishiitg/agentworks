@@ -5,6 +5,7 @@ import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { TerminalConversation, TerminalConversationHeader } from './TerminalConversation'
 import { closeTerminalConversation, useTerminalConversationSelection } from './terminalConversationSelection'
 import { AgentRemovalDialog } from '../../components/chat/AgentRemovalDialog'
+import { openCrewMacFoldersEvent } from '../../components/chat/ChatModeMenu'
 import DiscoverSkillsDialog from '../../components/skills/DiscoverSkillsDialog'
 import { chatForkedEvent } from '../../utils/forkChatTab'
 import { matchesWorkConversation, workConversationKey, workOpeningAgentKey } from '../../utils/workConversationKey'
@@ -1438,6 +1439,17 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     window.addEventListener('agentworks:open-chat-usage', open)
     return () => window.removeEventListener('agentworks:open-chat-usage', open)
   }, [selected?.id, workspacePanels, selectWorkspaceView])
+  // The chat mode menu's "Manage folders" opens Integrations › Folders on this Mac in this project's side panel.
+  useEffect(() => {
+    const open = (event: Event) => {
+      if ((event as CustomEvent<{ projectId?: string }>).detail?.projectId !== selected?.id || isShared || !isWorkWorkspaceViewEnabled('mcp', workspacePanels)) return
+      setWorkspaceViewTarget('mcp', 'mac-folders')
+      setPanelOpen(true)
+      selectWorkspaceView('mcp')
+    }
+    window.addEventListener(openCrewMacFoldersEvent, open)
+    return () => window.removeEventListener(openCrewMacFoldersEvent, open)
+  }, [selected?.id, isShared, workspacePanels, setPanelOpen, selectWorkspaceView])
   // openCrewAccess (an agent's "Sharing…", the side panel's Access lines) open the one Access page, the
   // same full panel in the Mac app and on the website; it then opens the asked tab (and scrolls to Sync).
   useEffect(() => {
