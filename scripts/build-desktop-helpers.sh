@@ -10,7 +10,7 @@ BUILD="$(git -C "$ROOT" rev-parse --short=12 HEAD)"
 EPOCH="$(node -p 'require(process.argv[1]).compat_epoch' "$ROOT/deploy/cli-release.json")"
 (
   cd "$ROOT/agent_go"
-  CGO_ENABLED=0 go build -ldflags "-s -w -X main.cliVersion=$VERSION -X main.cliBuild=$BUILD -X main.cliCompatEpoch=$EPOCH" -o "$OUT/bin/agentworks" ./cmd/agentworks
+  CGO_ENABLED=0 go build -ldflags "-s -w -X main.cliVersion=$VERSION -X main.cliBuild=$BUILD -X main.cliCompatEpoch=$EPOCH -X main.defaultLoginServer=${AGENTWORKS_DEFAULT_SERVER:-}" -o "$OUT/bin/agentworks" ./cmd/agentworks
   CGO_ENABLED=0 go build -o "$OUT/bin/mcpbridge" github.com/manishiitg/mcpagent/cmd/mcpbridge
 )
 bash "$ROOT/scripts/build-desktop-tmux.sh" "$OUT"

@@ -449,7 +449,7 @@ func (api *StreamingAPI) handleCursorRelay(w http.ResponseWriter, r *http.Reques
 		items, err := serverCursorModels(r.Context())
 		if err != nil {
 			log.Printf("[MODEL_PROXY] cursor model list unavailable: %v", err)
-			desktopJSONError(w, 502, "The server could not list its Cursor models.")
+			desktopJSONError(w, 502, cursorModelListMessage(err))
 			return
 		}
 		allowed, _, _ := accountAllowedModels(withModelLimitPerson(r.Context(), caller), "cursor-cli", "global:cursor-cli")
@@ -791,4 +791,24 @@ func takeCursorRunModel(id string) string {
 	entry := cursorRunModels.byID[id]
 	delete(cursorRunModels.byID, id)
 	return entry.model
+}
+
+// cursorModelListMessage passes on Cursor's own reason (for example that the server's Cursor account needs a paid
+// plan) instead of a generic failure, without the server's file paths.
+func cursorModelListMessage(err error) string {
+	msg := err.Error()
+	if i := strings.Index(msg, "exit status "); i >= 0 {
+		if j := strings.Index(msg[i:], ": "); j >= 0 {
+			msg = strings.TrimSpace(msg[i+j+2:])
+			if strings.HasPrefix(msg, "[") {
+				if k := strings.Index(msg, "] "); k >= 0 {
+					msg = strings.TrimSpace(msg[k+2:])
+				}
+			}
+			if msg != "" {
+				return "Cursor refused the server's Cursor account: " + msg
+			}
+		}
+	}
+	return "The server could not list its Cursor models."
 }
