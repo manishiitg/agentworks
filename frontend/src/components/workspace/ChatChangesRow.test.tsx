@@ -114,24 +114,31 @@ it('sorts repositories with edits first, then by latest commit, keeping worktree
   expect(sortGitRows(rows).map(r => r.label)).toEqual(['dev', 'fix', 'edited', 'new', 'old'])
 })
 
-it('#3878: over the file limit the Git row says so, lists the biggest folders and moves one out for the owner only', async () => {
+it('#3878: over the file limit the Git row says so; Move out asks the agent in chat, Check again asks the server; teammates get no buttons', async () => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   localStorage.clear()
   const limit = { over: true, files: 14200, limit: 10000, checkouts: 3, folders: [{ path: 'tmp', files: 5000 }, { path: 'downloads', files: 1400 }], checked_at: '', can_fix: true }
   posted.length = 0
+  const asked: string[] = []
   const host = document.createElement('div')
   document.body.appendChild(host)
   const root = createRoot(host)
-  act(() => root.render(<ChatChangesRow section={{ ...section, changed: 4, file_limit: limit }} workspacePath="Crew/demo" storageKey="test.git-limit" onOpen={() => {}} />))
+  act(() => root.render(<ChatChangesRow section={{ ...section, changed: 4, file_limit: limit }} workspacePath="Crew/demo" onAskAgent={async message => { asked.push(message) }} storageKey="test.git-limit" onOpen={() => {}} />))
   expect(host.textContent).toContain('not fully tracked')
   expect(host.textContent).not.toContain('±4')
   expect(host.textContent).toContain('about 14,200 files')
   const move = [...host.querySelectorAll('button')].find(b => b.textContent === 'Move out')!
   await act(async () => { move.click() })
-  expect(posted).toEqual([{ op: 'file_limit_move', folder: 'tmp' }])
-  expect(host.textContent).toContain('Moved tmp to demo-moved/tmp. All changes are tracked again.')
-  // A teammate sees why, but no buttons.
-  act(() => root.render(<ChatChangesRow section={{ ...section, file_limit: { ...limit, can_fix: false } }} workspacePath="Crew/demo" storageKey="test.git-limit-2" onOpen={() => {}} />))
+  // Nothing moves from the click: the person and the agent decide in chat.
+  expect(posted).toEqual([])
+  expect(asked).toHaveLength(1)
+  expect(asked[0]).toContain('"tmp"')
+  expect(asked[0]).toContain("Don't move or delete anything until I say so")
+  const check = [...host.querySelectorAll('button')].find(b => b.textContent === 'Check again')!
+  await act(async () => { check.click() })
+  expect(posted).toEqual([{ op: 'file_limit_check' }])
+  expect(host.textContent).toContain('Checked: all changes are tracked again.')
+  act(() => root.render(<ChatChangesRow section={{ ...section, file_limit: { ...limit, can_fix: false } }} workspacePath="Crew/demo" onAskAgent={async () => {}} storageKey="test.git-limit-2" onOpen={() => {}} />))
   expect([...host.querySelectorAll('button')].some(b => b.textContent === 'Move out')).toBe(false)
   expect(host.textContent).toContain('Only the project owner can move folders out')
   act(() => root.unmount())
