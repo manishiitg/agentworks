@@ -382,3 +382,44 @@ func chatScheduleRunAs(runAs, owner string) string {
 	}
 	return runAs
 }
+
+// pinCrewSchedulesToOwnChat is the one-off move of #4046 (owner, 25 Nov): a Crew schedule (a message or a workflow
+// timer) that names no agent, an empty tab or the bare project key that meant Main, runs in its own chat from now on.
+// The record is backed up first. Watchers (a condition) keep their own agent rule. It runs at every start; a moved
+// record no longer matches, so it changes nothing twice.
+func pinCrewSchedulesToOwnChat(ctx context.Context, root string) {
+	schedules, err := readProjectSchedules(ctx, root)
+	if err != nil {
+		log.Printf("[CREW_SCHEDULES] event=own_chat_move_failed root=%s error=%v", root, err)
+		return
+	}
+	moved := 0
+	for i := range schedules {
+		if crewScheduleNamesNoAgent(schedules[i]) {
+			schedules[i].Action.Tab, schedules[i].Action.Conversation = "", runDestinationIsolated
+			moved++
+		}
+	}
+	if moved == 0 {
+		return
+	}
+	file := path.Join(root, "schedules.json")
+	raw, found, err := readFileFromWorkspace(ctx, file)
+	if err == nil && found {
+		err = backupAutomationFile(file, "", raw)
+	}
+	if err == nil {
+		err = writeProjectSchedules(ctx, root, schedules)
+	}
+	log.Printf("[CREW_SCHEDULES] event=own_chat_move root=%s moved=%d error=%v", root, moved, err)
+}
+
+// crewScheduleNamesNoAgent: a stored Crew schedule with no conversation of its own and no agent tab (empty, or the bare
+// project key that meant Main). A Watcher (a condition) is not a schedule here.
+func crewScheduleNamesNoAgent(s projectactions.Schedule) bool {
+	if s.Action.Conversation != "" || strings.Contains(s.Action.Tab, codeChatSideMarker) {
+		return false
+	}
+	var input scheduleExecutionInput
+	return len(s.Input) == 0 || json.Unmarshal(s.Input, &input) != nil || input.Condition == nil
+}

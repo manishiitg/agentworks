@@ -1462,7 +1462,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		scheduleLogf("[PRODUCT_TRIGGER_ACCESS] actor=%s profile=%s project=%s result=denied reason=current_share", sanitizeUserIDForPath(job.GuestCallerID), job.Profile.ID, job.ProjectID)
 	} else if routeErr := s.validateProjectCallConversation(runCtx, job); routeErr != nil {
 		bindErr = routeErr
-	} else if job.ProjectID != "" && job.Schedule.Isolated {
+	} else if job.ProjectID != "" && (job.Schedule.Isolated || projectScheduleRunsInOwnChat(runCtx, job)) {
 		kind := firstNonEmptyTrimmed(job.AutomationKind, "schedule")
 		title := job.ProjectTitle + " · " + job.Schedule.Name
 		// A new conversation each time is isolated with this run's own key.
@@ -1473,8 +1473,7 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		}
 		binding, bindErr = resolveIsolatedProjectAutomationBinding(runCtx, job.UserID, job.Profile, job.ProjectID, kind, crewCallIsolatedKey(job.Schedule.ID, conversationKey), title)
 	} else if job.ProjectID != "" {
-		// A saved physical destination never falls back to another agent.
-		// Unconverted default destinations are removed in the Main-independent cutover.
+		// A saved agent destination never falls back to another agent (Main included).
 		key := job.ProjectID
 		if chatKey := scheduleChatKey(job); chatKey != "" && projectChatExists(runCtx, job.UserID, job.Profile.ID, job.ProjectID, chatKey) {
 			key = chatKey // an existing chat keeps its own title
@@ -1891,6 +1890,17 @@ func (s *ProjectActionDispatcher) jobResponse(job productScheduleJob, runsWorksp
 	return resp
 }
 
+// projectScheduleRunsInOwnChat: a Crew schedule names where it runs, an agent or its own chat (owner, 25 Nov, #4046). A
+// schedule whose agent no longer exists, or that names none, runs in its own chat, never in Main. Named agents a run
+// creates on first use (AgentName), Watchers, webhooks and functions keep their own rules.
+func projectScheduleRunsInOwnChat(ctx context.Context, job productScheduleJob) bool {
+	if !isProjectProfileID(job.Profile.ID) || job.AgentName != "" || job.AutomationKind != "" || job.Schedule.Condition != nil || job.GuestCallerID != "" {
+		return false
+	}
+	chatKey := scheduleChatKey(job)
+	return chatKey == "" || !projectChatExists(ctx, job.UserID, job.Profile.ID, job.ProjectID, chatKey)
+}
+
 // scheduleChatKey is the side chat a project schedule was set from, when it is
 // one of this project's chats ("<projectId>:chat:<id>"); "" means the main chat.
 func scheduleChatKey(job productScheduleJob) string {
@@ -1966,10 +1976,17 @@ func messageScheduleRunDestinations(job productScheduleJob) []ScheduleRunDestina
 // projectScheduleChatKey turns a tab's chat id (from the project's chat list)
 // into the key a project schedule runs in. An empty id, or "main" (how a workflow schedule saves the Main chat),
 // is the main chat; "main" was refused as an unknown tab, so no schedule delivering to Main could be saved.
+// scheduleChooseAgentMessage is the one refusal for a schedule that names no place to run.
+const scheduleChooseAgentMessage = "Choose an agent for this schedule, or its own chat"
+
 func projectScheduleChatKey(ctx context.Context, userID, profileID, projectID, chatID string) (string, error) {
 	chatID = strings.TrimSpace(chatID)
-	if chatID == "" || chatID == codeChatMainName {
+	if chatID == "" {
 		return "", nil
+	}
+	// Main is an agent like any other, named by its own id (#4046); "main" is no stand-in for it.
+	if chatID == codeChatMainName {
+		return "", fmt.Errorf("%s", scheduleChooseAgentMessage)
 	}
 	key := chatID
 	if !strings.HasPrefix(key, strings.TrimSpace(projectID)+codeChatSideMarker) {

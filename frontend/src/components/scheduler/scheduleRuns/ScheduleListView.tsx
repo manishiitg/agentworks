@@ -139,7 +139,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel, overv
                     onChange={event => void handleRunDestination(job, event.target.value)}
                     className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs text-foreground disabled:opacity-50"
                   >
-                    {(job.run_destinations?.length ? job.run_destinations : [{ id: 'isolated', label: 'Its own chat' }, { id: 'chat', label: 'Main chat' }]).map(item => (
+                    {(job.run_destinations?.length ? job.run_destinations : [{ id: 'isolated', label: 'Its own chat' }]).map(item => (
                       <option key={item.id} value={item.id}>{item.label}</option>
                     ))}
                   </select>

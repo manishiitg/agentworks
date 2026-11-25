@@ -721,13 +721,13 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			}
 			// A new Crew message schedule that names no place gets its own chat, kept across runs (owner, 9 Nov). A
 			// chosen place (run_destination, or chat_id for a tab) is kept; workflow timers have no chat.
-			if crewMessageScheduleDefaultsToOwnChat(req.ProductProfileID, req.ProductProjectID, req.TargetWorkflowID, req.RunDestination, req.ChatID) {
+			if crewScheduleDefaultsToOwnChat(req.ProductProfileID, req.ProductProjectID, req.RunDestination, req.ChatID) {
 				destination = runDestinationSetting{Isolated: true}
 			}
 			ownerID := productWorkspaceUserID(r.Context())
 			chatKey, err := projectScheduleChatKey(r.Context(), ownerID, req.ProductProfileID, req.ProductProjectID, req.ChatID)
-			if err == nil && req.TargetWorkflowID == "" && !destination.Isolated && chatKey == "" {
-				err = fmt.Errorf("choose an agent or give this schedule its own chat")
+			if err == nil && !destination.Isolated && chatKey == "" && isProjectProfileID(req.ProductProfileID) {
+				err = fmt.Errorf("%s", scheduleChooseAgentMessage)
 			}
 			if err == nil && chatKey != "" && destination.Isolated {
 				err = fmt.Errorf("a schedule with its own or a new conversation does not use chat_id; choose chat_id or run_destination %s or %s", runDestinationNew, runDestinationIsolated)
@@ -1596,6 +1596,11 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 				return true
 			}
 			requestedChatKey = &key
+		}
+		// Clearing the agent without choosing its own chat would leave the schedule with no place to run (#4046).
+		if requestedChatKey != nil && *requestedChatKey == "" && (requestedDestination == nil || !requestedDestination.Isolated) && isProjectProfileID(job.Profile.ID) {
+			http.Error(w, scheduleChooseAgentMessage, http.StatusBadRequest)
+			return true
 		}
 		runAt, runAtErr := oneTimeRunAt(map[string]interface{}{"run_at": req.RunAt}, time.Now())
 		if runAtErr != nil {

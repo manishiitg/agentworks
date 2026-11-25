@@ -31,9 +31,10 @@ func crewTimerWorkflowContext(ctx context.Context, crewRoot, crewID, owner strin
 	if !found {
 		return nil, fmt.Errorf("Choose a saved workflow from this project.")
 	}
-	chat := strings.TrimPrefix(timer.ChatKey, crewID+codeChatSideMarker)
-	if chat == crewID {
-		chat = "main"
+	// A timer names its agent by id or runs in its own chat (#4046); the project key is no stand-in for Main.
+	chat := ""
+	if strings.HasPrefix(timer.ChatKey, crewID+codeChatSideMarker) {
+		chat = strings.TrimPrefix(timer.ChatKey, crewID+codeChatSideMarker)
 	}
 	sctx := buildScheduleContext(binding.Root, manifest, WorkflowSchedule{ID: timer.ID, Name: timer.Name, Enabled: timer.Enabled,
 		InputPreset: timer.InputPreset, Inputs: timer.Inputs, RouteSelections: timer.RouteSelections, ChatID: chat, Mode: "workshop", WorkshopMode: "run",

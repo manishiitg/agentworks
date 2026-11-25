@@ -362,6 +362,8 @@ func importAllAutomationRecords(ctx context.Context) {
 	// #3286: a Crew has no message webhooks any more; back up and remove each Crew's old webhooks record.
 	for _, root := range crewRoots {
 		removeCrewMessageWebhooks(ctx, root)
+		// #4046: a schedule that names no agent runs in its own chat.
+		pinCrewSchedulesToOwnChat(ctx, root)
 	}
 }
 

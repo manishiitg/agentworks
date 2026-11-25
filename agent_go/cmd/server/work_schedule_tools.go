@@ -149,8 +149,8 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			if !hasEnabled {
 				enabled = true
 			}
-			// Set from a project side chat (tab), it runs back in that chat
-			// (owner, 2026-10-07); from the main chat it runs in the main chat.
+			// Set from one of the project's agents, it runs back in that agent's chat (owner, 2026-10-07). With no agent
+			// to name it runs in its own chat, never an implied Main (#4046).
 			chatKey := ""
 			if chatID, _ := args["chat_id"].(string); strings.TrimSpace(chatID) != "" {
 				if isolated {
@@ -162,8 +162,11 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				}
 				chatKey = key
 			} else if !isolated && isProjectProfileID(profileID) {
-				if project, chatErr := api.codeChatsFor(internalBotRequestContext(ctx, userID), userID, sessionID, workspacePath); chatErr == nil {
+				if project, chatErr := api.codeChatsFor(internalBotRequestContext(ctx, userID), userID, sessionID, workspacePath); chatErr == nil && strings.HasPrefix(project.Self.Key, strings.TrimSpace(projectID)+codeChatSideMarker) {
 					chatKey = project.Self.Key
+				}
+				if chatKey == "" {
+					isolated = true
 				}
 			}
 			job, err := api.projectActions.CreateProjectSchedule(ctx, userID, profileID, projectID, productschedule.Schedule{
@@ -187,7 +190,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				"in_minutes": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": oneTimeMaxMinutes, "description": "Make it one-time: run once this many minutes from now. Replaces the recurring timing."},
 				"run_at":     map[string]interface{}{"type": "string", "description": "Make it one-time: run once at this RFC3339 moment. Replaces the recurring timing."}, "enabled": map[string]interface{}{"type": "boolean"},
 				"run_destination": map[string]interface{}{"type": "string", "enum": messageScheduleDestinationEnum(), "description": messageScheduleDestinationHelp},
-				"chat_id":         map[string]interface{}{"type": "string", "description": "Move the schedule to this tab of the project (a chat_id from the project's chat list). An empty string moves it back to the default agent."},
+				"chat_id":         map[string]interface{}{"type": "string", "description": "Move the schedule to this tab of the project (a chat_id from the project's chat list). It runs there until moved again; use run_destination isolated for its own chat."},
 			},
 			"required": []string{"id"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -211,6 +214,9 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 					return "", chatErr
 				}
 				requestedChatKey = &key
+			}
+			if requestedChatKey != nil && *requestedChatKey == "" && (requestedDestination == nil || !requestedDestination.Isolated) && isProjectProfileID(profileID) {
+				return "", fmt.Errorf("%s", scheduleChooseAgentMessage)
 			}
 			job, err := api.projectActions.UpdateProjectSchedule(ctx, userID, resolveID(id), func(schedule *productschedule.Schedule) {
 				if requestedChatKey != nil {
