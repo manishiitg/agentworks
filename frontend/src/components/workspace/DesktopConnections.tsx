@@ -9,7 +9,7 @@ import { matchesWorkConversation, workConversationAgent } from '../../utils/work
 import { openAgentTab } from '../../utils/openAgentTab'
 import { agentApi } from '../../services/api'
 import type { AgentProfileSideChat } from '../../services/api-types'
-import { openAppPage, openAppProduct } from '../../utils/appNavigation'
+import { openAppProduct } from '../../utils/appNavigation'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
@@ -27,7 +27,7 @@ import { TeamInvites } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
 import { SidebarAgentLayout, SidebarCrewAgents, SidebarHiddenAgents } from './SidebarCrewAgents'
 import { sidebarAgentDisclosureClass, sidebarAgentListClass } from './sidebarAgentLayout'
-import { ChevronRight, Folder, Pin, Search } from 'lucide-react'
+import { ChevronRight, Pin, Search } from 'lucide-react'
 import { mostInTeam } from '../chat/AgentInTeamMark'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
@@ -55,8 +55,6 @@ type ProjectMenuProps = {
   top?: ReactNode
   projects?: SidebarProject[]
   directory?: boolean
-  showBrowse?: boolean
-  loading?: boolean
 }
 
 export function DesktopConnections({ projects = [], ...props }: ProjectMenuProps) {
@@ -67,7 +65,7 @@ export function DesktopConnections({ projects = [], ...props }: ProjectMenuProps
 }
 
 /** Reuse the same admitted inventory and pin store in both views. */
-function ProjectMenu({ children, top, projects, directory, showBrowse, loading }: ProjectMenuProps & { projects: SidebarProject[] }) {
+function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & { projects: SidebarProject[] }) {
   const creationProjectId = useCrewAgentsStore(state => state.projectId)
   const canAddAgent = useCrewAgentsStore(state => state.canAdd)
   const canImportChat = useCrewAgentsStore(state => state.canImportChat)
@@ -152,9 +150,6 @@ function ProjectMenu({ children, top, projects, directory, showBrowse, loading }
           <h2 id="recent-projects-heading" className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">Recent</h2>
           {recentRows.map(project => renderProject(project, false))}
         </section>}
-        {!pinnedRows.length && !recentRows.length && showBrowse && !loading && <button type="button" onClick={() => { openAppPage('/projects'); window.dispatchEvent(new Event('close-app-sidebar')) }} className="flex items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <Folder className="h-4 w-4" aria-hidden="true" />Browse projects
-        </button>}
       </div>
     </div>
   }
