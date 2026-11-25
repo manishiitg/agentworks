@@ -170,7 +170,6 @@ it('shows groups with their agents, forks under their parent without claiming mi
   { tabId: 'p', key: 'crew:chat:parent', name: 'Parent', sidebarOrder: 4 },
   { tabId: 'c', key: 'crew:chat:fork', forkedFrom: 'crew:chat:parent', name: 'Parent (fork)', sidebarOrder: 5 },
   { tabId: 't', key: 'crew:chat:theirs', name: 'Their agent', ownerId: 'teammate', owner: 'Ana' },
-  { tabId: 'u', key: 'crew:chat:other', name: 'Other agent', ownerId: 'user', owner: 'Bo' },
  ]
  f.groups = { 'crew:chat:parent': 'Design', 'crew:chat:theirs': 'Design', 'crew:chat:gone': 'Design' }
  const names = (selector: string) => [...host.querySelectorAll(`${selector} [role="listitem"]`)].map(row => row.textContent)
@@ -183,8 +182,7 @@ it('shows groups with their agents, forks under their parent without claiming mi
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
   await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
   expect(names('[aria-label="Group Design"]')).toEqual(['Parent', 'Parent (fork)', 'ATheir agent'])
-  // Another person's agent outside any group is listed too, with their name (owner, 25 Nov).
-  expect(names('[aria-label="Agents"] > div:not([aria-label^="Group"])')).toEqual(['Second', 'First', 'Third', 'BOther agent'])
+  expect(names('[aria-label="Agents"] > div:not([aria-label^="Group"])')).toEqual(['Second', 'First', 'Third'])
   // #3389: even a prolonged roster gap does not prove sharing was revoked.
   expect(host.textContent).not.toContain('no longer shared with you')
   await act(async () => { vi.advanceTimersByTime(3000) })

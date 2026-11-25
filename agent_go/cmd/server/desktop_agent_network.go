@@ -157,7 +157,7 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 		}
 	}
 	if exact == nil {
-		return nil, fmt.Errorf("this app chat was removed or replaced")
+		return nil, fmt.Errorf("this chat is no longer an open tab of your project, so it can't send messages; send from an open tab instead")
 	}
 	if metadata, err := api.desktopAppAgentRecords(ctx, owner); err == nil {
 		if current, ok := metadata[exact.ConversationID]; ok && current.SessionID == exact.SessionID {
