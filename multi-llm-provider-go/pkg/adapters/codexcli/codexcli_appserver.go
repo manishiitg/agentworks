@@ -688,6 +688,9 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 	r.attachEvents()
 	turn, err := startCodexGoalTurn(ctx, s, r, thread, params, activateGoal, emit)
 	if err == nil {
+		llmtypes.AgentTurnStage(s.owner, "codex-cli", "prompt_sent")
+	}
+	if err == nil {
 		deliveredInstructions()
 		s.mu.Lock()
 		s.planMode = planTurn

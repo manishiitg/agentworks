@@ -5,7 +5,8 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-// The agent program's launch or reuse goes on the message's [TURN_SPEED] line (#3724).
+// The agent program's launch or reuse, and the moments inside its turn, go on the message's [TURN_SPEED] lines (#3724).
 func init() {
 	llmtypes.OnAgentProcessEvent = events.TurnSpeedProcess
+	llmtypes.OnAgentTurnStage = events.TurnSpeedStage
 }

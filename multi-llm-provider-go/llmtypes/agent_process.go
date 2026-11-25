@@ -92,6 +92,18 @@ func (p *AgentProcess) Exited(logger AgentProcessLogger, reason string) {
 // so the server can add them to its per-message speed line (#3724).
 var OnAgentProcessEvent func(session, provider, event, reason string)
 
+// OnAgentTurnStage, when set, receives the moments inside a native agent's
+// turn (prompt_sent, cli_output, model_start, first_delta), so the speed line
+// can split the wait after the server hands over the message (#3724).
+var OnAgentTurnStage func(session, provider, stage string)
+
+// AgentTurnStage reports one such moment; the server keeps the first of each.
+func AgentTurnStage(session, provider, stage string) {
+	if hook := OnAgentTurnStage; hook != nil && session != "" {
+		hook(session, provider, stage)
+	}
+}
+
 func (p *AgentProcess) log(logger AgentProcessLogger, event, reason string, turns int) {
 	if hook := OnAgentProcessEvent; hook != nil && p.session != "" {
 		hook(p.session, string(p.provider), event, reason)

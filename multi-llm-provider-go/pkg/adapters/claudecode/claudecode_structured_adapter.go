@@ -597,6 +597,7 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 			<-sess.exited
 			return nil, fmt.Errorf("Claude SDK input: %w", err)
 		}
+		llmtypes.AgentTurnStage(owner, "claude-code", "prompt_sent")
 	} else {
 		runCtx, cancelRun := context.WithCancel(ctx)
 		defer cancelRun()
@@ -729,6 +730,9 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 			var ev claudeStreamEvent
 			if jErr := json.Unmarshal([]byte(line), &ev); jErr != nil {
 				continue
+			}
+			if !ev.SDKParkedTurn {
+				claudeTurnSpeedStage(owner, ev)
 			}
 			if ev.SDKParkedTurn && adoptWake && ev.Type == "result" {
 				// Claude's own turn ended before the bridge took the adopt: it is still this turn's
@@ -1334,4 +1338,20 @@ func claudeAbortedTerminalReason(reason string) bool {
 
 func claudeContextFullTerminalReason(reason string) bool {
 	return reason == "prompt_too_long" || reason == "blocking_limit"
+}
+
+// claudeTurnSpeedStage marks where a turn's wait went inside Claude (#3724):
+// the CLI's first output line, the model's message_start and its first
+// streamed text or thinking. The server keeps only the first of each.
+func claudeTurnSpeedStage(owner string, ev claudeStreamEvent) {
+	llmtypes.AgentTurnStage(owner, "claude-code", "cli_output")
+	if ev.Type != "stream_event" || ev.Event == nil {
+		return
+	}
+	switch ev.Event.Type {
+	case "message_start":
+		llmtypes.AgentTurnStage(owner, "claude-code", "model_start")
+	case "content_block_delta":
+		llmtypes.AgentTurnStage(owner, "claude-code", "first_delta")
+	}
 }
