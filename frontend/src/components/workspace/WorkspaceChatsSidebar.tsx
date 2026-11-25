@@ -9,7 +9,7 @@ import { SidebarActions } from './SidebarActions'
 import { useWorkspaceProjects } from './WorkspaceProjectsProvider'
 
 export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: ReactNode; footer?: ReactNode }) {
-  const { projects, canBrowse, loading } = useWorkspaceProjects()
+  const { projects } = useWorkspaceProjects()
   const product = useProductSurfaceStore(state => state.productSurface)
   const crewId = useProductSurfaceStore(state => state.selectedWorkProjectId)
   const globalPageOpen = useAppStore(state => state.showSchedulesOverview || state.adminPage !== null)
@@ -20,7 +20,7 @@ export default function WorkspaceChatsSidebar({ toggle, footer }: { toggle?: Rea
       <a href="/" onClick={followAppLink} aria-label="Open your last project" title="Open your last project" className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><RuntimeBrandLogo variant="sidebar-header" /></a>
       {toggle}
     </div>
-    <DesktopConnections showBrowse={canBrowse} loading={loading} top={<SidebarActions />} projects={projects.map(project => ({ ...project,
+    <DesktopConnections top={<SidebarActions />} projects={projects.map(project => ({ ...project,
       selected: !projectsOpen && !globalPageOpen && !providersOpen && window.location.pathname !== '/dashboards' &&
         product === 'work' && crewId === project.id,
     }))} />

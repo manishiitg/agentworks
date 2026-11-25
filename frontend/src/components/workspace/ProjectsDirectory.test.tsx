@@ -84,16 +84,17 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
   window.history.replaceState({}, '', '/')
   function Screen() {
     const projects = useProjectsPage()
-    return <><DesktopConnections top={<SidebarActions />} projects={inventory} showBrowse />{projects && <ProjectsDirectory />}</>
+    return <><DesktopConnections top={<SidebarActions />} projects={inventory} />{projects && <ProjectsDirectory />}</>
   }
   const side = () => host.querySelector('[aria-label="Connected work"]')!
   const button = (name: string, parent: ParentNode = host) => [...parent.querySelectorAll('button')].find(b => (b.getAttribute('aria-label') || b.textContent)?.trim() === name)!
   const click = async (name: string, parent?: ParentNode) => act(async () => button(name, parent).click())
   try {
     await act(async () => root.render(<WorkspaceProjectsProvider><Screen /></WorkspaceProjectsProvider>))
-    expect(button('Browse projects', side())).toBeTruthy()
+    // The sidebar's Projects button is the one way to the Projects page; no second "Browse projects" link.
+    expect(side().textContent).not.toContain('Browse projects')
     expect(side().textContent).not.toContain('Beta')
-    await click('Browse projects', side())
+    await click('Projects', side())
     expect(window.location.pathname).toBe('/projects')
     const page = () => host.querySelector('main')!
     expect(page().querySelector('h1')?.textContent).toBe('Projects')
@@ -117,7 +118,6 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
     expect(side().querySelector('#recent-projects-heading')).toBeNull()
     expect(side().textContent).not.toContain('Alpha')
     await click('Unpin Beta', page())
-    expect(button('Browse projects', side())).toBeTruthy()
     await act(async () => {
       useProductSurfaceStore.setState({ productSurface: 'work', selectedWorkProjectId: 'a' })
       openAppProduct({ surface: 'work', id: 'a' })
