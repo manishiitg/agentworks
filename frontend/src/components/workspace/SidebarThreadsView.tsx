@@ -231,7 +231,7 @@ export function SidebarThreadsView({
     const isPinned = pinnedSet.has(item.id)
     const isActive = selectedProjectId === item.projectId && activeTabMeta.projectId === item.projectId && activeTabMeta.conversationKey === item.chat.conversation_key
     const age = shortAgo(item.lastMessageAt)
-    const statusSuffix = item.status === 'running' ? ' · Working' : item.status === 'waiting' ? ' · Needs you' : ''
+    const statusSuffix = item.status === 'waiting' ? ' · Needs you' : ''
     return <div key={item.id} className={`group/thread flex items-start gap-1 rounded-lg px-1 py-0.5 ${isActive ? 'bg-foreground/[0.06]' : 'hover:bg-muted'}`}>
       <button type="button" role="listitem" aria-current={isActive ? 'page' : undefined} onClick={() => openThread(item)}
         className="flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
