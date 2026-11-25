@@ -94,7 +94,7 @@ func (api *StreamingAPI) prepareCrewTurnSnapshot(executionID, sessionID string, 
 	if err != nil || !found {
 		return
 	}
-	snapshot := &crewTurnSnapshot{store: filesnapshots.Store{Root: roots.Files, Private: roots.Private}, chatKey: strings.TrimSpace(req.AgentProfileConversationKey), root: roots.Virtual, executionID: executionID, sessionID: sessionID, startSequence: api.crewSnapshotSequence(sessionID),
+	snapshot := &crewTurnSnapshot{store: filesnapshots.Store{Root: roots.Files, Private: roots.Private, Watch: newCrewSnapshotWatch(roots.Files)}, chatKey: strings.TrimSpace(req.AgentProfileConversationKey), root: roots.Virtual, executionID: executionID, sessionID: sessionID, startSequence: api.crewSnapshotSequence(sessionID),
 		sentAt: time.Now(), beforeDone: make(chan struct{})}
 	if req.TriggeredBy != "" {
 		snapshot.sourceLabel = firstNonEmptyString(req.SessionTitle, req.TriggeredByLabel)
