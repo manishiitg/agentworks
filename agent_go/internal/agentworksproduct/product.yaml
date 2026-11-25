@@ -473,6 +473,8 @@ chat:
       - costs
       - users
       - sign_in_apps
+      # AI accounts (list, status, sign in/out, remove, add on or move to a server): the screen's handlers as the caller.
+      - ai_accounts
       - agent_inbox
     prompt:
       file: prompts/run.md
