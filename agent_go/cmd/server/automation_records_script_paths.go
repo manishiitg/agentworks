@@ -73,3 +73,40 @@ func rewriteAutomationRecordScriptPaths(ctx context.Context) {
 	automationRecords.rows = nil
 	log.Printf("[PLATFORM_SCRIPTS_MIGRATION] records rewritten=%d", rewritten)
 }
+
+// A person's own Watchers (made from a chat) keep their definitions in _users/<person>/chat_history/
+// product-schedules.json, which neither the workspace move nor the records rewrite reads. Rewrite their old script
+// paths once before the scheduler starts, keeping the original beside it as a backup.
+func rewritePersonalWatcherScriptPaths(docs string) {
+	files, _ := filepath.Glob(filepath.Join(docs, "_users", "*", "chat_history", productScheduleStateFile))
+	for _, file := range files {
+		info, err := os.Lstat(file)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			log.Printf("[PLATFORM_SCRIPTS_MIGRATION] personal schedules unreadable file=%s: %v", file, err)
+			continue
+		}
+		next := automationRecordScriptPaths.Replace(string(raw))
+		if next == string(raw) {
+			continue
+		}
+		backup := file + ".before-platform-scripts-" + time.Now().UTC().Format("20060102T150405") + ".bak"
+		if err := os.WriteFile(backup, raw, 0o600); err != nil {
+			log.Printf("[PLATFORM_SCRIPTS_MIGRATION] personal schedules backup failed file=%s: %v", file, err)
+			continue
+		}
+		tmp := file + ".platform-scripts.tmp"
+		err = os.WriteFile(tmp, []byte(next), info.Mode().Perm())
+		if err == nil {
+			err = os.Rename(tmp, file)
+		}
+		if err != nil {
+			log.Printf("[PLATFORM_SCRIPTS_MIGRATION] personal schedules not rewritten file=%s: %v", file, err)
+			continue
+		}
+		log.Printf("[PLATFORM_SCRIPTS_MIGRATION] personal schedules rewritten user=%s backup=%s", filepath.Base(filepath.Dir(filepath.Dir(file))), filepath.Base(backup))
+	}
+}

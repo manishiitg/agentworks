@@ -3028,6 +3028,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	if err := retireBrainSchedules(fsutil.WorkspaceDocsRoot()); err != nil {
 		log.Printf("[BRAIN_SCHEDULES] event=retirement_failed error=%v", err)
 	}
+	rewritePersonalWatcherScriptPaths(fsutil.WorkspaceDocsRoot())
 
 	// Initialize and start the cron scheduler
 	// Set SCHEDULER_ENABLED=false in .env to disable on secondary machines sharing the same workspace files.
