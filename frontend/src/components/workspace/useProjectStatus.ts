@@ -41,7 +41,7 @@ export function useProjectStatus({ kind, workspacePath, profileId, projectId, en
         conditionTriggersApi.list(projectId, profileId).then(result => (result.triggers || []).length),
         // A Crew has no webhooks of its own (#3286); they belong to its workflow.
         kind === 'crew' ? Promise.resolve(0) : workflowWebhooksApi.list(workspacePath).then(result => (result.triggers || []).length),
-        kind === 'crew' ? crewFunctionsApi.list(scope).then(result => (result.functions || []).length) : Promise.reject(new Error('not listed')),
+        kind === 'crew' && !isLocalDeployment() ? crewFunctionsApi.list(scope).then(result => (result.functions || []).length) : Promise.reject(new Error('not listed')),
         isLocalDeployment() ? Promise.resolve('') : slackBotsApi.list(workspacePath).then(result => (result.allow_bots === false ? '' : result.bots.find(bot => bot.id === result.selected_id)?.name || 'None chosen')),
         api.get<{ accounts: { selected: boolean; connected: boolean; problem?: string }[] }>('/api/integrations/slack/accounts', { params: { workspace_path: workspacePath } }).then(({ data }) => {
           const list = data.accounts || []

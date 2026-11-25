@@ -3046,6 +3046,10 @@ func runServer(cmd *cobra.Command, args []string) {
 	if err := renameFunctionFreshToNew(); err != nil {
 		log.Printf("[CREW_FUNCTIONS] event=fresh_rename_failed error=%v", err)
 	}
+	// One-off on a Mac: its projects' functions are removed, with a backup (#4078; migration file).
+	if err := removeMacCrewFunctions(); err != nil {
+		log.Printf("[CREW_FUNCTIONS] event=mac_functions_removal_failed error=%v", err)
+	}
 	// One-off, before any turn: a Crew's saved workflow links are removed, Crew links stay (migration file; delete
 	// once every server has started on this version).
 	if err := clearCrewWorkflowLinks(); err != nil {
