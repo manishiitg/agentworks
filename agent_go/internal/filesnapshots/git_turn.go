@@ -19,7 +19,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
 )
 
 // Bound metadata and private tree work even when a parent folder contains
@@ -98,7 +97,18 @@ func (s Store) captureTurnFiles(ctx context.Context, ref, boundary string, loose
 // marks a linked worktree too; turnRepos validates it through safegit.CommandIn.
 // Unrelated linked worktrees are scratch checkouts, not this turn's capture scope.
 // Ordinary folders have no user Git and use our private before/after copies.
+//
+// Over the loose-file limit the walk still visits every folder, so checkouts
+// further on are found (before #3878 they were skipped), and counts the rest
+// for the Git row. That verdict and its checkouts are then reused until the
+// project's layout changes (file_limit.go), so later replies skip the walk.
 func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose []string, err error) {
+	signature := s.layoutSignature()
+	if cached, ok := s.cachedOverLimit(signature); ok {
+		stats.Deferred = "loose_file_limit"
+		return cached, nil, nil
+	}
+	files, perFolder := 0, map[string]int{}
 	err = filepath.WalkDir(s.Root, func(p string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -126,18 +136,22 @@ func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose 
 			} else if !os.IsNotExist(err) {
 				return err
 			}
-			if stats.Deferred == "loose_file_limit" {
-				return filepath.SkipDir
-			}
 		} else if validTurnPath(rel) {
-			if len(loose) == maxTurnPaths {
-				stats.Deferred = "loose_file_limit"
-				return filepath.SkipDir
+			files++
+			if top, _, nested := strings.Cut(rel, "/"); nested {
+				perFolder[top]++
 			}
-			loose = append(loose, rel)
+			if len(loose) < maxTurnPaths {
+				loose = append(loose, rel)
+			} else {
+				stats.Deferred = "loose_file_limit"
+			}
 		}
 		return nil
 	})
+	if err == nil {
+		s.rememberFileLimit(signature, dirs, files, perFolder)
+	}
 	if stats.Deferred == "loose_file_limit" {
 		// An arbitrary prefix cannot be a trustworthy before/after boundary.
 		// Continue tracking checkouts, but omit loose files on this boundary.
@@ -372,20 +386,14 @@ func (s Store) writeTurnFiles(ctx context.Context, ref string, files map[string]
 }
 
 func (s Store) BeginGitTurn(ctx context.Context, execution string) (Record, error) {
-	gateStarted := time.Now()
-	unlock, err := s.lock(ctx)
-	if err != nil {
-		return Record{}, err
-	}
-	defer unlock()
 	if r, err := s.read(ID(execution)); err == nil {
 		return r, nil
 	}
-	if err := s.init(ctx); err != nil {
-		return Record{}, err
-	}
+	// Finding checkouts and asking Git what changed only reads the project,
+	// so it runs before taking the store's gate: replies in other chats of the
+	// same project no longer wait behind it (#3878). The gate guards the
+	// private store, which is written below.
 	r := Record{ID: ID(execution), ExecutionID: execution, StartedAt: time.Now().UTC(), Status: "capturing", BeforeHeads: map[string]string{}}
-	r.BeforeCapture.GateMS = time.Since(gateStarted).Milliseconds()
 	discoveryStarted := time.Now()
 	dirs, loose, err := s.turnPaths(ctx, &r.BeforeCapture)
 	if err != nil {
@@ -395,6 +403,19 @@ func (s Store) BeginGitTurn(ctx context.Context, execution string) (Record, erro
 	r.BeforeCapture.DiscoveryMS = time.Since(discoveryStarted).Milliseconds()
 	if err != nil {
 		return r, err
+	}
+	gateStarted := time.Now()
+	unlock, err := s.lock(ctx)
+	if err != nil {
+		return Record{}, err
+	}
+	defer unlock()
+	r.BeforeCapture.GateMS = time.Since(gateStarted).Milliseconds()
+	if saved, err := s.read(ID(execution)); err == nil {
+		return saved, nil
+	}
+	if err := s.init(ctx); err != nil {
+		return Record{}, err
 	}
 	// Remember unreadable roots too: recovering one next boundary must not
 	// mistake its existing committed files for new work made during this turn.
@@ -427,24 +448,30 @@ func (s Store) BeginGitTurn(ctx context.Context, execution string) (Record, erro
 }
 
 func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, error) {
-	gateStarted := time.Now()
-	unlock, err := s.lock(ctx)
+	if r, err := s.read(ID(execution)); err != nil || r.Status != "capturing" {
+		return r, err
+	}
+	// Discovery reads only the project; see BeginGitTurn.
+	var stats CaptureStats
+	discoveryStarted := time.Now()
+	dirs, loose, err := s.turnPaths(ctx, &stats)
 	if err != nil {
 		return Record{}, err
 	}
+	repos, unreadable, err := s.turnRepos(ctx, dirs, &stats)
+	stats.DiscoveryMS = time.Since(discoveryStarted).Milliseconds()
+	gateStarted := time.Now()
+	unlock, lockErr := s.lock(ctx)
+	if lockErr != nil {
+		return Record{}, lockErr
+	}
 	defer unlock()
-	r, err := s.read(ID(execution))
+	r, readErr := s.read(ID(execution))
+	if readErr != nil || r.Status != "capturing" {
+		return r, readErr
+	}
+	r.AfterCapture = stats
 	r.AfterCapture.GateMS = time.Since(gateStarted).Milliseconds()
-	if err != nil || r.Status != "capturing" {
-		return r, err
-	}
-	discoveryStarted := time.Now()
-	dirs, loose, err := s.turnPaths(ctx, &r.AfterCapture)
-	if err != nil {
-		return r, err
-	}
-	repos, unreadable, err := s.turnRepos(ctx, dirs, &r.AfterCapture)
-	r.AfterCapture.DiscoveryMS = time.Since(discoveryStarted).Milliseconds()
 	if err != nil {
 		return r, err
 	}
