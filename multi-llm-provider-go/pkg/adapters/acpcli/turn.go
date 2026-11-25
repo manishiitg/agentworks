@@ -199,7 +199,17 @@ func (s *session) turn(ctx context.Context, prompt string, emit func(llmtypes.St
 				continue
 			}
 			seq++
-			sendPrompt(seq, map[string]any{"sessionId": sessionID, "prompt": []any{map[string]any{"type": "text", "text": req.text}}})
+			params := req.params
+			if params == nil {
+				params = map[string]any{"sessionId": sessionID, "prompt": []any{map[string]any{"type": "text", "text": req.text}}}
+			}
+			sendPrompt(seq, params)
+			if image, ok := params.(*imageParams); ok {
+				if err := <-image.wrote; err != nil {
+					req.reply <- err
+					continue
+				}
+			}
 			log.Printf("[ACP_CLI] session=%s agent=%s action=steered prompt=%d", s.rpc.owner, s.agent.ID, seq)
 			req.reply <- nil
 		case done := <-complete:
