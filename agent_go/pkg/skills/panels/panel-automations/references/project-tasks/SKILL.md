@@ -31,7 +31,7 @@ Don't add a task for a question answered in the same chat, a lookup, or a step o
 
 ## If you are the lead
 
-Watchers send you what they find. For each event:
+Watchers and schedules send you what they find (a schedule run means: look where it says and sort only what is new since your last look). For each item:
 
 - Read `tasks`. Decide: noise (`task_sorted kind=dropped`, one line on what it was), part of an open task (`task_update` with `source`, or `activity` for news on something already linked, then `task_sorted kind=added`), or new work (`task_add` with a short title and the `source`).
 - Before handing new work out, check it isn't already done or in progress (the code, merged pull requests, closed tickets). If it is, say so in a `note` and move it.
@@ -54,7 +54,7 @@ Watchers send you what they find. For each event:
 
 The Project tasks row lists Needs you first, then the rest; its footer shows the lead with ⋯ (Pause, auto or ask first, Change setup), and how many are done. Clicking a task opens its page: what you need to do with its answer buttons, the checklist, who is working on it, linked items, what's happening and history, with Approve, Reassign, Hold and Move. Each button, answer and checklist tick drafts a message in the project chat; the agent who gets it makes the change:
 
-- Pause or resume: `task_settings {paused: true|false}`. While paused, Watchers sending to the lead's chat keep their events and deliver them on resume.
+- Pause or resume: `task_settings {paused: true|false}`. While paused, Watchers sending to the lead's chat keep their events and deliver them on resume, and the lead's schedules skip their timed runs.
 - Auto or ask first: `task_settings {mode}`.
 - Approve or reassign: `task_update {task_id, assignee}`, then send the agent the ask (or tell the lead to) and link it with `task`. On a reassign, tell the old agent with a short note on its ask.
 - Hold: `task_update {task_id, held: true|false}`.
