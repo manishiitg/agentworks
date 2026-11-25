@@ -8,6 +8,9 @@ import (
 // NativeSubagentIDs names only child conversations in the native invocation result.
 func NativeSubagentIDs(payload []byte) []string { return agyNativeSubagentIDs(payload) }
 
+// NativeSubagentTitle is the name agy gave the subagents a native invocation started.
+func NativeSubagentTitle(payload []byte) string { return agyNativeSubagentTitle(payload) }
+
 // NativeSubagentReceiptID is the sender of a native child notification, not text inference.
 func NativeSubagentReceiptID(payload []byte) string {
 	notice, ok := agyProtoSubmessage(payload, 114)

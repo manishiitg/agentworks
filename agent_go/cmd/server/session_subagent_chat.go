@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
@@ -40,6 +42,9 @@ func (api *StreamingAPI) handleGetSessionSubagent(w http.ResponseWriter, r *http
 		return
 	}
 	child, ok := nativeSubagentConversation(sessionID, toolCallID)
+	if !ok {
+		child, ok = api.agySubagentConversation(sessionID, toolCallID)
+	}
 	if !ok {
 		log.Printf("[SUBAGENT_CHAT] session=%s tool_call=%s action=missing", sessionID, toolCallID)
 		http.Error(w, "This helper's conversation is not available. It may have ended before the app restarted.", http.StatusNotFound)
@@ -78,3 +83,23 @@ func stopCodexHelperBackgroundWork(sessionID, execID string) bool {
 	log.Printf("[SUBAGENT_CHAT] session=%s provider=codex-cli tool_call=%s action=stopped", sessionID, callID)
 	return true
 }
+
+// agySubagentConversation finds a subagent this chat's Antigravity started. agy names its helper rows by the
+// child's own conversation id, and keeps the child's conversation next to the chat's own (#3970).
+func (api *StreamingAPI) agySubagentConversation(sessionID, childID string) (llmtypes.NativeSubagentTranscript, bool) {
+	api.nativeObserversMu.Lock()
+	o := api.nativeObservers[sessionID]
+	api.nativeObserversMu.Unlock()
+	if o == nil || o.provider != "agy-cli" || o.nativeID == "" {
+		return llmtypes.NativeSubagentTranscript{}, false
+	}
+	path := o.nativeRecordPath()
+	suffix := filepath.Join(".gemini", "antigravity-cli", "conversations", o.nativeID+".db")
+	home, found := strings.CutSuffix(path, string(filepath.Separator)+suffix)
+	if !found {
+		return llmtypes.NativeSubagentTranscript{}, false
+	}
+	return agySubagentConversationIn(o.nativeID, childID, home)
+}
+
+var agySubagentConversationIn = agycli.AgySubagentConversation

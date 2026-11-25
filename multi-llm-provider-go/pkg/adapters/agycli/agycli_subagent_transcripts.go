@@ -47,3 +47,17 @@ func readAgyNativeSubagents(parentID, home string) []llmtypes.NativeSubagentTran
 	read(parentID)
 	return out
 }
+
+// AgySubagentConversation is the conversation of one subagent (childID, its own conversation id) that the
+// conversation parentID started, directly or through another subagent, read from agy's store under home.
+func AgySubagentConversation(parentID, childID, home string) (llmtypes.NativeSubagentTranscript, bool) {
+	if parentID == "" || childID == "" || home == "" {
+		return llmtypes.NativeSubagentTranscript{}, false
+	}
+	for _, child := range readAgyNativeSubagents(parentID, home) {
+		if child.ID == childID {
+			return child, true
+		}
+	}
+	return llmtypes.NativeSubagentTranscript{}, false
+}
