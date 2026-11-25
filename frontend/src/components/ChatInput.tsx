@@ -143,7 +143,7 @@ import { isMainAgentTerminal } from '../utils/terminalIdentity'
 import { loadProfileAtFiles } from '../utils/profileAtFiles'
 import { proxyCrewFileClient, sharedCrewFileClient } from '../products/work/sharedCrewFiles'
 import { chatSendMessageEvent } from '../products/work/ChatContextItems'
-import { PlanModeTag } from './chat/PlanModeControls'
+import { ChatModeMenu } from './chat/ChatModeMenu'
 import { ContextRing } from './chat/ContextRing'
 import { isPlanToggleKey, PLAN_START_MESSAGE, planNeedsStartButton } from '../utils/planMode'
 
@@ -3482,7 +3482,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 })()}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
                 {/* Like Claude Code's status line: model · effort, then the mode (Auto / Plan; Shift+Tab switches) and how full the context is (#3711). */}
-                {nativePlanSupported && <PlanModeTag on={planOn} onToggle={togglePlanMode} onStart={planReady ? startPlannedWork : undefined} />}
+                {/* The mode menu (#3885): This project / Auto-review / Plan / Full access, and what the chat can reach. */}
+                {(nativePlanSupported || (agentProfileId === 'work' && tabSessionId)) && <ChatModeMenu sessionId={agentProfileId === 'work' ? tabSessionId || undefined : undefined}
+                  plan={nativePlanSupported ? { on: planOn } : undefined} planReady={planReady} onPlanToggle={togglePlanMode} onStart={startPlannedWork} />}
                 {agentProfileId === 'work' && tabSessionId && <ContextRing sessionId={tabSessionId} busy={isTurnInFlight} />}
                 {agentProfileId === 'work' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}

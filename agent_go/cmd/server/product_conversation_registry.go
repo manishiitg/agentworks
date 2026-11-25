@@ -155,6 +155,9 @@ type ProductAgentIdentity struct {
 	// ClaudeTerminal runs this chat's Claude Code as the native terminal (tmux, driven by the AgentWorks mod)
 	// instead of the chat view (Agent SDK). The person's choice per chat (owner, 2026-11-01, PLAT-872-96).
 	ClaudeTerminal bool `json:"claude_terminal,omitempty"`
+	// AccessMode is what this chat's coding agent can reach and who approves its actions: "" (This project),
+	// auto_review or full_access (chat_access_mode.go). The person's choice per chat (#3885).
+	AccessMode string `json:"access_mode,omitempty"`
 	// ForkedFrom is the conversation key of the agent this one was forked from (#3288), so the left menu draws it under
 	// its parent and the agent list says where it came from. Forks made before it was kept have none.
 	ForkedFrom string `json:"forked_from,omitempty"`
@@ -328,6 +331,7 @@ func (store productConversationRegistryStore) setAgentModel(ctx context.Context,
 // chatContextChange is the switches a chat's context options change; nil keeps one.
 type chatContextChange struct {
 	ClaudeTerminal *bool
+	AccessMode     *string
 	ForkedFrom     *string
 	ForkNote       *string
 }
@@ -352,6 +356,9 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 	if change.ClaudeTerminal != nil {
 		identity.ClaudeTerminal = *change.ClaudeTerminal
 	}
+	if change.AccessMode != nil {
+		identity.AccessMode = strings.TrimSpace(*change.AccessMode)
+	}
 	if change.ForkedFrom != nil {
 		identity.ForkedFrom = strings.TrimSpace(*change.ForkedFrom)
 	}
@@ -365,7 +372,7 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 	if err := store.writeDocument(ctx, path, document); err != nil {
 		return ProductAgentIdentity{}, err
 	}
-	log.Printf("[CHAT_CONTEXT] %s set chat %s claude_terminal=%t forked_from=%s", identity.UpdatedBy, entryKey, identity.ClaudeTerminal, identity.ForkedFrom)
+	log.Printf("[CHAT_CONTEXT] %s set chat %s claude_terminal=%t access_mode=%q forked_from=%s", identity.UpdatedBy, entryKey, identity.ClaudeTerminal, identity.AccessMode, identity.ForkedFrom)
 	return identity, nil
 }
 

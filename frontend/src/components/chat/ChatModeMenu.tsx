@@ -1,0 +1,131 @@
+import { useEffect, useState } from 'react'
+import * as Menu from '@radix-ui/react-dropdown-menu'
+import { Check, ChevronDown, ListChecks } from 'lucide-react'
+import { useChatContextView } from '../../products/work/useChatContextView'
+import { changeChatContext, menuLabelClass, menuRowClass } from '../../products/work/ChatContextItems'
+import api, { workFolderApi } from '../../services/api'
+import type { ChatAccessMode, WorkFolderGrant } from '../../services/api-types'
+import { useWorkflowStore } from '../../stores/useWorkflowStore'
+
+// The chat's mode beside the model (#3885): one menu for what the agent can reach and who approves its actions,
+// plus Plan. The menu is the everyday front for "Folders on this Mac": it says what the chat can reach and links
+// there. Shift+Tab still switches Plan.
+
+type Row = { id: ChatAccessMode | 'plan'; label: string; chip: string; detail: string }
+
+const ROWS: Row[] = [
+  { id: 'project', label: 'This project', chip: 'Auto', detail: 'Works without asking. It can only reach this project and the folders attached to it.' },
+  { id: 'auto_review', label: 'Auto-review', chip: 'Auto-review', detail: 'Your whole Mac. The coding app’s own reviewer approves each action and refuses risky ones.' },
+  { id: 'plan', label: 'Plan', chip: 'Plan', detail: 'Proposes a plan and changes nothing until you approve it.' },
+  { id: 'full_access', label: 'Full access', chip: 'Full access', detail: 'Your whole Mac, no checks.' },
+]
+
+const chipClass = 'inline-flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted'
+
+/** What the chat can reach, for the line under the modes: the folders attached on this Mac and the whole-Mac row. */
+function useReach(open: boolean) {
+  const [reach, setReach] = useState<{ folders: WorkFolderGrant[]; home: string } | null>(null)
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    void Promise.all([
+      workFolderApi.listWorkFolders().then(response => response.folders || []).catch(() => [] as WorkFolderGrant[]),
+      api.get<{ available: boolean; home?: string }>('/api/work/mac-downloads').then(({ data }) => (data.available ? data.home || '' : '')).catch(() => ''),
+    ]).then(([folders, home]) => { if (!cancelled) setReach({ folders, home: home.replace(/\/+$/, '') }) })
+    return () => { cancelled = true }
+  }, [open])
+  return reach
+}
+
+export function ChatModeMenu({ sessionId, plan, planReady, onPlanToggle, onStart }: {
+  sessionId?: string
+  // Plan: shown only when this chat's coding app can plan first.
+  plan?: { on: boolean }
+  planReady?: boolean
+  onPlanToggle: () => void
+  onStart?: () => void
+}) {
+  const view = useChatContextView(sessionId || '')
+  const access = view?.access
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const reach = useReach(open)
+  const mode: ChatAccessMode = access?.mode || 'project'
+  const current: Row['id'] = plan?.on ? 'plan' : mode
+  const row = ROWS.find(item => item.id === current) || ROWS[0]
+
+  if (plan?.on && planReady && onStart) {
+    // Codex and Cursor answer a plan as a reply, so the tag offers the one step that starts the work and turns
+    // Plan off. Typing still sends changes.
+    return (
+      <span className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-muted-foreground" data-testid="plan-mode-chip" title="The plan is ready. Start runs it; or type changes.">
+        <ListChecks className="h-3 w-3" aria-hidden="true" />
+        Plan ready ·
+        <button type="button" onClick={onStart} data-testid="plan-start-button"
+          className="rounded px-0.5 font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          Start
+        </button>
+      </span>
+    )
+  }
+  if (!access && !plan) return null
+
+  const pick = async (id: string) => {
+    if (id === 'plan') {
+      if (!plan?.on) onPlanToggle()
+      return
+    }
+    if (plan?.on) onPlanToggle()
+    if (!sessionId || id === mode) return
+    setSaving(true)
+    try { await changeChatContext(sessionId, { access_mode: id as ChatAccessMode }) } finally { setSaving(false) }
+  }
+  const option = (id: Row['id']) => access?.options.find(item => item.mode === id)
+  const rows = ROWS.filter(item => item.id === 'plan' ? Boolean(plan) : Boolean(access))
+  // The saved mode this app cannot run here (Auto-review in a Codex chat) runs as This project: say so.
+  const fallback = access && access.mode !== access.effective && !plan?.on
+  const wholeMac = Boolean(reach?.home) && Boolean(reach?.folders.some(folder => folder.path.replace(/\/+$/, '') === reach?.home && folder.access === 'read_write'))
+  const others = (reach?.folders || []).filter(folder => folder.path.replace(/\/+$/, '') !== reach?.home)
+  const openFolders = () => useWorkflowStore.getState().openWorkspaceView('mcp', 'mac-folders')
+
+  return <Menu.Root modal={false} open={open} onOpenChange={setOpen}>
+    <Menu.Trigger type="button" data-testid="plan-mode-chip" aria-pressed={plan?.on} aria-label={`Mode: ${row.label}. ${row.detail}`} title={`${row.label}: ${row.detail}${plan ? ' Shift+Tab switches Plan.' : ''}`} className={chipClass}>
+      {current === 'plan' && <ListChecks className="h-3 w-3" aria-hidden="true" />}
+      <span className={fallback ? 'line-through decoration-muted-foreground/60' : undefined}>{row.chip}</span>
+      <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />
+    </Menu.Trigger>
+    <Menu.Portal>
+      <Menu.Content side="top" align="start" sideOffset={8} collisionPadding={12} data-testid="chat-mode-menu"
+        className="z-[100] w-[min(320px,calc(100vw-24px))] rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
+        <Menu.Label className={menuLabelClass}>Mode</Menu.Label>
+        <Menu.RadioGroup value={current} onValueChange={id => void pick(id)}>
+          {rows.map(item => {
+            const state: { available: boolean; why?: string } | undefined = item.id === 'plan' ? { available: true } : option(item.id)
+            const disabled = saving || state?.available === false
+            return <Menu.RadioItem key={item.id} value={item.id} disabled={disabled} data-testid={`chat-mode-${item.id}`} className={`${menuRowClass} items-start`}>
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium">{item.label}</span>
+                <span className="block text-xs text-muted-foreground">{state?.available === false && state.why ? state.why : item.detail}</span>
+              </span>
+              <Menu.ItemIndicator className="pt-0.5"><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
+            </Menu.RadioItem>
+          })}
+        </Menu.RadioGroup>
+        {fallback && <p className="px-2.5 pt-1 text-xs text-amber-700 dark:text-amber-400" data-testid="chat-mode-fallback">This coding app has no reviewer that works here, so this chat runs as This project.</p>}
+        {access && <>
+          <Menu.Separator className="my-1 h-px bg-border" />
+          <div className="px-2.5 py-1 text-xs text-muted-foreground" data-testid="chat-mode-reach">
+            {access.on_server
+              ? 'On a server every mode stays inside this chat’s folders.'
+              : wholeMac
+                ? 'Whole Mac: attached to this project, so every mode can reach it.'
+                : access.effective !== 'project'
+                  ? 'Can reach: your whole Mac (this chat only).'
+                  : `Can reach: this project${others.length ? ` · ${others.map(folder => folder.alias || folder.path).join(' · ')}` : ''}`}
+          </div>
+          <Menu.Item className={menuRowClass} onSelect={openFolders}>Manage folders</Menu.Item>
+        </>}
+      </Menu.Content>
+    </Menu.Portal>
+  </Menu.Root>
+}

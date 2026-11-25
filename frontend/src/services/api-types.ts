@@ -259,6 +259,8 @@ export interface ChatContextView {
   compact_early_hint?: string
   /** A Claude chat only: on runs Claude Code as the native terminal (the AgentWorks mod drives it), off as the chat view. */
   claude_terminal?: { on: boolean }
+  /** The chat's access mode menu: what its coding agent can reach and who approves its actions (#3885). */
+  access?: ChatAccessView
   /** This chat's own Git branch folders, when its agent started any. */
   can_compact: boolean
   /** "New chat": this tab starts a new conversation; the current one moves to its earlier chats. */
@@ -268,6 +270,18 @@ export interface ChatContextView {
   /** A coding agent's own CLI runs this chat: it reports its total context, not what fills it. */
   total_only?: boolean
   parts?: ChatContextPart[]
+}
+
+/** project: the project's folders; auto_review: the whole Mac, the coding app's reviewer approves; full_access: the whole Mac, no checks. */
+export type ChatAccessMode = 'project' | 'auto_review' | 'full_access'
+
+export interface ChatAccessView {
+  /** The saved choice; effective is what the next message gets with this coding app on this computer. */
+  mode: ChatAccessMode
+  effective: ChatAccessMode
+  options: { mode: ChatAccessMode; available: boolean; why?: string }[]
+  /** On a server every mode stays inside the chat's folders. */
+  on_server?: boolean
 }
 
 /** One estimated slice of what fills a chat's context (about four characters to a token). */
