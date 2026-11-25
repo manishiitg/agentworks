@@ -248,12 +248,17 @@ function WorkLine({ item, now, stopping, onStop, onHide }: { item: SessionBackgr
   const started = Date.parse(item.started_at)
   const seconds = Number.isFinite(started) && !item.started_at.startsWith('0001-') ? Math.max(0, Math.floor((now - started) / 1000)) : -1
   const time = seconds < 0 ? '' : seconds < 60 ? `${seconds}s` : seconds < 3600 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${Math.floor(seconds / 3600)}h ${Math.floor(seconds / 60) % 60}m`
-  const detail = [item.status, time].filter(Boolean).join(' · ')
+  // Only the name and how long it has run: a background command's status is its command text, which goes in the
+  // hover text with the full label.
+  const detail = time
+  const hover = [label, item.status].filter(Boolean).join('\n')
   const action = 'rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60'
-  return <div data-testid="chat-work-line" className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-background px-2.5 py-1 text-xs">
+  // One line, like a helper's: a background command's label can be the whole command (a long heredoc filled the
+  // chat). The full text is on hover; Inspect opens the details.
+  return <div data-testid="chat-work-line" title={hover} className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1 text-xs">
     <StateDot state="running" />
-    <span className="min-w-0 break-words font-medium">{label}</span>
-    {detail && <span className="min-w-0 break-words text-muted-foreground">· {detail}</span>}
+    <span className="min-w-0 flex-1 truncate font-medium">{item.label.replace(/\s+/g, ' ')}</span>
+    {detail && <span className="shrink-0 text-muted-foreground">· {detail}</span>}
     <span className="ml-auto flex shrink-0 items-center gap-1.5">
       {item.inspection && <button type="button" onClick={() => openStepInspection(item.inspection!)} className={action}>Inspect</button>}
       {item.can_stop && <button type="button" disabled={stopping} onClick={onStop} aria-label={`Stop ${label}`} className={`${action} inline-flex items-center gap-1`}>
