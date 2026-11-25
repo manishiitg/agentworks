@@ -57,8 +57,9 @@ Every widget needs `title` (up to 160 characters) unless noted. Append at the
 list named in brackets. IDs are short: letters, numbers, `_` or `-`, starting
 with a letter, unique in their list.
 
-- `diagram` [`nodes`, then `edges`]: optional `direction` `vertical` (default)
-  or `horizontal`. 1-16 nodes: `id`, `title` (100), optional `description`
+- `diagram` [`nodes`, then `edges`]: optional `direction` `vertical` (default;
+  preferred for 3+ steps in chat) or `horizontal` (best for 2–3 short nodes;
+  narrow chats automatically stack vertically). 1-16 nodes: `id`, `title` (100), optional `description`
   (280), `emphasis:true`, `items` (1-6 of `title` 80, optional `description`
   160) to group parts inside a node. Up to 24 edges: `from`, `to` (node IDs),
   optional `label` (80), `bidirectional:true`.
