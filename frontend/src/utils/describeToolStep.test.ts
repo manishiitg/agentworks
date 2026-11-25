@@ -41,3 +41,11 @@ it('does not count waiting for a background command as another command (owner, 2
   expect(summarizeSteps([describeToolStep({ name: 'TaskOutput' })])).toBe('Waited for a background command')
   expect(describeToolStep({ name: 'wait_for_background_tasks' }).live).toBe('Waiting for a background command')
 })
+
+// #3919: Antigravity's shell step is named by its command text and carries CommandLine and toolSummary.
+it('describes an Antigravity shell step like other shell steps', () => {
+  expect(describeToolStep({ name: 'sleep 15 && echo done', server: 'agy-cli', args: '{"CommandLine":"sleep 15 && echo done","toolSummary":"Sleep and echo done"}' }))
+    .toMatchObject({ kind: 'run', done: 'Ran "Sleep and echo done"', live: 'Running "Sleep and echo done"' })
+  expect(describeToolStep({ name: 'npm test', server: 'agy-cli', args: '{"CommandLine":"npm test"}' }))
+    .toMatchObject({ kind: 'run', done: 'Ran npm test', live: 'Running npm test' })
+})

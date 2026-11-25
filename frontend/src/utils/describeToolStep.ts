@@ -81,7 +81,8 @@ function many(count: number, one: string, more: string): string {
 export function describeToolStep({ name, server, args: rawArgs, result }: StepInput): StepDescription {
   const args = parseArgs(rawArgs)
   // An MCP tool can arrive as mcp__<server>__<tool>; the tool part is what it does.
-  const n = name.toLowerCase().replace(/^mcp__.*__/, '')
+  // Antigravity names a shell step by its command text; its input carries CommandLine (and a toolSummary).
+  const n = typeof args.CommandLine === 'string' ? 'run_command' : name.toLowerCase().replace(/^mcp__.*__/, '')
   const path = arg(args, 'file_path', 'notebook_path', 'path', 'target_file', 'filename')
   const file = path ? fileName(path) : ''
 
@@ -105,13 +106,13 @@ export function describeToolStep({ name, server, args: rawArgs, result }: StepIn
       if (files.length === 1) return added.length ? step('create', `Created ${files[0]}`, `Creating ${files[0]}`, files) : step('edit', `Edited ${files[0]}`, `Editing ${files[0]}`, files)
       return step('edit', `Edited ${files.length} files`, `Editing ${files.length} files`, files)
     }
-    case 'bash': case 'exec_command': case 'shell': case 'run_shell_command': case 'terminal': case 'run_terminal_cmd': case 'execute_shell_command': {
-      const description = arg(args, 'description')
+    case 'bash': case 'exec_command': case 'shell': case 'run_shell_command': case 'terminal': case 'run_terminal_cmd': case 'execute_shell_command': case 'run_command': {
+      const description = arg(args, 'description', 'toolSummary')
       if (args.run_in_background === true) return description
         ? step('run', `Started "${short(description)}" in the background`, `Starting "${short(description)}" in the background`)
         : step('run', 'Started a command in the background', 'Starting a command in the background')
       if (description) return step('run', `Ran "${short(description)}"`, `Running "${short(description)}"`)
-      const command = arg(args, 'command', 'cmd')
+      const command = arg(args, 'command', 'cmd', 'CommandLine')
       return command ? step('run', `Ran ${short(command)}`, `Running ${short(command)}`) : step('run', 'Ran a command', 'Running a command')
     }
     case 'grep': case 'glob': case 'grep_search': case 'codebase_search': case 'file_search': case 'search_files': case 'find': case 'ls': case 'list_dir': case 'list_files': {

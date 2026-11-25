@@ -1191,9 +1191,13 @@ const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
   )
 }
 
-const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; toolLayout?: 'grouped' | 'rows'; live?: boolean }> = ({ item, toolLayout, live = false }) => {
+// turnWorking: the turn is still working. A step that has not ended stays live then even when thinking or reply text
+// came after it: Antigravity hands a long command to the background after ten seconds and keeps thinking and writing
+// while it runs, which left the running step without its "running" line and timer (#3919).
+const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; toolLayout?: 'grouped' | 'rows'; live?: boolean; turnWorking?: boolean }> = ({ item, toolLayout, live: lastLive = false, turnWorking = false }) => {
   const showTools = useChatDisplayStore(state => state.showTools)
   const pairs = useMemo(() => pairToolCalls(item.events), [item.events])
+  const live = lastLive || (turnWorking && pairs.some(pair => pair.status === 'running'))
   const rows = toolLayout === 'rows' && showTools
   const segments = useMemo(() => segmentToolBatch(item.key, pairs, rows), [item.key, pairs, rows])
   if (!rows && segments.length === 1 && segments[0].kind === 'tools') {
@@ -1675,7 +1679,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
             : item.kind === 'working'
             ? <WorkingGroup item={item} live={workingNow && index === items.length - 1 && !streamingText.trim()} phase={turnPhase} toolLayout={toolLayout} />
             : item.kind === 'tools'
-            ? <ToolBatch item={item} toolLayout={toolLayout} live={workingNow && index === items.length - 1 && !streamingText.trim()} />
+            ? <ToolBatch item={item} toolLayout={toolLayout} live={workingNow && index === items.length - 1 && !streamingText.trim()} turnWorking={workingNow} />
             : item.kind === 'thinking'
               ? <ThinkingBatch item={item} live={index === items.length - 1 && !streamingText.trim()} showText={searchable && showThinking} />
               : (
