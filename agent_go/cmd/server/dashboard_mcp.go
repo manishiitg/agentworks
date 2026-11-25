@@ -344,6 +344,9 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 
 func dashboardDiscoveryRow(target dashboardTarget, d dashboards.Dashboard) map[string]any {
 	row := map[string]any{"dashboard_id": d.ID, "title": d.Title, "motion": d.Motion, "artifact": d.Artifact, "workspace": target.Root, "project_id": target.ID, "project_title": target.Title, "product": target.Kind, "document_path": d.DocumentPath, "revision": d.Revision, "published_revision": d.Published, "managed": d.Managed, "can_edit": target.Edit}
+	if d.UpdatedAt > 0 {
+		row["updated_at"] = d.UpdatedAt
+	}
 	switch target.Kind {
 	case "workflow", "relay":
 		row["workflow_id"] = target.ID
