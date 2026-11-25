@@ -65,18 +65,6 @@ type crewPeoplePerson struct {
 	Moves []string `json:"moves,omitempty"`
 }
 
-// crewPeopleGets is one level's card: its title, tagline and what it does (Yes) or does not give.
-type crewPeopleGets struct {
-	Title   string               `json:"title"`
-	Tagline string               `json:"tagline"`
-	Items   []crewPeopleGetsItem `json:"items"`
-}
-
-type crewPeopleGetsItem struct {
-	Text string `json:"text"`
-	Yes  bool   `json:"yes"`
-}
-
 type crewPeopleView struct {
 	Kind   string `json:"kind"`
 	TeamOn bool   `json:"team_on"`
@@ -98,7 +86,6 @@ type crewPeopleView struct {
 	DashboardPeople []crewPeoplePerson `json:"dashboard_people"`
 	MoreDashboards  string             `json:"more_dashboards,omitempty"`
 	Levels          []crewPeopleLevel  `json:"levels"`
-	Gets            []crewPeopleGets   `json:"gets"`
 }
 
 // crewPeopleKind says what kind of Crew this is, as the People list needs it: a server Crew (both levels), a Mac Crew
@@ -128,24 +115,6 @@ func crewPeopleLevels(kind string) []crewPeopleLevel {
 		levels[1].Why = crewPeoplePutOnlineLine
 	}
 	return levels
-}
-
-// crewPeopleGetsTable is what each level gets, in the server's words.
-func crewPeopleGetsTable() []crewPeopleGets {
-	return []crewPeopleGets{
-		{Title: "Dashboards only", Tagline: "Look and ask. Nothing else.", Items: []crewPeopleGetsItem{
-			{"See all this project's dashboards", true},
-			{"Ask this project", true},
-			{"Files, agents' chats, changes", false},
-		}},
-		{Title: "Works with me", Tagline: "Works in the project with you.", Items: []crewPeopleGetsItem{
-			{"Everything in \"Dashboards only\"", true},
-			{"Shared files, edit both ways", true},
-			{"Agents' chats (unless kept private)", true},
-			{"Their own agents; add folders and agents", true},
-			{"Only you turn the Team on or off, remove folders", false},
-		}},
-	}
 }
 
 // crewPeopleGetsLines is what a level gives a person, for the confirm box.
@@ -237,7 +206,7 @@ func (api *StreamingAPI) crewPeopleViewFor(claims *UserClaims, t crewTeam) crewP
 		}
 		return ""
 	}
-	view := crewPeopleView{Kind: kind, TeamOn: t.On, Levels: crewPeopleLevels(kind), Gets: crewPeopleGetsTable(), CanAdd: kind != crewKindMacNever && crewTeamCanManage(t, claims.UserID), CanShare: owner && kind == crewKindServer, People: []crewPeoplePerson{}, DashboardPeople: []crewPeoplePerson{}}
+	view := crewPeopleView{Kind: kind, TeamOn: t.On, Levels: crewPeopleLevels(kind), CanAdd: kind != crewKindMacNever && crewTeamCanManage(t, claims.UserID), CanShare: owner && kind == crewKindServer, People: []crewPeoplePerson{}, DashboardPeople: []crewPeoplePerson{}}
 	switch kind {
 	case crewKindMacNever:
 		view.Blocked = crewPeopleNeverOnlineLine

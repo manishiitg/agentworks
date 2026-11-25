@@ -449,19 +449,6 @@ function PeopleCard({ view, target, projectId, projects }: { view: TeamTabView; 
       {people.more_dashboards && <button type="button" onClick={() => openCrewAccess(projectId, useChatStore.getState().activeTabId || '', 'dashboards')} className="text-xs text-primary hover:underline">{people.more_dashboards}</button>}
       {people.can_add && !closed && <AddPerson target={target} pending={pending} known={known} onPick={(id, name) => void propose(id, name, 'works')} />}
       {projects}
-      {people.gets.length > 0 && <details className="text-xs text-muted-foreground">
-        <summary className="cursor-pointer">What each level gets</summary>
-        <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
-          {people.gets.map(level => <div key={level.title} className="rounded-xl border border-border px-3.5 py-3">
-            <p className="text-sm font-semibold text-foreground">{level.title}</p>
-            <p className="mb-2 text-xs">{level.tagline}</p>
-            {level.items.map(item => <p key={item.text} className="flex gap-2 py-0.5 text-[13px] text-foreground">
-              <span aria-hidden="true" className={item.yes ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground/60'}>{item.yes ? '✓' : '✕'}</span>
-              <span className="sr-only">{item.yes ? 'Included:' : 'Not included:'}</span>{item.text}
-            </p>)}
-          </div>)}
-        </div>
-      </details>}
     </>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {ask && <PeopleChangeDialog ask={ask} saving={pending === 'confirm'} error={askError} onCancel={cancel} onConfirm={createDashboard => void apply(createDashboard)} />}

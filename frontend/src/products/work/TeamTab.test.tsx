@@ -120,7 +120,7 @@ it('deep-links into the Kit with progress and keeps the segment when the server 
 it('bounds the add-teammate confirmation independently of utility sizing and preserves Cancel and Add',async()=>{
  const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
  const directory=vi.spyOn(api,'get').mockResolvedValue({data:{users:[{id:'colleague',username:'Colleague'}]}})
- vi.mocked(crewPeople).mockResolvedValue({kind:'server',team_on:true,intro:'',can_add:true,can_share:true,owner:{user_id:'owner',name:'Owner',level:'owner',level_label:'Owner',owner:true},people:[],dashboard_people:[],levels:[],gets:[]})
+ vi.mocked(crewPeople).mockResolvedValue({kind:'server',team_on:true,intro:'',can_add:true,can_share:true,owner:{user_id:'owner',name:'Owner',level:'owner',level_label:'Owner',owner:true},people:[],dashboard_people:[],levels:[]})
  const preview={person:'colleague',from:'none',to:'works',summary:'Colleague will be added to Works with me.',gains:['Shared files','Shared agents'],loses:[],notes:['They join when they accept.']}
  vi.mocked(changeCrewPerson).mockResolvedValue({confirm_needed:true,preview})
  const click=async(label:string)=>{await act(async()=>{const button=[...document.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.textContent?.trim().endsWith(label));expect(button,`reachable ${label}`).toBeTruthy();button!.click();await Promise.resolve();await Promise.resolve()})}
