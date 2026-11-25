@@ -232,7 +232,9 @@ func bootAgyInteractiveSession(ctx context.Context, ownerSessionID, workingDir, 
 	}
 	// The private AGY home must win over a provider-account HOME overlay;
 	// account credentials still reach the child through their own variables.
-	launchEnv := append(append([]string(nil), scopedEnv...), baseEnv...)
+	// An account's sidecar keeps its Google sign-in in a file too: without this agy reached for the macOS keychain,
+	// found none under the account's home and asked the person to reset their keychain.
+	launchEnv := agyAccountEnv(append(append([]string(nil), scopedEnv...), baseEnv...), opts)
 	cli, cleanupSandbox, err := agyLandlockArgs(opts, cli, workingDir, privateHome)
 	if err != nil {
 		return nil, err

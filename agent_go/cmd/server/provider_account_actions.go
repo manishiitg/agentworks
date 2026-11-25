@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 )
 
 // Per-account actions (docs/design/provider_accounts.md, "Implementation
@@ -119,7 +120,13 @@ func (api *StreamingAPI) resolveProviderAccountTarget(ctx context.Context, id, p
 		if err != nil {
 			return providerAccountTarget{}, err
 		}
-		return providerAccountTarget{ID: id, Provider: record.Provider, Record: &record, Env: providerConnectionSetupEnvironment(providerConnectionEnvLabel(record.Provider, id), keys), Home: keys.RuntimeEnvironment["HOME"]}, nil
+		env := providerConnectionSetupEnvironment(providerConnectionEnvLabel(record.Provider, id), keys)
+		if record.Provider == "agy-cli" {
+			// Status, model and sign-out checks read the account's file login like its sign-in and chats do,
+			// never the macOS keychain (absent under the account's home, so agy asked to reset it).
+			env = append(env, "SSH_CONNECTION="+agycli.AgyFileLoginSSHConnection, "AGY_ACP_FORCE_FILE_STORAGE=1")
+		}
+		return providerAccountTarget{ID: id, Provider: record.Provider, Record: &record, Env: env, Home: keys.RuntimeEnvironment["HOME"]}, nil
 	}
 	return providerAccountTarget{}, fmt.Errorf("connection unavailable")
 }
