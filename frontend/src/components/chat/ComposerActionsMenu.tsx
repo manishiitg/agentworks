@@ -1,6 +1,6 @@
 import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 import { LoadingIndicator } from '../ui/LoadingIndicator'
-import { useId, useRef } from 'react'
+import { useRef } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { Paperclip, Plus, LogIn, ListChecks } from 'lucide-react'
 import { SlashCommandsSubmenu, type ComposerCommandPreview } from './SlashCommandsSubmenu'
@@ -19,14 +19,10 @@ export type ComposerActions = {
 
 export function ComposerActionsMenu({ uploading, onAttach, commands, sendOptions, onOpenChange, planMode }: ComposerActions) {
   const afterClose = useRef<(() => void) | null>(null)
-  const activityId = useId()
-  const runningCount = sendOptions?.backgroundWork?.items.length ?? 0
   return <Menu.Root modal={false} onOpenChange={onOpenChange}>
-    <Menu.Trigger data-theme-action="composer-menu" data-theme-control="button" type="button" aria-label="Add files and actions" title="Add files and actions" aria-describedby={runningCount ? activityId : undefined}
+    <Menu.Trigger data-theme-action="composer-menu" data-theme-control="button" type="button" aria-label="Add files and actions" title="Add files and actions"
       className="relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted">
       {uploading ? <LoadingIndicator className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
-      {runningCount > 0 && <span data-testid="chat-background-activity" className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-blue-500 ring-2 ring-background" aria-hidden="true" />}
-      {runningCount > 0 && <span id={activityId} className="sr-only">{runningCount} background tasks running</span>}
     </Menu.Trigger>
     <Menu.Portal><Menu.Content data-theme-surface="menu" side="top" align="start" sideOffset={8} collisionPadding={12}
       onCloseAutoFocus={event => {

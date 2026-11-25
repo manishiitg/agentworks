@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { X } from 'lucide-react'
+import { Loader2, Square, X } from 'lucide-react'
 import type { PollingEvent } from '../../services/api-types'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
@@ -8,6 +8,10 @@ import { collectChatHelpers, helperProviderName, linkedChatHelpers, mergeHelperE
 import { openAgentTab } from '../../utils/openAgentTab'
 import { openAppProduct } from '../../utils/appNavigation'
 import { SubagentChatPanel } from '../events/SubagentChatPanel'
+import { useSessionBackgroundWork } from '../../hooks/useSessionBackgroundWork'
+import { backgroundWorkLabel } from '../BackgroundWorkPill'
+import { openStepInspection } from '../../utils/stepInspection'
+import type { SessionBackgroundWorkItem } from '../../services/api-types'
 
 /** Codex helpers whose state the server is asked for, newest first. */
 const CODEX_STATE_LIMIT = 8
@@ -161,7 +165,10 @@ function inCurrentTurn(helper: ChatHelper, turnStartedAt?: number): boolean {
  * with its actions on the line, open its conversation (or its tab) and stop
  * (owner, 19 Nov). Finished helpers are not shown.
  */
-export function ChatAgentsStrip({ sessionId, helpers, turnStartedAt }: { sessionId: string; helpers: ChatHelper[]; turnStartedAt?: number }) {
+export function ChatAgentsStrip({ sessionId, tabId, helpers, turnStartedAt }: { sessionId: string; tabId?: string; helpers: ChatHelper[]; turnStartedAt?: number }) {
+  // Everything else running for this chat (background commands, workflow runs, steps, calls) sits here too, so it
+  // is in one place with its Stop (owner, 25 Nov: no "N running" in the menu). A helper already listed is not repeated.
+  const work = useSessionBackgroundWork(tabId, true)
   const [all, setAll] = useState(false)
   const [conversation, setConversation] = useState<ChatHelper | null>(null)
   const [hidden, setHidden] = useState<Set<string>>(() => readHidden(sessionId))
@@ -178,12 +185,15 @@ export function ChatAgentsStrip({ sessionId, helpers, turnStartedAt }: { session
     try { localStorage.setItem(hiddenKey(sessionId), JSON.stringify([...next].slice(-200))) } catch { /* private mode: hidden for this view only */ }
     return next
   })
-  if (!active.length && !conversation) return null
+  const helperStops = new Set(helpers.map(helper => helper.stopId).filter(Boolean))
+  const others = work.items.filter(item => !helperStops.has(item.id) && !hidden.has(`work:${item.id}`))
+  if (!active.length && !others.length && !conversation) return null
   const shown = all ? active : active.slice(0, STRIP_SHOWN)
   const more = active.length - shown.length
   return <>
-    {active.length > 0 && <div data-testid="chat-agents-strip" className="max-h-48 space-y-1 overflow-y-auto px-3 pt-1.5">
+    {(active.length > 0 || others.length > 0) && <div data-testid="chat-agents-strip" className="max-h-48 space-y-1 overflow-y-auto px-3 pt-1.5">
       {shown.map(helper => <HelperLine key={helper.key} sessionId={sessionId} helper={helper} now={now} onOpen={() => setConversation(helper)} onHide={() => hide(helper.key)} />)}
+      {others.map(item => <WorkLine key={item.id} item={item} now={work.now} stopping={work.isStopping(item)} onStop={() => void work.stopItem(item)} onHide={() => hide(`work:${item.id}`)} />)}
       {(more > 0 || all) && active.length > STRIP_SHOWN && <button type="button" onClick={() => setAll(!all)} className="px-1 text-[11px] text-muted-foreground hover:text-foreground">{all ? 'Show fewer' : `+${more} more`}</button>}
     </div>}
     {conversation?.toolCallId && <SubagentChatPanel sessionId={sessionId} toolCallId={conversation.toolCallId} title={conversation.name} onClose={() => setConversation(null)} />}
@@ -228,6 +238,28 @@ function HelperLine({ sessionId, helper, now, onOpen, onHide }: { sessionId: str
       {canOpen && <button type="button" onClick={open} className={action}>{linked ? 'Open its tab' : 'Open conversation'}</button>}
       {canStop && <button type="button" disabled={stopping} onClick={() => void stop()} className={action}>{stopping ? 'Stopping…' : 'Stop'}</button>}
       <button type="button" onClick={onHide} aria-label={`Remove "${helper.name}" from this list`} title="Remove from this list (does not stop it)" className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><X className="h-3.5 w-3.5" aria-hidden="true" /></button>
+    </span>
+  </div>
+}
+
+/** One line for other background work (a background command, a workflow run, a step), the same shape as a helper's. */
+function WorkLine({ item, now, stopping, onStop, onHide }: { item: SessionBackgroundWorkItem; now: number; stopping: boolean; onStop: () => void; onHide: () => void }) {
+  const label = backgroundWorkLabel(item)
+  const started = Date.parse(item.started_at)
+  const seconds = Number.isFinite(started) && !item.started_at.startsWith('0001-') ? Math.max(0, Math.floor((now - started) / 1000)) : -1
+  const time = seconds < 0 ? '' : seconds < 60 ? `${seconds}s` : seconds < 3600 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${Math.floor(seconds / 3600)}h ${Math.floor(seconds / 60) % 60}m`
+  const detail = [item.status, time].filter(Boolean).join(' · ')
+  const action = 'rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60'
+  return <div data-testid="chat-work-line" className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-border bg-background px-2.5 py-1 text-xs">
+    <StateDot state="running" />
+    <span className="min-w-0 break-words font-medium">{label}</span>
+    {detail && <span className="min-w-0 break-words text-muted-foreground">· {detail}</span>}
+    <span className="ml-auto flex shrink-0 items-center gap-1.5">
+      {item.inspection && <button type="button" onClick={() => openStepInspection(item.inspection!)} className={action}>Inspect</button>}
+      {item.can_stop && <button type="button" disabled={stopping} onClick={onStop} aria-label={`Stop ${label}`} className={`${action} inline-flex items-center gap-1`}>
+        {stopping ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> : <Square className="h-2.5 w-2.5" fill="currentColor" aria-hidden="true" />}{stopping ? 'Stopping…' : 'Stop'}
+      </button>}
+      <button type="button" onClick={onHide} aria-label={`Remove "${label}" from this list`} title="Remove from this list (does not stop it)" className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><X className="h-3.5 w-3.5" aria-hidden="true" /></button>
     </span>
   </div>
 }
