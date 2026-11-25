@@ -58,14 +58,14 @@ func (api *StreamingAPI) handleCrewTeamChatBackup(w http.ResponseWriter, r *http
 	out := map[string]any{"agent": row.Name, "person": row.Person, "online": row.Online, "lines": []chatHistoryLine{}}
 	chat, err := crewTeamSyncedChatLines(t, a)
 	if errors.Is(err, errCrewTeamNoSyncedChat) {
-		out["banner"] = fmt.Sprintf("Nothing from this chat is on the server yet, so there is no backup to show. %s is %s; ask below and it answers when it is back.", where, state)
+		out["banner"] = fmt.Sprintf("Nothing from %s's conversation is here yet. %s is %s; ask below and it answers when it is back.", row.Name, where, state)
 		log.Printf("[TEAM_CHAT_READ] project=%s agent=%s caller=%s event=backup_empty online=%t", t.ProjectID, a.ID, viewer, row.Online)
 		writeAgentProfileJSON(w, http.StatusOK, out)
 		return
 	}
 	if err != nil {
 		log.Printf("[TEAM_CHAT_READ] project=%s agent=%s caller=%s event=refused reason=read_failed view=backup error=%q", t.ProjectID, a.ID, viewer, err.Error())
-		externalError(w, http.StatusServiceUnavailable, "backup_unavailable", row.Name+"'s chat backup could not be read now. Try again in a minute.")
+		externalError(w, http.StatusServiceUnavailable, "backup_unavailable", row.Name+"'s conversation could not be opened now. Try again in a minute.")
 		return
 	}
 	synced := "recently"
@@ -75,11 +75,11 @@ func (api *StreamingAPI) handleCrewTeamChatBackup(w http.ResponseWriter, r *http
 			out["synced_at"] = info.ModTime().UTC()
 		}
 	}
-	banner := fmt.Sprintf("Backup of this chat, last synced %s. %s is %s: you are reading a copy, not talking to the agent. Your ask below waits for the real agent.", synced, where, state)
+	banner := fmt.Sprintf("This is %s's conversation as of %s. %s is %s, so you are reading what it said, not talking to it. Your question below reaches it when it is back.", row.Name, synced, where, state)
 	if chat.partial {
-		banner += " The newest messages are still being copied."
+		banner += " Its newest messages are still arriving."
 	} else if chat.trimmed {
-		banner += " Only the newest part of this long chat is shown."
+		banner += " Only the newest part of this long conversation is shown."
 	}
 	out["banner"] = banner
 	lines := chat.lines

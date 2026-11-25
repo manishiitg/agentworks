@@ -18,12 +18,12 @@ export function TeammateChatBackup({target,agentId}:{target:TeamTarget;agentId:s
   setBackup(null);setError('')
   teamRequest<Backup>(target,`/agents/${encodeURIComponent(agentId)}/chat-backup`)
    .then(data=>{if(active)setBackup(data)})
-   .catch(cause=>{if(active)setError(cause instanceof Error?cause.message:'The chat backup could not be read.')})
+   .catch(cause=>{if(active)setError(cause instanceof Error?cause.message:'Its conversation could not be opened.')})
   return()=>{active=false}
  },[target.connection,target.project,agentId]) // eslint-disable-line react-hooks/exhaustive-deps
  useEffect(()=>{list.current?.scrollTo({top:list.current.scrollHeight})},[backup])
  if(error)return <p role="status" className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">{error}</p>
- if(!backup)return <p role="status" className="flex h-full items-center justify-center gap-2 p-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true"/>Opening the chat backup…</p>
+ if(!backup)return <p role="status" className="flex h-full items-center justify-center gap-2 p-6 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true"/>Opening its conversation…</p>
  return <div className="flex h-full min-h-0 flex-col">
   <p role="note" data-chat-backup className="mx-4 mt-3 flex shrink-0 items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-foreground">
    <Archive className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true"/>

@@ -130,9 +130,9 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,agent,
     {error&&<p role="alert" className="mb-1 px-1 text-xs text-destructive">{error}</p>}
     {status&&!error&&!offline&&<p role="status" className="mb-1 px-1 text-xs text-muted-foreground">{status}</p>}
     {offline&&<div role="alert" className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-xs text-muted-foreground">
-     <span className="min-w-0">{offline.line}{offline.readable?' Its chat above, as last synced, may already have the answer.':''}</span>
-     <Button type="button" variant="outline" size="xs" disabled={busy||(!draft.trim()&&!files.length)} onClick={()=>void send(true)}>Wait for it</Button>
-     {answerFromChat&&offline.readable&&<Button type="button" variant="outline" size="xs" disabled={!draft.trim()} onClick={()=>{answerFromChat(draft.trim());setDraft('');setOffline(null)}}>Answer from its chat</Button>}
+     <span className="min-w-0">{offline.line}{offline.readable?' Its earlier conversation may already have the answer.':''}</span>
+     <Button type="button" variant="outline" size="xs" disabled={busy||(!draft.trim()&&!files.length)} onClick={()=>void send(true)}>Send when it's back</Button>
+     {answerFromChat&&offline.readable&&<Button type="button" variant="outline" size="xs" disabled={!draft.trim()} onClick={()=>{answerFromChat(draft.trim());setDraft('');setOffline(null)}}>Quick answer now</Button>}
     </div>}
     <ChatComposerForm product onSubmit={event=>{event.preventDefault();if(running)void stop();else void send()}}>
      {files.length>0&&<ChatComposerAttachmentTiles files={files} onRemove={index=>setFiles(old=>old.filter((_,at)=>at!==index))}/>}
@@ -146,7 +146,7 @@ export function AgentAskThread({target,address,label,scope,enabled,sender,agent,
        {runtime&&<span title="This is their agent, so its AI is their choice" className="inline-flex min-w-0 max-w-48 items-center gap-1 truncate px-1 text-[11px] text-muted-foreground"><CodingCliIcon provider={agent?.cli||agent?.engine||'terminal'} className="inline-flex h-3 w-3 shrink-0 items-center"/><span className="truncate">{runtime}</span></span>}
       </span>
       <span className="flex shrink-0 items-center gap-1">
-      {answerFromChat&&!running&&<Button type="button" variant="ghost" size="xs" title="Your own agent answers from this chat's backup. Nothing is sent to the agent or its person." disabled={!admitted||!draft.trim()} onClick={()=>{answerFromChat(draft.trim());setDraft('')}} className="gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted [&_svg]:size-3.5"><BookOpen aria-hidden="true"/>Answer from its chat</Button>}
+      {answerFromChat&&!running&&<Button type="button" variant="ghost" size="xs" title="Your own agent answers from what this agent has already said. Nothing is sent to it or its person." disabled={!admitted||!draft.trim()} onClick={()=>{answerFromChat(draft.trim());setDraft('')}} className="gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted [&_svg]:size-3.5"><BookOpen aria-hidden="true"/>Quick answer</Button>}
       {running
        ?<Button type="submit" variant="ghost" size="icon" aria-label="Stop your ask" title="Stop your ask" disabled={stopping} className="h-7 w-7 rounded-full p-0 bg-diff-del/15 text-diff-del hover:bg-diff-del/25 hover:text-diff-del">{stopping?<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true"/>:<Square className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true"/>}</Button>
        :<Button type="submit" variant="ghost" size="xs" aria-label={busy?'Sending':'Send'} title="Send (Enter)" disabled={!canSend} className="w-6 border border-border px-0 text-primary hover:bg-muted [&_svg]:size-3.5">{busy?<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true"/>:<ArrowUp className="h-3.5 w-3.5" aria-hidden="true"/>}</Button>}
@@ -166,17 +166,17 @@ export function TeamAgentAsk({tabId}:{tabId:string}) {
  const identity=useTeammateChatIdentity(tabId)
  if(!identity)return null
  const {name,person,place,online,ask,runtime,readable,project}=identity
- // A readable backup (Live chat, synced), online or offline: the person may have their own agent answer from it
+ // A readable chat (Live chat, on the server), online or offline: the person may have their own agent answer from it
  // instead of asking the agent (#3577).
  const answerFromChat=readable&&project&&ask.address?(question:string)=>{
-  const prompt=`Answer my question from ${person}'s ${name} chat backup, without messaging that agent or ${person}: read it with read_agent_chat (target ${ask.address}; search a few key words, then read the matching lines), answer, and say the answer comes from its backup, which may miss the last few minutes. My question: ${question}`
+  const prompt=`Answer my question from what ${person}'s agent ${name} has already said, without messaging that agent or ${person}: read its chat with read_agent_chat (target ${ask.address}; search a few key words, then read the matching lines), answer in plain words, and say the answer comes from what ${name} said earlier, so the last few minutes may be missing. My question: ${question}`
   sendToOwnMain(project,prompt)
  }:undefined
  return <TeammateAsk target={ask.target} address={ask.address} name={name} where={place} online={online} enabled={ask.enabled} agent={runtime} scope={`${tabId}:${ask.address||''}`} answerFromChat={answerFromChat} answersAbove={online!==false&&readable}/>
 }
 
 export function TeammateAsk({target,address,name,where,online,enabled,scope,agent,answerFromChat,answersAbove}:{target?:TeamTarget;address?:string;name:string;where:string;online?:boolean;enabled:boolean;scope:string;agent?:AskAgentRuntime;answerFromChat?:(question:string)=>void;answersAbove?:boolean}) {
- const hint=!enabled?`You can't ask ${name} right now.`:online===false?`${where.charAt(0).toUpperCase()}${where.slice(1)} is offline. Your ask waits until it is back${answerFromChat?', or your own agent can answer from its chat backup now':''}.`:`Goes to ${name} as your ask. Its answer shows ${answersAbove?'in its chat above':'here'}.${answerFromChat?' Or use Answer from its chat: your own agent answers from its chat backup without asking it.':''}`
+ const hint=!enabled?`You can't ask ${name} right now.`:online===false?`${where.charAt(0).toUpperCase()}${where.slice(1)} is offline. Your question reaches it when it is back${answerFromChat?', or choose Quick answer now to get an answer from what it has already said':''}.`:`Goes to ${name}. Its answer shows ${answersAbove?'in its chat above':'here'}.${answerFromChat?` Or choose Quick answer: your own agent answers from what ${name} has already said, without disturbing it.`:''}`
  return <AgentAskThread target={target} address={address} label={`Ask ${name}`} scope={scope} enabled={enabled} sender={name} agent={agent} answerFromChat={answerFromChat} answersAbove={answersAbove}>
   {hint}
  </AgentAskThread>
