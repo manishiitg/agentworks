@@ -1776,6 +1776,7 @@ func runServer(cmd *cobra.Command, args []string) {
 			if _, err := openServerState(context.Background()); err == nil {
 				bootstrapUserDirectory(context.Background())
 				importAllAutomationRecords(context.Background())
+				rewriteAutomationRecordScriptPaths(context.Background())
 				return
 			}
 			time.Sleep(2 * time.Second)

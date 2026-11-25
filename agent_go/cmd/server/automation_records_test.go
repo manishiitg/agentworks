@@ -83,6 +83,18 @@ func TestAutomationRecordsMoveInAndStayWithTheirFolder(t *testing.T) {
 	if n := recordCalls.Load(); n != 2 { // the one-off GET and DELETE
 		t.Fatalf("workspace calls for the record = %d, want 2", n)
 	}
+	// #4009: a Watcher record stored here still named code/triggers/ after the scripts moved, and the scheduler
+	// skipped the project ("script must be a Python file under watchers/"); the startup rewrite fixes the row.
+	if err := writeFileToWorkspace(ctx, virtual, `{"schedules":[{"condition":{"script":"code/triggers/check.py"}}]}`); err != nil {
+		t.Fatal(err)
+	}
+	rewriteAutomationRecordScriptPaths(ctx)
+	if raw, _, err := readFileFromWorkspace(ctx, virtual); err != nil || raw != `{"schedules":[{"condition":{"script":"watchers/check.py"}}]}` {
+		t.Fatalf("Watcher record not rewritten: %q %v", raw, err)
+	}
+	if backup, err := os.ReadFile(filepath.Join(filepath.Dir(dbFile), "automation-records.platform-scripts.jsonl")); err != nil || !strings.Contains(string(backup), "code/triggers/check.py") {
+		t.Fatalf("record backup: %q %v", backup, err)
+	}
 	if err := os.RemoveAll(folder); err != nil {
 		t.Fatal(err)
 	}
