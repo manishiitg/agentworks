@@ -37,6 +37,9 @@ func TestAgySidecarScrubsTmuxServerCredentials(t *testing.T) {
 	if err := os.Mkdir(privateHome, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	// A signed-in account's sidecar must keep its Google login in a file: without it agy asked macOS for a
+	// keychain under the account's home and showed "Keychain Not Found".
+	llmtypes.WithProviderAccountEnvironment(map[string]string{"HOME": privateHome})(opts)
 	session, err := bootAgyInteractiveSession(context.Background(), "env-test", dir, DefaultModelID, "", privateHome, opts)
 	if err != nil {
 		t.Fatal(err)
@@ -57,6 +60,9 @@ func TestAgySidecarScrubsTmuxServerCredentials(t *testing.T) {
 	got := string(env)
 	if !strings.Contains(got, "SECRET_ALLOWED=declared-value") || !strings.Contains(got, "HOME="+privateHome) {
 		t.Fatal("sidecar did not receive declared scope and private home")
+	}
+	if !strings.Contains(got, "AGY_ACP_FORCE_FILE_STORAGE=1") || !strings.Contains(got, "SSH_CONNECTION="+AgyFileLoginSSHConnection) {
+		t.Fatal("account sidecar would use the macOS keychain instead of its file login")
 	}
 	if strings.Contains(got, "SECRET_AMBIENT=") || strings.Contains(got, "MCP_API_TOKEN=") {
 		t.Fatal("sidecar inherited tmux server credentials outside its scope")
