@@ -1,6 +1,6 @@
 import { openWorkspaceFile } from '../../utils/openWorkspaceFile'
 import { PlanLine } from '../chat/PlanModeControls'
-import { ChatImage } from './ChatImage'
+import { ChatImage, ChatVideo } from './ChatImage'
 import { ConversationImageRoot } from './ConversationImageRoot'
 import { sharedLink, repairLocalAppLink, isSharedAppRoute } from '../../utils/sharedLinks'
 import { PanelsTopLeft } from 'lucide-react'
@@ -21,6 +21,7 @@ import { parseCodeRef, projectFileLinksEnabled, requestOpenProjectFile } from '.
 import { CodeCopyButton, codeBlockText } from './CodeCopyButton'
 import { MarkdownTable } from './MarkdownTable'
 import { ChatElementBlock, type ChatElementStream } from './ChatElement'
+import { isVideoPath } from '../../utils/fileTypes'
 
 const SyntaxHighlightedCode = lazy(() => import('./SyntaxHighlightedCode'))
 
@@ -1331,6 +1332,7 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
             const workspacePrefixes = ['Crew/', 'Chats/', 'Downloads/', 'skills/', 'Workflow/', 'knowledgebase/', '_users/', 'learnings/', 'db/assets/', 'assets/']
             const workspaceFilepath = (src?.startsWith('/') && !src.startsWith('//') ? src : null) || resolveWorkspaceHref(src)?.filepath || (src && workspacePrefixes.some(p => src.startsWith(p)) ? src : null) || (src && conversationImageRoot && isLikelyRelativeWorkspaceFile(src) && !src.startsWith('/') ? resolveRelativeWorkspacePath(src, `${conversationImageRoot}/__chat__.md`) : null)
             if (!src) return <span className="text-muted-foreground">Image not found</span>
+            if (isVideoPath(src.split(/[?#]/)[0])) return <ChatVideo src={workspaceFilepath || src} alt={alt} workspace={!!workspaceFilepath} />
             return <ChatImage src={workspaceFilepath || src} alt={alt} workspace={!!workspaceFilepath} className={compactImages
               ? 'my-3 max-h-80 max-w-full rounded-lg object-contain'
               : 'my-3 max-h-[75vh] max-w-full rounded-lg object-contain'} />
