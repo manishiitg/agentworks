@@ -3,6 +3,7 @@
 package server
 
 import (
+	"log"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -25,6 +26,30 @@ type crewTeamTreeWatcher struct {
 
 	streamMu sync.Mutex // Flush and Stop never overlap
 	stopping bool
+
+	dropLogAt time.Time // only the event loop touches it
+}
+
+// logDrop names an event that made the watcher lose detail, at most every 10 s per folder.
+func (t *crewTeamTreeWatcher) logDrop(root, name string, flags fsevents.EventFlags) {
+	if time.Since(t.dropLogAt) < 10*time.Second {
+		return
+	}
+	t.dropLogAt = time.Now()
+	rel, err := filepath.Rel(root, name)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		rel = filepath.Base(name)
+	}
+	kind := "rescan_folder"
+	switch {
+	case flags&fsevents.RootChanged != 0:
+		kind = "root_changed"
+	case flags&fsevents.KernelDropped != 0:
+		kind = "kernel_dropped"
+	case flags&fsevents.UserDropped != 0:
+		kind = "user_dropped"
+	}
+	log.Printf("[TREE_WATCH] event=lost_detail kind=%s path=%q", kind, filepath.ToSlash(rel))
 }
 
 func newCrewTeamWatcher(root string, w crewTreeSink) (crewTeamWatcher, error) {
@@ -54,16 +79,29 @@ func newCrewTeamWatcher(root string, w crewTreeSink) (crewTeamWatcher, error) {
 				close(ack) // every batch before it has been noted
 			case batch := <-es.Events:
 				for _, ev := range batch {
-					if ev.Flags&(fsevents.MustScanSubDirs|fsevents.UserDropped|fsevents.KernelDropped|fsevents.RootChanged) != 0 {
-						w.overflow()
-						continue
-					}
 					name := ev.Path
 					if !strings.HasPrefix(name, "/") {
 						name = "/" + name
 					}
 					if real != root && (name == real || strings.HasPrefix(name, real+"/")) {
 						name = root + strings.TrimPrefix(name, real)
+					}
+					if ev.Flags&(fsevents.UserDropped|fsevents.KernelDropped|fsevents.RootChanged) != 0 {
+						t.logDrop(root, name, ev.Flags)
+						w.overflow()
+						continue
+					}
+					if ev.Flags&fsevents.MustScanSubDirs != 0 {
+						// macOS coalesced the changes below one folder: only that folder is unknown (#3878: treating
+						// it as a drop of everything made every checkout of a busy project read again every few
+						// minutes).
+						t.logDrop(root, name, ev.Flags)
+						if r, ok := w.(crewTreeRescanner); ok {
+							r.rescan(name)
+						} else {
+							w.overflow()
+						}
+						continue
 					}
 					w.note(name, ev.Flags&(fsevents.ItemCreated|fsevents.ItemRemoved|fsevents.ItemRenamed) != 0)
 				}

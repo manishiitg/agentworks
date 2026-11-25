@@ -239,6 +239,28 @@ func workspaceGitUnder(name, dir string) bool {
 	return name == dir || strings.HasPrefix(name, dir+string(filepath.Separator))
 }
 
+// rescan: everything below name may have changed. The checkouts at, below or around it are read again; a folder
+// that holds no checkout's files leaves the others alone.
+func (w *workspaceGitWatch) rescan(name string) {
+	name = filepath.Clean(name)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if rel, err := filepath.Rel(w.root, name); err == nil && strings.Count(filepath.ToSlash(rel), "/") < workspaceGitListDepth {
+		w.listChanges++ // a checkout may have been added or removed below it
+	}
+	marked := 0
+	for dir, c := range w.repos {
+		if workspaceGitUnder(dir, name) || workspaceGitChangeAffects(dir, c, name) ||
+			(c.common != "" && workspaceGitUnder(c.common, name)) || (c.gitDir != "" && workspaceGitUnder(c.gitDir, name)) {
+			c.changes++
+			marked++
+		}
+	}
+	if marked > 3 {
+		w.logWide("rescan", name, marked)
+	}
+}
+
 // overflow: the system dropped events, so every checkout is read again.
 func (w *workspaceGitWatch) overflow() {
 	w.mu.Lock()

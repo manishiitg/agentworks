@@ -104,6 +104,12 @@ type crewTreeSink interface {
 	overflow()
 }
 
+// crewTreeRescanner is a sink that can handle "everything below this folder may have changed" without starting
+// over: the Changes view's watch reads again only the checkouts at or below it.
+type crewTreeRescanner interface {
+	rescan(name string)
+}
+
 // crewTeamWatcher reports changes under one copy's folder to its crewTeamWatch (note, overflow). A tree watcher
 // covers the whole folder from the start and ignores Add/Remove; a per-folder watcher needs each folder added.
 type crewTeamWatcher interface {
