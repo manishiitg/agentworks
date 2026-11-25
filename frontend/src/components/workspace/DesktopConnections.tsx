@@ -164,16 +164,10 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   if (!directory) {
     const projectIds = new Set(rows.map(project => project.id))
     const activeProjectIds = new Set<string>()
-    let activeThreadCount = 0
-    let hasWaitingThread = false
     for (const session of activeSessions) {
       if (!session.crew_project_id || !projectIds.has(session.crew_project_id)) continue
-      const waiting = runtimeNeedsUserInput(session)
-      const running = !waiting && hasActiveSessionWork(session)
-      if (running || waiting) {
-        activeThreadCount += 1
+      if (runtimeNeedsUserInput(session) || hasActiveSessionWork(session)) {
         activeProjectIds.add(session.crew_project_id)
-        if (waiting) hasWaitingThread = true
       }
     }
     const threadProjects = [
@@ -186,7 +180,6 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
     const switchToThreads = rows.length > 0 && <button type="button" onClick={() => selectSidebarMode('threads')} aria-label="Switch to Threads view" className={switchButtonClass}>
       <ArrowLeftRight className="h-3 w-3 shrink-0" aria-hidden="true" />
       <span>Threads</span>
-      {activeThreadCount > 0 && <span className={`rounded-full px-1 text-[10px] font-semibold leading-4 ${hasWaitingThread ? 'bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))]' : 'bg-info/15 text-info'}`}>{activeThreadCount}</span>}
     </button>
     const switchToProjects = <button type="button" onClick={() => selectSidebarMode('projects')} aria-label="Switch to Projects view" className={switchButtonClass}>
       <ArrowLeftRight className="h-3 w-3 shrink-0" aria-hidden="true" />
