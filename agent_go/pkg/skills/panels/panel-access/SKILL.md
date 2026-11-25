@@ -14,6 +14,7 @@ metadata:
     - manage_slack_account
     - manage_laptop_access
     - manage_crew_sync
+    - crew_owners
     - list_secrets
     - set_workflow_secret
     - delete_workflow_secret

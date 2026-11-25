@@ -6962,6 +6962,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					sendError(fmt.Sprintf("Failed to register Team Sync: %v", err), true)
 					return
 				}
+				if err := api.registerCrewOwnersChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, chatWorkingFolder); err != nil {
+					sendError("Failed to register project owners tool", true)
+					return
+				}
 				if err := api.registerCrewSyncChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, sessionID, chatWorkingFolder); err != nil {
 					sendError(fmt.Sprintf("Failed to register project sync tool: %v", err), true)
 					return
