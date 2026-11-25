@@ -238,6 +238,11 @@ func TestCrewUploadIsReachableFromTheTurnAndTheChat(t *testing.T) {
 		if stripSessionMode(sent) != query || userMessageAttachments(sent)[0]["path"] != response.Filepath {
 			t.Fatalf("%s stored message changed: %s", crew.id, sent)
 		}
+		// An image sent with no text: the stored message is the notice, then the line alone. It showed as an empty bubble.
+		alone := "📁 Files in context: " + response.Filepath
+		if got := userMessageAttachments(withSessionMode(notice, alone)); len(got) != 1 || got[0]["path"] != response.Filepath || got[0]["kind"] != "image" {
+			t.Fatalf("%s image sent alone has no attachment: %v", crew.id, got)
+		}
 		if w := open(owner, response.Filepath); w.Code != http.StatusOK || w.Body.String() != "image" {
 			t.Fatalf("%s image route = %d %s", crew.id, w.Code, w.Body.String())
 		}
