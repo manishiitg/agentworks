@@ -90,7 +90,7 @@ func TestDashboardPublicLinkFrozenCopy(t *testing.T) {
 	}
 
 	// A Team member builds in this Crew, so this refusal is the main-owner rule itself, not missing access.
-	if w := direct("member"); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "Only this Crew's owner") {
+	if w := direct("member"); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "Only this project's owner") {
 		t.Fatalf("Team member: %d %s", w.Code, w.Body.String())
 	}
 	if w := change("member", "on"); w.Code == http.StatusOK {
