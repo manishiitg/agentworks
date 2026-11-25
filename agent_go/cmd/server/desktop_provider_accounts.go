@@ -140,6 +140,8 @@ type desktopServerAccount struct {
 	State       string `json:"state"`
 	MacLogin    string `json:"mac_login,omitempty"`
 	ServerLogin string `json:"server_login,omitempty"`
+	// ServerAccountID is the account on the server, so the Mac app can sign it in in its own window.
+	ServerAccountID string `json:"server_account_id,omitempty"`
 }
 
 // sameLogin compares two logins as the CLIs report them (an email, usually); unknown on either side is not a mismatch.
@@ -195,14 +197,14 @@ func (api *StreamingAPI) handleDesktopProviderAccountStatus(w http.ResponseWrite
 			accounts[id] = desktopServerAccount{State: "missing"}
 			continue
 		case match.Configured != nil && !*match.Configured:
-			accounts[id] = desktopServerAccount{State: "sign_in"}
+			accounts[id] = desktopServerAccount{State: "sign_in", ServerAccountID: match.ID}
 			continue
 		case account.AuthMethod != "cli_login":
 			// A copied key is the same key on both sides.
-			accounts[id] = desktopServerAccount{State: "ready"}
+			accounts[id] = desktopServerAccount{State: "ready", ServerAccountID: match.ID}
 			continue
 		}
-		result := desktopServerAccount{State: "ready"}
+		result := desktopServerAccount{State: "ready", ServerAccountID: match.ID}
 		if remote, err := remoteAccountLogin(r, c, match.ID); err == nil {
 			if remote.State == "signed_out" {
 				result.State = "sign_in"
