@@ -8,8 +8,8 @@ import (
 // Owner, 24 Nov: without a parent purpose the fork note had no closing bracket, so the chat showed it as the
 // person's own message.
 func TestForkFirstTurnNoteIsAlwaysBracketed(t *testing.T) {
-	for _, purpose := range []string{"", "Reviews tools"} {
-		note := forkFirstTurnNote("Parent", "Fork", purpose)
+	for i, purpose := range []string{"", "Reviews tools"} {
+		note := forkFirstTurnNote("Parent", "Fork", purpose, i == 0)
 		if !strings.HasPrefix(note, "[This chat is a fork.") || !strings.HasSuffix(note, "]") || strings.Count(note, "]") != 1 {
 			t.Fatalf("purpose %q: note is not one bracketed block: %q", purpose, note)
 		}

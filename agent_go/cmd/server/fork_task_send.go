@@ -74,13 +74,13 @@ func placeBesideMaker(ctx context.Context, userID string, project codeChatProjec
 
 // sendForkTask sends a new fork its first task (see sendStartTask); forkResult is the fork tool's JSON, returned with
 // what happened to the task added.
-func (api *StreamingAPI) sendForkTask(ctx context.Context, userID string, project codeChatProject, messages *agentSendHolder, task string, forkResult []byte) string {
+func (api *StreamingAPI) sendForkTask(ctx context.Context, userID string, project codeChatProject, messages *agentSendHolder, task string, own bool, forkResult []byte) string {
 	out := map[string]interface{}{}
 	if err := json.Unmarshal(forkResult, &out); err != nil {
 		return string(forkResult)
 	}
 	key, _ := out["conversation_key"].(string)
-	for field, value := range api.sendStartTask(ctx, userID, project, messages, key, task) {
+	for field, value := range api.sendStartTask(ctx, userID, project, messages, key, task, own) {
 		out[field] = value
 	}
 	raw, _ := json.Marshal(out)
@@ -90,7 +90,9 @@ func (api *StreamingAPI) sendForkTask(ctx context.Context, userID string, projec
 // sendStartTask sends a new fork or helper its first task as this chat's AgentBridge ask, so it starts working at once
 // and its answer comes back here (owner, 22 Nov: a new agent waited until the person typed). It returns the fields to
 // add to the tool result; a failed send keeps the new agent and says how to send the task by hand.
-func (api *StreamingAPI) sendStartTask(ctx context.Context, userID string, project codeChatProject, messages *agentSendHolder, key, task string) map[string]interface{} {
+// An agent made as its own (own) gets the task as a plain message that expects no reply, so no task thread ties it
+// to the maker (owner, 25 Nov: "many times i just want an independent agent to talk to").
+func (api *StreamingAPI) sendStartTask(ctx context.Context, userID string, project codeChatProject, messages *agentSendHolder, key, task string, own bool) map[string]interface{} {
 	out := map[string]interface{}{}
 	address := ""
 	if key != "" {
@@ -101,7 +103,17 @@ func (api *StreamingAPI) sendStartTask(ctx context.Context, userID string, proje
 		}
 	}
 	if address != "" && messages != nil && messages.send != nil {
-		receipt, err := messages.send(ctx, map[string]interface{}{"target": address, "message": task, "message_kind": "ask", "expects_reply": true})
+		send := map[string]interface{}{"target": address, "message": task, "message_kind": "ask", "expects_reply": true}
+		if own {
+			send = map[string]interface{}{"target": address, "message": task, "message_kind": "send", "expects_reply": false}
+		}
+		receipt, err := messages.send(ctx, send)
+		if err == nil && own {
+			out["task_sent"] = true
+			out["next"] = "It is working on the task as its own agent and does not report back to you. Tell the person it has started and where to find it."
+			log.Printf("[CHAT_FORK] %s: task sent to its own agent, no reply expected", key)
+			return out
+		}
 		if err == nil {
 			var sent map[string]interface{}
 			if json.Unmarshal([]byte(receipt), &sent) == nil {
@@ -251,4 +263,15 @@ func placeInGroupJSON(ctx context.Context, userID string, project codeChatProjec
 		return result
 	}
 	return raw
+}
+
+// setFirstTurnNote replaces a new fork's first-turn note (a helper's instead of its own agent's). A failure is
+// logged and the fork keeps its earlier note.
+func setFirstTurnNote(ctx context.Context, userID string, project codeChatProject, key, note string) {
+	if key == "" {
+		return
+	}
+	if _, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, userID, project.ProfileID, key, chatContextChange{ForkNote: &note}, userID); err != nil {
+		log.Printf("[CHAT_FORK] %s: could not set its first-turn note: %v", key, err)
+	}
 }

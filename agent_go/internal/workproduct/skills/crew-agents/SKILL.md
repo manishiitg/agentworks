@@ -74,17 +74,20 @@ There is no whole-project edit lock; coordinate overlapping file changes through
   saved conversation is used. Add `engine` (and optionally `model_id`) to run the
   fork on another coding app, e.g. `engine=cursor-cli`; it starts a new session
   of that app from the copied conversation. When you know what the fork should do, pass
-  it as `task`: the fork starts on it at once as your ask and answers in the returned
-  `task_inbox_id` thread. Never ask the person to open the fork and say go. Without
+  it as `task`: the fork starts on it at once; a helper (under) answers in the returned
+  `task_inbox_id` thread, an agent of its own (beside) does not. Never ask the person to open the fork and say go. Without
   `task` no turn starts.
 - Starting another agent: two choices. Context: `sessions action=fork` copies this
   conversation; `sessions action=open` starts fresh with only the task. Place:
   `place=under` (default) makes it your helper under you in the left menu;
-  `place=beside` makes it its own agent at your level (other work that stands on
-  its own; you cannot delete it later). Both take `task` and start at once.
+  `place=beside` makes it its own agent at your level: its task arrives as a plain
+  message, it works with the person and does not report back (you cannot delete it
+  later). Use beside whenever the person wants a separate agent or one to talk to.
+  Both take `task` and start at once.
   Your own group shows in `sessions action=list`; under and beside keep it. When
   the person names a group ("fork this into Design"), pass `group`: it joins that
-  group, or starts it, as its own agent under no one.
+  group, or starts it, as its own agent under no one (like beside, it does not
+  report back).
   - Other work that needs this context: fork with `place=beside` and `task`.
   - Several parallel agents: open each fresh with its own `name` and a complete
     `task`; they work at the same time and each answers in its own thread.
