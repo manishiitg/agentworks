@@ -65,15 +65,17 @@ it('lets a Crew owner browse automations without offering schedule mutations or 
       useAppStore.setState({ showSchedulesOverview: true })
       useGlobalPresetStore.setState({ workflowPresets: [], workflowPresetsLoaded: true })
     })
-    // On first paint there is no second loading gate between the header and
-    // the jobs request, even if the request itself is still pending.
+    // The page opens on Workflows; Schedules has no second loading gate
+    // between its tab and the jobs request, even while the request is pending.
     act(() => root.render(<SchedulesPage />))
+    expect(host.querySelector('[aria-label="Search workflows"]')).toBeTruthy()
+    await click('Schedules')
     expect(host.querySelector('[aria-label="Search schedules"]')).toBeTruthy()
     expect(schedulerApi.listJobs).toHaveBeenCalled()
     await act(async () => receiveJobs({ jobs: [job], total: 1, limit: 200, offset: 0 }))
-    expect(host.querySelector('header h1')?.textContent).toBe('Automations')
+    expect(host.querySelector('header h1')?.textContent).toBe('Workflows')
     expect(host.querySelector('header')?.textContent).not.toMatch(/Back|Crew/)
-    expect(host.querySelector('nav[aria-label="Automation types"]')?.textContent).not.toMatch(/More|Webhooks/)
+    expect(host.querySelector('nav[aria-label="Workflow pages"]')?.textContent).not.toMatch(/More|Webhooks/)
     expect(host.querySelector('[type="search"][aria-label="Search schedules"]')).toBeTruthy()
     expect(host.textContent).not.toMatch(/New schedule|Pause all/)
     expect(host.textContent).toContain('Example Crew')
@@ -91,7 +93,7 @@ it('lets a Crew owner browse automations without offering schedule mutations or 
     expect(useProductSurfaceStore.getState().pendingWorkView).toBe('conditions')
 
     await act(async () => useProductSurfaceStore.setState({ productSurface: 'agentworks' }))
-    expect(host.querySelector('nav[aria-label="Automation types"]')?.textContent).toContain('Webhooks')
+    expect(host.querySelector('nav[aria-label="Workflow pages"]')?.textContent).toContain('Webhooks')
   } finally {
     await act(async () => root.unmount())
     useProductSurfaceStore.setState(surface)
@@ -131,8 +133,7 @@ it('lists unscheduled workflows by their admitted Crew and opens the exact workf
       root.render(<SchedulesPage />)
     })
     await act(async () => { await vi.dynamicImportSettled() })
-    expect(workflowManifestApi.listWorkflowManifests).not.toHaveBeenCalled()
-    await click('Workflows')
+    // Workflows is the page's first tab.
     expect(host.textContent).toContain('Expense review')
     expect(host.textContent).toContain('Example Crew')
     expect(host.textContent).not.toMatch(/Unlisted work|Standalone workflow|Relay instead/)
