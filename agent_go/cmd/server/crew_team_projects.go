@@ -228,6 +228,8 @@ func crewTeamProjectChangeRefusal(t crewTeam, user, member, memberRoot, action s
 		return "Choose a project that lives on this server (one you made on the website or the server), not a Mac project or its online copy."
 	case !owns:
 		return "You can add only a project you own or co-own as an AI teammate. Ask its owner to make you a co-owner, or to add it."
+	case !t.hasProject(member) && !crewProjectAITeammate(member):
+		return "Turn on AI teammate on that project's Access page on the server first, then add it."
 	case !t.hasProject(member) && len(t.Projects) >= crewTeamMaxProjects:
 		return fmt.Sprintf("A Team has at most %d AI teammates. Remove one first.", crewTeamMaxProjects)
 	}

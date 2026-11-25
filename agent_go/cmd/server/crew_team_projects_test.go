@@ -26,13 +26,20 @@ func TestCrewTeamOnlineProjectAccess(t *testing.T) {
 	prev := defaultProjectOwnersOverride
 	defaultProjectOwnersOverride = registry
 	t.Cleanup(func() { defaultProjectOwnersOverride = prev })
-	for _, p := range []struct{ id, owner string }{{"mac", "owner"}, {"srv", "bob"}, {"own", "owner"}, {"other", "bob"}} {
-		if err := registry.Register(projectOwnerRecord{Product: "work", Folder: p.id + "-12345678", OwnerID: p.owner, Shared: true, ProjectID: p.id}); err != nil {
+	// Owner, 25 Nov: only a project whose AI teammate switch is on can be added ("off" has it off).
+	for _, p := range []struct {
+		id, owner string
+		ai        bool
+	}{{"mac", "owner", false}, {"srv", "bob", true}, {"own", "owner", true}, {"other", "bob", true}, {"off", "owner", false}} {
+		if err := registry.Register(projectOwnerRecord{Product: "work", Folder: p.id + "-12345678", OwnerID: p.owner, Shared: true, ProjectID: p.id, AITeammate: p.ai}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	macCrewOnlineCopy(t, "mac")
 	joinCrewTeam(t, "srv-12345678", "owner") // the Team's owner co-owns srv
+	if status, _, _, _ := setCrewProjectAITeammate("srv", "ann", false); status != http.StatusForbidden {
+		t.Fatalf("someone who neither owns nor co-owns the project changed its AI teammate switch: %d", status)
+	}
 	team := crewTeam{ProjectID: "mac", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}
 	root := func(p string) string { return crewProjectRootByID(p) }
 
@@ -46,6 +53,7 @@ func TestCrewTeamOnlineProjectAccess(t *testing.T) {
 		{"owner cannot add someone else's project", "owner", "other", "add", true, false},
 		{"owner cannot add a Mac project's online copy", "owner", "mac", "add", true, false},
 		{"not while the Team is off", "owner", "srv", "add", false, false},
+		{"not while the project's AI teammate switch is off", "owner", "off", "add", true, false},
 		{"the project's owner takes it out", "bob", "srv", "remove", true, true},
 		{"a stranger cannot take it out", "ann", "srv", "remove", true, false},
 	} {

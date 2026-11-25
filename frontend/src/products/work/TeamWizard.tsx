@@ -97,7 +97,7 @@ export function TeamWizard({ target, onNo, offset = 0 }: { target: TeamTarget; o
         {options.projects && <>
           <p className="pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">AI teammates · online 24/7 on the server</p>
           <p className="text-xs text-muted-foreground">Everyone in the Team can ask its Main and named agents, and they can make changes in it.</p>
-          {choices.length === 0 && <p className="text-xs text-muted-foreground">You have no projects on the server yet. You can add one as an AI teammate later.</p>}
+          {choices.length === 0 && <p className="text-xs text-muted-foreground">None yet. Turn on AI teammate on a project's Access page on the server to add it here.</p>}
           {choices.map(choice => <Option key={choice.project_id} kind="check" on={projects.includes(choice.project_id)} title={choice.name} line={choice.why || 'You own it'} disabled={!choice.available}
             onClick={() => setProjects(current => current.includes(choice.project_id) ? current.filter(id => id !== choice.project_id) : [...current, choice.project_id])} />)}
         </>}
