@@ -104,10 +104,12 @@ type crewTeamOverviewPerson struct {
 }
 
 type crewTeamOverview struct {
-	Period    string                   `json:"period"`
-	Label     string                   `json:"label"`
-	Now       []crewTeamOverviewNow    `json:"now"`
-	NowMore   int                      `json:"now_more,omitempty"`
+	Period  string                `json:"period"`
+	Label   string                `json:"label"`
+	Now     []crewTeamOverviewNow `json:"now"`
+	NowMore int                   `json:"now_more,omitempty"`
+	// Quiet: nobody is working and nothing was done in the period; the menu folds quiet Teams into one line.
+	Quiet     bool                     `json:"quiet,omitempty"`
 	Counts    crewTeamOverviewCounts   `json:"counts"`
 	Done      string                   `json:"done,omitempty"`
 	Last      *crewTeamOverviewItem    `json:"last,omitempty"`
@@ -145,7 +147,7 @@ func crewTeamOverviewOf(ctx context.Context, t crewTeam, live crewTeamLiveView, 
 	now := time.Now()
 	out := crewTeamOverview{Period: period, Label: label, Now: []crewTeamOverviewNow{}, People: []crewTeamOverviewPerson{}}
 	for _, row := range live.Agents {
-		out.Now = append(out.Now, crewTeamOverviewNow{Agent: row.Name, Person: row.Person, Title: row.Title})
+		out.Now = append(out.Now, crewTeamOverviewNow{Agent: row.Name, Person: crewTeamOverviewWho(row), Title: row.Title})
 	}
 	if v, ok := crewTeamOverviewCache.Load(key); ok && now.Sub(v.(crewTeamOverviewCached).at) < crewTeamOverviewFor {
 		cached := v.(crewTeamOverviewCached).out
@@ -252,7 +254,7 @@ func crewTeamOverviewOf(ctx context.Context, t crewTeam, live crewTeamLiveView, 
 func crewTeamOverviewFinish(out crewTeamOverview, live crewTeamLiveView, detail bool) crewTeamOverview {
 	working := map[string][]crewTeamOverviewNow{}
 	for _, row := range live.Agents {
-		working[row.OwnerID] = append(working[row.OwnerID], crewTeamOverviewNow{Agent: row.Name, Person: row.Person, Title: row.Title, Team: live.Name})
+		working[row.OwnerID] = append(working[row.OwnerID], crewTeamOverviewNow{Agent: row.Name, Person: crewTeamOverviewWho(row), Title: row.Title, Team: live.Name})
 	}
 	people := slices.Clone(out.People)
 	for i := range people {
@@ -266,7 +268,16 @@ func crewTeamOverviewFinish(out crewTeamOverview, live crewTeamLiveView, detail 
 		out.Now = out.Now[:2]
 	}
 	out.Done = crewTeamOverviewDoneLine(out.Counts)
+	out.Quiet = len(live.Agents) == 0 && out.Done == ""
 	return out
+}
+
+// The viewer's own agents are "You", whichever Mac they run on; the device name belongs on the agent rows, not here.
+func crewTeamOverviewWho(row crewTeamLiveAgent) string {
+	if row.You {
+		return "You"
+	}
+	return row.Person
 }
 
 func crewTeamPeopleIDs(t crewTeam) []string {
@@ -385,7 +396,7 @@ func crewTeamOverviewChats(ctx context.Context, t crewTeam, live crewTeamLiveVie
 			}
 			row := keys[s.key]
 			found[s.key] = true
-			chat := crewTeamOverviewChat{Agent: row.Name, Person: row.Person, Messages: s.MessageCount, At: at, ownerID: owner, session: s.SessionID}
+			chat := crewTeamOverviewChat{Agent: row.Name, Person: crewTeamOverviewWho(row), Messages: s.MessageCount, At: at, ownerID: owner, session: s.SessionID}
 			// The title follows the agent's Live rule, the same as its preview: a hidden agent's chat is only counted.
 			if crewTeamOverviewTitleShared(t, row) {
 				chat.Title = crewTeamMessageLine(s.Title)
@@ -400,7 +411,7 @@ func crewTeamOverviewChats(ctx context.Context, t crewTeam, live crewTeamLiveVie
 			if err != nil || at.Before(since) {
 				continue
 			}
-			out = append(out, crewTeamOverviewChat{Title: row.Title, Agent: row.Name, Person: row.Person, At: at, ownerID: owner})
+			out = append(out, crewTeamOverviewChat{Title: row.Title, Agent: row.Name, Person: crewTeamOverviewWho(row), At: at, ownerID: owner})
 		}
 	}
 	slices.SortFunc(out, func(a, b crewTeamOverviewChat) int { return b.At.Compare(a.At) })

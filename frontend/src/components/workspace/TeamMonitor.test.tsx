@@ -56,9 +56,9 @@ it('groups server-admitted working agents by Team, pins personal needs, and expa
 })
 
 // #2938: all admitted Teams come from the monitor inventory, not own-project
-// navigation. Quiet Teams stay discoverable but do not repeat zero-working text.
-it('shows all Teams beyond three even without sidebar metadata and keeps quiet rows quiet',async()=>{
- const teams=Array.from({length:6},(_,i)=>({work:{working:0,last_worked_at:`2026-11-17T0${i}:00:00Z`,last_worked_label:`last worked ${6-i}h ago`},project_id:`team-${i}`,name:`Team ${i}`,people:[],agents:[],idle:[],needs:[]}))
+// navigation. #3900: Teams the server marks quiet fold into one line that still names them.
+it('lists active Teams and folds the quiet ones into one line',async()=>{
+ const teams=Array.from({length:6},(_,i)=>({work:{working:0,last_worked_at:`2026-11-17T0${i}:00:00Z`,last_worked_label:`last worked ${6-i}h ago`},overview:i<3?{period:'day',label:'last 24 hours',now:[],counts:{chats:1,files:0,commits:0,decisions:0,tokens:0},done:'1 chat',people:[]}:{period:'day',label:'last 24 hours',now:[],counts:{chats:0,files:0,commits:0,decisions:0,tokens:0},quiet:true,people:[]},project_id:`team-${i}`,name:`Team ${i}`,people:[],agents:[],idle:[],needs:[]}))
  f.list.mockResolvedValue({data:{notice:'2 servers unreachable',connections:[{connection:'saved-a',network:'Example North',network_id:'https://north.example.com',teams:teams.slice(0,3)},{connection:'saved-b',network:'Example South',network_id:'https://south.example.com',teams:teams.slice(3)},{connection:'offline-a',teams:[],error:'Teams could not be loaded. Try again.'},{connection:'offline-b',teams:[],error:'Teams could not be loaded. Try again.'}]}})
  const host=document.createElement('div'),root=createRoot(host);document.body.append(host)
  try{
@@ -67,15 +67,15 @@ it('shows all Teams beyond three even without sidebar metadata and keeps quiet r
   await act(async()=>host.querySelector('button')!.click())
   const section=()=>document.querySelector('[aria-label="Your Teams"]')!
   const rows=()=>[...section().querySelectorAll<HTMLButtonElement>('button:not([role="radio"])')].filter(b=>!b.textContent?.includes('Open overview'))
-  expect(rows()).toHaveLength(4) // three Teams and More
+  expect(rows()).toHaveLength(4) // three active Teams and the quiet line
   expect(section().textContent).not.toContain('working')
   expect(document.querySelector('[aria-label="Team monitor"] [role="alert"]')).toBeNull()
   expect(document.querySelector('[aria-label="Team monitor"] [role="status"]')?.textContent).toBe('2 servers unreachable')
-  expect(section().textContent).toContain('Example South')
-  expect(rows()[0].textContent).toBe('Team 5')
-  expect(section().textContent).toContain('last worked 1h ago')
-  expect(section().textContent).toContain('+ 3 more Teams')
-  await act(async()=>[...section().querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.includes('more Teams'))!.click())
-  expect(rows()).toHaveLength(6)
+  expect(section().textContent).toContain('Example North')
+  expect(rows()[0].textContent).toBe('Team 2')
+  expect(section().textContent).toContain('last worked 4h ago')
+  expect(section().textContent).toContain('3 quiet Teams: Team 5, Team 4, Team 3')
+  await act(async()=>[...section().querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.includes('quiet Teams'))!.click())
+  expect(rows()).toHaveLength(7)
  }finally{await act(async()=>root.unmount());host.remove()}
 })

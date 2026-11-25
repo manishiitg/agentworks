@@ -10,7 +10,7 @@ export type TeamOverviewNow = { agent: string; person: string; title?: string; t
 export type TeamOverviewItem = { kind: string; person: string; line: string; at: string }
 export type TeamOverviewPerson = { user_id: string; person: string; network?: string; working: number; now: TeamOverviewNow[]; teams: string[]; counts: TeamOverviewCounts; done?: string; last?: TeamOverviewItem | null }
 export type TeamOverview = {
-  period: 'day' | 'week'; label: string; now: TeamOverviewNow[]; now_more?: number; counts: TeamOverviewCounts; done?: string; last?: TeamOverviewItem | null
+  period: 'day' | 'week'; label: string; now: TeamOverviewNow[]; now_more?: number; quiet?: boolean; counts: TeamOverviewCounts; done?: string; last?: TeamOverviewItem | null
   chats?: { title?: string; agent: string; person: string; messages?: number; at: string }[]
   files?: { person: string; folder: string; line: string; files: number; saves: number; paths?: { path: string; saves: number }[]; at: string }[]
   commits?: { title: string; author: string; repo?: string; at: string }[]
@@ -20,7 +20,7 @@ export type TeamOverview = {
 }
 
 export const tokensLabel = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M` : n >= 1_000 ? `${Math.floor(n / 1_000)}K` : String(n)
-export const nowLine = (n: TeamOverviewNow, withPerson = true) => `${n.agent}${withPerson ? ` (${n.person})` : ''}${n.team ? ` · ${n.team}` : ''}${n.title ? ` · “${n.title}”` : ''}`
+export const nowLine = (n: TeamOverviewNow, withPerson = true) => `${n.agent}${withPerson && n.person !== 'You' ? ` (${n.person})` : ''}${n.team ? ` · ${n.team}` : ''}${n.title ? ` · “${n.title}”` : ''}`
 
 const box = 'rounded-lg border border-border p-3'
 const head = 'mb-1 flex items-baseline justify-between text-xs font-semibold'
