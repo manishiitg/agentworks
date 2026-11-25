@@ -7295,6 +7295,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			}
 			if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
 				promptCtx.WorkFolders = crewTeamFilesLine(GetUserFromContext(r.Context())) + workproduct.BuildAttachedFoldersPrompt(turnFolderGrants) + "\n" + turnFolderNotice
+				promptCtx.ConnectedTools = api.buildConnectedToolsPrompt(r.Context(), resolvedProfile.Definition.ID, GetUserFromContext(r.Context()), req.SelectedFolder, crewAskOnly, crewReaderCLI)
 			}
 			// The full browser guide is a ~10KB on-demand skill; this is only a
 			// pointer so the agent knows the surface exists.
