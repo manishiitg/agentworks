@@ -41,7 +41,7 @@ func TestRewindHistoryCutCountsFromNewest(t *testing.T) {
 	}
 }
 
-func TestChatRewindCanCutOnlyClaudeAndCodex(t *testing.T) {
+func TestChatRewindCanCutClaudeCodexAndAgy(t *testing.T) {
 	if chatRewindCanCut(nil) || chatRewindCanCut(&ChatHistoryAgentRuntime{}) {
 		t.Fatal("no native session cannot be cut")
 	}
@@ -50,7 +50,7 @@ func TestChatRewindCanCutOnlyClaudeAndCodex(t *testing.T) {
 		r.AgentSessionHandle = &mcpagent.AgentSessionHandle{Provider: llmtypes.CodingProviderSessionHandle{Provider: provider, NativeSessionID: "11111111-1111-4111-8111-111111111111"}}
 		return r
 	}
-	for provider, want := range map[string]bool{"claude-code": true, "codex-cli": true, "cursor-cli": false, "agy-cli": false} {
+	for provider, want := range map[string]bool{"claude-code": true, "codex-cli": true, "cursor-cli": false, "agy-cli": true} {
 		if got := chatRewindCanCut(runtime(provider)); got != want {
 			t.Fatalf("%s: got %t want %t", provider, got, want)
 		}

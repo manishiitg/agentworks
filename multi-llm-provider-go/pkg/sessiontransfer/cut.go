@@ -3,6 +3,7 @@ package sessiontransfer
 import (
 	"bufio"
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,7 +14,7 @@ import (
 // ErrCutNotFound means the conversation has no prompt matching the cut.
 var ErrCutNotFound = fmt.Errorf("the message was not found in the native conversation")
 
-// CutBefore shortens an exported (staged) Claude Code or Codex conversation so
+// CutBefore shortens an exported (staged) Claude Code, Codex or agy conversation so
 // it ends just before the person's prompt that contains text, counting
 // matches from the newest (fromEnd 1 = the latest such prompt). Counting from
 // the end works when the native session began after the chat's first turns. Edit and resend (#3134) then
@@ -23,6 +24,9 @@ func CutBefore(b *Bundle, text string, fromEnd int) (int, error) {
 	text = strings.TrimSpace(text)
 	if b == nil || text == "" || fromEnd < 1 {
 		return 0, fmt.Errorf("choose a message to go back to")
+	}
+	if b.Format == agyFormat {
+		return cutAgy(b, text, fromEnd)
 	}
 	if b.Format != "claude-jsonl" && b.Format != "codex-rollout" {
 		return 0, fmt.Errorf("this native format cannot be cut")
@@ -215,4 +219,64 @@ func codexCutMatches(lines [][]byte, text string) []cutMatch {
 		matches = append(matches, cutMatch{turnStart, turns})
 	}
 	return matches
+}
+
+// agyUserStep is agy's step type for a prompt the person (or the chat) sent.
+const agyUserStep = 14
+
+// cutAgy drops, in the staged copy of an agy conversation, the prompt that
+// contains text and every step after it. agy stores a prompt's text verbatim in
+// its step, so the match is on those bytes; the app may have wrapped the
+// person's text with its own context.
+func cutAgy(b *Bundle, text string, fromEnd int) (int, error) {
+	if _, ok := b.Files[agyRoot]; !ok {
+		return 0, fmt.Errorf("the native conversation is missing")
+	}
+	path, err := Path(b.Root, agyRoot, false)
+	if err != nil {
+		return 0, err
+	}
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	rows, err := db.Query("SELECT idx, step_payload FROM steps WHERE step_type = ? ORDER BY idx", agyUserStep)
+	if err != nil {
+		return 0, err
+	}
+	type prompt struct{ idx, before int }
+	var matches []prompt
+	prompts := 0
+	for rows.Next() {
+		var idx int
+		var payload []byte
+		if err := rows.Scan(&idx, &payload); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if bytes.Contains(payload, []byte(text)) {
+			matches = append(matches, prompt{idx, prompts})
+		}
+		prompts++
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if fromEnd > len(matches) {
+		return 0, ErrCutNotFound
+	}
+	chosen := matches[len(matches)-fromEnd]
+	if _, err := db.Exec("DELETE FROM steps WHERE idx >= ?", chosen.idx); err != nil {
+		return 0, err
+	}
+	db.Close()
+	info, err := Inspect(path)
+	if err != nil {
+		return 0, err
+	}
+	b.Files[agyRoot] = info
+	return chosen.before, nil
 }

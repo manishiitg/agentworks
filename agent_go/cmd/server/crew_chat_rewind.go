@@ -227,7 +227,7 @@ func chatRewindCanCut(runtime *ChatHistoryAgentRuntime) bool {
 		return false
 	}
 	handle := runtime.AgentSessionHandle.Provider
-	return handle.NativeSessionID != "" && (handle.Provider == "claude-code" || handle.Provider == "codex-cli")
+	return handle.NativeSessionID != "" && (handle.Provider == "claude-code" || handle.Provider == "codex-cli" || handle.Provider == "agy-cli")
 }
 
 // rewindNativeRuntime returns the runtime the chat continues with: a cut copy
