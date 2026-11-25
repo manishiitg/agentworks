@@ -17,6 +17,8 @@ import (
 )
 
 type crewTeamMessagePreview struct {
+	// Title is the chat's own title (the sidebar name), shown under the same Live rule as the preview.
+	Title         string `json:"title,omitempty"`
 	Typing        bool   `json:"typing,omitempty"`
 	LastMessage   string `json:"last_message,omitempty"`
 	LastMessageAt string `json:"last_message_at,omitempty"`
@@ -112,7 +114,7 @@ func crewTeamMessagePreviewsFor(ctx context.Context, owner, project string, incl
 			if session.SessionID != record.SessionID {
 				continue
 			}
-			preview := crewTeamMessagePreview{LastMessage: crewTeamMessageLine(session.LastMessage), LastMessageAt: session.LastMessageAt}
+			preview := crewTeamMessagePreview{Title: crewTeamMessageLine(firstNonEmptyTrimmed(session.Title, record.Title)), LastMessage: crewTeamMessageLine(session.LastMessage), LastMessageAt: session.LastMessageAt}
 			if old, found := out[record.ConversationKey]; !found || crewTeamMessageTimeAfter(preview.LastMessageAt, old.LastMessageAt) {
 				out[record.ConversationKey] = preview
 			}
@@ -122,6 +124,7 @@ func crewTeamMessagePreviewsFor(ctx context.Context, owner, project string, incl
 			last, _ := api.eventStore.GetLatestEventIndex(record.SessionID)
 			current := crewTeamStreamingPreview(api.eventStore.GetEvents(record.SessionID, storeEvents.GetEventsOptions{SinceIndex: max(-1, last-200), IncludeStreaming: true}).Events)
 			if crewTeamMessageTimeAfter(current.LastMessageAt, out[record.ConversationKey].LastMessageAt) {
+				current.Title = firstNonEmptyTrimmed(out[record.ConversationKey].Title, record.Title)
 				out[record.ConversationKey] = current
 			}
 		}

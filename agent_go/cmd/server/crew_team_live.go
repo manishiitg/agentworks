@@ -56,6 +56,7 @@ type crewTeamLivePerson struct {
 type crewTeamLiveView struct {
 	lastWorkedAt time.Time
 	Work         *crewTeamMonitorWork `json:"work,omitempty"`
+	Overview     *crewTeamOverview    `json:"overview,omitempty"`
 	ProjectID    string               `json:"project_id"`
 	Connection   string               `json:"connection,omitempty"`
 	Name         string               `json:"name"`
