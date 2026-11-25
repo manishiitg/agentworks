@@ -184,7 +184,7 @@ func changeCrewTeamProject(team, user, action, member string) (crewTeam, int, st
 			return crewTeam{}, 409, "project_has_team_paths", crewTeamTakenLine(crewTeamProjectName(member), taken)
 		}
 	}
-	mu.Lock()
+	// writeCrewTeam takes the Team record lock itself; holding it here waited forever (the first real add hung).
 	t, err = readCrewTeam(team)
 	if err == nil {
 		switch {
@@ -196,7 +196,6 @@ func changeCrewTeamProject(team, user, action, member string) (crewTeam, int, st
 		t.Revision++
 		err = writeCrewTeam(t)
 	}
-	mu.Unlock()
 	if err != nil {
 		return crewTeam{}, 500, "team_save_failed", "The Team could not be saved now. Try again in a minute."
 	}

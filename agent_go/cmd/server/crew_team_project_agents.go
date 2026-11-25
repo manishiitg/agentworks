@@ -253,7 +253,7 @@ func (api *StreamingAPI) setCrewTeamProjectAgentLevel(w http.ResponseWriter, r *
 		externalError(w, 404, "agent_unknown", "No agent by that name in the project. Use Main or one of its named agents.")
 		return
 	}
-	mu.Lock()
+	// writeCrewTeam takes the Team record lock itself, so it is not held around it here.
 	t, err = readCrewTeam(team)
 	if err == nil {
 		for i := range t.Projects {
@@ -268,7 +268,6 @@ func (api *StreamingAPI) setCrewTeamProjectAgentLevel(w http.ResponseWriter, r *
 		t.Revision++
 		err = writeCrewTeam(t)
 	}
-	mu.Unlock()
 	if err != nil {
 		externalError(w, 500, "team_save_failed", "The Team could not be saved now. Try again in a minute.")
 		return
