@@ -273,22 +273,15 @@ func (s Store) turnRepos(ctx context.Context, dirs []string, stats *CaptureStats
 		}
 		results[i].root = filepath.ToSlash(rel)
 	}
-	if s.Watch != nil {
-		s.Watch.Settle()
-	}
+	plans, reusedRepos := s.planRepos(dirs)
 	var reused atomic.Int64
 	_ = parallel(len(dirs), func(i int) error {
 		started := time.Now()
-		var token uint64
-		watched := false
-		if s.Watch != nil {
-			if token, watched = s.Watch.Token(dirs[i]); watched {
-				if repo, ok := s.reusedRepo(dirs[i], token); ok {
-					results[i].repo = repo
-					reused.Add(1)
-					return nil
-				}
-			}
+		token, watched := plans[i].token, plans[i].watched
+		if plans[i].reuse {
+			results[i].repo = reusedRepos[i]
+			reused.Add(1)
+			return nil
 		}
 		repoCtx, stop := context.WithTimeout(discovery, 10*time.Second)
 		defer stop()
@@ -305,7 +298,7 @@ func (s Store) turnRepos(ctx context.Context, dirs []string, stats *CaptureStats
 			}
 			s.rememberRepo(dirs[i], token, results[i].repo)
 		}
-		log.Printf("[FILE_SNAPSHOT] phase=checkout_discovery dir=%q elapsed_ms=%d success=%t shared=%t", results[i].root, time.Since(started).Milliseconds(), results[i].err == nil, shared)
+		log.Printf("[FILE_SNAPSHOT] phase=checkout_discovery dir=%q reason=%s elapsed_ms=%d success=%t shared=%t", results[i].root, plans[i].reason, time.Since(started).Milliseconds(), results[i].err == nil, shared)
 		return nil
 	})
 	stats.ReposReused = int(reused.Load())

@@ -3,6 +3,7 @@ package filesnapshots
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -26,7 +27,12 @@ type RepoWatch interface {
 }
 
 // A checkout unchanged this long is read again anyway, so a missed event heals.
-const repoReuseFor = 3 * time.Minute
+// Only the oldest few are redone per capture: checkouts first read together
+// would otherwise all be redone by one reply (#3878 proof run).
+const (
+	repoReuseFor       = 3 * time.Minute
+	repoRedoPerCapture = 2
+)
 
 type repoReads struct {
 	mu    sync.Mutex
@@ -39,17 +45,22 @@ type repoRead struct {
 	at    time.Time
 }
 
-func (s Store) reusedRepo(dir string, token uint64) (gitTurnRepo, bool) {
+// reusedRepo is dir's last read while the watcher saw no change in it since;
+// at is when that read happened.
+func (s Store) reusedRepo(dir string, token uint64) (repo gitTurnRepo, at time.Time, ok bool) {
 	c := &s.state().repos
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	r, ok := c.reads[dir]
-	if !ok || r.token != token || time.Since(r.at) > repoReuseFor {
-		return gitTurnRepo{}, false
+	if !ok {
+		return gitTurnRepo{}, time.Time{}, false
 	}
-	repo := r.repo
+	if r.token != token {
+		return gitTurnRepo{}, r.at, false
+	}
+	repo = r.repo
 	repo.Dirty = append([]string(nil), r.repo.Dirty...)
-	return repo, true
+	return repo, r.at, true
 }
 
 func (s Store) rememberRepo(dir string, token uint64, repo gitTurnRepo) {
@@ -75,4 +86,58 @@ func commonGitDir(gitDir string) string {
 		common = filepath.Join(gitDir, common)
 	}
 	return filepath.Clean(common)
+}
+
+// repoPlan is what one capture does with each checkout: reuse its last read,
+// or read it and say why.
+type repoPlan struct {
+	token   uint64
+	watched bool
+	reuse   bool
+	reason  string // new, changed, expired or unwatched
+}
+
+// planRepos decides which checkouts this capture reads (repo_watch.go).
+func (s Store) planRepos(dirs []string) ([]repoPlan, []gitTurnRepo) {
+	plans, reused := make([]repoPlan, len(dirs)), make([]gitTurnRepo, len(dirs))
+	if s.Watch == nil {
+		for i := range plans {
+			plans[i].reason = "unwatched"
+		}
+		return plans, reused
+	}
+	s.Watch.Settle()
+	type aged struct {
+		i  int
+		at time.Time
+	}
+	var expired []aged
+	for i, dir := range dirs {
+		token, ok := s.Watch.Token(dir)
+		if !ok {
+			plans[i].reason = "unwatched"
+			continue
+		}
+		plans[i].token, plans[i].watched = token, true
+		repo, at, hit := s.reusedRepo(dir, token)
+		switch {
+		case hit:
+			plans[i].reuse, reused[i] = true, repo
+			if time.Since(at) > repoReuseFor {
+				expired = append(expired, aged{i, at})
+			}
+		case at.IsZero():
+			plans[i].reason = "new"
+		default:
+			plans[i].reason = "changed"
+		}
+	}
+	sort.Slice(expired, func(a, b int) bool { return expired[a].at.Before(expired[b].at) })
+	for n, e := range expired {
+		if n == repoRedoPerCapture {
+			break
+		}
+		plans[e.i].reuse, plans[e.i].reason = false, "expired"
+	}
+	return plans, reused
 }
