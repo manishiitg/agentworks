@@ -73,6 +73,20 @@ async function startSignIn(server: DesktopConnection, provider: string, accountI
   }
 }
 
+/** Signs one of your accounts on a server in, in a window inside the app (the website is not needed). */
+export function ServerSignIn({ server, provider, accountId, onDone }: { server: DesktopConnection; provider: string; accountId: string; onDone: () => void }) {
+  const [session, setSession] = useState<ProviderSetupSession | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    startSignIn(server, provider, accountId).then(next => { if (!cancelled) setSession(next) })
+      .catch(() => { if (!cancelled) setError(`Could not start the sign-in on ${server.name}. Try again.`) })
+    return () => { cancelled = true }
+  }, [server, provider, accountId])
+  if (error) return <p role="alert" className="mt-2 w-full text-xs text-destructive">{error}</p>
+  return session ? <SignInWindow server={server} session={session} onDone={onDone} /> : <p className="mt-2 w-full text-xs text-muted-foreground">Starting the sign-in on {server.name}…</p>
+}
+
 /** The Add account form when "Where" is a server. */
 export function AddOnServerForm({ server, provider, providerLabel, macCopy, onSaved, onCancel }: {
   server: DesktopConnection

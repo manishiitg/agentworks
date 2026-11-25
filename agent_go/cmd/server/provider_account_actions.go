@@ -288,6 +288,21 @@ func checkProviderAccountStatus(ctx context.Context, target providerAccountTarge
 			status.State = "signed_out"
 			status.Detail = "Sign in again to use Cursor."
 		}
+	case "agy-cli":
+		// agy has no status command; listing models needs a working login and starts no model turn.
+		output, err := runProviderAccountCommand(ctx, target, providerSetupCommand{command: "agy", args: []string{"models"}}, providerStatusTimeout)
+		lower := strings.ToLower(output)
+		switch {
+		case len(parseAgyModelList(output)) > 0:
+			status.State, status.Identity = "signed_in", "Google sign-in"
+			if envValue(target.Env, "GEMINI_API_KEY") != "" {
+				status.Identity = "Gemini key"
+			}
+		case strings.Contains(lower, "not logged") || strings.Contains(lower, "sign in") || strings.Contains(lower, "log in"):
+			status.State, status.Detail = "signed_out", "Sign in again to use Antigravity."
+		default:
+			status.Detail = statusError(err, output)
+		}
 	case "muse-cli":
 		status.State, status.Identity = museAccountStatus(target)
 	case "pi-cli":
