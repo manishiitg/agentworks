@@ -6,14 +6,18 @@ import { summarizePlan } from '../../utils/planSummary'
 
 // Plan mode in the message box (#3711, approved mockup): no button while Plan is off. Shift+Tab, /plan or
 // "Plan first" in the chat menu turn it on; while on, a small tag beside the model turns it off again.
-export function PlanModeTag({ onToggle, onStart }: { onToggle: () => void; onStart?: () => void }) {
-  // Quiet, like the model name beside it (owner: the filled pink tag read as an error).
-  const base = 'group inline-flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-muted-foreground'
-  if (onStart) {
+/**
+ * The chat's mode beside the model, like Claude Code's status line: "Auto" (works without stopping to ask; it can
+ * only reach the folders this chat was given) or "Plan" (plans first, changes nothing until you approve). Click or
+ * Shift+Tab switches. When a plan reply waits, it reads "Plan ready · Start" (#3711).
+ */
+export function PlanModeTag({ on, onToggle, onStart }: { on: boolean; onToggle: () => void; onStart?: () => void }) {
+  const base = 'inline-flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-muted-foreground'
+  if (on && onStart) {
     // Codex and Cursor answer a plan as a reply, so the tag offers the one step that starts the work and turns
     // Plan off. A Claude turn that ended without its plan card gets it too. Typing still sends changes.
     return (
-      <span className={base} data-testid="plan-mode-chip" title="The plan is ready. Start runs it and turns Plan first off; or type changes.">
+      <span className={base} data-testid="plan-mode-chip" title="The plan is ready. Start runs it and switches back to Auto; or type changes.">
         <ListChecks className="h-3 w-3" aria-hidden="true" />
         Plan ready ·
         <button type="button" onClick={onStart} data-testid="plan-start-button"
@@ -24,12 +28,12 @@ export function PlanModeTag({ onToggle, onStart }: { onToggle: () => void; onSta
     )
   }
   return (
-    <button type="button" onClick={onToggle} aria-pressed="true" data-testid="plan-mode-chip"
-      title="Plan first is on: the agent proposes a plan and changes nothing until you approve. Click or press Shift+Tab to turn it off."
+    <button type="button" onClick={onToggle} aria-pressed={on} data-testid="plan-mode-chip"
+      title={on ? 'Plan: the agent proposes a plan and changes nothing until you approve. Click or press Shift+Tab for Auto.'
+        : 'Auto: the agent works without stopping to ask; it can only reach the folders this chat was given. Click or press Shift+Tab to plan first.'}
       className={`${base} hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>
-      <ListChecks className="h-3 w-3" aria-hidden="true" />
-      Plan first
-      <X className="hidden h-2.5 w-2.5 group-hover:inline" aria-hidden="true" />
+      {on && <ListChecks className="h-3 w-3" aria-hidden="true" />}
+      {on ? 'Plan' : 'Auto'}
     </button>
   )
 }
