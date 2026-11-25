@@ -673,11 +673,12 @@ function workProjectChatSeed(session: WorkSession, profileId: string) {
   }
 }
 
-export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allowSideChats, onOpenIdentity, projectSession, createRequest = 0, importRequest = 0, onImportAvailabilityChange, header }: {
+export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId, allowSideChats, onOpenIdentity, projectSession, createRequest = 0, importRequest = 0, projectActionReady = true, onImportAvailabilityChange, header }: {
   projectSession: WorkSession
   header?: React.ReactNode
   createRequest?: number
   importRequest?: number
+  projectActionReady?: boolean
   onImportAvailabilityChange?: (projectId: string) => void
   projectId: string
   projectName: string
@@ -694,19 +695,19 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   const [importLocalChat, setImportLocalChat] = useState(false)
   const [discoverSkills, setDiscoverSkills] = useState(false)
   useEffect(() => { if (importRequest) setImportLocalChat(true) }, [importRequest])
-  const [localImportProject, setLocalImportProject] = useState('')
+  const [localImportProject, setLocalImportProject] = useState<string | null>(null)
   useEffect(() => {
     const abort = new AbortController()
-    setLocalImportProject('')
     if (allowSideChats && profileId === 'work') {
+      setLocalImportProject(null)
       void api.get('/api/agent-profiles/work/local-project', { params: { project_id: projectId, availability: true }, signal: abort.signal })
-        .then(({ data }) => { if (!abort.signal.aborted && data.can_import_local_chats) setLocalImportProject(projectId) })
-        .catch(() => {})
-    }
+        .then(({ data }) => { if (!abort.signal.aborted) setLocalImportProject(data.can_import_local_chats ? projectId : '') })
+        .catch(() => { if (!abort.signal.aborted) setLocalImportProject('') })
+    } else setLocalImportProject('')
     return () => abort.abort()
   }, [allowSideChats, profileId, projectId])
   useEffect(() => {
-    onImportAvailabilityChange?.(localImportProject)
+    onImportAvailabilityChange?.(localImportProject || '')
     return () => onImportAvailabilityChange?.('')
   }, [localImportProject, onImportAvailabilityChange])
   const [opening, setOpening] = useState(false)
@@ -1011,7 +1012,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   }
   return <><AgentRemovalDialog projectId={projectId} />{header || <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} mainPurpose={mainPurpose} createRequest={createRequest} projectId={projectId}
     allowSideChats={allowSideChats} opening={opening} surface="work" onOpenIdentity={onOpenIdentity}
-    onImportLocalChat={localImportProject === projectId ? () => setImportLocalChat(true) : undefined} projectActivity={projectActivity}
+    onImportLocalChat={localImportProject === projectId ? () => setImportLocalChat(true) : undefined} checkingLocalImport={localImportProject === null} projectActionReady={projectActionReady} projectActivity={projectActivity}
     onDiscoverSkills={allowSideChats ? () => setDiscoverSkills(true) : undefined}
     onSelectTab={selectTab} onCloseTab={closeProjectTab} onRename={renameSideChat} onOpen={openSideChat}
     onReopen={async chat => {
@@ -1815,7 +1816,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               laptopPreview={workspaceView === 'dashboard' && reportPreviewPreference === 'desktop'}
               mobilePreview={workspaceView === 'dashboard' && reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={openChatPane} onOpenWorkspace={() => setPanelOpen(true)}
-              tabs={isShared && terminalConversation ? <TerminalConversationHeader selection={terminalConversation} close={closeTerminalConversation} /> : !isShared && selected ? <WorkChatTabs key={selected.id} projectSession={selected} header={terminalConversation ? <TerminalConversationHeader selection={terminalConversation} close={closeTerminalConversation} /> : undefined} createRequest={createAgentRequest} importRequest={importAgentRequest} onImportAvailabilityChange={setImportAvailableProject} projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId || ''} profileId={product.profileId} allowSideChats onOpenIdentity={!chatOnly ? () => { setWorkspaceViewTarget('identity', 'general'); selectWorkspaceView('identity') } : undefined} /> : <div className="min-w-0 flex-1" />}
+              tabs={isShared && terminalConversation ? <TerminalConversationHeader selection={terminalConversation} close={closeTerminalConversation} /> : !isShared && selected ? <WorkChatTabs key={selected.id} projectSession={selected} header={terminalConversation ? <TerminalConversationHeader selection={terminalConversation} close={closeTerminalConversation} /> : undefined} createRequest={createAgentRequest} importRequest={importAgentRequest} projectActionReady={projectReady} onImportAvailabilityChange={setImportAvailableProject} projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId || ''} profileId={product.profileId} allowSideChats onOpenIdentity={!chatOnly ? () => { setWorkspaceViewTarget('identity', 'general'); selectWorkspaceView('identity') } : undefined} /> : <div className="min-w-0 flex-1" />}
               toolbar={<><WorkWorkspaceToolbar tabId={tabId ?? undefined} onOpenChat={openChatPane} projectId={selected.id} sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} /></>}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}

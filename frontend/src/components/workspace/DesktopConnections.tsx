@@ -1,3 +1,5 @@
+import { requestSidebarProjectAction, type SidebarProjectAction } from '../../products/work/sidebarProjectActions'
+import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 import { useTerminalConversationSelection } from '../../products/work/terminalConversationSelection'
 import { revealSidebarTarget, sidebarProjectShortcuts } from '../../utils/sidebarProjectOrder'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
@@ -70,6 +72,7 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   const canAddAgent = useCrewAgentsStore(state => state.canAdd)
   const canImportChat = useCrewAgentsStore(state => state.canImportChat)
   const canDiscoverSkills = useCrewAgentsStore(state => state.canDiscoverSkills)
+  const localMode = useCapabilitiesStore(state => state.capabilities?.local_mode === true)
   const desktop = hasDesktopConnections()
   const active = getRawActiveWorkspaceId()
   const state = useConnectedWorkStore()
@@ -118,16 +121,26 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
     }
     const crew = project.kind === 'crew'
     const currentCrew = here && crew && project.selected && creationProjectId === project.id
-    const importFromCrew = (kind: 'chat' | 'skills') => () => window.dispatchEvent(new CustomEvent('crew-agent-import', { detail: { projectId: project.id, kind } }))
+    // The directory tells us whether this person can build here. Exact action availability belongs to the open project.
+    const openForAction = here && crew && !currentCrew && project.mode === 'builder'
+    const fromCrew = (kind: SidebarProjectAction) => () => {
+      if (!currentCrew) {
+        requestSidebarProjectAction(project.id, kind, () => open(project))
+      } else if (kind === 'new') {
+        window.dispatchEvent(new CustomEvent('crew-new-agent', { detail: { projectId: project.id } }))
+      } else {
+        window.dispatchEvent(new CustomEvent('crew-agent-import', { detail: { projectId: project.id, kind } }))
+      }
+    }
     const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void) => <SidebarProjectRow {...rest} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false || activityTitle ? activityLabel : undefined} activityTitle={activityTitle}
       showIcon={project.kind !== 'crew' || project.mode === 'run'}
       onMoveUp={pinnedShortcut && canPin && pinnedIndex > 0 ? () => move(-1) : undefined} onMoveDown={pinnedShortcut && canPin && pinnedIndex >= 0 && pinnedIndex < pinnedRows.length - 1 ? () => move(1) : undefined}
       selected={isOpenProject(project)}
       location={desktop ? connection.id === 'local' ? 'On your Mac' : connection.name : undefined} remote={desktop && connection.id !== 'local'} showLocation={desktop}
       pinned={pinnedKeys.has(key)} onTogglePin={canPin && crew ? () => setPinned(key, !pinnedKeys.has(key)) : undefined}
-      onNewAgent={here && crew && creationProjectId === project.id && canAddAgent ? () => window.dispatchEvent(new CustomEvent('crew-new-agent', { detail: { projectId: project.id } })) : undefined}
-      onImportLocalChat={currentCrew && canImportChat ? importFromCrew('chat') : undefined}
-      onDiscoverSkills={currentCrew && canDiscoverSkills ? importFromCrew('skills') : undefined}
+      onNewAgent={(currentCrew ? canAddAgent : openForAction) ? fromCrew('new') : undefined}
+      onImportLocalChat={(currentCrew ? canImportChat : openForAction && localMode && project.owned_by_caller !== false) ? fromCrew('chat') : undefined}
+      onDiscoverSkills={(currentCrew ? canDiscoverSkills : openForAction) ? fromCrew('skills') : undefined}
       onRemoveOnlineCopy={!desktop && crew && where === 'mac' && project.owned_by_caller !== false ? () => removeOnlineCopy(project) : undefined}
       stateLine={where === 'mac' ? macCrewStateText(crewState) : undefined} offline={where === 'mac' && mac?.online === false} onMac={where === 'mac' ? (mac?.online ? 'on' : 'off') : undefined}
       onOpen={() => {
