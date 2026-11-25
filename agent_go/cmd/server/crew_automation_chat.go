@@ -97,7 +97,7 @@ func (s *SchedulerService) openCrewAutomationChat(ctx context.Context, sctx *Sch
 		return nil, err
 	}
 	key := sctx.CrewExecutable.CrewID
-	if id := strings.TrimSpace(sctx.Schedule.ChatID); id != "" {
+	if id := strings.TrimSpace(sctx.Schedule.ChatID); id != "" && id != codeChatMainName {
 		key, err = projectScheduleChatKey(ctx, sctx.OwnerUserID, "work", key, id)
 		if err != nil {
 			return nil, err

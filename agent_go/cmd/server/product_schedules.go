@@ -1964,10 +1964,11 @@ func messageScheduleRunDestinations(job productScheduleJob) []ScheduleRunDestina
 }
 
 // projectScheduleChatKey turns a tab's chat id (from the project's chat list)
-// into the key a project schedule runs in. An empty id is the main chat.
+// into the key a project schedule runs in. An empty id, or "main" (how a workflow schedule saves the Main chat),
+// is the main chat; "main" was refused as an unknown tab, so no schedule delivering to Main could be saved.
 func projectScheduleChatKey(ctx context.Context, userID, profileID, projectID, chatID string) (string, error) {
 	chatID = strings.TrimSpace(chatID)
-	if chatID == "" {
+	if chatID == "" || chatID == codeChatMainName {
 		return "", nil
 	}
 	key := chatID

@@ -552,3 +552,13 @@ func TestScheduleOwnChatRowIsWritableForItsOwner(t *testing.T) {
 		t.Fatal("a schedule's own chat is not writable for its owner")
 	}
 }
+
+// #4077: a workflow schedule saves the Main chat as "main", and the destination check refused it as an unknown tab,
+// so no schedule delivering to Main could be saved or updated. "main" and "" both mean the Main chat.
+func TestScheduleMainChatDestinationIsAccepted(t *testing.T) {
+	for _, id := range []string{"", "main", " main "} {
+		if key, err := projectScheduleChatKey(context.Background(), "owner", "work", "project", id); err != nil || key != "" {
+			t.Fatalf("chat_id %q: key %q, %v", id, key, err)
+		}
+	}
+}
