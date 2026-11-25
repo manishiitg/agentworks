@@ -12,7 +12,7 @@ import { teamAgentChatTab } from './AgentSharingRow'
 import { openTeammateAgent } from './openTeammateAgent'
 import { AgentDetails, Saving, TeamTab, teamSettlingServer, type TeamGoOnline } from './TeamTab'
 import { openCrewAccess } from './MacSharedAgents'
-import { crewSharePage, setCrewAction, teamFailure, teamRequest, useTeamTab, type CrewShareAction, type CrewShareActionsGroup, type CrewShareAgent, type CrewSharePage, type TeamTarget } from './teamApi'
+import { crewSharePage, setCrewAction, teamChanged, teamFailure, teamRequest, useTeamTab, type CrewShareAction, type CrewShareActionsGroup, type CrewShareAgent, type CrewSharePage, type TeamTarget } from './teamApi'
 
 /** Opens the viewer's own Main with the words in its chat box, not sent; nothing is saved by this page. */
 const toMain = (projectId: string, draft: string) => {
@@ -125,7 +125,7 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, stat
     setPending(key); setError('')
     try { await save(); return true } catch (e) { setError(teamFailure(e).message); return false } finally { setPending('') }
   }
-  const updated = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
+  const updated = teamChanged
   const share = (on: boolean) => run('ask', async () => { await teamRequest(where, '/agent-visibility', 'POST', { agent_key: agent.key, in_team: on }); updated() })
   const rule = (key: string, change: { chat_share?: string; audience?: 'whole_team' | 'chosen'; chosen_people?: string[]; when_others_ask?: string }) => run(key, async () => { await teamRequest(where, '/agent-rule', 'POST', { agent_key: agent.key, ...change }); updated() })
   const ask = agent.ask

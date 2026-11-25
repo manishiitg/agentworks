@@ -16,7 +16,7 @@ import { AskButton, teamCard } from './TeamTab'
 import { ShareCrew } from './ShareCrew'
 import { CrewDashboardsTab } from './CrewDashboardsTab'
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
-import { teamFailure, teamRequest, useTeamTab } from './teamApi'
+import { teamChanged, teamFailure, teamRequest, useTeamTab } from './teamApi'
 import { MacAgentBridge } from './MacAgentBridge'
 import { hasPendingCrewAccess, pendingCrewAccessSection, crewAccessDestination, type CrewAccessSection } from './MacSharedAgents'
 
@@ -166,8 +166,7 @@ export function YourComputerPanel({ projectId, sessionId, workspacePath, onBack 
 
 function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { projectId: string; sessionId?: string; workspacePath?: string; onBack?: () => void }) {
   const team = useTeamTab(projectId).view?.team
-  const teamChanged = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
-  // The last Online tab is remembered per Crew in this browser (owner, 5 Nov); Team is its own page, opened from its
+    // The last Online tab is remembered per Crew in this browser (owner, 5 Nov); Team is its own page, opened from its
   // menu row or by an agent asking for its sharing, so it is never the remembered tab.
   const tabKey = `agentworks:crew-access-tab:${projectId}`
   const [section, setSectionState] = useState<CrewAccessSection>(() => {

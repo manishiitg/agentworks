@@ -10,7 +10,7 @@ import { Button } from '../../components/ui/Button'
 import { sendToOpenChat } from '../../utils/agentPurposeDraft'
 import { openAppPage } from '../../utils/appNavigation'
 import ModalPortal from '../../components/ui/ModalPortal'
-import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamError, teamFailure, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderListing, type TeamTabAgent, type TeamTabPerson, type TeamTabView, type TeamTarget } from './teamApi'
+import { changeCrewPerson, crewPeople, saveTeam, switchTeam, teamChanged, teamError, teamFailure, teamFolders, teamRequest, useTeamTab, type CrewPeopleChange, type CrewPeopleLevelKey, type CrewPeoplePerson, type CrewPeoplePreview, type CrewPeopleView, type Team, type TeamFolderListing, type TeamTabAgent, type TeamTabPerson, type TeamTabView, type TeamTarget } from './teamApi'
 import { TeamSyncPanel } from './TeamSyncPanel'
 import { OnlineProjectsCard } from './OnlineProjectsCard'
 import { TeamActivity } from './TeamActivity'
@@ -582,7 +582,7 @@ export function AgentDetails({ agent, target, projectId, showNote = true }: { ag
   useEffect(() => { setRule(agent.when_others_ask || '') }, [agent.when_others_ask])
   const save = (key: string, change: { when_others_ask?: string }) => run(key, async () => {
     await teamRequest({ project: target.project, connection: target.connection }, '/agent-rule', 'POST', { agent_key: agent.key, ...change })
-    window.dispatchEvent(new CustomEvent('agentworks:team-updated'))
+    teamChanged()
   })
   const label = 'mb-1 mt-2.5 text-xs text-muted-foreground'
   const uses = agent.uses || []
