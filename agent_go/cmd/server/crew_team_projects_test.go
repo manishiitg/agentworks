@@ -299,3 +299,13 @@ func TestCrewTeamOnlineProjectAgentReach(t *testing.T) {
 		t.Fatal("a project that left the Team still asked it as the project")
 	}
 }
+
+// #3664 regression: an online project's copy stopped its whole sync on the first round with "the Team has not supplied a
+// folder identity for team-setup.json". The Team's setup and skills are skipped there, never an error.
+func TestCrewTeamProjectCopySkipsTheTeamsSetup(t *testing.T) {
+	b := &crewTeamLocal{ProjectMember: true, Files: map[string]crewTeamLocalFile{}}
+	files := []crewTeamRemoteFile{{Path: crewTeamSetupFile, Version: &chunkedFile{}}, {Path: "skills/review/SKILL.md", Version: &chunkedFile{}}}
+	if _, err := crewTeamDownload(context.Background(), "owner", desktopConnection{}, "/api/crew-teams/team", "", t.TempDir(), b, files); err != nil {
+		t.Fatalf("the Team's setup and skills should be skipped in a project's copy: %v", err)
+	}
+}

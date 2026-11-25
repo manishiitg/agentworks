@@ -58,9 +58,14 @@ func crewTeamUnder(rel, prefix string) bool {
 
 // diskRel and remoteRel translate only admitted mounts and the two shared setup
 // files. An unmapped private sibling has no remote path and can never upload.
+// memberKeepsOwn: an online project keeps its own setup and skills (#3664), so the Team's never enter its copy.
+func (b crewTeamLocal) memberKeepsOwn(rel string) bool {
+	return b.ProjectMember && (rel == crewTeamSetupFile || crewTeamUnder(rel, "skills"))
+}
+
 func (b crewTeamLocal) diskRel(rel string) string {
-	if b.ProjectMember && (rel == crewTeamSetupFile || crewTeamUnder(rel, "skills")) {
-		return "" // an online project keeps its own setup and skills (#3664)
+	if b.memberKeepsOwn(rel) {
+		return ""
 	}
 	if !b.Mounted {
 		return rel
@@ -85,7 +90,7 @@ func (b crewTeamLocal) diskRel(rel string) string {
 }
 
 func (b crewTeamLocal) remoteRel(rel string) string {
-	if b.ProjectMember && (rel == crewTeamSetupFile || crewTeamUnder(rel, "skills")) {
+	if b.memberKeepsOwn(rel) {
 		return ""
 	}
 	if !b.Mounted {
