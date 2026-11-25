@@ -26,7 +26,7 @@ func (api *StreamingAPI) registerWorkspacePanelChatTools(reg definitionToolRegis
 	}
 	if product == "work" {
 		// Browser and model chat tools already exist for Crews.
-		names = []string{"settings", "models", "manage_messaging", "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply", "crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff"}
+		names = []string{"settings", "models", "manage_messaging", "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply", "crew_file_limit", "crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff"}
 	}
 	names = append(names, "appearance", "profile_picture")
 	catalog, err := externalTools()

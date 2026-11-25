@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
-import { ChevronRight, Clock, FileDiff, FileText, Github, GitBranch, SquareTerminal } from 'lucide-react'
-import type { CrewPanelSection, CrewPanelRow } from '../../products/work/useCrewPanel'
+import { useState, type ReactNode } from 'react'
+import { ChevronRight, Clock, FileDiff, FileText, Folder, Github, GitBranch, SquareTerminal, TriangleAlert } from 'lucide-react'
+import api from '../../services/api'
+import type { CrewFileLimit, CrewPanelSection, CrewPanelRow } from '../../products/work/useCrewPanel'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
 import { WorkspaceContextRow } from './WorkspaceContextCard'
 
@@ -57,7 +58,51 @@ export function sortGitRows(rows: CrewPanelRow[]): CrewPanelRow[] {
  * it is more than a day old (the app never fetches); a repository row (with its file
  * icon) opens that checkout's files. Open or closed is remembered per project
  * in this browser. */
-export function ChatChangesRow({ section, storageKey, onOpen, onTerminal }: { section?: CrewPanelSection; storageKey: string; onOpen: (repoRoot?: string, changed?: boolean) => void; onTerminal?: () => void }) {
+const fileCount = (n: number) => n.toLocaleString('en-US')
+// The server's refusals say what to do instead; show them as they are.
+const errorText = (cause: unknown, fallback: string) => (cause as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message || fallback
+
+/** Too many files to track every reply's changes (#3878, approved mockup): the
+ * server's stored verdict, the biggest folders, and the fixes. The server
+ * decides and checks again; this only shows it and sends the click. */
+export function FileLimitBox({ limit, workspacePath }: { limit: CrewFileLimit; workspacePath?: string }) {
+  const [moved, setMoved] = useState<string[]>([])
+  const [busy, setBusy] = useState('')
+  const [note, setNote] = useState<{ text: string; failed?: boolean } | null>(null)
+  const [report, setReport] = useState(limit)
+  const send = async (op: 'file_limit_check' | 'file_limit_move', folder?: string) => {
+    if (!workspacePath) return
+    setBusy(folder || 'check'); setNote(null)
+    try {
+      const { data } = await api.post<{ report: CrewFileLimit; moved_to?: string }>('/api/workspace-snapshots', {}, { params: { workspace_path: workspacePath, op, ...(folder ? { folder } : {}) } })
+      if (folder) setMoved(list => [...list, folder])
+      setReport(current => ({ ...current, ...data.report }))
+      setNote({ text: folder ? `Moved ${folder} to ${data.moved_to}.${data.report.over ? '' : ' All changes are tracked again.'}` : data.report.over ? 'Checked: still too many files.' : 'Checked: all changes are tracked again.' })
+    } catch (cause) {
+      setNote({ text: errorText(cause, folder ? `Could not move ${folder}. Try again.` : 'Could not check again. Try again.'), failed: true })
+    } finally { setBusy('') }
+  }
+  const folders = (report.folders ?? []).filter(folder => !moved.includes(folder.path))
+  if (!report.over) return note ? <p role="status" className="ml-3 mt-1 text-[11px] text-emerald-700 dark:text-emerald-400">{note.text}</p> : null
+  return <section aria-label="Changes not fully tracked" className="ml-3 mt-1 space-y-2 rounded-lg border border-border bg-amber-500/10 p-2.5 text-xs">
+    <h4 className="font-medium">Not all changes are tracked</h4>
+    <p>This project folder has about <b>{fileCount(report.files)}</b> files; replies track up to {fileCount(report.limit)}. Changes in its repositories are still tracked, but edits to files outside them are not shown on replies and can't be undone.</p>
+    {folders.length > 0 && <div>
+      <p className="text-[11px] text-muted-foreground">Biggest folders</p>
+      <ul className="mt-1 divide-y divide-border">{folders.map(folder => <li key={folder.path} className="flex items-center gap-2 py-1.5">
+        <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="min-w-0 flex-1"><span className="block truncate font-medium">{folder.path}</span><span className="text-[11px] text-muted-foreground">about {fileCount(folder.files)} files</span></span>
+        {report.can_fix && <button type="button" disabled={Boolean(busy)} onClick={() => void send('file_limit_move', folder.path)} className="shrink-0 rounded-md border border-border bg-background px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{busy === folder.path ? 'Moving…' : 'Move out'}</button>}
+      </li>)}</ul>
+    </div>}
+    {note && <p role={note.failed ? 'alert' : 'status'} className={note.failed ? 'text-destructive' : 'text-muted-foreground'}>{note.text}</p>}
+    {report.can_fix
+      ? <div className="flex flex-wrap items-center gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => void send('file_limit_check')} className="rounded-md border border-border bg-background px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{busy === 'check' ? 'Checking…' : 'Check again'}</button><span className="text-[11px] text-muted-foreground">Moved folders go next to the project, into its "-moved" folder.</span></div>
+      : <p className="text-[11px] text-muted-foreground">Only the project owner can move folders out, on their Mac. Ask them, or ask the agent "why aren't all my changes tracked?".</p>}
+  </section>
+}
+
+export function ChatChangesRow({ section, storageKey, onOpen, onTerminal, workspacePath }: { section?: CrewPanelSection; storageKey: string; onOpen: (repoRoot?: string, changed?: boolean) => void; onTerminal?: () => void; workspacePath?: string }) {
   const [state, setState] = usePersistentTab(storageKey, 'open', states)
   if (!section || (!section.error && !section.rows.length)) return null
   const open = state === 'open'
@@ -103,9 +148,11 @@ export function ChatChangesRow({ section, storageKey, onOpen, onTerminal }: { se
       <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} aria-label={open ? 'Hide repositories' : 'Show repositories'} /></span>}>Git</WorkspaceContextRow></div>
     {/* The count is its own button: it opens one review of every file not committed yet, across the project. */}
     {/* Compact like a diff stat ("±12"); the full wording is its name and tooltip. */}
-    {changed && <button type="button" onClick={() => onOpen(undefined, true)} aria-label={`${changed}: review them`} title={`${changed} not committed yet. Click to review them.`} className="shrink-0 whitespace-nowrap rounded px-1 py-0.5 font-mono text-[11px] font-medium tabular-nums text-amber-600 underline-offset-2 hover:bg-background/40 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-400">±{section.changed}</button>}
+    {section.file_limit?.over && <span title="Changes are not fully tracked: too many files in this project folder" className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-medium text-amber-600 dark:text-amber-400"><TriangleAlert className="h-3 w-3" aria-hidden="true" />not fully tracked</span>}
+    {changed && !section.file_limit?.over && <button type="button" onClick={() => onOpen(undefined, true)} aria-label={`${changed}: review them`} title={`${changed} not committed yet. Click to review them.`} className="shrink-0 whitespace-nowrap rounded px-1 py-0.5 font-mono text-[11px] font-medium tabular-nums text-amber-600 underline-offset-2 hover:bg-background/40 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-400">±{section.changed}</button>}
     {onTerminal && <button type="button" onClick={onTerminal} aria-label="Open terminal" title="Open a terminal in this project folder (Ctrl+`)" className="flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-background/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><SquareTerminal className="h-3.5 w-3.5" aria-hidden="true" /></button>}
     </div>
+    {open && section.file_limit?.over && <FileLimitBox key={`${section.file_limit.checked_at}:${section.file_limit.can_fix}`} limit={section.file_limit} workspacePath={workspacePath} />}
     {open && rows.length > 0 && <div className="mt-1 space-y-0.5 pl-3">{rows}</div>}
   </div>
 }

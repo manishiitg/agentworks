@@ -280,6 +280,13 @@
   },
   {
     "family": "files",
+    "name": "file_limit",
+    "member": "crew_file_limit",
+    "description": "Whether the project folder has too many files to track every reply's changes, its biggest folders, and fixes: check again, or move a folder out (owner).",
+    "external_members": "crew_file_limit"
+  },
+  {
+    "family": "files",
     "name": "git_status",
     "member": "crew_git_status",
     "description": "List the project's Git repositories with their branch and files not committed yet. Read only.",

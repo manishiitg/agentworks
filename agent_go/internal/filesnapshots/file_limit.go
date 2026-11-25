@@ -1,6 +1,7 @@
 package filesnapshots
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sort"
@@ -132,4 +133,15 @@ func (s Store) layoutSignature() string {
 	}
 	visit(s.Root, "", 0)
 	return b.String()
+}
+
+// CheckFileLimit decides the verdict again now ("Check again" on the Git row).
+func (s Store) CheckFileLimit(ctx context.Context) (FileLimitReport, error) {
+	s.RecheckFileLimit()
+	var stats CaptureStats
+	if _, _, err := s.turnPaths(ctx, &stats); err != nil {
+		return FileLimitReport{}, err
+	}
+	report, _ := s.FileLimit()
+	return report, nil
 }

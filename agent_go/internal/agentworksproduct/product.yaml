@@ -428,6 +428,7 @@ chat:
       - list_crew_snapshots
       - compare_crew_snapshot
       - undo_crew_reply
+      - crew_file_limit
       - crew_git_status
       - crew_git_diff
       - crew_git_branch_compare
