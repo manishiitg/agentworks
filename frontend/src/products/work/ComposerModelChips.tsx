@@ -129,7 +129,6 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const onMenuOpen = (open: boolean) => { setMenuOpen(open); if (!open) setPendingSwitch(null); actions?.onOpenChange?.(open) }
   const onMenuClose = (event: Event) => { const action = afterClose.current; afterClose.current = null; if (action) { event.preventDefault(); action() } }
   const triggerExtra = <>
-    {Boolean(actions?.sendOptions?.backgroundWork?.items.length) && <span className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" aria-label="Background tasks running" role="status" />}
   </>
   // Attach and commands stay available while model choices are loading.
   const attach = actions ? <ComposerAttachButton uploading={actions.uploading} onAttach={actions.onAttach} /> : null

@@ -1,16 +1,13 @@
-import { useId, useRef } from 'react'
+import { useRef } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { ArrowUp, ChevronDown, ChevronRight, RotateCcw, Square, Wand2 } from 'lucide-react'
+import { ArrowUp, ChevronDown, RotateCcw, Square, Wand2 } from 'lucide-react'
 import { Button } from '../ui/Button'
-import { BackgroundWorkList } from '../BackgroundWorkPill'
-import type { useSessionBackgroundWork } from '../../hooks/useSessionBackgroundWork'
 
 export type ChatSendOptionsProps = {
   busy: boolean
   onOpenCommands?: () => void
   onNewChat?: () => void
   onStop?: () => void
-  backgroundWork?: ReturnType<typeof useSessionBackgroundWork>
 }
 
 /** Shown beside the action a key triggers, like a native menu. */
@@ -18,8 +15,7 @@ function MenuKey({ children }: { children: string }) {
   return <kbd className="ml-auto pl-3 font-mono text-xs text-muted-foreground">{children}</kbd>
 }
 
-export function ChatSendOptions({ busy, onOpenCommands, onNewChat, onStop, backgroundWork, deferAction }: ChatSendOptionsProps & { deferAction: (action: () => void) => void }) {
-  const runningCount = backgroundWork?.items.length ?? 0
+export function ChatSendOptions({ busy, onOpenCommands, onNewChat, onStop, deferAction }: ChatSendOptionsProps & { deferAction: (action: () => void) => void }) {
   return <>
     {(onNewChat || onOpenCommands || onStop) && <>
       {onNewChat && <Menu.Item data-testid="chat-new-chat" title={busy ? 'Stop this chat and start it over' : 'Start this chat over. Earlier messages stay in history'} onSelect={() => { deferAction(onNewChat) }}
@@ -34,22 +30,6 @@ export function ChatSendOptions({ busy, onOpenCommands, onNewChat, onStop, backg
         className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-destructive/10 data-[highlighted]:text-destructive">
         <Square className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true" />Stop current turn<MenuKey>Esc</MenuKey>
       </Menu.Item>}
-    </>}
-    {runningCount > 0 && backgroundWork && <>
-      <Menu.Separator className="my-1.5 h-px bg-border" />
-      <Menu.Sub>
-        <Menu.SubTrigger className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-accent data-[state=open]:bg-accent">
-          <span className="h-1.5 w-1.5 rounded-full bg-blue-500" aria-hidden="true" />{runningCount} running
-          <ChevronRight className="ml-auto h-3.5 w-3.5" aria-hidden="true" />
-        </Menu.SubTrigger>
-        <Menu.Portal>
-          <Menu.SubContent sideOffset={6} collisionPadding={12} className="z-[101] max-h-[var(--radix-dropdown-menu-content-available-height)] w-[min(22rem,calc(100vw-24px))] overflow-y-auto overscroll-contain scroll-py-1.5 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
-            <Menu.Label className="px-2 pb-2 pt-1 text-xs text-muted-foreground">Background work</Menu.Label>
-            <BackgroundWorkList work={backgroundWork} renderAction={(button, options) =>
-              <Menu.Item asChild disabled={options?.disabled} onSelect={options?.keepOpen ? event => event.preventDefault() : undefined}>{button}</Menu.Item>} />
-          </Menu.SubContent>
-        </Menu.Portal>
-      </Menu.Sub>
     </>}
   </>
 }
@@ -73,20 +53,17 @@ export function ComposerSendKeys({ busy, separated = true }: { busy: boolean; se
 }
 
 /** Selection expresses intent only; the server chooses delivery using live state. */
-export function ChatSendModeButton({ busy, disabled, onSend, onOpenCommands, onNewChat, onStop, backgroundWork, onOpenChange, showOptions = true }: {
+export function ChatSendModeButton({ busy, disabled, onSend, onOpenCommands, onNewChat, onStop, onOpenChange, showOptions = true }: {
   busy: boolean
   disabled: boolean
   onSend: () => void
   onOpenCommands?: () => void
   onNewChat?: () => void
   onStop?: () => void
-  backgroundWork?: ReturnType<typeof useSessionBackgroundWork>
   onOpenChange?: (open: boolean) => void
   showOptions?: boolean
 }) {
   const afterClose = useRef<(() => void) | null>(null)
-  const activityId = useId()
-  const runningCount = backgroundWork?.items.length ?? 0
   const label = busy ? 'Steer' : 'Send'
   return <div className="inline-flex shrink-0 rounded-md border border-border bg-transparent">
     <Button type="button" variant="ghost" size="xs" onClick={onSend} disabled={disabled} aria-label={label}
@@ -96,12 +73,9 @@ export function ChatSendModeButton({ busy, disabled, onSend, onOpenCommands, onN
     </Button>
     {showOptions && <Menu.Root onOpenChange={onOpenChange}>
       <Menu.Trigger aria-label="Send options"
-        aria-describedby={runningCount > 0 ? activityId : undefined}
-        title={`Send options${runningCount > 0 ? ` · ${runningCount} background tasks running` : ''}`}
+        title="Send options"
         className="relative flex h-6 w-5 items-center justify-center rounded-r-md border-l border-border text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <ChevronDown className="h-3 w-3" aria-hidden="true" />
-        {runningCount > 0 && <span data-testid="chat-background-activity" className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-blue-500 ring-2 ring-background" aria-hidden="true" />}
-        {runningCount > 0 && <span id={activityId} className="sr-only">{runningCount} background tasks running</span>}
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Content side="top" align="end" sideOffset={8} collisionPadding={12}
@@ -114,7 +88,7 @@ export function ChatSendModeButton({ busy, disabled, onSend, onOpenCommands, onN
           }}
           className="z-[100] max-h-[var(--radix-dropdown-menu-content-available-height)] w-[min(320px,calc(100vw-24px))] overflow-y-auto overscroll-contain scroll-py-1.5 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
             <ChatSendOptions busy={busy} onOpenCommands={onOpenCommands}
-              onNewChat={onNewChat} onStop={onStop} backgroundWork={backgroundWork}
+              onNewChat={onNewChat} onStop={onStop}
               deferAction={action => { afterClose.current = action }} />
             <ComposerSendKeys busy={busy} />
         </Menu.Content>

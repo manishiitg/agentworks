@@ -30,7 +30,6 @@ import { Button } from './ui/Button'
 import { SessionStopButton } from './SessionStopButton'
 import { attachmentDisplayName } from '../utils/chatMessageContent'
 import { BackgroundWorkPill } from './BackgroundWorkPill'
-import { useSessionBackgroundWork } from '../hooks/useSessionBackgroundWork'
 import { useHeldTurnInFlight } from '../hooks/useHeldTurnInFlight'
 import { useTabTurnActive } from '../hooks/useTabTurnActive'
 import { ChatComposerArea, ChatComposerAttachButton, ChatComposerBand, ChatComposerForm, ChatComposerControls, ChatComposerTextarea, resizeChatComposerTextarea } from './chat/ChatComposer'
@@ -2808,8 +2807,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const backgroundWorkPill = activeTabId && tabSessionId && !hasRunFooter
     ? <BackgroundWorkPill key={`bg-${activeTabId}`} tabId={activeTabId} />
     : null
-  const [sendOptionsOpen, setSendOptionsOpen] = useState(false)
-  const backgroundWork = useSessionBackgroundWork(!isViewOnly && tabSessionId && !hasRunFooter ? activeTabId : undefined, sendOptionsOpen)
+  const [, setSendOptionsOpen] = useState(false)
 
   // Check if query is valid (view-only tabs cannot submit)
   const hasValidQuery = hasComposerContent
@@ -3111,7 +3109,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   sendOptions={{
                     busy: isStreaming || transcriptTurnActive,
                     onNewChat: showNewChatAction ? onNewChat : undefined,
-                    backgroundWork,
                   }}
                 />}
 
@@ -3479,7 +3476,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         planMode: nativePlanSupported ? { on: planOn, onToggle: togglePlanMode } : undefined,
                         onOpenChange: setSendOptionsOpen,
                         // New chat in the Context section starts over; no second Clear chat here.
-                        sendOptions: { busy: isStreaming || transcriptTurnActive, backgroundWork },
+                        sendOptions: { busy: isStreaming || transcriptTurnActive },
                       }} /></Suspense>
                     : label
                 })()}
@@ -3517,7 +3514,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         onSend={handleSendButtonClick}
                         onOpenCommands={!compactComposerActions && productCommandsAvailable ? openCommandMenu : undefined}
                         onNewChat={showNewChatAction ? onNewChat : undefined}
-                        backgroundWork={backgroundWork}
                         onOpenChange={setSendOptionsOpen}
                       />
                       </Suspense></span>}
