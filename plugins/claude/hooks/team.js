@@ -39,7 +39,7 @@ async function readPane($, extra, timeoutMs) {
 
 async function openAgent($, a) {
   const request = ++revision;
-  view = { id: a.id, name: a.name, busy: true, data: null, used: false };
+  view = { id: a.id, name: a.name, row: a, busy: true, data: null, used: false };
   $.ui.invalidate('ui.render');
   const d = await readPane($, ['--agent', a.id]);
   if (request !== revision || !view || view.id !== a.id) return;
@@ -108,6 +108,10 @@ export async function registerTeamCommand($) {
   } catch { /* another plugin owns /team; the chip above the prompt still opens the pane */ }
 }
 
+function count(n, one, many) {
+  return n === 1 ? '1 ' + one : (Number(n) || 0) + ' ' + many;
+}
+
 function ago(at) {
   const t = Date.parse(at || '');
   if (!t) return '';
@@ -150,8 +154,15 @@ export function teamSections(d) {
   };
   for (const a of d.agents || []) {
     const g = group(a.mine ? 'mine' : 'p:' + (clean(a.person, 40) || 'Teammate'));
-    g.agents.push({ id: String(a.id || ''), name: clean(a.name, 60), online: !!a.online, busy: !!a.online && a.activity === 'running', line: statusLine(a) });
+    g.agents.push({ id: String(a.id || ''), name: clean(a.name, 60), online: !!a.online, busy: !!a.online && a.activity === 'running', line: statusLine(a),
+      cli: clean(a.cli, 40), model: clean(a.model, 60), purpose: clean(a.purpose, 300) });
   }
+  // Each teammate's own dot: active now or not, the Team tab's people dot (you are not listed).
+  for (const p of d.people || []) {
+    const g = groups.find(x => x.key === 'p:' + clean(p.name, 40));
+    if (g) Object.assign(g, { personOnline: !!p.online, personLine: clean(p.line, 80) });
+  }
+  const peopleOnline = (d.people || []).filter(p => p.online).length;
   const rank = g => (g.key === 'mine' ? 0 : 1);
   groups.sort((x, y) => rank(x) - rank(y));
   for (const g of groups) g.agents.sort((x, y) => Number(y.online) - Number(x.online));
@@ -163,7 +174,13 @@ export function teamSections(d) {
   const online = groups.reduce((n, g) => n + g.agents.filter(a => a.online).length, 0);
   // Working now across every Team member first; the groups below list the rest.
   const working = groups.flatMap(g => g.agents.filter(a => a.busy).map(a => ({ ...a, who: g.who })));
-  return { crew: clean(d.crew_name, 80), needs, asks, groups, online, kit, working };
+  return { crew: clean(d.crew_name, 80), needs, asks, groups, online, peopleOnline, kit, working };
+}
+
+// A small mark per program, so a long list shows at a glance which agent runs on what.
+const CLI_MARK = { 'Claude Code': '✳', Codex: '◎', Cursor: '▲', Muse: '◆', Pi: 'π', Antigravity: '✦' };
+export function cliTag(cli) {
+  return cli ? (CLI_MARK[cli] || '•') + ' ' + cli.replace(/ Code$/, '') : '';
 }
 
 function statusLine(a) {
@@ -260,23 +277,26 @@ async function renderTeam($, e, next) {
     s.working.forEach((a, i) => rows.push(Box({ key: 'work-' + i, flexDirection: 'row', columnGap: 1, children: [
       Text({ color: 'success', children: ['●'] }),
       a.id ? Button({ key: 'wopen-' + a.id, label: a.name + ' ›', plain: true, onPress: () => openAgent($, a) }) : Text({ children: [a.name] }),
-      Text({ dimColor: true, wrap: 'truncate-end', children: [a.who === 'You' ? 'yours' : a.who] }),
+      Text({ dimColor: true, wrap: 'truncate-end', children: [[cliTag(a.cli), a.who === 'You' ? 'yours' : a.who].filter(Boolean).join(' · ')] }),
     ] })));
     rows.push(Text({ key: 'spw', children: [' '] }));
-    rows.push(heading('Team', s.online + ' online'));
+    rows.push(Text({ key: 'h-Team', weight: 'semibold', children: ['Team'] }));
+    rows.push(Text({ key: 'h-Team-on', dimColor: true, children: [count(s.peopleOnline, 'person', 'people') + ' online · ' + count(s.online, 'agent', 'agents') + ' online'] }));
     if (!s.groups.some(g => g.key !== 'mine')) rows.push(Text({ key: 'g0', dimColor: true, wrap: 'wrap', children: ['Only your agents are in this Team so far. Teammates show here when they join.'] }));
     s.groups.forEach(g => {
       const on = g.agents.filter(a => a.online).length;
       rows.push(Box({ key: 'who-' + g.key, flexDirection: 'row', columnGap: 1, children: [
+        // A person's dot is the person (active now), separate from their agents' dots below.
+        ...(g.key === 'mine' ? [] : [Text({ color: g.personOnline ? 'success' : undefined, dimColor: !g.personOnline, children: [g.personOnline ? '◉' : '◌'] })]),
         Text({ weight: 'semibold', children: [g.who] }),
-        ...(g.key === 'team' ? [] : [Text({ dimColor: true, children: [on + ' of ' + g.agents.length + ' online'] })]),
+        Text({ dimColor: true, wrap: 'truncate-end', children: [[g.key === 'mine' ? '' : g.personLine || (g.personOnline ? 'Active now' : 'Away'), on + ' of ' + count(g.agents.length, 'agent', 'agents') + ' online'].filter(Boolean).join(' · ')] }),
       ] }));
       // One line per agent: dot, name, and a status only when it says more than Idle. Two-line
       // rows read as the status belonging to the next name.
       g.agents.filter(a => !a.busy).forEach((a, i) => rows.push(Box({ key: 'agent-' + g.key + i, flexDirection: 'row', columnGap: 1, children: [
         Text({ color: a.online ? 'success' : undefined, dimColor: !a.online, children: [a.online ? '●' : '○'] }),
         a.id ? Button({ key: 'open-' + a.id, label: a.name + ' ›', plain: true, onPress: () => openAgent($, a) }) : Text({ children: [a.name] }),
-        ...(a.line && a.line !== 'Idle' ? [Text({ dimColor: !a.busy, color: a.busy ? 'success' : undefined, wrap: 'truncate-end', children: [a.line.replace(/ · Idle$/, '')] })] : []),
+        ...([cliTag(a.cli), a.line && a.line !== 'Idle' ? a.line.replace(/ · Idle$/, '') : ''].some(Boolean) ? [Text({ dimColor: true, wrap: 'truncate-end', children: [[cliTag(a.cli), a.line && a.line !== 'Idle' ? a.line.replace(/ · Idle$/, '') : ''].filter(Boolean).join(' · ')] })] : []),
       ] })));
     });
   }
@@ -324,6 +344,9 @@ function renderAgent($, e, v) {
   const a = d.agent;
   rows.push(Text({ key: 'name', weight: 'semibold', children: [clean(a.name, 60)] }));
   rows.push(Text({ key: 'meta', dimColor: true, wrap: 'wrap', children: [(a.mine ? 'Your agent' : (clean(a.person, 40) || 'Teammate') + '’s agent') + ' · ' + statusLine(a)] }));
+  const r = v.row || {};
+  if (r.cli) rows.push(Text({ key: 'cli', dimColor: true, wrap: 'wrap', children: ['Runs on ' + cliTag(r.cli) + (r.model ? ' · ' + r.model : '')] }));
+  if (r.purpose) rows.push(Text({ key: 'purpose', wrap: 'wrap', children: [r.purpose] }));
   rows.push(Text({ key: 'sp', children: [' '] }));
   (a.messages || []).forEach((m, i) => rows.push(Box({ key: 'm' + i, flexDirection: 'column', marginBottom: 1, children: [
     Text({ weight: m.role === 'user' ? undefined : 'semibold', dimColor: m.role === 'user', children: [m.role === 'user' ? (a.mine ? 'You' : 'Asked') : clean(a.name, 40)] }),

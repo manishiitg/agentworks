@@ -18,6 +18,7 @@ type terminalStatus struct {
 	TeamOn   bool   `json:"team_on"`
 	InTeam   bool   `json:"in_team"`
 	Online   *int   `json:"online"`
+	People   *int   `json:"people_online"`
 	Unread   *int   `json:"unread"`
 }
 
@@ -50,8 +51,16 @@ func terminalStatusLine(s terminalStatus) string {
 		return line + " · Not shared"
 	}
 	line += " · Shared with team"
+	// People and agents apart: teammates active now, then their agents online.
+	online := []string{}
+	if s.People != nil && *s.People >= 0 {
+		online = append(online, plural(*s.People, "person", "people"))
+	}
 	if s.Online != nil && *s.Online >= 0 {
-		line += fmt.Sprintf(" · %d online", *s.Online)
+		online = append(online, plural(*s.Online, "agent", "agents"))
+	}
+	if len(online) > 0 {
+		line += " · " + strings.Join(online, " · ") + " online"
 	}
 	if s.Unread != nil && *s.Unread >= 0 {
 		line += fmt.Sprintf(" · %d new", *s.Unread)
@@ -142,6 +151,12 @@ type teamPane struct {
 		Keys    []string `json:"keys,omitempty"`
 	} `json:"kit"`
 	Agents []teamPaneAgent `json:"agents"`
+	// People are the teammates (never you) and whether each is active now.
+	People []struct {
+		Name   string `json:"name"`
+		Online bool   `json:"online"`
+		Line   string `json:"line,omitempty"`
+	} `json:"people,omitempty"`
 	// Agent is set only when the pane opened one agent (--agent): its row and, when
 	// its chat is shared Live, its last few messages; Note says why there are none.
 	Agent *struct {
@@ -166,6 +181,16 @@ type teamPaneAgent struct {
 	Online   bool   `json:"online"`
 	Activity string `json:"activity,omitempty"`
 	Offline  string `json:"offline_line,omitempty"`
+	Purpose  string `json:"purpose,omitempty"`
+	CLI      string `json:"cli,omitempty"`
+	Model    string `json:"model,omitempty"`
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
 
 // The pane reads one JSON line; a chat that is not attached prints {"attached":false}.

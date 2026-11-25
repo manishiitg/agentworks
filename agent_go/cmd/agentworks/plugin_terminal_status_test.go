@@ -18,7 +18,7 @@ func TestTerminalStatusLineStatesAndControls(t *testing.T) {
 		{terminalStatus{Attached: true}, "AgentWorks · connected"},
 		{terminalStatus{Attached: true, Crew: "Design workspace"}, "AgentWorks · Project Design workspace"},
 		{terminalStatus{Attached: true, Crew: "Design workspace", TeamOn: true}, "AgentWorks · Project Design workspace · Not shared"},
-		{terminalStatus{Attached: true, Crew: "Design workspace", TeamOn: true, InTeam: true, Online: &two, Unread: &one}, "AgentWorks · Project Design workspace · Shared with team · 2 online · 1 new"},
+		{terminalStatus{Attached: true, Crew: "Design workspace", TeamOn: true, InTeam: true, People: &one, Online: &two, Unread: &one}, "AgentWorks · Project Design workspace · Shared with team · 1 person · 2 agents online · 1 new"},
 	}
 	for _, c := range cases {
 		if got := terminalStatusLine(c.status); got != c.want {
