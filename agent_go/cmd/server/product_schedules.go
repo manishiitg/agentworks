@@ -1397,6 +1397,14 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 		return "", productschedule.ErrSkip
 	}
 
+	// A paused Project tasks lead gets no timed runs either; Run now still runs.
+	if (triggerSource == "cron" || triggerSource == "queued") && job.ProjectID != "" && job.WatcherSource == nil {
+		if chatKey := scheduleChatKey(job); chatKey != "" && s.projectTasksLeadPaused(runCtx, job.WorkspacePath, strings.TrimPrefix(chatKey, strings.TrimSpace(job.ProjectID)+codeChatSideMarker)) {
+			scheduleLogf("[SCHEDULER] skipped: Project tasks lead paused job=%s source=%s", job.ID(), triggerSource)
+			return "", productschedule.ErrSkip
+		}
+	}
+
 	if triggerSource == "queued" && job.Profile.ID == "work" && job.ProjectID != "" && job.AutomationKind == "" && job.Schedule.Condition == nil {
 		current, err := s.Job(runCtx, job.UserID, job.ID())
 		if err != nil {

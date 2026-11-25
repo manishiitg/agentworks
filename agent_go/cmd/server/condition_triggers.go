@@ -545,7 +545,7 @@ func (c *conditionService) dispatch(ctx context.Context, cfg conditiontrigger.Co
 		return c.dispatchTarget(ctx, job, caller, cfg, ev, key)
 	}
 	chatID := strings.TrimSpace(cfg.Target.ChatID)
-	if job.WatcherSource != nil && c.projectTasksLeadPaused(ctx, job.WorkspacePath, chatID) {
+	if job.WatcherSource != nil && c.s.projectTasksLeadPaused(ctx, job.WorkspacePath, chatID) {
 		// The person paused the Project tasks lead: keep the event and deliver it on resume.
 		return "", conditiontrigger.ErrPaused
 	}

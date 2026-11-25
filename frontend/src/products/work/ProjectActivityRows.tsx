@@ -12,7 +12,7 @@ const appIcon: Record<string, LucideIcon> = { slack: MessageSquare, mail: Mail, 
 
 export const projectActivityLine = 'Slack, mail, Drive and tasks for this project'
 
-export const projectActivitySetupMessage = 'Set up Project activity for this project. Check which apps this project can reach (Slack, Gmail, Google Drive, GitHub or another task tracker), ask me which channels, mail, folders and task lists matter, then set up Project tasks: a lead agent that keeps one shared task list, and one Watcher per source that sends what it finds to that lead. Follow the project-activity guide in the automations skill.'
+export const projectActivitySetupMessage = 'Set up Project activity for this project. Check which apps this project can reach (Slack, Gmail, Google Drive, GitHub or another task tracker), ask me which channels, mail, folders and task lists matter, then set up Project tasks: a dedicated lead agent that keeps one shared task list and hands out the work, fed by a Watcher or a schedule per source, whichever fits best. Follow the project-activity guide in the automations skill.'
 
 function ago(at: number): string {
   const minutes = Math.max(0, Math.round((Date.now() / 1000 - at) / 60))

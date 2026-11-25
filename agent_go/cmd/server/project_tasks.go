@@ -731,13 +731,14 @@ func stringArg(args map[string]interface{}, key string) string {
 }
 
 // projectTasksLeadPaused reports whether the project's lead is paused and chatID
-// is its chat: its Watchers then hold events until the person resumes it.
-func (c *conditionService) projectTasksLeadPaused(ctx context.Context, workspace, chatID string) bool {
+// is its chat: its Watchers then hold events until the person resumes it, and
+// its schedules skip their timed runs (#3995).
+func (s *ProjectActionDispatcher) projectTasksLeadPaused(ctx context.Context, workspace, chatID string) bool {
 	if workspace == "" || chatID == "" {
 		return false
 	}
 	var list projectTaskList
-	raw, found, err := c.s.readFile(ctx, path.Join(workspace, "db", "project-tasks.json"))
+	raw, found, err := s.readFile(ctx, path.Join(workspace, "db", "project-tasks.json"))
 	if err != nil || !found || json.Unmarshal([]byte(raw), &list) != nil {
 		return false
 	}
