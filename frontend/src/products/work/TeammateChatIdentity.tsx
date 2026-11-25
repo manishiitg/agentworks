@@ -21,7 +21,9 @@ export function useTeammateChatIdentity(tabId?:string|null) {
  return {runtime:{cli:reach?.cli||agent?.cli,engine:reach?.engine||agent?.engine,model_id:reach?.model_id||agent?.model_id,reasoning_effort:reach?.reasoning_effort||agent?.reasoning_effort},avatar:{avatar_url:agent?.avatar_url,avatar_icon:agent?.avatar_icon,avatar_color:agent?.avatar_color} as AvatarFields,connection:team.target?.connection,fork:agent&&team.target?{target:team.target,agent:agent.id}:undefined,name:agent?.name||tab?.name||'Agent',person,place:agent?.place==='mac'?`${person}'s Mac`:agent?.place==='server'?'the server':'another computer',online:reach?.online,working:agent?.activity==='running',hidden:agent?.chat_share==='agent'||!!agent?.chat_private_line,
   ask:{target:team.target,address:reach?.address,enabled:!!reach&&!!team.target&&!!team.view?.team.on&&!team.error},
   // The chat backup (#3577): the agent's ID for its server copy, and whether that copy may be read (Live chat, synced).
-  agentId:agent?.id,readable:!!reach?.chat_readable,project:tab?.metadata?.agentProfileProjectId}
+  agentId:agent?.id,readable:!!reach?.chat_readable,project:tab?.metadata?.agentProfileProjectId,
+  // Your own agents in this Team, for Quick answer: one of them answers from what this agent already said.
+  own:(team.view?.agents||[]).filter(row=>row.mine&&!!row.address).map(row=>({name:row.name,address:row.address!,runtime:{cli:row.cli,engine:row.engine,model_id:row.model_id,reasoning_effort:row.reasoning_effort}}))}
 }
 
 /** One header line for a teammate's agent (owner, 20 Nov): back, the agent, whose computer and its state, Fork as an icon.
