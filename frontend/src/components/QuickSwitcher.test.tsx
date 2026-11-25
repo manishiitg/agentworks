@@ -19,6 +19,7 @@ const fixture = vi.hoisted(() => ({
     chatTabs: {
       release: { tabId: 'release', name: 'Release review', metadata: { mode: 'multi-agent' } },
       monitor: { tabId: 'monitor', name: 'Watch release', isStreaming: true, metadata: { mode: 'multi-agent' } },
+      planner: { tabId: 'planner', name: 'Release planner', metadata: { agentProfileId: 'work', agentProfileProjectId: 'planning', agentProfileConversationKey: 'planning:chat:planner' } },
     },
     activeSessionsCache: [],
     getActiveSessions: vi.fn(async () => []),
@@ -34,7 +35,9 @@ vi.mock('../services/workspaceGit', () => ({ workspaceGitApi: { find: fixture.fi
 vi.mock('../utils/projectFileLinks', () => ({ projectFilesFolder: () => 'project-files', requestOpenProjectFile: vi.fn() }))
 vi.mock('../services/dashboardDirectory', () => ({ loadDashboardDirectory: async () => ({ dashboards: [] }) }))
 vi.mock('../api/scheduler', () => ({ schedulerApi: { listJobs: async () => ({ jobs: [], total: 0 }) } }))
-vi.mock('../products/work/workSessions', () => ({ loadWorkSessionsIncludingShared: async () => [{ id: 'planning', title: 'Release planning' }] }))
+vi.mock('../products/work/workSessions', () => ({ loadWorkSessionsIncludingShared: async () => [
+  { id: 'planning', title: 'Release planning' }, { id: 'archive', title: 'Release archive' },
+] }))
 vi.mock('../stores', () => ({ useChatStore: Object.assign((select: (state: typeof fixture.chats) => unknown) => select(fixture.chats), { getState: () => fixture.chats }) }))
 vi.mock('../stores/useGlobalPresetStore', () => ({ useGlobalPresetStore: Object.assign((select: (state: typeof fixture.presets) => unknown) => select(fixture.presets), { getState: () => fixture.presets }) }))
 vi.mock('../stores/useAuthStore', async importOriginal => ({
@@ -43,12 +46,13 @@ vi.mock('../stores/useAuthStore', async importOriginal => ({
 }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
-it('opens on Quick, keeps All for broader navigation, and searches messages only in Chats', async () => {
+it('groups agents by project in Quick, keeps All broader, and searches messages only in Chats', async () => {
   const host = document.createElement('div'), root = createRoot(host)
   const input = () => host.querySelector<HTMLInputElement>('[role="combobox"]')!
   const tab = (name: string) => [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent === name)!
   const message = () => host.querySelector('[data-navigation-id="message:chat:one"]')
   const project = () => host.querySelector('[data-navigation-id="crew-project:planning"]')
+  const unrelatedProject = () => host.querySelector('[data-navigation-id="crew-project:archive"]')
   const flushDebounce = () => act(async () => { await vi.advanceTimersByTimeAsync(400) })
   const panel = { panels: [{ id: 'release', label: 'Release panel' }], open: vi.fn() }
   const surface = useProductSurfaceStore.getState().productSurface
@@ -65,14 +69,20 @@ it('opens on Quick, keeps All for broader navigation, and searches messages only
     expect(host.querySelector('[role="option"]')?.getAttribute('data-navigation-id')).toBe('chat:monitor')
     expect(host.querySelector('[data-navigation-id="chat:release"]')).not.toBeNull()
     expect(host.querySelector('[data-navigation-id="panel:release"]')).not.toBeNull()
-    expect(project()).toBeNull()
+    expect(project()?.querySelector('[aria-hidden="true"].bg-secondary')).not.toBeNull()
+    expect(host.querySelector('[data-navigation-id="crew:planner"]')?.getAttribute('data-navigation-parent')).toBe('crew:planning')
+    expect(unrelatedProject()).toBeNull()
+
+    await act(async () => usePanelSwitcherStore.getState().register(surface, { ...panel, panels: [{ id: 'release-notes', label: 'Release notes panel' }] }))
+    expect(host.querySelector('[data-navigation-id="panel:release"]')).toBeNull()
+    expect(host.querySelector('[data-navigation-id="panel:release-notes"]')).not.toBeNull()
     expect(fixture.post).not.toHaveBeenCalled()
     expect(fixture.findFiles).not.toHaveBeenCalled()
 
     await act(async () => tab('All').click())
     await flushDebounce()
     expect(input().value).toBe('release')
-    expect(project()).not.toBeNull()
+    expect(unrelatedProject()).not.toBeNull()
     expect(fixture.post).not.toHaveBeenCalled()
     expect(fixture.findFiles).not.toHaveBeenCalled()
 

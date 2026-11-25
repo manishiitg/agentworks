@@ -711,11 +711,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   const filteredItems = useMemo<QuickSwitcherRow[]>(() => {
     const explicitScope = query.trim().match(/^@(active|workflows?|chats?|tabs|crew|products?|menus?|panels?|create)\s*/i)?.[1]?.toLowerCase()
     const scope = explicitScope || scopeFilter
-    // Quick is a flat list: show the project as context without adding a project destination.
-    const navigation = category === 'quick' && !scope
-      ? matchingItems.map(item => item.type === 'crew' && item.projectLabel && item.projectId
-        ? { ...item, subtitle: [item.projectLabel, item.subtitle].filter(Boolean).join(' · ') } : item)
-      : category === 'chat' || scope === 'active' ? matchingItems : projectChatTree(matchingItems, allItems)
+    // Group matching agents under their projects without adding unrelated projects to Quick.
+    const navigation = category === 'chat' || scope === 'active' ? matchingItems : projectChatTree(matchingItems, allItems)
     const messages = messageEnabled && messageSearch.key === messageKey ? messageSearch.items : []
     const grouped = new Map<string, ResourceItem[]>()
     for (const hit of messages) { const key = hit.chatId || hit.id; grouped.set(key, [...(grouped.get(key) || []), hit]) }
@@ -970,8 +967,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                   aria-label={item.treeChild ? `${item.treeParentLabel} · ${item.label}` : undefined}
                   className={`relative ${item.treeChild ? 'pl-10 pr-4' : 'px-4'} py-2.5 cursor-pointer flex items-center gap-3 transition-colors ${
                     isSelected
-                      ? 'bg-blue-50 dark:bg-blue-900/30'
-                      : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                      ? 'bg-muted'
+                      : 'hover:bg-muted/60'
                   }`}
                   onMouseEnter={() => setSelectedIndex(index)}
                   onMouseDown={e => { e.preventDefault(); void handleSelect(item) }}
@@ -981,35 +978,35 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                   {item.treeChild ? <MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /> : item.type === 'product' || item.type === 'menu'
                     ? <QuickNavigationIcon item={item} />
                     : item.type === 'crew'
-                    ? item.agentWorks ? <AgentWorksIcon /> : <EntityIdentityIcon icon={item.icon} label={item.label} />
-                    : <ItemIcon className={`w-4 h-4 flex-shrink-0 ${item.isActive ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'}`} />}
+                    ? item.agentWorks ? <AgentWorksIcon /> : <EntityIdentityIcon icon={item.icon} label={item.label} neutral />
+                    : <ItemIcon className="w-4 h-4 flex-shrink-0 text-muted-foreground" />}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className={`text-sm font-medium truncate ${item.isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                      <span className="text-sm font-medium truncate text-foreground">
                         {item.type === 'message' ? item.sender || 'Message' : item.label}
                       </span>
-                      {!item.treeChild && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 font-medium flex-shrink-0">
+                      {!item.treeChild && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium flex-shrink-0">
                         {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'menu' && item.action === 'create' ? 'create' : item.type === 'workflow' ? ('Workflow') : item.type === 'crew' ? 'Project' : item.type === 'chat-find' ? 'search' : item.type}
                       </span>}
                       {item.type === 'message' && item.at && <time className="ml-auto shrink-0 text-[10px] text-muted-foreground" dateTime={item.at}>{new Date(item.at).toLocaleString()}</time>}
                       {activeSession && item.type !== 'active' && (
                         runtimeNeedsUserInput(activeSession) ? (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-medium flex-shrink-0">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium flex-shrink-0">
                             needs input
                           </span>
                         ) : (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-medium flex-shrink-0">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium flex-shrink-0">
                             active
                           </span>
                         )
                       )}
                       {!activeSession && itemHasRunningWork(item) && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-medium flex-shrink-0">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium flex-shrink-0">
                           running
                         </span>
                       )}
                       {item.isActive && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 font-medium flex-shrink-0">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium flex-shrink-0">
                           current
                         </span>
                       )}
