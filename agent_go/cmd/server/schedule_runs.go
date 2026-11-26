@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/keyedlock"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
@@ -100,11 +100,12 @@ func recentSuccessfulRunAverages(runs []ScheduleRunEntry, sampleLimit int) map[s
 
 // Other scheduler resources (folder allocation, Slack bindings and webhook
 // delivery receipts) still use this process lock. Run history uses SQLite.
-var scheduleRunFileLocks sync.Map
+var scheduleRunFileLocks keyedlock.Map
 
-func scheduleRunFileLock(path string) *sync.Mutex {
-	lock, _ := scheduleRunFileLocks.LoadOrStore(path, &sync.Mutex{})
-	return lock.(*sync.Mutex)
+// scheduleRunFileLock returns a fresh hold on path's lock: Lock it once and
+// Unlock it once. The key is forgotten when nobody holds it.
+func scheduleRunFileLock(path string) *keyedlock.Locker {
+	return scheduleRunFileLocks.Get(path)
 }
 
 // scheduleRunsPath identifies the old import source and the panel change topic.

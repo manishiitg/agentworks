@@ -49,13 +49,23 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 	}
 	upcomingAwake := map[string]bool{}
 	defer func() { desktopKeepAwake.setUpcoming("crew", upcomingAwake) }()
+	// Held-back reasons of schedules that no longer exist are dropped after a
+	// pass that saw every user's schedules.
+	liveJobs, sawEveryUser := map[string]bool{}, true
+	defer func() {
+		if sawEveryUser {
+			s.pruneDeferred(liveJobs)
+		}
+	}()
 	for userID := range users {
 		jobs, err := s.JobsForUser(ctx, userID)
 		if err != nil {
 			scheduleLogf("[PRODUCT-SCHEDULE] %s: cannot discover schedules: %v", userID, err)
+			sawEveryUser = false
 			continue
 		}
 		for _, job := range jobs {
+			liveJobs[userID+"\x1f"+job.ID()] = true
 			if job.Schedule.WorkflowID != "" && job.Schedule.KeepAwake == keepAwakeUpcoming && job.Effective().Enabled {
 				upcomingAwake[job.ID()] = job.Schedule.KeepAwakeOnBattery
 			}

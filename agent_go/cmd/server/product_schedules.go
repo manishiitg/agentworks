@@ -263,6 +263,17 @@ func (s *ProjectActionDispatcher) setDeferred(userID, jobID, reason string) {
 	s.deferred[key] = reason
 }
 
+// pruneDeferred forgets held-back reasons for schedules not in live.
+func (s *ProjectActionDispatcher) pruneDeferred(live map[string]bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key := range s.deferred {
+		if !live[key] {
+			delete(s.deferred, key)
+		}
+	}
+}
+
 func (s *ProjectActionDispatcher) deferredReason(userID, jobID string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
