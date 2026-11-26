@@ -7,7 +7,7 @@ const https = require('https');
 const fs = require('fs');
 const crypto = require('crypto');
 const {
-  importLoginShellEnv,
+  importLoginShellEnvAsync,
   createBoundedLogWriter: createSharedBoundedLogWriter,
   waitForHealth: waitForServersHealth,
   makeOpenExternalUrl,
@@ -68,8 +68,11 @@ const currentDesktopAppOrigin = () => process.env.DEV_URL ? new URL(process.env.
 const { withoutDesktopBootstrap } = require('./lib/connections');
 
 const HEALTH_TIMEOUT_MS = 90000;
-const HEALTH_POLL_MS = 500;
-const HEALTH_INITIAL_DELAY_MS = 3000;
+const HEALTH_POLL_MS = 100;
+const HEALTH_INITIAL_DELAY_MS = 0;
+const STARTUP_SPLASH_URL = 'data:text/html;charset=utf-8,' + encodeURIComponent(
+  '<!doctype html><html><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#1e1e1e;color:#9ca3af;font:14px -apple-system,BlinkMacSystemFont,sans-serif">Starting AgentWorks…</body></html>'
+);
 const DEFAULT_AUTH_SECRET = 'dev-secret-change-in-production';
 const DEFAULT_MANAGED_LOG_MAX_BYTES = 25 * 1024 * 1024;
 const LOG_TRIM_KEEP_RATIO = 0.75;
@@ -94,16 +97,18 @@ function parseNonNegativeIntegerEnv(name, fallback) {
 nativeTheme.themeSource = 'dark';
 
 // GUI-launched Mac apps inherit a minimal PATH (no Homebrew, no nvm, no ~/.local/bin),
-// so spawned tools like `claude`, `npx`, etc. are not found. Read PATH from the user's
-// login shell once at startup and use it for all spawned children. Shared with the
-// other desktop shells in ./lib (see lib/index.js).
-importLoginShellEnv();
-// Release helpers precede the host PATH; source development keeps its existing
-// tools and lifecycle. Provider logins remain owned by their installed CLIs.
+// so spawned tools like `claude`, `npx`, etc. are not found. Resolve PATH from the user's
+// login shell asynchronously in parallel with Electron init, then await before spawning
+// child servers. Release helpers always precede the host PATH.
 if (app.isPackaged) {
-  process.env.PATH = path.join(process.resourcesPath, 'bin') + path.delimiter + process.env.PATH;
   process.env.MCP_BRIDGE_BINARY = path.join(process.resourcesPath, 'bin', process.platform === 'win32' ? 'mcpbridge.exe' : 'mcpbridge');
 }
+const loginEnvReady = importLoginShellEnvAsync().then(() => {
+  if (app.isPackaged) {
+    const binDir = path.join(process.resourcesPath, 'bin');
+    process.env.PATH = process.env.PATH ? binDir + path.delimiter + process.env.PATH : binDir;
+  }
+});
 
 const MANAGED_LOG_MAX_BYTES = parsePositiveIntegerEnv('RUNLOOP_MAX_LOG_BYTES', DEFAULT_MANAGED_LOG_MAX_BYTES);
 const AGENT_PROMPT_LOG_MAX_SESSIONS = parseNonNegativeIntegerEnv(
@@ -552,14 +557,15 @@ function restartServers() {
   setTimeout(() => {
     const userDataPath = app.getPath('userData');
     startAgentPromptLogPruning(userDataPath);
-    const started = process.env.AGENTWORKS_DEV_AGENT_BINARY ? spawnDevelopmentAgent() : spawnWorkspace(userDataPath)
-      .then(() => spawnVault(userDataPath))
-      .then(() => spawnAgent(userDataPath))
-      .then(() => {
-        const agentHealthUrl = `http://127.0.0.1:${dynamicAgentPort}/api/health`;
-        const workspaceHealthUrl = `http://127.0.0.1:${dynamicWorkspacePort}/health`;
-        return waitForHealth(agentHealthUrl, workspaceHealthUrl);
-      });
+    const started = process.env.AGENTWORKS_DEV_AGENT_BINARY
+      ? spawnDevelopmentAgent()
+      : Promise.all([spawnWorkspace(userDataPath), spawnVault(userDataPath)])
+        .then(() => spawnAgent(userDataPath))
+        .then(() => {
+          const agentHealthUrl = `http://127.0.0.1:${dynamicAgentPort}/api/health`;
+          const workspaceHealthUrl = `http://127.0.0.1:${dynamicWorkspacePort}/health`;
+          return waitForHealth(agentHealthUrl, workspaceHealthUrl);
+        });
     started.then(() => {
         desktopAgentReady = true;
         if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -1753,14 +1759,22 @@ function showErrorAndExit(message) {
 }
 
 function createWindow(initialUrl) {
+  const isSplash = initialUrl === STARTUP_SPLASH_URL;
+  const targetUrl = isSplash
+    ? STARTUP_SPLASH_URL
+    : withDesktopVersionCacheBust(initialUrl || `http://127.0.0.1:${dynamicAgentPort}`);
   // One app window: the Dock's activate can open it while the local agent is still starting, so startup reuses it.
   if (mainWindow && !mainWindow.isDestroyed()) {
+    if (!isSplash && mainWindow.__awaitingStartupUrl) {
+      mainWindow.__awaitingStartupUrl = false;
+      console.log('[main] Navigating warm window to:', targetUrl);
+      mainWindow.loadURL(targetUrl);
+    }
     mainWindow.show();
     mainWindow.focus();
     return;
   }
-  const targetUrl = withDesktopVersionCacheBust(initialUrl || `http://127.0.0.1:${dynamicAgentPort}`);
-  console.log('[main] Creating main window for:', targetUrl);
+  console.log('[main] Creating main window for:', isSplash ? 'startup splash' : targetUrl);
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -1772,6 +1786,7 @@ function createWindow(initialUrl) {
       contextIsolation: true,
     },
   });
+  mainWindow.__awaitingStartupUrl = isSplash;
   
   console.log('[main] Initializing window handlers...');
 
@@ -1903,6 +1918,7 @@ app.whenReady().then(async () => {
   const devUrl = process.env.DEV_URL;
   if (devUrl) {
     if (process.env.AGENTWORKS_DEV_AGENT_BINARY) {
+      await loginEnvReady;
       try { await spawnDevelopmentAgent(); }
       catch (error) { showErrorAndExit(error.message); return; }
     }
@@ -1951,6 +1967,12 @@ app.whenReady().then(async () => {
     process.env.AUTH_SECRET = settings.authSecret;
   }
 
+  // Open the dark window early so Chromium/GPU initializes in parallel with the local servers.
+  createWindow(STARTUP_SPLASH_URL);
+
+  // Ensure the async login-shell PATH import finished before launching helper CLIs or servers.
+  await loginEnvReady;
+
   // Packaged Mac installs/updates prepare native integrations without blocking the app.
   // Source development never modifies the person's CLI or provider configuration.
   if (process.platform === 'darwin' && app.isPackaged) {
@@ -1966,13 +1988,12 @@ app.whenReady().then(async () => {
     } catch (_) { diagLog('[NATIVE_CONNECT] event=auto_setup outcome=state_failed provider=app'); }
   }
 
-  // 2. Spawn servers (in sequence: Workspace first, then Agent)
+  // 2. Spawn servers (Workspace and Vault in parallel, then Agent)
   try {
     unifyAgentLogsDir(userDataPath);
     startAgentPromptLogPruning(userDataPath);
     console.log('[main] Spawning local servers...');
-    await spawnWorkspace(userDataPath);
-    await spawnVault(userDataPath);
+    await Promise.all([spawnWorkspace(userDataPath), spawnVault(userDataPath)]);
     await spawnAgent(userDataPath);
   } catch (err) {
     showErrorAndExit(err.message || String(err));

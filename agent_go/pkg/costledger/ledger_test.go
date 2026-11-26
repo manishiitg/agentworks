@@ -246,6 +246,39 @@ func TestSQLiteLedgerMigrationQuarantinesMalformedRowsAndIsIdempotent(t *testing
 	}
 }
 
+func TestSQLiteLedgerMigrateLegacyJSONLIfChangedSkipsUnchangedFile(t *testing.T) {
+	root := t.TempDir()
+	legacyPath := filepath.Join(root, "costs.jsonl")
+	firstLine := `{"ts":"2026-07-13T23:59:58Z","provider":"anthropic","model_id":"claude-sonnet","prompt_tokens":10,"total_cost_usd":0.02,"cost_usd_source":"estimated"}`
+	if err := os.WriteFile(legacyPath, []byte(firstLine+"\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	ledger, err := NewSQLiteLedger(filepath.Join(root, "costs.sqlite"))
+	if err != nil {
+		t.Fatalf("NewSQLiteLedger() error = %v", err)
+	}
+	defer ledger.Close()
+
+	report, ran, err := ledger.MigrateLegacyJSONLIfChanged(legacyPath)
+	if err != nil || !ran || report.Imported != 1 {
+		t.Fatalf("first MigrateLegacyJSONLIfChanged = (%#v, %v, %v), want imported=1 ran=true", report, ran, err)
+	}
+	// Unchanged file is skipped immediately without re-scanning duplicates.
+	report, ran, err = ledger.MigrateLegacyJSONLIfChanged(legacyPath)
+	if err != nil || ran || report.Imported != 0 || report.Duplicates != 0 {
+		t.Fatalf("second MigrateLegacyJSONLIfChanged = (%#v, %v, %v), want skipped (ran=false)", report, ran, err)
+	}
+	// Appending a new row changes size/mtime and triggers an idempotent re-scan.
+	secondLine := `{"ts":"2026-07-13T23:59:59Z","provider":"anthropic","model_id":"claude-sonnet","prompt_tokens":20,"total_cost_usd":0.05,"cost_usd_source":"estimated"}`
+	if err := os.WriteFile(legacyPath, []byte(firstLine+"\n"+secondLine+"\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(append) error = %v", err)
+	}
+	report, ran, err = ledger.MigrateLegacyJSONLIfChanged(legacyPath)
+	if err != nil || !ran || report.Imported != 1 || report.Duplicates != 1 {
+		t.Fatalf("third MigrateLegacyJSONLIfChanged = (%#v, %v, %v), want imported=1 duplicates=1 ran=true", report, ran, err)
+	}
+}
+
 func TestSQLiteLedgerSeparatesCallsFromToolEventsAndUTCDateBounds(t *testing.T) {
 	ledger, err := NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
 	if err != nil {

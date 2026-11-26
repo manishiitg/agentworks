@@ -33,7 +33,7 @@ LIB_SRC="$MOD_DIR/lib/$LIB_ARCH"
 test -f "$LIB_SRC/libsherpa-onnx-c-api.dylib" || { echo "speech runtime libraries not found under $LIB_SRC" >&2; exit 1; }
 install -m 0644 "$LIB_SRC"/libsherpa-onnx-c-api.dylib "$LIB_SRC"/libonnxruntime.dylib "$OUT_DIR/lib/"
 
-(cd "$PKG_DIR" && CGO_ENABLED=1 GOOS=darwin GOARCH="$GOARCH" CGO_LDFLAGS='-Wl,-rpath,@executable_path/lib' go build -o "$OUT" .)
+(cd "$PKG_DIR" && CGO_ENABLED=1 GOOS=darwin GOARCH="$GOARCH" CGO_LDFLAGS='-Wl,-rpath,@executable_path/lib' go build -trimpath -ldflags "-s -w" -o "$OUT" .)
 
 otool -l "$OUT" | grep -A2 LC_RPATH | grep -q '@executable_path/lib' || { echo "built binary lacks the @executable_path/lib rpath" >&2; exit 1; }
 file "$OUT"

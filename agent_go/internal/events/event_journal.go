@@ -74,6 +74,12 @@ type DurableEventJournalPageReader interface {
 	DeleteSession(sessionID string) error
 }
 
+// DurableEventJournalTypeReader reads all durable events of a single event type
+// for a session in sequence order without scanning unrelated event payloads.
+type DurableEventJournalTypeReader interface {
+	ReadEventsByType(sessionID, eventType string) ([]Event, error)
+}
+
 // DurableEventJournalBulkDeleter removes a workflow's chats in one transaction.
 type DurableEventJournalBulkDeleter interface {
 	DeleteSessions(sessionIDs []string) error
@@ -156,6 +162,8 @@ func OpenSQLiteEventJournal(path string) (*SQLiteEventJournal, error) {
 		`CREATE INDEX IF NOT EXISTS structured_chat_event_id ON structured_chat_events(event_id)`,
 		`CREATE INDEX IF NOT EXISTS structured_chat_native_goal ON structured_chat_events(session_id, sequence DESC)
 		 WHERE json_extract(payload,'$.type')='native_goal_updated'`,
+		`CREATE INDEX IF NOT EXISTS structured_chat_coding_agent_question ON structured_chat_events(session_id, sequence ASC)
+		 WHERE json_extract(payload,'$.type')='coding_agent_question'`,
 		`CREATE TABLE IF NOT EXISTS structured_chat_migrations (
 			session_id TEXT PRIMARY KEY,
 			migrated_at TEXT NOT NULL
@@ -473,6 +481,54 @@ func (j *SQLiteEventJournal) ReadPage(sessionID string, opts DurableEventPageOpt
 		page.HasNewer = moreInQueryDirection
 	}
 	return page, nil
+}
+
+func (j *SQLiteEventJournal) ReadEventsByType(sessionID, eventType string) ([]Event, error) {
+	if j == nil || j.db == nil || sessionID == "" || eventType == "" {
+		return []Event{}, nil
+	}
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	// Match the partial index predicate literally so SQLite uses
+	// structured_chat_coding_agent_question instead of scanning every event in
+	// long sessions during startup recovery.
+	if eventType == "coding_agent_question" {
+		rows, err = j.reader().Query(
+			`SELECT payload FROM structured_chat_events
+			 WHERE session_id = ? AND json_extract(payload,'$.type')='coding_agent_question'
+			 ORDER BY sequence ASC`,
+			sessionID,
+		)
+	} else {
+		rows, err = j.reader().Query(
+			`SELECT payload FROM structured_chat_events
+			 WHERE session_id = ? AND json_extract(payload,'$.type') = ?
+			 ORDER BY sequence ASC`,
+			sessionID, eventType,
+		)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	events := []Event{}
+	for rows.Next() {
+		var payload []byte
+		if err := rows.Scan(&payload); err != nil {
+			return nil, err
+		}
+		var event Event
+		if err := json.Unmarshal(payload, &event); err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return events, nil
 }
 
 func (j *SQLiteEventJournal) DeleteSession(sessionID string) error {

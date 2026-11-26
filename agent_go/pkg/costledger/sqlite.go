@@ -71,6 +71,12 @@ CREATE TABLE IF NOT EXISTS cost_event_quarantine (
     raw_record TEXT NOT NULL,
     parse_error TEXT NOT NULL,
     quarantined_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS cost_legacy_migrations (
+    source_path TEXT PRIMARY KEY,
+    size_bytes INTEGER NOT NULL,
+    mod_time_ns INTEGER NOT NULL,
+    migrated_at TEXT NOT NULL
 );`
 
 type sqliteLedger struct {
@@ -590,6 +596,51 @@ INSERT OR IGNORE INTO cost_events (
 		return MigrationReport{}, fmt.Errorf("costledger: commit legacy migration: %w", err)
 	}
 	return report, nil
+}
+
+// migrateLegacyJSONLIfChanged skips re-scanning an unchanged legacy JSONL file
+// once it has already been imported into this SQLite database. If the file has
+// grown or changed since the last recorded migration, it runs the idempotent
+// import and updates the marker.
+func (s *sqliteLedger) migrateLegacyJSONLIfChanged(path string) (MigrationReport, bool, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		absPath = path
+	}
+	info, err := os.Stat(absPath)
+	if os.IsNotExist(err) {
+		return MigrationReport{}, false, nil
+	}
+	if err != nil {
+		return MigrationReport{}, false, fmt.Errorf("costledger: stat legacy JSONL: %w", err)
+	}
+	var recordedSize, recordedMod int64
+	err = s.db.QueryRow(
+		`SELECT size_bytes, mod_time_ns FROM cost_legacy_migrations WHERE source_path = ?`,
+		absPath,
+	).Scan(&recordedSize, &recordedMod)
+	if err == nil && recordedSize == info.Size() && recordedMod == info.ModTime().UnixNano() {
+		return MigrationReport{}, false, nil
+	}
+	if err != nil && err != sql.ErrNoRows {
+		return MigrationReport{}, false, fmt.Errorf("costledger: read legacy migration marker: %w", err)
+	}
+	report, err := s.migrateLegacyJSONL(absPath)
+	if err != nil {
+		return MigrationReport{}, false, err
+	}
+	if _, err := s.db.Exec(
+		`INSERT INTO cost_legacy_migrations(source_path, size_bytes, mod_time_ns, migrated_at)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(source_path) DO UPDATE SET
+		     size_bytes = excluded.size_bytes,
+		     mod_time_ns = excluded.mod_time_ns,
+		     migrated_at = excluded.migrated_at`,
+		absPath, info.Size(), info.ModTime().UnixNano(), time.Now().UTC().Format(time.RFC3339Nano),
+	); err != nil {
+		return report, true, fmt.Errorf("costledger: save legacy migration marker: %w", err)
+	}
+	return report, true, nil
 }
 
 // accountTokens sums one person's tokens per account, on accounts whose ID

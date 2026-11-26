@@ -116,45 +116,62 @@ func (api *StreamingAPI) restoreNativeQuestionsAfterRestart(sessionID string) er
 	}()
 	pending := map[string]unifiedevents.CodingAgentQuestionEvent{}
 	settled := map[string]bool{}
-	var after int64
-	for {
-		page, err := api.eventStore.ReadDurableChatPage(sessionID, storeevents.DurableEventPageOptions{Limit: 500, AfterSequence: after, FromStart: true})
+	recordQuestionEvent := func(event storeevents.Event) error {
+		if event.Type != "coding_agent_question" || event.Data == nil || event.Data.Data == nil {
+			return nil
+		}
+		raw, err := json.Marshal(event.Data.Data)
 		if err != nil {
 			return err
 		}
-		scanned += len(page.Events)
-		for _, event := range page.Events {
-			if event.Type != "coding_agent_question" || event.Data == nil || event.Data.Data == nil {
-				continue
+		var question unifiedevents.CodingAgentQuestionEvent
+		if err := json.Unmarshal(raw, &question); err != nil {
+			return err
+		}
+		if (question.Provider != "codex-cli" && question.Provider != "claude-code" && question.Provider != "cursor-cli") || !strings.HasPrefix(question.PromptID, clarificationPromptPrefix) {
+			return nil
+		}
+		switch question.Kind {
+		case "requested":
+			if !settled[question.PromptID] {
+				pending[question.PromptID] = question
 			}
-			raw, err := json.Marshal(event.Data.Data)
+		case "settled":
+			settled[question.PromptID] = true
+			delete(pending, question.PromptID)
+		}
+		return nil
+	}
+	if typedEvents, supported, err := api.eventStore.ReadDurableChatEventsByType(sessionID, "coding_agent_question"); err != nil {
+		return err
+	} else if supported {
+		scanned = len(typedEvents)
+		for _, event := range typedEvents {
+			if err := recordQuestionEvent(event); err != nil {
+				return err
+			}
+		}
+	} else {
+		var after int64
+		for {
+			page, err := api.eventStore.ReadDurableChatPage(sessionID, storeevents.DurableEventPageOptions{Limit: 500, AfterSequence: after, FromStart: true})
 			if err != nil {
 				return err
 			}
-			var question unifiedevents.CodingAgentQuestionEvent
-			if err := json.Unmarshal(raw, &question); err != nil {
-				return err
-			}
-			if (question.Provider != "codex-cli" && question.Provider != "claude-code" && question.Provider != "cursor-cli") || !strings.HasPrefix(question.PromptID, clarificationPromptPrefix) {
-				continue
-			}
-			switch question.Kind {
-			case "requested":
-				if !settled[question.PromptID] {
-					pending[question.PromptID] = question
+			scanned += len(page.Events)
+			for _, event := range page.Events {
+				if err := recordQuestionEvent(event); err != nil {
+					return err
 				}
-			case "settled":
-				settled[question.PromptID] = true
-				delete(pending, question.PromptID)
 			}
+			if !page.HasNewer {
+				break
+			}
+			if page.LatestSequence <= after {
+				return fmt.Errorf("native question journal cursor did not advance")
+			}
+			after = page.LatestSequence
 		}
-		if !page.HasNewer {
-			break
-		}
-		if page.LatestSequence <= after {
-			return fmt.Errorf("native question journal cursor did not advance")
-		}
-		after = page.LatestSequence
 	}
 	for promptID, question := range pending {
 		api.codingAgentClarificationsMu.Lock()
