@@ -1,11 +1,11 @@
 # AgentWorks
 
-**Work with your AI agents in a Crew. Save repeatable work as workflows.**
+**Bring your whole team and their AI agents onto one project.**
 
-AgentWorks is a source-available workspace for coding-agent CLIs: Claude Code, Codex, Cursor, Pi and Muse. A Crew brings its agents, files, knowledge and connected tools together. Use its chat for work that needs a conversation, and a workflow for repeatable work with saved inputs, steps and run records. Start a workflow from the Crew, on a schedule or through an authorized app connection.
+AgentWorks is a source-available workspace where developers, product managers, QA and business people work on the same project with their AI agents beside them. Each person brings the coding agents they already use, including Claude Code, Codex, Cursor, Antigravity, Pi and Muse. People and agents ask each other, hand over tasks and follow progress in one place. Repeatable work becomes a workflow the whole team can run, schedule and check.
 
 [![Latest Release](https://img.shields.io/github/v/release/manishiitg/agentworks?label=release)](https://github.com/manishiitg/agentworks/releases/latest)
-![macOS Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple)
+![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon%20%7C%20Intel-000000?logo=apple)
 [![License: BSL 1.1](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 
 [Website](https://agentworkshq.com) · [Docs](docs/README.md) · [User guides](https://agentworkshq.com/docs/) · [First workflow](docs/getting-started/first-workflow.md) · [Releases](https://github.com/manishiitg/agentworks/releases/latest) · [Book a call](https://calendly.com/manishiitg/15min)
@@ -14,32 +14,31 @@ AgentWorks is a source-available workspace for coding-agent CLIs: Claude Code, C
 
 | | |
 |---|---|
-| **Crew** | Work with agents in the same project, with its files, memory, tools and browser connections. Use the app or the Crew's connected channels. [Bot connectors](docs/core/bot_connector_system.md) |
-| **Workflow** | Save repeatable work as Python, with typed inputs, presets and named steps. Run it directly or schedule it; a schedule can also message a Crew agent. [First workflow](docs/getting-started/first-workflow.md) |
-| **Runs** | Inspect the result, checks, step activity, files, logs and available usage for each execution. Record measurements with their source and date in the Crew's database. [Workflow guide](docs/workflow/README.md) |
+| **Project** | A folder with its files, memory, skills, tools and browser connections. Chat with as many agents as you need, each in its own tab. Choose the agent and model for each chat in its message box. |
+| **Team** | Teammates join a project from their own Macs, each with their own agents and chats; only the Team folder and Team keys are shared. People and agents ask each other, hand over tasks and see who is working on what. A project on a server can join a Team too: its agents become AI teammates that work around the clock. |
+| **Workflows** | Save repeatable work as Python, with typed inputs and named steps. Run it from chat, on a schedule or from another app, and inspect each run's result, files, logs and cost. [First workflow](docs/getting-started/first-workflow.md) |
+| **Your own agents** | Connect a Claude Code, Codex or other agent chat you already run in a terminal with `agentworks attach`. Your agents across laptops and servers can then message each other and your teammates' agents. [CLI and MCP](docs/getting-started/agentworks-cli-mcp.md) |
 
-## Install (macOS, Apple Silicon)
+Everyone works at their own level: developers get worktrees, pull requests, terminals and the editor; everyone else reaches the same work through chat and plain-language screens.
 
-```bash
-npx --yes @manishiitg/agentworks
-```
-
-Without Node.js:
+## Install (macOS)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/manishiitg/agentworks/main/install.sh | bash
 ```
 
-The installer downloads the Mac app and bundled `agentworks` CLI, verifies the checksum and opens the app. No source checkout, Go or Homebrew build is needed. This build is unsigned; the installer clears macOS quarantine on the installed app.
+Already have Node.js? `npx --yes @manishiitg/agentworks` does the same.
 
-On first launch, AgentWorks detects your installed AI programs. Connect a server optionally, then choose a project folder and start chatting. Existing projects and sign-ins stay in place.
+It installs the app (Apple Silicon or Intel) and the `agentworks` command, then opens the app. Nothing else to set up.
 
-To update an installed app, use **Check for Updates**, or quit it and run `npx --yes @manishiitg/agentworks update`.
+Then open a project folder and start chatting. The app finds the AI programs you already have. If your company runs an AgentWorks server, connect it to use the company's AI accounts and join its Teams.
+
+To update, use **Check for Updates** in the app, or run the same command again.
 
 <details>
 <summary>Manual install, and the "AgentWorks is damaged and can't be opened" message</summary>
 
-Download `AgentWorks-<version>-arm64.dmg` from the [latest release](https://github.com/manishiitg/agentworks/releases/latest) and drag the app to Applications.
+Download `AgentWorks-<version>-arm64.dmg` (Apple Silicon) or `AgentWorks-<version>-x64.dmg` (Intel) from the [latest release](https://github.com/manishiitg/agentworks/releases/latest) and drag the app to Applications.
 
 The build is not yet signed or notarized, so macOS Gatekeeper flags it after download. For a copy downloaded from this release, clear the quarantine flag:
 
@@ -47,25 +46,25 @@ The build is not yet signed or notarized, so macOS Gatekeeper flags it after dow
 xattr -cr /Applications/AgentWorks.app
 ```
 
-If macOS still complains, also run `xattr -cr ~/Downloads/AgentWorks-*.dmg`. No `sudo` is needed. Releases installed under the old name use `/Applications/Runloop.app`. Signing and notarization are on the roadmap.
+If macOS still complains, also run `xattr -cr ~/Downloads/AgentWorks-*.dmg`. No `sudo` is needed. Signing and notarization are on the roadmap.
 </details>
 
 ## Works with
 
-- **Coding-agent CLIs:** Claude Code, OpenAI Codex CLI, Cursor CLI, Pi CLI (Gemini, OpenRouter, and other Pi providers), and Muse. Use the subscription you already pay for.
+- **AI programs:** Claude Code, OpenAI Codex CLI, Cursor CLI, Antigravity, Pi CLI (Gemini, OpenRouter and other Pi providers) and Muse. Use the subscriptions you already pay for, or the company accounts your server lends to your Mac.
 - **Channels:** Slack and WhatsApp for two-way conversations; Gmail for outbound updates.
-- **Tools:** any MCP server, workspace files, and a persistent, isolated browser per workflow ([browser docs](docs/core/browser.md)).
-- **Your AI app:** AgentWorks is also an MCP server. Connect ChatGPT, Claude (Desktop, Code, Cowork), or any MCP client to read reports and start workflows. Connections with the required Crew editing permission can also change workflow source and inputs ([CLI and MCP](docs/getting-started/agentworks-cli-mcp.md)).
+- **Tools:** any MCP server, project files, and a persistent, isolated browser per project or workflow ([browser docs](docs/core/browser.md)).
+- **Your AI app:** AgentWorks is also an MCP server. Connect ChatGPT, Claude (Desktop, Code, Cowork) or any MCP client to work with your projects and start workflows, with the same permissions as in the app ([CLI and MCP](docs/getting-started/agentworks-cli-mcp.md)).
 
-AgentWorks runs each vendor's own agent (model plus harness), not a bare model API, so you get everything the agent can do. Route each step to the agent and model that fit it: your strongest for judgment, a cheaper one for routine steps.
+AgentWorks runs each vendor's own agent (model plus harness), not a bare model API, so you get everything the agent can do. Pick the agent and model that fit each chat or step: your strongest for judgment, a cheaper one for routine work.
 
 ## Control and security
 
-- **Decisions:** discuss work that needs a person in Crew chat. Workflows use their saved inputs and return a clear outcome; they do not wait for questions mid-run ([questions and inputs](docs/workflow/human_feedback_system.md)).
-- **Secrets vault:** credentials are encrypted and injected only at run time, never shown in chat or logs ([secrets](docs/core/secrets.md)).
-- **Sandboxing:** OS-enforced per agent, Landlock on Linux and sandbox-exec on macOS, limited to the folders and tools each workflow is granted ([FolderGuard](docs/core/folder_guard_system.md)).
-- **Run logs and cost:** every step, tool call, and model cost is recorded per run and per workflow ([cost and logs](docs/workflow/cost_and_log_measurement.md)).
-- **Access:** each Crew controls who can manage or use its shared work. Existing account, connection and tool permissions apply to every request ([multi-user](docs/core/multi_user_authentication.md)).
+- **Sharing:** share a project as Only me, Chosen people or Everyone. On a server, the owner adds co-owners who build with them and Users who work in it through chat; on a Mac, the project's Team. Being in the company is not access ([sharing](docs/security/sharing.md)).
+- **Secrets vault:** credentials are encrypted and reach work only as environment variables at run time, never shown in chat or logs ([secrets](docs/design/vault-secrets.md)).
+- **Sandboxing:** OS-enforced per agent, Landlock on Linux and sandbox-exec on macOS, limited to the folders and tools each project or workflow is granted ([FolderGuard](docs/core/folder_guard_system.md)).
+- **Run logs and cost:** every step, tool call and model cost is recorded, with who spent what on which project ([cost and logs](docs/workflow/cost_and_log_measurement.md)).
+- **Decisions:** work that needs a person happens in chat. Workflows use their saved inputs and return a clear outcome; they do not wait for questions mid-run ([questions and inputs](docs/workflow/human_feedback_system.md)).
 
 ## Run from source
 
