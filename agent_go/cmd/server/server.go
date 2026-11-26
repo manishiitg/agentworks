@@ -6385,6 +6385,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			endSpeedSpan6306 := events.TurnSpeedSpan(sessionID, "secrets")
 			chatAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
 			chatAgentSecrets = api.withOwnChatKeys(context.Background(), currentUserID, req.SelectedFolder, personTypedChatTurn(r.Context(), req, sessionID, crewAskOnly), chatAgentSecrets)
+			chatAgentSecrets = api.addServerCompanyKeys(context.Background(), currentUserID, req.SelectedFolder, chatAgentSecrets) // company keys on a Mac
 			endSpeedSpan6306()
 			chatAgentSecretEnv := make(map[string]string, len(chatAgentSecrets))
 			for _, s := range chatAgentSecrets {

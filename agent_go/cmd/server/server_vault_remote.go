@@ -504,6 +504,11 @@ type serverVaultSecretMisses map[string]string
 // Vault on the Crew's company server (10 seconds in all). The Mac's own secret wins on a name clash. Values are only
 // held in memory; the log names the secret, never its value.
 func (api *StreamingAPI) addServerVaultSecrets(ctx context.Context, userID, folder string, have []resolvedSecret, selection *[]string) []resolvedSecret {
+	// Company keys from the company server come last: every key the turn already has keeps its value.
+	return api.addServerCompanyKeys(ctx, userID, folder, api.addServerVaultSelected(ctx, userID, folder, have, selection))
+}
+
+func (api *StreamingAPI) addServerVaultSelected(ctx context.Context, userID, folder string, have []resolvedSecret, selection *[]string) []resolvedSecret {
 	if !IsLocalMode() || selection == nil || len(*selection) == 0 || strings.TrimSpace(folder) == "" {
 		return have
 	}
