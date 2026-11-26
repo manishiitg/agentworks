@@ -1,5 +1,4 @@
 import { isLocalDeployment } from '../../products/productSurfaceConfig'
-import { mostInTeam } from '../chat/AgentInTeamMark'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import { Fragment, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { ChevronRight, MoreHorizontal, Search, X } from 'lucide-react'
@@ -122,9 +121,6 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const hidden = [...ownAgents, ...ownClosed].filter(agent => agent.sidebarHidden)
     .sort((a, b) => (a.sidebarOrder ?? Infinity) - (b.sidebarOrder ?? Infinity))
   const closed = ownClosed.filter(agent => !agent.sidebarHidden)
-  // Mark only the odd one out (owner, 18 Nov): a lock on private agents when most are in the team.
-  const own = [...ownAgents, ...ownClosed]
-  const mostIn = mostInTeam(own.map(agent => agent.inTeam))
 
   const edit = async (change: Parameters<ReturnType<typeof useAgentGroupsStore.getState>['edit']>[1]) => {
     setFailed('')
@@ -294,7 +290,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     const nestTargets = !agent.ownerId && !agent.main && agent.key && agent.actions?.forkParent
       ? shown.filter(candidate => canNestUnder(agent.key!, candidate).ok)
       : undefined
-    return <AgentRow key={agent.tabId} agent={dropTarget(agent)} status={status(agent)} mostIn={mostIn} active={agent.tabId === activeTabId}
+    return <AgentRow key={agent.tabId} agent={dropTarget(agent)} status={status(agent)} active={agent.tabId === activeTabId}
       dragging={dragging} onDrag={key => { setDragging(key); setDropOn('') }} popup={popup} reordering={reordering}
       person={agent.ownerId ? (agent.owner || 'Teammate') : undefined}
       groupMenu={isRoot ? moveMenu(agent) : forkMenu(agent)}
@@ -433,12 +429,12 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     <SidebarHiddenAgents count={hidden.length} expanded={showHidden} onToggle={() => setShowHidden(!showHidden)}>
       {showHidden && hidden.map(agent => 'tabId' in agent ? row(agent, false) : closedRow(agent))}
     </SidebarHiddenAgents>
-    <OwnTerminalAgents projectId={projectId} nested mostIn={mostIn} />
+    <OwnTerminalAgents projectId={projectId} nested />
   </div>
 
   function closedRow(agent: CrewClosedAgent) {
     return <div key={agent.key} {...agentRowThemeProps(null, false)} className="group relative rounded-md">
-      <AgentRowLine name={agent.name} title={agent.purpose} person={agent.owner} inTeam={agent.owner ? undefined : { on: agent.inTeam, mostIn }} state={null} onClick={() => { void agent.open(); closeDrawer(); onClosedOpened?.() }} />
+      <AgentRowLine name={agent.name} title={agent.purpose} person={agent.owner} inTeam={agent.owner ? undefined : { on: agent.inTeam, share: agent.teamShare }} state={null} onClick={() => { void agent.open(); closeDrawer(); onClosedOpened?.() }} />
     </div>
   }
 }
@@ -455,7 +451,7 @@ function rowDropMode(clientY: number, rect: { top: number; height: number }, can
   return canReorder ? 'before' : null
 }
 
-function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reordering, onSelect, person, groupMenu, canNest, onNest, nestTargets, onNestUnder }: { mostIn: boolean; popup: boolean; reordering: boolean; onSelect: (tabId: string) => void; agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void; person?: string; groupMenu?: (done: () => void) => ReactNode; canNest?: (fromKey: string) => NestCheck; onNest?: (fromKey: string) => void; nestTargets?: CrewAgentRow[]; onNestUnder?: (target: CrewAgentRow) => void }) {
+function AgentRow({ agent, status, active, dragging, onDrag, popup, reordering, onSelect, person, groupMenu, canNest, onNest, nestTargets, onNestUnder }: { popup: boolean; reordering: boolean; onSelect: (tabId: string) => void; agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void; person?: string; groupMenu?: (done: () => void) => ReactNode; canNest?: (fromKey: string) => NestCheck; onNest?: (fromKey: string) => void; nestTargets?: CrewAgentRow[]; onNestUnder?: (target: CrewAgentRow) => void }) {
   const state = useAgentMenuState(agent.tabId, agent.activity)
   // An idle row shows when it was last active, from the active-session list the app already holds (nothing new is read).
   const lastActivity = useChatStore(store => {
@@ -513,7 +509,7 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
       }
       onDrag(null)
     } : undefined}>
-      <AgentRowLine name={agent.name} person={person} inTeam={agent.ownerId ? undefined : { on: agent.inTeam, mostIn }} setup={agent.info?.setup && { ...agent.info.setup, reach: '' }}
+      <AgentRowLine name={agent.name} person={person} inTeam={agent.ownerId ? undefined : { on: agent.inTeam, share: agent.teamShare }} setup={agent.info?.setup && { ...agent.info.setup, reach: '' }}
         place={agent.place} status={status} lastAt={lastAt} provider={provider} state={state} asking={agent.asking} active={active} grip={reordering && !!agent.actions?.orderKey} onClick={() => onSelect(agent.tabId)} />
     {dragging && dragging !== targetKey && (dropState.mode === 'nest' || dropState.mode === 'refuse') && <span
       className={`pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${dropState.mode === 'nest' ? 'bg-primary text-primary-foreground' : 'bg-destructive text-destructive-foreground'}`}>

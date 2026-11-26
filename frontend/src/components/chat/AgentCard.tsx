@@ -1,10 +1,11 @@
 import { HeaderAgentSharing } from '../../products/work/ShareCrew'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, ChevronDown, Clock, Eye, EyeOff, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, Clock, Eye, EyeOff, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, UserCheck, Users, X } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
+import { describeAgentShare, type AgentShareDisplay, type AgentTeamShare } from './AgentInTeamMark'
 import { AgentDetailSection } from './AgentDetailSection'
 import { CodingCliIcon } from './CodingCliIcon'
 import { useLLMStore } from '../../stores/useLLMStore'
@@ -22,6 +23,8 @@ export interface AgentCardInfo {
   sharedWith?: string
   /** Shared with chosen people only (the server row's audience). */
   sharedChosen?: boolean
+  /** Structured Team sharing state for the header pill (only present when shared with the Team). */
+  teamShare?: AgentTeamShare
   lastAsked?: { who: string; when: string; active: boolean; open: () => void }
   /** Only on your own agents; a teammate's agent is theirs to change. */
   onSetPurpose?: () => void
@@ -70,9 +73,9 @@ export interface CrewAgentActions {
   /** A fork: hang it under that agent's key, or '' to move it out to its own place (#3504). */
   forkParent?: (parentKey: string) => Promise<void>
 }
-export interface CrewAgentRow { /** Its conversation key, for groups (#3288). */ key?: string; /** When its chat last had a message (saved history), for "2m" before any session is live (#3406). */ lastMessageAt?: string; /** The conversation key of the agent it was forked from. */ forkedFrom?: string; sidebarHidden?: boolean; sidebarOrder?: number; inTeam?:boolean; tabId: string; name: string; main: boolean; /** Where it runs, as the server lists it: 'server' shows a cloud in the left menu. */ place?: 'mac' | 'server'; /** Whose agent it is when it is someone else's (a Team or co-owner Crew), by account and with the server's display name; absent for your own. */ ownerId?: string; owner?: string; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
+export interface CrewAgentRow { /** Its conversation key, for groups (#3288). */ key?: string; /** When its chat last had a message (saved history), for "2m" before any session is live (#3406). */ lastMessageAt?: string; /** The conversation key of the agent it was forked from. */ forkedFrom?: string; sidebarHidden?: boolean; sidebarOrder?: number; inTeam?:boolean; teamShare?: AgentTeamShare; tabId: string; name: string; main: boolean; /** Where it runs, as the server lists it: 'server' shows a cloud in the left menu. */ place?: 'mac' | 'server'; /** Whose agent it is when it is someone else's (a Team or co-owner Crew), by account and with the server's display name; absent for your own. */ ownerId?: string; owner?: string; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
 /** An agent the server lists for the Crew that has no open tab here; open() opens it again and switches to it. */
-export interface CrewClosedAgent { /** A teammate's agent: their name. */ owner?: string; forkedFrom?: string; sidebarHidden?: boolean; sidebarOrder?: number; inTeam?:boolean; key: string; name: string; examples?: string[]; purpose?: string; open: () => Promise<unknown> }
+export interface CrewClosedAgent { /** A teammate's agent: their name. */ owner?: string; forkedFrom?: string; sidebarHidden?: boolean; sidebarOrder?: number; inTeam?:boolean; teamShare?: AgentTeamShare; key: string; name: string; examples?: string[]; purpose?: string; open: () => Promise<unknown> }
 export const useCrewAgentsStore = create<{ projectId: string | null; name: string; agents: CrewAgentRow[]; closed: CrewClosedAgent[]; canAdd: boolean; canImportChat: boolean; canDiscoverSkills: boolean; set: (projectId: string, name: string, agents: CrewAgentRow[], canAdd: boolean, closed?: CrewClosedAgent[], imports?: { chat: boolean; skills: boolean }) => void }>(set => ({
   projectId: null,
   name: '',
@@ -91,13 +94,19 @@ function AgentOnlineCopyStatus({ setup }: { setup?: TeamTabSetup }) {
  return <div className="flex justify-between gap-3 border-t border-border py-2"><span className="text-muted-foreground">When Mac sleeps</span><span>{line}</span></div>
 }
 
+const HEADER_SHARE_TONE: Record<AgentShareDisplay['tone'], string> = {
+  'team-visible': 'bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-400',
+  'team-hidden': 'bg-amber-500/10 text-amber-700 hover:bg-amber-500/15 dark:text-amber-400',
+  chosen: 'bg-primary/10 text-primary hover:bg-primary/15',
+}
+
 let agentHoverCooldownUntil = 0
 
-export function AgentHoverCard({ info, children, side = 'below', clickToOpen = false, actions, shortcut, onRename, automationShortcut = false }: { info?: AgentCardInfo; children: ReactNode | ((detailsOpen: boolean) => ReactNode); side?: 'below' | 'right'; clickToOpen?: boolean; actions?: CrewAgentActions; shortcut?: number; onRename?: () => void; automationShortcut?: boolean }) {
+export function AgentHoverCard({ info, children, side = 'below', clickToOpen = false, actions, shortcut, onRename, automationShortcut = false, shareShortcut = false }: { info?: AgentCardInfo; children: ReactNode | ((detailsOpen: boolean) => ReactNode); side?: 'below' | 'right'; clickToOpen?: boolean; actions?: CrewAgentActions; shortcut?: number; onRename?: () => void; automationShortcut?: boolean; shareShortcut?: boolean }) {
   const [automationsOpen, setAutomationsOpen] = useState(false)
   const anchor = useRef<HTMLSpanElement>(null)
   const box = useRef<HTMLDivElement>(null)
-  const [at, setAt] = useState<{ top: number; left: number; view: 'details' | 'automations' } | null>(null)
+  const [at, setAt] = useState<{ top: number; left: number; view: 'details' | 'automations' | 'sharing' } | null>(null)
   const trigger = useRef<HTMLButtonElement | null>(null)
   const timer = useRef<number | undefined>(undefined)
   const activeTabId = useChatStore(state => state.activeTabId)
@@ -135,7 +144,8 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   const content = typeof children === 'function' ? children(at?.view === 'details') : children
   if (!info) return <>{content}</>
   const enabled = enabledAgentAutomations(info.setup)
-  const open = (view: 'details' | 'automations' = 'details') => {
+  const shareInfo = shareShortcut && !info.owner ? describeAgentShare(info.teamShare) : null
+  const open = (view: 'details' | 'automations' | 'sharing' = 'details') => {
     const rect = anchor.current?.getBoundingClientRect()
     if (!rect) return
     setAutomationsOpen(false)
@@ -166,6 +176,20 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         if (at?.view === 'details') dismiss(); else open()
       } : undefined}>
       {content}
+      {shareInfo && <button type="button" aria-label={shareInfo.tooltip} aria-expanded={at?.view === 'sharing'} aria-haspopup="dialog"
+        title={`${shareInfo.tooltip} — click to edit`}
+        className={`inline-flex h-6 max-w-48 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-9 max-md:px-2.5 max-md:text-xs ${HEADER_SHARE_TONE[shareInfo.tone]}`}
+        onClick={event => {
+          event.stopPropagation()
+          trigger.current = event.currentTarget
+          if (at?.view === 'sharing') dismiss()
+          else if (info.sharing) open('sharing')
+          else info.onSharing?.()
+        }}>
+        {shareInfo.chosen ? <UserCheck aria-hidden="true" className="h-3 w-3 shrink-0" /> : <Users aria-hidden="true" className="h-3 w-3 shrink-0" />}
+        {shareInfo.hidden && <EyeOff aria-hidden="true" className="h-2.5 w-2.5 shrink-0 opacity-85" />}
+        <span className="truncate">{shareInfo.headerLabel}</span>
+      </button>}
       {automationShortcut && enabled.length > 0 && <button type="button" aria-label={`${enabled.length} enabled automation${enabled.length === 1 ? '' : 's'}`} aria-expanded={at?.view === 'automations'} aria-haspopup="dialog"
         title={enabled.map(item => `${item.kind}: ${item.name} · ${item.line}`).join('\n')}
         className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-primary/10 px-1.5 text-xs font-medium text-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-10 max-md:px-2"
@@ -176,7 +200,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         }}><Clock aria-hidden="true" className="h-3.5 w-3.5" />{enabled.length}</button>}
     </span>
     {at && createPortal(<>{sheet && <div ref={backdrop} aria-hidden="true" className="fixed inset-0 z-[100] bg-black/40" onClick={event => { event.stopPropagation(); dismiss() }} />}
-    <div ref={box} tabIndex={clickToOpen ? -1 : undefined} role="dialog" aria-label={at.view === 'automations' ? `Automations for ${info.name}` : info.name} style={sheet ? undefined : { top: at.top, left: at.left }} onClick={event => event.stopPropagation()}
+    <div ref={box} tabIndex={clickToOpen ? -1 : undefined} role="dialog" aria-label={at.view === 'automations' ? `Automations for ${info.name}` : at.view === 'sharing' ? `Sharing for ${info.name}` : info.name} style={sheet ? undefined : { top: at.top, left: at.left }} onClick={event => event.stopPropagation()}
       onPointerEnter={() => window.clearTimeout(timer.current)} onPointerLeave={event => { if (!clickToOpen && event.pointerType === 'mouse') later(200, dismiss) }}
       className={sheet
         ? 'fixed inset-x-0 bottom-0 z-[100] max-h-[80dvh] overflow-y-auto overscroll-contain rounded-t-2xl border-t border-border bg-popover p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] text-sm shadow-lg'
@@ -188,6 +212,12 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         </div>
         <p className="mb-2 mt-1 text-muted-foreground">Enabled for {info.name}</p>
         <AgentAutomationList items={enabled} empty="No enabled automations." />
+      </> : at.view === 'sharing' && info.sharing ? <>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold">Sharing · {info.name}</p>
+          {close('Close sharing')}
+        </div>
+        <HeaderAgentSharing {...info.sharing} defaultOpen status={!info.owner ? <AgentOnlineCopyStatus setup={info.setup} /> : undefined} />
       </> : <>
       <div className="flex items-center gap-2 text-sm font-semibold"><p className="min-w-0 flex-1 truncate">{info.name}</p>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}{clickToOpen && close('Close agent details')}</div>
       <AgentModelRow tabId={info.tabId} compact={clickToOpen} />
@@ -242,7 +272,7 @@ export function AgentHeaderLine({ agent: row, crewName, onOpenIdentity, onReturn
       {/* Watching a teammate's agent: your own agent's name takes you back to it. */}
       {onReturn ? <button type="button" onClick={onReturn} title={`Back to your ${name}`} aria-label={`Back to your ${name}`}
         className="block min-w-0 max-w-48 sm:max-w-xs md:max-w-[28rem] lg:max-w-[36rem] truncate rounded-sm font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{name}</button>
-      : info ? <AgentHoverCard info={info} clickToOpen automationShortcut shortcut={row?.shortcut} actions={row?.actions}>
+      : info ? <AgentHoverCard info={info} clickToOpen automationShortcut shareShortcut shortcut={row?.shortcut} actions={row?.actions}>
         {open => <button type="button" aria-label={`About ${name}`} title={name} aria-expanded={open} aria-haspopup="dialog"
           className="inline-flex min-w-0 max-w-48 sm:max-w-xs md:max-w-[28rem] lg:max-w-[36rem] items-center gap-1 rounded-md px-1.5 py-1 font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10">
           <span className="min-w-0 truncate">{name}</span><ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />

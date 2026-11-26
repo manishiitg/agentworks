@@ -84,15 +84,23 @@ it('lists own agents directly in their normal order without group controls', asy
  } finally { await act(async () => root.unmount()) }
 })
 
-it('keeps the private row lock without a Team visibility footnote', async () => {
+it('shows sharing marks only on shared agents and leaves private agents clean', async () => {
  const host = document.createElement('div'), root = createRoot(host)
  f.extra = Array.from({ length: 5 }, (_, index) => ({
   tabId: `shared-${index}`, name: `Shared agent ${index}`, inTeam: true,
+  teamShare: index === 0
+   ? { inTeam: true, audience: 'whole_team', chatShare: 'agent' }
+   : index === 1
+   ? { inTeam: true, audience: 'chosen', chosenPeople: ['Ana', 'Sam'], chatShare: 'live' }
+   : { inTeam: true, audience: 'whole_team', chatShare: 'live' },
  }))
  try {
   await act(async () => root.render(<SidebarCrewAgents projectId="crew" />))
-  expect(host.querySelector('[aria-current="page"] [aria-label="Only you"]')).not.toBeNull()
-  expect(host.textContent).toContain('Shared agent 0')
+  // Private is the default (owner, 26 Nov): no lock icon on private rows even when most agents are shared.
+  expect(host.querySelector('[aria-current="page"] [aria-label="Only you"]')).toBeNull()
+  expect(host.querySelector('[aria-label="Shared with everyone on the Team · Chat hidden (teammates can ask, not read chat)"]')).not.toBeNull()
+  expect(host.querySelector('[aria-label="Shared with Ana, Sam · Chat visible"]')).not.toBeNull()
+  expect(host.querySelector('[aria-label="Shared with everyone on the Team · Chat visible"]')).not.toBeNull()
   expect(host.textContent).not.toMatch(/In team unless marked with a lock|All in team/)
  } finally { f.extra = []; await act(async () => root.unmount()) }
 })

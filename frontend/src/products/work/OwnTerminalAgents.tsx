@@ -14,7 +14,7 @@ export type OwnTerminalAgent = { activity?:'Working'|'Waiting for you'|'Idle'|'O
 
 /** Same owner-only server rows on Mac/web; never insert a native session into
  * the writable app-chat store. Unmounting or a failed read drops private data. */
-export function OwnTerminalAgents({ projectId, connection = getRawActiveWorkspaceId(), nested = false, mostIn = false }: { projectId: string; connection?: string; nested?: boolean; mostIn?: boolean }) {
+export function OwnTerminalAgents({ projectId, connection = getRawActiveWorkspaceId(), nested = false }: { projectId: string; connection?: string; nested?: boolean }) {
   const selection=useTerminalConversationSelection(state=>state.selection)
   const selected=selection&&isChatIdentityCurrent(selection.identity)&&selection.workspace===connection&&selection.projectId===projectId?selection.agent.id:undefined
   const [state, setState] = useState<{ key: string; target: TeamTarget; agents: OwnTerminalAgent[] }>()
@@ -43,7 +43,7 @@ export function OwnTerminalAgents({ projectId, connection = getRawActiveWorkspac
   if (!current?.agents.length) return null
   return <div className={nested ? '' : sidebarAgentListClass} role="group" aria-label="Your terminal agents">
     {current.agents.map(item => <button key={item.id} type="button" role="listitem" data-theme-row="agent" data-theme-agent-state={item.activity === 'Working' ? 'running' : item.activity === 'Waiting for you' ? 'waiting' : 'quiet'} data-theme-agent-selected={selected === item.id ? 'true' : 'false'} aria-current={selected===item.id?'page':undefined} title={`${item.name} · ${item.provider_name}${item.app === 'desktop' ? ' (desktop app)' : ''} · ${item.activity || 'Status unavailable'}${item.presence === 'Terminal closed' ? ' · Terminal closed' : ''}`} onClick={() => openTerminalConversation(projectId, current.target, item, true)} className={`${sidebarAgentRowClass} gap-1.5 hover:bg-muted hover:text-foreground ${selected===item.id?'bg-foreground/[0.06] font-medium text-foreground':'text-muted-foreground'}`}>
-      {item.app === 'desktop' ? <Monitor aria-label="Claude desktop app" className="h-3.5 w-3.5 shrink-0" /> : <Terminal aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />}<span className="min-w-0 flex-1 truncate">{item.name}</span><AgentInTeamMark on={item.in_team} mostIn={mostIn}/><AgentMark state={item.activity==='Working'?'running':item.activity==='Waiting for you'?'waiting':null} dot/>
+      {item.app === 'desktop' ? <Monitor aria-label="Claude desktop app" className="h-3.5 w-3.5 shrink-0" /> : <Terminal aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />}<span className="min-w-0 flex-1 truncate">{item.name}</span><AgentInTeamMark on={item.in_team} /><AgentMark state={item.activity==='Working'?'running':item.activity==='Waiting for you'?'waiting':null} dot/>
       <img src={`/provider-icons/${item.provider === 'codex-cli' ? 'codex.png' : 'claude.ico'}`} alt={item.provider_name} title={item.provider_name} className="h-3.5 w-3.5 shrink-0 object-contain" />
       <span className="shrink-0 text-[11px]">{item.activity || 'Status unavailable'}</span>
     </button>)}
