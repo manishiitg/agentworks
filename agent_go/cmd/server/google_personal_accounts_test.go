@@ -63,7 +63,7 @@ esac
 		t.Fatal(err)
 	}
 	router := mux.NewRouter()
-	GmailConnectionRoutes(router, nil)
+	GmailConnectionRoutes(router.PathPrefix("/api").Subrouter(), nil)
 	selectAccount := func(user, id, path string, selected bool, want int) {
 		t.Helper()
 		body, _ := json.Marshal(map[string]any{"workspace_path": path, "selected": selected})
@@ -104,8 +104,8 @@ esac
 		t.Fatal(err)
 	}
 	central := &StreamingAPI{}
-	GoogleAppRoutes(router, central)
-	GmailOAuthRoutes(router, central)
+	GoogleAppRoutes(router.PathPrefix("/api").Subrouter(), central)
+	GmailOAuthRoutes(router.PathPrefix("/api").Subrouter(), central)
 	centralCall := func(body, user string, want int) map[string]any {
 		t.Helper()
 		rec := httptest.NewRecorder()

@@ -16,7 +16,7 @@ import (
 
 func muxRouterForCrewFunctions(svc *ProjectActionDispatcher) *mux.Router {
 	router := mux.NewRouter()
-	ProductWebhookRoutes(router, svc)
+	ProductWebhookRoutes(router.PathPrefix("/api").Subrouter(), svc)
 	return router
 }
 

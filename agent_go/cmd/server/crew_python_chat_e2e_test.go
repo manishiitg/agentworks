@@ -215,7 +215,7 @@ child.wait()
 	if strings.HasPrefix(entry, "crew-timer") {
 		api.costLedger = installWorkflowCostTestLedger(t)
 		routes := mux.NewRouter()
-		SchedulerRoutes(routes, api.scheduler)
+		SchedulerRoutes(routes.PathPrefix("/api").Subrouter(), api.scheduler)
 		server := httptest.NewServer(AuthMiddleware(routes))
 		defer server.Close()
 		token, err := GenerateJWT("owner", "owner", "")

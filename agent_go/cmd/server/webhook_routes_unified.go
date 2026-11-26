@@ -13,7 +13,7 @@ import (
 // events. The older /api/hooks/workflow/<id> address is registered with the workflow receiver.
 func UnifiedWebhookRoutes(router *mux.Router, workflows *SchedulerService, products *ProjectActionDispatcher) {
 	receiver := webhookReceiver{find: findScheduleByIDAny, start: workflows.triggerSavedSchedule, existing: workflows.existingWebhookRun}
-	router.HandleFunc("/api/hooks/{id}", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/hooks/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if id := strings.TrimSpace(mux.Vars(r)["id"]); products != nil && uuid.Validate(id) == nil {
 			w.Header().Set("Cache-Control", "no-store")
 			if products.conditionService().receiveWebhookWake(w, r, id) {
@@ -22,6 +22,6 @@ func UnifiedWebhookRoutes(router *mux.Router, workflows *SchedulerService, produ
 		}
 		receiver.receive(w, r)
 	}).Methods("POST")
-	router.HandleFunc("/api/hooks/{id}/runs/{run}", workflows.pollWebhookRun).Methods("GET")
-	router.HandleFunc("/api/hooks/{id}/runs/{run}/artifact", workflows.downloadWebhookArtifact).Methods("GET", "HEAD")
+	router.HandleFunc("/hooks/{id}/runs/{run}", workflows.pollWebhookRun).Methods("GET")
+	router.HandleFunc("/hooks/{id}/runs/{run}/artifact", workflows.downloadWebhookArtifact).Methods("GET", "HEAD")
 }

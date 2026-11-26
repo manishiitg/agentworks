@@ -457,7 +457,7 @@ func (r *workflowMissedStatusResolver) get(workspacePath string, sched WorkflowS
 
 // SchedulerRoutes registers the scheduler API routes.
 func SchedulerRoutes(router *mux.Router, svc *SchedulerService) {
-	apiRouter := router.PathPrefix("/api/scheduler").Subrouter()
+	apiRouter := router.PathPrefix("/scheduler").Subrouter()
 
 	apiRouter.HandleFunc("/config", getSchedulerConfigHandler(svc)).Methods("GET", "OPTIONS")
 	// The global pause stops every schedule on the platform: administrators only (PLAT-504).

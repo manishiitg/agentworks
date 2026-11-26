@@ -383,15 +383,15 @@ func validateWebhookPayloadMappings(ctx context.Context, workspacePath string, c
 var workflowWebhookConfigMu sync.Mutex
 
 func WorkflowWebhookRoutes(router *mux.Router, svc *SchedulerService) {
-	router.HandleFunc("/api/workflow-webhooks", svc.listWorkflowWebhooks).Methods("GET")
-	router.HandleFunc("/api/workflow-webhooks", requireWorkflowWriteAccess(svc.saveWorkflowWebhook)).Methods("POST")
-	router.HandleFunc("/api/workflow-webhooks/{id}", requireWorkflowWriteAccess(svc.saveWorkflowWebhook)).Methods("PUT")
-	router.HandleFunc("/api/workflow-webhooks/{id}", requireWorkflowWriteAccess(svc.deleteWorkflowWebhook)).Methods("DELETE")
-	router.HandleFunc("/api/workflow-webhooks/{id}/runs/{run}/payload", svc.getWorkflowWebhookPayload).Methods("GET")
+	router.HandleFunc("/workflow-webhooks", svc.listWorkflowWebhooks).Methods("GET")
+	router.HandleFunc("/workflow-webhooks", requireWorkflowWriteAccess(svc.saveWorkflowWebhook)).Methods("POST")
+	router.HandleFunc("/workflow-webhooks/{id}", requireWorkflowWriteAccess(svc.saveWorkflowWebhook)).Methods("PUT")
+	router.HandleFunc("/workflow-webhooks/{id}", requireWorkflowWriteAccess(svc.deleteWorkflowWebhook)).Methods("DELETE")
+	router.HandleFunc("/workflow-webhooks/{id}/runs/{run}/payload", svc.getWorkflowWebhookPayload).Methods("GET")
 	receiver := webhookReceiver{find: findScheduleByIDAny, start: svc.triggerSavedSchedule, existing: svc.existingWebhookRun}
-	router.HandleFunc("/api/hooks/workflow/{id}", receiver.receive).Methods("POST")
-	router.HandleFunc("/api/hooks/workflow/{id}/runs/{run}", svc.pollWebhookRun).Methods("GET")
-	router.HandleFunc("/api/hooks/workflow/{id}/runs/{run}/artifact", svc.downloadWebhookArtifact).Methods("GET", "HEAD")
+	router.HandleFunc("/hooks/workflow/{id}", receiver.receive).Methods("POST")
+	router.HandleFunc("/hooks/workflow/{id}/runs/{run}", svc.pollWebhookRun).Methods("GET")
+	router.HandleFunc("/hooks/workflow/{id}/runs/{run}/artifact", svc.downloadWebhookArtifact).Methods("GET", "HEAD")
 }
 
 func (s *SchedulerService) getWorkflowWebhookPayload(w http.ResponseWriter, r *http.Request) {

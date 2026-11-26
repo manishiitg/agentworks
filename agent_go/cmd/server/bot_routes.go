@@ -18,7 +18,7 @@ import (
 // on-disk manifest; the handlers here translate between the unified model and
 // the legacy BotSession shape the frontend still expects.
 func BotRoutes(router *mux.Router, api *StreamingAPI) {
-	botRouter := router.PathPrefix("/api/bot").Subrouter()
+	botRouter := router.PathPrefix("/bot").Subrouter()
 
 	// Connector config routes
 	botRouter.HandleFunc("/connectors", listBotConnectorsHandler(api)).Methods("GET")

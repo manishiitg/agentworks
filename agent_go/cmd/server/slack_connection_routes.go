@@ -73,7 +73,7 @@ type SlackConnectionRequest struct {
 // SlackConnectionRoutes wires the connection registry API, mirroring the
 // Gmail connections routes.
 func SlackConnectionRoutes(router *mux.Router, api *StreamingAPI) {
-	r := router.PathPrefix("/api/human-feedback/slack/connections").Subrouter()
+	r := router.PathPrefix("/human-feedback/slack/connections").Subrouter()
 	r.HandleFunc("", listSlackConnectionsHandler(api)).Methods("GET")
 	r.HandleFunc("", createSlackConnectionHandler(api)).Methods("POST", "OPTIONS")
 	// Before "/{id}" so "/mine" is not read as a connection ID.
