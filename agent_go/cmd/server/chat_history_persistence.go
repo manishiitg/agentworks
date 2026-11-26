@@ -1382,6 +1382,43 @@ func mergeRestoredChatHistory(existing, incoming []llmtypes.MessageContent) []ll
 	if chatHistoryHasPrefix(incoming, existing) {
 		return incoming
 	}
+	// A leading system prompt is runtime identity, not a conversational turn.
+	// When TEAM_INSTRUCTIONS or the profile changes on a coding-CLI relaunch,
+	// existing[0] and incoming[0] differ: keep the newer system message at index 0
+	// and merge the bodies so the updated system prompt never leaks into the body
+	// (which breaks appendableHistoryShape and forces a full-file rewrite, #4288).
+	var leadingSystem *llmtypes.MessageContent
+	existingHasSystem := existing[0].Role == llmtypes.ChatMessageTypeSystem
+	incomingHasSystem := incoming[0].Role == llmtypes.ChatMessageTypeSystem
+	if existingHasSystem || incomingHasSystem {
+		if incomingHasSystem {
+			sys := incoming[0]
+			leadingSystem = &sys
+		} else {
+			sys := existing[0]
+			leadingSystem = &sys
+		}
+		existingBody := chatHistoryBody(existing)
+		incomingBody := chatHistoryBody(incoming)
+		body := mergeRestoredChatHistoryBody(existingBody, incomingBody)
+		merged := make([]llmtypes.MessageContent, 0, len(body)+1)
+		merged = append(merged, *leadingSystem)
+		merged = append(merged, body...)
+		return merged
+	}
+	return mergeRestoredChatHistoryBody(existing, incoming)
+}
+
+func mergeRestoredChatHistoryBody(existing, incoming []llmtypes.MessageContent) []llmtypes.MessageContent {
+	if len(existing) == 0 {
+		return incoming
+	}
+	if len(incoming) == 0 {
+		return existing
+	}
+	if chatHistoryHasPrefix(incoming, existing) {
+		return incoming
+	}
 	// The file often holds rows the in-memory history never saw (live input,
 	// structured completion replies, native transcript catch-up), so incoming
 	// is not a prefix extension. Align the two instead of concatenating: the

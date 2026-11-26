@@ -41,18 +41,47 @@ func visibleResumeUserCount(history []llmtypes.MessageContent) int {
 // A proven saved prefix means full alignment's cursor ends at the old tail:
 // every remaining incoming row is new, even when its text repeats an old row.
 func (api *StreamingAPI) persistableChatTail(user, session, path string, history []llmtypes.MessageContent) (*resumeHistorySource, []llmtypes.MessageContent, bool) {
+	source, tail, fallback := api.persistableChatTailWithReason(user, session, path, history)
+	return source, tail, fallback == ""
+}
+
+func (api *StreamingAPI) persistableChatTailWithReason(user, session, path string, history []llmtypes.MessageContent) (*resumeHistorySource, []llmtypes.MessageContent, string) {
 	api.conversationMux.RLock()
 	source := api.resumeHistorySources[session]
 	current := api.conversationHistory[session]
 	api.conversationMux.RUnlock()
-	if source == nil || !source.prefixStable || source.user != user || source.path != path || !source.same(statResumeHistory(user, source.workspace, path)) {
-		return nil, nil, false
+	if source == nil {
+		return nil, nil, "no_source"
+	}
+	if !source.prefixStable {
+		return nil, nil, "prefix_unstable"
+	}
+	if source.user != user {
+		return nil, nil, "owner_mismatch"
+	}
+	if source.path != path {
+		return nil, nil, "path_mismatch"
+	}
+	if !source.same(statResumeHistory(user, source.workspace, path)) {
+		return nil, nil, "file_changed"
 	}
 	body, canonical := chatHistoryBody(history), chatHistoryBody(current)
-	if source.persistedSystem && (len(history) == 0 || history[0].Role != llmtypes.ChatMessageTypeSystem) || !appendableHistoryShape(history) || len(body) < source.persistedBody || len(canonical) < source.persistedBody || !samePersistedPrefix(body, canonical, source.persistedBody) {
-		return nil, nil, false
+	if source.persistedSystem && (len(history) == 0 || history[0].Role != llmtypes.ChatMessageTypeSystem) {
+		return nil, nil, "missing_system"
 	}
-	return source, body[source.persistedBody:], true
+	if !appendableHistoryShape(history) {
+		return nil, nil, "bad_shape"
+	}
+	if len(body) < source.persistedBody {
+		return nil, nil, "shorter_history"
+	}
+	if len(canonical) < source.persistedBody {
+		return nil, nil, "shorter_canonical"
+	}
+	if !samePersistedPrefix(body, canonical, source.persistedBody) {
+		return nil, nil, "prefix_mismatch"
+	}
+	return source, body[source.persistedBody:], ""
 }
 
 func readChatConversationHeader(path string) (map[string]interface{}, error) {
@@ -81,8 +110,11 @@ func readChatConversationHeader(path string) (map[string]interface{}, error) {
 }
 
 func (api *StreamingAPI) tryPersistChatTail(session, mode, user string, history []llmtypes.MessageContent, runtime *ChatHistoryAgentRuntime, ui []internalevents.Event, path string, patch map[string]interface{}, now time.Time, bot *ChatHistoryBotMetadata) bool {
-	source, tail, ok := api.persistableChatTail(user, session, path, history)
-	if !ok {
+	source, tail, fallback := api.persistableChatTailWithReason(user, session, path, history)
+	if fallback != "" {
+		if fallback != "no_source" {
+			log.Printf("[CHAT_PERSIST_TAIL] session=%s fallback=%s", session, fallback)
+		}
 		return false
 	}
 	// A failed attempt must leave the full merger's input intact.
