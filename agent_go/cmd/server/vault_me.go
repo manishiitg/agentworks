@@ -178,7 +178,7 @@ func (api *StreamingAPI) handleVaultMeSecretCopy(w http.ResponseWriter, r *http.
 		writeUsersError(w, http.StatusNotFound, "That project isn't on this server.")
 		return
 	}
-	full, err := api.saveProjectSecret(r.Context(), person, root, in.Name, in.Value)
+	full, _, err := api.saveProjectSecret(r.Context(), person, root, in.Name, in.Value, "")
 	if err == nil {
 		err = selectProjectSecret(r.Context(), crewProfileID, root, full)
 	}

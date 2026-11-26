@@ -359,12 +359,12 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 	}
 	saved := []string{}
 	for _, key := range sortedSecretNames(values) {
-		full, err := api.saveProjectSecret(ctx, userID, t.path, key, values[key])
+		full, _, err := api.saveProjectSecret(ctx, userID, t.path, key, values[key], "")
 		if errors.Is(err, errProjectSecretOwner) {
 			return nil, nil, &externalSettingsError{403, "forbidden", err.Error() + "."}
 		}
 		if err != nil {
-			return nil, nil, &externalSettingsError{502, "secret_store_failed", fmt.Sprintf("Could not save secret %s in the owner's Vault.", key)}
+			return nil, nil, &externalSettingsError{502, "secret_store_failed", fmt.Sprintf("Could not save secret %s: %v.", key, err)}
 		}
 		saved = append(saved, full)
 	}
