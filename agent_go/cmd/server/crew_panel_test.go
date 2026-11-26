@@ -601,3 +601,121 @@ func TestCrewPanelCacheBoundsEntries(t *testing.T) {
 		}
 	}
 }
+
+// #4198: embedded section structs on crewPanelRow must serialize to the exact same flat JSON wire format.
+func TestCrewPanelRowEmbeddedJSONWireFormat(t *testing.T) {
+	row := crewPanelRow{
+		ID:          "repo-1",
+		Label:       "app",
+		Detail:      "main",
+		Destination: "files",
+		Connected:   true,
+		Group:       "org/app",
+		Count:       "up to date",
+		crewPanelGitRow: crewPanelGitRow{
+			CommitAt:     1700000000,
+			Commit:       "initial",
+			FetchedAt:    1700000100,
+			GitHubRepo:   "org/app",
+			Changed:      true,
+			ChangedFiles: 2,
+		},
+		crewPanelGitHubRow: crewPanelGitHubRow{
+			Login: "dev",
+			Orgs:  []string{"org"},
+		},
+		crewPanelDashboardRow: crewPanelDashboardRow{
+			Motion:   true,
+			Artifact: true,
+		},
+		crewPanelActivityRow: crewPanelActivityRow{
+			Steps:     []string{"New", "Done"},
+			Rules:     "auto",
+			DoneCount: 3,
+		},
+		crewPanelProjectTasksRow: crewPanelProjectTasksRow{
+			Lead:          "Lead",
+			TasksMode:     "auto",
+			Paused:        true,
+			NeedsYouCount: 1,
+			OpenCount:     4,
+		},
+	}
+	raw, err := json.Marshal(row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{
+		"id", "label", "detail", "destination", "connected", "group", "count",
+		"commit_at", "commit", "fetched_at", "github_repo", "changed", "changed_files",
+		"login", "orgs", "motion", "artifact",
+		"steps", "rules", "done_count",
+		"lead", "tasks_mode", "paused", "needs_you_count", "open_count",
+	} {
+		if _, ok := decoded[key]; !ok {
+			t.Fatalf("expected flat JSON key %q in %s", key, string(raw))
+		}
+	}
+	// Ensure no nested wrapper keys leaked.
+	for _, unexpected := range []string{"crewPanelGitRow", "crewPanelGitHubRow", "crewPanelDashboardRow", "crewPanelActivityRow", "crewPanelProjectTasksRow"} {
+		if _, ok := decoded[unexpected]; ok {
+			t.Fatalf("unexpected nested struct key %q in %s", unexpected, string(raw))
+		}
+	}
+}
+
+// #4198: scheduleHandler must fail cleanly (500) instead of sending an empty body if JSON marshaling fails.
+func TestScheduleHandlerRejectsUnmarshalableBody(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/test", nil)
+	called := false
+	status, _ := scheduleHandler(req, func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}, http.MethodPost, "/test", nil, nil, make(chan int))
+	if called || status != http.StatusInternalServerError {
+		t.Fatalf("expected 500 without calling handler, got called=%v status=%d", called, status)
+	}
+}
+
+// #4198: direct gitHubVaultSummaryForContext preserves the exact 403 guard for missing/token claims.
+func TestGitHubVaultSummaryForContextGuardsClaims(t *testing.T) {
+	if _, status, err := gitHubVaultSummaryForContext(t.Context(), "Crew/demo"); err == nil || status != http.StatusForbidden {
+		t.Fatalf("expected 403 for unauthenticated context, got status=%d err=%v", status, err)
+	}
+	tokenCtx := context.WithValue(t.Context(), UserContextKey, &UserClaims{
+		UserID:      "owner",
+		AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}},
+	})
+	if _, status, err := gitHubVaultSummaryForContext(tokenCtx, "Crew/demo"); err == nil || status != http.StatusForbidden {
+		t.Fatalf("expected 403 for access-token claims, got status=%d err=%v", status, err)
+	}
+}
+
+// #4198: a fresh cached background section (like Git status) must not set refreshAt
+// and trigger spurious 30s refresh_after_ms timers on the frontend.
+func TestCrewPanelBackgroundSectionDoesNotEmitTrailingRefresh(t *testing.T) {
+	cache := &crewPanelCache{}
+	key := crewPanelCacheKey{caller: "owner", project: "bg-no-timer", authority: "v1"}
+	source := crewPanelSource{
+		id:         "changes",
+		title:      "Uncommitted",
+		allowed:    true,
+		refreshFor: crewPanelCacheTTL,
+		background: true,
+		read: func(context.Context) (crewPanelSection, error) {
+			return crewPanelSection{Detail: "1 repository", Rows: []crewPanelRow{{ID: "r1", Label: "app"}}}, nil
+		},
+	}
+	// First call populates the cache; second call hits c.previous(k, source.refreshFor).
+	cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second)
+	cached := cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second)
+	reply := crewPanelReply{Sections: cached}
+	applyCrewPanelRefresh(&reply, "0")
+	if reply.RefreshAfterMS != 0 || reply.RefreshAttempt != 0 {
+		t.Fatalf("cached background section emitted trailing refresh timer: %+v", reply)
+	}
+}

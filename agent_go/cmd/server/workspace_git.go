@@ -626,6 +626,33 @@ func workspaceGitResolveRepo(realBase, repoRel string) (dir string, status int, 
 	return dir, 0, ""
 }
 
+type workspaceGitStatusResult struct {
+	Repos       []workspaceGitRepo
+	Unavailable bool
+	More        bool
+}
+
+func workspaceGitStatusForWorkspace(ctx context.Context, r *http.Request, workspace string) (workspaceGitStatusResult, int, error) {
+	base, ok := workspaceGitPhysicalPath(r, workspace)
+	if !ok {
+		return workspaceGitStatusResult{}, http.StatusBadRequest, errors.New("invalid workspace_path")
+	}
+	realBase, ok := workspaceGitConfined(base, base)
+	if !ok {
+		return workspaceGitStatusResult{Repos: []workspaceGitRepo{}}, http.StatusOK, nil
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		return workspaceGitStatusResult{Repos: []workspaceGitRepo{}, Unavailable: true}, http.StatusOK, nil
+	}
+	gitCtx, cancel := context.WithTimeout(context.WithValue(ctx, workspaceGitRootKey{}, realBase), workspaceGitTimeout)
+	defer cancel()
+	repos, more := workspaceGitStatusRepos(gitCtx, realBase)
+	if gitCtx.Err() != nil {
+		return workspaceGitStatusResult{}, http.StatusServiceUnavailable, errors.New("Could not load changes. Try again.")
+	}
+	return workspaceGitStatusResult{Repos: repos, More: more}, http.StatusOK, nil
+}
+
 // handleWorkspaceGit serves GET /api/workspace-git?workspace_path=&op=
 //
 //	op=status              repos, branches and changed files (default)
@@ -640,6 +667,22 @@ func workspaceGitResolveRepo(realBase, repoRel string) (dir string, status int, 
 func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	query := r.URL.Query()
+	op := query.Get("op")
+	if op == "" || op == "status" {
+		// Plain Git state for everyone with file access; no per-chat hints.
+		res, status, err := workspaceGitStatusForWorkspace(r.Context(), r, requestWorkflowWorkspacePath(r))
+		if err != nil {
+			writeWorkspaceGitJSON(w, status, map[string]string{"error": err.Error()})
+			return
+		}
+		if res.Unavailable {
+			writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"repos": res.Repos, "git_unavailable": true})
+			return
+		}
+		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"repos": res.Repos, "more_repos": res.More})
 		return
 	}
 	base, ok := workspaceGitPhysicalPath(r, requestWorkflowWorkspacePath(r))
@@ -659,19 +702,6 @@ func (api *StreamingAPI) handleWorkspaceGit(w http.ResponseWriter, r *http.Reque
 	}
 	ctx, cancel := context.WithTimeout(context.WithValue(r.Context(), workspaceGitRootKey{}, realBase), workspaceGitTimeout)
 	defer cancel()
-
-	query := r.URL.Query()
-	op := query.Get("op")
-	if op == "" || op == "status" {
-		// Plain Git state for everyone with file access; no per-chat hints.
-		repos, more := workspaceGitStatusRepos(ctx, realBase)
-		if ctx.Err() != nil {
-			writeWorkspaceGitJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Could not load changes. Try again."})
-			return
-		}
-		writeWorkspaceGitJSON(w, http.StatusOK, map[string]any{"repos": repos, "more_repos": more})
-		return
-	}
 
 	if op == "find" {
 		limit, _ := strconv.Atoi(query.Get("limit"))

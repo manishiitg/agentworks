@@ -216,7 +216,14 @@ func (c *conditionService) activityRows(ctx context.Context, owner, project stri
 	for _, job := range feeds {
 		cfg := job.Schedule.Condition
 		steps := cfg.Target.FeedSteps()
-		row := crewPanelRow{ID: "feed:" + job.Schedule.ID, Label: job.Schedule.Name, Group: cfg.Target.App, Path: cfg.Target.Link, Destination: "schedules:conditions", Steps: steps, Rules: cfg.Target.Rules}
+		row := crewPanelRow{
+			ID:                   "feed:" + job.Schedule.ID,
+			Label:                job.Schedule.Name,
+			Group:                cfg.Target.App,
+			Path:                 cfg.Target.Link,
+			Destination:          "schedules:conditions",
+			crewPanelActivityRow: crewPanelActivityRow{Steps: steps, Rules: cfg.Target.Rules},
+		}
 		feed, err := c.readFeed(ctx, job)
 		if err != nil {
 			return nil, err

@@ -19,9 +19,61 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
 )
 
+// crewPanelGitRow holds Git checkout metadata for "changes" rows.
+type crewPanelGitRow struct {
+	// Last commit (Unix seconds, first line) and, for a branch tracking a remote,
+	// when the repository last fetched; the panel says how old that check is once
+	// it is more than a day old.
+	CommitAt   int64  `json:"commit_at,omitempty"`
+	Commit     string `json:"commit,omitempty"`
+	FetchedAt  int64  `json:"fetched_at,omitempty"`
+	GitHubRepo string `json:"github_repo,omitempty"`
+	// Changed: the checkout has edits not committed yet. Opening the row
+	// reviews them; a clean checkout opens its folder instead.
+	Changed bool `json:"changed,omitempty"`
+	// ChangedFiles: how many files have edits not committed yet (git status).
+	ChangedFiles int `json:"changed_files,omitempty"`
+}
+
+// crewPanelGitHubRow holds display-only account metadata for the "github" row.
+type crewPanelGitHubRow struct {
+	Login string   `json:"login,omitempty"`
+	Orgs  []string `json:"orgs,omitempty"`
+}
+
+// crewPanelDashboardRow holds display flags for "dashboards" rows.
+type crewPanelDashboardRow struct {
+	Motion   bool `json:"motion,omitempty"`
+	Artifact bool `json:"artifact,omitempty"`
+}
+
+// crewPanelActivityRow holds Project activity feed metadata (#3476, #3625).
+type crewPanelActivityRow struct {
+	// Items: a Project activity row's latest finds, newest first (#3476).
+	Items []crewPanelFeedItem `json:"items,omitempty"`
+	// Project activity steps (#3625): the row's steps first to last, the
+	// person's rules for them, and how many items are at the last step.
+	Steps     []string `json:"steps,omitempty"`
+	Rules     string   `json:"rules,omitempty"`
+	DoneCount int      `json:"done_count,omitempty"`
+}
+
+// crewPanelProjectTasksRow holds shared Project tasks list metadata.
+type crewPanelProjectTasksRow struct {
+	// Project tasks (one shared list per project): its tasks, the lead's
+	// decisions in the last day, and the lead agent's name.
+	Tasks         []crewPanelProjectTask `json:"tasks,omitempty"`
+	Lead          string                 `json:"lead,omitempty"`
+	TasksMode     string                 `json:"tasks_mode,omitempty"`
+	Paused        bool                   `json:"paused,omitempty"`
+	NeedsYouCount int                    `json:"needs_you_count,omitempty"` // Project tasks: shown on the closed row
+	OpenCount     int                    `json:"open_count,omitempty"`
+}
+
 // PLAT-856-542: one read for the Crew menu. Detail/edit APIs keep their own
-// contracts. These readers call those same guarded handlers, never a new
+// contracts. These readers call those same guarded handlers/services, never a new
 // account/Team policy. Only display fields are retained in the response/cache.
+// Section-specific structs are embedded so the flat JSON wire format is unchanged.
 type crewPanelRow struct {
 	nextRun     time.Time // Server-only ordering for the automation summary.
 	ID          string    `json:"id"`
@@ -31,42 +83,15 @@ type crewPanelRow struct {
 	Connected   bool      `json:"connected,omitempty"`
 	Attention   bool      `json:"attention,omitempty"`
 	Path        string    `json:"path,omitempty"`
-	// Git rows: the repository heading a row sits under, and the checkout's
-	// state against its remote ("2 not pushed", "up to date").
+	// Shared grouping and compact badge text (Git checkouts, Project activity, Project tasks).
 	Group string `json:"group,omitempty"`
 	Count string `json:"count,omitempty"`
-	// Git rows: the last commit (Unix seconds, first line) and, for a branch
-	// that tracks a remote, when the repository last fetched; the panel says
-	// how old that check is once it is more than a day old.
-	CommitAt   int64  `json:"commit_at,omitempty"`
-	Commit     string `json:"commit,omitempty"`
-	FetchedAt  int64  `json:"fetched_at,omitempty"`
-	GitHubRepo string `json:"github_repo,omitempty"`
-	// GitHub connection row: active login and cached reachable orgs (display only).
-	Login string   `json:"login,omitempty"`
-	Orgs  []string `json:"orgs,omitempty"`
-	// Changed: the checkout has edits not committed yet. Opening the row
-	// reviews them; a clean checkout opens its folder instead.
-	Changed bool `json:"changed,omitempty"`
-	// ChangedFiles: how many files have edits not committed yet (git status).
-	ChangedFiles int  `json:"changed_files,omitempty"`
-	Motion       bool `json:"motion,omitempty"`
-	Artifact     bool `json:"artifact,omitempty"`
-	// Items: a Project activity row's latest finds, newest first (#3476).
-	Items []crewPanelFeedItem `json:"items,omitempty"`
-	// Project activity steps (#3625): the row's steps first to last, the
-	// person's rules for them, and how many items are at the last step.
-	Steps     []string `json:"steps,omitempty"`
-	Rules     string   `json:"rules,omitempty"`
-	DoneCount int      `json:"done_count,omitempty"`
-	// Project tasks (one shared list per project): its tasks, the lead's
-	// decisions in the last day, and the lead agent's name.
-	Tasks         []crewPanelProjectTask `json:"tasks,omitempty"`
-	Lead          string                 `json:"lead,omitempty"`
-	TasksMode     string                 `json:"tasks_mode,omitempty"`
-	Paused        bool                   `json:"paused,omitempty"`
-	NeedsYouCount int                    `json:"needs_you_count,omitempty"` // Project tasks: shown on the closed row
-	OpenCount     int                    `json:"open_count,omitempty"`
+
+	crewPanelGitRow
+	crewPanelGitHubRow
+	crewPanelDashboardRow
+	crewPanelActivityRow
+	crewPanelProjectTasksRow
 }
 type crewPanelSection struct {
 	ID     string `json:"id"`
@@ -380,6 +405,11 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 				c.dropBefore(k, marked.(time.Time))
 			}
 			if previous, found := c.previous(k, source.refreshFor); found {
+				if source.background {
+					// Background sections (such as Git status) refresh off-request when stale
+					// and must not ask browsers to schedule trailing refresh_after_ms timers.
+					previous.refreshAt = time.Time{}
+				}
 				out[i] = previous
 				continue
 			}
