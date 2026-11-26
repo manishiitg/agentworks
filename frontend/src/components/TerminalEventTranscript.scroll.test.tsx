@@ -93,3 +93,56 @@ it('shows a newly opened transcript only once it rests at its starting position'
   await wait(150)
   expect(host.firstElementChild?.getAttribute('data-positioned')).toBe('true')
 })
+
+// #4255: raw scrollTo(bottom) must not fight Virtuoso's initialTopMostItemIndex
+// while mounting, blank recovery must not be starved by streaming updates, and
+// a timed-out blank reveal must kick scrollToIndex('LAST') immediately.
+it('does not interrupt initial positioning with scrollTo and recovers if reveal times out blank', async () => {
+  const actual = await vi.importActual<typeof import('./useTranscriptScroll')>('./useTranscriptScroll')
+  if (!('ResizeObserver' in window)) vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
+  const saved: TranscriptReadingState = { following: true, disclosures: new Map() }
+  const scrollTo = vi.fn()
+  const scrollToIndex = vi.fn()
+  const scroller = document.createElement('div')
+  let top = 0, height = 2000
+  Object.defineProperty(scroller, 'scrollTop', { get: () => top, set: (value: number) => { top = value } })
+  Object.defineProperty(scroller, 'scrollHeight', { get: () => height })
+  Object.defineProperty(scroller, 'clientHeight', { get: () => 500 })
+  scroller.getBoundingClientRect = () => new DOMRect(0, 0, 480, 500)
+  let triggerLayout: (() => void) | null = null
+  function Reader() {
+    const ref = useRef<VirtuosoHandle | null>({ scrollTo, scrollToIndex } as unknown as VirtuosoHandle)
+    const view = actual.useTranscriptScroll(['a', 'b'], saved, ref)
+    triggerLayout = view.layoutChanged
+    const attach = view.scrollerRef
+    return <div ref={() => attach(scroller)} data-positioned={String(view.positioned)} />
+  }
+  const wait = (ms: number) => act(async () => { await new Promise(resolve => setTimeout(resolve, ms)) })
+  await act(async () => root.render(<Reader />))
+  await act(async () => triggerLayout?.())
+  await wait(80)
+  // Still positioning: raw scrollTo must not override Virtuoso's initialTopMostItemIndex.
+  expect(host.firstElementChild?.getAttribute('data-positioned')).toBe('false')
+  expect(scrollTo).not.toHaveBeenCalled()
+
+  // Past the 600ms cap while still blank: reveal kicks scrollToIndex('LAST') and
+  // suppresses raw scrollTo during the brief recovery grace window.
+  await wait(600)
+  expect(host.firstElementChild?.getAttribute('data-positioned')).toBe('true')
+  expect(scrollToIndex).toHaveBeenCalledWith({ index: 'LAST', align: 'end', behavior: 'auto' })
+  await act(async () => triggerLayout?.())
+  await wait(40)
+  expect(scrollTo).not.toHaveBeenCalled()
+
+  // After the recovery grace window, streaming layout updates while still blank
+  // must not starve the 350ms blankCheck recovery timer.
+  scrollToIndex.mockClear()
+  await wait(260)
+  await act(async () => triggerLayout?.())
+  await wait(120)
+  await act(async () => triggerLayout?.())
+  await wait(120)
+  await act(async () => triggerLayout?.())
+  await wait(180)
+  expect(scrollToIndex).toHaveBeenCalledWith({ index: 'LAST', align: 'end', behavior: 'auto' })
+})
