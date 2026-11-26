@@ -104,7 +104,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	private := mustReadCrewTeam(t, "team-test")
-	private.Agents = crewTeamAgentFixtures("team-test", map[string]map[string]bool{"owner": {"solo01": false}})
+	private.Agents = crewTeamAgentFixtures("team-test", map[string]map[string]bool{"owner": {"team01": true, "solo01": false}})
 	if err := writeCrewTeamAgentFixture(private); err != nil {
 		t.Fatal(err)
 	}
@@ -1105,7 +1105,7 @@ func TestCrewTeamMemberMacAdmittedOnlyWithTheirRecordedPair(t *testing.T) {
 	crewMacTeamTabsCache.Store("team-test\x00member", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{
 		{Person: "member", Tab: "shared-tab", ConversationID: "c-shared", Name: "Shared"}, {Person: "member", Tab: "private-tab", ConversationID: "c-private", Name: "Private"}}})
 	team, _ = readCrewTeam("team-test")
-	team.Agents = crewTeamAgentFixtures(team.ProjectID, map[string]map[string]bool{"member": {"private-tab": false}})
+	team.Agents = crewTeamAgentFixtures(team.ProjectID, map[string]map[string]bool{"member": {"shared-tab": true, "private-tab": false}})
 	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}

@@ -21,7 +21,6 @@ import (
 // PLAT-746-820: a Main agent had different addresses on Mac and web, while
 // agents owned by different members could have the same native tab name.
 func TestCrewTeamAgentIdentitySurvivesMainKeyChangeAndSeparatesOwners(t *testing.T) {
-	ctx := t.Context()
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	team := crewTeam{ProjectID: "identity-room", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}}
 	people := []crewTeamAgentsPerson{
@@ -35,15 +34,15 @@ func TestCrewTeamAgentIdentitySurvivesMainKeyChangeAndSeparatesOwners(t *testing
 	if ownerID == "" || memberID == "" || ownerID == memberID {
 		t.Fatal("agents of different owners must have different IDs")
 	}
-	// PLAT-746-1035: auto-sharing app agents never auto-shares private history.
+	// Owner, 26 Nov: a discovered agent starts Only me; nobody shares it but its person.
 	fresh, err := readCrewTeam(team.ProjectID)
-	if err != nil || fresh.agentChatShareFor(ctx, "member", "owner", ownerID) == crewChatShareLive {
-		t.Fatalf("default exposed history: %v", err)
+	if err != nil || fresh.Agents[ownerID].InTeam || fresh.seesAgent("member", "owner", ownerID) {
+		t.Fatalf("a new agent was shared by default: %v", err)
 	}
 	// This identity fixture has no account/project-owner grant. Seed the saved
 	// choice directly, as the rest of this fixture does; do not weaken admission.
 	live := fresh.Agents[ownerID]
-	live.Rule.ChatShare = crewChatShareLive
+	live.Rule.ChatShare = crewChatShareAgent
 	fresh.Agents[ownerID] = live
 	fixtureDir, err := crewTeamDir(team.ProjectID)
 	if err != nil {
@@ -63,8 +62,8 @@ func TestCrewTeamAgentIdentitySurvivesMainKeyChangeAndSeparatesOwners(t *testing
 		t.Fatalf("registry unreadable after an agent without a chat: %v", err)
 	}
 	savedLive, err := readCrewTeam(team.ProjectID)
-	if err != nil || savedLive.Agents[ownerID].Rule.ChatShare != crewChatShareLive {
-		t.Fatal("discovery replaced saved Live choice", err)
+	if err != nil || savedLive.Agents[ownerID].Rule.ChatShare != crewChatShareAgent {
+		t.Fatal("discovery replaced saved Hidden choice", err)
 	}
 	people[0].Agents[0] = crewTeamAgent{Tab: macMainTab, ChatKey: crewOwnerDefaultChatKey(team.ProjectID, team.OwnerID), Place: "server"}
 	if err := assignCrewTeamAgentIDs(team, people); err != nil {
@@ -212,8 +211,8 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
 	}
-	// PLAT-746-1035: even a new shared default may not overwrite saved Only me.
-	shared := crewTeamDefaultInTeam(nil)
+	// PLAT-746-1035: even a discovered "shared" choice may not overwrite saved Only me.
+	shared := true
 	discovered[0].initialInTeam = &shared
 	people := []crewTeamAgentsPerson{{UserID: "owner", Agents: discovered}}
 	if err := assignCrewTeamAgentIDs(team, people); err != nil {

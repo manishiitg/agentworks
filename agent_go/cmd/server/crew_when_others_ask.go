@@ -141,8 +141,6 @@ func handleCrewTeamAgentRule(w http.ResponseWriter, r *http.Request, project, pe
 		switch {
 		case errors.Is(err, errCrewTeamAgentNotYours):
 			externalError(w, 403, "agent_not_yours", "Only the agent's own person changes its Team settings. Choose one of your own agents.")
-		case errors.Is(err, errCrewTeamLastShared):
-			externalError(w, 400, "last_shared_agent", err.Error())
 		case errors.Is(err, errWhenOthersAskTooLong):
 			externalError(w, 400, "rule_too_long", "Keep the rule under 1000 characters.")
 		case errors.Is(err, errCrewChatShareUnknown):

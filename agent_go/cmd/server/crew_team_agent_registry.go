@@ -52,11 +52,12 @@ func crewTeamDefaultInTeam(choice *bool) bool {
 	if choice != nil {
 		return *choice
 	}
-	return true
+	return false // a new agent is Only me until its person shares it (owner, 26 Nov)
 }
 
-// Sharing an agent never opts its person into sharing their earlier chat.
-func crewTeamDefaultRule() crewTeamAgentRule { return crewTeamAgentRule{ChatShare: crewChatShareAgent} }
+// A new agent's chat is Live: once its person shares it, teammates see the chat (owner, 26 Nov). Agents saved
+// earlier keep their own choice.
+func crewTeamDefaultRule() crewTeamAgentRule { return crewTeamAgentRule{ChatShare: crewChatShareLive} }
 
 func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
 	return assignCrewTeamAgentIDsWithMain(t, people, crewOwnerMainChatKey(t.ProjectID))

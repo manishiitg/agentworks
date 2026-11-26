@@ -857,9 +857,7 @@ func crewOfflineCopyBytes(project, agent string) int64 {
 
 // crewShareAgentCard is one of the viewer's own agents on the Share page and in its header menu, with its Team settings.
 func crewShareAgentCard(t crewTeam, a crewTeamTabAgent, onMac bool) crewShareAgent {
-	// The last shared agent's switch is locked (each person keeps one shared); only that agent says why.
-	locked := a.InTeam && !a.CanUnshare
-	ask := &crewShareAsk{On: a.InTeam, CanChange: a.CanChange && !locked && !onMac, CanEdit: a.CanEditRule && !onMac,
+	ask := &crewShareAsk{On: a.InTeam, CanChange: a.CanChange && !onMac, CanEdit: a.CanEditRule && !onMac,
 		Title: "Teammates can ask this agent", Line: "Not shared: only you and your agents can reach it.",
 		ChatShare: a.ChatShare, ChatShareLabel: "Teammates see your chat", ChatShareOptions: crewShareChatOptions,
 		HiddenLine: "Teammates see its answers, not your chat with it.", RulesLabel: "Permissions…"}
@@ -874,8 +872,6 @@ func crewShareAgentCard(t crewTeam, a crewTeamTabAgent, onMac bool) crewShareAge
 		ask.Fixed = crewChangeOnMacLine
 	case !t.On:
 		ask.Line, ask.CanChange = "Turn on Team to share", false
-	case locked:
-		ask.Fixed = errCrewTeamLastShared.Error()
 	}
 	ask.Summary = crewShareAgentSummary(t.On, a)
 	ask.UsesLine = crewShareAgentUses(a)
