@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useChatStore } from '../../stores/useChatStore'
 import { useChatContextView } from '../../products/work/useChatContextView'
@@ -42,14 +42,14 @@ export function isFocusedChat(sessionId: string, focusedSessionId?: string | nul
   return Boolean(sessionId) && sessionId === focusedSessionId
 }
 
-export function ChatContextSection({ sessionId, busy = false }: { sessionId: string; busy?: boolean }) {
+export function ChatContextSection({ sessionId, busy = false, enabled = true }: { sessionId: string; busy?: boolean; enabled?: boolean }) {
   const focusedSessionId = useChatStore(state => (state.activeTabId ? state.chatTabs[state.activeTabId]?.sessionId : null))
   // Only the focused chat loads its figures: an unfocused one must not poll the server.
-  return isFocusedChat(sessionId, focusedSessionId) ? <FocusedChatContext sessionId={sessionId} busy={busy} /> : null
+  return isFocusedChat(sessionId, focusedSessionId) ? <FocusedChatContext sessionId={sessionId} busy={busy} enabled={enabled} /> : null
 }
 
-function FocusedChatContext({ sessionId, busy }: { sessionId: string; busy: boolean }) {
-  const view = useChatContextView(sessionId, busy)
+function FocusedChatContext({ sessionId, busy, enabled }: { sessionId: string; busy: boolean; enabled: boolean }) {
+  const view = useChatContextView(sessionId, busy, enabled)
   const projectId = useChatStore(state => (state.activeTabId ? state.chatTabs[state.activeTabId]?.metadata?.agentProfileProjectId : '') || '')
   // Closed by default at the end of the pane: its header carries the short line (size, plan use).
   const [open, setOpen] = useState(false)
@@ -76,14 +76,14 @@ function FocusedChatContext({ sessionId, busy }: { sessionId: string; busy: bool
       <ChevronRight aria-hidden="true" className="h-3 w-3 transition-transform group-open/ctx:rotate-90" />Context
       <ContextSummary used={used} windowTokens={windowTokens} limits={view.limits} />
     </summary>
-    <div className="space-y-3 pb-1 pl-1.5 pr-1 text-xs">
+    {open && <div className="space-y-3 pb-1 pl-1.5 pr-1 text-xs">
       {/* Approved order (owner, 22 Nov): how full, plan use, cost in one line, then the detail folded away. */}
       {used > 0 && <FullnessBlock view={view} used={used} windowTokens={windowTokens} percent={percent} working={working} onAct={act} />}
       <PlanBlock view={view} projectId={projectId} />
       {view.cost?.current && <CostBlock cost={view.cost} />}
       <DetailsBlock sessionId={sessionId} view={view} used={used} />
       <SettingsBlock view={view} working={working} onAct={act} />
-    </div>
+    </div>}
   </details>
 }
 
@@ -208,16 +208,17 @@ function CostBlock({ cost }: { cost: ChatContextCost }) {
 
 /** What fills the context and where the tokens went, folded away: most people never need it. */
 function DetailsBlock({ sessionId, view, used }: { sessionId: string; view: ChatContextView; used: number }) {
+  const [open, setOpen] = useState(false)
   const cost = view.cost
   const earlier = cost?.earlier
   const parts = view.parts ?? []
   const totalOnly = view.total_only && used > 0 && !parts.length
   if (!parts.length && !cost?.current && !totalOnly) return null
-  return <details className="group/details">
+  return <details className="group/details" onToggle={event => setOpen((event.target as HTMLDetailsElement).open)}>
     <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
       <ChevronRight aria-hidden="true" className="h-3 w-3 transition-transform group-open/details:rotate-90" />Details
     </summary>
-    <div className="space-y-3 pt-2 pl-4">
+    {open && <div className="space-y-3 pt-2 pl-4">
       {parts.length > 0 && <PartsBlock sessionId={sessionId} parts={parts} />}
       {totalOnly && <p className="text-[11px] text-muted-foreground">This chat runs in a coding agent's own app, which reports its total but not what fills it.</p>}
       {cost?.current && <PeriodDetail period={cost.current} />}
@@ -229,7 +230,7 @@ function DetailsBlock({ sessionId, view, used }: { sessionId: string; view: Chat
         </summary>
         <div className="space-y-3 pt-2 pl-4"><PeriodDetail period={earlier} /></div>
       </details>}
-    </div>
+    </div>}
   </details>
 }
 
@@ -281,15 +282,21 @@ export function PartsBlock({ parts, sessionId }: { parts: ChatContextPart[]; ses
       </>
       return <li key={part.key} className="text-[11px] tabular-nums">
         {part.openable && sessionId
-          ? <details className="group/part">
-            <summary className="cursor-pointer list-none rounded hover:bg-muted/60 [&::-webkit-details-marker]:hidden" title="Show what this is made of">{row}</summary>
-            <PartItems sessionId={sessionId} partKey={part.key} />
-          </details>
+          ? <OpenablePartRow sessionId={sessionId} partKey={part.key} row={row} />
           : row}
         {part.note && <p className="mt-0.5 text-amber-600 dark:text-amber-400">{part.note}</p>}
       </li>
     })}</ul>
   </div>
+}
+
+/** Keeps PartItems unmounted until the person opens the part, so closed rows never fetch transcripts. */
+function OpenablePartRow({ sessionId, partKey, row }: { sessionId: string; partKey: string; row: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return <details className="group/part" onToggle={event => setOpen((event.target as HTMLDetailsElement).open)}>
+    <summary className="cursor-pointer list-none rounded hover:bg-muted/60 [&::-webkit-details-marker]:hidden" title="Show what this is made of">{row}</summary>
+    {open && <PartItems sessionId={sessionId} partKey={partKey} />}
+  </details>
 }
 
 /** The items behind one part, read when the part is opened: each with its size, and its text one click further. */

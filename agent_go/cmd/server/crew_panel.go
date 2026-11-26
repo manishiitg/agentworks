@@ -149,6 +149,7 @@ const crewPanelCacheTTL = 30 * time.Second
 
 // A background section keeps its last snapshot this long, so an old one can be shown while a new one is read.
 const crewPanelBackgroundKeep = 10 * time.Minute
+const crewPanelCacheMaxEntries = 2000
 
 type crewPanelCacheKey struct{ caller, project, section, authority string }
 type crewPanelCached struct {
@@ -162,6 +163,8 @@ type crewPanelCache struct {
 	entries      map[crewPanelCacheKey]crewPanelCached
 	refreshing   map[crewPanelCacheKey]bool // Background reads in flight: at most one per section.
 	denied       map[crewPanelCacheKey]time.Time
+	lastSweep    time.Time
+	maxEntries   int // 0 uses crewPanelCacheMaxEntries.
 }
 
 // firstDenial reports whether key's denial has not been logged in the last hour.
@@ -182,20 +185,47 @@ func (c *crewPanelCache) firstDenial(key crewPanelCacheKey) bool {
 }
 
 func (c *crewPanelCache) put(key crewPanelCacheKey, section crewPanelSection, stamp ...string) {
+	c.putAt(key, section, time.Now(), stamp...)
+}
+
+func (c *crewPanelCache) putAt(key crewPanelCacheKey, section crewPanelSection, at time.Time, stamp ...string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.entries == nil {
 		c.entries = map[crewPanelCacheKey]crewPanelCached{}
 	}
+	limit := c.maxEntries
+	if limit <= 0 {
+		limit = crewPanelCacheMaxEntries
+	}
 	now := time.Now()
-	for k, v := range c.entries {
-		if now.Sub(v.at) >= crewPanelBackgroundKeep {
-			delete(c.entries, k)
+	if len(c.entries) >= limit || now.Sub(c.lastSweep) >= time.Minute {
+		for k, v := range c.entries {
+			if now.Sub(v.at) >= crewPanelBackgroundKeep {
+				delete(c.entries, k)
+			}
+		}
+		c.lastSweep = now
+	}
+	if _, exists := c.entries[key]; !exists {
+		for len(c.entries) >= limit {
+			var oldestKey crewPanelCacheKey
+			var oldestAt time.Time
+			first := true
+			for k, v := range c.entries {
+				if first || v.at.Before(oldestAt) {
+					oldestKey, oldestAt, first = k, v.at, false
+				}
+			}
+			if first {
+				break
+			}
+			delete(c.entries, oldestKey)
 		}
 	}
 	section.refreshAt = time.Time{}
 	section.Rows = append([]crewPanelRow{}, section.Rows...)
-	c.entries[key] = crewPanelCached{now, section, strings.Join(stamp, "")}
+	c.entries[key] = crewPanelCached{at, section, strings.Join(stamp, "")}
 }
 
 // stamped is the snapshot taken at stamp, while it is younger than crewPanelCacheTTL.
@@ -249,20 +279,31 @@ func (c *crewPanelCache) refreshInBackground(base context.Context, key crewPanel
 	c.mu.Unlock()
 	go func() {
 		started := time.Now()
+		var err error
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				err = fmt.Errorf("background refresh panicked")
+				log.Printf("[CREW_PANEL] project=%s section=%s background_refresh panic=%v", key.project, source.id, recovered)
+			}
+			c.mu.Lock()
+			delete(c.refreshing, key)
+			c.mu.Unlock()
+			log.Printf("[CREW_PANEL] project=%s section=%s background_refresh ok=%t ms=%d", key.project, source.id, err == nil, time.Since(started).Milliseconds())
+		}()
 		ctx, cancel := context.WithTimeout(base, limit)
-		section, err := source.read(ctx)
+		defer cancel()
+		var section crewPanelSection
+		section, err = source.read(ctx)
 		if err == nil && ctx.Err() != nil {
 			err = ctx.Err()
 		}
-		cancel()
 		if err == nil && section.Error == "" {
+			if marked, ok := crewPanelChangesDirty.Load(key.project); ok && marked.(time.Time).After(started) {
+				return
+			}
 			section.ID, section.Title = source.id, source.title
-			c.put(key, section)
+			c.putAt(key, section, started)
 		}
-		c.mu.Lock()
-		delete(c.refreshing, key)
-		c.mu.Unlock()
-		log.Printf("[CREW_PANEL] project=%s section=%s background_refresh ok=%t ms=%d", key.project, source.id, err == nil, time.Since(started).Milliseconds())
 	}()
 }
 
@@ -363,10 +404,18 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			began := time.Now()
 			var section crewPanelSection
 			var err error
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					log.Printf("[CREW_PANEL] project=%s section=%s result=panic reason=%v", key.project, source.id, recovered)
+					section = crewPanelSection{}
+					err = fmt.Errorf("panel section %s panicked", source.id)
+				}
+				results <- result{i, section, err, time.Since(began)}
+			}()
 			if source.id == "workflow" {
 				if c.workflowRead.TryLock() {
+					defer c.workflowRead.Unlock()
 					section, err = source.read(sourceCtx)
-					c.workflowRead.Unlock()
 				} else {
 					err = crewPanelRefreshing{}
 				}
@@ -376,7 +425,6 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			if err == nil && sourceCtx.Err() != nil {
 				err = sourceCtx.Err()
 			}
-			results <- result{i, section, err, time.Since(began)}
 		}(i, source)
 	}
 	finish := func(i int, section crewPanelSection, err error) {

@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest'
+// @vitest-environment happy-dom
+import { act } from 'react'
+import { createRoot } from 'react-dom/client'
+import { describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { agentApi } from '../../services/api'
 import { cacheText, costHeading, isFocusedChat, PartsBlock, tokenShare } from './ChatContextSection'
+
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 // Real failure mode: subscription-equivalent spend shown as one plain dollar figure, as if the person was charged it.
 describe('costHeading', () => {
@@ -56,9 +62,31 @@ describe('PartsBlock', () => {
     expect(html).toContain('about')
     expect(html).toContain('Sent twice.')
   })
+  // #4181: closed <details> must not mount PartItems or fetch transcripts until expanded.
+  it('fetches an openable part only after the person expands it', async () => {
+    const spy = vi.spyOn(agentApi, 'getChatContextPart').mockResolvedValue({ items: [{ label: 'AGENTS.md', text: 'rules', tokens: 120 }] })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => {
+        root.render(<PartsBlock sessionId="sess-1" parts={[{ key: 'skills', label: 'Skills list', tokens: 500, openable: true }]} />)
+      })
+      expect(spy).not.toHaveBeenCalled()
+      const details = host.querySelector('details')!
+      await act(async () => {
+        details.open = true
+        details.dispatchEvent(new Event('toggle'))
+      })
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(spy).toHaveBeenCalledWith('sess-1', 'skills')
+    } finally {
+      await act(async () => root.render(null))
+      host.remove()
+      spy.mockRestore()
+    }
+  })
 })
-
-// Real failure mode: every open chat's Context section stacked in one pane (ten or more at once).
 describe('isFocusedChat', () => {
   it('shows only the chat the person is in', () => {
     expect(isFocusedChat('a', 'a')).toBe(true)

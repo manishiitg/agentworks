@@ -237,7 +237,7 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 				}
 			}
 			if tab, own := chatContextTabForSession(r.Context(), owner, project.Self.SessionID); own {
-				state["context"] = api.chatContextViewFor(owner, tab)
+				state["context"] = api.chatContextViewFor(r.Context(), owner, tab)
 			}
 			encoded, err := json.Marshal(state)
 			return string(encoded), err

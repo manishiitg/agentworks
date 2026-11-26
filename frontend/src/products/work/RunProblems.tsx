@@ -1,31 +1,50 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import api from '../../services/api'
+import { useLiveRefetch } from '../../hooks/useLiveRefetch'
 
 /** A workflow run problem card as the server words it (run_problems.go, #3617): missed or failed, with its buttons. */
 export type RunProblemCard = { id: string; kind: 'missed' | 'failed'; title: string; line: string; at: string; buttons: string[] }
 type RunProblemReply = { ok: boolean; note?: string; ask?: string }
 
-/** The owner's run-problem cards for one Crew; refreshed every minute and after each button. */
-export function useRunProblems(projectId?: string) {
-  const [cards, setCards] = useState<RunProblemCard[]>([])
-  const load = useCallback(async () => {
-    if (!projectId) { setCards([]); return }
-    try {
-      const response = await api.get<{ cards: RunProblemCard[] }>(`/api/crew-run-problems/${encodeURIComponent(projectId)}`)
-      setCards(response.data.cards || [])
-    } catch { setCards([]) }
-  }, [projectId])
+/** The owner's run-problem cards for one Crew; refreshed on live updates, focus, and after each button. */
+export function useRunProblems(projectId?: string, enabled = true) {
+  const [state, setState] = useState<{ projectId: string; cards: RunProblemCard[] }>()
+  const loadRef = useRef<() => Promise<void>>(async () => {})
   useEffect(() => {
+    if (!projectId || !enabled) return
+    const controller = new AbortController()
+    let reading = false
+    const load = async () => {
+      if (reading || controller.signal.aborted) return
+      reading = true
+      try {
+        const response = await api.get<{ cards: RunProblemCard[] }>(`/api/crew-run-problems/${encodeURIComponent(projectId)}`, { signal: controller.signal, skipSessionContext: true })
+        if (!controller.signal.aborted) setState({ projectId, cards: response.data.cards || [] })
+      } catch {
+        if (!controller.signal.aborted) setState({ projectId, cards: [] })
+      } finally {
+        reading = false
+      }
+    }
+    loadRef.current = load
     void load()
-    const timer = window.setInterval(() => void load(), 60_000)
-    return () => window.clearInterval(timer)
-  }, [load])
+    return () => { controller.abort(); loadRef.current = async () => {} }
+  }, [projectId, enabled])
+  useLiveRefetch(() => { void loadRef.current() }, {
+    kinds: ['crew_panel', 'schedules'],
+    project: projectId,
+    enabled: enabled && Boolean(projectId),
+    refreshOnFocus: true,
+    fallbackMs: 60_000,
+    safetyMs: 60_000,
+    minIntervalMs: 3_000,
+  })
   const press = useCallback(async (card: RunProblemCard, button: string): Promise<RunProblemReply> => {
     const response = await api.post<RunProblemReply>(`/api/crew-run-problems/${encodeURIComponent(projectId || '')}/${encodeURIComponent(card.id)}`, { button })
-    await load()
+    await loadRef.current()
     return response.data
-  }, [projectId, load])
-  return { cards, press }
+  }, [projectId])
+  return { cards: state && state.projectId === projectId ? state.cards : [], press }
 }
 
 /** One run-problem card in the Needs-you box. Resume and Ask the agent hand a message to the Crew's agent. */

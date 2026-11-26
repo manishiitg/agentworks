@@ -5,8 +5,9 @@ import type { ChatContextView } from '../../services/api-types'
 
 // Display refresh only: the server remains the source for context and account
 // usage. A compaction can happen without the foreground turn ending.
-export function useChatContextView(sessionId: string, busy = false) {
+export function useChatContextView(sessionId: string, busy = false, enabled = true) {
   const revision = useChatStore(state => {
+    if (!enabled) return undefined
     const events = state.tabEvents[sessionId] || []
     for (let i = events.length - 1; i >= 0; i--) {
       const event = events[i]
@@ -16,6 +17,7 @@ export function useChatContextView(sessionId: string, busy = false) {
   })
   const [view, setView] = useState<ChatContextView | null>(null)
   useEffect(() => {
+    if (!enabled) return
     let cancelled = false
     const refresh = () => {
       if (!sessionId || document.visibilityState === 'hidden') return
@@ -37,6 +39,6 @@ export function useChatContextView(sessionId: string, busy = false) {
       window.removeEventListener('agentworks:chat-context-changed', changed)
       document.removeEventListener('visibilitychange', refresh)
     }
-  }, [sessionId, busy, revision])
+  }, [sessionId, busy, revision, enabled])
   return view?.session_id === sessionId ? view : null
 }

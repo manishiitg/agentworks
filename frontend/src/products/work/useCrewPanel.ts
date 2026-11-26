@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import api from '../../services/api'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
+import { useAuthStore } from '../../stores/useAuthStore'
 import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 import type { CloudState, CrewAccessLine, CrewAsk } from './YourComputerPanel'
 
@@ -15,15 +16,33 @@ export type CrewPanel = { project: string; workspace: string; busy: boolean; mac
 
 // The last answer for each scope and project: the menu is mounted again every time a person comes back to it, and
 // a far-away server needs a few seconds to answer. Show what was last known at once; the new answer replaces it.
+const MAX_LAST_KNOWN = 24
 const lastKnown = new Map<string, CrewPanel>()
+let lastAccountId: string | undefined
+
+function rememberLastKnown(key: string, data: CrewPanel) {
+  lastKnown.delete(key)
+  lastKnown.set(key, data)
+  while (lastKnown.size > MAX_LAST_KNOWN) {
+    const oldest = lastKnown.keys().next().value
+    if (oldest === undefined) break
+    lastKnown.delete(oldest)
+  }
+}
 
 /** One current-account read. The existing tab-wide feed handles reconnect and
  * resync; timers are a fallback only. Settings screens retain their own APIs. */
-export function useCrewPanel(scope: string, project: string, workspace: string) {
+export function useCrewPanel(scope: string, project: string, workspace: string, enabled = true) {
+  const userId = useAuthStore(state => state.user?.id)
+  if (lastAccountId !== userId) {
+    lastKnown.clear()
+    lastAccountId = userId
+  }
   const key = JSON.stringify([scope, project, workspace])
   const [state, setState] = useState<{ key: string; data?: CrewPanel; error?: string }>()
   const refreshRef = useRef<() => void>(() => {})
   useEffect(() => {
+    if (!enabled) return
     const controller = new AbortController()
     let reading = false
     let again = false
@@ -37,7 +56,7 @@ export function useCrewPanel(scope: string, project: string, workspace: string) 
       try {
         const { data } = await api.get<CrewPanel>(`/api/crews/${encodeURIComponent(project)}/panel`, { params: { refresh_attempt: attempt || undefined }, signal: controller.signal, skipSessionContext: true })
         if (!controller.signal.aborted) {
-          lastKnown.set(key, data)
+          rememberLastKnown(key, data)
           setState({ key, data, error: data.refresh_note })
           // The server alone chooses the retry time and next attempt. A fresh
           // answer supplies neither, so this never becomes a polling loop.
@@ -59,13 +78,13 @@ export function useCrewPanel(scope: string, project: string, workspace: string) 
     window.addEventListener(githubConnectionChanged, onGitHubChanged)
     void read()
     return () => { controller.abort(); clearTimeout(retryTimer); window.removeEventListener(githubConnectionChanged, onGitHubChanged); refreshRef.current = () => {} }
-  }, [key, project])
+  }, [key, project, enabled])
   const data = state?.key === key ? state.data : lastKnown.get(key)
   // At most one read per 3s: every running chat sends 'sessions' notices, and at 0.5s several running chats kept
   // one panel read always in flight (85 reads a minute, 0.6-1s each), slowing every other request (PLAT-746-840).
   useLiveRefetch(() => refreshRef.current(), {
     kinds: ['crew_panel', 'sessions', 'schedules', 'report', 'plan', 'browser'],
-    project, workflow: workspace, scopeKey: scope, enabled: !!project,
+    project, workflow: workspace, scopeKey: scope, enabled: enabled && !!project,
     refreshOnFocus: true, fallbackMs: data?.busy ? 2_000 : 15_000, safetyMs: 0, minIntervalMs: 3_000,
   })
   return { data, error: state?.key === key ? state.error : undefined, refresh: () => refreshRef.current() }

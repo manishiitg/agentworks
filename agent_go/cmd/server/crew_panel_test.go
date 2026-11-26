@@ -500,3 +500,104 @@ func TestCrewPanelNoticeAdmissionAvoidsRuntimeExpansionAndKeepsCurrentAccess(t *
 		t.Fatal("disabled account received Crew notice")
 	}
 }
+
+// #4181: a panic in one panel section must fail only that section (and release workflowRead), never crash the server.
+func TestCrewPanelCollectRecoversSectionPanic(t *testing.T) {
+	cache := crewPanelCache{}
+	key := crewPanelCacheKey{caller: "owner", project: "crew-panic", authority: "current"}
+	sources := []crewPanelSource{
+		{id: "workflow", title: "Workflow", allowed: true, read: func(context.Context) (crewPanelSection, error) {
+			panic("boom")
+		}},
+		{id: "dashboards", title: "Artifacts", allowed: true, read: func(context.Context) (crewPanelSection, error) {
+			return crewPanelSection{Rows: []crewPanelRow{{ID: "d1", Label: "Overview"}}}, nil
+		}},
+	}
+	out := cache.collect(t.Context(), key, sources, time.Second)
+	if len(out) != 2 || out[0].Error == "" || out[1].Error != "" || len(out[1].Rows) != 1 {
+		t.Fatalf("unexpected collect result after panic: %+v", out)
+	}
+	// workflowRead must be unlocked after the panic so subsequent workflow reads succeed.
+	if !cache.workflowRead.TryLock() {
+		t.Fatal("workflowRead mutex remained locked after panicking workflow section")
+	}
+	cache.workflowRead.Unlock()
+}
+
+// #4181: a slow background refresh started before markCrewPanelChangesDirty must not overwrite newer dirty state,
+// and a panic in background refresh must still clear the in-flight refreshing flag.
+func TestCrewPanelBackgroundRefreshDirtyRaceAndPanicRecovery(t *testing.T) {
+	project := "crew-bg-dirty-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	defer crewPanelChangesDirty.Delete(project)
+
+	cache := crewPanelCache{}
+	key := crewPanelCacheKey{caller: "owner", project: project, section: "changes", authority: "v1"}
+	startedCh := make(chan struct{})
+	releaseCh := make(chan struct{})
+	staleSource := crewPanelSource{
+		id: "changes", title: "Uncommitted", allowed: true, background: true,
+		read: func(context.Context) (crewPanelSection, error) {
+			close(startedCh)
+			<-releaseCh
+			return crewPanelSection{Rows: []crewPanelRow{{ID: "stale", Label: "Stale"}}}, nil
+		},
+	}
+	cache.refreshInBackground(t.Context(), key, staleSource, time.Second)
+	<-startedCh
+	// Mark dirty after the scan began, then let the stale scan finish.
+	time.Sleep(5 * time.Millisecond)
+	crewPanelChangesDirty.Store(project, time.Now())
+	close(releaseCh)
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		cache.mu.Lock()
+		busy := cache.refreshing[key]
+		cache.mu.Unlock()
+		if !busy {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if _, found := cache.previous(key); found {
+		t.Fatal("stale background refresh overwrote dirty project state")
+	}
+
+	panicSource := crewPanelSource{
+		id: "changes", title: "Uncommitted", allowed: true, background: true,
+		read: func(context.Context) (crewPanelSection, error) { panic("bg boom") },
+	}
+	cache.refreshInBackground(t.Context(), key, panicSource, time.Second)
+	deadline = time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		cache.mu.Lock()
+		busy := cache.refreshing[key]
+		cache.mu.Unlock()
+		if !busy {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("background refresh left refreshing flag stuck after panic")
+}
+
+// #4181: crewPanelCache bounds its entries map and evicts oldest snapshots first.
+func TestCrewPanelCacheBoundsEntries(t *testing.T) {
+	cache := crewPanelCache{maxEntries: 3}
+	base := time.Now().Add(-time.Minute)
+	for i := 0; i < 5; i++ {
+		k := crewPanelCacheKey{caller: "owner", project: "p", section: "s", authority: strconv.Itoa(i)}
+		cache.putAt(k, crewPanelSection{Detail: strconv.Itoa(i)}, base.Add(time.Duration(i)*time.Second))
+	}
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if len(cache.entries) != 3 {
+		t.Fatalf("expected 3 bounded cache entries, got %d", len(cache.entries))
+	}
+	for _, evicted := range []string{"0", "1"} {
+		k := crewPanelCacheKey{caller: "owner", project: "p", section: "s", authority: evicted}
+		if _, ok := cache.entries[k]; ok {
+			t.Fatalf("expected oldest entry %s to be evicted", evicted)
+		}
+	}
+}
