@@ -14,6 +14,11 @@
   "build": {
     "appId": "com.mcp-agent-builder.desktop",
     "productName": "AgentWorks",
+    "compression": "maximum",
+    "afterPack": "scripts/afterPack.js",
+    "dmg": {
+      "format": "ULFO"
+    },
     "publish": [
       "github"
     ],
@@ -63,8 +68,8 @@
     },
     "extraResources": [
       {
-        "from": "resources/icons",
-        "to": "icons"
+        "from": "resources/icons/icon.png",
+        "to": "icons/icon.png"
       },
       {
         "from": "../agent_go/configs",

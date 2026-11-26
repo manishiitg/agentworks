@@ -76,27 +76,33 @@ function vaultEnv({ inherited, port, agentPort, stateDir, tokenFile, docsDir }) 
   };
 }
 
-// startVault prepares Vault's configuration once (GATEWAY_BOOTSTRAP_ONLY), then
-// starts it and resolves with the running child.
+// startVault launches agentworks-vault directly and resolves with the running
+// child once the process spawns. Vault initializes its Platform group and SQL
+// workspace on every normal start before serving /healthz, so a separate
+// GATEWAY_BOOTSTRAP_ONLY pre-run is unnecessary.
 function startVault({ bin, env, log, onExit }) {
-  const pipe = (child) => {
+  return new Promise((resolve, reject) => {
+    const child = spawn(bin, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', (d) => log.write(d));
     child.stderr.on('data', (d) => log.write(d));
-  };
-  return new Promise((resolve, reject) => {
-    const prepare = spawn(bin, [], { env: { ...env, GATEWAY_BOOTSTRAP_ONLY: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
-    pipe(prepare);
-    prepare.on('error', reject);
-    prepare.on('exit', (code) => {
-      if (code !== 0) return reject(new Error(`Vault could not prepare its settings (exit ${code}). Check vault.log for the cause.`));
-      const child = spawn(bin, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
-      pipe(child);
-      child.on('error', reject);
-      child.on('exit', (code, signal) => {
-        log.write(`\n=== vault exited code=${code} signal=${signal} ===\n`);
-        if (onExit) onExit(code, signal);
-      });
+    let settled = false;
+    child.once('spawn', () => {
+      settled = true;
       resolve(child);
+    });
+    child.on('error', (err) => {
+      if (!settled) {
+        settled = true;
+        reject(err);
+      }
+    });
+    child.on('exit', (code, signal) => {
+      log.write(`\n=== vault exited code=${code} signal=${signal} ===\n`);
+      if (!settled) {
+        settled = true;
+        reject(new Error(`Vault stopped before startup completed (exit ${code}, signal ${signal || 'none'}). Check vault.log for the cause.`));
+      }
+      if (onExit) onExit(code, signal);
     });
   });
 }

@@ -170,6 +170,28 @@ func (es *EventStore) ReadDurableChatPage(sessionID string, opts DurableEventPag
 	return journal.ReadPage(sessionID, opts)
 }
 
+// ReadDurableChatEventsByType reads all durable events of one type for a
+// session in sequence order when the journal supports type-indexed reads.
+// Returns supported=false when the caller should fall back to ReadDurableChatPage.
+func (es *EventStore) ReadDurableChatEventsByType(sessionID, eventType string) ([]Event, bool, error) {
+	if es == nil || strings.TrimSpace(sessionID) == "" || strings.TrimSpace(eventType) == "" {
+		return []Event{}, true, nil
+	}
+	es.adoptJournaledSession(sessionID)
+	es.mu.RLock()
+	journal, ok := es.durableJournal.(DurableEventJournalTypeReader)
+	class := es.persistenceClasses[sessionID]
+	es.mu.RUnlock()
+	if !ok || journal == nil {
+		return nil, false, nil
+	}
+	if class != SessionPersistenceInteractiveChat {
+		return []Event{}, true, nil
+	}
+	events, err := journal.ReadEventsByType(sessionID, eventType)
+	return events, true, err
+}
+
 // ReadDurableChatCompactPage reads the compact view of an interactive chat:
 // the latest turn complete and older turns as messages only (see
 // event_journal_compact.go). Journals without compact support fall back to the

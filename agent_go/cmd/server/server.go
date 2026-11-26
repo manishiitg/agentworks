@@ -1935,11 +1935,11 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	defer costledger.SetDefaultLedger(nil)
 	legacyCostPath := filepath.Join(fsutil.WorkspaceDocsRoot(), "_system", "costs.jsonl")
-	if report, migrateErr := costLedger.MigrateLegacyJSONL(legacyCostPath); migrateErr != nil {
+	if report, ran, migrateErr := costLedger.MigrateLegacyJSONLIfChanged(legacyCostPath); migrateErr != nil {
 		// SQLite is already initialized and remains authoritative. A damaged or
 		// unreadable compatibility file must not make every future startup fail.
 		log.Printf("[COST_LEDGER] Legacy migration skipped after error: %v", migrateErr)
-	} else if report.Imported > 0 || report.Duplicates > 0 || report.Quarantined > 0 {
+	} else if ran && (report.Imported > 0 || report.Duplicates > 0 || report.Quarantined > 0) {
 		log.Printf("[COST_LEDGER] Legacy migration imported=%d duplicates=%d quarantined=%d",
 			report.Imported, report.Duplicates, report.Quarantined)
 	}

@@ -7,7 +7,7 @@
 //
 // Shared by desktop shells and their spawned tools.
 
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const BEGIN = '__AW_ENV_BEGIN__';
 const END = '__AW_ENV_END__';
@@ -60,6 +60,49 @@ function applyLoginEnv(loginEnv, target = process.env) {
   return applied;
 }
 
+function resolveLoginEnvAsync({ shell = process.env.SHELL || '/bin/zsh', timeoutMs = 10000 } = {}) {
+  if (process.platform !== 'darwin' && process.platform !== 'linux') return Promise.resolve({});
+  return new Promise((resolve) => {
+    let settled = false;
+    const chunks = [];
+    let totalBytes = 0;
+    const maxBytes = 4 * 1024 * 1024;
+    const finish = (out) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(out);
+    };
+    let child;
+    try {
+      child = spawn(shell, ['-ilc', `printf '%s' '${BEGIN}'; /usr/bin/env -0; printf '%s' '${END}'`], {
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+    } catch (err) {
+      console.warn('[main] Failed to resolve login shell env:', err && err.message ? err.message : err);
+      resolve({});
+      return;
+    }
+    const timer = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch (_) {}
+      finish(parseEnvBlock(Buffer.concat(chunks).toString('binary')));
+    }, timeoutMs);
+    child.stdout.on('data', (chunk) => {
+      if (totalBytes + chunk.length <= maxBytes) {
+        chunks.push(chunk);
+        totalBytes += chunk.length;
+      }
+    });
+    child.on('error', (err) => {
+      console.warn('[main] Failed to resolve login shell env:', err && err.message ? err.message : err);
+      finish({});
+    });
+    child.on('close', () => {
+      finish(parseEnvBlock(Buffer.concat(chunks).toString('binary')));
+    });
+  });
+}
+
 function importLoginShellEnv(options) {
   const loginEnv = resolveLoginEnv(options);
   const applied = applyLoginEnv(loginEnv);
@@ -67,4 +110,20 @@ function importLoginShellEnv(options) {
   return { loginEnv, applied };
 }
 
-module.exports = { BEGIN, END, parseEnvBlock, resolveLoginEnv, applyLoginEnv, importLoginShellEnv };
+async function importLoginShellEnvAsync(options) {
+  const loginEnv = await resolveLoginEnvAsync(options);
+  const applied = applyLoginEnv(loginEnv);
+  console.log('[main] Imported', Object.keys(loginEnv).length, 'env vars from login shell');
+  return { loginEnv, applied };
+}
+
+module.exports = {
+  BEGIN,
+  END,
+  parseEnvBlock,
+  resolveLoginEnv,
+  resolveLoginEnvAsync,
+  applyLoginEnv,
+  importLoginShellEnv,
+  importLoginShellEnvAsync,
+};

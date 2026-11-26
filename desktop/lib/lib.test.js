@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 
-const { parseEnvBlock, applyLoginEnv, BEGIN, END } = require('./loginEnv');
+const { parseEnvBlock, applyLoginEnv, resolveLoginEnvAsync, BEGIN, END } = require('./loginEnv');
 const { createBoundedLogWriter, trimLogFileToTail } = require('./boundedLog');
 const { fetchHealth, waitForHealth } = require('./health');
 const { normalizeExternalUrl, isInternalNavUrl, isLoopbackUrl } = require('./externalNav');
@@ -23,6 +23,24 @@ test('applyLoginEnv fills gaps but PATH always wins', () => {
   const target = { PATH: '/usr/bin:/bin', KEEP: 'electron' };
   applyLoginEnv({ PATH: '/opt/homebrew/bin:/usr/bin', KEEP: 'login', NEW: 'x' }, target);
   assert.deepEqual(target, { PATH: '/opt/homebrew/bin:/usr/bin', KEEP: 'electron', NEW: 'x' });
+});
+
+test('resolveLoginEnvAsync reads login env without blocking the event loop', async () => {
+  if (process.platform !== 'darwin' && process.platform !== 'linux') return;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awenv-'));
+  const fakeShell = path.join(dir, 'fake-shell.sh');
+  fs.writeFileSync(fakeShell, `#!/bin/sh
+printf 'banner line\\n'
+printf '%s' '${BEGIN}'
+printf 'PATH=/opt/test/bin:/usr/bin\\0TEST_VAR=hello\\0'
+printf '%s' '${END}'
+`, { mode: 0o755 });
+  const env = await resolveLoginEnvAsync({ shell: fakeShell, timeoutMs: 5000 });
+  assert.equal(env.PATH, '/opt/test/bin:/usr/bin');
+  assert.equal(env.TEST_VAR, 'hello');
+  const missing = await resolveLoginEnvAsync({ shell: path.join(dir, 'missing-shell'), timeoutMs: 1000 });
+  assert.deepEqual(missing, {});
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('bounded log keeps the tail under the cap', () => {

@@ -508,6 +508,7 @@ type sqliteStore interface {
 	summarizeWindow(fromInclusive, toExclusive, executionID, workflowID, scope string) (*Summary, error)
 	summarizeWorkflowOverview(from, to, workflowID string) (*Summary, bool, error)
 	migrateLegacyJSONL(path string) (MigrationReport, error)
+	migrateLegacyJSONLIfChanged(path string) (MigrationReport, bool, error)
 	repriceUnpriced(estimate UnpricedEstimator) (int, error)
 	accountTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (map[string]AccountTokenUsage, error)
 	accountModelTokens(userID, accountPrefix string, dayStart, weekStart time.Time) (map[string]map[string]AccountTokenUsage, error)
@@ -924,6 +925,15 @@ func (l *Ledger) MigrateLegacyJSONL(path string) (MigrationReport, error) {
 		return MigrationReport{}, fmt.Errorf("costledger: legacy migration requires SQLite ledger")
 	}
 	return l.db.migrateLegacyJSONL(path)
+}
+
+// MigrateLegacyJSONLIfChanged runs MigrateLegacyJSONL only when the legacy file
+// has not yet been imported at its current size and modification time.
+func (l *Ledger) MigrateLegacyJSONLIfChanged(path string) (MigrationReport, bool, error) {
+	if l == nil || l.db == nil {
+		return MigrationReport{}, false, fmt.Errorf("costledger: legacy migration requires SQLite ledger")
+	}
+	return l.db.migrateLegacyJSONLIfChanged(path)
 }
 
 // addEntryToExecutionBucket rolls one entry into an execution's combined
