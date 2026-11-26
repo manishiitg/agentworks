@@ -82,6 +82,12 @@ func RegisterHTTPSession(httpSessionID, mcpSessionID string) {
 	registry.RegisterHTTPSession(httpSessionID, mcpSessionID)
 }
 
+// UnregisterHTTPSession removes one finished MCP session from its HTTP session.
+func UnregisterHTTPSession(httpSessionID, mcpSessionID string) {
+	registry := mcpclient.GetSessionRegistry()
+	registry.UnregisterHTTPSession(httpSessionID, mcpSessionID)
+}
+
 func ResolveConnectionSessionID(sessionID, serverName string) string {
 	registry := mcpclient.GetSessionRegistry()
 	return registry.ResolveConnectionSessionID(sessionID, serverName)

@@ -114,7 +114,15 @@ func (w When) CronSchedule() (cron.Schedule, error) {
 	if _, err := time.LoadLocation(tz); err != nil {
 		return nil, err
 	}
-	return cron.ParseStandard("CRON_TZ=" + tz + " " + w.Cron)
+	parsed, err := cron.ParseStandard("CRON_TZ=" + tz + " " + w.Cron)
+	if err != nil {
+		return nil, err
+	}
+	// A date that never comes (30 February) parses, but Next returns zero time.
+	if parsed.Next(time.Now()).IsZero() {
+		return nil, fmt.Errorf("cron expression %q never runs: no date matches it (for example 30 February)", w.Cron)
+	}
+	return parsed, nil
 }
 
 func (s Schedule) Validate() error {

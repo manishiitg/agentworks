@@ -199,7 +199,9 @@ func ComputeWorkflowScheduleMissedStatus(sched WorkflowSchedule, tracker *Workfl
 	windowEndLocal := windowEnd.In(loc)
 	for {
 		next := schedule.Next(cursor)
-		if next.After(windowEndLocal) {
+		// Next returns zero time for a date that never comes (30 February);
+		// without this the loop appends zero times until memory runs out.
+		if next.IsZero() || !next.After(cursor) || next.After(windowEndLocal) {
 			break
 		}
 		expectedRuns = append(expectedRuns, next.UTC())

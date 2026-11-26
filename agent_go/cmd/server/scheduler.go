@@ -339,7 +339,7 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 		loaded, time.Now().Format(time.RFC3339), time.Now().Location().String())
 
 	// Wall-clock tick loop: every 60s, evaluate all registered schedules against current time.
-	go s.tickLoop(ctx)
+	go s.runSchedulerClock(ctx.Done(), func() { s.tickLoop(ctx) })
 
 	// Wait for context cancellation
 	<-ctx.Done()
@@ -468,14 +468,15 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 					due.job.lastFired = due.scheduledFor
 				}
 				s.mu.Unlock()
-				go s.triggerSchedule(due.job.sctx, due.scheduledFor)
+				goRecover("schedule start", func() { s.triggerSchedule(due.job.sctx, due.scheduledFor) })
 			}
 
 			// Suspended runs wake on their own reset time rather than on a
 			// cron occurrence, so they are evaluated every tick alongside the
 			// schedules (PLAT-101).
-			go s.resumeDueCapacityWaits(context.Background(), t.UTC())
-			go s.resumeQueuedScheduleOccurrences(context.Background(), t.UTC())
+			tick := t.UTC()
+			goRecover("capacity wait resume", func() { s.resumeDueCapacityWaits(context.Background(), tick) })
+			goRecover("queued schedule resume", func() { s.resumeQueuedScheduleOccurrences(context.Background(), tick) })
 			lastTick = t
 		}
 	}
@@ -1416,11 +1417,11 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 		s.logf(sctx, "[SCHEDULER] Warning: failed to record manual schedule execution for %s: %v", scheduleID, err)
 	}
 
-	go func() {
+	goRecover("schedule run", func() {
 		if _, err := s.runJob(runCtx, sctx, runID); err != nil {
 			scheduleLogf("[SCHEDULER] Triggered job %s failed: %v", scheduleID, err)
 		}
-	}()
+	})
 
 	if input != nil {
 		return runID, nil
@@ -1972,10 +1973,10 @@ func (s *SchedulerService) resumeQueuedScheduleOccurrences(ctx context.Context, 
 		if !s.beginQueuedLaunch(launchKey) {
 			continue
 		}
-		go func() {
+		goRecover("queued schedule start", func() {
 			defer s.endQueuedLaunch(launchKey)
 			s.triggerSchedule(sctx, item.ScheduledFor)
-		}()
+		})
 	}
 }
 
@@ -3062,7 +3063,11 @@ func getNextRunTimeAt(cronExpr string, timezone string, now time.Time) *time.Tim
 		return nil
 	}
 
-	next := schedule.Next(now.In(loc)).UTC()
+	next := schedule.Next(now.In(loc))
+	if next.IsZero() {
+		return nil
+	}
+	next = next.UTC()
 	return &next
 }
 
@@ -3168,9 +3173,12 @@ func ValidateScheduleTimezone(timezone string) error {
 // ValidateCronExpression validates a 5-field cron expression.
 func ValidateCronExpression(expr string) error {
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	_, err := parser.Parse(expr)
+	parsed, err := parser.Parse(expr)
 	if err != nil {
 		return fmt.Errorf("invalid cron expression: %w", err)
+	}
+	if parsed.Next(time.Now()).IsZero() {
+		return fmt.Errorf("this schedule never runs: no date matches %q (for example 30 February)", expr)
 	}
 	return nil
 }
