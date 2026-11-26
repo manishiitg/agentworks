@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { create } from 'zustand'
 import { agentApi } from '../../services/api'
@@ -21,24 +21,8 @@ export function AgentRemovalDialog({ projectId }: { projectId: string }) {
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof agentApi.previewAgentRemoval>> | null>(null)
   const [choices, setChoices] = useState<Record<string, string>>({})
   const [error, setError] = useState('')
+  const dialogRef = useRef<HTMLDivElement>(null)
   const mine = pending?.tab.metadata?.agentProfileProjectId === projectId ? pending : null
-  useEffect(() => {
-    if (!mine) return
-    let active = true
-    setPreview(null); setChoices({}); setError('')
-    const meta = mine.tab.metadata!
-    void agentApi.previewAgentRemoval(meta.agentProfileId!, meta.agentProfileConversationKey!).then(result => {
-      if (active && isChatIdentityCurrent(mine.identity)) setPreview(result)
-    }).catch(cause => { if (active) setError(cause?.response?.data?.error || 'Could not load linked work. Try again.') })
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') mine.finish(null) }
-    window.addEventListener('keydown', escape)
-    return () => { active = false; window.removeEventListener('keydown', escape) }
-  }, [mine])
-  useEffect(() => () => {
-    const current = useRemoval.getState().pending
-    if (current?.tab.metadata?.agentProfileProjectId === projectId) current.finish(null)
-  }, [projectId])
-  if (!mine) return null
   const dependencies = preview?.dependencies || []
   const visibleIds = new Set(dependencies.filter(item => !item.when_removed?.length).map(item => item.id))
   for (let changed = true; changed;) {
@@ -50,9 +34,40 @@ export function AgentRemovalDialog({ projectId }: { projectId: string }) {
     }
   }
   const visibleDependencies = dependencies.filter(item => visibleIds.has(item.id))
-  const ready = preview && visibleDependencies.every(item => choices[item.id]) && isChatIdentityCurrent(mine.identity)
+  const ready = Boolean(mine && preview && visibleDependencies.every(item => choices[item.id]) && isChatIdentityCurrent(mine.identity))
+  useEffect(() => {
+    if (!mine) return
+    let active = true
+    setPreview(null); setChoices({}); setError('')
+    dialogRef.current?.focus()
+    const meta = mine.tab.metadata!
+    void agentApi.previewAgentRemoval(meta.agentProfileId!, meta.agentProfileConversationKey!).then(result => {
+      if (active && isChatIdentityCurrent(mine.identity)) setPreview(result)
+    }).catch(cause => { if (active) setError(cause?.response?.data?.error || 'Could not load linked work. Try again.') })
+    return () => { active = false }
+  }, [mine])
+  useEffect(() => {
+    if (!mine) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); mine.finish(null); return }
+      if (event.key !== 'Enter' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.isComposing) return
+      const tag = (event.target as HTMLElement | null)?.tagName
+      if (tag === 'BUTTON' || tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (preview && ready) {
+        event.preventDefault()
+        mine.finish({ confirmation: preview.confirmation, choices })
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [mine, preview, ready, choices])
+  useEffect(() => () => {
+    const current = useRemoval.getState().pending
+    if (current?.tab.metadata?.agentProfileProjectId === projectId) current.finish(null)
+  }, [projectId])
+  if (!mine) return null
   return createPortal(<div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4" onClick={() => mine.finish(null)}>
-    <div role="dialog" aria-modal="true" aria-label="Remove agent" className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-popover p-5 shadow-xl" onClick={event => event.stopPropagation()}>
+    <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Remove agent" className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-popover p-5 shadow-xl outline-none" onClick={event => event.stopPropagation()}>
       <h2 className="text-base font-semibold">Remove {mine.tab.name}?</h2>
       <p className="mt-2 text-sm text-muted-foreground">This permanently deletes the agent and its saved chats. To keep them, cancel and hide the agent instead.</p>
       {!preview && !error && <p className="mt-4 text-sm">Checking linked work…</p>}
@@ -71,8 +86,11 @@ export function AgentRemovalDialog({ projectId }: { projectId: string }) {
         </div>}
       </>}
       <div className="mt-5 flex justify-end gap-2">
-        <button autoFocus type="button" onClick={() => mine.finish(null)} className="rounded-md px-3 py-2 text-sm hover:bg-muted">Cancel</button>
-        <button type="button" disabled={!ready} onClick={() => { if (preview && ready) mine.finish({ confirmation: preview.confirmation, choices }) }} className="rounded-md bg-destructive px-3 py-2 text-sm text-destructive-foreground disabled:opacity-50">Remove agent</button>
+        <button type="button" onClick={() => mine.finish(null)} className="rounded-md px-3 py-2 text-sm hover:bg-muted">Cancel</button>
+        <button type="button" disabled={!ready} onClick={() => { if (preview && ready) mine.finish({ confirmation: preview.confirmation, choices }) }} className="inline-flex items-center gap-1.5 rounded-md bg-destructive px-3 py-2 text-sm text-destructive-foreground disabled:opacity-50">
+          <span>Remove agent</span>
+          <kbd aria-hidden="true" className="rounded bg-destructive-foreground/15 px-1.5 py-0.5 font-mono text-[11px] leading-none">Enter ↵</kbd>
+        </button>
       </div>
     </div>
   </div>, document.body)
