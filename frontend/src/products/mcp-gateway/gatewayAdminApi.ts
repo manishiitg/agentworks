@@ -366,6 +366,3 @@ export function listGroupPermissions(base: string, groupId: string): Promise<{ p
   return request(base, `/api/admin/groups/${encodeURIComponent(groupId)}/permissions`)
 }
 
-export function listGroupSecrets(base: string, groupId: string): Promise<{ secrets: { name: string; managed: boolean }[] }> {
-  return request(base, `/api/admin/groups/${encodeURIComponent(groupId)}/secrets`)
-}

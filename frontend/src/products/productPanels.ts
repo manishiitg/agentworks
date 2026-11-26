@@ -58,7 +58,7 @@ export const VAULT_PANELS = [
   { id: 'access', label: 'Access', icon: ShieldCheck },
   { id: 'servers', label: 'Connected MCPs', icon: Server },
   { id: 'available-mcps', label: 'Available MCPs', icon: Plus },
-  { id: 'secrets', label: 'Secrets', icon: KeyRound },
+  { id: 'secrets', label: 'Company keys', icon: KeyRound },
   { id: 'people', label: 'People', icon: UsersRound },
 ] as const
 

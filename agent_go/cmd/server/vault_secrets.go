@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -27,21 +26,27 @@ func vaultConfigured() bool {
 // The host holds encrypted values. Vault owns metadata and live group grants.
 // There is no fallback from a failed permission lookup to server-wide access.
 func vaultSecretAdminRequest(ctx context.Context, actor, method, path string, body any) error {
+	_, err := vaultSecretAdminCall(ctx, actor, method, path, body)
+	return err
+}
+
+// vaultSecretAdminCall is vaultSecretAdminRequest that also returns the response body (up to 1 MiB).
+func vaultSecretAdminCall(ctx context.Context, actor, method, path string, body any) ([]byte, error) {
 	target, token, err := gatewayAdminServiceConfig()
 	if err != nil {
-		return errors.New("Vault service is not configured")
+		return nil, errors.New("Vault service is not configured")
 	}
 	target.Path = strings.TrimRight(target.Path, "/") + path
 	var data []byte
 	if body != nil {
 		data, err = json.Marshal(body)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 	req, err := http.NewRequestWithContext(ctx, method, target.String(), bytes.NewReader(data))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("X-CapLayer-Actor", actor)
@@ -49,14 +54,14 @@ func vaultSecretAdminRequest(ctx context.Context, actor, method, path string, bo
 	client := &http.Client{Transport: capLayerTransport, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
-		return errors.New("Vault permissions unavailable")
+		return nil, errors.New("Vault permissions unavailable")
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	out, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return errors.New("could not persist Vault secret permissions")
+		return nil, errors.New("could not persist Vault secret permissions")
 	}
-	return nil
+	return out, nil
 }
 
 // Registers names and the managed flag only, never values. Vault grants a
@@ -146,7 +151,7 @@ func permittedGlobalSecrets(ctx context.Context, userID string) ([]globalSecretE
 			rows = append(rows, s)
 		}
 	}
-	return rows, nil
+	return withCompanyKeys(userID, rows, all), nil // company keys reach everyone (#4148)
 }
 
 // vaultPermittedSecretNames are the secret names Vault lets this person use, whether or not a value is stored yet.
@@ -301,48 +306,6 @@ func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID strin
 	return scoped
 }
 
-// Removing metadata and grants first ensures a failed value deletion cannot leave usable access.
-func revokeVaultSecret(ctx context.Context, actor, name string) error {
-	if !vaultConfigured() {
-		return nil
-	}
-	return vaultSecretAdminRequest(ctx, actor, http.MethodDelete, "/api/admin/secrets/"+url.PathEscape(name), nil)
-}
-func (api *StreamingAPI) handleVaultSecretAccess(w http.ResponseWriter, r *http.Request) {
-	actor := GetUserIDFromContext(r.Context())
-	if !canManageGlobalSecrets(actor) || !userAllowedProduct(&UserClaims{UserID: actor}, "mcp-gateway") {
-		writeUsersError(w, 403, "Vault management requires an administrator account")
-		return
-	}
-	if r.Method == http.MethodGet {
-		if err := syncVaultSecretMetadata(r.Context(), actor); err != nil {
-			writeUsersError(w, 503, err.Error())
-			return
-		}
-		writeUsersJSON(w, 200, map[string]any{"success": true})
-		return
-	}
-	var in struct {
-		GroupID string `json:"group_id"`
-		Name    string `json:"name"`
-		Allowed bool   `json:"allowed"`
-	}
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in) != nil || !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`).MatchString(in.GroupID) {
-		writeUsersError(w, 400, "invalid group")
-		return
-	}
-	if err := syncVaultSecretMetadata(r.Context(), actor); err != nil {
-		writeUsersError(w, 503, err.Error())
-		return
-	}
-	err := vaultSecretAdminRequest(r.Context(), actor, http.MethodPost, "/api/admin/groups/"+url.PathEscape(in.GroupID)+"/secrets", map[string]any{"name": in.Name, "allowed": in.Allowed})
-	if err != nil {
-		writeUsersError(w, 503, err.Error())
-		return
-	}
-	writeUsersJSON(w, 200, map[string]any{"success": true})
-}
-
 // The first admission check, before handleQuery loads the workspace's settings: the selected secrets are checked
 // against whoever lends them, as the turn resolves them (owner-lent).
 func (api *StreamingAPI) validateQuerySecretSelection(ctx context.Context, userID string, req QueryRequest) error {
@@ -470,4 +433,12 @@ func (api *StreamingAPI) projectSecretsOwner(userID, workspacePath string) strin
 		return owner
 	}
 	return userID
+}
+
+// Removing metadata and grants first ensures a failed value deletion cannot leave usable access.
+func revokeVaultSecret(ctx context.Context, actor, name string) error {
+	if !vaultConfigured() {
+		return nil
+	}
+	return vaultSecretAdminRequest(ctx, actor, http.MethodDelete, "/api/admin/secrets/"+url.PathEscape(name), nil)
 }

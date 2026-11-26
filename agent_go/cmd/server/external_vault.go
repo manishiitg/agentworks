@@ -263,6 +263,10 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 		case "set":
 			secret := externalArg(args, "name")
 			allow, ok := args["allowed"].(bool)
+			if companyKeysOn() {
+				fail(errCompanyKeysGroups.Error() + ".")
+				return
+			}
 			if group == "" || !globalSecretNamePattern.MatchString(secret) || len(secret) > 128 || !ok {
 				fail("set requires group_id, an exact secret name and boolean allowed.")
 				return

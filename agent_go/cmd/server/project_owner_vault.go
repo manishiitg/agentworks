@@ -42,7 +42,7 @@ func secretPlaceRefusal(where string) error {
 	case secretPlaceTeam:
 		return errors.New("Team keys are added through the Team: save the key in your own Vault first, then share it with the Team tool (way_add, item secret). The value goes server to server and is never shown")
 	case secretPlaceCompany:
-		return errors.New("Company keys are kept by a Vault administrator in Vault (Secrets panel, or manage_vault_secret_access set_value). Ask one, or save it in this project instead")
+		return errors.New("Only Vault admins add or change company keys. Ask an admin, keep the key for yourself (personal), or save it in this online project (project)")
 	}
 	return fmt.Errorf("choose where to save it: %s (only you), %s (everyone in this online project), %s or %s", secretPlacePersonal, secretPlaceProject, secretPlaceTeam, secretPlaceCompany)
 }
@@ -79,6 +79,17 @@ func (api *StreamingAPI) saveProjectSecret(ctx context.Context, actor, root, nam
 		if vaultID, err = ensurePersonalVault(ctx, actor); err != nil {
 			return "", "", fmt.Errorf("your Vault is unavailable: %w", err)
 		}
+	case secretPlaceCompany:
+		// A company key reaches everyone on the server (#4148); only Vault admins add one.
+		if !canManageGlobalSecrets(actor) {
+			return "", "", secretPlaceRefusal(where)
+		}
+		if err := api.saveManagedGlobalSecret(ctx, actor, name, value, false); err != nil {
+			return "", "", err
+		}
+		markWorkflowSecretsChanged(root)
+		log.Printf("[PROJECT_SECRETS] added_by=%s project=%s secret=%s saved=company", actor, root, name)
+		return name, where, nil
 	default:
 		return "", "", secretPlaceRefusal(where)
 	}

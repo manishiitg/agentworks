@@ -220,6 +220,25 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	if apps := crewVaultAppRowsOnly([]vaultRuntimeServer{{ID: "owner-mail"}, {ID: "crew-drive"}}, []string{vaultServerName("crew-drive"), "none"}); len(apps) != 1 || apps[0].ID != "crew-drive" {
 		t.Fatalf("a User's apps from the owner's Vault = %v", apps)
 	}
+	// Company keys reach everyone on the server, a User's turn included, once the one-time move has run (#4148); the
+	// project's own key wins on the same name, and only Vault admins add one.
+	previousGlobals := managedGlobals
+	managedGlobals = map[string]string{"COMPANY_KEY": "company-value", "FAL_AI_KEY": "company-fal"}
+	t.Cleanup(func() { managedGlobals = previousGlobals })
+	companyRows := []globalSecretEntry{{Name: ownKey}, {Name: crewKey}, {Name: "COMPANY_KEY"}}
+	if rows := crewVaultRowsOnly(vaultCtx, companyRows); len(rows) != 1 {
+		t.Fatalf("a group key reached a User before the move: %v", rows)
+	}
+	markCompanyKeysMoved("test")
+	if rows := crewVaultRowsOnly(vaultCtx, companyRows); len(rows) != 2 || rows[1].Name != "COMPANY_KEY" {
+		t.Fatalf("a User's turn rows with company keys on = %v", rows)
+	}
+	if names := withProjectCompanyKeys([]string{crewKey}); !slices.Equal(names, []string{crewKey, "COMPANY_KEY"}) {
+		t.Fatalf("project keys with company keys = %v (the project's own FAL_AI_KEY must win)", names)
+	}
+	if _, _, err := (&StreamingAPI{}).saveProjectSecret(context.Background(), "cara", root, "NEW_KEY", "value", secretPlaceCompany); err == nil || !strings.Contains(err.Error(), "Vault admins") {
+		t.Fatalf("a non-admin added a company key: %v", err)
+	}
 	// A key given in this project's chat goes to its project vault, the only vault it reads (#4144: it went to the
 	// person's own Vault and never arrived); a User may not add one there.
 	if defaultSecretPlace(root) != secretPlaceProject {

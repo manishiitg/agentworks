@@ -2731,7 +2731,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Secrets encryption API routes (from secrets_routes.go)
 	apiRouter.HandleFunc("/secrets/encrypt", api.handleEncryptSecret).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/secrets/decrypt", api.handleDecryptSecret).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/secrets/vault/access", api.handleVaultSecretAccess).Methods("GET", "POST")
+	apiRouter.HandleFunc("/vault/company-keys", api.handleCompanyKeys).Methods("GET", "POST")
 	apiRouter.HandleFunc("/secrets/global", api.handleGetGlobalSecrets).Methods("GET", "OPTIONS")
 	apiRouter.HandleFunc("/my-vaults/op", api.handleMyVaultsOp).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/secrets/global", api.handleManageGlobalSecret).Methods("PUT", "DELETE")
