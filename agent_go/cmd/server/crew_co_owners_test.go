@@ -273,6 +273,12 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	if out := (&StreamingAPI{}).withOwnChatKeys(context.Background(), "cara", root, false, []resolvedSecret{{Name: "A", Value: "a"}}); len(out) != 1 {
 		t.Fatalf("an automated turn got personal keys: %v", out)
 	}
+	// Your own apps likewise (#4165): a chat built with them is rebuilt before a turn the person did not type.
+	recordLaunchedVaultApps("chat-own-apps", "cara", "cara", nil, map[string]string{"vault_mine": "Mine"}, true, nil)
+	markOwnChatTurn("chat-own-apps", "cara", root, false)
+	if !(&StreamingAPI{}).vaultAppsReloadDue(context.Background(), "chat-own-apps", QueryRequest{TriggeredBy: "cron"}) {
+		t.Fatal("a turn nobody typed kept the person's own apps")
+	}
 	// The same lock outside chat (#3796): a direct MCP setup tool is refused for cara while its read action, a co-owner
 	// and the owner stay open, and the website's file proxy refuses her write to the instructions but not a work file.
 	if crewSetupLockExternalRefusal("cara", "install_skill", "install", map[string]any{"crew_id": "team-proj"}) == "" {

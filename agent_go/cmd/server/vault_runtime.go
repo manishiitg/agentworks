@@ -681,9 +681,10 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 	// actor's current grants and argument rules at the gateway.
 	picks := append([]string(nil), names...)
 	ctx, names, rows, remote, inventoryErr := api.vaultAppCandidates(ctx, lender, sessionID, names)
-	recordLaunchedVaultApps(sessionID, person, lender, picks, vaultAppLabels(names, rows, remote), inventoryErr)
+	own := ownChatAppsFrom(ctx)
+	recordLaunchedVaultApps(sessionID, person, lender, picks, vaultAppLabels(names, rows, remote), len(own.ids) > 0, inventoryErr)
 	// A User of a server Crew starts and calls the Crew vault's apps as its main owner (crewVaultReader); the rows are
-	// already only that vault's apps.
+	// already only that vault's apps. Apps from the typing person's own vault are always started and called as them.
 	lender = crewVaultReader(ctx, lender)
 	aliasRows := make([]vaultRuntimeServer, 0, len(rows)+len(remote))
 	for _, row := range rows {
@@ -706,6 +707,10 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 
 		var resolved *executor.ResolvedMCPServer
 		var err error
+		lender := lender
+		if id, ok := strings.CutPrefix(vaultSelectionName(name), "vault_"); ok && own.ids[id] {
+			lender = own.person
+		}
 		if strings.HasPrefix(vaultSelectionName(name), serverVaultPrefix) {
 			resolved, err = api.resolveServerVaultMCP(ctx, lender, vaultSelectionName(name), sessionID)
 		} else {
