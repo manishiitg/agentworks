@@ -3,56 +3,92 @@ package server
 import (
 	"context"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 )
 
 // nativeChatContextParts sizes what fills a Claude Code chat from its own transcript: Claude Code reports only the
 // total, so this is the one way to show what the total is made of.
-func (api *StreamingAPI) nativeChatContextParts(sessionID string, breakdown claudecode.ContextBreakdown, usedTokens int) []chatContextPart {
+func (api *StreamingAPI) nativeChatContextParts(sessionID string, breakdown nativeBreakdown, usedTokens int) []chatContextPart {
 	var ours int
-	if sizes, known := api.promptParts.Load(sessionID); known {
+	// Only Claude Code's setup is known to hold the chat's own instructions.
+	if sizes, known := api.promptParts.Load(sessionID); known && breakdown.app == claudeCodeApp {
 		s := sizes.(mcpagent.PromptPartSizes)
 		ours = (s.Instructions + s.Added + s.Runtime) / charsPerToken
 	}
-	return nativeContextParts(breakdown, ours, usedTokens)
+	return nativeContextParts(breakdown.ContextBreakdown, breakdown.app, ours, usedTokens)
 }
 
-// nativeChatBreakdown reads a Claude Code chat's transcript; false for other coding agents or when it cannot be read.
-// Its total is also the chat's size after a restart, before the chat has reported again.
-func (api *StreamingAPI) nativeChatBreakdown(owner string, tab chatContextTab) (claudecode.ContextBreakdown, bool) {
+const claudeCodeApp, museApp = "Claude Code", "Muse"
+
+// nativeBreakdown is a chat's breakdown and the app that reported it.
+type nativeBreakdown struct {
+	claudecode.ContextBreakdown
+	app string
+}
+
+// nativeChatBreakdown reads what fills a Claude Code chat (its transcript) or a Muse chat (the request trace in its
+// session log); false for other coding agents or when it cannot be read.
+func (api *StreamingAPI) nativeChatBreakdown(owner string, tab chatContextTab) (nativeBreakdown, bool) {
+	if nativeID, accountHome, ok := api.nativeChatSession(owner, tab, "muse-cli"); ok {
+		dataHome := ""
+		if accountHome != "" {
+			dataHome = filepath.Join(accountHome, ".local", "share")
+		}
+		m, ok := musecli.ReadContextBreakdown(nativeID, dataHome)
+		if !ok {
+			return nativeBreakdown{}, false
+		}
+		// Muse's trace counts bytes; the parts are scaled to the total the chat reports, so only proportions matter.
+		return nativeBreakdown{app: museApp, ContextBreakdown: claudecode.ContextBreakdown{
+			Total: m.Total / charsPerToken, Setup: m.Setup / charsPerToken, Skills: m.Skills / charsPerToken,
+			AppNotes: m.Context / charsPerToken, Conversation: (m.Messages + m.Replies + m.ToolResults) / charsPerToken,
+		}}, true
+	}
 	nativeID, workingDir, accountHome, ok := api.nativeChatTranscript(owner, tab)
 	if !ok {
-		return claudecode.ContextBreakdown{}, false
+		return nativeBreakdown{}, false
 	}
-	return claudecode.ContextBreakdownFromTranscript(nativeID, workingDir, accountHome)
+	b, ok := claudecode.ContextBreakdownFromTranscript(nativeID, workingDir, accountHome)
+	return nativeBreakdown{ContextBreakdown: b, app: claudeCodeApp}, ok
 }
 
 // nativeChatTranscript finds a Claude Code chat's own session and where its transcript is kept.
 func (api *StreamingAPI) nativeChatTranscript(owner string, tab chatContextTab) (nativeID, workingDir, accountHome string, ok bool) {
-	runtime := chatContextRuntimeMetadata(owner, tab.Record)
-	if runtime == nil || runtime.AgentSessionHandle == nil {
+	nativeID, accountHome, ok = api.nativeChatSession(owner, tab, "claude-code")
+	if !ok {
 		return "", "", "", false
 	}
+	runtime := chatContextRuntimeMetadata(owner, tab.Record)
+	return nativeID, strings.TrimSpace(runtime.AgentSessionHandle.Provider.WorkingDir), accountHome, true
+}
+
+// nativeChatSession finds a chat's own native session when the chat runs on provider, and the HOME of its account.
+func (api *StreamingAPI) nativeChatSession(owner string, tab chatContextTab, provider string) (nativeID, accountHome string, ok bool) {
+	runtime := chatContextRuntimeMetadata(owner, tab.Record)
+	if runtime == nil || runtime.AgentSessionHandle == nil {
+		return "", "", false
+	}
 	handle := runtime.AgentSessionHandle
-	provider := chatProviderKey(firstNonEmptyTrimmed(handle.Provider.Provider, runtime.Provider))
-	if provider != chatProviderKey("claude-code") {
-		return "", "", "", false
+	if chatProviderKey(firstNonEmptyTrimmed(handle.Provider.Provider, runtime.Provider)) != chatProviderKey(provider) {
+		return "", "", false
 	}
 	nativeID = firstNonEmptyTrimmed(handle.Provider.NativeSessionID, runtime.ExternalSessionID)
 	if nativeID == "" {
-		return "", "", "", false
+		return "", "", false
 	}
 	if handle.ConnectionID != "" {
 		scope := providerAccountScope{Principal: owner, WorkspacePath: tab.Record.WorkspacePath}
-		if keys, err := api.connectionAPIKeys(context.Background(), scope, "claude-code", handle.ConnectionID); err == nil && keys != nil {
+		if keys, err := api.connectionAPIKeys(context.Background(), scope, provider, handle.ConnectionID); err == nil && keys != nil {
 			accountHome = keys.RuntimeEnvironment["HOME"]
 		}
 	}
-	return nativeID, strings.TrimSpace(handle.Provider.WorkingDir), accountHome, true
+	return nativeID, accountHome, true
 }
 
 // chatContextPartItem is one item behind a part of the Context pane's breakdown, with its text.
@@ -105,7 +141,7 @@ func (api *StreamingAPI) handleChatContextPart(w http.ResponseWriter, r *http.Re
 
 // nativeContextParts turns a transcript breakdown into the pane's parts, scaled to the total the chat reports now.
 // ours is the size of the instructions AgentWorks put in the setup, when known.
-func nativeContextParts(b claudecode.ContextBreakdown, ours, usedTokens int) []chatContextPart {
+func nativeContextParts(b claudecode.ContextBreakdown, app string, ours, usedTokens int) []chatContextPart {
 	if b.Total <= 0 {
 		return nil
 	}
@@ -118,7 +154,8 @@ func nativeContextParts(b claudecode.ContextBreakdown, ours, usedTokens int) []c
 	var parts []chatContextPart
 	add := func(key, label string, tokens int, note string) {
 		if tokens = scale(tokens); tokens > 0 {
-			parts = append(parts, chatContextPart{Key: key, Label: label, Tokens: tokens, Note: note, Openable: chatContextPartTexts[key]})
+			// Only Claude Code's transcript holds the parts' text.
+			parts = append(parts, chatContextPart{Key: key, Label: label, Tokens: tokens, Note: note, Openable: app == claudeCodeApp && chatContextPartTexts[key]})
 		}
 	}
 	setup := b.Setup
@@ -126,7 +163,7 @@ func nativeContextParts(b claudecode.ContextBreakdown, ours, usedTokens int) []c
 		add("instructions", "Your instructions", ours, "")
 		setup -= ours
 	}
-	add("app_setup", "Claude Code's own rules and tools", setup, "")
+	add("app_setup", app+"'s own rules and tools", setup, "")
 	add("skills", "Skills list", b.Skills, "")
 	add("files", "Instruction files (CLAUDE.md, AGENTS.md)", b.InstructionFiles, "")
 	if b.ResentCount > 0 {
@@ -139,7 +176,11 @@ func nativeContextParts(b claudecode.ContextBreakdown, ours, usedTokens int) []c
 		add("resent", label, b.Resent, note)
 	}
 	add("summary", "Summary of the earlier chat", b.Summary, "")
-	add("notes", "Reminders Claude Code adds", b.AppNotes, "")
+	notes := "Reminders Claude Code adds"
+	if app != claudeCodeApp {
+		notes = "Context " + app + " adds (memory, workspace notes)"
+	}
+	add("notes", notes, b.AppNotes, "")
 	// The conversation takes what is left, so the parts add up to the reported total.
 	target := usedTokens
 	if target <= 0 {

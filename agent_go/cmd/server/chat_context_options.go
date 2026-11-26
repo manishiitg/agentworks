@@ -19,7 +19,6 @@ import (
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/nativeusage"
 )
 
@@ -451,11 +450,12 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 	view := chatContextView{SessionID: sessionID}
 	view.UsedTokens, view.WindowTokens, view.Limits = api.chatUsage(sessionID, subject, true)
 	view.TotalOnly = isCodingAgentProvider(subject.provider, subject.model)
-	var breakdown claudecode.ContextBreakdown
+	var breakdown nativeBreakdown
 	transcript := false
 	if view.TotalOnly && !subject.switched {
-		// After a restart the chat has not reported its size yet: its transcript's last reply has it.
-		if breakdown, transcript = api.nativeChatBreakdown(owner, tab); transcript && view.UsedTokens <= 0 {
+		// After a restart the chat has not reported its size yet: Claude Code's transcript's last reply has it
+		// (Muse's trace is a byte estimate, never a reported size).
+		if breakdown, transcript = api.nativeChatBreakdown(owner, tab); transcript && view.UsedTokens <= 0 && breakdown.app == claudeCodeApp {
 			view.UsedTokens = breakdown.Total
 		}
 	}

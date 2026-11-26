@@ -30,7 +30,7 @@ func TestChatContextPartsAddUpToTheReportedTotal(t *testing.T) {
 // instructions sent again in messages are called out (real case: 30K of a 209K chat was two resent copies).
 func TestNativeContextPartsAddUpAndCallOutResentInstructions(t *testing.T) {
 	b := claudecode.ContextBreakdown{Total: 10000, Setup: 3000, Skills: 500, InstructionFiles: 500, Resent: 2000, ResentCount: 2, Conversation: 4000}
-	parts := nativeContextParts(b, 1000, 20000)
+	parts := nativeContextParts(b, claudeCodeApp, 1000, 20000)
 	sum, resent := 0, chatContextPart{}
 	for _, part := range parts {
 		sum += part.Tokens
