@@ -2,14 +2,10 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log"
-	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/oauth"
 )
 
@@ -46,7 +42,7 @@ func (platformClientSealer) Seal(path string, plaintext []byte) ([]byte, error) 
 func (platformClientSealer) Open(path string, sealed []byte) ([]byte, error) {
 	trimmed := strings.TrimSpace(string(sealed))
 	// A credential written before sealing is plain JSON: still readable,
-	// and sealed at start (sealPlainPlatformCredentials) or on its next write.
+	// and sealed on its next write.
 	if strings.HasPrefix(trimmed, "{") {
 		return []byte(trimmed), nil
 	}
@@ -83,69 +79,4 @@ func sealPlatformClientSecret(serverName string, cfg *oauth.OAuthConfig) error {
 // platform ever writes.
 func isPlatformClientSecretFile(serverName, path string) bool {
 	return path == "" || filepath.Clean(path) == filepath.Clean(expandPath(getUserClientFilePath(platformMCPTokenUserID, serverName)))
-}
-
-// migratePlatformClientSecrets seals every inline client secret already in
-// the overlay (written before secrets moved out), once at start.
-func (api *StreamingAPI) migratePlatformClientSecrets() error {
-	path := api.getUserConfigPath()
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	overlay, err := mcpclient.LoadConfig(path, api.logger)
-	if err != nil {
-		return err
-	}
-	moved := 0
-	for name, server := range overlay.MCPServers {
-		if server.OAuth == nil || server.OAuth.ClientSecret == "" {
-			continue
-		}
-		copied := *server.OAuth
-		if err := sealPlatformClientSecret(name, &copied); err != nil {
-			return err
-		}
-		server.OAuth = &copied
-		overlay.MCPServers[name] = server
-		moved++
-	}
-	if moved == 0 {
-		return nil
-	}
-	if err := mcpclient.SaveConfig(path, overlay); err != nil {
-		return err
-	}
-	log.Printf("[MCP] sealed %d platform OAuth client secret(s) out of %s", moved, path)
-	return os.Chmod(path, 0o600)
-}
-
-// sealPlainPlatformCredentials seals every credential file under the tokens
-// root still in plain JSON (written before sealing), once at start.
-func sealPlainPlatformCredentials() (int, error) {
-	root := mcpagentTokensRoot()
-	sealed := 0
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			if errors.Is(walkErr, os.ErrNotExist) {
-				return nil
-			}
-			return walkErr
-		}
-		if entry.IsDir() || !entry.Type().IsRegular() || !(platformClientSealer{}).Handles(path) {
-			return nil
-		}
-		raw, err := os.ReadFile(path) //nolint:gosec // G304: files under the tokens root
-		if err != nil {
-			return err
-		}
-		if !strings.HasPrefix(strings.TrimSpace(string(raw)), "{") {
-			return nil // already sealed
-		}
-		if err := oauth.WriteTokenFile(path, raw); err != nil {
-			return fmt.Errorf("seal %s: %w", path, err)
-		}
-		sealed++
-		return nil
-	})
-	return sealed, err
 }

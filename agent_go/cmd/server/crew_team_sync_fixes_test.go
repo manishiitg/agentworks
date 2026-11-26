@@ -511,63 +511,6 @@ func TestCrewTeamStaleDeleteKeepsTheNewerEdit(t *testing.T) {
 	}
 }
 
-// PLAT-856-509: the member-copy migration used os.CopyFS, which refuses links, and a crash after the copy left
-// "target_not_empty" for good. Links now copy as links, and a finished copy whose record still points at the old
-// folder is resumed.
-func TestCrewTeamMemberCopyMigrationCopiesLinksAndResumes(t *testing.T) {
-	state := t.TempDir()
-	t.Setenv("AGENTWORKS_STATE_ROOT", state)
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	crewTeamTestDocs(t, "mig-test", "mig-test")
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "mig-test", OwnerID: "owner", ProjectID: "mig-test"}); err != nil {
-		t.Fatal(err)
-	}
-	record := func(member string) (string, string, *crewTeamLocal) {
-		t.Helper()
-		dir := filepath.Join(state, "team-working", "server", member, "copy")
-		old := filepath.Join(dir, "files")
-		if err := os.MkdirAll(old, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(old, "a.md"), []byte("member file"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		b := &crewTeamLocal{Project: "mig-test", RemoteUser: member, Root: old}
-		if err := saveCrewTeamLocal(dir, *b); err != nil {
-			t.Fatal(err)
-		}
-		return dir, old, b
-	}
-	dir, old, b := record("member")
-	if err := os.Symlink("a.md", filepath.Join(old, "link.md")); err != nil {
-		t.Fatal(err)
-	}
-	if result, _ := migrateCrewTeamMemberCopy(dir, old, "stamp", b); result != "moved" {
-		t.Fatalf("a copy with a link: %s", result)
-	}
-	if link, err := os.Readlink(filepath.Join(b.Root, "link.md")); err != nil || link != "a.md" {
-		t.Fatalf("the link was not copied as a link: %q %v", link, err)
-	}
-	// A crash after the finished copy was renamed into place, before the record was saved.
-	dir, old, b = record("member2")
-	target, err := crewTeamMemberCopyRoot("mig-test", "member2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = copyCrewTeamTree(old, target); err == nil {
-		err = os.WriteFile(filepath.Join(target, crewTeamMigratedMarker), nil, 0o600)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result, _ := migrateCrewTeamMemberCopy(dir, old, "stamp", b); result != "moved_resumed" || b.Root != target {
-		t.Fatalf("the interrupted migration did not resume: %s %s", result, b.Root)
-	}
-	if _, err = os.Stat(filepath.Join(target, crewTeamMigratedMarker)); !os.IsNotExist(err) {
-		t.Fatal("the migration marker stayed in the member's copy")
-	}
-}
-
 // PLAT-856-509: after a server restart nothing was cached for a member's Mac that is off, so a message to its agent
 // was refused as "This agent isn't shared with you." The last list read from that Mac is kept on disk.
 func TestCrewTeamMemberMacAgentKnownAfterRestartWhileMacOff(t *testing.T) {

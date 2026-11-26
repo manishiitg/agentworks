@@ -2497,17 +2497,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/shell/stream", api.handleCodeShellStream).Methods("GET")
 	codeShellReaperOnce.Do(func() { go codeShellReaper() })
 	apiRouter.HandleFunc("/agent-profiles/{id}/projects/{project_id}/shell/stop", api.handleCodeShellStop).Methods("POST", "OPTIONS")
-	// Platform OAuth client secrets written inline before they moved to
-	// sealed client files.
-	if err := api.migratePlatformClientSecrets(); err != nil {
-		log.Printf("[MCP] could not seal platform OAuth client secrets: %v", err)
-	}
-	// Platform tokens and client registrations written before sealing.
-	if n, err := sealPlainPlatformCredentials(); err != nil {
-		log.Printf("[MCP] could not seal platform MCP credentials: %v", err)
-	} else if n > 0 {
-		log.Printf("[MCP] sealed %d platform MCP credential file(s)", n)
-	}
 	// Pins of Code chats whose Code is gone, once the workspace is up.
 	go func() {
 		time.Sleep(3 * time.Minute)
@@ -2945,7 +2934,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Per-message and per-route gates still silence unrouted channels while
 	// the platform switch is off.
 	if slackSvc != nil && !IsLocalMode() {
-		api.migrateCrewBotScopes(context.Background(), slackSvc)
 		botConfig, _ := chatStore.GetBotConnectorConfig(context.Background(), "slack")
 		if slackBotConnectorWantedAtStartup(botConfig, slackSvc) && registerSlackBotConnector(botManager, slackSvc) {
 			log.Printf("✅ Slack bot mode enabled")
@@ -3202,9 +3190,6 @@ func runServer(cmd *cobra.Command, args []string) {
 		defer desktopSocket.Close()
 		log.Printf("[DESKTOP] Separate-launch connection socket ready")
 	}
-	migrateCrewSyncToRelay()
-	migrateMacSharedAudiences()
-	migrateCrewTeamMemberCopies()
 	stopTeamSync := api.startCrewTeamSync()
 	defer stopTeamSync()
 	notifyCtx, stopNotifier := context.WithCancel(context.Background())
