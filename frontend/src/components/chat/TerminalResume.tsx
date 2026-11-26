@@ -42,8 +42,11 @@ export function TerminalResumeNotice({ tabId }: { tabId: string | null }) {
     if (!tabId || useTerminalResumeState.getState().refused?.[byKey]) return
     const key = ownChat(tabId); if (!key) return
     const identity = captureChatIdentity(); let live = true
+    let inFlight = false
     let timer: number | undefined
     const refresh = async () => {
+      if (inFlight || (typeof document !== 'undefined' && document.hidden)) return
+      inFlight = true
       try {
         const { data } = await api.get<Status>(endpoint, { params: { conversation_key: key, action: 'status' } })
         if (live && isChatIdentityCurrent(identity)) useTerminalResumeState.setState(s => ({ byTab: { ...s.byTab, [byKey]: data } }))
@@ -53,10 +56,14 @@ export function TerminalResumeNotice({ tabId }: { tabId: string | null }) {
           useTerminalResumeState.setState(s => ({ refused: { ...s.refused, [byKey]: true } }))
           console.info('[CHAT_TERMINAL_RESUME] action=poll_stopped reason=forbidden')
         }
+      } finally {
+        inFlight = false
       }
     }
+    const onVisibility = () => { if (!document.hidden) void refresh() }
     void refresh(); timer = window.setInterval(() => void refresh(), 5000)
-    return () => { live = false; window.clearInterval(timer); useTerminalResumeState.setState(s => { const byTab = { ...s.byTab }; delete byTab[byKey]; return { byTab, commandTab: s.commandTab === byKey ? undefined : s.commandTab } }) }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { live = false; window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisibility); useTerminalResumeState.setState(s => { const byTab = { ...s.byTab }; delete byTab[byKey]; return { byTab, commandTab: s.commandTab === byKey ? undefined : s.commandTab } }) }
   }, [tabId, identityNow, byKey])
   if (!tabId || !status || (!status.out && !commandOpen)) return null
   const recover = async () => {

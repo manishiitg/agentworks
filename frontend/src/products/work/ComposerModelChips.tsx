@@ -16,6 +16,7 @@ import { AccountModelPicker } from '../../components/ui/AccountModelPicker'
 import { SharedTokenUsageItems } from '../../components/providers/SharedTokenUsageNotice'
 import { sharedAccountProvider } from '../../utils/tokenLimits'
 import { ACCOUNT_LISTED_PROVIDERS, ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
+import { fetchChatContextShared } from './useChatContextView'
 
 import { changeChatContext, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
 import { openChatContextPanelEvent } from '../../components/workspace/ChatContextSection'
@@ -99,7 +100,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   useEffect(() => {
     if (!menuOpen || !sessionId) return
     let active = true
-    agentApi.getChatContext(sessionId).then(view => { if (active) { setSwitchNote(view?.switch_note || ''); setContextTokens(view?.used_tokens || 0) } }).catch(() => undefined)
+    fetchChatContextShared(sessionId).then(view => { if (active) { setSwitchNote(view?.switch_note || ''); setContextTokens(view?.used_tokens || 0) } }).catch(() => undefined)
     return () => { active = false }
   }, [menuOpen, sessionId])
   const confirmSwitchRef = useRef<HTMLDivElement>(null)
@@ -122,6 +123,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     selectedOption, selectedConnectionId: connectionId,
     inUseConnectionId: connectionId || ownDefaultConnectionId(sources.accounts, selectedOption?.provider),
     workspacePath, accountProduct: profileId,
+    fetchModels: menuOpen,
   })
 
   const destinationConnection = pendingSwitch
@@ -130,16 +132,23 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const destination = useWorkModelChoices(sources, {
     selectedOption: pendingSwitch?.option, selectedConnectionId: destinationConnection,
     inUseConnectionId: destinationConnection, workspacePath, accountProduct: profileId,
+    fetchModels: Boolean(pendingSwitch),
   })
 
-  // Cursor and Antigravity list models by running their program (agy takes seconds); ask as the menu opens so the
-  // list is ready, from the server's cache, by the time someone switches to them.
+  // Cursor and Antigravity list models by running their program (agy takes seconds); ask as the menu opens
+  // (throttled per connection) so the list is ready from the server's cache without spamming on every reopen.
+  const lastWarmedRef = useRef(new Map<string, number>())
   const warmAccountModelLists = () => {
+    const now = Date.now()
     for (const option of sources.options) {
       const provider = option.provider || ''
       if (!ACCOUNT_LISTED_PROVIDERS.has(provider) || option.id === selectedOption?.id || !workProviderIds.includes(provider)) continue
+      const connId = switchAccountFor(option) || `global:${provider}`
+      const warmKey = `${workspacePath}:${provider}:${connId}`
+      if (now - (lastWarmedRef.current.get(warmKey) ?? 0) < 60_000) continue
+      lastWarmedRef.current.set(warmKey, now)
       void llmConfigService.getProviderModels(provider, false, false, {
-        connection_id: switchAccountFor(option) || `global:${provider}`, workspace_path: workspacePath, product: profileId,
+        connection_id: connId, workspace_path: workspacePath, product: profileId,
       }).catch(() => undefined)
     }
   }

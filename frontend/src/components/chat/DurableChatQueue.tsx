@@ -11,17 +11,13 @@ export interface DurableChatQueueHandle { recallLatest: () => boolean }
 
 /** A queued bubble the server has handed to the agent stays visible as being sent until its durable user row replaces it. */
 function markDelivering(sessionId: string, ids: Set<string>) {
-  const store = useChatStore.getState()
-  const events = store.getTabEvents(sessionId)
-  let changed = false
-  const next = events.map(event => {
+  // Use patchTabEvents (never setTabEvents) so pending micro-batched tool events are preserved.
+  useChatStore.getState().patchTabEvents(sessionId, events => events.map(event => {
     if (!ids.has(event.id) || !isProvisionalUserMessage(event) || userMessageMetadata(event).delivery_status === 'delivering') return event
-    changed = true
     const outer = event.data as unknown as Record<string, unknown>
     const inner = (outer.data ?? {}) as Record<string, unknown>
     return { ...event, data: { ...outer, data: { ...inner, metadata: { ...userMessageMetadata(event), confirmation: undefined, delivery_status: 'delivering' } } } } as typeof event
-  })
-  if (changed) store.setTabEvents(sessionId, next)
+  }))
 }
 
 /** This is the server queue, never a second browser dispatch worker. */
@@ -44,7 +40,7 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
       return messages
     },
     enabled: isChatIdentityCurrent(identity),
-    refetchInterval: state => busy || state.state.data?.messages.length ? 2000 : 10000,
+    refetchInterval: state => busy || state.state.data?.messages.length || state.state.data?.usage_limit_recovery ? 2000 : false,
     refetchOnWindowFocus: true,
   })
   useEffect(() => {
