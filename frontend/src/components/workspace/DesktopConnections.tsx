@@ -31,7 +31,7 @@ import { useCrewAgentsStore } from '../chat/AgentCard'
 import { SidebarAgentLayout, SidebarCrewAgents, SidebarHiddenAgents } from './SidebarCrewAgents'
 import { sidebarAgentDisclosureClass, sidebarAgentListClass } from './sidebarAgentLayout'
 import { ArrowLeftRight, ChevronRight, Pin, Search } from 'lucide-react'
-import { mostInTeam } from '../chat/AgentInTeamMark'
+import { agentTeamShareFromRow } from '../chat/AgentInTeamMark'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
 import { hasActiveSessionWork } from '../../utils/activitySessions'
@@ -362,18 +362,17 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     else { openProductWorkspace('work'); openAppProduct(route) }
     window.dispatchEvent(new Event('close-app-sidebar'))
   }
-  const inTeam = (chat: AgentProfileSideChat) => { const row = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, true); return row?.mine === true && !!row.in_team }
   const own = chats.filter(chat => chat.can_write !== false)
   // The same setup warning the open project's rows show (the Team tab's reading), without its reach line.
   const setupOf = (chat: AgentProfileSideChat) => { const setup = agentSetupForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false); return setup && { ...setup, reach: '' as const } }
   const teammateChats = chats.filter(chat => chat.can_write === false)
-  const mostIn = mostInTeam(own.map(inTeam))
   const chatRow = (chat: AgentProfileSideChat) => {
     const session = sessions.find(item => item.session_id === chat.session_id)
     const teamAgent = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false)
+    const share = chat.can_write !== false ? agentTeamShareFromRow(teamAgent) : undefined
     return <ProjectAgentRow key={chat.conversation_key} projectId={projectId} sessionId={chat.session_id} session={session} lastMessageAt={chat.last_message_at} local={connectionId === getRawActiveWorkspaceId()}
       activity={teamAgent?.activity} status={teamAgent?.status_label} onOpen={() => open(chat)} name={chat.name || (chat.is_main ? 'Main' : 'Agent')}
-      person={chat.can_write === false ? chat.tab_owner_name || 'Teammate' : undefined} inTeam={chat.can_write !== false ? { on: inTeam(chat), mostIn } : undefined}
+      person={chat.can_write === false ? chat.tab_owner_name || 'Teammate' : undefined} inTeam={share ? { on: true, share } : undefined}
       setup={setupOf(chat) || undefined} place={chat.chat_location === 'mac' ? 'mac' : undefined} provider={chat.provider} />
   }
   // Use the matching tab's latest server-confirmed preference when switching from the live list back to this one.
@@ -409,7 +408,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     <SidebarHiddenAgents count={hidden.length} expanded={showHidden} onToggle={() => setShowHidden(!showHidden)}>
       {showHidden && hidden.map(chatRow)}
     </SidebarHiddenAgents>
-    <OwnTerminalAgents projectId={projectId} connection={connectionId} nested mostIn={mostIn} />
+    <OwnTerminalAgents projectId={projectId} connection={connectionId} nested />
     </div>)}</div>
 }
 
