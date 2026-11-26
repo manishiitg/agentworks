@@ -67,10 +67,9 @@ it('makes a Claude subagent row open its conversation, and nothing else (#3132)'
   expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={{ ...helper, kind: 'background_command' }} sessionId="s1" />)).not.toContain('<button')
 })
 
-// Owner, 19 Nov: a running background shell stops on its own from its row.
-it('offers Stop on a running Claude background shell only', () => {
-  const running = { work_id: 'w', kind: 'background_command', state: 'started', provider: 'claude-code', origin: 'sdk_helper', task_id: 'b1', started_at: '2026-11-13T10:00:00Z' }
-  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={running} sessionId="chat" />)).toContain('>Stop<')
-  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={{ ...running, state: 'finished', ended_at: '2026-11-13T10:01:00Z' }} sessionId="chat" />)).not.toContain('Stop')
-  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={running} />)).not.toContain('Stop')
+// Owner, 26 Nov: a running background command shows once, in the line above the message box; the chat line comes when it ends.
+it('shows no chat line for a running background command, only once it ends', () => {
+  const command = { work_id: 'c', kind: 'background_command', provider: 'claude-code', origin: 'sdk_helper', name: 'Wait for the re-reviews', started_at: '2026-11-26T03:00:00Z' }
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={{ ...command, state: 'started' }} />)).toBe('')
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={{ ...command, state: 'finished', ended_at: '2026-11-26T03:01:07Z' }} />)).toContain('Finished in the background: Wait for the re-reviews')
 })

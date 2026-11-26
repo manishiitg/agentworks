@@ -110,11 +110,15 @@ it('groups ended shells by server kind and absorbs only their exact adjacent too
     // Owner, 20 Nov: with Tool calls on, the exact command is the row's tooltip, not part of the line.
     expect(host.textContent).not.toContain('check one')
     expect(host.querySelector('[title="check one"]')).not.toBeNull()
-    // A single running shell also follows the existing Tool calls toggle (#2874).
+    // A running shell is shown only in the line above the message box (owner, 26 Nov): no chat line while it runs.
     const running = event('running', 'coding_agent_native_activity', { record: { kind: 'background_command', work_id: 'running', state: 'started', command_label: 'cd /workspace/project && npm run check', name: '/workspace/project' } })
     await act(async () => useChatDisplayStore.setState({ showTools: false }))
     await act(async () => root.render(<NativeBackgroundTaskLine record={((running.data as { data: { record: Record<string, unknown> } }).data.record)} />))
-    expect(host.textContent).toContain('Running a command in the background')
+    expect(host.querySelector('[data-testid="native-background-task-line"]')).toBeNull()
+    // Once it ends, its line follows the existing Tool calls toggle (#2874).
+    const ended = { ...((running.data as { data: { record: Record<string, unknown> } }).data.record), state: 'finished', ended_at: new Date().toISOString() }
+    await act(async () => root.render(<NativeBackgroundTaskLine record={ended} />))
+    expect(host.textContent).toContain('A background command finished')
     expect(host.textContent).not.toContain('/workspace/project')
     expect(host.querySelector('[data-testid="native-background-task-line"]')?.getAttribute('title')).toBeNull()
     await act(async () => useChatDisplayStore.setState({ showTools: true }))
