@@ -162,6 +162,9 @@ type ProductAgentIdentity struct {
 	// proactive (chat_reply_style.go). NextSteps "off" turns off the summary and next-steps card; "" is on.
 	ReplyStyle string `json:"reply_style,omitempty"`
 	NextSteps  string `json:"next_steps,omitempty"`
+	// UnrelatedTask is what the agent does when the person asks for a different piece of work in this chat:
+	// "" (ask them), new_tab or here (chat_reply_style.go).
+	UnrelatedTask string `json:"unrelated_task,omitempty"`
 	// ForkedFrom is the conversation key of the agent this one was forked from (#3288), so the left menu draws it under
 	// its parent and the agent list says where it came from. Forks made before it was kept have none.
 	ForkedFrom string `json:"forked_from,omitempty"`
@@ -338,6 +341,7 @@ type chatContextChange struct {
 	AccessMode     *string
 	ReplyStyle     *string
 	NextSteps      *string
+	UnrelatedTask  *string
 	ForkedFrom     *string
 	ForkNote       *string
 }
@@ -371,6 +375,9 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 	if change.NextSteps != nil {
 		identity.NextSteps = strings.TrimSpace(*change.NextSteps)
 	}
+	if change.UnrelatedTask != nil {
+		identity.UnrelatedTask = strings.TrimSpace(*change.UnrelatedTask)
+	}
 	if change.ForkedFrom != nil {
 		identity.ForkedFrom = strings.TrimSpace(*change.ForkedFrom)
 	}
@@ -384,7 +391,7 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 	if err := store.writeDocument(ctx, path, document); err != nil {
 		return ProductAgentIdentity{}, err
 	}
-	log.Printf("[CHAT_CONTEXT] %s set chat %s claude_terminal=%t access_mode=%q reply_style=%q next_steps=%q forked_from=%s", identity.UpdatedBy, entryKey, identity.ClaudeTerminal, identity.AccessMode, identity.ReplyStyle, identity.NextSteps, identity.ForkedFrom)
+	log.Printf("[CHAT_CONTEXT] %s set chat %s claude_terminal=%t access_mode=%q reply_style=%q next_steps=%q unrelated_task=%q forked_from=%s", identity.UpdatedBy, entryKey, identity.ClaudeTerminal, identity.AccessMode, identity.ReplyStyle, identity.NextSteps, identity.UnrelatedTask, identity.ForkedFrom)
 	return identity, nil
 }
 

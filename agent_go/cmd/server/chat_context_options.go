@@ -660,7 +660,9 @@ type chatContextRequest struct {
 	// ReplyStyle and NextSteps: chat_reply_style.go.
 	ReplyStyle *string `json:"reply_style,omitempty"`
 	NextSteps  *bool   `json:"next_steps,omitempty"`
-	Action     string  `json:"action,omitempty"` // "compact"
+	// UnrelatedTask: ask, new_tab or here (chat_reply_style.go).
+	UnrelatedTask *string `json:"unrelated_task,omitempty"`
+	Action        string  `json:"action,omitempty"` // "compact"
 	// fromTool marks an agent tool's call (chatContextArgs): it can lower the chat's access, never raise it.
 	fromTool bool
 }
@@ -699,8 +701,8 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 		}
 		tab = changed
 	}
-	if input.ReplyStyle != nil || input.NextSteps != nil {
-		changed, err := setChatReplies(ctx, owner, tab, input.ReplyStyle, input.NextSteps)
+	if input.ReplyStyle != nil || input.NextSteps != nil || input.UnrelatedTask != nil {
+		changed, err := setChatReplies(ctx, owner, tab, input.ReplyStyle, input.NextSteps, input.UnrelatedTask)
 		if err != nil {
 			return http.StatusUnprocessableEntity, map[string]any{"error": err.Error()}
 		}
@@ -793,6 +795,15 @@ func chatContextArgs(args map[string]any) (chatContextRequest, error) {
 		}
 		out.ReplyStyle = &style
 	}
+	if value, exists := args["unrelated_task"]; exists && value != nil {
+		choice, ok := value.(string)
+		if !ok {
+			return out, fmt.Errorf("unrelated_task must be one of %s", strings.Join(chatUnrelatedTaskChoices, ", "))
+		}
+		if strings.TrimSpace(choice) != "" {
+			out.UnrelatedTask = &choice
+		}
+	}
 	for name, target := range map[string]**bool{"idle_compaction": &out.IdleCompaction, "compact_early": &out.CompactEarly, "claude_terminal": &out.ClaudeTerminal, "next_steps": &out.NextSteps} {
 		value, exists := args[name]
 		if !exists || value == nil {
@@ -818,7 +829,7 @@ func chatContextArgs(args map[string]any) (chatContextRequest, error) {
 }
 
 func (r chatContextRequest) changesSwitch() bool {
-	return r.IdleCompaction != nil || r.CompactEarly != nil || r.ClaudeTerminal != nil || r.AccessMode != nil || r.ReplyStyle != nil || r.NextSteps != nil
+	return r.IdleCompaction != nil || r.CompactEarly != nil || r.ClaudeTerminal != nil || r.AccessMode != nil || r.ReplyStyle != nil || r.NextSteps != nil || r.UnrelatedTask != nil
 }
 
 // externalChatContext answers an MCP call that changes one of the caller's chats, with the same checks as the screen.

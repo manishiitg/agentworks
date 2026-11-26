@@ -104,3 +104,16 @@ it('turns the summary and next-steps card off from the menu', async () => {
   await act(async () => { card.click() })
   expect(changeChatContext).toHaveBeenCalledWith('s1', { next_steps: false })
 })
+
+// Owner, 26 Nov: what the chat does when the person asks for unrelated work.
+it('shows what the chat does with an unrelated task', async () => {
+  view = { ...codexView('project'), replies: { style: 'default', styles: ['default', 'concise', 'explanatory', 'learning', 'proactive'], next_steps: true, unrelated_task: 'new_tab', unrelated_tasks: ['ask', 'new_tab', 'here'] } }
+  await openMenu(<ChatModeMenu sessionId="s1" onPlanToggle={() => {}} />)
+  expect(document.querySelector('[data-testid="chat-unrelated-task"]')?.textContent).toContain('New tab')
+})
+
+it('hides the unrelated-task row on a server that does not offer it', async () => {
+  view = { ...codexView('project'), replies: { style: 'default', styles: ['default'], next_steps: true } }
+  await openMenu(<ChatModeMenu sessionId="s1" onPlanToggle={() => {}} />)
+  expect(document.querySelector('[data-testid="chat-unrelated-task"]')).toBeNull()
+})
