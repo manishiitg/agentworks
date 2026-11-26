@@ -49,6 +49,9 @@ func (t crewTeam) agentInTeam(person, key string) bool {
 	if _, onMac := t.memberMac(person); onMac {
 		return false
 	}
+	if _, project := crewTeamMemberProjectID(person); project {
+		return false // an online project's agent is Only me until shared
+	}
 	return true
 }
 
@@ -212,7 +215,8 @@ func setCrewTeamAgentChoice(ctx context.Context, project, person, key string, in
 	if err != nil {
 		return err
 	}
-	if !inTeam && t.On && !slices.ContainsFunc(crewTeamSharedKeys(ctx, t, person), func(k string) bool { return k != stored }) {
+	_, projectAgent := crewTeamMemberProjectID(person)
+	if !inTeam && t.On && !projectAgent && !slices.ContainsFunc(crewTeamSharedKeys(ctx, t, person), func(k string) bool { return k != stored }) {
 		return errCrewTeamLastShared
 	}
 	was := t.agentInTeam(person, stored)

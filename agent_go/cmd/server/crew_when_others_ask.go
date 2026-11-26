@@ -134,6 +134,9 @@ func handleCrewTeamAgentRule(w http.ResponseWriter, r *http.Request, project, pe
 		externalError(w, 400, "invalid_agent", "Choose your agent and give what to change: shared with the Team, who it is shared with, its rule, or what teammates see of its chat.")
 		return
 	}
+	if t, err := readCrewTeam(project); err == nil {
+		person = crewTeamRuleActor(t, person, in.Key)
+	}
 	refuse := func(err error) {
 		switch {
 		case errors.Is(err, errCrewTeamAgentNotYours):
