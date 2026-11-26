@@ -334,7 +334,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		}
 		api.serveCrewFileSnapshots(w, r, crew.Binding.WorkspacePath, op, str("snapshot_id"), str("file"))
 	case "crew_file_limit":
-		// Too many files to track (#3878): read the stored verdict, check again, or move a folder out.
+		// Too many files to track (#3878): read the stored verdict, check again, move a folder out or ignore it.
 		r = r.Clone(r.Context())
 		q := r.URL.Query()
 		op := "file_limit"
@@ -343,6 +343,9 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			op, r.Method = "file_limit_check", http.MethodPost
 		case "move":
 			op, r.Method = "file_limit_move", http.MethodPost
+			q.Set("folder", str("folder"))
+		case "ignore":
+			op, r.Method = "file_limit_ignore", http.MethodPost
 			q.Set("folder", str("folder"))
 		default:
 			r.Method = http.MethodGet

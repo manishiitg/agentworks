@@ -1026,3 +1026,27 @@ func TestTurnSkipsCheckoutCreatedDuringReplyWithThousandsOfFiles(t *testing.T) {
 		t.Fatalf("reply's own edit lost or new checkout read: %v %d changes", err, len(comparison.Changes))
 	}
 }
+
+// #3878 "Ignore": a folder in the project's own .gitignore is not walked, so it
+// no longer counts toward the file limit; the stored verdict is decided again.
+func TestTurnFileLimitHonoursProjectGitignore(t *testing.T) {
+	f := newCrew(t)
+	for i := 0; i <= maxTurnPaths; i++ {
+		f.put(fmt.Sprintf("reviews/s/f-%05d", i), "")
+	}
+	f.put("notes.md", "x")
+	if _, err := f.s.BeginGitTurn(t.Context(), "ignore"); err != nil {
+		t.Fatal(err)
+	}
+	if report, _ := f.s.FileLimit(); !report.Over {
+		t.Fatalf("limit not reached: %+v", report)
+	}
+	f.put(".gitignore", "/reviews/\n")
+	if _, ok := f.s.cachedOverLimit(t.Context()); ok {
+		t.Fatal("a changed .gitignore kept the old verdict")
+	}
+	report, err := f.s.CheckFileLimit(t.Context())
+	if err != nil || report.Over || report.Files > 2 {
+		t.Fatalf("ignored folder still counted: %v %+v", err, report)
+	}
+}

@@ -39,6 +39,7 @@ type FileLimitReport struct {
 type fileLimitCache struct {
 	mu      sync.Mutex
 	folders map[string]bool
+	ignore  string // the root .gitignore the verdict was decided with
 	dirs    []string
 	report  FileLimitReport
 	valid   bool
@@ -71,7 +72,7 @@ func (s Store) cachedOverLimit(ctx context.Context) ([]string, bool) {
 	c := &s.state().limit
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if !c.valid || !c.report.Over || time.Since(c.report.CheckedAt) > fileLimitRecheck {
+	if !c.valid || !c.report.Over || time.Since(c.report.CheckedAt) > fileLimitRecheck || c.ignore != s.ignoreSignature() {
 		return nil, false
 	}
 	big := map[string]bool{}
@@ -136,6 +137,7 @@ func (s Store) cachedOverLimit(ctx context.Context) ([]string, bool) {
 // rules as the full walk in turnPaths.
 func (s Store) findCheckouts(ctx context.Context, rel string) ([]string, error) {
 	var dirs []string
+	ignored := s.ignoredFolders(ctx)
 	start := filepath.Join(s.Root, filepath.FromSlash(rel))
 	err := filepath.WalkDir(start, func(p string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -154,7 +156,7 @@ func (s Store) findCheckouts(ctx context.Context, rel string) ([]string, error) 
 		if err != nil {
 			return err
 		}
-		if excluded(filepath.ToSlash(r), true) {
+		if excluded(filepath.ToSlash(r), true) || underIgnored(ignored, filepath.ToSlash(r)) {
 			return filepath.SkipDir
 		}
 		if _, err := os.Lstat(filepath.Join(p, ".git")); err == nil {
@@ -184,6 +186,7 @@ func (s Store) rememberFileLimit(folderSet map[string]bool, dirs []string, files
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.folders, c.dirs, c.valid = folderSet, append([]string(nil), dirs...), true
+	c.ignore = s.ignoreSignature()
 	c.report = FileLimitReport{Over: files > maxTurnPaths, Files: files, Limit: maxTurnPaths, Checkouts: len(dirs), Folders: folders, CheckedAt: time.Now().UTC()}
 }
 

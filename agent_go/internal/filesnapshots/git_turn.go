@@ -118,6 +118,7 @@ func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose 
 	walkStarted := time.Now()
 	defer func() { stats.WalkMS = time.Since(walkStarted).Milliseconds() }()
 	folderSet := s.layoutFolders()
+	ignored := s.ignoredFolders(ctx)
 	files, perFolder := 0, map[string]int{}
 	err = filepath.WalkDir(s.Root, func(p string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -131,7 +132,7 @@ func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose 
 			return err
 		}
 		rel = filepath.ToSlash(rel)
-		if p != s.Root && excluded(rel, entry.IsDir()) {
+		if p != s.Root && (excluded(rel, entry.IsDir()) || entry.IsDir() && ignored[rel]) {
 			if entry.IsDir() {
 				return filepath.SkipDir
 			}

@@ -140,7 +140,8 @@ it('#3878: over the file limit the Git row says so; Move out asks the agent in c
   expect(host.textContent).toContain('Checked: all changes are tracked again.')
   act(() => root.render(<ChatChangesRow section={{ ...section, file_limit: { ...limit, can_fix: false } }} workspacePath="Crew/demo" onAskAgent={async () => {}} storageKey="test.git-limit-2" onOpen={() => {}} />))
   expect([...host.querySelectorAll('button')].some(b => b.textContent === 'Move out')).toBe(false)
-  expect(host.textContent).toContain('Only the project owner can move folders out')
+  expect(host.textContent).toContain('Only the project owner can move or ignore folders')
+  expect([...host.querySelectorAll('button')].some(b => b.textContent === 'Ignore')).toBe(false)
   act(() => root.unmount())
 })
 
@@ -168,5 +169,21 @@ it('#3979: expanded Git row shows active GitHub account strip, flags org mismatc
   const connectBtn = [...host.querySelectorAll('button')].find(b => b.textContent === 'Connect')!
   act(() => connectBtn.click())
   expect(openedGitHub).toBe(2)
+  act(() => root.unmount())
+})
+
+it('#3878: Ignore adds the folder to the project .gitignore on the server and counts again', async () => {
+  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  localStorage.clear()
+  posted.length = 0
+  const limit = { over: true, files: 14200, limit: 10000, checkouts: 3, folders: [{ path: 'reviews', files: 5000 }], checked_at: '', can_fix: true }
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  const root = createRoot(host)
+  act(() => root.render(<ChatChangesRow section={{ ...section, file_limit: limit }} workspacePath="Crew/demo" onAskAgent={async () => {}} storageKey="test.git-ignore" onOpen={() => {}} />))
+  const ignore = [...host.querySelectorAll('button')].find(b => b.textContent === 'Ignore')!
+  await act(async () => { ignore.click() })
+  expect(posted).toEqual([{ op: 'file_limit_ignore', folder: 'reviews' }])
+  expect(host.textContent).toContain(".gitignore")
   act(() => root.unmount())
 })
