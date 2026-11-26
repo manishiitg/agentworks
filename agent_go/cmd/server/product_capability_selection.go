@@ -175,6 +175,16 @@ func productSelectedGlobalSecrets(ctx context.Context, profileID, workspacePath 
 			}
 		}
 	}
+	if profileID == crewProfileID {
+		// A server Crew uses only its Crew vault's keys, nobody's own (crew_vault.go).
+		// Return before reading project GitHub connections so a dead lookup cannot
+		// fail secret selection for a server Crew.
+		if project := serverCrewForPath(workspacePath); project != "" && runningServerAPI != nil {
+			names := runningServerAPI.crewVaultSecretNames(ctx, project)
+			return &names, nil
+		}
+	}
+
 	// GitHub is selected by this project, independently of other Vault apps.
 	if owner, ok := crewProjectOwnerID(workspacePath); ok {
 		rec, err := projectGitHubConnection(ctx, owner, workspacePath)
@@ -198,11 +208,6 @@ func productSelectedGlobalSecrets(ctx context.Context, profileID, workspacePath 
 	}
 
 	if profileID == crewProfileID {
-		// A server Crew uses only its Crew vault's keys, nobody's own (crew_vault.go).
-		if project := serverCrewForPath(workspacePath); project != "" && runningServerAPI != nil {
-			names := runningServerAPI.crewVaultSecretNames(ctx, project)
-			return &names, nil
-		}
 		_, team := teamWayPickup(ctx, workspacePath)
 		names = appendUniqueStrings(names, team...)
 	}

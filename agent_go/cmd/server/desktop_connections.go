@@ -26,6 +26,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -182,7 +183,7 @@ func writeDesktopConnections(owner string, records []desktopConnection) error {
 	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(sealed), 0600)
+	return fsutil.WriteFileAtomic(path, []byte(sealed), 0600)
 }
 func desktopConnectionFor(owner, id string) (desktopConnection, error) {
 	desktopConnectionsMu.Lock()
