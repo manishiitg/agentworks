@@ -7,13 +7,13 @@ company, customer, server, person or internal endpoint.
 
 ## How to work
 
-1. Work in your own git worktree, one per task, started from `origin/dev`.
+1. Work in your own git worktree, one per task, started from `origin/main`.
    Never edit, build or test in someone's main checkout.
 2. Every change belongs to a GitHub issue on `manishiitg/agentworks`. Open one
    if none fits, comment progress on it, and link the pull request with
    `Fixes #N`.
-3. Before pushing, fetch and rebase onto `origin/dev`. Commit only your own
-   task's files. Open a pull request into `dev` (`gh pr create --base dev`)
+3. Before pushing, fetch and rebase onto `origin/main`. Commit only your own
+   task's files. Open a pull request into `main` (`gh pr create --base main`)
    and merge it right away (`gh pr merge --rebase`). Review happens after the
    merge: read the comments on your pull requests before your next task and
    fix real findings forward in a new pull request.
@@ -49,8 +49,8 @@ right.
 3. No backward-compatibility code. When a design changes, migrate the data and
    delete the old paths, aliases, legacy names and fallbacks; keep only a
    one-off migration tool until every server has moved.
-4. Ship and fix forward. If your change breaks the build on `dev`, fix it at
-   once: a broken `dev` stops everyone else.
+4. Ship and fix forward. If your change breaks the build on `main`, fix it at
+   once: a broken `main` stops everyone else.
 
 ## Product focus: a whole team on one project
 
