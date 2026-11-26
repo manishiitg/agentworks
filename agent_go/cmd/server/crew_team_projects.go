@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -86,24 +87,56 @@ func crewTeamProjectFilesRoot(project string) (string, error) {
 	return roots.Files, nil
 }
 
-// crewTeamProjectTaken lists what the online project already has at the Team's paths. Joining would send those files
-// to the whole Team, so the project must move them first.
-func crewTeamProjectTaken(root string, t crewTeam) []string {
-	return crewTeamPathsTaken(root, t.Folder.Folders)
+// crewTeamDisplayName is the Team's name for people: its own name, else its project's.
+func crewTeamDisplayName(t crewTeam) string {
+	if name := strings.TrimSpace(t.Name); name != "" {
+		return name
+	}
+	return crewTeamProjectName(t.ProjectID)
 }
 
-// crewTeamPathsTaken lists which of these shared folders, and the Team instructions file, a project's files already have.
-func crewTeamPathsTaken(root string, folders []string) []string {
-	taken := []string{}
-	for _, rel := range append(slices.Clone(folders), crewTeamInstructionsFile) {
-		if crewTeamUnder(rel, "skills") {
-			continue
-		}
-		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(rel))); err == nil {
-			taken = append(taken, rel)
+// crewTeamProjectFolder is where one Team's shared folders and instructions live inside an online project: a folder of
+// its own under teams/, named after the Team, so several Teams can use one project without their files meeting (owner,
+// 26 Nov: an online project such as devops or qa may be used by many Teams).
+func crewTeamProjectFolder(t crewTeam) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(crewTeamDisplayName(t)) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			b.WriteRune(r)
+			dash = false
+		} else if !dash && b.Len() > 0 {
+			b.WriteByte('-')
+			dash = true
 		}
 	}
-	return taken
+	slug := strings.Trim(b.String(), "-")
+	if len(slug) > 48 {
+		slug = strings.Trim(slug[:48], "-")
+	}
+	if slug == "" {
+		slug = "team-" + strings.SplitN(t.ProjectID, "-", 2)[0]
+	}
+	return "teams/" + slug
+}
+
+// crewTeamProjectCopyRoot is the folder in the online project that holds this Team's copy.
+func crewTeamProjectCopyRoot(t crewTeam, member string) (string, error) {
+	files, err := crewTeamProjectFilesRoot(member)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(files, filepath.FromSlash(crewTeamProjectFolder(t))), nil
+}
+
+// crewTeamProjectTaken lists what the online project already has where the Team's copy would go. Joining would send
+// those files to the whole Team, so the project must move them first.
+func crewTeamProjectTaken(files string, t crewTeam) []string {
+	folder := crewTeamProjectFolder(t)
+	if _, err := os.Lstat(filepath.Join(files, filepath.FromSlash(folder))); err == nil {
+		return []string{folder}
+	}
+	return nil
 }
 
 // crewTeamProjectCopyDir is the sync record of one online project's copy of one Team (by its folder generation).
@@ -237,11 +270,30 @@ func (api *StreamingAPI) syncCrewTeamProjectCopy(ctx context.Context, t crewTeam
 		return err
 	}
 	id := crewTeamProjectMemberID(member)
+	root, err := crewTeamProjectCopyRoot(t, member)
+	if err != nil {
+		return err
+	}
 	b, err := readCrewTeamLocal(dir)
-	if os.IsNotExist(err) {
-		root, rootErr := crewTeamProjectFilesRoot(member)
-		if rootErr != nil {
-			return rootErr
+	if err == nil && filepath.Clean(b.Root) != filepath.Clean(root) {
+		// The Team's folder in the project moved (the Team was renamed, or the copy predates teams/<name>/): the files
+		// still as last synced leave the old place and the copy starts again in the new one.
+		unlock, lockErr := wf.LockWorkspace(ctx, dir)
+		if lockErr != nil {
+			return lockErr
+		}
+		removed, kept := b.removeCrewTeamProjectFiles()
+		err = os.RemoveAll(dir)
+		unlock()
+		log.Printf("[CREW_TEAM_PROJECT] team=%s member=%s event=moved from=%q to=%q files=%d kept=%d err=%v", t.ProjectID, member, b.Root, root, removed, kept, err)
+		if err != nil {
+			return err
+		}
+		err = os.ErrNotExist
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		if err = os.MkdirAll(root, 0o755); err != nil {
+			return err
 		}
 		b = crewTeamLocal{FolderID: t.Folder.ID, Connection: "server", Project: t.ProjectID, LocalProject: member, RemoteUser: id, Client: uuid.NewString(),
 			Root: root, Status: "pending", Mounted: true, ProtectPrivate: true, ProjectMember: true}
