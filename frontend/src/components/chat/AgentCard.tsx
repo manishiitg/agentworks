@@ -212,12 +212,12 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           <p className="min-w-0 flex-1 truncate text-sm font-semibold">Sharing · {info.name}</p>
           {close('Close sharing')}
         </div>
-        <HeaderAgentSharing {...info.sharing} defaultOpen status={!info.owner ? <AgentOnlineCopyStatus setup={info.setup} /> : undefined} />
+        <HeaderAgentSharing {...info.sharing} defaultOpen bare status={!info.owner ? <AgentOnlineCopyStatus setup={info.setup} /> : undefined} />
       </> : <>
       <div className="flex items-center gap-2 text-sm font-semibold"><p className="min-w-0 flex-1 truncate">{info.name}</p>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}{clickToOpen && close('Close agent details')}</div>
       <AgentModelRow tabId={info.tabId} compact={clickToOpen} />
       {clickToOpen ? <AgentDetailSection title="Setup" value={info.purpose || 'Add a purpose'}>{setupDetails}</AgentDetailSection> : setupDetails}
-      {info.sharing && <HeaderAgentSharing {...info.sharing} status={!info.owner ? <AgentOnlineCopyStatus setup={info.setup} /> : undefined} />}
+      {!shareShortcut && info.sharing && <HeaderAgentSharing {...info.sharing} status={!info.owner ? <AgentOnlineCopyStatus setup={info.setup} /> : undefined} />}
       {info.owner ? <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Whose</span><span className="min-w-0 truncate text-muted-foreground">{info.owner}'s · shared with the team</span></div>
         : !info.sharing && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Shared with</span><span className="min-w-0 truncate text-muted-foreground">{info.sharedWith || 'Only you'}</span></div>}
       {info.lastAsked && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Last asked</span>
@@ -235,11 +235,12 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           {automationsOpen && <AgentAutomationList items={info.setup?.automations ?? []} empty="No automations yet." />}
           {addAutomation}
         </div>)}
-      {(actions?.forkTo || actions?.terminal || onRename || (!info.sharing && info.onSharing)) && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 max-md:[&>button]:min-h-10">
+      {(actions?.forkTo || actions?.terminal || onRename || (shareShortcut && !shareInfo && info.sharing) || (!info.sharing && info.onSharing)) && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 max-md:[&>button]:min-h-10">
         {actions?.forkTo && <button type="button" onClick={() => finish(actions.forkTo!)} className="inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><GitFork aria-hidden className="h-3.5 w-3.5" />Send a copy to a teammate…</button>}
         {/* Resume this agent's chat in your own Claude Code: in the agent's top menu (owner, 20 Nov), not the left menu. */}
         {actions?.terminal && <button type="button" onClick={() => finish(actions.terminal!)} className="inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><SquareTerminal aria-hidden className="h-3.5 w-3.5" />Continue in my terminal</button>}
         {onRename && <button type="button" onClick={() => finish(onRename)} className="inline-flex items-center gap-1 text-primary hover:underline"><Pencil aria-hidden="true" className="h-3 w-3" />Rename</button>}
+        {shareShortcut && !shareInfo && info.sharing && <button type="button" onClick={() => open('sharing')} className="text-primary hover:underline">Share…</button>}
         {!info.sharing && info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
       </div>}
       </>}

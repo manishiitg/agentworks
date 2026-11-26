@@ -115,7 +115,7 @@ function AgentSetting({ compact, name, label, value, children }: { compact: bool
   </section>
 }
 
-export function ShareAgentCard({ agent, target, projectId, compact = false, defaultOpen = false, status }: { agent: CrewShareAgent; target: TeamTarget; projectId: string; compact?: boolean; defaultOpen?: boolean; status?: ReactNode }) {
+export function ShareAgentCard({ agent, target, projectId, compact = false, defaultOpen = false, bare = false, status }: { agent: CrewShareAgent; target: TeamTarget; projectId: string; compact?: boolean; defaultOpen?: boolean; bare?: boolean; status?: ReactNode }) {
   const team = useTeamTab(projectId)
   const { view } = team
   const [pending, setPending] = useState('')
@@ -210,6 +210,13 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, defa
     {status}
   </>
   const failure = error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>
+  if (compact && bare) return <div id={`header-agent-card-${agent.team ? `${agent.team}-` : ''}${agent.key}`} className="border-t border-border pt-2 text-xs">
+    {agent.team_name && <p className="mb-1.5 font-medium text-foreground">{agent.team_name}</p>}
+    {summary}
+    <div className="mt-2 flex items-center gap-2.5">{shareSwitch}</div>
+    {settings}
+    {failure}
+  </div>
   if (compact) return <div id={`header-agent-card-${agent.team ? `${agent.team}-` : ''}${agent.key}`} className="text-xs">
     <AgentDetailSection title={agent.team_name ? `Sharing · ${agent.team_name}` : 'Sharing'} value={ask ? (ask.on ? `Shared · ${ask.chat_share === 'agent' ? 'Chat hidden' : 'Chat visible'}` : 'Not shared with the team') : undefined} summary={summary} defaultOpen={defaultOpen}>
       <div className="flex items-center gap-2.5">{shareSwitch}</div>
@@ -344,7 +351,7 @@ function ActionWizard({ name, projectId, onClose }: { name: string; projectId: s
 
 
 /** Header and right panel render the very same server-backed agent card. */
-export function HeaderAgentSharing({ projectId, agentKey, status, defaultOpen = false }: { projectId: string; agentKey: string; status?: ReactNode; defaultOpen?: boolean }) {
+export function HeaderAgentSharing({ projectId, agentKey, status, defaultOpen = false, bare = false }: { projectId: string; agentKey: string; status?: ReactNode; defaultOpen?: boolean; bare?: boolean }) {
   const { target } = useTeamTab(projectId)
   const scope = JSON.stringify([projectId, agentKey, target?.project, target?.connection])
   const [page, setPage] = useState<{ scope: string; value: CrewSharePage }>()
@@ -359,5 +366,5 @@ export function HeaderAgentSharing({ projectId, agentKey, status, defaultOpen = 
   }, [projectId, agentKey, target?.project, target?.connection])
   // An online project's agent has one card per Team that uses the project, all under the agent's own key.
   const agents = page?.scope === scope ? page.value.agents.filter(item => item.key === agentKey) : []
-  return <>{target && agents.map((agent, i) => <ShareAgentCard key={`${agent.team || ''}:${agent.key}`} agent={agent} target={target} projectId={projectId} compact defaultOpen={defaultOpen} status={i === agents.length - 1 ? status : undefined} />)}{!agents.length && status}{target && page?.scope !== scope && !error && <p role="status" className="border-t border-border px-1 py-2 text-xs text-muted-foreground">Loading sharing…</p>}{error && <p role="alert" className="text-xs text-destructive">{error}</p>}</>
+  return <>{target && agents.map((agent, i) => <ShareAgentCard key={`${agent.team || ''}:${agent.key}`} agent={agent} target={target} projectId={projectId} compact defaultOpen={defaultOpen} bare={bare} status={i === agents.length - 1 ? status : undefined} />)}{!agents.length && status}{target && page?.scope !== scope && !error && <p role="status" className="border-t border-border px-1 py-2 text-xs text-muted-foreground">Loading sharing…</p>}{error && <p role="alert" className="text-xs text-destructive">{error}</p>}</>
 }
