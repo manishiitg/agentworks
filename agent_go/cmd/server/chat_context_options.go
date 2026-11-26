@@ -444,7 +444,7 @@ func chatCompactRefusal(sessionID string) (idleCompactChat, int, string) {
 	return chat, 0, ""
 }
 
-func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) chatContextView {
+func (api *StreamingAPI) chatContextViewFor(ctx context.Context, owner string, tab chatContextTab) chatContextView {
 	sessionID := tab.Record.SessionID
 	subject, transport := api.chatUsageSubjectForTab(owner, tab)
 	view := chatContextView{SessionID: sessionID}
@@ -455,7 +455,7 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 	if view.TotalOnly && !subject.switched {
 		// After a restart the chat has not reported its size yet: Claude Code's transcript's last reply has it
 		// (Muse's trace is a byte estimate, never a reported size).
-		if breakdown, transcript = api.nativeChatBreakdown(owner, tab); transcript && view.UsedTokens <= 0 && breakdown.app == claudeCodeApp {
+		if breakdown, transcript = api.nativeChatBreakdown(ctx, owner, tab); transcript && view.UsedTokens <= 0 && breakdown.app == claudeCodeApp {
 			view.UsedTokens = breakdown.Total
 		}
 	}
@@ -464,7 +464,7 @@ func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) ch
 		view.WindowTokens = orchestrator.ModelContextWindow(subject.provider, subject.model)
 	}
 	if llmproviders.IdleCompactSupported(llmproviders.Provider(strings.ToLower(subject.provider)), transport) {
-		pref := loadCompactionPreferences(context.Background(), owner)
+		pref := loadCompactionPreferences(ctx, owner)
 		view.IdleCompaction = &chatContextSwitch{On: !pref.IdleOff}
 		view.Hint = idleCompactHint()
 		view.CompactEarly = &chatContextSwitch{On: pref.compactEarly()}
@@ -719,7 +719,7 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 	default:
 		return http.StatusBadRequest, map[string]any{"error": "Choose compact."}
 	}
-	out := map[string]any{"context": api.chatContextViewFor(owner, tab)}
+	out := map[string]any{"context": api.chatContextViewFor(ctx, owner, tab)}
 	if status >= http.StatusBadRequest {
 		out["error"] = message
 	} else if message != "" {
@@ -748,7 +748,7 @@ func (api *StreamingAPI) handleChatContext(w http.ResponseWriter, r *http.Reques
 			writeAgentProfileError(w, http.StatusNotFound, "Only this chat's owner can see its context options.")
 			return
 		}
-		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"context": api.chatContextViewFor(owner, tab)})
+		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"context": api.chatContextViewFor(r.Context(), owner, tab)})
 		return
 	}
 	var input chatContextRequest

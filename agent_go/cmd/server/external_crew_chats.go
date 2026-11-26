@@ -268,7 +268,7 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 		out := map[string]any{"provider_connections": accounts, "provider_options": choices.Runtime.ProviderOptions, "crew_id": crewID, "chats": chats, "chat_models": models.ChatModels, "earlier": earlier()}
 		if chat, found := findCrewChat(chats, externalArg(args, "chat_id")); found && chat.CanWrite {
 			if tab, own := chatContextTabForSession(ctx, productWorkspaceUserID(ctx), chat.SessionID); own {
-				out["context"] = api.chatContextViewFor(productWorkspaceUserID(ctx), tab)
+				out["context"] = api.chatContextViewFor(ctx, productWorkspaceUserID(ctx), tab)
 			}
 		}
 		externalJSON(w, out)

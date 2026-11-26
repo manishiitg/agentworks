@@ -3,11 +3,11 @@ import {act} from 'react'
 import {createRoot} from 'react-dom/client'
 import {afterEach,expect,it,vi} from 'vitest'
 import {CrewActivitySection,NeedCard} from './ActivitySection'
-const f=vi.hoisted(()=>({activity:{} as any}))
-vi.mock('./TeamActivity',()=>({useTeamActivity:()=>f.activity}))
+const f=vi.hoisted(()=>({activity:{} as any,teamCalls:[] as any[]}))
+vi.mock('./TeamActivity',()=>({useTeamActivity:(...args:any[])=>{f.teamCalls.push(args);return f.activity}}))
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
-afterEach(async()=>{await act(async()=>root.render(null));vi.clearAllMocks()})
+afterEach(async()=>{await act(async()=>root.render(null));f.teamCalls=[];vi.clearAllMocks()})
 
 // #2893: the count is the person's own waiting cards; a Team that is off has none. The side panel lists only the
 // person's own cards, newest open and the rest folded (owner, 23 Nov).
@@ -40,4 +40,11 @@ it('opens a review card files and sends a note with the answer',async()=>{
  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(note,'Split step 2');note.dispatchEvent(new Event('input',{bubbles:true}))})
  await act(async()=>{[...card.querySelectorAll('button')].find(b=>b.textContent==='Changes needed')!.click()})
  expect(answer).toHaveBeenCalledWith('msg-1','Changes needed',undefined,'Split step 2')
+})
+
+// #4181: closing the right panel pauses Team activity reads instead of polling while hidden.
+it('disables team activity reads when the right panel is hidden',async()=>{
+ const team:any={target:{project:'crew'},view:{team:{on:true},people:[],agents:[],reachable:[]}}
+ await act(async()=>root.render(<CrewActivitySection projectId="crew" team={team} enabled={false}/>))
+ expect(f.teamCalls.at(-1)).toEqual([undefined,'crew',false])
 })

@@ -34,8 +34,8 @@ type nativeBreakdown struct {
 
 // nativeChatBreakdown reads what fills a Claude Code chat (its transcript) or a Muse chat (the request trace in its
 // session log); false for other coding agents or when it cannot be read.
-func (api *StreamingAPI) nativeChatBreakdown(owner string, tab chatContextTab) (nativeBreakdown, bool) {
-	if nativeID, accountHome, ok := api.nativeChatSession(owner, tab, "muse-cli"); ok {
+func (api *StreamingAPI) nativeChatBreakdown(ctx context.Context, owner string, tab chatContextTab) (nativeBreakdown, bool) {
+	if nativeID, accountHome, ok := api.nativeChatSession(ctx, owner, tab, "muse-cli"); ok {
 		dataHome := ""
 		if accountHome != "" {
 			dataHome = filepath.Join(accountHome, ".local", "share")
@@ -50,7 +50,7 @@ func (api *StreamingAPI) nativeChatBreakdown(owner string, tab chatContextTab) (
 			AppNotes: m.Context / charsPerToken, Conversation: (m.Messages + m.Replies + m.ToolResults) / charsPerToken,
 		}}, true
 	}
-	nativeID, workingDir, accountHome, ok := api.nativeChatTranscript(owner, tab)
+	nativeID, workingDir, accountHome, ok := api.nativeChatTranscript(ctx, owner, tab)
 	if !ok {
 		return nativeBreakdown{}, false
 	}
@@ -59,8 +59,8 @@ func (api *StreamingAPI) nativeChatBreakdown(owner string, tab chatContextTab) (
 }
 
 // nativeChatTranscript finds a Claude Code chat's own session and where its transcript is kept.
-func (api *StreamingAPI) nativeChatTranscript(owner string, tab chatContextTab) (nativeID, workingDir, accountHome string, ok bool) {
-	nativeID, accountHome, ok = api.nativeChatSession(owner, tab, "claude-code")
+func (api *StreamingAPI) nativeChatTranscript(ctx context.Context, owner string, tab chatContextTab) (nativeID, workingDir, accountHome string, ok bool) {
+	nativeID, accountHome, ok = api.nativeChatSession(ctx, owner, tab, "claude-code")
 	if !ok {
 		return "", "", "", false
 	}
@@ -69,7 +69,7 @@ func (api *StreamingAPI) nativeChatTranscript(owner string, tab chatContextTab) 
 }
 
 // nativeChatSession finds a chat's own native session when the chat runs on provider, and the HOME of its account.
-func (api *StreamingAPI) nativeChatSession(owner string, tab chatContextTab, provider string) (nativeID, accountHome string, ok bool) {
+func (api *StreamingAPI) nativeChatSession(ctx context.Context, owner string, tab chatContextTab, provider string) (nativeID, accountHome string, ok bool) {
 	runtime := chatContextRuntimeMetadata(owner, tab.Record)
 	if runtime == nil || runtime.AgentSessionHandle == nil {
 		return "", "", false
@@ -84,7 +84,7 @@ func (api *StreamingAPI) nativeChatSession(owner string, tab chatContextTab, pro
 	}
 	if handle.ConnectionID != "" {
 		scope := providerAccountScope{Principal: owner, WorkspacePath: tab.Record.WorkspacePath}
-		if keys, err := api.connectionAPIKeys(context.Background(), scope, provider, handle.ConnectionID); err == nil && keys != nil {
+		if keys, err := api.connectionAPIKeys(ctx, scope, provider, handle.ConnectionID); err == nil && keys != nil {
 			accountHome = keys.RuntimeEnvironment["HOME"]
 		}
 	}
@@ -119,7 +119,7 @@ func (api *StreamingAPI) handleChatContextPart(w http.ResponseWriter, r *http.Re
 		writeAgentProfileError(w, http.StatusBadRequest, "This part has no saved text to show.")
 		return
 	}
-	nativeID, workingDir, accountHome, ok := api.nativeChatTranscript(owner, tab)
+	nativeID, workingDir, accountHome, ok := api.nativeChatTranscript(r.Context(), owner, tab)
 	var texts map[string][]claudecode.ContextItem
 	if ok {
 		texts, ok = claudecode.ContextTextsFromTranscript(nativeID, workingDir, accountHome)

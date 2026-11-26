@@ -15,12 +15,12 @@ function age(at?:string) {
  * cards stay in the Team monitor; answering in either clears both. Cards come from the Team, so with the Team off
  * there are none.
  */
-export function CrewActivitySection({projectId,team,onNeedsCount,onAsk}:{projectId:string;team:TeamTabState;onNeedsCount?:(count:number)=>void;onAsk?:(message:string)=>void}) {
- const on=!!team.view?.team.on&&!!team.target&&!team.error
+export function CrewActivitySection({projectId,team,onNeedsCount,onAsk,enabled=true}:{projectId:string;team:TeamTabState;onNeedsCount?:(count:number)=>void;onAsk?:(message:string)=>void;enabled?:boolean}) {
+ const on=enabled&&!!team.view?.team.on&&!!team.target&&!team.error
  const activity=useTeamActivity(on?team.target:undefined,projectId,on)
  const mine=(on?activity.view?.needs||[]:[]).filter(need=>need.for_me)
  // Missed and failed workflow runs are the owner's own cards, with or without a Team (#3617).
- const runs=useRunProblems(projectId)
+ const runs=useRunProblems(projectId,enabled)
  const waiting=mine.length+runs.cards.length
  useEffect(()=>{onNeedsCount?.(waiting)},[onNeedsCount,waiting])
  const [open,setOpen]=useState(true)

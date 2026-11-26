@@ -1,8 +1,9 @@
 import { TeamPanelHeader } from './TeamPanelHeader'
 import { PendingAgentForks } from '../../components/chat/PendingAgentForks'
 import type { TeamPanelView } from './TeamPanel'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useState } from 'react'
 import { Activity, CalendarClock, ChevronRight, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, Mail, Plus, RefreshCw, Route, TriangleAlert, Users, Zap, type LucideIcon } from 'lucide-react'
+import { WorkspacePanelVisibilityContext } from '../../components/workspace/WorkspacePanelToggle'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { ChatContextSection } from '../../components/workspace/ChatContextSection'
@@ -46,14 +47,16 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   dashboardChatTarget?: DashboardChatTarget
   enabledPanels?: Set<string>
 }) {
+  const panelVisibility = useContext(WorkspacePanelVisibilityContext)
+  const panelVisible = panelVisibility ? panelVisibility.open : true
   const user = useAuthStore(state => state.user)
   const server = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const scope = projectMenuHistoryScope(server || 'local', user?.id || 'pending', profileId, projectId || workspacePath)
   const allowed = (view: WorkWorkspaceView) => panels.some(item => item.id === view)
-  const { data, error, refresh } = useCrewPanel(scope, projectId, workspacePath)
+  const { data, error, refresh } = useCrewPanel(scope, projectId, workspacePath, panelVisible)
   // Teammates' shared agents, from the same Team read every screen shares (teamApi watchTeamTab).
-  const teamState = useTeamTab(projectId || undefined)
-  const setups = useTeamSetupsList(teamState.target, projectId, !!teamState.target && !!teamState.view?.team.on && !teamState.error)
+  const teamState = useTeamTab(panelVisible ? (projectId || undefined) : undefined)
+  const setups = useTeamSetupsList(teamState.target, projectId, panelVisible && !!teamState.target && !!teamState.view?.team.on && !teamState.error)
   const collapseKey=JSON.stringify(['agentworks.team-collapsed',user?.id,server,teamState.target?.connection,teamState.target?.project||projectId])
   const readCollapsed=()=>{try{return localStorage.getItem(collapseKey)==='1'}catch{return false}}
   const [collapse,setCollapse]=useState<{key:string;value:boolean}>(()=>({key:collapseKey,value:readCollapsed()}))
@@ -243,14 +246,14 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const artifactLines = accessTree.filter(line => line.kind === 'dashboard')
   const teamTree = (teamLines.length > 0 || teamState.view?.team.on || !!teamState.error) && <div role="list" aria-label="Team details" className={showTeam?'pb-1':undefined}><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} collapsed={!showTeam} selectedPerson={selectedPerson} onPersonSelect={selectPerson} onPanelView={openTeamPane} askAgent={askAgent} />{!teamState.view?.team.on&&treeLines(teamLines)}</div>
   // Needs you sits at the very top of the panel, only while something waits (owner, 23 Nov).
-  const activitySection = projectId && !selectedPerson && <CrewActivitySection projectId={projectId} team={teamState} onNeedsCount={onNeedsCount} onAsk={dashboardChatTarget ? message => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message }).catch(() => undefined) } : undefined}/>
+  const activitySection = projectId && !selectedPerson && <CrewActivitySection projectId={projectId} team={teamState} enabled={panelVisible} onNeedsCount={onNeedsCount} onAsk={dashboardChatTarget ? message => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message }).catch(() => undefined) } : undefined}/>
   // A Project task opens its own page in the side panel (#3788), like a Team person.
   const tasksRow = section('activity')?.rows.find(row => row.group === 'project-tasks')
   const openTask = taskPage?.scope === scope ? tasksRow?.tasks?.find(task => task.id === taskPage.id) : undefined
   if (tasksRow && openTask) return <WorkspaceContextCard title="Project tasks" onBack={() => setTaskPage(undefined)}><ProjectTaskPage row={tasksRow} task={openTask} onAgent={activityAgent}/></WorkspaceContextCard>
   if(teamView!=='live' && teamState.view?.team.on) return <WorkspaceContextCard><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} panelView={teamView} onPanelView={openTeamPane} askAgent={askAgent}/></WorkspaceContextCard>
   // This chat's context, cost and plan use sit at the very end, after Team and Artifacts (owner, 22 Nov); the header shows the short line.
-  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} endContent={!macElsewhere && reviewSessionId ? <ChatContextSection key={`${scope}:context:${reviewSessionId}`} sessionId={reviewSessionId} /> : undefined} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.filter(item => item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)).map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' ? (access?.co_owners ? treeLines(teamLines) : teamTree) : null}{item.id === 'mcp:team' && !access?.co_owners && !selectedPerson && setups.data?.setups.length ? <Row icon={ListChecks} detail={setups.data.to_do ? `${setups.data.to_do} to do` : 'All done'} onClick={() => { console.info('[TEAM_SETUP]', { event: 'open', project: projectId }); openCrewAccess(projectId, '', 'team', 'setups') }}>Team kit</Row> : null}</div>)}</div>}>
+  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} endContent={!macElsewhere && reviewSessionId ? <ChatContextSection key={`${scope}:context:${reviewSessionId}`} sessionId={reviewSessionId} enabled={panelVisible} /> : undefined} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.filter(item => item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)).map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' ? (access?.co_owners ? treeLines(teamLines) : teamTree) : null}{item.id === 'mcp:team' && !access?.co_owners && !selectedPerson && setups.data?.setups.length ? <Row icon={ListChecks} detail={setups.data.to_do ? `${setups.data.to_do} to do` : 'All done'} onClick={() => { console.info('[TEAM_SETUP]', { event: 'open', project: projectId }); openCrewAccess(projectId, '', 'team', 'setups') }}>Team kit</Row> : null}</div>)}</div>}>
     {activitySection}
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This project lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
