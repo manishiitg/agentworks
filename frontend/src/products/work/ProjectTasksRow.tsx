@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ExternalLink, MoreHorizontal } from 'lucide-react'
 import type { CrewPanelRow, ProjectTask, ProjectTaskRef } from './useCrewPanel'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
+import { formatRelativeSeconds } from '../../utils/relativeTime'
 
 // Project tasks (approved mockups 24 Nov; tidy list and task page #3788): one
 // shared, curated list per project. The list shows Needs you first, then the
@@ -52,14 +53,6 @@ function Kind({ kind }: { kind: string }) {
     className={`mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] text-[8px] font-bold ${kindTone[kind] || kindTone.other}`}>{kindLetter[kind] || kindLetter.other}</span>
 }
 
-function ago(at: number): string {
-  const minutes = Math.max(0, Math.round((Date.now() / 1000 - at) / 60))
-  if (minutes < 1) return 'now'
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.round(minutes / 60)
-  return hours < 24 ? `${hours}h` : `${Math.round(hours / 24)}d`
-}
-
 const taskWords: Record<string, string> = { open: 'asked', asked: 'asked', in_progress: 'working', blocked: 'blocked', needs_you: 'waiting on you', stalled: 'stalled', done: 'done' }
 const taskTone: Record<string, string> = { in_progress: 'bg-sky-500/15 text-sky-700 dark:text-sky-300', blocked: 'bg-amber-500/15 text-amber-700 dark:text-amber-300', needs_you: 'bg-amber-500/15 text-amber-700 dark:text-amber-300', stalled: 'bg-amber-500/15 text-amber-700 dark:text-amber-300', done: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' }
 const ring = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -81,7 +74,7 @@ function TaskLine({ task, onOpen }: { task: ProjectTask; onOpen: () => void }) {
     <span className="flex items-start gap-1.5 text-[11.5px]">
       <Kind kind={task.sources?.[0]?.kind || 'other'}/>
       <span className="line-clamp-2 min-w-0 flex-1 leading-snug text-foreground">{task.title}</span>
-      <span className="shrink-0 pt-px text-[10px] text-muted-foreground">{ago(task.at)}</span>
+      <span className="shrink-0 pt-px text-[10px] text-muted-foreground">{formatRelativeSeconds(task.at)}</span>
     </span>
     <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 pl-5 text-[10.5px]">
       {task.done ? <span className="text-emerald-600 dark:text-emerald-400">✓ {task.step}</span>
@@ -168,7 +161,7 @@ export function ProjectTaskPage({ row, task, onAgent }: { row: CrewPanelRow; tas
     <h3 className="text-[13px] font-semibold leading-snug text-foreground">{task.title}</h3>
     <p className="flex flex-wrap items-center gap-1 text-[10.5px] text-muted-foreground">
       {source && <><Kind kind={source.kind}/><span>From {kindName[source.kind] || source.kind}</span><span>·</span></>}
-      <span>{task.done ? 'finished' : task.assignee ? `with ${task.assignee}` : task.proposed ? `suggested: ${task.proposed}` : 'not handed out yet'}</span><span>·</span><span>{ago(task.at)} ago</span>
+      <span>{task.done ? 'finished' : task.assignee ? `with ${task.assignee}` : task.proposed ? `suggested: ${task.proposed}` : 'not handed out yet'}</span><span>·</span><span>{formatRelativeSeconds(task.at, { style: 'long' })}</span>
       {task.held && <span className="rounded bg-amber-500/15 px-1 text-amber-700 dark:text-amber-300">on hold</span>}
     </p>
     <ol aria-label="Steps" className="flex flex-wrap gap-1 pt-1.5 text-[10.5px]">
@@ -209,13 +202,13 @@ export function ProjectTaskPage({ row, task, onAgent }: { row: CrewPanelRow; tas
     {task.activity?.length ? <>
       <p className={head}>What&rsquo;s happening</p>
       <ul className="space-y-1 border-l border-border pl-2.5 text-[11px]">
-        {[...task.activity].reverse().map((a, i) => <li key={i}><span className="text-foreground">{a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{a.text}</a> : a.text}</span> <span className="text-[10px] text-muted-foreground">{ago(a.at)}</span></li>)}
+        {[...task.activity].reverse().map((a, i) => <li key={i}><span className="text-foreground">{a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{a.text}</a> : a.text}</span> <span className="text-[10px] text-muted-foreground">{formatRelativeSeconds(a.at)}</span></li>)}
       </ul>
     </> : null}
     {task.history?.length ? <>
       <p className={head}>History</p>
       <ul aria-label="History" className="space-y-1 border-l border-border pl-2.5 text-[11px]">
-        {task.history.map((move, index) => <li key={index}><span className="text-foreground">{move.by || 'An agent'}{move.step ? ` → ${move.step}` : ''}</span> <span className="text-[10px] text-muted-foreground">{ago(move.at)}</span>{move.note && <span className="block text-muted-foreground">{move.note}</span>}</li>)}
+        {task.history.map((move, index) => <li key={index}><span className="text-foreground">{move.by || 'An agent'}{move.step ? ` → ${move.step}` : ''}</span> <span className="text-[10px] text-muted-foreground">{formatRelativeSeconds(move.at)}</span>{move.note && <span className="block text-muted-foreground">{move.note}</span>}</li>)}
       </ul>
     </> : null}
     {onAgent && !task.done && <div className="flex flex-wrap gap-1.5 pt-3">

@@ -8,7 +8,7 @@ import { CodeLocalFilesSettings } from './CodeFilesPanel'
 import { useChatStore } from '../../stores/useChatStore'
 import { ProjectKnowledgebasePanel } from '../../components/workflow/ProjectKnowledgebasePanel'
 import SlackAccountsPanel from '../../components/integrations/SlackAccountsPanel'
-import { openCrewAccess } from './MacSharedAgents'
+import { openCrewAccess, type CrewAccessSection, type CrewTeamSection } from './MacSharedAgents'
 import { ProjectMcpSetupPanel } from '../../components/integrations/ProjectMcpSetupPanel'
 import WorkflowBotsPanel from '../../components/workflow/WorkflowBotsPanel'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
@@ -23,6 +23,15 @@ import { isLocalDeployment } from '../productSurfaceConfig'
 import { ComputerUsePanel } from './ComputerUsePanel'
 
 export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'mac-folders' | 'slack-bot' | 'slack' | 'whatsapp' | 'cli' | 'access' | 'computer-use' | 'message-agents'
+
+const ACCESS_OPEN_TARGETS: Record<string, { section: CrewAccessSection; teamSection?: CrewTeamSection }> = {
+  team: { section: 'team' },
+  online: { section: 'mac' },
+  agentbridge: { section: 'agentbridge' },
+  agents: { section: 'team', teamSection: 'agents' },
+  dashboards: { section: 'artifacts' },
+  artifacts: { section: 'artifacts' },
+}
 
 export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, workflowContextPaths, onWorkflowContextPathsChange, onAccessPage, onBack }: {
   /** Told whether the Access page is showing (it has its own back arrow and tabs, so the pane hides its title). */
@@ -52,11 +61,8 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
     if (!isWorkIntegrationTabEnabled(next === 'github' ? 'secrets' : next, enabledPanels) || next === 'brain' && !integrationProductAvailable('knowledgebase', allowedProducts)) return
     if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'github'].includes(next)) { setTab('apps'); setIntegrationSection(next as IntegrationSection); return }
     if (next === 'message-agents' && !integrationProductAvailable('bullpen', allowedProducts)) return
-    if (target === 'team') openCrewAccess(projectId, '', 'team')
-    if (target === 'online') openCrewAccess(projectId, '', 'mac')
-    if (target === 'agentbridge') openCrewAccess(projectId, '', 'agentbridge')
-    if (target === 'agents') openCrewAccess(projectId, '', 'team', 'agents')
-    if (target === 'dashboards' || target === 'artifacts') openCrewAccess(projectId, '', 'artifacts')
+    const accessTarget = ACCESS_OPEN_TARGETS[target]
+    if (accessTarget) openCrewAccess(projectId, '', accessTarget.section, accessTarget.teamSection)
     if (['apps', 'brain', 'folders', 'mac-folders', 'slack-bot', 'slack', 'whatsapp', 'cli', 'access', 'computer-use', 'message-agents'].includes(next)) setTab(next as WorkIntegrationTab)
   })
   useEffect(() => { onAccessPage?.(tab === 'access'); return () => onAccessPage?.(false) }, [tab, onAccessPage])

@@ -1,32 +1,25 @@
-import { TeamPanelHeader } from './TeamPanelHeader'
-import { PendingAgentForks } from '../../components/chat/PendingAgentForks'
-import type { TeamPanelView } from './TeamPanel'
 import { useCallback, useContext, useEffect, useState } from 'react'
-import { Activity, CalendarClock, ChevronRight, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, Mail, Plus, RefreshCw, Route, TriangleAlert, Users, Zap, type LucideIcon } from 'lucide-react'
+import { Activity, CalendarClock, Mail, Plus, RefreshCw, Route, Zap } from 'lucide-react'
 import { WorkspacePanelVisibilityContext } from '../../components/workspace/WorkspacePanelToggle'
 import { useCrewPanel } from './useCrewPanel'
 import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { ChatContextSection } from '../../components/workspace/ChatContextSection'
-import { WorkspaceContextCard, WorkspaceContextRow as Row, WorkspaceContextGroup as Group } from '../../components/workspace/WorkspaceContextCard'
+import { WorkspaceContextCard, WorkspaceContextRow as Row } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspaceDashboardMenu } from '../../components/workspace/WorkspaceDashboardMenu'
-import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { WorkspaceConnectionsMenu, ConnectionIcon } from '../../components/workspace/WorkspaceConnectionsMenu'
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
-import { WorkspaceBrowserRow } from '../../components/workspace/WorkspaceBrowserRow'
-import { type CrewAccessLine } from './YourComputerPanel'
-import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
-import { crewFullMenuGroups, crewMenuTarget, crewProjectMenuItems, type CrewMenuItem } from './crewProjectMenu'
+import { crewProjectMenuItems, type CrewMenuItem } from './crewProjectMenu'
+import { findAdmittedCrewMenuItem, isSameRightPanelScope, navigateCrewMenuItem } from './crewMenuNavigation'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
-import { openCrewAccess } from './MacSharedAgents'
-import { CrewOnlineRow } from './CrewOnlineRow'
+import type { TeamPanelView } from './TeamPanel'
 import { openCrewWorkflow } from './workflowRunNavigation'
 import { openWorkspacePaneChatWithDraft, sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 import { useTeamTab } from './teamApi'
@@ -35,7 +28,9 @@ import { CrewActivitySection } from './ActivitySection'
 import { useTeamSetupsList } from './useTeamSetupsList'
 import { ProjectActivityRows, projectActivityLine, projectActivitySetupMessage } from './ProjectActivityRows'
 import { ProjectTaskPage } from './ProjectTasksRow'
-import { SetupPrompt, useSetupPromptHidden } from '../../components/workspace/SetupPrompt'
+import { useSetupPromptHidden } from '../../components/workspace/SetupPrompt'
+import { WorkContextSubmenu } from './WorkContextSubmenu'
+import { crewTeamTitle, TEAM_SETUP_LINE, WorkContextAccessFooter } from './WorkContextAccessFooter'
 
 export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'work', panels, onOpen, enabledPanels, dashboardChatTarget, reviewSessionId }: {
   workspacePath: string
@@ -57,25 +52,37 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   // Teammates' shared agents, from the same Team read every screen shares (teamApi watchTeamTab).
   const teamState = useTeamTab(panelVisible ? (projectId || undefined) : undefined)
   const setups = useTeamSetupsList(teamState.target, projectId, panelVisible && !!teamState.target && !!teamState.view?.team.on && !teamState.error)
-  const collapseKey=JSON.stringify(['agentworks.team-collapsed',user?.id,server,teamState.target?.connection,teamState.target?.project||projectId])
-  const readCollapsed=()=>{try{return localStorage.getItem(collapseKey)==='1'}catch{return false}}
-  const [collapse,setCollapse]=useState<{key:string;value:boolean}>(()=>({key:collapseKey,value:readCollapsed()}))
-  const collapsed=collapse.key===collapseKey?collapse.value:readCollapsed()
-  const showTeam=!teamState.view?.team.on||!collapsed
-  const saveCollapsed=(value:boolean)=>{setCollapse({key:collapseKey,value});try{localStorage.setItem(collapseKey,value?'1':'0')}catch{/* Optional view preference. */}}
-  const [needs,setNeeds]=useState<{key:string;count:number}>()
-  const onNeedsCount=useCallback((count:number)=>setNeeds(current=>current?.key===collapseKey&&current.count===count?current:{key:collapseKey,count}),[collapseKey])
-  const [teamPane,setTeamPane]=useState<{scope:string;view:TeamPanelView;agent?:string}>()
-  const [taskPage,setTaskPage]=useState<{scope:string;id:string}>()
-  const teamView=teamPane?.scope===scope?teamPane.view:'live'
-  const [teamPerson,setTeamPerson]=useState<{scope:string;id?:string}>()
-  const selectedPerson=teamPerson?.scope===scope?teamPerson.id:undefined
-  const selectPerson=(id?:string)=>{console.info('[TEAM_VIEW]',{project:projectId,event:'person_selected',person:id||'',outcome:id?'opened':'closed'});saveCollapsed(false);setTeamPerson({scope,id});setTeamPane({scope,view:'live'})}
+
+  const collapseKey = JSON.stringify(['agentworks.team-collapsed', user?.id, server, teamState.target?.connection, teamState.target?.project || projectId])
+  const readCollapsed = () => { try { return localStorage.getItem(collapseKey) === '1' } catch { return false } }
+  const [collapse, setCollapse] = useState<{ key: string; value: boolean }>(() => ({ key: collapseKey, value: readCollapsed() }))
+  const collapsed = collapse.key === collapseKey ? collapse.value : readCollapsed()
+  const showTeam = !teamState.view?.team.on || !collapsed
+  const saveCollapsed = (value: boolean) => {
+    setCollapse({ key: collapseKey, value })
+    try { localStorage.setItem(collapseKey, value ? '1' : '0') } catch { /* Optional view preference. */ }
+  }
+
+  const [needs, setNeeds] = useState<{ key: string; count: number }>()
+  const onNeedsCount = useCallback((count: number) => setNeeds(current => current?.key === collapseKey && current.count === count ? current : { key: collapseKey, count }), [collapseKey])
+  const [teamPane, setTeamPane] = useState<{ scope: string; view: TeamPanelView; agent?: string }>()
+  const [taskPage, setTaskPage] = useState<{ scope: string; id: string }>()
+  const teamView = teamPane?.scope === scope ? teamPane.view : 'live'
+  const [teamPerson, setTeamPerson] = useState<{ scope: string; id?: string }>()
+  const selectedPerson = teamPerson?.scope === scope ? teamPerson.id : undefined
+  const selectPerson = (id?: string) => {
+    console.info('[TEAM_VIEW]', { project: projectId, event: 'person_selected', person: id || '', outcome: id ? 'opened' : 'closed' })
+    saveCollapsed(false)
+    setTeamPerson({ scope, id })
+    setTeamPane({ scope, view: 'live' })
+  }
   // The Ask view names its agent here, so the panel that shows it (the card, not the menu row) knows which one (#3084).
-  const openTeamPane=(view:TeamPanelView,agent?:string)=>setTeamPane({scope,view,agent})
-  const askAgent=teamPane?.scope===scope?teamPane.agent:undefined
+  const openTeamPane = (view: TeamPanelView, agent?: string) => setTeamPane({ scope, view, agent })
+  const askAgent = teamPane?.scope === scope ? teamPane.agent : undefined
+
   const section = (id: string) => data?.sections.find(item => item.id === id)
   const access = section('access')?.access
+  const accessTree = access?.tree || []
   const apps = (data?.sections || []).flatMap(item => item.rows).filter(row => row.destination?.startsWith('mcp:'))
   const documents = (section('dashboards')?.rows || []).map((row, order) => ({ id: row.id, title: row.label, path: row.path!, order, motion: row.motion, artifact: row.artifact }))
   const browserRow = section('browser')?.rows[0]
@@ -86,6 +93,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const accessItems = inventory.filter(item => item.group === 'Share' && item.view === 'mcp')
   const integrations = inventory.filter(item => item.id === 'browser' || item.group === 'Integrations' || (item.view === 'mcp' && item.group === 'Use'))
   const [menu, setMenu] = useState<{ scope: string; view: 'full' | 'integrations' }>()
+
   // Open or closed, remembered per Crew in this browser (a per-person convenience; open by default).
   const dashboardsKey = `agentworks.menu-dashboards-closed:${projectId}`
   const [dashboardsOpen, setDashboardsOpen] = useState(() => { try { return localStorage.getItem(dashboardsKey) !== '1' } catch { return true } })
@@ -97,27 +105,24 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const [activityHidden, hideActivity] = useSetupPromptHidden(`agentworks.project-activity-hidden:${projectId}`)
   const [teamHidden, hideTeam] = useSetupPromptHidden(`agentworks.team-prompt-hidden:${projectId}`)
   const addToast = useChatStore(state => state.addToast)
-  const computerState = access?.place
-  const accessTree = access?.tree || []
+
   const showMenu = (view: 'full' | 'integrations') => {
-    if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
+    if (!isSameRightPanelScope(user?.id, server)) return
     setMenu({ scope, view })
   }
   const open = (item: CrewMenuItem) => {
     // Recheck account/product admission if access changed while the menu was open.
-    const current = useAuthStore.getState().user
-    if (current?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return
-    const admitted = crewProjectMenuItems({ ...menuOptions, allowedProducts: current?.allowed_products })
-    if (!admitted.some(candidate => candidate.id === item.id)) return
-    if (item.id === 'mcp:team') { openCrewAccess(projectId, '', 'team'); return }
-    if (item.external) { openProductWorkspace(item.external); return }
-    if (!item.view) return
-    if (item.reportPath) selectReportDocument(workspacePath, item.reportPath)
-    if (item.view === 'files') setWorkspaceViewTarget('files', 'browse')
-    else if (item.target) setWorkspaceViewTarget(crewMenuTarget(item.view), item.target)
-    onOpen(item.view)
+    const admitted = findAdmittedCrewMenuItem(item.id, { ...menuOptions, userId: user?.id, serverId: server })
+    if (!admitted) return
+    navigateCrewMenuItem({ ...admitted, target: item.target ?? admitted.target, reportPath: item.reportPath ?? admitted.reportPath }, {
+      projectId,
+      workspacePath,
+      onOpen,
+      directTeamAccess: true,
+    })
   }
   const openID = (id: string) => { const item = byId.get(id); if (item) open(item) }
+
   // One page, opened at the tab the row names (the Automations page listens for the target).
   // A Watcher is a kind of schedule (owner, 19 Nov): it has no row of its own; the server counts it in Schedules.
   // Webhooks are part of the workflow (owner, 19 Nov): the Workflow line counts them and its Starts tab lists them.
@@ -146,141 +151,114 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       {workflowRows.map(row => <Row key={row.id} icon={Route} detail={row.detail} onClick={() => openWorkflow(row.id)}>{row.label}</Row>)}
       {newWorkflow && <Row icon={Plus} onClick={newWorkflow}>New workflow</Row>}
     </WorkspaceCompactGroup>)
+
   // Access is one full-panel page in the Mac app and on the website (owner, 5 Nov: the same Team screens everywhere),
   // with Who can use it where the server lists it; it is never a smaller copy inside this menu.
   if (menu?.scope === scope) {
-    const renderItem = (item: CrewMenuItem) => {
-      if (menu.view === 'full' && item.id === 'workflow') return <div key={item.id}>{workflowMenuRow}</div>
-      if (menu.view === 'full' && item.id === 'schedules') return <div key={item.id}>
-        <Row icon={CalendarClock} detail={data?.details['schedules:schedules']} onClick={() => openAutomation('schedules')}>Schedules</Row>
-        {inboxRow && <Row icon={Mail} detail={data?.details['schedules:email']} onClick={() => openAutomation('email')}>Inbox</Row>}
-      </div>
-      if (item.id === 'dashboard') return <WorkspaceDashboardMenu key={item.id} documents={documents} createTarget={dashboardChatTarget} onSelect={path => open({ ...item, reportPath: path })}/>
-      if (item.id === 'browser') return <WorkspaceBrowserRow key={item.id} workspacePath={workspacePath} profileId={profileId} status={browser} onClick={() => open(item)}/>
-      const connections = menu.view === 'integrations' ? apps.filter(row => row.destination === item.id) : []
-      const status = data?.details[item.id]
-      const color = connections.some(row => row.attention) ? 'text-amber-600 dark:text-amber-400' : connections.some(row => row.connected) ? 'text-emerald-600 dark:text-emerald-400' : undefined
-      return <Row key={item.id} icon={item.icon} hint={connections.length && item.id !== 'mcp:connected' ? connections.map(row => row.detail).join('\n') : undefined} detail={menu.view === 'integrations' && status ? <span className={color}>{status}</span> : undefined} onClick={() => open(item)}>{item.label}</Row>
-    }
-    return <WorkspaceContextCard title={menu.view === 'full' ? 'Full menu' : 'Integrations'} toolsAtTop={menu.view === 'full'} onBack={() => setMenu(undefined)}>
-      {menu.view === 'integrations' ? <div className="space-y-0.5">{integrations.map(renderItem)}</div> : crewFullMenuGroups(inventory).map(({ title, items }, index) =>
-        <Group key={`${scope}:${title}`} title={title} count={items.length + (inboxRow && items.some(item => item.id === 'schedules') ? 1 : 0)} collapsed defaultOpen={index === 0}>
-          {items.map(renderItem)}
-        </Group>
-      )}
-    </WorkspaceContextCard>
+    return <WorkContextSubmenu
+      view={menu.view}
+      scope={scope}
+      workspacePath={workspacePath}
+      profileId={profileId}
+      inventory={inventory}
+      integrations={integrations}
+      apps={apps}
+      details={data?.details}
+      documents={documents}
+      browser={browser}
+      dashboardChatTarget={dashboardChatTarget}
+      workflowMenuRow={workflowMenuRow}
+      hasInboxRow={Boolean(inboxRow)}
+      onOpen={open}
+      onOpenAutomation={openAutomation}
+      onBack={() => setMenu(undefined)}
+    />
   }
-  const githubRow = section('github')?.rows[0]
-  const changes = reviewSessionId && allowed('files') ? <ChatChangesRow key={`${scope}:${reviewSessionId}`} workspacePath={workspacePath} onAskAgent={dashboardChatTarget ? message => sendWorkspacePaneMessageToChat({ ...dashboardChatTarget, message }).then(() => undefined) : undefined} section={section('changes')} storageKey={`agentworks.changes-panel.${workspacePath}`} onTerminal={allowed('shell') ? () => onOpen('shell') : undefined} github={byId.has('mcp:github') && githubRow ? { connected: githubRow.connected === true, login: githubRow.login, orgs: githubRow.orgs, onOpen: () => openID('mcp:github') } : undefined} onOpen={(repoRoot, changed) => { if (useAuthStore.getState().user?.id !== user?.id || useWorkspaceConnectionStore.getState().activeWorkspaceId !== server) return; setWorkspaceViewTarget('files', repoRoot === undefined ? 'review-uncommitted' : changed === false ? `folder:${encodeURIComponent(repoRoot)}` : `review-uncommitted:${encodeURIComponent(repoRoot)}`); onOpen('files') }}/> : null
-  const theirs = access?.role === 'member' || access?.role === 'shared'
-  const macElsewhere = data?.mac_elsewhere === true
-  // Team and Online (owner, 11 Nov: the Share row split in two): Team says Off or how many people, Online where the
-  // Crew lives (its state icon); the server words both.
-  const accessRow = (item: CrewMenuItem) => item.id === 'mcp:online'
-    ? <CrewOnlineRow key={item.id} state={computerState} theirs={theirs} onOpen={() => open(item)} />
-    : item.id === 'mcp:team' && teamState.view?.team.on ? <div key={item.id}><TeamPanelHeader onName={()=>openCrewAccess(projectId,'','team')} view={teamState.view} connection={teamState.target?.connection} selectedPerson={selectedPerson} onPersonSelect={selectPerson} expanded={showTeam} onToggle={()=>{saveCollapsed(!collapsed);setTeamPerson({scope});setTeamPane({scope,view:'live'})}} needsCount={needs?.key===collapseKey?needs.count:0}/><PendingAgentForks state={teamState} place="menu" /></div>
-    : noTeamYet && item.id === 'mcp:team' ? (teamHidden ? null : <div key={item.id}>
-      {/* No Team yet (owner, 18 Nov; ⓘ card and Hide into Connections, #3780). */}
-      <SetupPrompt icon={item.icon} title={teamTitle(item)} line={teamLine} action="Start a Team" onAction={() => open(item)} onHide={() => { hideTeam(); addToast('Team hidden. Start one any time from Connections.', 'info') }}
-        what="Bring teammates and their agents into this project."
-        points={['Everyone works from the same project, tasks and files', 'Agents can hand work to each other and to people', 'See who is working on what, live']}/>
-    </div>)
-    : <Row key={item.id} icon={item.icon} onClick={() => open(item)}>{item.id==='mcp:team'?accessTree.find(line=>line.kind==='team')?.title||item.label:item.label}</Row>
-  // Team things sit under Access as its sub-list (owner, 5 Nov: "put inside access only like a sub menu"): the shared
-  // folder's line, then who asked; each opens Access at its place.
-  const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = { mac: Globe, team: Users, team_live: Users, in_team: Users, dashboard: LayoutDashboard, public: Link2, folder: FolderSync, clash: TriangleAlert }
-  // Each line opens the Access page (WorkSurface listens) at its tab, or at Sync (TeamSyncPanel scrolls to it).
-  const openLine = (line: CrewAccessLine) => {
-    // The dashboard line (owner, 6 Nov) opens the Artifacts page, where the server lists them, or says
-    // there are none and offers its Ask.
-    if (line.kind === 'team_live') { openCrewAccess(projectId, '', 'team', 'activity'); return }
-    if (line.kind === 'dashboard') { openCrewAccess(projectId, '', 'artifacts'); return }
-    if (line.kind === 'folder' || line.kind === 'clash') openCrewAccess(projectId, '', 'team', 'sync')
-    else openCrewAccess(projectId, '', line.kind === 'mac' || line.kind === 'public' ? 'mac' : 'team')
-  }
-  const lineButton = 'flex w-full items-start gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-  const treeLines = (lines: CrewAccessLine[]) => lines.map((line, index) => {
-    const Icon = lineIcon[line.kind] || Globe
-    // Dashboards (owner, 9 Nov mock): a header that opens and closes the list, each dashboard on one line (no
-    // "Manage dashboards" link, owner 10 Nov). With none, the server's one line and its Ask, as before.
-    if (line.kind === 'dashboard' && line.dashboards?.length) {
-      const own = line.dashboards || []
-      const dashboard = byId.get('dashboard')
-      return <div key={`${line.kind}:${index}`} role="listitem">
-        {/* Owner, 15 Nov: the label opens the Artifacts pane like the other rows; only the caret, at the right end
-            as elsewhere in this panel, opens or closes the list. */}
-        <div className="flex items-center">
-        <button type="button" onClick={() => { const artifacts = byId.get('mcp:artifacts'); if (artifacts) open(artifacts); else openLine(line) }} className={`${lineButton} min-w-0 flex-1 items-center`}>
-          <span className="font-medium text-foreground">{line.title}</span>
-          {line.count ? <span className="text-muted-foreground">{line.count}</span> : null}
-        </button>
-        <button type="button" aria-label={dashboardsOpen ? 'Hide artifacts' : 'Show artifacts'} aria-expanded={dashboardsOpen} onClick={toggleDashboards} className="flex h-8 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${dashboardsOpen ? 'rotate-90' : ''}`} />
-        </button>
-        </div>
-        {dashboardsOpen && <div className="ml-3 border-l border-border pl-1.5">
-          {dashboard && own.map(item => <button key={item.path} type="button" title={item.name} onClick={() => open({ ...dashboard, reportPath: item.path })} className={`${lineButton} items-center`}>
-            <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-sm bg-muted-foreground/60" />
-            <span className="min-w-0 flex-1 truncate text-foreground">{item.name}</span>
-          </button>)}
-        </div>}
-      </div>
-    }
-    return <div key={`${line.kind}:${index}`} role="listitem">
-      <button type="button" onClick={() => openLine(line)} className={lineButton}>
-        {line.kind === 'team_live' ? <span aria-hidden="true" className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${line.tag === 'waiting' ? 'bg-amber-500' : line.tag === 'decision' ? 'rotate-45 rounded-none bg-blue-500' : line.tag === 'finding' ? 'rounded-sm bg-blue-500' : 'bg-emerald-500'}`} /> : <Icon aria-hidden="true" className={`mt-0.5 h-3 w-3 shrink-0 ${line.kind === 'clash' || line.kind === 'folder' ? 'text-amber-600' : 'text-muted-foreground'}`} />}
-        <span className="min-w-0 flex-1"><span className="block break-words font-medium text-foreground">{line.title}</span>
-          {line.detail && <span className="block break-words text-muted-foreground">{line.detail}</span>}
-          {line.progress && line.progress.bytes_total > 0 && <span aria-hidden="true" className="mt-1 block h-1 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(100, Math.round(line.progress.bytes_done * 100 / line.progress.bytes_total))}%` }} /></span>}
-        </span>
-      </button>
-    </div>
-  })
-  // Team keeps its details; Mac online is one row. Artifacts remains a sibling
-  // with its own document list (owner, 15 Nov).
-  const teamLines = accessTree.filter(line => line.group === 'team' && line.kind !== 'team' && line.kind !== 'team_live')
-  const noTeamYet = !teamState.view?.team.on && !access?.co_owners && !teamState.error && !teamLines.length
-  const teamLine = 'Work with teammates and their agents'
-  const teamTitle = (item: CrewMenuItem) => accessTree.find(line=>line.kind==='team')?.title||item.label
-  const teamItem = accessItems.find(item => item.id === 'mcp:team')
-  const artifactLines = accessTree.filter(line => line.kind === 'dashboard')
-  const teamTree = (teamLines.length > 0 || teamState.view?.team.on || !!teamState.error) && <div role="list" aria-label="Team details" className={showTeam?'pb-1':undefined}><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} collapsed={!showTeam} selectedPerson={selectedPerson} onPersonSelect={selectPerson} onPanelView={openTeamPane} askAgent={askAgent} />{!teamState.view?.team.on&&treeLines(teamLines)}</div>
-  // Needs you sits at the very top of the panel, only while something waits (owner, 23 Nov).
-  const activitySection = projectId && !selectedPerson && <CrewActivitySection projectId={projectId} team={teamState} enabled={panelVisible} onNeedsCount={onNeedsCount} onAsk={dashboardChatTarget ? message => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message }).catch(() => undefined) } : undefined}/>
+
   // A Project task opens its own page in the side panel (#3788), like a Team person.
   const tasksRow = section('activity')?.rows.find(row => row.group === 'project-tasks')
   const openTask = taskPage?.scope === scope ? tasksRow?.tasks?.find(task => task.id === taskPage.id) : undefined
   if (tasksRow && openTask) return <WorkspaceContextCard title="Project tasks" onBack={() => setTaskPage(undefined)}><ProjectTaskPage row={tasksRow} task={openTask} onAgent={activityAgent}/></WorkspaceContextCard>
-  if(teamView!=='live' && teamState.view?.team.on) return <WorkspaceContextCard><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} panelView={teamView} onPanelView={openTeamPane} askAgent={askAgent}/></WorkspaceContextCard>
+  if (teamView !== 'live' && teamState.view?.team.on) return <WorkspaceContextCard><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} panelView={teamView} onPanelView={openTeamPane} askAgent={askAgent}/></WorkspaceContextCard>
+
+  const teamLines = accessTree.filter(line => line.group === 'team' && line.kind !== 'team' && line.kind !== 'team_live')
+  const noTeamYet = !teamState.view?.team.on && !access?.co_owners && !teamState.error && !teamLines.length
+  const teamItem = accessItems.find(item => item.id === 'mcp:team')
+  const githubRow = section('github')?.rows[0]
+  const changesStorageKey = JSON.stringify(['agentworks.changes-panel', server || 'local', user?.id || 'pending', workspacePath])
+  const changes = reviewSessionId && allowed('files') ? <ChatChangesRow
+    key={`${scope}:${reviewSessionId}`}
+    workspacePath={workspacePath}
+    onAskAgent={dashboardChatTarget ? message => sendWorkspacePaneMessageToChat({ ...dashboardChatTarget, message }).then(() => undefined) : undefined}
+    section={section('changes')}
+    storageKey={changesStorageKey}
+    onTerminal={allowed('shell') ? () => onOpen('shell') : undefined}
+    github={byId.has('mcp:github') && githubRow ? { connected: githubRow.connected === true, login: githubRow.login, orgs: githubRow.orgs, onOpen: () => openID('mcp:github') } : undefined}
+    onOpen={(repoRoot, changed) => {
+      if (!isSameRightPanelScope(user?.id, server)) return
+      setWorkspaceViewTarget('files', repoRoot === undefined ? 'review-uncommitted' : changed === false ? `folder:${encodeURIComponent(repoRoot)}` : `review-uncommitted:${encodeURIComponent(repoRoot)}`)
+      onOpen('files')
+    }}
+  /> : null
+  const macElsewhere = data?.mac_elsewhere === true
+  // Needs you sits at the very top of the panel, only while something waits (owner, 23 Nov).
+  const activitySection = projectId && !selectedPerson && <CrewActivitySection projectId={projectId} team={teamState} enabled={panelVisible} onNeedsCount={onNeedsCount} onAsk={dashboardChatTarget ? message => { void openWorkspacePaneChatWithDraft({ ...dashboardChatTarget, message }).catch(() => undefined) } : undefined}/>
+
   // This chat's context, cost and plan use sit at the very end, after Team and Artifacts (owner, 22 Nov); the header shows the short line.
-  return <WorkspaceContextCard onFullMenu={() => showMenu('full')} endContent={!macElsewhere && reviewSessionId ? <ChatContextSection key={`${scope}:context:${reviewSessionId}`} sessionId={reviewSessionId} enabled={panelVisible} /> : undefined} footerContent={accessItems.length > 0 && <div className="space-y-0.5">{accessItems.filter(item => item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)).map(item => <div key={item.id}>{item.id === 'mcp:artifacts' && artifactLines.length ? treeLines(artifactLines) : accessRow(item)}{item.id === 'mcp:team' ? (access?.co_owners ? treeLines(teamLines) : teamTree) : null}{item.id === 'mcp:team' && !access?.co_owners && !selectedPerson && setups.data?.setups.length ? <Row icon={ListChecks} detail={setups.data.to_do ? `${setups.data.to_do} to do` : 'All done'} onClick={() => { console.info('[TEAM_SETUP]', { event: 'open', project: projectId }); openCrewAccess(projectId, '', 'team', 'setups') }}>Team kit</Row> : null}</div>)}</div>}>
+  return <WorkspaceContextCard
+    onFullMenu={() => showMenu('full')}
+    endContent={!macElsewhere && reviewSessionId ? <ChatContextSection key={`${scope}:context:${reviewSessionId}`} sessionId={reviewSessionId} enabled={panelVisible} /> : undefined}
+    footerContent={accessItems.length > 0 && <WorkContextAccessFooter
+      projectId={projectId}
+      scope={scope}
+      access={access}
+      accessItems={accessItems}
+      byId={byId}
+      teamState={teamState}
+      selectedPerson={selectedPerson}
+      showTeam={showTeam}
+      needsCount={needs?.key === collapseKey ? needs.count : 0}
+      askAgent={askAgent}
+      noTeamYet={noTeamYet}
+      teamHidden={teamHidden}
+      dashboardsOpen={dashboardsOpen}
+      setupsCount={setups.data?.setups.length ?? 0}
+      setupsToDo={setups.data?.to_do}
+      onOpen={open}
+      onSelectPerson={selectPerson}
+      onToggleTeamCollapsed={() => { saveCollapsed(!collapsed); setTeamPerson({ scope }); setTeamPane({ scope, view: 'live' }) }}
+      onOpenTeamPane={openTeamPane}
+      onHideTeam={() => { hideTeam(); addToast('Team hidden. Start one any time from Connections.', 'info') }}
+      onToggleDashboards={toggleDashboards}
+    />}
+  >
     {activitySection}
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This project lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
       <p>Artifacts work once this project is online. Move it online from your Mac.</p>
     </div> : <>
-    {changes}
-    {/* Project activity sits right under Git (owner, 21 Nov, #3476). */}
-    <ProjectActivityRows key={`${scope}:activity`} section={section('activity')} onAgent={activityAgent} onWatchers={() => openAutomation('conditions')} onOpenTask={id => setTaskPage({ scope, id })} hidden={activityHidden} onHide={() => { hideActivity(); addToast('Project activity hidden. Set it up any time from Connections.', 'info') }}/>
-    {/* Artifacts has its own top-level footer row (owner, 14 Nov); Run mode keeps this menu. */}
-    {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
-    <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined} setups={[
-      ...(activityHidden && activityAgent && section('activity')?.rows.length === 0 ? [{ id: 'activity', icon: Activity, title: 'Project activity', line: projectActivityLine, action: 'Set up', onClick: () => activityAgent(projectActivitySetupMessage) }] : []),
-      ...(teamHidden && noTeamYet && teamItem && !access?.co_owners ? [{ id: 'team', icon: teamItem.icon, title: teamTitle(teamItem), line: teamLine, action: 'Start a Team', onClick: () => open(teamItem) }] : []),
-    ]}/>
-    {(byId.has('workflow') || byId.has('schedules')) && <TooltipProvider delayDuration={200}><WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={Zap}
-      detail={automationChips.length ? undefined : data?.details.automations}
-      preview={automationChips.length ? <div className="isolate flex -space-x-1.5">{automationChips.map((chip, i) =>
-        <ConnectionIcon key={chip.key} icon={chip.icon} hint={`${chip.label} · ${data?.details[chip.detailKey] ?? chip.count}`} count={i === automationChips.length - 1 ? automationCount : undefined} onClick={() => chip.target === 'workflow' ? openID('workflow') : openAutomation(chip.target)} />)}</div> : undefined}>
-      {/* Everything that sets work off, inside one row like Connections (owner, 8 Nov): the workflow, then its starts,
-          each with the server's one-line summary. */}
-      {workflowMenuRow}
-      {byId.has('schedules') && <>
-        {automationKinds.filter(kind => section(kind.section)).map(({ target, label, icon: Icon }) =>
-          <Row key={target} icon={Icon} detail={data?.details[`schedules:${target}`]} onClick={() => openAutomation(target)}>{label}</Row>)}
-        {inboxRow && <Row icon={Mail} detail={data?.details['schedules:email']} onClick={() => openAutomation('email')}>Inbox</Row>}
-      </>}
-    </WorkspaceCompactGroup></TooltipProvider>}
+      {changes}
+      {/* Project activity sits right under Git (owner, 21 Nov, #3476). */}
+      <ProjectActivityRows key={`${scope}:activity`} section={section('activity')} onAgent={activityAgent} onWatchers={() => openAutomation('conditions')} onOpenTask={id => setTaskPage({ scope, id })} hidden={activityHidden} onHide={() => { hideActivity(); addToast('Project activity hidden. Set it up any time from Connections.', 'info') }}/>
+      {/* Artifacts has its own top-level footer row (owner, 14 Nov); Run mode keeps this menu. */}
+      {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
+      <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined} setups={[
+        ...(activityHidden && activityAgent && section('activity')?.rows.length === 0 ? [{ id: 'activity', icon: Activity, title: 'Project activity', line: projectActivityLine, action: 'Set up', onClick: () => activityAgent(projectActivitySetupMessage) }] : []),
+        ...(teamHidden && noTeamYet && teamItem && !access?.co_owners ? [{ id: 'team', icon: teamItem.icon, title: crewTeamTitle(accessTree, teamItem), line: TEAM_SETUP_LINE, action: 'Start a Team', onClick: () => open(teamItem) }] : []),
+      ]}/>
+      {(byId.has('workflow') || byId.has('schedules')) && <TooltipProvider delayDuration={200}><WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={Zap}
+        detail={automationChips.length ? undefined : data?.details.automations}
+        preview={automationChips.length ? <div className="isolate flex -space-x-1.5">{automationChips.map((chip, i) =>
+          <ConnectionIcon key={chip.key} icon={chip.icon} hint={`${chip.label} · ${data?.details[chip.detailKey] ?? chip.count}`} count={i === automationChips.length - 1 ? automationCount : undefined} onClick={() => chip.target === 'workflow' ? openID('workflow') : openAutomation(chip.target)} />)}</div> : undefined}>
+        {/* Everything that sets work off, inside one row like Connections (owner, 8 Nov): the workflow, then its starts,
+            each with the server's one-line summary. */}
+        {workflowMenuRow}
+        {byId.has('schedules') && <>
+          {automationKinds.filter(kind => section(kind.section)).map(({ target, label, icon: Icon }) =>
+            <Row key={target} icon={Icon} detail={data?.details[`schedules:${target}`]} onClick={() => openAutomation(target)}>{label}</Row>)}
+          {inboxRow && <Row icon={Mail} detail={data?.details['schedules:email']} onClick={() => openAutomation('email')}>Inbox</Row>}
+        </>}
+      </WorkspaceCompactGroup></TooltipProvider>}
     </>}
     {error ? <div role="status" className="space-y-1 px-1 text-xs text-muted-foreground"><p>{error}</p><button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}
   </WorkspaceContextCard>

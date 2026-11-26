@@ -4,6 +4,7 @@ import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompa
 import { SetupPrompt } from '../../components/workspace/SetupPrompt'
 import type { CrewPanelFeedItem, CrewPanelRow, CrewPanelSection } from './useCrewPanel'
 import { ProjectTasksRow, projectActivityChangeMessage } from './ProjectTasksRow'
+import { formatRelativeSeconds } from '../../utils/relativeTime'
 
 // Project activity (#3476, approved mockup 21 Nov): one row per feed Watcher the
 // person's agent set up. The server decides the rows and their state; the feed is
@@ -13,14 +14,6 @@ const appIcon: Record<string, LucideIcon> = { slack: MessageSquare, mail: Mail, 
 export const projectActivityLine = 'Slack, mail, Drive and tasks for this project'
 
 export const projectActivitySetupMessage = 'Set up Project activity for this project. Check which apps this project can reach (Slack, Gmail, Google Drive, GitHub or another task tracker), ask me which channels, mail, folders and task lists matter, then set up Project tasks: a dedicated lead agent that keeps one shared task list and hands out the work, fed by a Watcher or a schedule per source, whichever fits best. Follow the project-activity guide in the automations skill.'
-
-function ago(at: number): string {
-  const minutes = Math.max(0, Math.round((Date.now() / 1000 - at) / 60))
-  if (minutes < 1) return 'now'
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.round(minutes / 60)
-  return hours < 24 ? `${hours}h` : `${Math.round(hours / 24)}d`
-}
 
 type ActivityItem = CrewPanelFeedItem
 
@@ -53,7 +46,7 @@ function ItemDetail({ item, steps }: { item: ActivityItem; steps: string[] }) {
       {item.tasks.map((task, index) => <li key={index} className="flex gap-1.5 rounded border border-border px-1.5 py-0.5"><span className="min-w-0 flex-1 truncate text-foreground">{task.title}<span className="block text-muted-foreground">{task.agent}</span></span><span className={`shrink-0 self-center ${taskTone(task.state)}`}>{taskWords[task.state] || task.state}</span></li>)}
     </ul> : <p className="text-muted-foreground">No task yet. Use ⋯ to hand it to your agent.</p>}
     {item.history?.length ? <ul aria-label="History" className="space-y-0.5 border-l border-border pl-2">
-      {item.history.map((move, index) => <li key={index}><span className="text-foreground">{move.by || 'Your agent'}{move.step ? ` → ${move.step}` : ''}</span> <span className="text-muted-foreground">{ago(move.at)}</span>{move.note && <span className="block text-muted-foreground">{move.note}</span>}</li>)}
+      {item.history.map((move, index) => <li key={index}><span className="text-foreground">{move.by || 'Your agent'}{move.step ? ` → ${move.step}` : ''}</span> <span className="text-muted-foreground">{formatRelativeSeconds(move.at)}</span>{move.note && <span className="block text-muted-foreground">{move.note}</span>}</li>)}
     </ul> : null}
     {item.url && <a href={item.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">Open<ExternalLink aria-hidden="true" className="h-2.5 w-2.5"/></a>}
   </div>
@@ -71,7 +64,7 @@ function ItemRow({ item, row, onAgent }: { item: ActivityItem; row: CrewPanelRow
           {item.step && <span className={item.done ? 'text-emerald-600 dark:text-emerald-400' : 'rounded bg-muted px-1 text-foreground'}>{item.done ? '✓ ' : ''}{item.step}</span>}
           {task ? <span className={`min-w-0 truncate ${taskTone(task.state)}`}>· {task.agent} {taskWords[task.state] || task.state}</span>
             : !item.done && !item.tasks?.length ? <span className="min-w-0 truncate">· {item.sub || 'not picked up'}</span> : null}
-          <span className="ml-auto shrink-0">{ago(item.at)}</span>
+          <span className="ml-auto shrink-0">{formatRelativeSeconds(item.at)}</span>
         </span>
       </button>
       {onAgent && <ItemMenu onPick={kind => onAgent(projectActivityItemMessage(kind, row.label, item, row.id))}/>}

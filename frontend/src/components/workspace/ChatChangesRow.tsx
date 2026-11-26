@@ -3,6 +3,7 @@ import { ChevronRight, Clock, FileDiff, FileText, Folder, FolderOpen, Github, Gi
 import api from '../../services/api'
 import type { CrewFileLimit, CrewPanelSection, CrewPanelRow } from '../../products/work/useCrewPanel'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
+import { formatRelativeSeconds } from '../../utils/relativeTime'
 import { WorkspaceContextRow } from './WorkspaceContextCard'
 
 const states = ['open', 'closed'] as const
@@ -10,13 +11,7 @@ const DAY = 24 * 60 * 60
 
 /** "now", "5m ago", "3h ago", "4d ago", "5w ago", "7mo ago" from Unix seconds. */
 export function gitAgo(at: number, now = Date.now() / 1000) {
-  const s = Math.max(0, now - at)
-  if (s < 60) return 'now'
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < DAY) return `${Math.floor(s / 3600)}h ago`
-  if (s < 14 * DAY) return `${Math.floor(s / DAY)}d ago`
-  if (s < 60 * DAY) return `${Math.floor(s / (7 * DAY))}w ago`
-  return `${Math.floor(s / (30 * DAY))}mo ago`
+  return formatRelativeSeconds(at, { nowSeconds: now, style: 'long' })
 }
 
 /** The remote check is worth mentioning once it is more than a day old. */

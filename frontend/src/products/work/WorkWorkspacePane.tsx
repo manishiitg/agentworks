@@ -1,23 +1,20 @@
 import { encodeSharedAssetPath } from '../../utils/sharedLinks'
 import { useAgentInboxEnabled } from '../../components/integrations/AgentInboxPanel'
-import { crewMenuTarget, crewProjectMenuItems } from './crewProjectMenu'
+import { crewProjectMenuItems } from './crewProjectMenu'
+import { findAdmittedCrewMenuItem, navigateCrewMenuItem } from './crewMenuNavigation'
 import { isLocalDeployment } from '../productSurfaceConfig'
 import { projectMenuHistoryScope, useProjectMenuHistoryStore } from '../../stores/useProjectMenuHistoryStore'
-import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { workWorkspacePanels } from './workWorkspacePanels'
 import { WorkContextPanel } from './WorkContextPanel'
 import { WorkspacePanelHeader } from '../../components/workspace/WorkspacePanelHeader'
 import { WorkspacePanelNavigationProvider } from '../../components/workspace/WorkspacePanelNavigation'
 import { Suspense, lazy, memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { DollarSign, Laptop, Settings } from 'lucide-react'
 import { DashboardCreateDraftButton } from '../../components/workflow/DashboardEmptyState'
 import { TooltipProvider } from '../../components/ui/tooltip'
 import { TeamMonitor } from '../../components/workspace/TeamMonitor'
-import { WorkspaceToolbarFrame } from '../../components/workspace/WorkspaceToolbarFrame'
 import { setWorkspaceViewTarget, useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
 import { useRegisterPanelSwitcher } from '../../stores/usePanelSwitcherStore'
-import { WorkspaceToolbarButton } from '../../components/workspace/WorkspaceToolbarButton'
 import api, { agentApi } from '../../services/api'
 import type { PresetLLMConfig } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
@@ -86,15 +83,17 @@ export const WorkWorkspaceToolbar = memo(function WorkWorkspaceToolbar({ project
   ], (key, section) => {
     if (key === 'context') { onViewChange('context'); return }
     const raw = key === 'mcp:slack' ? (isLocalDeployment() ? 'mcp:slack-account' : 'mcp:slack-bot') : section ? key + ':' + section : key
-    const current = useAuthStore.getState().user
-    const item = crewProjectMenuItems({ panels: admitted, allowedProducts: current?.allowed_products, enabledPanels, incomingEmail, projectId }).find(candidate => candidate.id === raw)
-    if (!item || current?.id !== user?.id) return
+    const item = findAdmittedCrewMenuItem(raw, {
+      panels: admitted,
+      enabledPanels,
+      incomingEmail,
+      projectId,
+      userId: user?.id,
+      serverId: server,
+    })
+    if (!item) return
     useProjectMenuHistoryStore.getState().visit(projectMenuHistoryScope(server || 'local', user?.id || 'pending', product.profileId, projectId || workspacePath), item.id)
-    if (item.external) { openProductWorkspace(item.external); return }
-    if (!item.view) return
-    if (item.view === 'files') setWorkspaceViewTarget('files', 'browse')
-    else if (item.target) setWorkspaceViewTarget(crewMenuTarget(item.view), item.target)
-    onViewChange(item.view)
+    navigateCrewMenuItem(item, { projectId, workspacePath, onOpen: onViewChange })
   })
 
   return <div data-tour="work-tools" className="order-last ml-auto flex shrink-0 items-center gap-1">
@@ -197,6 +196,46 @@ export function WorkBrowserPanel({ tabId, workspacePath }: { tabId: string; work
   )
 }
 
+function WorkHistoryPane({
+  workspacePath,
+  profileId,
+  projectId,
+  itemNoun,
+  activeSessionId,
+  onSelectSession,
+}: {
+  workspacePath: string
+  profileId: 'work'
+  projectId: string
+  itemNoun: string
+  activeSessionId?: string
+  onSelectSession: ReturnType<typeof useResumePreviousChat>
+}) {
+  const canonicalSessionId = useChatStore(state => Object.values(state.chatTabs).find(tab =>
+    tab.metadata?.agentProfileId === profileId &&
+    tab.metadata?.agentProfileProjectId === projectId &&
+    tab.metadata?.agentProfileConversationKey === projectId &&
+    tab.metadata?.isViewOnly !== true,
+  )?.sessionId)
+
+  return <div className="flex h-full min-h-0 flex-col"><PreviousChatHistoryPanel
+    workspacePath={workspacePath}
+    activeSessionId={canonicalSessionId || activeSessionId}
+    title="Chat history"
+    emptyText={`No earlier chats for this ${itemNoun}.`}
+    recentOnly
+    includeAutomationChats
+    allowOpen
+    openOnRowClick
+    runEntityType="product"
+    productTriggerScope={{ profileId, projectId }}
+    fill
+    showAll
+    actionLabel="Open"
+    onSelectSession={onSelectSession}
+  /></div>
+}
+
 export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, filesPath, filesName, projectId, projectTitle, projectIdentity, tabId, view, enabledPanels, projectLLMConfig, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onAppsSaved, onSelectedServersChange, onSelectedSkillsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared, onOpenChat, showShell = false }: { showShell?: boolean; workspacePath: string; filesPath?: string; filesName?: string; projectId: string; projectTitle: string; projectIdentity?: ProductIdentity; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onAppsSaved?: () => void; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; onOpenChat?: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
   const readOnly = Boolean(shared)
   const accountKey = useAuthStore(state => `${state.user?.id || ''}:${state.user?.can_edit}`)
@@ -247,22 +286,17 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   // the Team shares. The server leaves out team-setup.json, the Team's internal copy of the Crew setup.
   // A Crew's workflow code shows under Files › Workflows for its Builder (#4151); its files live at Workflow/<id>/code.
   const showWorkflowCode = product.profileId === 'work' && !readOnly
-  const serverFiles = <FileWorkspacePane showGit sourceControl={false} editorWorkspace={readOnly ? undefined : workspacePath} workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? undefined : ['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault={!usesExistingFolder} rootName={filesName} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel"
+  const renderServerFiles = () => <FileWorkspacePane showGit sourceControl={false} editorWorkspace={readOnly ? undefined : workspacePath} workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? undefined : ['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault={!usesExistingFolder} rootName={filesName} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel"
     treeFooter={showWorkflowCode ? <WorkflowCodeFolders projectId={projectId} onOpen={filePath => { void openProjectFile(filePath) }} /> : undefined}
     keepOpenRoots={showWorkflowCode ? ['Workflow'] : undefined} />
   const contextPanels = workWorkspacePanels({ profileId: product.profileId, readOnly: Boolean(readOnly), showShell, enabledPanels })
+  const admittedPanels = [...contextPanels.views, ...contextPanels.ops, ...contextPanels.setup]
   // The dashboard's only link to the chat beside it: a stable callback, so
   // nothing on the chat side re-renders or re-runs the dashboard.
   const sendDashboardMessage = useCallback(async (message: string) => ({
     status: 'queued' as const,
     ...await ask(`From this project's dashboard:\n\n${message}`),
   }), [ask])
-  const canonicalSessionId = useChatStore(state => Object.values(state.chatTabs).find(tab =>
-    tab.metadata?.agentProfileId === product.profileId &&
-    tab.metadata?.agentProfileProjectId === projectId &&
-    tab.metadata?.agentProfileConversationKey === projectId &&
-    tab.metadata?.isViewOnly !== true,
-  )?.sessionId)
 
   const openProjectFile = async (filePath: string) => {
     selectFilesView('browse')
@@ -307,10 +341,10 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
     <div className="relative flex h-full min-h-0 flex-col bg-background">
       {/* The Access page has its own back arrow and tab bar, the same in the Mac app and on the website (owner, 5 Nov). */}
       {paneTab && <CodePaneTabs active={paneTab} showTerminal={showShell} onSelect={selectPaneTab} onClose={() => onViewChange('context')} />}
-      {!(view === 'mcp' && accessPage) && !ownHeaderView && <WorkspacePanelHeader workspacePath={workspacePath} view={view} title={view === 'context' ? 'Project menu' : [...contextPanels.views, ...contextPanels.ops, ...contextPanels.setup].find(panel => panel.id === view)?.label ?? view} contextAllowed={!readOnly && !paneTab} onBack={() => onViewChange('context')} />}
+      {!(view === 'mcp' && accessPage) && !ownHeaderView && <WorkspacePanelHeader workspacePath={workspacePath} view={view} title={view === 'context' ? 'Project menu' : admittedPanels.find(panel => panel.id === view)?.label ?? view} contextAllowed={!readOnly && !paneTab} onBack={() => onViewChange('context')} />}
       <div className="min-h-0 flex-1 overflow-hidden">
-        {view==='context' && <WorkContextPanel reviewSessionId={activeSessionId} workspacePath={workspacePath} projectId={projectId} profileId={product.profileId} panels={[...contextPanels.views,...contextPanels.ops,...contextPanels.setup]} onOpen={onViewChange} enabledPanels={enabledPanels} dashboardChatTarget={product.profileId === 'work' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }}/>}
-        {view === 'files' && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{filesView.kind === 'preview' ? <div className="h-full min-w-0 overflow-auto"><SharedFilePreview key={filesView.path} previewWorkspace={workspacePath} encodedPath={encodeSharedAssetPath(filesView.path)} onBack={() => selectFilesView('browse')} /></div> : filesView.kind === 'pr' && activeSessionId ? <PullRequestPanel key={`${accessKey}:${activeSessionId}:${filesView.repository}#${filesView.number}`} target={filesView} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBack={() => selectFilesView('review')} /> : filesView.kind === 'saved' ? <ReplyFileViewer key={JSON.stringify(filesView.selection)} selection={filesView.selection} tabId={tabId} onBack={() => selectFilesView('review')} /> : filesView.kind === 'reply' ? <ReplyChangesPanel key={`${accessKey}:${activeSessionId}:${filesView.reference.snapshotId}:${filesView.reference.checkoutId || ''}:${filesView.reference.historyScope || ''}`} reference={filesView.reference} tabId={tabId} onBrowse={() => selectFilesView('browse')} /> : filesView.kind === 'folder' ? <FileWorkspacePane key={`${accessKey}:folder:${filesView.repoRoot}`} showGit sourceControl={false} editorWorkspace={readOnly ? undefined : workspacePath} workspacePath={`${filesPath || workspacePath}/${filesView.repoRoot}`} onAsk={async message => { await ask(message) }} hiddenRootFolders={['.git', 'node_modules']} rootName={filesView.repoRoot.split('/').pop() || filesView.repoRoot} title={filesView.repoRoot} headerAction={<button type="button" onClick={() => selectFilesView('browse')} className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">All files</button>} hideAddToChat hideRootActions editable testId="work-files-folder" /> : filesView.kind === 'changes' && activeSessionId ? <ChatFileReview onAsk={async message => { await ask(message) }} key={`${accessKey}:${activeSessionId}:${filesView.outsideGit}:${filesView.uncommitted}:${filesView.repoRoot}:${filesView.project}:${filesView.checkoutId}`} projectHistory={filesView.project} allChat={!filesView.project && !filesView.outsideGit && !filesView.uncommitted} initialCheckoutId={filesView.checkoutId} outsideGit={filesView.outsideGit} initialRepoRoot={filesView.repoRoot} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBrowse={() => selectFilesView('browse')} /> : product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={serverFiles} onAsk={async message => { await ask(message) }} /> : serverFiles}</Suspense>}
+        {view==='context' && <WorkContextPanel reviewSessionId={activeSessionId} workspacePath={workspacePath} projectId={projectId} profileId={product.profileId} panels={admittedPanels} onOpen={onViewChange} enabledPanels={enabledPanels} dashboardChatTarget={product.profileId === 'work' ? { tabId } : { profileId: product.profileId, conversationKey: projectId }}/>}
+        {view === 'files' && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}>{filesView.kind === 'preview' ? <div className="h-full min-w-0 overflow-auto"><SharedFilePreview key={filesView.path} previewWorkspace={workspacePath} encodedPath={encodeSharedAssetPath(filesView.path)} onBack={() => selectFilesView('browse')} /></div> : filesView.kind === 'pr' && activeSessionId ? <PullRequestPanel key={`${accessKey}:${activeSessionId}:${filesView.repository}#${filesView.number}`} target={filesView} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBack={() => selectFilesView('review')} /> : filesView.kind === 'saved' ? <ReplyFileViewer key={JSON.stringify(filesView.selection)} selection={filesView.selection} tabId={tabId} onBack={() => selectFilesView('review')} /> : filesView.kind === 'reply' ? <ReplyChangesPanel key={`${accessKey}:${activeSessionId}:${filesView.reference.snapshotId}:${filesView.reference.checkoutId || ''}:${filesView.reference.historyScope || ''}`} reference={filesView.reference} tabId={tabId} onBrowse={() => selectFilesView('browse')} /> : filesView.kind === 'folder' ? <FileWorkspacePane key={`${accessKey}:folder:${filesView.repoRoot}`} showGit sourceControl={false} editorWorkspace={readOnly ? undefined : workspacePath} workspacePath={`${filesPath || workspacePath}/${filesView.repoRoot}`} onAsk={async message => { await ask(message) }} hiddenRootFolders={['.git', 'node_modules']} rootName={filesView.repoRoot.split('/').pop() || filesView.repoRoot} title={filesView.repoRoot} headerAction={<button type="button" onClick={() => selectFilesView('browse')} className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">All files</button>} hideAddToChat hideRootActions editable testId="work-files-folder" /> : filesView.kind === 'changes' && activeSessionId ? <ChatFileReview onAsk={async message => { await ask(message) }} key={`${accessKey}:${activeSessionId}:${filesView.outsideGit}:${filesView.uncommitted}:${filesView.repoRoot}:${filesView.project}:${filesView.checkoutId}`} projectHistory={filesView.project} allChat={!filesView.project && !filesView.outsideGit && !filesView.uncommitted} initialCheckoutId={filesView.checkoutId} outsideGit={filesView.outsideGit} initialRepoRoot={filesView.repoRoot} workspacePath={workspacePath} sessionId={activeSessionId} tabId={tabId} onBrowse={() => selectFilesView('browse')} /> : product.profileId === 'work' ? <CodeFilesPanel key={activeSessionId || workspacePath} sessionId={activeSessionId || ''} serverFiles={renderServerFiles()} onAsk={async message => { await ask(message) }} /> : renderServerFiles()}</Suspense>}
         {view === 'shell' && showShell && <Suspense fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">Loading…</div>}><div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><CodeShellPanel projectId={projectId} chatContextTabId={product.profileId === 'work' ? tabId : undefined} /></div></div></Suspense>}
         {(view === 'identity' || view === 'memory') && <WorkIdentityPanel
 
@@ -375,22 +409,14 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           {view === 'database' && <DatabaseView workspacePath={workspacePath} />}
           {view === 'browser' && <WorkBrowserPanel tabId={tabId} workspacePath={workspacePath} />}
           {view === 'costs' && <CostsPopup projectMode workspacePath={workspacePath} runFolders={[]} selectedRunFolder={null} emptyHint="Send a message to see this project's usage here." />}
-          {view === 'history' && <div className="flex h-full min-h-0 flex-col"><PreviousChatHistoryPanel
-              workspacePath={workspacePath}
-              activeSessionId={canonicalSessionId || activeSessionId}
-              title="Chat history"
-              emptyText={`No earlier chats for this ${product.itemNoun}.`}
-              recentOnly
-              includeAutomationChats
-              allowOpen
-              openOnRowClick
-              runEntityType="product"
-              productTriggerScope={{ profileId: product.profileId, projectId }}
-              fill
-              showAll
-              actionLabel="Open"
-              onSelectSession={openHistoryChat}
-            /></div>}
+          {view === 'history' && <WorkHistoryPane
+            workspacePath={workspacePath}
+            profileId={product.profileId}
+            projectId={projectId}
+            itemNoun={product.itemNoun}
+            activeSessionId={activeSessionId}
+            onSelectSession={openHistoryChat}
+          />}
           {view === 'workflow' && (canEditConnections
             ? <CrewWorkflowPage projectId={projectId} chatTabId={tabId} onBack={() => onViewChange('context')} />
             : <p className="p-6 text-sm text-muted-foreground">{projectAccess?.key !== accessKey ? 'Loading…' : 'Open this project’s chat or dashboard.'}</p>)}
