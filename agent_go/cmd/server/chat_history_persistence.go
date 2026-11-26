@@ -3574,7 +3574,9 @@ func defaultCodingAgentResumeFlag(provider string) string {
 	}
 }
 
-func normalizeRestoredChatHistoryConversationPath(userID, conversationPath string) (string, bool) {
+// cleanRestoredChatHistoryPath turns any spelling of a restored conversation path (absolute, under workspace-docs,
+// with ./ or ../ segments) into its workspace-relative form. ok is false for a path outside the workspace.
+func cleanRestoredChatHistoryPath(conversationPath string) (string, bool) {
 	conversationPath = strings.TrimSpace(filepath.ToSlash(conversationPath))
 	if conversationPath == "" {
 		return "", false
@@ -3591,6 +3593,14 @@ func normalizeRestoredChatHistoryConversationPath(userID, conversationPath strin
 	conversationPath = strings.TrimPrefix(conversationPath, "/")
 	cleaned := pathpkg.Clean(conversationPath)
 	if cleaned == "." || strings.HasPrefix(cleaned, "../") || cleaned == ".." {
+		return "", false
+	}
+	return cleaned, true
+}
+
+func normalizeRestoredChatHistoryConversationPath(userID, conversationPath string) (string, bool) {
+	cleaned, ok := cleanRestoredChatHistoryPath(conversationPath)
+	if !ok {
 		return "", false
 	}
 	userRoot := chatHistoryRoot(userID)

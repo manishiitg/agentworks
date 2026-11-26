@@ -258,8 +258,9 @@ func workflowAccessForBotRouteClaims(claims *UserClaims, m *WorkflowManifest) (W
 // workflowAccessForWorkspacePath reads the manifest at workspacePath and
 // resolves access. A folder without a manifest (a workflow being created)
 // answers with the account tier and a nil manifest.
+// It reads without saving read-time migrations: checking whether someone may open a workflow must never write to it.
 func workflowAccessForWorkspacePath(ctx context.Context, claims *UserClaims, workspacePath string) (WorkflowAccessLevel, *WorkflowManifest) {
-	manifest, exists, err := ReadWorkflowManifest(ctx, workspacePath)
+	manifest, exists, err := readWorkflowManifest(ctx, workspacePath, false)
 	if errors.Is(err, errUnsupportedWorkflowKind) {
 		return WorkflowAccessNone, nil
 	}

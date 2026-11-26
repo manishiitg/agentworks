@@ -114,12 +114,25 @@ func TestParseWorkflowBuilderHistoryUsesPersistedAuthor(t *testing.T) {
 	}
 }
 
+// Every spelling of a workflow's conversation file names that workflow, so restoring it checks the workflow's access
+// and the chat's owner. The older builder/<file>.json form and absolute or ../ spellings used to skip both checks and
+// could replay or reattach another person's terminal.
 func TestWorkflowPathFromBuilderConversation(t *testing.T) {
-	path := "Workflow/demo/builder/conversation/2026-09-08/session-abc-conversation.json"
-	if got := workflowPathFromBuilderConversation(path); got != "Workflow/demo" {
-		t.Fatalf("workflow path = %q", got)
+	for path, want := range map[string]string{
+		"Workflow/demo/builder/conversation/2026-09-08/session-abc-conversation.json": "Workflow/demo",
+		"Workflow/demo/builder/old-session.json":                                      "Workflow/demo",
+		"/Workflow/demo/builder/old-session.json":                                     "Workflow/demo",
+		"Workflow/other/../demo/builder/old-session.json":                             "Workflow/demo",
+		"x/workspace-docs/Workflow/demo/builder/old-session.json":                     "Workflow/demo",
+	} {
+		if got, isWorkflow := workflowPathFromBuilderConversation(path); got != want || !isWorkflow {
+			t.Fatalf("%s: workflow = %q (%v), want %q", path, got, isWorkflow, want)
+		}
 	}
-	if got := workflowPathFromBuilderConversation("_users/alice/chat_history/session/conversation.json"); got != "" {
+	if got, isWorkflow := workflowPathFromBuilderConversation("Workflow/demo/old-session.json"); got != "" || !isWorkflow {
+		t.Fatalf("a Workflow/ file with no Builder folder must be refused, got %q (%v)", got, isWorkflow)
+	}
+	if got, isWorkflow := workflowPathFromBuilderConversation("_users/alice/chat_history/session/conversation.json"); got != "" || isWorkflow {
 		t.Fatalf("personal path must not resolve as shared workflow: %q", got)
 	}
 }

@@ -11,7 +11,6 @@ import (
 // A consumer-scoped endpoint; aliases resolve only through that consumer's
 // current authorized attachments. It never accepts a caller-supplied host path.
 func (api *StreamingAPI) handleWorkflowKnowledgebaseSources(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return

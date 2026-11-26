@@ -454,7 +454,6 @@ func runSummarySortTime(metadata *RunMetadata) int64 {
 // handleGetWorkflowsSummary returns lightweight summaries for multiple workflows in one call.
 // GET /api/workflows/summary?workspace_paths=path1,path2,...
 func (api *StreamingAPI) handleGetWorkflowsSummary(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -564,7 +563,6 @@ func (api *StreamingAPI) handleGetWorkflowsSummary(w http.ResponseWriter, r *htt
 // handleGetWorkflowsOverview returns richer overview rows for multiple workflows in one call.
 // GET /api/workflows/overview?workspace_paths=path1,path2,...
 func (api *StreamingAPI) handleGetWorkflowsOverview(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return

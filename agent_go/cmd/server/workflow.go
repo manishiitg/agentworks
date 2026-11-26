@@ -871,7 +871,6 @@ func deleteWorkflowRuntime(presetQueryID string) {
 
 // handleCreateWorkflow handles workflow creation (in-memory runtime state).
 func (api *StreamingAPI) handleCreateWorkflow(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -927,7 +926,6 @@ func (api *StreamingAPI) handleCreateWorkflow(w http.ResponseWriter, r *http.Req
 
 // handleGetWorkflowStatus handles getting workflow status (in-memory runtime state).
 func (api *StreamingAPI) handleGetWorkflowStatus(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -976,7 +974,6 @@ func (api *StreamingAPI) handleGetWorkflowStatus(w http.ResponseWriter, r *http.
 
 // handleUpdateWorkflow handles workflow updates (in-memory runtime state).
 func (api *StreamingAPI) handleUpdateWorkflow(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return

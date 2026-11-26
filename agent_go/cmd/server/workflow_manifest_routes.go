@@ -19,18 +19,10 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
-// setCORS sets permissive CORS headers shared across workflow/manifest/config route handlers.
-func setCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-}
-
 // --- List / Discovery ---
 
 // handleListWorkflowManifests returns all workflows discovered from workspace manifests.
 func (api *StreamingAPI) handleListWorkflowManifests(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -58,7 +50,6 @@ func (api *StreamingAPI) handleListWorkflowManifests(w http.ResponseWriter, r *h
 
 // handleGetWorkflowManifest returns the manifest for a specific workspace.
 func (api *StreamingAPI) handleGetWorkflowManifest(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -70,6 +61,12 @@ func (api *StreamingAPI) handleGetWorkflowManifest(w http.ResponseWriter, r *htt
 		return
 	}
 
+	// Access first, from a read that saves nothing: a person who may not open this workflow must not cause a write
+	// to its workflow.json (read-time migrations) or learn why it fails to load.
+	if access, _ := workflowAccessForWorkspacePath(r.Context(), GetUserFromContext(r.Context()), workspacePath); access == WorkflowAccessNone {
+		writeWorkflowPermissionDenied(w, "read")
+		return
+	}
 	manifest, exists, err := ReadWorkflowManifest(r.Context(), workspacePath)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to read manifest: %v", err), http.StatusInternalServerError)
@@ -117,7 +114,6 @@ func enforceDeploymentBrowserCapability(capabilities *WorkflowCapabilities) erro
 }
 
 func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -262,7 +258,6 @@ func mergeWorkflowCapabilitiesUpdate(existing WorkflowCapabilities, incoming *Wo
 }
 
 func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -449,7 +444,6 @@ func normalizeWorkflowFolderGrants(requested, previous []workflowtypes.WorkflowF
 // --- Delete manifest ---
 
 func (api *StreamingAPI) handleDeleteWorkflowManifest(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -499,7 +493,6 @@ type DeleteWorkflowFolderRequest struct {
 }
 
 func (api *StreamingAPI) handleDeleteWorkflowFolder(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -621,7 +614,6 @@ type DuplicateWorkflowManifestRequest struct {
 }
 
 func (api *StreamingAPI) handleDuplicateWorkflowManifest(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -746,10 +738,6 @@ func (api *StreamingAPI) resolveWorkspacePathFromPreset(ctx context.Context, pre
 
 	return "", fmt.Errorf("workflow %s not found in discovered manifests", presetQueryID)
 }
-
-// --- Helper: check if a setCORS-like helper already exists ---
-// The existing workflow handlers use inline CORS headers. This centralizes it.
-// For backward compatibility we keep inline CORS in existing handlers untouched.
 
 // LoadManifestForExecution loads workflow defaults from manifest for use in execution bootstrap.
 // Returns parsed capabilities that can be applied to the agent request.
