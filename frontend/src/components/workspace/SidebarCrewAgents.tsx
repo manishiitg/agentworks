@@ -321,19 +321,22 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const between = (before: string | null) => {
     if (!mixed || !draggedTop || draggedTop === before) return null
     const id = 'between:' + (before ?? 'end')
-    return <div data-sidebar-drop-before={before ?? ''} title="Drop here to reorder"
-      className={`mx-1 h-2 rounded ${dropOn === id ? 'bg-primary' : 'bg-border/40'}`}
-      onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDropOn(id) }}
-      onDragLeave={() => setDropOn(current => current === id ? '' : current)}
-      onDrop={event => {
-        event.preventDefault()
-        if (draggedRoot?.key && groupOf(draggedRoot)) {
-          void edit({ op: 'move', key: draggedRoot.key, group: '' }).then(error => {
-            if (!error) reorderTop(draggedTop, before, [...topIds, draggedTop])
-          })
-        } else reorderTop(draggedTop, before)
-        setDragging(null); setDraggingGroup(null); setDropOn('')
-      }} />
+    // Zero-height overlay so appearing on dragstart never shifts rows below out from under the cursor (#4152).
+    return <div className="relative !mt-0 h-0">
+      <div data-sidebar-drop-before={before ?? ''} title="Drop here to reorder"
+        className={`absolute inset-x-1 -top-1 z-20 h-2 rounded ${dropOn === id ? 'bg-primary' : 'bg-border/40'}`}
+        onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDropOn(id) }}
+        onDragLeave={() => setDropOn(current => current === id ? '' : current)}
+        onDrop={event => {
+          event.preventDefault()
+          if (draggedRoot?.key && groupOf(draggedRoot)) {
+            void edit({ op: 'move', key: draggedRoot.key, group: '' }).then(error => {
+              if (!error) reorderTop(draggedTop, before, [...topIds, draggedTop])
+            })
+          } else reorderTop(draggedTop, before)
+          setDragging(null); setDraggingGroup(null); setDropOn('')
+        }} />
+    </div>
   }
   const nameBox = (label: string, save: (name: string) => Promise<string>) => naming && <div className="px-1 py-0.5">
     <input autoFocus aria-label={label} value={naming.draft} placeholder="Group name" className={nameInput}
