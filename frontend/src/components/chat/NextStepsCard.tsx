@@ -41,10 +41,24 @@ export function NextStepsSlot({ tabId, children }: { tabId: string; children: Re
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '')
 
-export function NextStepsCard({ steps, onPick, onDismiss, onTurnOff }: { steps: NextSteps; onPick: (text: string) => void; onDismiss: () => void; onTurnOff?: () => void }) {
+export function NextStepsCard({ steps, onPick, onDismiss, onTurnOff, onTurnOn }: { steps: NextSteps; onPick: (text: string) => void; onDismiss: () => void; onTurnOff?: () => void; onTurnOn?: () => void }) {
   const ref = useRef<HTMLElement>(null)
+  const [off, setOff] = useState(false)
   // It appears as the reply ends; bring it into view the way the reply itself was.
   useEffect(() => { ref.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }) }, [])
+  // Owner, 26 Nov: after Turn off, say briefly where it turns back on (with Undo), then hide.
+  const dismissRef = useRef(onDismiss)
+  dismissRef.current = onDismiss
+  useEffect(() => {
+    if (!off) return
+    const timer = window.setTimeout(() => dismissRef.current(), 6000)
+    return () => window.clearTimeout(timer)
+  }, [off])
+  if (off) return <p role="status" data-testid="next-steps-off-note" className="my-3 flex flex-wrap items-center gap-x-2 px-1 text-xs text-muted-foreground">
+    <span>Next steps are off for this chat. Turn them back on in the mode menu › Replies.</span>
+    {onTurnOn && <button type="button" onClick={() => { setOff(false); onTurnOn() }} data-testid="next-steps-undo-off"
+      className="rounded px-1 text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Undo</button>}
+  </p>
   return <section ref={ref} aria-label="Summary and next steps" data-testid="next-steps-card"
     className="my-3 rounded-xl border border-border bg-background px-3.5 py-3 text-sm shadow-sm">
     <div className="flex items-start gap-2">
@@ -65,7 +79,7 @@ export function NextStepsCard({ steps, onPick, onDismiss, onTurnOff }: { steps: 
         {index === 0 && <kbd aria-hidden="true" className="rounded border border-background/30 px-1 text-[10px] leading-4">{isMac ? '⌘↵' : 'Ctrl↵'}</kbd>}
       </button>)}
       {/* Owner, 26 Nov: a quiet "Turn off" on the answers' row; where it turns back on is in its tooltip. */}
-      {onTurnOff && <button type="button" onClick={onTurnOff} data-testid="next-steps-turn-off"
+      {onTurnOff && <button type="button" onClick={() => { setOff(true); onTurnOff() }} data-testid="next-steps-turn-off"
         title="Stop these cards in this chat. Turn them back on in the mode menu › Replies."
         className="ml-auto self-end rounded px-1 text-[11px] text-muted-foreground/70 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Turn off</button>}
     </div>

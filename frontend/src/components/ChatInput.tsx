@@ -3049,7 +3049,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           padding small so the last message and the composer read as one column. */}
       <ChatComposerArea product={isProductSurface} className={inputPadX}>
         <ChatComposerForm product={isProductSurface} onSubmit={handleSubmit} aboveCard={<>
-          {nextSteps.steps && activeTabId && <NextStepsSlot tabId={activeTabId}><NextStepsCard steps={nextSteps.steps} onDismiss={nextSteps.dismiss} onPick={text => { nextSteps.dismiss(); void routeSubmit(text) }} onTurnOff={tabSessionId ? () => { nextSteps.dismiss(); void changeChatContext(tabSessionId, { next_steps: false }) } : undefined} /></NextStepsSlot>}
+          {nextSteps.steps && activeTabId && <NextStepsSlot tabId={activeTabId}><NextStepsCard steps={nextSteps.steps} onDismiss={nextSteps.dismiss} onPick={text => { nextSteps.dismiss(); void routeSubmit(text) }} onTurnOff={tabSessionId ? () => { void changeChatContext(tabSessionId, { next_steps: false }) } : undefined} onTurnOn={tabSessionId ? () => { void changeChatContext(tabSessionId, { next_steps: true }) } : undefined} /></NextStepsSlot>}
           <div ref={setMicBannerHost} className="empty:hidden" />
           {onlineAgentTab && <p role="note" data-testid="online-agent-files-note" className="mx-3 my-1 text-xs text-muted-foreground">{ONLINE_AGENT_FILES_LINE}</p>}
           {requestedSkillId && <div className="mx-3 my-1 flex items-center gap-2 text-xs">
