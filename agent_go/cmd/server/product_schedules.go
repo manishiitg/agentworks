@@ -1098,7 +1098,11 @@ func (s *ProjectActionDispatcher) Trigger(ctx context.Context, userID, jobID str
 	started := make(chan result, 1)
 	go func() {
 		sessionID, err := s.Run(context.Background(), job, "manual", time.Time{}, func(sessionID string) {
-			started <- result{sessionID: sessionID}
+			// Never block the run: only the first report is read.
+			select {
+			case started <- result{sessionID: sessionID}:
+			default:
+			}
 		})
 		select {
 		case started <- result{sessionID: sessionID, err: err}:

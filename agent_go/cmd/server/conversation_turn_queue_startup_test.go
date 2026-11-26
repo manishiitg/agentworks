@@ -198,5 +198,20 @@ func TestQueuedTurnPanicLeavesTheChatUsable(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	// The panicked message is failed, not left started where it never runs
+	// again and the queue retries around it for good.
+	stored, err := api.readConversationTurnQueue(context.Background(), owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := false
+	for _, row := range stored {
+		if row.Request.Query == "first" {
+			failed = row.StartedAt == nil && row.DeliveryFailedAt != nil
+		}
+	}
+	if !failed {
+		t.Fatal("the message whose dispatch panicked was not marked failed")
+	}
 	send("second")
 }
