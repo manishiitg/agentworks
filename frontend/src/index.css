@@ -1819,3 +1819,139 @@ html[data-appearance] aside[aria-label="Projects"] { background: hsl(var(--appea
   --app-code-font: ui-monospace, monospace;
   --app-code-size: 12px;
 }
+
+/* Shared markdown and conversation prose styles (defined once instead of injecting a <style> tag per message). */
+.markdown-content ul,
+.markdown-content ol {
+  list-style-position: outside;
+  margin-left: 0;
+  padding-left: 1.5rem;
+}
+.markdown-content ul {
+  list-style-type: disc;
+}
+.markdown-content ol {
+  list-style-type: decimal;
+}
+.markdown-content li {
+  padding-left: 0.25rem;
+}
+.markdown-content ul ul {
+  padding-left: 1.25rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+.markdown-content ul ul ul {
+  padding-left: 1.25rem;
+  margin-top: 0.125rem;
+  margin-bottom: 0.125rem;
+}
+.markdown-content ol ol {
+  padding-left: 1.25rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+.markdown-content ol ol ol {
+  padding-left: 1.25rem;
+  margin-top: 0.125rem;
+  margin-bottom: 0.125rem;
+}
+.markdown-content li > p {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+  display: block;
+}
+.markdown-content li > p:first-child {
+  margin-top: 0;
+}
+.markdown-content li > p:last-child {
+  margin-bottom: 0;
+}
+.markdown-content li ul,
+.markdown-content li ol {
+  padding-left: 1.25rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+/* Conversation answers need prose rhythm rather than the denser
+   operational typography used by reports and tool output. */
+.conversation-markdown p,
+.conversation-markdown li {
+  font-size: 0.9375rem;
+  line-height: 1.75rem;
+}
+.conversation-markdown p {
+  margin-bottom: 0.875rem;
+}
+.conversation-markdown ul,
+.conversation-markdown ol {
+  margin-top: 0.625rem;
+  margin-bottom: 1rem;
+}
+.conversation-markdown li + li {
+  margin-top: 0.375rem;
+}
+.conversation-markdown :not(pre) > code {
+  padding: 0.06rem 0.22rem;
+  font-size: 0.82em;
+  font-weight: 450;
+  line-height: inherit;
+  color: rgb(55 91 124) !important;
+  background-color: rgb(15 23 42 / 0.055) !important;
+  border: 0 !important;
+  border-radius: 0.2rem !important;
+}
+.dark .conversation-markdown :not(pre) > code,
+.dark-plus .conversation-markdown :not(pre) > code {
+  color: rgb(158 190 220) !important;
+  background-color: rgb(255 255 255 / 0.07) !important;
+}
+/* Override prose table styles for dark theme */
+.markdown-content.prose table tbody tr,
+.dark .markdown-content.prose table tbody tr,
+.dark-plus .markdown-content.prose table tbody tr {
+  background-color: transparent !important;
+}
+.markdown-content.prose table tbody tr:hover,
+.markdown-content.prose table tbody tr:focus,
+.markdown-content.prose table tbody tr:active,
+.markdown-content.prose table tbody tr.selected {
+  background-color: rgb(249 250 251) !important;
+}
+.dark .markdown-content.prose table tbody tr:hover,
+.dark-plus .markdown-content.prose table tbody tr:hover,
+.dark .markdown-content.prose table tbody tr:focus,
+.dark .markdown-content.prose table tbody tr:active,
+.dark .markdown-content.prose table tbody tr.selected,
+.dark-plus .markdown-content.prose table tbody tr:focus,
+.dark-plus .markdown-content.prose table tbody tr:active,
+.dark-plus .markdown-content.prose table tbody tr.selected,
+.dark .markdown-content.prose-invert table tbody tr:hover,
+.dark-plus .markdown-content.prose-invert table tbody tr:hover,
+.dark .markdown-content.prose-invert table tbody tr:focus,
+.dark .markdown-content.prose-invert table tbody tr:active,
+.dark .markdown-content.prose-invert table tbody tr.selected,
+.dark-plus .markdown-content.prose-invert table tbody tr:focus,
+.dark-plus .markdown-content.prose-invert table tbody tr:active,
+.dark-plus .markdown-content.prose-invert table tbody tr.selected {
+  background-color: rgb(31 41 55) !important;
+}
+.dark .markdown-content.prose table tbody tr:hover td,
+.dark .markdown-content.prose table tbody tr:focus td,
+.dark .markdown-content.prose table tbody tr:active td,
+.dark .markdown-content.prose table tbody tr.selected td,
+.dark-plus .markdown-content.prose table tbody tr:hover td,
+.dark-plus .markdown-content.prose table tbody tr:focus td,
+.dark-plus .markdown-content.prose table tbody tr:active td,
+.dark-plus .markdown-content.prose table tbody tr.selected td,
+.dark .markdown-content.prose table tbody td,
+.dark-plus .markdown-content.prose table tbody td,
+.dark .markdown-content.prose-invert table tbody td,
+.dark-plus .markdown-content.prose-invert table tbody td {
+  color: rgb(243 244 246) !important;
+}
+.dark .markdown-content.prose table tbody tr::selection,
+.dark-plus .markdown-content.prose table tbody tr::selection {
+  background-color: rgb(59 130 246) !important;
+  color: rgb(255 255 255) !important;
+}

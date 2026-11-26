@@ -1657,9 +1657,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
         aria-label="Conversation messages"
         // Render well beyond the viewport so scrolling reveals rows that are
         // already there instead of rows popping in as they mount.
-        increaseViewportBy={{ top: 1200, bottom: 600 }}
+        increaseViewportBy={VIRTUOSO_INCREASE_VIEWPORT_BY}
         initialTopMostItemIndex={initialPosition ?? 0}
-        computeItemKey={(_, item) => item.key}
+        computeItemKey={computeTranscriptItemKey}
         itemContent={(absoluteIndex, item) => {
           const index = absoluteIndex - firstItemIndex
           // Contain message margins inside the measured row. Collapsed margins
@@ -1712,7 +1712,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
             <div data-theme-chat-row="" data-transcript-key={item.key} data-testid={testId} className={`flow-root px-2 max-md:px-3 ${matchStyle}`}>
               <div className={`${AGENT_BLOCK_CLASS} ${slot.first ? 'mt-4' : ''} ${slot.last ? 'mb-2' : ''}`}>
                 {slot.first && <AssistantTurnHeader event={slot.header} label={assistantLabel} />}
-                <ChatElementDisclosureContext.Provider value={disclosureValues ? { values: disclosureValues, scope: slot.widgetScope ?? item.key } : null}>
+                <ChatElementDisclosureContext.Provider value={disclosureContextFor(disclosureValues, slot.widgetScope ?? item.key)}>
                   {displayedBody}
                 </ChatElementDisclosureContext.Provider>
                 {/* The server's active turn also owns replies before a queued user bubble. */}
@@ -1752,6 +1752,24 @@ const LiveAssistantTranscript: React.FC<{ nativeBlock?: boolean; text: string; s
     <div aria-hidden="true" className="h-px" data-testid="terminal-live-status-anchor" />
   ) : null
 )
+
+const VIRTUOSO_INCREASE_VIEWPORT_BY = { top: 1200, bottom: 600 }
+const computeTranscriptItemKey = (_: number, item: TranscriptRenderItem) => item.key
+const disclosureContextCache = new WeakMap<Map<string, boolean>, Map<string, { values: Map<string, boolean>; scope: string }>>()
+function disclosureContextFor(values: Map<string, boolean> | null | undefined, scope: string) {
+  if (!values) return null
+  let byScope = disclosureContextCache.get(values)
+  if (!byScope) {
+    byScope = new Map()
+    disclosureContextCache.set(values, byScope)
+  }
+  let ctx = byScope.get(scope)
+  if (!ctx) {
+    ctx = { values, scope }
+    byScope.set(scope, ctx)
+  }
+  return ctx
+}
 
 // Memoized: the parent re-renders on every terminal poll, and re-rendering the
 // whole transcript each time would defeat EventDispatcher's own memoization.

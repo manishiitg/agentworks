@@ -169,7 +169,9 @@ export function configureChatQueueController(send: Submit, build: Prepare, onErr
   notify = onError
   if (!subscribed) {
     subscribed = true
-    useChatStore.subscribe(schedule)
+    useChatStore.subscribe((state, prevState) => {
+      if (state.chatTabs !== prevState.chatTabs) schedule()
+    })
     useAuthStore.subscribe(schedule)
   }
   schedule()

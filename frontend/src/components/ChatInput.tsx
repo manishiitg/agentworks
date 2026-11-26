@@ -2863,7 +2863,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const backgroundWorkPill = activeTabId && tabSessionId && !hasRunFooter
     ? <BackgroundWorkPill key={`bg-${activeTabId}`} tabId={activeTabId} />
     : null
-  const [, setSendOptionsOpen] = useState(false)
+  // Compact composer controls stay inside the input card.
 
   // Check if query is valid (view-only tabs cannot submit)
   const hasValidQuery = hasComposerContent
@@ -3165,7 +3165,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   onAttach={onlineAgentTab ? undefined : openAttachmentPicker}
                   commands={commandPreview}
                   planMode={nativePlanSupported ? { on: planOn, onToggle: togglePlanMode } : undefined}
-                  onOpenChange={setSendOptionsOpen}
                   sendOptions={{
                     busy: isStreaming || transcriptTurnActive,
                     onNewChat: showNewChatAction ? onNewChat : undefined,
@@ -3534,7 +3533,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       actions={{ uploading: isUploadingFiles, onAttach: onlineAgentTab ? undefined : openAttachmentPicker,
                         commands: commandPreview,
                         planMode: nativePlanSupported ? { on: planOn, onToggle: togglePlanMode } : undefined,
-                        onOpenChange: setSendOptionsOpen,
                         // New chat in the Context section starts over; no second Clear chat here.
                         sendOptions: { busy: isStreaming || transcriptTurnActive },
                       }} /></Suspense>
@@ -3576,7 +3574,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         onSend={handleSendButtonClick}
                         onOpenCommands={!compactComposerActions && productCommandsAvailable ? openCommandMenu : undefined}
                         onNewChat={showNewChatAction ? onNewChat : undefined}
-                        onOpenChange={setSendOptionsOpen}
                       />
                       </Suspense></span>}
                     </div>
@@ -3602,7 +3599,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         setTimeout(() => textareaRef.current?.focus(), 0)
       }} />}
       {/* Command Selection Dialog */}
-      <CommandSelectionDialog
+      {showCommandDialog && <CommandSelectionDialog
         isOpen={showCommandDialog}
         onClose={handleCommandDialogClose}
         onSelectCommand={handleCommandSelect}
@@ -3620,18 +3617,18 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           onEditCommand: handleEditCommand,
           onDeleteCommand: handleDeleteCommand,
         })}
-      />
+      />}
 
       {/* Command Editor Dialog */}
-      <CommandEditorDialog
+      {showCommandEditor && <CommandEditorDialog
         isOpen={showCommandEditor}
         onClose={handleCommandEditorClose}
         editingCommand={editingUserCommand}
         workspacePath={customCommandWorkspacePath}
-      />
+      />}
 
       {/* File Selection Dialog */}
-      <FileSelectionDialog
+      {showFileDialog && <FileSelectionDialog
         isOpen={showFileDialog}
         onClose={handleFileDialogClose}
         onSelectFile={handleFileSelect}
@@ -3643,10 +3640,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         position={fileDialogPosition}
         extraFiles={extraAtFiles}
         files={profileAtRoot ? (profileAtFiles ?? []) : undefined}
-      />
+      />}
 
       {/* Crew references (#) */}
-      <CrewReferencePicker
+      {showCrewReferences && <CrewReferencePicker
         ref={crewReferencePickerRef}
         isOpen={showCrewReferences}
         onClose={closeComposerPickers}
@@ -3655,10 +3652,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         onActiveOptionChange={setActiveReferenceOption}
         searchQuery={crewReferenceSearch}
         position={crewReferencesPosition}
-      />
+      />}
 
       {/* Inline Skill Selection Popup */}
-      <InlineSelectionPopup
+      {showSkillPopup && <InlineSelectionPopup
         isOpen={showSkillPopup}
         onClose={handleSkillPopupClose}
         onToggleItem={handleSkillPopupToggle}
@@ -3669,10 +3666,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         icon={<Wand2 className="w-4 h-4 text-muted-foreground" />}
         emptyMessage="No skills available"
         isLoading={skillsLoading}
-      />
+      />}
 
       {/* Inline Server Selection Popup */}
-      <InlineSelectionPopup
+      {showServerPopup && <InlineSelectionPopup
         isOpen={showServerPopup}
         onClose={handleServerPopupClose}
         onToggleItem={handleServerPopupToggle}
@@ -3682,7 +3679,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         title="MCP Servers"
         icon={<Server className="w-4 h-4 text-muted-foreground" />}
         emptyMessage="No MCP servers available"
-      />
+      />}
 
       {/* Slash command dialogs */}
       {showSkillImport && (
