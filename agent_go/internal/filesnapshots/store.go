@@ -777,9 +777,41 @@ func (s Store) prune(ctx context.Context) {
 		removed = true
 	}
 	if removed {
-		s.dropViews(ctx)
-		_ = s.command(ctx, "gc", "--prune=now", "--quiet").Run()
+		_ = os.WriteFile(s.gcPendingPath(), nil, 0o600)
 	}
+	s.collectGarbage(ctx, time.Now())
+}
+
+// gcEvery spaces out reclaiming expired replies' files. Git rewrites the
+// whole private store to do it (640 MB, about 4-5 s on a large Crew), and it
+// runs under the store gate, so doing it after every reply made the next
+// send in the Crew wait (#4080). Expired replies' records and refs are still
+// removed at once; only the disk space comes back later.
+const gcEvery = 24 * time.Hour
+
+func (s Store) gcPendingPath() string { return filepath.Join(s.dir(), "gc-pending") }
+func (s Store) gcDonePath() string    { return filepath.Join(s.dir(), "gc-done") }
+
+// collectGarbage reclaims expired replies' files when some are waiting and the
+// last reclaim is at least gcEvery old. The caller holds the store gate.
+func (s Store) collectGarbage(ctx context.Context, now time.Time) bool {
+	if _, err := os.Stat(s.gcPendingPath()); err != nil {
+		return false
+	}
+	if done, err := os.Stat(s.gcDonePath()); err == nil && now.Sub(done.ModTime()) < gcEvery {
+		return false
+	}
+	started := time.Now()
+	s.dropViews(ctx)
+	err := s.command(ctx, "gc", "--prune=now", "--quiet").Run()
+	log.Printf("[FILE_SNAPSHOT] phase=gc elapsed_ms=%d err=%v", time.Since(started).Milliseconds(), err)
+	if err != nil {
+		return false
+	}
+	_ = os.WriteFile(s.gcDonePath(), nil, 0o600)
+	_ = os.Chtimes(s.gcDonePath(), now, now)
+	_ = os.Remove(s.gcPendingPath())
+	return true
 }
 
 type limitedOutput struct {
