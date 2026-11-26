@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -24,13 +25,24 @@ func (api *StreamingAPI) handleGetSessionHelperEvents(w http.ResponseWriter, r *
 		http.Error(w, message, status)
 		return
 	}
-	found, err := api.eventStore.ChatHelperEvents(r.Context(), sessionID)
+	rawEvents, version, err := api.eventStore.ChatHelperEventsRaw(r.Context(), sessionID)
 	if err != nil {
 		log.Printf("[CHAT_HELPERS] session=%s action=read_failed error=%v", sessionID, err)
 		http.Error(w, "failed to read the chat's helpers", http.StatusInternalServerError)
 		return
 	}
+	etag := fmt.Sprintf(`W/"helpers-%d-%d"`, version, len(rawEvents))
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "private, no-store")
-	_ = json.NewEncoder(w).Encode(map[string]any{"session_id": sessionID, "events": found})
+	w.Header().Set("Cache-Control", "private, no-cache")
+	w.Header().Set("ETag", etag)
+	if strings.TrimSpace(r.Header.Get("If-None-Match")) == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	sessionJSON, _ := json.Marshal(sessionID)
+	_, _ = w.Write([]byte(`{"session_id":`))
+	_, _ = w.Write(sessionJSON)
+	_, _ = w.Write([]byte(`,"events":`))
+	_, _ = w.Write(rawEvents)
+	_, _ = w.Write([]byte("}\n"))
 }

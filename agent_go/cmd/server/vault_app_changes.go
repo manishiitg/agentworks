@@ -188,7 +188,11 @@ func (api *StreamingAPI) handleSessionToolChanges(w http.ResponseWriter, r *http
 	// Only the chat's own person, checked before any Vault lookup: naming someone else's session reads nothing.
 	var added, removed []string
 	if launched, ok := launchedVaultAppsFor(sessionID); ok && launched.person != "" && launched.person == GetUserIDFromContext(r.Context()) {
-		_, added, removed, _ = api.vaultAppChanges(r.Context(), sessionID)
+		checkCtx := r.Context()
+		if r.Method == http.MethodGet {
+			checkCtx = withServerVaultAllowStale(checkCtx)
+		}
+		_, added, removed, _ = api.vaultAppChanges(checkCtx, sessionID)
 	}
 	_, requested := vaultReloadRequested.Load(sessionID)
 	if r.Method == http.MethodPost {
