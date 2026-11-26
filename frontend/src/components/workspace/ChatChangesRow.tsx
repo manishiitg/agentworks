@@ -71,7 +71,7 @@ export function moveOutMessage(folder: { path: string; files: number }, limit: C
   return `This project folder has about ${fileCount(limit.files)} files, more than the ${fileCount(limit.limit)} replies can track, so not all changes are tracked. The biggest folder is "${folder.path}" (about ${fileCount(folder.files)} files).\n\nI'm thinking of moving "${folder.path}" out of the project. Before doing anything, check what it is and whether anything uses it (scripts, Git worktrees, running work), then suggest what to do: move it next to the project (files action=file_limit, operation=move), delete it if it is scratch, or leave it. Don't move or delete anything until I say so.`
 }
 
-export function FileLimitBox({ limit, workspacePath, onAskAgent }: { limit: CrewFileLimit; workspacePath?: string; onAskAgent?: (message: string) => Promise<void> }) {
+export function FileLimitBox({ limit, workspacePath, onAskAgent, onOpenFolder }: { limit: CrewFileLimit; workspacePath?: string; onAskAgent?: (message: string) => Promise<void>; onOpenFolder?: (path: string) => void }) {
   const [busy, setBusy] = useState('')
   const [note, setNote] = useState<{ text: string; failed?: boolean } | null>(null)
   const [report, setReport] = useState(limit)
@@ -104,8 +104,11 @@ export function FileLimitBox({ limit, workspacePath, onAskAgent }: { limit: Crew
     {folders.length > 0 && <div>
       <p className="text-[11px] text-muted-foreground">Biggest folders</p>
       <ul className="mt-1 divide-y divide-border">{folders.map(folder => <li key={folder.path} className="flex items-center gap-2 py-1.5">
+        {/* The folder opens in Files so the person can see what fills it before moving it. */}
+        <button type="button" disabled={!onOpenFolder} onClick={() => onOpenFolder?.(folder.path)} title={`Open ${folder.path} in Files`} className="group/folder flex min-w-0 flex-1 items-center gap-2 rounded text-left enabled:hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className="min-w-0 flex-1"><span className="block truncate font-medium">{folder.path}</span><span className="text-[11px] text-muted-foreground">about {fileCount(folder.files)} files</span></span>
+        <span className="min-w-0 flex-1"><span className="block truncate font-medium group-enabled/folder:group-hover/folder:underline">{folder.path}</span><span className="text-[11px] text-muted-foreground">about {fileCount(folder.files)} files</span></span>
+        </button>
         {report.can_fix && onAskAgent && <button type="button" disabled={Boolean(busy)} title="Ask the agent in chat to check this folder and suggest what to do" onClick={() => void askAgent(folder)} className="shrink-0 rounded-md border border-border bg-background px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{busy === folder.path ? 'Asking…' : 'Move out'}</button>}
       </li>)}</ul>
     </div>}
@@ -207,7 +210,7 @@ export function ChatChangesRow({ section, storageKey, onOpen, onTerminal, worksp
     {changed && !section.file_limit?.over && <button type="button" onClick={() => onOpen(undefined, true)} aria-label={`${changed}: review them`} title={`${changed} not committed yet. Click to review them.`} className="shrink-0 whitespace-nowrap rounded px-1 py-0.5 font-mono text-[11px] font-medium tabular-nums text-amber-600 underline-offset-2 hover:bg-background/40 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-amber-400">±{section.changed}</button>}
     {onTerminal && <button type="button" onClick={onTerminal} aria-label="Open terminal" title="Open a terminal in this project folder (Ctrl+`)" className="flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-background/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><SquareTerminal className="h-3.5 w-3.5" aria-hidden="true" /></button>}
     </div>
-    {open && section.file_limit?.over && <FileLimitBox key={`${section.file_limit.checked_at}:${section.file_limit.can_fix}`} limit={section.file_limit} workspacePath={workspacePath} onAskAgent={onAskAgent} />}
+    {open && section.file_limit?.over && <FileLimitBox key={`${section.file_limit.checked_at}:${section.file_limit.can_fix}`} limit={section.file_limit} workspacePath={workspacePath} onAskAgent={onAskAgent} onOpenFolder={path => onOpen(path, false)} />}
     {open && githubStrip}
     {open && rows.length > 0 && <div className="mt-1 space-y-0.5 pl-3">{rows}</div>}
   </div>
