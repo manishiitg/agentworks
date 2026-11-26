@@ -80,6 +80,17 @@ export function isChatDeliveryTelemetryEvent(event: Pick<PollingEvent, 'type'>):
   return typeof event.type === 'string' && CHAT_DELIVERY_EVENT_TYPES.has(event.type)
 }
 
+/** Events emitted before this chat view opened are restores/replays, not live streaming delivery. */
+export function paintedTelemetryTransport(
+  eventTimestamp: string | undefined,
+  sessionOpenedAtMs: number,
+): 'react' | 'react_restore' {
+  if (!eventTimestamp || !sessionOpenedAtMs) return 'react'
+  const eventMs = Date.parse(eventTimestamp)
+  if (!Number.isFinite(eventMs)) return 'react'
+  return eventMs < sessionOpenedAtMs - 500 ? 'react_restore' : 'react'
+}
+
 function milestoneGroup(phase: ChatDeliveryTelemetryPhase): string {
   if (phase === 'sse_received' || phase === 'poll_received' || phase === 'catchup_received') {
     return 'received'

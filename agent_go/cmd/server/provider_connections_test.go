@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestProviderConnectionsLifecycleAndAuthorization(t *testing.T) {
@@ -183,5 +185,46 @@ func TestOwnDefaultProviderAccountID(t *testing.T) {
 		if got := ownDefaultProviderAccountID(ctx, "alice", "codex-cli"); got != "" {
 			t.Fatalf("picked an account known not signed in: %q", got)
 		}
+	}
+}
+
+// #4271: normal GET /api/provider-connections returns cached accounts without
+// blocking on remote company-account sync.
+func TestProviderConnectionsGetDoesNotBlockOnCompanySync(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("AUTH_SECRET", "account-test-only-secret")
+	t.Setenv("SUPPORTED_LLM_PROVIDERS", "codex-cli")
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"sync-user","username":"sync-user","can_create":true,"products":[]}]}`)
+	mock := &mockWorkspaceAPI{files: map[string]string{}}
+	ws := httptest.NewServer(mock)
+	defer ws.Close()
+	t.Setenv("WORKSPACE_API_URL", ws.URL)
+
+	prevHost := desktopBootstrapHost
+	desktopBootstrapHost = "http://127.0.0.1:1"
+	t.Cleanup(func() { desktopBootstrapHost = prevHost })
+
+	// Hold the per-owner sync mutex so a blocking syncCompanyAccounts call would stall.
+	lockAny, _ := companySyncLocks.LoadOrStore("sync-user", &sync.Mutex{})
+	mu := lockAny.(*sync.Mutex)
+	mu.Lock()
+	t.Cleanup(func() {
+		// Prevent the background goroutine from hitting the network after unlock.
+		companySync.Lock()
+		companySync.at["sync-user"] = time.Now()
+		companySync.Unlock()
+		mu.Unlock()
+	})
+
+	api := &StreamingAPI{}
+	start := time.Now()
+	w := httptest.NewRecorder()
+	api.handleProviderConnections(w, sharedSecretsRequest("GET", "/api/provider-connections", "sync-user", nil))
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("GET /api/provider-connections blocked on company sync for %v", elapsed)
+	}
+	if w.Code != 200 {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
 	}
 }

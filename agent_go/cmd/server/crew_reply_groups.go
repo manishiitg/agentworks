@@ -107,10 +107,11 @@ func (discardResponse) Write(b []byte) (int, error) { return len(b), nil }
 func (discardResponse) WriteHeader(int)             {}
 
 // attachPullRequests resolves each GitHub-backed branch's pull request.
+// Up to replyGroupMaxPRLookups eligible repos are resolved concurrently.
 func attachPullRequests(ctx context.Context, groups []filesnapshots.Group, token string, connected bool) {
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
-	lookups := 0
+	var targets []int
 	for i := range groups {
 		g := &groups[i]
 		if g.Kind != "repo" || g.GitHubRepo == "" || g.Branch == "" || strings.HasPrefix(g.Branch, "detached@") || g.Branch == "main" || g.Branch == "master" {
@@ -120,42 +121,68 @@ func attachPullRequests(ctx context.Context, groups []filesnapshots.Group, token
 			g.PR = &filesnapshots.PullRequest{State: "connect_github"}
 			continue
 		}
-		if lookups++; lookups > replyGroupMaxPRLookups {
+		if len(targets) >= replyGroupMaxPRLookups {
 			break
 		}
-		g.PR = cachedGitHubPullRequestStatus(ctx, token, g.GitHubRepo, g.Branch)
+		targets = append(targets, i)
 	}
+	if len(targets) == 1 {
+		g := &groups[targets[0]]
+		g.PR = cachedGitHubPullRequestStatus(ctx, token, g.GitHubRepo, g.Branch)
+		return
+	}
+	var wg sync.WaitGroup
+	for _, idx := range targets {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			g := &groups[i]
+			g.PR = cachedGitHubPullRequestStatus(ctx, token, g.GitHubRepo, g.Branch)
+		}(idx)
+	}
+	wg.Wait()
 }
+
+const (
+	replyPRFreshTTL        = 45 * time.Second
+	replyPRSettledFreshTTL = 5 * time.Minute
+	replyPRStaleTTL        = 10 * time.Minute
+)
 
 // Cache only successful reads, shared by cards using the same connection. A
 // changed token gets a different key; the cache never stores the token itself.
+// Stale entries are returned immediately while a single background refresh
+// updates the cache so 60 s card polls never block on GitHub.
 var replyPRCache = struct {
 	sync.Mutex
-	entries map[[32]byte]replyPRCacheEntry
-}{entries: make(map[[32]byte]replyPRCacheEntry)}
-
-type replyPRCacheEntry struct {
-	pr      *filesnapshots.PullRequest
-	expires time.Time
+	entries    map[[32]byte]replyPRCacheEntry
+	refreshing map[[32]byte]bool
+}{
+	entries:    make(map[[32]byte]replyPRCacheEntry),
+	refreshing: make(map[[32]byte]bool),
 }
 
-func cachedGitHubPullRequestStatus(ctx context.Context, token, repo, branch string) *filesnapshots.PullRequest {
-	key := sha256.Sum256([]byte(githubAPIURL + "\x00" + token + "\x00" + repo + "\x00" + branch))
-	now := time.Now()
-	replyPRCache.Lock()
-	entry, found := replyPRCache.entries[key]
-	replyPRCache.Unlock()
-	if found && now.Before(entry.expires) {
-		return entry.pr
+type replyPRCacheEntry struct {
+	pr         *filesnapshots.PullRequest
+	expires    time.Time
+	staleUntil time.Time
+}
+
+func replyPRTTL(pr *filesnapshots.PullRequest) time.Duration {
+	if pr != nil && (pr.State == "merged" || pr.State == "closed") {
+		return replyPRSettledFreshTTL
 	}
-	pr := githubPullRequestStatus(ctx, token, repo, branch)
+	return replyPRFreshTTL
+}
+
+func storeReplyPRCache(key [32]byte, pr *filesnapshots.PullRequest, now time.Time) {
 	if pr != nil && (pr.State == "unavailable" || pr.Review == "unavailable") {
-		return pr // The person's retry must not be held by a cached failure.
+		return // The person's retry must not be held by a cached failure.
 	}
 	replyPRCache.Lock()
 	defer replyPRCache.Unlock()
 	for k, cached := range replyPRCache.entries {
-		if now.After(cached.expires) {
+		if now.After(cached.staleUntil) {
 			delete(replyPRCache.entries, k)
 		}
 	}
@@ -165,12 +192,56 @@ func cachedGitHubPullRequestStatus(ctx context.Context, token, repo, branch stri
 			break
 		}
 	}
-	replyPRCache.entries[key] = replyPRCacheEntry{pr: pr, expires: time.Now().Add(45 * time.Second)}
+	replyPRCache.entries[key] = replyPRCacheEntry{
+		pr:         pr,
+		expires:    now.Add(replyPRTTL(pr)),
+		staleUntil: now.Add(replyPRStaleTTL),
+	}
+}
+
+func cachedGitHubPullRequestStatus(ctx context.Context, token, repo, branch string) *filesnapshots.PullRequest {
+	baseURL := githubAPIURL
+	key := sha256.Sum256([]byte(baseURL + "\x00" + token + "\x00" + repo + "\x00" + branch))
+	now := time.Now()
+	replyPRCache.Lock()
+	entry, found := replyPRCache.entries[key]
+	if found && now.Before(entry.expires) {
+		replyPRCache.Unlock()
+		return entry.pr
+	}
+	if found && now.Before(entry.staleUntil) {
+		shouldRefresh := !replyPRCache.refreshing[key]
+		if shouldRefresh {
+			replyPRCache.refreshing[key] = true
+		}
+		replyPRCache.Unlock()
+		if shouldRefresh {
+			go func() {
+				defer func() {
+					replyPRCache.Lock()
+					delete(replyPRCache.refreshing, key)
+					replyPRCache.Unlock()
+				}()
+				bgCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+				defer cancel()
+				pr := githubPullRequestStatusWithBase(bgCtx, baseURL, token, repo, branch)
+				storeReplyPRCache(key, pr, time.Now())
+			}()
+		}
+		return entry.pr
+	}
+	replyPRCache.Unlock()
+	pr := githubPullRequestStatusWithBase(ctx, baseURL, token, repo, branch)
+	storeReplyPRCache(key, pr, time.Now())
 	return pr
 }
 
 func githubGET(ctx context.Context, token, path string, out any) bool {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, githubAPIURL+path, nil)
+	return githubGETWithBase(ctx, githubAPIURL, token, path, out)
+}
+
+func githubGETWithBase(ctx context.Context, baseURL, token, path string, out any) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+path, nil)
 	if err != nil {
 		return false
 	}
@@ -187,16 +258,20 @@ func githubGET(ctx context.Context, token, path string, out any) bool {
 // githubPullRequestStatus returns nil when the branch has no pull request,
 // and state "unavailable" when GitHub could not answer.
 func githubPullRequestStatus(ctx context.Context, token, repo, branch string) *filesnapshots.PullRequest {
+	return githubPullRequestStatusWithBase(ctx, githubAPIURL, token, repo, branch)
+}
+
+func githubPullRequestStatusWithBase(ctx context.Context, baseURL, token, repo, branch string) *filesnapshots.PullRequest {
 	owner := strings.SplitN(repo, "/", 2)[0]
 	var prs []githubPRHead
 	q := url.Values{"head": {owner + ":" + branch}, "state": {"all"}, "sort": {"updated"}, "direction": {"desc"}, "per_page": {"1"}}
-	if !githubGET(ctx, token, "/repos/"+repo+"/pulls?"+q.Encode(), &prs) {
+	if !githubGETWithBase(ctx, baseURL, token, "/repos/"+repo+"/pulls?"+q.Encode(), &prs) {
 		return &filesnapshots.PullRequest{State: "unavailable"}
 	}
 	if len(prs) == 0 {
 		return nil
 	}
-	return githubPullRequestHeadStatus(ctx, token, repo, prs[0])
+	return githubPullRequestHeadStatusWithBase(ctx, baseURL, token, repo, prs[0])
 }
 
 type githubPRHead struct {
@@ -213,6 +288,10 @@ type githubPRHead struct {
 }
 
 func githubPullRequestHeadStatus(ctx context.Context, token, repo string, p githubPRHead) *filesnapshots.PullRequest {
+	return githubPullRequestHeadStatusWithBase(ctx, githubAPIURL, token, repo, p)
+}
+
+func githubPullRequestHeadStatusWithBase(ctx context.Context, baseURL, token, repo string, p githubPRHead) *filesnapshots.PullRequest {
 	pr := &filesnapshots.PullRequest{Number: p.Number, URL: p.URL, State: p.State, Checks: "none", Review: "none"}
 	if p.MergedAt != nil {
 		pr.State = "merged"
@@ -233,6 +312,40 @@ func githubPullRequestHeadStatus(ctx context.Context, token, repo string, p gith
 			State   string `json:"state"`
 		} `json:"statuses"`
 	}
+	var reviews []struct {
+		State string `json:"state"`
+		User  struct {
+			Login string `json:"login"`
+		} `json:"user"`
+	}
+	var detail struct {
+		MergeableState string `json:"mergeable_state"`
+	}
+	var runsOK, combinedOK, reviewsOK, detailOK bool
+	prNum := strconv.Itoa(p.Number)
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		runsOK = githubGETWithBase(ctx, baseURL, token, "/repos/"+repo+"/commits/"+p.Head.SHA+"/check-runs?per_page=100", &runs)
+	}()
+	go func() {
+		defer wg.Done()
+		combinedOK = githubGETWithBase(ctx, baseURL, token, "/repos/"+repo+"/commits/"+p.Head.SHA+"/status", &combined)
+	}()
+	go func() {
+		defer wg.Done()
+		reviewsOK = githubGETWithBase(ctx, baseURL, token, "/repos/"+repo+"/pulls/"+prNum+"/reviews?per_page=100", &reviews)
+	}()
+	if pr.State == "open" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			detailOK = githubGETWithBase(ctx, baseURL, token, "/repos/"+repo+"/pulls/"+prNum, &detail)
+		}()
+	}
+	wg.Wait()
+
 	failed := func(name string) {
 		if len(pr.FailingChecks) < replyGroupMaxFailingChecks {
 			pr.FailingChecks = append(pr.FailingChecks, name)
@@ -240,7 +353,7 @@ func githubPullRequestHeadStatus(ctx context.Context, token, repo string, p gith
 	}
 	failing, pending, seen := false, false, false
 	complete := true
-	if githubGET(ctx, token, "/repos/"+repo+"/commits/"+p.Head.SHA+"/check-runs?per_page=100", &runs) {
+	if runsOK {
 		if runs.TotalCount > len(runs.CheckRuns) {
 			complete = false
 		}
@@ -257,7 +370,7 @@ func githubPullRequestHeadStatus(ctx context.Context, token, repo string, p gith
 	} else {
 		complete = false
 	}
-	if !githubGET(ctx, token, "/repos/"+repo+"/commits/"+p.Head.SHA+"/status", &combined) {
+	if !combinedOK {
 		complete = false
 	} else if combined.TotalCount > 0 {
 		seen = true
@@ -284,13 +397,7 @@ func githubPullRequestHeadStatus(ctx context.Context, token, repo string, p gith
 	case seen:
 		pr.Checks = "passing"
 	}
-	var reviews []struct {
-		State string `json:"state"`
-		User  struct {
-			Login string `json:"login"`
-		} `json:"user"`
-	}
-	if githubGET(ctx, token, "/repos/"+repo+"/pulls/"+strconv.Itoa(p.Number)+"/reviews?per_page=100", &reviews) {
+	if reviewsOK {
 		latest := map[string]string{}
 		commented := false
 		for _, r := range reviews { // oldest first: the last decision per person wins
@@ -315,10 +422,7 @@ func githubPullRequestHeadStatus(ctx context.Context, token, repo string, p gith
 		pr.Review = "unavailable"
 	}
 	// Only the single-PR read says whether it can merge; "dirty" means conflicts.
-	var detail struct {
-		MergeableState string `json:"mergeable_state"`
-	}
-	if pr.State == "open" && githubGET(ctx, token, "/repos/"+repo+"/pulls/"+strconv.Itoa(p.Number), &detail) {
+	if pr.State == "open" && detailOK {
 		pr.Conflicts = detail.MergeableState == "dirty"
 	}
 	return pr
