@@ -32,9 +32,11 @@ type DialOptions struct {
 	// AllowPrivate is for an explicitly configured private-network deployment.
 	Transport    string
 	AllowPrivate bool
-	BearerToken  string
-	AuthScheme   string
-	AccessToken  func(context.Context) (string, error)
+	// AllowLocalCommands lets this Vault start local command connections (GATEWAY_ALLOW_LOCAL_COMMANDS, Mac only).
+	AllowLocalCommands bool
+	BearerToken        string
+	AuthScheme         string
+	AccessToken        func(context.Context) (string, error)
 }
 
 const maxResponseBytes = 2 << 20
@@ -303,6 +305,9 @@ func Dial(ctx context.Context, url string) (*Client, error) {
 }
 
 func DialWithOptions(ctx context.Context, url string, opts DialOptions) (_ *Client, dialErr error) {
+	if opts.Transport == CommandTransport {
+		return dialCommand(ctx, opts)
+	}
 	if _, err := ValidateURL(url, opts); err != nil {
 		return nil, err
 	}

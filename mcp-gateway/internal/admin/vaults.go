@@ -13,6 +13,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/catalog"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
+	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/upstream"
 )
 
 // Vault routes (PLAT-507, PLAT-856-400). These routes are service-only: the host calls them with the shared service
@@ -232,6 +233,8 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 					}
 				}
 			}
+		case in.Transport == upstream.CommandTransport:
+			c, err = a.addConnectorCommandFor(ctx, vault, in.Name, in.Label, in.Slug, in.Credential)
 		case in.URL != "":
 			c, err = a.addConnectorCustomFor(ctx, vault, in.Name, in.Label, in.Slug, in.URL, in.Credential, in.AuthScheme, in.Transport)
 		default:
@@ -241,7 +244,7 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 			writeErr(w, 400, err)
 			return
 		}
-		if in.Transport != "" && in.Transport != "http" && in.Transport != "sse" {
+		if in.Transport != "" && in.Transport != "http" && in.Transport != "sse" && in.Transport != upstream.CommandTransport {
 			_ = a.DeleteConnector(c.ID)
 			writeErr(w, 400, errors.New("transport must be http or sse"))
 			return
@@ -302,13 +305,24 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 		if !decode(w, r, &in) {
 			return
 		}
-		if err := validateConnectorCredential(in.Credential, in.AuthScheme); err != nil {
-			writeErr(w, 400, err)
-			return
-		}
 		c, ok := a.Store.GetConnector(r.PathValue("cid"))
 		if !ok {
 			writeErr(w, 404, errors.New("unknown connector"))
+			return
+		}
+		// A local command connection's credential is its whole launch; nothing else replaces it.
+		var credErr error
+		if c.Transport == upstream.CommandTransport {
+			if in.AuthScheme != upstream.CommandAuthScheme {
+				credErr = errors.New("a local command connection is updated with its full launch")
+			} else {
+				_, credErr = upstream.ParseLocalCommand(in.Credential)
+			}
+		} else {
+			credErr = validateConnectorCredential(in.Credential, in.AuthScheme)
+		}
+		if credErr != nil {
+			writeErr(w, 400, credErr)
 			return
 		}
 		c.AuthScheme = in.AuthScheme
@@ -370,6 +384,10 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 				c.Label = in.Label
 			}
 			if in.URL != "" && in.URL != c.UpstreamURL {
+				if c.Transport == upstream.CommandTransport {
+					writeErr(w, 400, errors.New("a local command connection has no URL to change"))
+					return
+				}
 				if err := a.Gateway.ValidateUpstreamURL(in.URL); err != nil {
 					writeErr(w, 400, err)
 					return
@@ -444,6 +462,9 @@ func (a *Admin) copyVaultConnector(ctx context.Context, actor, fromVault, connec
 	}
 	if src.OAuthServer != "" || src.OAuthCredentialID != "" {
 		return store.Connector{}, errors.New("this connection uses a personal sign-in: each person signs in themselves")
+	}
+	if src.Transport == upstream.CommandTransport {
+		return store.Connector{}, errors.New("this connection runs a program on its owner's Mac, so it cannot be shared with the Team")
 	}
 	// Bearer, Basic and custom headers keep their whole credential in the stored bytes plus the scheme, so they copy
 	// completely. Anything else is refused with a reason instead of making a copy that fails when used.

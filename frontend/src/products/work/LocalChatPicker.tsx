@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowRight, Loader2, RefreshCw, X } from 'lucide-react'
 import ModalPortal from '../../components/ui/ModalPortal'
 import api from '../../services/api'
+import { LocalMcpImport, useLocalMcpServers } from './LocalMcpImport'
 
 export type LocalChat = { id: string; title: string; provider: string; account: string; updated_at: string; in_use?: boolean; recent_only?: boolean }
 const localChatPrograms: Record<string, { name: string; icon: string }> = {
@@ -28,6 +29,9 @@ export function LocalChatPicker({ projectId, folder, onClose, onImported, onSele
   const [refresh, setRefresh] = useState(0)
   const [partial, setPartial] = useState(false)
   const [program, setProgram] = useState('')
+  const [mcpStep, setMcpStep] = useState(false)
+  const mcp = useLocalMcpServers({ projectId }, !!projectId)
+  const mcpOffer = (mcp.servers || []).filter(server => server.importable && !server.in_vault)
   const dialog = useRef<HTMLDivElement>(null)
   const current = chats.find(chat => chat.id === selected)
   const params = projectId ? { project_id: projectId } : { root_path: folder }
@@ -67,7 +71,9 @@ export function LocalChatPicker({ projectId, folder, onClose, onImported, onSele
     try {
       const { data } = await api.post<ImportedLocalChat>('/api/agent-profiles/work/local-project', { ...params, id: selected, recent_only: !!preview?.native_copy_unavailable })
       await onImported!(data)
-      onClose()
+      // The chat is in. Offer the MCP servers its app had, which AgentWorks chats do not load on their own.
+      if (mcpOffer.length) setMcpStep(true)
+      else onClose()
     } catch (cause) { setError(message(cause)) } finally { setImporting(false) }
   }
   return <ModalPortal><div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 sm:p-8">
@@ -86,7 +92,12 @@ export function LocalChatPicker({ projectId, folder, onClose, onImported, onSele
         <div className="flex gap-2"><button type="button" disabled={loading || importing} onClick={() => setRefresh(n => n + 1)} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"><RefreshCw className="h-4 w-4" />Refresh</button><button type="button" aria-label="Close local chats" disabled={importing} onClick={onClose} className="rounded-md p-2 hover:bg-muted"><X className="h-4 w-4" /></button></div>
       </header>
       {error && <p role="alert" className="mb-3 text-sm text-destructive">{error}</p>}
-      <div className="grid min-h-0 flex-1 overflow-auto rounded-lg border border-border sm:grid-cols-[minmax(220px,1fr)_2fr]">
+      {mcpStep && mcp.servers ? <div data-testid="local-chat-mcp-step" className="min-h-0 flex-1 overflow-y-auto">
+        <h3 className="text-base font-semibold">Also bring your MCP servers?</h3>
+        <p className="mb-3 mt-1 text-sm text-muted-foreground">The chat is open in AgentWorks. Chats here don't load your Claude, Codex, Cursor or agy MCP settings, so pick the servers this project should have.</p>
+        <LocalMcpImport servers={mcp.servers} scope={{ projectId }} />
+        <div className="mt-4 flex justify-end"><button type="button" onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted">Done</button></div>
+      </div> : <><div className="grid min-h-0 flex-1 overflow-auto rounded-lg border border-border sm:grid-cols-[minmax(220px,1fr)_2fr]">
         <div aria-label="Local conversations" className="max-h-48 overflow-y-auto border-b border-border p-2 sm:max-h-[55dvh] sm:border-b-0 sm:border-r">
           {(() => { const programs = [...new Set(chats.map(chat => chat.provider))]; return programs.length > 1 && <div role="group" aria-label="Filter by program" className="mb-2 flex flex-wrap gap-1">{['', ...programs].map(p => <button key={p || 'all'} type="button" aria-pressed={program === p} onClick={() => setProgram(p)} className={`rounded-md border px-2 py-0.5 text-xs ${program === p ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:text-foreground'}`}>{p ? localChatProgram(p).name : 'All'}</button>)}</div> })()}
           {loading ? <p role="status" className="p-3 text-sm text-muted-foreground">Finding local chats…</p> : chats.length === 0 ? <p className="p-3 text-sm text-muted-foreground">No Claude, Codex or Cursor CLI chats found for this folder.</p> : chats.filter(chat => !program || chat.provider === program).map(chat => <button key={chat.id} type="button" aria-pressed={selected === chat.id} disabled={importing} onClick={() => setSelected(chat.id)} className={`mb-1 flex w-full gap-3 rounded-lg p-3 text-left ${selected === chat.id ? 'bg-muted' : 'hover:bg-muted/50'}`}>
@@ -98,7 +109,7 @@ export function LocalChatPicker({ projectId, folder, onClose, onImported, onSele
           {previewLoading ? <p role="status" className="text-sm text-muted-foreground">Loading history…</p> : preview && <><p className="mb-3 text-xs text-muted-foreground">{preview.history_note}</p>{preview.native_copy_unavailable && <p className="mb-3 text-sm text-muted-foreground">{preview.native_copy_unavailable}</p>}<p className="mb-3 text-xs text-muted-foreground">{localChatProgram(current?.provider || '').name} · {current?.account}{preview.total_messages > preview.messages.length ? ` · Latest ${preview.messages.length} messages` : ''}</p>{preview.messages.map((item, index) => <div key={index} className="border-b border-border py-4 last:border-b-0"><p className="mb-2 text-xs text-muted-foreground">{item.role === 'human' || item.role === 'user' ? 'You' : 'Assistant'}</p><p className="whitespace-pre-wrap break-words text-sm">{item.text}</p></div>)}</>}
         </section>
       </div>
-      <footer className="mt-5 flex flex-wrap items-center justify-between gap-4"><p className="text-xs text-muted-foreground">{current?.provider === 'cursor-cli' ? `${current.in_use ? 'This chat appears open in Cursor. ' : ''}Continues the same Cursor CLI conversation${onSelected ? ' after creation' : ''}. Close it in Cursor before sending here.` : `${onSelected ? 'A separate copy opens after creation.' : 'Opens a separate chat tab.'} Your original conversation stays unchanged.`}<br />The project files are shared.</p><div className="flex items-center gap-3">{onStartFresh && <button type="button" disabled={importing} onClick={onStartFresh} className="rounded-lg border border-border px-4 py-2.5 text-sm hover:bg-muted disabled:opacity-50">Start fresh</button>}<button type="button" disabled={!preview?.messages.length || loading || previewLoading || importing} onClick={() => void continueChat()} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50">{importing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{preview?.native_copy_unavailable ? 'Import recent messages' : onSelected ? 'Use this chat' : 'Continue in AgentWorks'}<ArrowRight className="h-4 w-4" /></button></div></footer>
+      <footer className="mt-5 flex flex-wrap items-center justify-between gap-4"><p className="text-xs text-muted-foreground">{current?.provider === 'cursor-cli' ? `${current.in_use ? 'This chat appears open in Cursor. ' : ''}Continues the same Cursor CLI conversation${onSelected ? ' after creation' : ''}. Close it in Cursor before sending here.` : `${onSelected ? 'A separate copy opens after creation.' : 'Opens a separate chat tab.'} Your original conversation stays unchanged.`}<br />The project files are shared.</p><div className="flex items-center gap-3">{onStartFresh && <button type="button" disabled={importing} onClick={onStartFresh} className="rounded-lg border border-border px-4 py-2.5 text-sm hover:bg-muted disabled:opacity-50">Start fresh</button>}<button type="button" disabled={!preview?.messages.length || loading || previewLoading || importing} onClick={() => void continueChat()} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50">{importing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{preview?.native_copy_unavailable ? 'Import recent messages' : onSelected ? 'Use this chat' : 'Continue in AgentWorks'}<ArrowRight className="h-4 w-4" /></button></div></footer></>}
     </div>
   </div></ModalPortal>
 }
