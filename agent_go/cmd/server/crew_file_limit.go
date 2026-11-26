@@ -22,6 +22,9 @@ import (
 //	op=file_limit_check  POST: count again now
 //	op=file_limit_move   POST folder=<top-level folder>: move it next to the
 //	                     project, into "<project>-moved" (owner's default, #3878)
+//	op=file_limit_ignore POST folder=<top-level folder>: add "/<folder>/" to the
+//	                     project's own .gitignore, so file tracking leaves it
+//	                     out; removing the line brings it back (#3878)
 func (api *StreamingAPI) serveCrewFileLimit(w http.ResponseWriter, r *http.Request, roots crewroot.Roots, op string, store filesnapshots.Store) {
 	owner := crewProjectOwnedByCaller(GetUserIDFromContext(r.Context()), roots.Virtual)
 	reply := func(report filesnapshots.FileLimitReport, known bool, extra map[string]any) {
@@ -37,7 +40,7 @@ func (api *StreamingAPI) serveCrewFileLimit(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if r.Method != http.MethodPost {
-		externalError(w, 405, "method_not_allowed", "Use POST to check again or move a folder.")
+		externalError(w, 405, "method_not_allowed", "Use POST to check again, move or ignore a folder.")
 		return
 	}
 	if op == "file_limit_check" {
@@ -50,17 +53,17 @@ func (api *StreamingAPI) serveCrewFileLimit(w http.ResponseWriter, r *http.Reque
 		reply(report, true, nil)
 		return
 	}
-	// Moving changes the project's files: the owner's click is the approval.
+	// Moving or ignoring changes the project's files: the owner's click is the approval.
 	if claims := GetUserFromContext(r.Context()); claims != nil && claims.AccessToken != nil && !claims.AccessToken.Allows("crews:write") {
-		externalError(w, 403, "insufficient_scope", "Moving a folder out of the project needs crews:write.")
+		externalError(w, 403, "insufficient_scope", "Moving or ignoring a folder needs crews:write.")
 		return
 	}
 	if !owner {
-		externalError(w, 403, "forbidden", "Only the project's owner can move folders out of it. Ask them, or use a smaller project folder.")
+		externalError(w, 403, "forbidden", "Only the project's owner can move or ignore its folders. Ask them.")
 		return
 	}
 	if !roots.Local {
-		externalError(w, 400, "not_available", "Moving folders out is available for projects in a folder on your Mac. Remove or archive the folder from Files instead.")
+		externalError(w, 400, "not_available", "Moving or ignoring folders is available for projects in a folder on your Mac. Remove or archive the folder from Files instead.")
 		return
 	}
 	if err := crewroot.CheckSyncWrite(workspaceGitDocsRoot(), store.Root); err != nil {
@@ -75,6 +78,23 @@ func (api *StreamingAPI) serveCrewFileLimit(w http.ResponseWriter, r *http.Reque
 	}
 	if info, err := os.Lstat(from); err != nil || !info.IsDir() {
 		externalError(w, 404, "not_found", fmt.Sprintf("There is no folder %q in this project any more. Check again.", folder))
+		return
+	}
+	if op == "file_limit_ignore" {
+		if err := ignoreProjectFolder(store.Root, folder); err != nil {
+			log.Printf("[FILE_LIMIT] ignore_failed project=%s folder=%q err=%v", roots.ID, folder, err)
+			externalError(w, 500, "ignore_failed", "Could not update the project's .gitignore. Try again.")
+			return
+		}
+		log.Printf("[FILE_LIMIT] ignored project=%s folder=%q", roots.ID, folder)
+		report, err := store.CheckFileLimit(r.Context())
+		markCrewPanelChangesDirty(roots.Virtual)
+		extra := map[string]any{"ignored": folder}
+		if err != nil {
+			reply(filesnapshots.FileLimitReport{}, false, extra)
+			return
+		}
+		reply(report, true, extra)
 		return
 	}
 	// A linked worktree keeps its repository's absolute path; moving it by
@@ -135,4 +155,33 @@ func linkedWorktreeInside(dir string) string {
 		return nil
 	})
 	return found
+}
+
+// ignoreProjectFolder adds "/<folder>/" to the project's own .gitignore, once.
+// File tracking honours that file (filesnapshots); deleting the line undoes it.
+func ignoreProjectFolder(root, folder string) error {
+	path := filepath.Join(root, ".gitignore")
+	line := "/" + folder + "/"
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for _, l := range strings.Split(string(existing), "\n") {
+		if strings.TrimSpace(l) == line {
+			return nil
+		}
+	}
+	add := line + "\n"
+	if len(existing) > 0 && existing[len(existing)-1] != '\n' {
+		add = "\n" + add
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err = f.WriteString(add); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }

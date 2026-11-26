@@ -366,6 +366,7 @@ func (s Store) listRepo(ctx context.Context, dir string) (entries []string, isRe
 func (s Store) candidates(ctx context.Context, stats *CaptureStats) ([]*checkout, []string, error) {
 	paths := []string{} // walked files, still to be ignore-filtered
 	repos := []*checkout{}
+	ignored := s.ignoredFolders(ctx)
 	var walk func(dir string) error
 	walk = func(dir string) error {
 		return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
@@ -380,7 +381,7 @@ func (s Store) candidates(ctx context.Context, stats *CaptureStats) ([]*checkout
 				return err
 			}
 			rel = filepath.ToSlash(rel)
-			if path != s.Root && excluded(rel, d.IsDir()) {
+			if path != s.Root && (excluded(rel, d.IsDir()) || d.IsDir() && ignored[rel]) {
 				if d.IsDir() {
 					return filepath.SkipDir
 				}

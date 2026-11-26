@@ -35,3 +35,21 @@ func TestFileLimitMoveRefusesFoldersHoldingLinkedWorktrees(t *testing.T) {
 		t.Fatalf("worktree not found: %q", got)
 	}
 }
+
+// #3878 Ignore: the folder is added to the project's own .gitignore once, on a
+// line of its own, after whatever the person already had there.
+func TestIgnoreProjectFolderAddsOneLine(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("*.log"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := ignoreProjectFolder(root, "reviews"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, _ := os.ReadFile(filepath.Join(root, ".gitignore"))
+	if string(got) != "*.log\n/reviews/\n" {
+		t.Fatalf(".gitignore = %q", got)
+	}
+}

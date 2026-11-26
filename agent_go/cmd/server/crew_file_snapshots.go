@@ -506,7 +506,7 @@ func (api *StreamingAPI) serveCrewFileSnapshots(w http.ResponseWriter, r *http.R
 		externalError(w, 403, "forbidden", "This connection cannot read these files.")
 		return
 	}
-	if op == "file_limit" || op == "file_limit_check" || op == "file_limit_move" {
+	if op == "file_limit" || op == "file_limit_check" || op == "file_limit_move" || op == "file_limit_ignore" {
 		api.serveCrewFileLimit(w, r, roots, op, store)
 		return
 	}

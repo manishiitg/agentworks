@@ -100,6 +100,18 @@ export function FileLimitBox({ limit, workspacePath, onAskAgent, onOpenFolder }:
       setNote({ text: cause instanceof Error && !('response' in cause) ? cause.message : errorText(cause, 'This folder could not be opened.'), failed: true })
     }
   }
+  // Ignore writes /<folder>/ into the project's own .gitignore on the server and counts again (#3878).
+  const ignore = async (folder: { path: string }) => {
+    if (!workspacePath) return
+    setBusy(`ignore:${folder.path}`); setNote(null)
+    try {
+      const { data } = await api.post<{ report: CrewFileLimit }>('/api/workspace-snapshots', {}, { params: { workspace_path: workspacePath, op: 'file_limit_ignore', folder: folder.path } })
+      setReport(current => ({ ...current, ...data.report }))
+      setNote({ text: `${folder.path} is in the project's .gitignore now; file tracking leaves it out. Remove the line to track it again.` })
+    } catch (cause) {
+      setNote({ text: errorText(cause, `Could not ignore ${folder.path}. Try again.`), failed: true })
+    } finally { setBusy('') }
+  }
   const checkAgain = async () => {
     if (!workspacePath) return
     setBusy('check'); setNote(null)
@@ -126,12 +138,13 @@ export function FileLimitBox({ limit, workspacePath, onAskAgent, onOpenFolder }:
         </button>
         {canReveal && <button type="button" title={`Show ${folder.path} in ${revealLabel}`} aria-label={`Show ${folder.path} in ${revealLabel}`} onClick={() => void reveal(folder)} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /></button>}
         {report.can_fix && onAskAgent && <button type="button" disabled={Boolean(busy)} title="Ask the agent in chat to check this folder and suggest what to do" onClick={() => void askAgent(folder)} className="shrink-0 rounded-md border border-border bg-background px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{busy === folder.path ? 'Asking…' : 'Move out'}</button>}
+        {report.can_fix && workspacePath && <button type="button" disabled={Boolean(busy)} title={`Add /${folder.path}/ to the project's .gitignore so file tracking leaves it out`} onClick={() => void ignore(folder)} className="shrink-0 rounded-md border border-border bg-background px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{busy === `ignore:${folder.path}` ? 'Ignoring…' : 'Ignore'}</button>}
       </li>)}</ul>
     </div>}
     {note && <p role={note.failed ? 'alert' : 'status'} className={note.failed ? 'text-destructive' : 'text-muted-foreground'}>{note.text}</p>}
     {report.can_fix
-      ? <div className="flex flex-wrap items-center gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => void checkAgain()} className="rounded-md border border-border bg-background px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{busy === 'check' ? 'Checking…' : 'Check again'}</button><span className="text-[11px] text-muted-foreground">Move out asks the agent in chat first; moved folders go next to the project, into its "-moved" folder.</span></div>
-      : <p className="text-[11px] text-muted-foreground">Only the project owner can move folders out, on their Mac. Ask them, or ask the agent "why aren't all my changes tracked?".</p>}
+      ? <div className="flex flex-wrap items-center gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => void checkAgain()} className="rounded-md border border-border bg-background px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{busy === 'check' ? 'Checking…' : 'Check again'}</button><span className="text-[11px] text-muted-foreground">Move out asks the agent in chat first. Ignore adds the folder to the project's .gitignore.</span></div>
+      : <p className="text-[11px] text-muted-foreground">Only the project owner can move or ignore folders, on their Mac. Ask them, or ask the agent "why aren't all my changes tracked?".</p>}
   </section>
 }
 
