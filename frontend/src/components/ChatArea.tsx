@@ -3842,6 +3842,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     onLoadOlder={historyPagination?.hasMore ? loadOlderConversationPage : undefined}
                     onRetry={historyRestore.error ? historyRestore.retry : loadOlderConversationPage}
                   />
+              {/* The summary and next-steps card sits after the last reply and scrolls with the chat (ChatInput portals it here). */}
+              <div data-next-steps-slot={activeTab.tabId} className="empty:hidden" />
               <ReplyQuote tabId={activeTab.tabId} disabled={hideInput || !!activeTab?.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView} />
               </>
             )}
