@@ -220,6 +220,14 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	if apps := crewVaultAppRowsOnly([]vaultRuntimeServer{{ID: "owner-mail"}, {ID: "crew-drive"}}, []string{vaultServerName("crew-drive"), "none"}); len(apps) != 1 || apps[0].ID != "crew-drive" {
 		t.Fatalf("a User's apps from the owner's Vault = %v", apps)
 	}
+	// A key given in this project's chat goes to its project vault, the only vault it reads (#4144: it went to the
+	// person's own Vault and never arrived); a User may not add one there.
+	if defaultSecretPlace(root) != secretPlaceProject {
+		t.Fatal("an online project's new keys do not go to its project vault")
+	}
+	if _, _, err := (&StreamingAPI{}).saveProjectSecret(context.Background(), "cara", root, "NEW_KEY", "value", ""); err == nil || !strings.Contains(err.Error(), "owner and co-owners") {
+		t.Fatalf("a User added a key to the project vault: %v", err)
+	}
 	// The same lock outside chat (#3796): a direct MCP setup tool is refused for cara while its read action, a co-owner
 	// and the owner stay open, and the website's file proxy refuses her write to the instructions but not a work file.
 	if crewSetupLockExternalRefusal("cara", "install_skill", "install", map[string]any{"crew_id": "team-proj"}) == "" {

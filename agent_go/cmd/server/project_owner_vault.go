@@ -10,38 +10,88 @@ import (
 )
 
 // All in Vault (owner, 5 Nov): a secret added to a Crew, Goal, Flow or Code project is saved in its owner's own Vault
-// ("My accounts") and selected on the project by its Vault name, in one step. Everyone who uses the project gets it
+// ("My accounts") and selected on the project by its Vault name, in one step; a server Crew's goes into its project
+// vault instead (#4144). Everyone who uses the project gets it
 // lent by the owner, like any other Vault secret the owner selects. Removing it from a project only unselects it; the
 // value stays in the owner's Vault until they delete it there.
 
 var errProjectSecretOwner = errors.New("Only the owner can add a secret here, because it is saved in their Vault. Ask the owner to add it, or give them the value")
 
-// saveProjectSecret stores value as NAME in the project owner's My accounts and returns the Vault name the project
-// selects. Saving a name that is already there replaces its value (a rotation, for every project that uses it).
-func (api *StreamingAPI) saveProjectSecret(ctx context.Context, actor, root, name, value string) (string, error) {
+// Where a key is saved (#4144). A key reaches a project's work only from the vault that project reads: a server Crew
+// reads only its project vault (crew_vault.go), everything else its owner's own Vault plus the Team and company keys
+// it selects. So the default follows the project, and an agent may still name a place.
+const (
+	secretPlacePersonal = "personal" // the person's own Vault ("My accounts")
+	secretPlaceProject  = "project"  // a server Crew's project vault
+	secretPlaceTeam     = "team"     // a Mac Team's vault, through the Team tool
+	secretPlaceCompany  = "company"  // company keys, kept by a Vault administrator
+)
+
+// defaultSecretPlace is where a key given in this project goes when nobody names a place: a server Crew's project vault,
+// or else the person's own Vault.
+func defaultSecretPlace(root string) string {
+	if serverCrewForPath(root) != "" {
+		return secretPlaceProject
+	}
+	return secretPlacePersonal
+}
+
+// secretPlaceRefusal is the plain answer for a place this save does not write to, saying what to do instead.
+func secretPlaceRefusal(where string) error {
+	switch where {
+	case secretPlaceTeam:
+		return errors.New("Team keys are added through the Team: save the key in your own Vault first, then share it with the Team tool (way_add, item secret). The value goes server to server and is never shown")
+	case secretPlaceCompany:
+		return errors.New("Company keys are kept by a Vault administrator in Vault (Secrets panel, or manage_vault_secret_access set_value). Ask one, or save it in this project instead")
+	}
+	return fmt.Errorf("choose where to save it: %s (only you), %s (everyone in this online project), %s or %s", secretPlacePersonal, secretPlaceProject, secretPlaceTeam, secretPlaceCompany)
+}
+
+// saveProjectSecret stores value as NAME and returns the Vault name the project selects and where it went. where is
+// one of the places above, or "" for the project's default. Saving a name that is already there replaces its value.
+func (api *StreamingAPI) saveProjectSecret(ctx context.Context, actor, root, name, value, where string) (string, string, error) {
 	actor, name = strings.TrimSpace(actor), strings.TrimSpace(name)
-	owner := api.projectSecretsOwner(actor, root)
-	// In a Crew everyone saves into their own Vault (projectSecretsOwner); elsewhere only the owner.
-	if actor == "" || owner != actor {
-		return "", errProjectSecretOwner
+	where = strings.ToLower(strings.TrimSpace(where))
+	if where == "" {
+		where = defaultSecretPlace(root)
 	}
 	if !vaultSecretUserName.MatchString(name) {
-		return "", errors.New("a secret name is letters, digits and underscores, starting with a letter or underscore, up to 128 characters")
+		return "", "", errors.New("a secret name is letters, digits and underscores, starting with a letter or underscore, up to 128 characters")
 	}
-	vaultID, err := ensurePersonalVault(ctx, owner)
-	if err != nil {
-		return "", fmt.Errorf("your Vault is unavailable: %w", err)
+	var vaultID string
+	switch where {
+	case secretPlaceProject:
+		project := serverCrewForPath(root)
+		if project == "" {
+			return "", "", errors.New("This project has no project vault (only online projects do); save it in your own Vault (personal) instead")
+		}
+		var err error
+		if vaultID, err = api.crewVaultFor(ctx, actor, project); err != nil {
+			return "", "", err
+		}
+		defer forgetCrewVaultContents(project) // the project's next turn and run see it at once
+	case secretPlacePersonal:
+		// In a Crew everyone saves into their own Vault (projectSecretsOwner); for a Goal only its owner.
+		if actor == "" || api.projectSecretsOwner(actor, root) != actor {
+			return "", "", errProjectSecretOwner
+		}
+		var err error
+		if vaultID, err = ensurePersonalVault(ctx, actor); err != nil {
+			return "", "", fmt.Errorf("your Vault is unavailable: %w", err)
+		}
+	default:
+		return "", "", secretPlaceRefusal(where)
 	}
-	if err := api.setVaultSecret(ctx, owner, vaultID, name, value, true); err != nil {
-		return "", err
+	if err := api.setVaultSecret(ctx, actor, vaultID, name, value, true); err != nil {
+		return "", "", err
 	}
 	full, err := vaultSecretName(vaultID, name)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	markWorkflowSecretsChanged(root)
-	log.Printf("[PROJECT_SECRETS] owner=%s added_by=%s project=%s secret=%s saved=my_accounts", owner, actor, root, name)
-	return full, nil
+	log.Printf("[PROJECT_SECRETS] added_by=%s project=%s secret=%s saved=%s", actor, root, name, where)
+	return full, where, nil
 }
 
 // runSecretsOwner is whose Vault grants a run's selected secrets come from: the project's owner, for the owner, an
@@ -147,7 +197,7 @@ func (api *StreamingAPI) prepareCrewSyncSecret(ctx context.Context, owner, root,
 	case strings.TrimSpace(value) == "":
 		return full, "missing", nil
 	}
-	if _, err := api.saveProjectSecret(ctx, owner, root, name, value); err != nil {
+	if _, _, err := api.saveProjectSecret(ctx, owner, root, name, value, secretPlacePersonal); err != nil {
 		return "", "", err
 	}
 	return full, "ready", nil
