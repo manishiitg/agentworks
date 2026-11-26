@@ -112,7 +112,11 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 					return fmt.Sprintf("Saved %q in %s. $SECRET_%s is available in this session now.", name, saved, name), nil
 				}
 				if place == secretPlacePersonal && serverCrewForPath(workflowPath) != "" {
-					return fmt.Sprintf("Saved %q in your own Vault. This online project uses only its own vault, so it does not get it; copy it in with copy_from=%q to use it here.", name, name), nil
+					// Your own chats in an online project get your own keys (#4165); schedules and teammates do not.
+					if afterUpsert != nil {
+						_ = afterUpsert(ctx, name, full, value)
+					}
+					return fmt.Sprintf("Saved %q in your own Vault. Your own chats in this project get $SECRET_%s (this one now); its schedules, workflows and other people's chats do not. To let everyone here use it, copy it into the project with copy_from=%q.", name, name, name), nil
 				}
 				return fmt.Sprintf("Saved %q in %s. Choose it in the project's Secrets list so it receives $SECRET_%s.", name, saved, name), nil
 			},
