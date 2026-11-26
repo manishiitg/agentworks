@@ -210,6 +210,95 @@ func writeCrewTeam(t crewTeam) error {
 	return writeCrewTeamWithAgents(t, nil)
 }
 
+func pruneRemovedCrewTeamAgents(t *crewTeam) {
+	for id, a := range t.Agents {
+		project, online := crewTeamMemberProjectID(a.OwnerID)
+		if online && t.hasProject(project) {
+			continue // an online project's agents stay while it is in the Team (#3664)
+		}
+		if a.OwnerID != t.OwnerID && !slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == a.OwnerID }) {
+			delete(t.Agents, id)
+		}
+	}
+}
+
+func notifyCrewTeamSaved(t crewTeam) {
+	publishCrewPanelChanged(t.ProjectID)
+	go pushCrewTeamRecordChanged(t)
+	if !IsLocalMode() {
+		// The Team's vault (PLAT-746-1026) follows the roster; a no-op until something has been shared.
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			if err := syncCrewTeamVault(ctx, t.ProjectID, t); err != nil {
+				log.Printf("[TEAM_WAY] team=%s event=vault_members_failed reason=%q", t.ProjectID, err)
+			}
+		}()
+	}
+}
+
+// updateCrewTeam runs a locked read-modify-write on team.json under
+// crewTeamRecordMutex(dir), always advancing Revision strictly above the
+// stored revision so concurrent saves never lose updates or emit duplicate
+// revisions that crewTeamPushed would drop.
+func updateCrewTeam(project string, mutate func(*crewTeam) (bool, error)) (crewTeam, error) {
+	dir, err := crewTeamDir(project)
+	if err != nil {
+		return crewTeam{}, err
+	}
+	if err = agentworksclient.EnsurePrivateDirectory(dir); err != nil {
+		return crewTeam{}, err
+	}
+	mu := crewTeamRecordMutex(dir)
+	mu.Lock()
+	var t crewTeam
+	raw, readErr := os.ReadFile(filepath.Join(dir, "team.json"))
+	if readErr != nil {
+		mu.Unlock()
+		return crewTeam{}, readErr
+	}
+	if err = json.Unmarshal(raw, &t); err != nil {
+		mu.Unlock()
+		return crewTeam{}, err
+	}
+	if t.RegistryVersion != 1 || t.ProjectID != project || t.OwnerID == "" {
+		mu.Unlock()
+		return crewTeam{}, fmt.Errorf("team record is unavailable")
+	}
+	prevRev := t.Revision
+	changed, err := mutate(&t)
+	if err != nil || !changed {
+		mu.Unlock()
+		return t, err
+	}
+	t.RegistryVersion = 1
+	if t.Revision <= prevRev {
+		t.Revision = prevRev + 1
+	}
+	t.ServerData = nil
+	t.Projects = slices.Clone(t.Projects)
+	for i := range t.Projects {
+		t.Projects[i].Name = ""
+	}
+	t.CanManage = false
+	t.FolderAccess = false
+	t.OwnerName = ""
+	if t.Agents == nil {
+		t.Agents = map[string]crewTeamRegisteredAgent{}
+	}
+	if err = t.Folder.assignPaths(t.Folder, true); err != nil {
+		mu.Unlock()
+		return crewTeam{}, err
+	}
+	pruneRemovedCrewTeamAgents(&t)
+	err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
+	mu.Unlock()
+	if err == nil {
+		notifyCrewTeamSaved(t)
+	}
+	return t, err
+}
+
 func writeCrewTeamWithAgents(t crewTeam, choices func(map[string]crewTeamRegisteredAgent)) error {
 	t.RegistryVersion = 1
 	// Every Team write comes here, so a path that skips the Team handler still cannot share the AgentWorks project.
@@ -238,6 +327,9 @@ func writeCrewTeamWithAgents(t crewTeam, choices func(map[string]crewTeamRegiste
 			} else {
 				t.OnlineHome, t.RosterSource = latest.OnlineHome, latest.RosterSource
 				t.Agents = latest.Agents
+				if t.Revision <= latest.Revision {
+					t.Revision = latest.Revision + 1
+				}
 			}
 		}
 	} else if !os.IsNotExist(readErr) {
@@ -256,31 +348,12 @@ func writeCrewTeamWithAgents(t crewTeam, choices func(map[string]crewTeamRegiste
 			mu.Unlock()
 			return err
 		}
-		for id, a := range t.Agents {
-			project, online := crewTeamMemberProjectID(a.OwnerID)
-			if online && t.hasProject(project) {
-				continue // an online project's agents stay while it is in the Team (#3664)
-			}
-			if a.OwnerID != t.OwnerID && !slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == a.OwnerID }) {
-				delete(t.Agents, id)
-			}
-		}
+		pruneRemovedCrewTeamAgents(&t)
 		err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
 	}
 	mu.Unlock()
 	if err == nil {
-		publishCrewPanelChanged(t.ProjectID)
-		go pushCrewTeamRecordChanged(t)
-		if !IsLocalMode() {
-			// The Team's vault (PLAT-746-1026) follows the roster; a no-op until something has been shared.
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-				defer cancel()
-				if err := syncCrewTeamVault(ctx, t.ProjectID, t); err != nil {
-					log.Printf("[TEAM_WAY] team=%s event=vault_members_failed reason=%q", t.ProjectID, err)
-				}
-			}()
-		}
+		notifyCrewTeamSaved(t)
 	}
 	return err
 }

@@ -176,7 +176,7 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 			record.ChatKey, record.Name, record.Purpose, record.Place = a.ChatKey, a.Name, a.Purpose, a.Place
 			record.Examples = a.Examples
 			current.Agents[id] = record
-			a.ID, a.InTeam, a.Address = id, record.InTeam, crewTeamAgentAddress(t.ProjectID, id)
+			a.ID, a.InTeam, a.Address = id, record.InTeam, crewTeamAgentBridgeAddress(record.OwnerID, id)
 			accepted = append(accepted, *a)
 		}
 		people[i].Agents = accepted
