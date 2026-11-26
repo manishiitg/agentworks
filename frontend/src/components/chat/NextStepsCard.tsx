@@ -6,7 +6,7 @@ import { currentNextStepsEvent, nextStepsOf, type NextSteps } from '../../utils/
 
 // Summary and next steps (owner, 26 Nov, like Claude Desktop): the agent's last reply ended with a short summary, one
 // question and two or three answers. Shown after that reply in the chat, scrolling with it like Claude Desktop's (owner,
-// 26 Nov: not pinned to the message box), until the person types, sends or dismisses it; never saved. The first answer also goes with Cmd+Enter (ChatInput).
+// 26 Nov: not pinned to the message box), until the person sends a message or dismisses it; never saved. While the box is empty the first answer also goes with Cmd+Enter (ChatInput); typing only drops that shortcut.
 
 export function useNextSteps(session: string | null, available: boolean) {
   const event = useChatStore(state => session ? currentNextStepsEvent(state.tabEvents[session]) : undefined)
@@ -41,7 +41,7 @@ export function NextStepsSlot({ tabId, children }: { tabId: string; children: Re
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '')
 
-export function NextStepsCard({ steps, onPick, onDismiss, onTurnOff, onTurnOn }: { steps: NextSteps; onPick: (text: string) => void; onDismiss: () => void; onTurnOff?: () => void; onTurnOn?: () => void }) {
+export function NextStepsCard({ steps, onPick, onDismiss, onTurnOff, onTurnOn, shortcut = true }: { steps: NextSteps; shortcut?: boolean; onPick: (text: string) => void; onDismiss: () => void; onTurnOff?: () => void; onTurnOn?: () => void }) {
   const ref = useRef<HTMLElement>(null)
   const [off, setOff] = useState(false)
   // It appears as the reply ends; bring it into view the way the reply itself was.
@@ -73,10 +73,10 @@ export function NextStepsCard({ steps, onPick, onDismiss, onTurnOff, onTurnOn }:
     </div>
     <div className="mt-2.5 flex flex-wrap gap-2">
       {steps.options.map((option, index) => <button key={option} type="button" onClick={() => onPick(option)} data-testid={`next-steps-option-${index}`}
-        title={index === 0 ? `Send "${option}" (${isMac ? '⌘' : 'Ctrl'}+Enter)` : `Send "${option}"`}
-        className={`inline-flex max-w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${index === 0 ? 'bg-foreground text-background hover:bg-foreground/90' : 'bg-muted text-foreground hover:bg-muted/70'}`}>
+        title={index === 0 && shortcut ? `Send "${option}" (${isMac ? '⌘' : 'Ctrl'}+Enter)` : `Send "${option}"`}
+        className={`inline-flex max-w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${index === 0 && shortcut ? 'bg-foreground text-background hover:bg-foreground/90' : 'bg-muted text-foreground hover:bg-muted/70'}`}>
         <span className="truncate">{option}</span>
-        {index === 0 && <kbd aria-hidden="true" className="rounded border border-background/30 px-1 text-[10px] leading-4">{isMac ? '⌘↵' : 'Ctrl↵'}</kbd>}
+        {index === 0 && shortcut && <kbd aria-hidden="true" className="rounded border border-background/30 px-1 text-[10px] leading-4">{isMac ? '⌘↵' : 'Ctrl↵'}</kbd>}
       </button>)}
       {/* Owner, 26 Nov: a quiet "Turn off" on the answers' row; where it turns back on is in its tooltip. */}
       {onTurnOff && <button type="button" onClick={() => { setOff(true); onTurnOff() }} data-testid="next-steps-turn-off"
