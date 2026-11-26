@@ -322,7 +322,13 @@ func (c *conditionService) projectTasksRow(ctx context.Context, viewer, project 
 	if err != nil || (len(list.Tasks) == 0 && list.Lead == "" && len(list.Steps) == 0) {
 		return crewPanelRow{}, false, err
 	}
-	row := crewPanelRow{ID: "project-tasks", Label: "Project tasks", Group: "project-tasks", Steps: list.steps(), Rules: list.Rules, Detail: "No tasks yet"}
+	row := crewPanelRow{
+		ID:                   "project-tasks",
+		Label:                "Project tasks",
+		Group:                "project-tasks",
+		Detail:               "No tasks yet",
+		crewPanelActivityRow: crewPanelActivityRow{Steps: list.steps(), Rules: list.Rules},
+	}
 	tasks := conditionFeedTaskIndex(ctx, viewer)
 	tasks.cli = c.s.teamAgentCLI(ctx, project)
 	open, done := 0, 0

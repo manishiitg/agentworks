@@ -84,7 +84,10 @@ type externalScheduleTarget struct {
 func scheduleHandler(r *http.Request, handler http.HandlerFunc, method, path string, vars map[string]string, query url.Values, body any) (int, []byte) {
 	var reader *bytes.Reader
 	if body != nil {
-		encoded, _ := json.Marshal(body)
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			return http.StatusInternalServerError, nil
+		}
 		reader = bytes.NewReader(encoded)
 	} else {
 		reader = bytes.NewReader(nil)

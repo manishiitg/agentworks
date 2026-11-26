@@ -44,10 +44,46 @@ func (api *StreamingAPI) projectExtensionAccess(r *http.Request, workspace, prof
 	}
 	return api.browserWorkspaceAccess(r, workspace, profile, true)
 }
+func (api *StreamingAPI) browserExtensionStatusForRequest(r *http.Request, workspace, profile string) (browserrelay.Status, string, int, error) {
+	physical, err := api.projectExtensionAccess(r, workspace, profile)
+	if err != nil {
+		return browserrelay.Status{}, "", http.StatusForbidden, err
+	}
+	user := GetUserFromContext(r.Context()).UserID
+	scope := browserSessionForWorkspace(user, workspace)
+	if scope == "" {
+		return browserrelay.Status{}, "", http.StatusBadRequest, fmt.Errorf("Open a project or workflow browser")
+	}
+	settings, err := readWorkspaceBrowserSettings(r.Context(), physical)
+	if err != nil {
+		return browserrelay.Status{}, "", http.StatusBadGateway, fmt.Errorf("Cannot load project browser settings")
+	}
+	status := browserrelay.Default.Status(user, scope)
+	if settings.Mode != "extension" {
+		status.Selected, status.Connected = false, false
+	}
+	return status, settings.Mode, http.StatusOK, nil
+}
+
 func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.Request) {
 	workspace := r.URL.Query().Get("workspace_path")
 	if workspace == "" {
 		api.handleAccountBrowsers(w, r)
+		return
+	}
+	if r.Method == http.MethodGet {
+		status, mode, code, err := api.browserExtensionStatusForRequest(r, workspace, r.URL.Query().Get("profile_id"))
+		if err != nil {
+			http.Error(w, err.Error(), code)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(struct {
+			browserrelay.Status
+			Mode         string   `json:"mode"`
+			AllowedModes []string `json:"allowed_modes"`
+		}{status, mode, browser.VisibleModes()})
 		return
 	}
 	physical, err := api.projectExtensionAccess(r, workspace, r.URL.Query().Get("profile_id"))

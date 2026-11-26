@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"net/http"
 	"net/url"
 	"strings"
@@ -17,7 +18,6 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 	owner := binding.OwnedByCaller
 	_, connectionErr := personalConnectionItemScope(r, workspace, true, "Vault", "Vault")
 	connections := connectionErr == nil
-	q := url.Values{"workspace_path": {workspace}, "profile_id": {"work"}}
 	vars := map[string]string{"project": project, "project_id": project}
 	read := func(ctx context.Context, handler http.HandlerFunc, route string, query url.Values, out any) error {
 		return crewPanelRead(r.WithContext(ctx), handler, http.MethodGet, route, vars, query, nil, out)
@@ -30,15 +30,16 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 
 		// Git status over a Crew's repos takes longer than the panel's other reads (5 Nov: past 2 s on every refresh).
 		{id: "changes", title: "Uncommitted", allowed: workspaceReadAllowed(r.Context(), claims, workspace, logicalPathIsCaller, true), timeout: 6 * time.Second, refreshFor: crewPanelCacheTTL, background: true, read: func(ctx context.Context) (crewPanelSection, error) {
-			var data struct {
-				Repos       []workspaceGitRepo `json:"repos"`
-				Unavailable bool               `json:"git_unavailable"`
-				More        bool               `json:"more_repos"`
+			if !workspaceReadAllowed(ctx, claims, workspace, logicalPathIsCaller, true) {
+				return crewPanelSection{}, crewPanelReadError{http.StatusForbidden}
 			}
-			err := read(ctx, requireWorkflowReadAccessCallerRelative(api.handleWorkspaceGit), "/api/workspace-git", url.Values{"workspace_path": {workspace}, "op": {"status"}}, &data)
+			data, status, statusErr := workspaceGitStatusForWorkspace(ctx, r.WithContext(ctx), workspace)
+			if statusErr != nil {
+				return crewPanelSection{}, crewPanelReadError{status}
+			}
 			section := crewPanelSection{}
 			if data.Unavailable {
-				return section, err
+				return section, nil
 			}
 			// The side panel's Git row is a map of the project's checkouts. Its
 			// file counts are git's own (files not committed yet per checkout),
@@ -62,7 +63,21 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 					branch = "No commits yet"
 				}
 				folder := crewPanelName(repo.Root, workspace)
-				row := crewPanelRow{ID: repo.Root, Label: folder, Detail: branch, Count: crewPanelSyncState(repo), Destination: "files", Path: repo.Root, CommitAt: repo.CommitAt, Commit: repo.Commit, GitHubRepo: repo.GitHubRepo, Changed: len(repo.Files) > 0, ChangedFiles: len(repo.Files)}
+				row := crewPanelRow{
+					ID:          repo.Root,
+					Label:       folder,
+					Detail:      branch,
+					Count:       crewPanelSyncState(repo),
+					Destination: "files",
+					Path:        repo.Root,
+					crewPanelGitRow: crewPanelGitRow{
+						CommitAt:     repo.CommitAt,
+						Commit:       repo.Commit,
+						GitHubRepo:   repo.GitHubRepo,
+						Changed:      len(repo.Files) > 0,
+						ChangedFiles: len(repo.Files),
+					},
+				}
 				section.Changed += len(repo.Files)
 				if repo.Upstream != "" && !repo.Detached {
 					row.FetchedAt = repo.FetchedAt
@@ -109,7 +124,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 					section.FileLimit = &crewPanelFileLimit{FileLimitReport: report, CanFix: owner && roots.Local}
 				}
 			}
-			return section, err
+			return section, nil
 		}},
 		{id: "dashboards", title: "Artifacts", allowed: dashboardScopeAllowed(claims, "list"), read: func(ctx context.Context) (crewPanelSection, error) {
 			section := crewPanelSection{}
@@ -124,7 +139,13 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 					return section, err
 				}
 				for _, d := range data.Dashboards {
-					section.Rows = append(section.Rows, crewPanelRow{ID: d.ID, Label: d.Title, Path: d.DocumentPath, Destination: "dashboard", Motion: d.Motion, Artifact: d.Artifact})
+					section.Rows = append(section.Rows, crewPanelRow{
+						ID:                    d.ID,
+						Label:                 d.Title,
+						Path:                  d.DocumentPath,
+						Destination:           "dashboard",
+						crewPanelDashboardRow: crewPanelDashboardRow{Motion: d.Motion, Artifact: d.Artifact},
+					})
 				}
 				if !data.HasMore || len(data.Dashboards) == 0 {
 					break
@@ -213,18 +234,10 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			return section, err
 		}},
 		{id: "browser", title: "Browser", allowed: connections, read: func(ctx context.Context) (crewPanelSection, error) {
-			var data struct {
-				Selected, Connected bool
-				AccountConnected    bool   `json:"account_connected"`
-				BrowserID           string `json:"browser_id"`
-				Browsers            []struct {
-					ID, Name  string
-					Connected bool
-				}
-			}
 			section := crewPanelSection{}
-			if err := read(ctx, api.handleBrowserExtension, "/api/browser/extension", q, &data); err != nil {
-				return section, err
+			data, _, statusCode, err := api.browserExtensionStatusForRequest(r.WithContext(ctx), workspace, "work")
+			if err != nil {
+				return section, crewPanelReadError{statusCode}
 			}
 			name := "Browser"
 			label := "No browser open"
@@ -243,15 +256,12 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 					label = "Connected"
 				}
 			} else {
-				var live struct{ Sessions []struct{ State string } }
-				if err := read(ctx, api.handleLiveBrowserSessions, "/api/browser/live/sessions", q, &live); err != nil {
-					return section, err
-				}
+				liveSessions := api.liveBrowserSessionsForWorkspace(ctx, workspace)
 				if data.AccountConnected {
 					label = "Choose browser"
 				}
-				for _, s := range live.Sessions {
-					if s.State != "completed" {
+				for _, s := range liveSessions {
+					if s["state"] != "completed" {
 						connected = true
 						label = "Connected"
 						break
@@ -263,12 +273,10 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			return section, nil
 		}},
 		{id: "github", title: "GitHub", allowed: connections, read: func(ctx context.Context) (crewPanelSection, error) {
-			var data struct {
-				Connected bool
-				Login     string
-				Orgs      []string `json:"orgs"`
+			data, statusCode, err := gitHubVaultSummaryForContext(ctx, workspace)
+			if err != nil {
+				return crewPanelSection{}, crewPanelReadError{statusCode}
 			}
-			err := read(ctx, api.handleGitHubVault, "/api/vault/github", url.Values{"view": {"summary"}, "workspace_path": {workspace}}, &data)
 			label := "Not connected"
 			if data.Connected {
 				label = "Connected"
@@ -276,7 +284,14 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 					label = data.Login + " · " + label
 				}
 			}
-			return crewPanelSection{Rows: []crewPanelRow{{ID: "github", Label: "GitHub", Detail: label, Destination: "mcp:github", Connected: data.Connected, Login: data.Login, Orgs: data.Orgs}}}, err
+			return crewPanelSection{Rows: []crewPanelRow{{
+				ID:                 "github",
+				Label:              "GitHub",
+				Detail:             label,
+				Destination:        "mcp:github",
+				Connected:          data.Connected,
+				crewPanelGitHubRow: crewPanelGitHubRow{Login: data.Login, Orgs: data.Orgs},
+			}}}, nil
 		}},
 		{id: "slack_bot", title: "Slack bot", allowed: connections && !IsLocalMode(), noCache: true, read: func(ctx context.Context) (crewPanelSection, error) {
 			// Connections → Slack bot reads the same choice (crewSlackBotChoiceFor).
@@ -362,25 +377,39 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			return section, err
 		}},
 		{id: "watchers", title: "Watchers", allowed: owner && api.projectActions != nil, read: func(ctx context.Context) (crewPanelSection, error) {
-			var data struct {
-				Triggers []struct {
-					ID, Name  string
-					Enabled   bool
-					Completed string `json:"completed_at"`
-				}
+			if claims == nil {
+				return crewPanelSection{}, crewPanelReadError{http.StatusUnauthorized}
 			}
-			err := read(ctx, api.projectActions.conditionHTTP, "/api/condition-triggers", url.Values{"profile_id": {"work"}, "project_id": {project}, "view": {"summary"}}, &data)
+			condCtx := internalBotRequestContext(ctx, claims.UserID)
+			if session := r.Header.Get("X-Session-ID"); session != "" {
+				condCtx = context.WithValue(condCtx, common.ChatSessionIDKey, session)
+			}
+			rawOut, err := api.projectActions.conditionService().manage(condCtx, claims.UserID, crewProfileID, project, map[string]interface{}{
+				"action":            "list",
+				"summary":           true,
+				"include_completed": false,
+			})
+			if err != nil {
+				return crewPanelSection{}, crewPanelReadError{http.StatusBadRequest}
+			}
 			section := crewPanelSection{}
-			for _, item := range data.Triggers {
+			result, _ := rawOut.(map[string]interface{})
+			triggers, _ := result["triggers"].([]interface{})
+			for _, raw := range triggers {
+				item, _ := raw.(map[string]interface{})
+				id, _ := item["id"].(string)
+				name, _ := item["name"].(string)
+				enabled, _ := item["enabled"].(bool)
+				completed, _ := item["completed_at"].(string)
 				label := "Paused"
-				if item.Completed != "" {
+				if completed != "" {
 					label = "Completed"
-				} else if item.Enabled {
+				} else if enabled {
 					label = "On"
 				}
-				section.Rows = append(section.Rows, crewPanelRow{ID: "watcher:" + item.ID, Label: item.Name, Detail: label, Destination: "schedules:conditions"})
+				section.Rows = append(section.Rows, crewPanelRow{ID: "watcher:" + id, Label: name, Detail: label, Destination: "schedules:conditions"})
 			}
-			return section, err
+			return section, nil
 		}},
 		// Project activity (#3476): the caller's own feed Watchers; personal even in a shared Crew.
 		{id: "activity", title: "Project activity", allowed: api.projectActions != nil && claims != nil, noCache: true, read: func(ctx context.Context) (crewPanelSection, error) {

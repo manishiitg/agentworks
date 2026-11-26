@@ -3,14 +3,107 @@ package server
 import (
 	"context"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 )
+
+const claudeTranscriptBreakdownCacheMaxEntries = 256
+
+type claudeTranscriptBreakdownEntry struct {
+	size        int64
+	modTimeNano int64
+	breakdown   claudecode.ContextBreakdown
+	ok          bool
+	lastUsed    time.Time
+}
+
+// claudeTranscriptBreakdownCache caches parsed Claude Code transcript breakdowns
+// keyed by resolved transcript path and validated against (size, modTime).
+type claudeTranscriptBreakdownCache struct {
+	mu         sync.Mutex
+	entries    map[string]claudeTranscriptBreakdownEntry
+	maxEntries int
+	parse      func(nativeID, workingDir, accountHome string) (claudecode.ContextBreakdown, bool)
+}
+
+func parseClaudeTranscriptBreakdown(nativeID, workingDir, accountHome string) (claudecode.ContextBreakdown, bool) {
+	return claudecode.ContextBreakdownFromTranscript(nativeID, workingDir, accountHome)
+}
+
+var defaultClaudeTranscriptBreakdownCache = &claudeTranscriptBreakdownCache{
+	maxEntries: claudeTranscriptBreakdownCacheMaxEntries,
+	parse:      parseClaudeTranscriptBreakdown,
+}
+
+func (c *claudeTranscriptBreakdownCache) getOrParse(nativeID, workingDir, accountHome string) (claudecode.ContextBreakdown, bool) {
+	parse := c.parse
+	if parse == nil {
+		parse = parseClaudeTranscriptBreakdown
+	}
+	transcriptPath, err := resolveClaudeNativeTranscriptPath(workingDir, nativeID, accountHome)
+	if err != nil || transcriptPath == "" {
+		return parse(nativeID, workingDir, accountHome)
+	}
+	info, err := os.Stat(transcriptPath)
+	if err != nil || info.IsDir() {
+		return parse(nativeID, workingDir, accountHome)
+	}
+	size, modTimeNano := info.Size(), info.ModTime().UnixNano()
+	now := time.Now()
+
+	c.mu.Lock()
+	if entry, found := c.entries[transcriptPath]; found && entry.size == size && entry.modTimeNano == modTimeNano {
+		entry.lastUsed = now
+		c.entries[transcriptPath] = entry
+		c.mu.Unlock()
+		return entry.breakdown, entry.ok
+	}
+	c.mu.Unlock()
+
+	breakdown, ok := parse(nativeID, workingDir, accountHome)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = map[string]claudeTranscriptBreakdownEntry{}
+	}
+	limit := c.maxEntries
+	if limit <= 0 {
+		limit = claudeTranscriptBreakdownCacheMaxEntries
+	}
+	if _, exists := c.entries[transcriptPath]; !exists {
+		for len(c.entries) >= limit {
+			var oldestKey string
+			var oldestAt time.Time
+			first := true
+			for k, v := range c.entries {
+				if first || v.lastUsed.Before(oldestAt) {
+					oldestKey, oldestAt, first = k, v.lastUsed, false
+				}
+			}
+			if first {
+				break
+			}
+			delete(c.entries, oldestKey)
+		}
+	}
+	c.entries[transcriptPath] = claudeTranscriptBreakdownEntry{
+		size:        size,
+		modTimeNano: modTimeNano,
+		breakdown:   breakdown,
+		ok:          ok,
+		lastUsed:    now,
+	}
+	return breakdown, ok
+}
 
 // nativeChatContextParts sizes what fills a Claude Code chat from its own transcript: Claude Code reports only the
 // total, so this is the one way to show what the total is made of.
@@ -54,7 +147,7 @@ func (api *StreamingAPI) nativeChatBreakdown(ctx context.Context, owner string, 
 	if !ok {
 		return nativeBreakdown{}, false
 	}
-	b, ok := claudecode.ContextBreakdownFromTranscript(nativeID, workingDir, accountHome)
+	b, ok := defaultClaudeTranscriptBreakdownCache.getOrParse(nativeID, workingDir, accountHome)
 	return nativeBreakdown{ContextBreakdown: b, app: claudeCodeApp}, ok
 }
 

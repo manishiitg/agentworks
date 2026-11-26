@@ -474,6 +474,33 @@ func (api *StreamingAPI) disconnectGitHub(ctx context.Context, person string) (b
 	return false, selectProjectGitHubConnection(ctx, person, "")
 }
 
+type githubVaultSummary struct {
+	Connected bool
+	Login     string
+	Orgs      []string
+}
+
+func gitHubVaultSummaryForContext(ctx context.Context, workspace string) (githubVaultSummary, int, error) {
+	claims := GetUserFromContext(ctx)
+	if claims == nil || claims.UserID == "" || claims.AccessToken != nil {
+		return githubVaultSummary{}, http.StatusForbidden, errors.New("Sign in to AgentWorks to manage your GitHub account.")
+	}
+	person := claims.UserID
+	projectCtx, err := githubProjectContext(ctx, person, workspace, false)
+	if err != nil {
+		return githubVaultSummary{}, http.StatusForbidden, err
+	}
+	summary := githubVaultSummary{}
+	if rec, _ := projectGitHubConnection(projectCtx, person, githubProjectRoot(projectCtx)); rec != nil {
+		summary.Connected = true
+		summary.Login = rec.Login
+		if len(rec.Orgs) > 0 {
+			summary.Orgs = append([]string{}, rec.Orgs...)
+		}
+	}
+	return summary, http.StatusOK, nil
+}
+
 // HTTP: GET status, POST connect, POST complete, DELETE disconnect, for the signed-in person.
 func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Request) {
 	claims := GetUserFromContext(r.Context())
@@ -492,6 +519,23 @@ func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Reques
 		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"connections": connections})
 		return
 	}
+	if r.Method == http.MethodGet && r.URL.Query().Get("view") == "summary" {
+		summary, status, err := gitHubVaultSummaryForContext(r.Context(), r.URL.Query().Get("workspace_path"))
+		if err != nil {
+			writeAgentProfileError(w, status, err.Error())
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		out := map[string]any{"connected": summary.Connected}
+		if summary.Connected {
+			out["login"] = summary.Login
+			if len(summary.Orgs) > 0 {
+				out["orgs"] = summary.Orgs
+			}
+		}
+		writeAgentProfileJSON(w, http.StatusOK, out)
+		return
+	}
 	if !strings.HasSuffix(r.URL.Path, "/complete") {
 		ctx, err := githubProjectContext(r.Context(), person, r.URL.Query().Get("workspace_path"), r.Method != http.MethodGet)
 		if err != nil {
@@ -503,19 +547,6 @@ func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Cache-Control", "no-store")
 	switch {
 	case r.Method == http.MethodGet:
-		if r.URL.Query().Get("view") == "summary" {
-			// The menu shows the saved connection. Account choices and fresh
-			// organization checks belong to the full connection settings page.
-			out := map[string]any{"connected": false}
-			if rec, _ := projectGitHubConnection(r.Context(), person, githubProjectRoot(r.Context())); rec != nil {
-				out["connected"], out["login"] = true, rec.Login
-				if len(rec.Orgs) > 0 {
-					out["orgs"] = rec.Orgs
-				}
-			}
-			writeAgentProfileJSON(w, http.StatusOK, out)
-			return
-		}
 		writeAgentProfileJSON(w, http.StatusOK, gitHubStatus(r.Context(), person))
 	case r.Method == http.MethodDelete:
 		revoked, err := api.disconnectGitHub(r.Context(), person)
