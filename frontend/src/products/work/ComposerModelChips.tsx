@@ -384,21 +384,22 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   </Chip>{effortChip}</>
 }
 
-/** "Gemini 4 Neon (High)" and "Gemini 4 Neon (Low)" become one "Gemini 4 Neon" group with High and Low, so a long
- * account list (Antigravity, Cursor) reads as one row per model; a model with one entry stays a plain option. */
+/** "Gemini 4 Neon (High)" and "Gemini 4 Neon (Low)" go in one "Gemini 4 Neon" group, so a long account list
+ * (Antigravity, Cursor) reads by model. Each option keeps its full name: a closed select shows only the chosen
+ * option, and "Medium" alone did not say which model was picked. */
 function modelOptionGroups(models: { model_id: string; model_name?: string }[]) {
   const groups: { label: string; models: { id: string; label: string }[] }[] = []
-  const byFamily = new Map<string, { id: string; label: string; name: string }[]>()
+  const byFamily = new Map<string, { id: string; name: string }[]>()
   for (const model of models) {
     const name = model.model_name || model.model_id
     const match = name.match(/^(.*\S)\s*\(([^)]+)\)$/)
     const family = match ? match[1] : name
     if (!byFamily.has(family)) byFamily.set(family, [])
-    byFamily.get(family)!.push({ id: model.model_id, label: match ? match[2] : name, name })
+    byFamily.get(family)!.push({ id: model.model_id, name })
   }
   for (const [family, entries] of byFamily) {
     groups.push(entries.length > 1
-      ? { label: family, models: entries.map(({ id, label }) => ({ id, label })) }
+      ? { label: family, models: entries.map(({ id, name }) => ({ id, label: name })) }
       : { label: '', models: entries.map(({ id, name }) => ({ id, label: name })) })
   }
   return groups
