@@ -92,6 +92,8 @@ type Connector struct {
 	outboundEchoMu sync.Mutex
 	outboundEchoes map[[32]byte]outboundEcho
 
+	selfGuard selfChatGuard
+
 	routesMu sync.Mutex
 	routes   map[string]string // in-memory RouteStore fallback
 }
@@ -660,6 +662,15 @@ func (c *Connector) handleIncoming(acct *whatsapptransport.Account, evt *events.
 	}
 	if c.seen.Seen(info.ID) {
 		return
+	}
+	if info.IsFromMe && selfChat {
+		if reason := c.selfGuard.admit(info.Chat, info.ID, rawText, info.Timestamp, time.Now()); reason != "" {
+			log.Printf("[WHATSAPP] self-chat message dropped: reason=%s id=%s sender=%s", reason, info.ID, info.Sender.String())
+			if reason == selfChatFromAgentWorks || reason == selfChatBurst {
+				c.warnSelfChatOnce(acct, info.Chat, reason)
+			}
+			return
+		}
 	}
 	msg := &Message{
 		conn:      c,

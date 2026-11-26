@@ -184,7 +184,7 @@ func (a *Account) React(ctx context.Context, chat, sender types.JID, msgID types
 	if a == nil || a.client == nil {
 		return fmt.Errorf("whatsapp: no client")
 	}
-	_, err := a.client.SendMessage(ctx, chat, a.client.BuildReaction(chat, sender, msgID, emoji))
+	_, err := a.send(ctx, chat, a.client.BuildReaction(chat, sender, msgID, emoji))
 	return err
 }
 
@@ -193,7 +193,7 @@ func (a *Account) SendText(ctx context.Context, chat types.JID, text string) err
 	if a == nil || a.client == nil {
 		return fmt.Errorf("whatsapp: no client")
 	}
-	_, err := a.client.SendMessage(ctx, chat, &waProto.Message{Conversation: &text})
+	_, err := a.send(ctx, chat, &waProto.Message{Conversation: &text})
 	return err
 }
 
@@ -239,7 +239,7 @@ func (a *Account) SendDocument(ctx context.Context, chat types.JID, data []byte,
 	if strings.TrimSpace(caption) != "" {
 		doc.Caption = &caption
 	}
-	_, err = a.client.SendMessage(ctx, chat, &waProto.Message{DocumentMessage: doc})
+	_, err = a.send(ctx, chat, &waProto.Message{DocumentMessage: doc})
 	return err
 }
 
@@ -539,7 +539,7 @@ func (a *Account) SendTextID(ctx context.Context, chat types.JID, text string) (
 	if a == nil || a.client == nil {
 		return "", fmt.Errorf("whatsapp: no client")
 	}
-	resp, err := a.client.SendMessage(ctx, chat, &waProto.Message{Conversation: &text})
+	resp, err := a.send(ctx, chat, &waProto.Message{Conversation: &text})
 	if err != nil {
 		return "", err
 	}
@@ -567,4 +567,26 @@ func (a *Account) ChatName(ctx context.Context, chat types.JID) string {
 		}
 	}
 	return ""
+}
+
+// AgentWorks tags the ID of every message it sends on WhatsApp (#4269), so any copy of AgentWorks linked to the same
+// number can tell a message another copy sent from one the person typed. The tag keeps WhatsApp Web's ID shape
+// ("3EB0" + 18 upper-case hex characters).
+const agentWorksIDTag = "3EB0A6E7F0"
+
+// TagMessageID turns a generated WhatsApp Web message ID into an AgentWorks-tagged one of the same length.
+func TagMessageID(id types.MessageID) types.MessageID {
+	if len(id) != 22 || !strings.HasPrefix(string(id), "3EB0") {
+		return id
+	}
+	return types.MessageID(agentWorksIDTag + string(id)[len(agentWorksIDTag):])
+}
+
+// IsAgentWorksMessageID reports whether a message was sent by a copy of AgentWorks.
+func IsAgentWorksMessageID(id types.MessageID) bool {
+	return len(id) == 22 && strings.HasPrefix(string(id), agentWorksIDTag)
+}
+
+func (a *Account) send(ctx context.Context, chat types.JID, msg *waProto.Message) (whatsmeow.SendResponse, error) {
+	return a.client.SendMessage(ctx, chat, msg, whatsmeow.SendRequestExtra{ID: TagMessageID(a.client.GenerateMessageID())})
 }
