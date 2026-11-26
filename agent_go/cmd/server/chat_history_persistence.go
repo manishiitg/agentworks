@@ -218,6 +218,12 @@ type resolvedResumeTarget struct {
 	History          []llmtypes.MessageContent
 	Runtime          *ChatHistoryAgentRuntime
 	WorkshopMode     string
+	// Base > 0: History is only the chat's recent window; Base saved messages
+	// (BaseTurns of them visible user turns) come before it in the file. A
+	// coding agent resuming its own session never needs the older messages,
+	// so they stay on disk (#4080: 15 chats loading 7k-18k messages each at
+	// once took the server from 2.8 GB to 12.8 GB).
+	Base, BaseTurns int
 }
 
 // Retained turn configuration must not pin the separately parsed resume
@@ -659,6 +665,8 @@ func (api *StreamingAPI) persistChatConversationToPathWithTerminalSession(sessio
 		return
 	}
 	api.rememberWrittenResumeHistory(userID, sessionID, convPath, persistedHistory, runtime)
+	// This writer merged the whole file in, so memory now holds all of it.
+	api.forgetResumeWindow(sessionID)
 	if err := writeChatHistoryResumeSnapshot(context.Background(), convPath, convJSON); err != nil {
 		logfWithContext(logCtx, "[CHAT_HISTORY] Failed to write resume snapshot for %s: %v", convPath, err)
 	}
@@ -1221,7 +1229,8 @@ func (api *StreamingAPI) restoreResolvedResumeTarget(currentSessionID string, ta
 	history := target.History
 	if len(history) > 0 {
 		api.conversationMux.Lock()
-		if _, exists := api.conversationHistory[currentSessionID]; !exists || target.source != nil && !target.source.same(api.resumeHistorySources[currentSessionID]) {
+		installed := api.resumeHistorySources[currentSessionID]
+		if _, exists := api.conversationHistory[currentSessionID]; !exists || target.source != nil && !target.source.same(installed) || installed != nil && installed.target.Base != target.Base {
 			if api.conversationHistory == nil {
 				api.conversationHistory = make(map[string][]llmtypes.MessageContent)
 			}

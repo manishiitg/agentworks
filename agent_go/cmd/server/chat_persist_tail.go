@@ -147,7 +147,7 @@ func (api *StreamingAPI) tryPersistChatTail(session, mode, user string, history 
 	for key, value := range patch {
 		header[key] = value
 	}
-	if err = writeChatTailResumeSnapshot(path, header, history, totalTurns); err != nil {
+	if err = writeChatTailResumeSnapshot(path, header, history, totalTurns, source.target.Base); err != nil {
 		log.Printf("[CHAT_PERSIST_TAIL] session=%s resume_error=true", session)
 		return false
 	}
@@ -157,15 +157,16 @@ func (api *StreamingAPI) tryPersistChatTail(session, mode, user string, history 
 	} else {
 		return false
 	}
-	if err = updatePersistedChatHistoryIndex(user, session, mode, history, runtime, path, size, now, bot); err != nil {
+	if err = updatePersistedChatHistoryIndexWithCount(user, session, mode, history, len(history)+source.target.Base, runtime, path, size, now, bot); err != nil {
 		log.Printf("[CHAT_PERSIST_TAIL] session=%s index_error=true", session)
 		return false
 	}
-	log.Printf("[CHAT_PERSIST_TAIL] session=%s prior_messages=%d appended_messages=%d messages=%d", session, source.persistedBody, len(tail), len(history))
+	log.Printf("[CHAT_PERSIST_TAIL] session=%s prior_messages=%d appended_messages=%d messages=%d window_base=%d", session, source.persistedBody, len(tail), len(history), source.target.Base)
 	return true
 }
 
-func writeChatTailResumeSnapshot(path string, metadata map[string]interface{}, history []llmtypes.MessageContent, totalTurns int) error {
+// base: saved messages before history (a recent window); positions stay the file's.
+func writeChatTailResumeSnapshot(path string, metadata map[string]interface{}, history []llmtypes.MessageContent, totalTurns, base int) error {
 	start, count := len(history), 0
 	for start > 0 {
 		start--
@@ -181,6 +182,6 @@ func writeChatTailResumeSnapshot(path string, metadata map[string]interface{}, h
 	if err != nil {
 		return err
 	}
-	projected := projectChatHistoryResumeWindow(raw, chatHistoryResumeSnapshotTurns, 0, start, len(history), max(0, totalTurns-count))
+	projected := projectChatHistoryResumeWindow(raw, chatHistoryResumeSnapshotTurns, 0, start+base, len(history)+base, max(0, totalTurns-count))
 	return writeRawFileToWorkspace(context.Background(), chatHistoryResumeSnapshotPath(path), string(boundChatHistoryResumeSnapshot(projected)))
 }

@@ -277,7 +277,30 @@ func LoadTail(path string, n int) ([]byte, error) {
 	return load(path, n)
 }
 
+// LoadRecent returns the record with its history cut to lines[start:], where
+// start is what pick returns for all committed lines, plus start (the number
+// of messages left out). pick sees raw lines and decodes none of them, so a
+// long chat is read without parsing its old messages. A legacy record is
+// returned whole with 0. Never Save the result.
+func LoadRecent(path string, pick func(lines [][]byte) int) ([]byte, int, error) {
+	start := 0
+	record, err := loadPicked(path, func(lines [][]byte) int {
+		start = min(max(pick(lines), 0), len(lines))
+		return start
+	}, true)
+	return record, start, err
+}
+
 func load(path string, tail int) ([]byte, error) {
+	return loadPicked(path, func(lines [][]byte) int {
+		if tail >= 0 && tail < len(lines) {
+			return len(lines) - tail
+		}
+		return 0
+	}, tail >= 0)
+}
+
+func loadPicked(path string, pick func(lines [][]byte) int, marked bool) ([]byte, error) {
 	h, raw, err := readHeader(path)
 	if err != nil {
 		return nil, err
@@ -295,9 +318,7 @@ func load(path string, tail int) ([]byte, error) {
 	if hasSystem && string(system) == "null" {
 		hasSystem = false
 	}
-	if tail >= 0 && tail < len(lines) {
-		lines = lines[len(lines)-tail:]
-	}
+	lines = lines[pick(lines):]
 	var buf bytes.Buffer
 	buf.WriteByte('{')
 	first := true
@@ -331,7 +352,7 @@ func load(path string, tail int) ([]byte, error) {
 		wrote = true
 	}
 	buf.WriteByte(']')
-	if tail >= 0 {
+	if marked {
 		fmt.Fprintf(&buf, `,"%s":%d,"%s":true`, fieldTailTotal, total, fieldTailFlag)
 	}
 	buf.WriteByte('}')
