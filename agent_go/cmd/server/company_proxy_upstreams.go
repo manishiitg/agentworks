@@ -594,9 +594,8 @@ func (api *StreamingAPI) handleDesktopCursorRelay(w http.ResponseWriter, r *http
 		return
 	}
 	copyRelayHeaders(req.Header, r.Header)
-	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.ContentLength = r.ContentLength
-	resp, err := companyProxyClient.Do(req)
+	resp, err := desktopServerDo(companyProxyClient, record.OwnerUserID, c, req)
 	if err != nil {
 		desktopJSONError(w, 502, "Cannot reach "+c.Name+".")
 		return

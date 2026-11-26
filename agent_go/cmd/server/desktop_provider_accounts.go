@@ -83,8 +83,7 @@ func remoteOwnAccounts(r *http.Request, c desktopConnection) ([]providerAccountV
 	if err != nil {
 		return nil, 0, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-	resp, err := desktopHTTPClient().Do(req)
+	resp, err := desktopServerDo(desktopHTTPClient(), GetUserFromContext(r.Context()).UserID, c, req)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -121,8 +120,7 @@ func remoteAccountLogin(r *http.Request, c desktopConnection, id string) (provid
 	if err != nil {
 		return status, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-	resp, err := desktopHTTPClient().Do(req)
+	resp, err := desktopServerDo(desktopHTTPClient(), GetUserFromContext(r.Context()).UserID, c, req)
 	if err != nil {
 		return status, err
 	}
@@ -274,9 +272,8 @@ func (api *StreamingAPI) copyProviderAccountToServer(w http.ResponseWriter, r *h
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Authorization", "Bearer "+c.Token)
 		req.Header.Set("Content-Type", "application/json")
-		return desktopHTTPClient().Do(req)
+		return desktopServerDo(desktopHTTPClient(), owner, c, req)
 	}
 	// The server's AI accounts page, where a browser-login account is signed in; with the account named, the page
 	// starts its sign-in at once.

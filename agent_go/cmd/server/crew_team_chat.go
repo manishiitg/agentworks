@@ -413,10 +413,9 @@ func (api *StreamingAPI) registerCrewTeamChatTool(reg definitionToolRegistrar, g
 				return "", err
 			}
 			req.Header = r.Header.Clone()
-			req.Header.Set("Authorization", "Bearer "+connection.Token)
 			req.Header.Set("Content-Type", "application/json")
 			setCrewMacPair(req.Header, caller.UserID, *connection, route)
-			res, err := desktopHTTPClient().Do(req)
+			res, err := desktopServerDo(desktopHTTPClient(), caller.UserID, *connection, req)
 			if err != nil {
 				return "", fmt.Errorf("Your company's server is offline. Local files stay on this Mac; try Sync when connected")
 			}

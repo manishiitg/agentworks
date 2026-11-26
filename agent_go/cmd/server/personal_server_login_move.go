@@ -273,9 +273,8 @@ func (api *StreamingAPI) handleMoveLoginToServer(w http.ResponseWriter, r *http.
 		desktopJSONError(w, 500, "Cannot reach the server.")
 		return
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := desktopHTTPClient().Do(req)
+	resp, err := desktopServerDo(desktopHTTPClient(), caller, *c, req)
 	if err != nil {
 		desktopJSONError(w, 502, "Cannot reach "+c.Name+". Nothing was moved.")
 		return

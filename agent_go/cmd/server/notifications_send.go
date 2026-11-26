@@ -380,10 +380,9 @@ func notifyRelayStream(ctx context.Context, owner string, c desktopConnection, d
 					}
 				}
 			}
-			req.Header.Set("Authorization", "Bearer "+c.Token)
 			req.Header.Set("Accept", "text/event-stream")
 			var resp *http.Response
-			if resp, err = client.Do(req); err == nil {
+			if resp, err = desktopServerDo(client, owner, c, req); err == nil {
 				if resp.StatusCode == http.StatusOK {
 					scanner := bufio.NewScanner(resp.Body)
 					event := ""

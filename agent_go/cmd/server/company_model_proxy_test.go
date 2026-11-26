@@ -70,7 +70,7 @@ func TestTokenLimitKeepsCompanyAccount(t *testing.T) {
 	}
 	for _, status := range []int{http.StatusTooManyRequests, http.StatusForbidden} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status) }))
-		offered, known, _ := companyAccountOffered(context.Background(), desktopConnection{Server: server.URL, Name: "test"}, "codex-cli")
+		offered, known, _ := companyAccountOffered(context.Background(), "", desktopConnection{Server: server.URL, Name: "test"}, "codex-cli")
 		server.Close()
 		if offered || known != (status == http.StatusForbidden) {
 			t.Fatalf("probe status=%d offered=%v known=%v: only 403 is a known not-offered outcome", status, offered, known)
