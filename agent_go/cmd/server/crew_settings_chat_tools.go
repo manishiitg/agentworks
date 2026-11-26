@@ -151,7 +151,7 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 		}
 	}
 	if agentprofiles.HasFeature(profile.Definition, "models") {
-		return register("manage_crew_model", "Read the model choices and saved model of this chat (action=list), or change this chat's model when the person asks (action=set). Changes apply from the next message; this reply still uses the current model. Use an engine/model_id and connection_id returned by list. Choose your own personal account or a company account available to you for this tab. An empty engine returns the chat to the project's default. Other chats and the project default stay unchanged. list also shows this chat's context: tokens used of its window, its account's plan limits and the offered switches. set takes idle_compaction and, for a Claude chat, claude_terminal (without engine only they change). compact: summarise this chat's conversation once this reply ends, so the next message costs less.", map[string]any{
+		return register("manage_crew_model", "Read the model choices and saved model of this chat (action=list), or change this chat's model when the person asks (action=set). Changes apply from the next message; this reply still uses the current model. Use an engine/model_id and connection_id returned by list. Choose your own personal account or a company account available to you for this tab. An empty engine uses the project's fallback: the owner's last-used model. Other chats stay unchanged; when the project's owner picks a model, it also becomes that fallback. list also shows this chat's context: tokens used of its window, its account's plan limits and the offered switches. set takes idle_compaction and, for a Claude chat, claude_terminal (without engine only they change). compact: summarise this chat's conversation once this reply ends, so the next message costs less.", map[string]any{
 			"action":           map[string]any{"type": "string", "enum": []string{"list", "set", "compact"}},
 			"idle_compaction":  map[string]any{"type": "boolean", "description": "For set: Auto-compact when idle. " + idleCompactHint()},
 			"compact_early":    map[string]any{"type": "boolean", "description": "For set: Compact at 300K. " + compactEarlyHint()},
@@ -159,7 +159,7 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 			"reply_style":      map[string]any{"type": "string", "enum": chatReplyStyles, "description": "For set, how this chat's agent writes its replies: default, concise, explanatory, learning or proactive. The person's choice, also in the mode menu in the message box; change it only when they ask. Applies from the next message."},
 			"next_steps":       map[string]any{"type": "boolean", "description": "For set: the summary and next-steps card under replies the person sends from the app (on by default). Change it only when they ask."},
 			"claude_terminal":  map[string]any{"type": "boolean", "description": "For set, a Claude chat only: true runs Claude Code as the native terminal (every session slash command works), false as the chat view. Applies from the next message; the conversation continues."},
-			"engine":           map[string]any{"type": "string", "description": "Provider option from list. For set, an empty string uses the project default."},
+			"engine":           map[string]any{"type": "string", "description": "Provider option from list. For set, an empty string uses the project's fallback (the owner's last-used model)."},
 			"connection_id":    externalString("Your personal or available company account ID from provider_connections in list."),
 			"model_id":         externalString("Model from that provider's offered models."),
 			"reasoning_effort": externalString("Optional reasoning level offered for that provider."),
@@ -204,7 +204,7 @@ func (api *StreamingAPI) registerCrewSettingsChatTools(reg definitionToolRegistr
 					return contextReply(switches)
 				}
 				if !hasEngine {
-					return "", errors.New("Choose an engine from list, or send an empty engine to use the project default.")
+					return "", errors.New("Choose an engine from list, or send an empty engine to use the project's fallback (the owner's last-used model).")
 				}
 				if engine := externalArg(args, "engine"); engine != "" {
 					option, offered := findProviderOptionByID(choices.Runtime.ProviderOptions, engine)

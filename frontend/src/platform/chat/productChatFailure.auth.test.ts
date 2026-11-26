@@ -16,6 +16,6 @@ it('reports a CLI stuck on its login screen as not signed in, not a connection p
   )
   expect(failure.code).toBe('authentication_failed')
   expect(failure.title).toContain('not signed in')
-  expect(failure.message).toContain('Setup → Models')
+  expect(failure.message).toContain('the model menu in the message box')
   expect(failure.retryable).toBe(false)
 })

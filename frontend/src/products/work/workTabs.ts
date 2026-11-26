@@ -138,22 +138,3 @@ export function markWorkProjectRuntimeDirty(projectId: string): void {
   }
 }
 
-/** Change native coding-agent runtime while retaining the platform conversation. */
-export function setWorkProjectRuntimeSelection(
-  projectId: string,
-  _sourceTabId: string,
-  selection: WorkRuntimeSelection,
-): void {
-  const store = useChatStore.getState()
-  for (const tab of Object.values(store.chatTabs)) {
-    if (!belongsToWorkProject(tab, projectId) || tab.metadata?.agentProfileChatModelOverride || tab.metadata?.agentProfileConversationKey?.startsWith(`${projectId}:chat:agent-`)) continue
-    store.setTabMetadata(tab.tabId, {
-      agentProfileEngine: selection.engine,
-      agentProfileConnectionID: selection.connectionId,
-      agentProfileModelID: selection.modelId,
-      agentProfileReasoningEffort: selection.reasoningEffort,
-      agentProfileChatModelLabel: undefined,
-      agentProfileRuntimeDirty: Boolean(tab.sessionId),
-    })
-  }
-}

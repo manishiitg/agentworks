@@ -42,7 +42,7 @@ Change how the app looks, project settings or models, inspect usage, or use the 
 Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name as `skill_name` and the listed `path` (chat has no `help action=topic`); only an MCP client uses `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
 
 - Settings: read `references/settings/SKILL.md` when needed.
-- Models: read `references/models/SKILL.md` when needed.
+- Models: each chat chooses its own model; read `references/models/SKILL.md` when needed.
 - Costs: read `references/costs/SKILL.md` when needed.
 - AI accounts (which are working or need a sign-in, sign in or out, remove one, add it on or move it to a server): use the `ai_accounts` tool, starting with `list`. Signing in returns a link the person approves in their browser; never ask for a login or key value in chat.
 - Appearance (the person's own theme, colours, fonts, background): read `references/appearance/SKILL.md` before changing it.

@@ -69,7 +69,7 @@ func (api *StreamingAPI) workspaceGitDraftModel(r *http.Request, canonical, sess
 		}
 		return &publishedProject{OwnerID: actor, PublisherID: root.Owner, WorkspaceID: root.ID, Root: canonical, ProfileID: crewProfileID, Provider: provider, ModelID: tiers.Low.ModelID, ConnectionID: firstNonEmptyTrimmed(identity.ConnectionID, record.ConnectionID), Revision: "git-draft-" + uuid.NewString()}, nil
 	}
-	return nil, errors.New("This chat's program cannot prepare a small tool-free draft. Write the text yourself, or choose a supported program in Models.")
+	return nil, errors.New("This chat's program cannot prepare a small tool-free draft. Write the text yourself, or choose a supported program in the model menu in the message box.")
 }
 
 // Stop reading AND cancel Git at the byte bound, not an unbounded Output call

@@ -11,6 +11,7 @@ import { agentApi } from '../../services/api'
 import { llmConfigService } from '../../services/llm-config-api'
 import { useChatStore } from '../../stores/useChatStore'
 import { workChatModelsQueryKey } from './useWorkChatModels'
+import { useCommandDialogStore } from '../../stores/useCommandDialogStore'
 import type { AgentProfileProviderOption } from '../../utils/agentProfileCapabilities'
 import { AccountModelPicker } from '../../components/ui/AccountModelPicker'
 import { SharedTokenUsageItems } from '../../components/providers/SharedTokenUsageNotice'
@@ -226,8 +227,8 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     } else switchTo(pending.option, pending.modelId, pending.connectionId)
   }
   const pickEffort = (effort: string) => void save(selectedOption, currentModel, effort)
-  // Optional setup and defaults on the Models page and this project's usage.
-  const openModels = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-models', { detail: { projectId, conversationKey } }))
+  // Accounts and providers live in the Providers dialog; this chat's model is chosen right here.
+  const openModels = () => useCommandDialogStore.getState().openDialog('models')
   const openUsage = () => window.dispatchEvent(new CustomEvent('agentworks:open-chat-usage', { detail: { projectId } }))
   // Cursor and Antigravity list every variant of a model as its own entry; show them the way the Models page does:
   // by company, one row per model, variants as chips, older versions folded away.

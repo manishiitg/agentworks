@@ -15,7 +15,7 @@ views. Opening a page changes presentation, not settings or permissions.
 - Share, Team, selected agents, accounts and secrets: `panel-access`.
 - Schedules, Webhooks and Watchers: `panel-automations`.
 - Slack bot: Share → Slack; personal Slack: Connections. Read `panel-channels`.
-- Browser, Terminal, model and project settings: `panel-settings`.
+- Browser, Terminal, a chat's model (chosen in the chat) and project settings: `panel-settings`.
 
 Ask AI prepares a contextual request in the current project's chat. A page's
 stored data or old view ID does not prove that a retired Goal/Flow destination

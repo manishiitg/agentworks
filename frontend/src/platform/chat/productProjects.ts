@@ -447,29 +447,6 @@ export async function updateProductProjectIdentity<P extends string>(
   return { ...project, description: asString(manifest.description), identity: parseProductIdentity(manifest.identity), updatedAt }
 }
 
-export async function updateProductProjectLLMConfig<P extends string>(
-  project: ProductProject<P>,
-  llmConfig: PresetLLMConfig,
-  commitLabel: string,
-  runtimeManifestName?: string,
-): Promise<ProductProject<P>> {
-  try {
-    const { path: manifestPath, manifest } = await readProjectRuntimeManifest(project, runtimeManifestName)
-    const capabilities = manifest.capabilities && typeof manifest.capabilities === 'object'
-      ? { ...(manifest.capabilities as Record<string, unknown>) }
-      : {}
-    capabilities.llm_config = llmConfig
-    const updatedAt = new Date().toISOString()
-    manifest.capabilities = capabilities
-    manifest.updated_at = updatedAt
-    await agentApi.updatePlannerFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, commitLabel)
-    if (runtimeManifestName && !project.runtimeConfigInitialized) await stripLegacyRuntimeFromProduct(project, commitLabel)
-    return { ...project, llmConfig, runtimeConfigInitialized: true, updatedAt }
-  } catch {
-    throw new Error('Project configuration is invalid JSON.')
-  }
-}
-
 /** Sets the crew's "Native agent tools" switch (capabilities.native_agent_tools). */
 export async function updateProductProjectNativeAgentTools<P extends string>(
   project: ProductProject<P>,

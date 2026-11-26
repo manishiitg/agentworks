@@ -60,7 +60,7 @@ import type { CrewOnboarding } from './crewStarterTypes'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 import { setProductCommands } from '../../commands/registry'
 import { toProductCommandDefinitions } from './productCommands'
-import { createWorkSession, deleteWorkSession, loadWorkSessionsIncludingShared, isWorkSessionRun, updateWorkSessionIdentity, workLLMConfigFromSelection, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
+import { createWorkSession, deleteWorkSession, loadWorkSessionsIncludingShared, isWorkSessionRun, updateWorkSessionIdentity, workLLMSelectionFromConfig, type WorkSession } from './workSessions'
 import { WorkWorkspacePane, WorkWorkspaceToolbar, type WorkWorkspaceView } from './WorkWorkspacePane'
 import { fileSearchShortcut, isTerminalShortcut } from './CodePaneTabs'
 import { requestFileSearch } from '../../utils/fileSearchRequest'
@@ -77,7 +77,7 @@ import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
 import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspaceShell'
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
 import { parseProductInteraction } from '../../../shared/session/interactions'
-import { retireWorkActivityCopies, belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, type WorkRuntimeSelection } from './workTabs'
+import { retireWorkActivityCopies, belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, workSideChatKey, workTabToKeepActive, type WorkRuntimeSelection } from './workTabs'
 import { ChatEmptyState, startInChat, useChatShareLines } from './ChatEmptyState'
 import { ProjectWelcome, useProjectWelcome } from './ProjectWelcome'
 import { onlineAgentSideChats, teamSideChats } from './teamApi'
@@ -86,7 +86,7 @@ import { TeamAgentAsk } from './TeamAgentAsk'
 import { TeammateChatBackup } from './TeammateChatBackup'
 import { ownerShortName } from '../../components/chat/chatTabName'
 import { CrewWorksElsewhere, useCrewWorksElsewhere } from './CrewWorksElsewhere'
-import { updateProductProjectLLMConfig, updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
+import { updateProductProjectNativeAgentTools, updateProductProjectSelections, type ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { type RunsOnSelection } from './RunsOnPicker'
 import { rememberRunsOn } from './runsOnMemory'
 import { useWorkspaceUIControl, type WorkspaceUIControlAdapter } from '../../platform/ui-control/useWorkspaceUIControl'
@@ -373,23 +373,6 @@ function useWorkSessions(product: ProjectProductConfig) {
     }
   }, [product, sessions, setSelectedId, updateSessions])
 
-  const updateLLMConfig = useCallback(async (projectId: string, selection: WorkRuntimeSelection) => {
-    const project = sessions.find(item => item.product === product.profileId && item.id === projectId)
-    if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
-    if (isWorkSessionRun(project)) throw new Error(`Only the ${product.noun} owner can change this.`)
-    // The account travels with the provider: without it "Use account" saved only the provider,
-    // and the Crew or Code kept running on the server account (server B/server C, 2026-09-30).
-    const llmConfig = workLLMConfigFromSelection({
-      connectionId: selection.connectionId,
-      provider: selection.provider || selection.engine,
-      modelId: selection.modelId,
-      reasoningEffort: selection.reasoningEffort,
-    })
-    const updated = await updateProductProjectLLMConfig(project, llmConfig, `Update ${product.noun} project model ${project.title}`, 'workflow.json')
-    updateSessions(current => current.map(item => item.product === updated.product && item.id === projectId ? updated : item))
-    return updated
-  }, [product, sessions, updateSessions])
-
   const updateNativeAgentTools = useCallback(async (projectId: string, enabled: boolean) => {
     const project = sessions.find(item => item.product === product.profileId && item.id === projectId)
     if (!project) throw new Error(`This ${product.itemNoun} is no longer available.`)
@@ -422,7 +405,6 @@ function useWorkSessions(product: ProjectProductConfig) {
     select: setSelectedId,
     create,
     remove,
-    updateLLMConfig,
     updateNativeAgentTools,
     updateSelections,
     updateIdentity,
@@ -454,7 +436,6 @@ export function selectWorkChatTabIds(
 export function useWorkChatTab(
   product: ProjectProductConfig,
   session: WorkSession | null,
-  onLegacyRuntimeDiscovered: (selection: WorkRuntimeSelection, projectId: string) => void | Promise<void>,
 ) {
   const [failure, setFailure] = useState<{ projectId: string; message: string } | null>(null)
   const [preparedProject, setPreparedProject] = useState<string | null>(null)
@@ -481,9 +462,7 @@ export function useWorkChatTab(
     if (sessionId && activeProjectTabId) displayedChat.current = { projectId: sessionId, tabId: activeProjectTabId }
   }, [sessionId, activeProjectTabId])
   const sessionRef = useRef(session)
-  const legacyRuntimeHandlerRef = useRef(onLegacyRuntimeDiscovered)
   sessionRef.current = session
-  legacyRuntimeHandlerRef.current = onLegacyRuntimeDiscovered
   const projectId = session?.id
   useWorkChatModels(product.profileId, projectId, session?.llmConfig)
   const [routeRevision, setRouteRevision] = useState(0)
@@ -604,9 +583,7 @@ export function useWorkChatTab(
 
         // ChatArea owns loading the selected conversation, including the main tab.
         if (!savedRuntime) {
-          const restored = await restoreWorkRuntimeSelection(canonicalTabId, conversation.session_id, target.workspacePath)
-          if (cancelled) return
-          if (restored) await legacyRuntimeHandlerRef.current(restored, target.id)
+          await restoreWorkRuntimeSelection(canonicalTabId, conversation.session_id, target.workspacePath)
         }
         if (cancelled) return
         setFailure(current => current?.projectId === target.id ? null : current)
@@ -862,8 +839,11 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
     try {
       const id = randomUUID().slice(0, 8)
       const key = workSideChatKey(projectId, id)
-      // The server names the new tab's agent and its chat title from this name.
-      const conversation = await agentApi.resolveAgentProfileConversation(profileId, { conversation_key: key, name })
+      // The server names the new tab's agent and its chat title from this name, and starts it on the model of the chat
+      // it is opened from (the active one); its chat-models answer then shows that model.
+      const opener = activeTabId ? chatTabs[activeTabId] : undefined
+      const openedFrom = opener && belongsToWorkProject(opener, projectId) ? opener.metadata?.agentProfileConversationKey : undefined
+      const conversation = await agentApi.resolveAgentProfileConversation(profileId, { conversation_key: key, name, ...(openedFrom ? { opened_from: openedFrom } : {}) })
       // The server now holds this chat; show its row at once rather than after the next list.
       setListed(current => [...(current || []).filter(chat => chat.conversation_key !== conversation.conversation_key), { conversation_key: conversation.conversation_key, conversation_id: conversation.conversation_id, session_id: conversation.session_id, name, pinned: true }])
       const chatStore = useChatStore.getState()
@@ -872,7 +852,8 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         agentProfileChatLocation: conversation.chat_location,
         agentProfileIsMainChat: false,
         agentProfileBuilder: false,
-        agentProfileChatModelOverride: false,
+        agentProfileChatModelOverride: Boolean(openedFrom),
+        ...(openedFrom && opener?.metadata ? { agentProfileChatModelLabel: opener.metadata.agentProfileChatModelLabel, agentProfileEngine: opener.metadata.agentProfileEngine, agentProfileModelID: opener.metadata.agentProfileModelID, agentProfileReasoningEffort: opener.metadata.agentProfileReasoningEffort } : {}),
         agentProfileTabOwnerID: conversation.tab_owner_id,
         agentProfileTabOwnerName: conversation.tab_owner_name,
         agentProfileTabCanWrite: conversation.can_write,
@@ -1235,17 +1216,12 @@ function WorkTopBarControl({
 }
 
 function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
-  const { sessions, selected, select, create, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
+  const { sessions, selected, select, create, remove, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
   const workflowContextSignature = selected?.workflowContextPaths.join('\u0000') || ''
-  const persistLegacyRuntime = useCallback(async (selection: WorkRuntimeSelection, targetProjectId: string) => {
-    const project = sessions.find(item => item.product === product.profileId && item.id === targetProjectId)
-    if (!project || isWorkSessionRun(project)) return
-    await updateLLMConfig(targetProjectId, selection)
-  }, [sessions, product.profileId, updateLLMConfig])
   const [createAgentRequest, setCreateAgentRequest] = useState(0)
   const [importAgentRequest, setImportAgentRequest] = useState(0)
   const [importAvailableProject, setImportAvailableProject] = useState('')
-  const { tabId, canonicalTabId, projectReady, error: chatError } = useWorkChatTab(product, selected, persistLegacyRuntime)
+  const { tabId, canonicalTabId, projectReady, error: chatError } = useWorkChatTab(product, selected)
   // An empty project shows its welcome page; a starter there opens Create agent and its request waits for the new chat's message box.
   const welcome = useProjectWelcome(product.profileId === 'work' && !tabId ? selected?.id : undefined)
   const pendingStart = useRef('')
@@ -1522,16 +1498,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }), [selectWorkspaceView])
   useEffect(() => {
     const open = (event: Event) => {
-      const detail = (event as CustomEvent<{ projectId: string; conversationKey?: string }>).detail
-      if (detail?.projectId !== selected?.id || isShared || !isWorkWorkspaceViewEnabled('identity', workspacePanels)) return
-      setWorkspaceViewTarget('identity', 'models')
-      selectWorkspaceView('identity')
-    }
-    window.addEventListener('agentworks:open-chat-models', open)
-    return () => window.removeEventListener('agentworks:open-chat-models', open)
-  }, [selected?.id, isShared, workspacePanels, selectWorkspaceView])
-  useEffect(() => {
-    const open = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId?: string }>).detail
       if (detail?.projectId !== selected?.id || isShared || !isWorkWorkspaceViewEnabled('identity', workspacePanels)) return
       setWorkspaceViewTarget('identity', 'location')
@@ -1613,27 +1579,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     handledLegacyViewEvents.current = { ...handledLegacyViewEvents.current, session, count: legacyViewEvents.length }
   }, [activeSessionId, legacyViewEvents, openWorkPresentationView])
 
-  const changeWorkRuntime = useCallback(async (selection: WorkRuntimeSelection) => {
-    if (!selected || !tabId) return
-    const previous = workLLMSelectionFromConfig(selected.llmConfig)
-    const providerChanged = Boolean(previous?.provider && selection.provider && (previous.provider !== selection.provider || previous.connectionId !== selection.connectionId))
-    try {
-      await updateLLMConfig(selected.id, selection)
-      setWorkProjectRuntimeSelection(selected.id, tabId, selection)
-      if (providerChanged) {
-        const chatStore = useChatStore.getState()
-        const label = selection.engine === 'claude-code' ? 'Claude Code'
-          : selection.engine === 'codex-cli' ? 'Codex'
-            : selection.engine === 'cursor-cli' ? 'Cursor'
-              : selection.engine === 'pi-cli' ? 'Pi'
-                : selection.engine === 'muse-cli' ? 'Muse'
-                  : selection.engine
-        chatStore.addToast(`Coding agent changed to ${label}. This conversation will continue with ${label} on your next message.`, 'success')
-      }
-    } catch (cause) {
-      useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not save the project model.', 'error')
-    }
-  }, [selected, tabId, updateLLMConfig])
 
   // Keep the workspace's inputs stable while chat state changes. The pane is
   // memoized, and each callback only changes when its project or action changes.
@@ -2011,7 +1956,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         projectLLMConfig={selected.llmConfig}
                         selectedGlobalSecrets={selected.selectedGlobalSecrets}
                         workflowContextPaths={selected.workflowContextPaths}
-                        onRuntimeChange={changeWorkRuntime}
                         nativeAgentTools={!!selected.nativeAgentTools}
                         onNativeAgentToolsChange={changeNativeAgentTools}
                         onAppsSaved={handleAppsSaved}

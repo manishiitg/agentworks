@@ -36,7 +36,7 @@ func crewChatUsesPersonalAccountScope(ctx context.Context, userID, sessionID str
 	}
 	option, offered := findProviderOptionByID(profile.Definition.Runtime.ProviderOptions, own.Engine)
 	if !offered || option.Provider != provider || canonicalProviderConnectionID(provider, own.ConnectionID) != canonicalProviderConnectionID(provider, connectionID) {
-		return false, fmt.Errorf("This chat's provider account changed. Send your message again using its saved choice in Models.")
+		return false, fmt.Errorf("This chat's provider account changed. Choose its model again in the model menu in the message box and send your message again.")
 	}
 	return true, nil
 }

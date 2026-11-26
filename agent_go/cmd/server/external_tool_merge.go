@@ -30,7 +30,7 @@ var externalToolMerges = []externalToolMerge{
 	{"share", "Share a project or workflow. get inspects the current audience; set is owner-only and keeps the existing product authoring consent. " + runShareAccessDescription + " Co-owners and Users of a project on the server (people who build it, or work in it through chat with your setup and locked files) are not Share: list and change them with crew_owners.", dashboardMergeActions("share")},
 	{"dashboard", "Live dashboards of workflows and projects: find them, read and edit drafts, check and publish revisions, and get links.", dashboardMergeActions("dashboard")},
 	{"settings", "Read or change this product's setup, accounts, linked knowledge and team delivery using its existing access.", platformMergeActions("settings")},
-	{"models", "Read or change project model defaults with existing Builder and account access; other model actions appear only where already available.", platformMergeActions("models")},
+	{"models", "Read or change model choices with existing Builder and account access: a workflow's models (scope=project) or your own project chat's model (scope=tab). A project has no model setting; chats without their own use the owner's last-used model. Other model actions appear only where already available.", platformMergeActions("models")},
 	{"costs", "Read recorded usage and attributed spend for products you can access. Summary, queries and drill-down keep their existing product, root and connection checks.", platformMergeActions("costs")},
 	{"account", "Manage company accounts and installed services with the existing administrator permissions.", platformMergeActions("account")},
 	{"help", "Read versioned product and connection guidance.", platformMergeActions("help")},

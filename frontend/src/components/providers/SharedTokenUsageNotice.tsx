@@ -84,7 +84,7 @@ function chatTokenLimits(usage: SharedAccountTokenUsage | null, accountProvider:
   if (usage.counting_note) detail.push(usage.counting_note)
   if (shown.daily_cache_read_tokens || shown.weekly_cache_read_tokens) detail.push(`Raw cache reads: ${formatTokens(shown.daily_cache_read_tokens)} today; ${formatTokens(shown.weekly_cache_read_tokens)} this week.`)
   for (const row of rows) detail.push(`${row.label}: ${formatTokens(row.used)} of ${formatTokens(row.limit)} (resets ${row.resets})`)
-  detail.push(shown.state === 'over' ? `New messages on ${shown.scope} are paused; switch to another account in Models.` : 'Your own accounts are not limited.')
+  detail.push(shown.state === 'over' ? `New messages on ${shown.scope} are paused; switch to another account in the model menu in the message box.` : 'Your own accounts are not limited.')
   return { shown, rows, detail, tighter: Math.max(...rows.map(row => row.percent)) }
 }
 

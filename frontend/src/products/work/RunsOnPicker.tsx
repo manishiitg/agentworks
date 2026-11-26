@@ -168,7 +168,7 @@ export function RunsOnPicker({ profileId, onChange, disabled, options: givenOpti
         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
         {saveAccount === 'never' && current.accountLabel.startsWith('your account')
           ? `Uses ${current.accountLabel} for your chats.`
-          : `Uses ${current.accountLabel}.`} You can change it later in Models.
+          : `Uses ${current.accountLabel}.`} You can change it later in each chat's message box.
       </p>
     </div>
   )

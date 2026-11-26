@@ -72,7 +72,7 @@
     "family": "models",
     "name": "get",
     "member": "get_llm_config",
-    "description": "Read effective project models and their inheritance.",
+    "description": "Read a workflow's models, or a project's fallback (the owner's last-used model).",
     "aliases": [
       "get_project_models"
     ],
@@ -112,7 +112,7 @@
     "family": "models",
     "name": "set",
     "member": "set_project_models",
-    "description": "Change this project’s saved models.",
+    "description": "Change a workflow’s saved models; project chats choose their own (scope=tab).",
     "aliases": [
       "set_workflow_llm_config"
     ],

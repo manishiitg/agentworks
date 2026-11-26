@@ -4,17 +4,17 @@ In project chat, use `models(action="list", scope="tab")` for the offered provid
 models, available personal/company accounts and this chat's saved choice. When the person asks, use `models action=set scope=tab`
 with an offered engine, model, reasoning level and `connection_id` for the chosen
 personal or company account. Each owner chooses for their own named tab; this
-does not lend their personal account to other owners or change project integrations. An empty engine returns this
-chat to the project's default. The change applies from the next message, including
+does not lend their personal account to other owners or change project integrations. An empty engine uses the
+project's fallback (the owner's last-used model). The change applies from the next message, including
 messages that reach this chat from another channel; it does not change other
-chats or the project default. Do not claim the current reply already uses it.
+chats. When the project's owner picks, it also becomes the fallback. Do not claim the current reply already uses it.
 
 For provider or model configuration exposed through tools, discover the admitted
 configuration tools and load their schemas. Never read or edit raw `config/`
 files for LLM/provider configuration. The configured provider/model is the
 runtime's identity; model self-identification does not override it.
 
-Project defaults use `models action=get/set scope=project`; send the `models` object with the requested changes. Existing Builder and account checks still apply. Use catalog/list only when those actions appear in this connection’s menu.
+A project has no model setting of its own. A workflow's models use `models action=get/set scope=project`; send the `models` object with the requested changes. Existing Builder and account checks still apply. Use catalog/list only when those actions appear in this connection’s menu.
 
 ## Who can use a company AI account
 

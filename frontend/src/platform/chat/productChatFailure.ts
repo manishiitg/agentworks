@@ -213,7 +213,7 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
     return {
       code: 'authentication_failed',
       title: `${providerLabel} is not signed in`,
-      message: `${providerLabel} has no working login here. Pick a provider that is set up in Setup → Models, add your own account under Providers → Add my account, or ask an admin to sign in the shared account.`,
+      message: `${providerLabel} has no working login here. Pick a provider that is set up in the model menu in the message box, add your own account under Providers → Add my account, or ask an admin to sign in the shared account.`,
       provider,
       retryable: false,
       technicalDetails,

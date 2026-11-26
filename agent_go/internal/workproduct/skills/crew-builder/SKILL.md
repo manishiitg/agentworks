@@ -42,7 +42,7 @@ still require the person's provider login or phone.
 | Personal Slack; WhatsApp | `panel-channels` |
 | MCP access for external AI apps | `panel-access` |
 | Connected agents (AgentBridge), Cloud or Laptop access | `panel-access`, `crew-agents` |
-| Instructions & identity; Models; Costs & usage; Terminal | `panel-settings`, `panel-settings`, `panel-settings`, `panel-settings` |
+| Instructions & identity; a chat's model; Costs & usage; Terminal | `panel-settings`, `panel-settings`, `panel-settings`, `panel-settings` |
 
 Shared-folder clash (two people changed the same lines; both are notified): run
 `team_sync action=clashes` to see both versions, `current` (the file now) and

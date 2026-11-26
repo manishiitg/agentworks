@@ -751,6 +751,12 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					if status, body := api.applyNewTabModel(request, project.ProfileID, projectID, chat.ID, tabModel); status >= 400 {
 						return "", fmt.Errorf("the tab %s (id %s) was opened but its model was not applied: %s. Set it with models action=set, or close the tab", chat.Name, chat.ID, strings.TrimSpace(string(body)))
 					}
+					if !tabModel.chosen() && project.Self.Key != "" && api.agentProfiles != nil {
+						// No model asked for: the new agent starts on its opener's model (owner, 26 Nov).
+						if profile, err := api.agentProfiles.Resolve(project.ProfileID, 0, userID); err == nil {
+							api.startOnOpenerModel(ctx, userID, profile, binding, chat.Key, project.Self.Key)
+						}
+					}
 				}
 				if !reused && project.Self.Key != "" {
 					// The helper is nested under the agent that opened it (or beside it, when asked) and told once, on

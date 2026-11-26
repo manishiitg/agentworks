@@ -15,7 +15,8 @@ import (
 //   - the project's setup files are locked for their turns: the project instructions, skills, settings and any extra
 //     paths the owner chose (crewSetupLockedWritePaths, enforced by the folder guard in every file layer);
 //   - the setup tools are refused on every path (crewSetupLockedTools and the checks below);
-//   - every chat runs on the project's default model; they cannot pick another (crew_chat_provider_accounts.go).
+//   - every chat runs on the project's fallback, the owner's last-used model; they cannot pick another
+//     (crew_chat_provider_accounts.go).
 // Co-owners always change everything.
 
 // crewSetupLockedDefaultPaths are always locked for a User, relative to the project folder.
@@ -137,7 +138,7 @@ func crewSetupLockedRefusal(root string) string {
 			owner = name
 		}
 	}
-	return owner + " controls this project's setup (instructions, skills, settings, model, automations and sharing). You can keep working here; ask them to change it."
+	return owner + " controls this project's setup (instructions, skills, settings, automations and sharing) and the model you work on (their last-used one). You can keep working here; ask them to change it."
 }
 
 // The same lock on every path, not only in chat (#3796): the server's own file writes (settings, selections, skills,
