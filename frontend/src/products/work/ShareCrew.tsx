@@ -124,24 +124,26 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, stat
   const [noteOpen, setNoteOpen] = useState(false)
   const [note, setNote] = useState('')
   const [open, setOpen] = useState(false)
-  const where = { project: target.project, connection: target.connection }
+  // An online project's agent is shared in the Team the project is in: its changes go there, by that Team's key.
+  const where = { project: agent.team || target.project, connection: target.connection }
+  const key = agent.team_key || agent.key
   const run = async (key: string, save: () => Promise<unknown>) => {
     setPending(key); setError('')
     try { await save(); return true } catch (e) { setError(teamFailure(e).message); return false } finally { setPending('') }
   }
   const updated = teamChanged
-  const share = (on: boolean) => run('ask', async () => { await teamRequest(where, '/agent-visibility', 'POST', { agent_key: agent.key, in_team: on }); updated() })
-  const rule = (key: string, change: { chat_share?: string; audience?: 'whole_team' | 'chosen'; chosen_people?: string[]; when_others_ask?: string }) => run(key, async () => { await teamRequest(where, '/agent-rule', 'POST', { agent_key: agent.key, ...change }); updated() })
+  const share = (on: boolean) => run('ask', async () => { await teamRequest(where, '/agent-visibility', 'POST', { agent_key: key, in_team: on }); updated() })
+  const rule = (key: string, change: { chat_share?: string; audience?: 'whole_team' | 'chosen'; chosen_people?: string[]; when_others_ask?: string }) => run(key, async () => { await teamRequest(where, '/agent-rule', 'POST', { agent_key: key, ...change }); updated() })
   const ask = agent.ask
   // The rule editor (When others ask) stays one click away, on the viewer's own agent.
-  const row = view?.agents.find(item => item.key === agent.key && item.mine)
+  const row = agent.row || view?.agents.find(item => item.key === agent.key && item.mine)
   const busy = Boolean(pending)
   // One small card per agent (owner, 15 Nov mock): name and place with the switch on top, two compact choices, one hint
   // line that follows them. Off greys the choices and says who can still reach it.
   const chatChoice = ask?.chat_share_options.find(option => option.value === ask.chat_share)
   // Who may ask: the whole Team or chosen people (the server's audience). The picker lists current members, not you;
   // chosen_people is always the complete list, and Chosen with nobody means nobody else.
-  const members = (view?.people || []).filter(person => !person.you && person.note !== 'you' && person.note !== 'invited')
+  const members = (agent.members || view?.people || []).filter(person => !person.you && person.note !== 'you' && person.note !== 'invited')
   const picked = (row?.chosen_people || []).map(person => person.user_id)
   const togglePerson = (id: string) => void rule('who', { audience: 'chosen', chosen_people: picked.includes(id) ? picked.filter(item => item !== id) : [...picked, id] })
   const explain=()=>{
@@ -204,7 +206,7 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, stat
       </div>
     </div>}
     {ask?.can_edit && row && <button type="button" aria-expanded={rules} className="mt-2 flex w-full items-center justify-between gap-2 text-xs" onClick={() => setRules(!rules)}><span className="text-muted-foreground">Uses</span><span className="min-w-0 truncate">{ask.uses_line || row.uses_note || 'No connections selected'}</span><span className="shrink-0 text-primary">{rules ? 'Done' : 'See all ›'}</span></button>}
-    {ask?.on && rules && row && <div className="mt-2 border-t border-border pt-2"><AgentDetails agent={row} target={target} projectId={projectId} showNote={false} /></div>}
+    {ask?.on && rules && row && <div className="mt-2 border-t border-border pt-2"><AgentDetails agent={row} target={{ ...target, project: where.project }} projectId={projectId} showNote={false} /></div>}
     {status}
   </>
   const failure = error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>
