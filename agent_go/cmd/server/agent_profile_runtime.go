@@ -620,6 +620,12 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	agentRole := ""
 	if profile.ID == workproduct.ProfileID {
 		agentRole = agentRolePrompt(ctx, userID, profile.ID, req.AgentProfileConversationKey, workspacePath)
+		// The chat's reply style is a standing rule of the chat, so it rides with its role in the prompt (and its
+		// fingerprint, like a purpose change); only the per-turn summary card note goes on the message.
+		replyTab, replyTabFound := chatContextTabForSession(ctx, userID, sessionID)
+		if replyTabFound {
+			agentRole += chatReplyStylePrompt(replyTab.Identity)
+		}
 		rendered += agentRole
 		identityKey += agentRole
 		// The owner's own turn reads a Team-settings change made since its last one (crew_team_agent_notice.go).
@@ -632,9 +638,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 				req.Query = line + "\n\n" + req.Query
 			}
 		}
-		// The chat's reply style and summary card (chat_reply_style.go), for every coding app.
-		if tab, found := chatContextTabForSession(ctx, userID, sessionID); found {
-			if note := chatRepliesNote(tab.Identity, codingAgentTurnAttended(GetUserFromContext(ctx), req, sessionID)); note != "" {
+		// The summary and next-steps card (chat_reply_style.go): only on turns the person sends from the app.
+		if replyTabFound {
+			if note := chatRepliesNote(replyTab.Identity, codingAgentTurnAttended(GetUserFromContext(ctx), req, sessionID)); note != "" {
 				req.Query = strings.TrimRight(req.Query, "\n") + "\n\n" + note
 			}
 		}
