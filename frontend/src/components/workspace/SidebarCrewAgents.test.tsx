@@ -98,7 +98,10 @@ it('shows sharing marks only on shared agents and leaves private agents clean', 
   await act(async () => root.render(<SidebarCrewAgents projectId="crew" />))
   // Private is the default (owner, 26 Nov): no lock icon on private rows even when most agents are shared.
   expect(host.querySelector('[aria-current="page"] [aria-label="Only you"]')).toBeNull()
-  expect(host.querySelector('[aria-label="Shared with everyone on the Team · Chat hidden (teammates can ask, not read chat)"]')).not.toBeNull()
+  const hiddenMark = host.querySelector('[aria-label="Shared with everyone on the Team · Chat hidden (teammates can ask, not read chat)"]')
+  expect(hiddenMark).not.toBeNull()
+  expect(hiddenMark?.className).toContain('hidden')
+  expect(hiddenMark?.className).toContain('group-hover:inline-flex')
   expect(host.querySelector('[aria-label="Shared with Ana, Sam · Chat visible"]')).not.toBeNull()
   expect(host.querySelector('[aria-label="Shared with everyone on the Team · Chat visible"]')).not.toBeNull()
   expect(host.textContent).not.toMatch(/In team unless marked with a lock|All in team/)

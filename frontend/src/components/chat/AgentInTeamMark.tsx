@@ -86,11 +86,11 @@ const MARK_TONE: Record<AgentShareDisplay['tone'], string> = {
 
 /** Only display the server's admitted own-row sharing state; this is not an access gate.
  * Private agents are the default and show no icon (owner, 26 Nov). */
-export function AgentInTeamMark({ on, share }: { on?: boolean; share?: AgentTeamShare }) {
+export function AgentInTeamMark({ on, share, className = 'inline-flex' }: { on?: boolean; share?: AgentTeamShare; className?: string }) {
   const info = describeAgentShare(share ?? (on ? { inTeam: true } : undefined))
   if (!info) return null
   return (
-    <span title={info.tooltip} aria-label={info.tooltip} className={`inline-flex shrink-0 items-center gap-0.5 ${MARK_TONE[info.tone]}`}>
+    <span title={info.tooltip} aria-label={info.tooltip} className={`${className} shrink-0 items-center gap-0.5 ${MARK_TONE[info.tone]}`}>
       {info.chosen
         ? <UserCheck aria-hidden="true" className="h-3 w-3 shrink-0" />
         : <Users aria-hidden="true" className="h-3 w-3 shrink-0" />}
