@@ -260,7 +260,7 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 	started := noteVaultSignInStarted(id)
 	notificationID := "vault-oauth:" + id + ":" + newSteerMessageID()
 	start, discovery, flowErr := api.runOAuthFlow(sessionID, redirect, oauthFlowTarget{
-		Name: name, Config: cfg, ClientFile: getUserClientFilePath(platformMCPTokenUserID, vaultCredentialName(id)), ConnectionID: id, LockKey: "vault:" + id,
+		Person: userID, Name: name, Config: cfg, ClientFile: getUserClientFilePath(platformMCPTokenUserID, vaultCredentialName(id)), ConnectionID: id, LockKey: "vault:" + id,
 		// BeforeExchange saved the rejected client as this connection's setup; drop it so the next connect registers again.
 		ForgetClient: func() { _ = os.Remove(vaultCredentialConfigPath(id)) },
 		BeforeExchange: func(flow *OAuthFlowState) error {

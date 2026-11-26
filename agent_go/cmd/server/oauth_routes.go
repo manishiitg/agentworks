@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"log"
 	"net/http"
 	"os"
@@ -24,6 +23,8 @@ import (
 
 // OAuthFlowState tracks ongoing OAuth flows
 type OAuthFlowState struct {
+	// Person started this sign-in; on a server with several people only they may finish it (oauth_return.go).
+	Person            string
 	ServerName        string
 	ConnectionID      string
 	Outcome           string // guarded by oauthFlowsMu
@@ -166,25 +167,13 @@ type OAuthLogoutRequest struct {
 
 // handleOAuthCallback handles GET /api/oauth/callback - receives OAuth authorization code
 func (api *StreamingAPI) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
-	api.logger.Info(fmt.Sprintf("🔔 OAuth callback received: state=%s, code_present=%v, error=%s",
-		r.URL.Query().Get("state"), r.URL.Query().Get("code") != "", r.URL.Query().Get("error")))
-
 	query := r.URL.Query()
+	// The state and code are one-time credentials of this sign-in: never logged.
+	api.logger.Info(fmt.Sprintf("🔔 OAuth callback received: code_present=%v, error=%s", query.Get("code") != "", query.Get("error")))
 
-	// Get state parameter
 	state := query.Get("state")
 	if state == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, `
-<!DOCTYPE html>
-<html>
-<head><title>OAuth Error</title></head>
-<body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-	<h1>❌ Invalid Request</h1>
-	<p>Missing state parameter</p>
-	<p>You can close this window.</p>
-</body>
-</html>`)
+		writeOAuthPage(w, http.StatusBadRequest, "Invalid request", "Missing state parameter. You can close this window.")
 		return
 	}
 
@@ -200,46 +189,21 @@ func (api *StreamingAPI) handleOAuthCallback(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Find the OAuth flow
 	oauthFlowsMu.RLock()
 	flow, exists := oauthFlows[state]
 	oauthFlowsMu.RUnlock()
-
 	if !exists {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, `
-<!DOCTYPE html>
-<html>
-<head><title>OAuth Error</title></head>
-<body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-	<h1>❌ Invalid or Expired State</h1>
-	<p>OAuth flow not found or expired</p>
-	<p>You can close this window and try again.</p>
-</body>
-</html>`)
+		writeOAuthPage(w, http.StatusBadRequest, "Invalid or expired sign-in", "This sign-in was not found or has expired. You can close this window and try again.")
 		return
 	}
 
-	// Check for error from OAuth provider
+	// The provider's error text comes from the URL, so it is shown only as escaped text.
 	if errCode := query.Get("error"); errCode != "" {
 		errDesc := query.Get("error_description")
 		if errDesc == "" {
 			errDesc = errCode
 		}
-
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, `
-<!DOCTYPE html>
-<html>
-<head><title>Authentication Failed</title></head>
-<body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-	<h1>❌ Authentication Failed</h1>
-	<p>%s</p>
-	<p>You can close this window.</p>
-</body>
-</html>`, errDesc)
-
-		// Send error to flow
+		writeOAuthPage(w, http.StatusBadRequest, "Authentication failed", errDesc+" You can close this window.")
 		select {
 		case flow.ErrChan <- fmt.Errorf("OAuth error: %s - %s", errCode, errDesc):
 		default:
@@ -247,106 +211,28 @@ func (api *StreamingAPI) handleOAuthCallback(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Get authorization code
 	code := query.Get("code")
 	if code == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, `
-<!DOCTYPE html>
-<html>
-<head><title>OAuth Error</title></head>
-<body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-	<h1>❌ Missing Authorization Code</h1>
-	<p>No authorization code received</p>
-	<p>You can close this window.</p>
-</body>
-</html>`)
+		writeOAuthPage(w, http.StatusBadRequest, "Missing authorization code", "No authorization code was received. You can close this window.")
 		return
 	}
 
-	// Send code to flow
-	select {
-	case flow.CodeChan <- code:
-		if flow.ValidatesIdentity {
-			select {
-			case <-flow.Done:
-				oauthFlowsMu.RLock()
-				failure := flow.Failure
-				oauthFlowsMu.RUnlock()
-				if failure != "" {
-					w.WriteHeader(http.StatusBadRequest)
-					fmt.Fprintf(w, "<html><body><h1>Sign-in could not finish</h1><p>%s</p><p>Close this window and return to Integrations → Slack.</p></body></html>", html.EscapeString(failure))
-					return
-				}
-			case <-time.After(45 * time.Second):
-				w.WriteHeader(http.StatusAccepted)
-				fmt.Fprint(w, "<html><body><p>Still checking this account. Return to Integrations → Slack to see its status.</p></body></html>")
-				return
-			case <-r.Context().Done():
-				return
-			}
-		}
-		// Success - show nice page
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `
-<!DOCTYPE html>
-<html>
-<head>
-	<title>Authentication Successful</title>
-	<style>
-		body {
-			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			min-height: 100vh;
-			margin: 0;
-			background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%);
-		}
-		.container {
-			background: white;
-			border-radius: 16px;
-			padding: 48px;
-			box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-			text-align: center;
-			max-width: 400px;
-		}
-		.success-icon {
-			font-size: 64px;
-			margin-bottom: 24px;
-		}
-		h1 {
-			color: #2d3748;
-			margin: 0 0 16px 0;
-			font-size: 24px;
-		}
-		p {
-			color: #718096;
-			margin: 0;
-			font-size: 16px;
-		}
-	</style>
-</head>
-<body>
-	<div class="container">
-		<div class="success-icon">✅</div>
-		<h1>Authentication Successful!</h1>
-		<p>You can close this window and return to the application.</p>
-	</div>
-</body>
-</html>`)
+	// On a server with several people the person who started the sign-in finishes it in the app (oauth_return.go).
+	if oauthReturnBound(flow.Person) {
+		holdOAuthReturn(w, r, state, flow.Person, oauthReturnMCP, code)
+		return
+	}
+
+	result := deliverOAuthFlowCode(r.Context(), flow, code)
+	switch {
+	case result.failure != "":
+		writeOAuthPage(w, http.StatusBadRequest, "Sign-in could not finish", result.failure+" Close this window and return to the app.")
+	case !result.accepted:
+		writeOAuthPage(w, http.StatusInternalServerError, "Internal error", "Failed to process the authorization code. You can close this window and try again.")
+	case result.checking:
+		writeOAuthPage(w, http.StatusAccepted, "Still checking this account", "Return to the app to see its status.")
 	default:
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `
-<!DOCTYPE html>
-<html>
-<head><title>OAuth Error</title></head>
-<body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-	<h1>❌ Internal Error</h1>
-	<p>Failed to process authorization code</p>
-	<p>You can close this window and try again.</p>
-</body>
-</html>`)
+		writeOAuthPage(w, http.StatusOK, "Authentication successful", "You can close this window and return to the application.")
 	}
 }
 
@@ -467,6 +353,7 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 	}
 
 	return api.runOAuthFlow(sessionID, redirectURI, oauthFlowTarget{
+		Person:     userID,
 		Name:       serverName,
 		Config:     serverConfig,
 		ClientFile: expandPath(getUserClientFilePath(platformMCPTokenUserID, serverName)),
@@ -516,6 +403,7 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 // registration is cached, the HTTP client for discovery and registration
 // (public-only for a personal server), and what to do once connected.
 type oauthFlowTarget struct {
+	Person         string // who started the sign-in (oauth_return.go)
 	Name           string
 	DisplayName    string // what a person calls the app ("Vercel"); Name when empty
 	Config         mcpclient.MCPServerConfig
@@ -628,6 +516,7 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 
 	// Register the OAuth flow state
 	flow := &OAuthFlowState{
+		Person:            target.Person,
 		ConnectionID:      target.ConnectionID,
 		ValidatesIdentity: target.ValidateToken != nil,
 		Done:              make(chan struct{}),

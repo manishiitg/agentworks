@@ -262,6 +262,8 @@ type GmailOAuthPending struct {
 	ExtraScopes []string
 	RedirectURL string
 	CreatedAt   time.Time
+	// Person started this sign-in; on a server with several people only they may finish it.
+	Person string
 }
 
 var (
@@ -276,7 +278,7 @@ const gmailOAuthPendingTTL = 15 * time.Minute
 //
 // state is random and server-held, so a callback cannot be forged to attach
 // someone else's Google account to a connection.
-func BeginGmailOAuth(connectionID, clientName, redirectURL string, includeRead, includeAgentWrite bool, extraScopes []string) (string, error) {
+func BeginGmailOAuth(person, connectionID, clientName, redirectURL string, includeRead, includeAgentWrite bool, extraScopes []string) (string, error) {
 	cfg, err := gmailOAuthConfig(redirectURL, clientName, includeRead, includeAgentWrite, extraScopes)
 	if err != nil {
 		return "", err
@@ -301,6 +303,7 @@ func BeginGmailOAuth(connectionID, clientName, redirectURL string, includeRead, 
 		ExtraScopes:       extraScopes,
 		RedirectURL:       redirectURL,
 		CreatedAt:         time.Now(),
+		Person:            strings.TrimSpace(person),
 	}
 	gmailOAuthPendingMu.Unlock()
 
@@ -313,6 +316,13 @@ func BeginGmailOAuth(connectionID, clientName, redirectURL string, includeRead, 
 		oauth2.ApprovalForce,
 		oauth2.SetAuthURLParam("prompt", "select_account consent"),
 	), nil
+}
+
+// GmailOAuthPendingPerson is who started the pending sign-in state names ("" when none is pending).
+func GmailOAuthPendingPerson(state string) string {
+	gmailOAuthPendingMu.Lock()
+	defer gmailOAuthPendingMu.Unlock()
+	return gmailOAuthPending[state].Person
 }
 
 // CompleteGmailOAuth exchanges the callback code and stores the credential.

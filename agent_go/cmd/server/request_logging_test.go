@@ -8,10 +8,10 @@ import (
 )
 
 func TestRequestLogPathRedactsAuthenticationQueryTokens(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/terminals/terminal-1/stream?cols=120&token=secret-jwt&access_token=secret-access&auth_token=secret-auth", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/terminals/terminal-1/stream?cols=120&token=secret-jwt&access_token=secret-access&auth_token=secret-auth&code=secret-code&state=secret-state", nil)
 
 	got := requestLogPath(req)
-	for _, secret := range []string{"secret-jwt", "secret-access", "secret-auth"} {
+	for _, secret := range []string{"secret-jwt", "secret-access", "secret-auth", "secret-code", "secret-state"} {
 		if strings.Contains(got, secret) {
 			t.Fatalf("requestLogPath leaked %q in %q", secret, got)
 		}
