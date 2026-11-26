@@ -1382,6 +1382,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const worksElsewhere = useCrewWorksElsewhere(product.profileId === 'work' ? selected?.id || '' : '', tabId).elsewhere
   // The owner reaching their Mac Crew through the server gets its chat alone; the server says so (crew_owner_on_mac.go).
   const chatOnly = useCrewChatOnly(product.profileId === 'work' ? selected?.id : undefined)
+  // An online agent's tab runs in another project on the server (#4121): this Mac project's right-side panel (Files,
+  // Dashboard, Terminal…) doesn't apply to it, so the panel and its toolbar stay hidden while that tab is open.
+  const onlineAgentTab = useChatStore(state => Boolean(tabId && state.chatTabs[tabId]?.metadata?.agentProfileOnlineProject))
+  const panelHidden = chatOnly || onlineAgentTab
   const canLinkChatFiles = fileSearchAllowed && !chatOnly && !teammateIdentity
   const chatFileScope = useMemo(() => canLinkChatFiles && currentCrewPath ? {
     lookup: createChatFileLookup(currentCrewPath, currentCrewConnection),
@@ -1850,14 +1854,14 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               divider={null}
               splitRef={splitLayoutRef}
               compactContext={!isWorkSessionRun(selected) && workspaceView==='context'}
-              toolbarWhenPanelClosed={!isWorkSessionRun(selected) && !chatOnly}
+              toolbarWhenPanelClosed={!isWorkSessionRun(selected) && !panelHidden}
               showToolbar={!!terminalConversation || !isShared}
-              chatOpen={!!terminalConversation || chatOnly || (!isShared && chatOpen)} panelOpen={!chatOnly && (isShared || panelOpen)} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
+              chatOpen={!!terminalConversation || panelHidden || (!isShared && chatOpen)} panelOpen={!panelHidden && (isShared || panelOpen)} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
               retainWorkspace={!chatOnly}
-              onCloseWorkspace={isShared || chatOnly ? undefined : () => setPanelOpen(false)}
+              onCloseWorkspace={isShared || panelHidden ? undefined : () => setPanelOpen(false)}
               showChatReopenControl={!isShared}
-              mobilePane={terminalConversation || chatOnly ? 'chat' : mobilePane}
-              onMobilePaneChange={chatOnly ? undefined : pane => { if (pane === 'chat') openChatPane(); else selectWorkspaceView('context') }}
+              mobilePane={terminalConversation || panelHidden ? 'chat' : mobilePane}
+              onMobilePaneChange={panelHidden ? undefined : pane => { if (pane === 'chat') openChatPane(); else selectWorkspaceView('context') }}
               laptopPreview={workspaceView === 'dashboard' && reportPreviewPreference === 'desktop'}
               mobilePreview={workspaceView === 'dashboard' && reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={openChatPane} onOpenWorkspace={() => setPanelOpen(true)}
