@@ -2,8 +2,9 @@ import { useId, useState, type ReactNode } from 'react'
 import { ChevronRight, type LucideIcon } from 'lucide-react'
 
 /** Display-only disclosure; children keep their existing destinations and admission. */
-export function WorkspaceCompactGroup({ title, icon: Icon, detail, preview, children, summaryOnly = false }: {
+export function WorkspaceCompactGroup({ title, icon: Icon, detail, preview, children, summaryOnly = false, flush = false }: {
   title: string; icon: LucideIcon; detail?: ReactNode; preview?: ReactNode; children: ReactNode; summaryOnly?: boolean
+  /** Full width body, no indent line (Project tasks). */ flush?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const id = useId()
@@ -24,6 +25,6 @@ export function WorkspaceCompactGroup({ title, icon: Icon, detail, preview, chil
         </button>
       </>}
     </div>
-    {expanded && <div id={id} className="ml-2.5 mt-1 space-y-1 border-l border-border pl-3">{children}</div>}
+    {expanded && <div id={id} className={flush ? 'mt-1 space-y-1' : 'ml-2.5 mt-1 space-y-1 border-l border-border pl-3'}>{children}</div>}
   </section>
 }
