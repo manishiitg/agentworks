@@ -145,6 +145,13 @@ func (api *StreamingAPI) vaultOAuthConfig(ctx context.Context, id, name, resourc
 	if err != nil {
 		return cfg, err
 	}
+	return vaultSavedOAuthConfig(id, cfg)
+}
+
+// vaultSavedOAuthConfig reads the connection's saved sign-in onto cfg. A
+// token refresh calls it again once it holds the connection's lock, so a
+// sign-out or new sign-in that finished while it waited is what it uses.
+func vaultSavedOAuthConfig(id string, cfg mcpclient.MCPServerConfig) (mcpclient.MCPServerConfig, error) {
 	data, err := oauth.ReadTokenFile(vaultCredentialConfigPath(id))
 	if err != nil {
 		return cfg, errors.New("sign in to this connection first")
@@ -438,6 +445,10 @@ func (api *StreamingAPI) vaultConnectionOAuthStatus(w http.ResponseWriter, r *ht
 	mutex := platformMCPOAuthMutex("vault:" + id)
 	mutex.Lock()
 	defer mutex.Unlock()
+	if cfg, err = vaultSavedOAuthConfig(id, cfg); err != nil {
+		writeUsersJSON(w, 200, map[string]any{"server_name": name, "valid": false, "sign_in_error": vaultOAuthSignInProblem(id, true, err)})
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	token, err := oauth.NewManager(cfg.OAuth, api.logger).GetAccessToken(ctx)
@@ -587,7 +598,11 @@ func (api *StreamingAPI) capLayerConnectionAccess(ctx context.Context, userID, o
 			// this lock and block every token request for the connection.
 			refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			mutex.Lock()
-			token, e := oauth.NewManager(cfg.OAuth, api.logger).GetAccessToken(refreshCtx)
+			var token string
+			saved, e := vaultSavedOAuthConfig(c.ID, cfg)
+			if e == nil {
+				token, e = oauth.NewManager(saved.OAuth, api.logger).GetAccessToken(refreshCtx)
+			}
 			mutex.Unlock()
 			cancel()
 			valid = e == nil && token != ""

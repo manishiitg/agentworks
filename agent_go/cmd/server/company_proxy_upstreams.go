@@ -202,6 +202,10 @@ func serverCursorSession(ctx context.Context) (string, error) {
 	}
 	cursorSession.token, cursorSession.source = "", source
 	if key != "" {
+		// Bound the exchange: it runs under the shared session lock, so a
+		// stalled request would block every Cursor model call.
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, cursorBackend+"/auth/exchange_user_api_key", strings.NewReader("{}"))
 		if err != nil {
 			return "", err

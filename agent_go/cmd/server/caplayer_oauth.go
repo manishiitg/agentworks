@@ -75,13 +75,17 @@ func (api *StreamingAPI) handleCapLayerOAuthToken(w http.ResponseWriter, r *http
 		writeUsersError(w, 403, "OAuth connection does not match a live Vault connection")
 		return
 	}
+	mutex := platformMCPOAuthMutex("vault:" + in.ConnectionID)
+	mutex.Lock()
+	defer mutex.Unlock()
+	if cfg, err = vaultSavedOAuthConfig(in.ConnectionID, cfg); err != nil {
+		writeUsersError(w, http.StatusUnauthorized, "administrator sign-in required")
+		return
+	}
 	copied := *cfg.OAuth
 	if copied.TokenFile == "" {
 		copied.TokenFile = getUserTokenFilePath(platformMCPTokenUserID, name)
 	}
-	mutex := platformMCPOAuthMutex("vault:" + in.ConnectionID)
-	mutex.Lock()
-	defer mutex.Unlock()
 	// Bound the refresh: a stuck sign-in provider would otherwise hold this
 	// lock and block every token request for the connection.
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)

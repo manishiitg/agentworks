@@ -9,7 +9,12 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"time"
 )
+
+// githubHTTPClient bounds GitHub fetches: a stalled connection would
+// otherwise hang the install or import that started it forever.
+var githubHTTPClient = &http.Client{Timeout: 60 * time.Second}
 
 // GitHubURLInfo contains parsed information from a GitHub URL
 type GitHubURLInfo struct {
@@ -77,7 +82,7 @@ func FetchGitHubFileContent(info *GitHubURLInfo) (string, error) {
 		req.Header.Set("Authorization", "token "+info.Token)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := githubHTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch file: %w", err)
 	}
