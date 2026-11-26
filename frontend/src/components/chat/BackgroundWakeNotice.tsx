@@ -13,11 +13,11 @@ export function BackgroundWakeNotice({ metadata, details = '' }: { metadata?: Re
   const failed = metadata?.background_failed === true
   const output = continuation ? details : typeof metadata?.background_output === 'string' ? metadata.background_output : ''
   const label = kind === 'background_command_finished' ? 'Background command' : 'Background work'
-  return <div className="my-2 text-xs text-muted-foreground" role="status">
-    <div>{kind === 'app_restarted' ? '↻ App restarted, the agent is continuing' : kind === 'usage_limit_reset' ? '⏱ Usage limit reset, the agent is continuing' : kind === 'plan_open' ? '↻ The plan still has open steps, the agent is continuing' : <>{failed ? '✗' : '✓'} {label} finished{failed ? ' with an error' : ''}, the agent is continuing</>}</div>
-    {output && <details className="mt-1">
-      <summary className="cursor-pointer hover:text-foreground">{continuation ? 'Show details' : 'Show output'}</summary>
-      <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs">{output}</pre>
-    </details>}
-  </div>
+  const line = kind === 'app_restarted' ? '↻ App restarted, the agent is continuing' : kind === 'usage_limit_reset' ? '⏱ Usage limit reset, the agent is continuing' : kind === 'plan_open' ? '↻ The plan still has open steps, the agent is continuing' : `${failed ? '✗' : '✓'} ${label} finished${failed ? ' with an error' : ''}, the agent is continuing`
+  // One quiet line; the details open from the same line (owner, 26 Nov: the restart took too much room).
+  if (!output) return <div className="my-1.5 text-xs text-muted-foreground" role="status" data-testid="background-wake-notice">{line}</div>
+  return <details className="my-1.5 text-xs text-muted-foreground" role="status" data-testid="background-wake-notice">
+    <summary className="cursor-pointer list-none hover:text-foreground [&::-webkit-details-marker]:hidden">{line} <span className="underline-offset-2 hover:underline">· {continuation ? 'details' : 'output'}</span></summary>
+    <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs">{output}</pre>
+  </details>
 }

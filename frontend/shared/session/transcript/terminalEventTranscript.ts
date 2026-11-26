@@ -808,6 +808,18 @@ export function collapseTurnFailures(items: TranscriptItem[]): TranscriptItem[] 
   let lastFailureIndex = -1
   for (const item of items) {
     if (item.kind === 'event' && item.event.type === 'user_message') {
+      // The app restarted and the agent carries on (owner, 26 Nov: "can we make it smaller"): the restart line says
+      // it all, so the interrupted replies and failures it cut off since the person's message are not repeated.
+      if (systemNoticeKind(item.event) === 'app_restarted') {
+        for (let index = out.length - 1; index >= 0; index--) {
+          const earlier = out[index]
+          if (earlier.kind === 'event' && earlier.event.type === 'user_message' && !systemNoticeKind(earlier.event)) break
+          if (earlier.kind === 'event' && (turnFailureText(earlier.event) || isInterruptedCompletion(earlier.event))) out.splice(index, 1)
+        }
+        lastFailureIndex = -1
+        out.push(item)
+        continue
+      }
       lastFailureIndex = -1
       out.push(item)
       continue
@@ -819,6 +831,18 @@ export function collapseTurnFailures(items: TranscriptItem[]): TranscriptItem[] 
     out.push(item)
   }
   return out
+}
+
+function systemNoticeKind(event: PollingEvent): string {
+  const metadata = eventFields(event).metadata
+  const kind = metadata && typeof metadata === 'object' ? (metadata as Record<string, unknown>).system_notice_kind : ''
+  return typeof kind === 'string' ? kind : ''
+}
+
+function isInterruptedCompletion(event: PollingEvent): boolean {
+  if (event.type !== 'agent_end' && event.type !== 'unified_completion') return false
+  const message = interruptedCompletionMessage(eventFields(event).metadata)
+  return Boolean(message) && message !== 'Stopped'
 }
 
 export function isAssistantUpdate(event: PollingEvent): boolean {
