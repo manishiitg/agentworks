@@ -140,4 +140,10 @@ it('pins only questions from the running turn or reloaded after a restart', () =
     event('now', 'requested', '2026-01-02T10:00:05Z'),
   ], turnStart)
   expect([...keys].sort()).toEqual(['codex-cli:now', 'codex-cli:restored'])
+  // Before the turn's start is known, the person's last message starts it: an old question does not flash.
+  const early = questionsOfThisTurn([
+    event('old', 'requested', '2026-01-01T09:00:00Z'),
+    { id: 'u', type: 'user_message', timestamp: '2026-01-02T10:00:00Z', data: {} } as PollingEvent,
+  ], undefined)
+  expect([...early]).toEqual([])
 })
