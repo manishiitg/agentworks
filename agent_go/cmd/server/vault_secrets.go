@@ -1,12 +1,10 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -32,33 +30,21 @@ func vaultSecretAdminRequest(ctx context.Context, actor, method, path string, bo
 
 // vaultSecretAdminCall is vaultSecretAdminRequest that also returns the response body (up to 1 MiB).
 func vaultSecretAdminCall(ctx context.Context, actor, method, path string, body any) ([]byte, error) {
-	target, token, err := gatewayAdminServiceConfig()
-	if err != nil {
-		return nil, errors.New("Vault service is not configured")
-	}
-	target.Path = strings.TrimRight(target.Path, "/") + path
 	var data []byte
 	if body != nil {
+		var err error
 		data, err = json.Marshal(body)
 		if err != nil {
 			return nil, err
 		}
 	}
-	req, err := http.NewRequestWithContext(ctx, method, target.String(), bytes.NewReader(data))
-	if err != nil {
+	status, out, err := vaultServiceCall{Method: method, Path: path, Body: data, Actor: actor, Timeout: 10 * time.Second, Limit: 1 << 20}.do(ctx)
+	switch {
+	case errors.Is(err, errVaultServiceNotConfigured):
 		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("X-CapLayer-Actor", actor)
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Transport: capLayerTransport, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	resp, err := client.Do(req)
-	if err != nil {
+	case errors.Is(err, errVaultServiceUnavailable):
 		return nil, errors.New("Vault permissions unavailable")
-	}
-	defer resp.Body.Close()
-	out, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	case err != nil || status < 200 || status >= 300:
 		return nil, errors.New("could not persist Vault secret permissions")
 	}
 	return out, nil

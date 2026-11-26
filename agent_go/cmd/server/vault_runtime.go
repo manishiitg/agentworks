@@ -238,36 +238,24 @@ func vaultRuntimeRequest(ctx context.Context, person, path string) ([]byte, erro
 	if !activeMCPPerson(person) {
 		return nil, errors.New("active MCP user required")
 	}
-	target, secret, err := gatewayAdminServiceConfig()
-	if err != nil {
-		return nil, errors.New("Vault is not configured")
-	}
-	target.Path = strings.TrimRight(target.Path, "/") + path
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+secret)
-	req.Header.Set("X-CapLayer-Actor", person)
-	req.Header.Set("X-Vault-Platform-User", "1")
+	headers := map[string]string{"X-Vault-Platform-User": "1"}
 	if path == "/api/admin/runtime/builder/servers" {
-		req.Header.Set("X-Vault-Builder", "1")
+		headers["X-Vault-Builder"] = "1"
 	}
 	if scope := crewVaultScope(ctx); scope != "" {
-		req.Header.Set("X-Vault-Crew-Vault", scope) // only a server Crew's own runtime (crew_vault.go); the Vault service reads this exact name (mcp-gateway/internal/admin/runtime.go)
+		headers["X-Vault-Crew-Vault"] = scope // only a server Crew's own runtime (crew_vault.go); the Vault service reads this exact name (mcp-gateway/internal/admin/runtime.go)
 	}
-	client := &http.Client{Transport: capLayerTransport, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	resp, err := client.Do(req)
-	if err != nil {
+	var data []byte
+	var err error
+	status, data, err = vaultServiceCall{Method: http.MethodGet, Path: path, Actor: person, Headers: headers, Timeout: 10 * time.Second, Limit: 4 * 1024 * 1024}.do(ctx)
+	switch {
+	case errors.Is(err, errVaultServiceNotConfigured):
+		return nil, errors.New("Vault is not configured")
+	case errors.Is(err, errVaultServiceUnavailable):
 		return nil, errors.New("Vault unavailable")
-	}
-	defer resp.Body.Close()
-	status = resp.StatusCode
-	if resp.StatusCode != 200 {
+	case status != 200:
 		return nil, errors.New("Vault access unavailable")
-	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024+1))
-	if len(data) > 4*1024*1024 {
+	case errors.Is(err, errVaultResponseTooLarge):
 		return nil, errors.New("Vault catalog exceeds limit")
 	}
 	return data, err

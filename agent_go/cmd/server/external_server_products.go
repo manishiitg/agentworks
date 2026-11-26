@@ -96,7 +96,7 @@ func (api *StreamingAPI) externalServerProductCall(w http.ResponseWriter, r *htt
 		return
 	}
 	for _, user := range users {
-		if err := syncServerProductDirectoryUser(r.Context(), user.ID, user.Email); err != nil {
+		if err := vaultSyncDirectoryUser(r.Context(), user.ID, user.Email); err != nil {
 			externalError(w, 503, "directory_unavailable", "User directory synchronization unavailable.")
 			return
 		}
@@ -140,8 +140,7 @@ func (api *StreamingAPI) externalServerProductCall(w http.ResponseWriter, r *htt
 }
 
 func invokeServerProductManagement(req *http.Request) ([]byte, int) {
-	client := &http.Client{Transport: capLayerTransport, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	response, err := client.Do(req)
+	response, err := vaultServiceHTTPClient(30 * time.Second).Do(req)
 	if err != nil {
 		return nil, http.StatusBadGateway
 	}
