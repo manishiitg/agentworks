@@ -91,11 +91,12 @@ func carryOtherAgentSessions(prev, next *ChatHistoryAgentRuntime) {
 	}
 }
 
-func (api *StreamingAPI) carryAgentSessionsIntoSave(userID, sessionID, workspacePath string, next *ChatHistoryAgentRuntime, history []llmtypes.MessageContent) {
+// base: saved messages before history when memory holds only a recent window.
+func (api *StreamingAPI) carryAgentSessionsIntoSave(userID, sessionID, workspacePath string, next *ChatHistoryAgentRuntime, history []llmtypes.MessageContent, base int) {
 	if next == nil {
 		return
 	}
-	next.SeenLine = continuitySavedLines(history)
+	next.SeenLine = base + continuitySavedLines(history)
 	key := userID + "\x00" + sessionID
 	var prev *ChatHistoryAgentRuntime
 	if cached, ok := lastSavedAgentRuntimes.Load(key); ok {

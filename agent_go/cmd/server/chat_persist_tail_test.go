@@ -232,3 +232,93 @@ func TestChatPersistenceAppendsUnchangedPrefixWithIdenticalFullMerge(t *testing.
 		t.Fatal("changed source reused")
 	}
 }
+
+// #4080: 15 chats loading 7k-18k saved messages at once froze a laptop. A
+// coding turn now reads only the recent window; its save must still equal the
+// full merge (file, resume page positions and turn counts) without reading or
+// rewriting the whole history.
+func TestCodingTurnRecentWindowSavesLikeTheFullHistory(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	priorDocs := viper.Get("docs-dir")
+	viper.Set("docs-dir", docs)
+	t.Cleanup(func() { viper.Set("docs-dir", priorDocs) })
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"}]}`)
+	const root = "Workflow/example"
+	const session = "recent-window"
+	path := root + "/builder/conversation/2026-11-26/" + chatHistoryConversationFileName(session)
+	local := filepath.Join(docs, filepath.FromSlash(path))
+	if err := os.MkdirAll(filepath.Dir(local), 0700); err != nil {
+		t.Fatal(err)
+	}
+	saved := []llmtypes.MessageContent{llmtypes.TextPart(llmtypes.ChatMessageTypeSystem, "old system")}
+	for i := 0; i < 2000; i++ {
+		saved = append(saved, llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "question"), llmtypes.TextPart(llmtypes.ChatMessageTypeAI, "step"), llmtypes.TextPart(llmtypes.ChatMessageTypeAI, "answer"))
+	}
+	raw, _ := json.Marshal(map[string]interface{}{"session_id": session, "user_id": "owner", "title": "Long chat", "conversation_history": saved})
+	if err := chatlog.Save(local, raw); err != nil {
+		t.Fatal(err)
+	}
+	var fullReads, fullWrites atomic.Int64
+	router := gin.New()
+	router.Any("/api/documents/*filepath", func(c *gin.Context) {
+		p := strings.TrimPrefix(c.Param("filepath"), "/")
+		if p == path && c.Request.Method == http.MethodGet && c.Query("header_only") != "true" {
+			fullReads.Add(1)
+		}
+		if p == path && c.Request.Method == http.MethodPut {
+			fullWrites.Add(1)
+		}
+		workspacehandlers.HandleDocumentRequest(c)
+	})
+	upstream := httptest.NewServer(router)
+	defer upstream.Close()
+	t.Setenv("WORKSPACE_API_URL", upstream.URL)
+
+	source := statResumeHistory("owner", root, path)
+	window, ok, base, baseTurns, err := readRecentChatHistoryPersistTarget(source, session)
+	if err != nil || !ok {
+		t.Fatalf("recent window: ok=%t err=%v", ok, err)
+	}
+	if base != len(saved)-1-recentResumeTurns*3 || baseTurns != 2000-recentResumeTurns || window.History[0].Role != llmtypes.ChatMessageTypeSystem {
+		t.Fatalf("window base=%d turns=%d messages=%d", base, baseTurns, len(window.History))
+	}
+	api := &StreamingAPI{}
+	api.restoreResolvedResumeTarget(session, &resolvedResumeTarget{SessionID: session, WorkspacePath: root, ConversationPath: path, History: window.History, source: source, Base: base, BaseTurns: baseTurns}, "")
+
+	incoming := append([]llmtypes.MessageContent(nil), window.History...)
+	incoming[0] = llmtypes.TextPart(llmtypes.ChatMessageTypeSystem, "new system")
+	incoming = append(incoming, llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "new question"), llmtypes.TextPart(llmtypes.ChatMessageTypeAI, "new answer"))
+	before, _ := chatlog.Load(local)
+	var beforeDoc map[string]interface{}
+	json.Unmarshal(before, &beforeDoc)
+	expected, err := mergeChatConversationSnapshots(beforeDoc, map[string]interface{}{"conversation_history": append(append([]llmtypes.MessageContent{incoming[0]}, saved[1:]...), incoming[len(incoming)-2:]...)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.persistChatConversationToPathWithTerminalSession(session, "", "multi-agent", "owner", incoming, nil, nil, path)
+	if fullReads.Load() != 0 || fullWrites.Load() != 0 {
+		t.Fatalf("window save read or rewrote the whole chat: reads=%d writes=%d", fullReads.Load(), fullWrites.Load())
+	}
+	after, _ := chatlog.Load(local)
+	var afterDoc map[string]interface{}
+	json.Unmarshal(after, &afterDoc)
+	got, _ := json.Marshal(afterDoc["conversation_history"])
+	want, _ := json.Marshal(expected)
+	var gotValue, wantValue interface{}
+	json.Unmarshal(got, &gotValue)
+	json.Unmarshal(want, &wantValue)
+	if !reflect.DeepEqual(gotValue, wantValue) {
+		t.Fatal("window save differs from the full merge")
+	}
+	snapshot, err := os.ReadFile(filepath.Join(docs, filepath.FromSlash(chatHistoryResumeSnapshotPath(path))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected := boundChatHistoryResumeSnapshot(projectChatHistoryConversationForResumePage(after, chatHistoryResumeSnapshotTurns, 0))
+	var savedProjection, fullProjection interface{}
+	if json.Unmarshal(snapshot, &savedProjection) != nil || json.Unmarshal(projected, &fullProjection) != nil || !reflect.DeepEqual(savedProjection, fullProjection) {
+		t.Fatal("window resume page differs from the full chat's (positions or turn counts)")
+	}
+}

@@ -24,6 +24,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
@@ -117,13 +118,20 @@ func resolveProductResumeTarget(userID string, conversation ProductConversationR
 }
 
 func (api *StreamingAPI) resolveProductResumeTarget(userID string, conversation ProductConversationRecord) (*resolvedResumeTarget, bool, error) {
+	return api.resolveProductResumeTargetFor(userID, conversation, false)
+}
+
+// recentOnly: the turn runs a coding agent (Claude Code, Codex, ...), which
+// keeps the conversation in its own session, so only the chat's recent window
+// is read; a turn that hands the chat over reads the rest when it needs it.
+func (api *StreamingAPI) resolveProductResumeTargetFor(userID string, conversation ProductConversationRecord, recentOnly bool) (*resolvedResumeTarget, bool, error) {
 	started := time.Now()
 	workspacePath := normalizeConversationWorkspace(conversation.WorkspacePath)
 	// The same folder the turn itself reads the chat's history from: a shared Crew/<id> stays as it is, a Chats/...
 	// path maps into the caller's tree. Prefixing every path with the caller's tree missed every shared Crew, so a
 	// Crew chat that switched coding agent started with no history (PLAT-872-78).
 	lookupWorkspacePath := productConversationRuntimeWorkspace(userID, workspacePath)
-	if cached, ok := api.reusableProductResumeTarget(userID, workspacePath, conversation.SessionID); ok && !crewBuilderDiskHiddenFromUser(userID, lookupWorkspacePath) {
+	if cached, ok := api.reusableProductResumeTarget(userID, workspacePath, conversation.SessionID); ok && (recentOnly || cached.Base == 0) && !crewBuilderDiskHiddenFromUser(userID, lookupWorkspacePath) {
 		log.Printf("[CHAT_RESUME_REUSE] session=%s messages=%d", conversation.SessionID, len(cached.History))
 		return cached, true, nil
 	}
@@ -133,12 +141,20 @@ func (api *StreamingAPI) resolveProductResumeTarget(userID string, conversation 
 	if path, ok, err := FindChatHistoryConversationPathForSession(userID, conversation.SessionID, lookupWorkspacePath); err == nil && ok {
 		source = statResumeHistory(userID, workspacePath, path)
 	}
-	target, ok, err := readRestoredChatHistoryPersistTargetForSession(userID, conversation.SessionID, lookupWorkspacePath)
+	var target *restoredChatHistoryPersistTarget
+	var ok bool
+	var err error
+	base, baseTurns := 0, 0
+	if recentOnly && source != nil && source.log != nil {
+		target, ok, base, baseTurns, err = readRecentChatHistoryPersistTarget(source, conversation.SessionID)
+	} else {
+		target, ok, err = readRestoredChatHistoryPersistTargetForSession(userID, conversation.SessionID, lookupWorkspacePath)
+	}
 	count := 0
 	if target != nil {
 		count = len(target.History)
 	}
-	log.Printf("[CHAT_RESUME_LOAD] session=%s elapsed_ms=%d messages=%d found=%t error=%t", conversation.SessionID, time.Since(started).Milliseconds(), count, ok, err != nil)
+	log.Printf("[CHAT_RESUME_LOAD] session=%s elapsed_ms=%d messages=%d window_base=%d found=%t error=%t", conversation.SessionID, time.Since(started).Milliseconds(), count, base, ok, err != nil)
 	if err != nil || !ok || target == nil {
 		return nil, false, err
 	}
@@ -153,7 +169,54 @@ func (api *StreamingAPI) resolveProductResumeTarget(userID string, conversation 
 		History:          target.History,
 		Runtime:          target.Runtime,
 		WorkshopMode:     target.WorkshopMode,
+		Base:             base,
+		BaseTurns:        baseTurns,
 	}, true, nil
+}
+
+// A coding agent's recent window: at least this many visible user turns, at most this many messages.
+const (
+	recentResumeTurns    = 20
+	recentResumeMessages = 3000
+)
+
+// readRecentChatHistoryPersistTarget reads only the chat's recent window from
+// its local log; older lines are scanned as raw bytes (for the turn count) and
+// never decoded.
+func readRecentChatHistoryPersistTarget(source *resumeHistorySource, sessionID string) (*restoredChatHistoryPersistTarget, bool, int, int, error) {
+	baseTurns := 0
+	record, base, err := chatlog.LoadRecent(resolvedChatHistoryPath(chatHistoryStoragePath(source.path)), func(lines [][]byte) int {
+		start, turns := len(lines), 0
+		for start > 0 && turns < recentResumeTurns && len(lines)-start < recentResumeMessages {
+			start--
+			if rawVisibleResumeUser(lines[start]) {
+				turns++
+			}
+		}
+		for _, line := range lines[:start] {
+			if rawVisibleResumeUser(line) {
+				baseTurns++
+			}
+		}
+		return start
+	})
+	if err != nil {
+		return nil, false, 0, 0, err
+	}
+	target, ok, err := parseRestoredChatHistoryPersistTarget(record, sessionID, source.path)
+	if base == 0 {
+		baseTurns = 0
+	}
+	return target, ok, base, baseTurns, err
+}
+
+// rawVisibleResumeUser is visibleResumeUser for a saved line, decoding only user rows.
+func rawVisibleResumeUser(line []byte) bool {
+	if !bytes.Contains(line, []byte(`"human"`)) && !bytes.Contains(line, []byte(`"user"`)) {
+		return false
+	}
+	role, text := chatHistoryMessageRoleAndText(line)
+	return (role == "human" || role == "user") && !isClaudeLocalCommandRecord(text) && !isProviderTaskNotification(text)
 }
 
 // hasSelectedServers reports whether the browser named a real MCP server
@@ -1177,7 +1240,7 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		log.Printf("[PRODUCT_CHAT] account change for conversation %q: %s -> %s (same chat, CLI restarts on the new account)", conversation.ConversationKey, canonicalProviderConnectionID(conversation.Provider, conversation.ConnectionID), canonicalProviderConnectionID(query.Provider, query.ConnectionID))
 	}
 	markQueryStage(ctx, "prepare_model")
-	target, found, err := resolveProductResumeTarget(userID, conversation)
+	target, found, err := runningServerAPI.resolveProductResumeTargetFor(userID, conversation, isCodingAgentProvider(query.Provider, query.ModelID))
 	if err != nil {
 		return QueryRequest{}, fmt.Errorf("resolve saved conversation: %w", err)
 	}

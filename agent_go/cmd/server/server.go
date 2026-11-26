@@ -7494,6 +7494,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// (so stale tool calls/prompts do not replay into the new mode), but the on-disk record keeps the full conversation.
 		// This snapshot is merged with the new turn's exchange at save time below.
 		var preModeChangeSnapshot []llmtypes.MessageContent
+		preModeChangeBase := 0
 		if newWorkshopMode != "" {
 			activeForPolicy, _ := api.getActiveSession(sessionID)
 			// After a restart an auto-notification has no remembered role: take it from the saved runtime.
@@ -7590,6 +7591,9 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				if existing, ok := api.conversationHistory[sessionID]; ok && len(existing) > 0 {
 					preModeChangeSnapshot = make([]llmtypes.MessageContent, len(existing))
 					copy(preModeChangeSnapshot, existing)
+					if source := api.resumeHistorySources[sessionID]; source != nil {
+						preModeChangeBase = source.target.Base
+					}
 					delete(api.conversationHistory, sessionID)
 					delete(api.resumeHistorySources, sessionID)
 				}
@@ -7657,8 +7661,33 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// the pre-refresh conversation.
 		continuityHistory := historyForAgent
 		handoffBudget := continuityBudget(finalProvider, finalModelID, req.Query)
+		continuityBase := api.resumeWindowBase(sessionID)
 		if modeChangedThisTurn && len(preModeChangeSnapshot) > 0 {
 			continuityHistory = preModeChangeSnapshot
+			continuityBase = preModeChangeBase
+		}
+		// Memory may hold only the chat's recent window (#4080). A handover
+		// (switch back, another agent, a fresh session, a mode change) quotes
+		// saved-history line numbers, so it reads the whole chat, once, here.
+		var fullContinuity []llmtypes.MessageContent
+		continuityFor := func() []llmtypes.MessageContent {
+			if continuityBase == 0 {
+				return continuityHistory
+			}
+			if fullContinuity == nil {
+				fullContinuity = continuityHistory
+				historySession, workspace := sessionID, req.SelectedFolder
+				if target := req.resolvedResumeTarget; target != nil {
+					historySession, workspace = target.SessionID, target.WorkspacePath
+				}
+				started := time.Now()
+				full, ok, err := readRestoredChatHistoryPersistTargetForSession(currentUserID, historySession, productConversationRuntimeWorkspace(currentUserID, normalizeConversationWorkspace(workspace)))
+				if err == nil && ok && full != nil && len(full.History) >= len(continuityHistory) {
+					fullContinuity = full.History
+				}
+				logfWithContext(queryLogCtx, "[CHAT_RESUME_LOAD] session=%s reason=handover elapsed_ms=%d messages=%d window_base=%d error=%t", sessionID, time.Since(started).Milliseconds(), len(fullContinuity), continuityBase, err != nil)
+			}
+			return fullContinuity
 		}
 
 		// Note: User message is added by StreamWithEvents internally, no need to add it here
@@ -7910,7 +7939,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						}
 					}
 					rememberContinuityArchive(sessionID, archivePath)
-					chatQuery = prependSwitchBackNotice(queryLogCtx, switchBackRuntime.switchedBackFrom, switchBackRuntime, chatQuery, archivePath, continuityHistory, handoffBudget)
+					chatQuery = prependSwitchBackNotice(queryLogCtx, switchBackRuntime.switchedBackFrom, switchBackRuntime, chatQuery, archivePath, continuityFor(), handoffBudget)
 				}
 				// Owner 2 Nov (replaces 27 Oct): a resumed native thread already holds the conversation, and changed
 				// instructions reach it through the current-instructions block, so it gets no continuity notice. On two
@@ -7926,14 +7955,14 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// same-provider profile reconnect.
 				chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx,
 					fmt.Sprintf("agent_switch from=%s to=%s", req.resolvedResumeTarget.provider(), strings.ToLower(strings.TrimSpace(finalProvider))),
-					finalProvider, sessionID, chatQuery, restoredConversationPathForFallback, continuityHistory, handoffBudget)
+					finalProvider, sessionID, chatQuery, restoredConversationPathForFallback, continuityFor(), handoffBudget)
 				replayHistoryToAgent = false
 				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Resuming across providers saved=%s current=%s with required complete conversation archive %s", req.resolvedResumeTarget.provider(), strings.ToLower(strings.TrimSpace(finalProvider)), restoredConversationPathForFallback)
 			} else if restoredConversationPathForFallback != "" && isCodingAgentProvider(finalProvider, finalModelID) && (historyRestoredThisTurn || productDefinitionRefreshed) {
 				// A new native session on the same provider (Muse after a definition change, a changed CLI runtime
 				// folder) gets what a provider switch gets: the recent turns and the conversation archive. The bounded
 				// replayed tail alone lost everything older (PLAT-872-80).
-				chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "fresh_session", finalProvider, sessionID, chatQuery, restoredConversationPathForFallback, continuityHistory, handoffBudget)
+				chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "fresh_session", finalProvider, sessionID, chatQuery, restoredConversationPathForFallback, continuityFor(), handoffBudget)
 				replayHistoryToAgent = false
 				logfWithContext(queryLogCtx, "[CHAT_HISTORY] Fresh native session; supplied conversation archive %s", restoredConversationPathForFallback)
 			} else if restoredConversationPathForFallback != "" {
@@ -7998,7 +8027,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						finalProvider, sessionID,
 						chatQuery,
 						codingFallbackConversationPath,
-						continuityHistory, handoffBudget,
+						continuityFor(), handoffBudget,
 					)
 					historyToReplay = nil
 					logfWithContext(queryLogCtx, "[CONVERSATION] Native coding-agent continuation unavailable; sending visible archive-read instruction with the current user message for conversation archive %s (in-memory history: %d messages)", codingFallbackConversationPath, len(historyForAgent))
@@ -8023,7 +8052,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if modeChangedThisTurn {
-			chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "mode_change", finalProvider, sessionID, chatQuery, modeChangeConversationPath, continuityHistory, handoffBudget)
+			chatQuery = handOffToCodingAgent(&agentCtx, queryLogCtx, "mode_change", finalProvider, sessionID, chatQuery, modeChangeConversationPath, continuityFor(), handoffBudget)
 		}
 
 		// Store the fully configured agent before streaming starts so ultra-fast background
@@ -8183,7 +8212,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			chatRuntime = api.captureChatHistoryAgentRuntime(sessionID, finalProvider, finalModelID, runtimeWorkspacePath, underlyingAgent)
 			if chatRuntime != nil {
 				chatRuntime.WorkshopMode = newWorkshopMode
-				api.carryAgentSessionsIntoSave(currentUserID, sessionID, productConversationRuntimeWorkspace(currentUserID, req.SelectedFolder), chatRuntime, persistedHistory)
+				api.carryAgentSessionsIntoSave(currentUserID, sessionID, productConversationRuntimeWorkspace(currentUserID, req.SelectedFolder), chatRuntime, persistedHistory, continuityBase)
 			}
 			idleTurnRuntime = chatRuntime
 		}

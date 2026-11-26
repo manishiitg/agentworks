@@ -78,10 +78,47 @@ func (api *StreamingAPI) rememberResumeHistorySourceLocked(session string, targe
 	source.target = *target
 	source.target.History = nil
 	source.target.source = nil
+	if target.Base > 0 {
+		// A window was read from this exact file version, so its rows are the
+		// file's last rows: the next save appends after them. The full writer
+		// would instead re-read and re-merge the whole file.
+		source.persistedBody = len(chatHistoryBody(target.History))
+		source.persistedSystem = len(target.History) > 0 && target.History[0].Role == llmtypes.ChatMessageTypeSystem
+		source.persistedTurns = target.BaseTurns + visibleResumeUserCount(target.History)
+		source.prefixStable = source.log != nil && appendableHistoryShape(target.History)
+	}
 	if api.resumeHistorySources == nil {
 		api.resumeHistorySources = map[string]*resumeHistorySource{}
 	}
 	api.resumeHistorySources[session] = &source
+}
+
+// forgetResumeWindow marks the session's in-memory history as complete.
+func (api *StreamingAPI) forgetResumeWindow(session string) {
+	if api == nil {
+		return
+	}
+	api.conversationMux.Lock()
+	defer api.conversationMux.Unlock()
+	if source := api.resumeHistorySources[session]; source != nil && source.target.Base > 0 {
+		next := *source
+		next.target.Base, next.target.BaseTurns = 0, 0
+		api.resumeHistorySources[session] = &next
+	}
+}
+
+// resumeWindowBase is how many saved messages come before the session's
+// in-memory history (0: memory holds all of it).
+func (api *StreamingAPI) resumeWindowBase(session string) int {
+	if api == nil {
+		return 0
+	}
+	api.conversationMux.RLock()
+	defer api.conversationMux.RUnlock()
+	if source := api.resumeHistorySources[session]; source != nil {
+		return source.target.Base
+	}
+	return 0
 }
 
 // Our successful full snapshot write already has the parsed history. Publish
