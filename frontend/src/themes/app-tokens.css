@@ -3,21 +3,29 @@
 @layer base {
   :root, .force-light {
     color-scheme: light;
-    --background: 0 0% 98.824%;
-    --foreground: 0 0% 15%;
+    /* Faintly cool greys, the same family as dark. White cards sit on a slightly
+       deeper page, and the sidebar and hovers (muted) read as their own layer. */
+    --background: 220 14% 97%;
+    --foreground: 220 13% 15%;
     --card: 0 0% 100%;
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 40%;
-    --border: 0 0% 89%;
+    --muted: 220 14% 94%;
+    --muted-foreground: 220 9% 40%;
+    --border: 220 13% 88%;
+    /* Fields get a firmer edge than divider hairlines so they read as inputs. */
+    --input: 220 11% 78%;
     --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
+    --info: 199 89% 32%;
+    --info-foreground: 0 0% 100%;
     --success: 124 35% 32%;
     --success-foreground: 0 0% 100%;
-    --warning: 45 60% 32%;
+    --warning: 30 90% 33%;
     --warning-foreground: 0 0% 100%;
-    --destructive: 7.723 42.986% 49.312%;
+    --destructive: 8 50% 44%;
     --destructive-foreground: 0 0% 100%;
     --chart-4: 288.667 40.909% 46%;
+    --shadow-color: 220 40% 15%;
+    --shadow-strength: 0.08;
     --radius: 0.5rem;
     --runloop-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
   }
@@ -29,15 +37,21 @@
     --muted: 220 10% 13%;
     --muted-foreground: 220 9% 66%;
     --border: 220 9% 18%;
-    --primary: 200 100% 40%;
+    --input: var(--border);
+    /* Same blue and green families as light, tuned for a dark page. */
+    --primary: 219 85% 58%;
     --primary-foreground: 0 0% 100%;
-    --success: 180 60% 50%;
+    --info: 199 80% 60%;
+    --info-foreground: 0 0% 0%;
+    --success: 142 50% 50%;
     --success-foreground: 0 0% 0%;
     --warning: 20 60% 60%;
     --warning-foreground: 0 0% 0%;
     --destructive: 0 70% 60%;
     --destructive-foreground: 0 0% 100%;
     --chart-4: 280 60% 60%;
+    --shadow-color: 0 0% 0%;
+    --shadow-strength: 0.1;
   }
   :root, .dark, .force-light {
     --card-foreground: var(--foreground);
@@ -47,10 +61,7 @@
     --secondary-foreground: var(--foreground);
     --accent: var(--muted);
     --accent-foreground: var(--foreground);
-    --input: var(--border);
     --ring: var(--primary);
-    --info: var(--primary);
-    --info-foreground: var(--primary-foreground);
     --chart-1: var(--primary);
     --chart-2: var(--success);
     --chart-3: var(--warning);

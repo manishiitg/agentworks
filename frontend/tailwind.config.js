@@ -18,6 +18,19 @@ export default {
         sans: ['var(--app-font, system-ui)', 'sans-serif'],
         mono: ['var(--app-code-font, monospace)', 'monospace'],
       },
+      // One shadow colour per mode (--shadow-color, --shadow-strength in app-tokens.css).
+      // Dark keeps Tailwind's own black shadows; light uses a softer, cool tint.
+      boxShadow: (() => {
+        const c = k => `hsl(var(--shadow-color, 0 0% 0%) / calc(var(--shadow-strength, 0.1) * ${k}))`
+        return {
+          sm: `0 1px 2px 0 ${c(0.5)}`,
+          DEFAULT: `0 1px 3px 0 ${c(1)}, 0 1px 2px -1px ${c(1)}`,
+          md: `0 4px 6px -1px ${c(1)}, 0 2px 4px -2px ${c(1)}`,
+          lg: `0 10px 15px -3px ${c(1)}, 0 4px 6px -4px ${c(1)}`,
+          xl: `0 20px 25px -5px ${c(1)}, 0 8px 10px -6px ${c(1)}`,
+          '2xl': `0 25px 50px -12px ${c(2.5)}`,
+        }
+      })(),
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',

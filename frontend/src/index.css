@@ -65,7 +65,7 @@
   /* The working line's star and word (WorkingStatus). One token; to try green instead of orange change the
      --working-accent line below to var(--working-accent-green). */
   :root {
-    --working-accent-orange: 22 88% 44%;
+    --working-accent-orange: 22 88% 37%;
     --working-accent-green: 142 62% 30%;
     --diff-add: 142 62% 30%;
     --diff-del: 8 65% 45%;
@@ -244,66 +244,6 @@
 
 /* Menus, tooltips and dialogs use the shared appearance tokens. Do not override
    bg-popover globally: forcing dark here also makes light-mode menus dark. */
-
-/* ===== AGENT MODE BUTTONS - VS CODE THEME ===== */
-
-/* Selected state - Light mode */
-.agent-mode-selected {
-  background-color: hsl(200 100% 95%) !important;  /* Very light blue background */
-  color: hsl(200 100% 40%) !important;              /* Blue text */
-  border: 1px solid hsl(200 100% 40%) !important;  /* Blue border */
-  box-shadow: 0 0 0 1px hsl(200 100% 60%) !important; /* Subtle focus ring */
-}
-
-/* Unselected state - Light mode */
-.agent-mode-unselected {
-  background-color: hsl(0 0% 96%) !important;      /* Light gray background */
-  color: hsl(0 0% 20%) !important;                 /* Dark text */
-  border: 1px solid hsl(0 0% 80%) !important;      /* Light gray border */
-}
-
-/* Hover state for unselected - Light mode */
-.agent-mode-unselected:hover {
-  background-color: hsl(0 0% 92%) !important;      /* Slightly darker on hover */
-  border-color: hsl(0 0% 70%) !important;          /* Darker border on hover */
-}
-
-/* Icon colors for selected state - Light mode */
-.agent-mode-selected svg {
-  color: hsl(200 100% 40%) !important;              /* Blue icons when selected */
-}
-
-/* Icon colors for unselected state - Light mode */
-.agent-mode-unselected svg {
-  color: hsl(0 0% 20%) !important;                 /* Dark icons when unselected */
-}
-
-/* Dark mode agent mode buttons */
-.dark .agent-mode-selected {
-  background-color: hsl(0 0% 24%) !important;      /* VS Code border #3c3c3c - subtle background */
-  color: hsl(200 100% 40%) !important;              /* VS Code blue #007acc - for text */
-  border: 1px solid hsl(200 100% 40%) !important;  /* VS Code blue #007acc - for border */
-  box-shadow: 0 0 0 1px hsl(200 100% 20%) !important; /* More subtle focus ring */
-}
-
-.dark .agent-mode-unselected {
-  background-color: hsl(0 0% 20%) !important;      /* VS Code secondary #333333 */
-  color: hsl(0 0% 83%) !important;                 /* VS Code foreground #d4d4d4 */
-  border: 1px solid hsl(0 0% 24%) !important;      /* VS Code border #3c3c3c */
-}
-
-.dark .agent-mode-unselected:hover {
-  background-color: hsl(0 0% 25%) !important;      /* Slightly lighter on hover */
-  border-color: hsl(0 0% 30%) !important;          /* Lighter border on hover */
-}
-
-.dark .agent-mode-selected svg {
-  color: hsl(0 0% 100%) !important;                /* White icons when selected */
-}
-
-.dark .agent-mode-unselected svg {
-  color: hsl(0 0% 83%) !important;                 /* VS Code foreground for icons */
-}
 
 /* ===== DARK MODE OVERRIDES - VS CODE DARK THEME ===== */
 
