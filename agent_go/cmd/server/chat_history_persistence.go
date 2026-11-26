@@ -4419,6 +4419,7 @@ func (api *StreamingAPI) appendLiveInputToPersistedChatHistory(userID, sessionID
 	}
 	updatedAt := time.Now().Format(time.RFC3339)
 	advanceChatConversationRevision(record)
+	beforeStat := statResumeHistory(userID, "", conversationPath)
 	if err := appendConversationHistoryInWorkspace(context.Background(), conversationPath, []json.RawMessage{encodedMessage}, map[string]interface{}{
 		"updated_at": updatedAt,
 		"revision":   record["revision"],
@@ -4426,6 +4427,7 @@ func (api *StreamingAPI) appendLiveInputToPersistedChatHistory(userID, sessionID
 		logfWithContext(logCtx, "[CHAT_HISTORY] Live-input append: cannot append to %s: %v", conversationPath, err)
 		return
 	}
+	api.rememberLiveInputAppend(userID, sessionID, conversationPath, beforeStat, userMessage)
 	history = append(history, userMessage)
 	total++
 

@@ -492,6 +492,171 @@ func TestPersistChatTailUsesLiveSessionKeyForRestoredChat(t *testing.T) {
 	}
 }
 
+// #4309: header-only metadata updates (e.g. renaming a chat) rewrite the header
+// file without modifying .history.jsonl. Tail-append should still succeed and
+// preserve the updated header metadata, while rejecting legacy header overwrites.
+func TestPersistChatTailAllowsHeaderOnlyMetadataChange(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	priorDocs := viper.Get("docs-dir")
+	viper.Set("docs-dir", docs)
+	t.Cleanup(func() { viper.Set("docs-dir", priorDocs) })
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"}]}`)
+	const root = "Workflow/example"
+	const session = "header-only-change"
+	path := root + "/builder/conversation/2026-11-26/" + chatHistoryConversationFileName(session)
+	local := filepath.Join(docs, filepath.FromSlash(path))
+	if err := os.MkdirAll(filepath.Dir(local), 0700); err != nil {
+		t.Fatal(err)
+	}
+	saved := []llmtypes.MessageContent{
+		llmtypes.TextPart(llmtypes.ChatMessageTypeSystem, "system"),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "hello"),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeAI, "world"),
+	}
+	raw, _ := json.Marshal(map[string]interface{}{"session_id": session, "user_id": "owner", "title": "Original", "conversation_history": saved})
+	if err := chatlog.Save(local, raw); err != nil {
+		t.Fatal(err)
+	}
+	var fullReads, fullWrites atomic.Int64
+	router := gin.New()
+	router.Any("/api/documents/*filepath", func(c *gin.Context) {
+		p := strings.TrimPrefix(c.Param("filepath"), "/")
+		if p == path && c.Request.Method == http.MethodGet && c.Query("header_only") != "true" {
+			fullReads.Add(1)
+		}
+		if p == path && c.Request.Method == http.MethodPut {
+			fullWrites.Add(1)
+		}
+		workspacehandlers.HandleDocumentRequest(c)
+	})
+	upstream := httptest.NewServer(router)
+	defer upstream.Close()
+	t.Setenv("WORKSPACE_API_URL", upstream.URL)
+
+	api := &StreamingAPI{}
+	source := statResumeHistory("owner", root, path)
+	api.restoreResolvedResumeTarget(session, &resolvedResumeTarget{SessionID: session, WorkspacePath: root, ConversationPath: path, History: saved, source: source}, "")
+	api.rememberWrittenResumeHistory("owner", session, path, saved, nil)
+
+	// Simulate a header-only metadata write (e.g. RenameChatHistorySession) that
+	// rewrites the header file via chatlog.Save without changing .history.jsonl.
+	renamedRaw, _ := json.Marshal(map[string]interface{}{"session_id": session, "user_id": "owner", "title": "Renamed", "conversation_history": saved})
+	if err := chatlog.Save(local, renamedRaw); err != nil {
+		t.Fatal(err)
+	}
+
+	incoming := append(append([]llmtypes.MessageContent(nil), saved...),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "next"),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeAI, "reply"),
+	)
+	api.conversationMux.Lock()
+	api.replaceConversationHistoryLocked(session, incoming)
+	api.conversationMux.Unlock()
+
+	api.persistChatConversationToPathWithTerminalSession(session, "", "multi-agent", "owner", incoming, nil, nil, path)
+	if fullReads.Load() != 0 || fullWrites.Load() != 0 {
+		t.Fatalf("header-only change forced full rewrite: reads=%d writes=%d", fullReads.Load(), fullWrites.Load())
+	}
+	after, err := chatlog.Load(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal(after, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc["title"] != "Renamed" {
+		t.Fatalf("title = %v, want Renamed", doc["title"])
+	}
+}
+
+// #4309: appendLiveInputToPersistedChatHistory appends a user message directly
+// to .history.jsonl during a turn. Advancing resumeHistorySources keeps the
+// turn's completion save on the tail-append path with zero full rewrites and no
+// duplicate user message.
+func TestPersistChatTailStaysOnTailAppendAfterLiveInput(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	priorDocs := viper.Get("docs-dir")
+	viper.Set("docs-dir", docs)
+	t.Cleanup(func() { viper.Set("docs-dir", priorDocs) })
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"}]}`)
+	const root = "Workflow/example"
+	const session = "live-input-tail"
+	path := root + "/builder/conversation/2026-11-26/" + chatHistoryConversationFileName(session)
+	local := filepath.Join(docs, filepath.FromSlash(path))
+	if err := os.MkdirAll(filepath.Dir(local), 0700); err != nil {
+		t.Fatal(err)
+	}
+	saved := []llmtypes.MessageContent{
+		llmtypes.TextPart(llmtypes.ChatMessageTypeSystem, "system"),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "first"),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeAI, "first reply"),
+	}
+	raw, _ := json.Marshal(map[string]interface{}{"session_id": session, "user_id": "owner", "title": "Live input", "conversation_history": saved})
+	if err := chatlog.Save(local, raw); err != nil {
+		t.Fatal(err)
+	}
+	var fullReads, fullWrites atomic.Int64
+	router := gin.New()
+	router.Any("/api/documents/*filepath", func(c *gin.Context) {
+		p := strings.TrimPrefix(c.Param("filepath"), "/")
+		if p == path && c.Request.Method == http.MethodGet && c.Query("header_only") != "true" && c.Query("tail") == "" {
+			fullReads.Add(1)
+		}
+		if p == path && c.Request.Method == http.MethodPut {
+			fullWrites.Add(1)
+		}
+		workspacehandlers.HandleDocumentRequest(c)
+	})
+	upstream := httptest.NewServer(router)
+	defer upstream.Close()
+	t.Setenv("WORKSPACE_API_URL", upstream.URL)
+
+	api := &StreamingAPI{}
+	source := statResumeHistory("owner", root, path)
+	api.restoreResolvedResumeTarget(session, &resolvedResumeTarget{SessionID: session, WorkspacePath: root, ConversationPath: path, History: saved, source: source}, "")
+	api.rememberWrittenResumeHistory("owner", session, path, saved, nil)
+
+	// Record a live-input user message on disk before the turn finishes.
+	beforeLive := statResumeHistory("owner", root, path)
+	api.appendLiveInputToPersistedChatHistory("owner", session, root, "follow up via live input")
+	afterLive := statResumeHistory("owner", root, path)
+	if beforeLive.same(afterLive) {
+		t.Fatal("live-input append did not update conversation files")
+	}
+
+	// The turn finishes with that user message plus the assistant reply.
+	incoming := append(append([]llmtypes.MessageContent(nil), saved...),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "follow up via live input"),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeAI, "handled"),
+	)
+	api.conversationMux.Lock()
+	api.replaceConversationHistoryLocked(session, incoming)
+	api.conversationMux.Unlock()
+
+	api.persistChatConversationToPathWithTerminalSession(session, "", "multi-agent", "owner", incoming, nil, nil, path)
+	if fullReads.Load() != 0 || fullWrites.Load() != 0 {
+		t.Fatalf("save after live-input fell back to full rewrite: reads=%d writes=%d", fullReads.Load(), fullWrites.Load())
+	}
+	after, err := chatlog.Load(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		History []llmtypes.MessageContent `json:"conversation_history"`
+	}
+	if err := json.Unmarshal(after, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.History) != len(saved)+2 {
+		t.Fatalf("saved len = %d, want %d (no duplicate live-input user message)", len(doc.History), len(saved)+2)
+	}
+}
+
 // #4080: sending checked an open tab's session by listing the project's chats
 // (up to 2,000 files read, 0.2-15.6 s per send). The direct lookup must give
 // the same answer: in this project only when its transcript is in the

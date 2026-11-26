@@ -151,6 +151,47 @@ func (api *StreamingAPI) rememberWrittenResumeHistory(user, session, path string
 	api.resumeHistorySources[session] = next
 }
 
+// rememberLiveInputAppend advances the saved tail-append proof after
+// appendLiveInputToPersistedChatHistory appends a single user message directly
+// to the conversation log, so the turn's completion save does not fall back to
+// a full-file rewrite with fallback=file_changed.
+func (api *StreamingAPI) rememberLiveInputAppend(user, session, path string, before *resumeHistorySource, message llmtypes.MessageContent) {
+	if api == nil || before == nil {
+		return
+	}
+	api.conversationMux.Lock()
+	defer api.conversationMux.Unlock()
+	old := api.resumeHistorySources[session]
+	if old == nil || old.user != user || strings.TrimSpace(old.path) != strings.TrimSpace(path) || !old.prefixStable || old.log == nil {
+		return
+	}
+	if !sameResumeFile(old.log, before.log) {
+		return
+	}
+	next := statResumeHistory(user, old.workspace, path)
+	if next == nil || next.log == nil {
+		return
+	}
+	current := api.conversationHistory[session]
+	body := chatHistoryBody(current)
+	var nextHistory []llmtypes.MessageContent
+	switch {
+	case len(body) == old.persistedBody:
+		nextHistory = append(append([]llmtypes.MessageContent(nil), current...), message)
+	case len(body) > old.persistedBody && reflect.DeepEqual(body[old.persistedBody], message):
+		nextHistory = current
+	default:
+		return
+	}
+	next.target = old.target
+	next.persistedBody = old.persistedBody + 1
+	next.persistedSystem = old.persistedSystem
+	next.persistedTurns = old.persistedTurns + visibleResumeUserCount([]llmtypes.MessageContent{message})
+	next.prefixStable = appendableHistoryShape(nextHistory)
+	api.conversationHistory[session] = nextHistory
+	api.resumeHistorySources[session] = next
+}
+
 // Server history snapshots are immutable message values. Check the previously
 // saved prefix at each replacement, before dropping its canonical slice. Keep
 // only counts/proof, never another slice of old message bodies.
