@@ -4,7 +4,7 @@ import { LoadingIndicator } from './ui/LoadingIndicator'
 import { contextAttachmentRemoval } from '../utils/chatContextAttachment'
 import { applyNextPromptKey } from '../utils/nextPrompt'
 import { useNextPrompt } from './chat/useNextPrompt'
-import { NextStepsCard, useNextSteps } from './chat/NextStepsCard'
+import { NextStepsCard, NextStepsSlot, useNextSteps } from './chat/NextStepsCard'
 import { TerminalResumeNotice, useChatTerminalOut } from './chat/TerminalResume'
 import { supportsNativeGoal } from '../utils/nativeGoalCapability'
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
@@ -3049,7 +3049,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           padding small so the last message and the composer read as one column. */}
       <ChatComposerArea product={isProductSurface} className={inputPadX}>
         <ChatComposerForm product={isProductSurface} onSubmit={handleSubmit} aboveCard={<>
-          {nextSteps.steps && <NextStepsCard steps={nextSteps.steps} onDismiss={nextSteps.dismiss} onPick={text => { nextSteps.dismiss(); void routeSubmit(text) }} />}
+          {nextSteps.steps && activeTabId && <NextStepsSlot tabId={activeTabId}><NextStepsCard steps={nextSteps.steps} onDismiss={nextSteps.dismiss} onPick={text => { nextSteps.dismiss(); void routeSubmit(text) }} /></NextStepsSlot>}
           <div ref={setMicBannerHost} className="empty:hidden" />
           {onlineAgentTab && <p role="note" data-testid="online-agent-files-note" className="mx-3 my-1 text-xs text-muted-foreground">{ONLINE_AGENT_FILES_LINE}</p>}
           {requestedSkillId && <div className="mx-3 my-1 flex items-center gap-2 text-xs">

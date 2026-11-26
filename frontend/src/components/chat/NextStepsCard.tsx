@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { useChatStore } from '../../stores/useChatStore'
 import { currentNextStepsEvent, nextStepsOf, type NextSteps } from '../../utils/nextSteps'
 
 // Summary and next steps (owner, 26 Nov, like Claude Desktop): the agent's last reply ended with a short summary, one
-// question and two or three answers. Shown above the message box until the person types, sends or dismisses it;
-// never saved. The first answer also goes with Cmd+Enter (ChatInput).
+// question and two or three answers. Shown after that reply in the chat, scrolling with it like Claude Desktop's (owner,
+// 26 Nov: not pinned to the message box), until the person types, sends or dismisses it; never saved. The first answer also goes with Cmd+Enter (ChatInput).
 
 export function useNextSteps(session: string | null, available: boolean) {
   const event = useChatStore(state => session ? currentNextStepsEvent(state.tabEvents[session]) : undefined)
@@ -15,11 +16,23 @@ export function useNextSteps(session: string | null, available: boolean) {
   return { steps: shown, dismiss: () => setDismissed(event?.id) }
 }
 
+/** Puts the card at the end of the chat (ChatArea's slot for this tab), after the last reply. */
+export function NextStepsSlot({ tabId, children }: { tabId: string; children: ReactNode }) {
+  const [host, setHost] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    setHost(document.querySelector<HTMLElement>(`[data-next-steps-slot="${CSS.escape(tabId)}"]`))
+  }, [tabId])
+  return host ? createPortal(children, host) : null
+}
+
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '')
 
 export function NextStepsCard({ steps, onPick, onDismiss }: { steps: NextSteps; onPick: (text: string) => void; onDismiss: () => void }) {
-  return <section aria-label="Summary and next steps" data-testid="next-steps-card"
-    className="mb-2 rounded-xl border border-border bg-background px-3.5 py-3 text-sm shadow-sm">
+  const ref = useRef<HTMLElement>(null)
+  // It appears as the reply ends; bring it into view the way the reply itself was.
+  useEffect(() => { ref.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }) }, [])
+  return <section ref={ref} aria-label="Summary and next steps" data-testid="next-steps-card"
+    className="my-3 rounded-xl border border-border bg-background px-3.5 py-3 text-sm shadow-sm">
     <div className="flex items-start gap-2">
       <div className="min-w-0 flex-1 space-y-2">
         {steps.summary && <p className="text-[13px] leading-5 text-muted-foreground" data-testid="next-steps-summary">{steps.summary}</p>}
