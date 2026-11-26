@@ -356,8 +356,8 @@ async function loadTabEvents(
   const page = compact && oldestSequence && eventsNow.length > 0
     ? keepLoadedCompactSteps(response.events, eventsNow, oldestSequence)
     : response.events
-  // A provisional bubble survives only until its durable row is on the page.
-  const restored = [...olderLoaded, ...keepUnechoedProvisionals(page, eventsNow)]
+  // A provisional bubble survives only until its durable row is on the page or in olderLoaded.
+  const restored = [...olderLoaded, ...keepUnechoedProvisionals(page, eventsNow, olderLoaded)]
 
   if (response.native_goal_snapshot) {
     // Projection is not a page row: do not let an old goal's journal sequence
