@@ -70,7 +70,7 @@ import { deliveryTickState } from './events/system/deliveryTickState'
 import { UsageLimitRecoveryNotice } from './chat/UsageLimitRecoveryNotice'
 import { QueuedProviderLabel } from './chat/ProviderChangeNotice'
 import { askAIDisplayText, hasAskAIMessage } from '../utils/askAIMessage'
-import { isChatDeliveryTelemetryEvent, recordChatDeliveryTelemetry } from '../utils/chatDeliveryTelemetry'
+import { isChatDeliveryTelemetryEvent, paintedTelemetryTransport, recordChatDeliveryTelemetry } from '../utils/chatDeliveryTelemetry'
 import { ShowFullContentButton, chatArtifactRef, useChatArtifactText } from './ChatArtifactExpander'
 import { WebSearchToolCallDisplay } from './events/tools/ToolCallSpecialRender/WebSearchToolCallDisplay'
 import { isWebSearchToolCall } from '../utils/webSearchToolCall'
@@ -1393,15 +1393,22 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     () => selectTerminalEvents(searchable ? events?.filter(event => event.type !== 'native_goal_updated') : events, terminal, siblingTerminals, keepInteractionKinds),
     [events, terminal, siblingTerminals, keepInteractionKinds, searchable],
   )
+  const telemetrySessionKey = terminal?.session_id || terminal?.terminal_id || ''
+  const sessionOpenedAtRef = useRef<{ key: string; at: number }>({ key: telemetrySessionKey, at: Date.now() })
+  if (sessionOpenedAtRef.current.key !== telemetrySessionKey) {
+    sessionOpenedAtRef.current = { key: telemetrySessionKey, at: Date.now() }
+  }
   const latestTelemetryEvent = useMemo(
     () => [...scoped].reverse().find(isChatDeliveryTelemetryEvent),
     [scoped],
   )
   useEffect(() => {
     if (!latestTelemetryEvent) return
+    const openedAt = sessionOpenedAtRef.current.at
     const frame = window.requestAnimationFrame(() => {
       const sessionId = latestTelemetryEvent.session_id || terminal?.session_id || ''
-      recordChatDeliveryTelemetry('painted', sessionId, [latestTelemetryEvent], 'react', terminal?.terminal_id)
+      const transport = paintedTelemetryTransport(latestTelemetryEvent.timestamp, openedAt)
+      recordChatDeliveryTelemetry('painted', sessionId, [latestTelemetryEvent], transport, terminal?.terminal_id)
     })
     return () => window.cancelAnimationFrame(frame)
   }, [latestTelemetryEvent, terminal?.session_id, terminal?.terminal_id])
