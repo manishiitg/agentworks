@@ -77,7 +77,7 @@ For other work, choose from the topics actually listed by this connection.
 <!-- product:crew -->
 ## Open a shared project dashboard in chat
 
-When `open_dashboard` is listed, discover the published project dashboard with `dashboard action=list`, then pass its `resource_id` to `open_dashboard`. A host with MCP Apps support displays the page inline, with Ask and published actions; other clients receive its website link. Opening or refreshing starts no run. Ask sends only after the person submits; a function opens its inputs before Run. Keep the returned chat and submission receipts when continuing, and inspect completion. Inline views use the same product sharing and current account access. Scripts, database editing and streaming media remain available from the website; explain an unavailable feature instead of inventing results.
+When `open_dashboard` is listed, discover the published project dashboard with `dashboard action=list`, then pass its `resource_id` to `open_dashboard`. A host with MCP Apps support displays the page inline, with Ask and published actions; other clients receive its website link. Opening or refreshing starts no run. Ask sends only after the person submits; a function opens its inputs before Run. Keep the returned chat and submission receipts when continuing, and inspect completion. Inline views use the same product sharing and current account access. Scripts, database editing and streaming media remain available from the website; explain an unavailable feature instead of inventing results. If the person asks for a Claude artifact instead of a project Artifact, make it in Claude and offer once to save a copy to the project (`panel-dashboard`, "Claude artifacts").
 
 <!-- /product -->
 <!-- product:knowledgebase -->
