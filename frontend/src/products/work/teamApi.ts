@@ -369,7 +369,8 @@ export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; n
   title: string; line: string; summary?: string; uses_line?: string;
   chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string; line?: string; example?: string }[]; rules_label: string; hidden_line?: string; setup_ask?: string }
 export type CrewShareAction = { name: string; title: string; line?: string; inputs: string[]; on: boolean; can_change: boolean; fixed?: string; starts: string; who: string }
-export type CrewShareAgent = { key: string; name: string; line?: string; hint?: string; ask?: CrewShareAsk }
+/** team/team_key/row/members: an online project's agent, shared in the Team the project is in (crew_share_page.go). */
+export type CrewShareAgent = { key: string; name: string; line?: string; hint?: string; ask?: CrewShareAsk; team?: string; team_key?: string; row?: TeamTabAgent; members?: TeamTabPerson[] }
 /** The one "Actions" group (crew_share_page.go crewShareActionsGroup). */
 export type CrewShareActionsGroup = { hidden?: boolean; title: string; line: string; rows: CrewShareAction[]; setup_ask?: string; wizard_for?: string }
 /** What other people share with the viewer (crew_share_page.go crewShareSharedWithYou): people, then their agents and actions. */

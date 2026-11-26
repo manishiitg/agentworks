@@ -97,6 +97,14 @@ type crewShareAgent struct {
 	// Hint is optional hover text for the agent's placement.
 	Hint string        `json:"hint,omitempty"`
 	Ask  *crewShareAsk `json:"ask,omitempty"`
+	// Team and TeamKey: an online project's agent is shared in the Team the project is in, not in the project itself
+	// (owner, 26 Nov); its card shows that Team's settings and changes go to that Team's routes with TeamKey.
+	Team    string `json:"team,omitempty"`
+	TeamKey string `json:"team_key,omitempty"`
+	// Row and Members are that Team's row for the agent and its people, for the card's settings, because the viewer
+	// reads them here rather than from a Team panel of their own.
+	Row     *crewTeamTabAgent   `json:"row,omitempty"`
+	Members []crewTeamTabPerson `json:"members,omitempty"`
 }
 
 // crewShareActionsGroup is the one "Actions" group: every action the Crew declared, once.
@@ -590,38 +598,39 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		groups, _ = crewShareActionsFor(ctx, src, canActions)
 		dashWorkspace = src.workspace
 	}
+	watch := map[string]int{}
 	for _, a := range tab.Agents {
 		if !a.Mine {
 			continue
 		}
-		// The last shared agent's switch is locked (each person keeps one shared); only that agent says why.
-		locked := a.InTeam && !a.CanUnshare
-		ask := &crewShareAsk{On: a.InTeam, CanChange: a.CanChange && !locked && !onMac, CanEdit: a.CanEditRule && !onMac,
-			Title: "Teammates can ask this agent", Line: "Not shared: only you and your agents can reach it.",
-			ChatShare: a.ChatShare, ChatShareLabel: "Teammates see your chat", ChatShareOptions: crewShareChatOptions,
-			HiddenLine: "Teammates see its answers, not your chat with it.", RulesLabel: "Permissions…"}
-		if ask.CanEdit {
-			ask.SetupAsk = "Explain your current Team sharing settings in plain words: who can ask you, whether you may act as me, and what they see of our chat. Offer changes that would help, but do not change anything unless I ask. "
+		watch[a.WatchKey] = len(page.Agents)
+		page.Agents = append(page.Agents, crewShareAgentCard(t, a, onMac))
+	}
+	// A server project's agents are shared through the Teams in its Users: each of the viewer's agents shows the Team's
+	// settings, the same card a Mac agent has (owner, 26 Nov: "make this ui similar to mac teams agents sharing").
+	if !IsLocalMode() && crewLivesOnServer(t.ProjectID) {
+		for _, jt := range crewTeamsJoinedBy(t.ProjectID) {
+			jtab := crewTeamTabFor(ctx, jt, viewer)
+			for _, a := range jtab.Agents {
+				if !a.Mine || a.OnlineProject != t.ProjectID {
+					continue
+				}
+				card := crewShareAgentCard(jt, a, false)
+				row := a
+				card.Team, card.TeamKey, card.Line, card.Row, card.Members = jt.ProjectID, a.Key, "Shared in the "+crewTeamProjectName(jt.ProjectID)+" Team", &row, jtab.People
+				if i, ok := watch[a.WatchKey]; ok && page.Agents[i].Team == "" {
+					card.Key = page.Agents[i].Key
+					page.Agents[i] = card
+				} else {
+					page.Agents = append(page.Agents, card)
+				}
+			}
+		}
+	}
+	for _, card := range page.Agents {
+		if card.Ask != nil && card.Ask.CanEdit {
 			page.AgentsSetupAsk = "Help me set up which of my agents are shared with the team and who can ask them: "
 		}
-		if a.InTeam {
-			ask.Line = "Teammates can ask " + a.Name + " for anything, as you would."
-		}
-		switch {
-		case onMac:
-			ask.Fixed = crewChangeOnMacLine
-		case !t.On:
-			ask.Line, ask.CanChange = "Turn on Team to share", false
-		case locked:
-			ask.Fixed = errCrewTeamLastShared.Error()
-		}
-		ask.Summary = crewShareAgentSummary(t.On, a)
-		ask.UsesLine = crewShareAgentUses(a)
-		if ask.SetupAsk != "" {
-			ask.SetupAsk += "Current settings: " + ask.Summary
-		}
-		card := crewShareAgent{Key: a.Key, Name: a.Name, Line: firstNonEmptyTrimmed(a.PlaceLabel, a.Detail), Ask: ask}
-		page.Agents = append(page.Agents, card)
 	}
 	// Actions: the Crew's own. A workflow is never offered to others: it stays private to the owner's Mac, or on the
 	// server for an online Crew (owner, 23 Nov).
@@ -835,4 +844,34 @@ func crewOfflineCopyBytes(project, agent string) int64 {
 		return nil
 	})
 	return total
+}
+
+// crewShareAgentCard is one of the viewer's own agents on the Share page and in its header menu, with its Team settings.
+func crewShareAgentCard(t crewTeam, a crewTeamTabAgent, onMac bool) crewShareAgent {
+	// The last shared agent's switch is locked (each person keeps one shared); only that agent says why.
+	locked := a.InTeam && !a.CanUnshare
+	ask := &crewShareAsk{On: a.InTeam, CanChange: a.CanChange && !locked && !onMac, CanEdit: a.CanEditRule && !onMac,
+		Title: "Teammates can ask this agent", Line: "Not shared: only you and your agents can reach it.",
+		ChatShare: a.ChatShare, ChatShareLabel: "Teammates see your chat", ChatShareOptions: crewShareChatOptions,
+		HiddenLine: "Teammates see its answers, not your chat with it.", RulesLabel: "Permissions…"}
+	if ask.CanEdit {
+		ask.SetupAsk = "Explain your current Team sharing settings in plain words: who can ask you, whether you may act as me, and what they see of our chat. Offer changes that would help, but do not change anything unless I ask. "
+	}
+	if a.InTeam {
+		ask.Line = "Teammates can ask " + a.Name + " for anything, as you would."
+	}
+	switch {
+	case onMac:
+		ask.Fixed = crewChangeOnMacLine
+	case !t.On:
+		ask.Line, ask.CanChange = "Turn on Team to share", false
+	case locked:
+		ask.Fixed = errCrewTeamLastShared.Error()
+	}
+	ask.Summary = crewShareAgentSummary(t.On, a)
+	ask.UsesLine = crewShareAgentUses(a)
+	if ask.SetupAsk != "" {
+		ask.SetupAsk += "Current settings: " + ask.Summary
+	}
+	return crewShareAgent{Key: a.Key, Name: a.Name, Line: firstNonEmptyTrimmed(a.PlaceLabel, a.Detail), Ask: ask}
 }
