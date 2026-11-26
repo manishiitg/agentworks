@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -228,9 +229,11 @@ type SlackService struct {
 	config         *SlackConfig
 	enabled        bool
 	useSocketMode  bool
-	socketCtx      context.Context
-	socketCancel   context.CancelFunc
+	socketCancel   context.CancelFunc // stops the running listener's own context
 	socketMux      sync.RWMutex
+	// reloadMu lets one reload or child sync at a time stop and start the
+	// listener and swap the client, so two saves never interleave.
+	reloadMu sync.Mutex
 
 	// Bot connector handlers (set by BotConversationManager)
 	messageHandler     BotMessageHandler
@@ -411,6 +414,8 @@ func (s *SlackService) effectiveConnection() (SlackConnection, bool) {
 // ReloadConfig reloads configuration from disk and (re)starts Socket Mode.
 // On the root it also reconciles the per-connection children.
 func (s *SlackService) ReloadConfig(ctx context.Context) error {
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
 	// Stop existing Socket Mode connection if running
 	s.StopSocketMode()
 
@@ -1579,6 +1584,14 @@ func (s *SlackService) SetDefaultSlackConnection(ctx context.Context, connID str
 	return err
 }
 
+// slackSocketDebug turns on slack-go's wire logging, which writes every raw
+// Slack message (full text) and the connection URL to the server log. Only for
+// diagnosing a connection on purpose: SLACK_SOCKET_DEBUG=true.
+func slackSocketDebug() bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("SLACK_SOCKET_DEBUG")))
+	return v == "1" || v == "true"
+}
+
 // StartSocketMode starts Socket Mode WebSocket connection
 func (s *SlackService) StartSocketMode(ctx context.Context) error {
 	s.socketMux.Lock()
@@ -1598,110 +1611,78 @@ func (s *SlackService) StartSocketMode(ctx context.Context) error {
 		return fmt.Errorf("bot token is required for Socket Mode")
 	}
 
-	// Create Slack client with app-level token
+	wireDebug := slackSocketDebug()
 	api := slack.New(
 		conn.BotToken,
 		slack.OptionAppLevelToken(conn.AppToken),
-		slack.OptionDebug(true),
+		slack.OptionDebug(wireDebug),
 		slack.OptionLog(log.New(os.Stdout, "[SLACK_API] ", log.Lshortfile|log.LstdFlags)),
 	)
-
-	// Create Socket Mode client
 	socketClient := socketmode.New(
 		api,
-		socketmode.OptionDebug(true), // Enable debug to diagnose connection issues
+		socketmode.OptionDebug(wireDebug),
 		socketmode.OptionLog(log.New(os.Stdout, "[SLACK_SOCKET] ", log.Lshortfile|log.LstdFlags)),
 	)
 
+	// Each listener owns its context and client. Stopping cancels this context,
+	// which closes this WebSocket; the goroutines never pick up a later
+	// listener's client, so a reload cannot leave a live old connection, ack on
+	// the wrong one, or run one client twice.
+	listenCtx, cancel := context.WithCancel(context.Background())
 	s.socketClient = socketClient
-	s.socketCtx, s.socketCancel = context.WithCancel(context.Background())
-
-	// Start Socket Mode connection with automatic reconnection
-	// Run() blocks, so run in goroutine with reconnection logic
-	go s.runSocketModeWithReconnect()
-
-	// Give Run() a moment to start and establish connection
-	time.Sleep(500 * time.Millisecond)
-
-	// Start event handler in goroutine
-	// Note: socketClient.Events channel is populated by Run()
-	go s.handleSocketModeEvents()
+	s.socketCancel = cancel
+	go s.runSocketModeWithReconnect(listenCtx, socketClient)
+	go s.handleSocketModeEvents(listenCtx, socketClient)
 	return nil
 }
 
-// runSocketModeWithReconnect runs Socket Mode with automatic reconnection
-// This handles connection drops and automatically reconnects with exponential backoff
-func (s *SlackService) runSocketModeWithReconnect() {
+// runSocketModeWithReconnect runs one listener's Socket Mode connection with
+// automatic reconnection (exponential backoff) until its context is cancelled.
+func (s *SlackService) runSocketModeWithReconnect(ctx context.Context, socketClient *socketmode.Client) {
 	maxRetries := 10 // Maximum reconnection attempts before using max delay
 	baseDelay := 2 * time.Second
 	maxDelay := 60 * time.Second
 	retryCount := 0
 
 	for {
-		// Check if we should stop (context canceled or service disabled)
-		select {
-		case <-s.socketCtx.Done():
+		if ctx.Err() != nil {
 			return
-		default:
 		}
-
-		// Verify socketClient still exists (service might have been stopped)
-		s.socketMux.RLock()
-		socketClient := s.socketClient
-		conn, connOK := s.effectiveConnection()
-		shouldReconnect := socketClient != nil && connOK && conn.Enabled
-		s.socketMux.RUnlock()
-
-		if !shouldReconnect {
+		if conn, ok := s.effectiveConnection(); !ok || !conn.Enabled {
 			return
 		}
 
 		if retryCount > 0 {
-			// Calculate exponential backoff delay
 			delay := baseDelay * time.Duration(1<<uint(retryCount-1)) // 2s, 4s, 8s, 16s, 32s, 60s (capped)
 			if delay > maxDelay {
 				delay = maxDelay
 			}
-			// Only log first few reconnection attempts
 			if retryCount <= 3 {
 				log.Printf("[SLACK_SOCKET] 🔄 Reconnecting in %v (attempt %d/%d)...", delay, retryCount, maxRetries)
 			}
-
 			select {
 			case <-time.After(delay):
-				// Continue with reconnection
-			case <-s.socketCtx.Done():
+			case <-ctx.Done():
 				return
 			}
 		}
 
-		// Run Socket Mode (this blocks until connection fails or is stopped)
-		log.Printf("[SLACK_SOCKET] 🚀 Starting Socket Mode Run()...")
-		err := socketClient.Run()
-
+		// Blocks until the connection fails or ctx is cancelled.
+		log.Printf("[SLACK_SOCKET] 🚀 Starting Socket Mode connection...")
+		err := socketClient.RunContext(ctx)
+		if ctx.Err() != nil {
+			return
+		}
 		if err == nil {
-			// Normal exit (shouldn't happen unless stopped)
-			log.Printf("[SLACK_SOCKET] ⚠️  Socket Mode Run() returned nil (clean exit)")
+			log.Printf("[SLACK_SOCKET] ⚠️  Socket Mode connection returned without an error")
 			return
 		}
+		log.Printf("[SLACK_SOCKET] ❌ Socket Mode connection error: %v", err)
 
-		// Connection error occurred
-		log.Printf("[SLACK_SOCKET] ❌ Socket Mode Run() error: %v", err)
-
-		// Check if we should stop (context canceled)
-		select {
-		case <-s.socketCtx.Done():
-			return
-		default:
-		}
-
-		// Increment retry count
 		retryCount++
-
-		// If we've exceeded max retries, log and continue anyway (will retry with max delay)
 		if retryCount > maxRetries {
 			log.Printf("[SLACK_SOCKET] ⚠️  Exceeded %d reconnection attempts, will continue retrying with max delay", maxRetries)
-			retryCount = maxRetries // Cap retry count to prevent overflow
+			retryCount = maxRetries
 		}
 	}
 }
@@ -1717,7 +1698,6 @@ func (s *SlackService) StopSocketMode() {
 	}
 
 	if s.socketClient != nil {
-		// Socket Mode client doesn't have explicit Close, but context cancel should stop it
 		s.socketClient = nil
 		log.Printf("[SLACK] Socket Mode stopped")
 	}
@@ -1788,6 +1768,8 @@ func (s *SlackService) childConfigSnapshot() *SlackConfig {
 // listener when its entry changed. The handler funcs are re-inherited from
 // the root so late-registered managers still reach every connection.
 func (s *SlackService) syncChildConnection(ctx context.Context, snapshot *SlackConfig, conn SlackConnection, messageHandler BotMessageHandler, interactionHandler BotInteractionHandler, triggerHandler SlackTriggerHandler) {
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
 	prev, ok := s.effectiveConnection()
 	changed := !ok || prev.BotToken != conn.BotToken || prev.AppToken != conn.AppToken || prev.Enabled != conn.Enabled
 	s.config = snapshot
@@ -1801,28 +1783,40 @@ func (s *SlackService) syncChildConnection(ctx context.Context, snapshot *SlackC
 	s.applyEffectiveConnection(ctx)
 }
 
-// handleSocketModeEvents handles events from Socket Mode
-func (s *SlackService) handleSocketModeEvents() {
-	if s.socketClient == nil {
-		log.Printf("[SLACK_SOCKET] ⚠️  handleSocketModeEvents: socketClient is nil")
-		return
-	}
-
-	for evt := range s.socketClient.Events {
-		switch evt.Type {
-		case socketmode.EventTypeConnectionError:
-			log.Printf("[SLACK] Socket Mode connection error: %v", evt.Data)
-		case socketmode.EventTypeEventsAPI:
-			s.handleSocketModeEvent(evt)
-		case socketmode.EventTypeInteractive:
-			s.handleSocketModeInteractive(evt)
-		default:
+// handleSocketModeEvents handles one listener's events until its context is
+// cancelled, acking on that listener's own connection.
+func (s *SlackService) handleSocketModeEvents(ctx context.Context, socketClient *socketmode.Client) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt := <-socketClient.Events:
+			s.handleSocketModeEventSafely(socketClient, evt)
 		}
 	}
 }
 
+// handleSocketModeEventSafely keeps a panic in one Slack event from stopping
+// the server: it is logged and the listener goes on with the next event.
+func (s *SlackService) handleSocketModeEventSafely(socketClient *socketmode.Client, evt socketmode.Event) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[SLACK_SOCKET] event type=%s panicked: %v\n%s", evt.Type, r, debug.Stack())
+		}
+	}()
+	switch evt.Type {
+	case socketmode.EventTypeConnectionError:
+		log.Printf("[SLACK] Socket Mode connection error: %v", evt.Data)
+	case socketmode.EventTypeEventsAPI:
+		s.handleSocketModeEvent(socketClient, evt)
+	case socketmode.EventTypeInteractive:
+		s.handleSocketModeInteractive(socketClient, evt)
+	default:
+	}
+}
+
 // handleSocketModeEvent handles Events API events from Socket Mode
-func (s *SlackService) handleSocketModeEvent(evt socketmode.Event) {
+func (s *SlackService) handleSocketModeEvent(socketClient *socketmode.Client, evt socketmode.Event) {
 	eventsAPIEvent, ok := evt.Data.(slackevents.EventsAPIEvent)
 	if !ok {
 		return
@@ -1830,7 +1824,7 @@ func (s *SlackService) handleSocketModeEvent(evt socketmode.Event) {
 
 	// Acknowledge the event
 	if evt.Request != nil {
-		s.socketClient.Ack(*evt.Request)
+		socketClient.Ack(*evt.Request)
 	} else {
 	}
 
@@ -1982,19 +1976,19 @@ func (s *SlackService) handleSlackBotMessage(userID, channelID, threadTS, messag
 }
 
 // handleSocketModeInteractive handles interactive events (button clicks) from Socket Mode
-func (s *SlackService) handleSocketModeInteractive(evt socketmode.Event) {
+func (s *SlackService) handleSocketModeInteractive(socketClient *socketmode.Client, evt socketmode.Event) {
 	// Get the interaction callback
 	callback, ok := evt.Data.(slack.InteractionCallback)
 	if !ok {
 		if evt.Request != nil {
-			s.socketClient.Ack(*evt.Request)
+			socketClient.Ack(*evt.Request)
 		}
 		return
 	}
 
 	// Acknowledge the event immediately
 	if evt.Request != nil {
-		s.socketClient.Ack(*evt.Request)
+		socketClient.Ack(*evt.Request)
 	}
 
 	// Only handle button actions
