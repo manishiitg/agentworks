@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ChatModeMenu, openCrewMacFoldersEvent } from './ChatModeMenu'
 import { changeChatContext } from '../../products/work/ChatContextItems'
+import { workFolderApi } from '../../services/api'
 import type { ChatContextView } from '../../services/api-types'
 
 let view: ChatContextView | null = null
@@ -11,7 +12,7 @@ vi.mock('../../products/work/useChatContextView', () => ({ useChatContextView: (
 vi.mock('../../products/work/ChatContextItems', () => ({ changeChatContext: vi.fn(async () => null), menuLabelClass: '', menuRowClass: '' }))
 vi.mock('../../services/api', () => ({
   default: { get: vi.fn(async () => ({ data: { available: true, home: '/Users/me' } })) },
-  workFolderApi: { listWorkFolders: vi.fn(async () => ({ folders: [{ id: '1', alias: 'Downloads', path: '/Users/me/Downloads', access: 'read_write' }] })) },
+  workFolderApi: { listWorkFolders: vi.fn(async () => ({ folders: [{ id: '1', alias: 'Downloads', path: '/Users/me/Downloads', access: 'read_write' }] })), addWorkFolder: vi.fn(async () => ({ folder: {} })) },
 }))
 vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: { getState: () => ({ openWorkspaceView: vi.fn() }) } }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -37,18 +38,18 @@ async function openMenu(element: React.ReactElement) {
   return trigger
 }
 
-// #3885, split 26 Nov: the menu offers Normal / Auto-review / Plan; access is the project's, on one line with Change.
+// #3885, split 26 Nov: the menu offers Auto / Auto-review / Plan; what the chat can reach is one line with Change.
 it('offers the chat modes, keeps Auto-review off for an app without a reviewer and shows the project access', async () => {
   view = codexView('project')
   const trigger = await openMenu(<ChatModeMenu sessionId="s1" onPlanToggle={() => {}} />)
-  expect(trigger.textContent).toContain('Normal')
+  expect(trigger.textContent).toContain('Auto')
   expect(document.querySelector('[data-testid="chat-mode-full_access"]')).toBeNull()
   const auto = document.querySelector('[data-testid="chat-mode-auto_review"]') as HTMLElement
   expect(auto.getAttribute('data-disabled')).not.toBeNull()
   expect(auto.textContent).toContain('no reviewer')
   expect(document.querySelector('[data-testid="chat-mode-plan"]')).toBeNull()
   await act(async () => { await Promise.resolve() })
-  expect(document.querySelector('[data-testid="chat-mode-reach"]')?.textContent).toContain('Access (project): this project · Downloads')
+  expect(document.querySelector('[data-testid="chat-mode-reach"]')?.textContent).toContain('Can reach: this project · Downloads')
   expect(document.querySelector('[data-testid="chat-mode-manage-folders"]')?.textContent).toContain('Change')
 })
 
@@ -82,4 +83,13 @@ it('saves a picked mode', async () => {
   await openMenu(<ChatModeMenu sessionId="s1" onPlanToggle={() => {}} />)
   await act(async () => { (document.querySelector('[data-testid="chat-mode-project"]') as HTMLElement).click() })
   expect(changeChatContext).toHaveBeenCalledWith('s1', { access_mode: 'project' })
+})
+
+// Owner, 26 Nov: one click from the menu gives the whole Mac, the same grant as Folders on this Mac.
+it('gives the whole Mac from the menu', async () => {
+  view = codexView('project')
+  await openMenu(<ChatModeMenu sessionId="s1" onPlanToggle={() => {}} />)
+  await act(async () => { await Promise.resolve() })
+  await act(async () => { (document.querySelector('[data-testid="chat-mode-whole-mac"]') as HTMLElement).click() })
+  expect(workFolderApi.addWorkFolder).toHaveBeenCalledWith({ path: '/Users/me', alias: 'mac', access: 'read_write' })
 })

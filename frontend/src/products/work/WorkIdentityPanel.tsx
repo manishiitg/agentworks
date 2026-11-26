@@ -254,10 +254,14 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
         description={local ? "Folders on your Mac that your projects can open. They stay on your Mac." : "Folders available on this server. Use Your computer for folders on your laptop."}
         count={`${folders.length} attached`}
       >
-        {home && !wholeMac && <div className="mb-2 flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3">
+        {/* Your whole Mac is one on/off row at the top (owner, 26 Nov: "an easy way to give full mac access"); its
+            home-folder grant is not listed again below. */}
+        {home && <div data-testid="whole-mac-row" className={`mb-2 flex items-center gap-3 rounded-lg border p-3 ${wholeMac ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/20'}`}>
           <FolderOpen aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
-          <div className="min-w-0 flex-1"><p className="text-sm font-medium">Your whole Mac</p><p className="text-xs text-muted-foreground">Everything in your home folder ({home}), read &amp; write, for all your Crews. macOS system folders stay out.</p></div>
-          <button type="button" disabled={adding} onClick={() => void attachWholeMac()} className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50">Give access</button>
+          <div className="min-w-0 flex-1"><p className="text-sm font-medium">Your whole Mac{wholeMac ? ' · On' : ''}</p><p className="text-xs text-muted-foreground">Everything in your home folder ({home}), read &amp; write, for all your projects. macOS system folders stay out.</p></div>
+          {wholeMac
+            ? <button type="button" disabled={adding} onClick={() => void remove(wholeMac)} className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50">Turn off</button>
+            : <button type="button" disabled={adding} onClick={() => void attachWholeMac()} className="shrink-0 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">Give access</button>}
         </div>}
         {/* On a person's own Mac agents may use their Downloads folder by default; it can be removed and added back. */}
         {downloads.available && !downloads.removed && <div className="mb-2 flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3">
@@ -267,7 +271,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
           <button type="button" aria-label="Remove Downloads" onClick={() => void setDownloadsRemoved(true)} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
         </div>}
         {downloads.available && downloads.removed && <button type="button" onClick={() => void setDownloadsRemoved(false)} className="mb-2 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">Add Downloads back</button>}
-        {loading ? <p className="text-xs text-muted-foreground">Loading…</p> : <FolderGrantList grants={folders} onRemove={remove} />}
+        {loading ? <p className="text-xs text-muted-foreground">Loading…</p> : <FolderGrantList grants={wholeMac ? folders.filter(folder => folder !== wholeMac) : folders} onRemove={remove} />}
         {canPick ? <div className="mt-3 flex flex-wrap items-center gap-2">
           <select aria-label="Access for the new folder" value={addAccess} disabled={adding} onChange={event => setAddAccess(event.target.value as 'read_only' | 'read_write')} className="h-8 rounded-md border border-border bg-background px-2 text-xs">
             <option value="read_only">Read only</option><option value="read_write">Read &amp; write</option>
