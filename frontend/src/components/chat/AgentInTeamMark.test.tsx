@@ -6,8 +6,8 @@ import { AgentInTeamMark, agentTeamShareFromRow, describeAgentShare } from './Ag
 import { AgentHeaderLine, type CrewAgentRow } from './AgentCard'
 
 vi.mock('../../products/work/ShareCrew', () => ({
-  HeaderAgentSharing: ({ agentKey, defaultOpen }: { agentKey: string; defaultOpen?: boolean }) => (
-    <div data-testid="header-sharing" data-agent-key={agentKey} data-default-open={defaultOpen ? 'true' : 'false'} />
+  HeaderAgentSharing: ({ agentKey, defaultOpen, bare }: { agentKey: string; defaultOpen?: boolean; bare?: boolean }) => (
+    <div data-testid="header-sharing" data-agent-key={agentKey} data-default-open={defaultOpen ? 'true' : 'false'} data-bare={bare ? 'true' : 'false'} />
   ),
 }))
 
@@ -101,7 +101,30 @@ describe('AgentHeaderLine sharing pill', () => {
       expect(host.textContent).not.toContain('Only you')
       expect(host.textContent).not.toContain('Team')
 
+      // Private agent name opens details without embedded sharing, with a Share… link to open sharing.
+      const privateTrigger = host.querySelector<HTMLButtonElement>('button[aria-label="About Scratchpad"]')
+      expect(privateTrigger).not.toBeNull()
+      await act(async () => privateTrigger!.click())
+      const privateDetails = document.body.querySelector('[role="dialog"][aria-label="Scratchpad"]')
+      expect(privateDetails).not.toBeNull()
+      expect(privateDetails?.querySelector('[data-testid="header-sharing"]')).toBeNull()
+      const shareLink = [...(privateDetails?.querySelectorAll('button') || [])].find(b => b.textContent === 'Share…')
+      expect(shareLink).toBeTruthy()
+      await act(async () => shareLink!.click())
+      const privateSharing = document.body.querySelector('[role="dialog"][aria-label="Sharing for Scratchpad"]')
+      expect(privateSharing).not.toBeNull()
+      expect(privateSharing?.querySelector('[data-testid="header-sharing"]')?.getAttribute('data-bare')).toBe('true')
+
+      // Shared agent name opens details without sharing; the header Team pill opens bare sharing directly.
       await act(async () => root.render(<AgentHeaderLine crewName="ai-work" agent={sharedRow} />))
+      const sharedTrigger = host.querySelector<HTMLButtonElement>('button[aria-label="About Design"]')
+      expect(sharedTrigger).not.toBeNull()
+      await act(async () => sharedTrigger!.click())
+      const sharedDetails = document.body.querySelector('[role="dialog"][aria-label="Design"]')
+      expect(sharedDetails).not.toBeNull()
+      expect(sharedDetails?.querySelector('[data-testid="header-sharing"]')).toBeNull()
+      expect(sharedDetails?.textContent).not.toContain('Share…')
+
       const pill = host.querySelector<HTMLButtonElement>('button[aria-label*="Chat hidden"]')
       expect(pill).not.toBeNull()
       expect(pill?.textContent).toContain('Team · Chat hidden')
@@ -112,6 +135,7 @@ describe('AgentHeaderLine sharing pill', () => {
       const sharing = dialog?.querySelector('[data-testid="header-sharing"]')
       expect(sharing?.getAttribute('data-agent-key')).toBe('design')
       expect(sharing?.getAttribute('data-default-open')).toBe('true')
+      expect(sharing?.getAttribute('data-bare')).toBe('true')
     } finally {
       await act(async () => root.unmount())
     }

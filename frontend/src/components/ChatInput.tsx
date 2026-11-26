@@ -728,6 +728,26 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     }
   }, [activeTabId])
 
+  // Auto-focus the composer when selecting an agent tab on desktop, without stealing focus from dialogs or other inputs.
+  useEffect(() => {
+    if (!activeTabId) return
+    if (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches) return
+    const frame = window.requestAnimationFrame(() => {
+      const textarea = textareaRef.current
+      if (!textarea || textarea.disabled || textarea.readOnly) return
+      const active = document.activeElement
+      if (active && active !== document.body && active !== textarea) {
+        const tag = active.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (active as HTMLElement).isContentEditable) return
+        if (active.closest?.('[role="dialog"]')) return
+      }
+      textarea.focus()
+      const end = textarea.value.length
+      textarea.setSelectionRange(end, end)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [activeTabId])
+
   const handleVoiceText = useCallback((text: string) => {
     const base = localInputText
     const joined = base && !base.endsWith(' ') && !base.endsWith('\n') ? `${base} ${text}` : `${base}${text}`
