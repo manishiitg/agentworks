@@ -3306,6 +3306,11 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	fmt.Println("\n🛑 Shutting down server...")
 
+	// Stop the schedule clock first: a schedule that fires while active work is
+	// being cancelled starts a run that is killed at once and later shows as
+	// interrupted.
+	schedulerCancel()
+
 	// Cancel active agents first. Coding-agent tmux sessions are owned by those
 	// turns, so killing tmux before the handlers observe cancellation can race
 	// with capture/poll commands and make shutdown hang.
@@ -3361,6 +3366,15 @@ func runServer(cmd *cobra.Command, args []string) {
 	cleanupCodingAgentInteractiveSessions("shutdown")
 	stopCodingProgress()
 	fmt.Printf("✅ Coding-agent tmux cleanup finished (%s)\n", time.Since(codingStart).Round(time.Millisecond))
+
+	// Close the durable stores last, once handlers and runs have stopped, so
+	// their final writes land and SQLite checkpoints its write-ahead logs.
+	schedulerSvc.Stop()
+	if err := eventJournal.Close(); err != nil {
+		log.Printf("Event journal close failed: %v", err)
+	}
+	closeAgentMailbox()
+	closeServerState()
 
 	fmt.Println("✅ Server shutdown complete")
 }

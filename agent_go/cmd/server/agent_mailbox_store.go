@@ -186,6 +186,19 @@ func openAgentMailboxFile(path string, wal bool) (*agentMailbox, error) {
 	return mb, nil
 }
 
+// closeAgentMailbox closes the server's mailbox at shutdown. It stays
+// registered, closed, so a late write fails instead of landing in a
+// throwaway in-memory mailbox.
+func closeAgentMailbox() {
+	agentMailboxes.Lock()
+	defer agentMailboxes.Unlock()
+	if mb := agentMailboxes.opened; mb != nil {
+		if err := mb.db.Close(); err != nil {
+			log.Printf("[AGENT-MAILBOX] close failed: %v", err)
+		}
+	}
+}
+
 // Unit tests have no server start: each test workspace gets its own private
 // in-memory mailbox, keyed by the environment that names that workspace.
 func currentAgentMailbox() (*agentMailbox, error) {

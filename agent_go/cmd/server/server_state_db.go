@@ -104,6 +104,18 @@ func openServerState(ctx context.Context) (*sql.DB, error) {
 	return db, nil
 }
 
+// closeServerState closes the shared handle at shutdown. The handle stays in
+// place, closed, so a late caller gets an error instead of reopening the file.
+func closeServerState() {
+	serverState.Lock()
+	defer serverState.Unlock()
+	if serverState.db != nil {
+		if err := serverState.db.Close(); err != nil {
+			log.Printf("[SERVER_STATE] close failed: %v", err)
+		}
+	}
+}
+
 // serverStateHandle returns the shared handle without touching any import.
 func serverStateHandle(ctx context.Context) (*sql.DB, error) {
 	serverState.Lock()
@@ -153,6 +165,10 @@ func serverStateHandleLocked(ctx context.Context) (*sql.DB, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+	// One writer at a time in SQLite: an unbounded pool only queues more
+	// immediate transactions on the write lock until they time out as
+	// "database is locked".
+	db.SetMaxOpenConns(4)
 	for _, ddl := range []string{
 		`CREATE TABLE IF NOT EXISTS state_imports (name TEXT PRIMARY KEY, source_bytes INTEGER NOT NULL, rows INTEGER NOT NULL, imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
 		`CREATE TABLE IF NOT EXISTS state_versions (name TEXT PRIMARY KEY, version INTEGER NOT NULL)`,
