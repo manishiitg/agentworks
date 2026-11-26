@@ -9,7 +9,8 @@ import { ChatSendOptions, ComposerSendKeys, type ChatSendOptionsProps } from './
 /** Presentation only: every action keeps its existing handler and admission. */
 export type ComposerActions = {
   uploading: boolean
-  onAttach: () => void
+  /** Absent where files can't be attached (an online agent's tab, #4121): no Attach files row or button. */
+  onAttach?: () => void
   commands?: ComposerCommandPreview & { onOpenCommands: () => void }
   sendOptions?: ChatSendOptionsProps
   onOpenChange?: (open: boolean) => void
@@ -41,7 +42,7 @@ export function ComposerActionsMenu({ uploading, onAttach, commands, sendOptions
 export function ComposerActionItems({ uploading, onAttach, commands, sendOptions, planMode, deferAction, attachOnBar = false, showAccountLink = true }: ComposerActions & { deferAction: (action: () => void) => void; attachOnBar?: boolean; showAccountLink?: boolean }) {
   const rowClass = 'flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
   return <>
-      {!attachOnBar && <Menu.Item disabled={uploading} onSelect={onAttach} data-theme-action="attach" data-testid="chat-upload-button" className={rowClass}>
+      {!attachOnBar && onAttach && <Menu.Item disabled={uploading} onSelect={onAttach} data-theme-action="attach" data-testid="chat-upload-button" className={rowClass}>
         <Paperclip className="h-4 w-4" aria-hidden="true" />{uploading ? 'Uploading files…' : 'Attach files'}
       </Menu.Item>}
       {planMode && <Menu.CheckboxItem checked={planMode.on} onSelect={planMode.onToggle} data-testid="plan-mode-menu-item" className={rowClass}>
@@ -64,6 +65,7 @@ export function ComposerActionItems({ uploading, onAttach, commands, sendOptions
 
 /** One click attaches: the paperclip sits on the chat box's bottom row beside the model chip, not inside its menu. */
 export function ComposerAttachButton({ uploading, onAttach }: Pick<ComposerActions, 'uploading' | 'onAttach'>) {
+  if (!onAttach) return null
   const label = uploading ? 'Uploading files…' : 'Attach files'
   return <button type="button" disabled={uploading} onClick={onAttach} data-theme-action="attach" data-testid="chat-upload-button" aria-label={label} title={label}
     className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">

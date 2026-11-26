@@ -25,6 +25,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 
 const DBG = '[skill-popup]'
+/** Shown above the box and on a blocked drop in an online agent's tab (#4121). */
+const ONLINE_AGENT_FILES_LINE = "This agent runs on the server, so files from this Mac can't be attached or @-mentioned here yet. Paste the text into your message instead."
 import { ArrowUp, Wand2, Globe, Layers, X, History, Server, Download, Square } from 'lucide-react'
 import { Button } from './ui/Button'
 import { SessionStopButton } from './SessionStopButton'
@@ -449,6 +451,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const activeTab = useChatStore(state =>
     activeTabId ? state.chatTabs[activeTabId] : undefined
   )
+  // An online agent's tab runs on the server (#4121): files from this Mac can't reach it yet, so attaching, @-files,
+  // pasted images and dropped files are off there and a line above the box says so.
+  const onlineAgentTab = Boolean(activeTab?.metadata?.agentProfileOnlineProject)
   // Main tmux is a first-class alternate view of this chat. Child-terminal
   // inspection is still developer-only, but opening the main pane must not
   // require a diagnostic flag.
@@ -1819,6 +1824,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     // with no product.yaml commands must not fall through to legacy globals.
     if (slashCommands && (trigger?.kind === '!' || trigger?.kind === '$')) trigger = null
     if (isProductProfile && (trigger?.kind === '!' || trigger?.kind === '$' || (trigger?.kind === '/' && !productCommandsAvailable))) trigger = null
+    if (onlineAgentTab && trigger?.kind === '@') trigger = null
     if (trigger && isDismissedComposerTrigger(trigger, dismissedTriggerRef.current)) trigger = null
     else dismissedTriggerRef.current = null
     composerTriggerRef.current = trigger
@@ -1844,7 +1850,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       case '$':
         setDollarPosition(trigger.start); setServerPopupSearchQuery(trigger.query); setServerPopupPosition(position); break
     }
-  }, [isProductProfile, isWorkflowPhaseChat, productCommandsAvailable, slashCommands])
+  }, [isProductProfile, isWorkflowPhaseChat, productCommandsAvailable, slashCommands, onlineAgentTab])
 
   // Memoized handlers to prevent re-creation
   const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -2510,6 +2516,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       console.info('[CHAT_UPLOAD] no files selected or upload already in progress', { fileCount: files.length, isUploadingFiles })
       return
     }
+    if (onlineAgentTab) {
+      addToast(ONLINE_AGENT_FILES_LINE, 'info')
+      return
+    }
 
     const uploadIdentity = captureChatIdentity()
     const uploadSessionId = activeTabId ? useChatStore.getState().getTab(activeTabId)?.sessionId : undefined
@@ -2620,7 +2630,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     setIsUploadingFiles(false)
     setUploadingFiles(null)
     if (batch && !batch.submitted && pendingUploadBatchRef.current === batch) pendingUploadBatchRef.current = null
-  }, [activeTab?.sessionId, agentProfileId, agentProfileProjectId, agentProfileWorkspace, activeTabId, activeTab?.metadata?.agentProfileConversationKey, isUploadingFiles, uploadTargetFolder, chatFileContext, setTabConfig, addToast])
+  }, [activeTab?.sessionId, agentProfileId, agentProfileProjectId, agentProfileWorkspace, activeTabId, activeTab?.metadata?.agentProfileConversationKey, isUploadingFiles, uploadTargetFolder, chatFileContext, setTabConfig, addToast, onlineAgentTab])
 
   useEffect(() => {
     uploadFilesToChatRef.current = uploadFilesToChat
@@ -2673,6 +2683,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const handleTextareaDrop = useCallback(async (event: React.DragEvent<HTMLTextAreaElement>) => {
     // A project file from Files or Changes joins the message as an @file reference, as the @ picker does.
     const projectFile = hasChatFileDrag(event) ? readChatFileDrag(event) : null
+    if (projectFile && onlineAgentTab) {
+      event.preventDefault()
+      event.stopPropagation()
+      dragCounterRef.current = 0
+      setIsDraggingFiles(false)
+      addToast(ONLINE_AGENT_FILES_LINE, 'info')
+      return
+    }
     if (projectFile) {
       event.preventDefault()
       event.stopPropagation()
@@ -2700,7 +2718,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const files = Array.from(event.dataTransfer.files)
     console.info('[CHAT_UPLOAD] files dropped', { count: files.length })
     await uploadFilesToChat(files)
-  }, [uploadFilesToChat, activeTabId, inputText, chatFileContext, writeComposerText])
+  }, [uploadFilesToChat, activeTabId, inputText, chatFileContext, writeComposerText, onlineAgentTab, addToast])
 
   // Inline skill popup: toggle skill (stays open for multi-select)
   const handleSkillPopupToggle = useCallback((skillFolderName: string) => {
@@ -2895,7 +2913,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   )
   // Compact chat box: the mic holds the send corner until there is something to send (or while dictating).
   const micInSendSlot = compactComposerActions && Boolean(micEl) && (!hasValidQuery || micActive)
-  const attachmentEl = (
+  const attachmentEl = onlineAgentTab ? null : (
     <ChatComposerAttachButton busy={isUploadingFiles} onClick={openAttachmentPicker}
       tip={isUploadingFiles ? 'Uploading files...' : isProductProfile ? 'Attach files to this chat' : `Upload file(s) to ${uploadTargetFolder}`} />
   )
@@ -2992,6 +3010,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       <ChatComposerArea product={isProductSurface} className={inputPadX}>
         <ChatComposerForm product={isProductSurface} onSubmit={handleSubmit} aboveCard={<>
           <div ref={setMicBannerHost} className="empty:hidden" />
+          {onlineAgentTab && <p role="note" data-testid="online-agent-files-note" className="mx-3 my-1 text-xs text-muted-foreground">{ONLINE_AGENT_FILES_LINE}</p>}
           {requestedSkillId && <div className="mx-3 my-1 flex items-center gap-2 text-xs">
             <span className="truncate rounded border border-border bg-muted px-2 py-1" title={requestedSkill ? `${requestedSkill.description} · ${requestedSkill.source}` : nativeSkillCatalog.error || nativeSkillCatalog.catalog.message}>Skill requested: {requestedSkill?.name || (nativeSkillCatalog.loading ? 'Loading…' : 'unavailable — refresh Skills')}</span>
             <button type="button" aria-label="Remove requested skill" onClick={() => activeTabId && setTabConfig(activeTabId, { requestedSkillId: undefined })}><X size={14} /></button>
@@ -3086,13 +3105,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
               rows={isProductSurface ? 1 : undefined}
               placeholder={nextPrompt.text || placeholder}
               title={nextPrompt.text ? 'Suggested next message. Tab to use; Escape to dismiss.' : undefined}
-              className={isDraggingFiles ? 'ring-2 ring-blue-500 border-blue-500 bg-blue-50/30 dark:bg-blue-900/10' : undefined}
+              className={isDraggingFiles && !onlineAgentTab ? 'ring-2 ring-blue-500 border-blue-500 bg-blue-50/30 dark:bg-blue-900/10' : undefined}
               disabled={inputDisabled}
               data-testid="chat-input-textarea"
               data-chat-composer
             />
             </div>
-            {isDraggingFiles && (
+            {isDraggingFiles && !onlineAgentTab && (
               <div className="text-[11px] text-blue-600 dark:text-blue-400 px-1">
                 Drop files to add them to this message
               </div>
@@ -3102,7 +3121,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 {compactComposerActions && !unifiedComposerMenu && <ComposerActionsMenu
                   key={activeTabId}
                   uploading={isUploadingFiles}
-                  onAttach={openAttachmentPicker}
+                  onAttach={onlineAgentTab ? undefined : openAttachmentPicker}
                   commands={commandPreview}
                   planMode={nativePlanSupported ? { on: planOn, onToggle: togglePlanMode } : undefined}
                   onOpenChange={setSendOptionsOpen}
@@ -3471,7 +3490,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   return activeTab.metadata.agentProfileCanOpenModels
                     ? <Suspense fallback={label}><ComposerModelChips tabId={activeTabId} workspacePath={agentProfileWorkspace || ''} label={crewModelLabel} fallback={label}
                       busy={isTurnInFlight}
-                      actions={{ uploading: isUploadingFiles, onAttach: openAttachmentPicker,
+                      actions={{ uploading: isUploadingFiles, onAttach: onlineAgentTab ? undefined : openAttachmentPicker,
                         commands: commandPreview,
                         planMode: nativePlanSupported ? { on: planOn, onToggle: togglePlanMode } : undefined,
                         onOpenChange: setSendOptionsOpen,
