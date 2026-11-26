@@ -1905,7 +1905,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	eventStore.SetEventAddedCallback(terminalEventObserver)
 	log.Printf("📡 EventStore retention: max %d events per session", maxSessionEvents)
-	startMemoryLog(eventStore)
 
 	// Initialize the operator-state store (bot connector configs + user
 	// secrets) and the authoritative global cost event database.
@@ -2167,6 +2166,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	defer api.closeGuidanceSessions()
 	workflowToolsAPI = api
 	runningServerAPI = api
+	startMemoryLog(eventStore, api)
 	mcpagent.SetNativeRuntimeObserver(api.observeNativeHandle)
 	defer mcpagent.SetNativeRuntimeObserver(nil)
 	api.initNativeCostAccounting()
@@ -7607,6 +7607,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					}
 					delete(api.conversationHistory, sessionID)
 					delete(api.resumeHistorySources, sessionID)
+				} else if req.resolvedResumeTarget != nil && len(req.resolvedResumeTarget.History) > 0 {
+					preModeChangeSnapshot = make([]llmtypes.MessageContent, len(req.resolvedResumeTarget.History))
+					copy(preModeChangeSnapshot, req.resolvedResumeTarget.History)
+					preModeChangeBase = req.resolvedResumeTarget.Base
 				}
 			}
 			api.lastWorkshopModeBySession[sessionID] = newWorkshopMode
@@ -10382,11 +10386,19 @@ type inactiveSessionCandidate struct {
 	lastActivity time.Time
 }
 
+type idleMemoryCandidate struct {
+	sessionID    string
+	lastActivity time.Time
+	evictAgent   bool
+}
+
 func (api *StreamingAPI) cleanupInactiveSessionsAt(now time.Time) {
 	const (
-		inactivityTimeout    = 10 * time.Minute
-		sessionRetention     = 24 * time.Hour
-		eventBufferRetention = 24 * time.Hour
+		inactivityTimeout     = 10 * time.Minute
+		historyCacheRetention = 5 * time.Minute
+		idleAgentRetention    = 15 * time.Minute
+		sessionRetention      = 24 * time.Hour
+		eventBufferRetention  = 24 * time.Hour
 	)
 
 	api.activeSessionsMux.RLock()
@@ -10415,6 +10427,7 @@ func (api *StreamingAPI) cleanupInactiveSessionsAt(now time.Time) {
 	sessionsToEvictEventBuffer := make([]string, 0)
 	sessionsToEvictRuntime := make([]string, 0)
 	sessionsMarkedInactive := make([]string, 0)
+	idleMemoryCandidates := make([]idleMemoryCandidate, 0)
 	api.activeSessionsMux.Lock()
 	for sessionID, session := range api.activeSessions {
 		age := now.Sub(session.LastActivity)
@@ -10429,6 +10442,13 @@ func (api *StreamingAPI) cleanupInactiveSessionsAt(now time.Time) {
 		}
 		if !isStoppedSessionStatus(session.Status) {
 			continue
+		}
+		if age >= historyCacheRetention && age < sessionRetention {
+			idleMemoryCandidates = append(idleMemoryCandidates, idleMemoryCandidate{
+				sessionID:    sessionID,
+				lastActivity: session.LastActivity,
+				evictAgent:   age >= idleAgentRetention,
+			})
 		}
 		if age >= eventBufferRetention {
 			sessionsToEvictEventBuffer = append(sessionsToEvictEventBuffer, sessionID)
@@ -10450,6 +10470,46 @@ func (api *StreamingAPI) cleanupInactiveSessionsAt(now time.Time) {
 
 	for _, sessionID := range sessionsMarkedInactive {
 		api.observeRuntimeSnapshot(sessionID)
+	}
+
+	// Release heavy per-session memory caches (parsed conversation history and
+	// idle agent wrappers) shortly after a reply finishes, while keeping the
+	// lightweight activeSessions entry for 24h so follow-up messages keep
+	// working (#4080). The next turn reloads the recent window from disk.
+	releasedHistorySessions, releasedHistoryMsgs, releasedAgents := 0, 0, 0
+	for _, candidate := range idleMemoryCandidates {
+		if api.sessionRunsATurn(candidate.sessionID) {
+			continue
+		}
+		api.pendingMu.RLock()
+		hasPending := len(api.pendingCompletions[candidate.sessionID]) > 0 || api.completionRetryScheduled[candidate.sessionID]
+		api.pendingMu.RUnlock()
+		if hasPending {
+			continue
+		}
+		api.activeSessionsMux.RLock()
+		current := api.activeSessions[candidate.sessionID]
+		stillIdle := current != nil && current.LastActivity.Equal(candidate.lastActivity) && isStoppedSessionStatus(current.Status)
+		api.activeSessionsMux.RUnlock()
+		if !stillIdle {
+			continue
+		}
+		api.conversationMux.Lock()
+		if msgs, exists := api.conversationHistory[candidate.sessionID]; exists {
+			releasedHistorySessions++
+			releasedHistoryMsgs += len(msgs)
+			delete(api.conversationHistory, candidate.sessionID)
+		}
+		delete(api.resumeHistorySources, candidate.sessionID)
+		api.conversationMux.Unlock()
+		if candidate.evictAgent && !nativeWakes.hasPending(candidate.sessionID) {
+			if api.removeSessionAgent(candidate.sessionID) {
+				releasedAgents++
+			}
+		}
+	}
+	if releasedHistorySessions > 0 || releasedAgents > 0 {
+		log.Printf("[ACTIVE_SESSION] Released idle reply memory: history_sessions=%d history_msgs=%d session_agents=%d", releasedHistorySessions, releasedHistoryMsgs, releasedAgents)
 	}
 
 	for _, sessionID := range sessionsToEvictRuntime {
@@ -10513,9 +10573,7 @@ func (api *StreamingAPI) evictSessionState(sessionID string) {
 	delete(api.workflowOrchestrators, sessionID)
 	api.workflowOrchestratorsMux.Unlock()
 
-	api.sessionAgentsMux.Lock()
-	delete(api.sessionAgents, sessionID)
-	api.sessionAgentsMux.Unlock()
+	api.removeSessionAgent(sessionID)
 
 	api.lastQueryMu.Lock()
 	delete(api.lastQueryRequests, sessionID)

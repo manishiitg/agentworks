@@ -18,15 +18,16 @@ func (api *StreamingAPI) storeSessionAgent(sessionID string, next *agentwrapper.
 	}
 }
 
-func (api *StreamingAPI) removeSessionAgent(sessionID string) {
+func (api *StreamingAPI) removeSessionAgent(sessionID string) bool {
 	if api == nil || sessionID == "" {
-		return
+		return false
 	}
 	api.sessionAgentsMux.Lock()
-	previous := api.sessionAgents[sessionID]
+	previous, exists := api.sessionAgents[sessionID]
 	delete(api.sessionAgents, sessionID)
 	api.sessionAgentsMux.Unlock()
 	if previous != nil {
 		_ = previous.Close()
 	}
+	return exists
 }
