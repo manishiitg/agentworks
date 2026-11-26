@@ -245,6 +245,18 @@ func mergeWorkflowCapabilitiesUpdate(existing WorkflowCapabilities, incoming *Wo
 		// An explicitly supplied empty object clears workflow notification preferences.
 		updated.Notifications = nil
 	}
+	// Connection selections owned by dedicated endpoints (GitHub Vault, Gmail)
+	// are omitted from the frontend WorkflowCapabilities payload; preserve them
+	// when unrelated manifest capabilities are saved.
+	if strings.TrimSpace(updated.GitHubConnectionID) == "" {
+		updated.GitHubConnectionID = existing.GitHubConnectionID
+	}
+	if strings.TrimSpace(updated.GmailConnectionID) == "" {
+		updated.GmailConnectionID = existing.GmailConnectionID
+	}
+	if updated.GmailBlockedRecipients == nil {
+		updated.GmailBlockedRecipients = existing.GmailBlockedRecipients
+	}
 
 	return updated
 }

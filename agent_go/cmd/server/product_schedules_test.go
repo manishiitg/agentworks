@@ -576,3 +576,91 @@ func TestScheduleOwnChatRowIsWritableForItsOwner(t *testing.T) {
 		t.Fatal("a schedule's own chat is not writable for its owner")
 	}
 }
+
+func TestProjectScheduleUpdatePreservesGitHubConnectionAndUnmodelledManifestFields(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	env := newTriggerLinkEnv(t)
+	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
+
+	manifestFile := linkBetaPath + "/workflow.json"
+	env.mock.mu.Lock()
+	env.mock.files[manifestFile] = `{
+  "schema_version": 1,
+  "id": "beta",
+  "label": "Beta",
+  "created_by": "owner",
+  "remote_project_links": [{"id": "link-1"}],
+  "capabilities": {
+    "github_connection_id": "11111111111111111111111111111111",
+    "slack_connection_id": "slack-bot-1",
+    "gmail_connection_id": "gmail_001",
+    "gmail_blocked_recipients": ["blocked@example.com"],
+    "browser_cdp_port": 9222,
+    "notifications": {"wake_tab": {"crew_id": "crew-1", "chat_id": "chat-1"}},
+    "selected_secrets": ["CUSTOM_SECRET"],
+    "workflow_context_paths": ["Workflow/legacy"]
+  }
+}`
+	env.mock.mu.Unlock()
+
+	created, err := env.svc.CreateProjectSchedule(ctx, "owner", "work", "beta", productschedule.Schedule{
+		ID: "daily", Name: "Daily check", Enabled: true, CronExpression: "0 8 * * *", Timezone: "UTC", Messages: []string{"Run daily check."},
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectSchedule failed: %v", err)
+	}
+	if _, err := env.svc.UpdateProjectSchedule(ctx, "owner", created.ID(), func(s *productschedule.Schedule) {
+		s.Enabled = false
+	}); err != nil {
+		t.Fatalf("UpdateProjectSchedule failed: %v", err)
+	}
+	if err := env.svc.DeleteProjectSchedule(ctx, "owner", created.ID()); err != nil {
+		t.Fatalf("DeleteProjectSchedule failed: %v", err)
+	}
+
+	env.mock.mu.Lock()
+	raw := env.mock.files[manifestFile]
+	env.mock.mu.Unlock()
+
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
+		t.Fatalf("unmarshal rewritten workflow.json: %v\n%s", err, raw)
+	}
+	if doc["created_by"] != "owner" {
+		t.Fatalf("created_by lost after schedule update: %v", doc["created_by"])
+	}
+	if _, ok := doc["remote_project_links"]; !ok {
+		t.Fatalf("unmodelled top-level remote_project_links lost: %s", raw)
+	}
+	if _, hasSchedules := doc["schedules"]; hasSchedules {
+		t.Fatalf("schedules should remain out of workflow.json: %s", raw)
+	}
+	caps, _ := doc["capabilities"].(map[string]any)
+	if caps == nil {
+		t.Fatalf("capabilities missing after schedule update: %s", raw)
+	}
+	if caps["github_connection_id"] != "11111111111111111111111111111111" {
+		t.Fatalf("github_connection_id = %v, want preserved", caps["github_connection_id"])
+	}
+	if caps["slack_connection_id"] != "slack-bot-1" {
+		t.Fatalf("slack_connection_id = %v, want preserved", caps["slack_connection_id"])
+	}
+	if caps["gmail_connection_id"] != "gmail_001" {
+		t.Fatalf("gmail_connection_id = %v, want preserved", caps["gmail_connection_id"])
+	}
+	if _, ok := caps["gmail_blocked_recipients"]; !ok {
+		t.Fatalf("gmail_blocked_recipients lost: %s", raw)
+	}
+	if caps["browser_cdp_port"] != float64(9222) {
+		t.Fatalf("browser_cdp_port = %v, want 9222", caps["browser_cdp_port"])
+	}
+	if _, ok := caps["notifications"]; !ok {
+		t.Fatalf("notifications lost: %s", raw)
+	}
+	if _, ok := caps["selected_secrets"]; !ok {
+		t.Fatalf("unmodelled capabilities.selected_secrets lost: %s", raw)
+	}
+	if _, hasLegacy := caps["workflow_context_paths"]; hasLegacy {
+		t.Fatalf("legacy capabilities.workflow_context_paths should stay cleared: %s", raw)
+	}
+}

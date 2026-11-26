@@ -102,3 +102,37 @@ type chatPolicyTestDefinition struct{ recordingRegistrar }
 
 func (*chatPolicyTestDefinition) AttachSkill(*llmtypes.Skill) error { return nil }
 func (*chatPolicyTestDefinition) AttachedSkills() []*llmtypes.Skill { return nil }
+
+func TestMergeWorkflowCapabilitiesUpdatePreservesConnectionSelections(t *testing.T) {
+	existing := WorkflowCapabilities{
+		GitHubConnectionID:     "22222222222222222222222222222222",
+		GmailConnectionID:      "gmail_001",
+		GmailBlockedRecipients: []string{"blocked@example.com"},
+		SlackConnectionID:      "slack-1",
+		BrowserMode:            "extension",
+		Notifications:          &WorkflowNotificationConfig{WakeTab: &WorkflowWakeTab{CrewID: "crew-1", ChatID: "chat-1"}},
+	}
+	incoming := &WorkflowCapabilities{
+		BrowserMode:       "headless",
+		SlackConnectionID: "",
+	}
+	merged := mergeWorkflowCapabilitiesUpdate(existing, incoming)
+	if merged.GitHubConnectionID != existing.GitHubConnectionID {
+		t.Fatalf("GitHubConnectionID = %q, want %q", merged.GitHubConnectionID, existing.GitHubConnectionID)
+	}
+	if merged.GmailConnectionID != existing.GmailConnectionID {
+		t.Fatalf("GmailConnectionID = %q, want %q", merged.GmailConnectionID, existing.GmailConnectionID)
+	}
+	if len(merged.GmailBlockedRecipients) != 1 || merged.GmailBlockedRecipients[0] != "blocked@example.com" {
+		t.Fatalf("GmailBlockedRecipients = %v, want preserved", merged.GmailBlockedRecipients)
+	}
+	if merged.Notifications == nil || merged.Notifications.WakeTab == nil || merged.Notifications.WakeTab.CrewID != "crew-1" {
+		t.Fatalf("Notifications = %+v, want preserved", merged.Notifications)
+	}
+	if merged.BrowserMode != "headless" {
+		t.Fatalf("BrowserMode = %q, want headless", merged.BrowserMode)
+	}
+	if merged.SlackConnectionID != "" {
+		t.Fatalf("SlackConnectionID = %q, want explicitly cleared", merged.SlackConnectionID)
+	}
+}
