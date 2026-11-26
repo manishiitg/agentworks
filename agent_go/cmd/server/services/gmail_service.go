@@ -142,8 +142,9 @@ type GmailConfig struct {
 // GmailService implements NotificationConnector (and UserNotificationConnector)
 // by invoking `gws gmail +send`.
 type GmailService struct {
-	mu        sync.RWMutex
-	config    *GmailConfig
+	mu      sync.RWMutex
+	writeMu sync.Mutex // serializes config read-modify-write; always acquire before mu
+	config  *GmailConfig
 	enabled   bool
 	defaultTo string
 	gwsPath   string
@@ -307,6 +308,25 @@ func (g *GmailService) GetConfig() *GmailConfig {
 // enablement takes effect immediately. This is what the UI's enable/disable
 // toggle calls — the user never touches gmail-config.json directly.
 func (g *GmailService) SaveConfig(ctx context.Context, cfg *GmailConfig) error {
+	g.writeMu.Lock()
+	defer g.writeMu.Unlock()
+	return g.saveConfigLocked(ctx, cfg)
+}
+
+// UpdateConfig runs a serialized read-modify-write against the current config.
+// Callers must keep slow subprocess or network probes outside mutate.
+func (g *GmailService) UpdateConfig(ctx context.Context, mutate func(cfg *GmailConfig) (bool, error)) error {
+	g.writeMu.Lock()
+	defer g.writeMu.Unlock()
+	cfg := g.GetConfig()
+	changed, err := mutate(cfg)
+	if err != nil || !changed {
+		return err
+	}
+	return g.saveConfigLocked(ctx, cfg)
+}
+
+func (g *GmailService) saveConfigLocked(ctx context.Context, cfg *GmailConfig) error {
 	if cfg == nil {
 		cfg = &GmailConfig{}
 	}
