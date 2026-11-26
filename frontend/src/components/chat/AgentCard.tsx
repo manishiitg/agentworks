@@ -1,11 +1,11 @@
 import { HeaderAgentSharing } from '../../products/work/ShareCrew'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, ChevronDown, Clock, Eye, EyeOff, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, UserCheck, Users, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, Clock, Eye, EyeOff, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, X } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
-import { describeAgentShare, type AgentShareDisplay, type AgentTeamShare } from './AgentInTeamMark'
+import { AgentShareIcon, describeAgentShare, type AgentTeamShare } from './AgentInTeamMark'
 import { AgentDetailSection } from './AgentDetailSection'
 import { CodingCliIcon } from './CodingCliIcon'
 import { useLLMStore } from '../../stores/useLLMStore'
@@ -94,11 +94,7 @@ function AgentOnlineCopyStatus({ setup }: { setup?: TeamTabSetup }) {
  return <div className="flex justify-between gap-3 border-t border-border py-2"><span className="text-muted-foreground">When Mac sleeps</span><span>{line}</span></div>
 }
 
-const HEADER_SHARE_TONE: Record<AgentShareDisplay['tone'], string> = {
-  'team-visible': 'bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-400',
-  'team-hidden': 'bg-amber-500/10 text-amber-700 hover:bg-amber-500/15 dark:text-amber-400',
-  chosen: 'bg-primary/10 text-primary hover:bg-primary/15',
-}
+const HEADER_SHARE_TONE = 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
 
 let agentHoverCooldownUntil = 0
 
@@ -178,7 +174,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
       {content}
       {shareInfo && <button type="button" aria-label={shareInfo.tooltip} aria-expanded={at?.view === 'sharing'} aria-haspopup="dialog"
         title={`${shareInfo.tooltip} — click to edit`}
-        className={`inline-flex h-6 max-w-48 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-9 max-md:px-2.5 max-md:text-xs ${HEADER_SHARE_TONE[shareInfo.tone]}`}
+        className={`inline-flex h-6 max-w-48 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-9 max-md:px-2.5 max-md:text-xs ${HEADER_SHARE_TONE}`}
         onClick={event => {
           event.stopPropagation()
           trigger.current = event.currentTarget
@@ -186,8 +182,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           else if (info.sharing) open('sharing')
           else info.onSharing?.()
         }}>
-        {shareInfo.chosen ? <UserCheck aria-hidden="true" className="h-3 w-3 shrink-0" /> : <Users aria-hidden="true" className="h-3 w-3 shrink-0" />}
-        {shareInfo.hidden && <EyeOff aria-hidden="true" className="h-2.5 w-2.5 shrink-0 opacity-85" />}
+        <AgentShareIcon info={shareInfo} className="h-3.5 w-3.5 shrink-0" />
         <span className="truncate">{shareInfo.headerLabel}</span>
       </button>}
       {automationShortcut && enabled.length > 0 && <button type="button" aria-label={`${enabled.length} enabled automation${enabled.length === 1 ? '' : 's'}`} aria-expanded={at?.view === 'automations'} aria-haspopup="dialog"

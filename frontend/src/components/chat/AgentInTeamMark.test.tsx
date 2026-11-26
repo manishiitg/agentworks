@@ -32,6 +32,7 @@ describe('AgentInTeamMark and describeAgentShare', () => {
   it('distinguishes everyone vs chosen people and chat visible vs hidden', () => {
     expect(describeAgentShare({ inTeam: true, audience: 'whole_team', chatShare: 'live' })).toEqual({
       headerLabel: 'Team · Chat visible',
+      shortLabel: 'Team',
       tooltip: 'Shared with everyone on the Team · Chat visible',
       tone: 'team-visible',
       chosen: false,
@@ -39,6 +40,7 @@ describe('AgentInTeamMark and describeAgentShare', () => {
     })
     expect(describeAgentShare({ inTeam: true, audience: 'whole_team', chatShare: 'agent' })).toEqual({
       headerLabel: 'Team · Chat hidden',
+      shortLabel: 'Chat hidden',
       tooltip: 'Shared with everyone on the Team · Chat hidden (teammates can ask, not read chat)',
       tone: 'team-hidden',
       chosen: false,
@@ -46,6 +48,7 @@ describe('AgentInTeamMark and describeAgentShare', () => {
     })
     expect(describeAgentShare({ inTeam: true, audience: 'chosen', chosenPeople: ['Ana', 'Sam'], chatShare: 'agent' })).toEqual({
       headerLabel: '2 people · Chat hidden',
+      shortLabel: '2 ppl · hidden',
       tooltip: 'Shared with Ana, Sam · Chat hidden',
       tone: 'chosen',
       chosen: true,
@@ -53,6 +56,7 @@ describe('AgentInTeamMark and describeAgentShare', () => {
     })
     expect(describeAgentShare({ inTeam: true, audience: 'chosen', chosenPeople: ['Ana'], chatShare: 'live' })).toEqual({
       headerLabel: 'Ana · Chat visible',
+      shortLabel: 'Ana',
       tooltip: 'Shared with Ana · Chat visible',
       tone: 'chosen',
       chosen: true,
