@@ -751,6 +751,10 @@ type StreamingAPI struct {
 
 	// API token for bearer auth on per-tool endpoints (code execution mode)
 	apiToken string
+
+	// In-process Team sync handler, built once (crewTeamServerHandler).
+	crewTeamHandlerOnce sync.Once
+	crewTeamHandler     http.Handler
 }
 
 func spaStaticFileHandler(root string) http.Handler {

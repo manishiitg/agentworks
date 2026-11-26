@@ -63,10 +63,14 @@ func crewTeamHTTPClient(ctx context.Context) *http.Client {
 	return desktopHTTPClient()
 }
 
+// crewTeamServerHandler serves in-process Team sync rounds. Every round reuses one router.
 func (api *StreamingAPI) crewTeamServerHandler() http.Handler {
-	router := mux.NewRouter()
-	api.registerCrewTeamRoutes(router.PathPrefix("/api").Subrouter())
-	return router
+	api.crewTeamHandlerOnce.Do(func() {
+		router := mux.NewRouter()
+		api.registerCrewTeamRoutes(router.PathPrefix("/api").Subrouter())
+		api.crewTeamHandler = router
+	})
+	return api.crewTeamHandler
 }
 
 // crewTeamServerCopyDir is the sync record of one member's copy of one shared folder (by its generation id), private
@@ -269,25 +273,13 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 		}
 		stillTheirs := !gone && t.On && b.RemoteUser != t.OwnerID && t.Folder.ID == b.FolderID && t.edits(b.RemoteUser) && crewRelayTwin(b.Project)
 		// Only members working on this server retain a server working copy.
-		if stillTheirs && !onMac {
+		if stillTheirs {
 			continue
-		}
-		if stillTheirs && onMac {
-			// Their last changes go up first; if that fails the copy stays and the next pass tries again.
-			if retireMissingUndownloadedCrewTeamCopy(ctx, dir) {
-				continue
-			}
-			c := desktopConnection{ID: "server", Server: crewTeamServerHost, User: UserInfo{ID: b.RemoteUser}}
-			round := context.WithValue(ctx, crewTeamTransportKey{}, crewTeamInProcess{handler: api.crewTeamServerHandler(), claims: &UserClaims{UserID: b.RemoteUser, Username: b.RemoteUser}})
-			if err = syncCrewTeamLocal(round, b.RemoteUser, c, dir, &b); err != nil {
-				log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=final_upload_failed reason=%q", b.Project, logUsernameForUserID(b.RemoteUser), err)
-				continue
-			}
 		}
 		// Only the shared folder changed (chosen folders): the member still works here. The old record cannot
 		// send anything any more (the server refuses a previous folder's copy), so its folder is kept, unsent edits
 		// included, and the new record adopts it right away (syncCrewTeamServerCopy).
-		folderChanged := !gone && t.On && b.RemoteUser != t.OwnerID && t.Folder.ID != "" && t.Folder.ID != b.FolderID && t.edits(b.RemoteUser) && crewRelayTwin(b.Project) && !onMac
+		folderChanged := !gone && t.On && b.RemoteUser != t.OwnerID && t.Folder.ID != "" && t.Folder.ID != b.FolderID && t.edits(b.RemoteUser) && crewRelayTwin(b.Project)
 		unlock, err := wf.LockWorkspace(ctx, dir)
 		if err != nil {
 			continue
@@ -299,9 +291,6 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 		}
 		unlock()
 		reason := "no_access"
-		if onMac {
-			reason = "on_mac" // their agents here work on their Mac, with its own copy
-		}
 		if folderChanged {
 			reason = "folder_changed_kept"
 		}
@@ -312,28 +301,6 @@ func (api *StreamingAPI) removeStaleCrewTeamServerCopies(ctx context.Context) {
 			done()
 		}
 	}
-}
-
-// PLAT-746-820: a never-downloaded, absent copy has nothing to upload when
-// retiring it. Re-read under the sync lock; never remove its physical root.
-func retireMissingUndownloadedCrewTeamCopy(ctx context.Context, dir string) bool {
-	unlock, err := wf.LockWorkspace(ctx, dir)
-	if err != nil {
-		return false
-	}
-	defer unlock()
-	b, err := readCrewTeamLocal(dir)
-	if err != nil || b.Downloaded || b.Revision != 0 || b.Root == "" {
-		return false
-	}
-	if _, err = os.Lstat(b.Root); !os.IsNotExist(err) {
-		return false // existing files, links and permission failures retain normal handling
-	}
-	if err = os.RemoveAll(dir); err != nil {
-		return false
-	}
-	log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=removed reason=never_downloaded_root_missing", b.Project, logUsernameForUserID(b.RemoteUser))
-	return true
 }
 
 var crewTeamCopyCreating sync.Map
