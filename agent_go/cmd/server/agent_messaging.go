@@ -712,7 +712,7 @@ func (api *StreamingAPI) sendAgentMessage(ctx context.Context, userID string, ca
 					out[k] = v
 				}
 				agentMessageMu.Unlock()
-				api.kickAgentMessages(inboxID)
+				api.kickAgentMessages(c.ID)
 				return out, nil
 			}
 		}
@@ -1191,7 +1191,8 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				log.Printf("[QUERY->LIVE] session=%s message=%s action=dequeued reason=queue_kind", dest.Session, msg.ID)
 			}
 			deliveryStart := time.Now()
-			deliveryCtx, cancel := context.WithTimeout(internalBotRequestContext(ctx, dest.UserID), agentMessageDeliveryWait)
+			var turnStarted atomic.Bool
+			deliveryCtx, cancel := context.WithTimeout(context.WithValue(internalBotRequestContext(ctx, dest.UserID), agentMessageTurnStartedKey{}, &turnStarted), agentMessageDeliveryWait)
 			var session string
 			var deliveryErr error
 			if steer {
@@ -1209,11 +1210,11 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			} else {
 				session, deliveryErr = api.deliverAgentMessage(deliveryCtx, conv, msg)
 			}
-			// The wait ran out while the receiving turn was queued or still running: the turn has the message and
-			// runs it, so it is delivered, not undeliverable, and never sent again.
-			stillRunning := !steer && errors.Is(deliveryErr, context.DeadlineExceeded) && errors.Is(deliveryCtx.Err(), context.DeadlineExceeded)
+			// Only count a deadline as delivered when the receiving turn actually started;
+			// a timeout during pre-turn preparation or routing falls through to retry/undeliverable.
+			stillRunning := agentDeliveryTimedOutRunning(steer, turnStarted.Load(), deliveryErr, deliveryCtx.Err())
 			cancel()
-			log.Printf("[AGENT-MESSAGE] kind=%s delivery call for %s returned after %dms (session=%s err=%v)", msg.MessageType, msg.ID, time.Since(deliveryStart).Milliseconds(), session, deliveryErr)
+			log.Printf("[AGENT-MESSAGE] kind=%s delivery call for %s returned after %dms (session=%s started=%t err=%v)", msg.MessageType, msg.ID, time.Since(deliveryStart).Milliseconds(), session, turnStarted.Load(), deliveryErr)
 			if stillRunning {
 				log.Printf("[AGENT-MESSAGE] delivery %s in %s: the receiving turn is still queued or running after %s; counted as delivered", msg.ID, conv.ID, agentMessageDeliveryWait)
 				deliveryErr = nil
@@ -1239,13 +1240,6 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 					for j := range c.Messages {
 						m := &c.Messages[j]
 						if m.ID == msg.ID {
-							m.Delivery = "delivered"
-							if m.MessageType == "request" && session != "" {
-								m.TaskProgress.Session = session
-								if m.TaskProgress.NextWake.IsZero() {
-									m.TaskProgress.NextWake = time.Now().Add(agentTaskWakeDelay(0))
-								}
-							}
 							if deliveryErr != nil {
 								m.Delivery = "undeliverable"
 								m.Error = deliveryErr.Error()
@@ -1259,6 +1253,15 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 								if retry {
 									m.Delivery = "pending"
 									m.DeliveryAttempts++
+								}
+							} else {
+								m.Delivery = "delivered"
+								stampReceipt(m, m.Delivery, time.Now().UTC())
+								if m.MessageType == "request" && session != "" {
+									m.TaskProgress.Session = session
+									if m.TaskProgress.NextWake.IsZero() {
+										m.TaskProgress.NextWake = time.Now().Add(agentTaskWakeDelay(0))
+									}
 								}
 							}
 							log.Printf("[AGENT-MESSAGE] action=delivery thread=%s message=%s outcome=%s recipient=%s", c.ID, m.ID, m.Delivery, c.Endpoints[1-msg.From].ID)
@@ -1287,12 +1290,25 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 	}()
 }
 
+// agentMessageDeliveryWait bounds one delivery call, including waiting for a busy receiving chat.
+var agentMessageDeliveryWait = 30 * time.Minute
+
 const (
-	// agentMessageDeliveryWait bounds one delivery call, including waiting for a busy receiving chat.
-	agentMessageDeliveryWait = 30 * time.Minute
 	// agentMessageDeliveryAttempts bounds retries of a delivery that failed for a reason that may pass.
 	agentMessageDeliveryAttempts = 5
 )
+
+type agentMessageTurnStartedKey struct{}
+
+func markAgentMessageTurnStarted(ctx context.Context) {
+	if started, ok := ctx.Value(agentMessageTurnStartedKey{}).(*atomic.Bool); ok && started != nil {
+		started.Store(true)
+	}
+}
+
+func agentDeliveryTimedOutRunning(steer, turnStarted bool, deliveryErr, ctxErr error) bool {
+	return !steer && turnStarted && errors.Is(deliveryErr, context.DeadlineExceeded) && errors.Is(ctxErr, context.DeadlineExceeded)
+}
 
 // agentMessageRetryDelay waits a little longer after each failed attempt: 15s, 30s, 45s, 60s.
 func agentMessageRetryDelay(attempt int) time.Duration {
@@ -1458,6 +1474,7 @@ func markReadAgentMessagesDelivered(ctx context.Context, inboxID, session string
 				continue
 			}
 			m.Delivery = "delivered"
+			stampReceipt(m, m.Delivery, time.Now().UTC())
 			if m.MessageType == "request" {
 				m.TaskProgress.Session = session
 				if m.TaskProgress.NextWake.IsZero() {
@@ -1749,6 +1766,7 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 	var result internalSessionTurnResult
 	agentMessageTurns.Store(m.ID, session)
 	defer agentMessageTurns.Delete(m.ID)
+	markAgentMessageTurnStarted(ctx)
 	if agentMessageTurn != nil {
 		result, err = agentMessageTurn(api, ctx, reqMap, session, dest.UserID)
 	} else {

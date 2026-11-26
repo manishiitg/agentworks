@@ -242,6 +242,7 @@ func (api *StreamingAPI) deliverPublishedAgentMessage(ctx context.Context, c age
 	if err = api.recheckAgentMessageAdmission(ctx, c, m); err != nil {
 		return "", err
 	}
+	markAgentMessageTurnStarted(ctx)
 	if agentMessageTurn != nil {
 		_, err = agentMessageTurn(api, ctx, req, conversation.SessionID, dest.UserID)
 	} else {

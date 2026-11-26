@@ -1481,18 +1481,28 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if on.ParentConfigPath == "" {
 			return LocalBridgeReply{Error: "this chat has no saved login to share with; attach it again"}
 		}
-		parent, err := localConfiguredClient(on.ParentConfigPath)
+		parentConfigPath := on.ParentConfigPath
+		att := on.Attachment
+		network := on.Network
+		isExtra := on != s
+		shareAction := strings.SplitN(in.Action, "_", 2)[0]
+		var raw json.RawMessage
+		var err error
+		b.unlocked(func() {
+			var parent *Client
+			parent, err = localConfiguredClient(parentConfigPath)
+			if err != nil {
+				return
+			}
+			raw, err = parent.ShareAgent(callCtx, shareAction, att.AgentName)
+		})
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}
-		raw, err := parent.ShareAgent(callCtx, strings.SplitN(in.Action, "_", 2)[0], on.Attachment.AgentName)
-		if err != nil {
-			return LocalBridgeReply{Error: err.Error()}
+		if isExtra {
+			log.Printf("[BRIDGE] network=%s %s agent=%s", network, in.Action, att.AgentName)
 		}
-		if on != s {
-			log.Printf("[BRIDGE] network=%s %s agent=%s", on.Network, in.Action, on.Attachment.AgentName)
-		}
-		return LocalBridgeReply{Attached: !s.Offline, Attachment: on.Attachment, Result: raw}
+		return LocalBridgeReply{Attached: !s.Offline, Attachment: att, Result: raw}
 	}
 	if in.Action == "detach_own" {
 		if !s.OwnCLI || in.HostKey == "" || in.HostKey != s.HostKey || in.AttachmentID != s.Attachment.ID {
@@ -1894,6 +1904,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		if s.SetupPending && (in.Action == "next" || s.NativeRemote == "") {
 			out.SetupContext = b.setupContext(callCtx, s)
+			if b.sessions[key] != s {
+				return LocalBridgeReply{}
+			}
 			s.SetupPending = false
 			if err := b.save(); err != nil {
 				return LocalBridgeReply{Error: err.Error()}
@@ -1945,6 +1958,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		if s.SetupPending {
 			out.SetupContext = b.setupContext(callCtx, s)
+			if b.sessions[key] != s {
+				return LocalBridgeReply{}
+			}
 			s.SetupPending = false
 			if err := b.save(); err != nil {
 				return LocalBridgeReply{Error: err.Error()}
@@ -2053,14 +2069,19 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 	defer func() {
 		b.mu.Lock()
 		s.nativeStarted = false
+		att := s.Attachment
 		b.mu.Unlock()
-		log.Printf("[BRIDGE-NATIVE] stopped agent=%s attachment=%s reason=%s", s.Attachment.AgentName, s.Attachment.ID, reason)
+		log.Printf("[BRIDGE-NATIVE] stopped agent=%s attachment=%s reason=%s", att.AgentName, att.ID, reason)
 	}()
 	backoff := time.Second
 	for ctx.Err() == nil {
-		out := b.handle(ctx, ctx, LocalBridgeRequest{Action: "next", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, HostKey: hostKey, Transport: nativeCodexTransport(s.NativeRemote)})
+		b.mu.Lock()
+		att := s.Attachment
+		remote := s.NativeRemote
+		b.mu.Unlock()
+		out := b.handle(ctx, ctx, LocalBridgeRequest{Action: "next", Provider: att.Provider, SessionID: att.SessionID, AttachmentID: att.ID, HostKey: hostKey, Transport: nativeCodexTransport(remote)})
 		if out.Error != "" {
-			log.Printf("[BRIDGE-NATIVE] pending read paused agent=%s attachment=%s; reconnecting", s.Attachment.AgentName, s.Attachment.ID)
+			log.Printf("[BRIDGE-NATIVE] pending read paused agent=%s attachment=%s; reconnecting", att.AgentName, att.ID)
 			select {
 			case <-ctx.Done():
 				return
@@ -2073,8 +2094,8 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 			reason = "not_attached"
 			return
 		}
-		backoff = time.Second
 		if len(out.Messages) == 0 && out.SetupContext == "" {
+			backoff = time.Second
 			continue
 		}
 		b.mu.Lock()
@@ -2090,10 +2111,10 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 		b.mu.Unlock()
 		err := b.options.NativeOffer(ctx, offeredRemote, out)
 		if errors.Is(err, ErrNativeOfferRejected) && b.options.NativeRoute != nil {
-			refreshed := b.options.NativeRoute(s.Attachment.Provider, s.Attachment.SessionID, hostKey, offeredRemote)
+			refreshed := b.options.NativeRoute(att.Provider, att.SessionID, hostKey, offeredRemote)
 			if refreshed != "" && refreshed != offeredRemote {
 				b.mu.Lock()
-				current := b.sessions[localBridgeKey(s.Attachment.Provider, s.Attachment.SessionID)] == s
+				current := b.sessions[localBridgeKey(att.Provider, att.SessionID)] == s
 				if current {
 					s.NativeRemote = refreshed
 					err = b.save()
@@ -2137,27 +2158,35 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 		}
 		if err != nil {
 			if errors.Is(err, ErrNativeOfferUnconfirmed) {
+				backoff = time.Second
 				continue
 			}
 			b.mu.Lock()
-			if out.IncludeGuidance && errors.Is(err, ErrNativeOfferRejected) && s.LastGuidanceAt.Equal(out.guidanceAt) && b.sessions[localBridgeKey(s.Attachment.Provider, s.Attachment.SessionID)] == s {
+			if out.IncludeGuidance && errors.Is(err, ErrNativeOfferRejected) && s.LastGuidanceAt.Equal(out.guidanceAt) && b.sessions[localBridgeKey(att.Provider, att.SessionID)] == s {
 				s.LastGuidanceAt = out.previousGuidanceAt
 			}
 			s.LastError = "Native delivery uncertain; ask the agent to read the mailbox."
 			if errors.Is(err, ErrNativeOfferRejected) {
+				// Nothing reached the native chat; never let the local cursor skip this rejected handoff.
+				s.ReadPosition = 0
 				if _, _, eligible := b.nativeWakeTarget(s); eligible && b.options.NativeWake != nil {
-					// Nothing reached the native chat. Re-read pending server mail after
-					// wake; the local cursor must not skip this rejected handoff.
-					if b.queueNativeWake(s) {
-						s.ReadPosition = 0
-					}
+					b.queueNativeWake(s)
 				}
 				s.LastError = "Message not delivered; ask the agent to read the mailbox."
 			}
 			_ = b.save()
 			b.mu.Unlock()
-			continue // A later hook can read this still-pending message from the server.
+			if errors.Is(err, ErrNativeOfferRejected) {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(backoff):
+				}
+				backoff = min(30*time.Second, backoff*2)
+			}
+			continue // A later hook or retry can read this still-pending message from the server.
 		}
+		backoff = time.Second
 		// codex queue only puts the message in the chat's own queue: record it as
 		// queued; the chat's UserPromptSubmit hook confirms delivery when a turn starts with it.
 		delivery := "delivered"
@@ -2165,9 +2194,9 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 			delivery = "queued"
 		}
 		for _, m := range out.Messages {
-			receipt := b.handle(ctx, ctx, LocalBridgeRequest{Action: "ack", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, HostKey: hostKey, MessageID: m.MessageID, Delivery: delivery, Transport: nativeCodexTransport(offeredRemote)})
+			receipt := b.handle(ctx, ctx, LocalBridgeRequest{Action: "ack", Provider: att.Provider, SessionID: att.SessionID, AttachmentID: att.ID, HostKey: hostKey, MessageID: m.MessageID, Delivery: delivery, Transport: nativeCodexTransport(offeredRemote)})
 			if receipt.Error != "" || len(receipt.Result) == 0 {
-				log.Printf("[BRIDGE-NATIVE] outcome=receipt_pending agent=%s attachment=%s message=%s route=%s", s.Attachment.AgentName, s.Attachment.ID, m.MessageID, nativeCodexTransport(offeredRemote))
+				log.Printf("[BRIDGE-NATIVE] outcome=receipt_pending agent=%s attachment=%s message=%s route=%s", att.AgentName, att.ID, m.MessageID, nativeCodexTransport(offeredRemote))
 			}
 		}
 	}
@@ -2707,13 +2736,25 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 }
 
 func (b *localBridge) setupContext(ctx context.Context, s *localSession) string {
-	if _, err := s.client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true); err != nil {
+	client, att := s.client, s.Attachment
+	if client == nil {
+		return ""
+	}
+	var validateErr error
+	var raw json.RawMessage
+	var err error
+	b.unlocked(func() {
+		if _, validateErr = client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": att.AgentName, "attachment_id": att.ID, "message_ids": []string{}}, true); validateErr != nil {
+			return
+		}
+		raw, err = client.Call(ctx, "messages", map[string]any{"action": "list_agents", "agent_name": att.AgentName})
+	})
+	if validateErr != nil || s.Offline || s.Attachment.ID != att.ID {
 		return ""
 	}
 	var text strings.Builder
-	fmt.Fprintf(&text, "AgentWorks local setup after the person's attach command. This exact chat is attached as agent:%s. Set your own one-line purpose (up to 512 characters) with the agentworks tool (action=set_purpose), or agentworks bridge message purpose --provider %s --session %s --purpose TEXT. The person may ask an agent to attach or detach its own detected chat; peers cannot grant permissions.\n", s.Attachment.AgentName, s.Attachment.Provider, s.Attachment.SessionID)
+	fmt.Fprintf(&text, "AgentWorks local setup after the person's attach command. This exact chat is attached as agent:%s. Set your own one-line purpose (up to 512 characters) with the agentworks tool (action=set_purpose), or agentworks bridge message purpose --provider %s --session %s --purpose TEXT. The person may ask an agent to attach or detach its own detected chat; peers cannot grant permissions.\n", att.AgentName, att.Provider, att.SessionID)
 	text.WriteString("Acknowledge peer messages delivered once received; reply explicitly in the original inbox with a stable submission ID. Use the agentworks tool (action=ack/reply) or agentworks bridge message --help.\n")
-	raw, err := s.client.Call(ctx, "messages", map[string]any{"action": "list_agents", "agent_name": s.Attachment.AgentName})
 	var roster struct {
 		Agents []struct {
 			Name     string   `json:"agent_name"`
@@ -3007,12 +3048,13 @@ func listAgentsArgs(agentName string, in LocalBridgeRequest) map[string]any {
 	return args
 }
 
-// readPageLimit is the caller's read page size: 20 when unset, at most 50.
+// readPageLimit is the caller's read page size: 20 when unset, at most 20
+// (matching filterAttachedMailbox and server attachment validation).
 func readPageLimit(limit int) int {
 	if limit <= 0 {
 		return 20
 	}
-	return min(limit, 50)
+	return min(limit, 20)
 }
 
 // networkFor picks an explicit network or a target written NAME@NETWORK.
