@@ -33,7 +33,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 it('opens old Artifacts links as a standalone page and leaves only Online tabs', async () => {
   vi.mocked(api.get).mockResolvedValue({ data: {
     access_here: 'server', access_tabs: [
-      { id: 'mac', label: 'Phone', group: 'online' },
+      { id: 'mac', label: 'Remote Control', group: 'online' },
       { id: 'agentbridge', label: 'AgentBridge', detail: 'your agents and discovery', group: 'online' },
       { id: 'dashboards', label: 'Artifacts', group: 'online' },
     ],
@@ -45,7 +45,7 @@ it('opens old Artifacts links as a standalone page and leaves only Online tabs',
     expect(host.querySelector('[aria-label="Artifacts page"]')?.textContent).toContain('Artifacts for artifacts-test')
     expect(host.querySelector('[role="tablist"]')).toBeNull()
     await act(async () => openCrewAccess('artifacts-test', '', 'mac'))
-    expect([...host.querySelectorAll('[role="tab"]')].map(tab => tab.textContent)).toEqual(['Phone', 'AgentBridgeyour agents and discovery'])
+    expect([...host.querySelectorAll('[role="tab"]')].map(tab => tab.textContent)).toEqual(['Remote Control', 'AgentBridgeyour agents and discovery'])
     expect(host.textContent).not.toContain('AgentBridge content')
     await act(async () => openCrewAccess('artifacts-test', '', 'agentbridge'))
     expect(host.querySelector('[role="tabpanel"]')?.textContent).toContain('AgentBridge content')
@@ -67,7 +67,7 @@ it('opens old Artifacts links as a standalone page and leaves only Online tabs',
   }
 })
 
-it('local mode: no Slack bot, keeps My Slack account and Phone', () => {
+it('local mode: no Slack bot, keeps My Slack account and Remote Control', () => {
   const runtimeWindow = window as Window & { __APP_RUNTIME_CONFIG__?: { deploymentMode?: string } }
   const previous = runtimeWindow.__APP_RUNTIME_CONFIG__
   runtimeWindow.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'local' }
@@ -75,7 +75,7 @@ it('local mode: no Slack bot, keeps My Slack account and Phone', () => {
     const panels: ProductPanel<WorkWorkspaceView>[] = [{ id: 'mcp', label: 'Connections', icon: Globe }]
     const items = crewProjectMenuItems({ panels })
     expect(items.find(item => item.id === 'mcp:slack-bot')).toBeUndefined()
-    // Phone (reach a Mac project from your phone) shows only on the Mac; server projects are always on the web.
+    // Remote Control (reach a Mac project from your phone) shows only on the Mac; server projects are always on the web.
     expect(items.find(item => item.id === 'mcp:online')?.group).toBe('Share')
     expect(items.find(item => item.id === 'mcp:slack-account')?.group).toBe('Integrations')
   } finally {
@@ -85,17 +85,17 @@ it('local mode: no Slack bot, keeps My Slack account and Phone', () => {
 
 // Owner screenshot regression: never render both an Online group header and
 // a nested Mac online destination. The one row keeps status and its dot.
-it('shows one Phone destination with on and off status', async () => {
+it('shows one Remote Control destination with on and off status', async () => {
   const host = document.createElement('div'), root = createRoot(host), onOpen = vi.fn()
   try {
     await act(async () => root.render(<CrewOnlineRow state="mac" onOpen={onOpen} />))
     expect(host.querySelectorAll('button')).toHaveLength(1)
-    expect(host.textContent).toBe('PhoneOn')
+    expect(host.textContent).toBe('Remote ControlOn')
     expect(host.querySelector('.bg-emerald-500')).not.toBeNull()
     await act(async () => host.querySelector('button')!.click())
     expect(onOpen).toHaveBeenCalledOnce()
     await act(async () => root.render(<CrewOnlineRow state="offline" onOpen={onOpen} />))
-    expect(host.textContent).toBe('PhoneOff')
+    expect(host.textContent).toBe('Remote ControlOff')
     expect(host.querySelector('.bg-muted-foreground')).not.toBeNull()
   } finally { await act(async () => root.unmount()) }
 })
