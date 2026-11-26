@@ -20,6 +20,7 @@ func (api *StreamingAPI) registerVaultMeRoutes(r *mux.Router) {
 	r.HandleFunc("/vault/me/tools", api.handleVaultMeTools).Methods("GET")
 	r.HandleFunc("/vault/me/mcp/{conn}", api.handleVaultMeMCP).Methods("GET", "POST", "DELETE")
 	r.HandleFunc("/vault/me/secret/{name}", api.handleVaultMeSecret).Methods("GET")
+	r.HandleFunc("/vault/me/company-keys", api.handleVaultMeCompanyKeys).Methods("GET")
 	r.HandleFunc("/vault/me/secrets", api.handleVaultMeSecretCopy).Methods("POST")
 	// Vault step 5B (vault_move.go): the server takes a moved sign-in; the Mac app's route moves one there.
 	r.HandleFunc("/vault/me/connections/import", api.handleVaultMeImport).Methods("POST")
