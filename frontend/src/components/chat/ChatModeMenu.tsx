@@ -4,7 +4,7 @@ import { Check, ChevronDown, ChevronRight, ListChecks } from 'lucide-react'
 import { useChatContextView } from '../../products/work/useChatContextView'
 import { changeChatContext, menuLabelClass, menuRowClass } from '../../products/work/ChatContextItems'
 import api, { workFolderApi } from '../../services/api'
-import type { ChatAccessMode, ChatReplyStyle, WorkFolderGrant } from '../../services/api-types'
+import type { ChatAccessMode, ChatReplyStyle, ChatUnrelatedTask, WorkFolderGrant } from '../../services/api-types'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useChatStore } from '../../stores/useChatStore'
 
@@ -27,6 +27,13 @@ const STYLES: Record<ChatReplyStyle, { label: string; detail: string }> = {
   explanatory: { label: 'Explanatory', detail: 'Explains its choices and the code as it goes.' },
   learning: { label: 'Learning', detail: 'Teaches as it goes and leaves small parts for you to write.' },
   proactive: { label: 'Proactive', detail: 'Names the next steps and does the safe, related ones.' },
+}
+
+// When the person asks for unrelated work (owner, 26 Nov, like Claude Desktop's setting), for every coding app.
+const UNRELATED: Record<ChatUnrelatedTask, { label: string; detail: string }> = {
+  ask: { label: 'Ask me', detail: 'Asks whether to open a new tab for it or do it here.' },
+  new_tab: { label: 'New tab', detail: 'Opens a new tab for it, so each piece of work keeps its own chat.' },
+  here: { label: 'Here', detail: 'Does it in this chat.' },
 }
 
 const chipClass = 'inline-flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted'
@@ -96,7 +103,7 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
     setSaving(true)
     try { await changeChatContext(sessionId, { access_mode: id as ChatAccessMode }) } finally { setSaving(false) }
   }
-  const saveReplies = async (change: { reply_style?: ChatReplyStyle; next_steps?: boolean }) => {
+  const saveReplies = async (change: { reply_style?: ChatReplyStyle; next_steps?: boolean; unrelated_task?: ChatUnrelatedTask }) => {
     if (!sessionId) return
     setSaving(true)
     try { await changeChatContext(sessionId, change) } finally { setSaving(false) }
@@ -168,6 +175,26 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
               </Menu.RadioGroup>
             </Menu.SubContent></Menu.Portal>
           </Menu.Sub>
+          {replies.unrelated_task && <Menu.Sub>
+            <Menu.SubTrigger className={`${menuRowClass} data-[state=open]:bg-muted`} data-testid="chat-unrelated-task" title="When you ask this chat for a different piece of work">
+              <span className="min-w-0 flex-1">Unrelated tasks</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{UNRELATED[replies.unrelated_task]?.label || 'Ask me'}</span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            </Menu.SubTrigger>
+            <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} data-testid="chat-unrelated-task-menu"
+              className="z-[101] w-[min(280px,calc(100vw-24px))] rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
+              <Menu.Label className={menuLabelClass}>When you ask for an unrelated task</Menu.Label>
+              <Menu.RadioGroup value={replies.unrelated_task} onValueChange={choice => void saveReplies({ unrelated_task: choice as ChatUnrelatedTask })}>
+                {(replies.unrelated_tasks || ['ask', 'new_tab', 'here']).filter(choice => UNRELATED[choice]).map(choice => <Menu.RadioItem key={choice} value={choice} disabled={saving} data-testid={`chat-unrelated-task-${choice}`} className={`${menuRowClass} items-start`}>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium">{UNRELATED[choice].label}</span>
+                    <span className="block text-xs text-muted-foreground">{UNRELATED[choice].detail}</span>
+                  </span>
+                  <Menu.ItemIndicator className="pt-0.5"><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
+                </Menu.RadioItem>)}
+              </Menu.RadioGroup>
+            </Menu.SubContent></Menu.Portal>
+          </Menu.Sub>}
           <Menu.CheckboxItem className={`${menuRowClass} items-start`} checked={replies.next_steps} disabled={saving} data-testid="chat-next-steps"
             onSelect={event => event.preventDefault()} onCheckedChange={checked => void saveReplies({ next_steps: checked === true })}>
             <span className="min-w-0 flex-1">

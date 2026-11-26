@@ -16,6 +16,9 @@ import (
 //   - NextSteps: on unless "off". On a turn the person sends from the app, the agent may end its reply with a short
 //     summary, one question and two or three answers as a ```next block; the screen shows it as a card with one-click
 //     answers instead of as text.
+//   - UnrelatedTask (owner, 26 Nov, like Claude Desktop's "When you ask for an unrelated task"): what the agent does
+//     when the person asks in this chat for a different piece of work. "" asks them (new tab or here), a note on the
+//     person's app turns; new_tab is a standing rule in the prompt; here adds nothing (the coding app's usual way).
 
 var chatReplyStyles = []string{"default", "concise", "explanatory", "learning", "proactive"}
 
@@ -28,6 +31,26 @@ var chatReplyStyleNotes = map[string]string{
 
 // chatNextStepsNote asks for the card's block. Its format is read by the screen (nextSteps.ts); keep them in step.
 const chatNextStepsNote = "When you end a reply and the person's next choice is clear, finish the reply with a block: a line ```next, then one line of JSON {\"summary\": \"one or two plain sentences on where the work stands\", \"question\": \"one short question\", \"options\": [\"answer\", \"answer\"]}, then a line ```. Give two or three short answers written as the person would send them, the most likely first. Leave the block out when nothing is waiting on them, and never mention it."
+
+var chatUnrelatedTaskChoices = []string{"ask", "new_tab", "here"}
+
+// chatNewTabHow is how the agent opens the new tab; the sessions tool is in every project chat's tools.
+const chatNewTabHow = "a new tab is `sessions` action=open with place=beside and the request, in full, as its task"
+
+const chatUnrelatedAskNote = "If this message asks for a piece of work unrelated to this chat's task, don't start it yet: ask whether to open a new tab for it or do it here, then follow the answer (" + chatNewTabHow + ")."
+
+const chatUnrelatedNewTabPrompt = "\n\nWhen the person asks in this chat for a piece of work unrelated to this chat's task, don't do it here: open a new tab for it (" + chatNewTabHow + ") and tell them in one line where it went (the person's choice for this chat)."
+
+func normalizeChatUnrelatedTask(value string) (string, error) {
+	choice := strings.ToLower(strings.TrimSpace(value))
+	switch choice {
+	case "", "ask":
+		return "", nil
+	case "new_tab", "here":
+		return choice, nil
+	}
+	return "", fmt.Errorf("unrelated_task must be one of %s", strings.Join(chatUnrelatedTaskChoices, ", "))
+}
 
 const chatRepliesMarker = "⚙️ Chat settings:"
 
@@ -47,6 +70,9 @@ type chatRepliesView struct {
 	Style     string   `json:"style"`
 	Styles    []string `json:"styles"`
 	NextSteps bool     `json:"next_steps"`
+	// UnrelatedTask is ask, new_tab or here.
+	UnrelatedTask  string   `json:"unrelated_task"`
+	UnrelatedTasks []string `json:"unrelated_tasks"`
 }
 
 func chatRepliesViewFor(identity ProductAgentIdentity) *chatRepliesView {
@@ -54,10 +80,14 @@ func chatRepliesViewFor(identity ProductAgentIdentity) *chatRepliesView {
 	if style == "" {
 		style = "default"
 	}
-	return &chatRepliesView{Style: style, Styles: chatReplyStyles, NextSteps: identity.NextSteps != "off"}
+	unrelated, _ := normalizeChatUnrelatedTask(identity.UnrelatedTask)
+	if unrelated == "" {
+		unrelated = "ask"
+	}
+	return &chatRepliesView{Style: style, Styles: chatReplyStyles, NextSteps: identity.NextSteps != "off", UnrelatedTask: unrelated, UnrelatedTasks: chatUnrelatedTaskChoices}
 }
 
-func setChatReplies(ctx context.Context, owner string, tab chatContextTab, style *string, nextSteps *bool) (chatContextTab, error) {
+func setChatReplies(ctx context.Context, owner string, tab chatContextTab, style *string, nextSteps *bool, unrelated *string) (chatContextTab, error) {
 	change := chatContextChange{}
 	if style != nil {
 		normalized, err := normalizeChatReplyStyle(*style)
@@ -73,30 +103,52 @@ func setChatReplies(ctx context.Context, owner string, tab chatContextTab, style
 		}
 		change.NextSteps = &value
 	}
+	if unrelated != nil {
+		normalized, err := normalizeChatUnrelatedTask(*unrelated)
+		if err != nil {
+			return tab, err
+		}
+		change.UnrelatedTask = &normalized
+	}
 	identity, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, owner, tab.ProfileID, tab.Record.ConversationKey, change, owner)
 	if err != nil {
 		return tab, err
 	}
-	log.Printf("[CHAT_REPLIES] owner=%s session=%s style=%q next_steps=%q", owner, tab.Record.SessionID, identity.ReplyStyle, identity.NextSteps)
+	log.Printf("[CHAT_REPLIES] owner=%s session=%s style=%q next_steps=%q unrelated_task=%q", owner, tab.Record.SessionID, identity.ReplyStyle, identity.NextSteps, identity.UnrelatedTask)
 	tab.Identity = identity
 	return tab, nil
 }
 
-// chatReplyStylePrompt is the chat's reply style as a line of its prompt, or "" for Default. It is a standing rule,
-// so it lives in the prompt with the chat's role, not on every message.
+// chatReplyStylePrompt is the chat's standing reply rules as lines of its prompt, or "" when it has none: the reply
+// style (not Default) and an unrelated task always going to a new tab. They live in the prompt with the chat's role,
+// not on every message.
 func chatReplyStylePrompt(identity ProductAgentIdentity) string {
-	style, _ := normalizeChatReplyStyle(identity.ReplyStyle)
-	if style == "" {
-		return ""
+	out := ""
+	if style, _ := normalizeChatReplyStyle(identity.ReplyStyle); style != "" {
+		out += "\n\nReply style for this chat (the person's choice): " + chatReplyStyleNotes[style]
 	}
-	return "\n\nReply style for this chat (the person's choice): " + chatReplyStyleNotes[style]
+	if unrelated, _ := normalizeChatUnrelatedTask(identity.UnrelatedTask); unrelated == "new_tab" {
+		out += chatUnrelatedNewTabPrompt
+	}
+	return out
 }
 
-// chatRepliesNote is the note added to this turn's message, or "" when the card does not apply. Only the server knows
-// where a turn came from, so it rides on the message. attended: the person sent this turn from the app.
+// chatRepliesNote is the note added to this turn's message, or "" when nothing applies: the card's request and, when
+// the chat asks about unrelated work, that question. Both need the person to answer, so only the server, which knows
+// where a turn came from, adds them, and only on turns the person sent from the app (attended).
 func chatRepliesNote(identity ProductAgentIdentity, attended bool) string {
-	if !attended || identity.NextSteps == "off" {
+	if !attended {
 		return ""
 	}
-	return chatRepliesMarker + " " + chatNextStepsNote
+	parts := []string{}
+	if unrelated, _ := normalizeChatUnrelatedTask(identity.UnrelatedTask); unrelated == "" {
+		parts = append(parts, chatUnrelatedAskNote)
+	}
+	if identity.NextSteps != "off" {
+		parts = append(parts, chatNextStepsNote)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return chatRepliesMarker + " " + strings.Join(parts, " ")
 }

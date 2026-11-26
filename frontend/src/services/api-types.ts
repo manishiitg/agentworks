@@ -294,7 +294,12 @@ export interface ChatRepliesView {
   style: ChatReplyStyle
   styles: ChatReplyStyle[]
   next_steps: boolean
+  /** When the person asks here for unrelated work: ask them, open a new tab, or do it here. */
+  unrelated_task?: ChatUnrelatedTask
+  unrelated_tasks?: ChatUnrelatedTask[]
 }
+
+export type ChatUnrelatedTask = 'ask' | 'new_tab' | 'here'
 
 /** One estimated slice of what fills a chat's context (about four characters to a token). */
 export interface ChatContextPart {

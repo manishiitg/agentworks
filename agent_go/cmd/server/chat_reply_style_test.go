@@ -6,8 +6,8 @@ import (
 )
 
 func TestChatRepliesNoteFollowsStyleAndCard(t *testing.T) {
-	if note := chatRepliesNote(ProductAgentIdentity{NextSteps: "off"}, true); note != "" {
-		t.Fatalf("with the card off the message gets nothing, got %q", note)
+	if note := chatRepliesNote(ProductAgentIdentity{NextSteps: "off", UnrelatedTask: "here"}, true); note != "" {
+		t.Fatalf("with the card off and unrelated work done here the message gets nothing, got %q", note)
 	}
 	if note := chatRepliesNote(ProductAgentIdentity{}, false); note != "" {
 		t.Fatalf("the card is only asked for on the person's own app turns, got %q", note)
@@ -36,5 +36,28 @@ func TestChatReplyStyleAcceptsOnlyOfferedStyles(t *testing.T) {
 	view := chatRepliesViewFor(ProductAgentIdentity{})
 	if view.Style != "default" || !view.NextSteps {
 		t.Fatalf("a new chat shows Default with the card on, got %+v", view)
+	}
+}
+
+func TestChatUnrelatedTaskAsksByDefault(t *testing.T) {
+	note := chatRepliesNote(ProductAgentIdentity{NextSteps: "off"}, true)
+	if !strings.HasPrefix(note, chatRepliesMarker) || !strings.Contains(note, "new tab") || strings.Contains(note, "```next") {
+		t.Fatalf("a new chat asks about unrelated work, even with the card off, got %q", note)
+	}
+	if note := chatRepliesNote(ProductAgentIdentity{UnrelatedTask: "new_tab"}, true); strings.Contains(note, "unrelated") {
+		t.Fatalf("new_tab is a prompt rule, not a message note, got %q", note)
+	}
+	if line := chatReplyStylePrompt(ProductAgentIdentity{UnrelatedTask: "new_tab"}); !strings.Contains(line, "open a new tab") || !strings.Contains(line, "`sessions` action=open") {
+		t.Fatalf("new_tab is a prompt line naming how to open the tab, got %q", line)
+	}
+	if line := chatReplyStylePrompt(ProductAgentIdentity{UnrelatedTask: "here"}); line != "" {
+		t.Fatalf("here adds nothing to the prompt, got %q", line)
+	}
+	if _, err := normalizeChatUnrelatedTask("sometimes"); err == nil {
+		t.Fatal("an unknown choice must be refused")
+	}
+	view := chatRepliesViewFor(ProductAgentIdentity{})
+	if view.UnrelatedTask != "ask" || len(view.UnrelatedTasks) != 3 {
+		t.Fatalf("a new chat shows Ask me, got %+v", view)
 	}
 }
