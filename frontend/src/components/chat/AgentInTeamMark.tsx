@@ -1,4 +1,4 @@
-import { EyeOff, UserCheck, Users } from 'lucide-react'
+import { MessageSquareLock, UserCheck, UserLock, Users } from 'lucide-react'
 
 /** Server-backed Team sharing state for one of the viewer's own agents (display only, never an access gate). */
 export interface AgentTeamShare {
@@ -10,6 +10,7 @@ export interface AgentTeamShare {
 
 export interface AgentShareDisplay {
   headerLabel: string
+  shortLabel: string
   tooltip: string
   tone: 'team-visible' | 'team-hidden' | 'chosen'
   chosen: boolean
@@ -42,9 +43,11 @@ export function describeAgentShare(share?: AgentTeamShare): AgentShareDisplay | 
     const count = names.length
     const who = count ? names.join(', ') : 'nobody selected'
     const shortWho = count === 1 ? names[0] : count > 1 ? `${count} people` : 'Chosen people'
+    const compactWho = count === 1 ? names[0] : count > 1 ? `${count} ppl` : 'Chosen'
     const vis = knownChat ? (hidden ? 'Chat hidden' : 'Chat visible') : ''
     return {
       headerLabel: vis ? `${shortWho} · ${vis}` : shortWho,
+      shortLabel: hidden ? `${compactWho} · hidden` : compactWho,
       tooltip: vis ? `Shared with ${who} · ${vis}` : `Shared with ${who}`,
       tone: 'chosen',
       chosen: true,
@@ -54,6 +57,7 @@ export function describeAgentShare(share?: AgentTeamShare): AgentShareDisplay | 
   if (!knownChat) {
     return {
       headerLabel: 'Team',
+      shortLabel: 'Team',
       tooltip: 'In team',
       tone: 'team-visible',
       chosen: false,
@@ -63,6 +67,7 @@ export function describeAgentShare(share?: AgentTeamShare): AgentShareDisplay | 
   if (hidden) {
     return {
       headerLabel: 'Team · Chat hidden',
+      shortLabel: 'Chat hidden',
       tooltip: 'Shared with everyone on the Team · Chat hidden (teammates can ask, not read chat)',
       tone: 'team-hidden',
       chosen: false,
@@ -71,6 +76,7 @@ export function describeAgentShare(share?: AgentTeamShare): AgentShareDisplay | 
   }
   return {
     headerLabel: 'Team · Chat visible',
+    shortLabel: 'Team',
     tooltip: 'Shared with everyone on the Team · Chat visible',
     tone: 'team-visible',
     chosen: false,
@@ -78,23 +84,27 @@ export function describeAgentShare(share?: AgentTeamShare): AgentShareDisplay | 
   }
 }
 
-const MARK_TONE: Record<AgentShareDisplay['tone'], string> = {
-  'team-visible': 'text-emerald-600 dark:text-emerald-400',
-  'team-hidden': 'text-amber-600 dark:text-amber-400',
-  chosen: 'text-primary',
+/** Single crisp icon per sharing state: Users (team visible), MessageSquareLock (team hidden),
+ * UserCheck (chosen visible), UserLock (chosen hidden). */
+export function AgentShareIcon({ info, className = 'h-3.5 w-3.5 shrink-0' }: { info: AgentShareDisplay; className?: string }) {
+  if (info.chosen) {
+    return info.hidden
+      ? <UserLock aria-hidden="true" className={className} />
+      : <UserCheck aria-hidden="true" className={className} />
+  }
+  return info.hidden
+    ? <MessageSquareLock aria-hidden="true" className={className} />
+    : <Users aria-hidden="true" className={className} />
 }
 
 /** Only display the server's admitted own-row sharing state; this is not an access gate.
- * Private agents are the default and show no icon (owner, 26 Nov). */
+ * Private agents are the default and show nothing (owner, 26 Nov); shared rows reveal a micro text pill on hover. */
 export function AgentInTeamMark({ on, share, className = 'inline-flex' }: { on?: boolean; share?: AgentTeamShare; className?: string }) {
   const info = describeAgentShare(share ?? (on ? { inTeam: true } : undefined))
   if (!info) return null
   return (
-    <span title={info.tooltip} aria-label={info.tooltip} className={`${className} shrink-0 items-center gap-0.5 ${MARK_TONE[info.tone]}`}>
-      {info.chosen
-        ? <UserCheck aria-hidden="true" className="h-3 w-3 shrink-0" />
-        : <Users aria-hidden="true" className="h-3 w-3 shrink-0" />}
-      {info.hidden && <EyeOff aria-hidden="true" className="h-2.5 w-2.5 shrink-0 opacity-85" />}
+    <span title={info.tooltip} aria-label={info.tooltip} className={`${className} shrink-0 items-center rounded-full bg-muted/70 px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground`}>
+      {info.shortLabel}
     </span>
   )
 }
