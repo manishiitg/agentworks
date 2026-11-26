@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
@@ -154,11 +155,46 @@ func crewTeamsJoinedBy(project string) []crewTeam {
 		if !entry.IsDir() || entry.Name() == project {
 			continue
 		}
-		if t, err := readCrewTeam(entry.Name()); err == nil && t.On && t.hasProject(project) {
+		if t, ok := readCrewTeamUnchanged(filepath.Join(state, "team-folders", entry.Name(), "team.json"), entry.Name()); ok && t.On && t.hasProject(project) {
 			out = append(out, t)
 		}
 	}
 	return out
+}
+
+// crewTeamParsed keeps each Team record parsed while its file is unchanged. crewTeamsJoinedBy reads every Team for
+// every permission check, so re-parsing all of them was the top CPU path on a server with many Teams (#2989). A Team
+// write is an atomic rename, so a join or leave changes size or mtime and is read again at once.
+var crewTeamParsed = struct {
+	sync.Mutex
+	byPath map[string]crewTeamParsedEntry
+}{byPath: map[string]crewTeamParsedEntry{}}
+
+type crewTeamParsedEntry struct {
+	size  int64
+	mtime int64
+	team  crewTeam
+	ok    bool
+}
+
+// readCrewTeamUnchanged is readCrewTeam for read-only scans: one stat, and a parse only when the file changed.
+func readCrewTeamUnchanged(file, project string) (crewTeam, bool) {
+	info, err := os.Stat(file)
+	if err != nil {
+		return crewTeam{}, false
+	}
+	crewTeamParsed.Lock()
+	cached, hit := crewTeamParsed.byPath[file]
+	crewTeamParsed.Unlock()
+	if hit && cached.size == info.Size() && cached.mtime == info.ModTime().UnixNano() {
+		return cached.team, cached.ok
+	}
+	t, err := readCrewTeam(project)
+	entry := crewTeamParsedEntry{size: info.Size(), mtime: info.ModTime().UnixNano(), team: t, ok: err == nil}
+	crewTeamParsed.Lock()
+	crewTeamParsed.byPath[file] = entry
+	crewTeamParsed.Unlock()
+	return entry.team, entry.ok
 }
 
 // crewTeamOfAgent is the Team that registered agent id for a chat in project: the project's own Team, or a Team the
