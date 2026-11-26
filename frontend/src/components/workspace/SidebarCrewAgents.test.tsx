@@ -43,6 +43,9 @@ it('lets a person put an agent above a group and move the whole group back', asy
   await act(async () => drag('dragstart', lead))
   const gap = host.querySelector('[data-sidebar-drop-before="group:CLI agents"]')!
   expect(gap).toBeTruthy()
+  // Drop strip must not shift rows below it during dragstart (zero-height overlay).
+  expect(gap.parentElement?.className).toContain('h-0')
+  expect(gap.className).toContain('absolute')
   await act(async () => { drag('dragover', gap); drag('drop', gap) })
   expect(host.textContent!.indexOf('Lead')).toBeLessThan(host.textContent!.indexOf('CLI agents'))
   expect(group().textContent).toContain('Tools')
