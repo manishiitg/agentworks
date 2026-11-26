@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	orchevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	toolcatalog "github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools/catalog"
@@ -579,6 +580,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx cont
 		codeexec.CleanupSession(sessionID)
 		common.ClearSessionShellConfig(sessionID)
 		mcpagent.CloseSession(sessionID)
+		// Each run has its own session ID, so anything keyed by it must go
+		// here or it stays in memory until the server restarts.
+		virtualtools.DeleteSessionNotificationDestination(sessionID)
+		if hcpo.httpSessionID != "" {
+			mcpagent.UnregisterHTTPSession(hcpo.httpSessionID, sessionID)
+		}
 	}
 }
 

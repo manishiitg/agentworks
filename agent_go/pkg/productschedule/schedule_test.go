@@ -18,6 +18,8 @@ func TestValidate(t *testing.T) {
 		{ID: "a", Name: "x", CronExpression: "not cron", Messages: []string{"m"}},
 		{ID: "a", Name: "x", CadenceHours: 1},
 		{ID: "a", Name: "x", CronExpression: "0 8 * * *", Timezone: "Mars/Olympus", Messages: []string{"m"}},
+		// Parses but never comes: Next returns zero time, which reads as overdue on every tick.
+		{ID: "a", Name: "x", CronExpression: "0 9 30 2 *", Messages: []string{"m"}},
 	}
 	for i, s := range bad {
 		if err := Validate(s); err == nil {

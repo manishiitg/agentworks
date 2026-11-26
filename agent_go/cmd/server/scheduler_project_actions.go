@@ -63,9 +63,9 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 				continue
 			}
 			if job.Schedule.Condition != nil && job.Effective().Enabled {
-				go s.conditionService().drain(context.Background(), job)
+				goRecover("watcher drain", func() { s.conditionService().drain(context.Background(), job) })
 				if job.Schedule.Condition.WakesOnChanges() {
-					go s.conditionService().processWake(context.Background(), job)
+					goRecover("watcher wake", func() { s.conditionService().processWake(context.Background(), job) })
 				}
 			}
 			activatedAt := job.activatedAt()
@@ -129,7 +129,8 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 					continue
 				}
 			}
-			go func(job productScheduleJob, scheduledFor time.Time, triggerSource string) {
+			scheduledFor := d.ScheduledFor
+			goRecover("project schedule run", func() {
 				// Schedules due the same minute would otherwise all open their
 				// provider connection in the same instant; spread them by a few seconds.
 				time.Sleep(time.Duration(rand.Int63n(int64(scheduledStartJitter))))
@@ -140,7 +141,7 @@ func (scheduler *SchedulerService) dispatchProjectTimers(ctx context.Context, no
 				if _, err := s.Run(context.Background(), job, triggerSource, scheduledFor); err != nil && !errors.Is(err, productschedule.ErrAlreadyRunning) && !errors.Is(err, productschedule.ErrSkip) {
 					scheduleLogf("[PRODUCT-SCHEDULE] %s failed for %s: %v", job.ID(), job.UserID, err)
 				}
-			}(job, d.ScheduledFor, triggerSource)
+			})
 		}
 	}
 }

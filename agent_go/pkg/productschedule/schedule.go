@@ -203,6 +203,11 @@ func cronSchedule(s Schedule) (cron.Schedule, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid cron expression %q: %w", s.CronExpression, err)
 	}
+	// A date that never comes (30 February) parses, but Next returns zero time,
+	// which reads as overdue and would fire on every tick.
+	if parsed.Next(time.Now().In(loc)).IsZero() {
+		return nil, fmt.Errorf("cron expression %q never runs: no date matches it (for example 30 February)", s.CronExpression)
+	}
 	return &tzSchedule{inner: parsed, loc: loc}, nil
 }
 

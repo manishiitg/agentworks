@@ -111,6 +111,20 @@ func (t *httpSessionTracker) parent(mcpSessionID string) string {
 	return parent
 }
 
+// unregister drops one MCP session from its HTTP session once that MCP session
+// has ended on its own (a finished script run), so a long-lived HTTP session
+// does not keep one entry per run.
+func (t *httpSessionTracker) unregister(httpSessionID, mcpSessionID string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if children, ok := t.sessions[httpSessionID]; ok {
+		delete(children, mcpSessionID)
+		if len(children) == 0 {
+			delete(t.sessions, httpSessionID)
+		}
+	}
+}
+
 func (t *httpSessionTracker) remove(httpSessionID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -444,6 +458,12 @@ func (r *SessionConnectionRegistry) GetSessionStats(sessionID string) *SessionSt
 // CloseHTTPSession can close all of them when the workflow stops.
 func (r *SessionConnectionRegistry) RegisterHTTPSession(httpSessionID, mcpSessionID string) {
 	globalHTTPSessionTracker.register(httpSessionID, mcpSessionID)
+}
+
+// UnregisterHTTPSession removes one MCP session from its HTTP session after
+// that MCP session was closed on its own.
+func (r *SessionConnectionRegistry) UnregisterHTTPSession(httpSessionID, mcpSessionID string) {
+	globalHTTPSessionTracker.unregister(httpSessionID, mcpSessionID)
 }
 
 // MCPSessionsForHTTPSession lists the live (not stopped) MCP sessions registered under an HTTP run, in no particular

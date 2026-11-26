@@ -1096,7 +1096,7 @@ func (s *ProjectActionDispatcher) Trigger(ctx context.Context, userID, jobID str
 		err       error
 	}
 	started := make(chan result, 1)
-	go func() {
+	goRecover("manual schedule run", func() {
 		sessionID, err := s.Run(context.Background(), job, "manual", time.Time{}, func(sessionID string) {
 			// Never block the run: only the first report is read.
 			select {
@@ -1108,7 +1108,7 @@ func (s *ProjectActionDispatcher) Trigger(ctx context.Context, userID, jobID str
 		case started <- result{sessionID: sessionID, err: err}:
 		default:
 		}
-	}()
+	})
 	// The run goes on without the caller; a caller that leaves stops waiting.
 	select {
 	case r := <-started:
@@ -1291,7 +1291,9 @@ func (s *ProjectActionDispatcher) runWithOptions(ctx context.Context, job produc
 		return "", err
 	}
 	if options.Detach {
-		go s.executeAutomationRun(claim.runCtx, claim.cancel, job, triggerSource, scheduledFor, options, claim.run, claim.jobKey, claim.convKey, onStarted)
+		goRecover("automation run", func() {
+			s.executeAutomationRun(claim.runCtx, claim.cancel, job, triggerSource, scheduledFor, options, claim.run, claim.jobKey, claim.convKey, onStarted)
+		})
 		return "", nil
 	}
 	return s.executeAutomationRun(claim.runCtx, claim.cancel, job, triggerSource, scheduledFor, options, claim.run, claim.jobKey, claim.convKey, onStarted)
@@ -1432,7 +1434,9 @@ func (s *ProjectActionDispatcher) startNextQueuedRun(convKey string) {
 	s.running[nextJobKey] = nextRun
 	s.mu.Unlock()
 	scheduleLogf("[SCHEDULER] dispatching accepted queued occurrence job=%s source=%s scheduled_for=%s", next.job.ID(), next.triggerSource, next.scheduledFor.UTC().Format(time.RFC3339))
-	go s.executeAutomationRun(nextCtx, nextCancel, next.job, next.triggerSource, next.scheduledFor, next.options, nextRun, nextJobKey, convKey, next.onStarted)
+	goRecover("queued automation run", func() {
+		s.executeAutomationRun(nextCtx, nextCancel, next.job, next.triggerSource, next.scheduledFor, next.options, nextRun, nextJobKey, convKey, next.onStarted)
+	})
 }
 
 // failAutomationSetupRun records a terminal error for a pre-claimed run when

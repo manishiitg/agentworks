@@ -275,7 +275,7 @@ func (c *conditionService) poll(ctx context.Context, job productScheduleJob, sou
 			scheduleLogf("[CONDITION] personal Gmail inventory needs attention")
 		}
 	}
-	go c.drain(context.Background(), job)
+	goRecover("watcher drain", func() { c.drain(context.Background(), job) })
 	return "", firstError(err, firstError(resultErr, stateErr))
 }
 

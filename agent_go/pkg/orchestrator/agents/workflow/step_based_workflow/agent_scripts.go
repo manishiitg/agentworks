@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -163,7 +165,7 @@ func runSequenceScriptBatch(ctx context.Context, calls []resolvedSequenceScript,
 					lock.Unlock()
 					continue
 				}
-				receipt, err := run(ctx, calls[i])
+				receipt, err := runSequenceScriptSafely(ctx, calls[i], run)
 				results[i].OutputDir = receipt.OutputDir
 				results[i].LogFile = receipt.LogFile
 				results[i].LogError = receipt.LogError
@@ -188,6 +190,18 @@ func runSequenceScriptBatch(ctx context.Context, calls []resolvedSequenceScript,
 		}
 	}
 	return results, errors.Join(append(failures, ctx.Err())...)
+}
+
+// runSequenceScriptSafely turns a panic in one batch call into that call's
+// failure: a panic in a worker goroutine would otherwise stop the whole server.
+func runSequenceScriptSafely(ctx context.Context, call resolvedSequenceScript, run func(context.Context, resolvedSequenceScript) (sequenceScriptResult, error)) (receipt sequenceScriptResult, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[SCRIPT_BATCH] script %s (%s) panicked: %v\n%s", call.Call.ID, call.Call.StepID, r, debug.Stack())
+			err = fmt.Errorf("the script stopped on an internal error")
+		}
+	}()
+	return run(ctx, call)
 }
 
 func sequenceSavedScriptError(result *ScriptedFastPathResult) error {
