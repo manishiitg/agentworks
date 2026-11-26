@@ -4,52 +4,43 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 )
 
-// A chat's access mode (#3885): what its coding agent can reach and who approves its actions. The person picks it
-// per chat from the mode menu in the message box. Plan stays the per-message plan switch.
-//   - "" (This project): the project folder and the folders attached to the project; the agent approves its own
-//     actions, since nothing else is reachable.
-//   - auto_review: the person's whole Mac, with the program's own reviewer approving or refusing each action
-//     (Claude Code's auto mode, Cursor's Auto-review). Only programs with a working reviewer offer it.
-//   - full_access: the person's whole Mac, no checks.
+// A chat's mode (#3885, split from access on 26 Nov): how the chat's coding agent works, picked per chat from the
+// mode menu in the message box. What it can reach is the project's access (Folders on this Mac), never the chat's
+// mode (owner, 26 Nov: "access is at project level.. mode is chat level"). Plan stays the per-message plan switch.
+//   - "" (Normal): the agent approves its own actions inside the project's access.
+//   - auto_review: the program's own reviewer approves or refuses each action (Claude Code's auto mode, Cursor's
+//     Auto-review). Only programs with a working reviewer offer it.
 //
-// Whole-Mac reach exists only on a personal Mac; on a server every mode stays inside the chat's folders.
+// full_access was a whole-Mac mode until 26 Nov. A chat still saved with it runs as Normal; whole Mac is now the
+// project's access.
 const (
 	chatAccessProject    = ""
 	chatAccessAutoReview = "auto_review"
-	chatAccessFull       = "full_access"
+	chatAccessLegacyFull = "full_access"
 )
-
-// chatAccessWholeMacAlias names the grant a whole-Mac mode adds for its turn ($WORK_FOLDER_WHOLE_MAC).
-const chatAccessWholeMacAlias = "whole_mac"
 
 func normalizeChatAccessMode(value string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", "project", "this_project":
+	case "", "project", "this_project", "normal", chatAccessLegacyFull, "full-access", "full":
 		return chatAccessProject, nil
 	case chatAccessAutoReview, "auto-review", "auto":
 		return chatAccessAutoReview, nil
-	case chatAccessFull, "full-access", "full":
-		return chatAccessFull, nil
 	}
-	return "", fmt.Errorf("access_mode must be project, auto_review or full_access")
+	return "", fmt.Errorf("mode must be normal or auto_review")
 }
 
+// chatAccessRank orders modes by how much the agent may do unchecked: Auto-review has a reviewer, Normal does not.
+// A tool may move a chat to a lower rank, never a higher one.
 func chatAccessRank(mode string) int {
-	switch mode {
-	case chatAccessAutoReview:
-		return 1
-	case chatAccessFull:
-		return 2
+	if mode == chatAccessAutoReview {
+		return 0
 	}
-	return 0
+	return 1
 }
 
 // chatAutoReviewSupported: the programs whose own reviewer was checked to work under AgentWorks' sandbox. Codex's
@@ -59,16 +50,13 @@ func chatAutoReviewSupported(provider string) bool {
 	return key != "" && (key == chatProviderKey(string(llmproviders.ProviderClaudeCode)) || key == chatProviderKey(string(llmproviders.ProviderCursorCLI)))
 }
 
-// chatAccessEffective is the mode a turn of this program on this host gets from the saved one: no whole Mac off a
-// personal Mac, and Auto-review only where the program has a reviewer (else This project, never more access).
+// chatAccessEffective is the mode a turn of this program on this host gets from the saved one: Auto-review only on a
+// personal Mac and where the program has a reviewer (else Normal); a legacy full_access is Normal.
 func chatAccessEffective(saved, provider string, personalMac bool) string {
-	if !personalMac {
-		return chatAccessProject
+	if saved == chatAccessAutoReview && personalMac && chatAutoReviewSupported(provider) {
+		return chatAccessAutoReview
 	}
-	if saved == chatAccessAutoReview && !chatAutoReviewSupported(provider) {
-		return chatAccessProject
-	}
-	return saved
+	return chatAccessProject
 }
 
 // chatAccessSavedMode reads the chat's own saved mode, like chatClaudeCodeTransport: a turn reaches the query path
@@ -80,45 +68,6 @@ func chatAccessSavedMode(ctx context.Context, owner, sessionID string) string {
 		}
 	}
 	return chatAccessProject
-}
-
-// withChatAccessGrant adds the person's home folder, read and write, for a whole-Mac turn. It goes into the same
-// grant list the CLI sandbox, the bridge tools' folder guard and the agent's instructions are built from, so all
-// three agree; the project's saved folder list does not change.
-func withChatAccessGrant(grants []workflowtypes.WorkflowFolderGrant, mode string) []workflowtypes.WorkflowFolderGrant {
-	if chatAccessRank(mode) == 0 {
-		return grants
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
-		return grants
-	}
-	home = filepath.Clean(home)
-	for _, grant := range grants {
-		if filepath.Clean(grant.Path) == home && grant.CanWrite() {
-			return grants
-		}
-	}
-	reason := "This chat's mode is Full access: your whole Mac, no checks."
-	if mode == chatAccessAutoReview {
-		reason = "This chat's mode is Auto-review: your whole Mac; the coding program's own reviewer approves each action."
-	}
-	return append(grants, workflowtypes.WorkflowFolderGrant{ID: "chat-access-" + mode, Alias: chatAccessWholeMacAlias, Path: home, Access: workflowtypes.FolderAccessReadWrite, Reason: reason})
-}
-
-// chatAccessHasWholeMac reports whether the project's own folders already include the person's home folder with
-// write: then every mode already reaches the whole Mac, and the menu says so.
-func chatAccessHasWholeMac(grants []workflowtypes.WorkflowFolderGrant) bool {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return false
-	}
-	for _, grant := range grants {
-		if filepath.Clean(grant.Path) == filepath.Clean(home) && grant.CanWrite() {
-			return true
-		}
-	}
-	return false
 }
 
 // chatAccessOption is one row of the mode menu.
@@ -135,34 +84,31 @@ type chatAccessView struct {
 	Mode      string             `json:"mode"`
 	Effective string             `json:"effective"`
 	Options   []chatAccessOption `json:"options"`
-	// OnServer: whole-Mac modes do not exist here; every mode stays inside the chat's folders.
+	// OnServer: the chat runs on a server, where Auto-review is not offered yet.
 	OnServer bool `json:"on_server,omitempty"`
 }
 
 func chatAccessViewFor(saved, provider string, personalMac bool) *chatAccessView {
-	view := &chatAccessView{Mode: saved, Effective: chatAccessEffective(saved, provider, personalMac), OnServer: !personalMac}
-	view.Options = []chatAccessOption{{Mode: "project", Available: true}}
+	view := &chatAccessView{Mode: "project", Effective: "project", OnServer: !personalMac}
+	if saved == chatAccessAutoReview {
+		view.Mode = chatAccessAutoReview
+	}
+	if chatAccessEffective(saved, provider, personalMac) == chatAccessAutoReview {
+		view.Effective = chatAccessAutoReview
+	}
 	auto := chatAccessOption{Mode: chatAccessAutoReview, Available: personalMac && chatAutoReviewSupported(provider)}
-	full := chatAccessOption{Mode: chatAccessFull, Available: personalMac}
 	switch {
 	case !personalMac:
-		auto.Why = "On a server every chat stays inside its folders."
-		full.Why = auto.Why
+		auto.Why = "Auto-review runs only on your Mac for now."
 	case !auto.Available:
-		auto.Why = "This coding app has no reviewer that works here yet. Use Claude Code or Cursor, or pick another mode."
+		auto.Why = "This coding app has no reviewer that works here yet. Use Claude Code or Cursor."
 	}
-	view.Options = append(view.Options, auto, full)
-	if view.Mode == chatAccessProject {
-		view.Mode = "project"
-	}
-	if view.Effective == chatAccessProject {
-		view.Effective = "project"
-	}
+	view.Options = []chatAccessOption{{Mode: "project", Available: true}, auto}
 	return view
 }
 
-// setChatAccessMode saves a chat's mode. fromTool is a call from an agent's tool: it may lower the chat's access but
-// never raise it; more access comes only from the person's own choice in the message box.
+// setChatAccessMode saves a chat's mode. fromTool is a call from an agent's tool: it may turn Auto-review on but never
+// off; dropping the reviewer is only the person's own choice in the message box.
 func setChatAccessMode(ctx context.Context, owner string, tab chatContextTab, value string, fromTool bool) (chatContextTab, error) {
 	mode, err := normalizeChatAccessMode(value)
 	if err != nil {
@@ -170,7 +116,7 @@ func setChatAccessMode(ctx context.Context, owner string, tab chatContextTab, va
 	}
 	if fromTool && chatAccessRank(mode) > chatAccessRank(tab.Identity.AccessMode) {
 		log.Printf("[CHAT_ACCESS] owner=%s session=%s action=refused from=%q to=%q reason=tool_raise", owner, tab.Record.SessionID, tab.Identity.AccessMode, mode)
-		return tab, fmt.Errorf("only the person can give this chat more access: they pick the mode in the message box")
+		return tab, fmt.Errorf("only the person can turn Auto-review off: they pick the mode in the message box")
 	}
 	identity, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, owner, tab.ProfileID, tab.Record.ConversationKey, chatContextChange{AccessMode: &mode}, owner)
 	if err != nil {
