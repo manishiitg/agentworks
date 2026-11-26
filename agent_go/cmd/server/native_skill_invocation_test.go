@@ -196,3 +196,12 @@ func TestClaudePrivateProjectionIsNotAdvertisedAsNativeCommand(t *testing.T) {
 		t.Fatal("private instruction advertised as native invocation", catalog)
 	}
 }
+
+func TestNativeSkillInputSupportedIncludesMuseServe(t *testing.T) {
+	if !nativeSkillInputSupported("muse-cli", "msp") {
+		t.Fatal("a Muse chat on `muse serve` takes a picked skill")
+	}
+	if nativeSkillInputSupported("muse-cli", "tmux") {
+		t.Fatal("a Muse terminal chat has no skill input")
+	}
+}

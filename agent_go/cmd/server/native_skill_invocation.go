@@ -36,7 +36,7 @@ type nativeSkillCatalog struct {
 // Program/transport support is a server fact. Import discovery is broader and
 // must never be used as this chat's invocation authority.
 func nativeSkillInputSupported(provider, transport string) bool {
-	return provider == "claude-code" && transport == "sdk" || provider == "codex-cli" && transport == "app-server"
+	return provider == "claude-code" && transport == "sdk" || provider == "codex-cli" && transport == "app-server" || provider == "muse-cli" && transport == "msp"
 }
 
 func currentNativeSkillChoices(snapshot runtimeSkillsResponse, requestedProvider string) nativeSkillCatalog {
