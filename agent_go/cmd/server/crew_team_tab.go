@@ -431,7 +431,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		reachIDs[r.ID] = true
 	}
 	for _, p := range byPerson {
-		mine := p.UserID == viewer
+		mine := p.UserID == viewer || crewTeamProjectOwnedBy(t, p.UserID, viewer)
 		onMac := crewTeamAgentOnMac(t, p.UserID)
 		shared := 0
 		for _, a := range p.Agents {
@@ -463,7 +463,8 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			// Shared is per person (owner, 5-6 Nov): each person switches their own agents, Main too, but keeps one
 			// shared (setCrewTeamAgentChoice); someone else's agent just reads Shared.
 			if mine {
-				row.CanChange, row.CanUnshare = true, !a.InTeam || shared > 1
+				_, projectRow := crewTeamMemberProjectID(p.UserID) // an online project's agents may all be Only me
+				row.CanChange, row.CanUnshare = true, !a.InTeam || shared > 1 || projectRow
 				if !row.CanUnshare {
 					row.Fixed = errCrewTeamLastShared.Error()
 				}

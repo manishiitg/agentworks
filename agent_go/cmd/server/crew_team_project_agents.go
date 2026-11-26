@@ -44,6 +44,39 @@ func crewTeamMemberCurrent(t crewTeam, id string) bool {
 	return crewTeamAccountActive(id)
 }
 
+// crewTeamRuleActor is who changes one agent's Team settings: the caller for their own agents, or the online project
+// (project:<id>) for that project's agents when the caller is its main owner, since the Team keeps a project's agents
+// under the project. key is the agent's ID, chat key or name; the caller's own agent wins a name clash.
+func crewTeamRuleActor(t crewTeam, caller, key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return caller
+	}
+	byName := ""
+	for _, a := range t.Agents {
+		if a.OwnerID == caller && strings.EqualFold(strings.TrimSpace(a.Name), key) {
+			return caller
+		}
+		project, ok := crewTeamMemberProjectID(a.OwnerID)
+		if !ok || !t.hasProject(project) || ownerOfCrewProjectID(project) != caller {
+			continue
+		}
+		if a.ID == key || a.ChatKey == key {
+			return a.OwnerID
+		}
+		if strings.EqualFold(strings.TrimSpace(a.Name), key) {
+			byName = a.OwnerID
+		}
+	}
+	return firstNonEmptyTrimmed(byName, caller)
+}
+
+// crewTeamProjectOwnedBy: id is an online project in t whose main owner is viewer.
+func crewTeamProjectOwnedBy(t crewTeam, id, viewer string) bool {
+	project, ok := crewTeamMemberProjectID(id)
+	return ok && viewer != "" && t.hasProject(project) && ownerOfCrewProjectID(project) == viewer
+}
+
 // crewTeamRowRunsAs is the account a row's chat runs as: its person, or the online project's main owner.
 func crewTeamRowRunsAs(owner string) string {
 	if project, ok := crewTeamMemberProjectID(owner); ok {
@@ -170,7 +203,8 @@ func crewTeamProjectAgents(ctx context.Context, t crewTeam, project string) []cr
 		if waiting {
 			activity, label = "waiting", crewTeamWaitingLabel("its project", false)
 		}
-		out = append(out, crewTeamAgent{Tab: tab, Name: name, Purpose: identity.Purpose, Examples: identity.Examples, Place: "server", ChatKey: record.ConversationKey, sessionID: record.SessionID, lastWorkedAt: crewServerChatLastWorkedAt(record.SessionID), InTeam: t.agentInTeam(member, record.ConversationKey), Activity: activity, waitingSince: since, StatusLabel: label, PlaceLabel: crewServerAgentPlaceLabel})
+		onlyMe := false // a new agent in an online project starts as Only me; its maker shares it (owner, 26 Nov)
+		out = append(out, crewTeamAgent{initialInTeam: &onlyMe, Tab: tab, Name: name, Purpose: identity.Purpose, Examples: identity.Examples, Place: "server", ChatKey: record.ConversationKey, sessionID: record.SessionID, lastWorkedAt: crewServerChatLastWorkedAt(record.SessionID), InTeam: t.agentInTeam(member, record.ConversationKey), Activity: activity, waitingSince: since, StatusLabel: label, PlaceLabel: crewServerAgentPlaceLabel})
 	}
 	return out
 }

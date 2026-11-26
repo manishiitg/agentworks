@@ -112,6 +112,10 @@ func crewTeamSourceRowAdmits(t crewTeam, viewer string, row crewTeamRegisteredAg
 	if viewer != "" && viewer == row.OwnerID && saved && crewTeamAccountActive(viewer) {
 		return true
 	}
+	// An online project's own agent, changed by its main owner (crewTeamRuleActor).
+	if project, ok := crewTeamMemberProjectID(viewer); ok && viewer == row.OwnerID && t.hasProject(project) {
+		return true
+	}
 	return crewTeamReachRow(t, viewer, row)
 }
 

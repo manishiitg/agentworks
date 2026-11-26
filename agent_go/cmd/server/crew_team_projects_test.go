@@ -223,6 +223,17 @@ func TestCrewTeamOnlineProjectAgentReach(t *testing.T) {
 	if address := crewTeamAgentAddress("srv", id); address != "agent:bob/"+id {
 		t.Fatalf("address %q is not under the account the chat runs as", address)
 	}
+	// Online agents are shared on purpose (owner, 26 Nov): only the project's main owner changes an online project
+	// agent's Team sharing, and an agent the Team has not registered yet is Only me.
+	if got := crewTeamRuleActor(team, "bob", id); got != member {
+		t.Fatalf("the project's owner changes its agent as %q, want the project", got)
+	}
+	if got := crewTeamRuleActor(team, "ann", id); got != "ann" {
+		t.Fatalf("a teammate who does not own the project acted for it: %q", got)
+	}
+	if team.agentInTeam(member, "srv"+codeChatSideMarker+"unregistered") {
+		t.Fatal("an online project's unregistered agent was shared with the Team by default")
+	}
 	// #4087: a Team member's own ask to an agent of an online project the Team uses is their User turn there (not Run);
 	// outsiders and Run turns stay Run.
 	dest := agentMessageEndpoint{ID: "srv", TeamAgentID: id}
