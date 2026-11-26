@@ -34,7 +34,10 @@ type Host struct {
 	ResolvePath                  func(string) string
 	LookupRoots                  func(string) (crewroot.Roots, bool, error)
 	ProtectedRoots               []string
-	DownloadsFolder, DocsRoot    string
+	// RuntimeReadPaths are program folders inside ProtectedRoots that every
+	// Seatbelt launch may read, such as the app's private Node.js.
+	RuntimeReadPaths          []string
+	DownloadsFolder, DocsRoot string
 }
 
 func (h Host) Decide(workingDir string) (Decision, string, string) {
@@ -73,6 +76,7 @@ func (h Host) Policy(sessionID, provider, workingDir string, base *llmtypes.CLIS
 	policy.LandlockRunner = runner
 	if decision == Seatbelt {
 		policy.ProtectedRoots = append([]string(nil), h.ProtectedRoots...)
+		policy.HostReadPaths = appendUnique(policy.HostReadPaths, h.RuntimeReadPaths...)
 		if len(runtimeDir) > 0 && runtimeDir[0] != "" {
 			policy.ProtectedRoots = append(policy.ProtectedRoots, workingDir)
 		}

@@ -65,6 +65,18 @@ func EnsureDefault(ctx context.Context) error {
 	return rt.Ensure(ctx)
 }
 
+// DefaultDir is the folder of the default runtime's private Node.js, or "" when
+// none is set. Sandboxed coding programs read it to start Node (the Mac app keeps
+// it inside its own closed state folder).
+func DefaultDir() string {
+	defaultMu.RLock()
+	defer defaultMu.RUnlock()
+	if defaultRT == nil {
+		return ""
+	}
+	return defaultRT.root
+}
+
 // New returns the runtime kept under root (for example <state>/node).
 func New(root string) *Runtime { return &Runtime{root: root} }
 
