@@ -74,7 +74,7 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 					"where": map[string]interface{}{
 						"type":        "string",
 						"enum":        []string{secretPlacePersonal, secretPlaceProject, secretPlaceTeam, secretPlaceCompany},
-						"description": "Where to save: personal (only you), project (this online project's vault, everyone in it), team or company (these answer how to add there). Omit for this project's default.",
+						"description": "Where to save: personal (only you), project (this online project's vault, everyone in it), company (everyone on this server; Vault admins only) or team (answers how to share with a Team). Omit for this project's default.",
 					},
 				},
 			},
@@ -103,8 +103,8 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 				if err != nil {
 					return "", fmt.Errorf("save secret: %w", err)
 				}
-				saved := map[string]string{secretPlaceProject: "this project's vault (everyone in the project can use it)", secretPlacePersonal: "your own Vault"}[place]
-				reads := defaultSecretPlace(workflowPath) == place
+				saved := map[string]string{secretPlaceProject: "this project's vault (everyone in the project can use it)", secretPlacePersonal: "your own Vault", secretPlaceCompany: "company keys (everyone on this server can use it)"}[place]
+				reads := defaultSecretPlace(workflowPath) == place || place == secretPlaceCompany
 				if afterUpsert != nil && strings.TrimSpace(workflowPath) != "" && reads {
 					if hookErr := afterUpsert(ctx, name, full, value); hookErr != nil {
 						return fmt.Sprintf("Saved %q in %s, but this session could not be given it: %v. It reaches this project from the next message.", name, saved, hookErr), nil

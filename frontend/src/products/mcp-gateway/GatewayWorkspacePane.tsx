@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { SecretSelectionSection } from '../../components/secrets/SecretSelectionSection'
+import { CompanyKeysPanel } from './CompanyKeysPanel'
 import { UserRound, UsersRound } from 'lucide-react'
 import { VAULT_PANELS } from '../productPanels'
 import { WorkspaceViewHeader } from '../../components/workflow/WorkspaceViewHeader'
@@ -35,8 +35,7 @@ export function GatewayWorkspacePane({ base, servers, panel, chatBusy, modelSett
       {(panel === 'servers' || panel === 'available-mcps') && servers}
       {panel === 'access' && <GatewayGroupsPanel base={base} revision={revision} chatBusy={chatBusy} />}
       {panel === 'people' && (peopleTab === 'users' ? (readOnly ? <ReaderNote>Accounts are managed by administrators. To see what one person can reach, ask in your project or Goal chat.</ReaderNote> : <GatewayUsersPanel base={base} />) : <GatewayGroupsPanel base={base} directoryOnly revision={revision} />)}
-      {panel === 'secrets' && (readOnly ? <ReaderNote>Secret values are managed by Vault managers. Each group's Secrets tab lists the secret names it can use.</ReaderNote>
-        : <SecretSelectionSection key={revision} mode="vault" />)}
+      {panel === 'secrets' && <CompanyKeysPanel key={revision} />}
       </GatewayFeedbackBoundary>
       </SettingsCardLayout>
     </WorkspacePageContent>

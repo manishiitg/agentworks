@@ -1,7 +1,5 @@
-import { SecretSelectionSection } from '../../components/secrets/SecretSelectionSection'
-import { secretsApi } from '../../api/secrets'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Check, ChevronRight, Copy, KeyRound, Loader2, LockKeyhole, Server, UserMinus, UserPlus, UserRound, UsersRound, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronRight, Copy, KeyRound, Loader2, Server, UserMinus, UserPlus, UserRound, UsersRound, X } from 'lucide-react'
 import { SettingsCard, SettingsCount, SettingsEmpty } from '../../components/ui/SettingsCard'
 import { Button } from '../../components/ui/Button'
 import { Checkbox } from '../../components/ui/checkbox'
@@ -20,7 +18,6 @@ import {
   listConnectors,
   listGroupKeys,
   listGroupPermissions,
-  listGroupSecrets,
   listAccessPackages,
   listGroupServers,
   listGroups,
@@ -63,7 +60,7 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
   useEffect(() => {
     if (revision && revision !== lastRevision.current) { lastRevision.current = revision; bump() }
   }, [revision, bump])
-  const [detailTab, setDetailTab] = useState<'users' | 'mcps' | 'secrets'>('mcps')
+  const [detailTab, setDetailTab] = useState<'users' | 'mcps'>('mcps')
   const [showCreate, setShowCreate] = useState(false)
   const [showKeys, setShowKeys] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -243,8 +240,8 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
             )}
             {memberError && <ConsoleError message={memberError} onRetry={bump} />}
             {!directoryOnly && <div className="mt-3 border-b border-border">
-              <WorkspaceViewTabs value={detailTab} onChange={value => setDetailTab(value as 'users' | 'mcps' | 'secrets')}
-                options={[{ value: 'users', label: 'Users', icon: UserRound, count: members.length }, { value: 'mcps', label: 'MCPs', icon: Server }, { value: 'secrets', label: 'Secrets', icon: LockKeyhole }]}
+              <WorkspaceViewTabs value={detailTab} onChange={value => setDetailTab(value as 'users' | 'mcps')}
+                options={[{ value: 'users', label: 'Users', icon: UserRound, count: members.length }, { value: 'mcps', label: 'MCPs', icon: Server }]}
                 ariaLabel="Group tabs" />
             </div>}
             {(directoryOnly || detailTab === 'users') && <div className="mt-3" role="tabpanel" aria-label="Group users">
@@ -287,9 +284,6 @@ export function GatewayGroupsPanel({ base, revision, chatBusy = false, directory
               )}
               {directoryOnly && !readOnly && allowLegacyAPIKeys && <Button variant="ghost" size="xs" className="mt-3" onClick={() => setShowKeys(v => !v)} aria-expanded={showKeys}>Group API keys</Button>}
               {allowLegacyAPIKeys && showKeys && <div className="mt-3"><GroupAPIKeys key={group.ID} base={base} groupId={group.ID} groupName={group.Name || group.ID} attempt={attempt} onChanged={bump} /></div>}
-            </div>}
-            {!directoryOnly && detailTab === 'secrets' && <div role="tabpanel" aria-label="Group secrets tab" className="mt-4">
-              <GroupSecretPermissions key={`secrets:${group.ID}`} base={base} groupId={group.ID} attempt={attempt} onChanged={bump} />
             </div>}
             {!directoryOnly && detailTab === 'mcps' && <div role="tabpanel" aria-label="Group MCPs" className="mt-4">
               <GroupPermissions key={group.ID} base={base} groupId={group.ID} groupName={group.Name || group.ID} attempt={attempt} onChanged={bump} />
@@ -707,43 +701,4 @@ function GroupPermissions({
       />
     </div>
   )
-}
-
-function GroupSecretPermissions({ base, groupId, attempt, onChanged }: {
-  base: string; groupId: string; attempt: number; onChanged: () => void
-}) {
-  const readOnly = useVaultReadOnly()
-  const [names, setNames] = useState<string[]>([])
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
-  const hasLoaded = useRef(false)
-  useEffect(() => {
-    let cancelled = false
-    setError('')
-    if (!hasLoaded.current) setLoading(true)
-    listGroupSecrets(base, groupId).then(result => {
-      if (!cancelled) {
-        setNames(result.secrets.map(s => s.name))
-        hasLoaded.current = true
-      }
-    }).catch(e => {
-      if (!cancelled) setError(gatewayErrorMessage(e))
-    }).finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [base, groupId, attempt])
-  if (loading && !hasLoaded.current) return <ConsoleLoading label="Loading secret permissions…" />
-  if (error && !hasLoaded.current) return <ConsoleError message={error} onRetry={onChanged} />
-  if (readOnly) return <div className="text-xs">
-    {names.length === 0 ? <p className="text-muted-foreground">This group can use no Vault secrets.</p>
-      : <ul className="flex flex-wrap gap-1.5" aria-label="Secrets this group can use">{names.map(n => <li key={n} className="rounded bg-muted px-2 py-0.5 font-mono">{n}</li>)}</ul>}
-  </div>
-  return <div>
-    {error && <ConsoleStale message={error} onRetry={onChanged} />}
-    <SecretSelectionSection mode="group" groupSelectedNames={names}
-      onGroupAccessChange={async (name, allowed) => {
-        await secretsApi.setVaultSecretAccess(groupId, name, allowed)
-        setNames(current => allowed ? [...new Set([...current, name])] : current.filter(n => n !== name))
-        onChanged()
-      }} />
-  </div>
 }

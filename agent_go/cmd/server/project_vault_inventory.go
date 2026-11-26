@@ -456,6 +456,24 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 			}
 		}
 	}
+	// Company keys reach everyone on the server (#4148): every one is listed under Company, and an online project uses
+	// them automatically (nothing to tick); its own key wins on the same name.
+	if companyKeysOn() {
+		company, online := &headings[1], serverCrewForPath(root) != ""
+		for _, name := range companyKeyNames() {
+			if !slices.ContainsFunc(company.Items, func(i projectVaultItem) bool { return i.Kind == "shared_secret" && i.ID == name }) {
+				company.Items = append(company.Items, projectVaultItem{ID: name, Name: name, Kind: "shared_secret", Status: "stored", Source: "Everyone", Selected: secretUsed(name), CanSelect: true, CanReveal: isAdmin})
+			}
+		}
+		if online {
+			for i, item := range company.Items {
+				if item.Kind == "shared_secret" && isCompanyKeyName(item.ID) {
+					company.Items[i].Selected, company.Items[i].CanSelect = true, false
+				}
+			}
+			out.Notices = append(out.Notices, "Company keys are used here automatically. If this project has its own key with the same name, the project's key is used.")
+		}
+	}
 	for _, heading := range headings {
 		if len(heading.Items) > 0 {
 			out.Vaults = append(out.Vaults, heading)

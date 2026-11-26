@@ -325,14 +325,15 @@ func (api *StreamingAPI) crewVaultServers(ctx context.Context, project string, s
 	return append(out, mcpclient.NoServers)
 }
 
-// crewVaultSecretNames are the Vault names of a server Crew's secrets: everything in its vault, nothing else.
+// crewVaultSecretNames are the Vault names of a server Crew's secrets: everything in its vault, plus company keys whose
+// names its vault does not use.
 func (api *StreamingAPI) crewVaultSecretNames(ctx context.Context, project string) []string {
 	contents, err := api.readCrewVault(ctx, project)
 	if err != nil {
 		log.Printf("[CREW_VAULT] project=%s secrets unavailable: %v", project, err)
 		return []string{}
 	}
-	names := append([]string{}, contents.SecretNames...)
+	names := withProjectCompanyKeys(contents.SecretNames) // company keys reach it directly (#4148)
 	slices.Sort(names)
 	return names
 }
@@ -461,8 +462,8 @@ func crewVaultReader(ctx context.Context, person string) string {
 	return person
 }
 
-// crewVaultRowsOnly keeps the rows that are in the scoped Crew vault itself, so a User's turn that reads as the main
-// owner never takes one of the owner's own keys (not even as a same-named stand-in).
+// crewVaultRowsOnly keeps the rows that are in the scoped Crew vault itself, and company keys, so a User's turn that
+// reads as the main owner never takes one of the owner's own keys (not even as a same-named stand-in).
 func crewVaultRowsOnly(ctx context.Context, rows []globalSecretEntry) []globalSecretEntry {
 	prefix, err := vaultSecretName(crewVaultScope(ctx), "x")
 	if err != nil {
@@ -471,7 +472,8 @@ func crewVaultRowsOnly(ctx context.Context, rows []globalSecretEntry) []globalSe
 	prefix = strings.TrimSuffix(prefix, "x")
 	out := rows[:0:0]
 	for _, row := range rows {
-		if strings.HasPrefix(row.Name, prefix) {
+		// Company keys reach everyone, a User included (#4148).
+		if strings.HasPrefix(row.Name, prefix) || (isCompanyKeyName(row.Name) && companyKeysOn()) {
 			out = append(out, row)
 		}
 	}

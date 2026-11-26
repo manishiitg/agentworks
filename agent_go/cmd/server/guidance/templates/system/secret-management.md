@@ -5,9 +5,9 @@ All secret values are stored encrypted in Vault. A product never keeps its own c
 Secrets are credentials (API keys, tokens, passwords). A key lives in one of these places; pick by who it should reach:
 
 - **Personal** (your own Vault, "My accounts"): only you and your own agents. Mac projects, Goals and Flows read keys they choose from here.
-- **Project** (an online project's own vault): everyone working in that online project (owner, co-owners, Users) and its schedules and workflows. An online project reads only this vault. Only its owner and co-owners change it.
+- **Project** (an online project's own vault): everyone working in that online project (owner, co-owners, Users) and its schedules and workflows. An online project reads this vault and company keys (its own key wins on the same name). Only its owner and co-owners change it.
 - **Team** (a Mac Team's vault): the people in that Team. Share a key there with the Team tool (`way_add`, item `secret`).
-- **Company**: keys a Vault administrator keeps and gives to people<!-- product:mcp-gateway --> (Vault's Secrets panel, or `manage_vault_secret_access` operation `set_value`). `GLOBAL_SECRET_*` environment entries remain operator-managed<!-- /product -->.
+- **Company**: one list for everyone on the server; online projects use it directly. Only Vault admins add or change it (`vault action=set` with `where=company`<!-- product:mcp-gateway -->, Vault › Company keys, or `manage_vault_secret_access` operation `set_value`<!-- /product -->). There are no per-group keys.
 
 ### Tools
 
@@ -18,8 +18,8 @@ Secrets are credentials (API keys, tokens, passwords). A key lives in one of the
 ### When a user says "store / save / set this key"
 
 1. Call `vault action=list` to see the places and whether the name already exists.
-2. Decide who it should reach. Default: this project (`vault action=set` without `where`). Only for you: `where=personal`. For a Team or the company, follow the answer the tool gives.
-3. In an online project, a key from another place reaches its work only after you copy it in (`copy_from`). In a Mac project, select an existing key instead (for example `settings(action="update", secrets={select:["<its Vault name>"]})`).
+2. Decide who it should reach. Default: this project (`vault action=set` without `where`). Only for you: `where=personal`. For everyone on the server (Vault admins only): `where=company`. For a Team, follow the answer the tool gives.
+3. In an online project, company keys already reach its work; a key from your own or a Team vault reaches it only after you copy it in (`copy_from`). In a Mac project, select an existing key instead (for example `settings(action="update", secrets={select:["<its Vault name>"]})`).
 4. Say where it went, by name only. Do NOT echo the plaintext value back.
 
 ### Adding a secret value
@@ -43,7 +43,7 @@ Do not tell the user to rotate the secret after a normal requested save. Recomme
 
 <!-- product:mcp-gateway -->## Reusing a secret across projects
 
-A secret in your own Vault can be selected by any of your projects. Credentials shared with colleagues belong in a company Vault group, which a Vault administrator manages. Project ownership alone does not grant Vault administration.
+A secret in your own Vault can be selected by any of your projects. Credentials for everyone on the server are company keys, which Vault admins manage. Project ownership alone does not grant Vault administration.
 
 Use the current attached canonical references and admitted tools. Legacy
 provider-generated skill files under a project's .pi/.claude/.agents directories

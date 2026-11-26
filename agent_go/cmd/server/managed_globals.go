@@ -11,12 +11,17 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 const managedGlobalSecretsUserID = "_system_global_secrets"
 
 var managedGlobalsMu sync.RWMutex
 var managedGlobals = map[string]string{}
+
+// managedGlobalsLoaded is set once the stored keys are read at startup, so "no company keys to move" (company_keys.go)
+// is never concluded from a store that has not been read yet.
+var managedGlobalsLoaded atomic.Bool
 var globalSecretNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 var errGlobalConflict = errors.New("A global secret with this name already exists")
 var errGlobalAdmin = errors.New("Only server admins can manage global secrets")
@@ -40,6 +45,7 @@ func (api *StreamingAPI) loadManagedGlobalSecrets(ctx context.Context) error {
 		next[secret.Name] = value
 	}
 	managedGlobals = next
+	managedGlobalsLoaded.Store(true)
 	return nil
 }
 

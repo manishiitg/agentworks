@@ -26,13 +26,28 @@ export interface SecretSources {
   secrets: { name: string; display_name: string; explanation: string }[];
 }
 
+export interface CompanyKeys {
+  on: boolean;
+  admin: boolean;
+  keys: string[];
+  to_move?: { name: string; groups: string[] | null }[];
+  note?: string;
+}
+
 export const secretsApi = {
   getSecretSources: async (workspacePath: string): Promise<SecretSources> => {
     const response = await api.get('/api/secrets/workflow/sources', { params: { workspace_path: workspacePath } });
     return response.data;
   },
-  setVaultSecretAccess: async (groupId: string, name: string, allowed: boolean): Promise<void> => {
-    await api.post('/api/secrets/vault/access', { group_id: groupId, name, allowed });
+  /** Company keys: one list for everyone on the server (administrators also get what the one-time move would change). */
+  getCompanyKeys: async (): Promise<CompanyKeys> => {
+    const response = await api.get('/api/vault/company-keys');
+    return response.data;
+  },
+  /** The one-time move: today's group keys become company keys, except leaveOut (into the admin's own vault). */
+  moveCompanyKeys: async (leaveOut: string[]): Promise<{ moved: number; left_out: number }> => {
+    const response = await api.post('/api/vault/company-keys', { leave_out: leaveOut });
+    return response.data;
   },
   saveGlobalSecret: async (name: string, value: string): Promise<void> => {
     const { encrypted } = await secretsApi.encrypt(value);

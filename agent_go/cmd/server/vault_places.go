@@ -64,15 +64,25 @@ func (api *StreamingAPI) secretPlaces(ctx context.Context, person, root string) 
 		}
 	}
 	if len(company) > 0 {
-		view.Places = append(view.Places, secretPlace{Place: secretPlaceCompany, Name: "Company keys", Reaches: "People a Vault administrator gave them to.", Keys: shortSecretNames(company)})
+		reaches := "People a Vault administrator gave them to."
+		if companyKeysOn() {
+			reaches = "Everyone on this server. Only Vault admins add or change them."
+		}
+		view.Places = append(view.Places, secretPlace{Place: secretPlaceCompany, Name: "Company keys", Reaches: reaches, Keys: shortSecretNames(company)})
 	}
 	if project != "" {
 		names := api.crewVaultSecretNames(ctx, project)
-		view.Places = append(view.Places, secretPlace{Place: secretPlaceProject, Name: "This project's vault", Reaches: "Everyone working in this online project: its owner, co-owners and Users, and its schedules and workflows.", Keys: shortSecretNames(names)})
-		view.Project = "Online project: its work uses only the keys in this project's vault."
+		own := []string{}
+		for _, n := range names {
+			if isVaultSecretName(n) {
+				own = append(own, n)
+			}
+		}
+		view.Places = append(view.Places, secretPlace{Place: secretPlaceProject, Name: "This project's vault", Reaches: "Everyone working in this online project: its owner, co-owners and Users, and its schedules and workflows.", Keys: shortSecretNames(own)})
+		view.Project = "Online project: its work uses the keys in this project's vault, and company keys (the project's own key wins on the same name)."
 		view.SavesTo = secretPlaceProject
 		view.Uses = shortSecretNames(names)
-		view.Note = "To use a key from another vault here, copy it into this project's vault: set_workflow_secret with copy_from (the server copies the value; you never see it). Only the owner and co-owners change this project's vault."
+		view.Note = "Company keys reach this project directly. To use a key from your own or a Team vault here, copy it into this project's vault: set_workflow_secret with copy_from (the server copies the value; you never see it). Only the owner and co-owners change this project's vault; only Vault admins change company keys."
 	} else if strings.TrimSpace(root) != "" {
 		selection, err := projectSecretSelection(ctx, root)
 		if err != nil {
