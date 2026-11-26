@@ -94,10 +94,27 @@ func crewTeamShareableChanges(project, actor string, team crewTeam, op crewTeamO
 	return kept, leftOut
 }
 
-var crewTeamLeftOutLogged sync.Map // project\x00actor\x00path -> struct{}
+// crewTeamLeftOutLogged logs each left-out file once. Keys come from synced
+// paths, so the set is cleared when it gets large instead of growing forever.
+var crewTeamLeftOutLogged = struct {
+	sync.Mutex
+	seen map[string]struct{} // project\x00actor\x00path
+}{seen: map[string]struct{}{}}
+
+const crewTeamLeftOutLogLimit = 10000
 
 func crewTeamLogLeftOut(project, actor, path, reason string) {
-	if _, seen := crewTeamLeftOutLogged.LoadOrStore(project+"\x00"+actor+"\x00"+path, struct{}{}); seen {
+	key := project + "\x00" + actor + "\x00" + path
+	crewTeamLeftOutLogged.Lock()
+	_, seen := crewTeamLeftOutLogged.seen[key]
+	if !seen {
+		if len(crewTeamLeftOutLogged.seen) >= crewTeamLeftOutLogLimit {
+			clear(crewTeamLeftOutLogged.seen)
+		}
+		crewTeamLeftOutLogged.seen[key] = struct{}{}
+	}
+	crewTeamLeftOutLogged.Unlock()
+	if seen {
 		return
 	}
 	log.Printf("[CREW_TEAM_SYNC] project=%s actor=%s event=left_out path=%q reason=%s", project, logUsernameForUserID(actor), path, reason)

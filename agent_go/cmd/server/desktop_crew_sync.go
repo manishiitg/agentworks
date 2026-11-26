@@ -92,16 +92,9 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	defer operationUnlock()
-	unlock, err := wf.LockWorkspace(r.Context(), roots.Files)
-	if err != nil {
-		externalError(w, 409, "sync_unavailable", err.Error())
-		return
-	}
-	defer func() {
-		if unlock != nil {
-			unlock()
-		}
-	}()
+	// No working-files lock: every action below calls the server (up to 15
+	// minutes) and none changes working files. Holding it made the project's
+	// chats and edits wait for the network.
 	binding, err := crewroot.ReadSync(roots.ID)
 	if err != nil {
 		externalError(w, 409, "sync_unavailable", err.Error())
