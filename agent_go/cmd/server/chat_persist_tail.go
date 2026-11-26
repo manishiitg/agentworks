@@ -68,8 +68,21 @@ func (api *StreamingAPI) persistableChatTailWithReason(user, liveSession, persis
 	if source.path != path {
 		return nil, nil, lookupSession, "path_mismatch"
 	}
-	if !source.same(statResumeHistory(user, source.workspace, path)) {
+	currentStat := statResumeHistory(user, source.workspace, path)
+	if currentStat == nil {
 		return nil, nil, lookupSession, "file_changed"
+	}
+	if !source.same(currentStat) {
+		// Allow header-only metadata updates (e.g. title rename) when the
+		// append-only history log file itself is unchanged and the header
+		// still points to the same jsonl-v1 log at the expected row count.
+		if source.log == nil || !sameResumeFile(source.log, currentStat.log) {
+			return nil, nil, lookupSession, "file_changed"
+		}
+		_, isLog, historyCount, err := readChatConversationHeaderWithLogState(path)
+		if err != nil || !isLog || historyCount != source.persistedBody+source.target.Base {
+			return nil, nil, lookupSession, "file_changed"
+		}
 	}
 	body, canonical := chatHistoryBody(history), chatHistoryBody(current)
 	if source.persistedSystem && (len(history) == 0 || history[0].Role != llmtypes.ChatMessageTypeSystem) {
@@ -91,28 +104,38 @@ func (api *StreamingAPI) persistableChatTailWithReason(user, liveSession, persis
 }
 
 func readChatConversationHeader(path string) (map[string]interface{}, error) {
+	header, _, _, err := readChatConversationHeaderWithLogState(path)
+	return header, err
+}
+
+func readChatConversationHeaderWithLogState(path string) (map[string]interface{}, bool, int, error) {
 	raw, err := os.ReadFile(resolvedChatHistoryPath(chatHistoryStoragePath(path)))
 	if os.IsNotExist(err) {
 		text, found, readErr := readFileFromWorkspaceQuery(context.Background(), path, "header_only=true")
 		if readErr != nil {
-			return nil, readErr
+			return nil, false, 0, readErr
 		}
 		if !found {
-			return nil, os.ErrNotExist
+			return nil, false, 0, os.ErrNotExist
 		}
 		raw, err = []byte(text), nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, 0, err
 	}
 	var header map[string]interface{}
 	if err = json.Unmarshal(raw, &header); err != nil {
-		return nil, err
+		return nil, false, 0, err
+	}
+	isLog := stringFromRecord(header, "history_log") == "jsonl-v1"
+	historyCount := 0
+	if count, ok := header["history_count"].(float64); ok {
+		historyCount = int(count)
 	}
 	for _, key := range []string{"conversation_history", "history_log", "history_count", "history_system", "history_tail", "history_total"} {
 		delete(header, key)
 	}
-	return header, nil
+	return header, isLog, historyCount, nil
 }
 
 func (api *StreamingAPI) tryPersistChatTail(liveSession, persistSession, mode, user string, history []llmtypes.MessageContent, runtime *ChatHistoryAgentRuntime, ui []internalevents.Event, path string, patch map[string]interface{}, now time.Time, bot *ChatHistoryBotMetadata) (bool, string) {
@@ -125,7 +148,7 @@ func (api *StreamingAPI) tryPersistChatTail(liveSession, persistSession, mode, u
 	}
 	// A failed attempt must leave the full merger's input intact.
 	patch = maps.Clone(patch)
-	header, err := readChatConversationHeader(path)
+	header, isLog, historyCount, err := readChatConversationHeaderWithLogState(path)
 	if err != nil {
 		log.Printf("[CHAT_PERSIST_TAIL] session=%s header_error=true", liveSession)
 		return false, "header_error"
@@ -133,8 +156,14 @@ func (api *StreamingAPI) tryPersistChatTail(liveSession, persistSession, mode, u
 	if owner := stringFromRecord(header, "user_id"); owner != "" && owner != user {
 		return false, "header_owner_mismatch"
 	}
-	if !source.same(statResumeHistory(user, source.workspace, path)) {
+	afterHeaderStat := statResumeHistory(user, source.workspace, path)
+	if afterHeaderStat == nil {
 		return false, "file_changed_after_header"
+	}
+	if !source.same(afterHeaderStat) {
+		if source.log == nil || !sameResumeFile(source.log, afterHeaderStat.log) || !isLog || historyCount != source.persistedBody+source.target.Base {
+			return false, "file_changed_after_header"
+		}
 	}
 	delete(patch, "conversation_history")
 	if _, present := patch["title"]; !present {
@@ -167,10 +196,11 @@ func (api *StreamingAPI) tryPersistChatTail(liveSession, persistSession, mode, u
 	if err != nil {
 		return false, "encode_error"
 	}
-	if !source.same(statResumeHistory(user, source.workspace, path)) {
+	appendStat := statResumeHistory(user, source.workspace, path)
+	if !afterHeaderStat.same(appendStat) {
 		return false, "file_changed_before_append"
 	}
-	expected, err := chatlog.VersionFromInfos(source.header, source.log)
+	expected, err := chatlog.VersionFromInfos(appendStat.header, appendStat.log)
 	if err != nil {
 		return false, "version_error"
 	}
