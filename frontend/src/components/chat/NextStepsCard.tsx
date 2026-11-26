@@ -27,7 +27,7 @@ export function NextStepsSlot({ tabId, children }: { tabId: string; children: Re
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '')
 
-export function NextStepsCard({ steps, onPick, onDismiss }: { steps: NextSteps; onPick: (text: string) => void; onDismiss: () => void }) {
+export function NextStepsCard({ steps, onPick, onDismiss, onTurnOff }: { steps: NextSteps; onPick: (text: string) => void; onDismiss: () => void; onTurnOff?: () => void }) {
   const ref = useRef<HTMLElement>(null)
   // It appears as the reply ends; bring it into view the way the reply itself was.
   useEffect(() => { ref.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }) }, [])
@@ -51,5 +51,10 @@ export function NextStepsCard({ steps, onPick, onDismiss }: { steps: NextSteps; 
         {index === 0 && <kbd aria-hidden="true" className="rounded border border-background/30 px-1 text-[10px] leading-4">{isMac ? '⌘↵' : 'Ctrl↵'}</kbd>}
       </button>)}
     </div>
+    {/* Owner, 26 Nov: say how to turn it off, and where it turns back on. */}
+    {onTurnOff && <p className="mt-2 text-right text-[11px] text-muted-foreground" data-testid="next-steps-turn-off-row">
+      <button type="button" onClick={onTurnOff} data-testid="next-steps-turn-off" className="underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">Turn off for this chat</button>
+      <span> · on or off in the mode menu by the model, under Replies</span>
+    </p>}
   </section>
 }
