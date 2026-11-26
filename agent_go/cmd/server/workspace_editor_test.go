@@ -86,6 +86,20 @@ func TestWorkspaceEditorAdmitsOnlyLocalOwnedProjectTargets(t *testing.T) {
 	if code, _ = call("alice", body, false); code != 400 {
 		t.Fatalf("command editor: %d", code)
 	}
+	// Show in Finder: only a folder inside the caller's own project.
+	reveal := map[string]any{"workspace_path": gitTestProject, "op": "reveal", "file": "app"}
+	if code, out = call("alice", reveal, false); code != 200 || out["launch"].(map[string]any)["reveal"] != repo {
+		t.Fatalf("reveal folder: %d %v", code, out)
+	}
+	if code, _ = call("bob", reveal, false); code != 403 {
+		t.Fatalf("reveal foreign project: %d", code)
+	}
+	for _, folder := range []string{"../escape", "/etc", "app/a.txt"} {
+		reveal["file"] = folder
+		if code, _ = call("alice", reveal, false); code < 400 {
+			t.Fatalf("revealed %q", folder)
+		}
+	}
 	body["editor"] = "vscode"
 	workspaceEditorLocalAvailable = func() bool { return false }
 	if code, out = call("alice", body, false); code != 409 || out["launch"] != nil {

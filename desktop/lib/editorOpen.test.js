@@ -34,3 +34,13 @@ test('IDEA has a fixed executable and argument list, never a shell or a command 
   const failed = makeEditorOpener({ openExternal: async () => { throw Error('private details'); } });
   assert.deepEqual(await failed({ url: 'zed://file/Users/example/a', requestId: 'fixture' }), { ok: false, error: 'The editor could not open. Install it or choose another editor.' });
 });
+
+// Show in Finder/File Explorer opens only an absolute folder the server resolved, never a relative or ".." path.
+test('a revealed folder is opened as a path, never as a URL or command', async () => {
+  const opened = [];
+  const open = makeEditorOpener({ openPath: async folder => { opened.push(folder); return ''; }, openExternal: async () => { throw Error('unexpected URL'); } }, () => { throw Error('unexpected process'); });
+  for (const reveal of ['reviews', '/a/../secret', '/a\nb', 'https://example.com']) assert.equal((await open({ reveal, requestId: 'fixture' })).ok, false, reveal);
+  assert.equal((await open({ reveal: '/Users/example/project/reviews', requestId: 'fixture' })).ok, true);
+  assert.equal((await open({ reveal: 'C:\\Users\\example\\project', requestId: 'fixture' })).ok, true);
+  assert.deepEqual(opened, ['/Users/example/project/reviews', 'C:\\Users\\example\\project']);
+});

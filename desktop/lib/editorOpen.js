@@ -27,8 +27,22 @@ function jetbrainsArgs(target) {
   if (!Number.isSafeInteger(target.line) || target.line < 0 || target.line > 10000000) return null;
   return ['-na', 'IntelliJ IDEA.app', '--args', ...(target.line ? ['--line', String(target.line)] : []), target.path];
 }
+// A project folder the server resolved, shown in Finder or File Explorer.
+function revealFolderPath(raw) {
+  if (typeof raw !== 'string' || raw.length > 16384 || /[\x00-\x1f\x7f]/.test(raw)) return null;
+  const absolute = raw.startsWith('/') || /^[A-Za-z]:\\/.test(raw);
+  if (!absolute || raw.split(/[\\/]/).some(p => p === '..' || p === '.')) return null;
+  return raw;
+}
 function makeEditorOpener(shell, execFile) {
   return async function openEditor(payload) {
+    if (payload?.reveal !== undefined) {
+      const folder = revealFolderPath(payload.reveal);
+      const rid = typeof payload?.requestId === 'string' && /^[a-zA-Z0-9:_-]{1,100}$/.test(payload.requestId) ? payload.requestId : 'unknown';
+      const failed = folder ? await shell.openPath(folder) : 'unsupported';
+      console.info(`[OPEN_EDITOR] request=${rid} op=reveal ok=${!failed}`);
+      return failed ? { ok: false, error: 'This folder could not be opened.' } : { ok: true };
+    }
     const uri = normalizeEditorUrl(payload?.url);
     const args = payload?.url === undefined ? jetbrainsArgs(payload?.jetbrains) : null;
     const id = typeof payload?.requestId === 'string' && /^[a-zA-Z0-9:_-]{1,100}$/.test(payload.requestId) ? payload.requestId : 'unknown';
@@ -44,4 +58,4 @@ function makeEditorOpener(shell, execFile) {
     }
   };
 }
-module.exports = { normalizeEditorUrl, jetbrainsArgs, makeEditorOpener };
+module.exports = { normalizeEditorUrl, jetbrainsArgs, revealFolderPath, makeEditorOpener };
