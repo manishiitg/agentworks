@@ -745,7 +745,7 @@ These references identify the existing mechanisms inspected for this plan; the c
 | --- | --- |
 | `agent_go/pkg/agentprofiles/manifest.go` | YAML schema, embedded loading, chat-mode external admission fields. |
 | `agent_go/pkg/agentprofiles/types.go` | Runtime policies, direct bridge tools, workspace/conversation contracts. |
-| `agent_go/internal/dominionproduct/product_config.go` | Manifest-backed product loading pattern. |
+| `agent_go/internal/tradingproduct/product_config.go` (since removed) | Manifest-backed product loading pattern. |
 | `agent_go/internal/caplayerproduct/profile.go` | Vault profile registration and purpose-bound tool execution pattern. |
 | `agent_go/cmd/server/product_tool_gate.go` | Shared product tool admission. |
 | `agent_go/cmd/server/external_tools.go` | Extend manifest admission, schemas, and native external dispatch. |

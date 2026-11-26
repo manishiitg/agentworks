@@ -320,7 +320,7 @@ func museMSPCompactionChunk(item museMSPItem) llmtypes.StreamChunk {
 func (a *MuseCLIAdapter) museMSPResponse(s *museMSPSession, answer, turnText, model string, input, output, cacheRead, cacheWrite int) *llmtypes.ContentResponse {
 	// Muse's inputTokens already includes the cached part (as in the sidecar lane, museAttachTurnCost). Adding
 	// cacheRead again counted it twice: a chat's turns showed 100.9M prompt tokens against 50.8M in Muse's own
-	// session file, and the cache share fell from ~95% to ~50% (Excellence, 3 Nov).
+	// session file, and the cache share fell from ~95% to ~50% (server B, 3 Nov).
 	prompt := input
 	if prompt < cacheRead+cacheWrite {
 		prompt = input + cacheRead + cacheWrite

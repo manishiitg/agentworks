@@ -8,7 +8,7 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 )
 
-// RTS 2026-10-27: a message queued while the agent replied was injected as an anonymous user_message, so the
+// Server A 2026-10-27: a message queued while the agent replied was injected as an anonymous user_message, so the
 // chat showed it twice (a new row plus the person's own bubble pinned at the end). It is recorded once, where
 // the agent takes it, under the person's identity, so the chat matches the bubble it already shows.
 func TestQueuedSteerIsRecordedOnceUnderThePersonsIdentity(t *testing.T) {

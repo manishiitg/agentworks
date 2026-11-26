@@ -12,7 +12,7 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-// A login kept under an XDG_CONFIG_HOME other than ~/.config (the RTS server
+// A login kept under an XDG_CONFIG_HOME other than ~/.config (the server A host
 // sets one) is linked into the private home; it used to be looked for under
 // ~/.config only, so a confined Cursor on the server account had no login.
 func TestLinkCredentialFilesFollowsTheAccountConfigHome(t *testing.T) {

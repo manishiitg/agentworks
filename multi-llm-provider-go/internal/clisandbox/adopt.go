@@ -13,7 +13,7 @@ import (
 // adoptResumedSession copies the native session a confined launch resumes into the private home
 // when only the unconfined home has it. A chat started before its CLI was confined kept its
 // session in the server's (or account's) own home; the confined launch reads the private home,
-// so `resume <id>` found nothing and the pane exited at once (excellence Muse, RTS Claude and
+// so `resume <id>` found nothing and the pane exited at once (server B Muse, server A Claude and
 // Cursor, 2026-09-30). Only this session's own files are copied, never the rest of that home
 // (other people's sessions, indexes); a private copy that exists is kept. Claude keeps its own
 // adopter (its transcript folder is named after the working directory).

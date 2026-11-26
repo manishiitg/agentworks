@@ -20,7 +20,7 @@ Resources:
           - Effect: Allow
             Principal: { Service: ec2.amazonaws.com }
             Action: sts:AssumeRole
-      # Read-only, scoped to what the ops workflows (rtslatency) call. Widen
+      # Read-only, scoped to what the ops workflows call. Widen
       # here -- or swap in arn:aws:iam::aws:policy/ReadOnlyAccess under
       # ManagedPolicyArns for blanket read-only -- never by copying user keys.
       # SSM is the box's root-level admin channel (no sudo, SSH is deploy-only):

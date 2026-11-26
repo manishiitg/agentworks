@@ -17,7 +17,7 @@ func piLandlockReads(args []string, env ...string) []string {
 	read := clisandbox.ArgFilePaths(args)
 	// Pi's native MCP config (mcp.json, in its private agent folder) names the bridge program it
 	// spawns; without a read/exec grant on that program the bridge failed with "spawn
-	// .../mcpbridge EACCES" and Pi ran without its platform tools (Confida 2026-09-30).
+	// .../mcpbridge EACCES" and Pi ran without its platform tools (server C 2026-09-30).
 	if agentDir := piAgentDirFromEnv(env); agentDir != "" {
 		config := []string{piNativeMCPConfigPath(agentDir)}
 		if auth, err := filepath.EvalSymlinks(filepath.Join(agentDir, "auth.json")); err == nil {
@@ -51,7 +51,7 @@ func piAgentDirFromEnv(env []string) string {
 // piLandlockWrites is the launch folder itself: Pi's marker extension there appends to
 // markers.jsonl, so read access alone made Pi exit at start with "Failed to load extension ...
 // EACCES ... markers.jsonl" once the server's temp folder moved out of the shared /tmp
-// (Confida 2026-09-30). The folder is created for this one launch and removed after it.
+// (server C 2026-09-30). The folder is created for this one launch and removed after it.
 func piLandlockWrites(args []string) []string {
 	var write []string
 	for _, file := range clisandbox.ArgFilePaths(args) {

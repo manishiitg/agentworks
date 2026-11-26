@@ -158,7 +158,7 @@ check_build_on_branch() { # name sha
     || { echo "Build $name holds ${sha:0:10}, which is not an ancestor of $(branch_ref "$REPO_ROOT"), nor one plus changes already on it; refusing." >&2; return 1; }
 }
 
-# Prints the build name to deploy: the pinned one (all-hetzner), the chosen one (--build), or a build of the current branch head.
+# Prints the build name to deploy: the pinned one (a batch target), the chosen one (--build), or a build of the current branch head.
 ensure_prebuilt_build() {
   local found
   if [[ -n "${DEPLOY_PREBUILT_NAME:-}" ]]; then printf '%s\n' "$DEPLOY_PREBUILT_NAME"; return; fi
@@ -174,7 +174,7 @@ ensure_prebuilt_build() {
 }
 
 # Streams a trimmed copy of a build to server A (no mcpagent/provider source, no downloads/: that host never used them).
-ship_build_to_rts() { # name remote_job_dir
+ship_build_to_aws_server() { # name remote_job_dir
   local name="$1" job="$2"
   build_ssh "tar -C '$BUILDS_DIR' --exclude='$name/source/mcp-agent-builder-go/mcpagent' --exclude='$name/source/mcp-agent-builder-go/multi-llm-provider-go' --exclude='$name/downloads' -cf - '$name' | gzip -3" \
     | "${SSH[@]}" "cd '$job' && tar -xzf - && mv '$name' build"
@@ -193,8 +193,8 @@ publish_build_remote() { # name
 
 # Gets the trimmed build onto the server A job folder as <job>/build. DEPLOY_BUILD_TRANSPORT: auto (default: Server A downloads the build from
 # GitHub, and the old stream through this machine is the fallback when the release is missing or the download fails), github
-# (never fall back), stream (the old path only). Needs SSH (the ssh command line to server A) like ship_build_to_rts.
-deliver_build_to_rts() { # name remote_job_dir manifest_sha256
+# (never fall back), stream (the old path only). Needs SSH (the ssh command line to server A) like ship_build_to_aws_server.
+deliver_build_to_aws_server() { # name remote_job_dir manifest_sha256
   local name="$1" job="$2" hash="$3" mode="${DEPLOY_BUILD_TRANSPORT:-auto}" tag="" why=""
   case "$mode" in auto|github|stream) ;; *) echo "DEPLOY_BUILD_TRANSPORT must be auto, github or stream (got '$mode')" >&2; return 1 ;; esac
   if [[ "$mode" != stream ]]; then
@@ -202,17 +202,17 @@ deliver_build_to_rts() { # name remote_job_dir manifest_sha256
     if [[ -z "$tag" ]]; then
       why="the build is not on GitHub (no upload token on the build host yet, or the upload failed)"
     else
-      echo "==> RTS downloads build $name itself from GitHub ($tag)" >&2
+      echo "==> The AWS server downloads build $name itself from GitHub ($tag)" >&2
       if "${SSH[@]}" "cat > '$job/fetch-build.sh'" < "$REPO_ROOT/deploy/common/fetch-build.sh" \
-         && "${SSH[@]}" "bash '$job/fetch-build.sh' '$tag' build-rts.tar.gz '$hash' '$job/build'"; then
+         && "${SSH[@]}" "bash '$job/fetch-build.sh' '$tag' build-trimmed.tar.gz '$hash' '$job/build'"; then
         return 0
       fi
-      why="RTS could not download and verify $tag"
+      why="The AWS server could not download and verify $tag"
     fi
     [[ "$mode" != github ]] || { echo "DEPLOY_BUILD_TRANSPORT=github: $why" >&2; return 1; }
     echo "==> Falling back to streaming the build through this machine: $why" >&2
   fi
-  ship_build_to_rts "$name" "$job"
+  ship_build_to_aws_server "$name" "$job"
 }
 
 # Gets a build onto a product host that cannot read the build host's folder (PREBUILT_DELIVERY=fetch) as

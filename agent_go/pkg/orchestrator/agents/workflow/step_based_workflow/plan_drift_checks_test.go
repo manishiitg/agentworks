@@ -235,7 +235,7 @@ func TestCheckReportQueryCompatibilityDoesNotMutateDB(t *testing.T) {
 }
 
 // TestCheckReportQueryCompatibilityHandlesMultipleQueriesWithoutBlocking
-// covers a real bug found live on the Dominion deployment 2026-08-31:
+// covers a real bug found live on a trading deployment 2026-08-31:
 // db.QueryContext's returned *sql.Rows was discarded without Close() on a
 // successful query. openPlanDriftQueryOnlyDB caps the connection pool at
 // exactly 1 (SetMaxOpenConns(1)), so the first successful query in the loop

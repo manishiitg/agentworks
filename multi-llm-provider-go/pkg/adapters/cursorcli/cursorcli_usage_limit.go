@@ -19,7 +19,7 @@ import (
 //
 // Without this, the turn ended as "returned to the prompt without visible
 // assistant output" and whatever partial text preceded it reached the caller
-// as if it were the answer (RTS, 2026-09-29: a Crew's reply to another Crew's
+// as if it were the answer (server A, 2026-09-29: a Crew's reply to another Crew's
 // ask). Quota exhaustion must surface as KindQuotaExhausted so the run waits
 // for capacity instead of failing or passing on a half answer.
 //

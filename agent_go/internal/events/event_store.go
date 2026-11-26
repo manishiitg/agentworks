@@ -2252,7 +2252,7 @@ func (es *EventStore) logToolCallTelemetry(sessionID string, event Event) {
 // The turn-end signal and the tool-end events reach this store from different
 // places — the CLI's own completion versus the bridge callback that runs the
 // tool — and they are not ordered against each other. Measured on
-// tectonicusadaytrading 2026-08-18: the turn ended at 20:34:28 and the tool's
+// A trading workflow, 2026-08-18: the turn ended at 20:34:28 and the tool's
 // completion was processed at 20:34:29. Settling the instant the turn ends
 // therefore condemns calls that are one second from landing, which is how
 // fourteen completed shell commands were reported as never having reported.
@@ -2390,7 +2390,7 @@ func (es *EventStore) settleOpenToolCalls(sessionID string, turnEnd Event, stuck
 				sessionID, name, id, len(recovered), realDuration.Round(time.Millisecond))
 		}
 		// A completion, not an error. The tool ran — measured on
-		// tectonicusadaytrading, whose native transcript holds 215 tool_use and
+		// A trading workflow, whose native transcript holds 215 tool_use and
 		// 215 tool_result — and the agent received its result. Only our copy is
 		// missing. Painting that red puts a failure badge on a run where nothing
 		// failed, which is what an earlier version of this did and what made it

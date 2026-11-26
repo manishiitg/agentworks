@@ -484,7 +484,7 @@ async function main() {
       while (text !== undefined) {
         // After Cursor says its turn ended, a brief stream error can make the SDK resume the same run
         // from an older checkpoint; those resumes save nothing and the run only ends much later, if at
-        // all (RTS 12 Nov: the answer was out, then 15 silent minutes). So once the turn has ended and
+        // all (server A 12 Nov: the answer was out, then 15 silent minutes). So once the turn has ended and
         // nothing new starts for a short while, the answer already streamed is the reply: the run is
         // cancelled and the turn finishes. A run that ends with the SDK's own "no progress" error after
         // the turn ended has finished too.

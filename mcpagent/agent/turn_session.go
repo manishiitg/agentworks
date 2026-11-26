@@ -675,7 +675,7 @@ var retainedEndedWithoutReplyGrace = 1500 * time.Millisecond
 // running response's end_turn first and only ~100ms later appends the
 // follow-ups it queued meanwhile as user messages; a single read in that gap
 // took the OLD answer as the follow-up's completion, ended the turn, and left
-// the CLI's real work on the follow-up unwatched (RTS 2026-09-24 04:19:45:
+// the CLI's real work on the follow-up unwatched (server A 2026-09-24 04:19:45:
 // 4.5 minutes of narration never reached the chat).
 var retainedLiveInputFinalGrace = 1500 * time.Millisecond
 

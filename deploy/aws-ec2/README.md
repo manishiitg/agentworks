@@ -2,11 +2,11 @@
 
 This is the isolated public Video Studio deployment. It has one fixed product
 contract: the shared AgentWorks platform and the Video Studio surface are
-always present; Finance, Dominion, and other product surfaces are not exposed,
+always present; Finance, trading and other product surfaces are not exposed,
 and only the `video-studio` backend product is loaded. The release script
 validates both allowlists before every deployment.
 
-`./deploy.sh rts` already guarantees most of
+`./deploy.sh <server>` already guarantees most of
 [`../ROOTLESS-LINUX-DEPLOYMENT-CHECKLIST.md`](../ROOTLESS-LINUX-DEPLOYMENT-CHECKLIST.md)
 automatically on every release — that doc exists because a sibling
 deployment without an equivalent script had to rediscover each item as a
@@ -19,7 +19,7 @@ sandboxing or Caddy config, since this deployment shares that code.
 - Deploy method: server clones `main` → native Linux build → user-level systemd restart
 - Infrastructure: CloudFormation
 
-The deployer uses the `RTS` AWS profile and an SSH key. SSH ingress is limited
+The deployer uses the AWS profile named in the private `aws.env` and an SSH key. SSH ingress is limited
 to the deployer's current public IP; it is not publicly open.
 
 ## Deploy
@@ -30,11 +30,11 @@ From the repository root:
 ./deploy.sh <server>
 ```
 
-The RTS case in `deploy.sh` (`deploy_rts`) sends the deployment instructions
+This server's target in the private `deploy-targets.sh` calls `deploy_aws_server` in `deploy.sh`, which sends the deployment instructions
 and secrets; the server-side `server/bootstrap-build.sh` and
 `server/build-and-activate.sh` do the build, activation, and health gates.
 After the deploy it prints the CloudFront usage report
-(`report_rts_cloudfront_usage`).
+(`report_aws_cloudfront_usage`).
 This server's AWS profile, stack, CloudFront distribution, public URL, branding
 and agent service file are not in this repository: they live in the private
 deployments repo under `products/<server>/` (`aws.env`, `runtime-config.js`,
@@ -186,13 +186,13 @@ Run these checks from a machine with the deploy SSH key. They show service
 status and secret names only—never secret values.
 
 ```bash
-ssh -i ~/.ssh/id_ed25519 video-studio@"$RTS_HOST_IP" \
+ssh -i ~/.ssh/id_ed25519 video-studio@"$AWS_HOST_IP" \
   'systemctl --user is-active video-studio-agent video-studio-workspace video-studio-gateway'
 
-ssh -i ~/.ssh/id_ed25519 video-studio@"$RTS_HOST_IP" \
+ssh -i ~/.ssh/id_ed25519 video-studio@"$AWS_HOST_IP" \
   'awk -F= "/^GLOBAL_SECRET_/ {print \$1}" /var/lib/video-studio/video-studio/.env | sort'
 
-ssh -i ~/.ssh/id_ed25519 video-studio@"$RTS_HOST_IP" \
+ssh -i ~/.ssh/id_ed25519 video-studio@"$AWS_HOST_IP" \
   'grep -q "^MCP_API_URL=http://127.0.0.1:8000$" /var/lib/video-studio/video-studio/.env'
 
 curl -fsSI https://app.example.com/
@@ -200,8 +200,8 @@ curl -fsSI https://app.example.com/
 # Caddy does not compress responses by default -- a site block with no
 # `encode` directive silently ships the full uncompressed frontend bundle
 # (multiple MB) on every page load. Confirmed as the root cause of a real
-# "server is slow" report on the sibling Dominion Hetzner deployment
-# (dominion-hetzner.md), where the fix was adding `encode zstd gzip` to
+# "server is slow" report on a sibling trading deployment
+# on a shared Linux host, where the fix was adding `encode zstd gzip` to
 # that one site's Caddy block. Verify it here too, against the real JS
 # bundle referenced by the authenticated app shell, not just the small
 # /login page (small responses compress trivially either way and can look
@@ -277,8 +277,8 @@ service processes' environments.
 Landlock's own preflight passes.** Landlock is purely additive (no
 allow-with-carve-out rules) and rejects any Folder Guard policy that needs
 one — e.g. write access to a folder except one of its subfolders — falling
-through to the mount-namespace path instead. Found live on the Dominion
-Hetzner deployment (`dominion-hetzner.md`) 2026-08-28/29 as two stacked
+through to the mount-namespace path instead. Found live on a trading
+deployment on a shared Linux host 2026-08-28/29 as two stacked
 bugs, both now fixed:
 
 1. **Application bug, fixed in `workspace/security/isolator.go`/

@@ -168,7 +168,7 @@ func assertNoProgress(t *testing.T, capture *retainedProgressCapture, within tim
 	}
 }
 
-// Replays the RTS SDE crew turn: text, a tool_use that ran for two minutes,
+// Replays the server A SDE crew turn: text, a tool_use that ran for two minutes,
 // its tool_result, then more text. A steer sent meanwhile keeps Send inside
 // delivery (Claude queues it until the tool returns); the narration written
 // before the tool must still reach the chat while the tool runs.

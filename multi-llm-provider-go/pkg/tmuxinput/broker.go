@@ -255,7 +255,7 @@ func (w *sessionWorker) run() {
 		request.result.StartedAt = time.Now()
 		// Text typed in the CLI's own composer no longer blocks a send: only the person who owns the
 		// chat can reach that terminal, and refusing produced false "finish or clear the terminal
-		// draft" errors (Confida, 2026-09-30) for a case that is rare.
+		// draft" errors (server C, 2026-09-30) for a case that is rare.
 		err := request.operation(request.ctx)
 		request.result.CompletedAt = time.Now()
 		request.response <- response{result: request.result, err: err}

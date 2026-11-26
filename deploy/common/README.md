@@ -14,7 +14,7 @@ All deployments that write `releases/<id>` share `prune-releases.py`:
 | Deployment | Application directory |
 | --- | --- |
 | Video Studio rootless | `/var/lib/video-studio/video-studio` |
-| Confida rootless | `/srv/confida` |
+| Rootless Linux product | `/srv/<product>` |
 | Legacy EC2 installer | `/opt/video-studio` |
 | EC2 rootless migration | `/var/lib/video-studio/video-studio` |
 
@@ -34,8 +34,8 @@ This helper does not prune container images, registries, or Docker volumes.
 Preview or apply cleanup on a server:
 
 ```bash
-python3 prune-releases.py /srv/confida
-python3 prune-releases.py /srv/confida --apply \
+python3 prune-releases.py /srv/example
+python3 prune-releases.py /srv/example --apply \
   --health-url http://127.0.0.1:22000/api/health \
   --health-url http://127.0.0.1:22001/health
 ```

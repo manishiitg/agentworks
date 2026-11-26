@@ -10,7 +10,7 @@ import (
 	"github.com/manishiitg/mcpagent/llm"
 )
 
-// Replays Excellence 2026-09-29 06:27: live input sent into a running muse
+// Replays server B 2026-09-29 06:27: live input sent into a running muse
 // Session.Run was accepted by the CLI as the Run's response completed. Run
 // returned, nothing read the CLI, and its reply to the input never reached the
 // host. The Run's exit must hand the input to a follow-up watch.

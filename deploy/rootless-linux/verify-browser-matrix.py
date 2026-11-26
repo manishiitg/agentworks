@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Full browser matrix through the real app path, as the platform sends it. Run on the product host as the service account.
 
-  python3 verify-browser-matrix.py agents --port 24001 --user-id <any user id>      # Excellence (multi-user)
+  python3 verify-browser-matrix.py agents --port 24001 --user-id <any user id>      # a multi-user server
   python3 verify-browser-matrix.py example --port 23001                          # single-user server
   python3 verify-browser-matrix.py video-studio --port 8080 --docs-dir /data/video-studio/docs
 

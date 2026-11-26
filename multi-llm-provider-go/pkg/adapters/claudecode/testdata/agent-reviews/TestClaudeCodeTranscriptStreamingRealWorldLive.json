@@ -59,7 +59,7 @@
   "agent_review": {
     "verdict": "good",
     "reviewed_fingerprint": "55b87deedd819814",
-    "reviewer": "claude-rts-op (Claude Opus 5.5)",
+    "reviewer": "claude-ops (Claude Opus 5.5)",
     "issues": null,
     "notes": "Mod stream (turn.step): no duplicates, paragraphs separated, narration before each of the three real workbench tools in order, file written with the code word, final matches. Re-run after the inbox move."
   }

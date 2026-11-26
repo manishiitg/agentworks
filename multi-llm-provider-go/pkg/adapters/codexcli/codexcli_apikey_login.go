@@ -33,7 +33,7 @@ func seedCodexAPIKeyLogin(env []string, accountRoot, hint string) error {
 	marker := path + ".agentworks"
 	// The login may be LINKED in from an account's own home (a shared or a personal connection). It belongs to that
 	// account: writing through the link would replace its key with this session's, for everyone using the account
-	// (Excellence 2026-10-15). A linked login is never written, replaced or removed here.
+	// (server B 2026-10-15). A linked login is never written, replaced or removed here.
 	if reason := codexAuthLinkedReason(home, path); reason != "" {
 		log.Printf("[CODEX_AUTH] skipped_linked home_hash=%s reason=%s", codexAuthPathHash(home), reason)
 		return nil

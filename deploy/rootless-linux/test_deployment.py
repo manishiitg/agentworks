@@ -33,21 +33,6 @@ class SharedRootlessDeploymentTest(unittest.TestCase):
         for removed in ("deploy/rootless-linux/deploy.sh", "deploy/cf/deploy-cf.sh"):
             self.assertFalse((REPO / removed).exists(), removed)
 
-    def test_confida_keeps_required_product_contract(self):
-        private = REPO.parent / "deployments" / "products" / "confida" / "product.env"
-        if not private.is_file():
-            self.skipTest("Confida's config lives in the private deployments repository")
-        config = private.read_text()
-        for expected in (
-            "PIN_NODE_VERSION=\"24.21.0\"",
-            "AGY_AUTH_MODE=gemini",
-            "PERSIST_MCP_STATE=true",
-            "PUBLIC_HEALTH_STATUS=200",
-            'PUBLIC_CHECK_PATHS=("/login")',
-            "AGENTWORKS_MCP_STATE_DIR=/srv/confida/state/mcp",
-        ):
-            self.assertIn(expected, config)
-
     def test_every_deployment_uses_the_complete_cli_installer(self):
         for name in ("deploy.sh", "deploy/aws-ec2/server/build-and-activate.sh"):
             with self.subTest(entry=name):
@@ -58,7 +43,7 @@ class SharedRootlessDeploymentTest(unittest.TestCase):
             self.assertNotIn("CLI_TOOLS=", config)
             self.assertNotIn("CODEX_CLI_NPM_VERSION=", config)
 
-    def test_shared_builder_owns_confida_runtime_guards(self):
+    def test_shared_builder_owns_runtime_guards(self):
         deploy = (REPO / "deploy.sh").read_text()
         build = (ROOT / "build-and-activate.sh").read_text() + (REPO / "deploy/common/activate-release.sh").read_text()
         for expected in ("install-slack-cli.sh", "agent-browser@latest", "install-coding-clis.sh", "to_https_url"):
@@ -116,16 +101,16 @@ class GogKeyringDeploymentCheckTest(unittest.TestCase):
 
     def test_every_deploy_path_sets_the_keyring_and_updates_gog(self):
         rootless = (ROOT / "build-and-activate.sh").read_text()
-        rts = (REPO / "deploy/aws-ec2/server/build-and-activate.sh").read_text()
+        aws = (REPO / "deploy/aws-ec2/server/build-and-activate.sh").read_text()
         entry = (REPO / "deploy.sh").read_text()
         shared = (REPO / "deploy/common/activate-release.sh").read_text()
         self.assertIn("GOG_KEYRING_BACKEND", shared)
         self.assertIn("GOG_KEYRING_PASSWORD", shared)
-        for name, text in (("rootless", rootless), ("rts", rts)):
+        for name, text in (("rootless", rootless), ("aws", aws)):
             with self.subTest(deploy=name):
                 self.assertIn('source "$REPO_ROOT/deploy/common/activate-release.sh"', text)
                 self.assertIn("\nactivate_release\n", text)
-        for name, text in (("rootless-entry", entry), ("rts", rts)):
+        for name, text in (("rootless-entry", entry), ("aws", aws)):
             with self.subTest(deploy=name):
                 self.assertIn("deploy/common/install-gog.sh", text)
 

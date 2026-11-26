@@ -19,7 +19,7 @@ Environment=STATIC_DIR=%h/video-studio/current/frontend
 # connector OAuth redirect (deriveOAuthRedirectURI) and login redirects.
 # Without it the agent guesses from X-Forwarded-* headers two proxies deep.
 Environment=PUBLIC_URL=https://app.example.com
-# RTS never emails invitations (it shares the Supabase project); admins copy them.
+# This server never emails invitations (it shares the Supabase project); admins copy them.
 # PLAT-364: coding CLIs run under the Landlock launcher, confined to their
 # folder, for every user.
 # Full CLI (Claude's own shell and file edits) inside that lock, for every user.

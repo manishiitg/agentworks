@@ -2,7 +2,7 @@
 """Run on the product host/account; use an isolated profile, never a user's login.
 
 Example: python3 verify-managed-chrome.py example --port 23001 --cycles 20
-RTS:     python3 verify-managed-chrome.py video-studio --port 8080 --docs-dir /data/video-studio/docs
+Server A: python3 verify-managed-chrome.py video-studio --port 8080 --docs-dir /data/video-studio/docs
 Each browser operation is a separate sandbox request so command scratch cleanup
 is exercised. Print only test status, never service tokens or page contents.
 """
@@ -26,7 +26,7 @@ def main():
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--cycles", type=int, default=20)
     parser.add_argument("--docs-dir", help="workspace docs root (default /srv/<product>/data/docs)")
-    parser.add_argument("--user-id", help="X-User-ID to send, as the app does on multi-user servers (Excellence: any user id)")
+    parser.add_argument("--user-id", help="X-User-ID to send, as the app does on multi-user servers (any user id there)")
     args = parser.parse_args()
     if not re.fullmatch(r"[a-z][a-z0-9-]*", args.product):
         parser.error("invalid product")

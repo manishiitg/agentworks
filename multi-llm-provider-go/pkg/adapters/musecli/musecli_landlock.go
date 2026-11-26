@@ -29,7 +29,7 @@ func museLandlockGrants(args []string, env []string) (read, write []string) {
 	}
 	// Muse keeps its local-messaging endpoint lease under <data>/muse/runtime.
 	// Without write access every launch warned "local session messaging unavailable:
-	// ... direct endpoint lease: Permission denied" (excellence 2026-09-30).
+	// ... direct endpoint lease: Permission denied" (server B 2026-09-30).
 	if dataHome != "" {
 		runtimeDir := filepath.Join(dataHome, "muse", "runtime")
 		if os.MkdirAll(runtimeDir, 0o700) == nil {
@@ -82,7 +82,7 @@ func museLandlockCmdWithCredentials(opts *llmtypes.CallOptions, cmd *exec.Cmd, w
 
 // museManagedHooksDirs are the folders of the hook files the settings name in managed_hooks_path.
 // Muse runs those hook scripts for every prompt; without read access to their folder the lock made
-// each prompt fail with "Prompt blocked by hook ... Permission denied" (excellence 2026-09-30).
+// each prompt fail with "Prompt blocked by hook ... Permission denied" (server B 2026-09-30).
 func museManagedHooksDirs(settingsFiles []string) []string {
 	var dirs []string
 	for _, file := range settingsFiles {

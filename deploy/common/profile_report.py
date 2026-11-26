@@ -5,7 +5,7 @@ Runs on the server, as root or as the product's account. Reads the environment o
 facts (private /tmp in the sandbox health, kept releases, release source), and prints what differs. Changes nothing. With --enforce it
 exits 1 when a same_everywhere setting differs (not used yet: servers are aligned first, docs/design/deploy_unification.md).
 
-  python3 profile_report.py --profile runtime_profile.json --name excellence --account agents --app /srv/agents \
+  python3 profile_report.py --profile runtime_profile.json --name server-b --account agents --app /srv/agents \
       --data /srv/agents/state --workspace-port 24001 [--enforce]
 """
 import argparse

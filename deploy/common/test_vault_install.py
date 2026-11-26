@@ -246,14 +246,14 @@ vault_start example 24003
 
     def test_product_allowlists_match_preflight(self):
         repo = ROOT.parents[1]
-        rts = repo / 'deploy/aws-ec2'
-        script = (rts / 'server/build-and-activate.sh').read_text()
-        runtime = (rts / 'server/runtime-config.js').read_text()
-        unit = (rts / 'rootless/video-studio-agent.service').read_text()
+        aws = repo / 'deploy/aws-ec2'
+        script = (aws / 'server/build-and-activate.sh').read_text()
+        runtime = (aws / 'server/runtime-config.js').read_text()
+        unit = (aws / 'rootless/video-studio-agent.service').read_text()
         import re
         # Required settings only; `grep -Fq X file && {` is a must-not-contain check.
         for expected in re.findall(r"grep -Fq '([^']+)' \"[^\"]+\" (?!&& \{)", script[:script.index('RELEASE_ID=')]):
-            self.assertIn(expected, runtime + unit + (rts / 'rootless/video-studio-workspace.service').read_text())
+            self.assertIn(expected, runtime + unit + (aws / 'rootless/video-studio-workspace.service').read_text())
     def test_both_deployments_build_bootstrap_and_health_check(self):
         repo = ROOT.parents[1]
         # Both deploy paths check the staged release, then the shared activation renders, bootstraps and starts Vault.

@@ -208,7 +208,7 @@ func TestCursorPreToolRedirectHookURLs(t *testing.T) {
 		env  []string
 		deny bool
 	}{
-		{map[string]interface{}{"url": "https://rts.example.com/tools/custom/get_x"}, nil, true},
+		{map[string]interface{}{"url": "https://server-a.example.com/tools/custom/get_x"}, nil, true},
 		{map[string]interface{}{"url": "http://h/tools/mcp/x"}, nil, true},
 		{map[string]interface{}{"url": "http://10.0.0.5:8443/health"}, []string{"MCP_API_URL=http://10.0.0.5:8443"}, true},
 		{map[string]interface{}{"command": "curl $MCP_CUSTOM/x"}, nil, true},

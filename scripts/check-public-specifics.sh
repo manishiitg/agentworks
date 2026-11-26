@@ -5,7 +5,6 @@
 #   scripts/check-public-specifics.sh --staged          lines added by the staged change
 #   scripts/check-public-specifics.sh --message FILE    a commit message
 # Without the private list (a fork, a machine without the deployments checkout) it does nothing.
-# deploy.sh still names its servers in its own logic; it is skipped until that moves to the private config.
 set -uo pipefail
 root="$(git rev-parse --show-toplevel)"
 list="${AGENTWORKS_DEPLOYMENTS_DIR:-$root/../deployments}/public-repo-blocklist.txt"
@@ -13,7 +12,7 @@ list="${AGENTWORKS_DEPLOYMENTS_DIR:-$root/../deployments}/public-repo-blocklist.
 pattern="$(grep -v -E '^[[:space:]]*(#|$)' "$list" | paste -sd'|' -)"
 [[ -n "$pattern" ]] || exit 0
 case "${1:-}" in
-  --staged) text="$(git diff --cached -U0 --no-color -- . ':(exclude)deploy.sh' | grep '^+' | grep -v '^+++')" ;;
+  --staged) text="$(git diff --cached -U0 --no-color | grep '^+' | grep -v '^+++')" ;;
   --message) text="$(grep -v '^#' "${2:?commit message file}")" ;;
   *) echo "usage: $0 --staged | --message FILE" >&2; exit 2 ;;
 esac

@@ -82,7 +82,7 @@ func TestAgentDirectoryListsProjectsApartWithAgentStatus(t *testing.T) {
 func TestAgentDirectoryShowsProgramModelAndWhereItRuns(t *testing.T) {
 	_ = newTriggerLinkEnv(t)
 	rows := []map[string]any{
-		{"kind": "team_agent", "name": "rts", "id": "network:c:agent:Owner/team-agent-1", "owner": "Owner P.", "cli": "Claude Code", "model_id": "claude-opus-5-5", "reasoning_effort": "medium", "place": "mac"},
+		{"kind": "team_agent", "name": "ops", "id": "network:c:agent:Owner/team-agent-1", "owner": "Owner P.", "cli": "Claude Code", "model_id": "claude-opus-5-5", "reasoning_effort": "medium", "place": "mac"},
 		{"kind": "team_agent", "name": "ai-work", "id": "network:c:agent:Owner/ai-work", "owner": "Owner P.", "cli": "claude", "place": "mac", "terminal": true},
 		{"kind": "connected_agent", "name": "computer use", "id": "network:c:agent:Owner/codex-1", "owner": "Owner P.", "cli": "codex", "provider": "codex"},
 		{"kind": "team_agent", "name": "always on", "id": "network:c:agent:Owner/team-agent-2", "owner": "Owner P.", "cli": "Codex", "place": "server"},
@@ -99,10 +99,10 @@ func TestAgentDirectoryShowsProgramModelAndWhereItRuns(t *testing.T) {
 			t.Fatalf("%s %s=%q want %q (%v)", name, field, got, want, byName[name])
 		}
 	}
-	check("rts", "program", "Claude Code")
-	check("rts", "model", "claude-opus-5-5 · medium effort")
-	check("rts", "runs_as", "app chat")
-	check("rts", "runs_on", "Owner P.'s Mac")
+	check("ops", "program", "Claude Code")
+	check("ops", "model", "claude-opus-5-5 · medium effort")
+	check("ops", "runs_as", "app chat")
+	check("ops", "runs_on", "Owner P.'s Mac")
 	check("ai-work", "program", "Claude Code")
 	check("ai-work", "runs_as", "terminal (attached)")
 	check("computer use", "program", "Codex")

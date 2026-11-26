@@ -157,7 +157,7 @@ func TestSSEEventMessageStructure(t *testing.T) {
 // exact shape of a restart wiping the store while a browser tab was still
 // open with a stale, large since= cursor from before the restart. Before the
 // fix, the empty-backfill branch sent nothing at all: no correction, and the
-// client never learns its cursor is stale. Confirmed live on the Dominion
+// client never learns its cursor is stale. Confirmed live on a trading
 // deployment 2026-08-31: a chat turn completed and was persisted correctly,
 // but never appeared in an already-open tab until a manual page refresh.
 func TestSSEStreamSendsResyncSignalWhenEventStoreHasNoRecordOfSession(t *testing.T) {

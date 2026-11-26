@@ -30,6 +30,6 @@
     "reviewed_fingerprint": "9bdfe0e1593ae493",
     "reviewer": "claude-code",
     "issues": [],
-    "notes": "Race hit: Send started 30ms before Run returned and its tmux ack landed 37ms after (the Excellence muse shape). Run answered only the lighthouse paragraph; the Claude CLI then answered the live input and the follow-up watch delivered it as exactly one mcpagent_session completion with final ZEBRA_49b035829057, 2.9s after the Run. Same test against pre-fix origin/main: no follow-up completion within 5 minutes (reply lost)."
+    "notes": "Race hit: Send started 30ms before Run returned and its tmux ack landed 37ms after (the server B muse shape). Run answered only the lighthouse paragraph; the Claude CLI then answered the live input and the follow-up watch delivered it as exactly one mcpagent_session completion with final ZEBRA_49b035829057, 2.9s after the Run. Same test against pre-fix origin/main: no follow-up completion within 5 minutes (reply lost)."
   }
 }

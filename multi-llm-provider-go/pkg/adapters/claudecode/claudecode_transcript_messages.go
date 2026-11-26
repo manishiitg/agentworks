@@ -174,7 +174,7 @@ type claudeCompletedTranscriptResponse struct {
 	// to the background as task <id>") whose <task-notification> has not
 	// arrived yet. Claude ends its turn right away and starts a new one on its
 	// own when the task finishes; without this gate the platform closed the
-	// chat turn and never showed that continuation (RTS 2026-09-24).
+	// chat turn and never showed that continuation (server A 2026-09-24).
 	PendingBackgroundTasks int
 }
 

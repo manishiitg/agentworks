@@ -171,7 +171,7 @@ func TestClaudeCodeTmuxIntegrationLargePastedPromptSubmits(t *testing.T) {
 // A multi-line command with long lines (the shape of a user slash command)
 // must reach Claude whole. With a separate newline keystroke before each
 // pasted line, Claude Code dropped the pasted lines and kept only the last one
-// (RTS 2026-09-25), which a last-line token alone never caught.
+// (server A 2026-09-25), which a last-line token alone never caught.
 func TestClaudeCodeTmuxIntegrationMultilineCommandKeepsEveryLine(t *testing.T) {
 	skipClaudeInteractiveIntegration(t)
 

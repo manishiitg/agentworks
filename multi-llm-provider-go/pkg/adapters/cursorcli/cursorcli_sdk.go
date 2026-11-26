@@ -722,7 +722,7 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 	}
 	defer s.turnMu.Unlock()
 	// The turn takes steering from its first moment, including while the bridge starts and before the
-	// prompt is sent: a message 2s in otherwise fell back to an after-turn injection (RTS 2026-10-27).
+	// prompt is sent: a message 2s in otherwise fell back to an after-turn injection (server A 2026-10-27).
 	s.mu.Lock()
 	s.running = true
 	s.mu.Unlock()

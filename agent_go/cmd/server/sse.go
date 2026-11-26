@@ -258,7 +258,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 			// still asking for events after its old, now-meaningless index.
 			//
 			// Two things go wrong if we silently do nothing here, confirmed
-			// live on Dominion 2026-08-31 (a chat answer was fully generated
+			// live on a trading deployment 2026-08-31 (a chat answer was fully generated
 			// and persisted, but never appeared in an already-open tab until
 			// a manual refresh):
 			//  1. The client is never told to resync, so it just sits there

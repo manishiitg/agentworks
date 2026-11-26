@@ -137,7 +137,7 @@ func shortenSettleGrace(t *testing.T) func() {
 
 // TestLateToolResultIsNotSettled is the measured race that made this necessary.
 //
-// tectonicusadaytrading, 2026-08-18: the turn ended at 20:34:28 and the tool's
+// A trading workflow, 2026-08-18: the turn ended at 20:34:28 and the tool's
 // completion was processed at 20:34:29. Settling on the turn-end signal alone
 // condemned fourteen shell commands that had in fact completed — the session's
 // native transcript shows 215 tool_use and 215 tool_result, so the model

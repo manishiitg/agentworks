@@ -61,7 +61,7 @@ one hour without rerunning providers that are not due. Each attempt has a
 
 ## Deployment provisioning
 
-Every server deployment (rootless products, server A and Dominion) uses
+Every server deployment (rootless products, server A and a trading deployment) uses
 `deploy/common/install-coding-clis.sh` to install or update Claude Code, Codex,
 Cursor Agent, Pi, Muse and AGY. It requests current official releases and
 checks that every managed executable launches with `--version` before the

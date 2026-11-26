@@ -150,7 +150,7 @@ type WorkflowManifest struct {
 	// ($SECRET_<NAME>) they should actually see, instead of silently
 	// falling through to the placeholder "default" user, who never has any
 	// secrets stored (nobody configures a workflow's API keys while logged
-	// in as "default"). Confirmed live on the Dominion deployment
+	// in as "default"). Confirmed live on a trading deployment
 	// 2026-08-31/09-01: real Polygon/Finnhub keys existed under the actual
 	// creating user's account the whole time; scheduled runs simply never
 	// looked there. Empty for any workflow created before this field

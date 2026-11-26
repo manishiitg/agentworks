@@ -162,7 +162,7 @@ func piNativeMCPEnv(agentDir, sessionDir string) []string {
 //
 // A confined Pi does not share it: the cache is executable code that every user's Pi on the
 // server would load, so a writable shared copy would let one user's Pi plant code in another's;
-// and the confined Pi cannot write there anyway (npm's rename failed with EACCES, Confida
+// and the confined Pi cannot write there anyway (npm's rename failed with EACCES, server C
 // 2026-09-30). It gets its own folder, and npm installs into that. A link left by an earlier,
 // unconfined launch is replaced.
 func linkSharedPiExtensionCache(agentDir string, confined bool) {

@@ -755,7 +755,7 @@ func museWriteShellRedirectHook() (string, error) {
 // any account can execute. On a slot host Muse runs as the person's own Linux
 // account, and the PATH node there was the service account's nvm install,
 // which slots cannot enter, so every hook failed with "Permission denied" and
-// the tool policy never ran (Excellence, 2026-10-07). "node" is the fallback
+// the tool policy never ran (server B, 2026-10-07). "node" is the fallback
 // when no such path exists.
 func museHookNode() string {
 	candidates := []string{}

@@ -153,8 +153,8 @@ func TestSlotOfHonoursTheProductsSlotPrefix(t *testing.T) {
 	if _, ok := SlotOf(filepath.Join(state, "slot07", "cli", "x")); ok {
 		t.Fatal("another product's slot name must not be recognised")
 	}
-	t.Setenv(EnvSlotctl, "/usr/local/libexec/agentworks/confida/slotctl")
-	if slotctl() != "/usr/local/libexec/agentworks/confida/slotctl" {
+	t.Setenv(EnvSlotctl, "/usr/local/libexec/agentworks/example/slotctl")
+	if slotctl() != "/usr/local/libexec/agentworks/example/slotctl" {
 		t.Fatal("the slot program override is ignored")
 	}
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/manishiitg/mcpagent/llm"
 )
 
-// Replays RTS 2026-09-24 04:19:45: follow-ups were sent into a running Claude
+// Replays server A 2026-09-24 04:19:45: follow-ups were sent into a running Claude
 // response. Claude wrote that response's end_turn, then ~100ms later appended
 // the queued follow-ups as user messages and kept working on them. The watcher
 // refreshed for the follow-ups must not take the old end_turn as their answer.

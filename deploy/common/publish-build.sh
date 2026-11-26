@@ -2,7 +2,7 @@
 # Publish a finished build to the PUBLIC GitHub repo that only holds builds (PLAT-426), so servers download it themselves.
 #
 #   publish-build.sh <build-dir>     publish (idempotent): release build-<builder8> with the assets
-#                                    build.tar.gz (the whole build folder), build-rts.tar.gz (the trimmed copy server A needs),
+#                                    build.tar.gz (the whole build folder), build-trimmed.tar.gz (the trimmed copy server A needs),
 #                                    manifest.json, SHA256SUMS; then keep only the newest 8 build releases per architecture
 #                                    Also publish cli-<build-name>: six compressed CLI assets and archive SHA256SUMS, retained independently.
 #   publish-build.sh --list          the build releases on GitHub (anonymous, read-only)
@@ -23,13 +23,13 @@ API = os.environ.get("GH_API_URL", "https://api.github.com").rstrip("/")
 UPLOAD = os.environ.get("GH_UPLOAD_URL", "https://uploads.github.com").rstrip("/")
 KEEP = int(os.environ.get("BUILDS_KEEP_RELEASES", "8"))
 TAG_RE = re.compile(r"^build-[0-9a-f]{8}(-arm64)?$")
-ASSETS = ("build.tar.gz", "build-rts.tar.gz", "manifest.json", "SHA256SUMS")
+ASSETS = ("build.tar.gz", "build-trimmed.tar.gz", "manifest.json", "SHA256SUMS")
 CLI_ASSETS = tuple("agentworks-" + target + (".exe" if target.startswith("windows-") else "") + ".gz"
                    for target in ("darwin-amd64", "darwin-arm64", "linux-amd64", "linux-arm64", "windows-amd64", "windows-arm64")) + ("SHA256SUMS",)
 MAX_ASSET = 2 * 1024**3 - 1
 REPOS = ("mcp-agent-builder-go",)
-# Left out of the copy server A needs: the two library sources and the CLI downloads (server A never used them). Same as ship_build_to_rts.
-RTS_EXCLUDE = ("source/mcpagent", "source/multi-llm-provider-go", "downloads")
+# Left out of the copy server A needs: the two library sources and the CLI downloads (server A never used them). Same as ship_build_to_aws_server.
+TRIMMED_EXCLUDE = ("source/mcpagent", "source/multi-llm-provider-go", "downloads")
 
 
 class Fatal(Exception):
@@ -284,7 +284,7 @@ def publish(build, cli_only=False):
         try:
             say(f"publishing build {name} as {tag}")
             tar_gz(parent, name, os.path.join(tmp, "build.tar.gz"))
-            tar_gz(parent, name, os.path.join(tmp, "build-rts.tar.gz"), RTS_EXCLUDE)
+            tar_gz(parent, name, os.path.join(tmp, "build-trimmed.tar.gz"), TRIMMED_EXCLUDE)
             shutil.copy(manifest, os.path.join(tmp, "manifest.json"))
             with open(os.path.join(tmp, "SHA256SUMS"), "w") as sums:
                 for asset in ASSETS[:3]:

@@ -219,19 +219,19 @@ func landlockSystemReadPaths() []string {
 		// read one more config file died with EACCES: pip needs
 		// /etc/debian_version (distro id for its User-Agent) and then
 		// /etc/mime.types, and each surfaced as its own live "installing
-		// packages is impossible" failure on Dominion (PLAT-283). Read-only
+		// packages is impossible" failure on a trading deployment (PLAT-283). Read-only
 		// /etc is what every ordinary program assumes. DAC still applies, so
 		// this grants nothing the service user cannot already read outside
-		// the sandbox -- verified on Dominion: no file under /etc is readable
+		// the sandbox -- verified on a trading deployment: no file under /etc is readable
 		// by the service user without also being world-readable. Landlock
 		// rules are additive, so a deployment cannot carve a secret back out
-		// of this grant: keep service-readable secrets out of /etc (Dominion
-		// keeps them in /srv/dominion/.env). /proc stays narrow, see below.
+		// of this grant: keep service-readable secrets out of /etc (a trading deployment
+		// keeps them in /srv/<product>/.env). /proc stays narrow, see below.
 		"/etc",
 		// The explicit entries below are NOT redundant with "/etc" above: a
 		// path_beneath rule on /etc covers what lives under /etc, not what a
 		// symlink there points at. On systemd-resolved hosts (Ubuntu, i.e.
-		// Dominion) /etc/resolv.conf -> /run/systemd/resolve/stub-resolv.conf,
+		// a trading deployment) /etc/resolv.conf -> /run/systemd/resolve/stub-resolv.conf,
 		// so with "/etc" alone every DNS lookup in the sandbox failed
 		// ("Temporary failure in name resolution") -- found live while
 		// verifying PLAT-283. existingCanonicalPaths resolves each of these
@@ -275,10 +275,10 @@ func landlockSystemReadPaths() []string {
 		}
 	}
 	// A deployment can install its own CLI tools outside the standard system
-	// dirs above (Dominion: /srv/dominion/tools/bin, on PATH for every
+	// dirs above (a trading deployment: /srv/<product>/tools/bin, on PATH for every
 	// service). Without an explicit grant here, a landlocked step gets
 	// "Permission denied" (rc=126) trying to exec them -- not a read/config
-	// problem, an exec-rights one: PLACE_PAPER_TRADES on Dominion hit exactly
+	// problem, an exec-rights one: PLACE_PAPER_TRADES on a trading deployment hit exactly
 	// this trying to launch the alpaca CLI, every run since the tool was
 	// first installed. Colon-separated, same convention as PATH.
 	if extra := strings.TrimSpace(os.Getenv("SANDBOX_EXTRA_SYSTEM_PATHS")); extra != "" {

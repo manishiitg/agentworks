@@ -30,7 +30,7 @@ func planDriftWorkflowDBPath(workspacePath string) string {
 // than a hand-rolled DSN string. This was the one remaining workflow
 // db.sqlite opener not yet migrated when report_human_inputs.go's
 // SQLITE_BUSY fix and the shared helper itself landed — found live on the
-// Dominion deployment 2026-08-31 as the source of a second, separate
+// trading deployment 2026-08-31 as the source of a second, separate
 // get_pulse_state(view=module) hang (in CheckReportQueryCompatibility) that
 // survived that first fix, load-dependent enough that it couldn't be
 // force-reproduced in isolation.

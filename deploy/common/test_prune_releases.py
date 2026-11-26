@@ -14,10 +14,10 @@ spec.loader.exec_module(module)
 
 
 class ReleaseCleanupTest(unittest.TestCase):
-    def test_confida_incomplete_release_and_latest_staged_candidate(self):
+    def test_incomplete_release_and_latest_staged_candidate(self):
         with tempfile.TemporaryDirectory() as tmp:
             app = Path(tmp).resolve()
-            names = ['confida-abcdef0-20260910120000', 'confida-abcdef1-20260910120000', 'confida-abcdef2-20260910120000']
+            names = ['example-abcdef0-20260910120000', 'example-abcdef1-20260910120000', 'example-abcdef2-20260910120000']
             for name in names:
                 (app / 'releases' / name).mkdir(parents=True)
             (app / 'current').symlink_to(app / 'releases' / names[0])

@@ -54,7 +54,7 @@ func TestCrewTeamAgentIdentitySurvivesMainKeyChangeAndSeparatesOwners(t *testing
 	}
 
 	// A member's Main without a chat yet must not be saved: such a row made the whole
-	// registry refuse every later read (Excellence, 13-14 Nov).
+	// registry refuse every later read (server B, 13-14 Nov).
 	unready := []crewTeamAgentsPerson{{UserID: "member", Agents: []crewTeamAgent{{Tab: "other", ChatKey: ""}}}}
 	if err := assignCrewTeamAgentIDs(team, unready); err != nil || len(unready[0].Agents) != 0 {
 		t.Fatalf("agent without a chat was registered: err=%v agents=%d", err, len(unready[0].Agents))

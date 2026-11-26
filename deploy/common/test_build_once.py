@@ -2,7 +2,6 @@
 from pathlib import Path
 import json
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -182,19 +181,8 @@ class EntryPointTest(unittest.TestCase):
     def test_deploy_sh_parses_and_exposes_the_new_commands(self):
         subprocess.run(["bash", "-n", str(DEPLOY.parent / "deploy.sh")], check=True)
         help_text = subprocess.run([str(DEPLOY.parent / "deploy.sh"), "--help"], capture_output=True, text=True).stdout
-        for word in ("all-hetzner", "builds", "build [--force]", "--build <name|sha>", "pin|unpin"):
+        for word in ("builds", "build [--force]", "--build <name|sha>", "pin|unpin"):
             self.assertIn(word, help_text)
-
-    def test_all_hetzner_excludes_separated_products(self):
-        entry = (DEPLOY.parent / "deploy.sh").read_text()
-        block = entry[entry.index("\n  all-hetzner)\n"):entry.index("\n  -h|--help|help)")]
-        # PLAT-856-454: platform batches exclude separately developed products.
-        self.assertNotIn("dominion", block.lower().replace("never dominion", ""))
-        # A product deploy may be wrapped as `locked_deploy <server> deploy_rootless_product <product>`.
-        calls = [re.sub(r"^locked_deploy \S+ ", "", l.strip()) for l in block.splitlines()]
-        self.assertEqual([c for c in calls if c.startswith("deploy_rootless_product ")],
-                         ["deploy_rootless_product agents", "deploy_rootless_product confida"])
-
 
 
 if __name__ == "__main__":

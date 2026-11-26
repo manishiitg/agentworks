@@ -1759,7 +1759,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         // is not). Re-run the same durable-history restore a fresh page
         // load already uses (sessionRestore.ts) so an already-open tab
         // self-heals instead of requiring a manual refresh. Confirmed live
-        // on Dominion 2026-08-31: a fully-generated, persisted chat answer
+        // on a trading deployment 2026-08-31: a fully-generated, persisted chat answer
         // never appeared in an open tab until it was manually reloaded.
         void restoreSession(actualSessionId, { source: 'sse-reset-resync', skipConfigRestore: true })
       }
