@@ -272,8 +272,8 @@ export interface ChatContextView {
   parts?: ChatContextPart[]
 }
 
-/** project: the project's folders; auto_review: the whole Mac, the coding app's reviewer approves; full_access: the whole Mac, no checks. */
-export type ChatAccessMode = 'project' | 'auto_review' | 'full_access'
+/** The chat's mode: project (Normal, works without asking) or auto_review (the coding app's reviewer approves). Reach is the project's access. */
+export type ChatAccessMode = 'project' | 'auto_review'
 
 export interface ChatAccessView {
   /** The saved choice; effective is what the next message gets with this coding app on this computer. */

@@ -3482,7 +3482,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 })()}
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
                 {/* Like Claude Code's status line: model · effort, then the mode (Auto / Plan; Shift+Tab switches) and how full the context is (#3711). */}
-                {/* The mode menu (#3885): This project / Auto-review / Plan / Full access, and what the chat can reach. */}
+                {/* The mode menu (#3885): Normal / Auto-review / Plan, and the project's access with Change. */}
                 {(nativePlanSupported || (agentProfileId === 'work' && tabSessionId)) && <ChatModeMenu sessionId={agentProfileId === 'work' ? tabSessionId || undefined : undefined} projectId={agentProfileId === 'work' ? agentProfileProjectId || undefined : undefined}
                   plan={nativePlanSupported ? { on: planOn } : undefined} planReady={planReady} onPlanToggle={togglePlanMode} onStart={startPlannedWork} />}
                 {agentProfileId === 'work' && tabSessionId && <ContextRing sessionId={tabSessionId} busy={isTurnInFlight} />}

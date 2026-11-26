@@ -5713,13 +5713,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				sendError("Could not load your attached folders. Please retry this turn.", true)
 				return
 			}
-			// The chat's access mode (#3885): a whole-Mac mode adds the person's home folder for this turn only, and
-			// Auto-review hands approvals to the coding app's own reviewer. Only the chat owner's own turns on their
-			// own Mac get it: a shared ask, a guest or a read-only caller runs as This project.
+			// The chat's mode (#3885): Auto-review hands approvals to the coding app's own reviewer. What the turn
+			// reaches is the project's access above, never the mode (owner, 26 Nov). Only the chat owner's own turns
+			// on their own Mac read it.
 			if cliPersonalMac() && !currentUserIsReadOnly && !crewAskOnly && req.SharedAgentSender == "" {
 				saved := chatAccessSavedMode(streamCtx, currentUserID, sessionID)
 				accessMode := chatAccessEffective(saved, finalProvider, true)
-				turnFolderGrants = withChatAccessGrant(turnFolderGrants, accessMode)
 				if accessMode == chatAccessAutoReview {
 					streamCtx = llmtypes.WithCodingAgentAutoReview(streamCtx, sessionID)
 				}

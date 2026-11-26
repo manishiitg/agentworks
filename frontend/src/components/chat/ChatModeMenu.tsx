@@ -7,22 +7,21 @@ import api, { workFolderApi } from '../../services/api'
 import type { ChatAccessMode, WorkFolderGrant } from '../../services/api-types'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 
-// The chat's mode beside the model (#3885): one menu for what the agent can reach and who approves its actions,
-// plus Plan. The menu is the everyday front for "Folders on this Mac": it says what the chat can reach and links
-// there. Shift+Tab still switches Plan.
+// The chat's mode beside the model (#3885): how this chat works (Normal, Auto-review, Plan). What it can reach is the
+// project's access, set in Folders on this Mac (owner, 26 Nov: "access is at project level.. mode is chat level"); the
+// menu shows it on one line with Change. Shift+Tab still switches Plan.
 
 type Row = { id: ChatAccessMode | 'plan'; label: string; chip: string; detail: string }
 
 const ROWS: Row[] = [
-  { id: 'project', label: 'This project', chip: 'Auto', detail: 'Works without asking. It can only reach this project and the folders attached to it.' },
-  { id: 'auto_review', label: 'Auto-review', chip: 'Auto-review', detail: 'Your whole Mac. The coding app’s own reviewer approves each action and refuses risky ones.' },
+  { id: 'project', label: 'Normal', chip: 'Normal', detail: 'Works without asking, inside the project’s access.' },
+  { id: 'auto_review', label: 'Auto-review', chip: 'Auto-review', detail: 'The coding app’s own reviewer approves each action and refuses risky ones.' },
   { id: 'plan', label: 'Plan', chip: 'Plan', detail: 'Proposes a plan and changes nothing until you approve it.' },
-  { id: 'full_access', label: 'Full access', chip: 'Full access', detail: 'Your whole Mac, no checks.' },
 ]
 
 const chipClass = 'inline-flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted'
 
-/** What the chat can reach, for the line under the modes: the folders attached on this Mac and the whole-Mac row. */
+/** The project's access, for the line under the modes: the folders attached on this Mac and the whole-Mac row. */
 function useReach(open: boolean) {
   const [reach, setReach] = useState<{ folders: WorkFolderGrant[]; home: string } | null>(null)
   useEffect(() => {
@@ -118,19 +117,20 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
             </Menu.RadioItem>
           })}
         </Menu.RadioGroup>
-        {fallback && <p className="px-2.5 pt-1 text-xs text-amber-700 dark:text-amber-400" data-testid="chat-mode-fallback">This coding app has no reviewer that works here, so this chat runs as This project.</p>}
+        {fallback && <p className="px-2.5 pt-1 text-xs text-amber-700 dark:text-amber-400" data-testid="chat-mode-fallback">This coding app has no reviewer that works here, so this chat runs as Normal.</p>}
         {access && <>
           <Menu.Separator className="my-1 h-px bg-border" />
-          <div className="px-2.5 py-1 text-xs text-muted-foreground" data-testid="chat-mode-reach">
-            {access.on_server
-              ? 'On a server every mode stays inside this chat’s folders.'
-              : wholeMac
-                ? 'Whole Mac: attached to this project, so every mode can reach it.'
-                : access.effective !== 'project'
-                  ? 'Can reach: your whole Mac (this chat only).'
-                  : `Can reach: this project${others.length ? ` · ${others.map(folder => folder.alias || folder.path).join(' · ')}` : ''}`}
-          </div>
-          <Menu.Item className={menuRowClass} data-testid="chat-mode-manage-folders" onSelect={openFolders}>Manage folders</Menu.Item>
+          <Menu.Item className={`${menuRowClass} items-start`} data-testid="chat-mode-manage-folders" onSelect={openFolders}
+            title="Access is the project's: every chat in it reaches the same folders.">
+            <span className="min-w-0 flex-1 text-xs text-muted-foreground" data-testid="chat-mode-reach">
+              Access (project): {access.on_server
+                ? 'this project’s folders'
+                : wholeMac
+                  ? 'your whole Mac'
+                  : `this project${others.length ? ` · ${others.map(folder => folder.alias || folder.path).join(' · ')}` : ''}`}
+            </span>
+            <span className="shrink-0 text-xs font-medium text-primary">Change</span>
+          </Menu.Item>
         </>}
       </Menu.Content>
     </Menu.Portal>

@@ -16,12 +16,11 @@ vi.mock('../../services/api', () => ({
 vi.mock('../../stores/useWorkflowStore', () => ({ useWorkflowStore: { getState: () => ({ openWorkspaceView: vi.fn() }) } }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
-const codexView = (mode: 'project' | 'auto_review' | 'full_access', effective = mode): ChatContextView => ({
+const codexView = (mode: 'project' | 'auto_review', effective = mode): ChatContextView => ({
   session_id: 's1', can_compact: false, can_new_chat: true,
   access: { mode, effective, options: [
     { mode: 'project', available: true },
     { mode: 'auto_review', available: false, why: 'This coding app has no reviewer that works here yet.' },
-    { mode: 'full_access', available: true },
   ] },
 })
 
@@ -38,19 +37,19 @@ async function openMenu(element: React.ReactElement) {
   return trigger
 }
 
-// #3885: the mode menu offers each mode with what it reaches; a mode this app cannot run says why and is off.
-it('saves a picked mode and keeps Auto-review off for an app without a reviewer', async () => {
+// #3885, split 26 Nov: the menu offers Normal / Auto-review / Plan; access is the project's, on one line with Change.
+it('offers the chat modes, keeps Auto-review off for an app without a reviewer and shows the project access', async () => {
   view = codexView('project')
   const trigger = await openMenu(<ChatModeMenu sessionId="s1" onPlanToggle={() => {}} />)
-  expect(trigger.textContent).toContain('Auto')
+  expect(trigger.textContent).toContain('Normal')
+  expect(document.querySelector('[data-testid="chat-mode-full_access"]')).toBeNull()
   const auto = document.querySelector('[data-testid="chat-mode-auto_review"]') as HTMLElement
   expect(auto.getAttribute('data-disabled')).not.toBeNull()
   expect(auto.textContent).toContain('no reviewer')
   expect(document.querySelector('[data-testid="chat-mode-plan"]')).toBeNull()
   await act(async () => { await Promise.resolve() })
-  expect(document.querySelector('[data-testid="chat-mode-reach"]')?.textContent).toContain('Can reach: this project · Downloads')
-  await act(async () => { (document.querySelector('[data-testid="chat-mode-full_access"]') as HTMLElement).click() })
-  expect(changeChatContext).toHaveBeenCalledWith('s1', { access_mode: 'full_access' })
+  expect(document.querySelector('[data-testid="chat-mode-reach"]')?.textContent).toContain('Access (project): this project · Downloads')
+  expect(document.querySelector('[data-testid="chat-mode-manage-folders"]')?.textContent).toContain('Change')
 })
 
 it('says when a saved mode runs as This project, and picking Plan only turns Plan on', async () => {
@@ -76,4 +75,11 @@ it('Manage folders opens the Crew project side panel', async () => {
   } finally {
     window.removeEventListener(openCrewMacFoldersEvent, listen)
   }
+})
+
+it('saves a picked mode', async () => {
+  view = { ...codexView('auto_review'), access: { mode: 'auto_review', effective: 'auto_review', options: [{ mode: 'project', available: true }, { mode: 'auto_review', available: true }] } }
+  await openMenu(<ChatModeMenu sessionId="s1" onPlanToggle={() => {}} />)
+  await act(async () => { (document.querySelector('[data-testid="chat-mode-project"]') as HTMLElement).click() })
+  expect(changeChatContext).toHaveBeenCalledWith('s1', { access_mode: 'project' })
 })
