@@ -206,7 +206,7 @@ func (api *StreamingAPI) updateGmailConnectionGrantsFromTool(ctx context.Context
 		return "", fmt.Errorf("saved the new request, but could not build a reconnect link: %w. Tell the user to open the Sending accounts panel and click Reconnect themselves", err)
 	}
 	extraScopes := services.GoogleServiceScopeURIs(updated.Services)
-	authURL, err := services.BeginGmailOAuth(updated.ID, updated.ClientName, redirectURI, updated.AllowReadAccess, updated.AllowAgentWriteAccess, extraScopes)
+	authURL, err := services.BeginGmailOAuth(personalConnectionActor(ctx), updated.ID, updated.ClientName, redirectURI, updated.AllowReadAccess, updated.AllowAgentWriteAccess, extraScopes)
 	if err != nil {
 		return "", fmt.Errorf("saved the new request, but could not start the reconnect flow: %w. Tell the user to open the Sending accounts panel and click Reconnect themselves", err)
 	}

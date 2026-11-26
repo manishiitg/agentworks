@@ -87,7 +87,7 @@ func TestOAuthCallbackHandsGmailSignInToGmail(t *testing.T) {
 	if _, err := services.EnsurePlatformOAuthClient(context.Background(), "cid.apps.googleusercontent.com", "shh"); err != nil {
 		t.Fatal(err)
 	}
-	authURL, err := services.BeginGmailOAuth("conn-1", services.PlatformGoogleClientName, "https://app.example.com/api/oauth/callback", true, false, nil)
+	authURL, err := services.BeginGmailOAuth("", "conn-1", services.PlatformGoogleClientName, "https://app.example.com/api/oauth/callback", true, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,5 +106,26 @@ func TestOAuthCallbackHandsGmailSignInToGmail(t *testing.T) {
 	api.handleOAuthCallback(rec, googleAppRequest(http.MethodGet, "/api/oauth/callback?state=unknown&code=x", "", "alice"))
 	if strings.Contains(rec.Body.String(), "Sign-in cancelled") || rec.Code == http.StatusOK {
 		t.Fatalf("an unknown state was treated as a Gmail sign-in: %d", rec.Code)
+	}
+
+	// On a server with several people Google's code waits for the person who started the sign-in, so a link
+	// finished in a teammate's browser cannot put the teammate's mailbox into this connection.
+	t.Setenv("MULTI_USER_MODE", "true")
+	authURL, err = services.BeginGmailOAuth("alice", "conn-1", services.PlatformGoogleClientName, "https://app.example.com/api/oauth/callback", true, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state = authURL[strings.Index(authURL, "state=")+len("state="):]
+	if j := strings.Index(state, "&"); j >= 0 {
+		state = state[:j]
+	}
+	t.Cleanup(func() { oauthReturns.Lock(); delete(oauthReturns.m, state); oauthReturns.Unlock() })
+	rec = httptest.NewRecorder()
+	api.handleOAuthCallback(rec, googleAppRequest(http.MethodGet, "/api/oauth/callback?state="+state+"&code=x", "", "bob"))
+	if rec.Code != http.StatusFound || !strings.Contains(rec.Header().Get("Location"), oauthReturnParam+"=") {
+		t.Fatalf("a Google sign-in on a multi-person server finished at the callback: %d", rec.Code)
+	}
+	if _, err := takeOAuthReturn(state, "bob"); err == nil {
+		t.Fatal("a teammate could finish another person's Google sign-in")
 	}
 }

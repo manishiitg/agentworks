@@ -2755,6 +2755,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// OAuth API routes (from oauth_routes.go)
 	apiRouter.HandleFunc("/oauth/start", api.handleOAuthStart).Methods("POST", "OPTIONS")
 	apiRouter.HandleFunc("/oauth/callback", api.handleOAuthCallback).Methods("GET")
+	apiRouter.HandleFunc("/oauth/complete", api.handleOAuthReturnComplete).Methods("POST")
 	apiRouter.HandleFunc("/oauth/status", api.handleOAuthStatus).Methods("GET")
 	apiRouter.HandleFunc("/oauth/logout", api.handleOAuthLogout).Methods("POST", "OPTIONS")
 
@@ -3816,7 +3817,8 @@ func requestLogPath(r *http.Request) string {
 		return path
 	}
 	query := r.URL.Query()
-	for _, key := range []string{"token", "access_token", "auth_token"} {
+	// Sign-in tokens, and the one-time code and state an OAuth provider returns, are credentials.
+	for _, key := range []string{"token", "access_token", "auth_token", "code", "state", "refresh_token", "id_token", "client_secret"} {
 		if query.Has(key) {
 			query.Set(key, "[REDACTED]")
 		}
