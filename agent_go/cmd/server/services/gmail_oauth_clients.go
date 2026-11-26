@@ -336,19 +336,20 @@ func (g *GmailService) ImportLegacyOAuthClient(ctx context.Context, name string)
 		}
 	}
 
-	cfg := g.GetConfig()
 	backfilled := 0
-	for i := range cfg.Connections {
-		if strings.TrimSpace(cfg.Connections[i].ClientName) == "" {
-			cfg.Connections[i].ClientName = client.Name
-			cfg.Connections[i].UpdatedAt = time.Now().UTC()
-			backfilled++
+	err = g.UpdateConfig(ctx, func(cfg *GmailConfig) (bool, error) {
+		backfilled = 0
+		for i := range cfg.Connections {
+			if strings.TrimSpace(cfg.Connections[i].ClientName) == "" {
+				cfg.Connections[i].ClientName = client.Name
+				cfg.Connections[i].UpdatedAt = time.Now().UTC()
+				backfilled++
+			}
 		}
-	}
-	if backfilled > 0 {
-		if err := g.SaveConfig(ctx, cfg); err != nil {
-			return client, 0, fmt.Errorf("registered client %q but failed to backfill connections: %w", client.Name, err)
-		}
+		return backfilled > 0, nil
+	})
+	if err != nil {
+		return client, 0, fmt.Errorf("registered client %q but failed to backfill connections: %w", client.Name, err)
 	}
 	return client, backfilled, nil
 }

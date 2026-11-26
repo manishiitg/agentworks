@@ -124,29 +124,36 @@ func checkedGogAccount(ctx context.Context, binary, home, email, client string) 
 // they are authoritative for what this consent granted, since gog keeps no
 // scope metadata for imported accounts.
 func (g *GmailService) CompleteGogConnection(ctx context.Context, id, email string, grantedScopes []string) error {
-	cfg := g.GetConfig()
-	for i := range cfg.Connections {
-		conn := &cfg.Connections[i]
-		if conn.ID != id {
-			continue
-		}
-		account, err := checkedGogAccount(ctx, cfg.GogPath, gogHomeForConnection(*conn), email, conn.ClientName)
-		if err != nil {
-			return err
-		}
-		conn.Email, conn.AuthBackend = account.Email, "gog"
-		conn.Scopes = resolveCompletionScopes(grantedScopes, account.Scopes, conn.Scopes)
-		conn.Status = GmailConnectionConnected
-		conn.Enabled = true
-		conn.UpdatedAt = time.Now().UTC()
-		if err := g.SaveConfig(ctx, cfg); err != nil {
-			return err
-		}
-		deleteGmailOAuthToken(id)
-		g.InvalidateConnectionAuthCache(id)
-		return nil
+	snapshot := g.GetConfig()
+	conn, ok := findGmailConnection(snapshot, id)
+	if !ok {
+		return fmt.Errorf("Google connection %q no longer exists", id)
 	}
-	return fmt.Errorf("Google connection %q no longer exists", id)
+	account, err := checkedGogAccount(ctx, snapshot.GogPath, gogHomeForConnection(conn), email, conn.ClientName)
+	if err != nil {
+		return err
+	}
+	err = g.UpdateConfig(ctx, func(cfg *GmailConfig) (bool, error) {
+		for i := range cfg.Connections {
+			c := &cfg.Connections[i]
+			if c.ID != id {
+				continue
+			}
+			c.Email, c.AuthBackend = account.Email, "gog"
+			c.Scopes = resolveCompletionScopes(grantedScopes, account.Scopes, c.Scopes)
+			c.Status = GmailConnectionConnected
+			c.Enabled = true
+			c.UpdatedAt = time.Now().UTC()
+			return true, nil
+		}
+		return false, fmt.Errorf("Google connection %q no longer exists", id)
+	})
+	if err != nil {
+		return err
+	}
+	deleteGmailOAuthToken(id)
+	g.InvalidateConnectionAuthCache(id)
+	return nil
 }
 
 // resolveCompletionScopes selects the scopes recorded on a connection at
