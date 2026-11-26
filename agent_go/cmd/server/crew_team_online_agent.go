@@ -13,9 +13,9 @@ import (
 )
 
 // New agent, where it runs (owner, 26 Nov): in a Mac project whose Team uses online projects, New agent can make the
-// agent in one of them instead of on the Mac. Only an online project the person is the main owner of is offered, since
-// the Team reaches only its main owner's agents (crewTeamProjectAgents). The agent is opened by the same code as
-// manage_crew_chats side_open, as that person, so the project's own checks decide.
+// agent in one of them instead of on the Mac. Anyone who works in that project may: its main owner, a co-owner, or one
+// of the Team's people (a User of it through the Team). The agent is opened by the same code as manage_crew_chats
+// side_open, as that person, so the project's own checks decide; it is theirs and starts as Only me.
 
 // handleCrewTeamOnlineAgent is POST /crew-teams/{team}/online-agent {"project_id", "name"} on the server.
 func (api *StreamingAPI) handleCrewTeamOnlineAgent(w http.ResponseWriter, r *http.Request) {
@@ -44,9 +44,8 @@ func (api *StreamingAPI) handleCrewTeamOnlineAgent(w http.ResponseWriter, r *htt
 		externalError(w, 404, "project_not_in_team", "That online project isn't used by this Team now.")
 		return
 	}
-	root := crewProjectRootByID(project)
-	if root == "" || !crewProjectOwnedByCallerStrict(claims.UserID, root) {
-		externalError(w, 403, "owner_only", "Only the project's owner makes agents there from New agent. Ask "+crewOwnerDisplayName(ownerOfCrewProjectID(project))+", or ask its Main.")
+	if !crewTeamProjectMakerAllowed(t, project, claims.UserID) {
+		externalError(w, 403, "not_in_project", "Only people who work in that project make agents there. Ask "+crewOwnerDisplayName(ownerOfCrewProjectID(project))+" to add you.")
 		return
 	}
 	args := map[string]any{"crew_id": project, "action": "side_open", "name": strings.TrimSpace(in.Name)}

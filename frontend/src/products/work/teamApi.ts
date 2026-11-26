@@ -94,7 +94,7 @@ export type TeamTabPerson = AvatarFields & { activity?: 'running' | 'waiting'; u
 export type TeamTabPresence = { online: boolean; line: string; tone?: 'on' | 'server' | 'away' }
 // mine: the viewer's own agent (the Agents card lists only these). can_unshare is false on their last shared agent;
 // fixed then says why.
-export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean;
+export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean; online_project?: string;
   /** Who may ask your own agent (Team Module Manager contract): the whole Team or the chosen people; absent on others' agents. */
   audience?: 'whole_team' | 'chosen'; chosen_people?: { user_id: string; name: string }[]; place: 'mac' | 'server'; status_label?: string; tab: string
   // The server reports the original agent’s placement and admitted offline-copy availability. Its placement
@@ -121,12 +121,12 @@ export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string;
   setup?: TeamTabSetup }
 export type TeamTabSetup = { next_automation?: string; when_offline?: { line: string }; reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
 export type TeamTabSync = { line: string; problem?: boolean; attention?: boolean; last?: string; state?: string; changed_by?: string; changed_ago?: string; stale?: string; size?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
-export type TeamReachableAgent = AvatarFields & { purpose?: string; examples?: string[]; task_state?:string; chat_share?: string; chat_readable?:boolean; offline_line?:string; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
+export type TeamReachableAgent = AvatarFields & { purpose?: string; examples?: string[]; task_state?:string; chat_share?: string; chat_readable?:boolean; offline_line?:string; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; online_project?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
 /** mine: the viewer is its main owner, so New agent can make an agent there. */
-export type TeamOnlineProject = { id: string; project_id: string; name: string; line: string; mine?: boolean }
+export type TeamOnlineProject = { id: string; project_id: string; name: string; line: string; can_make_agents?: boolean }
 export type TeamTabView = {
  reachable?: TeamReachableAgent[]
- // Server projects with this Team in their Users (#4087); their agents are the reachable rows with person_id === id.
+ // Server projects with this Team in their Users (#4087); their agents are the reachable rows whose online_project is it.
  online_projects?: TeamOnlineProject[]
   team: Team; intro: string; live?: TeamLiveView; people: TeamTabPerson[]; agents: TeamTabAgent[]
   sync?: TeamTabSync; can_switch: boolean; agents_line?: string; can_leave: boolean; leave_confirm?: string
@@ -406,7 +406,7 @@ export async function onlineAgentSideChats(profileId: string, projectId: string,
   if (!seen || Date.now() - seen.at > 60_000) {
     const reply = await fetch(`${base}/api/crew-teams/${encodeURIComponent(projectId)}/tab`, { headers })
     const view = reply.ok ? await reply.json() as TeamTabView : undefined
-    seen = { at: Date.now(), projects: (view?.online_projects || []).filter(item => item.mine && item.project_id) }
+    seen = { at: Date.now(), projects: (view?.online_projects || []).filter(item => item.can_make_agents && item.project_id) }
     onlineProjectsSeen.set(projectId, seen)
   }
   const out: AgentProfileSideChat[] = []

@@ -191,7 +191,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const teamState = useTeamTab(placeProject)
   const team = teamState.view
   // Online projects the Team uses that this person owns: New agent may run there instead of on the Mac.
-  const onlineChoices = (team?.online_projects || []).filter(item => item.mine && item.project_id)
+  const onlineChoices = (team?.online_projects || []).filter(item => item.can_make_agents && item.project_id)
   const crewOwner = team && !team.can_switch && !team.team.change_on_mac ? team.people.find(person => person.note === 'owner')?.name : undefined
   const placeWord = crewOwner
     ? place === 'mac' ? `On ${crewOwner}'s Mac` : place === 'mac_off' ? `${crewOwner}'s Mac is off` : ''
@@ -690,7 +690,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
               </label>
               {onlineChoices.length > 0 && <fieldset className="space-y-1.5" disabled={opening || makingOnline}>
                 <legend className="mb-1 text-sm font-medium">Where it runs</legend>
-                {[{ id: 'mac', name: 'This Mac', line: 'Only while your Mac is on and awake' }, ...onlineChoices.map(item => ({ id: item.project_id, name: item.name, line: 'Online 24/7 on the server · you own it' }))].map(option =>
+                {[{ id: 'mac', name: 'This Mac', line: 'Only while your Mac is on and awake' }, ...onlineChoices.map(item => ({ id: item.project_id, name: item.name, line: 'Online 24/7 on the server' }))].map(option =>
                   <label key={option.id} className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 text-sm ${newWhere === option.id ? 'border-primary bg-primary/5' : 'border-border'}`}>
                     <input type="radio" name="new-agent-where" value={option.id} checked={newWhere === option.id} onChange={() => setNewWhere(option.id)} className="mt-1" />
                     <span className="min-w-0"><span className="block font-medium">{option.id !== 'mac' && <span aria-hidden="true" className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 align-middle" />}{option.name}</span><span className="block text-xs text-muted-foreground">{option.line}</span></span>

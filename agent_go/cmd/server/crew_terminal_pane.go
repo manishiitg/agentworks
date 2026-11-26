@@ -68,9 +68,16 @@ type teamPanePerson struct {
 
 func teamPanePeople(t crewTeam, viewer string, people []crewTeamAgentsPerson) []teamPanePerson {
 	out := []teamPanePerson{}
+	seen := map[string]bool{}
 	for _, p := range people {
 		if p.UserID == viewer || !crewTeamMemberCurrent(t, p.UserID) {
 			continue
+		}
+		if project, ok := crewTeamMemberProjectID(p.UserID); ok { // an online project shows once, whoever made its agents
+			if seen[project] {
+				continue
+			}
+			seen[project] = true
 		}
 		out = append(out, teamPanePerson{Name: p.Name, Online: p.Active, Line: p.ActiveLabel})
 	}

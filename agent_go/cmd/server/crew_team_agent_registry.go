@@ -89,6 +89,13 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 	if err != nil {
 		return err
 	}
+	// An online project's agents belong to their maker (project:<id>/<maker>, owner 26 Nov); rows saved under the bare
+	// project identity before that are dropped, so those agents start again as Only me.
+	for id, a := range current.Agents {
+		if _, isProject := crewTeamMemberProjectID(a.OwnerID); isProject && crewTeamProjectMaker(a.OwnerID) == "" {
+			delete(current.Agents, id)
+		}
+	}
 	bySource := map[string]string{}
 	byChat := map[string]string{}
 	created := []crewTeamRegisteredAgent{}

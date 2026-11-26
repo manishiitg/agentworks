@@ -9,7 +9,7 @@ import { ArrowLeft, Globe, Lock, Pencil, Users, X } from 'lucide-react'
 /** All rows and live lines are already admitted/filtered by the server. */
 export type TeamPanelAgent = AvatarFields & {
  purpose?: string; examples?: string[]
- connection?: string; id: string; name: string; person: string; person_id?: string; mine: boolean
+ connection?: string; id: string; name: string; person: string; person_id?: string; online_project?: string; mine: boolean
  client_build?:string; update_needed?:boolean; cli?: string; engine?: string; model_id?: string; reasoning_effort?: string
  online: boolean; place: string; activity?: string; last_message?: string; last_message_at?: string; typing?: boolean
  task_state?: string; chat_readable?: boolean; offline_line?: string; chat_share?: string
@@ -31,7 +31,7 @@ const runtime = (row:TeamPanelAgent, includeHelper=false) => [person(row),row.pl
 /** Shared Mac/web live panel; detail views replace the right panel, not inline disclosures. */
 export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonSelect,onNavigate,view='live',shared=[],onShared,teamAgentAsk,askLabel,files,onlineProjects=[],onOpenProject}: {
  people?:TeamTabPerson[]; selectedPerson?:string; onPersonSelect?:(id?:string)=>void
- /** Server projects with this Team in their Users (from the server); their agents are the rows with person_id === id. */
+ /** Server projects with this Team in their Users (from the server); their agents are the rows whose online_project is the project. */
  onlineProjects?:TeamOnlineProject[]
  /** Opens the online project on its server's website. */
  onOpenProject?:(id:string)=>void
@@ -46,9 +46,8 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
  useEffect(()=>{setQuery('');setAllOf(undefined)},[scope,view])
 
  const rows=agents.filter(row=>!row.mine)
- const mates=new Set(onlineProjects.map(mate=>mate.id))
  // Online projects' agents show in their own group (below), so Working now lists people's agents only.
- const busy=rows.filter(row=>working(row)&&!mates.has(row.person_id||''))
+ const busy=rows.filter(row=>working(row)&&!row.online_project)
  const selected=people.find(person=>person.user_id===selectedPerson&&person.note!=='invited')
  const personal=selected?[...agents.filter(row=>row.person_id===selected.user_id)].sort((a,b)=>Number(working(b))-Number(working(a))):[]
  const button='flex w-full min-w-0 items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -90,7 +89,7 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
    {!selected&&onlineProjects.length>0&&<section aria-label="Online projects this Team uses" className="pt-1">
     <p className="px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Online projects this Team uses</p>
     {onlineProjects.map(mate=>{
-     const own=rows.filter(row=>row.person_id===mate.id)
+     const own=rows.filter(row=>row.online_project===mate.project_id)
      const shown=allOf===mate.id?own:own.slice(0,4)
      return <div key={mate.id}>
       <div className="flex min-w-0 items-center gap-1.5 px-1 py-1" title={`${mate.name} · ${mate.line}`}>

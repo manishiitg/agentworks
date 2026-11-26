@@ -26,10 +26,12 @@ type crewTeamReachableAgent struct {
 	Kind     string `json:"kind"` // "agent"
 	Name     string `json:"name"`
 	PersonID string `json:"person_id,omitempty"`
-	Person   string `json:"person,omitempty"`
-	Place    string `json:"place,omitempty"` // "mac" or "server"
-	Online   bool   `json:"online"`
-	Activity string `json:"activity,omitempty"` // "running" or "waiting", as the server reads it
+	// OnlineProject is the online project the agent works in, when it is one of an online project's agents.
+	OnlineProject string `json:"online_project,omitempty"`
+	Person        string `json:"person,omitempty"`
+	Place         string `json:"place,omitempty"` // "mac" or "server"
+	Online        bool   `json:"online"`
+	Activity      string `json:"activity,omitempty"` // "running" or "waiting", as the server reads it
 	// ChatShare is the agent's own "what teammates see" choice (agent = just the agent, live = its chat); the panel's
 	// live line is gated on it server-side.
 	ChatShare string `json:"chat_share,omitempty"`
@@ -112,7 +114,7 @@ func crewTeamSourceRowAdmits(t crewTeam, viewer string, row crewTeamRegisteredAg
 	if viewer != "" && viewer == row.OwnerID && saved && crewTeamAccountActive(viewer) {
 		return true
 	}
-	// An online project's own agent, changed by its main owner (crewTeamRuleActor).
+	// An online project's agent, changed by the person who made it (crewTeamRuleActor).
 	if project, ok := crewTeamMemberProjectID(viewer); ok && viewer == row.OwnerID && t.hasProject(project) {
 		return true
 	}
@@ -124,6 +126,10 @@ func crewTeamSourceRowAdmits(t crewTeam, viewer string, row crewTeamRegisteredAg
 // member. Discovery and every send use it. A terminal row's
 // transport check is applied separately: a changed binding refuses, while a valid disconnected stream is offline.
 func crewTeamReachRow(t crewTeam, viewer string, row crewTeamRegisteredAgent) bool {
+	_, isProject := crewTeamMemberProjectID(row.OwnerID)
+	if isProject && (crewTeamProjectMaker(row.OwnerID) == "" || crewTeamProjectMaker(row.OwnerID) == viewer) {
+		return false // an online project's agent is its maker's; the bare project identity owns none
+	}
 	return crewTeamReachOpen(t, viewer) && row.InTeam && row.Rule.chosen(viewer) && row.OwnerID != "" && row.OwnerID != viewer && crewTeamMemberCurrent(t, row.OwnerID)
 }
 
@@ -169,6 +175,9 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 				Online: online, OfflineSince: since, Activity: a.Activity, ChatShare: registered.Rule.ChatShare, Audience: crewTeamRowAudience(t, registered), Address: address, TaskState: crewAgentRequestState(ctx, registered)}
 			row.ChatReadable = crewTeamChatReadable(t, registered)
 			row.Terminal = registered.Kind == "terminal"
+			if project, isProject := crewTeamMemberProjectID(p.UserID); isProject {
+				row.OnlineProject, row.Person = project, crewTeamProjectAgentPerson(p.Name, p.UserID)
+			}
 			if !online {
 				row.OfflineLine = crewTeamOfflineLine(row)
 			}
