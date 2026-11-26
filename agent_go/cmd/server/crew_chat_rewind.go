@@ -15,6 +15,7 @@ import (
 
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
@@ -24,7 +25,8 @@ import (
 // screen then sends the edited text as a normal message.
 //
 // Claude Code and Codex continue from a copy of their own session cut at that
-// point (the original native session is never written). Other agents (Cursor,
+// point (the original native session is never written). Muse on its serve
+// protocol forks its own session at that point when the next message starts it. Other agents (Cursor,
 // Antigravity, ...) have no way back, so the next message starts a fresh
 // native session that gets the shortened conversation as its handoff.
 // Reverting files is the existing per-reply undo, run by the screen first.
@@ -227,7 +229,32 @@ func chatRewindCanCut(runtime *ChatHistoryAgentRuntime) bool {
 		return false
 	}
 	handle := runtime.AgentSessionHandle.Provider
-	return handle.NativeSessionID != "" && (handle.Provider == "claude-code" || handle.Provider == "codex-cli" || handle.Provider == "agy-cli")
+	return handle.NativeSessionID != "" && (handle.Provider == "claude-code" || handle.Provider == "codex-cli" || handle.Provider == "agy-cli" || museRewindsNatively(handle))
+}
+
+// museRewindsNatively: Muse's session log is event-sourced with content hashes,
+// so it is not cut as a file. On `muse serve` the chat keeps a pending rewind in
+// its session id and Muse forks its own session when the next message starts it.
+func museRewindsNatively(handle llmtypes.CodingProviderSessionHandle) bool {
+	return handle.Provider == "muse-cli" && handle.Transport == llmtypes.CodingProviderTransportMSP
+}
+
+// museRewindRuntime keeps the chat on its Muse session with the edit pending.
+// The edited message being the first one leaves nothing to keep: start fresh.
+func museRewindRuntime(fresh ChatHistoryAgentRuntime, runtime *ChatHistoryAgentRuntime, point chatRewindPoint) (*ChatHistoryAgentRuntime, string) {
+	earlier := false
+	for _, message := range point.history[:max(0, min(point.cut, len(point.history)))] {
+		earlier = earlier || message.Role == llmtypes.ChatMessageTypeHuman
+	}
+	if !earlier {
+		return &fresh, "fresh"
+	}
+	handle := *runtime.AgentSessionHandle
+	handle.Provider.NativeSessionID = musecli.MuseRewindResumeID(handle.Provider.NativeSessionID, point.text, point.fromEnd)
+	next := fresh
+	next.ExternalSessionID, next.AgentSessionHandle, next.ResumeSupported = handle.Provider.NativeSessionID, &handle, true
+	log.Printf("[CHAT_REWIND] session=%s native=true provider=muse-cli action=fork_on_next_start", point.session)
+	return &next, "native"
 }
 
 // rewindNativeRuntime returns the runtime the chat continues with: a cut copy
@@ -242,6 +269,9 @@ func (api *StreamingAPI) rewindNativeRuntime(r *http.Request, record ProductConv
 	fresh.OtherAgentSessions, fresh.SeenLine = nil, 0
 	if !chatRewindCanCut(runtime) {
 		return &fresh, "fresh"
+	}
+	if museRewindsNatively(runtime.AgentSessionHandle.Provider) {
+		return museRewindRuntime(fresh, runtime, point)
 	}
 	roots, found, err := crewStorageRoots(record.WorkspacePath)
 	if err != nil || !found {
