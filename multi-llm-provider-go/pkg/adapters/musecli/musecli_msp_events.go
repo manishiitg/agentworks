@@ -59,6 +59,10 @@ func (a *MuseCLIAdapter) consumeMuseMSPTurn(ctx context.Context, s *museMSPSessi
 	}
 	items := map[string]*museMSPItem{}
 	toolStarts := map[string]time.Time{}
+	// Each Muse message is its own reply block, so text written before a
+	// message the person sent mid-turn stays above it and the rest goes below.
+	blocks := map[string]bool{}
+	blockID := func(itemID string) string { return "muse:" + s.sessionID + ":" + turnID + ":" + itemID }
 	for {
 		select {
 		case <-ctx.Done():
@@ -114,6 +118,9 @@ func (a *MuseCLIAdapter) consumeMuseMSPTurn(ctx context.Context, s *museMSPSessi
 						emit(chunk)
 					}
 				case "agentMessage":
+					if msg.Method == "item/completed" && blocks[item.ItemID] {
+						emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeAssistantBlock, Content: item.Text, Metadata: meta(map[string]interface{}{llmtypes.AssistantBlockIDMetadataKey: blockID(item.ItemID), llmtypes.AssistantBlockPhaseMetadataKey: "end"})})
+					}
 					if msg.Method == "item/completed" && strings.TrimSpace(item.Text) != "" {
 						totals.lastAnswer = strings.TrimSpace(item.Text)
 						totals.answers = append(totals.answers, totals.lastAnswer)
@@ -141,7 +148,11 @@ func (a *MuseCLIAdapter) consumeMuseMSPTurn(ctx context.Context, s *museMSPSessi
 				}
 				switch {
 				case item.Kind == "agentMessage" && (p.Field == "" || p.Field == "text"):
-					emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeContent, Content: p.Delta, Metadata: meta(map[string]interface{}{llmtypes.ContentDeltaMetadataKey: true})})
+					if !blocks[p.ItemID] {
+						blocks[p.ItemID] = true
+						emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeAssistantBlock, Metadata: meta(map[string]interface{}{llmtypes.AssistantBlockIDMetadataKey: blockID(p.ItemID), llmtypes.AssistantBlockPhaseMetadataKey: "start"})})
+					}
+					emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeContent, Content: p.Delta, Metadata: meta(map[string]interface{}{llmtypes.ContentDeltaMetadataKey: true, llmtypes.AssistantBlockIDMetadataKey: blockID(p.ItemID)})})
 				case item.Kind == "reasoning":
 					emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeReasoning, Content: p.Delta, Metadata: meta(map[string]interface{}{"thinking_active": true, llmtypes.ContentDeltaMetadataKey: true})})
 				}
