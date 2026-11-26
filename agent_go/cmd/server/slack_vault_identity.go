@@ -146,7 +146,12 @@ func (api *StreamingAPI) vaultSlackAccessToken(ctx context.Context, id string) s
 	mutex := platformMCPOAuthMutex("vault:" + id)
 	mutex.Lock()
 	defer mutex.Unlock()
-	token, err := oauth.NewManager(cfg.OAuth, api.logger).GetAccessToken(ctx)
+	if cfg, err = vaultSavedOAuthConfig(id, cfg); err != nil || cfg.OAuth == nil {
+		return ""
+	}
+	refreshCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	token, err := oauth.NewManager(cfg.OAuth, api.logger).GetAccessToken(refreshCtx)
 	if err != nil {
 		return ""
 	}
