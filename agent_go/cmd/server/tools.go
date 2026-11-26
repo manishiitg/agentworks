@@ -371,7 +371,9 @@ func (api *StreamingAPI) handleSetEnabledTools(w http.ResponseWriter, r *http.Re
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok"})
 }
 
-// handleAddServer handles POST requests to add a server
+// handleAddServer handles POST requests to add a server. It writes the base
+// catalog every person on the server uses, and a stdio server runs its command
+// on the server, so the route is registered for administrators only.
 func (api *StreamingAPI) handleAddServer(w http.ResponseWriter, r *http.Request) {
 	// Check if MCP config is locked
 	if isMCPConfigLocked() {
@@ -382,6 +384,10 @@ func (api *StreamingAPI) handleAddServer(w http.ResponseWriter, r *http.Request)
 	var req AddServerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := api.validateMCPConfig(&mcpclient.MCPConfig{MCPServers: map[string]mcpclient.MCPServerConfig{req.Name: req.Server}}); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := api.mcpConfig.AddServer(req.Name, req.Server, api.mcpConfigPath); err != nil {
@@ -405,6 +411,10 @@ func (api *StreamingAPI) handleEditServer(w http.ResponseWriter, r *http.Request
 	var req EditServerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := api.validateMCPConfig(&mcpclient.MCPConfig{MCPServers: map[string]mcpclient.MCPServerConfig{req.Name: req.Server}}); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := api.mcpConfig.EditServer(req.Name, req.Server, api.mcpConfigPath); err != nil {

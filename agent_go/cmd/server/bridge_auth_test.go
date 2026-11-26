@@ -168,4 +168,33 @@ func TestExecuteRoutesRequireTheCallersOwnSession(t *testing.T) {
 	if code, ok := call("alice", `{"server":"s","tool":"t"}`); code != http.StatusOK || !ok {
 		t.Fatalf("a call without a session (the tool tester) is unchanged, got %d", code)
 	}
+	// The handlers act on the body's session: one's own session in the header
+	// must not carry another person's in the body past the guard.
+	reached = false
+	req := httptest.NewRequest(http.MethodPost, "/api/mcp/execute", strings.NewReader(`{"server":"s","tool":"t","session_id":"chat-bob"}`))
+	req.Header.Set("X-Session-ID", "chat-alice")
+	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "alice"}))
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+	if rec.Code != http.StatusForbidden || reached {
+		t.Fatalf("own header with another user's body session must be refused, got %d reached=%v", rec.Code, reached)
+	}
+
+	// /api/custom/execute without a session would run the server-wide shell,
+	// file patching and browser that belong to no person.
+	custom := api.requireOwnBodySessionAlways(func(w http.ResponseWriter, r *http.Request) { reached = true; w.WriteHeader(http.StatusOK) })
+	for body, want := range map[string]int{
+		`{"tool":"execute_shell_command","session_id":"chat-alice"}`: http.StatusOK,
+		`{"tool":"execute_shell_command"}`:                           http.StatusForbidden,
+		`{"tool":"execute_shell_command","session_id":"chat-bob"}`:   http.StatusForbidden,
+	} {
+		reached = false
+		req := httptest.NewRequest(http.MethodPost, "/api/custom/execute", strings.NewReader(body))
+		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "alice"}))
+		rec := httptest.NewRecorder()
+		custom(rec, req)
+		if rec.Code != want || reached != (want == http.StatusOK) {
+			t.Fatalf("custom execute %s: got %d reached=%v, want %d", body, rec.Code, reached, want)
+		}
+	}
 }
