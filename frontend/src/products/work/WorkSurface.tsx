@@ -96,7 +96,7 @@ import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { hasProductCreateAccess } from '../../utils/workflowPermissions'
 import { isLocalDeployment } from '../productSurfaceConfig'
-import { getActiveWorkspaceProfile, useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
+import { getActiveWorkspaceProfile, getWorkspaceScopedStorageKey, useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { EntityIdentityIcon } from '../../components/ui/EntityIdentityIcon'
 import ConfirmationDialog from '../../components/ui/ConfirmationDialog'
 import { ProjectAgentTabs } from '../../components/chat/ProjectAgentTabs'
@@ -152,11 +152,32 @@ function writeWorkWorkspaceView(projectId: string | undefined, product: 'work', 
   writeWorkspaceViewPreference(product, projectId, view)
 }
 
+function workSplitStorageKey(projectId: string): string {
+  return getWorkspaceScopedStorageKey(`${WORK_SPLIT_PREFERENCE_KEY}:${projectId}`)
+}
+
+function mobilePaneStorageKey(projectId: string): string {
+  return getWorkspaceScopedStorageKey(`${WORK_SPLIT_PREFERENCE_KEY}:mobile:${projectId}`)
+}
+
 function readWorkSplitRatio(projectId?: string): number {
   if (typeof window === 'undefined' || !projectId) return 0.5
   try {
-    const value = Number.parseFloat(window.localStorage.getItem(`${WORK_SPLIT_PREFERENCE_KEY}:${projectId}`) || '')
-    return Number.isFinite(value) && value >= 0.15 && value <= 0.85 ? value : 0.5
+    const scopedKey = workSplitStorageKey(projectId)
+    const saved = window.localStorage.getItem(scopedKey)
+    if (saved !== null) {
+      const value = Number.parseFloat(saved)
+      return Number.isFinite(value) && value >= 0.15 && value <= 0.85 ? value : 0.5
+    }
+    const legacy = window.localStorage.getItem(`${WORK_SPLIT_PREFERENCE_KEY}:${projectId}`)
+    if (legacy !== null) {
+      const value = Number.parseFloat(legacy)
+      if (Number.isFinite(value) && value >= 0.15 && value <= 0.85) {
+        window.localStorage.setItem(scopedKey, legacy)
+        return value
+      }
+    }
+    return 0.5
   } catch {
     return 0.5
   }
@@ -164,7 +185,7 @@ function readWorkSplitRatio(projectId?: string): number {
 
 function writeWorkSplitRatio(projectId: string | undefined, ratio: number) {
   if (typeof window === 'undefined' || !projectId) return
-  try { window.localStorage.setItem(`${WORK_SPLIT_PREFERENCE_KEY}:${projectId}`, String(ratio)) } catch { /* UI preference only. */ }
+  try { window.localStorage.setItem(workSplitStorageKey(projectId), String(ratio)) } catch { /* UI preference only. */ }
 }
 
 // Mobile preview shows the workspace as a phone-width column; the person may still drag the rail a little, so that width is
@@ -173,21 +194,36 @@ const MOBILE_PANE_MIN = 320
 function readMobilePaneWidth(projectId?: string): number | null {
   if (typeof window === 'undefined' || !projectId) return null
   try {
-    const value = Number.parseFloat(window.localStorage.getItem(`${WORK_SPLIT_PREFERENCE_KEY}:mobile:${projectId}`) || '')
-    return Number.isFinite(value) && value >= MOBILE_PANE_MIN && value <= 1600 ? value : null
+    const scopedKey = mobilePaneStorageKey(projectId)
+    const saved = window.localStorage.getItem(scopedKey)
+    if (saved !== null) {
+      const value = Number.parseFloat(saved)
+      return Number.isFinite(value) && value >= MOBILE_PANE_MIN && value <= 1600 ? value : null
+    }
+    const legacy = window.localStorage.getItem(`${WORK_SPLIT_PREFERENCE_KEY}:mobile:${projectId}`)
+    if (legacy !== null) {
+      const value = Number.parseFloat(legacy)
+      if (Number.isFinite(value) && value >= MOBILE_PANE_MIN && value <= 1600) {
+        window.localStorage.setItem(scopedKey, legacy)
+        return value
+      }
+    }
+    return null
   } catch { return null }
 }
 function writeMobilePaneWidth(projectId: string | undefined, width: number) {
   if (typeof window === 'undefined' || !projectId) return
-  try { window.localStorage.setItem(`${WORK_SPLIT_PREFERENCE_KEY}:mobile:${projectId}`, String(Math.round(width))) } catch { /* UI preference only. */ }
+  try { window.localStorage.setItem(mobilePaneStorageKey(projectId), String(Math.round(width))) } catch { /* UI preference only. */ }
 }
 
 async function restoreWorkRuntimeSelection(tabId: string, sessionId: string, workspacePath: string): Promise<WorkRuntimeSelection | null> {
+  const identity = captureChatIdentity()
   const cachedRuntime = useChatStore.getState().activeSessionsCache.find(
     session => session.session_id === sessionId,
   )?.runtime
   try {
     const history = await agentApi.getChatHistoryConversation(sessionId, workspacePath, 1)
+    if (!isChatIdentityCurrent(identity)) return null
     const provider = history.runtime?.provider?.trim() || cachedRuntime?.provider?.trim()
     const modelId = history.runtime?.model_id?.trim() || cachedRuntime?.model_id?.trim()
     if (!provider || !modelId) return null
@@ -198,6 +234,7 @@ async function restoreWorkRuntimeSelection(tabId: string, sessionId: string, wor
     })
     return { engine: provider, provider, modelId }
   } catch {
+    if (!isChatIdentityCurrent(identity)) return null
     // A new project has no history yet. A restored session can still carry the
     // authoritative native runtime in the activity cache.
     const provider = cachedRuntime?.provider?.trim()
@@ -252,7 +289,9 @@ function useWorkSessions(product: ProjectProductConfig) {
   }, [cacheKey])
 
   const refresh = useCallback(async () => {
+    const revisionAtStart = mutationRevision.current
     const listed = await loadWorkSessionsIncludingShared(product)
+    if (mutationRevision.current !== revisionAtStart) return listed
     setError(null)
     updateSessions(listed, true)
     const current = selectedProjectIdFor(product)
@@ -320,6 +359,9 @@ function useWorkSessions(product: ProjectProductConfig) {
     try {
       window.localStorage.removeItem(`${WORK_VIEW_PREFERENCE_KEY}:${projectId}`)
       window.localStorage.removeItem(`${WORK_SPLIT_PREFERENCE_KEY}:${projectId}`)
+      window.localStorage.removeItem(`${WORK_SPLIT_PREFERENCE_KEY}:mobile:${projectId}`)
+      window.localStorage.removeItem(workSplitStorageKey(projectId))
+      window.localStorage.removeItem(mobilePaneStorageKey(projectId))
     } catch { /* UI preferences only. */ }
 
     writeWorkspaceViewPreference(origin, projectId, null)
@@ -411,7 +453,7 @@ export function selectWorkChatTabIds(
 export function useWorkChatTab(
   product: ProjectProductConfig,
   session: WorkSession | null,
-  onLegacyRuntimeDiscovered: (selection: WorkRuntimeSelection) => void | Promise<void>,
+  onLegacyRuntimeDiscovered: (selection: WorkRuntimeSelection, projectId: string) => void | Promise<void>,
 ) {
   const [failure, setFailure] = useState<{ projectId: string; message: string } | null>(null)
   const [preparedProject, setPreparedProject] = useState<string | null>(null)
@@ -562,7 +604,8 @@ export function useWorkChatTab(
         // ChatArea owns loading the selected conversation, including the main tab.
         if (!savedRuntime) {
           const restored = await restoreWorkRuntimeSelection(canonicalTabId, conversation.session_id, target.workspacePath)
-          if (restored) await legacyRuntimeHandlerRef.current(restored)
+          if (cancelled) return
+          if (restored) await legacyRuntimeHandlerRef.current(restored, target.id)
         }
         if (cancelled) return
         setFailure(current => current?.projectId === target.id ? null : current)
@@ -647,6 +690,7 @@ export function useWorkChatTab(
   }
 }
 
+const MAX_WORK_AGENT_CACHE = 64
 const workAgentLists = new Map<string, { listed: AgentProfileSideChat[] }>()
 // Each project's last read of teammates' agents (a second read, through the online copy). A failed read or the
 // route's first list (without them) keeps these, so their rows do not drop out of their groups and come back on
@@ -654,14 +698,39 @@ const workAgentLists = new Map<string, { listed: AgentProfileSideChat[] }>()
 const lastTeammateAgents = new Map<string, AgentProfileSideChat[]>()
 /** The last good list of the person's own online agents per Mac project, kept through a failed read (#4121). */
 const lastOnlineAgents = new Map<string, AgentProfileSideChat[]>()
+let workAgentCachesIdentity = captureChatIdentity()
+
+function ensureCurrentWorkAgentCaches(): void {
+  const identity = captureChatIdentity()
+  if (identity !== workAgentCachesIdentity) {
+    workAgentCachesIdentity = identity
+    workAgentLists.clear()
+    lastTeammateAgents.clear()
+    lastOnlineAgents.clear()
+  }
+}
+
+function workAgentScopeKey(profileId: string, projectId: string): string {
+  const user = useAuthStore.getState().user?.id ?? 'local'
+  const workspace = useWorkspaceConnectionStore.getState().activeWorkspaceId
+  return JSON.stringify([workspace, user, profileId, projectId])
+}
+
+function setBoundedMap<V>(map: Map<string, V>, key: string, value: V): void {
+  if (map.has(key)) map.delete(key)
+  else if (map.size >= MAX_WORK_AGENT_CACHE) {
+    const oldest = map.keys().next().value
+    if (oldest !== undefined) map.delete(oldest)
+  }
+  map.set(key, value)
+}
 
 /** Seed the list from the route's fresh server check before mounting the next project. */
 export function rememberWorkAgentList(projectId: string, rows: AgentProfileSideChat[]) {
-  const user = useAuthStore.getState().user?.id ?? 'local'
-  const workspace = useWorkspaceConnectionStore.getState().activeWorkspaceId
-  const key = JSON.stringify([workspace, user, 'work', projectId])
+  ensureCurrentWorkAgentCaches()
+  const key = workAgentScopeKey('work', projectId)
   // Main is one of the server's agent rows, listed like every other (PLAT-746-885).
-  workAgentLists.set(key, { listed: [...rows, ...(lastTeammateAgents.get(projectId) ?? [])] })
+  setBoundedMap(workAgentLists, key, { listed: [...rows, ...(lastTeammateAgents.get(key) ?? [])] })
 }
 
 // Shared project setup is independent of any agent's browser tab.
@@ -730,10 +799,14 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   const userId = useAuthStore(state => state.user?.id ?? 'local')
   const workspaceId = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
   const listCacheKey = JSON.stringify([workspaceId, userId, profileId, projectId])
-  const [listed, setListed] = useState<AgentProfileSideChat[] | null>(() => workAgentLists.get(listCacheKey)?.listed ?? null)
+  const [listed, setListed] = useState<AgentProfileSideChat[] | null>(() => {
+    ensureCurrentWorkAgentCaches()
+    return workAgentLists.get(listCacheKey)?.listed ?? null
+  })
   // Reuse only this account/connection/project's last server list while refreshing.
   useEffect(() => {
-    if (listed) workAgentLists.set(listCacheKey, { listed })
+    ensureCurrentWorkAgentCaches()
+    if (listed) setBoundedMap(workAgentLists, listCacheKey, { listed })
   }, [listCacheKey, listed])
   const allTabs = Object.values(chatTabs)
   const sideChats = (listed || [])
@@ -842,9 +915,11 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         // website (they are read from the server; only their owner types).
         // The person's own agents in online projects the Team uses are real tabs here too, running on the server (#4121).
         const [rows, teammates, online] = await Promise.all([listProjectSideChats(profileId, projectId, true, force), teamSideChats(profileId, projectId).catch(() => undefined), onlineAgentSideChats(profileId, projectId).catch(() => undefined)])
-        if (teammates) lastTeammateAgents.set(projectId, teammates)
-        if (online) lastOnlineAgents.set(projectId, online)
-        rows.push(...(teammates ?? lastTeammateAgents.get(projectId) ?? []), ...(online ?? lastOnlineAgents.get(projectId) ?? []))
+        ensureCurrentWorkAgentCaches()
+        const scopeKey = workAgentScopeKey(profileId, projectId)
+        if (teammates) setBoundedMap(lastTeammateAgents, scopeKey, teammates)
+        if (online) setBoundedMap(lastOnlineAgents, scopeKey, online)
+        rows.push(...(teammates ?? lastTeammateAgents.get(scopeKey) ?? []), ...(online ?? lastOnlineAgents.get(scopeKey) ?? []))
         if (cancelled) return
         // Main is one of the server's agent rows, listed like every other (PLAT-746-885): a browser tab whose
         // main-chat mark was lost no longer hides it.
@@ -1161,10 +1236,11 @@ function WorkTopBarControl({
 function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const { sessions, selected, select, create, remove, updateLLMConfig, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
   const workflowContextSignature = selected?.workflowContextPaths.join('\u0000') || ''
-  const persistLegacyRuntime = useCallback(async (selection: WorkRuntimeSelection) => {
-    if (!selected || isWorkSessionRun(selected)) return
-    await updateLLMConfig(selected.id, selection)
-  }, [selected, updateLLMConfig])
+  const persistLegacyRuntime = useCallback(async (selection: WorkRuntimeSelection, targetProjectId: string) => {
+    const project = sessions.find(item => item.product === product.profileId && item.id === targetProjectId)
+    if (!project || isWorkSessionRun(project)) return
+    await updateLLMConfig(targetProjectId, selection)
+  }, [sessions, product.profileId, updateLLMConfig])
   const [createAgentRequest, setCreateAgentRequest] = useState(0)
   const [importAgentRequest, setImportAgentRequest] = useState(0)
   const [importAvailableProject, setImportAvailableProject] = useState('')
@@ -1177,7 +1253,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     if (!tabId || !text) return
     let tries = 0
     const timer = window.setInterval(() => { if (startInChat(tabId, text) || ++tries > 40) { pendingStart.current = ''; window.clearInterval(timer) } }, 150)
-    return () => window.clearInterval(timer)
+    return () => { pendingStart.current = ''; window.clearInterval(timer) }
   }, [tabId])
 
   // A browser reload loses transient tab metadata while the durable references

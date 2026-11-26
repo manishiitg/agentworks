@@ -1,5 +1,6 @@
 import { getApiBaseUrl, getAuthToken } from '../services/api'
 import type { ModelMetadata } from '../services/llm-config-api'
+import { captureChatIdentity } from './chatIdentity'
 
 // Reads a capability declared on an agent profile's runtime.capabilities block
 // (agentprofiles.RuntimeCapabilities in agent_go/pkg/agentprofiles/types.go).
@@ -97,20 +98,35 @@ export type AgentProfileRuntime = {
 
 const capabilityCache = new Map<string, Promise<boolean>>()
 const profileCache = new Map<string, Promise<AgentProfileResponse>>()
+let cachedIdentity = captureChatIdentity()
+
+function ensureCurrentCapabilityCache(): void {
+  const identity = captureChatIdentity()
+  if (identity !== cachedIdentity) {
+    cachedIdentity = identity
+    capabilityCache.clear()
+    profileCache.clear()
+  }
+}
 
 function loadAgentProfile(profileId: string, version?: number): Promise<AgentProfileResponse> {
+  ensureCurrentCapabilityCache()
   const normalizedVersion = version && version > 0 ? version : undefined
-  const cacheKey = `${profileId}::${normalizedVersion ?? 'latest'}`
+  const baseUrl = getApiBaseUrl()
+  const cacheKey = `${baseUrl}::${profileId}::${normalizedVersion ?? 'latest'}`
   const cached = profileCache.get(cacheKey)
   if (cached) return cached
 
   const token = getAuthToken()
   const versionQuery = normalizedVersion ? `?version=${normalizedVersion}` : ''
-  const promise = fetch(`${getApiBaseUrl()}/api/agent-profiles/${encodeURIComponent(profileId)}${versionQuery}`, {
+  const promise = fetch(`${baseUrl}/api/agent-profiles/${encodeURIComponent(profileId)}${versionQuery}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   }).then((response) => {
     if (!response.ok) throw new Error(`Unable to load agent profile ${profileId} (${response.status})`)
     return response.json() as Promise<AgentProfileResponse>
+  }).catch((error) => {
+    if (profileCache.get(cacheKey) === promise) profileCache.delete(cacheKey)
+    throw error
   })
 
   profileCache.set(cacheKey, promise)
@@ -145,7 +161,8 @@ export async function loadAgentProfileRuntime(
  */
 export function loadAgentProfileCapabilityEnabled(profileId: string, capability: string, version?: number): Promise<boolean> {
   if (!profileId) return Promise.resolve(false)
-  const cacheKey = `${profileId}::${version ?? 'latest'}::${capability}`
+  ensureCurrentCapabilityCache()
+  const cacheKey = `${getApiBaseUrl()}::${profileId}::${version ?? 'latest'}::${capability}`
   const cached = capabilityCache.get(cacheKey)
   if (cached) return cached
 
@@ -155,7 +172,10 @@ export function loadAgentProfileCapabilityEnabled(profileId: string, capability:
       const asStr = typeof value === 'string' ? value.trim() : ''
       return asStr !== '' && asStr !== 'disabled'
     })
-    .catch(() => false)
+    .catch(() => {
+      if (capabilityCache.get(cacheKey) === promise) capabilityCache.delete(cacheKey)
+      return false
+    })
 
   capabilityCache.set(cacheKey, promise)
   return promise

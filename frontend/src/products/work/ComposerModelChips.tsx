@@ -92,6 +92,11 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const [contextTokens, setContextTokens] = useState(0)
   const [pendingSwitch, setPendingSwitch] = useState<{ option: AgentProfileProviderOption; modelId?: string; connectionId?: string; effort?: string } | null>(null)
   useEffect(() => {
+    setSwitchNote('')
+    setContextTokens(0)
+    setPendingSwitch(null)
+  }, [sessionId])
+  useEffect(() => {
     if (!menuOpen || !sessionId) return
     let active = true
     agentApi.getChatContext(sessionId).then(view => { if (active) { setSwitchNote(view?.switch_note || ''); setContextTokens(view?.used_tokens || 0) } }).catch(() => undefined)

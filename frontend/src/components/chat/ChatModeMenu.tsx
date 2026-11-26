@@ -6,6 +6,7 @@ import { changeChatContext, menuLabelClass, menuRowClass } from '../../products/
 import api, { workFolderApi } from '../../services/api'
 import type { ChatAccessMode, ChatReplyStyle, WorkFolderGrant } from '../../services/api-types'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
+import { useChatStore } from '../../stores/useChatStore'
 
 // The chat's mode beside the model (#3885): how this chat works (Auto, Auto-review, Plan). What it can reach is the
 // project's access, set in Folders on this Mac (owner, 26 Nov: "access is at project level.. mode is chat level"); the
@@ -31,7 +32,7 @@ const STYLES: Record<ChatReplyStyle, { label: string; detail: string }> = {
 const chipClass = 'inline-flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted'
 
 /** The project's access, for the line under the modes: the folders attached on this Mac and the whole-Mac row. */
-function useReach(open: boolean) {
+function useReach(open: boolean, reloadTick: number) {
   const [reach, setReach] = useState<{ folders: WorkFolderGrant[]; home: string } | null>(null)
   useEffect(() => {
     if (!open) return
@@ -41,7 +42,7 @@ function useReach(open: boolean) {
       api.get<{ available: boolean; home?: string }>('/api/work/mac-downloads').then(({ data }) => (data.available ? data.home || '' : '')).catch(() => ''),
     ]).then(([folders, home]) => { if (!cancelled) setReach({ folders, home: home.replace(/\/+$/, '') }) })
     return () => { cancelled = true }
-  }, [open])
+  }, [open, reloadTick])
   return reach
 }
 
@@ -62,7 +63,8 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [granting, setGranting] = useState(false)
-  const reach = useReach(open)
+  const [reachReload, setReachReload] = useState(0)
+  const reach = useReach(open, reachReload)
   const mode: ChatAccessMode = access?.mode || 'project'
   const current: Row['id'] = plan?.on ? 'plan' : mode
   const row = ROWS.find(item => item.id === current) || ROWS[0]
@@ -109,7 +111,12 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
   const giveWholeMac = async () => {
     if (!reach?.home) return
     setGranting(true)
-    try { await workFolderApi.addWorkFolder({ path: reach.home, alias: 'mac', access: 'read_write' }) } finally { setGranting(false) }
+    try {
+      await workFolderApi.addWorkFolder({ path: reach.home, alias: 'mac', access: 'read_write' })
+      setReachReload(n => n + 1)
+    } catch {
+      useChatStore.getState().addToast('Could not grant Mac folder access. Try again.', 'error')
+    } finally { setGranting(false) }
   }
   const openFolders = () => projectId
     ? window.dispatchEvent(new CustomEvent(openCrewMacFoldersEvent, { detail: { projectId } }))

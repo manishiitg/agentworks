@@ -56,7 +56,7 @@ export function TerminalResumeNotice({ tabId }: { tabId: string | null }) {
       }
     }
     void refresh(); timer = window.setInterval(() => void refresh(), 5000)
-    return () => { live = false; window.clearInterval(timer); useTerminalResumeState.setState(s => { const byTab = { ...s.byTab }; delete byTab[byKey]; return { byTab, commandTab: undefined } }) }
+    return () => { live = false; window.clearInterval(timer); useTerminalResumeState.setState(s => { const byTab = { ...s.byTab }; delete byTab[byKey]; return { byTab, commandTab: s.commandTab === byKey ? undefined : s.commandTab } }) }
   }, [tabId, identityNow, byKey])
   if (!tabId || !status || (!status.out && !commandOpen)) return null
   const recover = async () => {

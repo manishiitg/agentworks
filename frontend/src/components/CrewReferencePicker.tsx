@@ -1,6 +1,8 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useImperativeHandle, type Ref } from 'react'
 import { Layers } from 'lucide-react'
 import { useAuthStore } from '../stores/useAuthStore'
+import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
+import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
 import { loadProductProjects } from '../platform/chat/productProjects'
 import { WORK_PROFILE_ID, WORK_PROJECTS_ROOT } from '../products/work/workData'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
@@ -35,7 +37,7 @@ interface CrewReferencePickerProps {
   position: { bottom: number; left: number }
 }
 
-let lastReferences: { userID?: string; items: CrewReference[] } | null = null
+let lastReferences: { scopeKey: string; items: CrewReference[] } | null = null
 
 export function CrewReferencePicker({
   ref,
@@ -51,11 +53,13 @@ export function CrewReferencePicker({
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const userID = useAuthStore(state => state.user?.id)
+  const workspaceID = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const scopeKey = `${captureChatIdentity()}:${workspaceID}:${userID ?? ''}`
 
-  useLayoutEffect(() => { setSelectedPresetId(null) }, [isOpen, searchQuery, userID])
+  useLayoutEffect(() => { setSelectedPresetId(null) }, [isOpen, searchQuery, scopeKey])
 
   const [referenceResult, setReferenceResult] = useState<{
-    userID?: string
+    scopeKey: string
     items: CrewReference[]
     status: 'loading' | 'ready' | 'error'
   } | null>(null)
@@ -63,12 +67,13 @@ export function CrewReferencePicker({
   // Reuse this account's last list while the existing, permission-filtered
   // Crew catalog refreshes. Workflows inside a Crew are not separate projects.
   useEffect(() => {
-    const cached = lastReferences?.userID === userID ? lastReferences : null
-    setReferenceResult({ userID, items: cached?.items ?? [], status: 'loading' })
+    const cached = lastReferences?.scopeKey === scopeKey ? lastReferences : null
+    setReferenceResult({ scopeKey, items: cached?.items ?? [], status: 'loading' })
     if (!isOpen) return
     let cancelled = false
+    const identity = captureChatIdentity()
     void loadProductProjects(WORK_PROJECTS_ROOT, WORK_PROFILE_ID, { includeOwnSharedProjects: true }).then(crews => {
-      if (cancelled) return
+      if (cancelled || !isChatIdentityCurrent(identity)) return
       const items = crews.map(crew => {
         const label = crew.identity?.name?.trim() || crew.title
         const agentWorks = isOwnAgentWorks(crew)
@@ -82,19 +87,19 @@ export function CrewReferencePicker({
           icon: crew.identity?.icon,
         }
       })
-      lastReferences = { userID, items }
-      setReferenceResult({ userID, items, status: 'ready' })
+      lastReferences = { scopeKey, items }
+      setReferenceResult({ scopeKey, items, status: 'ready' })
     }).catch(() => {
-      if (cancelled) return
-      lastReferences = { userID, items: [] }
-      setReferenceResult({ userID, items: [], status: 'error' })
+      if (cancelled || !isChatIdentityCurrent(identity)) return
+      lastReferences = { scopeKey, items: [] }
+      setReferenceResult({ scopeKey, items: [], status: 'error' })
     })
     return () => { cancelled = true }
-  }, [isOpen, userID])
+  }, [isOpen, scopeKey])
   const allReferences = useMemo(() => {
-    const items = isOpen && referenceResult?.userID === userID ? referenceResult?.items || [] : []
+    const items = isOpen && referenceResult?.scopeKey === scopeKey ? referenceResult?.items || [] : []
     return agentWorksFirst(items, item => !!item.agentWorks)
-  }, [isOpen, referenceResult, userID])
+  }, [isOpen, referenceResult, scopeKey])
 
   const query = searchQuery.toLowerCase().trim()
   const projectMatches = (project: CrewReference) => !query ||
@@ -132,7 +137,7 @@ export function CrewReferencePicker({
     if (selectedIndex >= 0) listRef.current?.querySelectorAll<HTMLElement>('[role="option"]')[selectedIndex]?.scrollIntoView({ block: 'nearest' })
   }, [activeOption, selectedIndex])
 
-  const status = referenceResult?.userID === userID ? referenceResult?.status : undefined
+  const status = referenceResult?.scopeKey === scopeKey ? referenceResult?.status : undefined
   const loadingReferences = !status || status === 'loading'
   const loadError = status === 'error'
   const nothingMatches = isOpen && !loadError && !loadingReferences && !!query && filteredCrews.length === 0

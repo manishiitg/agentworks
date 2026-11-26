@@ -2,22 +2,48 @@ import { useEffect, useState } from 'react'
 import api from '../../services/api'
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
 import { ConversationImageRoot } from '../../components/ui/ConversationImageRoot'
+import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
 export type ProjectWelcomeStarter = { label: string; note?: string; message: string }
 export type ProjectWelcomePage = { body?: string; root?: string; starters: ProjectWelcomeStarter[] }
 
+const MAX_WELCOME_PAGES = 64
 const pages = new Map<string, ProjectWelcomePage>()
+let cachedPagesIdentity = captureChatIdentity()
+
+function currentWelcomePages(): Map<string, ProjectWelcomePage> {
+  const identity = captureChatIdentity()
+  if (identity !== cachedPagesIdentity) {
+    cachedPagesIdentity = identity
+    pages.clear()
+  }
+  return pages
+}
 
 /** The project's welcome page (its WELCOME.md, read by the server); undefined while loading or when it has none. */
 export function useProjectWelcome(projectId?: string, profileId = 'work'): ProjectWelcomePage | undefined {
-  const key = projectId ? `${profileId}:${projectId}` : ''
-  const [page, setPage] = useState(() => (key ? pages.get(key) : undefined))
+  const workspaceId = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const identity = captureChatIdentity()
+  const key = projectId ? `${identity}:${workspaceId}:${profileId}:${projectId}` : ''
+  const [page, setPage] = useState(() => (key ? currentWelcomePages().get(key) : undefined))
   useEffect(() => {
-    setPage(key ? pages.get(key) : undefined)
+    const cache = currentWelcomePages()
+    setPage(key ? cache.get(key) : undefined)
     if (!projectId) return
     const abort = new AbortController()
+    const capturedIdentity = captureChatIdentity()
     api.get<ProjectWelcomePage>(`/api/agent-profiles/${encodeURIComponent(profileId)}/welcome`, { params: { project_id: projectId }, signal: abort.signal, skipSessionContext: true })
-      .then(response => { pages.set(key, response.data); setPage(response.data) })
+      .then(response => {
+        if (!isChatIdentityCurrent(capturedIdentity)) return
+        const activeCache = currentWelcomePages()
+        if (activeCache.size >= MAX_WELCOME_PAGES) {
+          const oldest = activeCache.keys().next().value
+          if (oldest !== undefined) activeCache.delete(oldest)
+        }
+        activeCache.set(key, response.data)
+        setPage(response.data)
+      })
       .catch(() => undefined)
     return () => abort.abort()
   }, [key, projectId, profileId])

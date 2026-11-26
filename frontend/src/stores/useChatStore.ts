@@ -841,6 +841,46 @@ type PendingStreamingChunk = { chunkIndex: number; chunk: string; meta?: Streami
 const _pendingStreamingChunks: Record<string, PendingStreamingChunk[]> = {}
 let _streamingFlushHandle: ReturnType<typeof setTimeout> | null = null
 
+function clearPendingStreamingChunksForSession(sessionId: string): void {
+  delete _pendingStreamingChunks[sessionId]
+  if (_streamingInactivityTimers[sessionId]) {
+    clearTimeout(_streamingInactivityTimers[sessionId])
+    delete _streamingInactivityTimers[sessionId]
+  }
+}
+
+function purgeSessionSideState(sessionId: string): void {
+  clearPendingEventBatch(sessionId)
+  tabEventIdSets.delete(sessionId)
+  tabAutoNotificationKeys.delete(sessionId)
+  clearPendingStreamingChunksForSession(sessionId)
+}
+
+function clearAllRuntimeTimersAndBuffers(state: Pick<ChatState, 'sseConnections' | 'pollingInterval' | 'activeSessionsPollingInterval'>): void {
+  Object.values(state.sseConnections).forEach((conn) => conn.close())
+  if (state.pollingInterval !== null) clearInterval(state.pollingInterval)
+  if (state.activeSessionsPollingInterval !== null) clearInterval(state.activeSessionsPollingInterval)
+  if (_streamingFlushHandle !== null) {
+    clearTimeout(_streamingFlushHandle)
+    _streamingFlushHandle = null
+  }
+  for (const key of Object.keys(_pendingStreamingChunks)) delete _pendingStreamingChunks[key]
+  Object.values(_streamingInactivityTimers).forEach((timer) => clearTimeout(timer))
+  Object.keys(_streamingInactivityTimers).forEach((key) => delete _streamingInactivityTimers[key])
+  Object.values(_executionStreamingInactivityTimers).forEach((timer) => clearTimeout(timer))
+  Object.keys(_executionStreamingInactivityTimers).forEach((key) => delete _executionStreamingInactivityTimers[key])
+  for (const sessionId of [..._eventBatchTimers.keys(), ..._eventBatchBuffers.keys()]) {
+    clearPendingEventBatch(sessionId)
+  }
+  tabEventIdSets.clear()
+  tabAutoNotificationKeys.clear()
+  eventPollInFlight = false
+  previousDurableChatTabs = null
+  previousDurableActiveTabId = undefined
+  previousDurableViewMode = undefined
+  previousDurableChatState = null
+}
+
 function scheduleStreamingFlush() {
   if (_streamingFlushHandle !== null) return
   // setTimeout (not requestAnimationFrame) so a hidden tab still applies pieces and tests can use
@@ -1552,20 +1592,22 @@ export const useChatStore = create<ChatState>()(
       },
 
       clearTabEvents: (sessionId: string) => {
-        clearPendingEventBatch(sessionId)
-        tabEventIdSets.delete(sessionId)
-        tabAutoNotificationKeys.delete(sessionId)
+        purgeSessionSideState(sessionId)
         set((state) => {
           const newTabEvents = { ...state.tabEvents }
           delete newTabEvents[sessionId]
           const newTabEventIndices = { ...state.tabEventIndices }
           delete newTabEventIndices[sessionId]
+          const newTabHistoryLoaded = { ...state.tabHistoryLoaded }
+          delete newTabHistoryLoaded[sessionId]
           const newTabHasMoreOlderEvents = { ...state.tabHasMoreOlderEvents }
           delete newTabHasMoreOlderEvents[sessionId]
           const newTabHistoryPagination = { ...state.tabHistoryPagination }
           delete newTabHistoryPagination[sessionId]
           const newStreamingText = { ...state.streamingText }
           delete newStreamingText[sessionId]
+          const newStreamingGeneration = { ...state.streamingGeneration }
+          delete newStreamingGeneration[sessionId]
           const newChatUIMode = { ...state.streamingChatUIMode }
           delete newChatUIMode[sessionId]
           const newStreamingStatus = { ...state.streamingStatus }
@@ -1582,6 +1624,10 @@ export const useChatStore = create<ChatState>()(
           delete newLastStreamingChunkIndex[sessionId]
           const newCompletedStreamingText = { ...state.completedStreamingText }
           delete newCompletedStreamingText[sessionId]
+          const newSseLink = { ...state.sseLink }
+          delete newSseLink[sessionId]
+          const newMessageStates = { ...state.messageStates }
+          delete newMessageStates[sessionId]
           const newExecutionStreaming = { ...state.executionStreaming }
           for (const [executionId, activity] of Object.entries(newExecutionStreaming)) {
             if (activity.sessionId === sessionId) {
@@ -1596,9 +1642,11 @@ export const useChatStore = create<ChatState>()(
           return {
             tabEvents: newTabEvents,
             tabEventIndices: newTabEventIndices,
+            tabHistoryLoaded: newTabHistoryLoaded,
             tabHasMoreOlderEvents: newTabHasMoreOlderEvents,
             tabHistoryPagination: newTabHistoryPagination,
             streamingText: newStreamingText,
+            streamingGeneration: newStreamingGeneration,
             streamingChatUIMode: newChatUIMode,
             streamingStatus: newStreamingStatus,
             streamingTerminalText: newStreamingTerminalText,
@@ -1607,6 +1655,8 @@ export const useChatStore = create<ChatState>()(
             lastStreamingChunkIndex: newLastStreamingChunkIndex,
             lastStreamingTerminalChunkIndex: newLastStreamingTerminalChunkIndex,
             completedStreamingText: newCompletedStreamingText,
+            sseLink: newSseLink,
+            messageStates: newMessageStates,
             executionStreaming: newExecutionStreaming
           }
         })
@@ -2222,17 +2272,21 @@ export const useChatStore = create<ChatState>()(
         const newSessionId = nextSessionId || randomUUID()
 
         // Stop any streaming + close SSE for this tab
-        if (oldSessionId && state.sseConnections[oldSessionId]) {
-          state.sseConnections[oldSessionId].close()
+        if (oldSessionId) {
+          if (state.sseConnections[oldSessionId]) state.sseConnections[oldSessionId].close()
+          purgeSessionSideState(oldSessionId)
         }
 
         // Clear per-session data and assign a new session ID
         set((s) => {
           const newTabEvents = { ...s.tabEvents }
           const newTabEventIndices = { ...s.tabEventIndices }
+          const newTabHistoryLoaded = { ...s.tabHistoryLoaded }
           const newTabHasMore = { ...s.tabHasMoreOlderEvents }
           const newTabHistoryPagination = { ...s.tabHistoryPagination }
           const newStreamingText = { ...s.streamingText }
+          const newStreamingGeneration = { ...s.streamingGeneration }
+          const newStreamingChatUIMode = { ...s.streamingChatUIMode }
           const newStreamingStatus = { ...s.streamingStatus }
           const newStreamingTerminalText = { ...s.streamingTerminalText }
           const newStreamingTerminalActive = { ...s.streamingTerminalActive }
@@ -2242,12 +2296,17 @@ export const useChatStore = create<ChatState>()(
           const newCompletedStreamingText = { ...s.completedStreamingText }
           const newExecutionStreaming = { ...s.executionStreaming }
           const newSSE = { ...s.sseConnections }
+          const newSseLink = { ...s.sseLink }
+          const newMessageStates = { ...s.messageStates }
           if (oldSessionId) {
             delete newTabEvents[oldSessionId]
             delete newTabEventIndices[oldSessionId]
+            delete newTabHistoryLoaded[oldSessionId]
             delete newTabHasMore[oldSessionId]
             delete newTabHistoryPagination[oldSessionId]
             delete newStreamingText[oldSessionId]
+            delete newStreamingGeneration[oldSessionId]
+            delete newStreamingChatUIMode[oldSessionId]
             delete newStreamingStatus[oldSessionId]
             delete newStreamingTerminalText[oldSessionId]
             delete newStreamingTerminalActive[oldSessionId]
@@ -2265,6 +2324,8 @@ export const useChatStore = create<ChatState>()(
               }
             }
             delete newSSE[oldSessionId]
+            delete newSseLink[oldSessionId]
+            delete newMessageStates[oldSessionId]
           }
           return {
             chatTabs: {
@@ -2282,9 +2343,12 @@ export const useChatStore = create<ChatState>()(
             },
             tabEvents: newTabEvents,
             tabEventIndices: newTabEventIndices,
+            tabHistoryLoaded: newTabHistoryLoaded,
             tabHasMoreOlderEvents: newTabHasMore,
             tabHistoryPagination: newTabHistoryPagination,
             streamingText: newStreamingText,
+            streamingGeneration: newStreamingGeneration,
+            streamingChatUIMode: newStreamingChatUIMode,
             streamingStatus: newStreamingStatus,
             streamingTerminalText: newStreamingTerminalText,
             streamingTerminalActive: newStreamingTerminalActive,
@@ -2294,6 +2358,8 @@ export const useChatStore = create<ChatState>()(
             completedStreamingText: newCompletedStreamingText,
             executionStreaming: newExecutionStreaming,
             sseConnections: newSSE,
+            sseLink: newSseLink,
+            messageStates: newMessageStates,
           }
         })
       },
@@ -2302,12 +2368,7 @@ export const useChatStore = create<ChatState>()(
       resetChatState: () => {
         const state = get()
 
-        // Close all SSE connections
-        Object.values(state.sseConnections).forEach((conn) => conn.close())
-        Object.values(_executionStreamingInactivityTimers).forEach((timer) => clearTimeout(timer))
-        Object.keys(_executionStreamingInactivityTimers).forEach((key) => {
-          delete _executionStreamingInactivityTimers[key]
-        })
+        clearAllRuntimeTimersAndBuffers(state)
 
         // Close all tabs and stop sessions
         Object.values(state.chatTabs).forEach(async (tab) => {
@@ -2324,6 +2385,8 @@ export const useChatStore = create<ChatState>()(
           isStreaming: false,
           lastEventIndex: -1,
           pollingInterval: null,
+          activeSessionsPollingInterval: null,
+          pinnedHumanByTerminalMode: {},
           // Deprecated fields removed
           currentUserMessage: '',
           showUserMessage: true,
@@ -2342,8 +2405,14 @@ export const useChatStore = create<ChatState>()(
           toasts: [],
           chatTabs: {},
           activeTabId: null,
+          tabEvents: {},
+          tabHistoryLoaded: {},
+          tabEventIndices: {},
+          tabHasMoreOlderEvents: {},
+          tabHistoryPagination: {},
+          tabSessionStatus: {},
           streamingText: {},
-      streamingGeneration: {},
+          streamingGeneration: {},
           streamingChatUIMode: {},
           streamingStatus: {},
           streamingTerminalText: {},
@@ -2354,7 +2423,10 @@ export const useChatStore = create<ChatState>()(
           completedStreamingText: {},
           delegationStreamingText: {},
           lastDelegationChunkIndex: {},
-          executionStreaming: {}
+          executionStreaming: {},
+          sseConnections: {},
+          sseLink: {},
+          messageStates: {},
         })
 
         // Clear the requiresNewChat flag after successful chat reset
@@ -2371,15 +2443,7 @@ export const useChatStore = create<ChatState>()(
         // local observers and timers — never call stopSession here, because a
         // tab restored from storage can belong to the user who just signed
         // out and their work must continue independently.
-        Object.values(state.sseConnections).forEach((conn) => conn.close())
-        Object.values(_streamingInactivityTimers).forEach((timer) => clearTimeout(timer))
-        Object.keys(_streamingInactivityTimers).forEach((key) => delete _streamingInactivityTimers[key])
-        Object.values(_executionStreamingInactivityTimers).forEach((timer) => clearTimeout(timer))
-        Object.keys(_executionStreamingInactivityTimers).forEach((key) => delete _executionStreamingInactivityTimers[key])
-        for (const sessionId of _eventBatchTimers.keys()) clearPendingEventBatch(sessionId)
-        tabEventIdSets.clear()
-        tabAutoNotificationKeys.clear()
-        if (state.activeSessionsPollingInterval !== null) clearInterval(state.activeSessionsPollingInterval)
+        clearAllRuntimeTimersAndBuffers(state)
 
         // Explicit discard removes this owner's cache. switchChatAccount
         // temporarily suppresses persistence during this reset so changing
@@ -2389,6 +2453,7 @@ export const useChatStore = create<ChatState>()(
           isStreaming: false,
           lastEventIndex: -1,
           pollingInterval: null,
+          pinnedHumanByTerminalMode: {},
           currentUserMessage: '',
           showUserMessage: true,
           sessionId: null,
@@ -2417,7 +2482,7 @@ export const useChatStore = create<ChatState>()(
           activeSessionsPollingInterval: null,
           workflowScheduleSummary: null,
           streamingText: {},
-      streamingGeneration: {},
+          streamingGeneration: {},
           streamingChatUIMode: {},
           streamingStatus: {},
           streamingTerminalText: {},
@@ -2430,8 +2495,8 @@ export const useChatStore = create<ChatState>()(
           lastDelegationChunkIndex: {},
           executionStreaming: {},
           sseConnections: {},
-      sseLink: {},
-      messageStates: {},
+          sseLink: {},
+          messageStates: {},
         })
         useAppStore.getState().clearRequiresNewChat()
       },
@@ -2672,6 +2737,7 @@ export const useChatStore = create<ChatState>()(
               .map(tab => tab.sessionId)
               .filter(Boolean)
           )
+          let newTabHistoryLoaded = state.tabHistoryLoaded
           for (const sessionId of Object.keys(newTabEvents)) {
             if (!referencedSessionIds.has(sessionId)) {
               if (newTabEvents === state.tabEvents) {
@@ -2679,11 +2745,14 @@ export const useChatStore = create<ChatState>()(
                 newTabEventIndices = { ...newTabEventIndices }
                 newTabHasMore = { ...newTabHasMore }
                 newTabHistoryPagination = { ...newTabHistoryPagination }
+                newTabHistoryLoaded = { ...newTabHistoryLoaded }
               }
+              purgeSessionSideState(sessionId)
               delete newTabEvents[sessionId]
               delete newTabEventIndices[sessionId]
               delete newTabHasMore[sessionId]
               delete newTabHistoryPagination[sessionId]
+              delete newTabHistoryLoaded[sessionId]
               logger.debug('TabStore', `Cleaned up orphaned events for session ${sessionId}`)
             }
           }
@@ -2693,6 +2762,7 @@ export const useChatStore = create<ChatState>()(
             chatTabs: { ...state.chatTabs, ...updates },
             tabEvents: newTabEvents,
             tabEventIndices: newTabEventIndices,
+            tabHistoryLoaded: newTabHistoryLoaded,
             tabHasMoreOlderEvents: newTabHasMore,
             tabHistoryPagination: newTabHistoryPagination
           }
@@ -2785,14 +2855,23 @@ export const useChatStore = create<ChatState>()(
 
         // Clean up session-keyed resources (only if no other tab shares the session)
         if (tab.sessionId && !otherTabUsesSession) {
-          if (_streamingInactivityTimers[tab.sessionId]) {
-            clearTimeout(_streamingInactivityTimers[tab.sessionId])
-            delete _streamingInactivityTimers[tab.sessionId]
+          if (!keepEvents) {
+            purgeSessionSideState(tab.sessionId)
+          } else {
+            clearPendingStreamingChunksForSession(tab.sessionId)
           }
 
           const newStreamingText = { ...state.streamingText }
           delete newStreamingText[tab.sessionId]
           updates.streamingText = newStreamingText
+
+          const newStreamingGeneration = { ...state.streamingGeneration }
+          delete newStreamingGeneration[tab.sessionId]
+          updates.streamingGeneration = newStreamingGeneration
+
+          const newStreamingChatUIMode = { ...state.streamingChatUIMode }
+          delete newStreamingChatUIMode[tab.sessionId]
+          updates.streamingChatUIMode = newStreamingChatUIMode
 
           const newStreamingTerminalText = { ...state.streamingTerminalText }
           delete newStreamingTerminalText[tab.sessionId]
@@ -2822,6 +2901,14 @@ export const useChatStore = create<ChatState>()(
           delete newCompletedStreamingText[tab.sessionId]
           updates.completedStreamingText = newCompletedStreamingText
 
+          const newSseLink = { ...state.sseLink }
+          delete newSseLink[tab.sessionId]
+          updates.sseLink = newSseLink
+
+          const newMessageStates = { ...state.messageStates }
+          delete newMessageStates[tab.sessionId]
+          updates.messageStates = newMessageStates
+
           const newExecutionStreaming = { ...state.executionStreaming }
           for (const [executionId, activity] of Object.entries(newExecutionStreaming)) {
             if (activity.sessionId === tab.sessionId) {
@@ -2833,6 +2920,12 @@ export const useChatStore = create<ChatState>()(
             }
           }
           updates.executionStreaming = newExecutionStreaming
+
+          if (!keepEvents) {
+            const newHistoryLoaded = { ...state.tabHistoryLoaded }
+            delete newHistoryLoaded[tab.sessionId]
+            updates.tabHistoryLoaded = newHistoryLoaded
+          }
 
           const newHasMore = { ...state.tabHasMoreOlderEvents }
           delete newHasMore[tab.sessionId]
@@ -2974,6 +3067,34 @@ export const useChatStore = create<ChatState>()(
         // If sessionId hasn't changed, nothing to do
         if (oldSessionId === newSessionId) return
 
+        // Flush/drop pending micro-batched events and side indices for the old session ID so
+        // buffered events never flush into the retired session key.
+        const isWorkflowTab = tab.metadata?.mode === 'workflow'
+        const shouldMigrateEvents =
+          !isWorkflowTab ||
+          tab.metadata?.phaseId === 'workflow-builder' ||
+          !!tab.config?.restoredConversationPath
+        if (oldSessionId) {
+          if (shouldMigrateEvents) {
+            const buffered = _eventBatchBuffers.get(oldSessionId)
+            clearPendingEventBatch(oldSessionId)
+            const oldIds = tabEventIdSets.get(oldSessionId)
+            if (oldIds) {
+              tabEventIdSets.set(newSessionId, oldIds)
+              tabEventIdSets.delete(oldSessionId)
+            }
+            const oldNotifs = tabAutoNotificationKeys.get(oldSessionId)
+            if (oldNotifs) {
+              tabAutoNotificationKeys.set(newSessionId, oldNotifs)
+              tabAutoNotificationKeys.delete(oldSessionId)
+            }
+            clearPendingStreamingChunksForSession(oldSessionId)
+            if (buffered?.length) addTabEventsBatched(newSessionId, buffered)
+          } else {
+            purgeSessionSideState(oldSessionId)
+          }
+        }
+
         set((state) => {
           const updates: Partial<ChatState> = {
             chatTabs: {
@@ -2990,18 +3111,13 @@ export const useChatStore = create<ChatState>()(
           // optimistic user message contains the restored conversation file context.
           // Other workflow tabs still discard old events because re-runs should start fresh.
           if (oldSessionId && state.tabEvents[oldSessionId]) {
-            const isWorkflowTab = tab.metadata?.mode === 'workflow'
-            const shouldMigrateEvents =
-              !isWorkflowTab ||
-              tab.metadata?.phaseId === 'workflow-builder' ||
-              !!tab.config?.restoredConversationPath
-
             if (shouldMigrateEvents) {
               // Migrate events to preserve conversation history for chat/multi-agent
               const oldEvents = state.tabEvents[oldSessionId]
               const oldEventIndex = state.tabEventIndices[oldSessionId]
               const oldHasMore = state.tabHasMoreOlderEvents[oldSessionId]
               const oldHistoryPagination = state.tabHistoryPagination[oldSessionId]
+              const oldHistoryLoaded = state.tabHistoryLoaded[oldSessionId]
 
               updates.tabEvents = {
                 ...state.tabEvents,
@@ -3025,6 +3141,12 @@ export const useChatStore = create<ChatState>()(
                   [newSessionId]: oldHistoryPagination,
                 }
               }
+              if (oldHistoryLoaded !== undefined) {
+                updates.tabHistoryLoaded = {
+                  ...state.tabHistoryLoaded,
+                  [newSessionId]: oldHistoryLoaded,
+                }
+              }
             }
 
             // Clean up old sessionId entries (always, for both modes)
@@ -3043,6 +3165,10 @@ export const useChatStore = create<ChatState>()(
             const newHistoryPagination = { ...(updates.tabHistoryPagination || state.tabHistoryPagination) }
             delete newHistoryPagination[oldSessionId]
             updates.tabHistoryPagination = newHistoryPagination
+
+            const newHistoryLoaded = { ...(updates.tabHistoryLoaded || state.tabHistoryLoaded) }
+            delete newHistoryLoaded[oldSessionId]
+            updates.tabHistoryLoaded = newHistoryLoaded
           }
 
           return updates
