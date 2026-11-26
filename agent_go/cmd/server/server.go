@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strconv"
@@ -3010,12 +3011,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	})
 
 	// Start background cleanup goroutine to mark inactive sessions (10 minute timeout)
-	go api.cleanupInactiveSessions()
-	go api.runIdleCompactionSweeper()
+	goSafe("cleanup_inactive_sessions", api.cleanupInactiveSessions)
+	goSafe("idle_compaction_sweeper", api.runIdleCompactionSweeper)
 	musecli.SetMuseMSPReplyHandler(api.recordMuseWakeReply)
-	go api.watchScheduleSummaryForLiveFeed()
-	go api.warmLLMConfigCaches()
-	go preloadProviderAccountSettings()
+	goSafe("schedule_summary_live_feed", api.watchScheduleSummaryForLiveFeed)
+	goSafe("warm_llm_config_caches", api.warmLLMConfigCaches)
+	goSafe("preload_provider_account_settings", preloadProviderAccountSettings)
 
 	if err := retireBrainSchedules(fsutil.WorkspaceDocsRoot()); err != nil {
 		log.Printf("[BRAIN_SCHEDULES] event=retirement_failed error=%v", err)
@@ -5070,13 +5071,18 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			Message:   "Query processing started. Use polling API to get real-time updates.",
 		}
 
+		// Clone request with a non-canceled context before writing the response so
+		// detached workflow work never inherits a canceled HTTP request context.
+		workflowReq := r.Clone(context.WithoutCancel(r.Context()))
+
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to encode response: %v", err), http.StatusInternalServerError)
 			return
 		}
 
 		// Execute workflow asynchronously
-		go func() {
+		go func(r *http.Request) {
+			defer recoverDetachedGoroutine("workflow_query", sessionID)
 			if directWebhookOptions != nil && directWebhookOptions.PythonResume != nil && directWebhookOptions.PythonResume.Release != nil {
 				defer directWebhookOptions.PythonResume.Release()
 			}
@@ -5125,7 +5131,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				}
 
 				// Retrieve step_id if it was stored for this preset
-				api.workflowStepIDMux.RLock()
+				api.workflowStepIDMux.Lock()
 				if api.workflowStepIDs != nil {
 					if storedStepID, exists := api.workflowStepIDs[req.PresetQueryID]; exists {
 						stepID = storedStepID
@@ -5134,7 +5140,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 						delete(api.workflowStepIDs, req.PresetQueryID)
 					}
 				}
-				api.workflowStepIDMux.RUnlock()
+				api.workflowStepIDMux.Unlock()
 			} else {
 				log.Printf("[WORKFLOW CHECK] No preset_query_id provided, using default workflowStatus: %s", workflowStatus)
 			}
@@ -5448,7 +5454,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				// Kill headless browser processes for this session
 				api.cleanupBrowserSessions(sessionID)
 			}
-		}()
+		}(workflowReq)
 		return
 	}
 
@@ -5496,6 +5502,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		Message:        "Query processing started. Use polling API to get real-time updates.",
 		OmittedContext: req.omittedWorkflowContextCount,
 	}
+
+	// Clone request with a non-canceled context before writing the response so
+	// detached chat work never sees a canceled HTTP request context.
+	chatReq := r.Clone(context.WithoutCancel(r.Context()))
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		api.completeTrackedExecution(queryID, trackedExecutionStatusFailed, fmt.Sprintf("encode query response: %v", err), nil)
@@ -5570,7 +5580,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	clearDeliveredSender := func() {}
 
 	// Process the query in the background
-	go func() {
+	go func(r *http.Request) {
+		defer recoverDetachedGoroutine("chat_query", sessionID)
 		// The company-server Vault answers this message needs, asked once and early (#3723).
 		api.prefetchServerVaultInventory(sessionID, currentUserID, req.SelectedFolder)
 		serverVaultRound := withServerVaultSecretRound(context.Background())
@@ -5584,7 +5595,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				idleRun.finish(llmtypes.IdleCompactResult{Reason: llmtypes.IdleCompactReasonFailed}, errors.New(turnError))
 			} else {
 				idleCompacts.noteTurnEnd(sessionID, idleTurnRuntime, time.Now())
-				go api.compactEarlyAfterTurn(sessionID, currentUserID)
+				goSafe("compact_early_after_turn", func() { api.compactEarlyAfterTurn(sessionID, currentUserID) })
 			}
 			if agentCancel != nil {
 				agentCancel()
@@ -5710,7 +5721,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 
 		// All following turn reads belong to the execution, not the returned HTTP request.
-		r := r.WithContext(streamCtx)
+		r = r.WithContext(streamCtx)
 
 		// Resolve once for this turn, using its execution context rather than
 		// the HTTP request that has already returned from this background job.
@@ -8394,7 +8405,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Note: Completion events are emitted by the underlying agent, no need for server-level events
 
 		log.Printf("[AGENT DEBUG] Query %s completed successfully", queryID)
-	}()
+	}(chatReq)
 }
 
 func (api *StreamingAPI) verifySessionAccess(r *http.Request, sessionID string) error {
@@ -10442,11 +10453,7 @@ func (api *StreamingAPI) cleanupInactiveSessionsAt(now time.Time) {
 	}
 
 	for _, sessionID := range sessionsToEvictRuntime {
-		workspace.ClearSessionShellConfig(sessionID)
-		virtualtools.DeleteSessionNotificationDestination(sessionID)
-		if api.runtimeCoordinator != nil {
-			api.runtimeCoordinator.Evict(sessionID)
-		}
+		api.evictSessionState(sessionID)
 	}
 
 	for _, sessionID := range sessionsToEvictEventBuffer {
@@ -10455,6 +10462,105 @@ func (api *StreamingAPI) cleanupInactiveSessionsAt(now time.Time) {
 			log.Printf("[ACTIVE_SESSION] Cleanup: Removed event buffer for session %s", sessionID)
 		}
 	}
+}
+
+func recoverDetachedGoroutine(name, scope string) {
+	if r := recover(); r != nil {
+		log.Printf("[PANIC_RECOVER] goroutine=%s scope=%s panic=%v\n%s", name, scope, r, debug.Stack())
+	}
+}
+
+func goSafe(name string, fn func()) {
+	go func() {
+		defer recoverDetachedGoroutine(name, "")
+		fn()
+	}()
+}
+
+// evictSessionState releases all per-session in-memory maps and side state when
+// a stopped session ages out of memory retention.
+func (api *StreamingAPI) evictSessionState(sessionID string) {
+	if api == nil || sessionID == "" {
+		return
+	}
+	workspace.ClearSessionShellConfig(sessionID)
+	virtualtools.DeleteSessionNotificationDestination(sessionID)
+	if api.runtimeCoordinator != nil {
+		api.runtimeCoordinator.Evict(sessionID)
+	}
+
+	api.conversationMux.Lock()
+	delete(api.conversationHistory, sessionID)
+	delete(api.resumeHistorySources, sessionID)
+	delete(api.lastWorkshopModeBySession, sessionID)
+	delete(api.lastChatPolicyBySession, sessionID)
+	delete(api.lastChatPolicyRoleBySession, sessionID)
+	delete(api.lastAgentProfileKeyBySession, sessionID)
+	delete(api.lastAgentToolsModeBySession, sessionID)
+	delete(api.lastWorkflowToolsModeBySession, sessionID)
+	delete(api.launchedAgentProfileKeyBySession, sessionID)
+	api.conversationMux.Unlock()
+
+	api.restoredConversationPersistMux.Lock()
+	delete(api.restoredConversationPersistTargets, sessionID)
+	api.restoredConversationPersistMux.Unlock()
+
+	api.workflowObjectiveMux.Lock()
+	delete(api.workflowObjectives, sessionID)
+	api.workflowObjectiveMux.Unlock()
+
+	api.workflowOrchestratorsMux.Lock()
+	delete(api.workflowOrchestrators, sessionID)
+	api.workflowOrchestratorsMux.Unlock()
+
+	api.sessionAgentsMux.Lock()
+	delete(api.sessionAgents, sessionID)
+	api.sessionAgentsMux.Unlock()
+
+	api.lastQueryMu.Lock()
+	delete(api.lastQueryRequests, sessionID)
+	api.lastQueryMu.Unlock()
+
+	api.sessionWorkspaceMu.Lock()
+	delete(api.sessionWorkspaceFolders, sessionID)
+	api.sessionWorkspaceMu.Unlock()
+
+	api.stoppedSessionsMu.Lock()
+	delete(api.stoppedSessions, sessionID)
+	api.stoppedSessionsMu.Unlock()
+
+	api.interruptedTurnsMu.Lock()
+	delete(api.interruptedTurns, sessionID)
+	api.interruptedTurnsMu.Unlock()
+
+	api.pendingTurnStopsMu.Lock()
+	delete(api.pendingTurnStops, sessionID)
+	api.pendingTurnStopsMu.Unlock()
+
+	api.completionLoopStartedMu.Lock()
+	delete(api.completionLoopStarted, sessionID)
+	api.completionLoopStartedMu.Unlock()
+
+	api.nativeBackgroundMu.Lock()
+	delete(api.nativeBackground, sessionID)
+	api.nativeBackgroundMu.Unlock()
+
+	api.nativeObserversMu.Lock()
+	delete(api.nativeObservers, sessionID)
+	api.nativeObserversMu.Unlock()
+
+	api.nativeCostsMu.Lock()
+	if accountant := api.nativeCosts[sessionID]; accountant != nil {
+		accountant.mu.Lock()
+		accountant.stopLocked()
+		accountant.mu.Unlock()
+		delete(api.nativeCosts, sessionID)
+	}
+	api.nativeCostsMu.Unlock()
+
+	api.promptParts.Delete(sessionID)
+	api.questionsRestored.Delete(sessionID)
+	retainedLastSidecarFinal.Delete(sessionID)
 }
 
 // storeWorkflowOrchestrator stores a workflow orchestrator for a session
@@ -10568,18 +10674,14 @@ func (api *StreamingAPI) handleSetLLMGuidance(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Validate session exists
-	api.activeSessionsMux.RLock()
+	// Validate and update guidance under a single write lock so we never mutate a stale pointer.
+	api.activeSessionsMux.Lock()
 	session, exists := api.activeSessions[sessionID]
-	api.activeSessionsMux.RUnlock()
-
 	if !exists {
+		api.activeSessionsMux.Unlock()
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
-
-	// Update guidance in activeSessions
-	api.activeSessionsMux.Lock()
 	session.LLMGuidance = req.Guidance
 	session.LastActivity = time.Now()
 	api.activeSessionsMux.Unlock()
