@@ -55,10 +55,6 @@ func (api *StreamingAPI) handleCapLayerOAuthToken(w http.ResponseWriter, r *http
 	var cfg mcpclient.MCPServerConfig
 	if isCustomVaultOAuthServer(in.ServerName) {
 		// A custom Vault connection has no catalog entry; the live connection is the only source of its sign-in.
-		if in.ConnectionID == "" {
-			writeUsersError(w, http.StatusForbidden, "OAuth connection does not match the configured server")
-			return
-		}
 		name, cfg = in.ServerName, mcpclient.MCPServerConfig{URL: in.URL}
 	} else {
 		config, loadErr := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)
@@ -81,11 +77,7 @@ func (api *StreamingAPI) handleCapLayerOAuthToken(w http.ResponseWriter, r *http
 	if copied.TokenFile == "" {
 		copied.TokenFile = getUserTokenFilePath(platformMCPTokenUserID, name)
 	}
-	lockKey := name
-	if in.ConnectionID != "" {
-		lockKey = "vault:" + in.ConnectionID
-	}
-	mutex := platformMCPOAuthMutex(lockKey)
+	mutex := platformMCPOAuthMutex("vault:" + in.ConnectionID)
 	mutex.Lock()
 	defer mutex.Unlock()
 	token, err := oauth.NewManager(&copied, api.logger).GetAccessToken(r.Context())
