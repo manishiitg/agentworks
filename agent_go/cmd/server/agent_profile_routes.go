@@ -81,6 +81,8 @@ type AgentProfileConversationRequest struct {
 	// Name is required when the key opens a NEW side chat (tab): every agent
 	// in a project has a name (owner, 2026-10-19).
 	Name string `json:"name,omitempty"`
+	// OpenedFrom is the chat a new tab is opened from; the new tab starts on that chat's model.
+	OpenedFrom string `json:"opened_from,omitempty"`
 }
 
 func agentProfileResumeConversationKey(profileID string, input AgentProfileConversationRequest) string {
@@ -724,6 +726,9 @@ func (api *StreamingAPI) handleResolveAgentProfileConversation(w http.ResponseWr
 		log.Printf("[PRODUCT_CONVERSATION] resolve refused profile=%s key=%q: %v", profile.ID, input.ConversationKey, err)
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 		return
+	}
+	if opener := strings.TrimSpace(input.OpenedFrom); opener != "" && !conversation.IsMainChat {
+		api.startOnOpenerModel(r.Context(), productWorkspaceUserID(r.Context()), profile, productConversationBinding{WorkspacePath: conversation.WorkspacePath, ProjectLLMConfig: conversation.ProjectLLMConfig}, conversation.ConversationKey, opener)
 	}
 	ownerID, ownerName, canWrite := crewConversationTabAccess(r.Context(), productWorkspaceUserID(r.Context()), profile, conversation)
 	writeAgentProfileJSON(w, http.StatusOK, AgentProfileConversationResponse{

@@ -71,7 +71,7 @@ func (api *StreamingAPI) resumeLocalProjectSession(w http.ResponseWriter, r *htt
 		}
 	}
 	if engine == "" || model == "" {
-		externalError(w, 422, "provider_unavailable", "This agent is unavailable here. Choose an available account in Models.")
+		externalError(w, 422, "provider_unavailable", "This agent is unavailable here. Choose an available account in the model menu in the message box.")
 		return
 	}
 	// Use the current admitted model for that provider; the old model may no

@@ -614,6 +614,11 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 		externalError(w, 403, "forbidden", "Only the project's owner can change its settings.")
 		return
 	}
+	if _, present := args["models"]; present {
+		// One place to choose a model: the chat (owner, 26 Nov). The owner's last pick there is the project's fallback.
+		externalError(w, 400, "invalid_settings", "A project has no model setting: each chat chooses its own model (models action=set scope=tab), and chats without one use the owner's last-used model.")
+		return
+	}
 	for _, key := range []string{"knowledgebase_sources", "kb_write_grants"} {
 		if _, present := args[key]; present {
 			externalError(w, 400, "invalid_settings", "Workflow knowledge links and grants apply to Goals and Flows. Use this project's existing Brain and folder tools.")

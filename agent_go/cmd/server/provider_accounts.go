@@ -567,12 +567,12 @@ func (api *StreamingAPI) describeProviderAccountRun(ctx context.Context, scope p
 // server logged nothing, so the pairing could not be seen. It logs both providers and says what to do.
 func providerAccountMismatch(principal, id, turnProvider, accountProvider string, run providerAccountRun) error {
 	log.Printf("[PROVIDER_ACCOUNT] provider mismatch for %q (%s): account %s belongs to %s, the turn runs on %s", principal, run.Label, id, accountProvider, turnProvider)
-	return fmt.Errorf("this chat is set to a %s account but is running on %s. Pick the account again in this project's Models panel; your next message uses it", providerAccountProductName(accountProvider), providerAccountProductName(turnProvider))
+	return fmt.Errorf("this chat is set to a %s account but is running on %s. Pick the account again in the model menu in the message box; your next message uses it", providerAccountProductName(accountProvider), providerAccountProductName(turnProvider))
 }
 
 // providerAccountUnavailable is the one error a denied account produces.
 func providerAccountUnavailable(run providerAccountRun) error {
-	return fmt.Errorf("the account this chat was set to run on no longer exists (it was removed or replaced) for %s. Pick an account again in this project's Models panel; your next message uses it", run.Label)
+	return fmt.Errorf("the account this chat was set to run on no longer exists (it was removed or replaced) for %s. Pick an account again in the model menu in the message box; your next message uses it", run.Label)
 }
 
 // providerAccountNotShared is the denial for an account that exists but is private to its owner
@@ -591,7 +591,7 @@ func providerAccountNotShared(run providerAccountRun, record storedProviderConne
 	if label != "" {
 		label = strings.ToUpper(label[:1]) + label[1:]
 	}
-	return fmt.Errorf("%s runs on %s's personal %s account, which only they can use. Ask %s to share it with %s (Providers → the account → Who can use it), or pick another account for it in Models", label, owner, providerAccountProductName(record.Provider), owner, run.Label)
+	return fmt.Errorf("%s runs on %s's personal %s account, which only they can use. Ask %s to share it with %s (Providers → the account → Who can use it), or pick another account for it in the model menu in the message box", label, owner, providerAccountProductName(record.Provider), owner, run.Label)
 }
 
 func providerAccountProductName(provider string) string {

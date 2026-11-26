@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 
 	"github.com/gorilla/mux"
@@ -405,6 +406,81 @@ func effectiveProfileChatModel(profile agentprofiles.Profile, binding productCon
 	}, nil
 }
 
+// rememberOwnerProjectModel makes the project main owner's explicit chat model the project's fallback (owner, 26 Nov):
+// chats with no model of their own (schedules, agent messages, shared asks, the project's Users) run on the owner's
+// last-used model. It is stored where the project model always was, the project's llm_config. A non-owner's pick and
+// a reset to the fallback (empty engine) change only that chat. It returns the saved fallback, or nil.
+func rememberOwnerProjectModel(ctx context.Context, userID string, profile agentprofiles.Profile, workspacePath string, choice AgentProfileChatModel) *workflowtypes.PresetLLMConfig {
+	engine := strings.TrimSpace(choice.Engine)
+	if engine == "" || !isProjectProfileID(profile.ID) || !crewProjectOwnedByCallerStrict(userID, workspacePath) {
+		return nil
+	}
+	option, offered := findProviderOptionByID(profile.Runtime.ProviderOptions, engine)
+	if !offered || strings.TrimSpace(option.Provider) == "" {
+		return nil
+	}
+	pin := &workflowtypes.AgentLLMConfig{Provider: option.Provider, ModelID: firstNonEmptyTrimmed(choice.ModelID, option.ModelID), ConnectionID: strings.TrimSpace(choice.ConnectionID)}
+	if effort := strings.TrimSpace(choice.ReasoningEffort); effort != "" {
+		pin.Options = map[string]any{"reasoning_effort": effort}
+	}
+	var saved *workflowtypes.PresetLLMConfig
+	err := mutateProjectRuntimeManifest(ctx, profile.ID, workspacePath, func(_ map[string]any, capabilities map[string]any) (bool, error) {
+		// Keep the other llm_config settings (knowledge, background model); only the chat model is the owner's pick.
+		config := workflowtypes.PresetLLMConfig{}
+		if encoded, err := json.Marshal(capabilities["llm_config"]); err == nil {
+			_ = json.Unmarshal(encoded, &config)
+		}
+		config.SchemaVersion, config.Mode, config.BuilderLLM = 2, "explicit", pin
+		config.Provider, config.ConnectionID, config.TieredConfig = "", "", nil
+		capabilities["llm_config"] = config
+		saved = &config
+		return true, nil
+	})
+	if err != nil {
+		log.Printf("[CHAT_MODELS] owner fallback not saved project=%s: %v", workspacePath, err)
+		return nil
+	}
+	log.Printf("[CHAT_MODELS] owner fallback saved project=%s provider=%s model=%s effort_set=%t account_set=%t", workspacePath, pin.Provider, pin.ModelID, pin.Options != nil, pin.ConnectionID != "")
+	return saved
+}
+
+// startOnOpenerModel pins a new chat to the model of the chat it was opened from (owner, 26 Nov), so a new agent
+// continues on what the person was using. A chat with its own model keeps it; a project User always runs on the
+// project's fallback; an opener in another project, or a model this person may not use, changes nothing.
+func (api *StreamingAPI) startOnOpenerModel(ctx context.Context, userID string, profile agentprofiles.Profile, binding productConversationBinding, chatKey, openerKey string) {
+	chatKey, openerKey = strings.TrimSpace(chatKey), strings.TrimSpace(openerKey)
+	if !isProjectProfileID(profile.ID) || openerKey == "" || openerKey == chatKey || crewResourceProjectID(openerKey) != crewResourceProjectID(chatKey) || crewSetupLocked(binding.WorkspacePath, userID) {
+		return
+	}
+	store := defaultProductConversationRegistryStore()
+	if own, err := store.agentIdentity(ctx, userID, profile.ID, chatKey); err != nil || own.Engine != "" {
+		return
+	}
+	opener, found, err := crewTabForKey(ctx, userID, profile.ID, openerKey, binding.WorkspacePath)
+	if err != nil || !found {
+		log.Printf("[CHAT_MODELS] new chat %s: opener %s not found (%v); it uses the project fallback", chatKey, openerKey, err)
+		return
+	}
+	model, err := effectiveProfileChatModel(profile, binding, opener.Record, opener.Identity)
+	if err != nil {
+		log.Printf("[CHAT_MODELS] new chat %s: opener %s model unavailable: %v", chatKey, openerKey, err)
+		return
+	}
+	choice := AgentProfileChatModel{Engine: model.Engine, ModelID: model.ModelID, ReasoningEffort: model.ReasoningEffort, ConnectionID: model.ConnectionID}
+	if opener.OwnerID != userID {
+		choice.ConnectionID = "" // another owner's tab: never their personal account
+	}
+	if status, reason := api.chatModelChoiceRefusal(ctx, userID, profileAndBinding{profile: profile, binding: binding}, choice); status != 0 {
+		log.Printf("[CHAT_MODELS] new chat %s: opener %s model not usable here: %s", chatKey, openerKey, reason)
+		return
+	}
+	if _, err := store.setAgentModel(ctx, userID, profile.ID, chatKey, choice.Engine, choice.ModelID, choice.ReasoningEffort, choice.ConnectionID, userID); err != nil {
+		log.Printf("[CHAT_MODELS] new chat %s: opener model not saved: %v", chatKey, err)
+		return
+	}
+	log.Printf("[CHAT_MODELS] new chat %s starts on opener %s model engine=%s model=%s", chatKey, openerKey, choice.Engine, choice.ModelID)
+}
+
 // Presentation only: the provider catalog owns readable names; model IDs and
 // the runtime selection sent to a turn stay unchanged.
 func chatModelDisplayLabel(runtime agentprofiles.RuntimePolicy, engine, modelID string) string {
@@ -514,6 +590,9 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 			writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
+		if fallback := rememberOwnerProjectModel(r.Context(), userID, slot.profile, slot.binding.WorkspacePath, input); fallback != nil {
+			slot.binding.ProjectLLMConfig = fallback
+		}
 		changedKey = key
 	}
 	saveDone := time.Now()
@@ -554,7 +633,7 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		if err != nil {
 			// One unavailable selection must not hide other chats or prevent
 			// opening Models to repair it. Do not invent a replacement runtime.
-			effective = append(effective, AgentProfileEffectiveChatModel{AgentProfileChatModel: AgentProfileChatModel{ConversationKey: chat.ConversationKey, DisplayLabel: "Model unavailable"}, OwnModel: identities[chat.ConversationKey].Engine != "", Error: "Choose an available model in Models."})
+			effective = append(effective, AgentProfileEffectiveChatModel{AgentProfileChatModel: AgentProfileChatModel{ConversationKey: chat.ConversationKey, DisplayLabel: "Model unavailable"}, OwnModel: identities[chat.ConversationKey].Engine != "", Error: "Choose an available model in the model menu in the message box."})
 			continue
 		}
 		if tab.OwnerID != userID {

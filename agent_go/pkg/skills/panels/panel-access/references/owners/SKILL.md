@@ -3,7 +3,7 @@
 A project has one main owner (its creator). A project on the server also has:
 
 - **Co-owners**: they build it like the owner and change everything (files, agents, memory, instructions, skills, settings, automations, sharing) and see every chat in it, while turns still run in the owner's server account.
-- **Users**: for a project set up for someone to do specific work. A User works in it through chat with a co-owner's working power (commands, files, tools, functions), but sees only their own chats (the project's dashboard opens from its own link), runs on the project's model, and cannot change its instructions, skills, settings, automations or sharing, nor the extra locked files the owner names. The server refuses those changes on every path (chat, their own AI app over MCP, the website).
+- **Users**: for a project set up for someone to do specific work. A User works in it through chat with a co-owner's working power (commands, files, tools, functions), but sees only their own chats (the project's dashboard opens from its own link), runs on the owner's last-used model, and cannot change its instructions, skills, settings, automations or sharing, nor the extra locked files the owner names. The server refuses those changes on every path (chat, their own AI app over MCP, the website).
 
 A project on a Mac has its Team instead and neither.
 

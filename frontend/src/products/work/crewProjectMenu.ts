@@ -1,9 +1,9 @@
-import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Globe, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Zap, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
+import { BookOpen, Cable, Database, DollarSign, Files, Folder, Github, Globe, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Zap, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
 import { isLocalDeployment } from '../productSurfaceConfig'
-import { isWorkIdentityTabEnabled, isWorkIntegrationTabEnabled } from './workViewGating'
+import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { PROJECT_MENU_GROUPS } from '../../components/workspace/projectMenuGroups'
 import { hasDesktopConnections } from '../../stores/useConnectedWorkStore'
 
@@ -56,7 +56,6 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     if (!enabledPanels || enabledPanels.has('bots')) add('mcp', 'Integrations', 'My Slack account', MessageSquareText, 'slack-account')
   }
   add('identity', 'Setup', 'Instructions & identity', Settings, 'general')
-  if (isWorkIdentityTabEnabled('models', enabledPanels)) add('identity', 'Setup', 'Models', Cpu, 'models')
   if (!enabledPanels || enabledPanels.has('memory')) add('memory', 'Setup', 'Memory', BookOpen, 'memory')
   add('costs', 'Setup', 'Costs & usage', DollarSign)
   add('shell', 'Setup', 'Terminal', Terminal, undefined, 'Advanced')

@@ -23,7 +23,6 @@ import { BrowserWorkspacePanel } from '../../components/workflow/BrowserWorkspac
 import type { BrowserAutomationMode } from '../../components/BrowserAutomationSettings'
 import { isBrowserCDPEnabled } from '../../utils/runtimeCapabilities'
 import { openWorkspacePaneChatWithDraft, sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
-import type { WorkRuntimeSelection } from './workTabs'
 import type { ProductIdentity, ProductIdentityPatch } from '../../platform/chat/productProjects'
 import { PreviousChatHistoryPanel } from '../../components/PreviousChatHistoryPanel'
 import { useResumePreviousChat } from '../../hooks/useResumePreviousChat'
@@ -236,7 +235,7 @@ function WorkHistoryPane({
   /></div>
 }
 
-export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, filesPath, filesName, projectId, projectTitle, projectIdentity, tabId, view, enabledPanels, projectLLMConfig, selectedGlobalSecrets, workflowContextPaths, onViewChange, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onAppsSaved, onSelectedServersChange, onSelectedSkillsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared, onOpenChat, showShell = false }: { showShell?: boolean; workspacePath: string; filesPath?: string; filesName?: string; projectId: string; projectTitle: string; projectIdentity?: ProductIdentity; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onAppsSaved?: () => void; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; onOpenChat?: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
+export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath, filesPath, filesName, projectId, projectTitle, projectIdentity, tabId, view, enabledPanels, projectLLMConfig, selectedGlobalSecrets, workflowContextPaths, onViewChange, nativeAgentTools, onNativeAgentToolsChange, onAppsSaved, onSelectedServersChange, onSelectedSkillsChange, onSelectedGlobalSecretsChange, onWorkflowContextPathsChange, onUpdateIdentity, onDeleteRequest, shared, onOpenChat, showShell = false }: { showShell?: boolean; workspacePath: string; filesPath?: string; filesName?: string; projectId: string; projectTitle: string; projectIdentity?: ProductIdentity; tabId: string; view: WorkWorkspaceView; enabledPanels?: Set<string>; projectLLMConfig?: PresetLLMConfig; selectedGlobalSecrets: string[]; workflowContextPaths: string[]; onViewChange: (view: WorkWorkspaceView) => void; nativeAgentTools?: boolean; onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>; onAppsSaved?: () => void; onSelectedServersChange: (servers: string[]) => Promise<unknown>; onSelectedSkillsChange: (skills: string[]) => Promise<unknown>; onSelectedGlobalSecretsChange: (secrets: string[]) => Promise<unknown>; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>; onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>; onDeleteRequest: () => void; onOpenChat?: () => void; shared?: { ownerId: string; ownerUsername?: string } }) {
   const readOnly = Boolean(shared)
   const accountKey = useAuthStore(state => `${state.user?.id || ''}:${state.user?.can_edit}`)
   const serverKey = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
@@ -373,7 +372,6 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
           selectedGlobalSecrets={selectedGlobalSecrets}
           projectLLMConfig={projectLLMConfig}
           enabledPanels={enabledPanels}
-          onRuntimeChange={onRuntimeChange}
           nativeAgentTools={nativeAgentTools}
           onNativeAgentToolsChange={shared ? undefined : onNativeAgentToolsChange}
           onSelectedGlobalSecretsChange={onSelectedGlobalSecretsChange}

@@ -458,9 +458,9 @@ func (api *StreamingAPI) sharedAccountTokenLimitRefusal(ctx context.Context, pri
 	case hit == nil:
 		return nil
 	case !hit.overall && hit.weekly:
-		return &sharedAccountTokenLimitError{fmt.Sprintf("You have used this week's %s tokens on the shared %s account (resets Monday 00:00 UTC). Switch to another account in Models or ask an admin to raise it.", formatTokenAmount(hit.limit), sharedAccountLabel(hit.provider))}
+		return &sharedAccountTokenLimitError{fmt.Sprintf("You have used this week's %s tokens on the shared %s account (resets Monday 00:00 UTC). Switch to another account in the model menu in the message box or ask an admin to raise it.", formatTokenAmount(hit.limit), sharedAccountLabel(hit.provider))}
 	case !hit.overall:
-		return &sharedAccountTokenLimitError{fmt.Sprintf("You have used today's %s tokens on the shared %s account (resets 00:00 UTC). Switch to another account in Models or ask an admin to raise it.", formatTokenAmount(hit.limit), sharedAccountLabel(hit.provider))}
+		return &sharedAccountTokenLimitError{fmt.Sprintf("You have used today's %s tokens on the shared %s account (resets 00:00 UTC). Switch to another account in the model menu in the message box or ask an admin to raise it.", formatTokenAmount(hit.limit), sharedAccountLabel(hit.provider))}
 	case hit.weekly:
 		return &sharedAccountTokenLimitError{fmt.Sprintf("You have used your weekly limit of %s tokens on the shared accounts (resets Monday 00:00 UTC). Use your own account or ask an admin to raise it.", formatTokenCount(hit.limit))}
 	default:

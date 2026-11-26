@@ -107,7 +107,7 @@ func (api *StreamingAPI) applyForkModel(r *http.Request, profileID, projectID st
 	}
 	status, body := api.applyNewTabModel(r, profileID, projectID, chatID, m)
 	if status >= 400 {
-		out["model_not_applied"] = "The fork was made but still runs on its source's model: " + strings.TrimSpace(string(body)) + ". Change it in Models, or delete the fork."
+		out["model_not_applied"] = "The fork was made but still runs on its source's model: " + strings.TrimSpace(string(body)) + ". Change it in the fork's model menu (in its message box), or delete the fork."
 	} else {
 		out["engine"], out["model_id"], out["reasoning_effort"] = m.engine, m.modelID, m.effort
 		delete(out, "connection_id")

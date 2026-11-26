@@ -232,6 +232,8 @@ export interface AgentProfileConversationRequest {
   session_id?: string
   /** Required to open a NEW side tab: the agent's name (the server refuses an unnamed one). */
   name?: string
+  /** The chat a new tab is opened from; the server starts the new tab on that chat's model. */
+  opened_from?: string
 }
 
 /** A caller-owned model choice; omitted chats follow the project default. */

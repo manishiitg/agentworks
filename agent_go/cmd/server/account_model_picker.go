@@ -58,12 +58,12 @@ func (api *StreamingAPI) handleAccountModelPicker(w http.ResponseWriter, r *http
 	}
 	scope := providerAccountScope{Principal: caller, WorkspacePath: r.URL.Query().Get("workspace_path"), Product: r.URL.Query().Get("product")}
 	if _, err := api.admitProviderAccount(r.Context(), scope, provider, id); err != nil {
-		http.Error(w, "This account is unavailable here. Choose another account in Models.", http.StatusForbidden)
+		http.Error(w, "This account is unavailable here. Choose another account.", http.StatusForbidden)
 		return
 	}
 	target, err := api.resolveProviderAccountTarget(r.Context(), id, provider)
 	if err != nil {
-		http.Error(w, "Account could not be loaded. Reopen Models to retry.", http.StatusServiceUnavailable)
+		http.Error(w, "Account could not be loaded. Try again.", http.StatusServiceUnavailable)
 		return
 	}
 	if _, err = runtimeAvailableForProvider(provider); err != nil {
@@ -111,7 +111,7 @@ func (api *StreamingAPI) handleAccountModelPicker(w http.ResponseWriter, r *http
 	accountModelCatalog.Unlock()
 	allowed, _, err := accountAllowedModels(withModelLimitPerson(r.Context(), caller), provider, id)
 	if err != nil {
-		http.Error(w, "Account model settings could not be loaded. Reopen Models to retry.", http.StatusServiceUnavailable)
+		http.Error(w, "Account model settings could not be loaded. Try again.", http.StatusServiceUnavailable)
 		return
 	}
 	filtered := make([]dynamicModelEntry, 0, len(models))

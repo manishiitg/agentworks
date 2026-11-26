@@ -18,9 +18,7 @@ import type { PresetLLMConfig, WorkFolderGrant } from '../../services/api-types'
 import { loadWorkSessions } from './workSessions'
 import { useProjectProduct } from './projectProduct'
 import { isWorkIdentityTabEnabled } from './workViewGating'
-import { WorkModelsPanel } from './WorkModelsPanel'
 import { ProjectInstructionsCard } from './ProjectInstructionsCard'
-import type { WorkRuntimeSelection } from './workTabs'
 import { useChatStore } from '../../stores/useChatStore'
 
 import { localFileError } from './codeLocalFiles'
@@ -28,13 +26,12 @@ import { isLocalDeployment } from '../productSurfaceConfig'
 
 const CodeLocalFilesSettings = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeLocalFilesSettings })))
 
-export type WorkIdentityTab = 'general' | 'skills' | 'memory' | 'models' | 'location'
+export type WorkIdentityTab = 'general' | 'skills' | 'memory' | 'location'
 
 const IDENTITY_TABS: Array<{ value: WorkIdentityTab; label: string }> = [
   { value: 'general', label: 'Settings' },
   { value: 'skills', label: 'Skills' },
   { value: 'memory', label: 'Memory' },
-  { value: 'models', label: 'Models' },
   // Code only: where this chat's files and commands live (the server, or your own computer through the CLI).
   { value: 'location', label: 'Laptop access' },
 ]
@@ -284,7 +281,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTitle, projectIdentity, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false, settingsView = 'identity', skillsPanel, memoryPanel, onSettingsTabChange }: {
+export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTitle, projectIdentity, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedGlobalSecrets, projectLLMConfig, enabledPanels, nativeAgentTools, onNativeAgentToolsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, settingsView = 'identity', skillsPanel, memoryPanel, onSettingsTabChange }: {
   workspacePath: string
   /** A Crew opened by a reader: the project instructions editor is the owner's. */
   shared?: boolean
@@ -293,7 +290,6 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
   projectTitle: string
   projectIdentity?: ProductIdentity
   tabId: string
-  modelsOnly?: boolean
   settingsView?: 'identity' | 'memory'
   skillsPanel?: ReactNode
   memoryPanel?: ReactNode
@@ -303,7 +299,6 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
   selectedGlobalSecrets: string[]
   projectLLMConfig?: PresetLLMConfig
   enabledPanels?: Set<string>
-  onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>
   nativeAgentTools?: boolean
   /** Omitted for readers: only the Crew owner can change it. */
   onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>
@@ -313,7 +308,7 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
 }) {
   const product = useProjectProduct()
   const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId || '')
-  const visibleTabs = IDENTITY_TABS.filter(option => (!modelsOnly || option.value === 'models') && (option.value !== 'skills' || skillsPanel != null) && (option.value !== 'memory' || memoryPanel != null) && isWorkIdentityTabEnabled(option.value, enabledPanels))
+  const visibleTabs = IDENTITY_TABS.filter(option => (option.value !== 'skills' || skillsPanel != null) && (option.value !== 'memory' || memoryPanel != null) && isWorkIdentityTabEnabled(option.value, enabledPanels))
   const [tab, setTab] = useState<WorkIdentityTab>(settingsView === 'memory' ? 'memory' : 'general')
   useEffect(() => { setTab(settingsView === 'memory' ? 'memory' : 'general') }, [settingsView])
   useEffect(() => {
@@ -333,14 +328,14 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
     <div className="flex h-full min-h-0 flex-col bg-background">
       <WorkspaceViewHeader
         icon={product.hasIdentity ? Fingerprint : Settings}
-        title={activeTab === 'models' ? 'Models' : activeTab === 'location' ? 'Laptop access' : 'Settings'}
+        title={activeTab === 'location' ? 'Laptop access' : 'Settings'}
         actions={(
           <WorkspaceViewActions
             onRefresh={() => setTabNonce(nonce => nonce + 1)}
             refreshLabel={`Refresh ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'view'}`}
           />
         )}
-        tabs={!modelsOnly && isSettingsTab ? {
+        tabs={isSettingsTab ? {
           value: activeTab,
           options: settingsTabs,
           ariaLabel: 'Project settings',
@@ -360,6 +355,7 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
           onUpdateIdentity={onUpdateIdentity}
         />}
         {activeTab === 'general' && !shared && <div className="mt-4"><ProjectInstructionsCard workspacePath={workspacePath} projectId={projectId} provider={projectLLMConfig?.mode === 'explicit' ? projectLLMConfig.builder_llm?.provider : projectLLMConfig?.provider} model={projectLLMConfig?.builder_llm?.model_id} /></div>}
+        {activeTab === 'general' && product.hasNativeAgentToolsSetting && <div className="mt-4"><NativeAgentToolsSetting enabled={!!nativeAgentTools} onChange={onNativeAgentToolsChange} /></div>}
         {activeTab === 'general' && product.hasIdentity && <div className="mt-4">
           <SettingsCard
             icon={<Trash2 aria-hidden="true" className="h-4 w-4 text-primary" />}
@@ -374,17 +370,6 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
           </SettingsCard>
         </div>}
         {activeTab === 'location' && <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} workspaceName={projectIdentity?.name?.trim() || projectTitle} /></Suspense>}
-        {activeTab === 'models' && <div className="space-y-4">
-          <WorkModelsPanel
-            tabId={tabId}
-            workspacePath={workspacePath}
-            projectId={projectId}
-            projectLLMConfig={projectLLMConfig}
-            onRuntimeChange={onRuntimeChange}
-            hideHeader
-          />
-          {!modelsOnly && product.hasNativeAgentToolsSetting && <NativeAgentToolsSetting enabled={!!nativeAgentTools} onChange={onNativeAgentToolsChange} />}
-        </div>}
       </div>
     </div>
   )

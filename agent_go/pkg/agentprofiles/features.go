@@ -163,8 +163,7 @@ var featureCatalog = map[string]featureDefinition{
 	"models": {
 		Tools:           []string{"manage_crew_model"},
 		Skills:          []string{"panel-settings"},
-		UIPanels:        []string{"models"},
-		PromptExtension: "Project model selection is enabled. Read the attached `panel-settings` skill before changing provider or model configuration. Use the configured provider and model for this conversation; never claim another runtime based on model self-identification.",
+		PromptExtension: "Each chat chooses its own model (manage_crew_model). Use the configured provider and model for this conversation; never claim another runtime based on model self-identification.",
 	},
 	"condition-triggers": {
 		Dependencies:    []string{"schedules"},
