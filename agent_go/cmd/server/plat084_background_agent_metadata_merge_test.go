@@ -63,3 +63,28 @@ func TestBackgroundAgentSetMetadataHandlesNilInitialMetadata(t *testing.T) {
 		t.Fatalf("iteration = %q, want \"1\"", got)
 	}
 }
+
+// TestBackgroundAgentSnapshotMetadataIsACopy: a snapshot's metadata must not
+// alias the agent's map, or a reader racing SetMetadata crashes the server
+// (fatal concurrent map read and map write; run with -race).
+func TestBackgroundAgentSnapshotMetadataIsACopy(t *testing.T) {
+	agent := &BackgroundAgent{Metadata: map[string]string{"execution_type": "agent-item"}}
+	snap := agent.GetSnapshot()
+	snap.Metadata["execution_type"] = "changed by reader"
+	if got := agent.GetSnapshot().Metadata["execution_type"]; got != "agent-item" {
+		t.Fatalf("snapshot metadata aliases the agent's map: got %q", got)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 2000; i++ {
+			agent.SetMetadata(map[string]string{"iteration": string(rune('a' + i%26))})
+		}
+	}()
+	for i := 0; i < 2000; i++ {
+		for range agent.GetSnapshot().Metadata {
+		}
+	}
+	<-done
+}

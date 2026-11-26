@@ -131,8 +131,8 @@ func (api *StreamingAPI) discoverServerToolsDetailed(ctx context.Context, server
 		api.appendServerLog(serverName, "error", fmt.Sprintf("Failed to load merged config: %v", err))
 		api.logger.Error(fmt.Sprintf("Failed to load merged config: %v", err), err)
 		// Fallback to base config only
-		api.mcpConfig.ReloadConfig(api.mcpConfigPath, api.logger)
-		cfg = api.mcpConfig
+		_ = api.reloadBaseMCPConfig()
+		cfg = api.baseMCPConfig()
 	}
 
 	// Get server configuration
@@ -297,8 +297,8 @@ func (api *StreamingAPI) handleGetTools(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		api.logger.Error(fmt.Sprintf("Failed to load merged config: %v", err), err)
 		// Fallback to base config only
-		api.mcpConfig.ReloadConfig(api.mcpConfigPath, api.logger)
-		cfg = api.mcpConfig
+		_ = api.reloadBaseMCPConfig()
+		cfg = api.baseMCPConfig()
 	}
 
 	allResults := make([]ToolStatus, 0, len(cfg.MCPServers))
@@ -366,7 +366,9 @@ func (api *StreamingAPI) handleAddServer(w http.ResponseWriter, r *http.Request)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := api.mcpConfig.AddServer(req.Name, req.Server, api.mcpConfigPath); err != nil {
+	if err := api.changeBaseMCPConfig(func(cfg *mcpclient.MCPConfig) error {
+		return cfg.AddServer(req.Name, req.Server, api.mcpConfigPath)
+	}); err != nil {
 		api.appendServerLog(req.Name, "error", fmt.Sprintf("Failed to add server: %v", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -393,7 +395,9 @@ func (api *StreamingAPI) handleEditServer(w http.ResponseWriter, r *http.Request
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := api.mcpConfig.EditServer(req.Name, req.Server, api.mcpConfigPath); err != nil {
+	if err := api.changeBaseMCPConfig(func(cfg *mcpclient.MCPConfig) error {
+		return cfg.EditServer(req.Name, req.Server, api.mcpConfigPath)
+	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -414,7 +418,9 @@ func (api *StreamingAPI) handleRemoveServer(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	if err := api.mcpConfig.RemoveServer(req.Name, api.mcpConfigPath); err != nil {
+	if err := api.changeBaseMCPConfig(func(cfg *mcpclient.MCPConfig) error {
+		return cfg.RemoveServer(req.Name, api.mcpConfigPath)
+	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -451,7 +457,8 @@ func (api *StreamingAPI) configFileHash() string {
 // persistDiscoveryFailedServers saves the failed servers map to disk so it
 // survives server restarts. This prevents wasting ~19s per OAuth-failing server
 // on every startup. A config hash is stored alongside so that manual config
-// edits automatically invalidate the persisted failures.
+// edits automatically invalidate the persisted failures. The caller holds
+// api.discoveryMux.
 func (api *StreamingAPI) persistDiscoveryFailedServers() {
 	cacheManager := mcpcache.GetCacheManager(api.logger)
 	filePath := filepath.Join(cacheManager.GetCacheDirectory(), "discovery_failed_servers.json")
@@ -509,7 +516,9 @@ func (api *StreamingAPI) loadDiscoveryFailedServers() {
 		return
 	}
 
+	api.discoveryMux.Lock()
 	api.discoveryFailedServers = payload.Servers
+	api.discoveryMux.Unlock()
 	api.logger.Info(fmt.Sprintf("Loaded %d previously failed servers from disk", len(payload.Servers)))
 	for name, reason := range payload.Servers {
 		api.logger.Debug(fmt.Sprintf("  Previously failed: %s — %s", name, reason))
@@ -524,6 +533,10 @@ func (api *StreamingAPI) deleteDiscoveryFailedServersFile() {
 }
 
 func (api *StreamingAPI) clearDiscoveryFailure(serverName string) {
+	// Two sign-ins finishing at once would otherwise write this map together,
+	// a fatal error that stops the server.
+	api.discoveryMux.Lock()
+	defer api.discoveryMux.Unlock()
 	if _, failed := api.discoveryFailedServers[serverName]; !failed {
 		return
 	}
@@ -583,8 +596,8 @@ func (api *StreamingAPI) initializeToolCache() {
 	if err != nil {
 		api.logger.Error(fmt.Sprintf("Failed to load merged config: %v", err), err)
 		// Fallback to base config only
-		api.mcpConfig.ReloadConfig(api.mcpConfigPath, api.logger)
-		cfg = api.mcpConfig
+		_ = api.reloadBaseMCPConfig()
+		cfg = api.baseMCPConfig()
 	}
 
 	api.logger.Info(fmt.Sprintf("📋 Loaded %d servers from config", len(cfg.MCPServers)))

@@ -727,7 +727,8 @@ type StreamingAPI struct {
 
 	toolStatus    map[string]ToolStatus
 	toolStatusMux sync.RWMutex
-	mcpConfig     *mcpclient.MCPConfig
+	mcpConfig     *mcpclient.MCPConfig // shared; use the helpers in mcp_base_config.go
+	mcpConfigMu   sync.RWMutex
 
 	// Background tool discovery
 	discoveryRunning       bool
@@ -6287,11 +6288,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		// Workflow mode does this inside the orchestrator.
 		if api.mcpConfig != nil {
 			registry := mcpclient.GetSessionRegistry()
+			base := api.baseMCPConfig()
 			for _, sName := range selectedServers {
 				if sName == mcpclient.NoServers {
 					continue
 				}
-				serverCfg, cfgErr := api.mcpConfig.GetServer(sName)
+				serverCfg, cfgErr := base.GetServer(sName)
 				if cfgErr != nil {
 					continue
 				}
@@ -13165,7 +13167,7 @@ func (api *StreamingAPI) registerMultiAgentMCPServerTools(registrar interface {
 			// Our own catalog first: every entry here was hand-verified (OAuth
 			// shape, live-probed), unlike the public registries below.
 			var catalogHits []string
-			for name, server := range api.mcpConfig.MCPServers {
+			for name, server := range api.baseMCPConfig().MCPServers {
 				if !strings.Contains(strings.ToLower(name), needle) {
 					continue
 				}

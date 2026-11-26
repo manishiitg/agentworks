@@ -158,3 +158,45 @@ func TestStartupResumeStartsOnlyTheLimitAndAdmitsTheRestInOrder(t *testing.T) {
 	}
 	quiet(started)
 }
+
+// A panic while dispatching a queued message stopped the whole server (from the
+// dispatch goroutine) or left the chat marked as dispatching forever (from a
+// request), so no later message in it ever ran. The next message must run.
+func TestQueuedTurnPanicLeavesTheChatUsable(t *testing.T) {
+	withMemoryUserDirectory(t, `{"users":[]}`)
+	owner := GetDefaultUserID()
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: owner})
+	ran := make(chan string, 4)
+	api.queuedTurnRunner = func(turn queuedConversationTurn) {
+		ran <- turn.Request.Query
+		if turn.Request.Query == "first" {
+			panic("dispatch bug")
+		}
+		_ = api.removeConversationTurn(context.Background(), turn)
+	}
+	send := func(query string) {
+		t.Helper()
+		if _, _, err := api.enqueueConversationTurn(ctx, owner, "chat-a", QueryRequest{AgentMode: "multi-agent", Query: query}); err != nil {
+			t.Fatal(err)
+		}
+		api.kickConversationTurnQueue("chat-a")
+		select {
+		case got := <-ran:
+			if got != query {
+				t.Fatalf("ran %q, want %q", got, query)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("queued message %q never ran", query)
+		}
+	}
+	send("first")
+	deadline := time.Now().Add(5 * time.Second)
+	for api.conversationTurnDispatchPending("chat-a") {
+		if time.Now().After(deadline) {
+			t.Fatal("chat still marked as dispatching after the panic")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	send("second")
+}

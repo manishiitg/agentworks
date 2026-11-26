@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -384,6 +385,8 @@ func (s BackgroundAgentSnapshot) IsProgressMirror() bool {
 func (a *BackgroundAgent) GetSnapshot() BackgroundAgentSnapshot {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
+	// Metadata is copied: SetMetadata writes the agent's map under the lock, and
+	// a caller reading a shared map after RUnlock is a fatal concurrent map access.
 	snap := BackgroundAgentSnapshot{
 		ID:                 a.ID,
 		ParentExecutionID:  a.ParentExecutionID,
@@ -397,7 +400,7 @@ func (a *BackgroundAgent) GetSnapshot() BackgroundAgentSnapshot {
 		CreatedAt:          a.CreatedAt,
 		ReasoningLevel:     a.ReasoningLevel,
 		ModelID:            a.ModelID,
-		Metadata:           a.Metadata,
+		Metadata:           maps.Clone(a.Metadata),
 		CompletionNotified: a.completionNotification == completionNotificationDelivered || a.completionNotification == completionNotificationSuperseded,
 	}
 	if a.CompletedAt != nil {
