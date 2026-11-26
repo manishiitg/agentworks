@@ -221,3 +221,79 @@ func TestPRWatcherManagementPinsOwnerAccountAndChat(t *testing.T) {
 		t.Fatal("silently switched saved GitHub identity")
 	}
 }
+
+// Watch & merge (#4323): the server merges only once checks pass on a head pushed after the last finding,
+// reports a refused merge once, and stops after repeated failing checks.
+func TestPRWatcherMergeWhenGreen(t *testing.T) {
+	head, check, mergeStatus := "a", "failure", http.StatusOK
+	merges := []string{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/pulls/7/merge"):
+			var body map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			merges = append(merges, body["sha"]+":"+body["merge_method"])
+			w.WriteHeader(mergeStatus)
+			if mergeStatus == http.StatusOK {
+				fmt.Fprint(w, `{"merged":true,"sha":"m1"}`)
+			} else {
+				fmt.Fprint(w, `{"message":"At least 1 approving review is required"}`)
+			}
+		case strings.HasSuffix(r.URL.Path, "/pulls/7"):
+			fmt.Fprintf(w, `{"number":7,"state":"open","mergeable":true,"mergeable_state":"clean","head":{"sha":%q,"ref":"feature"}}`, head)
+		case strings.HasSuffix(r.URL.Path, "/check-runs"):
+			fmt.Fprintf(w, `{"total_count":1,"check_runs":[{"id":1,"name":"tests","status":"completed","conclusion":%q}]}`, check)
+		case strings.HasSuffix(r.URL.Path, "/status"):
+			fmt.Fprint(w, `{"total_count":0,"statuses":[]}`)
+		case strings.HasSuffix(r.URL.Path, "/repos/example/project"):
+			fmt.Fprint(w, `{"allow_rebase_merge":false,"allow_squash_merge":true,"allow_merge_commit":true}`)
+		default:
+			fmt.Fprint(w, `[]`)
+		}
+	}))
+	defer srv.Close()
+	old := githubAPIURL
+	githubAPIURL = srv.URL
+	defer func() { githubAPIURL = old }()
+	cfg := conditiontrigger.Config{GitHubPR: &conditiontrigger.GitHubPR{Repository: "example/project", Number: 7, Mode: "merge", HeadSHA: head, Branch: "feature", Login: "developer"}, Target: conditiontrigger.Target{Kind: "agent", ChatID: "main", Message: "fix"}}
+	var state json.RawMessage
+	poll := func() conditiontrigger.Output {
+		t.Helper()
+		raw, err := githubWatchPoll(context.Background(), "fixture", cfg, state, "2026-10-30T00:00:00Z")
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := conditiontrigger.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		state = out.State
+		return out
+	}
+	if out := poll(); out.Done || len(out.Events) != 1 || len(merges) != 0 {
+		t.Fatal("failing checks did not wake a fix", out, merges)
+	}
+	check = "success" // a rerun passing on the same head is not a fix
+	if out := poll(); out.Done || len(merges) != 0 {
+		t.Fatal("merged a head that was never fixed", out, merges)
+	}
+	head = "b"
+	if out := poll(); !out.Done || len(out.Events) != 1 || out.Events[0].Payload["kind"] != "merged" || len(merges) != 1 || merges[0] != "b:squash" {
+		t.Fatal("green fixed head was not merged with the allowed method", out, merges)
+	}
+	state, head, mergeStatus = nil, "c", http.StatusMethodNotAllowed
+	if out := poll(); out.Done || len(out.Events) != 1 || out.Events[0].Payload["kind"] != "merge_refused" {
+		t.Fatal("refused merge not reported", out)
+	}
+	if out := poll(); len(out.Events) != 0 || len(merges) != 2 {
+		t.Fatal("refused merge retried on the same head", out, merges)
+	}
+	state, check = nil, "failure"
+	for i, sha := range []string{"x", "y", "z"} {
+		head = sha
+		if out := poll(); out.Done != (i == 2) {
+			t.Fatal("watch did not stop after repeated failing checks", i, out)
+		}
+	}
+}

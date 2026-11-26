@@ -1,4 +1,4 @@
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Eye } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import axios from 'axios'
 import { conditionTriggersApi, type ConditionTrigger } from '../../api/conditionTriggers'
@@ -6,13 +6,14 @@ import { useChatStore } from '../../stores/useChatStore'
 import type { ReplyFileGroup } from '../../utils/replyFileChanges'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 
-// Watching starts in the original chat. This control displays existing PR
-// watches and pauses them; the agent configures requirements through Watchers.
-export function PRWatcherControls({ group, sessionId, compact = false }: { compact?: boolean; group: Pick<ReplyFileGroup, 'root' | 'github_repo' | 'pr'>; sessionId: string }) {
-  const [open, setOpen] = useState(false)
+// Watch & merge (#4323, approved mockup): one click starts the server's PR Watcher for this chat. It wakes the
+// chat to fix failing checks, conflicts and review comments, and the server merges once checks pass on a fixed
+// head. The menu offers fix only (you merge) and talking it through first (the agent sets up custom watches).
+export function PRWatcherControls({ group, sessionId }: { compact?: boolean; group: Pick<ReplyFileGroup, 'root' | 'github_repo' | 'pr'>; sessionId: string }) {
   const [watchers, setWatchers] = useState<ConditionTrigger[]>([])
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState(false)
+  const [menu, setMenu] = useState(false)
   const [error, setError] = useState('')
   const tab = useChatStore(state => Object.values(state.chatTabs).find(item => item.sessionId === sessionId))
   const projectId = tab?.metadata?.agentProfileProjectId
@@ -22,7 +23,7 @@ export function PRWatcherControls({ group, sessionId, compact = false }: { compa
     return result.triggers.filter(item => item.github_pr && item.github_pr.repository === group.github_repo && item.github_pr.number === group.pr?.number && (item.github_pr.worktree ?? '') === group.root && item.github_pr.session_id === sessionId)
   }
   useEffect(() => {
-    setWatchers([]); setSent(false); setError(''); setOpen(false)
+    setWatchers([]); setSent(false); setError(''); setMenu(false)
     if (!eligible) return
     let live = true
     const refresh = () => {
@@ -52,14 +53,29 @@ export function PRWatcherControls({ group, sessionId, compact = false }: { compa
     try { await conditionTriggersApi.manage(projectId!, 'update', watcher.id, { enabled: false }, watcher.revision, 'work'); setWatchers(await load()); setError('') }
     catch (e) { showError(e) } finally { setBusy(false) }
   }
+  const start = async (mode: 'merge' | 'autofix') => {
+    setBusy(true); setError(''); setMenu(false)
+    try { await conditionTriggersApi.watchPR(projectId!, sessionId, { repository: group.github_repo!, number: group.pr!.number!, worktree: group.root || undefined }, mode); setWatchers(await load()) }
+    catch (e) { showError(e) } finally { setBusy(false) }
+  }
+  const active = watchers.filter(item => item.enabled)
+  const mergeWatch = active.some(item => item.github_pr?.mode === 'merge')
+  const iconBtn = 'inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap px-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   return <span className="relative inline-flex items-center gap-2">
-    <button type="button" disabled={busy} title="Discuss what to watch in this chat" aria-label="Watch PR" className={compact ? 'inline-flex h-6 shrink-0 items-center justify-center whitespace-nowrap rounded px-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50' : 'text-muted-foreground underline hover:text-foreground disabled:opacity-50'} onClick={() => void ask()}>Watch PR</button>
-    {watchers.length > 0 && <button type="button" aria-label="PR watch status" aria-expanded={open} className="inline-flex items-center gap-1 text-xs text-muted-foreground" onClick={() => setOpen(value => !value)}>{watchers.some(item => item.enabled) ? 'Watching' : 'Paused'}{watchers.length > 1 ? ` · ${watchers.length}` : ''}<ChevronDown className="h-3 w-3" /></button>}
-    {open && watchers.length > 0 && <span className="absolute right-0 top-full z-50 mt-2 flex w-72 flex-col gap-2 rounded-md border border-border bg-background p-3 text-xs shadow-lg" role="group" aria-label="PR watch status">
-      {watchers.map(item => <span key={item.id} className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate" title={item.name}>{item.name}</span><span className="text-muted-foreground">{item.enabled ? 'Watching' : 'Paused'}</span>
-        {item.enabled && <button type="button" disabled={busy} className="underline" onClick={() => void stop(item)}>Stop</button>}
-      </span>)}
+    {active.length === 0
+      ? <span className="inline-flex items-center rounded-md border border-border">
+        <button type="button" disabled={busy} data-testid="pr-watch-merge" title="Fix failing checks and review comments as they come in, then merge when everything is green" className={`${iconBtn} rounded-l-md`} onClick={() => void start('merge')}><Eye className="h-3.5 w-3.5" aria-hidden="true" />Watch &amp; merge</button>
+        <button type="button" disabled={busy} aria-label="More watch options" aria-expanded={menu} className={`${iconBtn} rounded-r-md border-l border-border px-1`} onClick={() => setMenu(value => !value)}><ChevronDown className="h-3 w-3" aria-hidden="true" /></button>
+      </span>
+      : <span className="inline-flex items-center gap-1 text-xs">
+        <span data-testid="pr-watch-status" className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-primary"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" aria-hidden="true" />{mergeWatch ? 'Watching · merges when green' : 'Watching · fix only'}</span>
+        <button type="button" disabled={busy} className="rounded px-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => void Promise.all(active.map(stop))}>Stop</button>
+      </span>}
+    {menu && <span className="absolute left-0 top-full z-50 mt-1 flex w-72 flex-col rounded-lg border border-border bg-background p-1 text-left text-xs shadow-lg" role="menu">
+      <button type="button" role="menuitem" className="rounded-md px-2 py-1.5 text-left hover:bg-muted" onClick={() => void start('merge')}><span className="block text-sm text-foreground">Watch &amp; merge</span><span className="text-muted-foreground">Fix checks and review comments, then merge when green.</span></button>
+      <button type="button" role="menuitem" className="rounded-md px-2 py-1.5 text-left hover:bg-muted" onClick={() => void start('autofix')}><span className="block text-sm text-foreground">Watch &amp; fix only</span><span className="text-muted-foreground">Fix as things come in; you merge.</span></button>
+      <span className="my-1 border-t border-border" />
+      <button type="button" role="menuitem" className="rounded-md px-2 py-1.5 text-left hover:bg-muted" onClick={() => { setMenu(false); void ask() }}><span className="block text-sm text-foreground">Talk it through first…</span><span className="text-muted-foreground">Ask the agent what to watch.</span></button>
     </span>}
     {sent && <span role="status" className="text-xs text-muted-foreground">Sent to chat</span>}
     {error && <span role="alert" className="text-xs text-destructive">{error}</span>}
