@@ -48,7 +48,7 @@ func TestOldExtensionGetsUpdateReasonWithoutChangingProjectAuthority(t *testing.
 			t.Fatalf("want a real close reason %q, got %v", reason, err)
 		}
 	}
-	// RTS 0.4.9 has no account browser ID and falls into the project path.
+	// Extension 0.4.9 (seen on server A) has no account browser ID and falls into the project path.
 	assertRejected(connect(envelope{Type: "pair", Token: token, Version: "0.4.9"}), "extension_outdated")
 	failure := m.PairingFailure("alice")
 	if failure == nil || failure.Version != "0.4.9" || !strings.Contains(failure.Message, "Reload") || !strings.Contains(failure.Message, MinimumExtensionVersion) {

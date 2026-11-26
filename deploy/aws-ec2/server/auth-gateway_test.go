@@ -354,19 +354,19 @@ func TestSessionCookieNameNamespacesByGatewayIdentity(t *testing.T) {
 	if got := sessionCookieName("video-studio"); got != "video_studio_session" {
 		t.Errorf("sessionCookieName(%q) = %q, want video_studio_session", "video-studio", got)
 	}
-	if got := sessionCookieName("dominion"); got != "dominion_session" {
-		t.Errorf("sessionCookieName(%q) = %q, want dominion_session", "dominion", got)
+	if got := sessionCookieName("example"); got != "example_session" {
+		t.Errorf("sessionCookieName(%q) = %q, want example_session", "example", got)
 	}
 }
 
 func TestNewGatewayDerivesSessionCookieFromGatewayUserID(t *testing.T) {
 	t.Setenv("AUTH_SECRET", "test-secret-that-is-long-enough-x")
-	t.Setenv("GATEWAY_USER_ID", "dominion")
+	t.Setenv("GATEWAY_USER_ID", "example")
 
 	gw := newGateway()
 
-	if gw.sessionCookie != "dominion_session" {
-		t.Errorf("sessionCookie = %q, want dominion_session", gw.sessionCookie)
+	if gw.sessionCookie != "example_session" {
+		t.Errorf("sessionCookie = %q, want example_session", gw.sessionCookie)
 	}
 }
 
@@ -388,7 +388,7 @@ func TestNoGateRoutesWithoutAnySessionCookie(t *testing.T) {
 	gw := &gateway{
 		secret:        []byte("test-secret-that-is-long-enough"),
 		frontendDir:   frontendDir,
-		sessionCookie: sessionCookieName("dominion"),
+		sessionCookie: sessionCookieName("example"),
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/projects/123", nil)

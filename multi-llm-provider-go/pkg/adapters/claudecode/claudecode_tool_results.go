@@ -29,7 +29,7 @@ func (r TranscriptToolResult) Duration() time.Duration {
 //
 // PLAT-141. The platform derives its tool_call_start / tool_call_end events
 // from the live stream, and for some calls the end is never produced — measured
-// on tectonicusadaytrading, a call whose transcript shows tool_use at
+// on a trading workflow, a call whose transcript shows tool_use at
 // 15:52:26.430Z and tool_result at 15:52:26.471Z, 41 milliseconds apart, for
 // which no end event exists under any session. The UI was left showing a
 // finished command as unresolved, and the compensating settle displayed a

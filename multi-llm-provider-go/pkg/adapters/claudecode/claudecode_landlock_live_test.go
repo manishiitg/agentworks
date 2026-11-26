@@ -56,7 +56,7 @@ func TestClaudeCodeTmuxRealLandlockConfinesNativeToolsP0(t *testing.T) {
 		HostWritePaths: []string{markerDir},
 	}
 	opts = append(opts, func(o *llmtypes.CallOptions) { p := policy.Clone(); o.CLISecurity = &p })
-	// An env-token account (RTS's server account): the adapter passes the
+	// An env-token account (server A's server account): the adapter passes the
 	// token, so nothing from the shared home is needed.
 	adapter := NewClaudeCodeInteractiveAdapterWithOAuthToken(defaultClaudeInteractiveTestModel, os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"), &MockLogger{})
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)

@@ -217,7 +217,7 @@ func claudeCredentialFingerprint(oauthToken string) string {
 // attaches. Claude also offers its own built-in skills (schedule, loop, run,
 // init, ...) and account-synced ones (artifact-*, dataviz, ...) which compete
 // with AgentWorks's own (schedules, triggers, dashboards) and are unrelated to
-// the product. Project skills in <cwd>/.claude/skills are unaffected (RTS,
+// the product. Project skills in <cwd>/.claude/skills are unaffected (server A,
 // 2026-09-29).
 func claudeSkillScopeEnv() []string {
 	return []string{"CLAUDE_CODE_DISABLE_BUNDLED_SKILLS=1", "CLAUDE_CODE_DISABLE_POLICY_SKILLS=1"}
@@ -1257,7 +1257,7 @@ func claudePromptSuggestionEnvArgs() []string {
 		// Keep the classic renderer. Claude Code's fullscreen renderer (the
 		// default on recent builds) draws inside the alternate screen, which
 		// has no scrollback: the tmux pane keeps history_size=0, so AgentWorks'
-		// terminal viewer has nothing to scroll back through (observed on RTS,
+		// terminal viewer has nothing to scroll back through (observed on server A,
 		// Claude 2.1.233). The classic renderer writes the conversation into the
 		// normal screen, where tmux history and the viewer's scrollback grow.
 		"-e", EnvClaudeDisableAlternateScreen + "=1",

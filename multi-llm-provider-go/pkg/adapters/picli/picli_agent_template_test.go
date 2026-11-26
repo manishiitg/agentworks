@@ -7,14 +7,14 @@ import (
 	"testing"
 )
 
-// A deployment's Pi provider (Citymall's gateway, PLAT ticket in agent_go) is staged into every session agent dir, and
+// A deployment's Pi provider (a client server's gateway, PLAT ticket in agent_go) is staged into every session agent dir, and
 // the template can never carry the key itself: it must reference the variable the scoped credential path injects.
 func TestPiAgentTemplateStagedIntoSessionDirAndRefusesLiteralKeys(t *testing.T) {
 	template := t.TempDir()
-	models := `{"providers":{"citymall":{"baseUrl":"https://gw.example/chat/v1/gpt-6-luna","api":"openai-completions",
-		"apiKey":"$CITYMALL_API_KEY","headers":{"api-key":"$CITYMALL_API_KEY"},"authHeader":false,
+	models := `{"providers":{"gateway":{"baseUrl":"https://gw.example/chat/v1/gpt-6-luna","api":"openai-completions",
+		"apiKey":"$GATEWAY_API_KEY","headers":{"api-key":"$GATEWAY_API_KEY"},"authHeader":false,
 		"models":[{"id":"gpt-6-luna","name":"GPT-6 Luna","reasoning":true,"thinkingLevelMap":{"off":"none"}}]}}}`
-	settings := `{"modelThinkingLevels":{"citymall/gpt-6-luna":"off"}}`
+	settings := `{"modelThinkingLevels":{"gateway/gpt-6-luna":"off"}}`
 	if err := os.WriteFile(filepath.Join(template, "models.json"), []byte(models), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -41,20 +41,20 @@ func TestPiAgentTemplateStagedIntoSessionDirAndRefusesLiteralKeys(t *testing.T) 
 	}
 	listed := false
 	for _, meta := range GetAllPiCLIModels() {
-		listed = listed || meta.ModelID == "citymall/gpt-6-luna"
+		listed = listed || meta.ModelID == "gateway/gpt-6-luna"
 	}
 	if !listed {
 		t.Fatal("the template's model is not in the Pi model list")
 	}
-	if env := piAPIKeyEnv("citymall", "k"); len(env) != 1 || env[0] != "CITYMALL_API_KEY=k" {
+	if env := piAPIKeyEnv("gateway", "k"); len(env) != 1 || env[0] != "GATEWAY_API_KEY=k" {
 		t.Fatalf("key env = %v", env)
 	}
 
 	for _, bad := range []string{
-		strings.Replace(models, `"apiKey":"$CITYMALL_API_KEY"`, `"apiKey":"sk-literal"`, 1),
-		strings.Replace(models, `"api-key":"$CITYMALL_API_KEY"`, `"api-key":"literal"`, 1),
-		strings.Replace(models, `"apiKey":"$CITYMALL_API_KEY"`, `"apiKey":"!cat /secret"`, 1),
-		strings.Replace(models, `"apiKey":"$CITYMALL_API_KEY"`, `"apiKey":"$OTHER_KEY"`, 1),
+		strings.Replace(models, `"apiKey":"$GATEWAY_API_KEY"`, `"apiKey":"sk-literal"`, 1),
+		strings.Replace(models, `"api-key":"$GATEWAY_API_KEY"`, `"api-key":"literal"`, 1),
+		strings.Replace(models, `"apiKey":"$GATEWAY_API_KEY"`, `"apiKey":"!cat /secret"`, 1),
+		strings.Replace(models, `"apiKey":"$GATEWAY_API_KEY"`, `"apiKey":"$OTHER_KEY"`, 1),
 	} {
 		if err := os.WriteFile(filepath.Join(template, "models.json"), []byte(bad), 0o644); err != nil {
 			t.Fatal(err)

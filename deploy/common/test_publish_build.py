@@ -83,7 +83,7 @@ class PublishTest(Base):
         r = self.publish()
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn(f"RELEASE_TAG={TAG}", r.stdout)
-        self.assertEqual(self.names(), ["SHA256SUMS", "build-rts.tar.gz", "build.tar.gz", "manifest.json"])
+        self.assertEqual(self.names(), ["SHA256SUMS", "build-trimmed.tar.gz", "build.tar.gz", "manifest.json"])
         rel = next(r for r in self.gh.releases if r["tag_name"] == TAG)
         self.assertTrue(rel["prerelease"])
         cli_tag = "cli-" + self.build.name
@@ -99,7 +99,7 @@ class PublishTest(Base):
         data = {a["name"]: a["data"] for a in self.gh.assets.values() if a["release"] == rel["id"]}
         self.assertEqual(data["manifest.json"], (self.build / "manifest.json").read_bytes())
         sums = dict(reversed(line.split("  ")) for line in data["SHA256SUMS"].decode().splitlines())
-        for name in ("build.tar.gz", "build-rts.tar.gz", "manifest.json"):
+        for name in ("build.tar.gz", "build-trimmed.tar.gz", "manifest.json"):
             self.assertEqual(sums[name + "\n" if False else name], hashlib.sha256(data[name]).hexdigest())
         self.assertNotIn(TOKEN, r.stdout + r.stderr)
 
@@ -109,18 +109,18 @@ class PublishTest(Base):
         with tarfile.open(path) as t:
             return t.getnames()
 
-    def test_full_archive_holds_everything_and_the_rts_one_leaves_out_sources_and_downloads(self):
+    def test_full_archive_holds_everything_and_the_trimmed_one_leaves_out_sources_and_downloads(self):
         self.env_file()
         self.publish()
         name = self.build.name
-        full, rts = self.archive_names("build.tar.gz"), self.archive_names("build-rts.tar.gz")
+        full, trimmed = self.archive_names("build.tar.gz"), self.archive_names("build-trimmed.tar.gz")
         self.assertIn(f"{name}/manifest.json", full)
         self.assertIn(f"{name}/source/mcp-agent-builder-go/mcpagent/lib.go", full)
         self.assertIn(f"{name}/downloads/agentworks-linux-amd64.gz", full)
-        self.assertIn(f"{name}/manifest.json", rts)
-        self.assertIn(f"{name}/bin/agent", rts)
-        self.assertIn(f"{name}/source/mcp-agent-builder-go/main.go", rts)
-        self.assertFalse([n for n in rts if "/source/mcpagent" in n or "/source/multi-llm-provider-go" in n or "/downloads" in n], rts)
+        self.assertIn(f"{name}/manifest.json", trimmed)
+        self.assertIn(f"{name}/bin/agent", trimmed)
+        self.assertIn(f"{name}/source/mcp-agent-builder-go/main.go", trimmed)
+        self.assertFalse([n for n in trimmed if "/source/mcpagent" in n or "/source/multi-llm-provider-go" in n or "/downloads" in n], trimmed)
 
     def test_rerun_is_idempotent(self):
         self.env_file()
@@ -151,10 +151,10 @@ class PublishTest(Base):
 
     def test_half_uploaded_release_is_repaired(self):
         self.env_file()
-        self.gh.fail_upload_of = "build-rts.tar.gz"
+        self.gh.fail_upload_of = "build-trimmed.tar.gz"
         r = self.publish()
         self.assertEqual(r.returncode, 0, r.stderr)           # the retry inside the run already repairs a dropped upload
-        self.assertEqual(self.names(), ["SHA256SUMS", "build-rts.tar.gz", "build.tar.gz", "manifest.json"])
+        self.assertEqual(self.names(), ["SHA256SUMS", "build-trimmed.tar.gz", "build.tar.gz", "manifest.json"])
         # and a release left incomplete by an earlier run (an asset missing) is completed by the next run
         rel = next(r for r in self.gh.releases if r["tag_name"] == TAG)
         victim = next(i for i, a in self.gh.assets.items() if a["name"] == "SHA256SUMS" and a["release"] == rel["id"])
@@ -162,7 +162,7 @@ class PublishTest(Base):
         r = self.publish()
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotIn(f"build {self.build.name} is already published", r.stdout)
-        self.assertEqual(self.names(), ["SHA256SUMS", "build-rts.tar.gz", "build.tar.gz", "manifest.json"])
+        self.assertEqual(self.names(), ["SHA256SUMS", "build-trimmed.tar.gz", "build.tar.gz", "manifest.json"])
         self.assertEqual(len(self.gh.releases), 2)
         self.assertEqual(rel["id"], next(r["id"] for r in self.gh.releases if r["tag_name"] == TAG))
         # A missing CLI archive is repaired without replacing the server bundle.
@@ -284,7 +284,7 @@ class FetchTest(Base):
         self.sha = hashlib.sha256((self.build / "manifest.json").read_bytes()).hexdigest()
         self.dest = self.root / "server/job/build"
 
-    def fetch(self, asset="build-rts.tar.gz", sha=None, tag=TAG):
+    def fetch(self, asset="build-trimmed.tar.gz", sha=None, tag=TAG):
         return self.run_script(FETCH, tag, asset, sha or self.sha, str(self.dest))
 
     def leftovers(self):
@@ -315,7 +315,7 @@ class FetchTest(Base):
 
     def test_tampered_manifest_in_the_download_is_refused(self):
         for a in self.gh.assets.values():
-            if a["name"] == "build-rts.tar.gz":
+            if a["name"] == "build-trimmed.tar.gz":
                 src = self.root / "t.tar.gz"
                 src.write_bytes(a["data"])
                 ex = self.root / "ex"
@@ -332,7 +332,7 @@ class FetchTest(Base):
         self.assertEqual(self.leftovers(), [])
 
     def test_truncated_download_is_resumed(self):
-        self.gh.download_mode[(TAG, "build-rts.tar.gz")] = "truncate-once"
+        self.gh.download_mode[(TAG, "build-trimmed.tar.gz")] = "truncate-once"
         r = self.fetch()
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue(any(d[2] and d[2].startswith("bytes=") for d in self.gh.downloads), self.gh.downloads)
@@ -340,7 +340,7 @@ class FetchTest(Base):
         self.assertEqual(self.leftovers(), ["build"])
 
     def test_download_that_stays_truncated_fails_and_leaves_nothing(self):
-        self.gh.download_mode[(TAG, "build-rts.tar.gz")] = "truncate-always"
+        self.gh.download_mode[(TAG, "build-trimmed.tar.gz")] = "truncate-always"
         r = self.fetch()
         self.assertNotEqual(r.returncode, 0)
         self.assertFalse(self.dest.exists())

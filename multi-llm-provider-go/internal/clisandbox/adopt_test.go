@@ -61,7 +61,7 @@ func TestAdoptResumedSessionPerCLI(t *testing.T) {
 	if !exists(filepath.Join(private, ".config/cursor/chats/hash1/chat-1/store.db")) || exists(filepath.Join(private, ".config/cursor/chats/hash1/chat-2")) {
 		t.Fatal("cursor: only chat-1 should be adopted, into .config/cursor/chats")
 	}
-	// The account's XDG config folder (the server sets one on RTS) is where its chats really are.
+	// The account's XDG config folder (the server sets one on server A) is where its chats really are.
 	xdg := filepath.Join(root, "xdg-config")
 	writeSessionFile(t, filepath.Join(xdg, "cursor/chats/hash2/chat-3/store.db"))
 	adoptResumedSession(policy("cursor-cli", map[string]string{"XDG_CONFIG_HOME": xdg}), []string{"cursor-agent", "--resume", "chat-3"})

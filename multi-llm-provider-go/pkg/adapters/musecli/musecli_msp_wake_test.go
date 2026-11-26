@@ -52,7 +52,7 @@ func TestMuseMSPWakeTurnReplyReachesTheHost(t *testing.T) {
 }
 
 // Muse's inputTokens already includes the cached part; adding cacheRead again doubled every msp turn's prompt
-// tokens and halved its cache share (Excellence, 3 Nov: 100.9M recorded against 50.8M in Muse's own file).
+// tokens and halved its cache share (server B, 3 Nov: 100.9M recorded against 50.8M in Muse's own file).
 func TestMuseMSPTurnCountsCachedTokensOnce(t *testing.T) {
 	a := &MuseCLIAdapter{modelID: "muse-model"}
 	resp := a.museMSPResponse(&museMSPSession{sessionID: "s"}, "ok", "ok", "muse-model", 314134, 151, 313460, 0)

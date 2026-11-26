@@ -9,8 +9,8 @@ directly (no root, no Docker), a shared host-level Caddy reverse-proxies to
 it, and shell tools run inside a Landlock-first sandbox with a mount-
 namespace fallback.
 
-This doc exists because Video Studio's deploy (`./deploy.sh rts`) guarantees most
-of the items below automatically, every release. **Dominion has no
+This doc exists because Video Studio's deploy (`./deploy.sh <server>` for the AWS server) guarantees most
+of the items below automatically, every release. **A trading deployment had no
 equivalent script — every one of these was independently rediscovered as a
 live production incident**, one at a time, because there was nothing
 forcing a new dedicated-VM deployment to prove it satisfies them before
@@ -74,7 +74,7 @@ does not verify that runtime mount/configuration.
 Reject the release on a nonzero checker exit. After activation, run a report
 preview and confirm it captures a screenshot; a generic HTTP 200 can be an
 HTML fallback and is not proof that the preview runtime loaded. This applies
-to Dominion/manual deployments as well as automated releases. The EC2 and
+to manual deployments as well as automated releases. The EC2 and
 dedicated-VM scripts run the packaging checks automatically; frontend Docker
 builds inherit the build gate through `npm run build`.
 
@@ -174,7 +174,7 @@ custom tools use to call back into the agent, in this priority order:
 1. Explicit `MCP_API_URL` env var — **always wins if set.**
 2. `NATIVE_WORKSPACE=true` → `http://127.0.0.1:<agent-port>`. This flag is
    only set by a local-dev wrapper script (`run_server_with_logging.sh
-   --with-workspace`), **not** by `./deploy.sh rts` — don't rely on it
+   --with-workspace`), **not** by `./deploy.sh` — don't rely on it
    for a production rootless deployment.
 3. Otherwise, if `WORKSPACE_API_URL` contains `localhost`/`127.0.0.1`
    (true for essentially every rootless deployment), it falls through to
@@ -184,11 +184,11 @@ custom tools use to call back into the agent, in this priority order:
 Branch 3 is what actually fires when this is missed: tool calls fail with
 DNS resolution errors against `host.docker.internal`, and the agent itself
 may go looking for it (`getent hosts host.docker.internal`) while trying to
-self-diagnose. Found live on Dominion 2026-08-29, ~5 days after the rest of
+self-diagnose. Found live on a trading deployment 2026-08-29, ~5 days after the rest of
 this checklist's items were already fixed — this one had no earlier
 symptom because nothing had needed a custom tool callback until then.
 
-`./deploy.sh rts` guarantees this for Video Studio automatically
+`./deploy.sh` guarantees this for Video Studio automatically
 (`grep -q '^MCP_API_URL=' ... || echo 'MCP_API_URL=http://127.0.0.1:8000' >>
 ...`, idempotent on every release). Set it explicitly and permanently in
 `.env` for any deployment without that script:
@@ -201,7 +201,7 @@ echo 'MCP_API_URL=http://127.0.0.1:<agent-port>' >> <deployment>/.env
 
 Caddy does not compress by default — a site block with no `encode`
 directive silently ships the full uncompressed frontend bundle (multiple
-MB) on every page load. Confirmed live on Dominion 2026-08-28 as the root
+MB) on every page load. Confirmed live on a trading deployment 2026-08-28 as the root
 cause of a real "the server is slow" report: the main JS bundle transferred
 at ~3.7 MB instead of the ~1 MB gzip produces.
 
@@ -305,7 +305,7 @@ machine's own absolute paths with it — specifically
 conversation JSON, captured when a native Claude Code session was last used
 *locally*. Resuming one of those sessions on the server fails with
 `SANDBOX_UNAVAILABLE: ... mkdir <dev-machine-path>: permission denied`
-(found live on Dominion 2026-08-28, 221 affected files).
+(found live on a trading deployment 2026-08-28, 221 affected files).
 
 Before considering a sync complete, grep the synced tree for the source
 machine's own absolute path and bulk-correct it to the real server path.
@@ -327,7 +327,7 @@ failed: ... · Run claude doctor" footer at the bottom of the tmux pane
 below the real idle `❯` prompt. `multi-llm-provider-go`'s
 `hasReadyInputPrompt` completion scan (`claudecode_interactive_adapter.go`)
 hits that footer first and reports "not ready" indefinitely — confirmed
-live on Dominion 2026-08-30, wedging a turn for 3+ hours with the CLI
+live on a trading deployment 2026-08-30, wedging a turn for 3+ hours with the CLI
 itself having answered in 8 seconds. Fixed there as one instance of a
 general shape (unrecognized footer line masking the idle prompt); any
 *other* still-unrecognized Claude Code footer text can reproduce the same
@@ -342,9 +342,9 @@ HOME=<service-home> npm config get prefix
 
 ### 9. Server logs must actually reach a file the service account can read
 
-Found live on Dominion 2026-08-31 while trying to check for tool errors and
+Found live on a trading deployment 2026-08-31 while trying to check for tool errors and
 finding nothing at all, despite the binary's own `--log-file` flag: this is
-a shared-code gap, not a Dominion-only misconfiguration, so check it on any
+a shared-code gap, not a one-deployment misconfiguration, so check it on any
 new rootless deployment (Video Studio's `video-studio-agent` almost
 certainly has the identical gap — unconfirmed as of this writing).
 
@@ -368,13 +368,13 @@ Two independent problems, both required:
    release-independent directory instead of letting the app create a plain
    one:
    ```bash
-   ln -s /srv/dominion/logs /srv/dominion/releases/<release-id>/logs
+   ln -s /srv/<product>/logs /srv/<product>/releases/<release-id>/logs
    ```
 
 Verify after any release, against real content, not just file existence:
 
 ```bash
-ssh -p <port> <user>@<host> 'tail -5 /srv/dominion/logs/agent.log'
+ssh -p <port> <user>@<host> 'tail -5 /srv/<product>/logs/agent.log'
 # expect: recent [API] request lines, not empty and not stale
 ```
 
@@ -399,7 +399,7 @@ step runner: installing into a venv alone does not change its interpreter.
 ### 11. Workflow documents and code remain on persistent disk
 
 Configure `--docs-dir` outside release directories, container writable layers and
-`/tmp`. RTS uses `/data/video-studio/docs` on its encrypted EBS root volume;
+`/tmp`. The AWS server uses `/data/video-studio/docs` on its encrypted EBS root volume;
 `DeleteOnTermination=false` was verified on 2026-09-07. Keep workflow `code/`,
 `learnings/`, `db/` (including assets), run outputs, and `.sandbox-cache/` under
 this durable docs root. Release cleanup must never delete or replace it.

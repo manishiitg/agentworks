@@ -862,7 +862,7 @@ func BenchmarkIsolatorOverhead(b *testing.B) {
 // namespace, which an unprivileged service account never has -- it fails
 // with EPERM regardless of Landlock/AppArmor state, making the whole
 // fallback permanently unusable for every rootless deployment. Confirmed
-// live on the Dominion Hetzner deployment 2026-08-29: identical "-m" alone
+// live on a trading deployment 2026-08-29: identical "-m" alone
 // failed with "Operation not permitted" as the unprivileged service user,
 // while "--mount --user --map-root-user" succeeded -- the standard
 // unprivileged-mount-namespace pattern rootless container runtimes use.

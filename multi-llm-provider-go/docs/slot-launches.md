@@ -62,8 +62,8 @@ Declared app-account launches and canary-excluded users keep no-slot behaviour.
 ## Several products on one host
 
 Each product gets its own slot accounts and launcher so products never share
-slots: set `AGENTWORKS_SLOT_PREFIX` (e.g. `AGENTWORKS_SLOT_PREFIX=confida`
-matches `confida01`, `confida02`, …) and `AGENTWORKS_SLOTCTL` to that product's
+slots: set `AGENTWORKS_SLOT_PREFIX` (e.g. `AGENTWORKS_SLOT_PREFIX=example`
+matches `example01`, `example02`, …) and `AGENTWORKS_SLOTCTL` to that product's
 launcher. The config file's `slot_prefix` wins over the variable when both are
 set. Slot detection, run folders, and user→slot lookup all scope to the
 product's own prefix.

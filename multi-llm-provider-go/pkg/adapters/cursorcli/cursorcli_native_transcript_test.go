@@ -180,7 +180,7 @@ func TestReadCursorStoreDBMessagesStillReadsAfterRootRefsRefactor(t *testing.T) 
 // A turn records only what Cursor committed after the snapshot taken before
 // its prompt, however many earlier turns (live-typed or not) the session
 // holds. An auto-notification turn after several live sends once replayed
-// every earlier assistant message as its reply (RTS 2026-09-24,
+// every earlier assistant message as its reply (server A 2026-09-24,
 // automationtesting).
 func TestTurnRecordsOnlyWhatFollowsItsSnapshot(t *testing.T) {
 	home := t.TempDir()

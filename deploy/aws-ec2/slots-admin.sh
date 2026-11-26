@@ -13,30 +13,36 @@
 # switches the services to AGENTWORKS_SLOTS=on.
 set -euo pipefail
 
-AWS_PROFILE_NAME="${AWS_PROFILE_NAME:-RTS}"
-AWS_REGION="${AWS_REGION:-us-west-2}"
-STACK_NAME="${STACK_NAME:-video-studio-prod}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ $# -ge 1 ]] || { sed -n 2,13p "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2; }
+# The server's AWS profile and stack are private: products/video-studio/aws.env in the deployments repo (deploy.sh passes them).
+AWS_ENV_FILE="${AGENTWORKS_DEPLOYMENTS_DIR:-$(cd "$HERE/../../.." && pwd)/deployments}/products/${AWS_PRODUCT_DIR:-video-studio}/aws.env"
+if [[ -z "${AWS_PROFILE_NAME:-}" && -f "$AWS_ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  set -a; . "$AWS_ENV_FILE"; set +a
+fi
+AWS_PROFILE_NAME="${AWS_PROFILE_NAME:?set AWS_PROFILE_NAME (private deployments repo: products/video-studio/aws.env)}"
+AWS_REGION="${AWS_REGION:-us-west-2}"
+STACK_NAME="${STACK_NAME:?set STACK_NAME (private deployments repo: products/video-studio/aws.env)}"
 
-aws_rts() { aws --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION" "$@"; }
-instance="$(aws_rts cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue|[0]' --output text)"
-status="$(aws_rts ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance" --query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null || true)"
+aws_server() { aws --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION" "$@"; }
+instance="$(aws_server cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue|[0]' --output text)"
+status="$(aws_server ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance" --query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null || true)"
 [[ "$status" == "Online" ]] || { echo "instance $instance is not an SSM managed instance (status: ${status:-none})" >&2; exit 1; }
 
 args=""
 for a in "$@"; do args+=" $(printf '%q' "$a")"; done
 script_b64="$(base64 < "$HERE/../common/provision-slots.sh" | tr -d '\n')"
 remote="echo $script_b64 | base64 -d > /tmp/provision-slots.sh && PRODUCT=video-studio APP_DIR=/var/lib/video-studio/video-studio DOCS=/data/video-studio/docs SERVICE_HOME=/var/lib/video-studio bash /tmp/provision-slots.sh$args; rc=\$?; rm -f /tmp/provision-slots.sh; exit \$rc"
-cmd_id="$(aws_rts ssm send-command --instance-ids "$instance" --document-name AWS-RunShellScript --comment "slots: $1" --parameters "$(jq -cn --arg s "$remote" '{commands: [$s]}')" --query Command.CommandId --output text)"
+cmd_id="$(aws_server ssm send-command --instance-ids "$instance" --document-name AWS-RunShellScript --comment "slots: $1" --parameters "$(jq -cn --arg s "$remote" '{commands: [$s]}')" --query Command.CommandId --output text)"
 echo "ssm command $cmd_id sent; waiting"
 for _ in $(seq 1 90); do
-  st="$(aws_rts ssm get-command-invocation --command-id "$cmd_id" --instance-id "$instance" --query Status --output text 2>/dev/null || echo Pending)"
+  st="$(aws_server ssm get-command-invocation --command-id "$cmd_id" --instance-id "$instance" --query Status --output text 2>/dev/null || echo Pending)"
   case "$st" in
-    Success) aws_rts ssm get-command-invocation --command-id "$cmd_id" --instance-id "$instance" --query StandardOutputContent --output text; exit 0 ;;
+    Success) aws_server ssm get-command-invocation --command-id "$cmd_id" --instance-id "$instance" --query StandardOutputContent --output text; exit 0 ;;
     Failed|Cancelled|TimedOut)
       echo "ssm command $st" >&2
-      aws_rts ssm get-command-invocation --command-id "$cmd_id" --instance-id "$instance" --query '[StandardOutputContent,StandardErrorContent]' --output text >&2
+      aws_server ssm get-command-invocation --command-id "$cmd_id" --instance-id "$instance" --query '[StandardOutputContent,StandardErrorContent]' --output text >&2
       exit 1 ;;
   esac
   sleep 5

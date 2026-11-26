@@ -132,7 +132,7 @@ func TestMuseStoppedAutoAnswerCannotSendKeys(t *testing.T) {
 	}
 }
 
-// The multi-select form from Excellence 2026-09-29 (a Code chat stuck on it):
+// The multi-select form from server B 2026-09-29 (a Code chat stuck on it):
 // the hint wraps ("Esc\ninterrupt") and reads "Enter to toggle".
 const museCheckboxFixture = "! Message not sent — another run is still starting\n" +
 	"◆ Request user input Features — running (44s)\n" +

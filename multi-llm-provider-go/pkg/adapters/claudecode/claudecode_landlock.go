@@ -46,7 +46,7 @@ func claudeLandlockArgs(opts *llmtypes.CallOptions, args []string, workingDir, s
 // private home when only the unconfined home has it. A chat started before its CLI was confined
 // kept its conversation in the server's (or account's) ~/.claude; the confined launch reads the
 // private home, so --resume failed with "No conversation found" and the pane exited at once
-// (RTS 2026-09-30, a Crew chat after the lock was turned on). Only this folder's own
+// (server A 2026-09-30, a Crew chat after the lock was turned on). Only this folder's own
 // conversation is copied, never the rest of that home; an existing private copy is kept.
 func claudeAdoptResumedConversation(policy *llmtypes.CLISecurityPolicy, args []string, workingDir string) {
 	resumeID := ""

@@ -116,7 +116,7 @@ func TestLandlockEnforcesExternalFolderAccess(t *testing.T) {
 // Landlock kernel.
 
 // TestLandlockCommandCanInstallIntoItsOwnCache is the live reproduction of
-// the PLAT-283 incident on the Dominion Hetzner deployment (2026-08-31 /
+// the PLAT-283 incident on a trading deployment (2026-08-31 /
 // 2026-09-05): a workflow step tried "pip3 install yfinance" and, after
 // working around PEP 668's externally-managed-environment refusal with
 // --break-system-packages, hit a Landlock permission denial writing pip's
@@ -165,7 +165,7 @@ func TestLandlockCommandCanInstallIntoItsOwnCache(t *testing.T) {
 
 // TestMountNamespaceFallbackEnforcesLandlockRejectedOverlapPolicy is the
 // proper, repeatable server-side reproduction of the live incident on the
-// Dominion Hetzner deployment 2026-08-28/29 -- run this directly on any
+// trading deployment 2026-08-28/29 -- run this directly on any
 // Linux deployment host to verify the fix instead of hand-crafting a curl
 // request against a running service:
 //
@@ -243,9 +243,9 @@ func TestMountNamespaceFallbackEnforcesLandlockRejectedOverlapPolicy(t *testing.
 }
 
 // TestMountNamespaceFallbackHandlesFileReadPath is the live reproduction of
-// a second real production incident on the Dominion Hetzner deployment
+// a second real production incident on a trading deployment
 // 2026-08-31: every execute_shell_command call for a step whose scope
-// included Workflow/tectonicusadaytrading/schedule-runs.json (a plain file,
+// included Workflow/<trading-workflow>/schedule-runs.json (a plain file,
 // not a directory) failed unconditionally with `mount(2) system call
 // failed: Not a directory`, regardless of the command actually requested.
 //

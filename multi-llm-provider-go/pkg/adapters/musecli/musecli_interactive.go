@@ -269,7 +269,7 @@ func museNativeContainmentArgv() []string {
 // full mode. AgentWorks' confinement (Landlock, Seatbelt) is the boundary when
 // it applies; Muse's own Bubblewrap sandbox cannot start inside the lock and
 // the slot's user namespace, and the footer notice its failed probe left kept
-// the TUI from ever settling (Excellence 2026-10-03: the first prompt was never
+// the TUI from ever settling (server B 2026-10-03: the first prompt was never
 // typed in). Unconfined (a person's own Mac) Muse runs with the person's
 // rights, as every CLI does in full mode there.
 func museToolArgv(toolAllowlistSet bool) []string {

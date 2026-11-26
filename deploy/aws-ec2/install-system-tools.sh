@@ -14,15 +14,23 @@
 # Idempotent: every step checks before installing. Re-run to add tools.
 set -euo pipefail
 
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The server's AWS settings are private: products/video-studio/aws.env in the deployments repo (AWS_PROFILE_NAME, STACK_NAME,
+# and WORKFLOW_AWS_PROFILES: extra named AWS profiles that workflow shells on the box may use, all resolving to the instance role).
+AWS_ENV_FILE="${AGENTWORKS_DEPLOYMENTS_DIR:-$(cd "$HERE/../../.." && pwd)/deployments}/products/${AWS_PRODUCT_DIR:-video-studio}/aws.env"
+if [[ -z "${AWS_PROFILE_NAME:-}" && -f "$AWS_ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  set -a; . "$AWS_ENV_FILE"; set +a
+fi
 AWS_PROFILE_NAME="${AWS_PROFILE_NAME:?set AWS_PROFILE_NAME (private deployments repo: products/video-studio/aws.env)}"
 AWS_REGION="${AWS_REGION:-us-west-2}"
 STACK_NAME="${STACK_NAME:?set STACK_NAME (private deployments repo: products/video-studio/aws.env)}"
 NTN_VERSION_URL="${NTN_VERSION_URL:-https://ntn.dev}"
 
-aws_rts() { aws --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION" "$@"; }
-instance="$(aws_rts cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue|[0]' --output text)"
+aws_server() { aws --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION" "$@"; }
+instance="$(aws_server cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue|[0]' --output text)"
 
-status="$(aws_rts ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance" --query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null || true)"
+status="$(aws_server ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance" --query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null || true)"
 if [[ "$status" != "Online" ]]; then
   echo "instance $instance is not an SSM managed instance yet (status: ${status:-none}); run attach-instance-role.sh and wait a few minutes" >&2
   exit 1
@@ -60,7 +68,7 @@ exec /usr/local/lib/ntn/ntn "$@"
 NTN
 chmod 0755 /usr/local/bin/ntn
 
-# surge.sh CLI for workflow publishing (rtslatency publishes rts-daily-ops.surge.sh).
+# surge.sh CLI for workflow publishing (an ops workflow publishes its report to a surge.sh site).
 # Installed with the system node so the sandbox sees it; the launcher maps the
 # workflow-attached secrets SECRET_SURGE_LOGIN / SECRET_SURGE_TOKEN onto the
 # SURGE_LOGIN / SURGE_TOKEN variables the CLI reads, because HOME is /tmp in the
@@ -94,10 +102,10 @@ if ! /usr/local/bin/gog --version 2>/dev/null | grep -Fq "$gog_version"; then
   rm -rf "$gog_tmp"
 fi
 
-# AWS profile "server A" for workflow shells. The rtslatency workflow was written
-# against a named profile on the operator's laptop; on the box the credentials
-# are the instance role, so both `default` and `RTS` resolve to it through
-# IMDS. The sandbox runs with HOME=/tmp and exports
+# Named AWS profiles for workflow shells. An ops workflow was written against a
+# named profile on the operator's laptop; on the box the credentials are the
+# instance role, so `default` and every name in WORKFLOW_AWS_PROFILES resolve
+# to it through IMDS. The sandbox runs with HOME=/tmp and exports
 # AWS_CONFIG_FILE=/usr/local/etc/aws/config (workspace/security/environment.go);
 # until that build is deployed, the aws launcher below sets the same variable
 # and a copy at /tmp/.aws/config (recreated at boot by tmpfiles) covers boto3.
@@ -107,9 +115,7 @@ cat > /usr/local/etc/aws/config <<'AWSCFG'
 region = us-west-2
 credential_source = Ec2InstanceMetadata
 
-[profile RTS]
-region = us-west-2
-credential_source = Ec2InstanceMetadata
+__WORKFLOW_AWS_PROFILES__
 AWSCFG
 chmod 0644 /usr/local/etc/aws/config
 real_aws="$(readlink -f /usr/local/bin/aws 2>/dev/null || true)"
@@ -132,20 +138,31 @@ TMPF
 
 echo "git: $(git --version)"
 echo "aws: $(/usr/local/bin/aws --version)"
-echo "aws RTS profile: $(/usr/local/bin/aws --profile RTS sts get-caller-identity --query Arn --output text 2>&1 | tail -1)"
+for profile in __WORKFLOW_AWS_PROFILE_NAMES__; do
+  echo "aws $profile profile: $(/usr/local/bin/aws --profile "$profile" sts get-caller-identity --query Arn --output text 2>&1 | tail -1)"
+done
 echo "ntn: $(/usr/local/bin/ntn --version)"
 echo "gog: $(/usr/local/bin/gog --version)"
 REMOTE_SCRIPT
+# Fill in the named workflow profiles (each name: letters, digits, dot, dash, underscore).
+profile_blocks=""
+for profile in ${WORKFLOW_AWS_PROFILES:-}; do
+  [[ "$profile" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "WORKFLOW_AWS_PROFILES: bad profile name '$profile'" >&2; exit 2; }
+  [[ -z "$profile_blocks" ]] || profile_blocks+=$'\n\n'
+  profile_blocks+="[profile $profile]"$'\n'"region = us-west-2"$'\n'"credential_source = Ec2InstanceMetadata"
+done
+REMOTE="${REMOTE//__WORKFLOW_AWS_PROFILES__/$profile_blocks}"
+REMOTE="${REMOTE//__WORKFLOW_AWS_PROFILE_NAMES__/${WORKFLOW_AWS_PROFILES:-}}"
 
 # AWS-RunShellScript executes with sh (dash); the script is bash, so ship it
 # to a file and run it with bash explicitly.
-cmd_id="$(aws_rts ssm send-command --instance-ids "$instance" --document-name AWS-RunShellScript --comment "install workflow system tools" --parameters "$(jq -cn --arg s "$REMOTE" '{commands: ["cat > /tmp/install-system-tools.sh <<'"'"'SSM_EOF'"'"'\n" + $s + "\nSSM_EOF", "bash /tmp/install-system-tools.sh", "rm -f /tmp/install-system-tools.sh"], executionTimeout: ["900"]}')" --query 'Command.CommandId' --output text)"
+cmd_id="$(aws_server ssm send-command --instance-ids "$instance" --document-name AWS-RunShellScript --comment "install workflow system tools" --parameters "$(jq -cn --arg s "$REMOTE" '{commands: ["cat > /tmp/install-system-tools.sh <<'"'"'SSM_EOF'"'"'\n" + $s + "\nSSM_EOF", "bash /tmp/install-system-tools.sh", "rm -f /tmp/install-system-tools.sh"], executionTimeout: ["900"]}')" --query 'Command.CommandId' --output text)"
 echo "ssm command $cmd_id sent; waiting"
 for _ in $(seq 1 90); do
-  st="$(aws_rts ssm get-command-invocation --command-id "$cmd_id" --instance-id "$instance" --query Status --output text 2>/dev/null || echo Pending)"
+  st="$(aws_server ssm get-command-invocation --command-id "$cmd_id" --instance-id "$instance" --query Status --output text 2>/dev/null || echo Pending)"
   case "$st" in
-    Success) aws_rts ssm get-command-invocation --command-id "$cmd_id" --instance-id "$instance" --query StandardOutputContent --output text; exit 0 ;;
-    Failed|Cancelled|TimedOut) echo "ssm command $st" >&2; aws_rts ssm get-command-invocation --command-id "$cmd_id" --instance-id "$instance" --query '[StandardOutputContent,StandardErrorContent]' --output text | tail -n 40 >&2; exit 1 ;;
+    Success) aws_server ssm get-command-invocation --command-id "$cmd_id" --instance-id "$instance" --query StandardOutputContent --output text; exit 0 ;;
+    Failed|Cancelled|TimedOut) echo "ssm command $st" >&2; aws_server ssm get-command-invocation --command-id "$cmd_id" --instance-id "$instance" --query '[StandardOutputContent,StandardErrorContent]' --output text | tail -n 40 >&2; exit 1 ;;
   esac
   sleep 10
 done

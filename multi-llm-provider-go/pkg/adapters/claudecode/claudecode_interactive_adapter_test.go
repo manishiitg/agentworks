@@ -1110,9 +1110,9 @@ func TestHasReadyInputPromptAcceptsIdlePromptWithUpgradeNotice(t *testing.T) {
 
 // TestHasReadyInputPromptAcceptsIdlePromptWithAutoUpdateFailureNotice pins
 // a fix for a real production hang, the same failure shape as the upgrade-
-// notice case above: confirmed live on the Dominion Hetzner deployment
+// notice case above: confirmed live on a trading deployment
 // 2026-08-30, where an unwritable npm prefix (fixed separately — see
-// deploy/dedicated-vm/dominion-hetzner.md) made Claude Code print a
+// a private deployment note) made Claude Code print a
 // "✘ Auto-update failed: ..." footer at the very bottom of the pane, below
 // the actual idle ❯ prompt. hasReadyInputPrompt walked up from the last
 // line, hit this footer BEFORE finding ❯, and returned false — the CLI

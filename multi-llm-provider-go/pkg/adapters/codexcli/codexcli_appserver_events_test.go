@@ -43,7 +43,7 @@ func TestCodexAppServerSeparatesMessagesWithoutDuplicatingCompletedText(t *testi
 	}
 }
 
-// Excellence 2026-10-28: a steer the turn did not consume ran as Codex's own next turn, which the adapter ignored, so
+// Server B 2026-10-28: a steer the turn did not consume ran as Codex's own next turn, which the adapter ignored, so
 // the chat showed nothing running and Stop had no turn id. The call must follow that turn to its end.
 func TestCodexAppServerFollowsUnconsumedSteerIntoNextTurn(t *testing.T) {
 	r := &codexRPC{events: make(chan codexRPCMessage, 10), done: make(chan struct{})}

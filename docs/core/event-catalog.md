@@ -941,7 +941,7 @@ Producers:
 - `mcp-agent-builder-go/agent_go/pkg/orchestrator/events/data.go`
 - `mcp-agent-builder-go/agent_go/internal/agentsession/agentsession.go`
 - `mcp-agent-builder-go/agent_go/internal/agentworksproduct/profile_definition.go`
-- `mcp-agent-builder-go/agent_go/internal/dominionproduct/profile_definition.go`
+- `mcp-agent-builder-go/agent_go/internal/tradingproduct/profile_definition.go` (since removed)
 - `mcp-agent-builder-go/agent_go/internal/workproduct/profile_definition.go`
 - `multi-llm-provider-go/pkg/adapters/codexcli/codexcli_interactive_adapter.go`
 - `multi-llm-provider-go/pkg/adapters/codexcli/codexcli_structured_adapter.go`

@@ -20,7 +20,7 @@ const museShortSocketLimit = 60
 // "run" folder in its private home (the one place it may write). Without it
 // Muse falls back to /tmp/tbh-<uid>-rt, which a confined CLI cannot use, and
 // every start printed "local session messaging unavailable: registry_io ...
-// Permission denied" (Excellence, 2026-10-03). A private home deep in a
+// Permission denied" (server B, 2026-10-03). A private home deep in a
 // runtime folder is far past the socket path limit, so Muse is handed a short
 // symlink to it instead, one per private home, reused across turns.
 func museRuntimeDirFor(privateHome string) (string, error) {
@@ -69,7 +69,7 @@ func museRuntimeEnv(opts *llmtypes.CallOptions) []string {
 }
 
 // museProbePrefix is the folder Muse creates in its temp folder at every start
-// to test its workspace (and never removes): 572 of them piled up on Excellence
+// to test its workspace (and never removes): 572 of them piled up on server B
 // and 1,286 in a developer's Mac temp folder.
 const museProbePrefix = "muse-workspace-probe-"
 
@@ -94,7 +94,7 @@ func musePreludeArgv(opts *llmtypes.CallOptions, argv []string) []string {
 
 // museArgvWithAbsoluteBinary replaces the bare command name "muse" in argv with the path this process resolves it to. The sweep's `exec "$@"` runs inside the
 // slot, where sudo resets PATH to the system folders: a bare `muse` was not found there, so every confined Muse launch ended at once and the chat said
-// "muse tmux session died while waiting for muse TUI to settle" (Excellence, 2026-10-04). This process's PATH has the install folder. Without a match
+// "muse tmux session died while waiting for muse TUI to settle" (server B, 2026-10-04). This process's PATH has the install folder. Without a match
 // argv is returned unchanged.
 func museArgvWithAbsoluteBinary(argv []string) []string {
 	out := append([]string(nil), argv...)

@@ -85,7 +85,7 @@ func ReadRetainedTurnStructuredProgressMessages(ownerSessionID string, _ time.Ti
 	var messages []llmtypes.MessageContent
 	// AGY stores tool results without a live result stream. A call is published once it has
 	// finished: when the turn settles, or earlier when a later step follows it. Publishing only
-	// at the end left a multi-minute turn showing no tool calls at all (Confida 2026-09-30).
+	// at the end left a multi-minute turn showing no tool calls at all (server C 2026-09-30).
 	var calls []agyTurnToolCall
 	if record.lastType == agyStepAssistant && record.lastStatus == 3 {
 		calls = agyTurnToolCallsSince(receipt.conversationID, record.userIdx, session.transcriptHome)

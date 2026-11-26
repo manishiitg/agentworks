@@ -601,7 +601,7 @@ func buildScheduleContext(workspacePath string, manifest *WorkflowManifest, sche
 //
 // The creator runs it while they are still an owner with an active account; otherwise the first active owner does.
 // A workflow handed to a new owner (creator removed from its owners, or their account disabled) kept running as the
-// creator, a non-owner, and broke once that account was disabled (Dominion trading workflow, 2026-10-07).
+// creator, a non-owner, and broke once that account was disabled (a trading workflow, 2026-10-07).
 func workflowExecutionOwnerUserID(manifest *WorkflowManifest) string {
 	if manifest == nil {
 		return ""

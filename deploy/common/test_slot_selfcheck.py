@@ -51,7 +51,7 @@ class ReleaseTraversalTest(unittest.TestCase):
         os.chmod(runner, 0o700)
         return app, build, runner
 
-    def test_rts_layout_becomes_traversable_but_not_listable(self):
+    def test_aws_server_layout_becomes_traversable_but_not_listable(self):
         with tempfile.TemporaryDirectory() as tmp:
             app, build, runner = self.layout(tmp)
             self.run_traversal(app, build)

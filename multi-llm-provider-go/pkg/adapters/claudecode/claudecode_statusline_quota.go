@@ -105,7 +105,7 @@ func UsageLimitState(tmuxSession string) (known, exhausted bool) {
 //
 // A launch-only turn hands the reply to the caller's transcript streamer, so
 // the adapter's own polling loops, which stream this snapshot, never run for
-// it. Callers read it here instead (RTS 2026-09-27: no usage on the terminal
+// it. Callers read it here instead (server A 2026-09-27: no usage on the terminal
 // hover for Crew chats).
 func StatusLineForTmuxSession(tmuxSession string) (*llmtypes.StatusLine, bool) {
 	tmuxSession = strings.TrimSpace(tmuxSession)

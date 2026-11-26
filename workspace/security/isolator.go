@@ -836,8 +836,8 @@ func resolveTempAndAbsPath(path, baseDir, tempDir string) (tempPath, absPath str
 // with `set -e`, this aborted the whole script -- every execute_shell_command
 // call failed unconditionally, regardless of the command actually
 // requested, whenever any configured path in scope happened to be a plain
-// file rather than a directory. Confirmed live on the Dominion deployment
-// 2026-08-31: Workflow/tectonicusadaytrading/schedule-runs.json (a real
+// file rather than a directory. Confirmed live on a trading deployment
+// 2026-08-31: Workflow/<trading-workflow>/schedule-runs.json (a real
 // file) was the first one hit, but the bug was general, not specific to
 // that one file -- any file-shaped read/write/blocked-write path would
 // have hit it. The primary Landlock backend (landlock_runner_linux.go)

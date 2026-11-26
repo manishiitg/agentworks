@@ -80,7 +80,7 @@ func TestCanonicalFailureDoesNotPromoteDiscussionOrDomainData(t *testing.T) {
 }
 
 // TestCanonicalFailureDoesNotDecodeStdoutAsANestedEnvelope reproduces the
-// confida-login live finding: `cat` on a file whose CONTENT happened to be a
+// A client server's login live finding: `cat` on a file whose CONTENT happened to be a
 // captured API error response was misclassified as the shell command itself
 // failing, even though the real exit_code was 0. The bug was
 // canonicalFailureValue JSON-decoding stdout's arbitrary text and treating

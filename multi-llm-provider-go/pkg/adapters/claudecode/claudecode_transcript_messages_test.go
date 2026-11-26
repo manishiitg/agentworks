@@ -67,7 +67,7 @@ func TestCompletedAssistantResponseFromTranscriptRejectsInterruptedTurn(t *testi
 	}
 }
 
-// RTS 2026-09-24: a tool call ran past 120s, Claude moved it to the background
+// Server A 2026-09-24: a tool call ran past 120s, Claude moved it to the background
 // and ended its turn, then continued on its own when the task finished. The
 // turn is not over until that task's notification arrives and Claude answers
 // again, so the chat keeps streaming the continuation.

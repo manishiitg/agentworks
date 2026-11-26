@@ -360,7 +360,7 @@ type GmailAuthStatus struct {
 	// works with a send-only scope. Older gws carried no identity there, so
 	// `gmail users getProfile` remains the fallback — but that is a Gmail API
 	// call needing a read scope, so a gmail.send-only login gets nothing from
-	// it (the exact reason Dominion showed "Address not known yet"). Empty when
+	// it (the exact reason a trading deployment showed "Address not known yet"). Empty when
 	// unauthenticated or when both lookups fail, which is not an auth failure.
 	Email string `json:"email,omitempty"`
 

@@ -311,7 +311,7 @@ func landlockABI() (int, error) {
 // --map-root-user first enters a new user namespace mapped back to the
 // caller's own UID (the standard unprivileged-mount-namespace pattern, the
 // same one rootless container runtimes use), which genuinely grants
-// CAP_SYS_ADMIN inside that namespace. Confirmed live on the Dominion
+// CAP_SYS_ADMIN inside that namespace. Confirmed live on a trading
 // Hetzner deployment: identical "-m" alone failed with "Operation not
 // permitted" as the unprivileged service user, while this form succeeded.
 func mountNamespaceAvailable() bool {

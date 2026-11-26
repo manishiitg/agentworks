@@ -1,4 +1,4 @@
-"""PLAT-426: how deploy.sh gets a build onto RTS: download from GitHub, the stream fallback, forced modes, and `builds`/`publish`."""
+"""PLAT-426: how deploy.sh gets a build onto the AWS server: download from GitHub, the stream fallback, forced modes, and `builds`/`publish`."""
 from pathlib import Path
 import hashlib
 import os
@@ -31,7 +31,7 @@ class TransportTest(unittest.TestCase):
         self.sha = hashlib.sha256((self.build / "manifest.json").read_bytes()).hexdigest()
         self.home = self.root / "home"
         self.home.mkdir()
-        self.job = self.root / "rts/job"
+        self.job = self.root / "aws/job"
         self.job.mkdir(parents=True)
         self.marker = self.root / "streamed"
 
@@ -44,21 +44,21 @@ class TransportTest(unittest.TestCase):
     def run_lib(self, script, **env):
         base = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "DEPLOY_BUILD_TRANSPORT")}
         base.update(self.gh.env(), PATH=f"{self.bin}:{os.environ['PATH']}", BUILDS_DIR=str(self.builds), HOME=str(self.home), **env)
-        code = (f'set -euo pipefail; REPO_ROOT="{COMMON.parents[1]}"; source "{COMMON}/build-once.sh"; SSH=(ssh rts-host); '
-                f'ship_build_to_rts() {{ echo "$1 $2" > "{self.marker}"; mkdir -p "$2/build"; }}; {script}')
+        code = (f'set -euo pipefail; REPO_ROOT="{COMMON.parents[1]}"; source "{COMMON}/build-once.sh"; SSH=(ssh aws-host); '
+                f'ship_build_to_aws_server() {{ echo "$1 $2" > "{self.marker}"; mkdir -p "$2/build"; }}; {script}')
         return subprocess.run(["bash", "-c", code], capture_output=True, text=True, env=base)
 
     def deliver(self, sha=None, **env):
-        return self.run_lib(f'deliver_build_to_rts "{self.build.name}" "{self.job}" "{sha or self.sha}"', **env)
+        return self.run_lib(f'deliver_build_to_aws_server "{self.build.name}" "{self.job}" "{sha or self.sha}"', **env)
 
-    def test_auto_with_a_token_publishes_and_rts_downloads_it_itself(self):
+    def test_auto_with_a_token_publishes_and_the_server_downloads_it_itself(self):
         self.token()
         r = self.deliver()
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn(f"RTS downloads build {self.build.name} itself from GitHub ({TAG})", r.stderr)
+        self.assertIn(f"The AWS server downloads build {self.build.name} itself from GitHub ({TAG})", r.stderr)
         self.assertFalse(self.marker.exists(), "the stream path must not run")
         self.assertEqual((self.job / "build/manifest.json").read_bytes(), (self.build / "manifest.json").read_bytes())
-        self.assertEqual([d[1] for d in self.gh.downloads], ["build-rts.tar.gz"])
+        self.assertEqual([d[1] for d in self.gh.downloads], ["build-trimmed.tar.gz"])
         self.assertFalse((self.job / "build/downloads").exists())
 
     def test_auto_without_a_token_falls_back_to_the_stream_with_one_reason(self):
@@ -72,7 +72,7 @@ class TransportTest(unittest.TestCase):
         self.token()
         r = self.deliver(sha="0" * 64)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("RTS could not download and verify", r.stderr)
+        self.assertIn("The AWS server could not download and verify", r.stderr)
         self.assertTrue(self.marker.exists())
         self.assertFalse((self.job / "build").exists() and (self.job / "build/manifest.json").exists())
 
@@ -121,8 +121,8 @@ class TransportTest(unittest.TestCase):
 
     def test_deploy_sh_uses_the_transport_and_documents_it(self):
         text = DEPLOY_SH.read_text()
-        self.assertIn('deliver_build_to_rts "$prebuilt_name" "$REMOTE_JOB"', text)
-        self.assertNotIn('\n    ship_build_to_rts "$prebuilt_name"', text)
+        self.assertIn('deliver_build_to_aws_server "$prebuilt_name" "$REMOTE_JOB"', text)
+        self.assertNotIn('\n    ship_build_to_aws_server "$prebuilt_name"', text)
         help_text = subprocess.run([str(DEPLOY_SH), "--help"], capture_output=True, text=True).stdout
         for word in ("DEPLOY_BUILD_TRANSPORT=auto|github|stream", "publish [build]"):
             self.assertIn(word, help_text)

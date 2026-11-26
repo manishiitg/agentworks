@@ -11,7 +11,7 @@ import (
 
 // Durable-ack P0 (builder docs/refactor/durable_ack_p0.md, PLAT-352): the submit is attempted once and the pane never decides delivery. A TUI that answers
 // the Enter with its "Message not sent -- another run is still starting" notice must NOT make the adapter clear and retype the message: each retyped copy was in
-// fact accepted and ran (one message ran three or more times on Excellence, 2026-10-04). Delivery is then judged by museWaitIntake from the native log.
+// fact accepted and ran (one message ran three or more times on server B, 2026-10-04). Delivery is then judged by museWaitIntake from the native log.
 //
 // A stand-in `tmux` plays the TUI: it shows the notice after Enter and counts what it is sent.
 func TestMuseSendPromptDoesNotRetypeAfterARefusalNotice(t *testing.T) {

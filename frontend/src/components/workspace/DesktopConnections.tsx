@@ -229,7 +229,7 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
     { id: 'yours', name: 'Yours', projects: rest.filter(row => !isSharedProject(row)) },
     { id: 'shared', name: 'Shared with you', projects: rest.filter(row => isSharedProject(row)) },
   ]
-  // A network is named as in this Mac's connections ("Excellencetechnologies"), not by its host name.
+  // A network is named as in this Mac's connections ("Example Company"), not by its host name.
   const networkName = (value: string) => {
     const host = value.replace(/^https?:\/\//, '').replace(/\/.*$/, '')
     if (!host) return ''

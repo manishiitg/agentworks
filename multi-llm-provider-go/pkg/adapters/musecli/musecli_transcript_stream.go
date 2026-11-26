@@ -139,7 +139,7 @@ func museTranscriptLineToChunks(line string, seenTool, endedTool map[string]bool
 	case "reasoning_summary_delta":
 		if text := strings.TrimSpace(evt.Text); text != "" && !museStreamPlumbing(text) {
 			// Muse's reasoning summary is thinking, like every other agent's: the compact muted line, not an assistant
-			// update. As an update it showed as large message blocks that were gone after a reload (Excellence 2026-10-09,
+			// update. As an update it showed as large message blocks that were gone after a reload (server B 2026-10-09,
 			// PLAT-781). Status progress from `muse exec` (museStatusChunk) stays an assistant update.
 			out = append(out, llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeReasoning, Content: text, Metadata: museTranscriptStreamMeta})
 		}

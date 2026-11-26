@@ -154,7 +154,7 @@ func TestDeliverUserMessageReportsActualStructuredTransport(t *testing.T) {
 
 // With no turn running nothing drains the steer queue, so a structured or API
 // agent refuses the message and the caller starts a new turn with it, instead
-// of accepting it into a queue no turn will read (RTS 2026-09-25).
+// of accepting it into a queue no turn will read (server A 2026-09-25).
 func TestDeliverUserMessageRefusesQueueWhenNoTurnIsRunning(t *testing.T) {
 	for _, agent := range []*Agent{
 		{provider: llm.ProviderOpenAI, modelID: "gpt-5"},

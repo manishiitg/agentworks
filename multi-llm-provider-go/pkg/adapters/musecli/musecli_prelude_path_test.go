@@ -10,7 +10,7 @@ import (
 )
 
 // The sweep prelude's `exec "$@"` runs where PATH is only the system folders; a bare "muse" there was not found and every confined launch died at once
-// (Excellence, 2026-10-04). The launch must carry the absolute path this process resolves.
+// (server B, 2026-10-04). The launch must carry the absolute path this process resolves.
 func TestPreludeArgvCarriesTheAbsoluteMuseBinary(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "muse")

@@ -9,7 +9,7 @@ guidance. The generic access and bridge-gate regressions remain covered.
 
 **Status:** Partly implemented — stale header corrected 2026-08-17. Step 1 has
 landed for the product surfaces: `videoproduct`, `financeproduct` and
-`dominionproduct` all carry `tool_policy.mode: allowlist` with an `enabled:`
+`tradingproduct` all carry `tool_policy.mode: allowlist` with an `enabled:`
 list. The AgentWorks (Workflow Builder) half — deleting gate 2 — has not been
 done, and `GetToolsForWorkshopMode` still exists. Open question 1 is answered
 below; 2 and 3 remain open.

@@ -5,7 +5,7 @@
 # Designing a product.yaml
 
 A practical guide for the next product built on the `agentprofiles.Profile` /
-`product.yaml` pattern (Video Studio, Chief of Staff, Finance, Dominion today).
+`product.yaml` pattern (Video Studio, Chief of Staff, Finance, Trading today).
 It exists because every one of those products hit at least one of the gotchas
 below independently, each discovered live rather than by reading the previous
 product's file. This doc is the thing to read *before* writing the next one.
@@ -21,7 +21,7 @@ Every field below reads differently depending on which shape your product is.
 There is no universal default — pick deliberately and say why, in a comment,
 the way Finance's and Video Studio's own files do.
 
-| | **Video Studio** | **Finance / Dominion** |
+| | **Video Studio** | **Finance / Trading** |
 |---|---|---|
 | Tool count | ~16 (production pipeline, secrets, browser, patch, shell) | 2 (a single read-only query tool + `execute_shell_command`) |
 | Shell needed | Yes — for the production pipeline's own HTTP APIs | Yes — but **only** as the call path to the one query tool; see below |
@@ -32,7 +32,7 @@ the way Finance's and Video Studio's own files do.
 
 If your product is closer to Finance's shape (one or a handful of narrow,
 read-only or tightly-scoped tools, no need for a persistent terminal), start
-from `agent_go/internal/financeproduct/` or `dominionproduct/`, not Video
+from `agent_go/internal/financeproduct/` or `tradingproduct/`, not Video
 Studio's — copying the wrong shape is how several of the gotchas below get
 reintroduced.
 
@@ -109,7 +109,7 @@ web_search]` allowlist.
 
 So: **if your product's safety story depends on `tool_policy.mode:
 allowlist` actually being enforced, you need `transport: structured`.** This
-is not optional for a narrow, security-scoped product like Finance/Dominion.
+is not optional for a narrow, security-scoped product like Finance/Trading.
 
 But `structured` is not a free upgrade — it has a real cost Video Studio
 paid for and reverted from:
@@ -157,7 +157,7 @@ for a different product).
 Video Studio declares all six keys explicitly (`live_input: disabled`,
 `raw_terminal: disabled`, `warm_session: preferred`, `workflow_execution:
 required`, `browser: required`, `secrets: required`, `voice: preferred`).
-Finance and Dominion originally didn't declare this block at all — and the
+Finance and Trading originally didn't declare this block at all — and the
 frontend's chat composer's "open tmux terminal" button (`ChatInput.tsx`,
 gated only on `mainTerminalAvailable && activeTabId`, with **no** transport
 or capability check at all) showed up for both, even though neither profile
@@ -167,7 +167,7 @@ is no persistent pane to retain"*). The frontend currently has no way to read
 `runtime.transport`/`runtime.capabilities` from the backend to auto-hide
 transport-inappropriate controls, so declaring `raw_terminal: disabled`
 doesn't yet suppress that button on its own — the actual fix used for
-Dominion was passing `inputVariant="product"` to `<ChatArea>` (see the
+Trading was passing `inputVariant="product"` to `<ChatArea>` (see the
 frontend section below) and gating the button on that flag in `ChatInput.tsx`.
 Declare the capabilities block anyway: it's the truthful statement of what
 this product's runtime actually is, and it's the thing a future
@@ -203,13 +203,13 @@ available).
 ### tool — there is no other way to reach it
 
 **This is the sharpest gotcha, and it looks backwards at first.** A narrow,
-security-scoped product like Finance or Dominion feels like it should
+security-scoped product like Finance or Trading feels like it should
 declare "no shell" — that reads as the more locked-down, more correct
 choice. It is wrong, and both products shipped with exactly this mistake
 before it was caught live.
 
-Every custom product tool — Finance's `query_finance_source`, Dominion's
-`query_dominion_source`, and every custom tool any other product registers —
+Every custom product tool — Finance's `query_finance_source`, Trading's
+`query_trading_source`, and every custom tool any other product registers —
 reaches the model through exactly **one** path, with no alternate route:
 `get_api_spec` discovery, then `execute_shell_command` running `curl` against
 `$MCP_CUSTOM/<tool>`. This is not one option among several; grep the
@@ -221,21 +221,21 @@ provider can call it as an MCP tool."* The 4 fixed core bridge tools
 `get_api_spec`) are the platform's only tool-exposure mechanism — there is
 no second, parallel one to reach for, and don't build one. (An earlier
 version of this doc claimed `withAdditionalBridgeTools` was such a
-mechanism and that Finance/Dominion's tool used it — that was wrong,
+mechanism and that Finance/Trading's tool used it — that was wrong,
 reverted, and is recorded below as a mistake worth not repeating, not as
 guidance.)
 
 So: **if `tool_policy.enabled` includes a custom tool, `execute_shell_command`
 must be in that same list, or the custom tool is unreachable, full stop —
 not merely inconvenient to reach.** Confirmed live, reproducibly, on both
-Finance and Dominion: with `execute_shell_command` excluded, the model's own
+Finance and Trading: with `execute_shell_command` excluded, the model's own
 attempt to reach its one registered tool was rejected by the platform itself
 — `tools_unavailable: unknown=[execute_shell_command]: ... Registered tools
-for this session: [query_dominion_source]` — and every subsequent turn
+for this session: [query_trading_source]` — and every subsequent turn
 truthfully reported it had no working tool, because it didn't. Once
 `execute_shell_command` was added to the allowlist, the exact same question
 resolved end-to-end on the first try: `get_api_spec` → `execute_shell_command`
-running `curl ... $MCP_CUSTOM/query_dominion_source` → a real result → a
+running `curl ... $MCP_CUSTOM/query_trading_source` → a real result → a
 correct answer.
 
 **This is a real capability grant, not a free exception.** `execute_shell_command`
@@ -248,7 +248,7 @@ itself can do once admitted. The way to keep the product's read-only intent
 real is in the **system prompt**, not the allowlist: state plainly that the
 model has shell access but its only sanctioned use is calling the product's
 one query tool, and that it must not use it for anything else. Both
-Finance's and Dominion's prompts say this explicitly now — copy that
+Finance's and Trading's prompts say this explicitly now — copy that
 wording, don't invent your own weaker version of it.
 
 Verifying this is genuinely working (not just registered) needs a live test,
@@ -284,7 +284,7 @@ so the profile cannot reach tools that bypass the shell.
 ### `dependencies` — only if you actually have a per-project workspace
 
 Video Studio provisions skills/CLI/MCP servers into each project's workspace
-because it *has* per-project workspaces. Finance and Dominion set
+because it *has* per-project workspaces. Finance and Trading set
 `dependencies: {}` — they read a fixed, already-existing workflow database,
 not a project folder, so there's nothing to provision. Don't reach for this
 block by default; it exists for products that manage their own workspace
@@ -292,7 +292,7 @@ lifecycle.
 
 ## Backend scaffolding checklist
 
-Mirrors `financeproduct`/`dominionproduct` almost line for line (~95% is
+Mirrors `financeproduct`/`tradingproduct` almost line for line (~95% is
 boilerplate copied verbatim, only identifiers change):
 
 1. `product.yaml` — see above.

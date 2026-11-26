@@ -86,7 +86,7 @@ class PrebuiltActivationTest(unittest.TestCase):
                      "video-studio-landlock-runner", "lib/libfake.so"):
             self.assertTrue((release / "bin" / name).exists(), name)
         for name in ("agent", "workspace", "gateway", "browser"):
-            self.assertFalse((release / "bin" / name).exists(), name)  # renamed per product, or RTS-only
+            self.assertFalse((release / "bin" / name).exists(), name)  # renamed per product, or AWS-server-only
         self.assertEqual(json.loads((release / "downloads/version.json").read_text())["version"], REVS["mcp-agent-builder-go"])
         self.assertTrue((release / "downloads/agentworks-linux-amd64").is_file())
         self.assertEqual((release / "SOURCE_REVISIONS").read_text(), (self.build / "SOURCE_REVISIONS").read_text())
@@ -141,8 +141,8 @@ class PrebuiltActivationTest(unittest.TestCase):
         self.assertEqual(self.releases(), [])
 
 
-class RtsShipmentTest(unittest.TestCase):
-    """The RTS tarball is a trimmed copy of the build; its activation names binaries the RTS way and verifies with explicit skips."""
+class AwsServerShipmentTest(unittest.TestCase):
+    """The AWS server tarball is a trimmed copy of the build; its activation names binaries the AWS server way and verifies with explicit skips."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -159,9 +159,9 @@ class RtsShipmentTest(unittest.TestCase):
         data = json.loads((self.build / "manifest.json").read_text())
         data.update(os="linux", arch="x86_64", glibc="2.39")  # deterministic whatever machine runs this test
         (self.build / "manifest.json").write_text(json.dumps(data))
-        self.shipped = self.tmp / "rts"
+        self.shipped = self.tmp / "aws"
         self.shipped.mkdir()
-        # exactly the tar command of ship_build_to_rts in deploy/common/build-once.sh
+        # exactly the tar command of ship_build_to_aws_server in deploy/common/build-once.sh
         name = self.build.name
         subprocess.run(
             f"tar -C '{self.tmp}' --exclude='{name}/source/mcp-agent-builder-go/mcpagent' --exclude='{name}/source/mcp-agent-builder-go/multi-llm-provider-go' "

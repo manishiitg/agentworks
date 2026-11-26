@@ -135,7 +135,7 @@ exports.Agent={
 	}
 }
 
-// PLAT-872: a server restart killed the bridge mid-run (Excellence 2026-10-27 17:11), the run stayed
+// PLAT-872: a server restart killed the bridge mid-run (server B 2026-10-27 17:11), the run stayed
 // active in Cursor's local store, and every later turn of that chat failed "Agent ... already has active
 // run". A resumed agent's stale run is cancelled; if it cannot be, the chat starts a new native agent.
 func TestCursorSDKResumeClearsStaleActiveRun(t *testing.T) {
@@ -266,7 +266,7 @@ func TestCursorSDKStopCancelsTheRunningTurn(t *testing.T) {
 	}
 }
 
-// RTS 2026-10-27: a message sent 2s into a turn, before the SDK run had started, fell back to an
+// Server A 2026-10-27: a message sent 2s into a turn, before the SDK run had started, fell back to an
 // after-turn injection and showed twice. It must join this turn, and text after a tool step must not
 // be glued to the previous sentence ("ready.Yes.").
 func TestCursorSDKEarlySteerJoinsTheSameTurn(t *testing.T) {
@@ -310,7 +310,7 @@ func TestCursorSDKEarlySteerJoinsTheSameTurn(t *testing.T) {
 }
 
 // A steer the SDK does not take becomes a follow-up run in the same turn; its text starts a new paragraph.
-// QUEUED: on Excellence (2026-10-28) a second chat message was accepted mid-turn, the SDK settled it
+// QUEUED: on server B (2026-10-28) a second chat message was accepted mid-turn, the SDK settled it
 // only after the run ended, and the bridge had already closed the turn, so it was never answered.
 func TestCursorSDKFollowUpRunStartsNewParagraph(t *testing.T) {
 	for _, steer := range []string{"LATER", "QUEUED"} {
@@ -445,7 +445,7 @@ func TestCursorSDKRememberedParamsSkipTheLookup(t *testing.T) {
 	}
 }
 
-// RTS 2026-11-03: Cursor ended its run after createPlan and the person saw only "Retrying CreatePlan".
+// Server A 2026-11-03: Cursor ended its run after createPlan and the person saw only "Retrying CreatePlan".
 func TestCursorSDKPlanTextBecomesReply(t *testing.T) {
 	got := cursorSDKPlanText("createPlan", `{"name":"x","plan":"# Plan\n1. Do it","todos":[]}`)
 	// #3711: marked as a plan, so the chat folds it to one line like Codex's.
@@ -457,7 +457,7 @@ func TestCursorSDKPlanTextBecomesReply(t *testing.T) {
 	}
 }
 
-// RTS 12 Nov: the answer streamed, Cursor said its turn ended, then the SDK kept the run open (its
+// Server A 12 Nov: the answer streamed, Cursor said its turn ended, then the SDK kept the run open (its
 // resume-from-checkpoint retries) and the chat waited 15 minutes for an error. A run left open after
 // the turn ended, or ended with the SDK's "no progress" error, finishes with the streamed answer.
 func TestCursorSDKTurnEndedRunThatStaysOpenFinishesWithTheAnswer(t *testing.T) {

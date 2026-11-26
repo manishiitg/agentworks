@@ -17,7 +17,7 @@ import (
 // Full CLI Muse (no allowlist, --yolo): the TUI must settle and take the first
 // prompt, its own shell must create a file in the working directory, and the
 // MCP bridge must keep working. Nothing exercised this launch before
-// Excellence 2026-10-03, where Muse's failed sandbox probe kept the TUI from
+// Server B 2026-10-03, where Muse's failed sandbox probe kept the TUI from
 // settling and the prompt was never typed in.
 func TestMuseCLIRealFullNative(t *testing.T) {
 	requireMetaMuseCLIE2E(t)

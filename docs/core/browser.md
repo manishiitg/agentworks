@@ -45,7 +45,7 @@ session fallback. Browsers start on demand, not when a workflow is created.
 | Crew and Code | Browser capability and current product grants remain enforced. `.browser-settings.json` in the physical project is canonical; chat/tab caches cannot override it. |
 | Work browser panel | Reads and writes those project settings through the authenticated browser API. |
 | Video Studio | Required browser and shared workflow viewer; server uses managed Chrome. |
-| Dominion | Tool allowlist still excludes `agent_browser`; starting a browser cannot bypass that restriction. |
+| A trading deployment | Tool allowlist still excludes `agent_browser`; starting a browser cannot bypass that restriction. |
 
 Code offers Workspace browser, My Chrome or Edge · extension, and Chrome ·
 direct connection when enabled. Code has no Automatic choice; missing/legacy
@@ -1253,7 +1253,7 @@ they do not prevent a caller from selecting another listed tab on the same port.
 
 The former live guide contained server A releases and rollout observations from
 2026-09-09 (`0b9593dd0`, `504c35a5e`, `34a9b1d17`, `66c9a7e07`), including a
-legacy global shared-profile deployment and then-pending Dominion/server C work.
+legacy global shared-profile deployment and then-pending trading/server C work.
 Those are historical evidence in Git history, not statements of current server
 status. Deployment work must inspect the actual host and verify the current
 per-workspace identity, streaming/control and recording before reporting success.

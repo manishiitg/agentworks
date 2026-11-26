@@ -21,7 +21,7 @@
   "agent_review": {
     "verdict": "good",
     "reviewed_fingerprint": "1cc5ab3388e24390",
-    "reviewer": "claude-rts-op (Claude Opus 5.5)",
+    "reviewer": "claude-ops (Claude Opus 5.5)",
     "issues": null,
     "notes": "Both paragraphs are single unwrapped lines with the blank line kept; bullets each on their own line; wording unchanged. Re-run after the inbox move."
   }

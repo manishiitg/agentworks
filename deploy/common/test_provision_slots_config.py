@@ -1,6 +1,6 @@
 """The slot helper's allowed folders must contain the REAL docs root (DOCS), not the app folder's data/docs.
 
-On RTS the docs live at /data/video-studio/docs while the app folder is /var/lib/video-studio/video-studio, so
+On server A the docs live at /data/video-studio/docs while the app folder is /var/lib/video-studio/video-studio, so
 $HOME_DIR/data/docs does not exist there: slotctl refused every command that started in the docs tree with
 "the working folder is outside the allowed folders" (Crew shell tool, 2026-10-04).
 """
@@ -32,7 +32,7 @@ class ProvisionSlotsConfigTest(unittest.TestCase):
         self.assertEqual(docs_root.group(1), "$DOCS")
 
     def test_default_docs_root_is_unchanged_for_the_shared_hosts(self):
-        # Excellence/Confida/ExampleApp do not pass DOCS: the default must keep them where they were.
+        # The other shared hosts (server B, server C, the example product) do not pass DOCS: the default must keep them where they were.
         self.assertIn('DOCS="${DOCS:-$HOME_DIR/data/docs}"', SCRIPT)
 
     def test_table_rewrites_keep_the_owner_and_group(self):

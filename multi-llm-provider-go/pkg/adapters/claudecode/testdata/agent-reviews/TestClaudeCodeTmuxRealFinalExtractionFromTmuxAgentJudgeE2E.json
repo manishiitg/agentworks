@@ -35,7 +35,7 @@
   "agent_review": {
     "verdict": "good",
     "reviewed_fingerprint": "e34c7ec781fea31d",
-    "reviewer": "claude-rts-op (Claude Opus 5.5)",
+    "reviewer": "claude-ops (Claude Opus 5.5)",
     "issues": null,
     "notes": "Final answer from the AgentWorks mod (turn.complete): exactly the three requested lines, no terminal chrome; must_contain present, no forbidden fragment. Re-run after the inbox move."
   }

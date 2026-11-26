@@ -14,15 +14,15 @@ health checks, and the release's AgentWorks CLI/plugin downloads still run.
 A repeatable redeploy pipeline for fixed-workspace products running as their
 own isolated Linux account on a shared rootless-systemd host, generalized
 from server C's original deployer. One host can run several products, each under
-its own system account (`example`, `confida`, `dominion`, ...); this
+its own system account (`example`, `server-c`, ...); this
 pipeline only ever touches the one account and `$PRODUCT-*` systemd units
 named on the command line.
 
 Rootless products use this shared pipeline. Its local half is the
 `deploy_rootless_product` function in the repository-root `deploy.sh` (the only
 deployment entry point); this directory holds the server-side half and the
-per-product configuration. Video Studio and Dominion have their own cases in
-`deploy.sh` because their host/bootstrap contracts differ.
+per-product configuration. Video Studio (the AWS server) has its own function in
+`deploy.sh` because its host/bootstrap contract differs.
 
 ## How it works
 
@@ -51,7 +51,7 @@ per-product configuration. Video Studio and Dominion have their own cases in
    this step; `version.json` carries `compat_epoch`/`breaking_reason` from `deploy/cli-release.json`; change the epoch, with a one-line
    reason, only for a CLI change older CLIs cannot work with: those CLIs are not auto-updated across it) and runs the **same activation as before**: state dirs, standard runtime profile env, units and drop-ins, drain
    (`DEPLOY_DRAIN_SECONDS`), restart, `deployment_checks`, managed Chrome, profile report, release pruning.
-3. RTS: `./deploy.sh rts` gets a trimmed copy of the same build (no `mcpagent`/provider source, no `downloads/`) onto RTS, checks it
+3. Server A (AWS): `./deploy.sh <server>` gets a trimmed copy of the same build (no `mcpagent`/provider source, no `downloads/`) onto it, checks it
    against the manifest hash read from the build host, and runs the unchanged server A activation without compiling. Server A downloads the copy
    itself from GitHub (next section); the old stream through this machine is the fallback.
 
@@ -59,7 +59,7 @@ per-product configuration. Video Studio and Dominion have their own cases in
 ./deploy.sh build                      # build (or reuse) the build of main's head; deploys nothing
 ./deploy.sh builds                     # list builds: name, age, build seconds, revision, pinned
 ./deploy.sh <server>                 # build once if needed, then copy + activate
-./deploy.sh all-hetzner                # Server B, server C in sequence from ONE build (never dominion)
+./deploy.sh <batch target>             # several servers in sequence from ONE build (a private deploy-targets.sh target)
 ./deploy.sh <server>                        # same build, shipped to server A
 ./deploy.sh <server> --build 7357c770   # deploy an existing build (name or any revision prefix); its revision must be an
                                        # ancestor of origin/<DEPLOY_BRANCH>, so a known-good older build can go out while the branch is held
@@ -71,7 +71,6 @@ Build host settings: `BUILD_HOST`, `BUILD_PORT`, `BUILD_USER` (default root; hos
 
 Rehearse the copy without touching a product: `build-and-activate.sh <build>/source <product> --prebuilt <build> --stage-only` with
 `DEPLOY_APP_ROOT=<scratch dir>` assembles the release in the scratch folder and stops before preflight, `current` and every service.
-Dominion has its own script and is not part of this.
 
 ### Builds on GitHub (PLAT-426)
 
@@ -88,7 +87,7 @@ publishing prints one message and is skipped, and deploys stream as before. To r
 DEPLOY_BUILD_TRANSPORT=github ./deploy.sh <server>   # Server A must download it (no fallback); "stream" forces the old path; default "auto"
 ```
 
-`deploy/common/fetch-build.sh <tag> <asset> <manifest-sha256> <dest>` is what RTS runs: it downloads anonymously (resume, retries), refuses
+`deploy/common/fetch-build.sh <tag> <asset> <manifest-sha256> <dest>` is what server A runs: it downloads anonymously (resume, retries), refuses
 unless `manifest.json` has the announced hash, and leaves nothing behind on failure. Tests: `deploy/common/test_publish_build.py`,
 `test_deploy_transport.py` (a fake GitHub API, `fake_github.py`).
 
@@ -148,7 +147,7 @@ Env overrides (all default from `product.env`): `HOST_IP`, `SSH_PORT`,
 
 ## Slot-enabled servers: the slot self-test (PLAT-478)
 
-On a host with per-user accounts (`SLOTS_ENABLED=true` in `product.env`, or a readable `/etc/agentworks/slots.json`; RTS too),
+On a host with per-user accounts (`SLOTS_ENABLED=true` in `product.env`, or a readable `/etc/agentworks/slots.json`; server A too),
 every deploy:
 
 - sets `<app>/releases` to `0711` and gives the new release folder and its `bin/` search permission (`o+x`), so slot accounts

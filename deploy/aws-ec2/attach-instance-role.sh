@@ -17,22 +17,22 @@ STACK_NAME="${STACK_NAME:?set STACK_NAME (private deployments repo: products/vid
 ROLE_STACK_NAME="${ROLE_STACK_NAME:-video-studio-instance-role}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-aws_rts() { aws --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION" "$@"; }
+aws_server() { aws --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION" "$@"; }
 
-aws_rts cloudformation deploy \
+aws_server cloudformation deploy \
   --stack-name "$ROLE_STACK_NAME" \
   --template-file "$SCRIPT_DIR/instance-role.yaml" \
   --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
   --no-fail-on-empty-changeset
 
-profile="$(aws_rts cloudformation describe-stacks --stack-name "$ROLE_STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`InstanceProfileName`].OutputValue|[0]' --output text)"
-instance="$(aws_rts cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue|[0]' --output text)"
-current="$(aws_rts ec2 describe-iam-instance-profile-associations --filters "Name=instance-id,Values=$instance" --query 'IamInstanceProfileAssociations[?State==`associated`].IamInstanceProfile.Arn|[0]' --output text)"
+profile="$(aws_server cloudformation describe-stacks --stack-name "$ROLE_STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`InstanceProfileName`].OutputValue|[0]' --output text)"
+instance="$(aws_server cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue|[0]' --output text)"
+current="$(aws_server ec2 describe-iam-instance-profile-associations --filters "Name=instance-id,Values=$instance" --query 'IamInstanceProfileAssociations[?State==`associated`].IamInstanceProfile.Arn|[0]' --output text)"
 
 if [[ "$current" == *"/$profile" ]]; then
   echo "instance $instance already uses $profile"
 elif [[ "$current" == "None" || -z "$current" ]]; then
-  aws_rts ec2 associate-iam-instance-profile --instance-id "$instance" --iam-instance-profile "Name=$profile" --query 'IamInstanceProfileAssociation.State' --output text
+  aws_server ec2 associate-iam-instance-profile --instance-id "$instance" --iam-instance-profile "Name=$profile" --query 'IamInstanceProfileAssociation.State' --output text
   echo "associated $profile with $instance"
 else
   echo "instance $instance already has a different profile ($current); not replacing it" >&2

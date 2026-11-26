@@ -72,7 +72,7 @@ func (c *turnEndCapture) snapshot() []turnEndCompletion {
 	return append([]turnEndCompletion(nil), c.completions...)
 }
 
-// TestSessionLiveInputAtTurnEndReachesChat reproduces Excellence 2026-09-29
+// TestSessionLiveInputAtTurnEndReachesChat reproduces server B 2026-09-29
 // 06:27 with a real CLI: live input sent through Session.Send while a
 // Session.Run is finishing its final answer. The CLI accepts the text and
 // answers it only after the running response completes, i.e. after Run has

@@ -7,7 +7,7 @@ Status: Phase 1 built (2026-09-24); shared Plan/Graph refresh restored (2026-09-
 
 ## Problem
 
-With one user idle on Dominion, the browser makes 150–220 API calls every
+With one user idle on a trading deployment, the browser makes 150–220 API calls every
 5 minutes. Almost all of them are timers that ask "did anything change?" and
 get "no":
 
@@ -93,7 +93,7 @@ authorized read endpoint, so no private project path appears in the stream.
 
 ```
 event: change
-data: {"kind":"pulse_state","workflow":"Workflow/tectonic-usa-day-trading"}
+data: {"kind":"pulse_state","workflow":"Workflow/trading-workflow"}
 
 event: resync          # on connect, and after any dropped notices
 data: {}
@@ -272,7 +272,7 @@ This adds one long-lived connection per tab.
    Runtime Health panel, PLAT-696.)
 
 Each phase keeps the polling fallback. A phase is done only when the gateway
-log on Dominion shows that endpoint's idle rate near zero.
+log on a trading deployment shows that endpoint's idle rate near zero.
 
 ## Testing
 
@@ -281,7 +281,7 @@ log on Dominion shows that endpoint's idle rate near zero.
   updates within 1s and has no timer running. The same for a Pulse run
   updating the Pulse view.
 - **Traffic check:** after deploy, the per-endpoint rates in
-  `/srv/dominion/logs/gateway.log` for an idle tab.
+  `/srv/<product>/logs/gateway.log` for an idle tab.
 
 ## Related finding (separate fix)
 

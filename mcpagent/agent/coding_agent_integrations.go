@@ -164,7 +164,7 @@ func (a *Agent) appendClaudeCodeIntegrationOptions(opts []llmtypes.CallOption, m
 	if a.nativeCodingToolsEnabled() {
 		// Full CLI: Claude's own reads, shell, edits, skills, todos, subagents
 		// and web tools run natively. The sandbox is the boundary, so Claude
-		// must not stop the turn to ask about a command or a read (live on RTS
+		// must not stop the turn to ask about a command or a read (live on server A
 		// 2026-09-29, a Bash read outside the folder stalled the turn on a
 		// prompt).
 		opts = append(opts, llm.WithClaudeCodeTools(nativeTools))

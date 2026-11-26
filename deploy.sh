@@ -11,14 +11,16 @@ usage() {
   cat <<'EOF'
 Usage: ./deploy.sh <server> [target]
 
-Servers (each one's host, domain and settings live in the private deployments repo: products/<server>/product.env):
-  rts, video-studio     the AWS EC2 deployment
-  confida               rootless Linux deployment
-  citymall              rootless Linux deployment on its own host, reached through a jump host
-  excellence            rootless Linux deployment (Code only)
+Servers (each one's host, domain and settings live in the private deployments repo: products/<server>/product.env;
+the named server targets come from its deploy-targets.sh):
+EOF
+  if declare -F deploy_targets_usage >/dev/null; then
+    deploy_targets_usage
+  else
+    echo "  (no named server targets: the private $(deployments_dir)/deploy-targets.sh was not found)"
+  fi
+  cat <<'EOF'
   <product>            any named rootless product configured in the private deployments repo
-  all-hetzner           excellence and confida in sequence from ONE build (never dominion)
-  dominion              legacy host alias for the shared workflow deployment
   check <server|all>    read-only health check of a server (site, certificate, MCP, website callback, release, services, disk)
   report [server]       how each server differs from the standard runtime profile (read-only)
   agent-test <server> [S1,..]  on-request Crew agent tests (happy paths and security) per provider, in the Smoke test Crew
@@ -36,14 +38,14 @@ Servers (each one's host, domain and settings live in the private deployments re
   pin|unpin <build>     keep a known-good build from being pruned (old builds are removed after every deploy; only the newest is kept otherwise)
   prune-builds          remove old builds on the build host now (all but the newest, pinned ones and anything younger than 15 minutes)
 
-Build once, deploy everywhere (PLAT-426): rts, excellence, confida and all-hetzner build the release ONCE on the
+Build once, deploy everywhere (PLAT-426): every server deploy builds the release ONCE on the
 Hetzner box (deploy/common/build-release.sh -> /srv/_builds/<name>, reused when the revision is unchanged), then each
 server only copies and activates it after verifying its manifest (architecture, glibc, every file hash).
   --build <name|sha>    deploy that existing build instead of the branch head (see `builds`); its revision must be
                         on origin/<DEPLOY_BRANCH>, or an older commit of it plus changes already on it
   DEPLOY_BRANCH=main|dev   what to deploy (default main); dev deploys the head of origin/dev of this repository
                         (mcpagent/ and multi-llm-provider-go/ are folders in it). Example: DEPLOY_BRANCH=dev ./deploy.sh <server>
-  DEPLOY_BUILD_TRANSPORT=auto|github|stream   how rts gets the build: RTS downloads it from the public builds repo on GitHub
+  DEPLOY_BUILD_TRANSPORT=auto|github|stream   how the AWS server gets the build: it downloads it from the public builds repo on GitHub
                         (auto: streaming through this machine is the fallback when the release is missing), github (no fallback), stream (old path)
   DEPLOY_SHA_MCP_AGENT_BUILDER_GO=<40-hex>   build that commit of the repository instead of the branch head
                         (it must be on the deploy branch, or an older commit of it plus changes already on it); for a release that leaves out work still landing
@@ -51,7 +53,7 @@ server only copies and activates it after verifying its manifest (architecture, 
   DEPLOY_SECURITY_CHECKS=full|basic   how thorough the slot self-test at the end of a deploy of a slot host is (default full): basic = a
                         slotted `pwd` per slot + the refusal checks; full adds a live tmux server on the test slot that no slot
                         command may reach, the Python helpers, and the refusals a workflow chat must get (PLAT-480). Runs on the
-                        unassigned TEST slot only. Example: DEPLOY_SECURITY_CHECKS=basic ./deploy.sh confida
+                        unassigned TEST slot only. Example: DEPLOY_SECURITY_CHECKS=basic ./deploy.sh <server>
   Build host: BUILD_HOST, BUILD_PORT, BUILD_USER, BUILD_SSH_KEY, BUILDS_DIR (/srv/_builds); defaults in the private deployments/deploy.env
 
 EOF
@@ -90,6 +92,10 @@ DEPLOY_ENV_FILE="$DEPLOY_SETTINGS_DIR/deploy.env"
 # shellcheck source=/dev/null
 [[ -f "$DEPLOY_ENV_FILE" ]] && source "$DEPLOY_ENV_FILE"
 source "$REPO_ROOT/deploy/common/build-once.sh"
+# The named server targets (private: deploy-targets.sh in the deployments repo; see target_product below).
+DEPLOY_TARGETS_FILE="$DEPLOY_SETTINGS_DIR/deploy-targets.sh"
+# shellcheck source=/dev/null
+[[ -f "$DEPLOY_TARGETS_FILE" ]] && source "$DEPLOY_TARGETS_FILE"
 
 # --- AWS EC2 server (settings in the private deployments repo) -----------
 # Sends only deployment instructions and secrets; the server clones main of
@@ -105,7 +111,7 @@ load_aws_server_config() {
   set -a; . "$dir/aws.env"; set +a
   AWS_OVERLAY_DIR="$dir"
 }
-deploy_rts() {
+deploy_aws_server() {
   load_aws_server_config "${AWS_PRODUCT_DIR:-video-studio}"
   [[ -f "$AWS_OVERLAY_DIR/runtime-config.js" && -f "$AWS_OVERLAY_DIR/video-studio-agent.service" && -f "$AWS_OVERLAY_DIR/product.env" ]] || { echo "Missing runtime-config.js, video-studio-agent.service or product.env in $AWS_OVERLAY_DIR" >&2; exit 1; }
   local AWS_PROFILE_NAME="${AWS_PROFILE_NAME:?aws.env must set AWS_PROFILE_NAME}"
@@ -113,31 +119,31 @@ deploy_rts() {
   local STACK_NAME="${STACK_NAME:?aws.env must set STACK_NAME}"
   local SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}"
   local GLOBAL_SECRETS_SECRET_ID="${GLOBAL_SECRETS_SECRET_ID:-video-studio/global-secrets}"
-  local RTS_DIR="$REPO_ROOT/deploy/aws-ec2"
+  local AWS_DIR="$REPO_ROOT/deploy/aws-ec2"
   [[ "${DEPLOY_BRANCH:-main}" =~ ^(main|dev)$ && "${DEPLOY_SOURCE_MODE:-remote-main}" == remote-main ]] || { echo 'Deployment requires DEPLOY_BRANCH=main or dev, pushed to origin.' >&2; exit 1; }
   for command in aws git jq rsync ssh; do command -v "$command" >/dev/null || { echo "Missing $command" >&2; exit 1; }; done
-  aws_rts() { aws --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION" "$@"; }
-  HOST_IP="$(aws_rts cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`ElasticIp`].OutputValue | [0]' --output text)"
+  aws_server() { aws --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION" "$@"; }
+  HOST_IP="$(aws_server cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs[?OutputKey==`ElasticIp`].OutputValue | [0]' --output text)"
   JOB="deploy-$(date +%Y%m%d%H%M%S)-$$"
   REMOTE_JOB="/var/lib/video-studio/video-studio/builds/$JOB"
   STAGING="$(mktemp -d)"
   chmod 700 "$STAGING"
   SSH=(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "$SSH_KEY_PATH" "video-studio@$HOST_IP")
-  rts_cleanup() { rm -rf "$STAGING"; "${SSH[@]}" "rm -rf '$REMOTE_JOB'" >/dev/null 2>&1 || true; }
-  trap rts_cleanup EXIT
+  aws_cleanup() { rm -rf "$STAGING"; "${SSH[@]}" "rm -rf '$REMOTE_JOB'" >/dev/null 2>&1 || true; }
+  trap aws_cleanup EXIT
   # The same standard user-namespace profile as every other server, through SSM (this host has no sudo over ssh).
-  rts_userns() { echo "==> [rts] userns: $1"; AWS_PROFILE_NAME="$AWS_PROFILE_NAME" AWS_REGION="$AWS_REGION" STACK_NAME="$STACK_NAME" "$RTS_DIR/slots-admin.sh" "$1" || echo "WARN userns $1 via SSM did not run; the host's operator runs deploy/aws-ec2/slots-admin.sh $1"; }
-  rts_userns userns
+  aws_userns() { echo "==> [aws] userns: $1"; AWS_PROFILE_NAME="$AWS_PROFILE_NAME" AWS_REGION="$AWS_REGION" STACK_NAME="$STACK_NAME" "$AWS_DIR/slots-admin.sh" "$1" || echo "WARN userns $1 via SSM did not run; the host's operator runs deploy/aws-ec2/slots-admin.sh $1"; }
+  aws_userns userns
   local prebuilt_name
-  # Build once on the Hetzner box (or reuse the build of these revisions); RTS only copies it after verifying the manifest.
+  # Build once on the Hetzner box (or reuse the build of these revisions); the server only copies it after verifying the manifest.
   prebuilt_name="$(ensure_prebuilt_build)" || exit 1
-  # The manifest's own hash travels separately from the tarball, so RTS can tell a damaged or swapped manifest.
+  # The manifest's own hash travels separately from the tarball, so the server can tell a damaged or swapped manifest.
   build_ssh "sha256sum '$BUILDS_DIR/$prebuilt_name/manifest.json'" | awk '{print $1}' > "$STAGING/prebuilt"
   [[ "$(cat "$STAGING/prebuilt")" =~ ^[0-9a-f]{64}$ ]] || { echo "Cannot read the build's manifest hash" >&2; exit 1; }
-  aws_rts secretsmanager get-secret-value --secret-id "$GLOBAL_SECRETS_SECRET_ID" --query SecretString --output text \
+  aws_server secretsmanager get-secret-value --secret-id "$GLOBAL_SECRETS_SECRET_ID" --query SecretString --output text \
    | jq -er 'to_entries[] | select(.key | test("^[A-Z0-9_]+$")) | select(.value | type == "string" and length > 0) | if .key == "CLAUDE_CODE_OAUTH_TOKEN" or .key == "CURSOR_API_KEY" then "\(.key)=\(.value)" else "GLOBAL_SECRET_\(.key)=\(.value)" end' > "$STAGING/globals"
   chmod 600 "$STAGING/globals"
-  cp "$RTS_DIR/server/bootstrap-build.sh" "$STAGING/bootstrap-build.sh"
+  cp "$AWS_DIR/server/bootstrap-build.sh" "$STAGING/bootstrap-build.sh"
   # This server's own branding, public URL, service file and product.env (its layout, read by the shared activation) travel
   # with the deploy.
   mkdir -p "$STAGING/overlay"
@@ -146,22 +152,22 @@ deploy_rts() {
   # Make room first (PLAT-545): a full disk broke the new gateway's database on 2026-10-05. Only runs when space is short,
   # and never removes the live release, the newest one before it, or anything a running process still uses.
   "${SSH[@]}" "python3 - /var/lib/video-studio/video-studio --apply --only-if-free-below-gb 15" < "$REPO_ROOT/deploy/common/prune-releases.py" \
-    || echo 'warning: could not make room on RTS before the deploy' >&2
+    || echo 'warning: could not make room on the AWS server before the deploy' >&2
   "${SSH[@]}" "install -d -m 0700 '$REMOTE_JOB'"
   rsync -az -e "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i $SSH_KEY_PATH" "$STAGING/" "video-studio@$HOST_IP:$REMOTE_JOB/"
-  echo "Getting build $prebuilt_name onto RTS (verified there against its manifest); nothing is compiled on RTS."
-  deliver_build_to_rts "$prebuilt_name" "$REMOTE_JOB" "$(cat "$STAGING/prebuilt")"
+  echo "Getting build $prebuilt_name onto the AWS server (verified there against its manifest); nothing is compiled there."
+  deliver_build_to_aws_server "$prebuilt_name" "$REMOTE_JOB" "$(cat "$STAGING/prebuilt")"
   # Bound activation resources while other work keeps running.
-  "${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' --setenv=SECURITY_CHECKS_LEVEL='$SECURITY_CHECKS_LEVEL' -p MemoryMax=${RTS_BUILD_MEMORY_MAX:-3G} -p CPUQuota=200% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
+  "${SSH[@]}" "systemd-run --user --quiet --wait --pipe --unit='$JOB' --setenv=SECURITY_CHECKS_LEVEL='$SECURITY_CHECKS_LEVEL' -p MemoryMax=${AWS_BUILD_MEMORY_MAX:-3G} -p CPUQuota=200% -p Nice=10 bash '$REMOTE_JOB/bootstrap-build.sh' '$REMOTE_JOB'"
   # The release is live and its services re-exec'd: retire an older per-product profile (refuses while any service still lacks the standard one).
-  rts_userns userns-retire
+  aws_userns userns-retire
   # Each slot's Docker starts on first use; an idle engine is stopped (provision-slots.sh docker-on-demand).
-  rts_userns docker-on-demand
+  aws_userns docker-on-demand
 }
 
-# Read-only CloudFront usage for RTS against the always-free tier (1 TB out,
-# 10M requests per month). Reported after every RTS deploy; never fails it.
-report_rts_cloudfront_usage() {
+# Read-only CloudFront usage for the AWS server against the always-free tier (1 TB out,
+# 10M requests per month). Reported after every AWS server deploy; never fails it.
+report_aws_cloudfront_usage() {
   load_aws_server_config "${AWS_PRODUCT_DIR:-video-studio}"
   local profile="${AWS_PROFILE_NAME:?aws.env must set AWS_PROFILE_NAME}" dist="${CLOUDFRONT_DISTRIBUTION_ID:?aws.env must set CLOUDFRONT_DISTRIBUTION_ID}"
   local now month_start day_ago
@@ -600,11 +606,18 @@ if [[ "$SERVER" == build ]]; then
   exit 0
 fi
 
+# Named server targets (which server names exist, how each is deployed, and the products/<folder> and deploy lock each
+# name uses) are company-specific, so they live in the private deployments repository: deploy-targets.sh there defines
+# DEPLOY_TARGETS, deploy_targets_usage, deploy_target_known, deploy_target_run, deploy_target_product,
+# deploy_target_lock and deploy_target_slotcheck, using the generic functions of this script.
+target_product() { if declare -F deploy_target_product >/dev/null; then deploy_target_product "$1"; else printf '%s\n' "$1"; fi; }
+target_lock() { if declare -F deploy_target_lock >/dev/null; then deploy_target_lock "$1"; else printf '%s\n' "$1"; fi; }
+
 # ./deploy.sh agent-test <server> [scenario ids]: the on-request Crew agent tests in the server's Smoke test Crew
 # (scripts/agent-test.py); reports, changes only its own side chats.
 if [[ "$SERVER" == agent-test ]]; then
   [[ $# -ge 1 ]] || { echo "Usage: ./deploy.sh agent-test <server> [S1,S2,...]" >&2; exit 2; }
-  product="$1"; [[ "$product" == excellence ]] && product=agents; [[ "$product" == rts ]] && product=video-studio
+  product="$(target_product "$1")"
   config="$(deployments_dir)/products/$product/smoke.env"
   [[ -f "$config" ]] || { echo "No products/$product/smoke.env: this server has no Smoke test Crew yet" >&2; exit 1; }
   # shellcheck disable=SC1090
@@ -616,36 +629,42 @@ fi
 # ./deploy.sh smoke <server>: the post-deploy smoke check alone (PLAT-424); reports, changes only its own side chats.
 if [[ "$SERVER" == smoke ]]; then
   [[ $# -eq 1 ]] || { echo "Usage: ./deploy.sh smoke <server>" >&2; exit 2; }
-  product="$1"; [[ "$product" == excellence ]] && product=agents; [[ "$product" == rts ]] && product=video-studio
+  product="$(target_product "$1")"
   post_deploy_smoke "$product"
   exit 0
 fi
 
+# The deployed release's slot self-test (deploy/common/slotcheck.sh), run as the service account. Read-only.
+slotcheck_aws_server() { # level
+  load_aws_server_config "${AWS_PRODUCT_DIR:-video-studio}"
+  HOST_IP="$(aws --profile "${AWS_PROFILE_NAME:?aws.env must set AWS_PROFILE_NAME}" --region "${AWS_REGION:-us-west-2}" cloudformation describe-stacks --stack-name "${STACK_NAME:?aws.env must set STACK_NAME}" --query 'Stacks[0].Outputs[?OutputKey==`ElasticIp`].OutputValue | [0]' --output text)"
+  exec ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}" "video-studio@$HOST_IP" \
+    "bash /var/lib/video-studio/video-studio/current/slotcheck.sh --app /var/lib/video-studio/video-studio --docs /data/video-studio/docs --product video-studio --level $1"
+}
+slotcheck_rootless_product() { # product level
+  local product="$1" check_level="$2"
+  (
+    # shellcheck disable=SC1090
+    source "$(product_config_dir "$product")/product.env"
+    identity=(-i "$SSH_KEY_PATH"); [[ -r "$SSH_KEY_PATH" ]] && identity+=(-o IdentitiesOnly=yes)
+    exec ssh -p "$SSH_PORT" "${identity[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o StrictHostKeyChecking=accept-new "$product@$HOST_IP" \
+      "bash /srv/$product/current/slotcheck.sh --app /srv/$product --docs /srv/$product/data/docs --product $product --level $check_level"
+  )
+}
+
 # ./deploy.sh slotcheck <server>: run the deployed release's slot self-test (deploy/common/slotcheck.sh) as the service
 # account. Read-only; changes nothing on the server.
 if [[ "$SERVER" == slotcheck ]]; then
-  [[ $# -ge 1 && $# -le 2 ]] || { echo "Usage: ./deploy.sh slotcheck <rts|excellence|confida> [basic|full]" >&2; exit 2; }
+  [[ $# -ge 1 && $# -le 2 ]] || { echo "Usage: ./deploy.sh slotcheck <server> [basic|full]" >&2; exit 2; }
   check_level="${2:-full}"
   case "$check_level" in basic|full) ;; *) echo "slotcheck level must be basic or full (got '$check_level')" >&2; exit 2 ;; esac
-  case "$1" in
-    rts|video-studio)
-      load_aws_server_config "${AWS_PRODUCT_DIR:-video-studio}"
-      HOST_IP="$(aws --profile "${AWS_PROFILE_NAME:?aws.env must set AWS_PROFILE_NAME}" --region "${AWS_REGION:-us-west-2}" cloudformation describe-stacks --stack-name "${STACK_NAME:?aws.env must set STACK_NAME}" --query 'Stacks[0].Outputs[?OutputKey==`ElasticIp`].OutputValue | [0]' --output text)"
-      exec ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}" "video-studio@$HOST_IP" \
-        "bash /var/lib/video-studio/video-studio/current/slotcheck.sh --app /var/lib/video-studio/video-studio --docs /data/video-studio/docs --product video-studio --level $check_level"
-      ;;
-    excellence|confida|dominion)
-      product="$1"; [[ "$product" == excellence ]] && product=agents; [[ "$product" == rts ]] && product=video-studio
-      (
-        # shellcheck disable=SC1090
-        source "$(product_config_dir "$product")/product.env"
-        identity=(-i "$SSH_KEY_PATH"); [[ -r "$SSH_KEY_PATH" ]] && identity+=(-o IdentitiesOnly=yes)
-        exec ssh -p "$SSH_PORT" "${identity[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o StrictHostKeyChecking=accept-new "$product@$HOST_IP" \
-          "bash /srv/$product/current/slotcheck.sh --app /srv/$product --docs /srv/$product/data/docs --product $product --level $check_level"
-      )
-      ;;
-    *) echo "slotcheck: unknown server $1 (rts, excellence, confida, dominion)" >&2; exit 2 ;;
-  esac
+  if declare -F deploy_target_slotcheck >/dev/null; then
+    deploy_target_slotcheck "$1" "$check_level"
+  elif [[ "$1" =~ ^[a-z][a-z0-9-]{0,31}$ && -f "$(deployments_dir)/products/$1/product.env" ]]; then
+    slotcheck_rootless_product "$1" "$check_level"
+  else
+    echo "slotcheck: unknown server $1 (no products/$1/product.env and no private deploy-targets.sh in $(deployments_dir))" >&2; exit 2
+  fi
   exit $?
 fi
 
@@ -685,64 +704,36 @@ locked_deploy() { # lock-name command...
 }
 
 case "$SERVER" in
-  rts|video-studio)
-    reject_extra_arguments "$@"
-    locked_deploy rts deploy_rts
-    report_rts_cloudfront_usage || echo "CloudFront usage report unavailable (deploy succeeded)." >&2
-    prune_builds_remote
-    post_deploy_smoke video-studio  # this deployment's private settings folder is products/video-studio
-    ;;
-  confida|dominion|citymall)
-    # Dominion is deployed like Confida since 2026-10-07 (owner: "everything same as excellence/confida").
-    # A product on its own host sets SSH_JUMP, HOST_SETUP_SCRIPT and PREBUILT_DELIVERY=fetch in its private product.env.
-    reject_extra_arguments "$@"
-    locked_deploy "$SERVER" deploy_rootless_product "$SERVER"
-    prune_builds_remote
-    post_deploy_smoke "$SERVER"
-    ;;
-  excellence)
-    # the Hetzner server; its account, units and product
-    # folder are named "agents" on the host.
-    reject_extra_arguments "$@"
-    previous_release="$(live_release_commit agents)"
-    locked_deploy excellence deploy_rootless_product agents
-    post_deploy_notes agents "$previous_release"
-    prune_builds_remote
-    post_deploy_smoke agents
-    ;;
-  all-hetzner)
-    # Excellence, Confida from ONE build, one after the other; stops at the first failure. Never Dominion.
-    reject_extra_arguments "$@"
-    DEPLOY_PREBUILT_NAME="$(ensure_prebuilt_build)"
-    [[ -n "$DEPLOY_PREBUILT_NAME" ]]
-    export DEPLOY_PREBUILT_NAME
-    echo "==> all-hetzner: build $DEPLOY_PREBUILT_NAME -> excellence, confida"
-    locked_deploy excellence deploy_rootless_product agents
-    locked_deploy confida deploy_rootless_product confida
-    prune_builds_remote  # once, after both products: a chosen older build must still exist for the next product
-    post_deploy_smoke agents; post_deploy_smoke confida
-    ;;
   -h|--help|help)
     usage
     ;;
   --list)
-    printf '%s\n' rts confida excellence all-hetzner dominion citymall
+    if declare -p DEPLOY_TARGETS >/dev/null 2>&1; then
+      printf '%s\n' "${DEPLOY_TARGETS[@]}"
+    else
+      echo "No named server targets: the private $(deployments_dir)/deploy-targets.sh was not found (AGENTWORKS_DEPLOYMENTS_DIR)." >&2
+      exit 1
+    fi
     ;;
   "")
     usage >&2
     exit 2
     ;;
   *)
-    if [[ "$SERVER" =~ ^[a-z][a-z0-9-]{0,31}$ && -f "$(deployments_dir)/products/$SERVER/product.env" ]]; then
+    if declare -F deploy_target_known >/dev/null && deploy_target_known "$SERVER"; then
+      # Not inside an `if`: that would turn off set -e for the whole deploy.
+      deploy_target_run "$SERVER" "$@"
+    elif [[ "$SERVER" =~ ^[a-z][a-z0-9-]{0,31}$ && -f "$(deployments_dir)/products/$SERVER/product.env" ]]; then
       reject_extra_arguments "$@"
       previous_release="$(live_release_commit "$SERVER")"
-      lock_name="$SERVER"; [[ "$SERVER" != agents ]] || lock_name=excellence  # one lock per server, whichever name was used
+      lock_name="$(target_lock "$SERVER")"  # one lock per server, whichever name was used
       locked_deploy "$lock_name" deploy_rootless_product "$SERVER"
       post_deploy_notes "$SERVER" "$previous_release"
       prune_builds_remote
       post_deploy_smoke "$SERVER"
     else
       echo "Unknown deployment server: $SERVER" >&2
+      [[ -f "$(deployments_dir)/deploy-targets.sh" ]] || echo "(The named server targets live in the private deployments repository: $(deployments_dir)/deploy-targets.sh was not found; set AGENTWORKS_DEPLOYMENTS_DIR.)" >&2
       usage >&2
       exit 2
     fi

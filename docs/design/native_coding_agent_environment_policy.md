@@ -2,7 +2,7 @@
 
 ## Problem
 
-Video Studio and Dominion AI run coding providers in
+Video Studio and a trading product run coding providers in
 `runtime.agent_tools.mode: mcp_only` with `runtime.transport: auto`. The
 guarded MCP bridge performs project work and product APIs such as
 `show_video` through `execute_shell_command`.

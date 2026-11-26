@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// Excellence 2026-10-15: a chat whose login was linked to the shared account's file had that file overwritten with
+// Server B 2026-10-15: a chat whose login was linked to the shared account's file had that file overwritten with
 // the chat's configured key. A linked login is never touched.
 func TestSeedCodexAPIKeyLoginNeverWritesThroughALink(t *testing.T) {
 	shared := t.TempDir()

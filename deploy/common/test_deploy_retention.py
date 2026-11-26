@@ -23,7 +23,7 @@ class DeploymentRetentionTest(unittest.TestCase):
             with self.subTest(removed=removed):
                 self.assertFalse((DEPLOY / removed).exists())
         entry = (DEPLOY.parent / 'deploy.sh').read_text()
-        for function in ('deploy_rts()', 'report_rts_cloudfront_usage()', 'deploy_rootless_product() ('):
+        for function in ('deploy_aws_server()', 'report_aws_cloudfront_usage()', 'deploy_rootless_product() ('):
             self.assertIn(function, entry)
         subprocess.run(['bash', '-n', str(DEPLOY.parent / 'deploy.sh')], check=True, capture_output=True)
 

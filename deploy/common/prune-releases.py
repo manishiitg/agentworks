@@ -103,9 +103,9 @@ def prune(app, apply=False, proc=Path('/proc'), keep=(), keep_newest=0):
             if release.is_symlink() or not release.is_dir():
                 continue
             # Older manual deployments used descriptive names. Require an
-            # actual application artifact before treating those as releases.
+            # actual application artifact (bin/<product>-agent or the frontend) before treating those as releases.
             if not (RELEASE_NAME.fullmatch(release.name) or
-                    any((release / 'bin' / binary).is_file() for binary in ('video-studio-agent', 'confida-agent', 'dominion-agent')) or
+                    any(binary.is_file() for binary in (release / 'bin').glob('*-agent')) or
                     (release / 'frontend/index.html').is_file()):
                 continue
             if release.name in protected or deploying_in_progress(release):

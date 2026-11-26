@@ -30,8 +30,8 @@ Run it offline with the agent, workspace, and gateway services stopped;
 existing sessions are invalidated by the rotation and users sign in again.
 Exit code is non-zero when anything fails, so deploy scripts can gate the
 restart on it. Point --env-file at the deployment's service env:
-rootless $REMOTE_APP/.env, AWS /opt/video-studio/.env, dominion
-/srv/dominion/.env. Pass --dry-run first to report what would change.`,
+rootless $REMOTE_APP/.env, AWS /opt/video-studio/.env, a dedicated host
+/srv/<product>/.env. Pass --dry-run first to report what would change.`,
 	RunE: runRotateAuthSecret,
 }
 

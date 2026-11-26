@@ -151,7 +151,7 @@ func TestUsageLimitErrorStaysTypedWithoutAResetTime(t *testing.T) {
 }
 
 // A limit phrase inside prose is not Claude parking on a limit wall. Seen on
-// RTS 2026-09-27: a resumed SDE session redrew an assistant reply explaining
+// Server A 2026-09-27: a resumed SDE session redrew an assistant reply explaining
 // a Notion error ("... reached the usage limit..."), and the pane fallback
 // (no statusline yet after the restart) failed the turn as quota_exhausted.
 func TestClaudeUsageLimitIgnoresProseAndUserText(t *testing.T) {
