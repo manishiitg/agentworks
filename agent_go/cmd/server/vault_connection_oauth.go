@@ -49,46 +49,28 @@ func vaultPersonRequest(ctx context.Context, person, method, path string, payloa
 func vaultServiceRequestAs(ctx context.Context, actor string, platformUser bool, method, path string, payload []byte) ([]byte, error) {
 	status := 0
 	defer logSlowVaultRequest(ctx, "service", time.Now(), &status)
-	target, secret, err := gatewayAdminServiceConfig()
-	if err != nil {
-		return nil, errors.New("Vault service is not configured")
-	}
-	target.Path = strings.TrimRight(target.Path, "/") + path
-	req, err := http.NewRequestWithContext(ctx, method, target.String(), bytes.NewReader(payload))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+secret)
-	req.Header.Set("Content-Type", "application/json")
-	if actor != "" {
-		req.Header.Set("X-CapLayer-Actor", actor)
-	}
+	call := vaultServiceCall{Method: method, Path: path, Body: payload, Actor: actor, Timeout: 90 * time.Second, Limit: 2 * 1024 * 1024, Changes: method != http.MethodGet && method != http.MethodHead}
 	if platformUser {
-		req.Header.Set("X-Vault-Platform-User", "1")
+		call.Headers = map[string]string{"X-Vault-Platform-User": "1"}
 	}
-	client := &http.Client{Transport: capLayerTransport, Timeout: 90 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, errors.New("Vault service unavailable")
-	}
-	defer resp.Body.Close()
-	status = resp.StatusCode
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024+1))
-	if err != nil || len(body) > 2*1024*1024 {
+	var body []byte
+	var err error
+	status, body, err = call.do(ctx)
+	switch {
+	case errors.Is(err, errVaultServiceNotConfigured), errors.Is(err, errVaultServiceUnavailable):
+		return nil, err
+	case err != nil:
 		return nil, errors.New("invalid Vault response")
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if status < 200 || status >= 300 {
 		// The Vault service's own refusal text (for example "only an owner of this vault can do that") helps the caller.
 		var refusal struct {
 			Error string `json:"error"`
 		}
 		if json.Unmarshal(body, &refusal) == nil && strings.TrimSpace(refusal.Error) != "" && len(refusal.Error) <= 2000 {
-			return nil, fmt.Errorf("Vault operation failed (%d): %s", resp.StatusCode, strings.TrimSpace(refusal.Error))
+			return nil, fmt.Errorf("Vault operation failed (%d): %s", status, strings.TrimSpace(refusal.Error))
 		}
-		return nil, fmt.Errorf("Vault operation failed (%d)", resp.StatusCode)
-	}
-	if method != http.MethodGet && method != http.MethodHead {
-		invalidateCrewTeamVaultDisplays()
+		return nil, fmt.Errorf("Vault operation failed (%d)", status)
 	}
 	return body, nil
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -70,7 +69,7 @@ func vaultManagementMCP(ctx context.Context, person, operation string, args map[
 	target.Path = strings.TrimRight(target.Path, "/") + "/api/admin/runtime/builder/mcp"
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
-	httpClient := &http.Client{Transport: capLayerTransport, Timeout: 90 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	httpClient := vaultServiceHTTPClient(90 * time.Second)
 	headers := map[string]string{"Authorization": "Bearer " + secret, "X-CapLayer-Actor": person, "X-Vault-Platform-User": "1", "X-Vault-Connector": connector, "X-Vault-Builder": "1"}
 	// Recheck the live account before every transport request, including callTool
 	// after initialize. Never cache an administrative grant in an MCP session.
