@@ -117,6 +117,13 @@ func cleanMacSharedAgents(in, previous []macSharedAgent) ([]macSharedAgent, erro
 	return out, nil
 }
 
+var macSharedAgentsMu sync.Map // path -> *sync.Mutex
+
+func macSharedAgentsMutex(path string) *sync.Mutex {
+	mu, _ := macSharedAgentsMu.LoadOrStore(path, &sync.Mutex{})
+	return mu.(*sync.Mutex)
+}
+
 func writeMacSharedAgents(project string, agents []macSharedAgent) (result error) {
 	defer func() {
 		if result == nil {
@@ -127,6 +134,9 @@ func writeMacSharedAgents(project string, agents []macSharedAgent) (result error
 	if err != nil {
 		return err
 	}
+	mu := macSharedAgentsMutex(path)
+	mu.Lock()
+	defer mu.Unlock()
 	if len(agents) == 0 {
 		if err = os.Remove(path); err == nil || os.IsNotExist(err) {
 			return nil
@@ -136,12 +146,7 @@ func writeMacSharedAgents(project string, agents []macSharedAgent) (result error
 	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	raw, _ := json.MarshalIndent(agents, "", "  ")
-	tmp := path + ".tmp"
-	if err = os.WriteFile(tmp, raw, 0600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return fsutil.WriteJSONAtomic(path, agents, 0600)
 }
 
 // shareMacCrewAgents stores the Mac's list on its online copy: only the main owner, from the Mac that holds the pair,

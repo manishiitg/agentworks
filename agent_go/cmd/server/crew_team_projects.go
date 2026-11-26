@@ -210,17 +210,28 @@ func changeCrewTeamProject(team, user, action, member string) (crewTeam, int, st
 			return crewTeam{}, 409, "project_has_team_paths", crewTeamTakenLine(crewTeamProjectName(member), taken)
 		}
 	}
-	// writeCrewTeam takes the Team record lock itself; holding it here waited forever (the first real add hung).
-	t, err = readCrewTeam(team)
-	if err == nil {
-		switch {
-		case action == "add" && !t.hasProject(member):
-			t.Projects = append(t.Projects, crewTeamProject{ProjectID: member, AddedBy: user, AddedAt: time.Now().UTC().Format(time.RFC3339)})
-		case action == "remove":
-			t.Projects = slices.DeleteFunc(t.Projects, func(p crewTeamProject) bool { return p.ProjectID == member })
+	unlock, err := wf.LockWorkspace(context.Background(), dir)
+	if err != nil {
+		return crewTeam{}, 500, "team_save_failed", "The Team could not be saved now. Try again in a minute."
+	}
+	defer unlock()
+	var refusal string
+	t, err = updateCrewTeam(team, func(latest *crewTeam) (bool, error) {
+		if r := crewTeamProjectChangeRefusal(*latest, user, member, memberRoot, action); r != "" {
+			refusal = r
+			return false, nil
 		}
-		t.Revision++
-		err = writeCrewTeam(t)
+		switch {
+		case action == "add" && !latest.hasProject(member):
+			latest.Projects = append(latest.Projects, crewTeamProject{ProjectID: member, AddedBy: user, AddedAt: time.Now().UTC().Format(time.RFC3339)})
+		case action == "remove":
+			latest.Projects = slices.DeleteFunc(latest.Projects, func(p crewTeamProject) bool { return p.ProjectID == member })
+		}
+		return true, nil
+	})
+	if refusal != "" {
+		log.Printf("[CREW_TEAM] project=%s actor=%s event=project_%s_refused member=%s reason=%q", team, logUsernameForUserID(user), action, member, refusal)
+		return crewTeam{}, 403, "team_forbidden", refusal
 	}
 	if err != nil {
 		return crewTeam{}, 500, "team_save_failed", "The Team could not be saved now. Try again in a minute."
