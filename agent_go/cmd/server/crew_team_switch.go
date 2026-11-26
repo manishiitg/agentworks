@@ -86,7 +86,7 @@ func (api *StreamingAPI) turnMacOnlineOnForTeam(ctx context.Context, claims *Use
 			for _, item := range saved {
 				names = append(names, desktopConnectionLabel(item))
 			}
-			return fmt.Errorf("Which network should the team use? %s. Turn on Phone with that network, then the Team.", strings.Join(names, ", "))
+			return fmt.Errorf("Which network should the team use? %s. Turn on Remote Control with that network, then the Team.", strings.Join(names, ", "))
 		}
 		connection = saved[0].ID
 	}

@@ -37,9 +37,9 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     // Two rows for every Crew (owner, 11 Nov: the one Share row split): Team, the people who work on it with you, and
     // Online, how everyone else reaches it (Mac online, Online agents); your agents and actions are Team › Agents. Each opens its own page.
     add('mcp', 'Share', 'Team', UsersRound, 'team')
-    // Phone turns on reaching a Mac project from your phone; a server project is always on the web,
+    // Remote Control turns on reaching a Mac project from your phone; a server project is always on the web,
     // so the row shows only on the Mac (owner, 25 Nov: "on server i see.. phone why").
-    if (isLocalDeployment()) add('mcp', 'Share', 'Phone', Globe, 'online')
+    if (isLocalDeployment()) add('mcp', 'Share', 'Remote Control', Globe, 'online')
     add('mcp', 'Share', 'Artifacts', LayoutDashboard, 'artifacts')
     // The Slack bot row opens Connections → Slack bot on server projects (owner, 14 Nov).
     // Local Mac projects keep Slack as me only (owner, 25 Nov).

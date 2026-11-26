@@ -40,7 +40,7 @@ func crewAccessMacCardFor(online bool, status, line string, teamOn bool) *crewAc
 	}
 	return &crewAccessMacCard{Online: online, Status: status, Line: line, Kept: kept, Reach: []crewAccessReach{
 		{Who: "You, from your other agents", How: "Always, on your network. Nothing to turn on."},
-		{Who: "You, from the website or phone", How: "When Phone is on and this Mac is on."},
+		{Who: "You, from the website or phone", How: "When Remote Control is on and this Mac is on."},
 		{Who: "Your Team", How: team},
 		{Who: "Other people's agents", How: "Only agents with Discovery on in AgentBridge. They answer as you, by your rules."},
 	}}
@@ -52,7 +52,7 @@ func crewAccessMacOnline(mac string, teamOn bool) *crewAccessMacCard {
 
 var crewAccessMacTabs = func() []crewAccessTab {
 	tabs := []crewAccessTab{
-		{ID: "mac", Label: "Phone", Detail: "you, from anywhere", Group: "online"},
+		{ID: "mac", Label: "Remote Control", Detail: "you, from your phone or the website", Group: "online"},
 		{ID: "agentbridge", Label: "AgentBridge", Detail: "your agents and discovery", Group: "online"},
 	}
 	return append(tabs, crewAccessPeopleTabs...)

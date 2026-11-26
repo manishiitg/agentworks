@@ -119,7 +119,7 @@ func (api *StreamingAPI) registerCrewSyncChatTool(reg definitionToolRegistrar, g
 			}
 			binding, err := crewroot.ReadSync(manifest.ID)
 			if err != nil || binding == nil || binding.Side != "local" {
-				return "", fmt.Errorf("turn on the Team first (it needs Phone on)")
+				return "", fmt.Errorf("turn on the Team first (it needs Remote Control on)")
 			}
 			dir, err := api.crewTeamLocalDirFor(ctx, caller.UserID, binding.ConnectionID, binding.PeerProjectID)
 			if err != nil {

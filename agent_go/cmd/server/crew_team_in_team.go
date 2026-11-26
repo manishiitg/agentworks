@@ -240,7 +240,7 @@ func (api *StreamingAPI) setOwnAgentInTeam(ctx context.Context, user, chatKey st
 	}
 	b, err := crewroot.ReadSync(project)
 	if err != nil || b == nil || b.Side != "local" {
-		return fmt.Errorf("turn on this project's Team first (it needs Phone on)")
+		return fmt.Errorf("turn on this project's Team first (it needs Remote Control on)")
 	}
 	c, err := desktopConnectionFor(user, b.ConnectionID)
 	if err != nil {
