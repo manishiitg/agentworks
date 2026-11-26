@@ -573,6 +573,11 @@ func (a *MuseCLIAdapter) generateContentMSP(ctx context.Context, messages []llmt
 	if prompt != "" {
 		input = append(input, map[string]any{"type": "text", "text": prompt})
 	}
+	if part, skillErr := museSkillInput(ctx, owner, s.sessionID, s.listSkills); skillErr != nil {
+		return nil, skillErr
+	} else if part != nil {
+		input = append(input, part)
+	}
 	params := map[string]any{"commandId": museCommandID(), "sessionId": s.sessionID, "input": input}
 	if effort, effortErr := museExecEffort(opts); effortErr != nil {
 		return nil, effortErr

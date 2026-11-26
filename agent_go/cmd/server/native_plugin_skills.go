@@ -41,7 +41,7 @@ func personalNativeSkills(provider, projectDir string) []claudePluginSkill {
 			return nil
 		}
 		return append(skillsInFolder(filepath.Join(home, "skills"), ""), claudePluginSkills(home, projectDir)...)
-	case "codex-cli":
+	case "codex-cli", "muse-cli":
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return nil
