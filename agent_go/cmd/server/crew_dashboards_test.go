@@ -101,3 +101,23 @@ func TestWorkflowMeasurementReadRefusesCrewRootsAndCreatesNothing(t *testing.T) 
 		t.Fatalf("reader created Crew DB: %v", err)
 	}
 }
+
+// A workflow that has never run has no storage folder, so the dashboard service
+// answers 404. That used to fail the whole project's dashboard list.
+func TestCrewDashboardListSkipsWorkflowWithoutStorage(t *testing.T) {
+	ensureProjectStateRoot(t)
+	status := http.StatusNotFound
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{"error":"project unavailable"}`))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+	if found, err := crewPublishedDashboardExists(t.Context(), "Workflow/not-run-yet"); found || err != nil {
+		t.Fatalf("missing storage should mean no dashboards: found=%v err=%v", found, err)
+	}
+	status = http.StatusServiceUnavailable
+	if _, err := crewPublishedDashboardExists(t.Context(), "Workflow/not-run-yet"); err == nil {
+		t.Fatal("a real dashboard service failure must still be reported")
+	}
+}
