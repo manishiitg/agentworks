@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, X } from 'lucide-react'
 import api from '../../services/api'
+import ModalPortal from '../../components/ui/ModalPortal'
 
 /** One MCP server found in the person's own Claude, Codex, Cursor, agy or Claude Desktop settings (names only). */
 export type LocalMcpServer = {
@@ -71,4 +72,21 @@ export function LocalMcpImport({ servers, scope, onImported }: { servers: LocalM
       </button>
     </div>
   </div>
+}
+
+/** Import MCP servers on their own, without a chat: the same list as the step after Import chat. */
+export function LocalMcpImportDialog({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const { servers } = useLocalMcpServers({ projectId })
+  return <ModalPortal><div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/70 p-3 sm:p-8" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+    <div role="dialog" aria-modal="true" aria-labelledby="local-mcp-title" data-testid="local-mcp-import-dialog" onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }}
+      className="flex max-h-[90dvh] w-full max-w-2xl flex-col rounded-xl border border-border bg-background p-4 shadow-xl sm:p-6">
+      <header className="mb-4 flex items-start justify-between gap-3">
+        <div><h2 id="local-mcp-title" className="text-xl font-semibold">Import MCP servers</h2><p className="mt-1 text-sm text-muted-foreground">From your Claude, Codex, Cursor and agy settings. Chats here don't load them on their own.</p></div>
+        <button type="button" aria-label="Close" onClick={onClose} className="rounded-md p-2 hover:bg-muted"><X className="h-4 w-4" /></button>
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {servers === null ? <p role="status" className="text-sm text-muted-foreground">Finding your MCP servers…</p> : <LocalMcpImport servers={servers} scope={{ projectId }} />}
+      </div>
+    </div>
+  </div></ModalPortal>
 }

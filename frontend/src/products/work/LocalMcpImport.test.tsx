@@ -4,8 +4,9 @@ import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 
 const post = vi.hoisted(() => vi.fn())
-vi.mock('../../services/api', () => ({ default: { get: vi.fn(), post } }))
-import { LocalMcpImport, type LocalMcpServer } from './LocalMcpImport'
+const get = vi.hoisted(() => vi.fn())
+vi.mock('../../services/api', () => ({ default: { get, post } }))
+import { LocalMcpImport, LocalMcpImportDialog, type LocalMcpServer } from './LocalMcpImport'
 
 const servers: LocalMcpServer[] = [
   { id: 'a1', name: 'posthog', sources: ['Claude'], scope: 'project', kind: 'url', program: 'mcp.example.com', keys: ['Authorization'], importable: true },
@@ -32,5 +33,21 @@ it('picks new importable servers, explains keys and Mac-only programs, and impor
   expect(post).toHaveBeenCalledWith('/api/vault/local-mcp', { project_id: 'p1', ids: ['a1'] })
   expect(onImported).toHaveBeenCalled()
   expect(host.querySelector('a[href="https://example.com/auth"]')?.textContent).toBe('Sign in')
+  act(() => root.unmount())
+})
+
+it('imports MCP servers on their own, without a chat', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+  get.mockResolvedValue({ data: { servers } })
+  const host = document.createElement('div'); document.body.append(host)
+  const root = createRoot(host)
+  const onClose = vi.fn()
+  await act(async () => root.render(<LocalMcpImportDialog projectId="p1" onClose={onClose} />))
+  expect(get).toHaveBeenCalledWith('/api/vault/local-mcp', expect.objectContaining({ params: { project_id: 'p1' } }))
+  const dialog = document.querySelector('[data-testid="local-mcp-import-dialog"]')!
+  expect(dialog.textContent).toContain('Import MCP servers')
+  expect(dialog.querySelector('input[aria-label="Import posthog"]')).not.toBeNull()
+  await act(async () => { dialog.querySelector<HTMLButtonElement>('button[aria-label="Close"]')!.click() })
+  expect(onClose).toHaveBeenCalled()
   act(() => root.unmount())
 })
