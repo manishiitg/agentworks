@@ -308,6 +308,28 @@ func TestReadWorkflowManifestMigratesMissingLabelFromWorkspacePath(t *testing.T)
 	}
 }
 
+// Checking whether someone may open a workflow must never write to it: any signed-in person can name any workflow,
+// and the read-time migration used to rewrite its workflow.json before access was decided.
+func TestWorkflowAccessCheckNeverWritesTheManifest(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	const workspacePath = "Workflow/instagram"
+	original := `{"schema_version":1,"id":"wf_instagram","version":"1.0.9","capabilities":{},"schedules":[]}`
+	workspace := &mockWorkspaceAPI{files: map[string]string{workspacePath + "/workflow.json": original}}
+	server := httptest.NewServer(workspace)
+	defer server.Close()
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+
+	if _, manifest := workflowAccessForWorkspacePath(context.Background(), &UserClaims{UserID: "teammate"}, workspacePath); manifest == nil {
+		t.Fatal("access check did not read the manifest")
+	}
+	workspace.mu.Lock()
+	after := workspace.files[workspacePath+"/workflow.json"]
+	workspace.mu.Unlock()
+	if after != original {
+		t.Fatalf("access check rewrote workflow.json: %s", after)
+	}
+}
+
 func TestReadWorkflowManifestPrunesRetiredDefaultsAndPreservesCurrentSettings(t *testing.T) {
 	// PLAT-746: the anchored writer needs a real temporary workspace root.
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
