@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronRight, ExternalLink, ListChecks, MoreHorizontal, Pin } from 'lucide-react'
+import { ChevronRight, ExternalLink, ListChecks, Maximize2, MoreHorizontal, Pin } from 'lucide-react'
 import type { CrewPanelRow, ProjectTask, ProjectTaskGroup, ProjectTaskRef } from './useCrewPanel'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 import { formatRelativeSeconds } from '../../utils/relativeTime'
@@ -152,15 +152,19 @@ export function ProjectTasksSummary({ row, onAgent, onOpenTask, onOpenTasks }: {
   const shown = more ? needsYou : needsYou.slice(0, 3)
   const open = row.open_count || 0
   return <section aria-label="Project tasks">
-    <button type="button" onClick={onOpenTasks} className={`flex min-h-9 w-full min-w-0 items-center gap-2.5 rounded-md px-1 text-left text-xs text-foreground/85 hover:bg-background/40 ${ring}`}>
+    <div className="flex min-h-9 min-w-0 items-center gap-2.5 px-1 text-xs text-foreground/85">
       <ListChecks aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground"/>
       <span className="shrink-0">Project tasks</span>
       <span className="min-w-0 flex-1 truncate text-right text-[10px] text-muted-foreground">
         {needsYou.length ? <span className="text-amber-600 dark:text-amber-400">{needsYou.length} need{needsYou.length === 1 ? 's' : ''} you</span> : null}
         {needsYou.length && open > needsYou.length ? ' · ' : ''}{open > needsYou.length || !needsYou.length ? `${open} open` : ''}
       </span>
-      <ChevronRight aria-hidden="true" className="h-3 w-3 shrink-0"/>
-    </button>
+      {/* An explicit open button (owner, 26 Nov), not the whole row: the full list opens wide, like Team. */}
+      <button type="button" onClick={onOpenTasks} aria-label="Open Project tasks" title="Open Project tasks"
+        className={`inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-border px-1.5 text-[10.5px] text-foreground hover:bg-background/40 ${ring}`}>
+        <Maximize2 aria-hidden="true" className="h-3 w-3"/>Open
+      </button>
+    </div>
     {row.focus && !needsYou.length ? <p className="truncate px-1.5 pb-1 text-[10.5px] text-muted-foreground">{row.focus}</p> : null}
     {shown.map(task => <TaskLine key={task.id} task={task} onAgent={onAgent} answers onOpen={() => task.id && onOpenTask(task.id)}/>)}
     {needsYou.length > shown.length ? <button type="button" onClick={() => setMore(true)} className="px-1.5 pb-1 text-[10.5px] text-muted-foreground hover:text-foreground">{needsYou.length - shown.length} more need you</button> : null}
@@ -183,7 +187,7 @@ function useFolded(storageKey: string, groups: ProjectTaskGroup[]) {
 // The full Project tasks panel (#4294): the lead's focus line, Needs you, then
 // the lead's own groups in its order (Other for the rest), each foldable with a
 // done bar; filters by agent and step; the done list; the lead's controls.
-export function ProjectTasksPanel({ row, storageKey, onAgent, onOpenTask }: { row: CrewPanelRow; storageKey: string; onAgent?: Draft; onOpenTask: (id: string) => void }) {
+export function ProjectTasksPanel({ row, storageKey, onAgent, onOpenTask, wide = false }: { row: CrewPanelRow; storageKey: string; onAgent?: Draft; onOpenTask: (id: string) => void; wide?: boolean }) {
   const [agent, setAgent] = useState('')
   const [step, setStep] = useState('')
   const [showDone, setShowDone] = useState(false)
@@ -216,6 +220,7 @@ export function ProjectTasksPanel({ row, storageKey, onAgent, onOpenTask }: { ro
       <p className="px-1.5 pb-0.5 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">Needs you <span className="font-normal">{needsYou.length}</span></p>
       {needsYou.map(task => line(task, true))}
     </section> : null}
+    <div className={wide && groups.length ? 'gap-x-4 gap-y-2 lg:grid lg:grid-cols-2' : ''}>
     {sections.map(g => {
       const folded = groups.length ? isFolded(g.name) : false
       const finished = g.all.filter(t => t.done).length
@@ -232,6 +237,7 @@ export function ProjectTasksPanel({ row, storageKey, onAgent, onOpenTask }: { ro
         {!folded && g.tasks.length > shown.length ? <button type="button" onClick={() => setExpanded(current => ({ ...current, [g.name]: true }))} className="px-1.5 text-[10.5px] text-muted-foreground hover:text-foreground">{g.tasks.length - shown.length} more</button> : null}
       </section>
     })}
+    </div>
     {!open.length && <p className="px-1 py-0.5 text-[11px] text-muted-foreground">{agent || step ? 'Nothing open matches.' : `Nothing open. New work shows here once ${row.lead || 'the lead'} sorts it.`}</p>}
     {row.done_count ? <div className="border-t border-dashed border-border pt-1">
       <button type="button" aria-expanded={showDone} onClick={() => setShowDone(value => !value)} className="px-1 text-[10.5px] text-muted-foreground hover:text-foreground">✓ {row.done_count} done {showDone ? '▾' : '▸'}</button>
