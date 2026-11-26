@@ -196,7 +196,7 @@ func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "local"))
 	local := &StreamingAPI{}
 	router := mux.NewRouter()
-	stop := local.initGmailInbound(router)
+	stop := local.initGmailInbound(router.PathPrefix("/api").Subrouter())
 	stop()
 	if local.gmailInbound != nil {
 		t.Fatal("local receiving enabled")

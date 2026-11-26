@@ -129,7 +129,8 @@ func TestCrewTeamChatPrivateRefusesTeammatesNotItsPerson(t *testing.T) {
 		t.Fatal("a private chat still counts as a readable tab")
 	}
 	history := httptest.NewRecorder()
-	getChatHistoryConversationHandler(f.api)(history, view("owner"))
+	// Through the /api middleware, as the server mounts it.
+	f.api.crewChatRelayMiddleware(getChatHistoryConversationHandler(f.api)).ServeHTTP(history, view("owner"))
 	if !refused(history, "server-chat-text") {
 		t.Fatalf("saved history of a private chat: %d %s", history.Code, history.Body.String())
 	}

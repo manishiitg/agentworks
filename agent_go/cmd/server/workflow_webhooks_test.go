@@ -476,7 +476,7 @@ func TestWorkflowWebhookPayloadIsLoadedOnDemand(t *testing.T) {
 	}
 
 	router := mux.NewRouter()
-	WorkflowWebhookRoutes(router, &SchedulerService{})
+	WorkflowWebhookRoutes(router.PathPrefix("/api").Subrouter(), &SchedulerService{})
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/workflow-webhooks/"+sched.ID+"/runs/run-1/payload", nil))
 	if w.Code != http.StatusOK {

@@ -78,7 +78,7 @@ func TestWebhookRunOutputsAndDownloads(t *testing.T) {
 	}
 	svc := &SchedulerService{stateStore: store}
 	router := mux.NewRouter()
-	UnifiedWebhookRoutes(router, svc, nil)
+	UnifiedWebhookRoutes(router.PathPrefix("/api").Subrouter(), svc, nil)
 	get := func(url, auth string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("GET", url, nil)
 		if auth != "" {

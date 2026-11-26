@@ -2881,23 +2881,23 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/inspector/{session_id}", api.handleInspectorClear).Methods("DELETE")
 
 	// Chat history (read-only, persisted to workspace)
-	ChatHistoryRoutes(router, api)
+	ChatHistoryRoutes(apiRouter, api)
 
 	// Slack Feedback API routes
-	SlackFeedbackRoutes(router, api)
+	SlackFeedbackRoutes(apiRouter, api)
 
 	// Slack connection registry (per-workflow Slack apps)
-	SlackConnectionRoutes(router, api)
+	SlackConnectionRoutes(apiRouter, api)
 
 	// Gmail (outbound-only) config/status/test API routes
-	GmailFeedbackRoutes(router, api)
-	GmailConnectionRoutes(router, api)
-	GmailOAuthRoutes(router, api)
-	GoogleAppRoutes(router, api)
-	GmailOAuthClientRoutes(router, api)
+	GmailFeedbackRoutes(apiRouter, api)
+	GmailConnectionRoutes(apiRouter, api)
+	GmailOAuthRoutes(apiRouter, api)
+	GoogleAppRoutes(apiRouter, api)
+	GmailOAuthClientRoutes(apiRouter, api)
 
 	// Per-user notification preferences (Slack channel, WhatsApp number)
-	NotificationPreferencesRoutes(router)
+	NotificationPreferencesRoutes(apiRouter)
 
 	// Initialize Bot Conversation Manager
 	workspaceURL := os.Getenv("WORKSPACE_API_URL")
@@ -2984,7 +2984,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 
 	// Register bot routes
-	BotRoutes(router, api)
+	BotRoutes(apiRouter, api)
 	virtualtools.SetSlackMessageHandler(api.sendSlackMessageFromTool)
 	virtualtools.SetSlackCLIHandler(api.slackCLIFromTool)
 	virtualtools.SetGitHubToolHandler(api.githubFromTool)
@@ -2992,7 +2992,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		slackSvc.SetTriggerHandler(api.dispatchSlackTrigger)
 	}
 	if api.whatsappManager != nil {
-		WhatsAppRoutes(router, api.whatsappManager, api.whatsappDefaultProfileResolver)
+		WhatsAppRoutes(apiRouter, api.whatsappManager, api.whatsappDefaultProfileResolver)
 		// Unrouted WhatsApp messages on a pairing with a default product
 		// profile run in that profile's own conversation; the product's own
 		// @tokens pick one of its other profiles.
@@ -3068,11 +3068,11 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 
 	// Register scheduler routes
-	SchedulerRoutes(router, schedulerSvc)
-	WorkflowWebhookRoutes(router, schedulerSvc)
-	ProductWebhookRoutes(router, productScheduleSvc)
-	UnifiedWebhookRoutes(router, schedulerSvc, productScheduleSvc)
-	stopGmailInbound := api.initGmailInbound(router)
+	SchedulerRoutes(apiRouter, schedulerSvc)
+	WorkflowWebhookRoutes(apiRouter, schedulerSvc)
+	ProductWebhookRoutes(apiRouter, productScheduleSvc)
+	UnifiedWebhookRoutes(apiRouter, schedulerSvc, productScheduleSvc)
+	stopGmailInbound := api.initGmailInbound(apiRouter)
 	defer stopGmailInbound()
 
 	// Workflow API routes

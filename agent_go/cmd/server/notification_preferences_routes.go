@@ -17,7 +17,7 @@ import (
 // The connector resolvers (Slack today, WhatsApp later) consult these prefs
 // at notification-send time before falling back to the workspace-wide default.
 func NotificationPreferencesRoutes(router *mux.Router) {
-	apiRouter := router.PathPrefix("/api/notification-preferences").Subrouter()
+	apiRouter := router.PathPrefix("/notification-preferences").Subrouter()
 	apiRouter.HandleFunc("", getNotificationPreferencesHandler).Methods("GET")
 	apiRouter.HandleFunc("", updateNotificationPreferencesHandler).Methods("POST", "OPTIONS")
 }

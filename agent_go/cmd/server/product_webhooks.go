@@ -133,16 +133,16 @@ var errCrewMessageWebhookRemoved = fmt.Errorf("a project webhook now starts the 
 var productWebhookConfigMu sync.Mutex
 
 func ProductWebhookRoutes(router *mux.Router, svc *ProjectActionDispatcher) {
-	router.HandleFunc("/api/condition-triggers", svc.conditionHTTP).Methods("GET", "POST")
-	router.HandleFunc("/api/condition-triggers/{id}/history", svc.conditionHTTP).Methods("GET")
-	router.HandleFunc("/api/product-webhooks", svc.listProductWebhooks).Methods("GET")
-	router.HandleFunc("/api/product-webhooks", svc.saveProductWebhook).Methods("POST")
-	router.HandleFunc("/api/product-webhooks/{id}", svc.saveProductWebhook).Methods("PUT")
-	router.HandleFunc("/api/product-webhooks/{id}", svc.deleteProductWebhook).Methods("DELETE")
-	router.HandleFunc("/api/product-webhooks/{id}/runs", svc.listProductWebhookRuns).Methods("GET")
-	router.HandleFunc("/api/product-webhooks/{id}/runs/{run}/payload", svc.getProductWebhookPayload).Methods("GET")
-	router.HandleFunc("/api/crew-functions", svc.listCrewFunctionsHTTP).Methods("GET")
-	router.HandleFunc("/api/crew-functions/{name}", svc.deleteCrewFunctionHTTP).Methods("DELETE")
+	router.HandleFunc("/condition-triggers", svc.conditionHTTP).Methods("GET", "POST")
+	router.HandleFunc("/condition-triggers/{id}/history", svc.conditionHTTP).Methods("GET")
+	router.HandleFunc("/product-webhooks", svc.listProductWebhooks).Methods("GET")
+	router.HandleFunc("/product-webhooks", svc.saveProductWebhook).Methods("POST")
+	router.HandleFunc("/product-webhooks/{id}", svc.saveProductWebhook).Methods("PUT")
+	router.HandleFunc("/product-webhooks/{id}", svc.deleteProductWebhook).Methods("DELETE")
+	router.HandleFunc("/product-webhooks/{id}/runs", svc.listProductWebhookRuns).Methods("GET")
+	router.HandleFunc("/product-webhooks/{id}/runs/{run}/payload", svc.getProductWebhookPayload).Methods("GET")
+	router.HandleFunc("/crew-functions", svc.listCrewFunctionsHTTP).Methods("GET")
+	router.HandleFunc("/crew-functions/{name}", svc.deleteCrewFunctionHTTP).Methods("DELETE")
 }
 
 func (s *ProjectActionDispatcher) getProductWebhookPayload(w http.ResponseWriter, r *http.Request) {

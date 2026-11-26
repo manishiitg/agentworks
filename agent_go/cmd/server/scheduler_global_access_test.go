@@ -36,7 +36,7 @@ func TestGlobalSchedulerPauseKeepsAdminAuthorityAcrossChannels(t *testing.T) {
 	owner := &UserClaims{UserID: "owner", Username: "owner"}
 	ctx := context.WithValue(t.Context(), UserContextKey, owner)
 	router := mux.NewRouter()
-	SchedulerRoutes(router, f.api.scheduler)
+	SchedulerRoutes(router.PathPrefix("/api").Subrouter(), f.api.scheduler)
 	httpConfig := func(claims *UserClaims, method, body string) *httptest.ResponseRecorder {
 		t.Helper()
 		w := httptest.NewRecorder()

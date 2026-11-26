@@ -48,7 +48,7 @@ type GmailTestResponse struct {
 
 // GmailFeedbackRoutes wires up the Gmail config/status/test API.
 func GmailFeedbackRoutes(router *mux.Router, api *StreamingAPI) {
-	r := router.PathPrefix("/api/human-feedback/gmail").Subrouter()
+	r := router.PathPrefix("/human-feedback/gmail").Subrouter()
 	r.HandleFunc("/config", getGmailConfigHandler(api)).Methods("GET")
 	r.HandleFunc("/config", requireAdminWrite(updateGmailConfigHandler(api))).Methods("POST", "OPTIONS")
 	r.HandleFunc("/status", getGmailStatusHandler(api)).Methods("GET")

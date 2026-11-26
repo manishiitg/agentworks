@@ -124,7 +124,7 @@ type GmailConnectionTestRequest struct {
 
 // GmailConnectionRoutes wires the connection registry API.
 func GmailConnectionRoutes(router *mux.Router, api *StreamingAPI) {
-	r := router.PathPrefix("/api/human-feedback/gmail/connections").Subrouter()
+	r := router.PathPrefix("/human-feedback/gmail/connections").Subrouter()
 	r.HandleFunc("", listGmailConnectionsHandler(api)).Methods("GET")
 	r.HandleFunc("", createGmailConnectionHandler(api)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/{id}", getGmailConnectionHandler(api)).Methods("GET")

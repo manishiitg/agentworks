@@ -261,7 +261,7 @@ func requireSlackRouteProfileOwner(ctx context.Context, api *StreamingAPI, route
 
 // SlackFeedbackRoutes sets up Slack feedback API routes
 func SlackFeedbackRoutes(router *mux.Router, api *StreamingAPI) {
-	apiRouter := router.PathPrefix("/api/human-feedback/slack").Subrouter()
+	apiRouter := router.PathPrefix("/human-feedback/slack").Subrouter()
 
 	// Configuration routes
 	apiRouter.HandleFunc("/config", getSlackConfigHandler(api)).Methods("GET")
