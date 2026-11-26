@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -777,6 +778,69 @@ func (s *ProjectActionDispatcher) projectManifest(ctx context.Context, userID, p
 	return profile, binding, manifest, nil
 }
 
+var (
+	productProjectManifestKnownKeys     = knownJSONFieldNames(reflect.TypeOf(productProjectManifest{}))
+	productProjectCapabilitiesKnownKeys = knownJSONFieldNames(reflect.TypeOf(productProjectManifest{}.Capabilities))
+)
+
+// keepUnmodelledProjectManifestFields preserves any top-level or nested
+// capabilities keys from previous that productProjectManifest does not model,
+// so schedule and webhook updates never silently erase connection selections
+// or other subsystem fields stored in workflow.json.
+func keepUnmodelledProjectManifestFields(previous, written []byte) []byte {
+	var before, after map[string]json.RawMessage
+	if json.Unmarshal(previous, &before) != nil || json.Unmarshal(written, &after) != nil {
+		return written
+	}
+	kept := false
+	for key, value := range before {
+		if key == "schedules" || productProjectManifestKnownKeys[key] {
+			continue
+		}
+		if _, exists := after[key]; !exists {
+			after[key] = value
+			kept = true
+		}
+	}
+	if prevCapsRaw, ok := before["capabilities"]; ok {
+		var prevCaps map[string]json.RawMessage
+		if json.Unmarshal(prevCapsRaw, &prevCaps) == nil {
+			afterCaps := map[string]json.RawMessage{}
+			if afterCapsRaw, exists := after["capabilities"]; exists {
+				if json.Unmarshal(afterCapsRaw, &afterCaps) != nil {
+					afterCaps = nil
+				}
+			}
+			if afterCaps != nil {
+				capsKept := false
+				for key, value := range prevCaps {
+					if productProjectCapabilitiesKnownKeys[key] {
+						continue
+					}
+					if _, exists := afterCaps[key]; !exists {
+						afterCaps[key] = value
+						capsKept = true
+					}
+				}
+				if capsKept {
+					if mergedCaps, err := json.Marshal(afterCaps); err == nil {
+						after["capabilities"] = mergedCaps
+						kept = true
+					}
+				}
+			}
+		}
+	}
+	if !kept {
+		return written
+	}
+	merged, err := json.MarshalIndent(after, "", "  ")
+	if err != nil {
+		return written
+	}
+	return merged
+}
+
 func (s *ProjectActionDispatcher) writeProjectManifest(ctx context.Context, binding productConversationBinding, manifest productProjectManifest) error {
 	if isProjectProfileID(manifest.Product) || isCrewProjectPath(binding.WorkspacePath) {
 		if err := saveCrewEntryActions(ctx, filepath.ToSlash(filepath.Dir(binding.ManifestPath)), manifest); err != nil {
@@ -800,9 +864,16 @@ func (s *ProjectActionDispatcher) writeProjectManifest(ctx context.Context, bind
 		manifest.SessionID = ""
 		manifest.Capabilities.WorkflowContextPaths = nil
 	}
+	previous, previousExists, readErr := s.readFile(ctx, binding.ManifestPath)
+	if readErr != nil {
+		return readErr
+	}
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return err
+	}
+	if previousExists {
+		data = keepUnmodelledProjectManifestFields([]byte(previous), data)
 	}
 	return s.writeFile(ctx, binding.ManifestPath, string(data)+"\n")
 }

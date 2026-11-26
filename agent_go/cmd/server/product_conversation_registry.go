@@ -1371,8 +1371,13 @@ type productProjectManifest struct {
 	Triggers             []productWebhookTrigger    `json:"triggers,omitempty"`
 	WorkflowContextPaths []string                   `json:"workflow_context_paths,omitempty"`
 	Capabilities         struct {
-		LLMConfig       *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
-		SelectedServers []string                       `json:"selected_servers,omitempty"`
+		GitHubConnectionID     string                         `json:"github_connection_id,omitempty"`
+		SlackConnectionID      string                         `json:"slack_connection_id,omitempty"`
+		GmailConnectionID      string                         `json:"gmail_connection_id,omitempty"`
+		GmailBlockedRecipients []string                       `json:"gmail_blocked_recipients,omitempty"`
+		LLMConfig              *workflowtypes.PresetLLMConfig `json:"llm_config,omitempty"`
+		Notifications          *WorkflowNotificationConfig    `json:"notifications,omitempty"`
+		SelectedServers        []string                       `json:"selected_servers,omitempty"`
 		// ChosenVaultAppsOnly is "Use all my apps automatically" off (PLAT-856-394).
 		ChosenVaultAppsOnly bool     `json:"chosen_vault_apps_only,omitempty"`
 		SelectedSkills      []string `json:"selected_skills,omitempty"`
@@ -1384,6 +1389,7 @@ type productProjectManifest struct {
 		// preserve rather than drop them.
 		SelectedTools        []string `json:"selected_tools,omitempty"`
 		BrowserMode          string   `json:"browser_mode,omitempty"`
+		BrowserCDPPort       int      `json:"browser_cdp_port,omitempty"`
 		UseCodeExecutionMode bool     `json:"use_code_execution_mode,omitempty"`
 		// NativeAgentTools ("Native agent tools" in the crew UI) runs the crew's
 		// coding agents in agent_tools mode full: their own tools in a sandbox
