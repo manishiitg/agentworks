@@ -41,47 +41,53 @@ func visibleResumeUserCount(history []llmtypes.MessageContent) int {
 // A proven saved prefix means full alignment's cursor ends at the old tail:
 // every remaining incoming row is new, even when its text repeats an old row.
 func (api *StreamingAPI) persistableChatTail(user, session, path string, history []llmtypes.MessageContent) (*resumeHistorySource, []llmtypes.MessageContent, bool) {
-	source, tail, fallback := api.persistableChatTailWithReason(user, session, path, history)
+	source, tail, _, fallback := api.persistableChatTailWithReason(user, session, session, path, history)
 	return source, tail, fallback == ""
 }
 
-func (api *StreamingAPI) persistableChatTailWithReason(user, session, path string, history []llmtypes.MessageContent) (*resumeHistorySource, []llmtypes.MessageContent, string) {
+func (api *StreamingAPI) persistableChatTailWithReason(user, liveSession, persistSession, path string, history []llmtypes.MessageContent) (*resumeHistorySource, []llmtypes.MessageContent, string, string) {
 	api.conversationMux.RLock()
-	source := api.resumeHistorySources[session]
-	current := api.conversationHistory[session]
+	lookupSession := liveSession
+	source := api.resumeHistorySources[lookupSession]
+	current := api.conversationHistory[lookupSession]
+	if source == nil && persistSession != "" && persistSession != lookupSession {
+		lookupSession = persistSession
+		source = api.resumeHistorySources[lookupSession]
+		current = api.conversationHistory[lookupSession]
+	}
 	api.conversationMux.RUnlock()
 	if source == nil {
-		return nil, nil, "no_source"
+		return nil, nil, lookupSession, "no_source"
 	}
 	if !source.prefixStable {
-		return nil, nil, "prefix_unstable"
+		return nil, nil, lookupSession, "prefix_unstable"
 	}
 	if source.user != user {
-		return nil, nil, "owner_mismatch"
+		return nil, nil, lookupSession, "owner_mismatch"
 	}
 	if source.path != path {
-		return nil, nil, "path_mismatch"
+		return nil, nil, lookupSession, "path_mismatch"
 	}
 	if !source.same(statResumeHistory(user, source.workspace, path)) {
-		return nil, nil, "file_changed"
+		return nil, nil, lookupSession, "file_changed"
 	}
 	body, canonical := chatHistoryBody(history), chatHistoryBody(current)
 	if source.persistedSystem && (len(history) == 0 || history[0].Role != llmtypes.ChatMessageTypeSystem) {
-		return nil, nil, "missing_system"
+		return nil, nil, lookupSession, "missing_system"
 	}
 	if !appendableHistoryShape(history) {
-		return nil, nil, "bad_shape"
+		return nil, nil, lookupSession, "bad_shape"
 	}
 	if len(body) < source.persistedBody {
-		return nil, nil, "shorter_history"
+		return nil, nil, lookupSession, "shorter_history"
 	}
 	if len(canonical) < source.persistedBody {
-		return nil, nil, "shorter_canonical"
+		return nil, nil, lookupSession, "shorter_canonical"
 	}
 	if !samePersistedPrefix(body, canonical, source.persistedBody) {
-		return nil, nil, "prefix_mismatch"
+		return nil, nil, lookupSession, "prefix_mismatch"
 	}
-	return source, body[source.persistedBody:], ""
+	return source, body[source.persistedBody:], lookupSession, ""
 }
 
 func readChatConversationHeader(path string) (map[string]interface{}, error) {
@@ -109,32 +115,32 @@ func readChatConversationHeader(path string) (map[string]interface{}, error) {
 	return header, nil
 }
 
-func (api *StreamingAPI) tryPersistChatTail(session, mode, user string, history []llmtypes.MessageContent, runtime *ChatHistoryAgentRuntime, ui []internalevents.Event, path string, patch map[string]interface{}, now time.Time, bot *ChatHistoryBotMetadata) bool {
-	source, tail, fallback := api.persistableChatTailWithReason(user, session, path, history)
+func (api *StreamingAPI) tryPersistChatTail(liveSession, persistSession, mode, user string, history []llmtypes.MessageContent, runtime *ChatHistoryAgentRuntime, ui []internalevents.Event, path string, patch map[string]interface{}, now time.Time, bot *ChatHistoryBotMetadata) (bool, string) {
+	source, tail, lookupSession, fallback := api.persistableChatTailWithReason(user, liveSession, persistSession, path, history)
 	if fallback != "" {
 		if fallback != "no_source" {
-			log.Printf("[CHAT_PERSIST_TAIL] session=%s fallback=%s", session, fallback)
+			log.Printf("[CHAT_PERSIST_TAIL] session=%s persist_session=%s fallback=%s", liveSession, persistSession, fallback)
 		}
-		return false
+		return false, fallback
 	}
 	// A failed attempt must leave the full merger's input intact.
 	patch = maps.Clone(patch)
 	header, err := readChatConversationHeader(path)
 	if err != nil {
-		log.Printf("[CHAT_PERSIST_TAIL] session=%s header_error=true", session)
-		return false
+		log.Printf("[CHAT_PERSIST_TAIL] session=%s header_error=true", liveSession)
+		return false, "header_error"
 	}
 	if owner := stringFromRecord(header, "user_id"); owner != "" && owner != user {
-		return false
+		return false, "header_owner_mismatch"
 	}
 	if !source.same(statResumeHistory(user, source.workspace, path)) {
-		return false
+		return false, "file_changed_after_header"
 	}
 	delete(patch, "conversation_history")
 	if _, present := patch["title"]; !present {
 		if title := stringFromRecord(header, "title"); title != "" {
 			patch["title"] = title
-		} else if title = chatHistoryTitleFromPersistedIndex(user, session, path); title != "" {
+		} else if title = chatHistoryTitleFromPersistedIndex(user, persistSession, path); title != "" {
 			patch["title"] = title
 		}
 	}
@@ -144,7 +150,7 @@ func (api *StreamingAPI) tryPersistChatTail(session, mode, user string, history 
 	if value, exists := header["ui_events"]; exists {
 		raw, err := json.Marshal(value)
 		if err != nil || json.Unmarshal(raw, &previousUI) != nil {
-			return false
+			return false, "ui_events_decode_error"
 		}
 	}
 	ui = trimChatHistoryUIEvents(mergeChatHistoryUIEvents(previousUI, ui))
@@ -159,42 +165,42 @@ func (api *StreamingAPI) tryPersistChatTail(session, mode, user string, history 
 	}
 	encoded, err := chatHistoryToRaw(messages)
 	if err != nil {
-		return false
+		return false, "encode_error"
 	}
 	if !source.same(statResumeHistory(user, source.workspace, path)) {
-		return false
+		return false, "file_changed_before_append"
 	}
 	expected, err := chatlog.VersionFromInfos(source.header, source.log)
 	if err != nil {
-		return false
+		return false, "version_error"
 	}
 	if err = appendConversationHistoryInWorkspace(context.Background(), path, encoded, patch, &expected); err != nil {
-		log.Printf("[CHAT_PERSIST_TAIL] session=%s append_error=true", session)
-		return false
+		log.Printf("[CHAT_PERSIST_TAIL] session=%s append_error=true", liveSession)
+		return false, "append_error"
 	}
 	// No old row can be removed by Append. Its saved prefix therefore already
 	// satisfies the full writer's user-turn-loss guard without another file read.
 	totalTurns := source.persistedTurns + visibleResumeUserCount(tail)
-	api.rememberWrittenResumeHistory(user, session, path, history, runtime, totalTurns)
+	api.rememberWrittenResumeHistory(user, lookupSession, path, history, runtime, totalTurns)
 	for key, value := range patch {
 		header[key] = value
 	}
 	if err = writeChatTailResumeSnapshot(path, header, history, totalTurns, source.target.Base); err != nil {
-		log.Printf("[CHAT_PERSIST_TAIL] session=%s resume_error=true", session)
-		return false
+		log.Printf("[CHAT_PERSIST_TAIL] session=%s resume_error=true", liveSession)
+		return false, "resume_error"
 	}
 	size := int64(0)
 	if stat := statResumeHistory(user, source.workspace, path); stat != nil {
 		size = stat.header.Size()
 	} else {
-		return false
+		return false, "stat_error"
 	}
-	if err = updatePersistedChatHistoryIndexWithCount(user, session, mode, history, len(history)+source.target.Base, runtime, path, size, now, bot); err != nil {
-		log.Printf("[CHAT_PERSIST_TAIL] session=%s index_error=true", session)
-		return false
+	if err = updatePersistedChatHistoryIndexWithCount(user, persistSession, mode, history, len(history)+source.target.Base, runtime, path, size, now, bot); err != nil {
+		log.Printf("[CHAT_PERSIST_TAIL] session=%s index_error=true", liveSession)
+		return false, "index_error"
 	}
-	log.Printf("[CHAT_PERSIST_TAIL] session=%s prior_messages=%d appended_messages=%d messages=%d window_base=%d", session, source.persistedBody, len(tail), len(history), source.target.Base)
-	return true
+	log.Printf("[CHAT_PERSIST_TAIL] session=%s prior_messages=%d appended_messages=%d messages=%d window_base=%d", liveSession, source.persistedBody, len(tail), len(history), source.target.Base)
+	return true, ""
 }
 
 // base: saved messages before history (a recent window); positions stay the file's.

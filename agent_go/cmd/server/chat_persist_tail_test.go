@@ -419,6 +419,79 @@ func TestCodingTurnRecentWindowWithUpdatedSystemPromptStaysOnTailAppend(t *testi
 	}
 }
 
+// #4309: when a restored chat runs under a different live session ID than its
+// persisted session ID, persistChatConversationToPathWithTerminalSession must
+// look up resumeHistorySources by the live session so tail-append still fires.
+func TestPersistChatTailUsesLiveSessionKeyForRestoredChat(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	priorDocs := viper.Get("docs-dir")
+	viper.Set("docs-dir", docs)
+	t.Cleanup(func() { viper.Set("docs-dir", priorDocs) })
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"}]}`)
+	const root = "Workflow/example"
+	const persistSession = "persisted-old-session"
+	const liveSession = "live-current-session"
+	path := root + "/builder/conversation/2026-11-26/" + chatHistoryConversationFileName(persistSession)
+	local := filepath.Join(docs, filepath.FromSlash(path))
+	if err := os.MkdirAll(filepath.Dir(local), 0700); err != nil {
+		t.Fatal(err)
+	}
+	saved := []llmtypes.MessageContent{
+		llmtypes.TextPart(llmtypes.ChatMessageTypeSystem, "system"),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "first"),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeAI, "reply"),
+	}
+	raw, _ := json.Marshal(map[string]interface{}{"session_id": persistSession, "user_id": "owner", "title": "Restored", "conversation_history": saved})
+	if err := chatlog.Save(local, raw); err != nil {
+		t.Fatal(err)
+	}
+	var fullReads, fullWrites atomic.Int64
+	router := gin.New()
+	router.Any("/api/documents/*filepath", func(c *gin.Context) {
+		p := strings.TrimPrefix(c.Param("filepath"), "/")
+		if p == path && c.Request.Method == http.MethodGet && c.Query("header_only") != "true" {
+			fullReads.Add(1)
+		}
+		if p == path && c.Request.Method == http.MethodPut {
+			fullWrites.Add(1)
+		}
+		workspacehandlers.HandleDocumentRequest(c)
+	})
+	upstream := httptest.NewServer(router)
+	defer upstream.Close()
+	t.Setenv("WORKSPACE_API_URL", upstream.URL)
+
+	source := statResumeHistory("owner", root, path)
+	api := &StreamingAPI{}
+	// Restored under liveSession (the current tab's session), persisting to persistSession.
+	api.restoreResolvedResumeTarget(liveSession, &resolvedResumeTarget{
+		SessionID:        persistSession,
+		WorkspacePath:    root,
+		ConversationPath: path,
+		History:          saved,
+		source:           source,
+		Base:             0,
+		BaseTurns:        0,
+	}, "")
+	// Mark prefixStable as a loaded window/written source would have.
+	api.rememberWrittenResumeHistory("owner", liveSession, path, saved, nil)
+
+	incoming := append(append([]llmtypes.MessageContent(nil), saved...),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "follow-up"),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeAI, "done"),
+	)
+	api.conversationMux.Lock()
+	api.replaceConversationHistoryLocked(liveSession, incoming)
+	api.conversationMux.Unlock()
+
+	api.persistChatConversationToPathWithTerminalSession(persistSession, liveSession, "multi-agent", "owner", incoming, nil, nil, path)
+	if fullReads.Load() != 0 || fullWrites.Load() != 0 {
+		t.Fatalf("restored live-session save fell back to full rewrite: reads=%d writes=%d", fullReads.Load(), fullWrites.Load())
+	}
+}
+
 // #4080: sending checked an open tab's session by listing the project's chats
 // (up to 2,000 files read, 0.2-15.6 s per send). The direct lookup must give
 // the same answer: in this project only when its transcript is in the

@@ -553,6 +553,10 @@ func copyChatHistoryConversationIfNeeded(sourcePath, destinationPath string) err
 	return writeRawFileToWorkspace(context.Background(), destinationPath, content)
 }
 
+// fullChatPersistSem caps concurrent full-history JSON rewrites so a burst of
+// fallback saves cannot multiply peak heap across many chats at once (#4309).
+var fullChatPersistSem = make(chan struct{}, 2)
+
 func (api *StreamingAPI) persistChatConversationToPathWithTerminalSession(sessionID, terminalSnapshotSessionID, agentMode, userID string, persistedHistory []llmtypes.MessageContent, runtime *ChatHistoryAgentRuntime, uiEvents []internalevents.Event, conversationPath string, botMetaArg ...*ChatHistoryBotMetadata) {
 	if len(persistedHistory) == 0 {
 		return
@@ -593,38 +597,44 @@ func (api *StreamingAPI) persistChatConversationToPathWithTerminalSession(sessio
 	lock := chatConversationMutex(convPath)
 	lock.Lock()
 	defer lock.Unlock()
-	if api.tryPersistChatTail(sessionID, agentMode, userID, persistedHistory, runtime, uiEvents, convPath, convData, now, botMeta) {
+	if ok, fallback := api.tryPersistChatTail(snapshotSessionID, sessionID, agentMode, userID, persistedHistory, runtime, uiEvents, convPath, convData, now, botMeta); ok {
 		return
-	}
-	// A user-defined title belongs to the durable conversation. Preserve it
-	// when a later turn rewrites the transcript from the in-memory history.
-	if existing, exists, readErr := readFileFromWorkspace(context.Background(), convPath); readErr != nil {
-		logfWithContext(logCtx, "[CHAT_HISTORY] Refusing overwrite after failed read %s: %v", convPath, readErr)
-		return
-	} else if exists {
-		var previous map[string]interface{}
-		var previousConv, incomingConv builderConversationLog
-		incoming, _ := json.Marshal(convData)
-		if json.Unmarshal([]byte(existing), &previous) != nil || json.Unmarshal([]byte(existing), &previousConv) != nil || json.Unmarshal(incoming, &incomingConv) != nil {
+	} else {
+		// Cap concurrent full-file rewrites so a burst of fallbacks cannot spike heap.
+		fullChatPersistSem <- struct{}{}
+		defer func() { <-fullChatPersistSem }()
+
+		// A user-defined title belongs to the durable conversation. Preserve it
+		// when a later turn rewrites the transcript from the in-memory history.
+		if existing, exists, readErr := readFileFromWorkspace(context.Background(), convPath); readErr != nil {
+			logfWithContext(logCtx, "[CHAT_HISTORY] Refusing overwrite after failed read %s: %v", convPath, readErr)
 			return
-		}
-		if owner := stringFromRecord(previous, "user_id"); owner != "" && owner != userID {
-			return
-		}
-		merged, err := mergeChatConversationSnapshots(previous, convData)
-		if err != nil {
-			logfWithContext(logCtx, "[CHAT_HISTORY] Refusing invalid snapshot merge for %s: %v", convPath, err)
-			return
-		}
-		encoded, err := json.Marshal(merged)
-		if err != nil || json.Unmarshal(encoded, &persistedHistory) != nil {
-			return
-		}
-		convData["conversation_history"] = persistedHistory
-		// Preserve metadata unknown to this writer, including pending submissions.
-		for key, value := range previous {
-			if _, exists := convData[key]; !exists {
-				convData[key] = value
+		} else if exists {
+			if fallback == "no_source" {
+				logfWithContext(logCtx, "[CHAT_PERSIST_TAIL] session=%s persist_session=%s fallback=no_source existing_file=true", snapshotSessionID, sessionID)
+			}
+			var previous map[string]interface{}
+			if json.Unmarshal([]byte(existing), &previous) != nil {
+				return
+			}
+			if owner := stringFromRecord(previous, "user_id"); owner != "" && owner != userID {
+				return
+			}
+			merged, err := mergeChatConversationSnapshots(previous, convData)
+			if err != nil {
+				logfWithContext(logCtx, "[CHAT_HISTORY] Refusing invalid snapshot merge for %s: %v", convPath, err)
+				return
+			}
+			encoded, err := json.Marshal(merged)
+			if err != nil || json.Unmarshal(encoded, &persistedHistory) != nil {
+				return
+			}
+			convData["conversation_history"] = persistedHistory
+			// Preserve metadata unknown to this writer, including pending submissions.
+			for key, value := range previous {
+				if _, exists := convData[key]; !exists {
+					convData[key] = value
+				}
 			}
 		}
 	}
@@ -664,9 +674,15 @@ func (api *StreamingAPI) persistChatConversationToPathWithTerminalSession(sessio
 		logfWithContext(logCtx, "[CHAT_HISTORY] Failed to write %s: %v", convPath, err)
 		return
 	}
-	api.rememberWrittenResumeHistory(userID, sessionID, convPath, persistedHistory, runtime)
+	api.rememberWrittenResumeHistory(userID, snapshotSessionID, convPath, persistedHistory, runtime)
+	if snapshotSessionID != sessionID {
+		api.rememberWrittenResumeHistory(userID, sessionID, convPath, persistedHistory, runtime)
+	}
 	// This writer merged the whole file in, so memory now holds all of it.
-	api.forgetResumeWindow(sessionID)
+	api.forgetResumeWindow(snapshotSessionID)
+	if snapshotSessionID != sessionID {
+		api.forgetResumeWindow(sessionID)
+	}
 	if err := writeChatHistoryResumeSnapshot(context.Background(), convPath, convJSON); err != nil {
 		logfWithContext(logCtx, "[CHAT_HISTORY] Failed to write resume snapshot for %s: %v", convPath, err)
 	}

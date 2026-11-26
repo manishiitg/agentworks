@@ -43,6 +43,10 @@ func (api *StreamingAPI) appendWorkflowMessagingTools(tools []llmtypes.Tool, exe
 }
 
 var agentMessageMu agentMessageMutex
+
+// agentMessageWakeSem caps concurrent waking agent-message turns so a broadcast
+// to many sleeping tabs does not launch 10+ coding CLIs simultaneously (#4309).
+var agentMessageWakeSem = make(chan struct{}, 3)
 var agentMessageWorkers sync.Map
 
 // agentMessageLane serializes deliveries into one receiving chat. It is removed once nobody holds or waits for it,
@@ -1208,7 +1212,15 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				}
 				session = dest.Session
 			} else {
-				session, deliveryErr = api.deliverAgentMessage(deliveryCtx, conv, msg)
+				// Cap concurrent waking agent-message turns so a broadcast to many
+				// sleeping tabs does not launch 10+ coding CLIs simultaneously (#4309).
+				select {
+				case agentMessageWakeSem <- struct{}{}:
+					session, deliveryErr = api.deliverAgentMessage(deliveryCtx, conv, msg)
+					<-agentMessageWakeSem
+				case <-deliveryCtx.Done():
+					deliveryErr = agentDeliveryTransient(deliveryCtx.Err())
+				}
 			}
 			// Only count a deadline as delivered when the receiving turn actually started;
 			// a timeout during pre-turn preparation or routing falls through to retry/undeliverable.
