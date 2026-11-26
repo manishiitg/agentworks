@@ -632,6 +632,12 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 				req.Query = line + "\n\n" + req.Query
 			}
 		}
+		// The chat's reply style and summary card (chat_reply_style.go), for every coding app.
+		if tab, found := chatContextTabForSession(ctx, userID, sessionID); found {
+			if note := chatRepliesNote(tab.Identity, codingAgentTurnAttended(GetUserFromContext(ctx), req, sessionID)); note != "" {
+				req.Query = strings.TrimRight(req.Query, "\n") + "\n\n" + note
+			}
+		}
 	}
 	mark("render")
 	if err := api.agentProfiles.Initialize(ctx, profile.ID, agentprofiles.RuntimeContext{

@@ -158,6 +158,10 @@ type ProductAgentIdentity struct {
 	// AccessMode is what this chat's coding agent can reach and who approves its actions: "" (This project),
 	// auto_review or full_access (chat_access_mode.go). The person's choice per chat (#3885).
 	AccessMode string `json:"access_mode,omitempty"`
+	// ReplyStyle is how this chat's agent writes its replies: "" (Default), concise, explanatory, learning or
+	// proactive (chat_reply_style.go). NextSteps "off" turns off the summary and next-steps card; "" is on.
+	ReplyStyle string `json:"reply_style,omitempty"`
+	NextSteps  string `json:"next_steps,omitempty"`
 	// ForkedFrom is the conversation key of the agent this one was forked from (#3288), so the left menu draws it under
 	// its parent and the agent list says where it came from. Forks made before it was kept have none.
 	ForkedFrom string `json:"forked_from,omitempty"`
@@ -332,6 +336,8 @@ func (store productConversationRegistryStore) setAgentModel(ctx context.Context,
 type chatContextChange struct {
 	ClaudeTerminal *bool
 	AccessMode     *string
+	ReplyStyle     *string
+	NextSteps      *string
 	ForkedFrom     *string
 	ForkNote       *string
 }
@@ -359,6 +365,12 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 	if change.AccessMode != nil {
 		identity.AccessMode = strings.TrimSpace(*change.AccessMode)
 	}
+	if change.ReplyStyle != nil {
+		identity.ReplyStyle = strings.TrimSpace(*change.ReplyStyle)
+	}
+	if change.NextSteps != nil {
+		identity.NextSteps = strings.TrimSpace(*change.NextSteps)
+	}
 	if change.ForkedFrom != nil {
 		identity.ForkedFrom = strings.TrimSpace(*change.ForkedFrom)
 	}
@@ -372,7 +384,7 @@ func (store productConversationRegistryStore) setChatContextOptions(ctx context.
 	if err := store.writeDocument(ctx, path, document); err != nil {
 		return ProductAgentIdentity{}, err
 	}
-	log.Printf("[CHAT_CONTEXT] %s set chat %s claude_terminal=%t access_mode=%q forked_from=%s", identity.UpdatedBy, entryKey, identity.ClaudeTerminal, identity.AccessMode, identity.ForkedFrom)
+	log.Printf("[CHAT_CONTEXT] %s set chat %s claude_terminal=%t access_mode=%q reply_style=%q next_steps=%q forked_from=%s", identity.UpdatedBy, entryKey, identity.ClaudeTerminal, identity.AccessMode, identity.ReplyStyle, identity.NextSteps, identity.ForkedFrom)
 	return identity, nil
 }
 

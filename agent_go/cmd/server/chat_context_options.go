@@ -82,8 +82,10 @@ type chatContextView struct {
 	// ClaudeTerminal: on runs Claude Code as the native terminal, off as the chat view. Claude chats only.
 	ClaudeTerminal *chatContextSwitch `json:"claude_terminal,omitempty"`
 	// Access is the chat's access mode menu (chat_access_mode.go); absent for a chat no coding app runs.
-	Access     *chatAccessView `json:"access,omitempty"`
-	CanCompact bool            `json:"can_compact"`
+	Access *chatAccessView `json:"access,omitempty"`
+	// Replies is the chat's reply style and summary card (chat_reply_style.go); absent where Access is.
+	Replies    *chatRepliesView `json:"replies,omitempty"`
+	CanCompact bool             `json:"can_compact"`
 	// CanNewChat offers "New chat": this tab starts a new conversation and the current one moves to its earlier chats.
 	CanNewChat bool   `json:"can_new_chat"`
 	Hint       string `json:"idle_compaction_hint,omitempty"`
@@ -475,6 +477,7 @@ func (api *StreamingAPI) chatContextViewFor(ctx context.Context, owner string, t
 	}
 	if isCodingAgentProvider(subject.provider, subject.model) && productChatTab(tab) {
 		view.Access = chatAccessViewFor(tab.Identity.AccessMode, subject.provider, cliPersonalMac())
+		view.Replies = chatRepliesViewFor(tab.Identity)
 	}
 	if api.costLedger != nil {
 		if cost, err := api.costLedger.SessionCost(sessionID); err == nil && (cost.TotalUSD > 0 || cost.UnpricedCalls > 0) {
@@ -654,6 +657,9 @@ type chatContextRequest struct {
 	ClaudeTerminal *bool  `json:"claude_terminal,omitempty"`
 	// AccessMode: project, auto_review or full_access (chat_access_mode.go).
 	AccessMode *string `json:"access_mode,omitempty"`
+	// ReplyStyle and NextSteps: chat_reply_style.go.
+	ReplyStyle *string `json:"reply_style,omitempty"`
+	NextSteps  *bool   `json:"next_steps,omitempty"`
 	Action     string  `json:"action,omitempty"` // "compact"
 	// fromTool marks an agent tool's call (chatContextArgs): it can lower the chat's access, never raise it.
 	fromTool bool
@@ -688,6 +694,13 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 	}
 	if input.AccessMode != nil {
 		changed, err := setChatAccessMode(ctx, owner, tab, *input.AccessMode, input.fromTool)
+		if err != nil {
+			return http.StatusUnprocessableEntity, map[string]any{"error": err.Error()}
+		}
+		tab = changed
+	}
+	if input.ReplyStyle != nil || input.NextSteps != nil {
+		changed, err := setChatReplies(ctx, owner, tab, input.ReplyStyle, input.NextSteps)
 		if err != nil {
 			return http.StatusUnprocessableEntity, map[string]any{"error": err.Error()}
 		}
@@ -773,7 +786,14 @@ func chatContextArgs(args map[string]any) (chatContextRequest, error) {
 			out.AccessMode = &mode
 		}
 	}
-	for name, target := range map[string]**bool{"idle_compaction": &out.IdleCompaction, "compact_early": &out.CompactEarly, "claude_terminal": &out.ClaudeTerminal} {
+	if value, exists := args["reply_style"]; exists && value != nil {
+		style, ok := value.(string)
+		if !ok {
+			return out, fmt.Errorf("reply_style must be one of %s", strings.Join(chatReplyStyles, ", "))
+		}
+		out.ReplyStyle = &style
+	}
+	for name, target := range map[string]**bool{"idle_compaction": &out.IdleCompaction, "compact_early": &out.CompactEarly, "claude_terminal": &out.ClaudeTerminal, "next_steps": &out.NextSteps} {
 		value, exists := args[name]
 		if !exists || value == nil {
 			continue
@@ -798,7 +818,7 @@ func chatContextArgs(args map[string]any) (chatContextRequest, error) {
 }
 
 func (r chatContextRequest) changesSwitch() bool {
-	return r.IdleCompaction != nil || r.CompactEarly != nil || r.ClaudeTerminal != nil || r.AccessMode != nil
+	return r.IdleCompaction != nil || r.CompactEarly != nil || r.ClaudeTerminal != nil || r.AccessMode != nil || r.ReplyStyle != nil || r.NextSteps != nil
 }
 
 // externalChatContext answers an MCP call that changes one of the caller's chats, with the same checks as the screen.
