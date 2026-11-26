@@ -2010,15 +2010,6 @@ export const agentApi = {
     return response.data
   },
 
-  // Set enabled tools for a query/session
-  setEnabledTools: async (queryId: string, enabledTools: string[]) => {
-    const response = await api.post('/api/tools/enabled', {
-      query_id: queryId,
-      enabled_tools: enabledTools,
-    })
-    return response.data
-  },
-
   // Add a new server/tool
   addServer: async (name: string, server: MCPServerConfig) => {
     const response = await api.post('/api/tools/add', { name, server })

@@ -726,7 +726,6 @@ type StreamingAPI struct {
 	completionLoopStartedMu sync.Mutex
 
 	toolStatus    map[string]ToolStatus
-	enabledTools  map[string][]string // queryID/sessionID -> enabled tool names
 	toolStatusMux sync.RWMutex
 	mcpConfig     *mcpclient.MCPConfig
 
@@ -2120,7 +2119,6 @@ func runServer(cmd *cobra.Command, args []string) {
 		temperature:                        config.Temperature,
 		workspaceRoot:                      "./Tasks",
 		toolStatus:                         make(map[string]ToolStatus),
-		enabledTools:                       make(map[string][]string),
 		mcpConfig:                          mcpConfig,
 		serverLogs:                         make(map[string][]ServerLogEntry),
 		logger:                             createServerLogger(),
@@ -2569,7 +2567,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Tool management routes (from tools.go)
 	apiRouter.HandleFunc("/tools", api.handleGetTools).Methods("GET")
 	apiRouter.HandleFunc("/tools/detail", api.handleGetToolDetail).Methods("GET")
-	apiRouter.HandleFunc("/tools/enabled", api.handleSetEnabledTools).Methods("POST")
 	apiRouter.HandleFunc("/tools/add", requireAdmin(api.handleAddServer)).Methods("POST")
 	apiRouter.HandleFunc("/tools/edit", requireAdmin(api.handleEditServer)).Methods("POST")
 	apiRouter.HandleFunc("/tools/remove", requireAdmin(api.handleRemoveServer)).Methods("POST")

@@ -74,12 +74,6 @@ type ToolStatus struct {
 	RequiresOAuth bool `json:"requires_oauth,omitempty"`
 }
 
-// SetEnabledToolsRequest represents a request to set enabled tools
-type SetEnabledToolsRequest struct {
-	Enabled []string `json:"enabled_tools"`
-	QueryID string   `json:"query_id,omitempty"`
-}
-
 // AddServerRequest represents a request to add a server
 type AddServerRequest struct {
 	Name   string                    `json:"name"`
@@ -351,24 +345,6 @@ func (api *StreamingAPI) handleGetToolDetail(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
-}
-
-// handleSetEnabledTools handles POST requests to set enabled tools
-func (api *StreamingAPI) handleSetEnabledTools(w http.ResponseWriter, r *http.Request) {
-	var req SetEnabledToolsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-	if req.QueryID == "" {
-		http.Error(w, "Missing query_id", http.StatusBadRequest)
-		return
-	}
-	api.toolStatusMux.Lock()
-	api.enabledTools[req.QueryID] = req.Enabled
-	api.toolStatusMux.Unlock()
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok"})
 }
 
 // handleAddServer handles POST requests to add a server. It writes the base

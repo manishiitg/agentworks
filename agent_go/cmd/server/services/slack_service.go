@@ -953,6 +953,8 @@ func testAppToken(ctx context.Context, appToken string) error {
 		return fmt.Errorf("App Token invalid: must start with 'xapp-'. Go to Slack App settings → Basic Information → App-Level Tokens to get the correct token")
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://slack.com/api/apps.connections.open", nil)
 	if err != nil {
 		return fmt.Errorf("App Token test failed: %w", err)

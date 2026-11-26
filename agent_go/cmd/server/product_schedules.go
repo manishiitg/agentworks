@@ -1105,8 +1105,13 @@ func (s *ProjectActionDispatcher) Trigger(ctx context.Context, userID, jobID str
 		default:
 		}
 	}()
-	r := <-started
-	return r.sessionID, r.err
+	// The run goes on without the caller; a caller that leaves stops waiting.
+	select {
+	case r := <-started:
+		return r.sessionID, r.err
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
 }
 
 // ResetHistory clears an isolated schedule's own conversation: the next run
