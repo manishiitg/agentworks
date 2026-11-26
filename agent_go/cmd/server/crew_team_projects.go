@@ -212,12 +212,13 @@ func crewTeamProjectChangeRefusal(t crewTeam, user, member, memberRoot, action s
 		}
 		return "Only this Team's owner, or that project's owner or co-owners, can take it out of the Team."
 	}
-	// Adding: the project's main owner puts a Team they are in into the project's Users (#4087).
+	// Adding: the project's main owner or a co-owner puts a Team they are in into the project's Users (#4087; co-owners
+	// owner, 26 Nov).
 	switch {
 	case member == t.ProjectID || memberRoot == "" || !crewLivesOnServer(member):
 		return "Only a project that lives on this server can have a Team in its Users, not a Mac project."
-	case !crewProjectOwnedByCallerStrict(user, memberRoot):
-		return fmt.Sprintf("Only the project's owner adds a Team to its Users. Ask %s.", crewOwnerDisplayName(ownerOfCrewProjectID(member)))
+	case !owns:
+		return fmt.Sprintf("Only the project's owner or a co-owner adds a Team to its Users. Ask %s.", crewOwnerDisplayName(ownerOfCrewProjectID(member)))
 	case !t.On:
 		return "That Team is turned off. Its owner turns it on first."
 	case !t.member(user):

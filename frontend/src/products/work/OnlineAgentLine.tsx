@@ -10,7 +10,7 @@ type Share = 'only' | 'team' | 'chosen'
 /**
  * The header line of the person's own agent in an online project (owner, 26 Nov, #4121): where it runs, Open ↗ on its
  * server's website, and who in the Team may ask it. Sharing goes through the Team's agent rule route as for Mac agents;
- * the server lets the project's main owner change its agents (crewTeamRuleActor) and decides everything else.
+ * the server lets the person who made the agent change it (crewTeamRuleActor) and decides everything else.
  */
 export function OnlineAgentLine({ tab, name, team }: { tab: ChatTab; name: string; team: TeamTabState }) {
   const online = tab.metadata?.agentProfileOnlineProject

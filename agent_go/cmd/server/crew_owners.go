@@ -20,7 +20,7 @@ const externalCrewOwnersTool = "crew_owners"
 const crewOwnersServerOnly = "Only a project on the server has co-owners and users. People work on a Mac project with you through its Team."
 
 func externalCrewOwnersDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(externalCrewOwnersTool, "List, add or remove the co-owners and users of a project on the server. Co-owners build it like its owner and change everything: files, agents, memory, instructions, skills, settings, automations and sharing; they see every chat in it. Users work in it through chat with the setup you made: they see only their own chats (the project's dashboard opens from its own link), run on the project's model, and cannot change its instructions, skills, settings, automations or sharing, nor the extra locked_paths you name (user_files). A User can also be a whole Team: team_add puts a Team you are in (from list's team_choices) into the Users, so everyone in it works here as a User and its people's agents can ask this project's agents; team_remove takes it out. Only the project's owner adds or removes people and Teams; the owner cannot be removed. Give the person's account email or user id, or the Team's team_id.", true, false, map[string]any{
+	add(externalCrewOwnersTool, "List, add or remove the co-owners and users of a project on the server. Co-owners build it like its owner and change everything: files, agents, memory, instructions, skills, settings, automations and sharing; they see every chat in it. Users work in it through chat with the setup you made: they see only their own chats (the project's dashboard opens from its own link), run on the project's model, and cannot change its instructions, skills, settings, automations or sharing, nor the extra locked_paths you name (user_files). A User can also be a whole Team: team_add puts a Team you are in (from list's team_choices) into the Users, so everyone in it works here as a User and its people's agents can ask this project's agents; team_remove takes it out; list shows, for each Team, the project's agents it can use and who each is shared with. Only the project's owner adds or removes people; the owner or a co-owner adds or removes a Team they are in; the owner cannot be removed. Give the person's account email or user id, or the Team's team_id.", true, false, map[string]any{
 		"crew_id":      externalString("Project ID from crew action=list."),
 		"action":       map[string]any{"type": "string", "enum": []any{"list", "add", "remove", "user_add", "user_remove", "user_files", "team_add", "team_remove"}},
 		"email":        externalString("The person's account email or user id; every action except list and the team ones."),
@@ -76,7 +76,7 @@ func crewOwnersStateFor(root, ownerID, callerID string) crewOwnersState {
 	return state
 }
 
-// changeCrewTeamUsers adds a Team the owner is in to the project's Users, or removes one (#4087). The Team record keeps
+// changeCrewTeamUsers adds a Team the owner or a co-owner is in to the project's Users, or removes one (#4087). The Team record keeps
 // it (changeCrewTeamProject), with the same checks the Team panel's Remove uses.
 func (api *StreamingAPI) changeCrewTeamUsers(claims *UserClaims, root, ownerID, action, team string) (crewOwnersState, int, string, string) {
 	rec, found := crewOwnerRecordAt(root)

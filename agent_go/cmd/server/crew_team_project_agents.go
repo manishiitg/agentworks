@@ -11,16 +11,54 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// Agents of an online project in a Team (#3664). The project is a Team member under its own identity, project:<id>
-// (never its owner's account), and its agents are Team agent rows owned by that identity. The Team's people reach them
-// through the same rows, admission and delivery as a teammate's server agents; a teammate's ask runs in the agent's own
-// chat like another person's turn, in the project's main owner's namespace (the 15 Oct rule: a server project's agents
-// stay its main owner's). No co-owner grant is involved.
+// Agents of an online project in a Team (#3664). The project is a Team member under its own identity, project:<id>,
+// used when the project itself asks the Team. Its agents are Team agent rows owned by project:<id>/<maker>: the person
+// who made the agent there (its main owner, a co-owner, or a Team member working in it as a User; owner, 26 Nov). The
+// agent's chat runs as its maker in the project, starts Only me and is shared by its maker. The Team's people reach it
+// through the same rows, admission and delivery as a teammate's server agents.
 
-// crewTeamMemberProjectID is the online project of a project member identity.
+// crewTeamMemberProjectID is the online project of a project identity (project:<id>) or agent owner
+// (project:<id>/<maker>).
 func crewTeamMemberProjectID(id string) (string, bool) {
-	project, ok := strings.CutPrefix(id, crewTeamProjectMemberPrefix)
+	rest, ok := strings.CutPrefix(id, crewTeamProjectMemberPrefix)
+	project, _, _ := strings.Cut(rest, "/")
 	return project, ok && project != ""
+}
+
+// crewTeamProjectMakerID is the owner of the agents a person made in an online project.
+func crewTeamProjectMakerID(project, maker string) string {
+	return crewTeamProjectMemberID(project) + "/" + maker
+}
+
+// crewTeamProjectMaker is who made an online project's agent row, or "" for the project's own identity.
+func crewTeamProjectMaker(id string) string {
+	rest, ok := strings.CutPrefix(id, crewTeamProjectMemberPrefix)
+	if !ok {
+		return ""
+	}
+	_, maker, _ := strings.Cut(rest, "/")
+	return maker
+}
+
+// crewTeamProjectAgentPerson names an online project's agent row by its project and maker: "Project: SDE · Priya".
+func crewTeamProjectAgentPerson(projectName, id string) string {
+	if maker := crewTeamProjectMaker(id); maker != "" {
+		return projectName + " · " + crewPersonShortName(maker)
+	}
+	return projectName
+}
+
+// crewTeamProjectMakerAllowed: person may make and keep agents of project in t's Team: the project's main owner, a
+// co-owner, or one of the Team's people (a User of the project through the Team).
+func crewTeamProjectMakerAllowed(t crewTeam, project, person string) bool {
+	if person == "" || !t.On || !t.hasProject(project) {
+		return false
+	}
+	if t.member(person) || ownerOfCrewProjectID(project) == person {
+		return true
+	}
+	root := crewProjectRootByID(project)
+	return root != "" && containsID(crewCoOwnersOnly(root), person)
 }
 
 // memberOrProject: id is the Team's owner, a joined person, or an online project in it while the Team is on.
@@ -32,21 +70,26 @@ func (t crewTeam) memberOrProject(id string) bool {
 }
 
 // crewTeamMemberCurrent is the one member check for a Team agent row's owner (person or project): a member now, with an
-// active account, or a joined online project that still lives on this server with an active main owner.
+// active account, or a joined online project that still lives on this server with an active main owner (and, for an
+// agent row, a maker still allowed there with an active account).
 func crewTeamMemberCurrent(t crewTeam, id string) bool {
 	if !t.memberOrProject(id) {
 		return false
 	}
 	if project, ok := crewTeamMemberProjectID(id); ok {
 		owner := ownerOfCrewProjectID(project)
-		return owner != "" && crewLivesOnServer(project) && crewTeamAccountActive(owner)
+		if owner == "" || !crewLivesOnServer(project) || !crewTeamAccountActive(owner) {
+			return false
+		}
+		maker := crewTeamProjectMaker(id)
+		return maker == "" || crewTeamProjectMakerAllowed(t, project, maker) && crewTeamAccountActive(maker)
 	}
 	return crewTeamAccountActive(id)
 }
 
-// crewTeamRuleActor is who changes one agent's Team settings: the caller for their own agents, or the online project
-// (project:<id>) for that project's agents when the caller is its main owner, since the Team keeps a project's agents
-// under the project. key is the agent's ID, chat key or name; the caller's own agent wins a name clash.
+// crewTeamRuleActor is who changes one agent's Team settings: the caller for their own agents, or the caller's maker
+// identity in an online project (project:<id>/<caller>) for the agents they made there. key is the agent's ID, chat key
+// or name; the caller's own agent wins a name clash.
 func crewTeamRuleActor(t crewTeam, caller, key string) string {
 	key = strings.TrimSpace(key)
 	if key == "" {
@@ -57,8 +100,7 @@ func crewTeamRuleActor(t crewTeam, caller, key string) string {
 		if a.OwnerID == caller && strings.EqualFold(strings.TrimSpace(a.Name), key) {
 			return caller
 		}
-		project, ok := crewTeamMemberProjectID(a.OwnerID)
-		if !ok || !t.hasProject(project) || ownerOfCrewProjectID(project) != caller {
+		if !crewTeamProjectOwnedBy(t, a.OwnerID, caller) {
 			continue
 		}
 		if a.ID == key || a.ChatKey == key {
@@ -71,16 +113,17 @@ func crewTeamRuleActor(t crewTeam, caller, key string) string {
 	return firstNonEmptyTrimmed(byName, caller)
 }
 
-// crewTeamProjectOwnedBy: id is an online project in t whose main owner is viewer.
+// crewTeamProjectOwnedBy: id owns agents viewer made in an online project of t.
 func crewTeamProjectOwnedBy(t crewTeam, id, viewer string) bool {
 	project, ok := crewTeamMemberProjectID(id)
-	return ok && viewer != "" && t.hasProject(project) && ownerOfCrewProjectID(project) == viewer
+	return ok && viewer != "" && t.hasProject(project) && crewTeamProjectMaker(id) == viewer
 }
 
-// crewTeamRowRunsAs is the account a row's chat runs as: its person, or the online project's main owner.
+// crewTeamRowRunsAs is the account a row's chat runs as: its person, its maker in an online project, or (for the
+// project's own identity) the project's main owner.
 func crewTeamRowRunsAs(owner string) string {
 	if project, ok := crewTeamMemberProjectID(owner); ok {
-		return ownerOfCrewProjectID(project)
+		return firstNonEmptyTrimmed(crewTeamProjectMaker(owner), ownerOfCrewProjectID(project))
 	}
 	return owner
 }
@@ -127,40 +170,58 @@ func crewTeamOfAgent(project, id string) (crewTeam, bool) {
 		}
 	}
 	for _, t := range crewTeamsJoinedBy(project) {
-		if a, ok := t.Agents[id]; ok && a.OwnerID == crewTeamProjectMemberID(project) {
+		if a, ok := t.Agents[id]; ok && crewTeamProjectMaker(a.OwnerID) != "" && crewTeamRowProject(t, a.OwnerID) == project {
 			return t, true
 		}
 	}
 	return crewTeam{}, false
 }
 
-// crewTeamProjectPeople are the online projects of a Team as members in the Team's agent list: their Main and named
-// agents (owner, 24 Nov: Main plus named tabs by default), on the server and always available.
+// crewTeamProjectPeople are the online projects of a Team in the Team's agent list, one entry per person who made agents
+// there: the main owner's Main and named agents, and each co-owner's and Team person's named agents (owner, 26 Nov). The
+// main owner's entry is always there so the project shows even before anyone makes an agent.
 func crewTeamProjectPeople(ctx context.Context, t crewTeam, caller string) []crewTeamAgentsPerson {
 	out := []crewTeamAgentsPerson{}
 	if !t.On {
 		return out
 	}
 	for _, p := range t.withProjectNames().Projects {
-		member := crewTeamProjectMemberID(p.ProjectID)
-		if !crewTeamMemberCurrent(t, member) {
+		if !crewTeamMemberCurrent(t, crewTeamProjectMemberID(p.ProjectID)) {
 			continue
 		}
-		out = append(out, crewTeamAgentsPerson{UserID: member, Name: "Project: " + firstNonEmptyTrimmed(p.Name, "Project"), Active: true, ActiveLabel: "On the server", Agents: crewTeamProjectAgents(ctx, t, p.ProjectID)})
+		main := ownerOfCrewProjectID(p.ProjectID)
+		makers := []string{main}
+		if root := crewProjectRootByID(p.ProjectID); root != "" {
+			makers = append(makers, crewCoOwnersOnly(root)...)
+		}
+		makers = append(append(makers, t.OwnerID), crewTeamJoinedPeople(t)...)
+		seen := map[string]bool{}
+		for _, maker := range makers {
+			id := crewTeamProjectMakerID(p.ProjectID, maker)
+			if maker == "" || seen[maker] || !crewTeamMemberCurrent(t, id) {
+				continue
+			}
+			seen[maker] = true
+			agents := crewTeamProjectAgents(ctx, t, p.ProjectID, maker)
+			if maker != main && len(agents) == 0 {
+				continue
+			}
+			out = append(out, crewTeamAgentsPerson{UserID: id, Name: "Project: " + firstNonEmptyTrimmed(p.Name, "Project"), Active: true, ActiveLabel: "On the server", Agents: agents})
+		}
 	}
 	return out
 }
 
-// crewTeamProjectAgents are the online project's Main and its named agents (the main owner's tabs there, as its agent
-// list shows them). Unnamed side chats, function agents and hidden tabs are not agents of the project.
-func crewTeamProjectAgents(ctx context.Context, t crewTeam, project string) []crewTeamAgent {
+// crewTeamProjectAgents are the named agents maker has in the online project (their tabs there, as its agent list shows
+// them), plus Main for the project's main owner. Unnamed side chats, function agents and hidden tabs are not agents.
+func crewTeamProjectAgents(ctx context.Context, t crewTeam, project, maker string) []crewTeamAgent {
 	out := []crewTeamAgent{}
 	owner := ownerOfCrewProjectID(project)
-	if owner == "" {
+	if owner == "" || maker == "" {
 		return out
 	}
 	store := defaultProductConversationRegistryStore()
-	path := productConversationRegistryPath(owner)
+	path := productConversationRegistryPath(maker)
 	mu := productConversationRegistryMutex(path)
 	mu.Lock()
 	doc, err := store.loadDocument(ctx, path)
@@ -168,7 +229,7 @@ func crewTeamProjectAgents(ctx context.Context, t crewTeam, project string) []cr
 	if err != nil {
 		return out
 	}
-	member := crewTeamProjectMemberID(project)
+	member := crewTeamProjectMakerID(project, maker)
 	mainKey := crewOwnerMainChatKey(project)
 	pending := map[string]time.Time{}
 	for _, request := range virtualtools.GetHumanFeedbackStore().ListPending(time.Now()) {
@@ -191,6 +252,9 @@ func crewTeamProjectAgents(ctx context.Context, t crewTeam, project string) []cr
 		identity := doc.Agents[entryKey]
 		name := strings.TrimSpace(identity.Name)
 		if record.ConversationKey == mainKey {
+			if maker != owner {
+				continue // a co-owner's or User's own Main chat is not one of the project's agents
+			}
 			name, tab = defaultAgentName(identity.Name, identity.GeneratedName), macMainTab
 		} else if name == "" || identity.GeneratedName || strings.EqualFold(name, "Main") {
 			continue // an unnamed chat is not one of the project's agents
@@ -201,7 +265,7 @@ func crewTeamProjectAgents(ctx context.Context, t crewTeam, project string) []cr
 		}
 		since, waiting := pending[record.SessionID]
 		if waiting {
-			activity, label = "waiting", crewTeamWaitingLabel("its project", false)
+			activity, label = "waiting", crewTeamWaitingLabel("its maker", false)
 		}
 		onlyMe := false // a new agent in an online project starts as Only me; its maker shares it (owner, 26 Nov)
 		out = append(out, crewTeamAgent{initialInTeam: &onlyMe, Tab: tab, Name: name, Purpose: identity.Purpose, Examples: identity.Examples, Place: "server", ChatKey: record.ConversationKey, sessionID: record.SessionID, lastWorkedAt: crewServerChatLastWorkedAt(record.SessionID), InTeam: t.agentInTeam(member, record.ConversationKey), Activity: activity, waitingSince: since, StatusLabel: label, PlaceLabel: crewServerAgentPlaceLabel})

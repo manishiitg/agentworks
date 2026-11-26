@@ -69,6 +69,8 @@ type crewTeamTabAgent struct {
 	OwnerID   string `json:"owner_id"`
 	OwnerName string `json:"owner_name"`
 	Mine      bool   `json:"mine"`
+	// OnlineProject is the online project the agent works in, when it is one of an online project's agents.
+	OnlineProject string `json:"online_project,omitempty"`
 	// Place is where it runs ("mac" or "server"); StatusLabel is its availability ("Mac off"), "" when it can answer.
 	Place       string `json:"place"`
 	StatusLabel string `json:"status_label,omitempty"`
@@ -196,8 +198,9 @@ type crewTeamTabOnlineProject struct {
 	ProjectID string `json:"project_id"`
 	Name      string `json:"name"`
 	Line      string `json:"line"`
-	// Mine: the viewer is the project's main owner, so New agent may make an agent there (crew_team_online_agent.go).
-	Mine bool `json:"mine,omitempty"`
+	// CanMakeAgents: the viewer may make agents there from New agent (its main owner, a co-owner or one of the Team's
+	// people; crew_team_online_agent.go).
+	CanMakeAgents bool `json:"can_make_agents,omitempty"`
 }
 
 type crewTeamHelpLine struct {
@@ -385,9 +388,11 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	lap("live")
 	out.Reachable = crewTeamPanelReachFrom(ctx, t, viewer, byPerson, reachRows)
 	lap("reach")
+	listed := map[string]bool{}
 	for _, p := range byPerson {
-		if project, isProject := crewTeamMemberProjectID(p.UserID); isProject {
-			out.OnlineProjects = append(out.OnlineProjects, crewTeamTabOnlineProject{ID: p.UserID, ProjectID: project, Name: strings.TrimPrefix(p.Name, "Project: "), Line: "Online 24/7 on the server", Mine: ownerOfCrewProjectID(project) == viewer})
+		if project, isProject := crewTeamMemberProjectID(p.UserID); isProject && !listed[project] {
+			listed[project] = true
+			out.OnlineProjects = append(out.OnlineProjects, crewTeamTabOnlineProject{ID: crewTeamProjectMemberID(project), ProjectID: project, Name: strings.TrimPrefix(p.Name, "Project: "), Line: "Online 24/7 on the server", CanMakeAgents: crewTeamProjectMakerAllowed(t, project, viewer)})
 		}
 	}
 	seen := map[string]crewTeamAgentsPerson{}
@@ -457,6 +462,9 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			}
 			row := crewTeamTabAgent{userAvatarFields: avatarFieldsFor(p.UserID, t.ProjectID), ID: a.ID, Kind: t.Agents[a.ID].Kind, Key: a.ID, WatchKey: a.ChatKey, Name: a.Name, Detail: strings.Join(detail, " · "), InTeam: a.InTeam,
 				OwnerID: p.UserID, OwnerName: p.Name, Mine: mine, Place: a.Place, StatusLabel: a.StatusLabel, PlaceLabel: a.PlaceLabel, PlaceTone: a.PlaceTone, Activity: a.Activity, Tab: a.Tab}
+			if project, isProject := crewTeamMemberProjectID(p.UserID); isProject {
+				row.OnlineProject, row.OwnerName = project, crewTeamProjectAgentPerson(p.Name, p.UserID)
+			}
 			if mine && !a.InTeam {
 				row.NotSharedLine = crewTeamNotSharedLine(a.Place == "mac")
 			}

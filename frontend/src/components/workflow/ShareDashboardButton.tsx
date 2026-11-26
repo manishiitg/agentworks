@@ -10,6 +10,7 @@ import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIden
 import { OnlineOnlyNote } from '../../products/work/useMacCrew'
 import { WorkspaceContextRow as Row } from '../workspace/WorkspaceContextCard'
 import { PublicLinkControl, type PublicLink } from './PublicLinkControl'
+import { ProjectTeamAgents, type ProjectTeamAgent } from './ProjectTeamAgents'
 
 type Person = { id: string; email?: string; username?: string }
 /** One account from GET /api/users/directory. */
@@ -25,7 +26,7 @@ type ShareState = {
  * locked paths besides always_locked. */
 type ProjectUser = Person & { locked_paths?: string[] }
 /** A Team in the project's Users (#4087): everyone in it works here as a User. */
-type ProjectTeam = { team_id: string; name: string; owner: string; people: number; can_remove: boolean }
+type ProjectTeam = { team_id: string; name: string; owner: string; people: number; can_remove: boolean; agents?: ProjectTeamAgent[]; members?: { id: string; name: string }[] }
 type OwnersState = { owner?: Person; co_owners: Person[]; can_manage: boolean; users?: ProjectUser[]; always_locked?: string[]; teams?: ProjectTeam[]; team_choices?: ProjectTeam[] }
 const who = (person: Person) => person.email || person.username || person.id
 const audience = (state: ShareState) => state.mode === 'everyone' ? 'Everyone' : state.mode === 'people' ? 'Chosen people' : state.has_owners ? 'Only owners' : 'Only me'
@@ -235,14 +236,16 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
         </li>)}
       </ul>}
       {!!owners.teams?.length && <ul aria-label="Teams" className="space-y-2">
-        {owners.teams.map(team => <li key={team.team_id} className="flex min-w-0 items-center gap-2">
+        {owners.teams.map(team => <li key={team.team_id} className="space-y-1.5"><div className="flex min-w-0 items-center gap-2">
           <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><Users className="h-3.5 w-3.5" /></span>
           <span className="min-w-0 flex-1"><span className="block truncate">{team.name} <span className="text-xs text-muted-foreground">Team</span></span><span className="block truncate text-xs text-muted-foreground">{team.owner}'s Team · everyone in it · {team.people} {team.people === 1 ? 'person' : 'people'}</span></span>
           {team.can_remove && <button type="button" aria-label={`Remove ${team.name}`} disabled={busy} onClick={() => void run(() => changeUsers('team_remove', team.team_id))} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>}
+        </div>
+        <ProjectTeamAgents teamId={team.team_id} agents={team.agents || []} members={team.members || []} busy={busy} run={run} changed={() => setAttempt(n => n + 1)} />
         </li>)}
       </ul>}
       {owners.can_manage && personPicker(taken, value => { void run(() => changeUsers('user_add', value)) }, 'Add a user')}
-      {owners.can_manage && !!owners.team_choices?.length && <select aria-label="Add a Team" value="" disabled={busy} onChange={event => { const id = event.target.value; if (id) void run(() => changeUsers('team_add', id)) }}
+      {!!owners.team_choices?.length && <select aria-label="Add a Team" value="" disabled={busy} onChange={event => { const id = event.target.value; if (id) void run(() => changeUsers('team_add', id)) }}
         className="h-9 w-full rounded-md border border-dashed border-border bg-background px-2 text-sm text-primary">
         <option value="">+ Add a Team you're in</option>
         {owners.team_choices.map(team => <option key={team.team_id} value={team.team_id}>{team.name} · {team.owner}'s Team · {team.people} {team.people === 1 ? 'person' : 'people'}</option>)}

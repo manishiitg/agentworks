@@ -42,7 +42,7 @@ func TestCrewTeamOnlineProjectAccess(t *testing.T) {
 	}{
 		{"the project's owner adds a Team they are in", "bob", "srv", "add", true, true},
 		{"the Team's owner adds it to a project they own", "owner", "own", "add", true, true},
-		{"a co-owner of the project cannot add a Team", "owner", "srv", "add", true, false},
+		{"a co-owner of the project adds a Team they are in (owner, 26 Nov)", "owner", "srv", "add", true, true},
 		{"a Team member cannot add it to someone else's project", "ann", "srv", "add", true, false},
 		{"a Mac project's online copy cannot have a Team in its Users", "owner", "mac", "add", true, false},
 		{"not while the Team is off", "bob", "srv", "add", false, false},
@@ -184,8 +184,9 @@ func TestCrewTeamOnlineProjectAgentReach(t *testing.T) {
 	}
 	macCrewOnlineCopy(t, "mac")
 	id := crewTeamAgentIDPrefix + "00000000-0000-4000-8000-000000000001"
-	member := crewTeamProjectMemberID("srv")
-	row := crewTeamRegisteredAgent{ID: id, OwnerID: member, Tab: "t1", ChatKey: "srv" + codeChatSideMarker + "t1", Name: "Builder", Place: "server", InTeam: true, Rule: crewTeamDefaultRule()}
+	member := crewTeamProjectMemberID("srv")     // the project itself, when it asks the Team
+	made := crewTeamProjectMakerID("srv", "bob") // the agent bob (its main owner) made there
+	row := crewTeamRegisteredAgent{ID: id, OwnerID: made, Tab: "t1", ChatKey: "srv" + codeChatSideMarker + "t1", Name: "Builder", Place: "server", InTeam: true, Rule: crewTeamDefaultRule()}
 	team := crewTeam{ProjectID: "mac", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "ann"}}, Projects: []crewTeamProject{{ProjectID: "srv"}}, Agents: map[string]crewTeamRegisteredAgent{id: row}}
 	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
@@ -211,8 +212,18 @@ func TestCrewTeamOnlineProjectAgentReach(t *testing.T) {
 			t.Errorf("%s: reach=%v, want %v", c.name, got, c.want)
 		}
 	}
-	if got := crewTeamRowRunsAs(member); got != "bob" {
-		t.Fatalf("the project's agent runs as %q, want its main owner", got)
+	// A row saved under the bare project identity (before agents belonged to their makers) reaches no one.
+	if bare := (crewTeamRegisteredAgent{ID: id, OwnerID: member, InTeam: true, Rule: crewTeamDefaultRule()}); crewTeamReachRow(team, "ann", bare) {
+		t.Fatal("an online project agent without a maker was reachable")
+	}
+	if got := crewTeamRowRunsAs(made); got != "bob" {
+		t.Fatalf("the project's agent runs as %q, want the person who made it", got)
+	}
+	// Anyone who works in the project makes agents there (owner, 26 Nov): a Team member's agent runs as them, only they
+	// change its sharing, and someone outside the Team and the project makes none.
+	annMade := crewTeamProjectMakerID("srv", "ann")
+	if got := crewTeamRowRunsAs(annMade); got != "ann" || !crewTeamProjectMakerAllowed(team, "srv", "ann") || crewTeamProjectMakerAllowed(team, "srv", "carl") {
+		t.Fatalf("a Team member's agent in the project runs as %q, or the makers allowed are wrong", got)
 	}
 	if found, ok := crewTeamOfAgent("srv", id); !ok || found.ProjectID != "mac" {
 		t.Fatal("the online project's chat did not find the Team that registered its agent")
@@ -223,15 +234,15 @@ func TestCrewTeamOnlineProjectAgentReach(t *testing.T) {
 	if address := crewTeamAgentAddress("srv", id); address != "agent:bob/"+id {
 		t.Fatalf("address %q is not under the account the chat runs as", address)
 	}
-	// Online agents are shared on purpose (owner, 26 Nov): only the project's main owner changes an online project
-	// agent's Team sharing, and an agent the Team has not registered yet is Only me.
-	if got := crewTeamRuleActor(team, "bob", id); got != member {
-		t.Fatalf("the project's owner changes its agent as %q, want the project", got)
+	// Online agents are shared on purpose (owner, 26 Nov): only the person who made an online project's agent changes
+	// its Team sharing, and an agent the Team has not registered yet is Only me.
+	if got := crewTeamRuleActor(team, "bob", id); got != made {
+		t.Fatalf("the agent's maker changes it as %q, want their maker identity in the project", got)
 	}
 	if got := crewTeamRuleActor(team, "ann", id); got != "ann" {
 		t.Fatalf("a teammate who does not own the project acted for it: %q", got)
 	}
-	if team.agentInTeam(member, "srv"+codeChatSideMarker+"unregistered") {
+	if team.agentInTeam(made, "srv"+codeChatSideMarker+"unregistered") {
 		t.Fatal("an online project's unregistered agent was shared with the Team by default")
 	}
 	// #4087: a Team member's own ask to an agent of an online project the Team uses is their User turn there (not Run);
@@ -252,8 +263,8 @@ func TestCrewTeamOnlineProjectAgentReach(t *testing.T) {
 			t.Errorf("%s: User turn=%v, want %v", c.name, got, c.want)
 		}
 	}
-	// The run decision deliverPublishedAgentMessage makes (review of #3744): the receiving chat runs as the project's
-	// main owner, and a teammate's ask is another person's turn there.
+	// The run decision deliverPublishedAgentMessage makes (review of #3744): the receiving chat runs as the agent's
+	// maker, and a teammate's ask is another person's turn there.
 	role := agentMessageEndpoint{UserID: "bob", ID: "srv", TeamAgentID: id}
 	if publishedAgentRunMode(role, role, agentMessageEndpoint{UserID: "ann"}) {
 		t.Fatal("a teammate's ask to the project's agent was delivered with Run rights, want their User turn")
