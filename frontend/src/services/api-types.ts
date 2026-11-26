@@ -261,6 +261,8 @@ export interface ChatContextView {
   claude_terminal?: { on: boolean }
   /** The chat's access mode menu: what its coding agent can reach and who approves its actions (#3885). */
   access?: ChatAccessView
+  /** How this chat's agent writes replies and whether it offers the summary and next-steps card (every coding app). */
+  replies?: ChatRepliesView
   /** This chat's own Git branch folders, when its agent started any. */
   can_compact: boolean
   /** "New chat": this tab starts a new conversation; the current one moves to its earlier chats. */
@@ -282,6 +284,14 @@ export interface ChatAccessView {
   options: { mode: ChatAccessMode; available: boolean; why?: string }[]
   /** On a server every mode stays inside the chat's folders. */
   on_server?: boolean
+}
+
+export type ChatReplyStyle = 'default' | 'concise' | 'explanatory' | 'learning' | 'proactive'
+
+export interface ChatRepliesView {
+  style: ChatReplyStyle
+  styles: ChatReplyStyle[]
+  next_steps: boolean
 }
 
 /** One estimated slice of what fills a chat's context (about four characters to a token). */

@@ -93,3 +93,14 @@ it('gives the whole Mac from the menu', async () => {
   await act(async () => { (document.querySelector('[data-testid="chat-mode-whole-mac"]') as HTMLElement).click() })
   expect(workFolderApi.addWorkFolder).toHaveBeenCalledWith({ path: '/Users/me', alias: 'mac', access: 'read_write' })
 })
+
+// Owner, 26 Nov: reply style and the summary card, per chat, for every coding app.
+it('turns the summary and next-steps card off from the menu', async () => {
+  view = { ...codexView('project'), replies: { style: 'default', styles: ['default', 'concise', 'explanatory', 'learning', 'proactive'], next_steps: true } }
+  await openMenu(<ChatModeMenu sessionId="s1" onPlanToggle={() => {}} />)
+  expect(document.querySelector('[data-testid="chat-reply-style"]')?.textContent).toContain('Default')
+  const card = document.querySelector('[data-testid="chat-next-steps"]') as HTMLElement
+  expect(card.getAttribute('aria-checked')).toBe('true')
+  await act(async () => { card.click() })
+  expect(changeChatContext).toHaveBeenCalledWith('s1', { next_steps: false })
+})

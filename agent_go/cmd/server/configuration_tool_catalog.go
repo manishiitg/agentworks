@@ -47,7 +47,7 @@ func configurationExternalMembers(catalog []externalTool) ([]externalTool, error
 				member.InputSchema["required"] = []any{"crew_id"}
 				if set {
 					member.Name, member.Description, member.mutates = "set_tab_model", "Change one of your project chat models using its existing tab ownership and account checks. An empty engine uses the project default. idle_compaction changes that chat's Auto-compact when idle and claude_terminal a Claude chat's native terminal or chat view; without engine only they change.", true
-					keep = append(keep, "engine", "model_id", "connection_id", "reasoning_effort", "idle_compaction", "compact_early", "claude_terminal", "access_mode")
+					keep = append(keep, "engine", "model_id", "connection_id", "reasoning_effort", "idle_compaction", "compact_early", "claude_terminal", "access_mode", "reply_style", "next_steps")
 					member.InputSchema["required"] = []any{"crew_id", "chat_id"}
 					// The app's existing reset sends an empty engine.
 					engine, ok := props["engine"].(map[string]any)

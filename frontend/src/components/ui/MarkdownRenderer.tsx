@@ -1,4 +1,5 @@
 import { openWorkspaceFile } from '../../utils/openWorkspaceFile'
+import { stripNextSteps } from '../../utils/nextSteps'
 import { PlanLine } from '../chat/PlanModeControls'
 import { ChatImage, ChatVideo } from './ChatImage'
 import { ConversationImageRoot } from './ConversationImageRoot'
@@ -827,7 +828,8 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
 
   const processedContent = React.useMemo(() => {
     if (!content) return ""
-    let processed = normalizeMarkdownContent(content)
+    // The summary and next-steps block shows as a card above the message box, never as text (nextSteps.ts).
+    let processed = normalizeMarkdownContent(stripNextSteps(content))
 
     // 2. Auto-link workspace paths (skip when disablePathLinking is true)
     if (disablePathLinking || scopedChatFiles) return processed

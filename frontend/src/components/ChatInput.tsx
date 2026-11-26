@@ -4,6 +4,7 @@ import { LoadingIndicator } from './ui/LoadingIndicator'
 import { contextAttachmentRemoval } from '../utils/chatContextAttachment'
 import { applyNextPromptKey } from '../utils/nextPrompt'
 import { useNextPrompt } from './chat/useNextPrompt'
+import { NextStepsCard, useNextSteps } from './chat/NextStepsCard'
 import { TerminalResumeNotice, useChatTerminalOut } from './chat/TerminalResume'
 import { supportsNativeGoal } from '../utils/nativeGoalCapability'
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
@@ -2189,7 +2190,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     void onSubmit(PLAN_START_MESSAGE, { sourceTabId: activeTabId, deliveryMode: 'steer', submissionId: randomUUID() })
   }, [activeTabId, setTabConfig, onSubmit])
 
-  const nextPrompt = useNextPrompt(tabSessionId, !isTurnInFlight && !inputText.length && !requestedSkillId && !showNativeSkillPicker && !isViewOnly && !pendingNativeChoice && !micActive && !isUploadingFiles && !chatFileContext.length && !pendingComposerAttachments.length && !showCommandDialog && !showFileDialog && !showCrewReferences && !showSkillPopup && !showServerPopup)
+  const composerIdle = !isTurnInFlight && !inputText.length && !requestedSkillId && !showNativeSkillPicker && !isViewOnly && !pendingNativeChoice && !micActive && !isUploadingFiles && !chatFileContext.length && !pendingComposerAttachments.length && !showCommandDialog && !showFileDialog && !showCrewReferences && !showSkillPopup && !showServerPopup
+  // The summary and next-steps card replaces the grey suggestion while it shows, as in Claude Desktop.
+  const nextSteps = useNextSteps(tabSessionId, composerIdle)
+  const nextPrompt = useNextPrompt(tabSessionId, composerIdle && !nextSteps.steps)
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229 || composingRef.current) { e.stopPropagation(); return }
@@ -2212,6 +2216,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       e.preventDefault()
       e.stopPropagation()
       togglePlanMode()
+      return
+    }
+
+    // Cmd+Enter (Ctrl+Enter) in an empty box sends the card's first answer.
+    if (nextSteps.steps && !latestInputTextRef.current && e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+      e.preventDefault()
+      e.stopPropagation()
+      const first = nextSteps.steps.options[0]
+      nextSteps.dismiss()
+      void routeSubmit(first)
       return
     }
 
@@ -2293,7 +2307,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         textarea.selectionStart = textarea.selectionEnd = start + 1
       }, 0)
     }
-  }, [nextPrompt, showFileDialog, showCommandDialog, showCrewReferences, showSkillPopup, showServerPopup, isStreaming, isTurnInFlight, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers, chatFileContext, uploadingFiles, activeTabId, requestedSkillId, nativePlanSupported, togglePlanMode])
+  }, [nextPrompt, nextSteps, showFileDialog, showCommandDialog, showCrewReferences, showSkillPopup, showServerPopup, isStreaming, isTurnInFlight, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers, chatFileContext, uploadingFiles, activeTabId, requestedSkillId, nativePlanSupported, togglePlanMode])
 
   // A message the app sends for the person in this chat (the terminal's starter message), through the same send path.
   useEffect(() => {
@@ -3009,6 +3023,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           padding small so the last message and the composer read as one column. */}
       <ChatComposerArea product={isProductSurface} className={inputPadX}>
         <ChatComposerForm product={isProductSurface} onSubmit={handleSubmit} aboveCard={<>
+          {nextSteps.steps && <NextStepsCard steps={nextSteps.steps} onDismiss={nextSteps.dismiss} onPick={text => { nextSteps.dismiss(); void routeSubmit(text) }} />}
           <div ref={setMicBannerHost} className="empty:hidden" />
           {onlineAgentTab && <p role="note" data-testid="online-agent-files-note" className="mx-3 my-1 text-xs text-muted-foreground">{ONLINE_AGENT_FILES_LINE}</p>}
           {requestedSkillId && <div className="mx-3 my-1 flex items-center gap-2 text-xs">

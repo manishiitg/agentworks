@@ -5,7 +5,7 @@ import * as Menu from '@radix-ui/react-dropdown-menu'
 import { Check, Info, Layers, Plus } from 'lucide-react'
 import { requestNewChat } from '../../utils/newChatRequest'
 import { agentApi } from '../../services/api'
-import type { ChatAccessMode, ChatContextView } from '../../services/api-types'
+import type { ChatAccessMode, ChatContextView, ChatReplyStyle } from '../../services/api-types'
 import { useChatStore } from '../../stores/useChatStore'
 import { formatTokens } from '../../utils/formatTokens'
 import { ContextMeter } from '../../components/chat/ContextMeter'
@@ -68,7 +68,7 @@ export const chatSendMessageEvent = 'agentworks:chat-send-message'
 /** Sent by the chip in the chat box to open that chat's model menu. */
 export const openChatContextMenuEvent = 'agentworks:open-chat-context-menu'
 
-export type ChatContextChange = { idle_compaction?: boolean; compact_early?: boolean; claude_terminal?: boolean; access_mode?: ChatAccessMode; action?: 'compact' }
+export type ChatContextChange = { idle_compaction?: boolean; compact_early?: boolean; claude_terminal?: boolean; access_mode?: ChatAccessMode; reply_style?: ChatReplyStyle; next_steps?: boolean; action?: 'compact' }
 
 /**
  * Sends one change to the server and shows its answer everywhere: the menu, the chip and the terminal icon

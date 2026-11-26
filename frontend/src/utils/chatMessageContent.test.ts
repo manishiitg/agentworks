@@ -44,3 +44,8 @@ it('keeps a first-turn fork, copy or helper note out of the person\'s message', 
   expect(getDisplaySafeUserMessageContent(unclosed + '\n\ncan you create a skill')).toBe('can you create a skill')
   expect(getDisplaySafeUserMessageContent('[This chat is my note] but\n\nnot a first-turn note')).toBe('[This chat is my note] but\n\nnot a first-turn note')
 })
+
+// Owner, 26 Nov: the chat's reply style and card note is for the agent, never shown as the person's words.
+it('hides the chat settings note from the person message', () => {
+  expect(getDisplaySafeUserMessageContent('Which next?\n\n⚙️ Chat settings: Reply concisely: lead with the result.')).toBe('Which next?')
+})

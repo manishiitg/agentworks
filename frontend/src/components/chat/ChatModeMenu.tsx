@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { Check, ChevronDown, ListChecks } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, ListChecks } from 'lucide-react'
 import { useChatContextView } from '../../products/work/useChatContextView'
 import { changeChatContext, menuLabelClass, menuRowClass } from '../../products/work/ChatContextItems'
 import api, { workFolderApi } from '../../services/api'
-import type { ChatAccessMode, WorkFolderGrant } from '../../services/api-types'
+import type { ChatAccessMode, ChatReplyStyle, WorkFolderGrant } from '../../services/api-types'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 
 // The chat's mode beside the model (#3885): how this chat works (Auto, Auto-review, Plan). What it can reach is the
@@ -18,6 +18,15 @@ const ROWS: Row[] = [
   { id: 'auto_review', label: 'Auto-review', chip: 'Auto-review', detail: 'The coding app’s own reviewer approves each action and refuses risky ones.' },
   { id: 'plan', label: 'Plan', chip: 'Plan', detail: 'Proposes a plan and changes nothing until you approve it.' },
 ]
+
+// Reply style (owner, 26 Nov, like Claude Desktop's Output style), for every coding app.
+const STYLES: Record<ChatReplyStyle, { label: string; detail: string }> = {
+  default: { label: 'Default', detail: 'The coding app’s usual replies.' },
+  concise: { label: 'Concise', detail: 'Short replies that lead with the result.' },
+  explanatory: { label: 'Explanatory', detail: 'Explains its choices and the code as it goes.' },
+  learning: { label: 'Learning', detail: 'Teaches as it goes and leaves small parts for you to write.' },
+  proactive: { label: 'Proactive', detail: 'Names the next steps and does the safe, related ones.' },
+}
 
 const chipClass = 'inline-flex items-center gap-1 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted'
 
@@ -72,6 +81,7 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
       </span>
     )
   }
+  const replies = view?.replies
   if (!access && !plan) return null
 
   const pick = async (id: string) => {
@@ -83,6 +93,11 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
     if (!sessionId || id === mode) return
     setSaving(true)
     try { await changeChatContext(sessionId, { access_mode: id as ChatAccessMode }) } finally { setSaving(false) }
+  }
+  const saveReplies = async (change: { reply_style?: ChatReplyStyle; next_steps?: boolean }) => {
+    if (!sessionId) return
+    setSaving(true)
+    try { await changeChatContext(sessionId, change) } finally { setSaving(false) }
   }
   const option = (id: Row['id']) => access?.options.find(item => item.mode === id)
   const rows = ROWS.filter(item => item.id === 'plan' ? Boolean(plan) : Boolean(access))
@@ -124,6 +139,37 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
           })}
         </Menu.RadioGroup>
         {fallback && <p className="px-2.5 pt-1 text-xs text-amber-700 dark:text-amber-400" data-testid="chat-mode-fallback">This coding app has no reviewer that works here, so this chat runs as Auto.</p>}
+        {replies && <>
+          <Menu.Separator className="my-1 h-px bg-border" />
+          <Menu.Label className={menuLabelClass}>Replies</Menu.Label>
+          <Menu.Sub>
+            <Menu.SubTrigger className={`${menuRowClass} data-[state=open]:bg-muted`} data-testid="chat-reply-style">
+              <span className="min-w-0 flex-1">Reply style</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{STYLES[replies.style]?.label || 'Default'}</span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            </Menu.SubTrigger>
+            <Menu.Portal><Menu.SubContent sideOffset={6} collisionPadding={12} data-testid="chat-reply-style-menu"
+              className="z-[101] w-[min(280px,calc(100vw-24px))] rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
+              <Menu.RadioGroup value={replies.style} onValueChange={style => void saveReplies({ reply_style: style as ChatReplyStyle })}>
+                {replies.styles.filter(style => STYLES[style]).map(style => <Menu.RadioItem key={style} value={style} disabled={saving} data-testid={`chat-reply-style-${style}`} className={`${menuRowClass} items-start`}>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium">{STYLES[style].label}</span>
+                    <span className="block text-xs text-muted-foreground">{STYLES[style].detail}</span>
+                  </span>
+                  <Menu.ItemIndicator className="pt-0.5"><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
+                </Menu.RadioItem>)}
+              </Menu.RadioGroup>
+            </Menu.SubContent></Menu.Portal>
+          </Menu.Sub>
+          <Menu.CheckboxItem className={`${menuRowClass} items-start`} checked={replies.next_steps} disabled={saving} data-testid="chat-next-steps"
+            onSelect={event => event.preventDefault()} onCheckedChange={checked => void saveReplies({ next_steps: checked === true })}>
+            <span className="min-w-0 flex-1">
+              <span className="block">Summary and next steps</span>
+              <span className="block text-xs text-muted-foreground">A short summary and one-click answers after a reply.</span>
+            </span>
+            <Menu.ItemIndicator className="pt-0.5"><Check className="h-3.5 w-3.5" aria-hidden="true" /></Menu.ItemIndicator>
+          </Menu.CheckboxItem>
+        </>}
         {access && <>
           <Menu.Separator className="my-1 h-px bg-border" />
           <Menu.Item className={`${menuRowClass} items-start`} data-testid="chat-mode-manage-folders" onSelect={openFolders}

@@ -1,6 +1,8 @@
 const TRANSPORT_CONTEXT_MARKERS = [
   '📁 Files in context:',
   'Previous workflow-builder conversation file:',
+  // The chat's reply style and summary-card note (chat_reply_style.go): for the agent, not the person.
+  '⚙️ Chat settings:',
 ]
 
 
