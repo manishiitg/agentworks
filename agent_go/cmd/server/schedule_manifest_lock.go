@@ -3,7 +3,8 @@ package server
 import (
 	"context"
 	"fmt"
-	"sync"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/keyedlock"
 )
 
 // Pausing or resuming a schedule reads the workflow's whole manifest, changes
@@ -13,13 +14,12 @@ import (
 // write won: only some schedules stayed paused (linkedin 1/4, substack 3/6,
 // upwork 3/5 on 2026-09-30). One lock per workflow makes each request read the
 // manifest the previous one wrote.
-var scheduleManifestLocks sync.Map // workspace path -> *sync.Mutex
+var scheduleManifestLocks keyedlock.Map // workspace path
 
 func lockScheduleManifest(workspacePath string) func() {
-	lock, _ := scheduleManifestLocks.LoadOrStore(workspacePath, &sync.Mutex{})
-	mu := lock.(*sync.Mutex)
-	mu.Lock()
-	return mu.Unlock
+	l := scheduleManifestLocks.Get(workspacePath)
+	l.Lock()
+	return l.Unlock
 }
 
 // setScheduleEnabled sets one schedule's enabled flag on a manifest read under

@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/keyedlock"
 )
 
 // ScriptFolder holds Watcher check scripts, in the project's .agentworks/ (#4009).
@@ -333,13 +335,14 @@ type Engine struct {
 	Store    Store
 	Run      Runner
 	Dispatch Dispatcher
-	locks    sync.Map
+	locks    keyedlock.Map
 	workers  sync.Map
 }
 
-func (e *Engine) lock(key string) *sync.Mutex {
-	v, _ := e.locks.LoadOrStore(key, &sync.Mutex{})
-	return v.(*sync.Mutex)
+// lock returns a fresh hold on key's lock (one Lock or TryLock, one Unlock);
+// a Watcher's key is forgotten once nothing holds it.
+func (e *Engine) lock(key string) *keyedlock.Locker {
+	return e.locks.Get(key)
 }
 func pending(s string) bool { return s == "seen" || s == "dispatching" }
 func Pending(l Ledger) int {

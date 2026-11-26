@@ -219,7 +219,9 @@ type SchedulerService struct {
 	workspaceIndex   map[string]string // scheduleID → workspacePath
 	workspaceIndexMu sync.RWMutex
 
-	queuedResumeMu  sync.Mutex
+	queuedResumeMu sync.Mutex
+	// projectTimersMu lets one project-timer pass run at a time, off the clock tick.
+	projectTimersMu sync.Mutex
 	queuedLaunchMu  sync.Mutex
 	queuedLaunching map[string]bool
 }
@@ -402,7 +404,16 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case t := <-ticker.C:
-			s.dispatchProjectTimers(ctx, t)
+			// Project timers and Watchers read every user's state over the
+			// workspace service; run them beside the tick so a slow pass never
+			// holds up workflow schedules. One pass at a time; a busy tick skips.
+			if s.projectTimersMu.TryLock() {
+				tick := t
+				goRecover("project timers", func() {
+					defer s.projectTimersMu.Unlock()
+					s.dispatchProjectTimers(ctx, tick)
+				})
+			}
 			gap := t.Sub(lastTick)
 			if gap > wakeThreshold {
 				scheduleLogf("[SCHEDULER] 💤 WAKE_DETECTED gap=%s now=%s prev_tick=%s",
@@ -663,11 +674,51 @@ func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
 		}
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	sched := sctx.Schedule
 	runtimeKey := scheduleRuntimeKey(sctx)
+	scheduleType := scheduleTypeOrDefault(sched.ScheduleType)
+
+	// File and database reads happen before s.mu: the schedule clock and every
+	// other schedule wait on that lock, and the workspace service can be slow.
+	if err := EnsureWorkflowScheduleExecutionTracker(context.Background(), sctx.WorkspacePath, sched, time.Now().UTC()); err != nil {
+		s.logf(sctx, "[SCHEDULER] Warning: failed to initialize execution history for %s: %v", sched.ID, err)
+	}
+	var (
+		cronSched cron.Schedule
+		lastFired time.Time
+	)
+	if sched.Enabled && scheduleType != "webhook" && scheduleType != "calendar" {
+		// Cron schedules: parse the expression and find where the clock resumes.
+		var err error
+		cronSched, err = (projectactions.When{Cron: sched.CronExpression, Timezone: scheduleTimezoneOrDefault(sched.Timezone)}).CronSchedule()
+		if err != nil {
+			return fmt.Errorf("failed to parse project clock: %w", err)
+		}
+		now := time.Now().UTC()
+		lastFired = now.Add(-30 * time.Second) // a genuinely new schedule starts with its next future occurrence
+		windowStart, hasWindow := WorkflowScheduleTrackingWindowStart(context.Background(), sctx.WorkspacePath, sched.ID)
+		if latest, ok := s.latestCronOccurrence(sctx); ok {
+			lastFired = latest
+		} else if hasWindow && windowStart.Before(now) {
+			// The scheduler-state DB can legitimately be empty after an upgrade,
+			// replacement, or first deployment of durable fire decisions. Resume
+			// from the schedule's persisted tracking window instead of treating an
+			// old schedule as newly created and silently skipping every occurrence
+			// before this process started.
+			lastFired = windowStart
+		}
+		// An old decision is only a cursor within the current enabled timing
+		// window. Re-enabling or retiming must never replay a slot from before
+		// that edit; an unchanged restart still catches up inside its window.
+		if hasWindow && windowStart.After(lastFired) {
+			lastFired = windowStart
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.scheduleFingerprints == nil {
 		s.scheduleFingerprints = make(map[string]string)
 	}
@@ -687,16 +738,11 @@ func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
 	s.workspaceIndex[runtimeKey] = sctx.WorkspacePath
 	s.workspaceIndexMu.Unlock()
 
-	if err := EnsureWorkflowScheduleExecutionTracker(context.Background(), sctx.WorkspacePath, sched, time.Now().UTC()); err != nil {
-		s.logf(sctx, "[SCHEDULER] Warning: failed to initialize execution history for %s: %v", sched.ID, err)
-	}
-
 	if !sched.Enabled {
 		s.scheduleFingerprints[runtimeKey] = scheduleConfigFingerprint(sctx)
 		return nil
 	}
 
-	scheduleType := scheduleTypeOrDefault(sched.ScheduleType)
 	if scheduleType == "webhook" {
 		s.scheduleFingerprints[runtimeKey] = scheduleConfigFingerprint(sctx)
 		s.updateRuntimeState(runtimeKey, func(state *ScheduleRuntimeState) { state.NextRunAt = nil })
@@ -730,32 +776,6 @@ func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
 			s.logf(sctx, "[SCHEDULER] Calendar schedule %s (%s) has no future items; not registering", sched.ID, sched.Name)
 		}
 	} else {
-		// Cron schedules: parse the expression and register for wall-clock eval.
-		cronSched, err := (projectactions.When{Cron: sched.CronExpression, Timezone: scheduleTimezoneOrDefault(sched.Timezone)}).CronSchedule()
-		if err != nil {
-			return fmt.Errorf("failed to parse project clock: %w", err)
-		}
-		now := time.Now().UTC()
-		lastFired := now.Add(-30 * time.Second) // a genuinely new schedule starts with its next future occurrence
-		if latest, ok := s.latestCronOccurrence(sctx); ok {
-			lastFired = latest
-		} else {
-			// The scheduler-state DB can legitimately be empty after an upgrade,
-			// replacement, or first deployment of durable fire decisions. Resume
-			// from the schedule's persisted tracking window instead of treating an
-			// old schedule as newly created and silently skipping every occurrence
-			// before this process started.
-			if windowStart, ok := WorkflowScheduleTrackingWindowStart(context.Background(), sctx.WorkspacePath, sched.ID); ok && windowStart.Before(now) {
-				lastFired = windowStart
-			}
-		}
-		// An old decision is only a cursor within the current enabled timing
-		// window. Re-enabling or retiming must never replay a slot from before
-		// that edit; an unchanged restart still catches up inside its window.
-		if windowStart, ok := WorkflowScheduleTrackingWindowStart(context.Background(), sctx.WorkspacePath, sched.ID); ok && windowStart.After(lastFired) {
-			lastFired = windowStart
-		}
-
 		s.jobs[runtimeKey] = &registeredJob{
 			sctx:      &sctxCopy,
 			cronSched: cronSched,
@@ -1682,6 +1702,23 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 		runID = freshCtx.CapacityResumeRunID
 	}
 	runtimeKey = scheduleRuntimeKey(freshCtx)
+	// The capacity checks read keys, the history database and workspace files,
+	// which can take minutes when the file service is slow. Read them before
+	// taking runtimeStatesMu: Stop, status and webhook triggers all wait on it.
+	// The results are used below, after the running checks, as before.
+	var (
+		quotaBlocked  bool
+		quotaWindow   string
+		quotaResetsAt time.Time
+		waitingRun    *ScheduleRunEntry
+		waitingFor    *stepworkflow.WorkflowCapacityWait
+	)
+	if freshCtx.CapacityResumeRunID == "" {
+		quotaWindow, quotaResetsAt, quotaBlocked = s.scheduleQuotaBlock(ctx, freshCtx, now)
+		if !quotaBlocked {
+			waitingRun, waitingFor = s.outstandingCapacityWait(ctx, freshCtx.WorkspacePath)
+		}
+	}
 	s.runtimeStatesMu.Lock()
 	state := s.getRuntimeStateLocked(runtimeKey)
 	if state.LastStatus == "running" {
@@ -1702,7 +1739,8 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 		return
 	}
 	if freshCtx.CapacityResumeRunID == "" {
-		if window, resetsAt, blocked := s.scheduleQuotaBlock(ctx, freshCtx, now); blocked {
+		if quotaBlocked {
+			window, resetsAt := quotaWindow, quotaResetsAt
 			s.runtimeStatesMu.Unlock()
 			// The account's window is at its limit, so this run cannot even
 			// reach step one. Starting it would record a red run and, once
@@ -1712,7 +1750,8 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 			s.recordScheduleFireDecision(ctx, freshCtx, "skipped_waiting_for_capacity", reason, "", startTime)
 			return
 		}
-		if waitingRun, wait := s.outstandingCapacityWait(ctx, freshCtx.WorkspacePath); waitingRun != nil {
+		if waitingRun != nil {
+			wait := waitingFor
 			s.runtimeStatesMu.Unlock()
 			// Firing here is what turned one capacity wall into a run storm: the
 			// new run restarts from step 1, replays the completed steps' side
