@@ -272,7 +272,7 @@ export interface ChatContextView {
   parts?: ChatContextPart[]
 }
 
-/** The chat's mode: project (Normal, works without asking) or auto_review (the coding app's reviewer approves). Reach is the project's access. */
+/** The chat's mode: project (Auto, works without asking) or auto_review (the coding app's reviewer approves). Reach is the project's access. */
 export type ChatAccessMode = 'project' | 'auto_review'
 
 export interface ChatAccessView {

@@ -12,11 +12,11 @@ import (
 // A chat's mode (#3885, split from access on 26 Nov): how the chat's coding agent works, picked per chat from the
 // mode menu in the message box. What it can reach is the project's access (Folders on this Mac), never the chat's
 // mode (owner, 26 Nov: "access is at project level.. mode is chat level"). Plan stays the per-message plan switch.
-//   - "" (Normal): the agent approves its own actions inside the project's access.
+//   - "" (Auto): the agent approves its own actions inside the folders it can reach.
 //   - auto_review: the program's own reviewer approves or refuses each action (Claude Code's auto mode, Cursor's
 //     Auto-review). Only programs with a working reviewer offer it.
 //
-// full_access was a whole-Mac mode until 26 Nov. A chat still saved with it runs as Normal; whole Mac is now the
+// full_access was a whole-Mac mode until 26 Nov. A chat still saved with it runs as Auto; whole Mac is now the
 // project's access.
 const (
 	chatAccessProject    = ""
@@ -26,15 +26,15 @@ const (
 
 func normalizeChatAccessMode(value string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", "project", "this_project", "normal", chatAccessLegacyFull, "full-access", "full":
+	case "", "project", "this_project", "auto", "normal", chatAccessLegacyFull, "full-access", "full":
 		return chatAccessProject, nil
-	case chatAccessAutoReview, "auto-review", "auto":
+	case chatAccessAutoReview, "auto-review":
 		return chatAccessAutoReview, nil
 	}
-	return "", fmt.Errorf("mode must be normal or auto_review")
+	return "", fmt.Errorf("mode must be auto or auto_review")
 }
 
-// chatAccessRank orders modes by how much the agent may do unchecked: Auto-review has a reviewer, Normal does not.
+// chatAccessRank orders modes by how much the agent may do unchecked: Auto-review has a reviewer, Auto does not.
 // A tool may move a chat to a lower rank, never a higher one.
 func chatAccessRank(mode string) int {
 	if mode == chatAccessAutoReview {
@@ -51,7 +51,7 @@ func chatAutoReviewSupported(provider string) bool {
 }
 
 // chatAccessEffective is the mode a turn of this program on this host gets from the saved one: Auto-review only on a
-// personal Mac and where the program has a reviewer (else Normal); a legacy full_access is Normal.
+// personal Mac and where the program has a reviewer (else Auto); a legacy full_access is Auto.
 func chatAccessEffective(saved, provider string, personalMac bool) string {
 	if saved == chatAccessAutoReview && personalMac && chatAutoReviewSupported(provider) {
 		return chatAccessAutoReview

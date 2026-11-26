@@ -7,14 +7,14 @@ import api, { workFolderApi } from '../../services/api'
 import type { ChatAccessMode, WorkFolderGrant } from '../../services/api-types'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 
-// The chat's mode beside the model (#3885): how this chat works (Normal, Auto-review, Plan). What it can reach is the
+// The chat's mode beside the model (#3885): how this chat works (Auto, Auto-review, Plan). What it can reach is the
 // project's access, set in Folders on this Mac (owner, 26 Nov: "access is at project level.. mode is chat level"); the
 // menu shows it on one line with Change. Shift+Tab still switches Plan.
 
 type Row = { id: ChatAccessMode | 'plan'; label: string; chip: string; detail: string }
 
 const ROWS: Row[] = [
-  { id: 'project', label: 'Normal', chip: 'Normal', detail: 'Works without asking, inside the project’s access.' },
+  { id: 'project', label: 'Auto', chip: 'Auto', detail: 'Works without asking, inside the folders it can reach.' },
   { id: 'auto_review', label: 'Auto-review', chip: 'Auto-review', detail: 'The coding app’s own reviewer approves each action and refuses risky ones.' },
   { id: 'plan', label: 'Plan', chip: 'Plan', detail: 'Proposes a plan and changes nothing until you approve it.' },
 ]
@@ -52,6 +52,7 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
   const access = view?.access
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [granting, setGranting] = useState(false)
   const reach = useReach(open)
   const mode: ChatAccessMode = access?.mode || 'project'
   const current: Row['id'] = plan?.on ? 'plan' : mode
@@ -90,6 +91,11 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
   const wholeMac = Boolean(reach?.home) && Boolean(reach?.folders.some(folder => folder.path.replace(/\/+$/, '') === reach?.home && folder.access === 'read_write'))
   const others = (reach?.folders || []).filter(folder => folder.path.replace(/\/+$/, '') !== reach?.home)
   // A Crew project's side panel is its own (WorkSurface listens for this event); other chats use the workflow pane.
+  const giveWholeMac = async () => {
+    if (!reach?.home) return
+    setGranting(true)
+    try { await workFolderApi.addWorkFolder({ path: reach.home, alias: 'mac', access: 'read_write' }) } finally { setGranting(false) }
+  }
   const openFolders = () => projectId
     ? window.dispatchEvent(new CustomEvent(openCrewMacFoldersEvent, { detail: { projectId } }))
     : useWorkflowStore.getState().openWorkspaceView('mcp', 'mac-folders')
@@ -117,13 +123,13 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
             </Menu.RadioItem>
           })}
         </Menu.RadioGroup>
-        {fallback && <p className="px-2.5 pt-1 text-xs text-amber-700 dark:text-amber-400" data-testid="chat-mode-fallback">This coding app has no reviewer that works here, so this chat runs as Normal.</p>}
+        {fallback && <p className="px-2.5 pt-1 text-xs text-amber-700 dark:text-amber-400" data-testid="chat-mode-fallback">This coding app has no reviewer that works here, so this chat runs as Auto.</p>}
         {access && <>
           <Menu.Separator className="my-1 h-px bg-border" />
           <Menu.Item className={`${menuRowClass} items-start`} data-testid="chat-mode-manage-folders" onSelect={openFolders}
-            title="Access is the project's: every chat in it reaches the same folders.">
+            title="Set in Folders on this Mac. Every chat reaches the same folders; the mode does not change them.">
             <span className="min-w-0 flex-1 text-xs text-muted-foreground" data-testid="chat-mode-reach">
-              Access (project): {access.on_server
+              Can reach: {access.on_server
                 ? 'this project’s folders'
                 : wholeMac
                   ? 'your whole Mac'
@@ -131,6 +137,13 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
             </span>
             <span className="shrink-0 text-xs font-medium text-primary">Change</span>
           </Menu.Item>
+          {/* One click to the whole Mac (owner, 26 Nov), the same grant as Folders on this Mac's "Your whole Mac". */}
+          {!access.on_server && reach?.home && !wholeMac && <Menu.Item className={`${menuRowClass} items-start`} data-testid="chat-mode-whole-mac" disabled={granting} onSelect={() => void giveWholeMac()}>
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-medium">Give access to your whole Mac</span>
+              <span className="block text-xs text-muted-foreground">Read &amp; write everything in your home folder, for all your projects. Turn it off in Folders on this Mac.</span>
+            </span>
+          </Menu.Item>}
         </>}
       </Menu.Content>
     </Menu.Portal>

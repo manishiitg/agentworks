@@ -767,7 +767,7 @@ func chatContextArgs(args map[string]any) (chatContextRequest, error) {
 	if value, exists := args["access_mode"]; exists && value != nil {
 		mode, ok := value.(string)
 		if !ok {
-			return out, fmt.Errorf("access_mode must be normal or auto_review")
+			return out, fmt.Errorf("access_mode must be auto or auto_review")
 		}
 		if strings.TrimSpace(mode) != "" {
 			out.AccessMode = &mode
