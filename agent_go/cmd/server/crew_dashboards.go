@@ -2,10 +2,13 @@ package server
 
 import (
 	"context"
-	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // Dashboard discovery reads admitted workflow bindings, never tracking tables.
@@ -38,6 +41,7 @@ func (api *StreamingAPI) handleCrewDashboards(w http.ResponseWriter, r *http.Req
 
 	records, err := readCrewExecutables()
 	if err != nil {
+		log.Printf("[CREW_DASHBOARDS] project=%s list failed: %v", root, err)
 		http.Error(w, "Could not load dashboards.", 500)
 		return
 	}
@@ -48,6 +52,7 @@ func (api *StreamingAPI) handleCrewDashboards(w http.ResponseWriter, r *http.Req
 	dashboards := []dashboard{}
 	parentReport, err := crewPublishedDashboardExists(r.Context(), root)
 	if err != nil {
+		log.Printf("[CREW_DASHBOARDS] project=%s list failed: %v", root, err)
 		http.Error(w, "Could not load dashboards.", 500)
 		return
 	}
@@ -57,6 +62,7 @@ func (api *StreamingAPI) handleCrewDashboards(w http.ResponseWriter, r *http.Req
 		}
 		exists, err := crewPublishedDashboardExists(r.Context(), binding.Root)
 		if err != nil {
+			log.Printf("[CREW_DASHBOARDS] project=%s list failed: %v", root, err)
 			http.Error(w, "Could not load dashboards.", 500)
 			return
 		}
@@ -65,6 +71,7 @@ func (api *StreamingAPI) handleCrewDashboards(w http.ResponseWriter, r *http.Req
 		}
 		manifest, found, err := ReadWorkflowManifest(r.Context(), binding.Root)
 		if err != nil {
+			log.Printf("[CREW_DASHBOARDS] project=%s list failed: %v", root, err)
 			http.Error(w, "Could not load dashboards.", 500)
 			return
 		}
@@ -97,6 +104,11 @@ func (api *StreamingAPI) handleCrewDashboards(w http.ResponseWriter, r *http.Req
 // and revision files after deletion do not keep a removed dashboard alive.
 func crewPublishedDashboardExists(ctx context.Context, root string) (bool, error) {
 	listed, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "list"})
+	if wf.StatusCode(err) == http.StatusNotFound {
+		// A workflow that has not run yet has no storage folder, so it has no
+		// dashboards. It must not break the whole project's dashboard list.
+		return false, nil
+	}
 	if err != nil {
 		return false, err
 	}
