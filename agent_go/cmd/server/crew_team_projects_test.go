@@ -59,6 +59,20 @@ func TestCrewTeamOnlineProjectAccess(t *testing.T) {
 		}
 	}
 
+	// Several Teams may use one online project (owner, 26 Nov): each Team's copy has a folder of its own in the project,
+	// and a project that already has something there is not added until it moves it.
+	product, qa := crewTeam{ProjectID: "mac", Name: "Product"}, crewTeam{ProjectID: "mac2", Name: "QA & Ops"}
+	if crewTeamProjectFolder(product) == crewTeamProjectFolder(qa) {
+		t.Fatal("two Teams' copies share one folder in the project")
+	}
+	projectFiles := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(projectFiles, filepath.FromSlash(crewTeamProjectFolder(product)), "team"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if len(crewTeamProjectTaken(projectFiles, product)) == 0 || len(crewTeamProjectTaken(projectFiles, qa)) != 0 {
+		t.Fatal("the taken check does not follow each Team's own folder")
+	}
+
 	// Admission to the Team folder: the in-process copy of a member project only.
 	team.Projects = []crewTeamProject{{ProjectID: "srv"}}
 	if err := writeCrewTeam(team); err != nil {

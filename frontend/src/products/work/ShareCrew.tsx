@@ -94,7 +94,7 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
     </>}
     {page.agents.length > 0 && <div className="flex items-center gap-2 px-1"><p className="text-xs font-medium text-muted-foreground">Your agents</p>
       {page.agents_setup_ask && <button type="button" onClick={() => toMain(projectId, page.agents_setup_ask || '')} className="ml-auto text-xs text-primary hover:underline">✦ Ask AI to configure</button>}</div>}
-    {page.agents.map(agent => <ShareAgentCard key={agent.key} agent={agent} target={target} projectId={projectId} />)}
+    {page.agents.map(agent => <ShareAgentCard key={`${agent.team || ''}:${agent.key}`} agent={agent} target={target} projectId={projectId} />)}
     {page.agents_empty && <p className="text-xs text-muted-foreground">{page.agents_empty}</p>}
     {/* Actions run only on the hosting server; its reply decides visibility. */}
     <ShareActions group={page.actions_group} target={target} projectId={projectId} onWizard={setWizard} />
@@ -210,8 +210,8 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, stat
     {status}
   </>
   const failure = error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>
-  if (compact) return <div id={`header-agent-card-${agent.key}`} className="text-xs">
-    <AgentDetailSection title="Sharing" value={ask ? (ask.on ? `Shared · ${ask.chat_share === 'agent' ? 'Chat hidden' : 'Chat visible'}` : 'Not shared with the team') : undefined} summary={summary}>
+  if (compact) return <div id={`header-agent-card-${agent.team ? `${agent.team}-` : ''}${agent.key}`} className="text-xs">
+    <AgentDetailSection title={agent.team_name ? `Sharing · ${agent.team_name}` : 'Sharing'} value={ask ? (ask.on ? `Shared · ${ask.chat_share === 'agent' ? 'Chat hidden' : 'Chat visible'}` : 'Not shared with the team') : undefined} summary={summary}>
       <div className="flex items-center gap-2.5">{shareSwitch}</div>
       {settings}
     </AgentDetailSection>
@@ -357,6 +357,7 @@ export function HeaderAgentSharing({ projectId, agentKey, status }: { projectId:
     load(); window.addEventListener('agentworks:team-updated', load)
     return () => { active = false; window.removeEventListener('agentworks:team-updated', load) }
   }, [projectId, agentKey, target?.project, target?.connection])
-  const agent = page?.scope === scope ? page.value.agents.find(item => item.key === agentKey) : undefined
-  return <>{agent && target && <ShareAgentCard agent={agent} target={target} projectId={projectId} compact status={status} />}{!agent && status}{target && page?.scope !== scope && !error && <p role="status" className="border-t border-border px-1 py-2 text-xs text-muted-foreground">Loading sharing…</p>}{error && <p role="alert" className="text-xs text-destructive">{error}</p>}</>
+  // An online project's agent has one card per Team that uses the project, all under the agent's own key.
+  const agents = page?.scope === scope ? page.value.agents.filter(item => item.key === agentKey) : []
+  return <>{target && agents.map((agent, i) => <ShareAgentCard key={`${agent.team || ''}:${agent.key}`} agent={agent} target={target} projectId={projectId} compact status={i === agents.length - 1 ? status : undefined} />)}{!agents.length && status}{target && page?.scope !== scope && !error && <p role="status" className="border-t border-border px-1 py-2 text-xs text-muted-foreground">Loading sharing…</p>}{error && <p role="alert" className="text-xs text-destructive">{error}</p>}</>
 }

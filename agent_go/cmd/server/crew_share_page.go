@@ -99,8 +99,9 @@ type crewShareAgent struct {
 	Ask  *crewShareAsk `json:"ask,omitempty"`
 	// Team and TeamKey: an online project's agent is shared in the Team the project is in, not in the project itself
 	// (owner, 26 Nov); its card shows that Team's settings and changes go to that Team's routes with TeamKey.
-	Team    string `json:"team,omitempty"`
-	TeamKey string `json:"team_key,omitempty"`
+	Team     string `json:"team,omitempty"`
+	TeamKey  string `json:"team_key,omitempty"`
+	TeamName string `json:"team_name,omitempty"`
 	// Row and Members are that Team's row for the agent and its people, for the card's settings, because the viewer
 	// reads them here rather than from a Team panel of their own.
 	Row     *crewTeamTabAgent   `json:"row,omitempty"`
@@ -606,22 +607,30 @@ func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer st
 		watch[a.WatchKey] = len(page.Agents)
 		page.Agents = append(page.Agents, crewShareAgentCard(t, a, onMac))
 	}
-	// A server project's agents are shared through the Teams in its Users: each of the viewer's agents shows the Team's
-	// settings, the same card a Mac agent has (owner, 26 Nov: "make this ui similar to mac teams agents sharing").
+	// A server project's agents are shared through the Teams in its Users: each of the viewer's agents shows one card per
+	// Team with that Team's settings, the same card a Mac agent has (owner, 26 Nov: "make this ui similar to mac teams
+	// agents sharing"; several Teams may use one project). Every card of one agent keeps the agent's own key.
 	if !IsLocalMode() && crewLivesOnServer(t.ProjectID) {
 		for _, jt := range crewTeamsJoinedBy(t.ProjectID) {
 			jtab := crewTeamTabFor(ctx, jt, viewer)
+			name := crewTeamDisplayName(jt)
 			for _, a := range jtab.Agents {
 				if !a.Mine || a.OnlineProject != t.ProjectID {
 					continue
 				}
 				card := crewShareAgentCard(jt, a, false)
 				row := a
-				card.Team, card.TeamKey, card.Line, card.Row, card.Members = jt.ProjectID, a.Key, "Shared in the "+crewTeamProjectName(jt.ProjectID)+" Team", &row, jtab.People
-				if i, ok := watch[a.WatchKey]; ok && page.Agents[i].Team == "" {
+				card.Team, card.TeamKey, card.TeamName, card.Line, card.Row, card.Members = jt.ProjectID, a.Key, name, "Shared in the "+name+" Team", &row, jtab.People
+				i, ok := watch[a.WatchKey]
+				switch {
+				case ok && page.Agents[i].Team == "":
 					card.Key = page.Agents[i].Key
 					page.Agents[i] = card
-				} else {
+				case ok:
+					card.Key = page.Agents[i].Key
+					page.Agents = append(page.Agents, card)
+				default:
+					watch[a.WatchKey] = len(page.Agents)
 					page.Agents = append(page.Agents, card)
 				}
 			}
