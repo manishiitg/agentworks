@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"strconv"
 	"testing"
 )
@@ -80,5 +81,34 @@ func TestProjectTaskChecklist(t *testing.T) {
 	}
 	if view := projectTaskView(projectTaskList{}, task, nil); len(view.Checks) != 2 {
 		t.Fatalf("view checklist = %v", view.Checks)
+	}
+}
+
+// The lead's groups decide where a task shows: a task in a group the lead later
+// removed falls back to Other instead of vanishing, an unknown group is refused,
+// and past-due work shows as overdue until it is done.
+func TestProjectTaskGroupsAndDue(t *testing.T) {
+	list := projectTaskList{Steps: []string{"New", "Doing", "Done"}, Groups: []projectTaskGroup{{Name: "Billing"}}}
+	task := projectTask{ID: "t1", Step: "Doing"}
+	if _, err := projectTaskPlace(list, &task, map[string]interface{}{"group": "billing", "due": "2000-01-02", "pinned": true}); err != nil || task.Group != "Billing" || !task.Pinned {
+		t.Fatalf("place: %+v %v", task, err)
+	}
+	if _, err := projectTaskPlace(list, &task, map[string]interface{}{"group": "Marketing"}); err == nil {
+		t.Fatal("a group the lead never made was accepted")
+	}
+	if _, err := projectTaskPlace(list, &task, map[string]interface{}{"due": "next friday"}); err == nil {
+		t.Fatal("a due date that isn't a date was accepted")
+	}
+	tasks := conditionFeedTaskIndex(context.Background(), "")
+	if v := projectTaskView(list, task, tasks); v.Group != "Billing" || !v.Overdue {
+		t.Fatalf("view: group %q overdue %v", v.Group, v.Overdue)
+	}
+	list.Groups = nil
+	task.Step = "Done"
+	if v := projectTaskView(list, task, tasks); v.Group != "" || v.Overdue {
+		t.Fatalf("removed group or done work: group %q overdue %v", v.Group, v.Overdue)
+	}
+	if _, err := projectTaskGroups([]interface{}{map[string]interface{}{"name": "Other"}}); err == nil {
+		t.Fatal("a group named Other was accepted")
 	}
 }

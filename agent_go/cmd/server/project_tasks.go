@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/url"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,8 +24,9 @@ import (
 // moved it. The server only stores the list and checks steps; agents decide.
 
 const (
-	projectTasksOpenShown = 12
-	projectTasksDoneShown = 5
+	projectTasksOpenShown = 200 // the Project tasks panel lists every open task
+	projectTasksDoneShown = 20
+	projectTaskGroupsMax  = 8
 	projectTasksDoneKept  = 100
 	projectTaskRefsMax    = 20
 	projectTaskEventsMax  = 30
@@ -63,9 +65,20 @@ type projectTaskLink struct {
 	Agent string `json:"agent,omitempty"`
 }
 
+// projectTaskGroup is one group the lead arranges the list into (#4294):
+// by area, release, customer, whatever fits the project.
+type projectTaskGroup struct {
+	Name   string `json:"name"`
+	Note   string `json:"note,omitempty"`
+	Folded bool   `json:"folded,omitempty"` // starts folded in the panel (for example "Later")
+}
+
 type projectTask struct {
 	ID       string              `json:"id"`
 	Title    string              `json:"title"`
+	Group    string              `json:"group,omitempty"`  // one of the list's groups; "" or an unknown name shows under Other
+	Pinned   bool                `json:"pinned,omitempty"` // first in its group
+	Due      string              `json:"due,omitempty"`    // YYYY-MM-DD
 	Step     string              `json:"step,omitempty"`
 	Assignee string              `json:"assignee,omitempty"` // the agent or person who has it; "" = not handed out yet
 	Proposed string              `json:"proposed,omitempty"` // "Ask me first": the agent the lead suggests, until the person approves
@@ -101,6 +114,8 @@ type projectTaskList struct {
 	LeadChat string              `json:"lead_chat,omitempty"`
 	Paused   bool                `json:"paused,omitempty"`
 	Mode     string              `json:"mode,omitempty"` // auto (default): the lead hands work out; ask: it proposes and the person approves
+	Groups   []projectTaskGroup  `json:"groups,omitempty"`
+	Focus    string              `json:"focus,omitempty"` // the lead's one line on what matters now
 	Next     int                 `json:"next"`
 	Tasks    []projectTask       `json:"tasks"`
 	Sorted   []projectTaskSorted `json:"sorted,omitempty"`
@@ -121,6 +136,81 @@ func (l projectTaskList) stepOf(t projectTask) string {
 		}
 	}
 	return steps[0]
+}
+
+// groupOf is the task's group as the list names it, or "" (Other) when the
+// lead removed or never made that group.
+func (l projectTaskList) groupOf(t projectTask) string {
+	for _, g := range l.Groups {
+		if strings.EqualFold(g.Name, t.Group) {
+			return g.Name
+		}
+	}
+	return ""
+}
+
+func projectTaskGroups(v interface{}) ([]projectTaskGroup, error) {
+	raw, ok := v.([]interface{})
+	if !ok {
+		return nil, errors.New("groups is a list of {name, note, folded}, first to last")
+	}
+	if len(raw) > projectTaskGroupsMax {
+		return nil, fmt.Errorf("keep it to %d groups or fewer; merge the small ones", projectTaskGroupsMax)
+	}
+	out := []projectTaskGroup{}
+	seen := map[string]bool{}
+	for _, item := range raw {
+		m, _ := item.(map[string]interface{})
+		name := feedText(m["name"], 30)
+		if name == "" || strings.EqualFold(name, "Other") || strings.EqualFold(name, "Needs you") {
+			return nil, errors.New("each group needs a short name (not Other or Needs you, which the panel adds itself)")
+		}
+		if seen[strings.ToLower(name)] {
+			return nil, fmt.Errorf("group %q is listed twice", name)
+		}
+		seen[strings.ToLower(name)] = true
+		folded, _ := m["folded"].(bool)
+		out = append(out, projectTaskGroup{Name: name, Note: feedText(m["note"], 80), Folded: folded})
+	}
+	return out, nil
+}
+
+// projectTaskDue reads due: YYYY-MM-DD, or "" to clear it.
+func projectTaskDue(v string) (string, error) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return "", nil
+	}
+	if _, err := time.Parse("2006-01-02", v); err != nil {
+		return "", errors.New(`due is a date like 2026-12-04, or "" to clear it`)
+	}
+	return v, nil
+}
+
+// projectTaskPlace applies group, pinned and due from task_add or task_update.
+func projectTaskPlace(list projectTaskList, t *projectTask, args map[string]interface{}) (bool, error) {
+	changed := false
+	if v, ok := args["group"].(string); ok {
+		name := strings.TrimSpace(v)
+		if name != "" {
+			name = list.groupOf(projectTask{Group: name})
+			if name == "" {
+				return false, fmt.Errorf("%q isn't one of this list's groups; add it first with task_settings groups", strings.TrimSpace(v))
+			}
+		}
+		t.Group, changed = name, true
+	}
+	if v, ok := args["pinned"].(bool); ok {
+		t.Pinned, changed = v, true
+	}
+	if v, ok := args["due"].(string); ok {
+		due, err := projectTaskDue(v)
+		if err != nil {
+			return false, err
+		}
+		t.Due, changed = due, true
+	}
+	return changed, nil
 }
 
 func (l projectTaskList) done(t projectTask) bool {
@@ -226,6 +316,11 @@ type crewPanelProjectTask struct {
 	Proposed    string             `json:"proposed,omitempty"`
 	Held        bool               `json:"held,omitempty"`
 	Choices     []string           `json:"choices,omitempty"`
+	Group       string             `json:"group,omitempty"`
+	Pinned      bool               `json:"pinned,omitempty"`
+	Due         string             `json:"due,omitempty"`
+	// Overdue: past its due date and not done; the server decides it.
+	Overdue bool `json:"overdue,omitempty"`
 	// NeedsYou says what the person must do; the server decides it so the panel
 	// and the lead read the same "Needs you" list.
 	NeedsYou string `json:"needs_you,omitempty"`
@@ -259,6 +354,8 @@ func projectTaskView(list projectTaskList, t projectTask, tasks *conditionFeedTa
 		}
 	}
 	view.Proposed, view.Held, view.Checks = t.Proposed, t.Held, t.Checks
+	view.Group, view.Pinned, view.Due = list.groupOf(t), t.Pinned, t.Due
+	view.Overdue = t.Due != "" && !view.Done && t.Due < time.Now().Format("2006-01-02")
 	if !view.Done && !t.Held {
 		for _, task := range view.Tasks {
 			if task.State == "needs_you" || task.State == "blocked" {
@@ -359,6 +456,9 @@ func (c *conditionService) projectTasksRow(ctx context.Context, viewer, project 
 	}
 	// What the lead sorted stays in the tasks read for agents; the panel doesn't list it (owner, 24 Nov).
 	row.Lead, row.TasksMode, row.Paused = list.Lead, list.mode(), list.Paused
+	row.TaskGroups, row.Focus = list.Groups, list.Focus
+	// Pinned tasks lead their group; the rest keep newest first.
+	sort.SliceStable(row.Tasks, func(i, j int) bool { return row.Tasks[i].Pinned && !row.Tasks[j].Pinned })
 	return row, true, nil
 }
 
@@ -400,7 +500,7 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 		if len(sorted) > 20 {
 			sorted = sorted[len(sorted)-20:]
 		}
-		return map[string]interface{}{"steps": list.steps(), "rules": list.Rules, "lead": list.Lead, "lead_chat": list.LeadChat, "mode": list.mode(), "paused": list.Paused, "tasks": out, "recently_sorted": sorted}, nil
+		return map[string]interface{}{"steps": list.steps(), "rules": list.Rules, "lead": list.Lead, "lead_chat": list.LeadChat, "mode": list.mode(), "paused": list.Paused, "groups": list.Groups, "focus": list.Focus, "tasks": out, "recently_sorted": sorted}, nil
 	}
 
 	by := feedText(args["by"], 60)
@@ -470,6 +570,16 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 			}
 			list.Mode = v
 		}
+		if v, ok := args["groups"]; ok {
+			groups, err := projectTaskGroups(v)
+			if err != nil {
+				return nil, err
+			}
+			list.Groups = groups
+		}
+		if v, ok := args["focus"].(string); ok {
+			list.Focus = feedText(v, 120)
+		}
 		if v, ok := args["paused"].(bool); ok {
 			if v && list.LeadChat == "" {
 				return nil, errors.New("set lead_chat (the lead's chat id from sessions list) before pausing, so its Watchers know to wait")
@@ -480,7 +590,7 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 			return nil, err
 		}
 		log.Printf("[PROJECT_TASKS] settings mode=%s paused=%t", list.mode(), list.Paused)
-		return map[string]interface{}{"steps": list.steps(), "rules": list.Rules, "lead": list.Lead, "lead_chat": list.LeadChat, "mode": list.mode(), "paused": list.Paused}, nil
+		return map[string]interface{}{"steps": list.steps(), "rules": list.Rules, "lead": list.Lead, "lead_chat": list.LeadChat, "mode": list.mode(), "paused": list.Paused, "groups": list.Groups, "focus": list.Focus}, nil
 	case "task_sorted":
 		kind := feedText(args["kind"], 10)
 		if kind != "dropped" && kind != "added" {
@@ -520,6 +630,9 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 			t.Assignee = firstNonEmptyTrimmed(t.Assignee, link.Agent)
 		}
 		if _, err := projectTaskChecklist(&t, args, by, now); err != nil {
+			return nil, err
+		}
+		if _, err := projectTaskPlace(list, &t, args); err != nil {
 			return nil, err
 		}
 		t.History = []conditionFeedMove{{At: now, By: by, Step: step, Note: firstNonEmptyTrimmed(note, "Created")}}
@@ -621,6 +734,11 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 	} else if ticked {
 		changed = true
 	}
+	if placed, err := projectTaskPlace(list, t, args); err != nil {
+		return nil, err
+	} else if placed {
+		changed = true
+	}
 	before := list.stepOf(*t)
 	if step != "" {
 		t.Step = step
@@ -633,7 +751,7 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 		changed = true
 	}
 	if !changed {
-		return nil, errors.New("task_update needs something to change: step, title, assignee, proposed, waiting, choices, held, task, source, link, activity, checklist_add, checklist_done, checklist_open, checklist_remove or note")
+		return nil, errors.New("task_update needs something to change: step, title, assignee, proposed, waiting, choices, held, group, pinned, due, task, source, link, activity, checklist_add, checklist_done, checklist_open, checklist_remove or note")
 	}
 	t.Updated = now
 	saved := *t

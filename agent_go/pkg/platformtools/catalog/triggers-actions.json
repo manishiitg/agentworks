@@ -358,7 +358,7 @@
     "name": "task_update",
     "scope": "watcher",
     "member": "project_watchers_task_update",
-    "description": "Change a Project task: move its step, rename it, set who has it, link an ask, add a source, a linked resource (ticket, doc, thread, pull request) or an activity line, or add and tick off checklist items.",
+    "description": "Change a Project task: move its step, rename it, set who has it, put it in a group, pin it or set a due date, link an ask, add a source, a linked resource (ticket, doc, thread, pull request) or an activity line, or add and tick off checklist items.",
     "source": "manage_condition_triggers",
     "source_action": "task_update"
   },
@@ -376,7 +376,7 @@
     "name": "task_settings",
     "scope": "watcher",
     "member": "project_watchers_task_settings",
-    "description": "Set the project's task steps, rules and lead agent (name and chat), choose auto or ask-me-first hand-outs, or pause and resume the lead.",
+    "description": "Set the project's task steps, rules and lead agent (name and chat), choose auto or ask-me-first hand-outs, pause and resume the lead, or (the lead) arrange the list into groups and set its focus line.",
     "source": "manage_condition_triggers",
     "source_action": "task_settings"
   }
