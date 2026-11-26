@@ -166,8 +166,26 @@ func (api *StreamingAPI) registerServerProjectFilesTool(registrar definitionTool
 			}
 			return api.createOnlineProjectFromMac(ctx, userID, roots.ID, c, stringToolArg(args, "name"), stringToolArg(args, "purpose"))
 		}
+		if action == "create_agent" {
+			project, name := strings.TrimSpace(stringToolArg(args, "project")), strings.TrimSpace(stringToolArg(args, "name"))
+			if project == "" || name == "" {
+				return "", fmt.Errorf("pass project (its ID from action=projects) and name")
+			}
+			c, err := pickServerConnection(conns, server)
+			if err != nil {
+				return "", err
+			}
+			// The server's own chat-tab action, as you: its owner and co-owners may open agents there.
+			body, err := callServerTool(ctx, userID, c, "workspace", map[string]any{"action": "open_chat", "workspace_id": crewProfileID + ":" + project, "name": name})
+			if err != nil {
+				return "", err
+			}
+			body["server"] = c.Name
+			body["note"] = "The agent runs in that project on the server, 24/7. Hand it work with messages (team_sync agents lists it)."
+			return out(body)
+		}
 		if action != "list" && action != "search" && action != "read" && action != "write" {
-			return "", fmt.Errorf("action must be projects, create_project, list, search, read or write")
+			return "", fmt.Errorf("action must be projects, create_project, create_agent, list, search, read or write")
 		}
 		project := strings.TrimSpace(stringToolArg(args, "project"))
 		if project == "" {
@@ -193,11 +211,11 @@ func (api *StreamingAPI) registerServerProjectFilesTool(registrar definitionTool
 	}
 	parameters := map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
-			"action":            map[string]interface{}{"type": "string", "enum": []string{"projects", "create_project", "list", "search", "read", "write"}, "description": "projects lists the server projects you can open; create_project makes a new online project for this project's Team (name, purpose); list, search, read and write work on one project's files."},
-			"name":              map[string]interface{}{"type": "string", "description": "create_project: the new online project's name, named for its job."},
+			"action":            map[string]interface{}{"type": "string", "enum": []string{"projects", "create_project", "create_agent", "list", "search", "read", "write"}, "description": "projects lists the server projects you can open; create_project makes a new online project for this project's Team (name, purpose); create_agent makes a named agent in a server project you own or co-own (project, name); list, search, read and write work on one project's files."},
+			"name":              map[string]interface{}{"type": "string", "description": "create_project: the new online project's name, named for its job. create_agent: the new agent's name."},
 			"purpose":           map[string]interface{}{"type": "string", "description": "create_project: one or two sentences on what it does; becomes its Main's purpose."},
 			"server":            map[string]interface{}{"type": "string", "description": "Saved server name; optional when this Mac is signed in to one server."},
-			"project":           map[string]interface{}{"type": "string", "description": "Project ID from action=projects (list, search, read, write)."},
+			"project":           map[string]interface{}{"type": "string", "description": "Project ID from action=projects (create_agent, list, search, read, write)."},
 			"path":              map[string]interface{}{"type": "string", "description": "Project-relative file path (read, write) or folder to start from (list, search)."},
 			"glob":              map[string]interface{}{"type": "string", "description": "Optional name pattern for list and search, e.g. **/*.md."},
 			"depth":             map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 8},

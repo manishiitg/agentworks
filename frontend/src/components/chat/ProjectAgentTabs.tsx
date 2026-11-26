@@ -21,7 +21,7 @@ import { compactOwnerChatName, ownerShortName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
-import { agentSetupForTab, teamAgentForTab, useTeamTab } from '../../products/work/teamApi'
+import { agentSetupForTab, createOnlineAgent, teamAgentForTab, teamChanged, teamFailure, useTeamTab } from '../../products/work/teamApi'
 import type { ChatTabPillProps } from './ChatTabPill'
 import { AgentHeaderLine, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow, type CrewClosedAgent } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
@@ -73,6 +73,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const [forkTo, setForkTo] = useState<{ id: string; name: string } | null>(null)
   const [newTabName, setNewTabName] = useState<string | null>(null)
   const [addMode, setAddMode] = useState<'choose' | 'new' | 'fork' | null>(null)
+  // New agent's Where it runs: 'mac', or an online project's ID the Team uses and the person owns.
+  const [newWhere, setNewWhere] = useState('mac')
+  const [makingOnline, setMakingOnline] = useState(false)
   useEffect(() => { if (createRequest) { setNewTabName(''); setAddMode('new') } }, [createRequest])
   const [forking, setForking] = useState(false)
   const beginAddAgent = () => {
@@ -97,7 +100,19 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const renameSideChat = onRename
   const submitNewAgent = async (requested: string) => {
     const name = requested.trim()
-    if (!name || opening) return
+    if (!name || opening || makingOnline) return
+    const online = newWhere !== 'mac' ? onlineChoices.find(item => item.project_id === newWhere) : undefined
+    if (online && teamState.target) {
+      setMakingOnline(true)
+      try {
+        await createOnlineAgent(teamState.target, online.project_id, name)
+        teamChanged()
+        useChatStore.getState().addToast(`Created ${name} in ${online.name} on the server. It runs 24/7, even with your Mac off.`, 'success')
+        setNewTabName(null); setAddMode(null); setNewWhere('mac')
+      } catch (cause) { useChatStore.getState().addToast(teamFailure(cause).message, 'error') }
+      finally { setMakingOnline(false) }
+      return
+    }
     try { if (await onOpen(name) !== false) { setNewTabName(null); setAddMode(null); phoneNavigation?.onChange('chat') } }
     catch (cause) { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open a new agent.', 'error') }
   }
@@ -166,6 +181,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   // Someone else's Mac Crew (a teammate's view) names its owner's Mac, from the server's Team reading.
   const teamState = useTeamTab(placeProject)
   const team = teamState.view
+  // Online projects the Team uses that this person owns: New agent may run there instead of on the Mac.
+  const onlineChoices = (team?.online_projects || []).filter(item => item.mine && item.project_id)
   const crewOwner = team && !team.can_switch && !team.team.change_on_mac ? team.people.find(person => person.note === 'owner')?.name : undefined
   const placeWord = crewOwner
     ? place === 'mac' ? `On ${crewOwner}'s Mac` : place === 'mac_off' ? `${crewOwner}'s Mac is off` : ''
@@ -661,9 +678,17 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
               <label className="block text-sm">Agent name
                 <input autoFocus value={newTabName || ''} onChange={event => setNewTabName(event.target.value)} maxLength={120} disabled={opening} placeholder="e.g. Research" aria-label="Agent name" data-testid="work-new-chat-tab-name" className="mt-1.5 h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
               </label>
+              {onlineChoices.length > 0 && <fieldset className="space-y-1.5" disabled={opening || makingOnline}>
+                <legend className="mb-1 text-sm font-medium">Where it runs</legend>
+                {[{ id: 'mac', name: 'This Mac', line: 'Only while your Mac is on and awake' }, ...onlineChoices.map(item => ({ id: item.project_id, name: item.name, line: 'Online 24/7 on the server · you own it' }))].map(option =>
+                  <label key={option.id} className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 text-sm ${newWhere === option.id ? 'border-primary bg-primary/5' : 'border-border'}`}>
+                    <input type="radio" name="new-agent-where" value={option.id} checked={newWhere === option.id} onChange={() => setNewWhere(option.id)} className="mt-1" />
+                    <span className="min-w-0"><span className="block font-medium">{option.id !== 'mac' && <span aria-hidden="true" className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 align-middle" />}{option.name}</span><span className="block text-xs text-muted-foreground">{option.line}</span></span>
+                  </label>)}
+              </fieldset>}
               <div className="flex justify-end gap-2">
                 <button type="button" disabled={opening} onClick={() => { setAddMode(null); setNewTabName(null) }} className="rounded-md px-3 py-2 text-sm hover:bg-muted">Cancel</button>
-                <button type="submit" disabled={opening || !newTabName?.trim()} className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50">{opening && <Loader2 className="h-4 w-4 animate-spin" />}Create agent</button>
+                <button type="submit" disabled={opening || makingOnline || !newTabName?.trim()} className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50">{(opening || makingOnline) && <Loader2 className="h-4 w-4 animate-spin" />}Create agent</button>
               </div>
             </form> : addMode === 'choose' ? <div className="space-y-1">
               <button type="button" onClick={() => { setNewTabName(''); setAddMode('new') }} className="flex w-full items-center gap-2 rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><Plus className="h-4 w-4" />New agent</button>

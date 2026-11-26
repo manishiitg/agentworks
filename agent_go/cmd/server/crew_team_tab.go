@@ -192,9 +192,12 @@ type crewTeamTabReply struct {
 }
 
 type crewTeamTabOnlineProject struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Line string `json:"line"`
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	Name      string `json:"name"`
+	Line      string `json:"line"`
+	// Mine: the viewer is the project's main owner, so New agent may make an agent there (crew_team_online_agent.go).
+	Mine bool `json:"mine,omitempty"`
 }
 
 type crewTeamHelpLine struct {
@@ -383,8 +386,8 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	out.Reachable = crewTeamPanelReachFrom(ctx, t, viewer, byPerson, reachRows)
 	lap("reach")
 	for _, p := range byPerson {
-		if _, project := crewTeamMemberProjectID(p.UserID); project {
-			out.OnlineProjects = append(out.OnlineProjects, crewTeamTabOnlineProject{ID: p.UserID, Name: strings.TrimPrefix(p.Name, "Project: "), Line: "Online 24/7 on the server"})
+		if project, isProject := crewTeamMemberProjectID(p.UserID); isProject {
+			out.OnlineProjects = append(out.OnlineProjects, crewTeamTabOnlineProject{ID: p.UserID, ProjectID: project, Name: strings.TrimPrefix(p.Name, "Project: "), Line: "Online 24/7 on the server", Mine: ownerOfCrewProjectID(project) == viewer})
 		}
 	}
 	seen := map[string]crewTeamAgentsPerson{}
