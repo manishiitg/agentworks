@@ -984,16 +984,22 @@ func agentMailboxEndpointSQL(side, userID string, c triggerLinkCaller) (string, 
 	}
 	teamID := fmt.Sprintf("COALESCE(json_extract(endpoints, '$[%d].team_agent_id'), '')", index)
 	published := fmt.Sprintf("COALESCE(json_extract(endpoints, '$[%d].published_agent'), '')", index)
+	replyInbox := fmt.Sprintf("COALESCE(json_extract(endpoints, '$[%d].reply_inbox'), '')", index)
 	thread := fmt.Sprintf("COALESCE(json_extract(endpoints, '$[%d].chat_key'), '')", index)
 	key := "\x00"
 	if c.Chat != nil {
 		key = c.Chat.Key
 	}
-	// A Team identity never falls back to a session when admission was removed.
-	identity := fmt.Sprintf("((%s <> '' AND %s_session <> '' AND %s_session = ? AND %s = ?) OR (%s = '' AND ((%s = '' AND %s_session <> '' AND %s_session = ?) OR (? <> '' AND %s = ?))))", published, side, side, thread, published, teamID, side, side, teamID)
+	// Match messageEndpointMatches: a published agent's non-external endpoint is
+	// bound to its user, reply inbox, session and chat key, even when the caller
+	// carries a hosted named-agent identity. A Team identity never falls back to
+	// a session when admission was removed.
+	publishedClause := fmt.Sprintf("(%s <> '' AND %s_external = 0 AND %s_user_id = ? AND %s <> '' AND %s_session <> '' AND %s_session = ? AND %s = ?)", published, side, side, replyInbox, side, side, thread)
+	regularIdentity := fmt.Sprintf("((%s = '' AND %s_session <> '' AND %s_session = ?) OR (? <> '' AND %s = ?))", teamID, side, side, teamID)
+	regularClause := fmt.Sprintf("((%s = '' OR %s_external = 1) AND %[3]s_named_agent_id = ? AND %[3]s_user_id = ? AND %[3]s_kind = ? AND %[3]s_ref_id = ? AND (%[3]s_external = 1 OR (%[3]s_profile = ? AND %[4]s)))", published, side, side, regularIdentity)
 	current := messageCallerTeamAgentID(userID, c)
-	clause := fmt.Sprintf("(%[1]s_named_agent_id = ? AND %[1]s_user_id = ? AND %[1]s_kind = ? AND %[1]s_ref_id = ? AND (%[1]s_external = 1 OR (%[1]s_profile = ? AND %[2]s)))", side, identity)
-	return clause, []any{c.NamedAgentID, userID, c.Stamp.Type, c.Stamp.ID, normalizeInternalProfileID(c.Stamp.ProfileID), session, key, session, current, current}
+	clause := "(" + publishedClause + " OR " + regularClause + ")"
+	return clause, []any{userID, session, key, c.NamedAgentID, userID, c.Stamp.Type, c.Stamp.ID, normalizeInternalProfileID(c.Stamp.ProfileID), session, current, current}
 
 }
 
