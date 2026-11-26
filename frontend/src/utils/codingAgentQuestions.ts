@@ -92,6 +92,16 @@ export function codingAgentQuestionCards(events: PollingEvent[]) {
 // restart. An older card whose settlement is outside the loaded history page must not be pinned on every new turn.
 export function questionsOfThisTurn(events: PollingEvent[], turnStartedAt: number | undefined): Set<string> {
   const keys = new Set<string>()
+  // For the first seconds of a turn its start is not known yet: the person's last message starts it. Without this,
+  // every unsettled question in the loaded history flashed above the message box on each new message (#4053).
+  if (turnStartedAt === undefined) {
+    for (let index = events.length - 1; index >= 0; index--) {
+      if (events[index].type !== 'user_message') continue
+      const at = Date.parse(text(events[index].timestamp))
+      if (Number.isFinite(at)) turnStartedAt = at
+      break
+    }
+  }
   for (const event of events) {
     if (event.type !== 'coding_agent_question') continue
     const outer = record(event.data)
