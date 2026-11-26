@@ -8,9 +8,10 @@ import (
 )
 
 // A chat's replies (owner, 26 Nov, like Claude Desktop's Output style and Summary and next steps): picked per chat
-// from the mode menu in the message box, for every coding app. Both travel as one short note at the end of the
-// person's message (chatRepliesNote), so no app has to be relaunched and every app reads it the same way; the screen
-// hides the note from the person's bubble (chatMessageContent.ts, the "⚙️ Chat settings:" marker).
+// from the mode menu in the message box, for every coding app (owner, 26 Nov: style at prompt level, card at message
+// level). The style is a line of the chat's prompt (chatReplyStylePrompt). The card's request is a short note at the
+// end of the person's message (chatRepliesNote), only on turns sent from the app; the screen hides it from the
+// person's bubble (chatMessageContent.ts, the "⚙️ Chat settings:" marker).
 //   - ReplyStyle: "" (Default) or one of chatReplyStyles.
 //   - NextSteps: on unless "off". On a turn the person sends from the app, the agent may end its reply with a short
 //     summary, one question and two or three answers as a ```next block; the screen shows it as a card with one-click
@@ -81,18 +82,21 @@ func setChatReplies(ctx context.Context, owner string, tab chatContextTab, style
 	return tab, nil
 }
 
-// chatRepliesNote is the note added to this turn's message, or "" when the chat uses the defaults and the card does
-// not apply. attended: the person sent this turn from the app, where the card can show.
-func chatRepliesNote(identity ProductAgentIdentity, attended bool) string {
-	var lines []string
-	if style, _ := normalizeChatReplyStyle(identity.ReplyStyle); style != "" {
-		lines = append(lines, chatReplyStyleNotes[style])
-	}
-	if attended && identity.NextSteps != "off" {
-		lines = append(lines, chatNextStepsNote)
-	}
-	if len(lines) == 0 {
+// chatReplyStylePrompt is the chat's reply style as a line of its prompt, or "" for Default. It is a standing rule,
+// so it lives in the prompt with the chat's role, not on every message.
+func chatReplyStylePrompt(identity ProductAgentIdentity) string {
+	style, _ := normalizeChatReplyStyle(identity.ReplyStyle)
+	if style == "" {
 		return ""
 	}
-	return chatRepliesMarker + " " + strings.Join(lines, " ")
+	return "\n\nReply style for this chat (the person's choice): " + chatReplyStyleNotes[style]
+}
+
+// chatRepliesNote is the note added to this turn's message, or "" when the card does not apply. Only the server knows
+// where a turn came from, so it rides on the message. attended: the person sent this turn from the app.
+func chatRepliesNote(identity ProductAgentIdentity, attended bool) string {
+	if !attended || identity.NextSteps == "off" {
+		return ""
+	}
+	return chatRepliesMarker + " " + chatNextStepsNote
 }
