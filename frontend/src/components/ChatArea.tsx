@@ -3820,6 +3820,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
               <TerminalEventTranscript
                     searchable
                     scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}
+                    nextStepsSlot={activeTab.tabId}
                     runtimeActivity={runtimeActivity}
                     events={transcriptEvents}
                     terminal={null}
@@ -3842,8 +3843,6 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
                     onLoadOlder={historyPagination?.hasMore ? loadOlderConversationPage : undefined}
                     onRetry={historyRestore.error ? historyRestore.retry : loadOlderConversationPage}
                   />
-              {/* The summary and next-steps card sits after the last reply and scrolls with the chat (ChatInput portals it here). */}
-              <div data-next-steps-slot={activeTab.tabId} className="empty:hidden" />
               <ReplyQuote tabId={activeTab.tabId} disabled={hideInput || !!activeTab?.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView} />
               </>
             )}
@@ -3888,6 +3887,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
               <TerminalEventTranscript
                     searchable
                     scrollKey={transcriptReadingKey(activeTab.tabId, activeSessionId)}
+                    nextStepsSlot={activeTab.tabId}
                     runtimeActivity={runtimeActivity}
                     events={transcriptEvents}
                     terminal={null}
