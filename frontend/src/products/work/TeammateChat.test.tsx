@@ -72,10 +72,11 @@ it('identifies the observed person and Mac in one line and asks the agent direct
  expect(f.post).toHaveBeenLastCalledWith('/api/external/v1/call',expect.objectContaining({arguments:{action:'stop',inbox_id:'inbox-1',message_id:'m1'}}),expect.anything())
  expect(host.querySelector('[aria-label="Stop your ask"]')).toBeNull()
  // Quick answer (owner, 25 Nov mockup): one of your own agents answers from what this agent already said; it is never messaged.
+ // It is the default once you have an agent for it (owner, 26 Nov: ask the offline copy, not the agent in real time).
  f.team.view.agents.push({id:'helper',name:'Helper',mine:true,in_team:true,address:'agent:viewer/helper'});f.team.view.reachable[0].chat_readable=true
  f.post.mockReset();f.post.mockResolvedValue({data:{inbox_id:'inbox-2',message_id:'m2',delivery:'delivered'}})
  await act(async()=>root.render(null));await render()
- await act(async()=>host.querySelector<HTMLButtonElement>('[role="radio"][aria-checked="false"]')!.click())
+ expect(host.querySelector('[role="radio"][aria-checked="true"]')!.textContent).toBe('Quick answer')
  await type('What did it work on last?')
  await act(async()=>host.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})))
  expect(f.post).toHaveBeenCalledWith('/api/external/v1/call',expect.objectContaining({arguments:expect.objectContaining({action:'ask',target:'agent:viewer/helper',message:expect.stringContaining('What did it work on last?')})}),expect.anything())
