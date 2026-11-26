@@ -215,20 +215,9 @@ func desktopCrewSyncCall(ctx context.Context, userID string, connection *desktop
 		return crewSyncReply{}, fmt.Errorf("cannot reach the server; your local files are unchanged")
 	}
 	defer response.Body.Close()
-	if token := response.Header.Get("X-Renewed-Token"); token != "" {
-		desktopConnectionsMu.Lock()
-		records, renewErr := readDesktopConnections(userID)
-		if renewErr == nil {
-			for i := range records {
-				if records[i].ID == connection.ID && records[i].Token == connection.Token {
-					records[i].Token = token
-				}
-			}
-			renewErr = writeDesktopConnections(userID, records)
-		}
-		desktopConnectionsMu.Unlock()
-		if renewErr != nil {
-			return crewSyncReply{}, renewErr
+	if token := response.Header.Get(renewedTokenHeader); token != "" {
+		if err := saveRenewedDesktopToken(userID, *connection, token); err != nil {
+			return crewSyncReply{}, err
 		}
 		connection.Token = token
 	}

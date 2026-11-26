@@ -414,8 +414,7 @@ func (api *StreamingAPI) handleDesktopModelCatalog(provider string) http.Handler
 			desktopJSONError(w, 500, "Cannot reach the server.")
 			return
 		}
-		req.Header.Set("Authorization", "Bearer "+c.Token)
-		resp, err := desktopHTTPClient().Do(req)
+		resp, err := desktopServerDo(desktopHTTPClient(), record.OwnerUserID, c, req)
 		if err != nil {
 			desktopJSONError(w, 502, "Cannot reach "+c.Name+".")
 			return
@@ -484,10 +483,9 @@ func (api *StreamingAPI) handleDesktopModelProxy(w http.ResponseWriter, r *http.
 		desktopJSONError(w, 500, "Cannot reach the server.")
 		return
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Content-Type", "application/json")
 	copyProxyHeaders(req, r)
-	resp, err := companyProxyClient.Do(req)
+	resp, err := desktopServerDo(companyProxyClient, record.OwnerUserID, c, req)
 	if err != nil {
 		desktopJSONError(w, 502, "Cannot reach "+c.Name+".")
 		return
@@ -499,15 +497,14 @@ func (api *StreamingAPI) handleDesktopModelProxy(w http.ResponseWriter, r *http.
 // companyAccountOffered asks a connected server whether it lends its account for the program to this person: it lists
 // the program's models. known is false when the server could not be asked (offline): nothing changes then. An older
 // server answers unknown addresses with its web page, which is "not offered".
-func companyAccountOffered(ctx context.Context, c desktopConnection, provider string) (offered, known, own bool) {
+func companyAccountOffered(ctx context.Context, owner string, c desktopConnection, provider string) (offered, known, own bool) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Server+"/api/model-proxy/"+provider+"/v1/models", nil)
 	if err != nil {
 		return false, false, false
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-	resp, err := desktopHTTPClient().Do(req)
+	resp, err := desktopServerDo(desktopHTTPClient(), owner, c, req)
 	if err != nil {
 		return false, false, false
 	}
@@ -600,7 +597,7 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 		wg.Add(1)
 		go func(c desktopConnection) {
 			defer wg.Done()
-			views, status, err := remoteAccountViews(ctx, c)
+			views, status, err := remoteAccountViews(ctx, owner, c)
 			if err != nil || status != http.StatusOK {
 				return
 			}
@@ -629,7 +626,7 @@ func (api *StreamingAPI) syncCompanyAccounts(ctx context.Context, owner string) 
 					mu.Unlock()
 					return
 				}
-				if offered, known, own := companyAccountOffered(ctx, c, provider); known {
+				if offered, known, own := companyAccountOffered(ctx, owner, c, provider); known {
 					if offered {
 						companyNotOffered.Delete(key)
 					} else {

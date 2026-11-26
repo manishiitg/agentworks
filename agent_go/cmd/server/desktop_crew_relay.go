@@ -26,8 +26,7 @@ func desktopServerSupportsRelay(ctx context.Context, owner string, connection de
 	if err != nil {
 		return false
 	}
-	request.Header.Set("Authorization", "Bearer "+connection.Token)
-	response, err := desktopHTTPClient().Do(request)
+	response, err := desktopServerDo(desktopHTTPClient(), owner, connection, request)
 	if err != nil {
 		return false
 	}

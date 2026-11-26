@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -215,6 +216,36 @@ func saveRenewedDesktopToken(owner string, c desktopConnection, token string) er
 		}
 	}
 	return writeDesktopConnections(owner, records)
+}
+
+// desktopServerDo sends one request to a connected server with the connection's saved sign-in and keeps the renewed
+// sign-in the server returns, so a Mac in daily use is never signed out after the session's 7 days. A failed save is
+// only logged: the current sign-in still works. owner is the local person who saved the connection.
+func desktopServerDo(client *http.Client, owner string, c desktopConnection, req *http.Request) (*http.Response, error) {
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	keepRenewedDesktopToken(owner, c, resp.Header)
+	return resp, nil
+}
+
+// keepRenewedDesktopToken saves a renewed sign-in from a server's reply headers and removes it from them, so a
+// proxied reply never hands it on.
+func keepRenewedDesktopToken(owner string, c desktopConnection, header http.Header) {
+	renewed := header.Get(renewedTokenHeader)
+	if renewed == "" {
+		return
+	}
+	header.Del(renewedTokenHeader)
+	if owner == "" {
+		log.Printf("[DESKTOP_CONNECTION] connection=%s event=renewed_sign_in_not_kept reason=no_owner", c.ID)
+		return
+	}
+	if err := saveRenewedDesktopToken(owner, c, renewed); err != nil {
+		log.Printf("[DESKTOP_CONNECTION] connection=%s event=renewed_sign_in_not_kept err=%v", c.ID, err)
+	}
 }
 
 func desktopJSON(w http.ResponseWriter, value any) {

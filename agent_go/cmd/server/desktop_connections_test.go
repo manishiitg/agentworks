@@ -101,6 +101,26 @@ func TestDesktopConnectionProxyOwnerAndCredentialBoundary(t *testing.T) {
 	if strings.Contains(string(raw), "remote-renewed") {
 		t.Fatal("unencrypted token on disk")
 	}
+	// Direct Mac-to-server calls keep the renewal too; the Team chat call used to drop it and sign out after 7 days.
+	direct := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer remote-renewed" {
+			t.Error("saved sign-in not sent")
+		}
+		w.Header().Set("X-Renewed-Token", "renewed-again")
+	}))
+	defer direct.Close()
+	req, _ := http.NewRequest(http.MethodGet, direct.URL+"/api/crew-teams", nil)
+	resp, err := desktopServerDo(http.DefaultClient, "owner", c, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.Header.Get("X-Renewed-Token") != "" {
+		t.Fatal("renewed sign-in handed on to the caller")
+	}
+	if c, err := desktopConnectionFor("owner", "saved"); err != nil || c.Token != "renewed-again" {
+		t.Fatal("direct call's renewal not saved")
+	}
 }
 
 // Exercise the actual code exchange and a real loopback callback. Neither the
