@@ -188,11 +188,16 @@ func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, sessi
 		crewOfflineCursor
 		Wanted bool   `json:"wanted"`
 		Agent  string `json:"agent"`
+		Reset  bool   `json:"reset"`
 	}
+	reset := crewOfflineRewindPending(record)
 	base := "/api/crew-teams/" + url.PathEscape(pair.PeerProjectID)
 	stage = "remote_status"
-	if err = crewTeamRemoteJSON(ctx, user, connection, http.MethodPost, base+"/offline-copy-status", map[string]any{"provider": binding.Provider, "session": binding.Session, "attachment": binding.Attachment, "source_tab": tab}, &status); err != nil {
+	if err = crewTeamRemoteJSON(ctx, user, connection, http.MethodPost, base+"/offline-copy-status", map[string]any{"provider": binding.Provider, "session": binding.Session, "attachment": binding.Attachment, "source_tab": tab, "reset": reset}, &status); err != nil {
 		return err
+	}
+	if reset && status.Wanted && status.Reset {
+		clearCrewOfflineRewind(record)
 	}
 	if !status.Wanted {
 		log.Printf("[AGENT_OFFLINE_COPY] project=%s session=%s event=skipped reason=app_not_shared", project, session)

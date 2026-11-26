@@ -141,6 +141,12 @@ func (api *StreamingAPI) handleRewindCrewChat(w http.ResponseWriter, r *http.Req
 		externalError(w, 500, "rewind_failed", "The agent went back, but the chat screen could not be updated. Reload the chat.")
 		return
 	}
+	// The Team's copy starts over from the shortened chat on its next sync (#3707).
+	if crewChatHasTeamCopy(source.Record) {
+		if err := markCrewOfflineRewind(source.Record); err != nil {
+			log.Printf("[CHAT_REWIND] session=%s status=partial phase=team_copy error_type=%T", session, err)
+		}
+	}
 	log.Printf("[CHAT_REWIND] session=%s provider=%s mode=%s kept_rows=%d removed_events=%d later_messages=%d elapsed_ms=%d", session, provider, mode, point.cut, removed, point.later, time.Since(started).Milliseconds())
 	writeAgentProfileJSON(w, 200, map[string]any{"ok": true, "later_messages": point.later, "provider": provider, "native": mode == "native", "mode": mode})
 }
@@ -311,8 +317,8 @@ var errRewindToStart = errors.New("the edited message was the first; starting fr
 const rewindBackupSuffix = ".before-edit"
 
 // crewChatHasTeamCopy reports whether this chat has been copied for the Team
-// (its private source journal exists). That copy only grows, so an edit does
-// not remove the earlier messages from it.
+// (its private source journal exists). An edit resets that copy on its next
+// sync (crew_agent_offline_copy_rewind.go).
 func crewChatHasTeamCopy(record ProductConversationRecord) bool {
 	roots, found, err := crewStorageRoots(record.WorkspacePath)
 	if err != nil || !found || record.ConversationID == "" {
