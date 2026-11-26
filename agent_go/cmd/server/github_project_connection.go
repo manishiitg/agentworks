@@ -128,19 +128,6 @@ func selectProjectGitHubConnection(ctx context.Context, owner, id string) error 
 	if id != "" && readGitHubConnection(owner, id) == nil {
 		return errors.New("Choose one of your saved GitHub connections.")
 	}
-	raw, path, err := ensureProjectRuntimeManifest(ctx, crewProfileID, root)
-	if err != nil {
-		return err
-	}
-	var manifest map[string]any
-	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return err
-	}
-	caps, _ := manifest["capabilities"].(map[string]any)
-	if caps == nil {
-		caps = map[string]any{}
-		manifest["capabilities"] = caps
-	}
 	// Effective selections can have been saved by the general Secrets panel.
 	// Keep connection credentials controlled by this one account selection so
 	// disconnect cannot leave a previously materialized GitHub secret selected.
@@ -148,26 +135,24 @@ func selectProjectGitHubConnection(ctx context.Context, owner, id string) error 
 	for _, rec := range gitHubConnections(owner) {
 		githubNames[rec.SecretName] = true
 	}
-	if selected, ok := caps["selected_global_secret_names"].([]any); ok {
-		filtered := []any{}
-		for _, value := range selected {
-			name, isName := value.(string)
-			if !isName || (!githubNames[name] && vaultSecretShortName(name) != "GITHUB_TOKEN") {
-				filtered = append(filtered, value)
+	if err := mutateProjectRuntimeManifest(ctx, crewProfileID, root, func(_ map[string]any, caps map[string]any) (bool, error) {
+		if selected, ok := caps["selected_global_secret_names"].([]any); ok {
+			filtered := []any{}
+			for _, value := range selected {
+				name, isName := value.(string)
+				if !isName || (!githubNames[name] && vaultSecretShortName(name) != "GITHUB_TOKEN") {
+					filtered = append(filtered, value)
+				}
 			}
+			caps["selected_global_secret_names"] = filtered
 		}
-		caps["selected_global_secret_names"] = filtered
-	}
-	if id == "" {
-		delete(caps, "github_connection_id")
-	} else {
-		caps["github_connection_id"] = id
-	}
-	data, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := writeFileToWorkspace(ctx, path, string(data)+"\n"); err != nil {
+		if id == "" {
+			delete(caps, "github_connection_id")
+		} else {
+			caps["github_connection_id"] = id
+		}
+		return true, nil
+	}); err != nil {
 		return err
 	}
 	publishCrewPanelForPerson(owner)

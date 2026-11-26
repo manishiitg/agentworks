@@ -13,7 +13,6 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
@@ -574,7 +573,7 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 		externalJSON(w, api.secretSources(ctx, claims.UserID, root))
 		return
 	}
-	raw, manifestPath, err := ensureProjectRuntimeManifest(ctx, project.Product, root)
+	raw, _, err := ensureProjectRuntimeManifest(ctx, project.Product, root)
 	if err != nil {
 		externalError(w, 502, "workspace_unavailable", "Project settings could not be read.")
 		return
@@ -645,40 +644,52 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 			return
 		}
 	}
-	// Write only the keys that changed, so fields the Crew panels own and
-	// this tool does not know keep their exact stored form.
-	for _, field := range changed {
-		switch field {
-		case "models":
-			capabilities["llm_config"] = state.LLMConfig
-		case "mcp_servers", "tools":
-			capabilities["selected_servers"], capabilities["selected_tools"] = nonNilStrings(savedAppSelection(state.Servers)), nonNilStrings(state.Tools)
-			if state.ChosenVaultAppsOnly {
-				capabilities["chosen_vault_apps_only"] = true
-			} else {
-				delete(capabilities, "chosen_vault_apps_only")
+	var versionConflict bool
+	saveErr := mutateProjectRuntimeManifest(ctx, project.Product, root, func(_ map[string]any, capabilities map[string]any) (bool, error) {
+		if expected := externalArg(args, "expected_version"); expected != "" {
+			var latestState externalSettingsState
+			if encoded, err := json.Marshal(capabilities); err == nil {
+				_ = json.Unmarshal(encoded, &latestState)
 			}
-		case "skills":
-			capabilities["selected_skills"] = nonNilStrings(state.Skills)
-		case "secrets":
-			delete(capabilities, "selected_secrets")
-			if state.GlobalSecrets != nil {
-				capabilities["selected_global_secret_names"] = nonNilStrings(*state.GlobalSecrets)
+			latestState.ChatInstructions = project.ChatInstructions
+			if expected != latestState.version() {
+				versionConflict = true
+				return false, nil
 			}
-		case "browser_mode":
-			capabilities["browser_mode"] = state.BrowserMode
-		case "browser_cdp_port":
-			capabilities["browser_cdp_port"] = state.BrowserCDPPort
 		}
-	}
-	manifest["capabilities"] = capabilities
-	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-	encoded, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		externalError(w, 500, "encode_failed", err.Error())
+		// Write only the keys that changed, so fields the Crew panels own and
+		// this tool does not know keep their exact stored form.
+		for _, field := range changed {
+			switch field {
+			case "models":
+				capabilities["llm_config"] = state.LLMConfig
+			case "mcp_servers", "tools":
+				capabilities["selected_servers"], capabilities["selected_tools"] = nonNilStrings(savedAppSelection(state.Servers)), nonNilStrings(state.Tools)
+				if state.ChosenVaultAppsOnly {
+					capabilities["chosen_vault_apps_only"] = true
+				} else {
+					delete(capabilities, "chosen_vault_apps_only")
+				}
+			case "skills":
+				capabilities["selected_skills"] = nonNilStrings(state.Skills)
+			case "secrets":
+				delete(capabilities, "selected_secrets")
+				if state.GlobalSecrets != nil {
+					capabilities["selected_global_secret_names"] = nonNilStrings(*state.GlobalSecrets)
+				}
+			case "browser_mode":
+				capabilities["browser_mode"] = state.BrowserMode
+			case "browser_cdp_port":
+				capabilities["browser_cdp_port"] = state.BrowserCDPPort
+			}
+		}
+		return true, nil
+	})
+	if versionConflict {
+		externalError(w, 409, "version_conflict", "Settings changed since you read them; read them again (settings action=get) and reapply your change.")
 		return
 	}
-	if err := writeFileToWorkspace(ctx, manifestPath, string(encoded)+"\n"); err != nil {
+	if saveErr != nil {
 		externalError(w, 502, "workspace_unavailable", "Project settings could not be saved.")
 		return
 	}

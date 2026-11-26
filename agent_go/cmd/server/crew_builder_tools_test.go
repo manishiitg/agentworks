@@ -12,6 +12,7 @@ import (
 
 func newCrewBuilderToolsTestEnv(t *testing.T) (map[string]recordedTool, *mockWorkspaceAPI, string, *ProjectActionDispatcher) {
 	t.Helper()
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true}]}`)
 
