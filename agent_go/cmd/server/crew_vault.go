@@ -432,6 +432,31 @@ func crewVaultScope(ctx context.Context) string {
 	return scope
 }
 
+// crewVaultProjectIDs returns all known Crew project IDs authoritatively from
+// the project-owners registry (plus any cached entries as a fallback), so
+// vaultID -> project resolution does not depend on the evictable 20s contents
+// cache.
+func crewVaultProjectIDs() []string {
+	seen := map[string]bool{}
+	var ids []string
+	if records, err := defaultProjectOwners().All(); err == nil {
+		for _, rec := range records {
+			if rec.Product == crewProfileID && rec.ProjectID != "" && !seen[rec.ProjectID] {
+				seen[rec.ProjectID] = true
+				ids = append(ids, rec.ProjectID)
+			}
+		}
+	}
+	crewVaultContentsCache.Range(func(key, _ any) bool {
+		if id, ok := key.(string); ok && id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+		return true
+	})
+	return ids
+}
+
 // crewVaultReader is whose access a turn reads its server Crew vault with. A User of that Crew works with its keys and
 // apps but is not one of the vault's owners (crewVaultOwners), so their turn reads it as the Crew's main owner; the
 // scope still limits the read to this one Crew vault and the turn takes only the Crew's own selection from it. Everyone
@@ -442,13 +467,12 @@ func crewVaultReader(ctx context.Context, person string) string {
 		return person
 	}
 	project := ""
-	crewVaultContentsCache.Range(func(key, _ any) bool {
-		if crewVaultID(key.(string)) == scope {
-			project = key.(string)
-			return false
+	for _, id := range crewVaultProjectIDs() {
+		if crewVaultID(id) == scope {
+			project = id
+			break
 		}
-		return true
-	})
+	}
 	if project == "" {
 		return person
 	}
@@ -499,21 +523,23 @@ func withCrewVaultScopeForNames(ctx context.Context, names []string) context.Con
 		return ctx
 	}
 	scope := ""
-	crewVaultContentsCache.Range(func(key, _ any) bool {
-		id := crewVaultID(key.(string))
+	for _, project := range crewVaultProjectIDs() {
+		id := crewVaultID(project)
 		prefix, err := vaultSecretName(id, "x")
 		if err != nil {
-			return true
+			continue
 		}
 		prefix = strings.TrimSuffix(prefix, "x")
 		for _, name := range names {
 			if strings.HasPrefix(name, prefix) {
 				scope = id
-				return false
+				break
 			}
 		}
-		return true
-	})
+		if scope != "" {
+			break
+		}
+	}
 	if scope == "" {
 		return ctx
 	}
