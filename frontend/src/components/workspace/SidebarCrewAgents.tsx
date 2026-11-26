@@ -93,6 +93,11 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const [failed, setFailed] = useState('')
   // #3504 / #4152: the last hierarchy move (moving a fork out or nesting a chat under another), with an undo action, and any move error.
   const [moved, setMoved] = useState<{ key: string; name: string; previousParentKey: string; previousParentName?: string; text: string; undoLabel: string } | null>(null)
+  useEffect(() => {
+    if (!moved) return
+    const timer = window.setTimeout(() => setMoved(null), 6000)
+    return () => window.clearTimeout(timer)
+  }, [moved])
   const [forkFailed, setForkFailed] = useState<{ message: string; retry: () => void } | null>(null)
   // The Team tab's one server reading: each agent's availability and every person, by account, with their name.
   const team = useTeamTab(projectId).view

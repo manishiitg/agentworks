@@ -383,5 +383,14 @@ it('nests a chat under another chat by dragging or via Move under…, while top-
   expect(menuText).not.toContain('Topic')
   await click('Parent', '[role="menuitem"]')
   expect(childForkParent).toHaveBeenLastCalledWith('crew:chat:parent')
- } finally { f.extra = []; window.localStorage.clear(); await act(async () => root.unmount()) }
+
+  // The Undo status notice dismisses itself after a short delay.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  await act(async () => drag('dragstart', topicRow))
+  await act(async () => drag('dragover', mainRow, 115))
+  await act(async () => drag('drop', mainRow, 115))
+  expect(host.querySelector('[role="status"]')?.textContent).toContain('Topic is now under Main.')
+  await act(async () => { vi.advanceTimersByTime(6000) })
+  expect(host.querySelector('[role="status"]')).toBeNull()
+ } finally { vi.useRealTimers(); f.extra = []; window.localStorage.clear(); await act(async () => root.unmount()) }
 })
