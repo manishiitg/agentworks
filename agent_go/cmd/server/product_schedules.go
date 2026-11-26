@@ -841,6 +841,38 @@ func keepUnmodelledProjectManifestFields(previous, written []byte) []byte {
 	return merged
 }
 
+// workflowManifestNeedsLegacyCleanup reports whether a Crew workflow.json still
+// contains inline schedules, triggers, or legacy product.json fields that need
+// stripping. Modern projects store schedules in schedules.json and webhooks in
+// webhooks.json, so schedule/webhook saves should not rewrite workflow.json.
+func workflowManifestNeedsLegacyCleanup(previous []byte, hasTitle bool) bool {
+	var doc map[string]json.RawMessage
+	if json.Unmarshal(previous, &doc) != nil || doc == nil {
+		return true
+	}
+	for _, legacyKey := range []string{"schedules", "triggers", "product", "title", "description", "session_id"} {
+		if _, exists := doc[legacyKey]; exists {
+			return true
+		}
+	}
+	if hasTitle {
+		var label string
+		_ = json.Unmarshal(doc["label"], &label)
+		if strings.TrimSpace(label) == "" {
+			return true
+		}
+	}
+	if capsRaw, exists := doc["capabilities"]; exists {
+		var caps map[string]json.RawMessage
+		if json.Unmarshal(capsRaw, &caps) == nil {
+			if _, hasLegacy := caps["workflow_context_paths"]; hasLegacy {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (s *ProjectActionDispatcher) writeProjectManifest(ctx context.Context, binding productConversationBinding, manifest productProjectManifest) error {
 	if isProjectProfileID(manifest.Product) || isCrewProjectPath(binding.WorkspacePath) {
 		if err := saveCrewEntryActions(ctx, filepath.ToSlash(filepath.Dir(binding.ManifestPath)), manifest); err != nil {
@@ -853,8 +885,20 @@ func (s *ProjectActionDispatcher) writeProjectManifest(ctx context.Context, bind
 	}
 	// Timers have one saved record; the manifest carries only the read projection.
 	manifest.Schedules = nil
+	lock := productConversationRegistryMutex(binding.ManifestPath)
+	lock.Lock()
+	defer lock.Unlock()
+
+	previous, previousExists, readErr := s.readFile(ctx, binding.ManifestPath)
+	if readErr != nil {
+		return readErr
+	}
+	isWorkflowManifest := filepath.Base(filepath.FromSlash(binding.ManifestPath)) == "workflow.json"
+	if isWorkflowManifest && previousExists && !workflowManifestNeedsLegacyCleanup([]byte(previous), strings.TrimSpace(manifest.Title) != "") {
+		return nil
+	}
 	manifest.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	if filepath.Base(filepath.FromSlash(binding.ManifestPath)) == "workflow.json" {
+	if isWorkflowManifest {
 		if strings.TrimSpace(manifest.Label) == "" {
 			manifest.Label = manifest.Title
 		}
@@ -863,10 +907,6 @@ func (s *ProjectActionDispatcher) writeProjectManifest(ctx context.Context, bind
 		manifest.Description = ""
 		manifest.SessionID = ""
 		manifest.Capabilities.WorkflowContextPaths = nil
-	}
-	previous, previousExists, readErr := s.readFile(ctx, binding.ManifestPath)
-	if readErr != nil {
-		return readErr
 	}
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {

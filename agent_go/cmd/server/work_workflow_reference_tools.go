@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
@@ -496,36 +495,25 @@ func readWorkWorkflowReferences(ctx context.Context, workspacePath string) ([]st
 }
 
 func updateWorkWorkflowReferences(ctx context.Context, workspacePath string, mutate func([]string) ([]string, error)) ([]string, error) {
-	manifestPath := projectRuntimeManifestPath("work", workspacePath)
-	mutex := productConversationRegistryMutex(manifestPath)
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	raw, _, err := ensureProjectRuntimeManifest(ctx, "work", workspacePath)
+	var next []string
+	err := mutateProjectRuntimeManifest(ctx, "work", workspacePath, func(document map[string]any, _ map[string]any) (bool, error) {
+		rawDoc, err := json.Marshal(document)
+		if err != nil {
+			return false, fmt.Errorf("encode Work product manifest: %w", err)
+		}
+		var typed productProjectManifest
+		if err := json.Unmarshal(rawDoc, &typed); err != nil {
+			return false, fmt.Errorf("decode Work product manifest: %w", err)
+		}
+		next, err = mutate(canonicalRuntimeSelection(firstNonEmptyStrings(typed.WorkflowContextPaths, typed.Capabilities.WorkflowContextPaths)))
+		if err != nil {
+			return false, err
+		}
+		next = canonicalRuntimeSelection(next)
+		document["workflow_context_paths"] = next
+		return true, nil
+	})
 	if err != nil {
-		return nil, err
-	}
-	var typed productProjectManifest
-	if err := json.Unmarshal([]byte(raw), &typed); err != nil {
-		return nil, fmt.Errorf("decode Work product manifest: %w", err)
-	}
-	next, err := mutate(canonicalRuntimeSelection(firstNonEmptyStrings(typed.WorkflowContextPaths, typed.Capabilities.WorkflowContextPaths)))
-	if err != nil {
-		return nil, err
-	}
-	next = canonicalRuntimeSelection(next)
-
-	var document map[string]interface{}
-	if err := json.Unmarshal([]byte(raw), &document); err != nil {
-		return nil, fmt.Errorf("decode Work product manifest fields: %w", err)
-	}
-	document["workflow_context_paths"] = next
-	document["updated_at"] = time.Now().UTC().Format(time.RFC3339Nano)
-	encoded, err := json.MarshalIndent(document, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("encode Work product manifest: %w", err)
-	}
-	if err := writeFileToWorkspace(ctx, manifestPath, string(encoded)+"\n"); err != nil {
 		return nil, err
 	}
 	return next, nil

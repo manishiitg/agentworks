@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"time"
 )
 
 // remoteProjectLink links a project to one on another machine (#3663): a Mac project to a project on a server it is
@@ -52,37 +51,25 @@ func readRemoteProjectLinks(ctx context.Context, workspacePath string) ([]remote
 }
 
 func updateRemoteProjectLinks(ctx context.Context, workspacePath string, mutate func([]remoteProjectLink) ([]remoteProjectLink, error)) ([]remoteProjectLink, error) {
-	manifestPath := projectRuntimeManifestPath("work", workspacePath)
-	mutex := productConversationRegistryMutex(manifestPath)
-	mutex.Lock()
-	defer mutex.Unlock()
-	raw, _, err := ensureProjectRuntimeManifest(ctx, "work", workspacePath)
-	if err != nil {
-		return nil, err
-	}
-	var document map[string]interface{}
-	if err := json.Unmarshal([]byte(raw), &document); err != nil {
-		return nil, fmt.Errorf("decode Work runtime manifest: %w", err)
-	}
-	var current struct {
-		Links []remoteProjectLink `json:"linked_remote_projects"`
-	}
-	_ = json.Unmarshal([]byte(raw), &current)
-	next, err := mutate(current.Links)
-	if err != nil {
-		return nil, err
-	}
-	if len(next) == 0 {
-		delete(document, "linked_remote_projects")
-	} else {
-		document["linked_remote_projects"] = next
-	}
-	document["updated_at"] = time.Now().UTC().Format(time.RFC3339Nano)
-	encoded, err := json.MarshalIndent(document, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	return next, writeFileToWorkspace(ctx, manifestPath, string(encoded)+"\n")
+	var next []remoteProjectLink
+	err := mutateProjectRuntimeManifest(ctx, "work", workspacePath, func(document map[string]any, _ map[string]any) (bool, error) {
+		var current []remoteProjectLink
+		if encoded, err := json.Marshal(document["linked_remote_projects"]); err == nil {
+			_ = json.Unmarshal(encoded, &current)
+		}
+		var err error
+		next, err = mutate(current)
+		if err != nil {
+			return false, err
+		}
+		if len(next) == 0 {
+			delete(document, "linked_remote_projects")
+		} else {
+			document["linked_remote_projects"] = next
+		}
+		return true, nil
+	})
+	return next, err
 }
 
 // setRemoteProjectLink adds or renames the link to project on server.

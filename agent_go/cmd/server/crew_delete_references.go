@@ -47,7 +47,11 @@ func pruneDeletedCrewReferences(ctx context.Context, ownerID, workspacePath stri
 	// workflow_context_paths: its other fields are the crew's, and the
 	// workflow writer's validation rejects crew attachments.
 	saveCrew := func(workspace string, ownedByOwner bool) {
-		raw, exists, err := readFileFromWorkspace(ctx, manifestPath(workspace))
+		path := manifestPath(workspace)
+		lock := productConversationRegistryMutex(path)
+		lock.Lock()
+		defer lock.Unlock()
+		raw, exists, err := readFileFromWorkspace(ctx, path)
 		if err != nil || !exists {
 			return
 		}
@@ -69,7 +73,7 @@ func pruneDeletedCrewReferences(ctx context.Context, ownerID, workspacePath stri
 		if err != nil {
 			return
 		}
-		if err := writeFileToWorkspace(ctx, manifestPath(workspace), string(out)+"\n"); err != nil {
+		if err := writeFileToWorkspace(ctx, path, string(out)+"\n"); err != nil {
 			log.Printf("[CREW_DELETE] could not remove %s from %s: %v", physical, workspace, err)
 			return
 		}

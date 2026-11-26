@@ -264,7 +264,7 @@ func attachCrewProjectToWorkflow(ctx context.Context, svc *ProjectActionDispatch
 		ID: uuid.NewString(), Alias: alias, CrewProfileID: profileID, CrewProjectID: projectID,
 		CrewWorkspacePath: root, CreatedAt: time.Now().UTC().Format(time.RFC3339),
 	})
-	if err := writeWorkflowManifest(ctx, workspace, manifest); err != nil {
+	if err := WriteWorkflowManifest(ctx, workspace, manifest); err != nil {
 		return "", false, err
 	}
 	live := liveCrewAttachmentBindings(manifest.CrewAttachments)
@@ -296,19 +296,6 @@ func crewAttachmentStoredRoots(attachments []workflowtypes.CrewAttachment) []str
 		}
 	}
 	return roots
-}
-
-// writeWorkflowManifest persists a mutated workflow manifest.
-func writeWorkflowManifest(ctx context.Context, workspace string, manifest *WorkflowManifest) error {
-	manifest.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	data, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("cannot encode workflow manifest: %w", err)
-	}
-	if err := writeFileToWorkspace(ctx, manifestPath(workspace), string(data)); err != nil {
-		return fmt.Errorf("cannot save workflow manifest: %w", err)
-	}
-	return nil
 }
 
 // registerCrewAttachmentTool is shared by the native Builder and direct MCP.
@@ -362,7 +349,7 @@ func (api *StreamingAPI) registerCrewAttachmentTool(reg definitionToolRegistrar,
 			}
 			previousRoots := crewAttachmentStoredRoots(manifest.CrewAttachments)
 			manifest.CrewAttachments = kept
-			if err := writeWorkflowManifest(ctx, workspace, manifest); err != nil {
+			if err := WriteWorkflowManifest(ctx, workspace, manifest); err != nil {
 				return "", err
 			}
 			live := liveCrewAttachmentBindings(manifest.CrewAttachments)

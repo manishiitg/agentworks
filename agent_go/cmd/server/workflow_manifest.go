@@ -1131,6 +1131,17 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		}
 		defer unlock()
 	}
+	manifestLock := productConversationRegistryMutex(manifestPath(workspacePath))
+	manifestLock.Lock()
+	manifestLocked := true
+	unlockManifest := func() {
+		if manifestLocked {
+			manifestLocked = false
+			manifestLock.Unlock()
+		}
+	}
+	defer unlockManifest()
+
 	previous, previousExists, readErr := readFileFromWorkspace(ctx, manifestPath(workspacePath))
 	if readErr != nil {
 		return fmt.Errorf("read existing workflow.json before update: %w", readErr)
@@ -1203,6 +1214,7 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 	if err := writeFileToWorkspace(ctx, manifestPath(workspacePath), string(data)); err != nil {
 		return fmt.Errorf("failed to write workflow.json: %w", err)
 	}
+	unlockManifest()
 
 	if !previousExists || previous != string(data) {
 		if changes := workflowManifestChangelogChanges(previous, string(data)); len(changes) > 0 {

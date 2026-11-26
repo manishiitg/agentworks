@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/gorilla/mux"
 
@@ -567,30 +566,14 @@ func updateProductSlackConnectionID(ctx context.Context, profileID, workspacePat
 	if err := validateSlackConnectionSelection(connID); err != nil {
 		return err
 	}
-	raw, manifestPath, err := ensureProjectRuntimeManifest(ctx, profileID, workspacePath)
-	if err != nil {
-		return err
-	}
-	var manifest map[string]interface{}
-	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return fmt.Errorf("decode product manifest: %w", err)
-	}
-	capabilities, _ := manifest["capabilities"].(map[string]interface{})
-	if capabilities == nil {
-		capabilities = map[string]interface{}{}
-	}
-	if connID == "" {
-		delete(capabilities, "slack_connection_id")
-	} else {
-		capabilities["slack_connection_id"] = connID
-	}
-	manifest["capabilities"] = capabilities
-	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-	encoded, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return err
-	}
-	return writeFileToWorkspace(ctx, manifestPath, string(encoded)+"\n")
+	return mutateProjectRuntimeManifest(ctx, profileID, workspacePath, func(_ map[string]any, capabilities map[string]any) (bool, error) {
+		if connID == "" {
+			delete(capabilities, "slack_connection_id")
+		} else {
+			capabilities["slack_connection_id"] = connID
+		}
+		return true, nil
+	})
 }
 
 // slackConnectionWorkflowReference names a workflow (label preferred) that

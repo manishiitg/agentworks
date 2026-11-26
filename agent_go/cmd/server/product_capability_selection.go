@@ -212,40 +212,24 @@ func productSelectedGlobalSecrets(ctx context.Context, profileID, workspacePath 
 }
 
 func updateProductSelectedGlobalSecrets(ctx context.Context, profileID, workspacePath string, mutate func([]string) []string) error {
-	raw, manifestPath, err := ensureProjectRuntimeManifest(ctx, profileID, workspacePath)
-	if err != nil {
-		return err
-	}
-	var manifest map[string]interface{}
-	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return fmt.Errorf("decode product manifest: %w", err)
-	}
-	capabilities, _ := manifest["capabilities"].(map[string]interface{})
-	if capabilities == nil {
-		capabilities = map[string]interface{}{}
-	}
-	current := []string{}
-	if items, ok := capabilities["selected_global_secret_names"].([]interface{}); ok {
-		for _, item := range items {
-			if name, ok := item.(string); ok {
-				current = appendUniqueStrings(current, strings.TrimSpace(name))
+	return mutateProjectRuntimeManifest(ctx, profileID, workspacePath, func(_ map[string]any, capabilities map[string]any) (bool, error) {
+		current := []string{}
+		if items, ok := capabilities["selected_global_secret_names"].([]interface{}); ok {
+			for _, item := range items {
+				if name, ok := item.(string); ok {
+					current = appendUniqueStrings(current, strings.TrimSpace(name))
+				}
 			}
 		}
-	}
-	next := mutate(current)
-	canonical := make([]string, 0, len(next))
-	for _, name := range next {
-		canonical = appendUniqueStrings(canonical, strings.TrimSpace(name))
-	}
-	sort.Strings(canonical)
-	capabilities["selected_global_secret_names"] = canonical
-	manifest["capabilities"] = capabilities
-	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-	encoded, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode product manifest: %w", err)
-	}
-	return writeFileToWorkspace(ctx, manifestPath, string(encoded)+"\n")
+		next := mutate(current)
+		canonical := make([]string, 0, len(next))
+		for _, name := range next {
+			canonical = appendUniqueStrings(canonical, strings.TrimSpace(name))
+		}
+		sort.Strings(canonical)
+		capabilities["selected_global_secret_names"] = canonical
+		return true, nil
+	})
 }
 
 func productSelectedSkills(ctx context.Context, profileID, workspacePath string) ([]string, error) {
@@ -273,40 +257,24 @@ func productSelectedSkills(ctx context.Context, profileID, workspacePath string)
 }
 
 func updateProductSelectedSkills(ctx context.Context, profileID, workspacePath string, mutate func([]string) []string) error {
-	raw, manifestPath, err := ensureProjectRuntimeManifest(ctx, profileID, workspacePath)
-	if err != nil {
-		return err
-	}
-	var manifest map[string]interface{}
-	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return fmt.Errorf("decode product manifest: %w", err)
-	}
-	capabilities, _ := manifest["capabilities"].(map[string]interface{})
-	if capabilities == nil {
-		capabilities = map[string]interface{}{}
-	}
-	current := []string{}
-	if items, ok := capabilities["selected_skills"].([]interface{}); ok {
-		for _, item := range items {
-			if name, ok := item.(string); ok {
-				current = appendUniqueStrings(current, strings.TrimSpace(name))
+	return mutateProjectRuntimeManifest(ctx, profileID, workspacePath, func(_ map[string]any, capabilities map[string]any) (bool, error) {
+		current := []string{}
+		if items, ok := capabilities["selected_skills"].([]interface{}); ok {
+			for _, item := range items {
+				if name, ok := item.(string); ok {
+					current = appendUniqueStrings(current, strings.TrimSpace(name))
+				}
 			}
 		}
-	}
-	next := mutate(current)
-	canonical := make([]string, 0, len(next))
-	for _, name := range next {
-		canonical = appendUniqueStrings(canonical, strings.TrimSpace(name))
-	}
-	sort.Strings(canonical)
-	capabilities["selected_skills"] = canonical
-	manifest["capabilities"] = capabilities
-	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-	encoded, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode product manifest: %w", err)
-	}
-	return writeFileToWorkspace(ctx, manifestPath, string(encoded)+"\n")
+		next := mutate(current)
+		canonical := make([]string, 0, len(next))
+		for _, name := range next {
+			canonical = appendUniqueStrings(canonical, strings.TrimSpace(name))
+		}
+		sort.Strings(canonical)
+		capabilities["selected_skills"] = canonical
+		return true, nil
+	})
 }
 
 // productSelectedServers is a Crew's app selection as the agent runtime takes it (runtimeAppSelection); initialized
@@ -365,45 +333,29 @@ func productAppSelectionRecord(ctx context.Context, profileID, workspacePath str
 // updateProductSelectedServers saves a Crew's app list; chosenOnly, when given, sets "Use all my apps
 // automatically" off (true) or on (false).
 func updateProductSelectedServers(ctx context.Context, profileID, workspacePath string, mutate func([]string) []string, chosenOnly ...bool) error {
-	raw, manifestPath, err := ensureProjectRuntimeManifest(ctx, profileID, workspacePath)
-	if err != nil {
-		return err
-	}
-	var manifest map[string]interface{}
-	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return fmt.Errorf("decode product manifest: %w", err)
-	}
-	capabilities, _ := manifest["capabilities"].(map[string]interface{})
-	if capabilities == nil {
-		capabilities = map[string]interface{}{}
-	}
-	current := []string{}
-	if items, ok := capabilities["selected_servers"].([]interface{}); ok {
-		for _, item := range items {
-			if name, ok := item.(string); ok {
-				current = appendUniqueStrings(current, strings.TrimSpace(name))
+	return mutateProjectRuntimeManifest(ctx, profileID, workspacePath, func(_ map[string]any, capabilities map[string]any) (bool, error) {
+		current := []string{}
+		if items, ok := capabilities["selected_servers"].([]interface{}); ok {
+			for _, item := range items {
+				if name, ok := item.(string); ok {
+					current = appendUniqueStrings(current, strings.TrimSpace(name))
+				}
 			}
 		}
-	}
-	next := savedAppSelection(mutate(savedAppSelection(current)))
-	canonical := make([]string, 0, len(next))
-	for _, name := range next {
-		canonical = appendUniqueStrings(canonical, strings.TrimSpace(name))
-	}
-	sort.Strings(canonical)
-	capabilities["selected_servers"] = canonical
-	if len(chosenOnly) > 0 {
-		if chosenOnly[0] {
-			capabilities["chosen_vault_apps_only"] = true
-		} else {
-			delete(capabilities, "chosen_vault_apps_only")
+		next := savedAppSelection(mutate(savedAppSelection(current)))
+		canonical := make([]string, 0, len(next))
+		for _, name := range next {
+			canonical = appendUniqueStrings(canonical, strings.TrimSpace(name))
 		}
-	}
-	manifest["capabilities"] = capabilities
-	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-	encoded, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode product manifest: %w", err)
-	}
-	return writeFileToWorkspace(ctx, manifestPath, string(encoded)+"\n")
+		sort.Strings(canonical)
+		capabilities["selected_servers"] = canonical
+		if len(chosenOnly) > 0 {
+			if chosenOnly[0] {
+				capabilities["chosen_vault_apps_only"] = true
+			} else {
+				delete(capabilities, "chosen_vault_apps_only")
+			}
+		}
+		return true, nil
+	})
 }
