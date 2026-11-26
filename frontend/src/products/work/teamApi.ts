@@ -392,6 +392,40 @@ export function teammateAgentsListed(workspace = getRawActiveWorkspaceId()): boo
   return hasDesktopConnections() && workspace === 'local'
 }
 
+/** The person's own agents in the online projects the Team uses (owner, 26 Nov, #4121): real tabs of this Mac project
+ * that run on the server, read and written through this Mac's sign-in (utils/remoteSessions.ts). Only projects the
+ * person owns; Main there is just one of its agents, never this project's Main. Empty outside the Mac app's own Crew. */
+const onlineProjectsSeen = new Map<string, { at: number; projects: TeamOnlineProject[] }>()
+export async function onlineAgentSideChats(profileId: string, projectId: string, workspace = getRawActiveWorkspaceId()): Promise<AgentProfileSideChat[]> {
+  if (!teammateAgentsListed(workspace)) return []
+  const binding = await macBinding(projectId, workspace)
+  if (!binding || binding.side !== 'local') return []
+  const base = `${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(binding.connection)}`
+  const headers = { Authorization: `Bearer ${getAuthToken() || ''}` }
+  let seen = onlineProjectsSeen.get(projectId)
+  if (!seen || Date.now() - seen.at > 60_000) {
+    const reply = await fetch(`${base}/api/crew-teams/${encodeURIComponent(projectId)}/tab`, { headers })
+    const view = reply.ok ? await reply.json() as TeamTabView : undefined
+    seen = { at: Date.now(), projects: (view?.online_projects || []).filter(item => item.mine && item.project_id) }
+    onlineProjectsSeen.set(projectId, seen)
+  }
+  const out: AgentProfileSideChat[] = []
+  for (const online of seen.projects) {
+    const response = await fetch(`${base}/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats?project_id=${encodeURIComponent(online.project_id)}`, { headers })
+    if (!response.ok) continue
+    const rows = await response.json() as AgentProfileSideChat[]
+    for (const row of rows || []) {
+      if (row.can_write === false || !row.session_id || !row.conversation_key) continue
+      registerRemoteSession(row.session_id, binding.connection)
+      out.push({ ...row, is_main: false, chat_location: undefined, agent_id: undefined, tab_owner_id: `project:${online.project_id}`, tab_owner_name: `${online.name} · online`,
+        online_project: { id: online.project_id, name: online.name, connection: binding.connection } })
+    }
+  }
+  return out
+}
+/** Forget the online projects read for a Mac project, so the next list reads them again (after New agent online). */
+export function forgetOnlineProjects(projectId: string) { onlineProjectsSeen.delete(projectId) }
+
 /** The Team members' own agents in the owner's Mac app (owner, 5 Nov): the online copy's side-chat rows the person
  * does not write, as real tabs of this Crew (agents only: a schedule's own chat has a :schedule: key and stays out). Their chats are read from the server through this Mac's sign-in
  * (utils/remoteSessions.ts); the key carries the server's after ":team:". Empty outside the Mac app's own Crew. */

@@ -1,5 +1,6 @@
 /** Chats this Mac app shows from one of its servers without reloading the window: a Team member's agent and an online
- * project's agents inside a Mac project's Team (owner, 5 Nov; #3664). Their requests go to that server through this
+ * project's agents inside a Mac project's Team (owner, 5 Nov; #3664), including the person's own online agents, which
+ * they type into (#4121). Their requests go to that server through this
  * Mac's saved sign-in, /api/connections/{id}/…, and the server checks who may read or change them each time. Server
  * projects themselves open on their website, never in this window (owner, 24 Nov, #3779). */
 const sessions = new Map<string, string>()
@@ -12,7 +13,7 @@ export function remoteSessionConnection(sessionId?: string | null): string | und
 }
 
 const SESSION_PATH = /^\/api\/(?:sessions|chat-history\/sessions)\/([^/?]+)/
-const CHAT_REQUEST_PATH = /^\/api\/(?:query|stop|steer|cancel|chat|sessions|chat-history|agent-profiles\/[^/]+\/conversation)(?:\/|$|\?)/
+const CHAT_REQUEST_PATH = /^\/api\/(?:query|stop|steer|cancel|chat|sessions|chat-history|agent-profiles\/[^/]+\/(?:conversation|query))(?:\/|$|\?)/
 
 function decoded(value: string): string { try { return decodeURIComponent(value) } catch { return value } }
 

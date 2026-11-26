@@ -1,6 +1,7 @@
 import { takeSidebarProjectAction, useSidebarProjectAction } from '../../products/work/sidebarProjectActions'
 import { randomUUID } from '../../utils/randomUUID'
 import { TeammateChatIdentity } from '../../products/work/TeammateChatIdentity'
+import { OnlineAgentLine } from '../../products/work/OnlineAgentLine'
 import { PendingAgentForks } from './PendingAgentForks'
 import { ForkToTeammate } from './ForkToTeammate'
 import { continueInTerminal } from './TerminalResume'
@@ -21,7 +22,7 @@ import { compactOwnerChatName, ownerShortName } from './chatTabName'
 import { ProjectWorkspaceTitle } from './ProjectWorkspaceTitle'
 import { MobileWorkspaceNavigationContext } from '../workspace/MobileWorkspaceNavigation'
 import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, useYourComputerSummary, type CloudState } from '../../products/work/YourComputerPanel'
-import { agentSetupForTab, createOnlineAgent, teamAgentForTab, teamChanged, teamFailure, useTeamTab } from '../../products/work/teamApi'
+import { agentSetupForTab, createOnlineAgent, forgetOnlineProjects, teamAgentForTab, teamChanged, teamFailure, useTeamTab } from '../../products/work/teamApi'
 import type { ChatTabPillProps } from './ChatTabPill'
 import { AgentHeaderLine, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow, type CrewClosedAgent } from './AgentCard'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
@@ -105,10 +106,15 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     if (online && teamState.target) {
       setMakingOnline(true)
       try {
-        await createOnlineAgent(teamState.target, online.project_id, name)
+        const made = await createOnlineAgent(teamState.target, online.project_id, name)
         teamChanged()
         useChatStore.getState().addToast(`Created ${name} in ${online.name} on the server. It runs 24/7, even with your Mac off.`, 'success')
         setNewTabName(null); setAddMode(null); setNewWhere('mac')
+        // It opens as a tab here at once: the strip lists it again and opens it (WorkSurface open-team-agent).
+        if (placeProject && made.chat_id) {
+          forgetOnlineProjects(placeProject)
+          window.dispatchEvent(new CustomEvent('agentworks:open-team-agent', { detail: { projectId: placeProject, key: `${online.project_id}:chat:${made.chat_id}` } }))
+        }
       } catch (cause) { useChatStore.getState().addToast(teamFailure(cause).message, 'error') }
       finally { setMakingOnline(false) }
       return
@@ -126,6 +132,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     const owner = tab.metadata?.agentProfileTabOwnerName
     // Other people's agents sit under their name (left menu headings, tab strip groups), so the name alone (owner, 5 Nov).
     // Main's name is its own chat's, from the server (Main until renamed, #4030).
+    // The person's own online agent names its project, so it reads apart from this Mac's agents (#4121).
+    const online = tab.metadata?.agentProfileOnlineProject
+    if (online) return `${sideChatName(tab)} · ${online.name}`
     return compactOwnerChatName(tab.tabId === canonicalTabId ? listedFor(tab)?.name || 'Main' : sideChatName(tab), owner)
   }
   // The purpose icon, for the tab's owner only (owner, 3 Nov): it fills the chat box; the agent saves the line itself.
@@ -330,7 +339,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   // The open tab's details, for the purpose line at the top of its chat.
   const openTab = activeTab && tabs.some(tab => tab.tabId === activeTab.tabId) ? activeTab : undefined
   const openInfo = openTab ? agentFace(openTab)?.info : undefined
-  const watchingOther = !!openTab && tabOwnerId(openTab) !== ''
+  // The person's own online agent (#4121) is theirs to type into, though grouped under its project.
+  const watchingOther = !!openTab && tabOwnerId(openTab) !== '' && !openTab.metadata?.agentProfileOnlineProject
   const headerAgent = crewAgents.find(agent => agent.tabId === openTab?.tabId)
   const openKey = openTab ? `${openTab.tabId}|${openInfo?.purpose ?? ''}|${JSON.stringify(openInfo?.examples)}|${openInfo?.sharedWith ?? ''}|${openInfo?.onSharing ? 1 : 0}|${JSON.stringify(openInfo?.setup ?? null)}|${openInfo?.activity ?? ''}|${openInfo?.presence ?? ''}` : ''
   useEffect(() => {
@@ -622,7 +632,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       {forkTo && <ForkToTeammate state={teamState} agentId={forkTo.id} name={forkTo.name} close={() => setForkTo(null)} />}
       {/* Crew always uses the same current-agent header. Other products keep their tabs. */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
-      {surface === 'work' && (watchingOther ? <TeammateChatIdentity tabId={openTab?.tabId} /> : <AgentHeaderLine agent={headerAgent} crewName={projectName} onOpenIdentity={onOpenIdentity} />)}
+      {surface === 'work' && (openTab?.metadata?.agentProfileOnlineProject ? <OnlineAgentLine tab={openTab} name={sideChatName(openTab)} team={teamState} /> : watchingOther ? <TeammateChatIdentity tabId={openTab?.tabId} /> : <AgentHeaderLine agent={headerAgent} crewName={projectName} onOpenIdentity={onOpenIdentity} />)}
       {/* Viewing someone else's agent: no New agent in its header (owner, 19 Nov). The agents menu keeps it. */}
       {surface === 'work' && !watchingOther && addAgentButton}
       {/* Agent copies waiting for you sit at the header's right end (owner, 20 Nov); the Team menu shows them too. */}

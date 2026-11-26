@@ -499,6 +499,8 @@ export interface ChatTab {
     // The provider and account the server recorded for this chat when it was opened: what the chat runs on
     // when the project names no account (Models shows it).
     agentProfileChatLocation?: 'mac'
+    /** The tab's agent runs in this online project on the server (#4121); its chat requests go through connection. */
+    agentProfileOnlineProject?: { id: string; name: string; connection: string }
     agentProfileChatProvider?: string
     agentProfileChatConnectionID?: string
     // True only for an explicit caller-owned chat-model registry choice.
