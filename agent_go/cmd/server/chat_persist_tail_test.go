@@ -323,6 +323,102 @@ func TestCodingTurnRecentWindowSavesLikeTheFullHistory(t *testing.T) {
 	}
 }
 
+// #4288: when a coding CLI relaunches with a changed system prompt (e.g. after
+// TEAM_INSTRUCTIONS changed), server.go merges resolvedTarget.History with the
+// turn's history via mergeRestoredChatHistory before saving. That merge must
+// replace the leading system message instead of duplicating it into the body,
+// keeping the save on the tail-append path with zero full-file reads/writes.
+func TestCodingTurnRecentWindowWithUpdatedSystemPromptStaysOnTailAppend(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	priorDocs := viper.Get("docs-dir")
+	viper.Set("docs-dir", docs)
+	t.Cleanup(func() { viper.Set("docs-dir", priorDocs) })
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"}]}`)
+	const root = "Workflow/example"
+	const session = "relaunch-system-change"
+	path := root + "/builder/conversation/2026-11-26/" + chatHistoryConversationFileName(session)
+	local := filepath.Join(docs, filepath.FromSlash(path))
+	if err := os.MkdirAll(filepath.Dir(local), 0700); err != nil {
+		t.Fatal(err)
+	}
+	saved := []llmtypes.MessageContent{llmtypes.TextPart(llmtypes.ChatMessageTypeSystem, "old system")}
+	for i := 0; i < 60; i++ {
+		saved = append(saved, llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "question"), llmtypes.TextPart(llmtypes.ChatMessageTypeAI, "answer"))
+	}
+	raw, _ := json.Marshal(map[string]interface{}{"session_id": session, "user_id": "owner", "title": "Relaunch test", "conversation_history": saved})
+	if err := chatlog.Save(local, raw); err != nil {
+		t.Fatal(err)
+	}
+	var fullReads, fullWrites atomic.Int64
+	router := gin.New()
+	router.Any("/api/documents/*filepath", func(c *gin.Context) {
+		p := strings.TrimPrefix(c.Param("filepath"), "/")
+		if p == path && c.Request.Method == http.MethodGet && c.Query("header_only") != "true" {
+			fullReads.Add(1)
+		}
+		if p == path && c.Request.Method == http.MethodPut {
+			fullWrites.Add(1)
+		}
+		workspacehandlers.HandleDocumentRequest(c)
+	})
+	upstream := httptest.NewServer(router)
+	defer upstream.Close()
+	t.Setenv("WORKSPACE_API_URL", upstream.URL)
+
+	source := statResumeHistory("owner", root, path)
+	window, ok, base, baseTurns, err := readRecentChatHistoryPersistTarget(source, session)
+	if err != nil || !ok {
+		t.Fatalf("recent window: ok=%t err=%v", ok, err)
+	}
+	api := &StreamingAPI{}
+	api.restoreResolvedResumeTarget(session, &resolvedResumeTarget{SessionID: session, WorkspacePath: root, ConversationPath: path, History: window.History, source: source, Base: base, BaseTurns: baseTurns}, "")
+
+	// Simulate a relaunched coding CLI returning a new system prompt + the new exchange,
+	// merged through mergeNativeContinuationChatHistory and then mergeRestoredChatHistory (server.go:8276).
+	cliTurn := []llmtypes.MessageContent{
+		llmtypes.TextPart(llmtypes.ChatMessageTypeSystem, "new system after team instructions edit"),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "broadcast notice"),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeAI, "noted"),
+	}
+	persisted := mergeNativeContinuationChatHistory(window.History, cliTurn)
+	api.conversationMux.Lock()
+	api.replaceConversationHistoryLocked(session, persisted)
+	api.conversationMux.Unlock()
+	forDisk := mergeRestoredChatHistory(window.History, persisted)
+	if !appendableHistoryShape(forDisk) {
+		t.Fatalf("merged history lost appendable shape (system message leaked into body)")
+	}
+
+	api.persistChatConversationToPathWithTerminalSession(session, "", "multi-agent", "owner", forDisk, nil, nil, path)
+	if fullReads.Load() != 0 || fullWrites.Load() != 0 {
+		t.Fatalf("relaunch save fell back to full file read/write: reads=%d writes=%d", fullReads.Load(), fullWrites.Load())
+	}
+
+	after, err := chatlog.Load(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		History []llmtypes.MessageContent `json:"conversation_history"`
+	}
+	if err := json.Unmarshal(after, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.History) != len(saved)+2 {
+		t.Fatalf("saved len = %d, want %d", len(doc.History), len(saved)+2)
+	}
+	if doc.History[0].Role != llmtypes.ChatMessageTypeSystem {
+		t.Fatalf("history[0].Role = %q, want system", doc.History[0].Role)
+	}
+	for i := 1; i < len(doc.History); i++ {
+		if doc.History[i].Role == llmtypes.ChatMessageTypeSystem {
+			t.Fatalf("unexpected system message inside body at index %d", i)
+		}
+	}
+}
+
 // #4080: sending checked an open tab's session by listing the project's chats
 // (up to 2,000 files read, 0.2-15.6 s per send). The direct lookup must give
 // the same answer: in this project only when its transcript is in the
