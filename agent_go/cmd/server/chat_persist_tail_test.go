@@ -322,3 +322,44 @@ func TestCodingTurnRecentWindowSavesLikeTheFullHistory(t *testing.T) {
 		t.Fatal("window resume page differs from the full chat's (positions or turn counts)")
 	}
 }
+
+// #4080: sending checked an open tab's session by listing the project's chats
+// (up to 2,000 files read, 0.2-15.6 s per send). The direct lookup must give
+// the same answer: in this project only when its transcript is in the
+// project's own folder, in the workspace its runtime names.
+func TestProjectChatSessionWorkspaceFromFileNamesAndHeader(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	priorDocs := viper.Get("docs-dir")
+	viper.Set("docs-dir", docs)
+	t.Cleanup(func() { viper.Set("docs-dir", priorDocs) })
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"}]}`)
+	const root = "Workflow/example"
+	save := func(session string, runtime map[string]interface{}) {
+		t.Helper()
+		local := filepath.Join(docs, filepath.FromSlash(root+"/builder/conversation/2026-11-26/"+chatHistoryConversationFileName(session)))
+		if err := os.MkdirAll(filepath.Dir(local), 0700); err != nil {
+			t.Fatal(err)
+		}
+		record := map[string]interface{}{"session_id": session, "user_id": "owner", "conversation_history": []llmtypes.MessageContent{llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "hi")}}
+		if runtime != nil {
+			record["runtime"] = runtime
+		}
+		raw, _ := json.Marshal(record)
+		if err := chatlog.Save(local, raw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save("in-project", nil)
+	save("ran-elsewhere", map[string]interface{}{"workspace_path": "Workflow/other"})
+	if ws, ok := projectChatSessionWorkspace("owner", "in-project", root); !ok || ws != normalizeConversationWorkspace(root) {
+		t.Fatalf("project chat: workspace=%q found=%t", ws, ok)
+	}
+	if ws, ok := projectChatSessionWorkspace("owner", "ran-elsewhere", root); !ok || ws != normalizeConversationWorkspace("Workflow/other") {
+		t.Fatalf("runtime workspace ignored: %q found=%t", ws, ok)
+	}
+	if _, ok := projectChatSessionWorkspace("owner", "not-here", root); ok {
+		t.Fatal("a session with no transcript in the project counted as the project's")
+	}
+}

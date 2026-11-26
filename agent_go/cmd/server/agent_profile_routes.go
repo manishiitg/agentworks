@@ -174,6 +174,28 @@ func (api *StreamingAPI) resolveProductResumeTargetFor(userID string, conversati
 	}, true, nil
 }
 
+// projectChatSessionWorkspace finds a chat's transcript in the project's own
+// conversation folder from file names, and reads only its header for the
+// workspace it ran in (the project, unless its runtime names another).
+func projectChatSessionWorkspace(userID, sessionID, workspacePath string) (string, bool) {
+	path, ok := findWorkflowBuilderConversationPath(userID, sessionID, workspacePath)
+	if !ok {
+		return "", false
+	}
+	workspace := normalizeConversationWorkspace(workspacePath)
+	if raw, err := chatlog.RuntimeMetadata(resolvedChatHistoryPath(chatHistoryStoragePath(path))); err == nil {
+		var metadata struct {
+			Runtime *struct {
+				WorkspacePath string `json:"workspace_path"`
+			} `json:"runtime"`
+		}
+		if json.Unmarshal(raw, &metadata) == nil && metadata.Runtime != nil && strings.TrimSpace(metadata.Runtime.WorkspacePath) != "" {
+			workspace = normalizeConversationWorkspace(metadata.Runtime.WorkspacePath)
+		}
+	}
+	return workspace, true
+}
+
 // A coding agent's recent window: at least this many visible user turns, at most this many messages.
 const (
 	recentResumeTurns    = 20
@@ -889,14 +911,20 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 		if candidate != "" && api.canUseSessionIDForQuery(r, candidate) {
 			if active, ok := api.getActiveSession(candidate); ok && sessionVisibleTo(active.UserID, GetUserFromContext(r.Context())) {
 				preferredSessionID = candidate
-			} else if _, found, findErr := FindChatHistoryConversationPathForSession(userID, candidate, ""); findErr != nil {
-				return ProductConversationRecord{}, fmt.Errorf("find existing product conversation: %w", findErr)
-			} else if found {
+			}
+			// From file names and the chat's header only. Listing the project's chats (up to 2,000 files read)
+			// took 0.2-15.6 s of every send (#4080).
+			workspaceOfCandidate, inProject := projectChatSessionWorkspace(userID, candidate, binding.WorkspacePath)
+			if preferredSessionID == "" && inProject {
 				preferredSessionID = candidate
+			} else if preferredSessionID == "" {
+				if _, found, findErr := FindChatHistoryConversationPathForSession(userID, candidate, ""); findErr != nil {
+					return ProductConversationRecord{}, fmt.Errorf("find existing product conversation: %w", findErr)
+				} else if found {
+					preferredSessionID = candidate
+				}
 			}
-			if session, found := chatHistorySessionsByID(userID, binding.WorkspacePath)[candidate]; found {
-				preferredSessionVerifiedForWorkspace = chatHistorySessionWorkspace(session) == normalizeConversationWorkspace(binding.WorkspacePath)
-			}
+			preferredSessionVerifiedForWorkspace = inProject && workspaceOfCandidate == normalizeConversationWorkspace(binding.WorkspacePath)
 		}
 	}
 	if preferredSessionID != "" {
