@@ -224,6 +224,12 @@ func crewTeamProjectChangeRefusal(t crewTeam, user, member, memberRoot, action s
 	case !t.member(user):
 		return "You can add only a Team you are in."
 	}
+	// One Team per online project; a Team may have many online projects (owner, 26 Nov).
+	for _, jt := range crewTeamsJoinedBy(member) {
+		if jt.ProjectID != t.ProjectID {
+			return fmt.Sprintf("%s is already in the %s Team. A project is in one Team at a time: take it out of that Team first.", crewTeamProjectName(member), crewTeamProjectName(jt.ProjectID))
+		}
+	}
 	return ""
 }
 

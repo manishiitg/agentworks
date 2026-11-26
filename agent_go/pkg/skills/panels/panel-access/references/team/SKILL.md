@@ -209,7 +209,7 @@ Team invitations appear as a quiet line above the chat, not a modal. **Join** cr
 A project on the server works for a Team when its owner puts the Team in its **Users**. Everyone in the Team then works with it as a User (through chat and its agents; they can't change its setup), and its agents run on the server around the clock, even when Macs are off. Its own files, chats, setup and keys stay its own: keys are shared into its vault on purpose, never passed from the Team.
 
 1. **Which ones the Team uses:** `team_sync action=agents` (one call) lists people's agents and each online project with its agents; the Team panel shows them under **Online projects this Team uses**. Answer from that one read.
-2. **Add a Team to a project:** only on the server side, by the project's main owner or a co-owner who is in the Team: its Access page, **Users**, pick from "Teams you're in", or `crew_owners action=team_add team_id=…` in that project's chat (`crew_owners action=list` gives `team_choices`). A Mac chat cannot add one.
+2. **Add a Team to a project:** only on the server side, by the project's main owner or a co-owner who is in the Team: its Access page, **Users**, pick from "Teams you're in", or `crew_owners action=team_add team_id=…` in that project's chat (`crew_owners action=list` gives `team_choices`). A Mac chat cannot add one. A Team can use many online projects, but a project is in one Team at a time: to move it, take it out of its Team first.
 3. **Ask its agents:** through your own agent, as any Team ask. The asker works there as a User.
 4. **Take it out:** `crew_owners action=team_remove` (the project's owner), or `team_sync action=project_remove project_id=…` (the Team's owner, or the project's owner or co-owners).
 

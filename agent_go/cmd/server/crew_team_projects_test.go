@@ -64,6 +64,14 @@ func TestCrewTeamOnlineProjectAccess(t *testing.T) {
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
 	}
+	// One Team per online project (owner, 26 Nov): srv is in the first Team now, so a second Team cannot add it.
+	second := crewTeam{ProjectID: "own", OwnerID: "bob", On: true, People: []crewTeamPerson{{UserID: "owner"}}}
+	if crewTeamProjectChangeRefusal(second, "bob", "srv", root("srv"), "add") == "" {
+		t.Fatal("a project already in one Team was added to a second Team")
+	}
+	if crewTeamProjectChangeRefusal(team, "bob", "srv", root("srv"), "add") != "" {
+		t.Fatal("re-adding a project to the Team it is already in was refused")
+	}
 	claims := &UserClaims{UserID: crewTeamProjectMemberID("srv")}
 	plain := httptest.NewRequest(http.MethodGet, "/", nil)
 	marked := plain.WithContext(context.WithValue(plain.Context(), crewTeamProjectMemberKey{}, "srv"))
