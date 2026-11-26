@@ -3,7 +3,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it, vi } from 'vitest'
 import { CrewWorkflowHeader } from './CrewWorkflowHeader'
-import { fileRequest, workflowTaskDescriptions, workflowTaskNames } from './CrewExecutableEditor'
+import { workflowTaskDescriptions, workflowTaskNames } from './CrewExecutableEditor'
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 async function mount(props: Partial<React.ComponentProps<typeof CrewWorkflowHeader>> = {}) {
@@ -89,14 +89,3 @@ it('shows the whole description under the name, or says there is none', async ()
   } finally { await bare.cleanup() }
 })
 
-it('writes the file request with the workflow, its ID, the path and the task the file belongs to', () => {
-  const item = { id: 'wf-1', kind: 'script' as const, workspace_path: 'Workflow/wf-1', manifest: { label: 'GitHub tracker' } }
-  const task = fileRequest(item, 'github_issues_tracker.py', ['github-issues-tracker'])
-  expect(task).toContain('GitHub tracker')
-  expect(task).toContain('wf-1')
-  expect(task).toContain('workspace_path: Workflow/wf-1, file: github_issues_tracker.py')
-  expect(task).toContain('task “github-issues-tracker”')
-  expect(task).toContain('ask me what I want to change')
-  expect(fileRequest(item, 'main.py', [])).toContain('main file')
-  expect(fileRequest(item, 'helpers/util.py', [])).toContain('one of the workflow')
-})

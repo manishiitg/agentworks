@@ -144,6 +144,9 @@ func workspaceProxyHandler() http.Handler {
 				}
 			}
 		}
+		if crewScriptFilesProxyWrite(w, r) {
+			return
+		}
 		// The workspace API scopes per-user paths by X-User-ID and has no
 		// auth of its own; it must carry the identity this server verified,
 		// never whatever the browser put in the header.

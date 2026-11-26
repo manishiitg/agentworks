@@ -42,6 +42,7 @@ import { sharedCrewFileClient } from './sharedCrewFiles'
 import { useProjectProduct } from './projectProduct'
 import { useWorkFilesView } from './useWorkFilesView'
 import { CodePaneTabs, codePaneTab, type CodePaneTab } from './CodePaneTabs'
+import { WorkflowCodeFolders } from './WorkflowCodeFolders'
 
 const SharedFilePreview = lazy(() => import('../../pages/SharedFile').then(module => ({ default: module.SharedFile })))
 
@@ -244,7 +245,11 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
   }
   // One Files view for everyone (owner, 5 Nov): the server's files_path decides its root, for a Team member the folder
   // the Team shares. The server leaves out team-setup.json, the Team's internal copy of the Crew setup.
-  const serverFiles = <FileWorkspacePane showGit sourceControl={false} editorWorkspace={readOnly ? undefined : workspacePath} workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? undefined : ['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault={!usesExistingFolder} rootName={filesName} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel" />
+  // A Crew's workflow code shows under Files › Workflows for its Builder (#4151); its files live at Workflow/<id>/code.
+  const showWorkflowCode = product.profileId === 'work' && !readOnly
+  const serverFiles = <FileWorkspacePane showGit sourceControl={false} editorWorkspace={readOnly ? undefined : workspacePath} workspacePath={filesPath || workspacePath} onAsk={async message => { await ask(message) }} hiddenRootFolders={usesExistingFolder ? undefined : ['.git', 'node_modules', 'product.json', 'workflow.json']} hideManagedEntriesByDefault={!usesExistingFolder} rootName={filesName} title="Workspace" hideAddToChat hideRootActions editable testId="work-files-panel"
+    treeFooter={showWorkflowCode ? <WorkflowCodeFolders projectId={projectId} onOpen={filePath => { void openProjectFile(filePath) }} /> : undefined}
+    keepOpenRoots={showWorkflowCode ? ['Workflow'] : undefined} />
   const contextPanels = workWorkspacePanels({ profileId: product.profileId, readOnly: Boolean(readOnly), showShell, enabledPanels })
   // The dashboard's only link to the chat beside it: a stable callback, so
   // nothing on the chat side re-renders or re-runs the dashboard.
@@ -272,11 +277,11 @@ export const WorkWorkspacePane = memo(function WorkWorkspacePane({ workspacePath
     onViewChange('files')
     try {
       const response = await agentApi.getPlannerFileContent(filePath)
-      if (!response.success || !response.data) throw new Error(response.message || 'Could not open skill file.')
+      if (!response.success || !response.data) throw new Error(response.message || 'Could not open the file.')
       workspace.setFileContent(String(response.data.content ?? ''))
     } catch (cause) {
       workspace.setShowFileContent(false)
-      useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open skill file.', 'error')
+      useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open the file.', 'error')
     } finally {
       workspace.setLoadingFileContent(false)
     }
