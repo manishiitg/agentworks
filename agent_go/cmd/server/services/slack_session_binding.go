@@ -48,12 +48,13 @@ func loadSlackBinding(ctx context.Context, thread ThreadID) (BotSessionBinding, 
 // durable conversation in this thread (on another destination). Plain replies in a thread shared by
 // several bots are ambiguous, so none of them answers without a tag.
 func (s *SlackService) HasOtherBotSessionBinding(ctx context.Context, thread ThreadID, ownRouteKey string) bool {
-	if s == nil || s.config == nil {
+	curCfg := s.slackConfig()
+	if s == nil || curCfg == nil {
 		return false
 	}
 	ids := []string{""}
-	defaultID := defaultSlackConnectionID(s.config)
-	for _, conn := range s.config.Connections {
+	defaultID := defaultSlackConnectionID(curCfg)
+	for _, conn := range curCfg.Connections {
 		if conn.Enabled && conn.ID != defaultID {
 			ids = append(ids, conn.ID)
 		}

@@ -43,3 +43,38 @@ func TestSlackSocketWireLoggingOffByDefault(t *testing.T) {
 		t.Fatal("SLACK_SOCKET_DEBUG=true did not turn wire logging on")
 	}
 }
+
+// A settings save swaps the Slack config and client while sends, listeners and
+// settings reads use them; unguarded, a read could see a half-swapped service
+// (a nil client mid-send stops the server). Run with -race.
+func TestSlackReloadSwapAndReadsDoNotRace(t *testing.T) {
+	s := &SlackService{}
+	conn := SlackConnection{ID: "slack_001", Enabled: true, BotToken: "xoxb-test", AppToken: "xapp-test"}
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			s.setConfig(&SlackConfig{DefaultConnectionID: conn.ID, Connections: []SlackConnection{conn}})
+			if i%2 == 0 {
+				s.setClient(slack.New(conn.BotToken), true)
+			} else {
+				s.setClient(nil, false)
+			}
+		}
+	}()
+	for i := 0; i < 2000; i++ {
+		_ = s.GetConfig()
+		_ = s.IsEnabled()
+		_ = s.ListConnections()
+		_, _ = s.effectiveConnection()
+		_ = s.AddReaction(context.Background(), "", "", "")
+	}
+	close(stop)
+	<-done
+}

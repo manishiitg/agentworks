@@ -583,9 +583,13 @@ func (api *StreamingAPI) capLayerConnectionAccess(ctx context.Context, userID, o
 		problem := ""
 		if err == nil {
 			mutex := platformMCPOAuthMutex("vault:" + c.ID)
+			// Bound the refresh: a stuck sign-in provider would otherwise hold
+			// this lock and block every token request for the connection.
+			refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			mutex.Lock()
-			token, e := oauth.NewManager(cfg.OAuth, api.logger).GetAccessToken(ctx)
+			token, e := oauth.NewManager(cfg.OAuth, api.logger).GetAccessToken(refreshCtx)
 			mutex.Unlock()
+			cancel()
 			valid = e == nil && token != ""
 			if !valid {
 				problem = vaultOAuthSignInProblem(c.ID, false, e)

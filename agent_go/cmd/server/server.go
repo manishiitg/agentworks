@@ -3296,6 +3296,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	// interrupted.
 	schedulerCancel()
 
+	// Stop taking Slack messages next, so none start new work while active
+	// work is cancelled and handlers drain.
+	if slackSvc != nil {
+		slackSvc.StopListening()
+	}
+
 	// Cancel active agents first. Coding-agent tmux sessions are owned by those
 	// turns, so killing tmux before the handlers observe cancellation can race
 	// with capture/poll commands and make shutdown hang.

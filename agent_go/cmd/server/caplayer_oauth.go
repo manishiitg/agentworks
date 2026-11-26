@@ -1,12 +1,14 @@
 package server
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/oauth"
@@ -80,7 +82,11 @@ func (api *StreamingAPI) handleCapLayerOAuthToken(w http.ResponseWriter, r *http
 	mutex := platformMCPOAuthMutex("vault:" + in.ConnectionID)
 	mutex.Lock()
 	defer mutex.Unlock()
-	token, err := oauth.NewManager(&copied, api.logger).GetAccessToken(r.Context())
+	// Bound the refresh: a stuck sign-in provider would otherwise hold this
+	// lock and block every token request for the connection.
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	token, err := oauth.NewManager(&copied, api.logger).GetAccessToken(ctx)
 	if err != nil || token == "" {
 		writeUsersError(w, http.StatusUnauthorized, "administrator sign-in required")
 		return

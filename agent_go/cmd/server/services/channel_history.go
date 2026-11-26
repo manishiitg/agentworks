@@ -70,7 +70,8 @@ func SlackMessageTime(timestamp string) (time.Time, error) {
 	return time.Unix(sec, nanos), nil
 }
 func (s *SlackService) ReadChannelHistory(ctx context.Context, channel string, request ChannelHistoryRequest) (*ChannelHistoryResult, error) {
-	if s == nil || s.client == nil {
+	cli := s.apiClient()
+	if s == nil || cli == nil {
 		return nil, fmt.Errorf("Slack service unavailable")
 	}
 	if channel == "" || request.Limit < 1 || request.Limit > 100 || request.Since.IsZero() || request.Before.IsZero() || !request.Since.Before(request.Before) || request.Before.Sub(request.Since) > 24*time.Hour {
@@ -83,7 +84,7 @@ func (s *SlackService) ReadChannelHistory(ctx context.Context, channel string, r
 	if request.IncludeThreads && channelLimit > 1 {
 		channelLimit = (channelLimit + 1) / 2
 	}
-	history, err := s.client.GetConversationHistoryContext(ctx, &slack.GetConversationHistoryParameters{ChannelID: channel, Limit: channelLimit, Oldest: oldest, Latest: latest, Inclusive: true})
+	history, err := cli.GetConversationHistoryContext(ctx, &slack.GetConversationHistoryParameters{ChannelID: channel, Limit: channelLimit, Oldest: oldest, Latest: latest, Inclusive: true})
 	if err != nil {
 		return nil, fmt.Errorf("Slack channel history: %w; verify channels:history/groups:history and bot channel membership", err)
 	}
@@ -126,7 +127,7 @@ func (s *SlackService) ReadChannelHistory(ctx context.Context, channel string, r
 				break
 			}
 			calls++
-			replies, more, _, err := s.client.GetConversationRepliesContext(ctx, &slack.GetConversationRepliesParameters{ChannelID: channel, Timestamp: message.Timestamp, Limit: remaining + 1, Oldest: oldest, Latest: latest, Inclusive: true})
+			replies, more, _, err := cli.GetConversationRepliesContext(ctx, &slack.GetConversationRepliesParameters{ChannelID: channel, Timestamp: message.Timestamp, Limit: remaining + 1, Oldest: oldest, Latest: latest, Inclusive: true})
 			if err != nil {
 				return nil, fmt.Errorf("Slack thread context: %w", err)
 			}
