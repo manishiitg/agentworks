@@ -31,6 +31,7 @@ const ACCESS_OPEN_TARGETS: Record<string, { section: CrewAccessSection; teamSect
   agents: { section: 'team', teamSection: 'agents' },
   dashboards: { section: 'artifacts' },
   artifacts: { section: 'artifacts' },
+  tasks: { section: 'tasks' },
 }
 
 export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, workflowContextPaths, onWorkflowContextPathsChange, onAccessPage, onBack }: {

@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useState, type ReactNode } from 'react'
+import { ProjectTasksPage } from './ProjectTasksPage'
 import { ShareDashboardButton } from '../../components/workflow/ShareDashboardButton'
 import { ArrowLeft, CheckCircle2, CircleDashed, Cloud, Folder, Laptop, Lock, Terminal, TriangleAlert, Users, type LucideIcon, type LucideProps } from 'lucide-react'
 import api from '../../services/api'
@@ -188,7 +189,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
     try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'agentbridge' || saved === 'dashboards' || saved === 'artifacts') return crewAccessDestination(saved) } catch { /* storage unavailable */ }
     return 'mac'
   })
-  const setSection = (next: CrewAccessSection) => { next = crewAccessDestination(next); setSectionState(next); if (next !== 'team' && next !== 'artifacts') try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
+  const setSection = (next: CrewAccessSection) => { next = crewAccessDestination(next); setSectionState(next); if (next !== 'team' && next !== 'artifacts' && next !== 'tasks') try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
   useEffect(() => {
     const openTeam = (event: Event) => { const detail = (event as CustomEvent<{ projectId: string; section?: CrewAccessSection }>).detail; if (detail?.projectId === projectId) setSection(detail.section || 'team') }
     window.addEventListener('agentworks:open-crew-access', openTeam)
@@ -264,6 +265,8 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
   const shown: CrewAccessSection | undefined = tabs.some(item => item.id === section) ? section : tabs[0]?.id
   const needsServer = here && !connections.length && !online
   // Old tab links and saved choices resolve to this standalone page, not Online.
+  // Project tasks open at full width from the side panel, like the Team page (#4314).
+  if (section === 'tasks') return <ProjectTasksPage projectId={projectId} workspacePath={workspacePath} onBack={onBack}/>
   if (section === 'artifacts') return <section aria-label="Artifacts page" className="space-y-3 text-sm">
     {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
     <CrewDashboardsTab projectId={projectId} />
