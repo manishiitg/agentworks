@@ -4332,6 +4332,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[CHAT_HISTORY] Provider changed for session %s: the retained CLI is not %s; relaunching on the selected provider", sessionID, api.effectiveProviderOf(r.Context(), req))
 		retainedProfileCompatible = false
 	}
+	// Whether this turn is one the person typed in their own chat decides if it gets their own apps (#4165).
+	markOwnChatTurn(sessionID, currentUserID, req.SelectedFolder, personTypedChatTurn(r.Context(), req, sessionID, crewAskOnly))
 	// Vault apps changed since the chat started and it is time to pick them up (#3528): rebuild like a runtime change.
 	vaultReload := !req.IsAutoNotification && retainedProfileCompatible && api.vaultAppsReloadDue(r.Context(), sessionID, req)
 	if vaultReload {

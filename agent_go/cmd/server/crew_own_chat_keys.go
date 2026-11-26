@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"log"
+	"slices"
 	"strings"
+	"sync"
 )
 
 // Your own keys in your own chat (owner, 26 Nov, #4165): in an online project the person typing also gets the keys in
@@ -97,4 +99,106 @@ func (api *StreamingAPI) withOwnChatKeys(ctx context.Context, person, workspaceP
 		log.Printf("[CREW_OWN_KEYS] project=%s person=%s own_keys=%d added=%d", project, logUsernameForUserID(person), len(personal), added)
 	}
 	return out
+}
+
+// Your own sign-in apps in your own chat (#4165): the apps in the typing person's personal vault join an online
+// project's turn the same way their keys do. A turn is marked when it starts (markOwnChatTurn); the app list is built
+// from that mark, and a chat built with someone's own apps is rebuilt before a turn they did not type
+// (vaultAppsReloadDue). The project's app wins over one of yours for the same service, and your own apps are always
+// started and called as you, never as the project's owner.
+
+var ownChatTurns sync.Map // session -> person, while the current turn is one they typed in an online project
+
+func markOwnChatTurn(sessionID, person, workspacePath string, typed bool) {
+	if strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	if typed && serverCrewForPath(workspacePath) != "" && strings.TrimSpace(person) != "" {
+		ownChatTurns.Store(sessionID, person)
+		return
+	}
+	ownChatTurns.Delete(sessionID)
+}
+
+func ownChatTurnPerson(sessionID string) string {
+	person, _ := ownChatTurns.Load(sessionID)
+	s, _ := person.(string)
+	return s
+}
+
+type ownChatAppsKey struct{}
+
+// ownChatApps are the apps a turn took from the typing person's personal vault, by connection ID.
+type ownChatApps struct {
+	person string
+	ids    map[string]bool
+}
+
+func ownChatAppsFrom(ctx context.Context) ownChatApps {
+	own, _ := ctx.Value(ownChatAppsKey{}).(ownChatApps)
+	return own
+}
+
+// personalVaultAppIDs are the connections in the person's own personal vault ("My accounts").
+func personalVaultAppIDs(ctx context.Context, person string) map[string]bool {
+	ids := map[string]bool{}
+	list, err := personalVaults(ctx, person)
+	if err != nil {
+		return ids
+	}
+	for _, v := range list.Vaults {
+		if v.Role == "owner" && v.Group.Name == personalVaultName {
+			for _, c := range v.Connections {
+				if strings.TrimSpace(c.ID) != "" {
+					ids[c.ID] = true
+				}
+			}
+		}
+	}
+	return ids
+}
+
+// addOwnChatApps adds, for a turn the person typed in an online project's chat, the apps in their personal vault to
+// the project's picks. reader is whose inventory rows came from: a User's turn reads the project vault as its owner, so
+// their own apps are read as themselves and added to the rows here (never to the owner's cached inventory).
+func addOwnChatApps(ctx context.Context, sessionID, reader string, rows []vaultRuntimeServer, names []string) (context.Context, []vaultRuntimeServer, []string) {
+	person := ownChatTurnPerson(sessionID)
+	if person == "" {
+		return ctx, rows, names
+	}
+	ids := personalVaultAppIDs(ctx, person)
+	if len(ids) == 0 {
+		return ctx, rows, names
+	}
+	own := rows
+	if reader != person {
+		access, err := vaultAccessFor(ctx, person)
+		if err != nil {
+			return ctx, rows, names
+		}
+		own = access.Servers
+	}
+	projectProviders := map[string]bool{}
+	for _, row := range rows {
+		if slices.Contains(names, vaultServerName(row.ID)) && !ids[row.ID] && row.Provider != "" {
+			projectProviders[strings.ToLower(row.Provider)] = true
+		}
+	}
+	taken := map[string]bool{}
+	for _, row := range own {
+		name := vaultServerName(row.ID)
+		if !ids[row.ID] || slices.Contains(names, name) || projectProviders[strings.ToLower(row.Provider)] {
+			continue // the project's own app for this service wins
+		}
+		if reader != person {
+			rows = append(rows, row)
+		}
+		names = append(names, name)
+		taken[row.ID] = true
+	}
+	if len(taken) == 0 {
+		return ctx, rows, names
+	}
+	log.Printf("[CREW_OWN_APPS] session=%s person=%s own_apps=%d added=%d", sessionID, logUsernameForUserID(person), len(ids), len(taken))
+	return context.WithValue(ctx, ownChatAppsKey{}, ownChatApps{person: person, ids: taken}), rows, names
 }

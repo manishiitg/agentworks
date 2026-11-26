@@ -25,6 +25,8 @@ type launchedVaultApps struct {
 	lender string
 	picks  []string
 	apps   map[string]string
+	// own: the chat was built with apps from the typing person's personal vault (#4165).
+	own bool
 }
 
 var (
@@ -51,6 +53,9 @@ func (api *StreamingAPI) vaultAppCandidates(ctx context.Context, lender, session
 	}
 	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{reader, rows, inventoryErr})
 	names = append([]string(nil), names...)
+	if inventoryErr == nil && serverCrewForPath(api.projectRootForSession(sessionID)) != "" {
+		ctx, rows, names = addOwnChatApps(ctx, sessionID, reader, rows, names) // your own apps in your own chat (#4165)
+	}
 	picksVault := slices.ContainsFunc(names, func(name string) bool { return strings.HasPrefix(strings.TrimSpace(name), "vault_") })
 	explicitNone := slices.Contains(names, mcpclient.NoServers)
 	if inventoryErr == nil && !picksVault && !explicitNone {
@@ -90,11 +95,11 @@ func vaultAppLabels(names []string, rows, remote []vaultRuntimeServer) map[strin
 }
 
 // recordLaunchedVaultApps remembers the apps a rebuilt chat got; a rebuild also answers any pending reload.
-func recordLaunchedVaultApps(sessionID, person, lender string, picks []string, apps map[string]string, inventoryErr error) {
+func recordLaunchedVaultApps(sessionID, person, lender string, picks []string, apps map[string]string, own bool, inventoryErr error) {
 	if sessionID == "" || inventoryErr != nil {
 		return
 	}
-	launchedVaultAppsBySession.Store(sessionID, launchedVaultApps{person: person, lender: lender, picks: picks, apps: apps})
+	launchedVaultAppsBySession.Store(sessionID, launchedVaultApps{person: person, lender: lender, picks: picks, apps: apps, own: own})
 	vaultReloadRequested.Delete(sessionID)
 }
 
@@ -145,6 +150,21 @@ func (api *StreamingAPI) vaultAppsReloadDue(ctx context.Context, sessionID strin
 	if _, asked := vaultReloadRequested.Load(sessionID); asked {
 		log.Printf("[VAULT_APPS] session=%s action=reload reason=person_asked", sessionID)
 		return true
+	}
+	// Your own apps stay in turns you typed (#4165): a chat built with them is rebuilt before any other turn, and a chat
+	// built for another turn picks them up on your next typed message when you have some.
+	if launched, ok := launchedVaultAppsFor(sessionID); ok {
+		typed := ownChatTurnPerson(sessionID) != ""
+		if launched.own && !typed {
+			log.Printf("[VAULT_APPS] session=%s action=reload reason=own_apps_not_typed", sessionID)
+			return true
+		}
+		if typed && !launched.own {
+			if _, added, _, changed := api.vaultAppChanges(ctx, sessionID); changed && len(added) > 0 {
+				log.Printf("[VAULT_APPS] session=%s action=reload reason=own_apps_typed added=%d", sessionID, len(added))
+				return true
+			}
+		}
 	}
 	if strings.TrimSpace(req.BotPlatform) == "" && !isScheduledCrewChatDelivery(ctx) {
 		return false
