@@ -688,9 +688,7 @@ func (api *StreamingAPI) handleClearSession(w http.ResponseWriter, r *http.Reque
 	delete(api.restoredConversationPersistTargets, sessionID)
 	api.restoredConversationPersistMux.Unlock()
 
-	api.sessionAgentsMux.Lock()
-	delete(api.sessionAgents, sessionID)
-	api.sessionAgentsMux.Unlock()
+	api.removeSessionAgent(sessionID)
 
 	api.workflowOrchestratorsMux.Lock()
 	delete(api.workflowOrchestrators, sessionID)

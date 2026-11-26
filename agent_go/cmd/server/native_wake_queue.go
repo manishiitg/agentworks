@@ -72,6 +72,15 @@ func (q *nativeWakeQueue) addClaude(sessionID string) {
 	q.mu.Unlock()
 }
 
+func (q *nativeWakeQueue) hasPending(sessionID string) bool {
+	if claudecode.ClaudeSDKWakePending(sessionID) {
+		return true
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return len(q.codex[sessionID]) > 0 || q.claude[sessionID] || len(q.muse[sessionID]) > 0
+}
+
 // take removes and returns everything waiting for one chat.
 func (q *nativeWakeQueue) take(sessionID string) ([]codexFinishedCommand, bool, []museWake) {
 	q.mu.Lock()
