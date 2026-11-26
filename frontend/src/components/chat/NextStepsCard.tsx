@@ -67,8 +67,8 @@ export function NextStepsCard({ steps, onPick, onDismiss, onTurnOff }: { steps: 
     </div>
     {/* Owner, 26 Nov: say how to turn it off, and where it turns back on. */}
     {onTurnOff && <p className="mt-2 text-right text-[11px] text-muted-foreground" data-testid="next-steps-turn-off-row">
-      <button type="button" onClick={onTurnOff} data-testid="next-steps-turn-off" className="underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">Turn off for this chat</button>
-      <span> · on or off in the mode menu by the model, under Replies</span>
+      <button type="button" onClick={onTurnOff} data-testid="next-steps-turn-off" className="underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">Turn off for this chat</button>
+      <span> · turn back on in the mode menu › Replies</span>
     </p>}
   </section>
 }
