@@ -145,7 +145,7 @@ it('#3878: over the file limit the Git row says so; Move out asks the agent in c
   act(() => root.unmount())
 })
 
-it('#3979: expanded Git row shows active GitHub account strip, flags org mismatches, and opens GitHub settings', () => {
+it('#3979: expanded Git row shows active GitHub account strip without speculative org warnings and opens GitHub settings', () => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   localStorage.clear()
   const gitSection = { ...section, rows: [
@@ -157,9 +157,9 @@ it('#3979: expanded Git row shows active GitHub account strip, flags org mismatc
   document.body.appendChild(host)
   const root = createRoot(host)
   act(() => root.render(<ChatChangesRow section={gitSection} storageKey="test.git-gh" onOpen={() => {}} github={{ connected: true, login: 'alex-dev', orgs: ['acme-core'], onOpen: () => { openedGitHub++ } }} />))
-  expect(host.textContent).toContain('@alex-dev')
-  expect(host.textContent).toContain('1 repo needs another account')
-  expect(host.textContent).toContain('Not in @alex-dev’s organizations')
+  expect(host.textContent).toContain('GitHub: @alex-dev')
+  expect(host.textContent).not.toContain('needs another account')
+  expect(host.textContent).not.toContain('Not in @alex-dev’s organizations')
   const switchBtn = [...host.querySelectorAll('button')].find(b => b.textContent === 'Switch')!
   act(() => switchBtn.click())
   expect(openedGitHub).toBe(1)
