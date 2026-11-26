@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -387,6 +388,38 @@ func (a *Admin) addConnectorCustomFor(ctx context.Context, vaultID, provider, la
 		if bearerToken == "" && upstream.IsAuthorizationRequired(err) && a.Gateway.HasSharedOAuth() {
 			return a.addConnectorRowFor(vaultID, key, label, slug, upstreamURL, "custom:"+key)
 		}
+		return store.Connector{}, err
+	}
+	return c, nil
+}
+
+// addConnectorCommandFor adds a local command connection to a person's vault: a program this Vault starts on its own
+// computer. Only a Vault that runs local commands (the Mac app) accepts one, and only in a person's own vault. The
+// launch (program, arguments, environment) is the credential: encrypted, and never returned.
+func (a *Admin) addConnectorCommandFor(ctx context.Context, vaultID, provider, label, slug, launch string) (store.Connector, error) {
+	if a.Gateway == nil || !a.Gateway.AllowsLocalCommands() {
+		return store.Connector{}, upstream.ErrLocalCommandsOff
+	}
+	if vaultID == "" {
+		return store.Connector{}, errors.New("a local command connection belongs to a person's own vault")
+	}
+	lc, err := upstream.ParseLocalCommand(launch)
+	if err != nil {
+		return store.Connector{}, err
+	}
+	key := catalog.Key(provider)
+	if key == "" {
+		return store.Connector{}, errors.New("invalid provider name")
+	}
+	c, err := a.addConnectorRowFor(vaultID, key, label, slug, "command:"+filepath.Base(lc.Command))
+	if err != nil {
+		return store.Connector{}, err
+	}
+	c.Transport, c.AuthScheme = upstream.CommandTransport, upstream.CommandAuthScheme
+	a.Store.AddConnector(c)
+	a.Store.SetConnectorBearer(c.ID, launch)
+	if err := a.Gateway.AddConnector(ctx, c); err != nil {
+		a.Store.DeleteConnector(c.ID)
 		return store.Connector{}, err
 	}
 	return c, nil

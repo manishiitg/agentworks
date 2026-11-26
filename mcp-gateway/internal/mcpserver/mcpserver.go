@@ -200,6 +200,9 @@ func (g *Gateway) upstreamFor(connectorID string) (*upstream.Client, bool) {
 	return up, ok
 }
 
+// AllowsLocalCommands reports whether this Vault runs local command connections (the Mac app only).
+func (g *Gateway) AllowsLocalCommands() bool { return g.upstreamOptions.AllowLocalCommands }
+
 func (g *Gateway) ValidateUpstreamURL(raw string) error {
 	_, err := upstream.ValidateURL(raw, g.upstreamOptions)
 	return err

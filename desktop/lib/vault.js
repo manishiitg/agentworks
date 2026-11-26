@@ -71,6 +71,8 @@ function vaultEnv({ inherited, port, agentPort, stateDir, tokenFile, docsDir }) 
     // The Vault chat project, as on servers and the source launcher.
     GATEWAY_WORKSPACE_DIR: path.join(docsDir, '_users', 'default', 'Chats', 'CapLayer'),
     VAULT_AUDIT_PROVIDER: 'sqlite',
+    // This Mac's own Vault may start the person's command MCP servers (imported from Claude, Codex or Cursor).
+    GATEWAY_ALLOW_LOCAL_COMMANDS: '1',
   };
 }
 

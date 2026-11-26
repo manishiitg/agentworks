@@ -2506,6 +2506,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// The catalog of servers that can be connected, and connections of a place.
 	apiRouter.HandleFunc("/mcp/catalog", api.handleMCPCatalog).Methods("GET")
 	apiRouter.HandleFunc("/vault/connections", api.handleMyVaultServers).Methods("GET")
+	apiRouter.HandleFunc("/vault/local-mcp", api.handleLocalMCPImport).Methods("GET", "POST")
 	api.registerVaultMeRoutes(apiRouter)
 	apiRouter.HandleFunc("/computer-use/status", api.handleComputerUseSetupStatus).Methods("GET")
 	apiRouter.HandleFunc("/coding-agent-setup", api.handleCodingAgentSetup).Methods("GET", "POST")

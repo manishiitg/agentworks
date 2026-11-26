@@ -6,6 +6,7 @@ import { vaultConnectionsApi, type VaultCatalogApp } from '../../api/vaultConnec
 import { useChatStore } from '../../stores/useChatStore'
 import { AddToTeamControl, useAddToTeam } from '../../products/work/TeamWay'
 import { loadProjectVault, selectProjectVaultItem, type ProjectVaultInventory } from '../../api/projectVault'
+import { LocalMcpImport, useLocalMcpServers } from '../../products/work/LocalMcpImport'
 
 /** Vault is the only connection source across Crew, Goals and Flows. */
 export function ProjectMcpPanel({view='connected',workspacePath,tabId,canEdit,onAsk,onSelectionSaved}: {
@@ -24,6 +25,8 @@ export function ProjectMcpPanel({view='connected',workspacePath,tabId,canEdit,on
  const streaming=useChatStore(state=>Boolean(tabId&&state.chatTabs[tabId]?.isStreaming))
  const wasStreaming=useRef(false)
  useEffect(()=>{if(wasStreaming.current&&!streaming){void vault.refresh();void refreshSelection()}wasStreaming.current=streaming},[streaming,vault.refresh,refreshSelection])
+ // The person's own MCP servers from Claude, Codex, Cursor and agy (Mac app, project owner only; null elsewhere).
+ const localMcp=useLocalMcpServers({workspacePath},canEdit)
  const [catalog,setCatalog]=useState<VaultCatalogApp[]>([])
  useEffect(()=>{if(view!=='available')return;let current=true;void vaultConnectionsApi.catalog().then(apps=>{if(current)setCatalog(apps)}).catch(()=>{if(current)setError('Could not load the app catalog. You can still connect an app through chat.')});return()=>{current=false}},[view])
  const ask=async(message:string)=>{
@@ -44,6 +47,7 @@ export function ProjectMcpPanel({view='connected',workspacePath,tabId,canEdit,on
   actions:canEdit?[{label:'Manage in chat',run:()=>ask(`Manage the saved connection ${server.id} for this project. Inspect its saved status and complete any requested setup in chat; reuse this exact account and preserve existing grants.`)}]:[],
  })})} loading={vault.loading} notices={[...vault.notices,...(team?.line?[{message:team.line}]:[]),...(error?[{message:error}]:[])]} refresh={()=>{void vault.refresh();void refreshSelection()}} showTools
   description="Choose the apps this project can use. Open an app to see its tools, or add another account."
+  children={canEdit&&localMcp.servers?.length?<details className="rounded-md border border-border p-3" data-testid="local-mcp-import-section"><summary className="cursor-pointer text-sm font-medium">Import from Claude, Codex, Cursor or agy ({localMcp.servers.length})</summary><p className="mb-3 mt-1 text-xs text-muted-foreground">MCP servers you set up in those apps. Chats here don't load them on their own.</p><LocalMcpImport key={localMcp.servers.map(s=>s.id+(s.in_vault?'1':'')).join()} servers={localMcp.servers} scope={{workspacePath}} onImported={()=>{void vault.refresh();void refreshSelection()}} /></details>:undefined}
   addCustom={canEdit?{label:'Connect an app in chat',run:()=>ask('Connect an app to this project. Guide setup here, including API keys or OAuth app details when needed. Return the real sign-in link, verify discovery and finish selection. Keep existing accounts and permissions.')}:undefined}
  />
 }

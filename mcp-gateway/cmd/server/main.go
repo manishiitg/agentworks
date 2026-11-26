@@ -170,6 +170,12 @@ func run() (runErr error) {
 		return err
 	}
 	allowPrivateUpstreams := os.Getenv("GATEWAY_ALLOW_PRIVATE_UPSTREAMS") == "1"
+	// Local command MCP servers run programs on this computer: only a loopback-bound Vault (the Mac app, the source
+	// launcher in local mode) may start them.
+	allowLocalCommands := os.Getenv("GATEWAY_ALLOW_LOCAL_COMMANDS") == "1"
+	if allowLocalCommands && !loopbackBind(bind) {
+		return errors.New("GATEWAY_ALLOW_LOCAL_COMMANDS needs GATEWAY_BIND on a loopback address")
+	}
 	if os.Getenv("GATEWAY_LOCAL_ADMIN") == "1" {
 		return errors.New("GATEWAY_LOCAL_ADMIN no longer bypasses authentication; remove this setting")
 	}
@@ -225,7 +231,7 @@ func run() (runErr error) {
 	oauthSrv := mcpoauth.NewServer(mcpserver.OAuthConfig(publicURL, filepath.Join(stateDir, "mcp-oauth.sqlite"), humanToken, human))
 
 	gw := mcpserver.New(st, auth.OAuth{Server: oauthSrv, WorkspaceID: "w1", Keys: st},
-		map[string]*upstream.Client{}, oauthSrv, upstream.DialOptions{AllowPrivate: allowPrivateUpstreams})
+		map[string]*upstream.Client{}, oauthSrv, upstream.DialOptions{AllowPrivate: allowPrivateUpstreams, AllowLocalCommands: allowLocalCommands})
 	gw.RestoreTools("w1")
 
 	if productURL := strings.TrimSpace(os.Getenv("GATEWAY_PRODUCT_URL")); productURL != "" {
@@ -407,4 +413,10 @@ func gatewayRoutes(gw *mcpserver.Gateway, managed bool) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	return mux
+}
+
+// loopbackBind reports a bind address only this computer can reach.
+func loopbackBind(bind string) bool {
+	ip := net.ParseIP(bind)
+	return bind == "localhost" || (ip != nil && ip.IsLoopback())
 }

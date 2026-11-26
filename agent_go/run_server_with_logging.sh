@@ -1229,6 +1229,8 @@ if [ "$LOCAL_SERVER_PRODUCTS" = true ]; then
     export CAPLAYER_SERVICE_URL="http://127.0.0.1:${GATEWAY_PORT}"
     export CAPLAYER_SERVICE_TOKEN=""
     export CAPLAYER_SERVICE_TOKEN_FILE="$VAULT_TOKEN_FILE"
+    # A local Vault may start the person's own command MCP servers (imported from Claude, Codex or Cursor).
+    export GATEWAY_ALLOW_LOCAL_COMMANDS=1
 fi
 # Keep managed browser cookies and logins across local server restarts. Workflow
 # isolation is added beneath this root by the browser launcher.
