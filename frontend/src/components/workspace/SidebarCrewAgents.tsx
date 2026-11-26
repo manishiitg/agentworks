@@ -33,18 +33,28 @@ export function SidebarHiddenAgents({ count, expanded, onToggle, children }: { c
 }
 
 /** Folded groups and fork trees, per Crew, in this browser (how the menu looks; nothing about the agents). */
-function useFolds(projectId: string): [Set<string>, (key: string) => void] {
+function useFolds(projectId: string): [Set<string>, (key: string) => void, (key: string) => void] {
   const storageKey = `agentworks.sidebar.folds.${projectId}`
   const [folds, setFolds] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(window.localStorage.getItem(storageKey) || '[]') as string[]) } catch { return new Set() }
   })
+  const persist = (next: Set<string>) => {
+    try { window.localStorage.setItem(storageKey, JSON.stringify([...next])) } catch { /* the fold lasts until reload */ }
+  }
   const toggle = (key: string) => setFolds(current => {
     const next = new Set(current)
     if (next.has(key)) next.delete(key); else next.add(key)
-    try { window.localStorage.setItem(storageKey, JSON.stringify([...next])) } catch { /* the fold lasts until reload */ }
+    persist(next)
     return next
   })
-  return [folds, toggle]
+  const unfold = (key: string) => setFolds(current => {
+    if (!current.has(key)) return current
+    const next = new Set(current)
+    next.delete(key)
+    persist(next)
+    return next
+  })
+  return [folds, toggle, unfold]
 }
 
 /** One dot for a folded group or tree when anything inside works, waits or has a new reply (each member's own mark). */
@@ -75,14 +85,14 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const [dropOn, setDropOn] = useState('')
   const groups = useAgentGroups(projectId)
   const { order, save: saveOrder } = useSidebarAgentOrder(projectId)
-  const [folds, toggleFold] = useFolds(projectId)
+  const [folds, toggleFold, unfold] = useFolds(projectId)
   // An inline name box: a new group for an agent, or a rename; error is the server's refusal.
   const [naming, setNaming] = useState<{ kind: 'new' | 'rename'; key?: string; group?: string; draft: string; error: string } | null>(null)
   const [picking, setPicking] = useState('')
   const [groupMenu, setGroupMenu] = useState('')
   const [failed, setFailed] = useState('')
-  // #3504: the fork just moved out from under its agent (the note offers putting it back), and a move that failed.
-  const [moved, setMoved] = useState<{ key: string; name: string; parentKey: string; parentName: string } | null>(null)
+  // #3504 / #4152: the last hierarchy move (moving a fork out or nesting a chat under another), with an undo action, and any move error.
+  const [moved, setMoved] = useState<{ key: string; name: string; previousParentKey: string; previousParentName?: string; text: string; undoLabel: string } | null>(null)
   const [forkFailed, setForkFailed] = useState<{ message: string; retry: () => void } | null>(null)
   // The Team tab's one server reading: each agent's availability and every person, by account, with their name.
   const team = useTeamTab(projectId).view
@@ -153,19 +163,60 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     setForkFailed(null)
     try {
       await save('')
-      setMoved({ key: agent.key, name: agent.name, parentKey: parent.key, parentName: parent.name })
+      setMoved({
+        key: agent.key, name: agent.name, previousParentKey: parent.key, previousParentName: parent.name,
+        text: `${agent.name} is now its own agent.`, undoLabel: `Put back under ${parent.name}`,
+      })
       return true
     } catch (cause) {
       setForkFailed({ message: forkError(cause, `Couldn’t move ${agent.name} out. It’s still under ${parent.name}.`), retry: () => { void moveOut(agent, parent) } })
       return false
     }
   }
-  const putBack = async (note: NonNullable<typeof moved>) => {
+  // #4152: check whether a dragged or selected chat can be nested under target (same project, owned, non-Main, no loop).
+  const canNestUnder = (fromKey: string, target: CrewAgentRow): { ok: boolean; reason?: string } => {
+    const from = byKey.get(fromKey)
+    if (!from || !target.key || from.key === target.key) return { ok: false }
+    if (from.ownerId || target.ownerId) return { ok: false }
+    if (from.main || !from.actions?.forkParent) return { ok: false }
+    if (nestedParent(from.key)?.key === target.key) return { ok: false }
+    if (below(from).some(descendant => descendant.key === target.key)) return { ok: false, reason: 'Own sub-chat' }
+    return { ok: true }
+  }
+  const nestUnder = async (agent: CrewAgentRow, target: CrewAgentRow): Promise<boolean> => {
+    const save = agent.actions?.forkParent
+    if (!save || !agent.key || !target.key) return false
+    const check = canNestUnder(agent.key, target)
+    if (!check.ok) {
+      if (check.reason) setForkFailed({ message: `${agent.name} can’t go under ${target.name} — it’s one of its own sub-chats.`, retry: () => { setForkFailed(null) } })
+      return false
+    }
+    const previousParent = nestedParent(agent.key)
+    setForkFailed(null)
+    try {
+      await save(target.key)
+      unfold(`agent:${target.key}`)
+      setMoved({
+        key: agent.key, name: agent.name,
+        previousParentKey: previousParent?.key || '', previousParentName: previousParent?.name,
+        text: `${agent.name} is now under ${target.name}.`,
+        undoLabel: previousParent ? `Put back under ${previousParent.name}` : 'Undo',
+      })
+      return true
+    } catch (cause) {
+      setForkFailed({ message: forkError(cause, `Couldn’t move ${agent.name} under ${target.name}.`), retry: () => { void nestUnder(agent, target) } })
+      return false
+    }
+  }
+  const undoMove = async (note: NonNullable<typeof moved>) => {
     const save = byKey.get(note.key)?.actions?.forkParent
     if (!save) { setMoved(null); return }
     setForkFailed(null)
-    try { await save(note.parentKey); setMoved(null) }
-    catch (cause) { setForkFailed({ message: forkError(cause, `Couldn’t put ${note.name} back under ${note.parentName}.`), retry: () => { void putBack(note) } }) }
+    try { await save(note.previousParentKey); setMoved(null) }
+    catch (cause) {
+      const fallback = note.previousParentName ? `Couldn’t put ${note.name} back under ${note.previousParentName}.` : `Couldn’t undo moving ${note.name}.`
+      setForkFailed({ message: forkError(cause, fallback), retry: () => { void undoMove(note) } })
+    }
   }
   // A fork dragged out of its agent's list moves out first, then lands where it was dropped.
   const dropOut = async (key: string, then: () => unknown) => {
@@ -234,11 +285,20 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
       void dropOut(from, () => reorder(from))
     } } }
   }
-  const row = (agent: CrewAgentRow, isRoot: boolean) => <AgentRow key={agent.tabId} agent={dropTarget(agent)} status={status(agent)} mostIn={mostIn} active={agent.tabId === activeTabId}
-    dragging={dragging} onDrag={key => { setDragging(key); setDropOn('') }} popup={popup} reordering={reordering}
-    person={agent.ownerId ? (agent.owner || 'Teammate') : undefined}
-    groupMenu={isRoot ? moveMenu(agent) : forkMenu(agent)}
-    onSelect={agent.ownerId && agent.key ? () => { openTeammateAgent(projectId, agent.key!, agent.ownerId); closeDrawer() } : onSelect || openAgent} />
+  const row = (agent: CrewAgentRow, isRoot: boolean) => {
+    const nestTargets = !agent.ownerId && !agent.main && agent.key && agent.actions?.forkParent
+      ? shown.filter(candidate => canNestUnder(agent.key!, candidate).ok)
+      : undefined
+    return <AgentRow key={agent.tabId} agent={dropTarget(agent)} status={status(agent)} mostIn={mostIn} active={agent.tabId === activeTabId}
+      dragging={dragging} onDrag={key => { setDragging(key); setDropOn('') }} popup={popup} reordering={reordering}
+      person={agent.ownerId ? (agent.owner || 'Teammate') : undefined}
+      groupMenu={isRoot ? moveMenu(agent) : forkMenu(agent)}
+      canNest={agent.key ? fromKey => canNestUnder(fromKey, agent) : undefined}
+      onNest={agent.key ? fromKey => { const source = byKey.get(fromKey); if (source) void nestUnder(source, agent) } : undefined}
+      nestTargets={nestTargets}
+      onNestUnder={target => { void nestUnder(agent, target) }}
+      onSelect={agent.ownerId && agent.key ? () => { openTeammateAgent(projectId, agent.key!, agent.ownerId); closeDrawer() } : onSelect || openAgent} />
+  }
   // An agent and the forks under it; the arrow folds its forks (with a count and a dot while folded).
   const tree = (agent: CrewAgentRow, depth = 0): ReactNode => {
     const children = forks.get(agent.key || '') || []
@@ -350,8 +410,8 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
       {...dropZone('fork-out', key => { void dropOut(key, () => undefined) })}>Drop here to move it out of {draggedParent.name}</div>}
     {failed && !naming && <p role="alert" className="px-2 py-1 text-[11px] text-destructive">{failed}</p>}
     {moved && byKey.has(moved.key) && <div role="status" className="mx-1 my-1 flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-[11px] text-muted-foreground">
-      <span className="min-w-0 flex-1">{moved.name} is now its own agent.</span>
-      <button type="button" className="shrink-0 font-medium text-foreground underline" onClick={() => { void putBack(moved) }}>Put back under {moved.parentName}</button>
+      <span className="min-w-0 flex-1">{moved.text}</span>
+      <button type="button" className="shrink-0 font-medium text-foreground underline" onClick={() => { void undoMove(moved) }}>{moved.undoLabel}</button>
       <button type="button" aria-label="Dismiss" onClick={() => setMoved(null)} className="grid h-5 w-5 shrink-0 place-items-center rounded hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3 w-3" /></button>
     </div>}
     {forkFailed && <p role="alert" className="px-2 py-1 text-[11px] text-destructive">{forkFailed.message}{' '}
@@ -376,7 +436,18 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
 }
 
 
-function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reordering, onSelect, person, groupMenu }: { mostIn: boolean; popup: boolean; reordering: boolean; onSelect: (tabId: string) => void; agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void; person?: string; groupMenu?: (done: () => void) => ReactNode }) {
+type NestCheck = { ok: boolean; reason?: string }
+type RowDropMode = 'before' | 'nest' | 'refuse' | null
+
+function rowDropMode(clientY: number, rect: { top: number; height: number }, canReorder: boolean, nest: NestCheck): RowDropMode {
+  const inTopEdge = rect.height > 0 && (clientY - rect.top) / rect.height < 0.3
+  if (inTopEdge && canReorder) return 'before'
+  if (nest.ok) return 'nest'
+  if (nest.reason) return 'refuse'
+  return canReorder ? 'before' : null
+}
+
+function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reordering, onSelect, person, groupMenu, canNest, onNest, nestTargets, onNestUnder }: { mostIn: boolean; popup: boolean; reordering: boolean; onSelect: (tabId: string) => void; agent: CrewAgentRow; status: string; active: boolean; dragging: string | null; onDrag: (key: string | null) => void; person?: string; groupMenu?: (done: () => void) => ReactNode; canNest?: (fromKey: string) => NestCheck; onNest?: (fromKey: string) => void; nestTargets?: CrewAgentRow[]; onNestUnder?: (target: CrewAgentRow) => void }) {
   const state = useAgentMenuState(agent.tabId, agent.activity)
   // An idle row shows when it was last active, from the active-session list the app already holds (nothing new is read).
   const lastActivity = useChatStore(store => {
@@ -391,33 +462,80 @@ function AgentRow({ agent, mostIn, status, active, dragging, onDrag, popup, reor
   // Only a quiet or failed agent can go back on the to-read list; working, needs-you and unread rows already show a mark.
   const canMarkUnread = state === null || state === 'failed'
   const [menu, setMenu] = useState(false)
-  const [over, setOver] = useState(false)
+  const [pickingParent, setPickingParent] = useState(false)
+  const [dropState, setDropState] = useState<{ mode: RowDropMode; reason?: string }>({ mode: null })
   const box = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (!menu) return
+    if (!menu) { setPickingParent(false); return }
     const close = (event: MouseEvent) => { if (!box.current?.contains(event.target as Node)) setMenu(false) }
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [menu])
   const actions = agent.actions
   // A teammate's grouped agent drags by its key too, so it can leave or change groups (#3288).
-  const key = actions?.orderKey || (person ? agent.key : undefined)
-  const hasActions = canMarkUnread || Boolean(groupMenu) || Boolean(agent.info?.onRemove) || Boolean(actions && (actions.fork || actions.rename || actions.moveUp || actions.moveDown || actions.setSidebarHidden))
-  // Drag a row onto another to change the order, saved the same way as the tab bar's.
-  return <div ref={box} {...agentRowThemeProps(state, active)} className={`group relative rounded-md ${over && dragging && dragging !== key ? 'border-t-2 border-primary bg-primary/10' : ''}`}
-    draggable={!!key} onDragStart={key ? event => { event.dataTransfer.setData('application/x-agentworks-chat-key', key); event.dataTransfer.setData('text/plain', key); event.dataTransfer.effectAllowed = 'move'; setMenu(false); onDrag(key) } : undefined} onDragEnd={() => { onDrag(null); setOver(false) }}
-    onDragOver={dragging && key && actions?.dropHere ? event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOver(true) } : undefined} onDragLeave={() => setOver(false)}
-    onDrop={dragging && key && actions?.dropHere ? event => { event.preventDefault(); event.stopPropagation(); setOver(false); if (dragging !== key) actions?.dropHere?.(dragging); onDrag(null) } : undefined}>
+  const dragKey = actions?.orderKey || (person ? agent.key : undefined)
+  // Main has agent.key without orderKey, so other chats can still drop onto Main to nest under it (#4152).
+  const targetKey = agent.key || dragKey
+  const nestCheck = dragging && targetKey && dragging !== targetKey && canNest ? canNest(dragging) : { ok: false }
+  const canDrop = Boolean(dragging && targetKey && dragging !== targetKey && (actions?.dropHere || nestCheck.ok || nestCheck.reason))
+  const hasNestMenu = Boolean(nestTargets?.length && onNestUnder)
+  const hasActions = canMarkUnread || Boolean(groupMenu) || hasNestMenu || Boolean(agent.info?.onRemove) || Boolean(actions && (actions.fork || actions.rename || actions.moveUp || actions.moveDown || actions.setSidebarHidden))
+  const dropClass = !dragging || dragging === targetKey || !dropState.mode ? ''
+    : dropState.mode === 'before' ? 'border-t-2 border-primary bg-primary/10'
+    : dropState.mode === 'nest' ? 'ring-1 ring-primary bg-primary/10'
+    : 'ring-1 ring-destructive bg-destructive/10'
+  // Top edge reorders above this row; middle/body nests the dragged chat under it (#4152).
+  return <div ref={box} data-sidebar-agent-row={targetKey} {...agentRowThemeProps(state, active)} className={`group relative rounded-md ${dropClass}`}
+    draggable={!!dragKey} onDragStart={dragKey ? event => { event.dataTransfer.setData('application/x-agentworks-chat-key', dragKey); event.dataTransfer.setData('text/plain', dragKey); event.dataTransfer.effectAllowed = 'move'; setMenu(false); onDrag(dragKey) } : undefined} onDragEnd={() => { onDrag(null); setDropState({ mode: null }) }}
+    onDragOver={canDrop ? event => {
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+      const mode = rowDropMode(event.clientY, event.currentTarget.getBoundingClientRect(), Boolean(actions?.dropHere), nestCheck)
+      setDropState(current => current.mode === mode && current.reason === nestCheck.reason ? current : { mode, reason: nestCheck.reason })
+    } : undefined}
+    onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropState({ mode: null }) }}
+    onDrop={canDrop ? event => {
+      event.preventDefault()
+      event.stopPropagation()
+      const mode = dropState.mode || rowDropMode(event.clientY, event.currentTarget.getBoundingClientRect(), Boolean(actions?.dropHere), nestCheck)
+      setDropState({ mode: null })
+      if (dragging && dragging !== targetKey) {
+        if (mode === 'nest' || mode === 'refuse') onNest?.(dragging)
+        else if (mode === 'before') actions?.dropHere?.(dragging)
+      }
+      onDrag(null)
+    } : undefined}>
       <AgentRowLine name={agent.name} person={person} inTeam={agent.ownerId ? undefined : { on: agent.inTeam, mostIn }} setup={agent.info?.setup && { ...agent.info.setup, reach: '' }}
         place={agent.place} status={status} lastAt={lastAt} provider={provider} state={state} asking={agent.asking} active={active} grip={reordering && !!agent.actions?.orderKey} onClick={() => onSelect(agent.tabId)} />
+    {dragging && dragging !== targetKey && (dropState.mode === 'nest' || dropState.mode === 'refuse') && <span
+      className={`pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${dropState.mode === 'nest' ? 'bg-primary text-primary-foreground' : 'bg-destructive text-destructive-foreground'}`}>
+      {dropState.mode === 'nest' ? 'Make sub-chat' : (dropState.reason || 'Can’t drop')}
+    </span>}
     {hasActions && <button type="button" aria-label={`More for ${agent.name}`} aria-expanded={menu} onClick={() => setMenu(value => !value)}
       className={`absolute right-1 ${popup ? 'top-0.5' : 'top-1/2 -translate-y-1/2'} h-6 w-6 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground max-md:h-9 max-md:w-9 ${menu ? 'grid' : 'hidden group-hover:grid group-focus-within:grid max-md:grid [@media(hover:none)]:grid'}`}>
       <MoreHorizontal aria-hidden="true" className="h-3.5 w-3.5" />
     </button>}
     {/* Inside the popup, actions scroll with the list rather than clipping at its edge. */}
-    {menu && hasActions && <div className={`${popup ? 'relative mx-1 my-1' : 'absolute right-0 top-full z-50 mt-1 w-44'} rounded-xl border border-border bg-popover p-1 shadow-lg`}>
-      {groupMenu?.(() => setMenu(false))}
-      <AgentActionsMenu name={agent.name} actions={actions || {}} sidebarHidden={agent.sidebarHidden} onMarkUnread={canMarkUnread ? () => markUnread(agent.tabId) : undefined} onRemove={agent.info?.onRemove} onDone={() => setMenu(false)} />
+    {menu && hasActions && <div className={`${popup ? 'relative mx-1 my-1' : 'absolute right-0 top-full z-50 mt-1 w-48'} rounded-xl border border-border bg-popover p-1 shadow-lg`}>
+      {pickingParent && hasNestMenu ? <div role="group" aria-label={`Make ${agent.name} a sub-chat under`}>
+        <p className="px-2 pt-1 text-[11px] text-muted-foreground">Make sub-chat under…</p>
+        <div className="max-h-52 overflow-y-auto">
+          {nestTargets!.map(target => <button key={target.tabId} type="button" role="menuitem" className={menuItem} onClick={() => { onNestUnder!(target); setMenu(false) }}>
+            <span className="min-w-0 flex-1 truncate">{target.name}</span>
+          </button>)}
+        </div>
+        <div className="mt-0.5 border-t border-border pt-0.5">
+          <button type="button" role="menuitem" className={menuItem} onClick={() => setPickingParent(false)}>← Back</button>
+        </div>
+      </div> : <>
+        {groupMenu?.(() => setMenu(false))}
+        {hasNestMenu && <div className="mb-0.5 border-b border-border pb-0.5">
+          <button type="button" role="menuitem" className={`${menuItem} justify-between`} onClick={() => setPickingParent(true)}>
+            <span>Move under…</span><ChevronRight aria-hidden="true" className="h-3 w-3 shrink-0 text-muted-foreground" />
+          </button>
+        </div>}
+        <AgentActionsMenu name={agent.name} actions={actions || {}} sidebarHidden={agent.sidebarHidden} onMarkUnread={canMarkUnread ? () => markUnread(agent.tabId) : undefined} onRemove={agent.info?.onRemove} onDone={() => setMenu(false)} />
+      </>}
     </div>}
   </div>
 }

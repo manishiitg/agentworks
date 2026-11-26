@@ -300,3 +300,85 @@ it('moves a fork out of its agent from the menu or by dragging, and puts it back
   expect(forkParent).toHaveBeenCalledWith('')
  } finally { f.extra = []; window.localStorage.clear(); await act(async () => root.unmount()) }
 })
+
+// #4152: drag onto the middle of another chat (or Main) to nest it as a sub-chat, drag onto the top edge to reorder,
+// refuse nesting under its own sub-chat, and also allow nesting via the ⋯ menu (Move under…).
+it('nests a chat under another chat by dragging or via Move under…, while top-edge drop still reorders', async () => {
+ const host = document.createElement('div'), root = createRoot(host)
+ const childForkParent = vi.fn(async (_parent: string) => {})
+ const parentForkParent = vi.fn(async (_parent: string) => {})
+ const targetDropHere = vi.fn()
+ f.hidden = new Set(); f.active = 'a'; f.canHide = false; f.groups = {}
+ f.extra = [
+  { tabId: 'm', key: 'crew', main: true, name: 'Main', sidebarOrder: 0, actions: {} },
+  { tabId: 'p', key: 'crew:chat:parent', name: 'Parent', sidebarOrder: 4, actions: { orderKey: 'crew:chat:parent', forkParent: parentForkParent, dropHere: targetDropHere } },
+  { tabId: 'sub', key: 'crew:chat:sub', forkedFrom: 'crew:chat:parent', name: 'Child', sidebarOrder: 5, actions: { orderKey: 'crew:chat:sub', forkParent: vi.fn(async () => {}) } },
+  { tabId: 't', key: 'crew:chat:topic', name: 'Topic', sidebarOrder: 6, actions: { orderKey: 'crew:chat:topic', forkParent: childForkParent } },
+ ]
+ const rect = (el: Element) => {
+  Object.defineProperty(el, 'getBoundingClientRect', { configurable: true, value: () => ({ top: 100, bottom: 130, height: 30, left: 0, right: 200, width: 200 }) })
+ }
+ const drag = (type: string, target: Element, clientY = 118) => {
+  const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientY })
+  Object.defineProperty(event, 'dataTransfer', { value: { setData: () => {}, effectAllowed: '', dropEffect: '' } })
+  target.dispatchEvent(event)
+ }
+ const rowByKey = (key: string) => host.querySelector(`[data-sidebar-agent-row="${key}"]`)!
+ const click = async (label: string, selector = 'button') => await act(async () => {
+  const target = [...host.querySelectorAll(selector)].find(button => button.getAttribute('aria-label') === label || button.textContent?.trim() === label)
+  expect(target, label).toBeTruthy()
+  ;(target as HTMLElement).click()
+ })
+ try {
+  await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
+  const topicRow = rowByKey('crew:chat:topic')
+  const parentRow = rowByKey('crew:chat:parent')
+  const mainRow = rowByKey('crew')
+  const subRow = rowByKey('crew:chat:sub')
+  rect(parentRow); rect(mainRow); rect(subRow)
+
+  // Drag Topic onto middle of Parent -> nest under Parent, with Undo.
+  await act(async () => drag('dragstart', topicRow))
+  await act(async () => drag('dragover', parentRow, 118))
+  expect(parentRow.textContent).toContain('Make sub-chat')
+  await act(async () => drag('drop', parentRow, 118))
+  expect(childForkParent).toHaveBeenLastCalledWith('crew:chat:parent')
+  expect(targetDropHere).not.toHaveBeenCalled()
+  expect(host.querySelector('[role="status"]')?.textContent).toContain('Topic is now under Parent.')
+  await click('Undo')
+  expect(childForkParent).toHaveBeenLastCalledWith('')
+
+  // Drag Topic onto top edge of Parent -> reorder instead of nesting.
+  childForkParent.mockClear()
+  await act(async () => drag('dragstart', topicRow))
+  await act(async () => drag('dragover', parentRow, 102))
+  await act(async () => drag('drop', parentRow, 102))
+  expect(targetDropHere).toHaveBeenCalledWith('crew:chat:topic')
+  expect(childForkParent).not.toHaveBeenCalled()
+
+  // Drag Topic onto Main (no orderKey/dropHere) -> nest under Main.
+  await act(async () => drag('dragstart', topicRow))
+  await act(async () => drag('dragover', mainRow, 115))
+  await act(async () => drag('drop', mainRow, 115))
+  expect(childForkParent).toHaveBeenLastCalledWith('crew')
+
+  // Drag Parent onto its own sub-chat Child -> refused cleanly.
+  await act(async () => drag('dragstart', parentRow))
+  await act(async () => drag('dragover', subRow, 118))
+  expect(subRow.textContent).toContain('Own sub-chat')
+  await act(async () => drag('drop', subRow, 118))
+  expect(parentForkParent).not.toHaveBeenCalled()
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain('Parent can’t go under Child')
+
+  // Menu fallback: Move under… lists eligible chats and nests on click.
+  childForkParent.mockClear()
+  await click('More for Topic')
+  await click('Move under…', '[role="menuitem"]')
+  const menuText = host.querySelector('[role="group"][aria-label="Make Topic a sub-chat under"]')?.textContent || ''
+  expect(menuText).toContain('Parent')
+  expect(menuText).toContain('Main')
+  expect(menuText).not.toContain('Topic')
+  await click('Parent', '[role="menuitem"]')
+  expect(childForkParent).toHaveBeenLastCalledWith('crew:chat:parent')
+ } finally { f.extra = []; window.localStorage.clear(); await act(async () => root.unmount()) }
+})
