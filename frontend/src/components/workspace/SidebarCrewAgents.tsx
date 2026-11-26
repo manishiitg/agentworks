@@ -79,6 +79,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const localHiddenExpansion = useState(false)
   const [showHidden, setShowHidden] = hiddenExpansion ?? localHiddenExpansion
   const [showClosed, setShowClosed] = useState(false)
+  const [showTeammates, setShowTeammates] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
   const [draggingGroup, setDraggingGroup] = useState<string | null>(null)
   const [dropOn, setDropOn] = useState('')
@@ -399,15 +400,13 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   }
   const draggedGrouped = dragging ? grouped.has(dragging) : false
   const draggedParent = dragging && byKey.get(dragging)?.actions?.forkParent ? nestedParent(dragging) : undefined
+  const ungroupedTeammates = isLocalDeployment() ? [] : teammates.filter(agent => !groupOf(agent))
+  const ungroupedTheirClosed = isLocalDeployment() ? [] : theirClosed.filter(agent => !groups[agent.key])
+  const teammateCount = ungroupedTeammates.length + ungroupedTheirClosed.length
   return <div role="list" aria-label="Agents" className={popup ? 'space-y-0.5 pb-1' : sidebarAgentListClass}>
     {naming?.kind === 'new' && nameBox('New group name', draft => edit({ op: 'new', key: naming.key, name: draft }))}
     {top.map(({ id, value }) => <Fragment key={id}>{between(id)}{typeof value === 'string' ? groupBlock(value) : tree(value)}</Fragment>)}
     {between(null)}
-    {/* An online project lists its other people's chats, each with its person's name (owner, 25 Nov: "i should see
-        other users chats", for online projects only). A local Mac project keeps Team members' agents in groups and
-        the Team view. */}
-    {!isLocalDeployment() && teammates.filter(agent => !groupOf(agent)).map(agent => <div key={agent.tabId}>{row(agent, true)}</div>)}
-    {!isLocalDeployment() && theirClosed.filter(agent => !groups[agent.key]).map(closedRow)}
     {draggedGrouped && <div className={`mx-1 my-1 rounded-md border border-dashed px-2 py-2 text-center text-[11px] text-muted-foreground ${dropOn === 'out' ? 'border-primary bg-primary/10' : 'border-border'}`}
       {...dropZone('out', key => { void edit({ op: 'move', key, group: '' }) })}>Drop here to take it out of the group</div>}
     {draggedParent && <div className={`mx-1 my-1 rounded-md border border-dashed px-2 py-2 text-center text-[11px] text-muted-foreground ${dropOn === 'fork-out' ? 'border-primary bg-primary/10' : 'border-border'}`}
@@ -420,6 +419,14 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     </div>}
     {forkFailed && <p role="alert" className="px-2 py-1 text-[11px] text-destructive">{forkFailed.message}{' '}
       <button type="button" className="font-medium underline" onClick={forkFailed.retry}>Try again</button></p>}
+    {/* An online project keeps other people's ungrouped chats behind a toggle (owner, 26 Nov),
+        so they don't flood the left menu. A local Mac project keeps Team members' agents in groups and the Team view. */}
+    {teammateCount > 0 && <button type="button" aria-expanded={showTeammates} onClick={() => setShowTeammates(value => !value)}
+      className={sidebarAgentDisclosureClass}>
+      <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${showTeammates ? 'rotate-90' : ''}`} />Teammates’ chats ({teammateCount})
+    </button>}
+    {showTeammates && ungroupedTeammates.map(agent => <div key={agent.tabId}>{row(agent, true)}</div>)}
+    {showTeammates && ungroupedTheirClosed.map(closedRow)}
     {/* Closed agents (no tab here) open again from this list. */}
     {closed.length > 0 && <button type="button" aria-expanded={showClosed} onClick={() => setShowClosed(value => !value)}
       className={sidebarAgentDisclosureClass}>

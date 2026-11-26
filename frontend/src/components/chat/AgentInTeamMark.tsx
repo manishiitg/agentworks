@@ -98,10 +98,11 @@ export function AgentShareIcon({ info, className = 'h-3.5 w-3.5 shrink-0' }: { i
 }
 
 /** Only display the server's admitted own-row sharing state; this is not an access gate.
- * Private agents are the default and show nothing (owner, 26 Nov); shared rows reveal a micro text pill on hover. */
+ * Private agents and chat-hidden agents stay clean in the left menu (owner, 26 Nov);
+ * only rows whose chat is visible to teammates reveal a micro text pill on hover. */
 export function AgentInTeamMark({ on, share, className = 'inline-flex' }: { on?: boolean; share?: AgentTeamShare; className?: string }) {
   const info = describeAgentShare(share ?? (on ? { inTeam: true } : undefined))
-  if (!info) return null
+  if (!info || info.hidden) return null
   return (
     <span title={info.tooltip} aria-label={info.tooltip} className={`${className} shrink-0 items-center rounded-full bg-muted/70 px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground`}>
       {info.shortLabel}

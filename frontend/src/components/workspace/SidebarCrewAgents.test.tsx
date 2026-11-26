@@ -96,13 +96,14 @@ it('shows sharing marks only on shared agents and leaves private agents clean', 
  }))
  try {
   await act(async () => root.render(<SidebarCrewAgents projectId="crew" />))
-  // Private is the default (owner, 26 Nov): no lock icon on private rows even when most agents are shared.
+  // Private and chat-hidden agents stay clean in the left menu (owner, 26 Nov);
+  // only shared agents whose chat is visible reveal a micro pill on hover.
   expect(host.querySelector('[aria-current="page"] [aria-label="Only you"]')).toBeNull()
-  const hiddenMark = host.querySelector('[aria-label="Shared with everyone on the Team · Chat hidden (teammates can ask, not read chat)"]')
-  expect(hiddenMark).not.toBeNull()
-  expect(hiddenMark?.className).toContain('hidden')
-  expect(hiddenMark?.className).toContain('group-hover:inline-flex')
-  expect(host.querySelector('[aria-label="Shared with Ana, Sam · Chat visible"]')).not.toBeNull()
+  expect(host.querySelector('[aria-label*="Chat hidden"]')).toBeNull()
+  const chosenMark = host.querySelector('[aria-label="Shared with Ana, Sam · Chat visible"]')
+  expect(chosenMark).not.toBeNull()
+  expect(chosenMark?.className).toContain('hidden')
+  expect(chosenMark?.className).toContain('group-hover:inline-flex')
   expect(host.querySelector('[aria-label="Shared with everyone on the Team · Chat visible"]')).not.toBeNull()
   expect(host.textContent).not.toMatch(/In team unless marked with a lock|All in team/)
  } finally { f.extra = []; await act(async () => root.unmount()) }
@@ -197,13 +198,16 @@ it('shows groups with their agents, forks under their parent without claiming mi
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
   await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
   expect(names('[aria-label="Group Design"]')).toEqual(['Parent', 'Parent (fork)', 'ATheir agent'])
-  // Another person's agent outside any group is listed too, with their name (owner, 25 Nov).
+  // On online projects, other people's ungrouped chats are collapsed behind a toggle (owner, 26 Nov).
+  expect(names('[aria-label="Agents"] > div:not([aria-label^="Group"])')).toEqual(['Second', 'First', 'Third'])
+  await click('Teammates’ chats (1)')
   expect(names('[aria-label="Agents"] > div:not([aria-label^="Group"])')).toEqual(['Second', 'First', 'Third', 'BOther agent'])
-  // A local Mac project does not: Team members' agents stay in groups and the Team view.
+  // A local Mac project hides them completely: Team members' agents stay in groups and the Team view.
   const runtimeWindow = window as Window & { __APP_RUNTIME_CONFIG__?: { deploymentMode?: string } }
   runtimeWindow.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'local' }
   await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select} key="local"/>))
   expect(names('[aria-label="Agents"] > div:not([aria-label^="Group"])')).toEqual(['Second', 'First', 'Third'])
+  expect(host.textContent).not.toContain('Teammates’ chats')
   delete runtimeWindow.__APP_RUNTIME_CONFIG__
   await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
   // #3389: even a prolonged roster gap does not prove sharing was revoked.
