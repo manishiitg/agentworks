@@ -24,6 +24,15 @@ describe('AgentInTeamMark and describeAgentShare', () => {
     try {
       await act(async () => root.render(<AgentInTeamMark on={false} />))
       expect(host.innerHTML).toBe('')
+
+      await act(async () => root.render(<AgentInTeamMark on share={{ inTeam: true, audience: 'whole_team', chatShare: 'agent' }} />))
+      expect(host.innerHTML).toBe('')
+
+      await act(async () => root.render(<AgentInTeamMark on share={{ inTeam: true, audience: 'chosen', chosenPeople: ['Ana'], chatShare: 'agent' }} />))
+      expect(host.innerHTML).toBe('')
+
+      await act(async () => root.render(<AgentInTeamMark on share={{ inTeam: true, audience: 'whole_team', chatShare: 'live' }} />))
+      expect(host.textContent).toBe('Team')
     } finally {
       await act(async () => root.unmount())
     }
