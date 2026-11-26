@@ -21,12 +21,12 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// PLAT-746-1030: new joins are In team, without sharing the transcript; no rule is added (owner, 22 Nov).
-func TestTerminalTeamJoinStartsInTeamWithPrivateChatAndKeepsNativeSessionIdentity(t *testing.T) {
+// PLAT-746-1030: a new join is Only me with a Live chat until its person shares it (owner, 26 Nov); no rule is added.
+func TestTerminalTeamJoinStartsOnlyMeAndKeepsNativeSessionIdentity(t *testing.T) {
 	named := namedMessageAgent{ID: "named-agent", UserID: "owner", Name: "session-label", Attachment: &namedAgentAttachment{ID: "lease", SessionID: "exact-native-session", Provider: "claude"}}
 	a := newCrewTeamTerminalAgent(crewTeamAgentIDPrefix+"11111111-1111-4111-8111-111111111111", "owner", named)
-	if !a.InTeam || a.Rule.ChatShare != crewChatShareAgent || a.Rule.WhenOthersAsk != "" {
-		t.Fatal("joining must put the agent In team without sharing its transcript or adding a rule")
+	if a.InTeam || a.Rule.ChatShare != crewChatShareLive || a.Rule.WhenOthersAsk != "" {
+		t.Fatal("joining must leave the agent Only me with a Live chat and no rule")
 	}
 	if a.ChatKey != named.Attachment.SessionID || a.OwnerID != named.UserID || a.Kind != "terminal" {
 		t.Fatal("terminal identity must come from the admitted native attachment")
@@ -322,9 +322,17 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			}
 			id, _ := out["agent_id"].(string)
 			row := saved.Agents[id]
-			if row.ID == "" || !row.InTeam || row.Rule.ChatShare != crewChatShareAgent || row.Terminal == nil || row.Terminal.NamedAgentID != attached.AgentID || row.ChatKey != attached.SessionID {
-				t.Fatal("join did not preserve exact native identity and private defaults")
+			if row.ID == "" || row.InTeam || row.Rule.ChatShare != crewChatShareLive || row.Terminal == nil || row.Terminal.NamedAgentID != attached.AgentID || row.ChatKey != attached.SessionID {
+				t.Fatal("join did not preserve exact native identity and the Only me / Live defaults")
 			}
+			// The rest of this fixture is the person sharing the agent with a hidden chat.
+			if err := updateCrewTeamRegisteredAgent("alpha", row.OwnerID, id, func(a *crewTeamRegisteredAgent) {
+				a.InTeam, a.Rule.ChatShare = true, crewChatShareAgent
+			}); err != nil {
+				t.Fatal(err)
+			}
+			saved, _ = readCrewTeam("alpha")
+			row = saved.Agents[id]
 
 			// Joining syncs the session's chat; it no longer prepares an online home for a copy (#3194).
 			readJoined := func(project string) crewTeam {
@@ -804,7 +812,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 				t.Fatal("native join turned Team on")
 			}
 
-			if a := beta.Agents[betaID]; !a.InTeam || a.Rule.ChatShare != crewChatShareAgent || a.Rule.WhenOthersAsk != "" {
+			if a := beta.Agents[betaID]; a.InTeam || a.Rule.ChatShare != crewChatShareLive || a.Rule.WhenOthersAsk != "" {
 				t.Fatal("off-Team join lost the future sharing defaults")
 			}
 			crewProject = "alpha"
@@ -813,6 +821,9 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			}
 			beta.On = true
 			beta.People = []crewTeamPerson{{UserID: "other"}}
+			shared := beta.Agents[betaID] // its person shared it while the Team was off
+			shared.InTeam = true
+			beta.Agents[betaID] = shared
 			if e = writeCrewTeamAgentFixture(beta); e != nil {
 				t.Fatal(e)
 			}

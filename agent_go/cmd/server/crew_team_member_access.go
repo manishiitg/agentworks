@@ -61,10 +61,7 @@ func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *ht
 			externalError(w, 400, "invalid_agent", "Choose your agent and whether it is shared.")
 			return
 		}
-		if err = setCrewTeamAgentChoice(r.Context(), project, crewTeamRuleActor(t, claims.UserID, in.Key), in.Key, *in.InTeam); errors.Is(err, errCrewTeamLastShared) {
-			externalError(w, 400, "last_shared_agent", err.Error())
-			return
-		} else if errors.Is(err, errCrewTeamAgentNotYours) {
+		if err = setCrewTeamAgentChoice(r.Context(), project, crewTeamRuleActor(t, claims.UserID, in.Key), in.Key, *in.InTeam); errors.Is(err, errCrewTeamAgentNotYours) {
 			externalError(w, 403, "agent_not_yours", "Choose one of your own agents in this Team.")
 			return
 		} else if err != nil {

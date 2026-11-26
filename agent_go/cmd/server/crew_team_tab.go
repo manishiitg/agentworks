@@ -56,11 +56,8 @@ type crewTeamTabAgent struct {
 	Detail string `json:"detail"`
 	InTeam bool   `json:"in_team"`
 	// CanChange: the viewer chooses In team / Only me for it here. Otherwise Fixed is shown instead of the choice.
-	// CanUnshare is false only on the viewer's last shared agent (each person keeps one, owner 6 Nov); Fixed then says
-	// why, as the switch's title.
-	CanChange  bool   `json:"can_change"`
-	CanUnshare bool   `json:"can_unshare"`
-	Fixed      string `json:"fixed,omitempty"`
+	CanChange bool   `json:"can_change"`
+	Fixed     string `json:"fixed,omitempty"`
 	// Address is the send_message target for "Ask from my agent".
 	Address string `json:"address,omitempty"`
 	// Whose agent it is, by account, with the server's display name: screens group people by OwnerID, never by a name.
@@ -169,7 +166,7 @@ type crewTeamTabReply struct {
 	// applies it when it syncs (crew_team_apply.go). CanSwitch: the Team on/off switch, the Crew's main owner only
 	// (owner, 5 Nov).
 	CanSwitch bool `json:"can_switch"`
-	// AgentsLine is the Agents card's line: new agents are shared (owner, 6 Nov: each agent's switch is the only
+	// AgentsLine is the Agents card's line: new agents start Only me (owner, 26 Nov: each agent's switch is the only
 	// control), and Always on for the owner of a Mac Crew.
 	AgentsLine string `json:"agents_line,omitempty"`
 	CanLeave   bool   `json:"can_leave"`
@@ -438,12 +435,6 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	for _, p := range byPerson {
 		mine := p.UserID == viewer || crewTeamProjectOwnedBy(t, p.UserID, viewer)
 		onMac := crewTeamAgentOnMac(t, p.UserID)
-		shared := 0
-		for _, a := range p.Agents {
-			if a.InTeam {
-				shared++
-			}
-		}
 		for _, a := range p.Agents {
 			if !mine && !reachIDs[a.ID] {
 				continue
@@ -468,14 +459,10 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			if mine && !a.InTeam {
 				row.NotSharedLine = crewTeamNotSharedLine(a.Place == "mac")
 			}
-			// Shared is per person (owner, 5-6 Nov): each person switches their own agents, Main too, but keeps one
-			// shared (setCrewTeamAgentChoice); someone else's agent just reads Shared.
+			// Shared is per person (owner, 5-6 Nov): each person switches their own agents, Main too; someone else's
+			// agent just reads Shared.
 			if mine {
-				_, projectRow := crewTeamMemberProjectID(p.UserID) // an online project's agents may all be Only me
-				row.CanChange, row.CanUnshare = true, !a.InTeam || shared > 1 || projectRow
-				if !row.CanUnshare {
-					row.Fixed = errCrewTeamLastShared.Error()
-				}
+				row.CanChange = true
 			} else {
 				row.Fixed = "Shared"
 			}
@@ -816,4 +803,4 @@ func crewTeamCopyState(b crewTeamLocal) (string, bool) {
 }
 
 // New-agent sharing follows the existing Team registry policy.
-const crewTeamAgentsLine = "New agents are shared; turn one off to keep it to yourself. Keep at least one shared."
+const crewTeamAgentsLine = "New agents are only yours; share one to let teammates ask it and see its chat."

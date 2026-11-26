@@ -100,7 +100,7 @@ func (out *crewTeamTabReply) changeOnMac() {
 	}
 	for i := range out.Agents {
 		agent := &out.Agents[i]
-		agent.CanChange, agent.CanUnshare, agent.CanEditRule, agent.CanSetPurpose = false, false, false, false
+		agent.CanChange, agent.CanEditRule, agent.CanSetPurpose = false, false, false
 		agent.Fixed, agent.PermissionsPrompt = crewChangeOnMacLine, ""
 		if agent.AgentBridge != nil {
 			agent.AgentBridge.CanChange, agent.AgentBridge.NeedsPurpose = false, false

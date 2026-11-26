@@ -234,7 +234,8 @@ func TestTeamAgentDefaultKeepsExplicitOnlyMe(t *testing.T) {
 			t.Fatal("explicit choice overwritten")
 		}
 	}
-	if !crewTeamDefaultInTeam(nil) {
-		t.Fatal("new agent must start In team")
+	// Owner, 26 Nov: a new agent is Only me with a Live chat until its person shares it.
+	if crewTeamDefaultInTeam(nil) || crewTeamDefaultRule().ChatShare != crewChatShareLive {
+		t.Fatal("new agent must start Only me with a Live chat")
 	}
 }

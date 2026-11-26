@@ -92,9 +92,8 @@ export type TeamTabPerson = AvatarFields & { activity?: 'running' | 'waiting'; u
 // A teammate's Mac, as the server words it (crew_team_tab.go); absent when their agents work on the server.
 // tone picks the dot's colour: on (Mac on), server (Mac off, shared agents answer from the server), away (they wait).
 export type TeamTabPresence = { online: boolean; line: string; tone?: 'on' | 'server' | 'away' }
-// mine: the viewer's own agent (the Agents card lists only these). can_unshare is false on their last shared agent;
-// fixed then says why.
-export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; can_unshare: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean; online_project?: string;
+// mine: the viewer's own agent (the Agents card lists only these). fixed says why its switch cannot change.
+export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; online?: boolean; last_message?: string; last_message_at?: string; typing?: boolean; id: string; key: string; name: string; detail: string; in_team: boolean; can_change: boolean; fixed?: string; address?: string; owner_id: string; owner_name: string; mine: boolean; online_project?: string;
   /** Who may ask your own agent (Team Module Manager contract): the whole Team or the chosen people; absent on others' agents. */
   audience?: 'whole_team' | 'chosen'; chosen_people?: { user_id: string; name: string }[]; place: 'mac' | 'server'; status_label?: string; tab: string
   // The server reports the original agent’s placement and admitted offline-copy availability. Its placement

@@ -260,7 +260,7 @@ func macSharedAgentChatKey(project, tab string) string {
 }
 
 // macCrewAddressTab is the agent a message to the Crew itself reaches: Main while it is shared (Team or Public on
-// AgentBridge), else the owner's first shared agent (owner, 6 Nov: Main can be off, each person keeps one shared).
+// AgentBridge), else the owner's first shared agent (owner, 6 Nov: Main can be off).
 func macCrewAddressTab(project string) string {
 	if IsLocalMode() {
 		return macMainTab

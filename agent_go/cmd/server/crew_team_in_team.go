@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
@@ -53,20 +52,6 @@ func (t crewTeam) agentInTeam(person, key string) bool {
 		return false // an online project's agent is Only me until shared
 	}
 	return true
-}
-
-// errCrewTeamLastShared: a person's last shared agent cannot be turned off (owner, 6 Nov: "all agents cannot be off").
-var errCrewTeamLastShared = errors.New("Keep at least one agent shared with the Team. Share another agent first.")
-
-// crewTeamSharedKeys are the IDs of this person's currently shared agents.
-func crewTeamSharedKeys(ctx context.Context, t crewTeam, person string) []string {
-	var keys []string
-	for _, a := range t.Agents {
-		if a.OwnerID == person && a.InTeam {
-			keys = append(keys, a.ID)
-		}
-	}
-	return keys
 }
 
 // seesAgent: the viewer may see, watch and hear about this person's agent. Their own always; someone else's only
@@ -195,8 +180,8 @@ func crewTeamOwnAgent(ctx context.Context, project, person, key string) (crewTea
 }
 
 // setCrewTeamAgentChoice saves the person's own In team / Only me for one of their agents. Only the agent's own
-// person chooses (owner, 5 Nov: Only me is per person); a server agent must be one of their chats in this Crew; their
-// last shared agent stays In team (owner, 6 Nov), for every caller (Team tab, chat, MCP).
+// person chooses (owner, 5 Nov: Only me is per person); a server agent must be one of their chats in this Crew. A
+// person may have no shared agent at all (owner, 26 Nov).
 func setCrewTeamAgentChoice(ctx context.Context, project, person, key string, inTeam bool) error {
 	dir, err := crewTeamDir(project)
 	if err != nil {
@@ -214,10 +199,6 @@ func setCrewTeamAgentChoice(ctx context.Context, project, person, key string, in
 	_, stored, err := crewTeamOwnAgent(ctx, project, person, key)
 	if err != nil {
 		return err
-	}
-	_, projectAgent := crewTeamMemberProjectID(person)
-	if !inTeam && t.On && !projectAgent && !slices.ContainsFunc(crewTeamSharedKeys(ctx, t, person), func(k string) bool { return k != stored }) {
-		return errCrewTeamLastShared
 	}
 	was := t.agentInTeam(person, stored)
 	if err = updateCrewTeamRegisteredAgent(project, person, stored, func(a *crewTeamRegisteredAgent) { a.InTeam = inTeam }); err != nil {
