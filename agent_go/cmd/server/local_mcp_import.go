@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
@@ -528,7 +529,11 @@ func (api *StreamingAPI) handleLocalMCPImport(w http.ResponseWriter, r *http.Req
 			continue
 		}
 		res := api.importLocalMCP(r.Context(), claims.UserID, workspace, c)
-		log.Printf("[LOCAL_MCP_IMPORT] workspace=%s server=%s kind=%s sources=%s status=%s", workspace, c.Name, c.Kind, strings.Join(c.Sources, ","), res.Status)
+		reason := ""
+		if res.Status == "failed" {
+			reason = " reason=" + strconv.Quote(res.Message)
+		}
+		log.Printf("[LOCAL_MCP_IMPORT] workspace=%s server=%s kind=%s sources=%s status=%s%s", workspace, c.Name, c.Kind, strings.Join(c.Sources, ","), res.Status, reason)
 		results = append(results, res)
 	}
 	writeAgentProfileJSON(w, 200, map[string]any{"results": results})

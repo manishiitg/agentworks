@@ -43,10 +43,22 @@ const maxResponseBytes = 2 << 20
 
 // ValidateURL rejects credentials, redirects to non-MCP schemes, and cleartext
 // destinations outside an explicitly permitted loopback development setup.
+// Plain query settings are allowed (hosted servers use them, e.g. ?project_ref=);
+// a query parameter that looks like a credential is not, since the address is
+// stored and shown unencrypted: such keys belong in the sealed headers.
 func ValidateURL(raw string, opts DialOptions) (*url.URL, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
+	if err != nil || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.Opaque != "" {
 		return nil, errors.New("invalid upstream URL")
+	}
+	query, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return nil, errors.New("invalid upstream URL")
+	}
+	for name := range query {
+		if credentialQueryName(name) {
+			return nil, fmt.Errorf("upstream URL carries a credential in ?%s=; put it in a header instead", name)
+		}
 	}
 	if u.Scheme != "https" {
 		ip := net.ParseIP(u.Hostname())
@@ -55,6 +67,16 @@ func ValidateURL(raw string, opts DialOptions) (*url.URL, error) {
 		}
 	}
 	return u, nil
+}
+
+func credentialQueryName(name string) bool {
+	n := strings.ToLower(strings.NewReplacer("-", "", "_", "").Replace(name))
+	for _, part := range []string{"key", "token", "secret", "password", "passwd", "auth", "signature", "credential"} {
+		if strings.Contains(n, part) {
+			return true
+		}
+	}
+	return false
 }
 
 func privateIP(ip net.IP) bool {
