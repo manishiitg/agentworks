@@ -6,7 +6,7 @@ import { ConversationImageRoot } from './ConversationImageRoot'
 import { sharedLink, repairLocalAppLink, isSharedAppRoute } from '../../utils/sharedLinks'
 import { PanelsTopLeft } from 'lucide-react'
 import { dashboardWorkspaceLink } from '../../services/dashboardDirectory'
-import React, { lazy, Suspense, useEffect, useRef, useState, useCallback } from 'react'
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { remarkImageGallery } from './remarkImageGallery'
@@ -556,31 +556,35 @@ export const MermaidDiagram: React.FC<{ content: string }> = ({ content }) => {
   const [error, setError] = useState<string>('')
   const idRef = useRef(`mermaid-${Date.now()}-${mermaidCounter++}`)
 
-  const renderDiagram = useCallback(async () => {
-    try {
-      const mermaid = await loadMermaid()
-      // Re-init theme on each render to pick up dark mode changes
-      const isDark = document.documentElement.classList.contains('dark') ||
-                     document.documentElement.classList.contains('dark-plus')
-      mermaid.initialize({
-        startOnLoad: false,
-        // PLAT-746: keep parse/draw failures in our inline fallback, not document.body.
-        suppressErrorRendering: true,
-        theme: isDark ? 'dark' : 'default',
-        securityLevel: 'loose',
-      })
-      const { svg: renderedSvg } = await mermaid.render(idRef.current, content)
-      setSvg(renderedSvg)
-      setError('')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to render mermaid diagram')
-      setSvg('')
-    }
-  }, [content])
-
   useEffect(() => {
-    renderDiagram()
-  }, [renderDiagram])
+    let cancelled = false
+    const renderDiagram = async () => {
+      try {
+        const mermaid = await loadMermaid()
+        if (cancelled) return
+        // Re-init theme on each render to pick up dark mode changes
+        const isDark = document.documentElement.classList.contains('dark') ||
+                       document.documentElement.classList.contains('dark-plus')
+        mermaid.initialize({
+          startOnLoad: false,
+          // PLAT-746: keep parse/draw failures in our inline fallback, not document.body.
+          suppressErrorRendering: true,
+          theme: isDark ? 'dark' : 'default',
+          securityLevel: 'loose',
+        })
+        const { svg: renderedSvg } = await mermaid.render(idRef.current, content)
+        if (cancelled) return
+        setSvg(renderedSvg)
+        setError('')
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : 'Failed to render mermaid diagram')
+        setSvg('')
+      }
+    }
+    void renderDiagram()
+    return () => { cancelled = true }
+  }, [content])
 
   if (error) {
     return (
@@ -1002,373 +1006,181 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
     return <div className="relative min-w-0">{block}<CodeCopyButton text={text} /></div>
   }, [chatElements, chatElementStream, className, untrustedContent, disablePathLinking, compactImages, copyableCode, basePath, onLinkClick, workspaceLinkHref, onWorkspaceLinkResolve, onWorkspaceLinkClick])
 
+  const remarkPlugins = scopedChatFiles && !chatElementStream ? MARKDOWN_REMARK_WITH_FILES : MARKDOWN_REMARK_BASE
+
+  const markdownComponents = useMemo(() => ({
+    ...MARKDOWN_STATIC_COMPONENTS,
+    pre: renderPre,
+    ...(scopedChatFiles ? { span: ChatFilePathSpan } : {}),
+    p: ({ node, children }: { node?: { children: Array<{ type: string; tagName?: string; value?: string }> }; children?: React.ReactNode }) => {
+      const imageCount = node?.children.filter(child => child.type === 'element' && child.tagName === 'img').length ?? 0
+      const gallery = !untrustedContent && imageCount > 1 && node?.children.every(child =>
+        child.type === 'element' && child.tagName === 'img' || child.type === 'text' && !(child.value ?? '').trim())
+      return gallery
+        ? <p role="group" aria-label={`Image gallery · ${imageCount} images`} data-image-gallery className={`not-prose my-3 grid max-w-3xl grid-cols-2 items-start gap-3 [&_img]:!my-0 [&_img]:max-h-48 ${imageCount > 2 ? 'sm:grid-cols-3' : ''}`}>{children}</p>
+        : <p className="mb-2 last:mb-0 text-sm leading-6 text-gray-700 dark:text-gray-300 break-words overflow-wrap-anywhere">{children}</p>
+    },
+    code: ({ className, children, inline, ...props }: React.HTMLAttributes<HTMLElement> & { inline?: boolean }) => {
+      const match = /language-(\w+)/.exec(className || '')
+      const isInline = typeof inline === 'boolean' ? inline : false
+
+      // ```report-widget — embed a live report widget from a JSON spec.
+      // Only active when the report viewer passes renderEmbeddedWidget;
+      // otherwise it falls through to normal code rendering.
+      if (!isInline && match && match[1] === 'report-widget' && renderEmbeddedWidget) {
+        const raw = String(children).replace(/\n$/, '')
+        try {
+          const spec = JSON.parse(raw)
+          return <div className="my-3">{renderEmbeddedWidget(spec)}</div>
+        } catch {
+          return (
+            <pre className="my-3 rounded-lg border border-amber-300/50 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-400">
+              Invalid report-widget JSON:{'\n'}{raw}
+            </pre>
+          )
+        }
+      }
+
+      if (!isInline && match && match[1] === 'tool-definition') {
+        return <ToolDefinition content={String(children).replace(/\n$/, '')} />
+      }
+
+      if (!isInline && match && match[1] === 'mermaid') {
+        return <MermaidDiagram content={String(children).replace(/\n$/, '')} />
+      }
+
+      // A code path in a reply (`src/app/main.go:42`) opens that file at the line in Files, where a
+      // screen can open project files (the Crew surface registers one); elsewhere it stays plain code.
+      const inlineText = typeof children === 'string' ? children : Array.isArray(children) && children.length === 1 && typeof children[0] === 'string' ? children[0] : null
+      const codeRef = !match && !scopedChatFiles && !disablePathLinking && !untrustedContent && inlineText && !inlineText.includes('\n') && projectFileLinksEnabled() ? parseCodeRef(inlineText) : null
+      if (codeRef) {
+        return (
+          <a href="#" title={`Open ${codeRef.path}${codeRef.line ? ` at line ${codeRef.line}` : ''}`} className="no-underline hover:underline" onClick={event => { event.preventDefault(); event.stopPropagation(); requestOpenProjectFile(codeRef) }}>
+            <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs font-mono break-all overflow-wrap-anywhere text-blue-600 dark:text-blue-400 cursor-pointer" {...props}>{children}</code>
+          </a>
+        )
+      }
+
+      // For inline code, use simple styling
+      if (isInline || !match) {
+        return (
+          <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs font-mono break-all overflow-wrap-anywhere text-blue-600 dark:text-blue-400" {...props}>
+            {children}
+          </code>
+        )
+      }
+
+      // For code blocks, use SyntaxHighlighter
+      const language = match[1]
+      const codeString = String(children).replace(/\n$/, '')
+
+      if (['text', 'txt', 'plain', 'plaintext', 'terminal'].includes(language.toLowerCase())) {
+        return (
+          <pre className="my-3 max-w-full overflow-x-auto whitespace-pre-wrap break-words text-xs leading-5 text-gray-700 dark:text-gray-300">
+            {codeString}
+          </pre>
+        )
+      }
+
+      // Detect dark mode
+      const isDark = document.documentElement.classList.contains('dark') ||
+                    document.documentElement.classList.contains('dark-plus')
+
+      return (
+        <div className="my-4 min-w-0 max-w-full overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
+          <Suspense
+            fallback={(
+              <pre className="m-0 overflow-x-auto p-4 text-xs leading-6 text-gray-700 dark:text-gray-300">
+                {codeString}
+              </pre>
+            )}
+          >
+            <SyntaxHighlightedCode code={codeString} language={language} isDark={isDark} />
+          </Suspense>
+        </div>
+      )
+    },
+    a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
+      const workspaceTarget = untrustedContent ? null : resolveWorkspaceTargetForView(href)
+      const externalHref = resolveSafeExternalHref(href)
+
+      if (workspaceTarget) {
+        if (workspaceLinkHref) return <a href={workspaceLinkHref(workspaceTarget.filepath)} className="text-blue-600 dark:text-blue-400 underline">{children}</a>
+        return (
+          <a
+            href={`#workspace/${encodeURIComponent(workspaceTarget.displayPath)}`}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              openResolvedWorkspaceTarget(workspaceTarget)
+            }}
+            style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+            className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 underline cursor-pointer break-words overflow-wrap-anywhere font-medium transition-colors"
+            title={`Open ${workspaceTarget.filepath} in workspace`}
+          >
+            {children}
+          </a>
+        )
+      }
+      if (!externalHref) {
+        return (
+          <span
+            className="text-gray-600 dark:text-gray-300 break-words overflow-wrap-anywhere"
+            title={href ? `Unsupported link: ${href}` : undefined}
+          >
+            {children}
+          </span>
+        )
+      }
+      return (
+        <a
+          href={externalHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => {
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+            if (openExternalHref(externalHref)) {
+              e.preventDefault()
+              e.stopPropagation()
+            }
+          }}
+          // A dashboard or artifact link reads as something to open, not a raw URL (PLAT-750).
+          className={!untrustedContent && dashboardWorkspaceLink(externalHref)
+            ? 'inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-0.5 align-middle font-medium text-foreground no-underline hover:bg-muted'
+            : 'text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline break-words overflow-wrap-anywhere'}
+        >
+          {!untrustedContent && dashboardWorkspaceLink(externalHref)
+            ? <><PanelsTopLeft aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span className="truncate">{children}</span></>
+            : children}
+        </a>
+      )
+    },
+    img: ({ src, alt }: { src?: string; alt?: string }) => {
+      if (untrustedContent) return <span className="text-muted-foreground">[Image{alt ? `: ${alt}` : ''}]</span>
+      const workspacePrefixes = ['Crew/', 'Chats/', 'Downloads/', 'skills/', 'Workflow/', 'knowledgebase/', '_users/', 'learnings/']
+      // In a project chat, db/assets/… and assets/… are the project's own folders, not workspace top-level ones
+      // ("This workspace folder is not shareable" for a reply's own contact sheet).
+      const workspaceFilepath = (src?.startsWith('/') && !src.startsWith('//') ? src : null) || resolveWorkspaceHref(src)?.filepath || (src && workspacePrefixes.some(p => src.startsWith(p)) ? src : null) || (src && conversationImageRoot && isLikelyRelativeWorkspaceFile(src) && !src.startsWith('/') ? resolveRelativeWorkspacePath(src, `${conversationImageRoot}/__chat__.md`) : null) || (src && ['db/assets/', 'assets/'].some(p => src.startsWith(p)) ? src : null)
+      if (!src) return <span className="text-muted-foreground">Image not found</span>
+      if (isVideoPath(src.split(/[?#]/)[0])) return <ChatVideo src={workspaceFilepath || src} alt={alt} workspace={!!workspaceFilepath} />
+      return <ChatImage src={workspaceFilepath || src} alt={alt} workspace={!!workspaceFilepath} className={compactImages
+        ? 'my-3 max-h-80 max-w-full rounded-lg object-contain'
+        : 'my-3 max-h-[75vh] max-w-full rounded-lg object-contain'} />
+    },
+  }), [renderPre, scopedChatFiles, untrustedContent, renderEmbeddedWidget, disablePathLinking, resolveWorkspaceTargetForView, workspaceLinkHref, openResolvedWorkspaceTarget, resolveWorkspaceHref, conversationImageRoot, compactImages])
+
   return (
     <div
       className={`${containerClasses} ${scrollClasses} markdown-content`}
       style={containerStyle}
       onClickCapture={handleMarkdownClickCapture}
     >
-      <style dangerouslySetInnerHTML={{
-        __html: `
-          .markdown-content ul,
-          .markdown-content ol {
-            list-style-position: outside;
-            margin-left: 0;
-            padding-left: 1.5rem;
-          }
-          .markdown-content ul {
-            list-style-type: disc;
-          }
-          .markdown-content ol {
-            list-style-type: decimal;
-          }
-          .markdown-content li {
-            padding-left: 0.25rem;
-          }
-          .markdown-content ul ul {
-            padding-left: 1.25rem;
-            margin-top: 0.25rem;
-            margin-bottom: 0.25rem;
-          }
-          .markdown-content ul ul ul {
-            padding-left: 1.25rem;
-            margin-top: 0.125rem;
-            margin-bottom: 0.125rem;
-          }
-          .markdown-content ol ol {
-            padding-left: 1.25rem;
-            margin-top: 0.25rem;
-            margin-bottom: 0.25rem;
-          }
-          .markdown-content ol ol ol {
-            padding-left: 1.25rem;
-            margin-top: 0.125rem;
-            margin-bottom: 0.125rem;
-          }
-          .markdown-content li > p {
-            margin-top: 0.25rem;
-            margin-bottom: 0.25rem;
-            display: block;
-          }
-          .markdown-content li > p:first-child {
-            margin-top: 0;
-          }
-          .markdown-content li > p:last-child {
-            margin-bottom: 0;
-          }
-          .markdown-content li ul,
-          .markdown-content li ol {
-            padding-left: 1.25rem;
-            margin-top: 0.25rem;
-            margin-bottom: 0.25rem;
-          }
-          /* Conversation answers need prose rhythm rather than the denser
-             operational typography used by reports and tool output. */
-          .conversation-markdown p,
-          .conversation-markdown li {
-            font-size: 0.9375rem;
-            line-height: 1.75rem;
-          }
-          .conversation-markdown p {
-            margin-bottom: 0.875rem;
-          }
-          .conversation-markdown ul,
-          .conversation-markdown ol {
-            margin-top: 0.625rem;
-            margin-bottom: 1rem;
-          }
-          .conversation-markdown li + li {
-            margin-top: 0.375rem;
-          }
-          .conversation-markdown :not(pre) > code {
-            padding: 0.06rem 0.22rem;
-            font-size: 0.82em;
-            font-weight: 450;
-            line-height: inherit;
-            color: rgb(55 91 124) !important;
-            background-color: rgb(15 23 42 / 0.055) !important;
-            border: 0 !important;
-            border-radius: 0.2rem !important;
-          }
-          .dark .conversation-markdown :not(pre) > code,
-          .dark-plus .conversation-markdown :not(pre) > code {
-            color: rgb(158 190 220) !important;
-            background-color: rgb(255 255 255 / 0.07) !important;
-          }
-          /* Override prose table styles for dark theme */
-          .markdown-content.prose table tbody tr {
-            background-color: transparent !important;
-          }
-          .dark .markdown-content.prose table tbody tr,
-          .dark-plus .markdown-content.prose table tbody tr {
-            background-color: transparent !important;
-          }
-          .markdown-content.prose table tbody tr:hover {
-            background-color: rgb(249 250 251) !important;
-          }
-          .dark .markdown-content.prose table tbody tr:hover,
-          .dark-plus .markdown-content.prose table tbody tr:hover {
-            background-color: rgb(31 41 55) !important;
-          }
-          .markdown-content.prose table tbody tr:focus,
-          .markdown-content.prose table tbody tr:active,
-          .markdown-content.prose table tbody tr.selected {
-            background-color: rgb(249 250 251) !important;
-          }
-          .dark .markdown-content.prose table tbody tr:focus,
-          .dark .markdown-content.prose table tbody tr:active,
-          .dark .markdown-content.prose table tbody tr.selected,
-          .dark-plus .markdown-content.prose table tbody tr:focus,
-          .dark-plus .markdown-content.prose table tbody tr:active,
-          .dark-plus .markdown-content.prose table tbody tr.selected {
-            background-color: rgb(31 41 55) !important;
-          }
-          /* Ensure text color is correct in dark mode for hover/selected rows */
-          .dark .markdown-content.prose table tbody tr:hover td,
-          .dark .markdown-content.prose table tbody tr:focus td,
-          .dark .markdown-content.prose table tbody tr:active td,
-          .dark .markdown-content.prose table tbody tr.selected td,
-          .dark-plus .markdown-content.prose table tbody tr:hover td,
-          .dark-plus .markdown-content.prose table tbody tr:focus td,
-          .dark-plus .markdown-content.prose table tbody tr:active td,
-          .dark-plus .markdown-content.prose table tbody tr.selected td {
-            color: rgb(243 244 246) !important;
-          }
-          /* Override any prose-invert styles that might be setting light backgrounds */
-          .dark .markdown-content.prose-invert table tbody tr:hover,
-          .dark-plus .markdown-content.prose-invert table tbody tr:hover {
-            background-color: rgb(31 41 55) !important;
-          }
-          .dark .markdown-content.prose-invert table tbody tr:focus,
-          .dark .markdown-content.prose-invert table tbody tr:active,
-          .dark .markdown-content.prose-invert table tbody tr.selected,
-          .dark-plus .markdown-content.prose-invert table tbody tr:focus,
-          .dark-plus .markdown-content.prose-invert table tbody tr:active,
-          .dark-plus .markdown-content.prose-invert table tbody tr.selected {
-            background-color: rgb(31 41 55) !important;
-          }
-          /* Prevent browser text selection from causing light background issues */
-          .dark .markdown-content.prose table tbody tr::selection,
-          .dark-plus .markdown-content.prose table tbody tr::selection {
-            background-color: rgb(59 130 246) !important;
-            color: rgb(255 255 255) !important;
-          }
-          /* Ensure table cells maintain proper colors */
-          .dark .markdown-content.prose table tbody td,
-          .dark-plus .markdown-content.prose table tbody td {
-            color: rgb(243 244 246) !important;
-          }
-          .dark .markdown-content.prose-invert table tbody td,
-          .dark-plus .markdown-content.prose-invert table tbody td {
-            color: rgb(243 244 246) !important;
-          }
-        `
-      }} />
       <ReactMarkdown
         // Single-tilde strikethrough off: chat/model text uses ~ for
         // "approximately" (~2.37L), and pairing those into <del> spans
         // strikes whole paragraphs. ~~ still strikethroughs, like GitHub.
-        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkImageGallery, ...(scopedChatFiles && !chatElementStream ? [remarkChatFilePaths] : [])]}
-        components={{
-          ...(scopedChatFiles ? { span: ChatFilePathSpan } : {}),
-          p: ({ node, children }) => {
-            const imageCount = node?.children.filter(child => child.type === 'element' && child.tagName === 'img').length ?? 0
-            const gallery = !untrustedContent && imageCount > 1 && node?.children.every(child =>
-              child.type === 'element' && child.tagName === 'img' || child.type === 'text' && !child.value.trim())
-            return gallery
-              ? <p role="group" aria-label={`Image gallery · ${imageCount} images`} data-image-gallery className={`not-prose my-3 grid max-w-3xl grid-cols-2 items-start gap-3 [&_img]:!my-0 [&_img]:max-h-48 ${imageCount > 2 ? 'sm:grid-cols-3' : ''}`}>{children}</p>
-              : <p className="mb-2 last:mb-0 text-sm leading-6 text-gray-700 dark:text-gray-300 break-words overflow-wrap-anywhere">{children}</p>
-          },
-          h1: ({ children }) => <h1 className="text-2xl font-bold mb-2 mt-4 first:mt-0 text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere border-b border-gray-200 dark:border-gray-700 pb-2">{children}</h1>,
-          h2: ({ children }) => <h2 className="text-xl font-semibold mb-2 mt-3 first:mt-0 text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere">{children}</h2>,
-          h3: ({ children }) => <h3 className="text-lg font-semibold mb-1.5 mt-2 first:mt-0 text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere">{children}</h3>,
-          h4: ({ children }) => <h4 className="text-base font-semibold mb-1.5 mt-2 first:mt-0 text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere">{children}</h4>,
-          ul: ({ children }) => <ul className="list-disc list-outside mb-2 space-y-1 pl-6 min-w-0">{children}</ul>,
-          ol: ({ children }) => <ol className="list-decimal list-outside mb-2 space-y-1 pl-6 min-w-0">{children}</ol>,
-          li: ({ children }) => <li className="pl-1 text-sm break-words overflow-wrap-anywhere leading-6 text-gray-700 dark:text-gray-300">{children}</li>,
-          code: ({ className, children, inline, ...props }: React.HTMLAttributes<HTMLElement> & { inline?: boolean }) => {
-            const match = /language-(\w+)/.exec(className || '')
-            const isInline = typeof inline === 'boolean' ? inline : false
-            
-            // ```report-widget — embed a live report widget from a JSON spec.
-            // Only active when the report viewer passes renderEmbeddedWidget;
-            // otherwise it falls through to normal code rendering.
-            if (!isInline && match && match[1] === 'report-widget' && renderEmbeddedWidget) {
-              const raw = String(children).replace(/\n$/, '')
-              try {
-                const spec = JSON.parse(raw)
-                return <div className="my-3">{renderEmbeddedWidget(spec)}</div>
-              } catch {
-                return (
-                  <pre className="my-3 rounded-lg border border-amber-300/50 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-400">
-                    Invalid report-widget JSON:{'\n'}{raw}
-                  </pre>
-                )
-              }
-            }
-
-            if (!isInline && match && match[1] === 'tool-definition') {
-              return <ToolDefinition content={String(children).replace(/\n$/, '')} />
-            }
-
-            if (!isInline && match && match[1] === 'mermaid') {
-              return <MermaidDiagram content={String(children).replace(/\n$/, '')} />
-            }
-
-            // A code path in a reply (`src/app/main.go:42`) opens that file at the line in Files, where a
-            // screen can open project files (the Crew surface registers one); elsewhere it stays plain code.
-            const inlineText = typeof children === 'string' ? children : Array.isArray(children) && children.length === 1 && typeof children[0] === 'string' ? children[0] : null
-            const codeRef = !match && !scopedChatFiles && !disablePathLinking && !untrustedContent && inlineText && !inlineText.includes('\n') && projectFileLinksEnabled() ? parseCodeRef(inlineText) : null
-            if (codeRef) {
-              return (
-                <a href="#" title={`Open ${codeRef.path}${codeRef.line ? ` at line ${codeRef.line}` : ''}`} className="no-underline hover:underline" onClick={event => { event.preventDefault(); event.stopPropagation(); requestOpenProjectFile(codeRef) }}>
-                  <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs font-mono break-all overflow-wrap-anywhere text-blue-600 dark:text-blue-400 cursor-pointer" {...props}>{children}</code>
-                </a>
-              )
-            }
-
-            // For inline code, use simple styling
-            if (isInline || !match) {
-              return (
-                <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-xs font-mono break-all overflow-wrap-anywhere text-blue-600 dark:text-blue-400" {...props}>
-                  {children}
-                </code>
-              )
-            }
-            
-            // For code blocks, use SyntaxHighlighter
-            const language = match[1]
-            const codeString = String(children).replace(/\n$/, '')
-
-            if (['text', 'txt', 'plain', 'plaintext', 'terminal'].includes(language.toLowerCase())) {
-              return (
-                <pre className="my-3 max-w-full overflow-x-auto whitespace-pre-wrap break-words text-xs leading-5 text-gray-700 dark:text-gray-300">
-                  {codeString}
-                </pre>
-              )
-            }
-            
-            // Detect dark mode
-            const isDark = document.documentElement.classList.contains('dark') || 
-                          document.documentElement.classList.contains('dark-plus')
-            
-            return (
-              <div className="my-4 min-w-0 max-w-full overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-                <Suspense
-                  fallback={(
-                    <pre className="m-0 overflow-x-auto p-4 text-xs leading-6 text-gray-700 dark:text-gray-300">
-                      {codeString}
-                    </pre>
-                  )}
-                >
-                  <SyntaxHighlightedCode code={codeString} language={language} isDark={isDark} />
-                </Suspense>
-              </div>
-            )
-          },
-          pre: renderPre,
-          blockquote: ({ children }) => (
-            <blockquote className="border-l-4 border-blue-500 dark:border-blue-400 pl-4 py-1.5 my-2 bg-blue-50 dark:bg-blue-900/20 rounded-r text-sm break-words overflow-wrap-anywhere text-gray-700 dark:text-gray-300 italic">
-              {children}
-            </blockquote>
-          ),
-          strong: ({ children }) => <strong className="font-semibold break-words overflow-wrap-anywhere text-gray-900 dark:text-gray-100">{children}</strong>,
-          em: ({ children }) => <em className="italic break-words overflow-wrap-anywhere">{children}</em>,
-          a: ({ href, children }) => {
-            const workspaceTarget = untrustedContent ? null : resolveWorkspaceTargetForView(href)
-            const externalHref = resolveSafeExternalHref(href)
-
-            if (workspaceTarget) {
-              if (workspaceLinkHref) return <a href={workspaceLinkHref(workspaceTarget.filepath)} className="text-blue-600 dark:text-blue-400 underline">{children}</a>
-              return (
-                <a
-                  href={`#workspace/${encodeURIComponent(workspaceTarget.displayPath)}`}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    openResolvedWorkspaceTarget(workspaceTarget)
-                  }}
-                  style={{ pointerEvents: 'auto', cursor: 'pointer' }}
-                  className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 underline cursor-pointer break-words overflow-wrap-anywhere font-medium transition-colors"
-                  title={`Open ${workspaceTarget.filepath} in workspace`}
-                >
-                  {children}
-                </a>
-              )
-            }
-            if (!externalHref) {
-              return (
-                <span
-                  className="text-gray-600 dark:text-gray-300 break-words overflow-wrap-anywhere"
-                  title={href ? `Unsupported link: ${href}` : undefined}
-                >
-                  {children}
-                </span>
-              )
-            }
-            return (
-              <a
-                href={externalHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => {
-                  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-                  if (openExternalHref(externalHref)) {
-                    e.preventDefault()
-                    e.stopPropagation()
-                  }
-                }}
-                // A dashboard or artifact link reads as something to open, not a raw URL (PLAT-750).
-                className={!untrustedContent && dashboardWorkspaceLink(externalHref)
-                  ? 'inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-0.5 align-middle font-medium text-foreground no-underline hover:bg-muted'
-                  : 'text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline break-words overflow-wrap-anywhere'}
-              >
-                {!untrustedContent && dashboardWorkspaceLink(externalHref)
-                  ? <><PanelsTopLeft aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span className="truncate">{children}</span></>
-                  : children}
-              </a>
-            )
-          },
-          img: ({ src, alt }) => {
-            if (untrustedContent) return <span className="text-muted-foreground">[Image{alt ? `: ${alt}` : ''}]</span>
-            const workspacePrefixes = ['Crew/', 'Chats/', 'Downloads/', 'skills/', 'Workflow/', 'knowledgebase/', '_users/', 'learnings/']
-            // In a project chat, db/assets/… and assets/… are the project's own folders, not workspace top-level ones
-            // ("This workspace folder is not shareable" for a reply's own contact sheet).
-            const workspaceFilepath = (src?.startsWith('/') && !src.startsWith('//') ? src : null) || resolveWorkspaceHref(src)?.filepath || (src && workspacePrefixes.some(p => src.startsWith(p)) ? src : null) || (src && conversationImageRoot && isLikelyRelativeWorkspaceFile(src) && !src.startsWith('/') ? resolveRelativeWorkspacePath(src, `${conversationImageRoot}/__chat__.md`) : null) || (src && ['db/assets/', 'assets/'].some(p => src.startsWith(p)) ? src : null)
-            if (!src) return <span className="text-muted-foreground">Image not found</span>
-            if (isVideoPath(src.split(/[?#]/)[0])) return <ChatVideo src={workspaceFilepath || src} alt={alt} workspace={!!workspaceFilepath} />
-            return <ChatImage src={workspaceFilepath || src} alt={alt} workspace={!!workspaceFilepath} className={compactImages
-              ? 'my-3 max-h-80 max-w-full rounded-lg object-contain'
-              : 'my-3 max-h-[75vh] max-w-full rounded-lg object-contain'} />
-          },
-          hr: () => <hr className="my-6 border-gray-300 dark:border-gray-600" />,
-          table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
-          thead: ({ children }) => (
-            <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-              {children}
-            </thead>
-          ),
-          tbody: ({ children }) => (
-            <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-              {children}  
-            </tbody>
-          ),
-          tr: ({ children }) => (
-            <tr className="transition-colors [tbody_&:hover]:bg-gray-50 dark:[tbody_&:hover]:bg-gray-800 [tbody_&:focus]:bg-gray-50 dark:[tbody_&:focus]:bg-gray-800 [tbody_&:active]:bg-gray-100 dark:[tbody_&:active]:bg-gray-700">
-              {children}
-            </tr>
-          ),
-          th: ({ children }) => (
-            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider break-words overflow-wrap-anywhere">
-              {children}
-            </th>
-          ),
-          td: ({ children }) => (
-            <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere [tr:hover_&]:text-gray-900 [tr:hover_&]:dark:text-gray-100 [tr:focus_&]:text-gray-900 [tr:focus_&]:dark:text-gray-100 [tr:active_&]:text-gray-900 [tr:active_&]:dark:text-gray-100">
-              {children}
-            </td>
-          ),
-        }}
+        remarkPlugins={remarkPlugins as unknown as Parameters<typeof ReactMarkdown>[0]['remarkPlugins']}
+        components={markdownComponents as Parameters<typeof ReactMarkdown>[0]['components']}
       >
         {processedContent}
       </ReactMarkdown>
@@ -1376,10 +1188,56 @@ const MarkdownRendererImpl: React.FC<MarkdownRendererProps> = ({
   )
 }
 
-// Memoized because this component REMOUNTS its output rather than re-rendering
-// it. The `components` map handed to ReactMarkdown is an object literal built
-// inline on every render, so each render produces a new function identity for
-// `p`, `h1`, … — React sees a different component *type* for every markdown
+const MARKDOWN_REMARK_BASE = [[remarkGfm, { singleTilde: false }], remarkImageGallery] as const
+const MARKDOWN_REMARK_WITH_FILES = [[remarkGfm, { singleTilde: false }], remarkImageGallery, remarkChatFilePaths] as const
+
+const MARKDOWN_STATIC_COMPONENTS = {
+  h1: ({ children }: { children?: React.ReactNode }) => <h1 className="text-2xl font-bold mb-2 mt-4 first:mt-0 text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere border-b border-gray-200 dark:border-gray-700 pb-2">{children}</h1>,
+  h2: ({ children }: { children?: React.ReactNode }) => <h2 className="text-xl font-semibold mb-2 mt-3 first:mt-0 text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere">{children}</h2>,
+  h3: ({ children }: { children?: React.ReactNode }) => <h3 className="text-lg font-semibold mb-1.5 mt-2 first:mt-0 text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere">{children}</h3>,
+  h4: ({ children }: { children?: React.ReactNode }) => <h4 className="text-base font-semibold mb-1.5 mt-2 first:mt-0 text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere">{children}</h4>,
+  ul: ({ children }: { children?: React.ReactNode }) => <ul className="list-disc list-outside mb-2 space-y-1 pl-6 min-w-0">{children}</ul>,
+  ol: ({ children }: { children?: React.ReactNode }) => <ol className="list-decimal list-outside mb-2 space-y-1 pl-6 min-w-0">{children}</ol>,
+  li: ({ children }: { children?: React.ReactNode }) => <li className="pl-1 text-sm break-words overflow-wrap-anywhere leading-6 text-gray-700 dark:text-gray-300">{children}</li>,
+  blockquote: ({ children }: { children?: React.ReactNode }) => (
+    <blockquote className="border-l-4 border-blue-500 dark:border-blue-400 pl-4 py-1.5 my-2 bg-blue-50 dark:bg-blue-900/20 rounded-r text-sm break-words overflow-wrap-anywhere text-gray-700 dark:text-gray-300 italic">
+      {children}
+    </blockquote>
+  ),
+  strong: ({ children }: { children?: React.ReactNode }) => <strong className="font-semibold break-words overflow-wrap-anywhere text-gray-900 dark:text-gray-100">{children}</strong>,
+  em: ({ children }: { children?: React.ReactNode }) => <em className="italic break-words overflow-wrap-anywhere">{children}</em>,
+  hr: () => <hr className="my-6 border-gray-300 dark:border-gray-600" />,
+  table: ({ children }: { children?: React.ReactNode }) => <MarkdownTable>{children}</MarkdownTable>,
+  thead: ({ children }: { children?: React.ReactNode }) => (
+    <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      {children}
+    </thead>
+  ),
+  tbody: ({ children }: { children?: React.ReactNode }) => (
+    <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+      {children}
+    </tbody>
+  ),
+  tr: ({ children }: { children?: React.ReactNode }) => (
+    <tr className="transition-colors [tbody_&:hover]:bg-gray-50 dark:[tbody_&:hover]:bg-gray-800 [tbody_&:focus]:bg-gray-50 dark:[tbody_&:focus]:bg-gray-800 [tbody_&:active]:bg-gray-100 dark:[tbody_&:active]:bg-gray-700">
+      {children}
+    </tr>
+  ),
+  th: ({ children }: { children?: React.ReactNode }) => (
+    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider break-words overflow-wrap-anywhere">
+      {children}
+    </th>
+  ),
+  td: ({ children }: { children?: React.ReactNode }) => (
+    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 break-words overflow-wrap-anywhere [tr:hover_&]:text-gray-900 [tr:hover_&]:dark:text-gray-100 [tr:focus_&]:text-gray-900 [tr:focus_&]:dark:text-gray-100 [tr:active_&]:text-gray-900 [tr:active_&]:dark:text-gray-100">
+      {children}
+    </td>
+  ),
+}
+
+// Memoized because this component avoids re-parsing unchanged messages. Static tag
+// renderers are hoisted and dynamic ones are memoized below so live streaming text
+// updates in place instead of unmounting/remounting every paragraph and code block.
 // node and therefore unmounts the old subtree and mounts a fresh one instead of
 // reconciling it. In a polling chat surface that repeats several times a second
 // for every message on screen: measured 120 DOM mutations in 6s on an idle

@@ -102,16 +102,15 @@ export function CrewReferencePicker({
   }, [isOpen, referenceResult, scopeKey])
 
   const query = searchQuery.toLowerCase().trim()
-  const projectMatches = (project: CrewReference) => !query ||
-    project.label.toLowerCase().includes(query) ||
-    !!project.secondaryLabel?.toLowerCase().includes(query) ||
-    project.workspacePath.toLowerCase().includes(query)
 
   // Internal paths stay searchable but are displayed only on hover.
-  const filteredCrews = (() => {
+  const filteredCrews = useMemo(() => {
     if (!query) return allReferences
 
-    const filtered = allReferences.filter(projectMatches)
+    const filtered = allReferences.filter(project =>
+      project.label.toLowerCase().includes(query) ||
+      !!project.secondaryLabel?.toLowerCase().includes(query) ||
+      project.workspacePath.toLowerCase().includes(query))
 
     filtered.sort((a, b) => {
       const aExact = a.label.toLowerCase() === query
@@ -126,7 +125,7 @@ export function CrewReferencePicker({
     })
 
     return filtered
-  })()
+  }, [allReferences, query])
 
   // Keep an explicit selection by Crew ID when the refreshed list arrives.
   const selectedIndex = filteredCrews.findIndex(item => referenceRowKey(item) === selectedPresetId)

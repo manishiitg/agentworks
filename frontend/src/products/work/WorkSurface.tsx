@@ -109,6 +109,7 @@ import {
 
 const WORK_SPLIT_PREFERENCE_KEY = 'work_workspace_split_ratio'
 const WORK_VIEW_PREFERENCE_KEY = 'work_workspace_view'
+const LEGACY_WORKFLOW_VIEW_KINDS = ['workflow.view'] as const
 const WORK_UI_PRESENTATION_VIEWS = {
   history: 'history', context: 'context', report: 'dashboard', workflow: 'workflow', memory: 'memory', database: 'database', browser: 'browser', costs: 'costs', workshop: 'schedules', schedules: 'schedules', files: 'files',
   identity: 'identity', mcp: 'mcp', shell: 'shell',
@@ -1281,9 +1282,11 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
       .catch(() => { if (!cancelled) setProductCommands([]) })
     return () => { cancelled = true; setProductCommands([]) }
   }, [product])
-  const projectConfigRefreshToken = useChatStore(state => {
+  const activeSessionEvents = useChatStore(state => {
     const sessionId = tabId ? state.chatTabs[tabId]?.sessionId : undefined
-    return (sessionId ? state.tabEvents[sessionId] || [] : [])
+    return sessionId ? state.tabEvents[sessionId] : undefined
+  })
+  const projectConfigRefreshToken = useMemo(() => (activeSessionEvents || [])
     .filter(event => {
       const interaction = parseProductInteraction(event)
       return (interaction?.product === product.profileId && projectRefreshInteractionKinds.has(interaction.kind)) ||
@@ -1291,8 +1294,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         event.type === 'work_workflow_references_updated'
     })
     .map(event => event.id || event.timestamp || '')
-    .join('|')
-  })
+    .join('|'), [activeSessionEvents, product.profileId, projectRefreshInteractionKinds])
   const handledProjectConfigRefreshToken = useRef('')
 
   useEffect(() => {
@@ -1355,7 +1357,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const terminalConversation = terminalSelection && selected && terminalSelection.projectId === selected.id && terminalSelection.identity === captureChatIdentity() && terminalSelection.workspace === getRawActiveWorkspaceId() ? terminalSelection : undefined
   useEffect(() => { if (terminalConversation) openChatPane() }, [terminalConversation, openChatPane])
   const openAgentName = useCrewAgentsStore(state => (tabId ? state.agents.find(agent => agent.tabId === tabId)?.name : undefined))
-  const legacyViewEvents = usePresentationEvents(activeSessionId ?? undefined, ['workflow.view'])
+  const legacyViewEvents = usePresentationEvents(activeSessionId ?? undefined, LEGACY_WORKFLOW_VIEW_KINDS as unknown as string[])
+  const handleAppsSaved = useCallback(() => {
+    void refresh().catch(() => useChatStore.getState().addToast('Apps saved. Refresh the project to update its chat tools.', 'error'))
+  }, [refresh])
   const handledLegacyViewEvents = useRef<{ session?: string; count: number; since: number }>({ session: activeSessionId ?? undefined, count: legacyViewEvents.length, since: Date.now() })
   const selectWorkspaceView = useCallback((view: WorkWorkspaceView, navigation = true) => {
     const allowedView = isWorkWorkspaceViewEnabled(view, undefined) ? view : 'files'
@@ -2009,7 +2014,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         onRuntimeChange={changeWorkRuntime}
                         nativeAgentTools={!!selected.nativeAgentTools}
                         onNativeAgentToolsChange={changeNativeAgentTools}
-                        onAppsSaved={() => { void refresh().catch(() => useChatStore.getState().addToast('Apps saved. Refresh the project to update its chat tools.', 'error')) }}
+                        onAppsSaved={handleAppsSaved}
                         onSelectedServersChange={changeSelectedServers}
                         onSelectedSkillsChange={changeSelectedSkills}
                         onSelectedGlobalSecretsChange={changeSelectedGlobalSecrets}

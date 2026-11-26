@@ -383,7 +383,8 @@ export function computeNewEventCount(
 
   const allEvents = tabEvents[tab.sessionId] || []
   const visibleEvents = allEvents.filter(e => e.type && shouldShowEventByMode(e.type))
-  const lastViewedCount = tab.lastViewedEventCounts?.micro ?? tab.lastViewedEventCount ?? 0
+  const volatileCounts = useChatStore.getState().tabLastViewedCounts[tab.tabId]
+  const lastViewedCount = volatileCounts?.micro ?? tab.lastViewedEventCounts?.micro ?? tab.lastViewedEventCount ?? 0
 
   return Math.max(0, visibleEvents.length - lastViewedCount)
 }

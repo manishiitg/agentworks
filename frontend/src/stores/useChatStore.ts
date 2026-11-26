@@ -5,6 +5,7 @@ import { captureChatIdentity, isChatIdentityCurrent, assertChatIdentityCurrent, 
 import { sessionStreamingState } from '../utils/sessionStreamingState'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { replaceEqualDeep } from '@tanstack/react-query'
 import type { PollingEvent, ExtendedLLMConfiguration, SessionStatusResponse, ActiveSessionInfo, SSEEventMessage, SSEStatusMessage, WorkflowScheduleSummary } from '../services/api-types'
 import { SSEConnection } from '../services/sse'
 import { reportClientEvent } from '../services/clientEvents'
@@ -656,6 +657,9 @@ export interface ChatState extends StoreActions {
   // Multi-tab chat state (generalized for both chat and workflow modes)
   chatTabs: Record<string, ChatTab>  // tabId -> tab
   activeTabId: string | null  // Currently selected tab
+  // Volatile per-tab viewed event counts kept out of chatTabs so 200ms event
+  // batches never clone chatTabs, re-render ChatInput, or re-serialize storage.
+  tabLastViewedCounts: Record<string, PerModeEventCounts>
   
   // Tab session status (fetched from backend)
   tabSessionStatus: Record<string, TabSessionStatus>  // tabId -> status
@@ -1182,6 +1186,7 @@ export const useChatStore = create<ChatState>()(
       toasts: [],
       chatTabs: {},
       activeTabId: null,
+      tabLastViewedCounts: {},
       tabSessionStatus: {},
       
       // Active sessions cache (shared across all components)
@@ -1505,17 +1510,15 @@ export const useChatStore = create<ChatState>()(
           const activeTab = state.activeTabId ? state.chatTabs[state.activeTabId] : null
           if (activeTab && activeTab.sessionId === sessionId) {
             // Incremental count: only scan new events instead of the entire array.
-            // Fall back to full recomputation when cleanup discards old events (counts become stale).
+            // Stored in volatile tabLastViewedCounts rather than mutating chatTabs so
+            // 200ms event flushes do not re-render ChatInput or trigger persist JSON.stringify.
+            const prevCounts = state.tabLastViewedCounts[activeTab.tabId] ?? activeTab.lastViewedEventCounts
             const newCounts = didCleanup
               ? computePerModeCounts(finalEvents)
-              : incrementPerModeCounts(activeTab.lastViewedEventCounts, uniqueNewEvents)
-            updates.chatTabs = {
-              ...state.chatTabs,
-              [activeTab.tabId]: {
-                ...activeTab,
-                lastViewedEventCount: finalEvents.length,
-                lastViewedEventCounts: newCounts
-              }
+              : incrementPerModeCounts(prevCounts, uniqueNewEvents)
+            updates.tabLastViewedCounts = {
+              ...state.tabLastViewedCounts,
+              [activeTab.tabId]: newCounts,
             }
           }
 
@@ -1539,16 +1542,15 @@ export const useChatStore = create<ChatState>()(
           tabEventIdSets.set(sessionId, new Set(finalEvents.map(e => e.id).filter(Boolean) as string[]))
           tabAutoNotificationKeys.set(sessionId, collectAutoNotificationKeys(finalEvents))
 
-          // Also update lastViewedEventCounts for the tab owning this session
-          // so restored/hydrated events don't show as "new" in the badge
-          const updatedTabs = { ...state.chatTabs }
-          for (const [tabId, tab] of Object.entries(updatedTabs)) {
+          // Also update volatile tabLastViewedCounts for any tab owning this session
+          // so restored/hydrated events don't show as "new" in the badge without cloning chatTabs.
+          let nextViewedCounts = state.tabLastViewedCounts
+          let countsComputed: PerModeEventCounts | null = null
+          for (const [tabId, tab] of Object.entries(state.chatTabs)) {
             if (tab.sessionId === sessionId) {
-              updatedTabs[tabId] = {
-                ...tab,
-                lastViewedEventCount: finalEvents.length,
-                lastViewedEventCounts: computePerModeCounts(finalEvents)
-              }
+              if (!countsComputed) countsComputed = computePerModeCounts(finalEvents)
+              if (nextViewedCounts === state.tabLastViewedCounts) nextViewedCounts = { ...state.tabLastViewedCounts }
+              nextViewedCounts[tabId] = countsComputed
             }
           }
 
@@ -1557,7 +1559,7 @@ export const useChatStore = create<ChatState>()(
               ...state.tabEvents,
               [sessionId]: finalEvents
             },
-            chatTabs: updatedTabs
+            ...(nextViewedCounts !== state.tabLastViewedCounts ? { tabLastViewedCounts: nextViewedCounts } : {}),
           }
         })
       },
@@ -2405,6 +2407,7 @@ export const useChatStore = create<ChatState>()(
           toasts: [],
           chatTabs: {},
           activeTabId: null,
+          tabLastViewedCounts: {},
           tabEvents: {},
           tabHistoryLoaded: {},
           tabEventIndices: {},
@@ -2471,6 +2474,7 @@ export const useChatStore = create<ChatState>()(
           toasts: [],
           chatTabs: {},
           activeTabId: null,
+          tabLastViewedCounts: {},
           tabEvents: {},
           tabHistoryLoaded: {},
           tabEventIndices: {},
@@ -2936,10 +2940,15 @@ export const useChatStore = create<ChatState>()(
           updates.tabHistoryPagination = newHistoryPagination
         }
 
-        // Clean up tab session status (always — this is keyed by tabId, not sessionId)
+        // Clean up tab session status and volatile viewed counts (keyed by tabId)
         const newTabSessionStatus = { ...state.tabSessionStatus }
         delete newTabSessionStatus[tabId]
         updates.tabSessionStatus = newTabSessionStatus
+        if (state.tabLastViewedCounts[tabId]) {
+          const newLastViewed = { ...state.tabLastViewedCounts }
+          delete newLastViewed[tabId]
+          updates.tabLastViewedCounts = newLastViewed
+        }
 
         set(updates)
       },
@@ -3512,12 +3521,17 @@ export const useChatStore = create<ChatState>()(
             const activeSessions = response.active_sessions || []
             const resolvedAt = Date.now()
 
-            set((currentState) => ({
-              activeSessionsCache: activeSessions,
-              activeSessionsCacheTimestamp: resolvedAt,
-              workflowScheduleSummary: response.schedule_summary ?? null,
-              ...reconcileSessionTabStreamingState(currentState, activeSessions, resolvedAt),
-            }))
+            set((currentState) => {
+              const nextSessions = replaceEqualDeep(currentState.activeSessionsCache, activeSessions)
+              const nextSummary = replaceEqualDeep(currentState.workflowScheduleSummary, response.schedule_summary ?? null)
+              const reconciled = reconcileSessionTabStreamingState(currentState, nextSessions, resolvedAt)
+              return {
+                activeSessionsCache: nextSessions,
+                activeSessionsCacheTimestamp: resolvedAt,
+                workflowScheduleSummary: nextSummary,
+                ...reconciled,
+              }
+            })
 
             return activeSessions
           } catch (error) {

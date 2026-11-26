@@ -207,14 +207,14 @@ export function useTranscriptScroll(
     controller.pause()
   }, [cancelRestore, controller, saved])
   const jumpToKey = useCallback((key: string) => {
-    const index = keys.indexOf(key)
+    const index = currentKeys.current.indexOf(key)
     if (index < 0) return
     pause()
     const anchor = { key, offset: 0 }
     saved.anchor = anchor
     focusAnchor.current = anchor
     virtuoso.current?.scrollToIndex({ index, align: 'start', behavior: 'auto' })
-  }, [keys, pause, saved, virtuoso])
+  }, [pause, saved, virtuoso])
   const jumpToLatest = useCallback(() => {
     deliberateRef.current = false
     saved.deliberate = false
@@ -313,6 +313,14 @@ export function useTranscriptScroll(
       manual = true
       if (delta < 0) pause()
     }
+    let rememberFrame: number | null = null
+    const scheduleRemember = () => {
+      if (rememberFrame !== null) return
+      rememberFrame = requestAnimationFrame(() => {
+        rememberFrame = null
+        remember()
+      })
+    }
     const scroll = () => {
       const top = scroller.scrollTop
       if (manual && top < lastTop - 1) pause()
@@ -321,7 +329,7 @@ export function useTranscriptScroll(
         jumpToLatest()
       }
       lastTop = top
-      remember()
+      scheduleRemember()
     }
     scroller.addEventListener('wheel', wheel, { passive: true })
     scroller.addEventListener('pointerdown', pointer)
@@ -351,6 +359,10 @@ export function useTranscriptScroll(
     if (saved.following) layoutChanged()
     return () => {
       window.clearTimeout(settleTimer)
+      if (rememberFrame !== null) {
+        cancelAnimationFrame(rememberFrame)
+        rememberFrame = null
+      }
       remember()
       mounted.current = false
       if (blankCheck.current !== null) window.clearTimeout(blankCheck.current)

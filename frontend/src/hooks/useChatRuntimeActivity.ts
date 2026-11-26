@@ -29,5 +29,6 @@ export function useChatRuntimeActivity(tabId: string | null | undefined) {
       console.warn('[ChatRuntimeActivity] Failed to refresh active sessions', error)
     })
   }, [tab.sessionId, busy])
-  return useMemo(() => chatRuntimeActivity(tab, session), [tab, session])
+  const activity = chatRuntimeActivity(tab, session)
+  return useMemo(() => ({ state: activity.state, label: activity.label }), [activity.state, activity.label])
 }

@@ -7,7 +7,7 @@ import { ForkToTeammate } from './ForkToTeammate'
 import { continueInTerminal } from './TerminalResume'
 import { forkChatTab } from '../../utils/forkChatTab'
 import { createPortal } from 'react-dom'
-import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
+import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Info, Loader2, MoreHorizontal, Pencil, Plus, X } from 'lucide-react'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
@@ -69,7 +69,6 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   renderAfterTab?: (tab: ChatTab) => ReactNode; isTabActive?: (tab: ChatTab) => boolean; onMakeInteractive?: (tabId: string) => void
 }) {
   const activeTabId = useChatStore(state => state.activeTabId)
-  const chatTabs = useChatStore(state => state.chatTabs)
   const canonicalSessionId = useChatStore(state => state.chatTabs[canonicalTabId]?.sessionId)
   const [forkTo, setForkTo] = useState<{ id: string; name: string } | null>(null)
   const [newTabName, setNewTabName] = useState<string | null>(null)
@@ -91,7 +90,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     return () => window.removeEventListener('keydown', escape)
   }, [addMode])
   // Main is listed, renamed, moved, hidden and removed like any agent (owner, 25 Nov, #4046: Main is not special).
-  const listedFor = (tab: ChatTab) => listed.find(chat => tab.metadata?.agentProfileConversationKey === chat.conversation_key) ?? (tab.tabId === canonicalTabId ? listed.find(chat => chat.is_main) : undefined)
+  const listedByKey = useMemo(() => new Map(listed.map(chat => [chat.conversation_key, chat])), [listed])
+  const mainListed = useMemo(() => listed.find(chat => chat.is_main), [listed])
+  const listedFor = (tab: ChatTab) => (tab.metadata?.agentProfileConversationKey ? listedByKey.get(tab.metadata.agentProfileConversationKey) : undefined) ?? (tab.tabId === canonicalTabId ? mainListed : undefined)
   const ownedListed = listed.filter(chat => chat.can_write !== false)
   const sideChats = tabs.filter(tab => tab.tabId !== canonicalTabId && !tab.metadata?.isViewOnly)
   const phone = useMobileViewport()
@@ -220,7 +221,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const asking = useCrewAsking(macHere ? placeProject : undefined)
   // The Agents menu is grouped by person like the left menu (owner, 5 Nov): You, then each teammate.
   // In the Mac app the teammates' agents are real tabs too (WorkSurface lists them from the server).
-  const menuPeople = [...new Set(tabs.map(tabOwnerId))].sort(byName)
+  const menuPeople = tabPeople
   const menuGrouped = menuPeople.length > 1 || menuPeople[0] !== ''
   const menuGroups = menuPeople.map(person => ({ person, tabs: tabs.filter(tab => tabOwnerId(tab) === person) }))
   // A Crew's strip shows only your own tabs; teammates are in the ⌄ menu and the header's Team button (owner, 12 Nov:
@@ -256,12 +257,13 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     const theirs = !canControl(tab) ? listedFor(tab) : undefined
     if (theirs) return { info: { name: tabLabel(tab), purpose: theirs.purpose, examples: theirs.examples, owner: personName(tabOwnerId(tab)), presence: presenceOf(tabOwnerId(tab))?.line, tabId: tab.tabId, setup: setupOf(tab) } }
     const ago = ask && (ask.active ? 'now' : `${Math.max(1, Math.round((Date.now() - Date.parse(ask.started_at)) / 60000))} min ago`)
+    const teamRow = placeProject ? teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true) : undefined
     return {
       asking: ask?.active,
       info: purpose === undefined ? undefined : {
         name: tabLabel(tab),
         purpose, examples: listedFor(tab)?.examples,
-        sharing: placeProject && teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true) ? { projectId: placeProject, agentKey: teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true)!.key } : undefined,
+        sharing: placeProject && teamRow ? { projectId: placeProject, agentKey: teamRow.key } : undefined,
         sharedWith: share?.line,
         sharedChosen: share?.chosen,
         lastAsked: ask && placeProject ? { who: ask.sender, when: ago || '', active: ask.active, open: () => { void openCrewAskThread(placeProject, ask) } } : undefined,
@@ -313,6 +315,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     const chat = listedFor(tab)
     const mine = canControl(tab)
     const main = tab.tabId === canonicalTabId || chat?.is_main === true
+    const face = agentFace(tab)
     return {
       key: tab.metadata?.agentProfileConversationKey, forkedFrom: chat?.forked_from, lastMessageAt: chat?.last_message_at,
       inTeam: mine && inTeamFor(tab.metadata?.agentProfileConversationKey, main),
@@ -322,12 +325,13 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       // Hiding only affects the sidebar, never the tab, keyboard order or agent's work.
       sidebarHidden: mine && chat?.can_write !== false && chat?.pinned === false,
       sidebarOrder: chat ? sidebarOrder.get(chat.conversation_key) : undefined,
-      asking: agentFace(tab)?.asking, info: agentFace(tab)?.info,
+      asking: face?.asking, info: face?.info,
       activity: tab.tabId === canonicalTabId ? projectActivity : mine ? undefined : serverActivity(tab), actions: agentActions(tab),
     }
   }) : []
   // Listed agents without a tab keep the same saved hiding and position when they open.
-  const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !tabs.some(tab => listedFor(tab) === chat)) : []
+  const openListedSet = new Set(tabs.map(listedFor).filter((chat): chat is AgentProfileSideChat => Boolean(chat)))
+  const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !openListedSet.has(chat)) : []
   const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ owner: chat.can_write === false ? ownerShortName(chat.tab_owner_name || '') || 'Teammate' : undefined, forkedFrom: chat.forked_from, inTeam: chat.can_write===true && inTeamFor(chat.conversation_key,!!chat.is_main), key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, examples: chat.examples,
     sidebarHidden: chat.can_write !== false && chat.pinned === false, sidebarOrder: sidebarOrder.get(chat.conversation_key),
     open: () => (onReopen ? onReopen(chat) : onOpen(chat.name)).catch(cause => { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this agent.', 'error') }) }))
@@ -474,7 +478,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [sideChatsHere, surface, onSelectTab, isTabActive, onImportLocalChat])
+  }, [sideChatsHere, surface, onSelectTab])
   // With many tabs the strip scrolls sideways (tabs keep their width, "+" stays in view) and the
   // active tab is brought into view when it changes.
   const stripRef = useRef<HTMLDivElement>(null)
@@ -656,7 +660,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
         ><AgentWorksChatTabItem
         tab={tab}
         isActive={isTabActive ? isTabActive(tab) : tab.tabId === activeTabId}
-        canClose={tab.tabId !== canonicalTabId && tab.metadata?.isViewOnly === true && canCloseWorkspaceChatTab(tab, chatTabs)}
+        canClose={tab.tabId !== canonicalTabId && tab.metadata?.isViewOnly === true && canCloseWorkspaceChatTab(tab, useChatStore.getState().chatTabs)}
         isBlank={false}
         displayName={tabLabel(tab)}
         workspaceActivity={tab.tabId === canonicalTabId ? projectActivity : undefined}
