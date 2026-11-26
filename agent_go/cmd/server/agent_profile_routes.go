@@ -452,6 +452,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	}
 
 	stages := newQueryStages(w)
+	r = r.WithContext(context.WithValue(r.Context(), queryStagesKey{}, stages))
 	decoder := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes))
 	decoder.DisallowUnknownFields()
 	var input AgentProfileChatRequest
@@ -755,6 +756,7 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 	if err != nil {
 		return ProductConversationRecord{}, err
 	}
+	markQueryStage(r.Context(), "resolve_binding")
 	if owned {
 		if tab, found, tabErr := crewTabForKey(r.Context(), userID, profile.ID, binding.ConversationKey, binding.WorkspacePath); tabErr != nil {
 			return ProductConversationRecord{}, tabErr
@@ -770,6 +772,7 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 	if binding.ConversationKey == crewOwnerDefaultChatKey(binding.ResourceID, userID) {
 		name = crewOwnerDisplayName(userID) + " · Builder"
 	}
+	markQueryStage(r.Context(), "resolve_tabs")
 	unlock, isNew, capErr := guardNewSideChat(r.Context(), userID, profile.ID, binding.ConversationKey)
 	if capErr != nil {
 		return ProductConversationRecord{}, capErr
@@ -804,11 +807,13 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 		}
 	}
 
+	markQueryStage(r.Context(), "resolve_guard")
 	if owned {
 		if err := initializeProductConversationWorkspace(r.Context(), userID, profile, binding); err != nil {
 			return ProductConversationRecord{}, err
 		}
 	}
+	markQueryStage(r.Context(), "resolve_init")
 
 	candidate := strings.TrimSpace(r.Header.Get("X-Session-ID"))
 	continuation := strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Conversation-Continuation")), "true")
@@ -857,11 +862,13 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 	if continuation && candidate == "" {
 		return ProductConversationRecord{}, fmt.Errorf("continuation requires an explicit session ID")
 	}
+	markQueryStage(r.Context(), "resolve_session")
 	store := defaultProductConversationRegistryStore()
 	record, err := store.resolveOrCreate(r.Context(), userID, profile, binding, preferredSessionID)
 	if err != nil {
 		return ProductConversationRecord{}, err
 	}
+	markQueryStage(r.Context(), "resolve_registry")
 	// An open Work tab may survive a browser refresh and many backend
 	// deployments. Its authenticated X-Session-ID is the conversation the user
 	// can actually see. If a tab-specific registry slot drifted to another
@@ -1099,6 +1106,7 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	if err != nil {
 		return QueryRequest{}, err
 	}
+	markQueryStage(ctx, "prepare_identity")
 	if own.Engine == "" {
 		useProjectChatDefault(&input, &modelConversation, profile)
 	} else {
@@ -1168,10 +1176,12 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	if accountChanged {
 		log.Printf("[PRODUCT_CHAT] account change for conversation %q: %s -> %s (same chat, CLI restarts on the new account)", conversation.ConversationKey, canonicalProviderConnectionID(conversation.Provider, conversation.ConnectionID), canonicalProviderConnectionID(query.Provider, query.ConnectionID))
 	}
+	markQueryStage(ctx, "prepare_model")
 	target, found, err := resolveProductResumeTarget(userID, conversation)
 	if err != nil {
 		return QueryRequest{}, fmt.Errorf("resolve saved conversation: %w", err)
 	}
+	markQueryStage(ctx, "prepare_history")
 	if found {
 		if accountChanged && target != nil {
 			// Keep the visible history; start a fresh CLI session on the new account.
@@ -1470,6 +1480,16 @@ func newQueryStages(w http.ResponseWriter) *queryStages {
 		q.before = now.Sub(rec.start)
 	}
 	return q
+}
+
+type queryStagesKey struct{}
+
+// markQueryStage splits a send's stage into its steps (speed check, 26 Nov: the
+// whole "resolve" stage took 0.2-2.3 s on every send, with no step named).
+func markQueryStage(ctx context.Context, name string) {
+	if q, ok := ctx.Value(queryStagesKey{}).(*queryStages); ok {
+		q.mark(name)
+	}
 }
 
 func (q *queryStages) mark(name string) {
