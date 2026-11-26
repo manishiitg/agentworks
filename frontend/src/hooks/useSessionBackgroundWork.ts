@@ -24,27 +24,35 @@ export function useSessionBackgroundWork(tabId: string | null | undefined, open:
   const owns = useCallback(() => currentScope.current === scope && isChatIdentityCurrent(identity) && !!tabId &&
     useChatStore.getState().getTab(tabId)?.sessionId === sessionId, [identity, tabId, sessionId, scope])
 
+  const refreshInFlight = useRef(false)
   const refresh = useCallback(async () => {
-    if (!active || !sessionId || !owns()) return
+    if (!active || !sessionId || !owns() || refreshInFlight.current) return
+    if (typeof document !== 'undefined' && document.hidden) return
+    refreshInFlight.current = true
     const version = ++requestVersion.current
     try {
       const response = await agentApi.getSessionBackgroundWork(sessionId)
       if (version === requestVersion.current && owns()) setSnapshot({ scope, items: response.items ?? [] })
     } catch { /* Keep the last known tasks visible during a transient failure. */ }
+    finally { refreshInFlight.current = false }
   }, [active, sessionId, owns, scope])
 
   useEffect(() => {
     if (!active) { setSnapshot({ scope, items: [] }); return }
+    const onVisibility = () => { if (!document.hidden) void refresh() }
     void refresh()
     const timer = setInterval(() => { void refresh() }, open ? 3000 : 5000)
-    return () => { clearInterval(timer); requestVersion.current += 1 }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisibility); requestVersion.current += 1 }
   }, [active, open, refresh, scope])
 
   useEffect(() => {
     if (!active || !open) return
     setNow(Date.now())
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
+    const tick = () => { if (!document.hidden) setNow(Date.now()) }
+    const timer = setInterval(tick, 1000)
+    document.addEventListener('visibilitychange', tick)
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', tick) }
   }, [active, open])
 
   const stopItem = async (item: SessionBackgroundWorkItem) => {

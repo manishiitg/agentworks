@@ -28,8 +28,10 @@ export function QueuedWaitingAge({ since }: { since?: string }) {
   useEffect(() => {
     if (!since) return
     setNow(Date.now())
-    const timer = setInterval(() => setNow(Date.now()), 60_000)
-    return () => clearInterval(timer)
+    const tick = () => { if (!document.hidden) setNow(Date.now()) }
+    const timer = setInterval(tick, 60_000)
+    document.addEventListener('visibilitychange', tick)
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', tick) }
   }, [since])
   const started = Date.parse(since || '')
   if (!since || !Number.isFinite(started)) return null
@@ -52,7 +54,6 @@ export const QueuedMessageControls: React.FC<{ sessionId?: string; metadata?: Re
       <button type="button" disabled={busy} onClick={() => controls.act(message, 'remove')} className={message.delivery_error ? link : 'text-muted-foreground hover:text-foreground disabled:opacity-40'}>{message.delivery_error ? 'Remove' : 'Dismiss'}</button>
     </span>
   }
-  const refreshing = Boolean(message.refreshing && !message.delivery_error)
   const pending = Boolean(message.steering || controls.busyMessageId === message.message_id)
   const disabled = pending || Boolean(controls.busyMessageId)
   const reason = queuedMessageReason(message)

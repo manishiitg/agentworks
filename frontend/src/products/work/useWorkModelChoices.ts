@@ -73,7 +73,7 @@ export function ownDefaultConnectionId(accounts: ProviderConnection[] | null, pr
 }
 
 // The models and reasoning levels offered for one provider option on one account.
-export function useWorkModelChoices({ options, accounts, providerManifest }: ReturnType<typeof useWorkModelSources>, { selectedOption, selectedConnectionId, inUseConnectionId, workspacePath, accountProduct }: {
+export function useWorkModelChoices({ options, accounts, providerManifest }: ReturnType<typeof useWorkModelSources>, { selectedOption, selectedConnectionId, inUseConnectionId, workspacePath, accountProduct, fetchModels = true }: {
   selectedOption: AgentProfileProviderOption | undefined
   /** The account the saved choice names (allowed-model limits follow it). */
   selectedConnectionId: string | undefined
@@ -81,6 +81,8 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
   inUseConnectionId: string | undefined
   workspacePath: string
   accountProduct: string
+  /** Defer live CLI/BYOK model discovery until the picker/menu is actually open. */
+  fetchModels?: boolean
 }) {
   const [accountModels, setAccountModels] = useState<DynamicModelEntry[]>([])
   const accountListedProvider = ACCOUNT_LISTED_PROVIDERS.has(selectedOption?.provider || '') ? selectedOption?.provider : undefined
@@ -125,7 +127,7 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
   useEffect(() => {
     let cancelled = false
     setAccountModels([]); setAccountModelsError(''); setAccountSelectionDisabled(false); setAccountModelsLoading(false)
-    if (accountListedProvider && listedAccountId) {
+    if (fetchModels && accountListedProvider && listedAccountId) {
       setAccountModelsLoading(true)
       void llmConfigService.getProviderModels(accountListedProvider, false, false, {
         connection_id: listedAccountId, workspace_path: workspacePath, product: accountProduct,
@@ -139,7 +141,7 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
         .finally(() => { if (!cancelled) setAccountModelsLoading(false) })
     }
     return () => { cancelled = true }
-  }, [accountListedProvider, listedAccountId, accounts, workspacePath, accountProduct])
+  }, [fetchModels, accountListedProvider, listedAccountId, workspacePath, accountProduct])
 
   const keyService = selectedOption?.provider === 'pi-cli' ? byokServiceOf(inUseAccount) : undefined
   const [keyModels, setKeyModels] = useState<ByokModel[]>([])
@@ -147,13 +149,13 @@ export function useWorkModelChoices({ options, accounts, providerManifest }: Ret
   useEffect(() => {
     let cancelled = false
     setKeyModels([])
-    if (keyAccountId) {
+    if (fetchModels && keyAccountId) {
       void llmConfigService.byokModels({ connection_id: keyAccountId, workspace_path: workspacePath }).then(result => {
         if (!cancelled) setKeyModels(result.models || [])
       }).catch(() => undefined)
     }
     return () => { cancelled = true }
-  }, [keyAccountId, workspacePath])
+  }, [fetchModels, keyAccountId, workspacePath])
 
   // The models an account allows (absent = every model): the account the project names, else the server's.
   const allowedModelsFor = useCallback((provider: string | undefined, connectionId: string | undefined) => (

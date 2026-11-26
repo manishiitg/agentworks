@@ -1,10 +1,41 @@
 import { desktopRequest } from '../../services/desktopConnections'
 import { useEffect, useState } from 'react'
 import { authApi, type SharedAccountTokenUsage } from '../../services/api'
+import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { resetLabel, shownTokenFigures, type TokenFigures } from '../../utils/tokenLimits'
 import { formatTokens } from '../../utils/formatTokens'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { openChatContextMenuEvent } from '../../products/work/ChatContextItems'
+
+const SHARED_USAGE_DEDUPE_MS = 5_000
+const sharedUsageCache = new Map<string, { at: number; data: SharedAccountTokenUsage }>()
+const sharedUsageInFlight = new Map<string, Promise<SharedAccountTokenUsage>>()
+let sharedUsageCacheIdentity = captureChatIdentity()
+
+function fetchSharedTokenUsageShared(serverConnection?: string): Promise<SharedAccountTokenUsage> {
+  const identity = captureChatIdentity()
+  if (identity !== sharedUsageCacheIdentity) {
+    sharedUsageCacheIdentity = identity
+    sharedUsageCache.clear()
+    sharedUsageInFlight.clear()
+  }
+  const key = `${identity}:${serverConnection || 'local'}`
+  const cached = sharedUsageCache.get(key)
+  if (cached && Date.now() - cached.at < SHARED_USAGE_DEDUPE_MS) return Promise.resolve(cached.data)
+  const pending = sharedUsageInFlight.get(key)
+  if (pending) return pending
+  const promise = Promise.resolve().then(() => serverConnection
+    ? desktopRequest<SharedAccountTokenUsage>(`/${encodeURIComponent(serverConnection)}/token-usage`)
+    : authApi.getMyTokenUsage()
+  ).then(data => {
+    if (isChatIdentityCurrent(identity)) sharedUsageCache.set(key, { at: Date.now(), data })
+    return data
+  }).finally(() => {
+    if (sharedUsageInFlight.get(key) === promise) sharedUsageInFlight.delete(key)
+  })
+  sharedUsageInFlight.set(key, promise)
+  return promise
+}
 
 /**
  * The person's own use of the shared server accounts against the limits an
@@ -13,21 +44,27 @@ import { openChatContextMenuEvent } from '../../products/work/ChatContextItems'
  * cap when that is nearer. Amber from 80%, red at the limit, when new turns on
  * that account are refused.
  */
-function useSharedTokenUsage(serverConnection?: string): SharedAccountTokenUsage | null {
+function useSharedTokenUsage(serverConnection?: string, enabled = true): SharedAccountTokenUsage | null {
   const [usage, setUsage] = useState<SharedAccountTokenUsage | null>(null)
   useEffect(() => {
+    if (!enabled) { setUsage(null); return }
     let cancelled = false
+    const identity = captureChatIdentity()
     setUsage(null)
     // Through a promise so a missing client (older server, tests) is a quiet rejection. A company account on the
     // Mac counts on its server: that server's figures, fetched over the connection.
-    const fetchUsage = () => serverConnection
-      ? desktopRequest<SharedAccountTokenUsage>(`/${encodeURIComponent(serverConnection)}/token-usage`)
-      : authApi.getMyTokenUsage()
-    const load = () => { void Promise.resolve().then(fetchUsage).then(next => { if (!cancelled) setUsage(next) }).catch(() => undefined) }
+    const load = () => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      void fetchSharedTokenUsageShared(serverConnection)
+        .then(next => { if (!cancelled && isChatIdentityCurrent(identity)) setUsage(next) })
+        .catch(() => undefined)
+    }
+    const onVisibility = () => { if (!document.hidden) load() }
     load()
     const timer = window.setInterval(load, 60_000)
-    return () => { cancelled = true; window.clearInterval(timer) }
-  }, [serverConnection])
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { cancelled = true; window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisibility) }
+  }, [serverConnection, enabled])
   return usage
 }
 
@@ -61,7 +98,7 @@ const stateColor = (state: string | undefined) => state === 'over' ? 'text-red-5
  * (null: the person's own account, which shows nothing; undefined: unknown, the overall figures).
  */
 export function SharedTokenUsageChip({ accountProvider, sessionId }: { accountProvider?: string | null; sessionId?: string }) {
-  const limits = chatTokenLimits(useSharedTokenUsage(), accountProvider)
+  const limits = chatTokenLimits(useSharedTokenUsage(undefined, accountProvider !== null), accountProvider)
   if (!limits) return null
   const fill = Math.min(100, Math.max(limits.tighter, 4))
   return (
@@ -78,7 +115,7 @@ export function SharedTokenUsageChip({ accountProvider, sessionId }: { accountPr
 
 /** The same limits as rows in a chat's model menu: "Today 3M of 50M" and "This week 13M of 200M"; resets in the tooltip. */
 export function SharedTokenUsageItems({ accountProvider, serverConnection }: { accountProvider?: string | null; serverConnection?: string }) {
-  const limits = chatTokenLimits(useSharedTokenUsage(serverConnection), accountProvider)
+  const limits = chatTokenLimits(useSharedTokenUsage(serverConnection, accountProvider !== null), accountProvider)
   if (!limits) return null
   return <>
     <Menu.Separator className="my-1 h-px bg-border" />
@@ -100,7 +137,7 @@ export function SharedTokenUsageItems({ accountProvider, serverConnection }: { a
  * shared account's provider (null: the person's own account; undefined: not known yet, nothing shown).
  */
 export function SharedTokenUsageNotice({ className = '', accountProvider, inline = false, serverConnection }: { className?: string; accountProvider?: string | null; inline?: boolean; serverConnection?: string }) {
-  const usage = useSharedTokenUsage(serverConnection)
+  const usage = useSharedTokenUsage(serverConnection, accountProvider !== null && accountProvider !== undefined)
   if (accountProvider === undefined) return null
   const base = inline ? 'text-xs' : 'rounded-lg border px-3 py-2 text-xs'
   if (accountProvider === null) {

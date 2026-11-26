@@ -30,22 +30,31 @@ function useSavedHelpers(sessionId: string | undefined, liveCount: number, liveR
     if (!sessionId) return
     const identity = captureChatIdentity()
     let disposed = false
+    let inFlight = false
     const load = async () => {
-      const [events, linked] = await Promise.all([
-        agentApi.getSessionHelperEvents(sessionId).then(found => found.events).catch(() => undefined),
-        agentApi.getSessionLinkedHelpers(sessionId).catch(() => undefined),
-      ])
-      if (disposed || !isChatIdentityCurrent(identity)) return
-      // A failed read keeps what was read before; the live events still show recent helpers.
-      setSaved(previous => {
-        const same = previous.sessionId === sessionId
-        return { sessionId, events: events ?? (same ? previous.events : []), linked: linked ?? (same ? previous.linked : []) }
-      })
+      if (inFlight || (typeof document !== 'undefined' && document.hidden)) return
+      inFlight = true
+      try {
+        const [events, linked] = await Promise.all([
+          agentApi.getSessionHelperEvents(sessionId).then(found => found.events).catch(() => undefined),
+          agentApi.getSessionLinkedHelpers(sessionId).catch(() => undefined),
+        ])
+        if (disposed || !isChatIdentityCurrent(identity)) return
+        // A failed read keeps what was read before; the live events still show recent helpers.
+        setSaved(previous => {
+          const same = previous.sessionId === sessionId
+          return { sessionId, events: events ?? (same ? previous.events : []), linked: linked ?? (same ? previous.linked : []) }
+        })
+      } finally {
+        inFlight = false
+      }
     }
     void load()
     if (!running) return () => { disposed = true }
+    const onVisibility = () => { if (!document.hidden) void load() }
     const timer = setInterval(() => { void load() }, 20000)
-    return () => { disposed = true; clearInterval(timer) }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { disposed = true; clearInterval(timer); document.removeEventListener('visibilitychange', onVisibility) }
   }, [sessionId, liveCount, running])
   return saved.sessionId === sessionId ? saved : { events: [], linked: [] }
 }
@@ -74,28 +83,37 @@ export function useChatHelpers(sessionId: string | undefined, events: PollingEve
     if (!sessionId || !pendingKey) return
     const identity = captureChatIdentity()
     let disposed = false
+    let inFlight = false
     const ids = pendingKey.split('|')
     const load = async () => {
-      const next: Record<string, ChatHelperState> = {}
-      const stops: Record<string, string | undefined> = {}
-      await Promise.all(ids.map(async id => {
-        try {
-          const found = await agentApi.getSessionSubagent(sessionId, id)
-          next[id] = found.running ? 'running' : found.transcript?.status === 'failed' ? 'failed' : 'done'
-          stops[id] = found.running ? found.stop_id : undefined
-        } catch (failure) {
-          // Gone (404): its conversation was cleared; keep it listed without a state.
-          if ((failure as { response?: { status?: number } }).response?.status === 404) next[id] = 'unknown'
+      if (inFlight || (typeof document !== 'undefined' && document.hidden)) return
+      inFlight = true
+      try {
+        const next: Record<string, ChatHelperState> = {}
+        const stops: Record<string, string | undefined> = {}
+        await Promise.all(ids.map(async id => {
+          try {
+            const found = await agentApi.getSessionSubagent(sessionId, id)
+            next[id] = found.running ? 'running' : found.transcript?.status === 'failed' ? 'failed' : 'done'
+            stops[id] = found.running ? found.stop_id : undefined
+          } catch (failure) {
+            // Gone (404): its conversation was cleared; keep it listed without a state.
+            if ((failure as { response?: { status?: number } }).response?.status === 404) next[id] = 'unknown'
+          }
+        }))
+        if (!disposed && isChatIdentityCurrent(identity)) {
+          setCodex(previous => ({ ...previous, ...next }))
+          setCodexStop(previous => ({ ...previous, ...stops }))
         }
-      }))
-      if (!disposed && isChatIdentityCurrent(identity)) {
-        setCodex(previous => ({ ...previous, ...next }))
-        setCodexStop(previous => ({ ...previous, ...stops }))
+      } finally {
+        inFlight = false
       }
     }
+    const onVisibility = () => { if (!document.hidden) void load() }
     void load()
     const timer = setInterval(() => { void load() }, 5000)
-    return () => { disposed = true; clearInterval(timer) }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { disposed = true; clearInterval(timer); document.removeEventListener('visibilitychange', onVisibility) }
   }, [sessionId, pendingKey])
 
   const helpers = useMemo(() => collected.map(helper => {
@@ -129,8 +147,10 @@ function useNow(active: boolean) {
   useEffect(() => {
     if (!active) return
     setNow(Date.now())
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
+    const tick = () => { if (!document.hidden) setNow(Date.now()) }
+    const timer = setInterval(tick, 1000)
+    document.addEventListener('visibilitychange', tick)
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', tick) }
   }, [active])
   return now
 }

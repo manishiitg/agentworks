@@ -64,7 +64,7 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
   const [saving, setSaving] = useState(false)
   const [granting, setGranting] = useState(false)
   const [reachReload, setReachReload] = useState(0)
-  const reach = useReach(open, reachReload)
+  const reach = useReach(open && !access?.on_server, reachReload)
   const mode: ChatAccessMode = access?.mode || 'project'
   const current: Row['id'] = plan?.on ? 'plan' : mode
   const row = ROWS.find(item => item.id === current) || ROWS[0]
