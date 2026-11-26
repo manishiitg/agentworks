@@ -3,11 +3,9 @@ package server
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 )
@@ -31,16 +29,6 @@ func crewSyncStagingRoot(id string) (string, error) {
 		return "", err
 	}
 	return p, nil
-}
-
-// Retire an obsolete transfer record, not its files, baselines or conversation.
-func moveOldCrewTransfer(path, id string) (string, error) {
-	backup := path + "." + time.Now().UTC().Format("20060102T150405.000000000Z") + ".bak"
-	if err := os.Rename(path, backup); err != nil {
-		return "", err
-	}
-	log.Printf("[CREW_SYNC] project=%s old_pending=moved", id)
-	return backup, nil
 }
 
 func crewSyncStatePaths(id string) ([]string, error) {

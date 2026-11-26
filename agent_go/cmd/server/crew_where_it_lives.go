@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,50 +16,6 @@ import (
 // A Mac Crew lives on the Mac and is reached from the phone and the web through its empty online copy (a relay
 // twin), or it was moved online earlier and now runs on the server (the binding's Editing side is "server"). Moving
 // a whole Crew to the server is removed (owner, 13 Nov). Nothing syncs in the background, so every pair is a relay pair.
-
-// migrateCrewSyncToRelay turns each older synced pair (continuous, manual or off) into a relay pair once: it stops
-// syncing, keeps the files where they are, and clears any unfinished upload, download or move (its stage is kept as
-// a .bak next to it). Each binding file is backed up before it changes. Runs on the Mac and on the server.
-func migrateCrewSyncToRelay() {
-	state, err := crewroot.StateRoot()
-	if err != nil {
-		return
-	}
-	dir := filepath.Join(state, "crew-sync")
-	entries, _ := os.ReadDir(dir)
-	stamp := time.Now().UTC().Format("20060102T150405Z")
-	for _, entry := range entries {
-		id, ok := strings.CutSuffix(entry.Name(), ".json")
-		if entry.IsDir() || !ok || strings.HasSuffix(id, "-files") {
-			continue
-		}
-		b, e := crewroot.ReadSync(id)
-		if e != nil || b == nil || (b.Mode == "relay" && b.PendingAction == "") {
-			continue
-		}
-		raw, e := os.ReadFile(filepath.Join(dir, entry.Name()))
-		if e != nil || os.WriteFile(filepath.Join(dir, entry.Name()+"."+stamp+".bak"), raw, 0600) != nil {
-			log.Printf("[CREW_SYNC] project=%s migrate=skipped reason=%q", id, "binding backup failed")
-			continue
-		}
-		old, dropped := b.Mode, ""
-		if b.PendingAction != "" {
-			dropped = b.PendingAction
-			if p, e := crewSyncManifestPath(id); e == nil {
-				if _, e = os.Stat(p + ".pending"); e == nil {
-					_, _ = moveOldCrewTransfer(p+".pending", id)
-				}
-			}
-			b.PendingAction = ""
-		}
-		b.Mode = "relay"
-		if e = crewroot.ReplaceSync(id, *b); e != nil {
-			log.Printf("[CREW_SYNC] project=%s migrate=failed reason=%q", id, e.Error())
-			continue
-		}
-		log.Printf("[CREW_SYNC] project=%s side=%s editing=%s migrate=relay old_mode=%q dropped_pending=%q", id, b.Side, b.Editing, old, dropped)
-	}
-}
 
 const crewOnMacRefusal = "This project lives on its owner's Mac, so it can't answer here."
 

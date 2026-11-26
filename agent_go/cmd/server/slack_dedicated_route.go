@@ -212,3 +212,27 @@ func firstNonBlank(values ...string) string {
 	}
 	return ""
 }
+
+// crewProjectOwners lists the users whose tree holds the project manifest at
+// the logical crew path.
+func crewProjectOwners(ctx context.Context, profileID, logical string) []string {
+	candidates := map[string]struct{}{}
+	if dir, err := loadUserDirectory(); err == nil && dir != nil {
+		for _, user := range dir.Users {
+			if id := strings.TrimSpace(user.ID); id != "" {
+				candidates[id] = struct{}{}
+			}
+		}
+	}
+	if id := strings.TrimSpace(GetDefaultUserID()); id != "" {
+		candidates[id] = struct{}{}
+	}
+	var owners []string
+	for userID := range candidates {
+		physical := agentProfileRuntimeWorkspace(userID, logical)
+		if _, found, err := readProjectRuntimeManifest(ctx, profileID, physical); err == nil && found {
+			owners = append(owners, userID)
+		}
+	}
+	return owners
+}
