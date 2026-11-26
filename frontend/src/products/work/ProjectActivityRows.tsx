@@ -3,7 +3,7 @@ import { Activity, ExternalLink, FolderOpen, ListChecks, ListTodo, Mail, Message
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
 import { SetupPrompt } from '../../components/workspace/SetupPrompt'
 import type { CrewPanelFeedItem, CrewPanelRow, CrewPanelSection } from './useCrewPanel'
-import { ProjectTasksRow, projectActivityChangeMessage } from './ProjectTasksRow'
+import { ProjectTasksSummary, projectActivityChangeMessage } from './ProjectTasksRow'
 import { formatRelativeSeconds } from '../../utils/relativeTime'
 
 // Project activity (#3476, approved mockup 21 Nov): one row per feed Watcher the
@@ -117,13 +117,14 @@ function ItemMenu({ onPick }: { onPick: (kind: 'ask' | 'mine' | 'team') => void 
   </div>
 }
 
-export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHide, onOpenTask }: {
+export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHide, onOpenTask, onOpenTasks }: {
   section?: CrewPanelSection
   onAgent?: (message: string) => void
   onWatchers: () => void
   hidden: boolean
   onHide: () => void
   onOpenTask: (id: string) => void
+  onOpenTasks: () => void
 }) {
   if (!section) return null
   const rows = section.rows
@@ -134,19 +135,17 @@ export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHi
       points={['It keeps an eye on the Slack channels, mail and task lists you pick', 'New requests become tasks, and an agent picks each one up', 'You see who is on what; only real decisions come to you']}/>
   }
   return <div>
-    {rows.map(row => <WorkspaceCompactGroup key={row.id} title={row.label} icon={appIcon[row.group || ''] || Activity}
+    {rows.map(row => row.group === 'project-tasks' ? <ProjectTasksSummary key={row.id} row={row} onAgent={onAgent} onOpenTask={onOpenTask} onOpenTasks={onOpenTasks}/> : <WorkspaceCompactGroup key={row.id} title={row.label} icon={appIcon[row.group || ''] || Activity}
       detail={<span className={row.attention ? 'text-amber-600 dark:text-amber-400' : row.count ? 'font-medium text-foreground' : undefined}>
         {!row.attention && row.needs_you_count ? <span className="text-amber-600 dark:text-amber-400">{row.needs_you_count} need{row.needs_you_count === 1 ? 's' : ''} you</span> : null}
         {/* "3 need you" alone when every open task needs you; the count only adds what the amber part doesn't say. */}
         {row.attention ? row.detail : row.needs_you_count && row.needs_you_count === row.open_count ? null : <>{!row.attention && row.needs_you_count ? ' · ' : ''}{row.count || row.detail}</>}</span>}>
       {row.attention && <button type="button" onClick={onWatchers} className="block w-full rounded px-1 py-0.5 text-left text-[11px] text-amber-600 hover:bg-background/40 dark:text-amber-400">{row.detail} · open Watchers</button>}
-      {row.group === 'project-tasks' ? <ProjectTasksRow row={row} onAgent={onAgent} onOpenTask={onOpenTask}/> : <>
-        <RowItems row={row} onAgent={onAgent}/>
-        {!row.items?.length && !row.attention && <p className="px-1 py-0.5 text-[11px] text-muted-foreground">{row.detail}</p>}
-      </>}
+      <RowItems row={row} onAgent={onAgent}/>
+      {!row.items?.length && !row.attention && <p className="px-1 py-0.5 text-[11px] text-muted-foreground">{row.detail}</p>}
       <div className="flex items-center gap-3 px-1 py-0.5 text-[10px]">
         {row.path && <a href={row.path} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">Open<ExternalLink aria-hidden="true" className="h-2.5 w-2.5"/></a>}
-        {onAgent && row.group !== 'project-tasks' && <button type="button" onClick={() => onAgent(projectActivityChangeMessage)} className="text-muted-foreground hover:text-foreground">Change setup</button>}
+        {onAgent && <button type="button" onClick={() => onAgent(projectActivityChangeMessage)} className="text-muted-foreground hover:text-foreground">Change setup</button>}
       </div>
     </WorkspaceCompactGroup>)}
   </div>

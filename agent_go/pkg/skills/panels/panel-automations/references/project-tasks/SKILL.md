@@ -51,7 +51,18 @@ Your review schedule wakes you a few times a day. Each time, read `tasks` and go
 - **Still quiet after a nudge** (no update by your next review a day later): mode auto: hand it to the next best-fit agent yourself, tell the old one on its ask, and `note` why; if no other agent fits, set `waiting` "No update from (agent) in 2 days" with `choices: ["Reassign", "Keep waiting"]`. Mode ask: set that `waiting` straight away.
 - **Blocked on another agent:** chase that agent on its ask; only if it can't help, set `waiting` for the person.
 - **Finished a step:** when the work is done but the task sits in the wrong step, move it with a `note`; when the rules hand the next step to someone else (for example review), send them the ask.
+- **Overdue:** chase it like a quiet task, and tell the person only if the date can't be met.
+- **Arrange:** keep groups, pins and the focus line current (see below).
 - **Done:** check the result exists (the merged pull request, the closed ticket) before the task moves to the last step.
+
+### Arranging the list
+
+The panel shows the list the way you arrange it; it is yours to keep readable.
+
+- **Groups:** once there are more than about eight open tasks, group them in whatever way fits this project (area, release, customer, person) with `task_settings {groups: [{name, note, folded}]}`, first to last, at most 8. Put each task in one with `task_update {group}` (also on `task_add`). Follow the person's rules if they say how to group. Regroup when the work changes (a release ships, a new area starts); tasks in a removed group show under Other until you move them. Fold groups people rarely need (`folded: true`, for example Later).
+- **Pin:** `pinned: true` puts a task first in its group; pin only what really must be first, and unpin it when it isn't.
+- **Due dates:** set `due` (YYYY-MM-DD) when a date was given or a release needs it, never as a guess. Overdue work shows amber; chase it on your review runs.
+- **Focus:** `task_settings {focus}` is one line at the top on what matters now ("Release Friday: 2 blockers left"). Keep it current or clear it with `""`.
 
 Act, don't report: a review run changes tasks and sends asks; it doesn't post a summary unless something now needs the person. Nudge a task at most once per review, and never nudge a task with `waiting` set (it is the person's turn).
 
@@ -67,7 +78,7 @@ Act, don't report: a review run changes tasks and sends asks; it doesn't post a 
 
 ## Controls in the panel
 
-The Project tasks row lists Needs you first, then the rest; its footer shows the lead with ⋯ (Pause, auto or ask first, Change setup), and how many are done. Clicking a task opens its page: what you need to do with its answer buttons, the checklist, who is working on it, linked items, what's happening and history, with Approve, Reassign, Hold and Move. Each button, answer and checklist tick drafts a message in the project chat; the agent who gets it makes the change:
+The side panel shows a Project tasks row with the counts and the tasks that need the person, with their answer buttons. Clicking it opens the full Project tasks panel: the lead with ⋯ (Pause, auto or ask first, Change setup), the focus line, filters by agent and step, Needs you, the lead's groups (foldable, each with a done bar), Other and the done list. Clicking a task opens its page: what you need to do with its answer buttons, the checklist, who is working on it, linked items, what's happening and history, with Approve, Reassign, Hold and Move. Each button, answer and checklist tick drafts a message in the project chat; the agent who gets it makes the change:
 
 - Pause or resume: `task_settings {paused: true|false}`. While paused, Watchers sending to the lead's chat keep their events and deliver them on resume, and the lead's schedules skip their timed runs.
 - Auto or ask first: `task_settings {mode}`.

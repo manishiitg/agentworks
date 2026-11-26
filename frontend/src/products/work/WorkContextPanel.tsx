@@ -27,7 +27,7 @@ import { CrewTeamPanel } from './CrewTeamPanel'
 import { CrewActivitySection } from './ActivitySection'
 import { useTeamSetupsList } from './useTeamSetupsList'
 import { ProjectActivityRows, projectActivityLine, projectActivitySetupMessage } from './ProjectActivityRows'
-import { ProjectTaskPage } from './ProjectTasksRow'
+import { ProjectTaskPage, ProjectTasksPanel } from './ProjectTasksRow'
 import { useSetupPromptHidden } from '../../components/workspace/SetupPrompt'
 import { WorkContextSubmenu } from './WorkContextSubmenu'
 import { crewTeamTitle, TEAM_SETUP_LINE, WorkContextAccessFooter } from './WorkContextAccessFooter'
@@ -67,6 +67,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const onNeedsCount = useCallback((count: number) => setNeeds(current => current?.key === collapseKey && current.count === count ? current : { key: collapseKey, count }), [collapseKey])
   const [teamPane, setTeamPane] = useState<{ scope: string; view: TeamPanelView; agent?: string }>()
   const [taskPage, setTaskPage] = useState<{ scope: string; id: string }>()
+  const [tasksPanel, setTasksPanel] = useState<string>() // the scope whose full Project tasks panel is open
   const teamView = teamPane?.scope === scope ? teamPane.view : 'live'
   const [teamPerson, setTeamPerson] = useState<{ scope: string; id?: string }>()
   const selectedPerson = teamPerson?.scope === scope ? teamPerson.id : undefined
@@ -179,6 +180,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const tasksRow = section('activity')?.rows.find(row => row.group === 'project-tasks')
   const openTask = taskPage?.scope === scope ? tasksRow?.tasks?.find(task => task.id === taskPage.id) : undefined
   if (tasksRow && openTask) return <WorkspaceContextCard title="Project tasks" onBack={() => setTaskPage(undefined)}><ProjectTaskPage row={tasksRow} task={openTask} onAgent={activityAgent}/></WorkspaceContextCard>
+  // The full Project tasks panel: the lead's focus, Needs you, then the lead's groups.
+  if (tasksRow && tasksPanel === scope) return <WorkspaceContextCard title="Project tasks" onBack={() => setTasksPanel(undefined)}><ProjectTasksPanel row={tasksRow} storageKey={`agentworks.task-groups-folded:${projectId || workspacePath}`} onAgent={activityAgent} onOpenTask={id => setTaskPage({ scope, id })}/></WorkspaceContextCard>
   if (teamView !== 'live' && teamState.view?.team.on) return <WorkspaceContextCard><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} panelView={teamView} onPanelView={openTeamPane} askAgent={askAgent}/></WorkspaceContextCard>
 
   const teamLines = accessTree.filter(line => line.group === 'team' && line.kind !== 'team' && line.kind !== 'team_live')
@@ -239,7 +242,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     </div> : <>
       {changes}
       {/* Project activity sits right under Git (owner, 21 Nov, #3476). */}
-      <ProjectActivityRows key={`${scope}:activity`} section={section('activity')} onAgent={activityAgent} onWatchers={() => openAutomation('conditions')} onOpenTask={id => setTaskPage({ scope, id })} hidden={activityHidden} onHide={() => { hideActivity(); addToast('Project activity hidden. Set it up any time from Connections.', 'info') }}/>
+      <ProjectActivityRows key={`${scope}:activity`} section={section('activity')} onAgent={activityAgent} onWatchers={() => openAutomation('conditions')} onOpenTask={id => setTaskPage({ scope, id })} onOpenTasks={() => setTasksPanel(scope)} hidden={activityHidden} onHide={() => { hideActivity(); addToast('Project activity hidden. Set it up any time from Connections.', 'info') }}/>
       {/* Artifacts has its own top-level footer row (owner, 14 Nov); Run mode keeps this menu. */}
       {byId.has('dashboard') && accessItems.length === 0 && <WorkspaceDashboardMenu key={`${scope}:dashboards`} documents={documents} createTarget={dashboardChatTarget} onSelect={path => { const dashboard = byId.get('dashboard'); if (dashboard) open({ ...dashboard, reportPath: path }) }}/>}
       <WorkspaceConnectionsMenu key={scope} browser={browser} details={data?.details || {}} browserAllowed={byId.has('browser')} mcpAllowed={byId.has('mcp:connected')} apps={apps.filter(item => byId.has(item.destination!))} loading={!section('connections')} unavailable={!!section('connections')?.error} onOpen={openID} onManage={integrations.length ? () => showMenu('integrations') : undefined} setups={[
