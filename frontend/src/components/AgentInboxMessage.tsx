@@ -38,7 +38,7 @@ export function AgentInboxMessage({ message, timestamp, artifact = null, queueSt
         <button type="button" aria-expanded={open} aria-label={open ? 'Hide message' : 'Show message'}
           className="flex min-w-0 flex-1 items-center gap-2 text-left hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => setOpen(value => !value)}>
-          <span className="shrink-0 font-medium text-foreground/85"><AgentMessageIdentity inboxID={message.inboxID} messageID={message.messageID} sessionID={sessionID} /></span>
+          <span className="shrink-0 font-medium text-foreground/85"><AgentMessageIdentity inboxID={message.inboxID} messageID={message.messageID} sessionID={sessionID} fallback={message.sender} /></span>
           {!open && <span className="min-w-0 flex-1 truncate">{agentInboxPreview(body)}</span>}
         </button>
         {queueStatus}

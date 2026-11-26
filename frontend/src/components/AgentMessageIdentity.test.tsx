@@ -25,3 +25,14 @@ it('shows current server names and keeps raw addresses in the tooltip', async ()
     expect(get).toHaveBeenCalledTimes(2)
   } finally { await act(async () => root.unmount()) }
 })
+
+// A teammate's chat watched from another computer: the lookup can't answer there, so the row shows the sender name
+// the server stamped on the message, not "Person · Agent".
+it('shows the delivered sender name when the lookup cannot answer', async () => {
+  get.mockRejectedValueOnce(new Error('not found'))
+  const host = document.createElement('div'), root = createRoot(host)
+  try {
+    await act(async () => root.render(<AgentMessageIdentity inboxID="inbox-example" messageID="message" fallback="Example Person" />))
+    expect(host.querySelector('.truncate')?.textContent).toBe('Example Person')
+  } finally { await act(async () => root.unmount()) }
+})

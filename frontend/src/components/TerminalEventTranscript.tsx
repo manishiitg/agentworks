@@ -465,7 +465,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
         {showReceipt && (
           <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
             <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
-            {(metadata?.source === 'owner_app' || metadata?.source === 'agent_message') && typeof metadata.sender_label === 'string' && <AgentMessageIdentity inboxID={typeof metadata.agent_message_inbox === 'string' ? metadata.agent_message_inbox : undefined} messageID={typeof metadata.message_id === 'string' ? metadata.message_id : undefined} sessionID={sessionId} />}
+            {(metadata?.source === 'owner_app' || metadata?.source === 'agent_message') && typeof metadata.sender_label === 'string' && <AgentMessageIdentity inboxID={typeof metadata.agent_message_inbox === 'string' ? metadata.agent_message_inbox : undefined} messageID={typeof metadata.message_id === 'string' ? metadata.message_id : undefined} sessionID={sessionId} fallback={metadata.sender_label} />}
             {isVoiceMessage(metadata?.client_message_id) && <Mic aria-label="Sent by voice" className="h-3 w-3" />}
             {timestamp && <span className="tabular-nums">{timestamp}</span>}
             <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} sessionId={sessionId} /></span>
@@ -492,7 +492,7 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
         </button>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
           <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
-          {(metadata?.source === 'owner_app' || metadata?.source === 'agent_message') && typeof metadata.sender_label === 'string' && <AgentMessageIdentity inboxID={typeof metadata.agent_message_inbox === 'string' ? metadata.agent_message_inbox : undefined} messageID={typeof metadata.message_id === 'string' ? metadata.message_id : undefined} sessionID={sessionId} />}
+          {(metadata?.source === 'owner_app' || metadata?.source === 'agent_message') && typeof metadata.sender_label === 'string' && <AgentMessageIdentity inboxID={typeof metadata.agent_message_inbox === 'string' ? metadata.agent_message_inbox : undefined} messageID={typeof metadata.message_id === 'string' ? metadata.message_id : undefined} sessionID={sessionId} fallback={metadata.sender_label} />}
             {isVoiceMessage(metadata?.client_message_id) && <Mic aria-label="Sent by voice" className="h-3 w-3" />}
           {timestamp && <span className="tabular-nums">{timestamp}</span>}
           <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} sessionId={sessionId} /></span>
@@ -562,7 +562,7 @@ function CompactMessages({ item, renderEvent }: { item: CompactMessageGroup; ren
   return <section className="my-2 text-xs text-muted-foreground" data-testid="compact-message-group">
     <button type="button" aria-expanded={open} onClick={toggle} className="flex items-center gap-1 py-1 text-left hover:text-foreground">
       {open ? <ChevronDown className="h-3 w-3" aria-hidden /> : <ChevronRight className="h-3 w-3" aria-hidden />}
-      {item.category === 'interrupted' ? `Interrupted ×${item.events.length}` : <><AgentMessageIdentity inboxID={agentInboxMessage(transcriptEventPayload(item.events[0]).metadata as Record<string, unknown> | undefined)?.inboxID} messageID={agentInboxMessage(transcriptEventPayload(item.events[0]).metadata as Record<string, unknown> | undefined)?.messageID} sessionID={item.events[0].session_id} /><span>· {item.events.length} messages</span></>}
+      {item.category === 'interrupted' ? `Interrupted ×${item.events.length}` : <><AgentMessageIdentity inboxID={agentInboxMessage(transcriptEventPayload(item.events[0]).metadata as Record<string, unknown> | undefined)?.inboxID} messageID={agentInboxMessage(transcriptEventPayload(item.events[0]).metadata as Record<string, unknown> | undefined)?.messageID} sessionID={item.events[0].session_id} fallback={agentInboxMessage(transcriptEventPayload(item.events[0]).metadata as Record<string, unknown> | undefined)?.sender} /><span>· {item.events.length} messages</span></>}
     </button>
     {open && <div className="border-l border-border pl-3">{item.events.map(event => <div key={event.id} data-transcript-key={event.id}>{renderEvent(event)}</div>)}</div>}
   </section>
