@@ -5,6 +5,7 @@ import { AgentPlaceMark } from '../../components/chat/AgentIcon'
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
 import { useEffect, useState, type ReactNode } from 'react'
 import { ArrowLeft, Globe, Lock, Pencil, Users, X } from 'lucide-react'
+import { formatRelativeIso } from '../../utils/relativeTime'
 
 /** All rows and live lines are already admitted/filtered by the server. */
 export type TeamPanelAgent = AvatarFields & {
@@ -18,10 +19,6 @@ export type TeamPanelShared = { key: string; name: string; chosen?: number }
 export type TeamPanelEvent = { id: string; kind: string; at: string; title: string; verb: string; line?: string; private?: boolean; unseen?:boolean;today?:boolean; cli?:string; bridge?:{thread_id:string;can_open:boolean}; task?:string; task_title?:string; task_state?:string }
 export type TeamPanelView = 'live' | 'agents' | 'shared' | 'ask'
 const titles: Record<TeamPanelView,string> = {live:'Team', agents:'All agents', shared:'Shared by you', ask:'Agent'}
-function age(at?:string) {
- const elapsed = at ? Math.max(0,Date.now()-Date.parse(at)) : NaN
- return !Number.isFinite(elapsed) ? '' : elapsed<60_000 ? 'now' : elapsed<3_600_000 ? `${Math.floor(elapsed/60_000)}m` : elapsed<86_400_000 ? `${Math.floor(elapsed/3_600_000)}h` : `${Math.floor(elapsed/86_400_000)}d`
-}
 const name = (row:TeamPanelAgent) => row.name
 const working = (row:TeamPanelAgent) => row.activity==='running'||row.activity==='waiting'
 const person = (row:TeamPanelAgent) => row.person
@@ -59,7 +56,7 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
    <span className="block truncate text-[10px] text-muted-foreground">{runtime(row)}</span>
    <span className={`block truncate text-[11px] ${row.activity==='waiting'?'text-amber-600 dark:text-amber-400':working(row)?'text-emerald-600 dark:text-emerald-400':'text-muted-foreground'}`}>
     {status(row)}
-    {row.last_message&&<span className="text-muted-foreground"> · {!working(row)&&age(row.last_message_at)?`${age(row.last_message_at)} · `:''}{row.last_message}</span>}
+    {row.last_message&&<span className="text-muted-foreground"> · {!working(row)&&formatRelativeIso(row.last_message_at)?`${formatRelativeIso(row.last_message_at)} · `:''}{row.last_message}</span>}
    </span>
    {!row.online&&!working(row)&&row.offline_line&&<span className="block text-[10px] text-muted-foreground">{row.offline_line}</span>}
   </span>
