@@ -12,7 +12,7 @@ it('shows server-marked native wakes compactly with plain output collapsed, neve
       await act(async () => root.render(<BackgroundWakeNotice metadata={{ system_notice_kind: kind, background_failed: false, background_output: '<script>output</script>' }} />))
       expect(host.textContent).toContain('the agent is continuing')
       expect(host.querySelector('details')?.open).toBe(false)
-      expect(host.querySelector('summary')?.textContent).toBe('Show output')
+      expect(host.querySelector('summary')?.textContent).toContain('the agent is continuing · output')
       expect(host.querySelector('pre')?.textContent).toBe('<script>output</script>')
       expect(host.querySelector('script')).toBeNull()
     }
@@ -22,7 +22,7 @@ it('shows server-marked native wakes compactly with plain output collapsed, neve
     for (const kind of ['app_restarted', 'usage_limit_reset']) {
       await act(async () => root.render(<BackgroundWakeNotice metadata={{ system_notice_kind: kind }} details="<script>full internal prompt</script>" />))
       expect(host.textContent).toContain('the agent is continuing')
-      expect(host.querySelector('summary')?.textContent).toBe('Show details')
+      expect(host.querySelector('summary')?.textContent).toContain('the agent is continuing · details')
       expect(host.querySelector('details')?.open).toBe(false)
       expect(host.querySelector('pre')?.textContent).toBe('<script>full internal prompt</script>')
       expect(host.querySelector('script')).toBeNull()

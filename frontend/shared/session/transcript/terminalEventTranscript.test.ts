@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { assistantReplyText, liveToolOutputCallID, pairToolCalls, runActivity, toolErrorContextByEventID, selectTerminalEvents, buildTranscriptItems, collapseCompletedLifecycleStarts, internalTranscriptMessageTitle, isExecutionPromptTranscriptMessage, isInternalTranscriptMessage, shouldCollapseTranscriptUserMessage, transcriptUserMessagePreview, type TranscriptItem } from './terminalEventTranscript'
+import { assistantReplyText, liveToolOutputCallID, pairToolCalls, runActivity, toolErrorContextByEventID, selectTerminalEvents, buildTranscriptItems, collapseCompletedLifecycleStarts, collapseTurnFailures, internalTranscriptMessageTitle, isExecutionPromptTranscriptMessage, isInternalTranscriptMessage, shouldCollapseTranscriptUserMessage, transcriptUserMessagePreview, type TranscriptItem } from './terminalEventTranscript'
 import type { PollingEvent, TerminalSnapshot } from '../types'
 
 // The rail is the hierarchy: every agent and sub-agent owns its own terminal.
@@ -1669,4 +1669,20 @@ describe('live command output', () => {
     expect(liveToolOutputCallID(output('f', { output: 'x', done: true, final: true }))).toBe('')
     expect(liveToolOutputCallID(evt({ id: 'm', session_id: 's1' }))).toBe('')
   })
+})
+
+// Owner, 26 Nov: after a restart the chat showed two "interrupted" lines and a provider error above the restart line.
+it('shows only the restart line for the reply a restart cut off', () => {
+  const item = (id: string, type: string, data: Record<string, unknown>): TranscriptItem => ({ kind: 'event', key: id, event: { id, type, data: { data } } as PollingEvent })
+  const interrupted = { metadata: { retained_turn_outcome: 'interrupted', final_response_missing: true } }
+  const items = [
+    item('ask', 'user_message', { content: 'Deploy it' }),
+    item('cut1', 'unified_completion', interrupted),
+    item('err', 'conversation_error', { error: 'provider failed' }),
+    item('cut2', 'unified_completion', interrupted),
+    item('restart', 'user_message', { content: 'continue', metadata: { system_notice_kind: 'app_restarted' } }),
+  ]
+  expect(collapseTurnFailures(items).map(entry => entry.key)).toEqual(['ask', 'restart'])
+  // Without a restart the failure still shows.
+  expect(collapseTurnFailures(items.slice(0, 3)).map(entry => entry.key)).toEqual(['ask', 'cut1', 'err'])
 })
