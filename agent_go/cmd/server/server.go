@@ -2566,9 +2566,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/tools", api.handleGetTools).Methods("GET")
 	apiRouter.HandleFunc("/tools/detail", api.handleGetToolDetail).Methods("GET")
 	apiRouter.HandleFunc("/tools/enabled", api.handleSetEnabledTools).Methods("POST")
-	apiRouter.HandleFunc("/tools/add", api.handleAddServer).Methods("POST")
-	apiRouter.HandleFunc("/tools/edit", api.handleEditServer).Methods("POST")
-	apiRouter.HandleFunc("/tools/remove", api.handleRemoveServer).Methods("POST")
+	apiRouter.HandleFunc("/tools/add", requireAdmin(api.handleAddServer)).Methods("POST")
+	apiRouter.HandleFunc("/tools/edit", requireAdmin(api.handleEditServer)).Methods("POST")
+	apiRouter.HandleFunc("/tools/remove", requireAdmin(api.handleRemoveServer)).Methods("POST")
 
 	// Tool execution APIs - handlers provided by mcpagent/executor library
 	// Pass server logger for proper debugging of session registry usage
@@ -2576,7 +2576,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	executorHandlers.SetMCPServerResolver(api.resolveMCPServer)
 
 	apiRouter.HandleFunc("/mcp/execute", api.requireOwnBodySession(executorHandlers.HandleMCPExecute)).Methods("POST", "OPTIONS")
-	apiRouter.HandleFunc("/custom/execute", executorHandlers.HandleCustomExecute).Methods("POST", "OPTIONS")
+	apiRouter.HandleFunc("/custom/execute", api.requireOwnBodySessionAlways(executorHandlers.HandleCustomExecute)).Methods("POST", "OPTIONS")
 
 	// Per-tool endpoints for code execution mode (bearer token auth, bypasses JWT)
 	// LLM-generated code calls these directly, so they use API token auth instead of JWT.
@@ -2876,7 +2876,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// Inspector debug panel — opt-in per-session timeline of
 	// structured InspectorEvents emitted by the LLM adapters. See
 	// inspector_routes.go and internal/inspector/store.go.
-	apiRouter.HandleFunc("/inspector", api.handleInspectorSessions).Methods("GET")
+	apiRouter.HandleFunc("/inspector", requireAdmin(api.handleInspectorSessions)).Methods("GET")
 	apiRouter.HandleFunc("/inspector/{session_id}", api.handleInspectorEvents).Methods("GET")
 	apiRouter.HandleFunc("/inspector/{session_id}", api.handleInspectorClear).Methods("DELETE")
 
@@ -3180,8 +3180,10 @@ func runServer(cmd *cobra.Command, args []string) {
 	apiRouter.HandleFunc("/public/folder", api.handlePublicFolder).Methods("GET")
 	apiRouter.HandleFunc("/public/folder/download", api.handlePublicFolderDownload).Methods("GET")
 
-	// pprof routes for profiling (must be before static file serving)
-	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
+	// pprof routes for profiling (must be before static file serving). Heap,
+	// goroutine and cmdline dumps carry secrets and the server's signing key:
+	// administrators only.
+	router.PathPrefix("/debug/pprof/").Handler(requireAdmin(http.DefaultServeMux.ServeHTTP))
 
 	// Pre-bind listener so we can support dynamic port (port 0) and report the actual port
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", config.Host, config.Port))
@@ -10504,6 +10506,17 @@ func (api *StreamingAPI) handleSetLLMGuidance(w http.ResponseWriter, r *http.Req
 		http.Error(w, "Session ID is required", http.StatusBadRequest)
 		return
 	}
+	// Same admission as live input: guidance enters the session's next system
+	// prompt and a control key types into its live agent, so only someone who
+	// may drive this session can use them.
+	if !api.canAccessTerminalSession(r, sessionID) {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+	if refusal := codeSessionTurnRefusal(sessionID, GetUserFromContext(r.Context())); refusal != "" {
+		http.Error(w, refusal, http.StatusForbidden)
+		return
+	}
 
 	var req LLMGuidanceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -11566,6 +11579,17 @@ func (api *StreamingAPI) handleControlKey(w http.ResponseWriter, r *http.Request
 	sessionID := vars["session_id"]
 	if sessionID == "" {
 		http.Error(w, "Session ID is required", http.StatusBadRequest)
+		return
+	}
+	// Same admission as live input: guidance enters the session's next system
+	// prompt and a control key types into its live agent, so only someone who
+	// may drive this session can use them.
+	if !api.canAccessTerminalSession(r, sessionID) {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+	if refusal := codeSessionTurnRefusal(sessionID, GetUserFromContext(r.Context())); refusal != "" {
+		http.Error(w, refusal, http.StatusForbidden)
 		return
 	}
 

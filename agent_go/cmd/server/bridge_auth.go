@@ -30,28 +30,53 @@ func virtualScopeSession(scope string) string {
 // a session_id there must belong to the signed-in user, or any user could
 // call another user's MCP servers with their credentials. Calls without a
 // session (the MCP tool tester) are unchanged.
+//
+// The body and the X-Session-ID header are each checked: the handlers act on
+// the body's session, so passing the guard with one's own session in the
+// header must not let the body name another person's.
 func (api *StreamingAPI) requireOwnBodySession(next http.HandlerFunc) http.HandlerFunc {
+	return api.ownBodySessionGuard(next, false)
+}
+
+// requireOwnBodySessionAlways guards /api/custom/execute. Without a session
+// that route falls back to the server-wide custom tools (a shell, file patching
+// and the browser that belong to no person), so a session is required as well
+// as owned.
+func (api *StreamingAPI) requireOwnBodySessionAlways(next http.HandlerFunc) http.HandlerFunc {
+	return api.ownBodySessionGuard(next, true)
+}
+
+func (api *StreamingAPI) ownBodySessionGuard(next http.HandlerFunc, sessionRequired bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions || r.Body == nil {
+		if r.Method == http.MethodOptions {
 			next(w, r)
 			return
 		}
-		body, err := io.ReadAll(io.LimitReader(r.Body, 32<<20))
-		if err != nil {
-			http.Error(w, `{"success":false,"error":"cannot read request"}`, http.StatusBadRequest)
-			return
+		var body []byte
+		if r.Body != nil {
+			var err error
+			body, err = io.ReadAll(io.LimitReader(r.Body, 32<<20))
+			if err != nil {
+				http.Error(w, `{"success":false,"error":"cannot read request"}`, http.StatusBadRequest)
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
 		}
-		r.Body = io.NopCloser(bytes.NewReader(body))
 		var probe struct {
 			SessionID string `json:"session_id"`
 		}
 		_ = json.Unmarshal(body, &probe)
-		sessionID := strings.TrimSpace(probe.SessionID)
-		if header := strings.TrimSpace(r.Header.Get("X-Session-ID")); header != "" {
-			sessionID = header
+		named := []string{strings.TrimSpace(probe.SessionID), strings.TrimSpace(r.Header.Get("X-Session-ID"))}
+		if sessionRequired && named[0] == "" {
+			log.Printf("[BRIDGE_AUTH] refused: %s without a session", r.URL.Path)
+			http.Error(w, `{"success":false,"error":"session_id is required: tools run in your own chat session"}`, http.StatusForbidden)
+			return
 		}
-		if sessionID != "" {
-			claims := GetUserFromContext(r.Context())
+		claims := GetUserFromContext(r.Context())
+		for _, sessionID := range named {
+			if sessionID == "" {
+				continue
+			}
 			owner := ""
 			if api.eventStore != nil {
 				owner = strings.TrimSpace(api.eventStore.GetSessionOwner(sessionID))

@@ -44,6 +44,12 @@ func (api *StreamingAPI) handleInspectorEvents(w http.ResponseWriter, r *http.Re
 		http.Error(w, `{"error":"session_id is required"}`, http.StatusBadRequest)
 		return
 	}
+	// The timeline holds the session's prompts, tool arguments and results:
+	// the same people who may open its terminal (a view for GET, control for DELETE).
+	if !api.canAccessTerminalSession(r, sessionID) {
+		http.Error(w, `{"error":"session not tracked by inspector"}`, http.StatusNotFound)
+		return
+	}
 
 	since := 0
 	if raw := r.URL.Query().Get("since"); raw != "" {
@@ -95,6 +101,12 @@ func (api *StreamingAPI) handleInspectorClear(w http.ResponseWriter, r *http.Req
 		http.Error(w, `{"error":"session_id is required"}`, http.StatusBadRequest)
 		return
 	}
+	// The timeline holds the session's prompts, tool arguments and results:
+	// the same people who may open its terminal (a view for GET, control for DELETE).
+	if !api.canAccessTerminalSession(r, sessionID) {
+		http.Error(w, `{"error":"session not tracked by inspector"}`, http.StatusNotFound)
+		return
+	}
 	api.inspectorStore.Clear(sessionID)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -104,7 +116,8 @@ func (api *StreamingAPI) handleInspectorClear(w http.ResponseWriter, r *http.Req
 //	GET /api/inspector
 //
 // Returns the list of session IDs currently tracked. Diagnostic
-// endpoint; not needed for normal panel operation.
+// endpoint for administrators (registered behind requireAdmin); not needed
+// for normal panel operation.
 func (api *StreamingAPI) handleInspectorSessions(w http.ResponseWriter, r *http.Request) {
 	if api.inspectorStore == nil {
 		http.Error(w, `{"error":"inspector store not initialized"}`, http.StatusServiceUnavailable)
