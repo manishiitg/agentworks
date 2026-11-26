@@ -513,8 +513,22 @@ func SaveConfig(configPath string, config *MCPConfig) error {
 	if err != nil {
 		return err
 	}
-	tmpPath := configPath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil { //nolint:gosec // 0644 permissions are intentional for user-accessible config files
+	// A temp file of its own per save: two saves sharing one ".tmp" path
+	// overwrite each other and can rename a half-written config into place.
+	tmp, err := os.CreateTemp(filepath.Dir(configPath), filepath.Base(configPath)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpPath, 0644); err != nil { //nolint:gosec // 0644 permissions are intentional for user-accessible config files
 		return err
 	}
 	return os.Rename(tmpPath, configPath)
