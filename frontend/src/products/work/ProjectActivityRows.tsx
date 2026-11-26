@@ -117,7 +117,7 @@ function ItemMenu({ onPick }: { onPick: (kind: 'ask' | 'mine' | 'team') => void 
   </div>
 }
 
-export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHide, onOpenTask, onOpenTasks }: {
+export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHide, onOpenTask, onOpenTasks, tasksStorageKey }: {
   section?: CrewPanelSection
   onAgent?: (message: string) => void
   onWatchers: () => void
@@ -125,6 +125,7 @@ export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHi
   onHide: () => void
   onOpenTask: (id: string) => void
   onOpenTasks: () => void
+  tasksStorageKey: string
 }) {
   if (!section) return null
   const rows = section.rows
@@ -135,7 +136,7 @@ export function ProjectActivityRows({ section, onAgent, onWatchers, hidden, onHi
       points={['It keeps an eye on the Slack channels, mail and task lists you pick', 'New requests become tasks, and an agent picks each one up', 'You see who is on what; only real decisions come to you']}/>
   }
   return <div>
-    {rows.map(row => row.group === 'project-tasks' ? <ProjectTasksSummary key={row.id} row={row} onAgent={onAgent} onOpenTask={onOpenTask} onOpenTasks={onOpenTasks}/> : <WorkspaceCompactGroup key={row.id} title={row.label} icon={appIcon[row.group || ''] || Activity}
+    {rows.map(row => row.group === 'project-tasks' ? <ProjectTasksSummary key={row.id} row={row} storageKey={tasksStorageKey} onAgent={onAgent} onOpenTask={onOpenTask} onOpenTasks={onOpenTasks}/> : <WorkspaceCompactGroup key={row.id} title={row.label} icon={appIcon[row.group || ''] || Activity}
       detail={<span className={row.attention ? 'text-amber-600 dark:text-amber-400' : row.count ? 'font-medium text-foreground' : undefined}>
         {!row.attention && row.needs_you_count ? <span className="text-amber-600 dark:text-amber-400">{row.needs_you_count} need{row.needs_you_count === 1 ? 's' : ''} you</span> : null}
         {/* "3 need you" alone when every open task needs you; the count only adds what the amber part doesn't say. */}

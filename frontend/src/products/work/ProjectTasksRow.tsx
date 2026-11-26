@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
 import { ChevronRight, ExternalLink, ListChecks, Maximize2, MoreHorizontal, Pin } from 'lucide-react'
 import type { CrewPanelRow, ProjectTask, ProjectTaskGroup, ProjectTaskRef } from './useCrewPanel'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
@@ -143,32 +144,21 @@ function LeadMenu({ row, onAgent }: { row: CrewPanelRow; onAgent: Draft }) {
   </div>
 }
 
-// In the side panel (#4294): one row with the counts that opens the full
-// panel, and the tasks that need you right under it, full width, with their
-// answer buttons, so quick decisions stay one click away.
-export function ProjectTasksSummary({ row, onAgent, onOpenTask, onOpenTasks }: { row: CrewPanelRow; onAgent?: Draft; onOpenTask: (id: string) => void; onOpenTasks: () => void }) {
-  const needsYou = (row.tasks || []).filter(t => !t.done && t.needs_you)
-  const [more, setMore] = useState(false)
-  const shown = more ? needsYou : needsYou.slice(0, 3)
+// In the side panel: the usual hide/show row (owner, 26 Nov). Expanding it
+// shows the list in place; a small icon opens it wide, like Team, for those
+// who want more room.
+export function ProjectTasksSummary({ row, storageKey, onAgent, onOpenTask, onOpenTasks }: { row: CrewPanelRow; storageKey: string; onAgent?: Draft; onOpenTask: (id: string) => void; onOpenTasks: () => void }) {
+  const needs = (row.tasks || []).filter(t => !t.done && t.needs_you).length
   const open = row.open_count || 0
-  return <section aria-label="Project tasks">
-    <div className="flex min-h-9 min-w-0 items-center gap-2.5 px-1 text-xs text-foreground/85">
-      <ListChecks aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground"/>
-      <span className="shrink-0">Project tasks</span>
-      <span className="min-w-0 flex-1 truncate text-right text-[10px] text-muted-foreground">
-        {needsYou.length ? <span className="text-amber-600 dark:text-amber-400">{needsYou.length} need{needsYou.length === 1 ? 's' : ''} you</span> : null}
-        {needsYou.length && open > needsYou.length ? ' · ' : ''}{open > needsYou.length || !needsYou.length ? `${open} open` : ''}
-      </span>
-      {/* An explicit open button (owner, 26 Nov), not the whole row: the full list opens wide, like Team. */}
-      <button type="button" onClick={onOpenTasks} aria-label="Open Project tasks" title="Open Project tasks"
-        className={`inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-border px-1.5 text-[10.5px] text-foreground hover:bg-background/40 ${ring}`}>
-        <Maximize2 aria-hidden="true" className="h-3 w-3"/>Open
-      </button>
-    </div>
-    {row.focus && !needsYou.length ? <p className="truncate px-1.5 pb-1 text-[10.5px] text-muted-foreground">{row.focus}</p> : null}
-    {shown.map(task => <TaskLine key={task.id} task={task} onAgent={onAgent} answers onOpen={() => task.id && onOpenTask(task.id)}/>)}
-    {needsYou.length > shown.length ? <button type="button" onClick={() => setMore(true)} className="px-1.5 pb-1 text-[10.5px] text-muted-foreground hover:text-foreground">{needsYou.length - shown.length} more need you</button> : null}
-  </section>
+  return <WorkspaceCompactGroup flush title="Project tasks" icon={ListChecks}
+    detail={<>{needs ? <span className="text-amber-600 dark:text-amber-400">{needs} need{needs === 1 ? 's' : ''} you</span> : null}
+      {needs && open > needs ? ' · ' : ''}{open > needs || !needs ? `${open} open` : ''}</>}
+    preview={<button type="button" onClick={onOpenTasks} aria-label="Open Project tasks wide" title="Open wide"
+      className={`flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-background/40 hover:text-foreground ${ring}`}>
+      <Maximize2 aria-hidden="true" className="h-3 w-3"/>
+    </button>}>
+    <ProjectTasksPanel row={row} storageKey={storageKey} onAgent={onAgent} onOpenTask={onOpenTask}/>
+  </WorkspaceCompactGroup>
 }
 
 function useFolded(storageKey: string, groups: ProjectTaskGroup[]) {
