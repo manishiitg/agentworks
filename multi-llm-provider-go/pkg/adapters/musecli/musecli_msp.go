@@ -67,6 +67,10 @@ type museMSPSession struct {
 	// handoffPending: the next turn restates the current instructions (the
 	// first turn after a transfer); it clears only when that turn succeeds.
 	handoffPending bool
+	// startedFresh: a pending rewind could not fork the Muse session, so
+	// this new session starts empty and its first turn carries the kept
+	// conversation as text.
+	startedFresh bool
 	// instructions: what this session was given of the AgentWorks
 	// instructions; Muse has no place for them outside messages.
 	instructions         instructions.Tracker
@@ -443,7 +447,15 @@ func (a *MuseCLIAdapter) museMSPOpen(ctx context.Context, opts *llmtypes.CallOpt
 	process.Launched(a.logger, launchReason)
 	s := &museMSPSession{owner: owner, rpc: rpc, workdir: workdir, dataHome: museAccountDataHome(ctx), fingerprint: fingerprint, parts: parts, cleanup: cleanupConfig}
 	var opened museMSPSessionResult
-	if resumeID != "" {
+	if source, cuts, rewind := parseMuseRewind(resumeID); rewind {
+		forkStarted := time.Now()
+		err = museMSPForkBefore(ctx, rpc, source, cuts, &opened)
+		a.logger.Infof("[MUSE_MSP] owner=%s action=rewind source=%s cuts=%d took=%s (err=%v)", owner, source, len(cuts), time.Since(forkStarted).Round(time.Millisecond), err)
+		if err != nil {
+			opened, s.startedFresh = museMSPSessionResult{}, true
+			err = rpc.call(ctx, "session/start", map[string]any{"commandId": museCommandID(), "workspaceRoot": workdir, "approvalMode": "allowAll"}, &opened)
+		}
+	} else if resumeID != "" {
 		resumeStarted := time.Now()
 		err = rpc.call(ctx, "session/resume", map[string]any{"commandId": museCommandID(), "sessionId": resumeID}, &opened)
 		a.logger.Infof("[MUSE_MSP] session %s reopen took %s (err=%v)", resumeID, time.Since(resumeStarted).Round(time.Millisecond), err)
@@ -547,7 +559,9 @@ func (a *MuseCLIAdapter) generateContentMSP(ctx context.Context, messages []llmt
 	if llmtypes.CodingProviderIdleCompactFromOptions(opts) {
 		return a.compactMuseMSP(ctx, s, emit)
 	}
-	system, human, err := museMSPPrompt(ctx, owner, messages, resumeID != "")
+	resumed := resumeID != "" && !s.startedFresh
+	s.startedFresh = false
+	system, human, err := museMSPPrompt(ctx, owner, messages, resumed)
 	if err != nil {
 		return nil, err
 	}
@@ -556,7 +570,7 @@ func (a *MuseCLIAdapter) generateContentMSP(ctx context.Context, messages []llmt
 	current := llmtypes.CLIPrivateSkillInstructions(opts, museSkillsSubdir) + strings.Join(system, "\n\n")
 	delivery, deliveredInstructions := s.instructions.Next(current)
 	prompt := instructions.InMessage(delivery, human)
-	prompt = museWithResumeNote(prompt, resumeID != "", museMCPConfigFromOptions(opts))
+	prompt = museWithResumeNote(prompt, resumed, museMCPConfigFromOptions(opts))
 	handoff := s.handoffPending
 	if handoff {
 		// The first turn after a transfer restates the current instructions.

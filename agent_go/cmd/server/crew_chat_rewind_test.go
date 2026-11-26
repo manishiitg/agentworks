@@ -7,6 +7,7 @@ import (
 	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 )
 
 func rewindTestHistory() []llmtypes.MessageContent {
@@ -78,5 +79,33 @@ func TestUIEventsBeforeKeepsEarlierRows(t *testing.T) {
 	kept, _ = uiEventsBefore(sequenced, 5, cutoff).([]storeevents.Event)
 	if len(kept) != 2 || kept[0].ID != "earlier" || kept[1].ID != "unsequenced" {
 		t.Fatalf("by sequence kept=%v", kept)
+	}
+}
+
+func TestMuseRewindForksOnTheNextStart(t *testing.T) {
+	muse := func(transport string) *ChatHistoryAgentRuntime {
+		r := &ChatHistoryAgentRuntime{ExternalSessionID: "m1", ResumeSupported: true}
+		r.AgentSessionHandle = &mcpagent.AgentSessionHandle{Provider: llmtypes.CodingProviderSessionHandle{Provider: "muse-cli", Transport: transport, NativeSessionID: "m1"}}
+		return r
+	}
+	if !chatRewindCanCut(muse(llmtypes.CodingProviderTransportMSP)) || chatRewindCanCut(muse("tmux")) {
+		t.Fatal("only a Muse chat on `muse serve` forks its own session")
+	}
+	text := func(role llmtypes.ChatMessageType, value string) llmtypes.MessageContent {
+		return llmtypes.MessageContent{Role: role, Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: value}}}
+	}
+	history := []llmtypes.MessageContent{text(llmtypes.ChatMessageTypeHuman, "first"), text(llmtypes.ChatMessageTypeAI, "ok"), text(llmtypes.ChatMessageTypeHuman, "second")}
+	api := &StreamingAPI{}
+	runtime := muse(llmtypes.CodingProviderTransportMSP)
+	next, mode := api.rewindNativeRuntime(nil, ProductConversationRecord{SessionID: "chat"}, runtime, chatRewindPoint{session: "chat", text: "second", fromEnd: 1, cut: 2, history: history})
+	want := musecli.MuseRewindResumeID("m1", "second", 1)
+	if mode != "native" || next.ExternalSessionID != want || next.AgentSessionHandle.Provider.NativeSessionID != want || !next.ResumeSupported {
+		t.Fatalf("got mode=%s runtime=%+v", mode, next)
+	}
+	if runtime.AgentSessionHandle.Provider.NativeSessionID != "m1" {
+		t.Fatal("the chat's earlier runtime must not change")
+	}
+	if next, mode := api.rewindNativeRuntime(nil, ProductConversationRecord{SessionID: "chat"}, runtime, chatRewindPoint{session: "chat", text: "first", fromEnd: 1, cut: 0, history: history}); mode != "fresh" || next.AgentSessionHandle != nil {
+		t.Fatalf("editing the first message starts fresh, got %s", mode)
 	}
 }
