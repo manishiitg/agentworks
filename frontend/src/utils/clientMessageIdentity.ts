@@ -24,6 +24,19 @@ export function readClientMessageId(event: PollingEvent): string {
   return typeof id === 'string' ? id.trim() : ''
 }
 
+function readMessageId(event: PollingEvent): string {
+  if (event.type !== 'user_message') return ''
+  const id = userMessageMetadata(event).message_id
+  return typeof id === 'string' ? id.trim() : ''
+}
+
+function eventTimestampMs(event: PollingEvent): number {
+  const raw = event.timestamp
+  if (!raw) return 0
+  const parsed = Date.parse(raw)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 // One server-claimed combined input replaces its original provisional rows.
 // This is identity reconciliation only, never browser queue/dispatch policy.
 function echoedClientMessageIds(event: PollingEvent): string[] {
@@ -86,13 +99,47 @@ export function reconcileDurableUserEchoes(
 }
 
 // On restore, a provisional bubble survives only while its durable row is
-// absent from the page (the send is queued or still being delivered).
+// absent from the transcript (the send is queued or still being delivered).
+// A confirmed provisional whose turn has already produced durable history must
+// never float to the bottom after later replies (#4300).
 export function keepUnechoedProvisionals(
   durable: PollingEvent[],
   current: ReadonlyArray<PollingEvent>,
+  olderLoaded: ReadonlyArray<PollingEvent> = [],
 ): PollingEvent[] {
-  const durableIds = new Set(durable.filter(isDurableClientUserMessage).flatMap(echoedClientMessageIds).filter(Boolean))
-  const pending = current.filter(event => isProvisionalUserMessage(event) && event.id && !durableIds.has(readClientMessageId(event)))
+  const allDurable = olderLoaded.length > 0 ? [...olderLoaded, ...durable] : durable
+  const durableIds = new Set(allDurable.filter(isDurableClientUserMessage).flatMap(echoedClientMessageIds).filter(Boolean))
+  const durableMessageIds = new Set(
+    allDurable
+      .filter(event => event.type === 'user_message' && !isProvisionalUserMessage(event))
+      .map(readMessageId)
+      .filter(Boolean),
+  )
+  let latestDurableActivityMs = 0
+  for (const event of durable) {
+    if (
+      event.type === 'unified_completion'
+      || event.type === 'agent_end'
+      || event.type === 'llm_generation_end'
+      || (event.type === 'user_message' && !isProvisionalUserMessage(event))
+    ) {
+      const ts = eventTimestampMs(event)
+      if (ts > latestDurableActivityMs) latestDurableActivityMs = ts
+    }
+  }
+  const pending = current.filter(event => {
+    if (!isProvisionalUserMessage(event) || !event.id) return false
+    const clientId = readClientMessageId(event)
+    if (clientId && durableIds.has(clientId)) return false
+    const messageId = readMessageId(event)
+    if (messageId && durableMessageIds.has(messageId)) return false
+    const metadata = userMessageMetadata(event)
+    if (metadata.confirmation === 'confirmed' && latestDurableActivityMs > 0) {
+      const provisionalTs = eventTimestampMs(event)
+      if (provisionalTs === 0 || latestDurableActivityMs >= provisionalTs) return false
+    }
+    return true
+  })
   return pending.length === 0 ? durable : [...durable, ...pending]
 }
 
