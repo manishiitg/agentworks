@@ -221,7 +221,7 @@ A project on the server works for a Team when its owner puts the Team in its **U
 4. **Taking an existing workflow or agent online:** copy its files into the online project with `server_project_files action=write` (the workflow folder under `.agentworks/`, its skills, or the agent's instructions and memory notes), then ask its Main to set the schedules and triggers and test-run. When that run passes, switch the Mac copy's schedule off so it never runs twice; the Mac files stay.
 5. Later changes: ask that project's Main again; nothing syncs back to the Mac.
 
-**A new agent in an online project:** New agent in a Mac project offers **Where it runs**: This Mac, or an online project the Team uses that the person owns. From chat: `server_project_files action=create_agent project=… name=…` (a project they own or co-own). The agent runs there 24/7 and shows under that project in the Team panel; hand it work with `messages`.
+**A new agent in an online project:** New agent in a Mac project offers **Where it runs**: This Mac, or an online project the Team uses that the person owns. From chat: `server_project_files action=create_agent project=… name=…` (a project they own or co-own). The agent runs there 24/7. The person's own online agents open as tabs in their Mac project (named "<agent> · <project>") and run on the server. A new online agent starts as Only me for the Team; its owner shares it from the tab's Share menu or `team_sync action=agent_rule agent_key=… in_team=true audience=whole_team|chosen`.
 
 ## Native sessions join the project
 

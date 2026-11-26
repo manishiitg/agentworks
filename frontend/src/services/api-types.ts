@@ -363,8 +363,13 @@ export interface AgentProfileEffectiveChatModel extends AgentProfileChatModel {
 }
 
 /** An open side tab of a Code or Crew project as the server knows it. */
+/** An online project an agent tab runs in: its ID, name and the saved connection its chats go through. */
+export type OnlineProjectRef = { id: string; name: string; connection: string }
+
 export interface AgentProfileSideChat {
   chat_location?: 'mac'
+  /** The person's own agent in an online project the Team uses, shown as a tab of this Mac project (#4121). */
+  online_project?: OnlineProjectRef
   /** The caller's own Mac agent: the Mac app already has it as their own tab. */
   on_your_mac?: boolean
   tab_owner_id?: string

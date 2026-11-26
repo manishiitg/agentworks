@@ -80,7 +80,7 @@ import { parseProductInteraction } from '../../../shared/session/interactions'
 import { retireWorkActivityCopies, belongsToWorkProject, findCanonicalWorkProjectTab, isWorkSideChatTab, markWorkProjectRuntimeDirty, setWorkProjectRuntimeSelection, workSideChatKey, workTabToKeepActive, type WorkRuntimeSelection } from './workTabs'
 import { ChatEmptyState, startInChat, useChatShareLines } from './ChatEmptyState'
 import { ProjectWelcome, useProjectWelcome } from './ProjectWelcome'
-import { teamSideChats } from './teamApi'
+import { onlineAgentSideChats, teamSideChats } from './teamApi'
 import { useTeammateChatIdentity } from './TeammateChatIdentity'
 import { TeamAgentAsk } from './TeamAgentAsk'
 import { TeammateChatBackup } from './TeammateChatBackup'
@@ -652,6 +652,8 @@ const workAgentLists = new Map<string, { listed: AgentProfileSideChat[] }>()
 // route's first list (without them) keeps these, so their rows do not drop out of their groups and come back on
 // the next read (owner, 20 Nov).
 const lastTeammateAgents = new Map<string, AgentProfileSideChat[]>()
+/** The last good list of the person's own online agents per Mac project, kept through a failed read (#4121). */
+const lastOnlineAgents = new Map<string, AgentProfileSideChat[]>()
 
 /** Seed the list from the route's fresh server check before mounting the next project. */
 export function rememberWorkAgentList(projectId: string, rows: AgentProfileSideChat[]) {
@@ -838,9 +840,11 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
       try {
         // In the Mac app the Team members' own agents are listed from the Crew's online copy, as real tabs like on the
         // website (they are read from the server; only their owner types).
-        const [rows, teammates] = await Promise.all([listProjectSideChats(profileId, projectId, true, force), teamSideChats(profileId, projectId).catch(() => undefined)])
+        // The person's own agents in online projects the Team uses are real tabs here too, running on the server (#4121).
+        const [rows, teammates, online] = await Promise.all([listProjectSideChats(profileId, projectId, true, force), teamSideChats(profileId, projectId).catch(() => undefined), onlineAgentSideChats(profileId, projectId).catch(() => undefined)])
         if (teammates) lastTeammateAgents.set(projectId, teammates)
-        rows.push(...(teammates ?? lastTeammateAgents.get(projectId) ?? []))
+        if (online) lastOnlineAgents.set(projectId, online)
+        rows.push(...(teammates ?? lastTeammateAgents.get(projectId) ?? []), ...(online ?? lastOnlineAgents.get(projectId) ?? []))
         if (cancelled) return
         // Main is one of the server's agent rows, listed like every other (PLAT-746-885): a browser tab whose
         // main-chat mark was lost no longer hides it.
@@ -874,6 +878,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
             ...primary.metadata,
             // A Mac Crew's tabs are the Mac's, like its Main.
             agentProfileChatLocation: chat.chat_location === 'mac' ? 'mac' : undefined,
+            agentProfileOnlineProject: chat.online_project,
             agentProfileIsMainChat: chat.is_main === true,
             agentProfileBuilder: false,
             agentProfileTabOwnerID: chat.tab_owner_id,
@@ -931,7 +936,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
         if (pendingTeamAgent) {
           const detail = pendingTeamAgent
           pendingTeamAgent = undefined
-          const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileProjectId === projectId && item.metadata.agentProfileTabCanWrite === false && (!detail.owner || item.metadata.agentProfileTabOwnerID === detail.owner) && (item.metadata.agentProfileConversationKey === detail.key || item.metadata.agentProfileConversationKey?.endsWith(`:team:${detail.key}`)))
+          const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileProjectId === projectId && (item.metadata.agentProfileTabCanWrite === false || !!item.metadata.agentProfileOnlineProject) && (!detail.owner || item.metadata.agentProfileTabOwnerID === detail.owner) && (item.metadata.agentProfileConversationKey === detail.key || item.metadata.agentProfileConversationKey?.endsWith(`:team:${detail.key}`)))
           if (tab) openAgentTab(tab.tabId)
           else useChatStore.getState().addToast('This agent’s chat is not available. Refresh the Team and try again.', 'error')
         }
