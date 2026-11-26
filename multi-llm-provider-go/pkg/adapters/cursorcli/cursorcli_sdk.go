@@ -1204,7 +1204,8 @@ func cursorChatRuntimeFolder(dir string) bool {
 	return filepath.Base(parent) == "v1" && filepath.Base(filepath.Dir(parent)) == "cli-runtimes"
 }
 
-// cursorSDKPlanText returns the reply text for a plan Cursor made with its createPlan tool, or "".
+// cursorSDKPlanText returns the reply text for a plan Cursor made with its createPlan tool, or "". The plan is
+// marked (llmtypes.MarkNativePlan) so the chat folds it to one plan line, as for Codex (#3711).
 func cursorSDKPlanText(name, args string) string {
 	if name != "createPlan" {
 		return ""
@@ -1223,7 +1224,7 @@ func cursorSDKPlanText(name, args string) string {
 	if body == "" {
 		return ""
 	}
-	return body + "\n\nReply \"go\" to build this plan, or say what to change."
+	return llmtypes.MarkNativePlan(body) + "\n\nReply \"go\" to build this plan, or say what to change."
 }
 
 // cursorSDKContext records the context fill the bridge read from the agent's latest checkpoint and returns it as

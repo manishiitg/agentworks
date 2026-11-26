@@ -448,7 +448,8 @@ func TestCursorSDKRememberedParamsSkipTheLookup(t *testing.T) {
 // RTS 2026-11-03: Cursor ended its run after createPlan and the person saw only "Retrying CreatePlan".
 func TestCursorSDKPlanTextBecomesReply(t *testing.T) {
 	got := cursorSDKPlanText("createPlan", `{"name":"x","plan":"# Plan\n1. Do it","todos":[]}`)
-	if !strings.HasPrefix(got, "# Plan\n1. Do it\n\n") {
+	// #3711: marked as a plan, so the chat folds it to one line like Codex's.
+	if !strings.HasPrefix(got, llmtypes.NativePlanFence+"\n# Plan\n1. Do it\n~~~~~\n\n") {
 		t.Fatalf("plan reply = %q", got)
 	}
 	if cursorSDKPlanText("Shell", `{"plan":"no"}`) != "" || cursorSDKPlanText("createPlan", `{"plan":" "}`) != "" {
