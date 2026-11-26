@@ -655,7 +655,7 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 	go func() {
 		// The resumed turn ended, failed or was cancelled: free its startup slot.
 		defer api.releaseStartupResume(turn.SessionID, "turn_ended")
-		defer api.recoverQueuedTurnDispatch(turn.SessionID)
+		defer api.recoverQueuedTurnRun(turn)
 		if api.queuedTurnRunner != nil {
 			api.queuedTurnRunner(turn)
 		} else {
@@ -664,10 +664,10 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 	}()
 }
 
-// recoverQueuedTurnDispatch stops a panic in queue dispatch from leaving the
-// session marked as dispatching forever, so every later message waits behind
-// it, or, in the dispatch goroutine, from stopping the whole server. It frees
-// the session and retries its queue. Defer it directly: recover only works there.
+// recoverQueuedTurnDispatch stops a panic in queue dispatch, before a message
+// is claimed, from leaving the session marked as dispatching forever, so every
+// later message waits behind it. It frees the session and retries its queue.
+// Defer it directly: recover only works there.
 func (api *StreamingAPI) recoverQueuedTurnDispatch(sessionID string) {
 	r := recover()
 	if r == nil {
@@ -678,6 +678,51 @@ func (api *StreamingAPI) recoverQueuedTurnDispatch(sessionID string) {
 	delete(api.conversationTurnQueueDraining, sessionID)
 	api.conversationTurnQueueMu.Unlock()
 	api.retryUnreadableConversationQueue(sessionID)
+}
+
+// recoverQueuedTurnRun handles a panic in a claimed turn's dispatch outside the
+// turn itself (preparing or finishing it). The claimed message would otherwise
+// stay started, never run again and never answer its sender, and the queue
+// would retry around it for good. It is failed like a turn that panicked
+// inside its run, then the next message starts. Defer it directly.
+func (api *StreamingAPI) recoverQueuedTurnRun(turn queuedConversationTurn) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	logTurnQueue("dispatch of turn %s in session %s panicked: %v\n%s", turn.ID, turn.SessionID, r, debug.Stack())
+	func() {
+		// Failing the turn must not panic the server if it hits the same bug.
+		defer func() {
+			if again := recover(); again != nil {
+				logTurnQueue("cannot fail turn %s after its panic: %v", turn.ID, again)
+			}
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		stored, err := api.readConversationTurnQueue(ctx, turn.UserID)
+		cancel()
+		if err != nil {
+			logTurnQueue("cannot read queue to fail turn %s: %v", turn.ID, err)
+			return
+		}
+		started := map[string]bool{}
+		for _, row := range stored {
+			if row.StartedAt != nil {
+				started[row.ID] = true
+			}
+		}
+		runErr := errors.New("the turn stopped on an internal error")
+		for _, member := range queuedBatchMembers(turn) {
+			// A member already finished before the panic keeps its outcome.
+			if started[member.ID] {
+				api.finishQueuedConversationTurn(member, internalSessionTurnResult{}, runErr)
+			}
+		}
+	}()
+	api.conversationTurnQueueMu.Lock()
+	delete(api.conversationTurnQueueDraining, turn.SessionID)
+	api.conversationTurnQueueMu.Unlock()
+	api.kickConversationTurnQueue(turn.SessionID)
 }
 
 type conversationQueueRetryState struct {
