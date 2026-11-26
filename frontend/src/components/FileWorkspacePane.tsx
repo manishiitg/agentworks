@@ -45,6 +45,10 @@ type FileWorkspacePaneProps = {
   headerAction?: ReactNode
   /** A product can name its read-only library without changing the shared viewer. */
   treeHeader?: ReactNode
+  /** Extra folders a product shows below its project tree, such as a Crew's Workflows (#4151). */
+  treeFooter?: ReactNode
+  /** Other roots whose open files stay open in this view (the folders treeFooter shows). */
+  keepOpenRoots?: string[]
   emptyState?: ReactNode
   /** Offers Edit in the file viewer (the person's own project files). */
   editable?: boolean
@@ -74,6 +78,8 @@ function FileWorkspacePaneBody({
   testId,
   headerAction,
   treeHeader,
+  treeFooter,
+  keepOpenRoots,
   emptyState,
   editable = false,
   onAsk,
@@ -108,7 +114,7 @@ function FileWorkspacePaneBody({
     return () => window.clearTimeout(timer)
   }, [files, gitPath, gitEnabled, git.store])
   // Tabs belong to one workspace: switching projects must not carry the last one's files along.
-  useEffect(() => { if (!source && workspacePath) useWorkspaceStore.getState().pruneOpenTabs(workspacePath) }, [gitPath, gitEnabled, git.store])
+  useEffect(() => { if (!source && workspacePath) useWorkspaceStore.getState().pruneOpenTabs(workspacePath, keepOpenRoots) }, [gitPath, gitEnabled, git.store]) // eslint-disable-line react-hooks/exhaustive-deps
   // Follow the open file in the tree (VS Code's auto-reveal): expand its folders and scroll to it.
   useEffect(() => {
     if (!source && showFileContent && selectedPath) void useWorkspaceStore.getState().scrollToFile(selectedPath)
@@ -174,7 +180,7 @@ function FileWorkspacePaneBody({
               {/* A tree hidden behind the open file (narrow pane) must not add its upload/new/refresh icons to the file's header. */}
               <WorkspacePanelHeaderBoundary active={!(gitEnabled && changesOpen && showRail) && !(rightOpen && !split)}>
                 {editorWorkspace && <OpenFolderInEditors workspacePath={editorWorkspace} />}
-                {source ? <ReadOnlyFileTree source={source} title={title || 'Files'} headerAction={split ? undefined : headerAction} header={treeHeader} emptyState={emptyState} /> : <Workspace
+                {source ? <ReadOnlyFileTree source={source} title={title || 'Files'} headerAction={split ? undefined : headerAction} header={treeHeader} emptyState={emptyState} /> : <div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><Workspace
                   scopedWorkspacePath={workspacePath}
                   rootName={rootName}
                   hiddenRootFolders={hiddenRootFolders}
@@ -185,7 +191,7 @@ function FileWorkspacePaneBody({
                   hideManagedEntriesByDefault={hideManagedEntriesByDefault}
                   title={title}
                   headerAction={split ? undefined : headerAction}
-                />}
+                /></div>{treeFooter && <div className="max-h-[45%] shrink-0 overflow-y-auto">{treeFooter}</div>}</div>}
               </WorkspacePanelHeaderBoundary>
             </div>
           </div>

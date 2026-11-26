@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import api from '../../services/api'
 import { CrewWorkflowRuns, type RunsView } from './CrewWorkflowRuns'
-import { CrewFileView } from './CrewFileView'
+import { requestOpenProjectFile } from '../../utils/projectFileLinks'
 import { CrewWorkflowSteps } from './CrewWorkflowSteps'
 import { CrewWorkflowTasks, runTaskName, taskFileName } from './CrewWorkflowTasks'
 import { CrewWorkflowFiles } from './CrewWorkflowFiles'
@@ -45,28 +45,11 @@ export const workflowTaskDescriptions = (inputs: CrewExecutable['inputs']): Reco
   return Object.fromEntries(Object.entries(written).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].trim() !== '').map(([task, text]) => [task, text.trim()]))
 }
 
-const FILE_ROLE: Record<string, string> = {
-  'main.py': 'It is the main file: it starts the workflow and picks which task to run.',
-  'script.json': 'It holds the workflow\'s name, description, inputs and saved settings.',
-}
-
-/**
- * The chat draft for changing one file: the workflow's name and ID, the file and its path, the task it belongs to (when
- * it is a task's file), and a request that the agent first asks what to change.
- */
-export function fileRequest(item: CrewExecutable, file: string, tasks: string[]): string {
-  const task = tasks.find(name => taskFileName(name) === file)
-  const about = task ? `It is the file of the task “${task}”.` : FILE_ROLE[file] ?? 'It is one of the workflow\'s files.'
-  return `I want to change a file of this workflow: “${item.manifest.label}” (workflow ID: ${item.id}). File: ${file} (workspace_path: ${item.workspace_path}, file: ${file}). ${about} Read the file first. Then ask me what I want to change in it and why, and wait for my answer before editing anything.\n\nI want to change: `
-}
-
 /** The Crew keeps its chat. Only the selected definition/run changes in this pane. */
 export function CrewExecutableEditor({
   item,
   chatTabId,
   section,
-  file,
-  onFile,
   runs,
   onRuns,
   onBack,
@@ -74,10 +57,8 @@ export function CrewExecutableEditor({
 }: {
   item: CrewExecutable
   chatTabId: string
-  /** The page owns the Tasks | Runs switch (StepsRunsSwitch) and which file is open, so its back arrow can close the file first. */
+  /** The page owns the Tasks | Runs switch (StepsRunsSwitch). */
   section: StepsRunsSection
-  file: string | null
-  onFile: (file: string | null) => void
   runs: RunsView
   onRuns: (view: RunsView) => void
   /** A run was started: the page moves to its Runs. */
@@ -122,6 +103,8 @@ export function CrewExecutableEditor({
     watch()
     void workspace.refresh()
   }
+  // A workflow's file opens in the project's Files viewer, the same one as every other file (#4151).
+  const openFile = (file: string) => requestOpenProjectFile({ path: `${item.workspace_path}/code/${file}` }, true)
   async function ask(task: string) {
     setError('')
     try {
@@ -140,26 +123,24 @@ export function CrewExecutableEditor({
           {error || workspace.error}
         </p>
       )}
-      {!file && (starting || runningRun || shownRun) && <CrewRunBanner state={runningRun ? 'running' : starting ? 'starting' : 'ended'} run={shownRun} task={shownRun ? runTaskName(taskNames, shownRun.metadata) : undefined} steps={latestSteps} onDismiss={runningRun ? undefined : dismiss} />}
+      {(starting || runningRun || shownRun) && <CrewRunBanner state={runningRun ? 'running' : starting ? 'starting' : 'ended'} run={shownRun} task={shownRun ? runTaskName(taskNames, shownRun.metadata) : undefined} steps={latestSteps} onDismiss={runningRun ? undefined : dismiss} />}
       <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading…</p>}>
-        {file ? (
-          <CrewFileView key={file} workspacePath={item.workspace_path} file={file} onBack={() => onFile(null)} onAsk={() => ask(fileRequest(item, file, taskNames))} />
-        ) : section === 'steps' ? (
+        {section === 'steps' ? (
           (
             <div className="space-y-4">
               {taskNames.length > 0 && uses && <PageCard title={item.manifest.label} hint={uses.place} testId="crew-workflow-uses-card"><CrewWorkflowUsesBlock uses={uses} onAsk={ask} /></PageCard>}
               {taskNames.length > 0
-                ? <CrewWorkflowTasks tasks={taskNames} descriptions={taskDescriptions} workspacePath={item.workspace_path} files={item.files} onOpenFile={onFile} runActive={!!runningRun} runningTask={runningTask} latestSteps={latestSteps}
+                ? <CrewWorkflowTasks tasks={taskNames} descriptions={taskDescriptions} workspacePath={item.workspace_path} files={item.files} onOpenFile={openFile} runActive={!!runningRun} runningTask={runningTask} latestSteps={latestSteps}
                   onAskTask={task => ask(`Change the task “${task}” in this workflow. I want: `)}
                   onRunTask={runTask}
                   onDeleteTask={task => ask(`Delete the task “${task}” from this workflow. Remove it from the task input and its saved setting, delete its file (${taskFileName(task)}), and take its branch out of main.py. Tell me what you will remove and wait for my OK before deleting anything.`)} />
-                : <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps} latestEvidence={latestRun?.metadata?.python_evidence ?? []} uses={uses} onCode={() => onFile('main.py')} onAsk={ask} />}
+                : <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps} latestEvidence={latestRun?.metadata?.python_evidence ?? []} uses={uses} onCode={() => openFile('main.py')} onAsk={ask} />}
             </div>
           )
         ) : section === 'starts' ? (
           <CrewWorkflowStarts workspacePath={item.workspace_path} workflowName={item.manifest.label} onAsk={ask} onOpenRun={folder => onOpenRun?.(folder)} />
         ) : section === 'files' ? (
-          <CrewWorkflowFiles workspacePath={item.workspace_path} tasks={taskNames} descriptions={taskDescriptions} onOpenFile={onFile} />
+          <CrewWorkflowFiles workspacePath={item.workspace_path} tasks={taskNames} descriptions={taskDescriptions} onOpenFile={openFile} />
         ) : (
           <CrewWorkflowRuns workflowId={item.id} workspacePath={item.workspace_path} script tasks={taskNames} view={runs} onView={onRuns} folders={folders} loading={workspace.loading || !workspace.state} onRefresh={workspace.refresh} onAsk={ask} />
         )}

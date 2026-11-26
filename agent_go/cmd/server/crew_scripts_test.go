@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -192,6 +193,38 @@ sys.exit(1)
 	}
 	if saved, _, err := readFileFromWorkspace(t.Context(), script.Root+"/code/main.py"); err != nil || saved != "print('owner update')\n" {
 		t.Fatal("checker errors prevented source save", err)
+	}
+	// #4151: a save from the project's Files viewer takes the same Builder-only path, and script.json is still checked.
+	filesEndpoint := httptest.NewServer(AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !crewScriptFilesProxyWrite(w, r) {
+			http.Error(w, "not a workflow source save", http.StatusTeapot)
+		}
+	})))
+	defer filesEndpoint.Close()
+	filesSave := func(user, file, content string) int {
+		t.Helper()
+		token, _ := GenerateJWT(user, user, "")
+		body, _ := json.Marshal(map[string]string{"content": content})
+		req, _ := http.NewRequest(http.MethodPut, filesEndpoint.URL+"/api/wp/api/documents/"+url.PathEscape(script.Root+"/code/"+file), bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		response, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		return response.StatusCode
+	}
+	if code := filesSave("runner", "main.py", "print('forged')"); code != 403 {
+		t.Fatalf("Run-person Files save HTTP%d", code)
+	}
+	if code := filesSave("owner", "script.json", "{not json"); code != 400 {
+		t.Fatalf("Files save skipped the script.json check: HTTP%d", code)
+	}
+	if code := filesSave("owner", "main.py", "print('from files')\n"); code != 200 {
+		t.Fatalf("Builder Files save HTTP%d", code)
+	}
+	if saved, _, err := readFileFromWorkspace(t.Context(), script.Root+"/code/main.py"); err != nil || saved != "print('from files')\n" {
+		t.Fatal("Files save did not reach the workflow's code", err)
 	}
 	// A planted source link must not give inspection a read into another
 	// Crew. The source resolver must refuse or omit it, and checker includes

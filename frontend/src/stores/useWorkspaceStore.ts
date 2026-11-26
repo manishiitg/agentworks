@@ -32,7 +32,8 @@ interface WorkspaceState {
   openTabs: {name: string, path: string}[]
   closeTab: (path: string) => void
   /** Drop tabs (and the open file) that belong to another workspace. */
-  pruneOpenTabs: (workspacePath: string) => void
+  /** Closes tabs outside workspacePath; alsoKeep names other roots this Files view shows (a Crew's Workflow/ code). */
+  pruneOpenTabs: (workspacePath: string, alsoKeep?: string[]) => void
   fileContent: string
   setFileContent: (content: string) => void
   loadingFileContent: boolean
@@ -320,9 +321,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         return { selectedFile: file, openTabs: [...state.openTabs, file].slice(-MAX_OPEN_TABS) }
       }),
       closeTab: (path) => set(state => ({ openTabs: state.openTabs.filter(tab => tab.path !== path) })),
-      pruneOpenTabs: (workspacePath) => set(state => {
-        const root = workspacePath.replace(/^\/+|\/+$/g, '')
-        const inside = (path: string) => { const clean = path.replace(/^\/+/, ''); return clean === root || clean.startsWith(`${root}/`) }
+      pruneOpenTabs: (workspacePath, alsoKeep = []) => set(state => {
+        const roots = [workspacePath, ...alsoKeep].map(root => root.replace(/^\/+|\/+$/g, '')).filter(Boolean)
+        const inside = (path: string) => { const clean = path.replace(/^\/+/, ''); return roots.some(root => clean === root || clean.startsWith(`${root}/`)) }
         const openTabs = state.openTabs.filter(tab => inside(tab.path))
         const keepsFile = !state.selectedFile || inside(state.selectedFile.path)
         if (openTabs.length === state.openTabs.length && keepsFile) return {}

@@ -29,7 +29,6 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const toggleExpanded = (id: string) => setExpanded(current => { const next = new Set(current); if (!next.delete(id)) next.add(id); return next })
   const [section, setSection] = useState<StepsRunsSection>('steps')
-  const [file, setFile] = useState<string | null>(null)
   const [runs, setRuns] = useState<RunsView>(noRunsView)
   const [items, setItems] = useState<CrewExecutable[]>([])
   const [error, setError] = useState('')
@@ -43,7 +42,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
   }, [projectId])
   useEffect(() => {
     const controller = new AbortController()
-    setItems([]); setSelectedId(null); setSection('steps'); setFile(null); setRuns(noRunsView); setLoaded(false); setError('')
+    setItems([]); setSelectedId(null); setSection('steps'); setRuns(noRunsView); setLoaded(false); setError('')
     void refresh(controller.signal).catch(e => { if (!controller.signal.aborted) setError(failureMessage(e, 'Could not load. Try again.')) })
     return () => controller.abort()
   }, [refresh])
@@ -51,7 +50,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
     if (!loaded || target?.crewId !== projectId) return
     const item = items.find(entry => entry.id === target.executableId && (!target.workspacePath || entry.workspace_path === target.workspacePath))
     if (item) {
-      setSelectedId(item.id); setSection(target.section ?? 'runs'); setFile(null); setRuns(target.runFolder ? { run: target.runFolder, costs: false, detail: null } : noRunsView)
+      setSelectedId(item.id); setSection(target.section ?? 'runs'); setRuns(target.runFolder ? { run: target.runFolder, costs: false, detail: null } : noRunsView)
     } else setError(target.runFolder ? 'Run view unavailable.' : 'This workflow is not here any more.')
     useWorkflowRunNavigation.setState({ target: null })
   }, [target, loaded, items, projectId])
@@ -70,7 +69,7 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
       await api.delete('/api/crew-executables', { params: { crew_id: projectId, id: workflow.id } })
     } catch (e) { throw new Error(failureMessage(e, 'Could not delete the workflow. Try again.')) }
     // The Crew has no workflow now: leave the deleted one's page and show the empty state.
-    setSelectedId(null); setSection('steps'); setFile(null); setRuns(noRunsView)
+    setSelectedId(null); setSection('steps'); setRuns(noRunsView)
     await refresh(new AbortController().signal).catch(() => setItems([]))
   }
   const item = items.find(entry => entry.id === selectedId) ?? null
@@ -93,18 +92,18 @@ export function CrewExecutablesPanel({ projectId, chatTabId, onBack }: { project
     <Plus className="h-3.5 w-3.5" aria-hidden="true" />New workflow
   </button>
   if (item) {
-    // Back goes one step at a time: out of an open file, out of a run, then out of the workflow to the project menu,
+    // Back goes one step at a time: out of a run, then out of the workflow to the project menu,
     // which lists the workflows itself (owner, 19 Nov); the list page is only the way back when there is no menu.
     const inRun = section === 'runs' && (runs.run !== null || runs.costs)
-    const back = file ? () => setFile(null) : inRun ? () => setRuns(runs.detail ? { ...runs, detail: null } : noRunsView) : () => { setSelectedId(null); setSection('steps'); onBack?.() }
+    const back = inRun ? () => setRuns(runs.detail ? { ...runs, detail: null } : noRunsView) : () => { setSelectedId(null); setSection('steps'); onBack?.() }
     return <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <button type="button" aria-label="Back" title="Back" onClick={back} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back</button>
         {newWorkflow}
       </div>
       <CrewWorkflowHeader key={item.id} name={item.manifest.label} description={item.manifest.description} onEdit={() => void ask(editRequest(item))} onDelete={() => deleteWorkflow(item)} />
-      <StepsRunsSwitch section={section} onChange={next => { setFile(null); setRuns(noRunsView); setSection(next) }} />
-      <CrewExecutableEditor key={`${item.id}:${runs.run ?? ''}`} item={item} chatTabId={chatTabId} section={section} file={file} onFile={setFile} runs={runs} onRuns={setRuns} onBack={back} onOpenRun={folder => { setFile(null); setSection('runs'); setRuns({ run: folder, costs: false, detail: null }) }} />
+      <StepsRunsSwitch section={section} onChange={next => { setRuns(noRunsView); setSection(next) }} />
+      <CrewExecutableEditor key={`${item.id}:${runs.run ?? ''}`} item={item} chatTabId={chatTabId} section={section} runs={runs} onRuns={setRuns} onBack={back} onOpenRun={folder => { setSection('runs'); setRuns({ run: folder, costs: false, detail: null }) }} />
     </div>
   }
   const lead = <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted"><FileCode2 className="h-4 w-4" aria-hidden="true" /></span>

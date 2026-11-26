@@ -13,7 +13,7 @@ const sizeLabel = (file: CrewCodeFile) => `${file.lines} line${file.lines === 1 
 
 /**
  * The Files tab: everything in the workflow's code folder, in three groups. The main files, then one file per task
- * (named after the task), then any other file. Pressing Open shows the file on this page.
+ * (named after the task), then any other file. Open shows the file in the project's Files viewer (#4151).
  */
 export function CrewWorkflowFiles({ workspacePath, tasks, descriptions = {}, onOpenFile }: {
   workspacePath: string
