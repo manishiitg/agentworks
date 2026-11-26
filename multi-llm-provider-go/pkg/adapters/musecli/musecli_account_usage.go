@@ -63,10 +63,13 @@ func parseMuseAccountUsage(raw []byte, result llmtypes.AccountUsage) (llmtypes.A
 	if response.Allowance.AsOfMs > 0 {
 		result.CheckedAt = time.UnixMilli(response.Allowance.AsOfMs).UTC()
 	}
+	// The chat's plan line knows "5-hour limit" and "Weekly limit". `muse usage`
+	// calls them "Window" and "Weekly" and gives no window length; Muse's serve
+	// protocol reports 300 minutes, so the short window is the 5-hour one.
 	for _, w := range []struct {
 		label string
 		value *window
-	}{{"Window", response.Allowance.Window}, {"Weekly", response.Allowance.Weekly}} {
+	}{{"5-hour limit", response.Allowance.Window}, {"Weekly limit", response.Allowance.Weekly}} {
 		if w.value == nil {
 			continue
 		}
