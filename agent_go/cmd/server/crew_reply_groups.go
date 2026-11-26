@@ -20,13 +20,88 @@ import (
 const replyGroupMaxPRLookups = 5
 const replyGroupMaxFailingChecks = 10
 
+const (
+	replyGroupCacheTTL        = 30 * time.Second
+	replyGroupCacheMaxEntries = 128
+)
+
+var replyGroupCache = struct {
+	sync.Mutex
+	entries map[string]replyGroupCacheEntry
+}{entries: make(map[string]replyGroupCacheEntry)}
+
+type replyGroupCacheEntry struct {
+	groups  []filesnapshots.Group
+	expires time.Time
+}
+
+func cloneFileSnapshotGroups(groups []filesnapshots.Group) []filesnapshots.Group {
+	if groups == nil {
+		return nil
+	}
+	out := make([]filesnapshots.Group, len(groups))
+	for i, g := range groups {
+		if g.Files != nil {
+			g.Files = append(make([]filesnapshots.Change, 0, len(g.Files)), g.Files...)
+		}
+		if g.Uncommitted != nil {
+			g.Uncommitted = append(make([]filesnapshots.Change, 0, len(g.Uncommitted)), g.Uncommitted...)
+		}
+		if g.PR != nil {
+			prCopy := *g.PR
+			if prCopy.FailingChecks != nil {
+				prCopy.FailingChecks = append([]string(nil), prCopy.FailingChecks...)
+			}
+			g.PR = &prCopy
+		}
+		out[i] = g
+	}
+	return out
+}
+
+func cachedReplyGroupChanges(ctx context.Context, roots crewroot.Roots, comparison filesnapshots.Comparison, allow func(string) bool) []filesnapshots.Group {
+	// Only cache when the comparison has a durable record ID and no custom per-path filter.
+	if comparison.Record.ID == "" || allow != nil {
+		return filesnapshots.GroupChanges(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
+	}
+	key := roots.Files + "\x00" + comparison.Record.ID + "\x00" + strconv.Itoa(len(comparison.Changes))
+	now := time.Now()
+	replyGroupCache.Lock()
+	if entry, ok := replyGroupCache.entries[key]; ok && now.Before(entry.expires) {
+		replyGroupCache.Unlock()
+		return cloneFileSnapshotGroups(entry.groups)
+	}
+	replyGroupCache.Unlock()
+
+	groups := filesnapshots.GroupChanges(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
+	storeNow := time.Now()
+	replyGroupCache.Lock()
+	for k, cached := range replyGroupCache.entries {
+		if storeNow.After(cached.expires) {
+			delete(replyGroupCache.entries, k)
+		}
+	}
+	if len(replyGroupCache.entries) >= replyGroupCacheMaxEntries {
+		for k := range replyGroupCache.entries {
+			delete(replyGroupCache.entries, k)
+			break
+		}
+	}
+	replyGroupCache.entries[key] = replyGroupCacheEntry{
+		groups:  cloneFileSnapshotGroups(groups),
+		expires: storeNow.Add(replyGroupCacheTTL),
+	}
+	replyGroupCache.Unlock()
+	return groups
+}
+
 // replyFileGroups groups a reply's changes by Git checkout and, with
 // pullRequests, adds pull request status from the Crew owner's connected
 // GitHub account and each checkout's next Git step. The server's own GitHub
 // login is never used. chatStarts (a chat summary only) adds each checkout's
 // uncommitted files and the commits made since the chat's starting commit.
 func replyFileGroups(ctx context.Context, roots crewroot.Roots, prefix string, comparison filesnapshots.Comparison, allow func(string) bool, pullRequests bool, chatStarts map[string]string) []filesnapshots.Group {
-	groups := filesnapshots.GroupChanges(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
+	groups := cachedReplyGroupChanges(ctx, roots, comparison, allow)
 	if pullRequests {
 		token, connected := "", false
 		if rec, _ := projectGitHubConnection(ctx, roots.Owner, roots.Virtual); rec != nil {

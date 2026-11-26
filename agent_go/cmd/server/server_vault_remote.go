@@ -130,6 +130,99 @@ func fetchServerVaultTools(ctx context.Context, owner string, c desktopConnectio
 	return rows, nil
 }
 
+type serverVaultAllowStaleKey struct{}
+
+// withServerVaultAllowStale lets UI polls (such as GET /tool-changes) return
+// cached remote Vault apps immediately while refreshing stale entries in the
+// background instead of blocking up to the 10 s remote timeout (#4295).
+func withServerVaultAllowStale(ctx context.Context) context.Context {
+	return context.WithValue(ctx, serverVaultAllowStaleKey{}, true)
+}
+
+func serverVaultAllowsStale(ctx context.Context) bool {
+	allowed, _ := ctx.Value(serverVaultAllowStaleKey{}).(bool)
+	return allowed
+}
+
+const (
+	serverVaultToolsFreshTTL = 60 * time.Second
+	serverVaultToolsStaleTTL = 10 * time.Minute
+)
+
+type serverVaultToolsCacheEntry struct {
+	rows       []vaultRuntimeServer
+	expires    time.Time
+	staleUntil time.Time
+}
+
+var serverVaultToolsCache = struct {
+	sync.Mutex
+	entries    map[string]serverVaultToolsCacheEntry
+	refreshing map[string]bool
+}{
+	entries:    map[string]serverVaultToolsCacheEntry{},
+	refreshing: map[string]bool{},
+}
+
+func serverVaultToolsCacheKey(lender, connID string) string {
+	return lender + "\x00" + connID
+}
+
+func storeServerVaultToolsCache(lender, connID string, rows []vaultRuntimeServer) {
+	now := time.Now()
+	copied := append([]vaultRuntimeServer(nil), rows...)
+	serverVaultToolsCache.Lock()
+	serverVaultToolsCache.entries[serverVaultToolsCacheKey(lender, connID)] = serverVaultToolsCacheEntry{
+		rows:       copied,
+		expires:    now.Add(serverVaultToolsFreshTTL),
+		staleUntil: now.Add(serverVaultToolsStaleTTL),
+	}
+	serverVaultToolsCache.Unlock()
+}
+
+func cachedServerVaultTools(ctx context.Context, lender string, conn desktopConnection) ([]vaultRuntimeServer, error) {
+	key := serverVaultToolsCacheKey(lender, conn.ID)
+	now := time.Now()
+	serverVaultToolsCache.Lock()
+	entry, found := serverVaultToolsCache.entries[key]
+	if found && now.Before(entry.expires) {
+		serverVaultToolsCache.Unlock()
+		return append([]vaultRuntimeServer(nil), entry.rows...), nil
+	}
+	if found && now.Before(entry.staleUntil) {
+		shouldRefresh := !serverVaultToolsCache.refreshing[key]
+		if shouldRefresh {
+			serverVaultToolsCache.refreshing[key] = true
+		}
+		serverVaultToolsCache.Unlock()
+		if shouldRefresh {
+			go func() {
+				defer func() {
+					serverVaultToolsCache.Lock()
+					delete(serverVaultToolsCache.refreshing, key)
+					serverVaultToolsCache.Unlock()
+				}()
+				bgCtx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+				defer cancel()
+				if rows, err := fetchServerVaultTools(bgCtx, lender, conn); err == nil {
+					storeServerVaultToolsCache(lender, conn.ID, rows)
+				}
+			}()
+		}
+		return append([]vaultRuntimeServer(nil), entry.rows...), nil
+	}
+	serverVaultToolsCache.Unlock()
+
+	// Cold miss on a UI poll: cap inline wait so a stalled remote server never blocks for 10 s.
+	fetchCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	rows, err := fetchServerVaultTools(fetchCtx, lender, conn)
+	if err == nil {
+		storeServerVaultToolsCache(lender, conn.ID, rows)
+	}
+	return rows, err
+}
+
 // withServerVaultInventory adds, for a turn of a Crew on the Mac linked to its company's server, the lender's Vault
 // apps there (cached on the context for the turn). Offline or signed out, they are left out.
 func (api *StreamingAPI) withServerVaultInventory(ctx context.Context, lender, sessionID string) (context.Context, []vaultRuntimeServer) {
@@ -150,17 +243,24 @@ func (api *StreamingAPI) withServerVaultInventory(ctx context.Context, lender, s
 	}
 	endSpeedSpan := events.TurnSpeedSpan(sessionID, "vault_list")
 	var rows []vaultRuntimeServer
-	early := takeServerVaultPrefetch(serverVaultPrefetchKey(lender, sessionID, p.conn.ID))
-	log.Printf("[VAULT_REMOTE] user=%s conn=%s tool=list early=%t session=%s", lender, serverVaultConnShort(p.conn.ID), early != nil, sessionID)
-	if early != nil {
-		select {
-		case <-early.done:
-			rows, err = early.rows, early.err
-		case <-ctx.Done():
-			return ctx, nil
-		}
+	if serverVaultAllowsStale(ctx) {
+		rows, err = cachedServerVaultTools(ctx, lender, p.conn)
 	} else {
-		rows, err = fetchServerVaultTools(ctx, lender, p.conn)
+		early := takeServerVaultPrefetch(serverVaultPrefetchKey(lender, sessionID, p.conn.ID))
+		log.Printf("[VAULT_REMOTE] user=%s conn=%s tool=list early=%t session=%s", lender, serverVaultConnShort(p.conn.ID), early != nil, sessionID)
+		if early != nil {
+			select {
+			case <-early.done:
+				rows, err = early.rows, early.err
+			case <-ctx.Done():
+				return ctx, nil
+			}
+		} else {
+			rows, err = fetchServerVaultTools(ctx, lender, p.conn)
+		}
+		if err == nil {
+			storeServerVaultToolsCache(lender, p.conn.ID, rows)
+		}
 	}
 	endSpeedSpan()
 	if err != nil {
