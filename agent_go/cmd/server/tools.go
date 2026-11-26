@@ -516,13 +516,14 @@ func (api *StreamingAPI) loadDiscoveryFailedServers() {
 		return
 	}
 
-	api.discoveryMux.Lock()
-	api.discoveryFailedServers = payload.Servers
-	api.discoveryMux.Unlock()
+	// Log before handing the map over: once stored, sign-ins may change it.
 	api.logger.Info(fmt.Sprintf("Loaded %d previously failed servers from disk", len(payload.Servers)))
 	for name, reason := range payload.Servers {
 		api.logger.Debug(fmt.Sprintf("  Previously failed: %s — %s", name, reason))
 	}
+	api.discoveryMux.Lock()
+	api.discoveryFailedServers = payload.Servers
+	api.discoveryMux.Unlock()
 }
 
 // deleteDiscoveryFailedServersFile removes the persisted file (used on config reload).

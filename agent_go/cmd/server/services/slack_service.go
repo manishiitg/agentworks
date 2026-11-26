@@ -234,6 +234,9 @@ type SlackService struct {
 	// reloadMu lets one reload or child sync at a time stop and start the
 	// listener and swap the client, so two saves never interleave.
 	reloadMu sync.Mutex
+	// stateMu guards config, client and enabled: reloads swap them while
+	// sends, listeners and settings reads use them.
+	stateMu sync.RWMutex
 
 	// Bot connector handlers (set by BotConversationManager)
 	messageHandler     BotMessageHandler
@@ -294,12 +297,13 @@ func (s *SlackService) SendNotification(ctx context.Context, uniqueID string, me
 // Slack. Unlike SendNotification, this does not create request metadata or
 // buttons; replies remain normal bot-thread messages.
 func (s *SlackService) SendUserNotification(ctx context.Context, message string, contextMsg string, dest *NotificationDestination) (string, error) {
+	cli := s.apiClient()
 	if target, err := s.serviceForNotification(dest); err != nil {
 		return "", err
 	} else if target != s {
 		return target.SendUserNotification(ctx, message, contextMsg, dest)
 	}
-	if !s.enabled || s.client == nil {
+	if !s.isLive() || cli == nil {
 		return "", fmt.Errorf("slack service is not enabled")
 	}
 
@@ -326,7 +330,7 @@ func (s *SlackService) SendUserNotification(ctx context.Context, message string,
 	postOpts := append([]slack.MsgOption{slack.MsgOptionBlocks(blocks...)}, slackThreadOption(channelID, threadTS)...)
 
 	logBotOutboundMessage("slack", ThreadID{Platform: "slack", ChannelID: channelID, ThreadTS: threadTS}, "user_notification", body, 1, len(blocks))
-	_, timestamp, err := s.client.PostMessageContext(ctx, channelID, postOpts...)
+	_, timestamp, err := cli.PostMessageContext(ctx, channelID, postOpts...)
 	if err != nil {
 		return "", fmt.Errorf("failed to post Slack user notification: %w", err)
 	}
@@ -387,10 +391,53 @@ func (s *SlackService) loadConfig(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.config = cfg
-	if cfg != nil {
-	}
+	s.setConfig(cfg)
 	return nil
+}
+
+// slackConfig returns the current registry. A reload replaces it whole and
+// never edits it in place, so callers may read the returned value freely.
+func (s *SlackService) slackConfig() *SlackConfig {
+	if s == nil {
+		return nil
+	}
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.config
+}
+
+func (s *SlackService) setConfig(cfg *SlackConfig) {
+	s.stateMu.Lock()
+	s.config = cfg
+	s.stateMu.Unlock()
+}
+
+// apiClient returns the current API client, or nil when this connection is
+// off. Take it once per call: a reload may swap or clear it at any time.
+func (s *SlackService) apiClient() *slack.Client {
+	if s == nil {
+		return nil
+	}
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.client
+}
+
+// isLive reports whether this connection has a client and is switched on.
+func (s *SlackService) isLive() bool {
+	if s == nil {
+		return false
+	}
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.enabled && s.client != nil
+}
+
+func (s *SlackService) setClient(client *slack.Client, enabled bool) {
+	s.stateMu.Lock()
+	s.client = client
+	s.enabled = enabled
+	s.stateMu.Unlock()
 }
 
 // effectiveConnection resolves the credentials this instance runs with: a
@@ -398,17 +445,18 @@ func (s *SlackService) loadConfig(ctx context.Context) error {
 // connection (falling back to legacy top-level fields when no registry
 // exists yet).
 func (s *SlackService) effectiveConnection() (SlackConnection, bool) {
-	if s == nil || s.config == nil {
+	curCfg := s.slackConfig()
+	if s == nil || curCfg == nil {
 		return SlackConnection{}, false
 	}
 	if s.isChildService() {
-		conn, ok := findSlackConnection(s.config, s.connectionID)
+		conn, ok := findSlackConnection(curCfg, s.connectionID)
 		if !ok || !conn.complete() {
 			return SlackConnection{}, false
 		}
 		return conn, true
 	}
-	return effectiveSlackConnection(s.config, "")
+	return effectiveSlackConnection(curCfg, "")
 }
 
 // ReloadConfig reloads configuration from disk and (re)starts Socket Mode.
@@ -438,30 +486,28 @@ func (s *SlackService) ReloadConfig(ctx context.Context) error {
 func (s *SlackService) applyEffectiveConnection(ctx context.Context) {
 	conn, ok := s.effectiveConnection()
 	if !ok {
-		s.client = nil
-		s.enabled = false
+		s.setClient(nil, false)
 		s.useSocketMode = false
-		if s.config != nil {
+		if s.slackConfig() != nil {
 			log.Printf("[SLACK] Service disabled: no usable connection (id=%q)", s.connectionID)
 		}
 		return
 	}
 	if !conn.Enabled {
-		s.client = nil
-		s.enabled = false
+		s.setClient(nil, false)
 		s.useSocketMode = false
 		log.Printf("[SLACK] Service disabled: connection %q is switched off", conn.ID)
 		return
 	}
 	// Socket Mode connects the app; destinations belong to channel routes.
-	s.client = slack.New(conn.BotToken)
-	s.enabled = true
+	client := slack.New(conn.BotToken)
+	s.setClient(client, true)
 	s.useSocketMode = true
 
 	// Start Socket Mode connection
 	if err := s.StartSocketMode(ctx); err != nil {
 		log.Printf("[SLACK] Failed to start Socket Mode: %v", err)
-		s.enabled = false
+		s.setClient(client, false)
 		s.useSocketMode = false
 	} else {
 		log.Printf("[SLACK] Service enabled with Socket Mode")
@@ -473,7 +519,7 @@ func (s *SlackService) IsEnabled() bool {
 	if s == nil {
 		return false
 	}
-	if s.enabled && s.client != nil {
+	if s.isLive() {
 		return true
 	}
 	if s.isChildService() {
@@ -482,7 +528,7 @@ func (s *SlackService) IsEnabled() bool {
 	s.childrenMu.RLock()
 	defer s.childrenMu.RUnlock()
 	for _, child := range s.children {
-		if child.enabled && child.client != nil {
+		if child.isLive() {
 			return true
 		}
 	}
@@ -494,6 +540,7 @@ func (s *SlackService) IsEnabled() bool {
 // root serves itself. An unknown, incomplete, or disabled connection is an
 // error — delivery from an unintended identity is worse than no delivery.
 func (s *SlackService) serviceForConnection(connID string) (*SlackService, error) {
+	curCfg := s.slackConfig()
 	if s == nil {
 		return nil, fmt.Errorf("slack service unavailable")
 	}
@@ -504,15 +551,15 @@ func (s *SlackService) serviceForConnection(connID string) (*SlackService, error
 		}
 		return nil, fmt.Errorf("slack connection %q is not served by this instance", id)
 	}
-	if id == "" || (s.config != nil && id == defaultSlackConnectionID(s.config)) {
+	if id == "" || (curCfg != nil && id == defaultSlackConnectionID(curCfg)) {
 		return s, nil
 	}
 	s.childrenMu.RLock()
 	child, ok := s.children[id]
 	s.childrenMu.RUnlock()
 	if !ok {
-		if s.config != nil {
-			if conn, found := findSlackConnection(s.config, id); found && !conn.Enabled {
+		if curCfg != nil {
+			if conn, found := findSlackConnection(curCfg, id); found && !conn.Enabled {
 				return nil, fmt.Errorf("slack connection %q is disabled", id)
 			}
 		}
@@ -544,11 +591,12 @@ func (s *SlackService) serviceForThread(threadID ThreadID) (*SlackService, error
 
 // ListConnections returns the masked registry for settings surfaces.
 func (s *SlackService) ListConnections() []SlackConnection {
-	if s == nil || s.config == nil {
+	curCfg := s.slackConfig()
+	if s == nil || curCfg == nil {
 		return nil
 	}
-	out := make([]SlackConnection, 0, len(s.config.Connections))
-	for _, conn := range s.config.Connections {
+	out := make([]SlackConnection, 0, len(curCfg.Connections))
+	for _, conn := range curCfg.Connections {
 		out = append(out, conn.masked())
 	}
 	return out
@@ -556,10 +604,11 @@ func (s *SlackService) ListConnections() []SlackConnection {
 
 // GetConnection returns one masked registry entry by ID.
 func (s *SlackService) GetConnection(connID string) (SlackConnection, bool) {
+	curCfg := s.slackConfig()
 	if s == nil {
 		return SlackConnection{}, false
 	}
-	conn, ok := findSlackConnection(s.config, connID)
+	conn, ok := findSlackConnection(curCfg, connID)
 	if !ok {
 		return SlackConnection{}, false
 	}
@@ -607,12 +656,13 @@ func (s *SlackService) SendFeedbackNotification(
 	buttonOptions *ButtonOptions,
 	dest *NotificationDestination,
 ) (string, error) {
+	cli := s.apiClient()
 	if target, err := s.serviceForNotification(dest); err != nil {
 		return "", err
 	} else if target != s {
 		return target.SendFeedbackNotification(ctx, uniqueID, message, contextMsg, buttonOptions, dest)
 	}
-	if !s.enabled || s.client == nil {
+	if !s.isLive() || cli == nil {
 		return "", fmt.Errorf("slack service is not enabled")
 	}
 
@@ -638,7 +688,7 @@ func (s *SlackService) SendFeedbackNotification(
 
 	logBotOutboundMessage("slack", ThreadID{Platform: "slack", ChannelID: channelID, ThreadTS: threadTS}, "notification", message, 1, len(blocks))
 
-	postedChannelID, timestamp, err := s.client.PostMessage(channelID, postOpts...)
+	postedChannelID, timestamp, err := cli.PostMessage(channelID, postOpts...)
 	if err != nil {
 		return "", fmt.Errorf("failed to post Slack message: %w", err)
 	}
@@ -903,6 +953,7 @@ func (s *SlackService) GetUniqueIDFromThread(
 	threadTS string,
 	channelID string,
 ) (string, error) {
+	cli := s.apiClient()
 	// First, try to get from the in-memory mapping (thread_ts is the parent message timestamp).
 	slackFSMu.Lock()
 	records, err := getSlackFeedbackMessagesLocked()
@@ -918,13 +969,13 @@ func (s *SlackService) GetUniqueIDFromThread(
 	}
 
 	// If not found locally, try to get from Slack via the conversations.replies API
-	if s.client == nil {
+	if cli == nil {
 		return "", fmt.Errorf("Slack client not initialized")
 	}
 
 	// Get the parent message using conversations.replies
 	// GetConversationReplies returns: (msgs []Message, hasMore bool, nextCursor string, err error)
-	replies, _, _, err := s.client.GetConversationReplies(&slack.GetConversationRepliesParameters{
+	replies, _, _, err := cli.GetConversationReplies(&slack.GetConversationRepliesParameters{
 		ChannelID: channelID,
 		Timestamp: threadTS,
 		Limit:     1,
@@ -968,7 +1019,7 @@ func testAppToken(ctx context.Context, appToken string) error {
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	var result struct {
 		OK    bool   `json:"ok"`
 		Error string `json:"error"`
@@ -1172,10 +1223,11 @@ func mergeSlackConfigForSave(current, incoming *SlackConfig) (*SlackConfig, erro
 
 // DefaultConnectionID reports the registry's default connection ID.
 func (s *SlackService) DefaultConnectionID() string {
+	curCfg := s.slackConfig()
 	if s == nil {
 		return ""
 	}
-	return defaultSlackConnectionID(s.config)
+	return defaultSlackConnectionID(curCfg)
 }
 
 // modifySlackRegistry loads the registry, applies mutate, persists, and
@@ -1445,20 +1497,21 @@ func (s *SlackService) ModifySlackConnection(ctx context.Context, connID string,
 // (users.lookupByEmail, conversations.members). A target's owner adds a
 // channel to the platform bot only if they are in it (PLAT-668).
 func (s *SlackService) SlackUserInChannel(ctx context.Context, email, channelID string) (bool, error) {
-	if s == nil || s.client == nil {
+	cli := s.apiClient()
+	if s == nil || cli == nil {
 		return false, fmt.Errorf("the Slack bot is not connected")
 	}
 	email = strings.TrimSpace(email)
 	if email == "" {
 		return false, fmt.Errorf("your account has no email to look up in Slack")
 	}
-	user, err := s.client.GetUserByEmailContext(ctx, email)
+	user, err := cli.GetUserByEmailContext(ctx, email)
 	if err != nil || user == nil {
 		return false, fmt.Errorf("no Slack user has the email %s (users.lookupByEmail: %v)", email, err)
 	}
 	cursor := ""
 	for page := 0; page < 50; page++ {
-		members, next, err := s.client.GetUsersInConversationContext(ctx, &slack.GetUsersInConversationParameters{ChannelID: channelID, Cursor: cursor, Limit: 1000})
+		members, next, err := cli.GetUsersInConversationContext(ctx, &slack.GetUsersInConversationParameters{ChannelID: channelID, Cursor: cursor, Limit: 1000})
 		if err != nil {
 			return false, fmt.Errorf("conversations.members on %s: %w (invite the bot to the channel first)", channelID, err)
 		}
@@ -1486,13 +1539,14 @@ type SlackChannelInfo struct {
 // member of (users.conversations with the bot token, which never leaves
 // the server).
 func (s *SlackService) BotChannels(ctx context.Context) ([]SlackChannelInfo, error) {
-	if s == nil || s.client == nil {
+	cli := s.apiClient()
+	if s == nil || cli == nil {
 		return nil, fmt.Errorf("the Slack bot is not connected")
 	}
 	var out []SlackChannelInfo
 	cursor := ""
 	for page := 0; page < 20; page++ {
-		channels, next, err := s.client.GetConversationsForUserContext(ctx, &slack.GetConversationsForUserParameters{Cursor: cursor, Types: []string{"public_channel", "private_channel"}, Limit: 200, ExcludeArchived: true})
+		channels, next, err := cli.GetConversationsForUserContext(ctx, &slack.GetConversationsForUserParameters{Cursor: cursor, Types: []string{"public_channel", "private_channel"}, Limit: 200, ExcludeArchived: true})
 		if err != nil {
 			return out, fmt.Errorf("users.conversations: %w (the app needs channels:read and groups:read)", err)
 		}
@@ -1515,10 +1569,11 @@ var ErrSlackChannelCheck = errors.New("slack channel check failed")
 // can be added: it exists, the bot is in it, and (when email is set) the
 // person adding it is too. It returns the channel's name.
 func (s *SlackService) CheckChannelForAdd(ctx context.Context, botName, email, channelID string) (string, error) {
-	if s == nil || s.client == nil {
+	cli := s.apiClient()
+	if s == nil || cli == nil {
 		return "", fmt.Errorf("%w: the Slack bot is not connected", ErrSlackChannelCheck)
 	}
-	info, err := s.client.GetConversationInfoContext(ctx, &slack.GetConversationInfoInput{ChannelID: channelID})
+	info, err := cli.GetConversationInfoContext(ctx, &slack.GetConversationInfoInput{ChannelID: channelID})
 	if err != nil {
 		if strings.Contains(err.Error(), "channel_not_found") {
 			return "", fmt.Errorf("%w: there is no channel %s that @%s can see. Check the ID, or for a private channel invite the bot first: /invite @%s", ErrSlackChannelCheck, channelID, botName, botName)
@@ -1709,13 +1764,14 @@ func (s *SlackService) StopSocketMode() {
 // one live child per enabled, complete, non-default connection. The root
 // serves the default connection itself. Root only.
 func (s *SlackService) reconcileChildren(ctx context.Context) {
+	curCfg := s.slackConfig()
 	if s.isChildService() {
 		return
 	}
 	desired := make(map[string]SlackConnection)
-	if s.config != nil {
-		defaultID := defaultSlackConnectionID(s.config)
-		for _, conn := range s.config.Connections {
+	if curCfg != nil {
+		defaultID := defaultSlackConnectionID(curCfg)
+		for _, conn := range curCfg.Connections {
 			if conn.ID == "" || conn.ID == defaultID || !conn.Enabled || !conn.complete() {
 				continue
 			}
@@ -1758,11 +1814,12 @@ func (s *SlackService) reconcileChildren(ctx context.Context) {
 // their own entry from. Copies (not the shared pointer) so a child's own
 // reload can never alias or observe a half-written root config.
 func (s *SlackService) childConfigSnapshot() *SlackConfig {
-	if s.config == nil {
+	curCfg := s.slackConfig()
+	if curCfg == nil {
 		return &SlackConfig{}
 	}
-	snapshot := *s.config
-	snapshot.Connections = append([]SlackConnection(nil), s.config.Connections...)
+	snapshot := *curCfg
+	snapshot.Connections = append([]SlackConnection(nil), curCfg.Connections...)
 	return &snapshot
 }
 
@@ -1774,11 +1831,11 @@ func (s *SlackService) syncChildConnection(ctx context.Context, snapshot *SlackC
 	defer s.reloadMu.Unlock()
 	prev, ok := s.effectiveConnection()
 	changed := !ok || prev.BotToken != conn.BotToken || prev.AppToken != conn.AppToken || prev.Enabled != conn.Enabled
-	s.config = snapshot
+	s.setConfig(snapshot)
 	s.messageHandler = messageHandler
 	s.interactionHandler = interactionHandler
 	s.triggerHandler = triggerHandler
-	if !changed && s.client != nil {
+	if !changed && s.apiClient() != nil {
 		return
 	}
 	s.StopSocketMode()
@@ -2118,10 +2175,11 @@ func (s *SlackService) StartListening(ctx context.Context) error {
 // stripping. Best-effort: a failed auth test leaves stripping to the
 // generic mention pattern.
 func (s *SlackService) resolveBotIdentity() {
-	if s.client == nil {
+	cli := s.apiClient()
+	if cli == nil {
 		return
 	}
-	authResp, err := s.client.AuthTest()
+	authResp, err := cli.AuthTest()
 	if err == nil {
 		s.botUserID = authResp.UserID
 		s.botID = authResp.BotID
@@ -2179,10 +2237,11 @@ func (s *SlackService) GetFormatter() MessageFormatter {
 // manager to layer an "hourglass" on top of the initial "eyes" ack when a
 // session runs longer than a short threshold. "already_reacted" is non-fatal.
 func (s *SlackService) AddReaction(ctx context.Context, channelID, messageTS, emoji string) error {
-	if s.client == nil || channelID == "" || messageTS == "" || emoji == "" {
+	cli := s.apiClient()
+	if cli == nil || channelID == "" || messageTS == "" || emoji == "" {
 		return nil
 	}
-	if err := s.client.AddReaction(emoji, slack.ItemRef{Channel: channelID, Timestamp: messageTS}); err != nil {
+	if err := cli.AddReaction(emoji, slack.ItemRef{Channel: channelID, Timestamp: messageTS}); err != nil {
 		if strings.Contains(err.Error(), "already_reacted") {
 			return nil
 		}
@@ -2195,10 +2254,11 @@ func (s *SlackService) AddReaction(ctx context.Context, channelID, messageTS, em
 // a session completes, so the ack reactions clear once the bot has actually
 // replied. Missing-reaction errors are treated as non-fatal.
 func (s *SlackService) RemoveReaction(ctx context.Context, channelID, messageTS, emoji string) error {
-	if s.client == nil || channelID == "" || messageTS == "" || emoji == "" {
+	cli := s.apiClient()
+	if cli == nil || channelID == "" || messageTS == "" || emoji == "" {
 		return nil
 	}
-	if err := s.client.RemoveReaction(emoji, slack.ItemRef{Channel: channelID, Timestamp: messageTS}); err != nil {
+	if err := cli.RemoveReaction(emoji, slack.ItemRef{Channel: channelID, Timestamp: messageTS}); err != nil {
 		// "no_reaction" means the reaction was already gone — ignore it.
 		if strings.Contains(err.Error(), "no_reaction") {
 			return nil
@@ -2248,12 +2308,13 @@ func (s *SlackService) SendThreadMessage(ctx context.Context, threadID ThreadID,
 }
 
 func (s *SlackService) sendPlainThreadMessage(ctx context.Context, threadID ThreadID, message string) (string, error) {
+	cli := s.apiClient()
 	if target, err := s.serviceForThread(threadID); err != nil {
 		return "", err
 	} else if target != s {
 		return target.sendPlainThreadMessage(ctx, threadID, message)
 	}
-	if s.client == nil {
+	if cli == nil {
 		return "", fmt.Errorf("slack client not initialized")
 	}
 
@@ -2271,7 +2332,7 @@ func (s *SlackService) sendPlainThreadMessage(ctx context.Context, threadID Thre
 			slack.NewTextBlockObject(slack.MarkdownType, part, false, false),
 			nil, nil,
 		)
-		_, ts, err := s.client.PostMessageContext(ctx,
+		_, ts, err := cli.PostMessageContext(ctx,
 			threadID.ChannelID,
 			append([]slack.MsgOption{
 				slack.MsgOptionText(part, false),
@@ -2289,12 +2350,13 @@ func (s *SlackService) sendPlainThreadMessage(ctx context.Context, threadID Thre
 
 // SendThreadMessageWithBlocks sends a message with interactive blocks to a Slack thread
 func (s *SlackService) SendThreadMessageWithBlocks(ctx context.Context, threadID ThreadID, message string, blocks []MessageBlock) (string, error) {
+	cli := s.apiClient()
 	if target, err := s.serviceForThread(threadID); err != nil {
 		return "", err
 	} else if target != s {
 		return target.SendThreadMessageWithBlocks(ctx, threadID, message, blocks)
 	}
-	if s.client == nil {
+	if cli == nil {
 		return "", fmt.Errorf("slack client not initialized")
 	}
 
@@ -2343,7 +2405,7 @@ func (s *SlackService) SendThreadMessageWithBlocks(ctx context.Context, threadID
 
 	logBotOutboundMessage("slack", threadID, "blocks", formatted, 1, len(blocks))
 
-	_, ts, err := s.client.PostMessageContext(ctx,
+	_, ts, err := cli.PostMessageContext(ctx,
 		threadID.ChannelID,
 		append([]slack.MsgOption{slack.MsgOptionBlocks(slackBlocks...)}, slackThreadOption(threadID.ChannelID, threadID.ThreadTS)...)...,
 	)
@@ -2364,12 +2426,13 @@ func (s *SlackService) UpdateMessage(ctx context.Context, threadID ThreadID, mes
 }
 
 func (s *SlackService) updatePlainMessage(ctx context.Context, threadID ThreadID, messageID string, newText string) error {
+	cli := s.apiClient()
 	if target, err := s.serviceForThread(threadID); err != nil {
 		return err
 	} else if target != s {
 		return target.updatePlainMessage(ctx, threadID, messageID, newText)
 	}
-	if s.client == nil {
+	if cli == nil {
 		return fmt.Errorf("slack client not initialized")
 	}
 
@@ -2384,7 +2447,7 @@ func (s *SlackService) updatePlainMessage(ctx context.Context, threadID ThreadID
 		)
 		opts = append(opts, slack.MsgOptionBlocks(sectionBlock))
 	}
-	_, _, _, err := s.client.UpdateMessageContext(ctx, threadID.ChannelID, messageID, opts...)
+	_, _, _, err := cli.UpdateMessageContext(ctx, threadID.ChannelID, messageID, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to update message: %w", err)
 	}
@@ -2396,10 +2459,11 @@ func (s *SlackService) updatePlainMessage(ctx context.Context, threadID ThreadID
 // GetChannelName returns the Slack channel's human-readable name (e.g. "general"),
 // or "" on any error. Used to enrich LLM prompt context on new-session starts.
 func (s *SlackService) GetChannelName(ctx context.Context, channelID string) string {
-	if s.client == nil || channelID == "" {
+	cli := s.apiClient()
+	if cli == nil || channelID == "" {
 		return ""
 	}
-	info, err := s.client.GetConversationInfoContext(ctx, &slack.GetConversationInfoInput{
+	info, err := cli.GetConversationInfoContext(ctx, &slack.GetConversationInfoInput{
 		ChannelID:         channelID,
 		IncludeLocale:     false,
 		IncludeNumMembers: false,
@@ -2411,12 +2475,13 @@ func (s *SlackService) GetChannelName(ctx context.Context, channelID string) str
 }
 
 func (s *SlackService) GetThreadHistory(ctx context.Context, threadID ThreadID) ([]ThreadMessage, error) {
+	cli := s.apiClient()
 	if target, err := s.serviceForThread(threadID); err != nil {
 		return nil, err
 	} else if target != s {
 		return target.GetThreadHistory(ctx, threadID)
 	}
-	if s.client == nil {
+	if cli == nil {
 		return nil, fmt.Errorf("slack client not initialized")
 	}
 
@@ -2426,7 +2491,7 @@ func (s *SlackService) GetThreadHistory(ctx context.Context, threadID ThreadID) 
 		Limit:     100,
 	}
 
-	msgs, _, _, err := s.client.GetConversationRepliesContext(ctx, params)
+	msgs, _, _, err := cli.GetConversationRepliesContext(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get thread replies: %w", err)
 	}
@@ -2659,7 +2724,8 @@ func (s *SlackService) stripMention(text string) string {
 // slackUserDisplayName resolves a Slack user ID to a display name for
 // mention rewriting. Results are cached per service; "" means unknown.
 func (s *SlackService) slackUserDisplayName(userID string) string {
-	if userID == "" || s.client == nil {
+	cli := s.apiClient()
+	if userID == "" || cli == nil {
 		return ""
 	}
 	s.userDisplayNamesMu.Lock()
@@ -2671,7 +2737,7 @@ func (s *SlackService) slackUserDisplayName(userID string) string {
 		return name
 	}
 	s.userDisplayNamesMu.Unlock()
-	user, err := s.client.GetUserInfo(userID)
+	user, err := cli.GetUserInfo(userID)
 	if err != nil {
 		return ""
 	}
@@ -2701,10 +2767,11 @@ func (s *SlackService) resolveUserEmail(userID string) string {
 // resolveSlackUser returns the sender's display name (userID when Slack has
 // none or the lookup fails) and profile email, from one users.info call.
 func (s *SlackService) resolveSlackUser(userID string) (name, email string) {
-	if s.client == nil || userID == "" {
+	cli := s.apiClient()
+	if cli == nil || userID == "" {
 		return userID, ""
 	}
-	user, err := s.client.GetUserInfo(userID)
+	user, err := cli.GetUserInfo(userID)
 	if err != nil {
 		log.Printf("[SLACK_BOT] Failed to resolve user %s: %v", userID, err)
 		return userID, ""
@@ -2768,7 +2835,8 @@ func slackWorkflowUploadFolder(route *ChannelRoute) string {
 }
 
 func (s *SlackService) appendSlackFileContext(ctx context.Context, text string, msg *slack.Msg, channelID, userEmail string, route *ChannelRoute) string {
-	if msg == nil || len(msg.Files) == 0 || s.client == nil {
+	cli := s.apiClient()
+	if msg == nil || len(msg.Files) == 0 || cli == nil {
 		return text
 	}
 
@@ -2797,7 +2865,7 @@ func (s *SlackService) appendSlackFileContext(ctx context.Context, text string, 
 
 		fileInfo := &f
 		if f.ID != "" {
-			if info, _, _, err := s.client.GetFileInfoContext(ctx, f.ID, 0, 0); err == nil && info != nil {
+			if info, _, _, err := cli.GetFileInfoContext(ctx, f.ID, 0, 0); err == nil && info != nil {
 				fileInfo = info
 			}
 		}
@@ -2812,7 +2880,7 @@ func (s *SlackService) appendSlackFileContext(ctx context.Context, text string, 
 
 		var buf bytes.Buffer
 		downloadCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		err := s.client.GetFileContext(downloadCtx, downloadURL, &buf)
+		err := cli.GetFileContext(downloadCtx, downloadURL, &buf)
 		cancel()
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("%s: download failed: %v", fileInfo.Name, err))
@@ -2931,19 +2999,20 @@ func (f *SlackFormatter) SplitLongMessage(text string) []string {
 // readers ("is a token configured?") keep working; the full masked registry
 // is in Connections.
 func (s *SlackService) GetConfig() *SlackConfig {
-	if s.config == nil {
+	curCfg := s.slackConfig()
+	if curCfg == nil {
 		return &SlackConfig{Enabled: false}
 	}
 
 	// Return config with masked tokens
-	config := *s.config
-	config.Connections = make([]SlackConnection, 0, len(s.config.Connections))
-	for _, conn := range s.config.Connections {
+	config := *curCfg
+	config.Connections = make([]SlackConnection, 0, len(curCfg.Connections))
+	for _, conn := range curCfg.Connections {
 		config.Connections = append(config.Connections, conn.masked())
 	}
 	if len(config.Connections) > 0 {
-		if id := defaultSlackConnectionID(s.config); id != "" {
-			if def, ok := findSlackConnection(s.config, id); ok {
+		if id := defaultSlackConnectionID(curCfg); id != "" {
+			if def, ok := findSlackConnection(curCfg, id); ok {
 				config.Enabled = def.Enabled
 				config.BotToken = maskSlackToken("xoxb-", def.BotToken)
 				config.AppToken = maskSlackToken("xapp-", def.AppToken)
@@ -2975,10 +3044,11 @@ func slackThreadOption(channelID, threadTS string) []slack.MsgOption {
 // PostRouteMessage makes exactly one Slack post, preserving the root timestamp.
 // Route scope, durable idempotency and references are owned by the application.
 func (s *SlackService) PostRouteMessage(ctx context.Context, channel, thread, message string) (string, error) {
-	if s.client == nil || !s.IsEnabled() {
+	cli := s.apiClient()
+	if cli == nil || !s.IsEnabled() {
 		return "", fmt.Errorf("Slack connector unavailable")
 	}
-	_, ts, err := s.client.PostMessageContext(ctx, channel, append([]slack.MsgOption{slack.MsgOptionText(convertMarkdownToSlackMrkdwn(message), false)}, slackThreadOption(channel, thread)...)...)
+	_, ts, err := cli.PostMessageContext(ctx, channel, append([]slack.MsgOption{slack.MsgOptionText(convertMarkdownToSlackMrkdwn(message), false)}, slackThreadOption(channel, thread)...)...)
 	return ts, err
 }
 
@@ -2987,15 +3057,16 @@ func (s *SlackService) UserEmailForRoute(user string) string { return s.resolveU
 
 // DeleteMessage removes a temporary bot-owned status message.
 func (s *SlackService) DeleteMessage(ctx context.Context, threadID ThreadID, messageID string) error {
+	cli := s.apiClient()
 	if target, err := s.serviceForThread(threadID); err != nil {
 		return err
 	} else if target != s {
 		return target.DeleteMessage(ctx, threadID, messageID)
 	}
-	if s.client == nil {
+	if cli == nil {
 		return fmt.Errorf("slack client not initialized")
 	}
-	_, _, err := s.client.DeleteMessageContext(ctx, threadID.ChannelID, messageID)
+	_, _, err := cli.DeleteMessageContext(ctx, threadID.ChannelID, messageID)
 	if err != nil && err.Error() == "message_not_found" {
 		return nil
 	}

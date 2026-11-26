@@ -63,17 +63,18 @@ func (s *SlackService) SetDMSenderLookup(fn func(ctx context.Context, userID, ch
 }
 
 func (s *SlackService) lookupDMSender(ctx context.Context, userID, channelID string) (SlackDMSender, error) {
+	cli := s.apiClient()
 	if s.dmSenderLookup != nil {
 		return s.dmSenderLookup(ctx, userID, channelID)
 	}
-	if s.client == nil {
+	if cli == nil {
 		return SlackDMSender{}, fmt.Errorf("Slack client unavailable")
 	}
-	user, err := s.client.GetUserInfoContext(ctx, userID)
+	user, err := cli.GetUserInfoContext(ctx, userID)
 	if err != nil {
 		return SlackDMSender{}, fmt.Errorf("users.info: %w", err)
 	}
-	channel, err := s.client.GetConversationInfoContext(ctx, &slack.GetConversationInfoInput{ChannelID: channelID})
+	channel, err := cli.GetConversationInfoContext(ctx, &slack.GetConversationInfoInput{ChannelID: channelID})
 	if err != nil {
 		return SlackDMSender{}, fmt.Errorf("conversations.info (needs im:read): %w", err)
 	}
