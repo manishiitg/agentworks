@@ -560,8 +560,8 @@ export interface ChatAreaRef {
   currentWorkflowPhase: string
 }
 
-// Global flag to ensure auto-restore only happens once per page load
-let globalHasRestored = false
+// Global identity generation so auto-restore runs once per authenticated account/session
+let lastRestoredChatIdentity = -1
 
 // Inner component for chat area
 const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAreaRef>) => {
@@ -790,8 +790,14 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     const asked = !wanted || landed === wanted
     if (asked) clearViewSwitch()
     const status = wanted ? `${asked ? 'as_asked' : 'other_first'}${admittedAt ? `:admit${Math.round(admittedAt - startedAt)}` : ''}` : undefined
-    const frame = window.requestAnimationFrame(() => window.requestAnimationFrame(() => recordViewTimingTelemetry('view_switch', sessionId, tabId, to, performance.now() - startedAt, status, `switch=${switchID} ${wanted ? activatedBy : ""}`)))
-    return () => window.cancelAnimationFrame(frame)
+    let innerFrame: number | null = null
+    const outerFrame = window.requestAnimationFrame(() => {
+      innerFrame = window.requestAnimationFrame(() => recordViewTimingTelemetry('view_switch', sessionId, tabId, to, performance.now() - startedAt, status, `switch=${switchID} ${wanted ? activatedBy : ""}`))
+    })
+    return () => {
+      window.cancelAnimationFrame(outerFrame)
+      if (innerFrame !== null) window.cancelAnimationFrame(innerFrame)
+    }
   }, [ activeTab?.sessionId, activeTab?.tabId])
 
   // processEventsResponse runs for every polled session and does not carry
@@ -1012,21 +1018,23 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
         nextOffset = response.oldest_sequence
       }
       if (!isChatIdentityCurrent(identity)) return
-      olderEvents = resolveLiveInputConfirmations(olderEvents)
+      const resolvedOlderEvents = resolveLiveInputConfirmations(olderEvents)
       const chatStore = useChatStore.getState()
-      const currentIDs = new Set([
-        ...chatStore.getTabEvents(sessionId),
-        ...olderHistory.events,
-      ].map(event => event.id).filter(Boolean))
-      olderEvents = olderEvents.filter(event => !event.id || !currentIDs.has(event.id))
       // These rows live in this reader's cache, so their cursor must too.
       // Advancing the shared tail cursor would skip pages after a remount or
       // when the same conversation is opened in another transcript renderer.
-      updateOlderHistory(sessionId, (current) => ({
-        events: [...olderEvents, ...current.events],
-        loading: false,
-        pagination: { hasMore, nextOffset: nextOffset ?? historyPagination.nextOffset, compact: historyPagination.compact },
-      }))
+      updateOlderHistory(sessionId, (current) => {
+        const currentIDs = new Set([
+          ...chatStore.getTabEvents(sessionId),
+          ...current.events,
+        ].map(event => event.id).filter(Boolean))
+        const deduped = resolvedOlderEvents.filter(event => !event.id || !currentIDs.has(event.id))
+        return {
+          events: [...deduped, ...current.events],
+          loading: false,
+          pagination: { hasMore, nextOffset: nextOffset ?? historyPagination.nextOffset, compact: historyPagination.compact },
+        }
+      })
     } catch (error) {
       if (!isChatIdentityCurrent(identity)) return
       updateOlderHistory(sessionId, (current) => ({
@@ -1186,13 +1194,16 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     const sessionId = activeSessionId
     const tabId = activeTab?.tabId
     if (!sessionId || !tabId) return
+    const identity = captureChatIdentity()
     setReadOnlyRunViewGaveUp(false)
     try {
       const workspacePath = activeWorkflowPreset?.selectedFolder?.filepath || activeTab?.metadata?.agentProfileWorkspace
       const runtime = isExecutionConversationTab(activeTab)
         ? await hydrateExecutionConversation(sessionId, workspacePath)
         : await hydrateTabEvents(sessionId, { workspacePath })
+      if (!isChatIdentityCurrent(identity)) return
       const chatStore = useChatStore.getState()
+      if (chatStore.getTab(tabId)?.sessionId !== sessionId) return
       const isDone = runtime.status === 'completed' || runtime.status === 'stopped'
       const isError = runtime.status === 'error'
       chatStore.setTabCompleted(tabId, isDone)
@@ -1414,6 +1425,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // scrolling after the request wins and drops it.
   const settledBottomRef = useRef<SettledScroll | null>(null)
   useEffect(() => {
+    if (isInactive) return
     const element = chatContentRef.current
     const settled = new SettledScroll(() => {
       setAutoScroll(true)
@@ -1443,7 +1455,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       settled.cancel()
       settledBottomRef.current = null
     }
-  }, [scrollToBottom, setAutoScroll])
+  }, [isInactive, scrollToBottom, setAutoScroll])
 
   // Formatted transcripts own their per-conversation reading position. The
   // legacy outer scroller only follows navigation in non-formatted views.
@@ -1802,16 +1814,12 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       if (typeof messageId !== 'string' || !messageId) return
       const deliveryStatus = typeof echoMetadata.delivery_status === 'string' ? echoMetadata.delivery_status : 'sent_to_cli'
       const provider = typeof echoMetadata.provider === 'string' ? echoMetadata.provider : undefined
-      const current = chatStore.getTabEvents(actualSessionId)
-      let changed = false
-      const stamped = current.map(row => {
+      // Use patchTabEvents (never setTabEvents) so pending micro-batched tool events are preserved.
+      chatStore.patchTabEvents(actualSessionId, events => events.map(row => {
         if (row.type !== 'user_message' || !row.id?.startsWith('user-message-')) return row
         if (getDisplaySafeUserMessageContent(getUserMessageContent(row)) !== echoContent) return row
-        const next = stampLiveInputIdentity(row, messageId, deliveryStatus, provider)
-        if (next !== row) changed = true
-        return next
-      })
-      if (changed) chatStore.setTabEvents(actualSessionId, stamped)
+        return stampLiveInputIdentity(row, messageId, deliveryStatus, provider)
+      }))
     }
 
     for (const event of eventsBeforeFilter) {
@@ -2315,30 +2323,32 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
   // Start centralized active sessions polling when component mounts
   useEffect(() => {
+    if (isInactive) return
     startActiveSessionsPolling()
     return () => {
       // Note: We don't stop polling here because other components might be using it
       // The polling will be managed globally and cleaned up when app unmounts
     }
-  }, [startActiveSessionsPolling])
+  }, [isInactive, startActiveSessionsPolling])
 
   // Unified page-load restore: handles both active sessions AND persisted tabs with no events.
-  // Runs once per page load to avoid duplicate restores from separate effects racing each other.
+  // Runs once per authenticated chat identity to avoid duplicate restores racing each other.
   useEffect(() => {
-    // Bound panes already hydrate their own transcript; opening one must not
-    // restore/switch unrelated workspace tabs or wait for their history.
-    if (tabId || globalHasRestored) return
+    // Bound panes already hydrate their own transcript; inactive panes (tabId === null) must not run effects.
+    const identity = captureChatIdentity()
+    if (isInactive || tabId || lastRestoredChatIdentity === identity) return
     // Only restore in multi-agent mode (workflow handles its own restore)
     if (selectedModeCategory !== 'multi-agent') return
 
     const restoreAll = async () => {
-      globalHasRestored = true
+      lastRestoredChatIdentity = identity
 
       try {
         // --- Phase 1: restore active / recently-completed sessions from backend ---
         // getActiveSessions(true) fetches (or joins the in-flight poll), so no
         // settle delay is needed in front of it.
         const activeSessions = await getActiveSessions(true)
+        if (!isChatIdentityCurrent(identity)) return
         const restoredSessionIds = new Set<string>()
 
         if (activeSessions.length > 0) {
@@ -2517,8 +2527,9 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   // Restored and visible idle chats need the same silent-stream recovery as
   // newly submitted turns, including retained CLI input and background work.
   useEffect(() => {
+    if (isInactive) return
     if (tabsWithActiveSessions.length > 0) ensureEventRecovery()
-  }, [tabsWithActiveSessions, ensureEventRecovery])
+  }, [isInactive, tabsWithActiveSessions, ensureEventRecovery])
 
   // SSE connection management — connect/disconnect based on active sessions
   // Falls back to polling if SSE connection fails (handled inside connectSSE's onError callback)
@@ -3210,16 +3221,15 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           if (response.delivery_status === 'queued_for_turn' && sentEngine && profileId) {
             const runningProvider = useChatStore.getState().activeSessionsCache.find(session => session.session_id === sid)?.runtime?.provider
             const options = await loadAgentProfileProviderOptions(profileId, currentTab.metadata?.agentProfileVersion)
+            if (!stillOwnsSubmission()) return true
             const sentProvider = options.find(option => option.id === sentEngine)?.provider || sentEngine
             if (runningProvider && sentProvider !== runningProvider) pendingProvider = sentProvider
           }
-          useChatStore.setState(state => ({ tabEvents: { ...state.tabEvents,
-            [tabSessionId]: (state.tabEvents[tabSessionId] || []).map(event => {
-              if (event.id !== receiptEventID) return event
-              const receipt = withLiveInputReceipt(event, response.delivery_status!, response.provider, response.message_id, response.queue_position)
-              return pendingProvider ? withPendingProvider(receipt, pendingProvider) : receipt
-            }),
-          } }))
+          chatStore.patchTabEvents(tabSessionId, events => events.map(event => {
+            if (event.id !== receiptEventID) return event
+            const receipt = withLiveInputReceipt(event, response.delivery_status!, response.provider, response.message_id, response.queue_position)
+            return pendingProvider ? withPendingProvider(receipt, pendingProvider) : receipt
+          }))
         }
         chatStore.setTabStreaming(currentTab.tabId, true)
         chatStore.setTabCompleted(currentTab.tabId, false)
@@ -3465,12 +3475,13 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
   useEffect(() => { submitQueryWithQueryRef.current = submitQueryWithQuery }, [submitQueryWithQuery])
 
   useEffect(() => {
+    if (isInactive) return
     configureChatQueueController(
       (message, options) => submitQueryWithQueryRef.current(message, undefined, options),
       prepareQueuedChatMessages,
       message => addToast(message, 'error'),
     )
-  }, [addToast])
+  }, [isInactive, addToast])
 
   // Handle new chat for the active tab. Keep this scoped: workflow and
   // multi-agent tabs can coexist, so starting a fresh conversation in one tab
@@ -3570,6 +3581,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
 
   // "New chat" asked from the Context section or the model menu: the chat area showing that session runs it.
   useEffect(() => {
+    if (isInactive) return
     const listener = (event: Event) => {
       const sessionId = (event as CustomEvent<{ sessionId?: string }>).detail?.sessionId
       const tab = targetTabId ? useChatStore.getState().getTab(targetTabId) : undefined
@@ -3578,7 +3590,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
     }
     window.addEventListener(newChatRequestEvent, listener)
     return () => window.removeEventListener(newChatRequestEvent, listener)
-  }, [handleNewChat, targetTabId])
+  }, [isInactive, handleNewChat, targetTabId])
 
   // Refresh workflow presets function
   const refreshWorkflowPresets = useCallback(async () => {

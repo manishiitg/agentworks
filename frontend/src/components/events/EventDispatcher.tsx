@@ -108,6 +108,7 @@ const DelegationStreamingCard: React.FC<{ delegationId: string }> = ({ delegatio
 }
 
 // Live elapsed timer for running delegation events
+const MAX_LIVE_ELAPSED_MS = 24 * 60 * 60 * 1000
 const ElapsedTimer: React.FC<{ startTimestamp: string; className?: string }> = ({ startTimestamp, className }) => {
   const [elapsed, setElapsed] = React.useState('')
 
@@ -116,7 +117,8 @@ const ElapsedTimer: React.FC<{ startTimestamp: string; className?: string }> = (
     if (isNaN(startTime)) return
 
     const update = () => {
-      const seconds = Math.floor((Date.now() - startTime) / 1000)
+      const diffMs = Math.max(0, Date.now() - startTime)
+      const seconds = Math.floor(diffMs / 1000)
       if (seconds < 60) {
         setElapsed(`${seconds}s`)
       } else {
@@ -124,10 +126,20 @@ const ElapsedTimer: React.FC<{ startTimestamp: string; className?: string }> = (
         const s = seconds % 60
         setElapsed(`${m}m${s.toString().padStart(2, '0')}s`)
       }
+      return diffMs
     }
-    update()
-    const interval = setInterval(update, 1000)
-    return () => clearInterval(interval)
+    if (update() >= MAX_LIVE_ELAPSED_MS) return
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      if (update() >= MAX_LIVE_ELAPSED_MS) clearInterval(interval)
+    }
+    const interval = setInterval(tick, 1000)
+    const onVisibility = () => { if (typeof document !== 'undefined' && !document.hidden) tick() }
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      clearInterval(interval)
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [startTimestamp])
 
   if (!elapsed) return null

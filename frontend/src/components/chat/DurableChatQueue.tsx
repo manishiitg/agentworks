@@ -110,6 +110,7 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
   const publish = useQueuedMessageControlsStore(state => state.set)
   const changeRef = useRef(change)
   changeRef.current = change
+  const cancelingRecoveryRef = useRef(false)
   const data = query.data?.messages
   const recovery = query.data?.usage_limit_recovery
   useEffect(() => {
@@ -119,9 +120,14 @@ export const DurableChatQueue = forwardRef<DurableChatQueueHandle, {
       messages: byId,
       recovery,
       cancelRecovery: async () => {
-        if (!owns() || !recovery?.can_cancel || !recovery.message_id) return
-        await agentApi.removeQueuedMessage(sessionId, recovery.message_id)
-        if (owns()) await client.invalidateQueries({ queryKey: key })
+        if (cancelingRecoveryRef.current || !owns() || !recovery?.can_cancel || !recovery.message_id) return
+        cancelingRecoveryRef.current = true
+        try {
+          await agentApi.removeQueuedMessage(sessionId, recovery.message_id)
+          if (owns()) await client.invalidateQueries({ queryKey: key })
+        } finally {
+          cancelingRecoveryRef.current = false
+        }
       },
       busyMessageId: action,
       canEdit,

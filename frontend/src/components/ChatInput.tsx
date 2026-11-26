@@ -715,6 +715,18 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     })
   }, [activeTabId, setTabConfig, inputText, chatFileContext, tabConfig?.restoredConversationPath])
 
+  const voiceSubmitTimeoutRef = useRef<number | null>(null)
+  const cdpCheckSeqRef = useRef(0)
+
+  useEffect(() => {
+    return () => {
+      if (voiceSubmitTimeoutRef.current !== null) {
+        window.clearTimeout(voiceSubmitTimeoutRef.current)
+        voiceSubmitTimeoutRef.current = null
+      }
+    }
+  }, [activeTabId])
+
   const handleVoiceText = useCallback((text: string) => {
     const base = localInputText
     const joined = base && !base.endsWith(' ') && !base.endsWith('\n') ? `${base} ${text}` : `${base}${text}`
@@ -723,13 +735,19 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     // desktop keeps it in the box to edit.
     if (window.matchMedia('(max-width: 767px), (pointer: coarse)').matches && text.trim()) {
       markNextSubmissionVoice()
-      window.setTimeout(() => textareaRef.current?.form?.requestSubmit(), 60)
+      const submitTabId = activeTabId
+      if (voiceSubmitTimeoutRef.current !== null) window.clearTimeout(voiceSubmitTimeoutRef.current)
+      voiceSubmitTimeoutRef.current = window.setTimeout(() => {
+        voiceSubmitTimeoutRef.current = null
+        if (inputOwnerTabIdRef.current !== submitTabId) return
+        textareaRef.current?.form?.requestSubmit()
+      }, 60)
       return
     }
     // So Enter immediately sends — without this the composer stays unfocused
     // after dictation and Enter does nothing.
     textareaRef.current?.focus()
-  }, [localInputText, writeComposerText])
+  }, [activeTabId, localInputText, writeComposerText])
 
   // Sync local state FROM store when store changes externally (preset sync, etc.)
   useLayoutEffect(() => {
@@ -981,6 +999,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }, [activeTabId, setTabConfig])
 
   const checkCdpConnection = useCallback(async (port: number) => {
+    const seq = ++cdpCheckSeqRef.current
     if (!cdpEnabled) {
       setCdpConnected(false)
       setCdpError('CDP is disabled on this server deployment.')
@@ -991,13 +1010,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     setCdpError(null)
     try {
       const result = await agentApi.checkCdpPort(port)
+      if (cdpCheckSeqRef.current !== seq) return
       setCdpConnected(result.connected)
       setCdpError(result.connected ? null : result.error || null)
     } catch {
+      if (cdpCheckSeqRef.current !== seq) return
       setCdpConnected(false)
       setCdpError('Unable to check the CDP port.')
     } finally {
-      setCdpChecking(false)
+      if (cdpCheckSeqRef.current === seq) setCdpChecking(false)
     }
   }, [cdpEnabled])
 
@@ -1629,24 +1650,24 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
   // Lazy-load skills when ! popup opens (always re-fetch to pick up new skills)
   useEffect(() => {
-    // console.log(DBG + ' showSkillPopup changed:', showSkillPopup)
-    if (showSkillPopup) {
-      setSkillsLoading(true)
-      skillsApi.listSkills(customCommandWorkspacePath || 'Chats')
-        .then(res => {
-          const raw = res.skills || []
-          const seen = new Set<string>()
-          const unique = raw.filter((s: { file_path?: string; folder_name: string }) => {
-            if (seen.has(s.folder_name)) return false
-            seen.add(s.folder_name)
-            return true
-          })
-          // console.log(DBG + ' skills loaded:', raw.length, '→ deduplicated:', unique.length)
-          setAllSkills(unique)
+    if (!showSkillPopup) return
+    let cancelled = false
+    setSkillsLoading(true)
+    skillsApi.listSkills(customCommandWorkspacePath || 'Chats')
+      .then(res => {
+        if (cancelled) return
+        const raw = res.skills || []
+        const seen = new Set<string>()
+        const unique = raw.filter((s: { file_path?: string; folder_name: string }) => {
+          if (seen.has(s.folder_name)) return false
+          seen.add(s.folder_name)
+          return true
         })
-        .catch((err: unknown) => { console.error(DBG + ' skills load error:', err) })
-        .finally(() => setSkillsLoading(false))
-    }
+        setAllSkills(unique)
+      })
+      .catch((err: unknown) => { if (!cancelled) console.error(DBG + ' skills load error:', err) })
+      .finally(() => { if (!cancelled) setSkillsLoading(false) })
+    return () => { cancelled = true }
   }, [showSkillPopup, customCommandWorkspacePath])
 
   const queryToSubmit = inputText
@@ -1941,6 +1962,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const effectiveModes = getEffectiveWorkflowModes()
 
     const setInputText = (text: string) => {
+      latestInputTextRef.current = text
       setLocalInputText(text)
       setTabConfig(activeTabId, { inputText: text })
       setTimeout(() => {
@@ -2731,6 +2753,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       const before = inputText.substring(0, exclamationPosition)
       const after = inputText.substring(exclamationPosition + 1 + skillPopupSearchQuery.length)
       const newText = (before + after).replace(/  +/g, ' ')
+      latestInputTextRef.current = newText
       setLocalInputText(newText)
       if (syncToStoreTimeoutRef.current) {
         clearTimeout(syncToStoreTimeoutRef.current)
@@ -2757,6 +2780,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       const before = inputText.substring(0, dollarPosition)
       const after = inputText.substring(dollarPosition + 1 + serverPopupSearchQuery.length)
       const newText = (before + after).replace(/  +/g, ' ')
+      latestInputTextRef.current = newText
       setLocalInputText(newText)
       if (syncToStoreTimeoutRef.current) {
         clearTimeout(syncToStoreTimeoutRef.current)
@@ -2888,7 +2912,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   }
 
   const compactComposerActions = agentProfileId === 'work' || isWorkflowPhaseChat
-  const unifiedComposerMenu = agentProfileId === 'work' && Boolean(agentProfileProjectId && activeTabId && crewModelLabel && activeTab?.metadata?.isViewOnly !== activeTab?.metadata?.agentProfileCanOpenModels && activeTab?.metadata?.agentProfileChatModelLabel && !activeTab?.metadata?.agentProfileConversationKey?.startsWith(`${agentProfileProjectId}:chat:agent-`))
+  const unifiedComposerMenu = agentProfileId === 'work' && Boolean(agentProfileProjectId && activeTabId && crewModelLabel && activeTab?.metadata?.isViewOnly !== true && activeTab?.metadata?.agentProfileCanOpenModels && activeTab?.metadata?.agentProfileChatModelLabel && !activeTab?.metadata?.agentProfileConversationKey?.startsWith(`${agentProfileProjectId}:chat:agent-`))
 
   const openAttachmentPicker = () => {
     closeComposerPickers()
@@ -2968,6 +2992,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         setTabConfig(activeTabId, { workflowContext: remaining })
                         if (textMentionsReference(inputText, w)) {
                           const newText = removeReferenceTags(inputText, w)
+                          latestInputTextRef.current = newText
                           setLocalInputText(newText)
                           setTabConfig(activeTabId, { inputText: newText })
                         }
@@ -2991,6 +3016,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     setTabConfig(activeTabId, { workflowContext: [] })
                     let newText = inputText
                     references.forEach(reference => { newText = removeReferenceTags(newText, reference) })
+                    latestInputTextRef.current = newText
                     setLocalInputText(newText)
                     setTabConfig(activeTabId, { inputText: newText })
                   }
@@ -3502,7 +3528,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
                 {/* Like Claude Code's status line: model · effort, then the mode (Auto / Plan; Shift+Tab switches) and how full the context is (#3711). */}
                 {/* The mode menu (#3885): Auto / Auto-review / Plan, and what the chat can reach with Change. */}
-                {(nativePlanSupported || (agentProfileId === 'work' && tabSessionId)) && <ChatModeMenu sessionId={agentProfileId === 'work' ? tabSessionId || undefined : undefined} projectId={agentProfileId === 'work' ? agentProfileProjectId || undefined : undefined}
+                {(nativePlanSupported || (agentProfileId === 'work' && tabSessionId)) && <ChatModeMenu key={tabSessionId || activeTabId || 'chat-mode'} sessionId={agentProfileId === 'work' ? tabSessionId || undefined : undefined} projectId={agentProfileId === 'work' ? agentProfileProjectId || undefined : undefined}
                   plan={nativePlanSupported ? { on: planOn } : undefined} planReady={planReady} onPlanToggle={togglePlanMode} onStart={startPlannedWork} />}
                 {agentProfileId === 'work' && tabSessionId && <ContextRing sessionId={tabSessionId} busy={isTurnInFlight} />}
                 {agentProfileId === 'work' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}

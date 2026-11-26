@@ -149,6 +149,23 @@ describe('concurrent Chat + Schedule session isolation', () => {
     expect(useChatStore.getState().tabEvents).toEqual({})
   })
 
+  it('clears active pollingInterval and discards buffered streaming chunks on account change (#4214)', async () => {
+    vi.useFakeTimers()
+    const useChatStore = await loadStore()
+    const pollTick = vi.fn()
+    useChatStore.getState().startPolling(pollTick)
+    expect(useChatStore.getState().pollingInterval).not.toBeNull()
+
+    // Buffer a streaming chunk (flushes on a 16ms timer) and switch accounts before it fires.
+    useChatStore.getState().appendStreamingChunk(CHAT, 1, 'Account A secret text')
+    useChatStore.getState().discardChatStateForAccountChange()
+
+    vi.advanceTimersByTime(2500)
+    expect(useChatStore.getState().pollingInterval).toBeNull()
+    expect(useChatStore.getState().streamingText[CHAT]).toBeUndefined()
+    expect(pollTick).not.toHaveBeenCalled()
+  })
+
   it('holds the invariant while both sessions stream interleaved', async () => {
     const useChatStore = await loadStore()
     const store = useChatStore.getState()

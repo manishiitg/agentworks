@@ -3,6 +3,7 @@ import { Loader2, Square, X } from 'lucide-react'
 import type { PollingEvent } from '../../services/api-types'
 import { agentApi } from '../../services/api'
 import { useChatStore } from '../../stores/useChatStore'
+import { getWorkspaceScopedStorageKey } from '../../stores/useWorkspaceConnectionStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { collectChatHelpers, helperProviderName, linkedChatHelpers, mergeHelperEvents, orderChatHelpers, type ChatHelper, type ChatHelperState, type ChatLinkedHelper } from '../../utils/chatHelpers'
 import { openAgentTab } from '../../utils/openAgentTab'
@@ -140,13 +141,42 @@ function activeHelpers(list: ChatHelper[]): ChatHelper[] {
   return [...running, ...finished.filter(item => item.state === 'waiting')]
 }
 
-const hiddenKey = (sessionId: string) => `agentworks.chat-agents.hidden.${sessionId}`
-/** Helpers the person removed from the list with ×, kept per chat in this browser. */
+const MAX_HIDDEN_SESSIONS = 50
+const legacyHiddenKey = (sessionId: string) => `agentworks.chat-agents.hidden.${sessionId}`
+const hiddenMapKey = () => getWorkspaceScopedStorageKey('agentworks.chat-agents.hidden')
+
+function readHiddenMap(): Record<string, string[]> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(hiddenMapKey()) || '{}')
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+    return raw as Record<string, string[]>
+  } catch { return {} }
+}
+
+/** Helpers the person removed from the list with ×, kept per chat in this browser (bounded & workspace-scoped). */
 function readHidden(sessionId: string): Set<string> {
   try {
-    const saved = JSON.parse(localStorage.getItem(hiddenKey(sessionId)) || '[]')
-    return new Set(Array.isArray(saved) ? saved.filter((item): item is string => typeof item === 'string') : [])
+    const map = readHiddenMap()
+    const scoped = map[sessionId]
+    if (Array.isArray(scoped)) return new Set(scoped.filter((item): item is string => typeof item === 'string'))
+    const legacy = JSON.parse(localStorage.getItem(legacyHiddenKey(sessionId)) || '[]')
+    return new Set(Array.isArray(legacy) ? legacy.filter((item): item is string => typeof item === 'string') : [])
   } catch { return new Set() }
+}
+
+function writeHidden(sessionId: string, next: Set<string>): void {
+  try {
+    const map = readHiddenMap()
+    delete map[sessionId]
+    map[sessionId] = [...next].slice(-200)
+    const keys = Object.keys(map)
+    while (keys.length > MAX_HIDDEN_SESSIONS) {
+      const oldest = keys.shift()
+      if (oldest) delete map[oldest]
+    }
+    localStorage.setItem(hiddenMapKey(), JSON.stringify(map))
+    localStorage.removeItem(legacyHiddenKey(sessionId))
+  } catch { /* private mode: hidden for this view only */ }
 }
 
 /** Lines shown before "+N more". */
@@ -182,7 +212,7 @@ export function ChatAgentsStrip({ sessionId, tabId, helpers, turnStartedAt }: { 
   useEffect(() => { setAll(false); setConversation(null); setHidden(readHidden(sessionId)) }, [sessionId])
   const hide = (key: string) => setHidden(previous => {
     const next = new Set(previous).add(key)
-    try { localStorage.setItem(hiddenKey(sessionId), JSON.stringify([...next].slice(-200))) } catch { /* private mode: hidden for this view only */ }
+    writeHidden(sessionId, next)
     return next
   })
   const helperStops = new Set(helpers.map(helper => helper.stopId).filter(Boolean))

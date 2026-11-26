@@ -323,12 +323,12 @@ export const FileSelectionDialog: React.FC<FileSelectionDialogProps> = ({
 
     if (queryParts.length === 0) return text
 
-    // Create a regex that matches any of the query parts
+    // Create a capturing regex so split() places matches at odd indices (avoiding /g lastIndex state bugs).
     const regex = new RegExp(`(${queryParts.map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi')
     const parts = text.split(regex)
 
     return parts.map((part, index) =>
-      regex.test(part) ? (
+      index % 2 === 1 ? (
         <mark key={index} className="bg-warning/20 text-warning px-0.5 rounded">
           {part}
         </mark>

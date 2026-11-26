@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { agentApi, type ToolChanges } from '../../services/api'
 
@@ -16,23 +16,56 @@ function changeText(changes: ToolChanges): string {
 export function ChatToolChanges({ sessionId, streaming }: { sessionId?: string; streaming: boolean }) {
   const [changes, setChanges] = useState<ToolChanges | null>(null)
   const [busy, setBusy] = useState(false)
+  const requestSeqRef = useRef(0)
+  const activeSessionRef = useRef(sessionId)
+  activeSessionRef.current = sessionId
+  const prevStreamingRef = useRef(streaming)
   const refresh = useCallback(() => {
     if (!sessionId || document.visibilityState === 'hidden') return
-    agentApi.getToolChanges(sessionId).then(setChanges).catch(() => setChanges(null))
+    const seq = ++requestSeqRef.current
+    const targetSession = sessionId
+    agentApi.getToolChanges(targetSession)
+      .then(result => {
+        if (requestSeqRef.current === seq && activeSessionRef.current === targetSession) setChanges(result)
+      })
+      .catch(() => {
+        if (requestSeqRef.current === seq && activeSessionRef.current === targetSession) setChanges(null)
+      })
   }, [sessionId])
   useEffect(() => {
+    requestSeqRef.current += 1
     setChanges(null)
+    setBusy(false)
     refresh()
     const timer = window.setInterval(refresh, POLL_MS)
     window.addEventListener('focus', refresh)
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh) }
+    return () => {
+      requestSeqRef.current += 1
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+    }
   }, [refresh])
   // A finished reply may have rebuilt the chat with the new apps.
-  useEffect(() => { if (!streaming) refresh() }, [streaming, refresh])
+  useEffect(() => {
+    const wasStreaming = prevStreamingRef.current
+    prevStreamingRef.current = streaming
+    if (wasStreaming && !streaming) refresh()
+  }, [streaming, refresh])
   if (!sessionId || !changes || changes.added.length + changes.removed.length === 0) return null
   const reload = () => {
+    const seq = ++requestSeqRef.current
+    const targetSession = sessionId
     setBusy(true)
-    agentApi.reloadTools(sessionId).then(setChanges).catch(refresh).finally(() => setBusy(false))
+    agentApi.reloadTools(targetSession)
+      .then(result => {
+        if (requestSeqRef.current === seq && activeSessionRef.current === targetSession) setChanges(result)
+      })
+      .catch(() => {
+        if (activeSessionRef.current === targetSession) refresh()
+      })
+      .finally(() => {
+        if (activeSessionRef.current === targetSession) setBusy(false)
+      })
   }
   return (
     <div role="status" aria-live="polite" className="mx-4 mt-1 flex shrink-0 items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
