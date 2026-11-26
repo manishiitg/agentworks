@@ -123,8 +123,24 @@ func (api *StreamingAPI) syncCrewOfflineServerTurn(ctx context.Context, user, se
 	if err != nil {
 		return err
 	}
-	stage = "delta_commit"
 	mu := crewTeamRecordMutex(teamDir)
+	if crewOfflineRewindPending(record) {
+		stage = "reset"
+		mu.Lock()
+		current, e := readCrewTeam(project)
+		if e == nil {
+			_, e = crewOfflineServerSource(ctx, user, record, current)
+		}
+		if e == nil {
+			e = resetCrewOfflineCopy(project, a.ID, dir, b)
+		}
+		mu.Unlock()
+		if e != nil {
+			return e
+		}
+		clearCrewOfflineRewind(record)
+	}
+	stage = "delta_commit"
 	for {
 		if err := ctx.Err(); err != nil {
 			return err

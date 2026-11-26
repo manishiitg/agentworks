@@ -107,7 +107,7 @@ export function EditResendEditor({ eventId, sequence, text, onClose }: { eventId
     <p className="mt-2 text-xs text-muted-foreground">
       {preview ? `${later === 0 ? 'Nothing after this message leaves the chat.' : later === 1 ? 'The message after this one will leave the chat.' : `The ${later} messages after this one will leave the chat.`} ${howItGoesBack(preview)}` : 'Checking…'}
     </p>
-    {preview?.team_copy && <p data-testid="edit-resend-team-copy" className="mt-1 text-xs text-muted-foreground">The Team's backup copy of this chat is not changed: teammates who can read it still see the earlier messages.</p>}
+    {preview?.team_copy && <p data-testid="edit-resend-team-copy" className="mt-1 text-xs text-muted-foreground">The Team's copy of this chat is replaced with the edited one when it next syncs.</p>}
     {state === 'going' && <p role="status" className="mt-1 text-xs text-muted-foreground">Going back to before this message{revertFiles ? ' and putting files back' : ''}…</p>}
     {state === 'failed' && <p role="alert" className="mt-1 text-xs text-destructive">{error} Your edited text is kept.</p>}
     <div className="mt-2 flex flex-wrap justify-end gap-2 text-xs">

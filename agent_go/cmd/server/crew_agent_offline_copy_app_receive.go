@@ -63,6 +63,8 @@ func (api *StreamingAPI) handleCrewOfflineAppStatus(w http.ResponseWriter, r *ht
 	var in struct {
 		crewOfflineBinding
 		SourceTab string `json:"source_tab"`
+		// Reset drops this source's copy first (an Edit and resend on the Mac, #3707).
+		Reset bool `json:"reset,omitempty"`
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in) != nil || in.Provider != "agentworks" || !in.crewOfflineBinding.valid() {
 		externalError(w, 400, "invalid_source", "Choose a current source app conversation.")
@@ -117,6 +119,9 @@ func (api *StreamingAPI) handleCrewOfflineAppStatus(w http.ResponseWriter, r *ht
 		return
 	}
 	dir, err = crewOfflineWritableDirectory(project, source.ID)
+	if err == nil && in.Reset {
+		err = resetCrewOfflineCopy(project, source.ID, dir, in.crewOfflineBinding)
+	}
 	var h crewOfflineHistory
 	if err == nil {
 		h, err = readCrewOfflineHistory(dir, in.crewOfflineBinding)
@@ -125,5 +130,5 @@ func (api *StreamingAPI) handleCrewOfflineAppStatus(w http.ResponseWriter, r *ht
 		externalError(w, 409, "copy_unavailable", "This source history binding changed.")
 		return
 	}
-	externalJSON(w, map[string]any{"wanted": true, "agent": source.ID, "revision": h.Revision, "offset": h.Offset, "tail_hash": h.TailHash})
+	externalJSON(w, map[string]any{"wanted": true, "agent": source.ID, "revision": h.Revision, "offset": h.Offset, "tail_hash": h.TailHash, "reset": in.Reset})
 }

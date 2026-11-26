@@ -70,7 +70,7 @@ it('keeps the edited text and offers the message box when going back fails', asy
     await act(async () => root.render(<MessageEditContext.Provider value={value}><EditResendEditor eventId="user:1" sequence={20} text="Hi" onClose={() => undefined} /></MessageEditContext.Provider>))
     expect(host.textContent).toContain('Cursor can\'t go back on its own, so it starts fresh with the chat up to that point.')
     expect(host.querySelector('input[type="checkbox"]')).toBeNull()
-    expect(host.querySelector('[data-testid="edit-resend-team-copy"]')?.textContent).toContain('not changed')
+    expect(host.querySelector('[data-testid="edit-resend-team-copy"]')?.textContent).toContain('replaced with the edited one')
     await click(host.querySelector('[data-testid="edit-resend-send"]'))
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('Nothing was changed. Your edited text is kept.')
     expect(host.querySelector('[data-testid="edit-resend-send"]')?.textContent).toBe('Try again')
