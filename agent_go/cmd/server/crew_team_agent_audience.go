@@ -104,7 +104,7 @@ func setCrewTeamAgentAudience(ctx context.Context, project, person, key, audienc
 		list := []string{}
 		for _, id := range people {
 			id = strings.TrimSpace(id)
-			if id == "" || id == person || slices.Contains(list, id) {
+			if id == "" || id == person || id == crewTeamRowRunsAs(person) || slices.Contains(list, id) {
 				continue
 			}
 			if !t.member(id) {

@@ -26,6 +26,11 @@ type crewProjectInTeam struct {
 	// others' shared with the viewer. Members are the Team's people, for choosing who an own agent is shared with.
 	Agents  []crewProjectTeamAgent  `json:"agents,omitempty"`
 	Members []crewProjectTeamPerson `json:"members,omitempty"`
+	// NewAgents is how the viewer's new agents in this project start for the Team (only_me or whole_team), set only
+	// when the viewer makes agents here (crew_team_online_agents_sharing.go).
+	NewAgents string `json:"new_agents,omitempty"`
+	// ProjectID is the server project these agents are in, for the online-agents route.
+	ProjectID string `json:"project_id,omitempty"`
 }
 
 // crewProjectTeamAgent is one of the project's agents on its Access page, with who it is shared with in the Team.
@@ -112,6 +117,12 @@ func crewProjectInTeams(project, viewer string) []crewProjectInTeam {
 		if t.hasProject(project) {
 			row := crewProjectTeamRow(t, viewer, project, memberRoot)
 			row.Agents = crewProjectTeamAgents(t, project, viewer)
+			if crewTeamProjectMakerAllowed(t, project, viewer) {
+				row.ProjectID, row.NewAgents = project, "only_me"
+				if t.AgentDefaults[crewTeamProjectMakerID(project, viewer)] == crewTeamAudienceWholeTeam {
+					row.NewAgents = crewTeamAudienceWholeTeam
+				}
+			}
 			for _, id := range append([]string{t.OwnerID}, crewTeamJoinedPeople(t)...) {
 				if id != viewer {
 					row.Members = append(row.Members, crewProjectTeamPerson{ID: id, Name: crewPersonShortName(id)})

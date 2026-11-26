@@ -22,6 +22,10 @@ func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *ht
 		externalError(w, 403, "team_forbidden", "Open this Team with your own account.")
 		return
 	}
+	if mux.Vars(r)["op"] == "online-agents" {
+		handleCrewTeamOnlineAgents(w, r, project, claims.UserID)
+		return
+	}
 	t, err := readCrewTeam(project)
 	// Sharing an agent someone made in one of the Team's online projects is that person's, whether or not they are in
 	// the Team (a co-owner of the project), and is never a change to the Team's Mac project (owner, 26 Nov).

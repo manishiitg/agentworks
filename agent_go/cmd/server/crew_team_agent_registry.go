@@ -160,7 +160,7 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 			record, ok := current.Agents[id]
 			if !ok {
 				id = crewTeamAgentIDPrefix + uuid.NewString()
-				inTeam := crewTeamDefaultInTeam(a.initialInTeam)
+				inTeam := crewTeamDefaultInTeam(a.initialInTeam) || current.AgentDefaults[people[i].UserID] == crewTeamAudienceWholeTeam
 				record = crewTeamRegisteredAgent{ID: id, OwnerID: people[i].UserID, Tab: tab, InTeam: inTeam, Rule: crewTeamDefaultRule()}
 				created = append(created, record)
 				bySource[source] = id
@@ -245,7 +245,7 @@ func updateCrewTeamRegisteredAgent(project, person, id string, change func(*crew
 		return err
 	}
 	a, ok := t.Agents[id]
-	if !ok || a.OwnerID != person || !crewTeamSourceRowAdmits(t, person, a) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(person) {
+	if !ok || a.OwnerID != person || !crewTeamSourceRowAdmits(t, person, a) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(crewTeamRowRunsAs(person)) {
 		return errCrewTeamAgentNotYours
 	}
 	change(&a)

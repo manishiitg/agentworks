@@ -26,7 +26,7 @@ type ShareState = {
  * locked paths besides always_locked. */
 type ProjectUser = Person & { locked_paths?: string[] }
 /** A Team in the project's Users (#4087): everyone in it works here as a User. */
-type ProjectTeam = { team_id: string; name: string; owner: string; people: number; can_remove: boolean; agents?: ProjectTeamAgent[]; members?: { id: string; name: string }[] }
+type ProjectTeam = { team_id: string; name: string; owner: string; people: number; can_remove: boolean; agents?: ProjectTeamAgent[]; members?: { id: string; name: string }[]; new_agents?: 'only_me' | 'whole_team'; project_id?: string }
 type OwnersState = { owner?: Person; co_owners: Person[]; can_manage: boolean; users?: ProjectUser[]; always_locked?: string[]; teams?: ProjectTeam[]; team_choices?: ProjectTeam[] }
 const who = (person: Person) => person.email || person.username || person.id
 const audience = (state: ShareState) => state.mode === 'everyone' ? 'Everyone' : state.mode === 'people' ? 'Chosen people' : state.has_owners ? 'Only owners' : 'Only me'
@@ -241,7 +241,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
           <span className="min-w-0 flex-1"><span className="block truncate">{team.name} <span className="text-xs text-muted-foreground">Team</span></span><span className="block truncate text-xs text-muted-foreground">{team.owner}'s Team · everyone in it · {team.people} {team.people === 1 ? 'person' : 'people'}</span></span>
           {team.can_remove && <button type="button" aria-label={`Remove ${team.name}`} disabled={busy} onClick={() => void run(() => changeUsers('team_remove', team.team_id))} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>}
         </div>
-        <ProjectTeamAgents teamId={team.team_id} agents={team.agents || []} members={team.members || []} busy={busy} run={run} changed={() => setAttempt(n => n + 1)} />
+        <ProjectTeamAgents teamId={team.team_id} projectId={team.project_id} newAgents={team.new_agents} agents={team.agents || []} members={team.members || []} busy={busy} run={run} changed={() => setAttempt(n => n + 1)} />
         </li>)}
       </ul>}
       {owners.can_manage && personPicker(taken, value => { void run(() => changeUsers('user_add', value)) }, 'Add a user')}
