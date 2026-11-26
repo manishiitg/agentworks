@@ -122,7 +122,8 @@ export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string;
 export type TeamTabSetup = { next_automation?: string; when_offline?: { line: string }; reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
 export type TeamTabSync = { line: string; problem?: boolean; attention?: boolean; last?: string; state?: string; changed_by?: string; changed_ago?: string; stale?: string; size?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
 export type TeamReachableAgent = AvatarFields & { purpose?: string; examples?: string[]; task_state?:string; chat_share?: string; chat_readable?:boolean; offline_line?:string; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
-export type TeamOnlineProject = { id: string; name: string; line: string }
+/** mine: the viewer is its main owner, so New agent can make an agent there. */
+export type TeamOnlineProject = { id: string; project_id: string; name: string; line: string; mine?: boolean }
 export type TeamTabView = {
  reachable?: TeamReachableAgent[]
  // Server projects with this Team in their Users (#4087); their agents are the reachable rows with person_id === id.
@@ -240,6 +241,10 @@ export function useTeamTab(project?: string, connection?: string): TeamTabState 
 }
 
 /** The person changed the Team here: every Team screen re-reads now, not after the shared refresh window. */
+/** New agent in an online project the Team uses (crew_team_online_agent.go): the server makes it as you. */
+export function createOnlineAgent(target: TeamTarget, projectId: string, name: string): Promise<{ chat_id?: string; name?: string }> {
+  return teamRequest(target, '/online-agent', 'POST', { project_id: projectId, name })
+}
 export const teamChanged = () => window.dispatchEvent(new CustomEvent('agentworks:team-updated', { detail: { own: true } }))
 const changed = teamChanged
 
