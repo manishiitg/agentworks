@@ -245,6 +245,25 @@ func TestCrewTeamOnlineProjectAgentReach(t *testing.T) {
 	if team.agentInTeam(made, "srv"+codeChatSideMarker+"unregistered") {
 		t.Fatal("an online project's unregistered agent was shared with the Team by default")
 	}
+	// 26 Nov regression: the maker's Only me / Whole Team change was refused (agent_not_yours) because the saved
+	// change checked the row owner (project:<id>/<maker>) as an account; it is checked as the maker.
+	ctx := context.Background()
+	if err := setCrewTeamAgentChoice(ctx, "mac", made, id, false); err != nil {
+		t.Fatalf("the maker could not set their online agent to Only me: %v", err)
+	}
+	// Sharing all of one's agents at once and the default for new ones are the maker's own (owner, 26 Nov).
+	if n, err := setCrewTeamOnlineAgentsSharing(ctx, "mac", "srv", "ann", "", crewTeamAudienceWholeTeam); err != nil || n != 0 {
+		t.Fatalf("a teammate's share-all changed another maker's agents: n=%d err=%v", n, err)
+	}
+	if _, err := setCrewTeamOnlineAgentsSharing(ctx, "mac", "srv", "carl", crewTeamAudienceWholeTeam, ""); err == nil {
+		t.Fatal("someone outside the Team and the project set how agents there start")
+	}
+	if n, err := setCrewTeamOnlineAgentsSharing(ctx, "mac", "srv", "bob", crewTeamAudienceWholeTeam, crewTeamAudienceWholeTeam); err != nil || n != 1 {
+		t.Fatalf("the maker's share-all: n=%d err=%v", n, err)
+	}
+	if saved, err := readCrewTeam("mac"); err != nil || !saved.Agents[id].InTeam || saved.AgentDefaults[made] != crewTeamAudienceWholeTeam {
+		t.Fatalf("share-all or the new-agent default was not saved: err=%v", err)
+	}
 	// #4087: a Team member's own ask to an agent of an online project the Team uses is their User turn there (not Run);
 	// outsiders and Run turns stay Run.
 	dest := agentMessageEndpoint{ID: "srv", TeamAgentID: id}

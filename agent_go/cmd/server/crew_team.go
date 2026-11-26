@@ -163,7 +163,10 @@ type crewTeam struct {
 	People []crewTeamPerson                   `json:"people"`
 	// Projects are the online projects in this Team (#3664, crew_team_projects.go), changed only by their own route.
 	Projects []crewTeamProject `json:"projects,omitempty"`
-	Folder   crewTeamFolder    `json:"folder"`
+	// AgentDefaults is how a maker's new agents in an online project start, by their row owner
+	// (project:<id>/<maker>): "whole_team", or absent for Only me (crew_team_online_agents_sharing.go).
+	AgentDefaults map[string]string `json:"agent_defaults,omitempty"`
+	Folder        crewTeamFolder    `json:"folder"`
 	// FolderNote is a server/migration-authored setup note, never accepted from a settings caller.
 	FolderNote   string `json:"folder_note,omitempty"`
 	Revision     uint64 `json:"revision"`

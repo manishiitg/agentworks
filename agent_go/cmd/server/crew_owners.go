@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -20,11 +21,13 @@ const externalCrewOwnersTool = "crew_owners"
 const crewOwnersServerOnly = "Only a project on the server has co-owners and users. People work on a Mac project with you through its Team."
 
 func externalCrewOwnersDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(externalCrewOwnersTool, "List, add or remove the co-owners and users of a project on the server. Co-owners build it like its owner and change everything: files, agents, memory, instructions, skills, settings, automations and sharing; they see every chat in it. Users work in it through chat with the setup you made: they see only their own chats (the project's dashboard opens from its own link), run on the project's model, and cannot change its instructions, skills, settings, automations or sharing, nor the extra locked_paths you name (user_files). A User can also be a whole Team: team_add puts a Team you are in (from list's team_choices) into the Users, so everyone in it works here as a User and its people's agents can ask this project's agents; team_remove takes it out; list shows, for each Team, the project's agents it can use and who each is shared with. Only the project's owner adds or removes people; the owner or a co-owner adds or removes a Team they are in; the owner cannot be removed. Give the person's account email or user id, or the Team's team_id.", true, false, map[string]any{
+	add(externalCrewOwnersTool, "List, add or remove the co-owners and users of a project on the server. Co-owners build it like its owner and change everything: files, agents, memory, instructions, skills, settings, automations and sharing; they see every chat in it. Users work in it through chat with the setup you made: they see only their own chats (the project's dashboard opens from its own link), run on the project's model, and cannot change its instructions, skills, settings, automations or sharing, nor the extra locked_paths you name (user_files). A User can also be a whole Team: team_add puts a Team you are in (from list's team_choices) into the Users, so everyone in it works here as a User and its people's agents can ask this project's agents; team_remove takes it out; list shows, for each Team, the project's agents it can use and who each is shared with, and new_agents (how your new agents here start for that Team); team_agents shares every agent you made here with that Team at once (all_now=whole_team or only_me) and/or sets how your new ones start (new_agents=whole_team or only_me). Only the project's owner adds or removes people; the owner or a co-owner adds or removes a Team they are in; the owner cannot be removed. Give the person's account email or user id, or the Team's team_id.", true, false, map[string]any{
 		"crew_id":      externalString("Project ID from crew action=list."),
-		"action":       map[string]any{"type": "string", "enum": []any{"list", "add", "remove", "user_add", "user_remove", "user_files", "team_add", "team_remove"}},
+		"action":       map[string]any{"type": "string", "enum": []any{"list", "add", "remove", "user_add", "user_remove", "user_files", "team_add", "team_remove", "team_agents"}},
 		"email":        externalString("The person's account email or user id; every action except list and the team ones."),
-		"team_id":      externalString("team_add, team_remove: the Team's team_id from list (teams or team_choices)."),
+		"team_id":      externalString("team_add, team_remove, team_agents: the Team's team_id from list (teams or team_choices)."),
+		"new_agents":   externalString("team_agents: how your new agents in this project start for the Team: whole_team or only_me."),
+		"all_now":      externalString("team_agents: share every agent you made in this project with the whole Team (whole_team) or nobody (only_me) now."),
 		"locked_paths": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "user_files only: more files or folders (relative to the project) this user cannot change, besides the instructions, skills and settings. An empty list keeps only those."},
 	}, "crew_id", "action")
 }
@@ -316,7 +319,7 @@ func (api *StreamingAPI) externalCrewOwnersCall(w http.ResponseWriter, r *http.R
 	crewID, action, email := externalArg(args, "crew_id"), externalArg(args, "action"), strings.TrimSpace(externalArg(args, "email"))
 	write := action == "add" || action == "remove" || strings.HasPrefix(action, "user_") || action == "team_add" || action == "team_remove"
 	if action != "list" && !write {
-		externalError(w, http.StatusBadRequest, "invalid_arguments", "action must be list, add, remove, user_add, user_remove, user_files, team_add or team_remove.")
+		externalError(w, http.StatusBadRequest, "invalid_arguments", "action must be list, add, remove, user_add, user_remove, user_files, team_add, team_remove or team_agents.")
 		return
 	}
 	if t := claims.AccessToken; t != nil {
@@ -352,7 +355,23 @@ func (api *StreamingAPI) externalCrewOwnersCall(w http.ResponseWriter, r *http.R
 	var state crewOwnersState
 	var status int
 	var code, message string
-	if strings.HasPrefix(action, "team_") {
+	if action == "team_agents" {
+		rec, found := crewOwnerRecordAt(root)
+		if !found || !crewLivesOnServer(rec.ProjectID) {
+			externalError(w, http.StatusConflict, "mac_crew", crewOwnersServerOnly)
+			return
+		}
+		_, err := setCrewTeamOnlineAgentsSharing(r.Context(), externalArg(args, "team_id"), rec.ProjectID, claims.UserID, externalArg(args, "new_agents"), externalArg(args, "all_now"))
+		switch {
+		case errors.Is(err, errCrewTeamOnlineAgentsChoice):
+			externalError(w, http.StatusBadRequest, "invalid_arguments", "Give new_agents and/or all_now as whole_team or only_me.")
+			return
+		case err != nil:
+			externalError(w, http.StatusForbidden, "not_in_team", "Choose a Team from list's teams that uses this project.")
+			return
+		}
+		state = crewOwnersStateFor(root, crew.OwnerID, claims.UserID)
+	} else if strings.HasPrefix(action, "team_") {
 		state, status, code, message = api.changeCrewTeamUsers(claims, root, crew.OwnerID, action, externalArg(args, "team_id"))
 	} else if strings.HasPrefix(action, "user_") {
 		var paths []string
