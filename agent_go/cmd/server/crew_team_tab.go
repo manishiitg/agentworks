@@ -477,8 +477,10 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 					row.Fixed = errCrewTeamLastShared.Error()
 				}
 			} else {
-				row.Fixed, row.Address = "Shared", a.Address
+				row.Fixed = "Shared"
 			}
+			// Every row carries its address, yours too: Quick answer sends your question to one of your own agents.
+			row.Address = a.Address
 			rule := t.agentRule(p.UserID, crewTeamRuleKey(ctx, t, p.UserID, a.ChatKey))
 			row.Uses = crewTeamRowUses(uses, p.UserID, t.OwnerID, viewer)
 			row.UsesNote = usesNote

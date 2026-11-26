@@ -180,9 +180,10 @@ const QUICK_AGENT='agentworks:quick-answer-agent'
 
 export function TeammateAsk({target,address,name,where,online,enabled,scope,agent,quick,answersAbove}:{target?:TeamTarget;address?:string;name:string;where:string;online?:boolean;enabled:boolean;scope:string;agent?:AskAgentRuntime;quick?:{agents:OwnAskAgent[];prompt:(question:string)=>string};answersAbove?:boolean}) {
  const offline=online===false,canQuick=!!quick?.agents.length
- // Offline opens on Quick answer, online on asking the agent; you can switch either way.
- const [mode,setMode]=useState<'agent'|'quick'>(offline&&canQuick?'quick':'agent')
- useEffect(()=>{setMode(offline&&canQuick?'quick':'agent')},[scope,offline,canQuick])
+ // Opens on Quick answer whenever you have an agent for it (owner, 26 Nov: "just ask the offline copies, not real time");
+ // Ask <agent> is one click away.
+ const [mode,setMode]=useState<'agent'|'quick'>(canQuick?'quick':'agent')
+ useEffect(()=>{setMode(canQuick?'quick':'agent')},[scope,canQuick])
  const [picked,setPicked]=useState(()=>{try{return localStorage.getItem(QUICK_AGENT)||''}catch{return ''}})
  const helper=quick?.agents.find(row=>row.address===picked)||quick?.agents[0]
  const quickAgent=mode==='quick'?helper:undefined,isQuick=!!quickAgent
