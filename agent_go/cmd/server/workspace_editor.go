@@ -73,11 +73,12 @@ func (api *StreamingAPI) workspaceEditor(w http.ResponseWriter, r *http.Request,
 		log.Printf("[OPEN_EDITOR] request=%s user=%s project=%s editor=%s line=%d ok=%t reason=%s", requestID, GetUserIDFromContext(r.Context()), project, editorLogID(req.Editor), req.Line, ok, reason)
 	}()
 	refuse := func(status int, code, message string) { reason = code; externalError(w, status, code, message) }
-	if !workspaceEditorLocalAvailable() {
+	reveal := req.Op == "reveal"
+	if !workspaceEditorLocalAvailable() && !(reveal && IsLocalMode()) {
 		refuse(409, "local_project_required", "Open this project's local folder in the Mac app. Server paths cannot be opened in a local editor.")
 		return
 	}
-	if req.Op != "capabilities" && req.Op != "resolve" {
+	if req.Op != "capabilities" && req.Op != "resolve" && !reveal {
 		refuse(400, "invalid_arguments", "Choose an editor action.")
 		return
 	}
@@ -104,6 +105,30 @@ func (api *StreamingAPI) workspaceEditor(w http.ResponseWriter, r *http.Request,
 	base, valid = workspaceGitConfined(base, base)
 	if !valid {
 		refuse(404, "not_found", "Project folder not found.")
+		return
+	}
+	// Show a project folder in Finder or File Explorer: the same local project
+	// check, then only a folder inside it. No editor choice is read or saved.
+	if reveal {
+		rel, valid := workspaceGitRelFile(req.File)
+		if req.File == "" {
+			rel, valid = "", true
+		}
+		if !valid || req.Repo != "" || req.Line != 0 || req.Editor != "" {
+			refuse(400, "invalid_path", "Choose a folder inside this project.")
+			return
+		}
+		target, valid := workspaceGitConfined(base, filepath.Join(base, filepath.FromSlash(rel)))
+		if !valid || strings.IndexFunc(target, unicode.IsControl) >= 0 {
+			refuse(404, "not_found", "Folder not found inside this project.")
+			return
+		}
+		if info, err := os.Stat(target); err != nil || !info.IsDir() {
+			refuse(404, "not_found", "This folder is no longer in the project.")
+			return
+		}
+		ok, reason = true, "reveal"
+		externalJSON(w, map[string]any{"available": true, "request_id": requestID, "launch": map[string]any{"reveal": target}, "next": "Use this folder in the desktop app. Resolving it has not opened anything."})
 		return
 	}
 	var target string

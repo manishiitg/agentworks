@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronRight, Clock, FileDiff, FileText, Folder, Github, GitBranch, SquareTerminal, TriangleAlert } from 'lucide-react'
+import { ChevronRight, Clock, FileDiff, FileText, Folder, FolderOpen, Github, GitBranch, SquareTerminal, TriangleAlert } from 'lucide-react'
 import api from '../../services/api'
 import type { CrewFileLimit, CrewPanelSection, CrewPanelRow } from '../../products/work/useCrewPanel'
 import { usePersistentTab } from '../../hooks/usePersistentTab'
@@ -85,6 +85,21 @@ export function FileLimitBox({ limit, workspacePath, onAskAgent, onOpenFolder }:
       setNote({ text: 'Could not open the chat. Try again.', failed: true })
     } finally { setBusy('') }
   }
+  // The desktop app shows the folder in Finder or File Explorer; the server resolves it inside this project.
+  const canReveal = Boolean(workspacePath) && typeof window.electronAPI?.openEditor === 'function'
+  const revealLabel = /Windows/i.test(navigator.userAgent) ? 'File Explorer' : 'Finder'
+  const reveal = async (folder: { path: string }) => {
+    if (!canReveal) return
+    setNote(null)
+    try {
+      const { data } = await api.post<{ launch?: { reveal?: string }; request_id?: string }>('/api/workspace-editor', { workspace_path: workspacePath, op: 'reveal', file: folder.path }, { skipSessionContext: true })
+      if (!data.launch?.reveal || !data.request_id) throw new Error('This folder could not be opened.')
+      const result = await window.electronAPI!.openEditor!({ reveal: data.launch.reveal, requestId: data.request_id })
+      if (!result.ok) throw new Error(result.error)
+    } catch (cause) {
+      setNote({ text: cause instanceof Error && !('response' in cause) ? cause.message : errorText(cause, 'This folder could not be opened.'), failed: true })
+    }
+  }
   const checkAgain = async () => {
     if (!workspacePath) return
     setBusy('check'); setNote(null)
@@ -109,6 +124,7 @@ export function FileLimitBox({ limit, workspacePath, onAskAgent, onOpenFolder }:
         <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="min-w-0 flex-1"><span className="block truncate font-medium group-enabled/folder:group-hover/folder:underline">{folder.path}</span><span className="text-[11px] text-muted-foreground">about {fileCount(folder.files)} files</span></span>
         </button>
+        {canReveal && <button type="button" title={`Show ${folder.path} in ${revealLabel}`} aria-label={`Show ${folder.path} in ${revealLabel}`} onClick={() => void reveal(folder)} className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><FolderOpen className="h-3.5 w-3.5" aria-hidden="true" /></button>}
         {report.can_fix && onAskAgent && <button type="button" disabled={Boolean(busy)} title="Ask the agent in chat to check this folder and suggest what to do" onClick={() => void askAgent(folder)} className="shrink-0 rounded-md border border-border bg-background px-2 py-0.5 text-[11px] hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{busy === folder.path ? 'Asking…' : 'Move out'}</button>}
       </li>)}</ul>
     </div>}
