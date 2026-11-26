@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO="manishiitg/agentworks"
 GH_USER="manishiitg"
-SOURCE_BRANCH="dev"
+SOURCE_BRANCH="main"
 WORKFLOW_NAME="Desktop DMG"
 
 usage() {
@@ -13,7 +13,7 @@ Usage:
 
 What it does:
   - uses the stored manishiitg token without switching the active gh account
-  - prepares from origin/dev (or --from <commit>, e.g. one that passed a manual
+  - prepares from origin/main (or --from <commit>, e.g. one that passed a manual
     Desktop DMG run) in an isolated temporary worktree; main is never touched
   - verifies the version is newer than the current Latest release
   - commits the matching desktop package/package-lock version
@@ -21,7 +21,7 @@ What it does:
   - pushes a release/<tag> branch and the version tag (never main)
   - waits for the Desktop DMG workflow
   - publishes the workflow-created draft release with the generated notes
-  - merges the version bump into dev through a pull request
+  - merges the version bump into main through a pull request
 EOF
 }
 
@@ -194,7 +194,7 @@ notes_file="$(mktemp)"
     fi
   fi
   echo
-  echo "Desktop alpha release $tag, built from dev $remote_head (alpha: dev is not frozen; P0/P1 and security findings block a release, P2 findings do not)."
+  echo "Desktop alpha release $tag, built from main $remote_head (alpha: main is not frozen; P0/P1 and security findings block a release, P2 findings do not)."
   echo
   cat <<INSTALL
 ## Install (macOS, Apple Silicon)
@@ -361,8 +361,8 @@ done
 release_url="$(gh release view "$tag" --repo "$REPO" --json url --jq .url)"
 echo "==> Published: $release_url"
 
-# Keep dev's desktop metadata at the latest release: the release branch is the
-# source dev commit plus at most the version bump.
+# Keep main's desktop metadata at the latest release: the release branch is the
+# source main commit plus at most the version bump.
 if [[ "$(git rev-parse HEAD)" != "$remote_head" ]]; then
   echo "==> Merging the version bump into $SOURCE_BRANCH"
   bump_pr="$(gh pr create --repo "$REPO" --base "$SOURCE_BRANCH" --head "$release_branch" \

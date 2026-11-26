@@ -73,14 +73,14 @@ Prerequisites: Go 1.26+, Node.js 22.18+ (22.x) or 24+, [GitHub CLI](https://cli.
 
 Dashboard preparation imports TypeScript directly using [Node’s built-in type stripping](https://nodejs.org/api/typescript.html#type-stripping); Node 20 cannot run it. The launcher checks the Node version before installing dependencies.
 
-You can ask your own coding agent to do all of this for you: give it this section and tell it to clone the repository, check out `dev`, install dependencies and start the app.
+You can ask your own coding agent to do all of this for you: give it this section and tell it to clone the repository, check out `main`, install dependencies and start the app.
 
-The two engine libraries, `mcpagent/` and `multi-llm-provider-go/`, are folders in this repository; `agent_go/go.mod` builds them from there. Clone it and work on the `dev` branch:
+The two engine libraries, `mcpagent/` and `multi-llm-provider-go/`, are folders in this repository; `agent_go/go.mod` builds them from there. Clone it and work on the `main` branch:
 
 ```bash
 git clone https://github.com/manishiitg/agentworks.git mcp-agent-builder-go
 cd mcp-agent-builder-go
-git checkout dev
+git checkout main
 (cd frontend && npm ci)
 (cd agent_go && go mod download)
 ./run_agentworks
@@ -108,7 +108,7 @@ Checks before a pull request:
 
 Install the git hooks once with `./scripts/install-git-hooks.sh`.
 
-Make changes in your own git worktree per task, started from `origin/dev`, then open a pull request into `dev` (`gh pr create --base dev`).
+Make changes in your own git worktree per task, started from `origin/main`, then open a pull request into `main` (`gh pr create --base main`).
 
 ## Self-hosting
 
