@@ -66,7 +66,7 @@ export function LocalMcpImport({ servers, scope, onImported }: { servers: LocalM
     </ul>
     {error && <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}
     <div className="mt-3 flex items-center justify-between gap-3">
-      <p className="text-xs text-muted-foreground">They are added to your Vault and selected for this project.</p>
+      <p className="text-xs text-muted-foreground">{busy ? 'Connecting… a server that runs a program on this Mac can take a minute to start the first time.' : 'They are added to your Vault and selected for this project.'}</p>
       <button type="button" disabled={!picked.size || busy} onClick={() => void run()} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">
         {busy && <Loader2 className="h-4 w-4 animate-spin" />}Import {picked.size || ''}
       </button>

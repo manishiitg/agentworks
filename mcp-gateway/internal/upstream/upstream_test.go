@@ -15,7 +15,7 @@ func TestValidateURLAndPrivateEgress(t *testing.T) {
 	for _, raw := range []string{
 		"http://127.0.0.1:8080/mcp", "http://127.0.0.1.evil.example/mcp",
 		"https://user:pass@example.com/mcp", "file:///etc/passwd", "https://example.com/mcp#fragment",
-		"https://example.com/mcp?api_key=secret",
+		"https://example.com/mcp?api_key=secret", "https://example.com/mcp?access_token=x", "https://example.com/mcp?x-api-key=x",
 	} {
 		if _, err := ValidateURL(raw, DialOptions{}); err == nil {
 			t.Fatalf("accepted %s", raw)
@@ -24,8 +24,11 @@ func TestValidateURLAndPrivateEgress(t *testing.T) {
 	if _, err := ValidateURL("http://127.0.0.1:8080/mcp", DialOptions{AllowPrivate: true}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ValidateURL("https://example.com/mcp", DialOptions{}); err != nil {
-		t.Fatal(err)
+	// Hosted servers take plain settings in the query (a project, read-only mode); only credentials are refused.
+	for _, raw := range []string{"https://example.com/mcp", "https://example.com/mcp?project_ref=abc&read_only=true"} {
+		if _, err := ValidateURL(raw, DialOptions{}); err != nil {
+			t.Fatal(raw, err)
+		}
 	}
 	for _, address := range []string{"127.0.0.1", "10.0.0.1", "169.254.169.254", "100.64.0.1", "198.18.0.1", "2001:db8::1"} {
 		if !privateIP(net.ParseIP(address)) {
