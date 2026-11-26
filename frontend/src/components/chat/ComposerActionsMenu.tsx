@@ -2,7 +2,7 @@ import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 import { LoadingIndicator } from '../ui/LoadingIndicator'
 import { useRef } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { Paperclip, Plus, LogIn, ListChecks } from 'lucide-react'
+import { Paperclip, Plus, LogIn } from 'lucide-react'
 import { SlashCommandsSubmenu, type ComposerCommandPreview } from './SlashCommandsSubmenu'
 import { ChatSendOptions, ComposerSendKeys, type ChatSendOptionsProps } from './ChatSendModeButton'
 
@@ -15,10 +15,9 @@ export type ComposerActions = {
   sendOptions?: ChatSendOptionsProps
   onOpenChange?: (open: boolean) => void
   // Plan first (#3711): only for programs with a plan mode.
-  planMode?: { on: boolean; onToggle: () => void }
 }
 
-export function ComposerActionsMenu({ uploading, onAttach, commands, sendOptions, onOpenChange, planMode }: ComposerActions) {
+export function ComposerActionsMenu({ uploading, onAttach, commands, sendOptions, onOpenChange }: ComposerActions) {
   const afterClose = useRef<(() => void) | null>(null)
   return <Menu.Root modal={false} onOpenChange={onOpenChange}>
     <Menu.Trigger data-theme-action="composer-menu" data-theme-control="button" type="button" aria-label="Add files and actions" title="Add files and actions"
@@ -32,26 +31,19 @@ export function ComposerActionsMenu({ uploading, onAttach, commands, sendOptions
         if (action) { event.preventDefault(); action() }
       }}
       className="z-[100] max-h-[var(--radix-dropdown-menu-content-available-height)] w-[min(320px,calc(100vw-24px))] overflow-y-auto overscroll-contain scroll-py-1.5 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
-      <ComposerActionItems uploading={uploading} onAttach={onAttach} commands={commands} sendOptions={sendOptions} planMode={planMode} deferAction={action => { afterClose.current = action }} />
+      <ComposerActionItems uploading={uploading} onAttach={onAttach} commands={commands} sendOptions={sendOptions} deferAction={action => { afterClose.current = action }} />
       <ComposerSendKeys busy={Boolean(sendOptions?.busy)} />
     </Menu.Content></Menu.Portal>
   </Menu.Root>
 }
 
 /** Reuse the exact actions inside the chat's model/context menu. */
-export function ComposerActionItems({ uploading, onAttach, commands, sendOptions, planMode, deferAction, attachOnBar = false, showAccountLink = true }: ComposerActions & { deferAction: (action: () => void) => void; attachOnBar?: boolean; showAccountLink?: boolean }) {
+export function ComposerActionItems({ uploading, onAttach, commands, sendOptions, deferAction, attachOnBar = false, showAccountLink = true }: ComposerActions & { deferAction: (action: () => void) => void; attachOnBar?: boolean; showAccountLink?: boolean }) {
   const rowClass = 'flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm outline-none data-[highlighted]:bg-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50'
   return <>
       {!attachOnBar && onAttach && <Menu.Item disabled={uploading} onSelect={onAttach} data-theme-action="attach" data-testid="chat-upload-button" className={rowClass}>
         <Paperclip className="h-4 w-4" aria-hidden="true" />{uploading ? 'Uploading files…' : 'Attach files'}
       </Menu.Item>}
-      {planMode && <Menu.CheckboxItem checked={planMode.on} onSelect={planMode.onToggle} data-testid="plan-mode-menu-item" className={rowClass}>
-        <ListChecks className="h-4 w-4" aria-hidden="true" />
-        <span className="flex min-w-0 flex-col"><span>Plan first</span><span className="text-[11px] text-muted-foreground">Shift+Tab or /plan in the box</span></span>
-        <span aria-hidden="true" className={`ml-auto inline-flex h-4 w-7 shrink-0 items-center rounded-full p-0.5 transition-colors ${planMode.on ? 'bg-primary' : 'bg-border'}`}>
-          <span className={`h-3 w-3 rounded-full bg-background shadow transition-transform ${planMode.on ? 'translate-x-3' : ''}`} />
-        </span>
-      </Menu.CheckboxItem>}
       {commands && <SlashCommandsSubmenu {...commands} deferAction={deferAction} rowClass={rowClass} />}
       {showAccountLink && <Menu.Item onSelect={() => deferAction(() => openWorkspaceSettings('providers'))} className={rowClass}>
         <LogIn className="h-4 w-4" aria-hidden="true" />AI accounts / Sign in

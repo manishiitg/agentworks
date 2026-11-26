@@ -3164,7 +3164,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                   uploading={isUploadingFiles}
                   onAttach={onlineAgentTab ? undefined : openAttachmentPicker}
                   commands={commandPreview}
-                  planMode={nativePlanSupported ? { on: planOn, onToggle: togglePlanMode } : undefined}
                   sendOptions={{
                     busy: isStreaming || transcriptTurnActive,
                     onNewChat: showNewChatAction ? onNewChat : undefined,
@@ -3530,7 +3529,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                       busy={isTurnInFlight}
                       actions={{ uploading: isUploadingFiles, onAttach: onlineAgentTab ? undefined : openAttachmentPicker,
                         commands: commandPreview,
-                        planMode: nativePlanSupported ? { on: planOn, onToggle: togglePlanMode } : undefined,
                         // New chat in the Context section starts over; no second Clear chat here.
                         sendOptions: { busy: isStreaming || transcriptTurnActive },
                       }} /></Suspense>
