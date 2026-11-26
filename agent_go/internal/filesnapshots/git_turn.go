@@ -649,6 +649,17 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 	for _, p := range r.Omitted {
 		ignored[p] = true
 	}
+	// The walk skips folders the project's .gitignore leaves out, so a folder
+	// ignored during this reply is simply absent now. Its files are ignored
+	// output, not deletions (as when the walk still read them and the ignore
+	// filter omitted them).
+	nowIgnored := s.ignoredFolders(ctx)
+	for p := range previous {
+		if _, repo := savedRoot(p, roots); !repo && !ignored[p] && underIgnored(nowIgnored, p) {
+			ignored[p] = true
+			r.Omitted = append(r.Omitted, p)
+		}
+	}
 	candidates := map[string]bool{}
 	for _, p := range append(turnKeys(current), turnKeys(previous)...) {
 		if r.BeforeCapture.Deferred == "loose_file_limit" || r.AfterCapture.Deferred == "loose_file_limit" {
