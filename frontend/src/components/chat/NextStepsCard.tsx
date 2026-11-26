@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { useChatStore } from '../../stores/useChatStore'
@@ -16,13 +16,27 @@ export function useNextSteps(session: string | null, available: boolean) {
   return { steps: shown, dismiss: () => setDismissed(event?.id) }
 }
 
-/** Puts the card at the end of the chat (ChatArea's slot for this tab), after the last reply. */
+// Where each chat's card goes: the transcript's footer, inside the scroller, after the last reply.
+const slots = new Map<string, HTMLElement>()
+const slotListeners = new Set<() => void>()
+const notifySlots = () => slotListeners.forEach(listener => listener())
+const subscribeSlots = (listener: () => void) => { slotListeners.add(listener); return () => { slotListeners.delete(listener) } }
+
+/** The place in the transcript (its footer, inside the scroller) where this chat's card is shown. */
+export function NextStepsSlotHost({ slotId }: { slotId: string }) {
+  const mine = useRef<HTMLElement | null>(null)
+  const register = useCallback((el: HTMLDivElement | null) => {
+    if (el) { mine.current = el; slots.set(slotId, el) }
+    else if (mine.current && slots.get(slotId) === mine.current) { slots.delete(slotId); mine.current = null }
+    notifySlots()
+  }, [slotId])
+  return <div ref={register} data-next-steps-slot={slotId} className="px-3 empty:hidden" />
+}
+
+/** Shows the card after the last reply (the transcript's slot for this chat); with no slot on screen, above the message box. */
 export function NextStepsSlot({ tabId, children }: { tabId: string; children: ReactNode }) {
-  const [host, setHost] = useState<HTMLElement | null>(null)
-  useEffect(() => {
-    setHost(document.querySelector<HTMLElement>(`[data-next-steps-slot="${CSS.escape(tabId)}"]`))
-  }, [tabId])
-  return host ? createPortal(children, host) : null
+  const host = useSyncExternalStore(subscribeSlots, () => slots.get(tabId) ?? null)
+  return host ? createPortal(children, host) : <>{children}</>
 }
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '')

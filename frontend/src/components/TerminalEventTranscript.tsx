@@ -77,6 +77,7 @@ import { isWebSearchToolCall } from '../utils/webSearchToolCall'
 import { isAgentMessageSendToolCall, parseAgentMessageSend } from '../utils/agentMessageSend'
 import { AgentMessageIdentity } from './AgentMessageIdentity'
 import { AgentInboxMessage, agentInboxMessage } from './AgentInboxMessage'
+import { NextStepsSlotHost } from './chat/NextStepsCard'
 
 
 // Message text sizes multiply --chat-scale (default 1), so a product can offer
@@ -141,6 +142,7 @@ type TranscriptHistoryContext = {
   turnStartedAt?: number
   lastOutputAt?: number
   turnPhase?: TurnPhase
+  nextStepsSlot?: string
 }
 
 // Keep history navigation inside the virtual scroller. A fixed sibling header
@@ -169,7 +171,9 @@ const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryCont
   const activity = context?.activity
   const working = activity !== undefined && activity.state !== 'ready'
   const usage = context?.usage
-  return <div data-testid="transcript-activity-footer" className="flex min-h-7 min-w-0 items-center gap-2 px-3 py-0.5 text-xs text-muted-foreground">
+  return <>
+  {context?.nextStepsSlot && <NextStepsSlotHost slotId={context.nextStepsSlot} />}
+  <div data-testid="transcript-activity-footer" className="flex min-h-7 min-w-0 items-center gap-2 px-3 py-0.5 text-xs text-muted-foreground">
     {working && <>
       {activity.label === 'running'
         // WorkingStatus owns the one shared working indicator.
@@ -186,6 +190,7 @@ const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryCont
       </span>
     </div>}
   </div>
+  </>
 }
 const transcriptComponents = { Header: TranscriptHistoryHeader, Footer: TranscriptActivityFooter }
 
@@ -1297,6 +1302,8 @@ const ReadRun: React.FC<{ pairs: PairedToolCall[] }> = ({ pairs }) => {
 interface TerminalEventTranscriptProps {
   /** Stable chat/terminal identity for restoring reading position. */
   scrollKey?: string
+  /** The chat whose summary and next-steps card sits in this transcript's footer, after the last reply. */
+  nextStepsSlot?: string
   events: PollingEvent[] | undefined
   terminal: TerminalSnapshot | null | undefined
   // Full terminal list for the session. Required for a correct main-agent
@@ -1376,6 +1383,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   assistantLabel = 'Agent',
   assistantIcon,
   runtimeActivity,
+  nextStepsSlot,
   searchable = false,
   readingState,
   readingKey,
@@ -1561,7 +1569,8 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     turnStartedAt,
     lastOutputAt,
     turnPhase,
-  }), [hasOlder, loadingOlder, onLoadOlder, handleEarlierMessages, runtimeActivity, usage, turnStartedAt, lastOutputAt, turnPhase])
+    nextStepsSlot,
+  }), [hasOlder, loadingOlder, onLoadOlder, handleEarlierMessages, runtimeActivity, usage, turnStartedAt, lastOutputAt, turnPhase, nextStepsSlot])
 
   if (listData.length === 0) {
     const state = (terminal?.state || '').trim().toLowerCase()
