@@ -247,6 +247,32 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	if _, _, err := (&StreamingAPI{}).saveProjectSecret(context.Background(), "cara", root, "NEW_KEY", "value", ""); err == nil || !strings.Contains(err.Error(), "owner and co-owners") {
 		t.Fatalf("a User added a key to the project vault: %v", err)
 	}
+	// Your own keys in your own chat (#4165): only a turn the person typed gets them; a schedule, webhook, bot, agent
+	// message or someone else's ask does not. The project's key wins on the same name; the person's own key wins over a
+	// company key.
+	for _, tc := range []struct {
+		trigger, session, bot string
+		askOnly, want         bool
+	}{{"", "chat-1", "", false, true}, {"manual", "chat-1", "", false, true}, {"cron", "chat-1", "", false, false}, {"", "schedule-1", "", false, false}, {"agent_message", "chat-1", "", false, false}, {"", "chat-1", "slack", false, false}, {"", "chat-1", "", true, false}} {
+		if got := personTypedChatTurn(context.Background(), QueryRequest{TriggeredBy: tc.trigger, BotPlatform: tc.bot}, tc.session, tc.askOnly); got != tc.want {
+			t.Fatalf("typed turn %+v = %v, want %v", tc, got, tc.want)
+		}
+	}
+	merged := mergeOwnChatKeys([]resolvedSecret{{Name: "FAL_AI_KEY", Value: "project"}, {Name: "OPENAI_API_KEY", Value: "company"}}, []resolvedSecret{{Name: "FAL_AI_KEY", Value: "mine"}, {Name: "OPENAI_API_KEY", Value: "mine"}, {Name: "NOTION_TOKEN", Value: "mine"}}, map[string]bool{"FAL_AI_KEY": true})
+	if got := map[string]string{}; len(merged) == 3 {
+		for _, s := range merged {
+			got[s.Name] = s.Value
+		}
+		if got["FAL_AI_KEY"] != "project" || got["OPENAI_API_KEY"] != "mine" || got["NOTION_TOKEN"] != "mine" {
+			t.Fatalf("own keys merged = %v", got)
+		}
+	} else {
+		t.Fatalf("own keys merged = %v", merged)
+	}
+	// A turn nobody typed keeps only the project's and company keys.
+	if out := (&StreamingAPI{}).withOwnChatKeys(context.Background(), "cara", root, false, []resolvedSecret{{Name: "A", Value: "a"}}); len(out) != 1 {
+		t.Fatalf("an automated turn got personal keys: %v", out)
+	}
 	// The same lock outside chat (#3796): a direct MCP setup tool is refused for cara while its read action, a co-owner
 	// and the owner stay open, and the website's file proxy refuses her write to the instructions but not a work file.
 	if crewSetupLockExternalRefusal("cara", "install_skill", "install", map[string]any{"crew_id": "team-proj"}) == "" {

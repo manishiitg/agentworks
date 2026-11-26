@@ -6391,6 +6391,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// multi-agent chat without a selection yields an empty map (no-op).
 			endSpeedSpan6306 := events.TurnSpeedSpan(sessionID, "secrets")
 			chatAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
+			chatAgentSecrets = api.withOwnChatKeys(context.Background(), currentUserID, req.SelectedFolder, personTypedChatTurn(r.Context(), req, sessionID, crewAskOnly), chatAgentSecrets)
 			endSpeedSpan6306()
 			chatAgentSecretEnv := make(map[string]string, len(chatAgentSecrets))
 			for _, s := range chatAgentSecrets {
@@ -7717,6 +7718,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 
 		endSpeedSpan7603 := events.TurnSpeedSpan(sessionID, "secrets")
 		allChatSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
+		allChatSecrets = api.withOwnChatKeys(context.Background(), currentUserID, req.SelectedFolder, personTypedChatTurn(r.Context(), req, sessionID, crewAskOnly), allChatSecrets)
 		endSpeedSpan7603()
 		{
 			endSpeedSpan7605 := events.TurnSpeedSpan(sessionID, "server_secrets")

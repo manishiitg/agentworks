@@ -4,7 +4,7 @@ All secret values are stored encrypted in Vault. A product never keeps its own c
 
 Secrets are credentials (API keys, tokens, passwords). A key lives in one of these places; pick by who it should reach:
 
-- **Personal** (your own Vault, "My accounts"): only you and your own agents. Mac projects, Goals and Flows read keys they choose from here.
+- **Personal** (your own Vault, "My accounts"): only you and your own agents. Mac projects, Goals and Flows read keys they choose from here. In an online project, your own chats also get these keys; its schedules, workflows and other people's chats do not.
 - **Project** (an online project's own vault): everyone working in that online project (owner, co-owners, Users) and its schedules and workflows. An online project reads this vault and company keys (its own key wins on the same name). Only its owner and co-owners change it.
 - **Team** (a Mac Team's vault): the people in that Team. Share a key there with the Team tool (`way_add`, item `secret`).
 - **Company**: one list for everyone on the server; online projects use it directly. Only Vault admins add or change it (`vault action=set` with `where=company`<!-- product:mcp-gateway -->, Vault › Company keys, or `manage_vault_secret_access` operation `set_value`<!-- /product -->). There are no per-group keys.
@@ -19,7 +19,7 @@ Secrets are credentials (API keys, tokens, passwords). A key lives in one of the
 
 1. Call `vault action=list` to see the places and whether the name already exists.
 2. Decide who it should reach. Default: this project (`vault action=set` without `where`). Only for you: `where=personal`. For everyone on the server (Vault admins only): `where=company`. For a Team, follow the answer the tool gives.
-3. In an online project, company keys already reach its work; a key from your own or a Team vault reaches it only after you copy it in (`copy_from`). In a Mac project, select an existing key instead (for example `settings(action="update", secrets={select:["<its Vault name>"]})`).
+3. In an online project, company keys already reach its work and your own keys reach your own chats there (on the same name the project's key wins, then yours, then the company's). If something you build there relies on one of your own keys, say so and offer to copy it into the project (`copy_from`) so schedules and teammates get it too. In a Mac project, select an existing key instead (for example `settings(action="update", secrets={select:["<its Vault name>"]})`).
 4. Say where it went, by name only. Do NOT echo the plaintext value back.
 
 ### Adding a secret value
