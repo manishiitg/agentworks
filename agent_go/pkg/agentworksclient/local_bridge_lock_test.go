@@ -1211,3 +1211,23 @@ func TestMessagingSurvivesRestartAndHookCallerExit(t *testing.T) {
 		t.Fatalf("hook exit lost receipt: %+v", got)
 	}
 }
+
+// #3357: a forked chat's agent re-attached under the name it read in the copied history and took the
+// original chat's place. While the chat holding a name is still open, another chat cannot take it.
+func TestOpenChatKeepsItsNameFromAForkedChat(t *testing.T) {
+	root := t.TempDir()
+	b := &localBridge{root: root, sessions: map[string]*localSession{}, changed: make(chan struct{}), options: LocalBridgeOptions{
+		HostAlive: func(_ string, host string) bool { return host == "original-process" },
+	}}
+	b.sessions[localBridgeKey("claude", "original")] = &localSession{Attachment: AgentAttachment{AgentName: "ai-work", ID: "att", Provider: "claude", SessionID: "original"}, HostKey: "original-process", ParentConfigPath: "login.json"}
+	fork := LocalBridgeRequest{Action: "attach", Provider: "claude", SessionID: "fork", HostKey: "fork-process", AgentName: "ai-work", ConfigPath: "login.json"}
+	reply := b.handle(context.Background(), context.Background(), fork)
+	if !strings.Contains(reply.Error, "in use by another open chat") || b.sessions[localBridgeKey("claude", "original")].Attachment.SessionID != "original" {
+		t.Fatalf("a forked chat took an open chat's name: %+v", reply)
+	}
+	// Once the original chat's process is gone, the name may move (the existing restart path).
+	b.sessions[localBridgeKey("claude", "original")].HostKey = "closed-process"
+	if reply = b.handle(context.Background(), context.Background(), fork); strings.Contains(reply.Error, "in use by another open chat") {
+		t.Fatalf("a closed chat still held its name: %+v", reply)
+	}
+}

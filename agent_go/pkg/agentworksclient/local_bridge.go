@@ -1204,6 +1204,12 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				break
 			}
 		}
+		// A forked chat copies the history, so its agent may attach under the name it read there and take the
+		// original's place (#3357). A name moves to a new chat only once the chat holding it is gone; while that
+		// chat's own process still runs, this chat needs its own name.
+		if previous != nil && previous.Attachment.SessionID != in.SessionID && previous.HostKey != "" && previous.HostKey != in.HostKey && !previous.Offline && !previous.ServerClosed && b.options.HostAlive != nil && b.options.HostAlive(previous.Attachment.Provider, previous.HostKey) {
+			return LocalBridgeReply{Error: "agent:" + in.AgentName + " is in use by another open chat on this computer. Attach this chat under its own name (for example " + in.AgentName + "-2), or close or detach the other chat first."}
+		}
 		if previous != nil && (in.SwitchConnection || previous.Attachment.Provider != in.Provider || previous.Attachment.SessionID != in.SessionID) {
 			connectionPath = "" // an account move or a new chat derives its child from the selected login
 		}
