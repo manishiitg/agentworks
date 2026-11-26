@@ -28,22 +28,16 @@ export type WorkRuntimeSelection = {
   reasoningEffort?: string
 }
 
-export type ProductEngineSelectionDetail = Partial<WorkRuntimeSelection> & {
-  profileId?: string
-  tabId?: string
-}
-
 export type WorkChatOrder = {
   isMainChat?: boolean
   position?: number
   conversationKey: string
 }
 
-/** Render the server's main role and saved order, independent of chat activity. */
+/** Render the server's saved order, independent of chat activity; Main has no first place (#4046). */
 export function compareWorkChatOrder(a: WorkChatOrder, b: WorkChatOrder): number {
   const position = (row: WorkChatOrder) => row.position && row.position > 0 ? row.position : Number.MAX_SAFE_INTEGER
-  return Number(!!b.isMainChat) - Number(!!a.isMainChat) ||
-    position(a) - position(b) ||
+  return position(a) - position(b) ||
     (a.conversationKey === b.conversationKey ? 0 : a.conversationKey < b.conversationKey ? -1 : 1)
 }
 
@@ -68,18 +62,10 @@ export function belongsToWorkProject(tab: ChatTab, projectId: string): boolean {
 // running several agents on one repository locally. Each has its own server
 // conversation keyed `<projectId>:chat:<id>`; the primary chat (key = projectId)
 // keeps every channel, MCP call, schedule, trigger and Pulse message.
-// The primary chat and up to twenty side chats per project (Code and Crew). The server enforces the same
-// number (externalCrewMaxSideChats in agent_go/cmd/server/external_crew_chats.go); change both together.
-export const WORK_SIDE_CHAT_LIMIT = 20
+// A project has no limit on its number of side chats (owner, 20 Nov).
 
 export function workSideChatKey(projectId: string, id: string): string {
   return `${projectId}:chat:${id}`
-}
-
-/** The owner's "as a user" chat: the server runs it in Run mode because its id starts with `asuser-` (crew_access.go). */
-export const USER_VIEW_CHAT_PREFIX = 'asuser-'
-export function workUserViewChatKey(projectId: string, id: string): string {
-  return workSideChatKey(projectId, `${USER_VIEW_CHAT_PREFIX}${id}`)
 }
 
 export function isWorkSideChatTab(tab: ChatTab | undefined, projectId?: string): boolean {
@@ -111,7 +97,7 @@ export type WorkChatTabShortcut = { kind: 'tab'; index: number } | { kind: 'new'
  * same modifier as Cmd/Ctrl+K (owner 2026-10-07). In a browser tab, Chrome
  * keeps Cmd/Ctrl+1..8 for its own tabs, so Alt+1..5 stays as the fallback.
  * Alt+Shift+T opens a new chat (Cmd/Ctrl+Shift+T reopens a browser tab).
- * Cmd/Ctrl+Left/Right moves between visible chats, including from the composer.
+ * Cmd/Ctrl+Left/Right step to the previous/next chat, except while typing in a text field, editor or terminal.
  * The physical key is read, because Option changes the character on a Mac.
  */
 export function workChatTabShortcut(event: Pick<KeyboardEvent, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'code' | 'key'>): WorkChatTabShortcut | null {
@@ -123,13 +109,6 @@ export function workChatTabShortcut(event: Pick<KeyboardEvent, 'altKey' | 'ctrlK
   if (!event.altKey || event.ctrlKey || event.metaKey) return null
   if (event.shiftKey) return code === 'KeyT' || event.key.toLowerCase() === 't' ? { kind: 'new' } : null
   return digit ? { kind: 'tab', index: Number(digit) - 1 } : null
-}
-
-/** Command arrows switch chats from the composer, but remain editing keys elsewhere. */
-export function chatTabArrowTargetAllowed(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return true
-  if (target.closest('[data-chat-composer]')) return true
-  return !target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],.monaco-editor,.cm-editor,.xterm')
 }
 
 /** The chat-switch keys that work here: the browser keeps Cmd/Ctrl+1..5. */
@@ -159,44 +138,3 @@ export function markWorkProjectRuntimeDirty(projectId: string): void {
   }
 }
 
-/** Change native coding-agent runtime while retaining the platform conversation. */
-export function setWorkProjectRuntimeSelection(
-  projectId: string,
-  _sourceTabId: string,
-  selection: WorkRuntimeSelection,
-): void {
-  const store = useChatStore.getState()
-  for (const tab of Object.values(store.chatTabs)) {
-    if (!belongsToWorkProject(tab, projectId) || tab.metadata?.agentProfileChatModelOverride || tab.metadata?.agentProfileConversationKey?.startsWith(`${projectId}:chat:agent-`)) continue
-    store.setTabMetadata(tab.tabId, {
-      agentProfileEngine: selection.engine,
-      agentProfileConnectionID: selection.connectionId,
-      agentProfileModelID: selection.modelId,
-      agentProfileReasoningEffort: selection.reasoningEffort,
-      agentProfileChatModelLabel: undefined,
-      agentProfileRuntimeDirty: Boolean(tab.sessionId),
-    })
-  }
-}
-
-/** Apply a model choice emitted by Crew's scoped composer to its project. */
-export function applyWorkProjectRuntimeSelection(
-  projectId: string,
-  fallbackTabId: string | null,
-  detail: ProductEngineSelectionDetail | undefined,
-): boolean {
-  if (!isProjectProductId(detail?.profileId) || !detail.engine || !detail.modelId) return false
-  const sourceTabId = detail.tabId || fallbackTabId
-  if (!sourceTabId) return false
-  const sourceTab = useChatStore.getState().chatTabs[sourceTabId]
-  if (!sourceTab || !belongsToWorkProject(sourceTab, projectId)) return false
-
-  setWorkProjectRuntimeSelection(projectId, sourceTabId, {
-    engine: detail.engine,
-    provider: detail.provider,
-    connectionId: detail.connectionId,
-    modelId: detail.modelId,
-    reasoningEffort: detail.reasoningEffort,
-  })
-  return true
-}

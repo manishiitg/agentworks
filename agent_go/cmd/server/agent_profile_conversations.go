@@ -8,6 +8,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"os"
 	"sort"
 	"strings"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // A product's earlier conversations. The registry remembers every
@@ -371,10 +374,6 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusNotFound, "project not found")
 		return
 	}
-	if strings.EqualFold(profile.ID, crewProfileID) && isAgentWorksCrew(r.Context(), binding.WorkspacePath) {
-		writeAgentProfileError(w, http.StatusConflict, errAgentWorksDeleteRefused.Error())
-		return
-	}
 	store := defaultProductConversationRegistryStore()
 	current, hasCurrent, previous, err := store.history(r.Context(), actingFor, profile, binding)
 	if err != nil {
@@ -387,7 +386,7 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 	}
 	for _, record := range records {
 		if api.sessionStillWorkingAfterIdleRelease(record.SessionID) {
-			writeAgentProfileError(w, http.StatusConflict, "Crew is still working; stop it before deleting the project")
+			writeAgentProfileError(w, http.StatusConflict, "Project is still working; stop it before deleting the project")
 			return
 		}
 	}
@@ -395,17 +394,27 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		used, err := crewUsedByWorkflow(r.Context(), profile.ID, binding.ResourceID, binding.WorkspacePath)
 		if err != nil {
 			log.Printf("[CREW_DELETE] could not check workflow dependencies for project %s: %v", binding.ResourceID, err)
-			writeAgentProfileError(w, http.StatusServiceUnavailable, "Could not check workflow dependencies. Try deleting the Crew again later.")
+			writeAgentProfileError(w, http.StatusServiceUnavailable, "Could not check workflow dependencies. Try deleting the project again later.")
 			return
 		}
 		if used {
-			writeAgentProfileError(w, http.StatusConflict, "Remove this Crew from every workflow before deleting it.")
+			writeAgentProfileError(w, http.StatusConflict, "Remove this project from every workflow before deleting it.")
 			return
 		}
 	}
 	publicationRoot := agentProfileRuntimeWorkspace(actingFor, binding.WorkspacePath)
 	defer lockPublication("target:" + canonicalCrewWorkspaceRoot(publicationRoot))()
 	deleteCtx := context.WithValue(r.Context(), publicationLifecycleKey{}, publicationRoot)
+	historyRoot, err := scheduleHistoryRemovalScope(publicationRoot)
+	if err != nil {
+		writeAgentProfileError(w, 500, "Could not resolve run history before deletion: "+err.Error())
+		return
+	}
+	var serverTeam *crewroot.SyncBinding
+	if profile.ID == crewProfileID && IsLocalMode() {
+		// Read before the folder goes: a Mac Crew's Team lives on its server (#3577).
+		serverTeam, _ = crewroot.ReadSync(binding.ResourceID)
+	}
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(actingFor))
 	var deleteErr error
 	if _, bound, rootErr := localCrewRemovalRoots(binding.WorkspacePath); rootErr != nil {
@@ -419,22 +428,39 @@ func (api *StreamingAPI) handleDeleteAgentProfileProject(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusInternalServerError, "delete project folder: "+err.Error())
 		return
 	}
+	if profile.ID == crewProfileID {
+		dir, err := crewTeamDir(binding.ResourceID)
+		if err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, "The project was removed, but its Team state could not be resolved.")
+			return
+		}
+		if err := os.RemoveAll(dir); err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, "The project was removed, but its Team state needs cleanup.")
+			return
+		}
+		deleteMacCrewServerTeam(r.Context(), actingFor, binding.ResourceID, serverTeam)
+	}
+	if err := purgeRemovedScheduleHistory(r.Context(), historyRoot); err != nil {
+		writeAgentProfileError(w, 500, "Folder removed; run history cleanup failed: "+err.Error())
+		return
+	}
+	noteScheduleSummaryChange()
 	if profile.Product == "work" {
 		if err := removeCrewExecutableBindings(projectID); err != nil {
 			log.Printf("[CREW_DELETE] project=%s executable cleanup failed: %v", projectID, err)
-			writeAgentProfileError(w, http.StatusInternalServerError, "The Crew folder was removed, but its workflow and script cleanup failed.")
+			writeAgentProfileError(w, http.StatusInternalServerError, "The project folder was removed, but its workflow and script cleanup failed.")
 			return
 		}
 	}
 	if err := deletePublicationState(r.Context(), publicationRoot, profile.ID, projectID); err != nil {
 		log.Printf("[CREW_PUBLISH] workspace=%s cleanup=incomplete", projectID)
-		writeAgentProfileError(w, 500, "The Crew folder was removed, but imported publication history cleanup needs a retry.")
+		writeAgentProfileError(w, 500, "The project folder was removed, but imported publication history cleanup needs a retry.")
 		return
 	}
 
 	if profile.ID == crewProfileID {
 		if err := removeCrewSyncState(projectID); err != nil {
-			writeAgentProfileError(w, 500, "The Crew was removed, but its transfer cleanup needs a retry.")
+			writeAgentProfileError(w, 500, "The project was removed, but its transfer cleanup needs a retry.")
 			return
 		}
 	}
@@ -491,4 +517,21 @@ func resumeProductConversation(ctx context.Context, userID string, profile agent
 		verified = chatHistorySessionWorkspace(session) == normalizeConversationWorkspace(binding.WorkspacePath)
 	}
 	return defaultProductConversationRegistryStore().switchTo(ctx, userID, profile, binding, sessionID, verified)
+}
+
+// deleteMacCrewServerTeam deletes a deleted Mac Crew's Team on its server, synced chats included (owner, 24 Nov).
+// Best effort: the Crew is already gone on the Mac, so a failure is logged, not shown.
+func deleteMacCrewServerTeam(ctx context.Context, owner, project string, pair *crewroot.SyncBinding) {
+	if pair == nil || pair.Side != "local" || pair.ConnectionID == "" || pair.PeerProjectID == "" {
+		return
+	}
+	connection, err := desktopConnectionFor(owner, pair.ConnectionID)
+	if err == nil {
+		err = crewTeamRemoteJSON(ctx, owner, connection, http.MethodDelete, "/api/crew-teams/"+url.PathEscape(pair.PeerProjectID), nil, nil)
+	}
+	if err != nil {
+		log.Printf("[CREW_DELETE] project=%s event=server_team_delete_failed error=%q", project, err.Error())
+		return
+	}
+	log.Printf("[CREW_DELETE] project=%s event=server_team_deleted", project)
 }

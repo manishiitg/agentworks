@@ -12,12 +12,13 @@ import (
 // A shared agent is an existing owner tab, selected by stable conversation key
 // in the same server-owned record as its Crew's Share audience.
 type sharedCrewAgent struct {
-	ChatID         string `json:"chat_id"`
-	Name           string `json:"name"`
-	Purpose        string `json:"purpose"`
-	Selected       bool   `json:"selected"`
-	CanEditPurpose bool   `json:"can_edit_purpose"`
-	OwnerName      string `json:"owner_name,omitempty"`
+	ChatID         string   `json:"chat_id"`
+	Name           string   `json:"name"`
+	Purpose        string   `json:"purpose"`
+	Examples       []string `json:"examples,omitempty"`
+	Selected       bool     `json:"selected"`
+	CanEditPurpose bool     `json:"can_edit_purpose"`
+	OwnerName      string   `json:"owner_name,omitempty"`
 	tab            crewOwnerChat
 }
 
@@ -61,7 +62,7 @@ func crewShareAgents(ctx context.Context, caller, root string, includeUnselected
 	}
 	owner, ok := crewProjectOwnerID(root)
 	if !ok {
-		return nil, fmt.Errorf("Crew unavailable")
+		return nil, fmt.Errorf("Project unavailable")
 	}
 	manifest, err := readCrewProjectManifests(ctx, crewProfileID, root)
 	if err != nil {
@@ -85,7 +86,7 @@ func crewShareAgents(ctx context.Context, caller, root string, includeUnselected
 		if !includeUnselected && !shared {
 			continue
 		}
-		agents = append(agents, sharedCrewAgent{ChatID: key, Name: firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Builder"), Purpose: tab.Identity.Purpose, Selected: shared, CanEditPurpose: includeUnselected && tab.OwnerID == caller, OwnerName: crewOwnerDisplayName(tab.OwnerID), tab: tab})
+		agents = append(agents, sharedCrewAgent{ChatID: key, Name: firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Builder"), Purpose: tab.Identity.Purpose, Examples: tab.Identity.Examples, Selected: shared, CanEditPurpose: includeUnselected && tab.OwnerID == caller, OwnerName: crewOwnerDisplayName(tab.OwnerID), tab: tab})
 	}
 	return agents, nil
 }
@@ -147,6 +148,13 @@ func sharedCrewAgentChat(ctx context.Context, user, root, chatID string) (*codeC
 	if userAccessForClaims(claims).Disabled || !userAllowedProduct(claims, crewProfileID) {
 		return nil, false
 	}
+	if identity, ok := projectIdentityOf(root); ok && identity.Product == crewProfileID {
+		if record, known := defaultProjectOwners().Lookup(identity.Product, identity.Folder); known {
+			if chat, admitted := crewTeamSharedChat(ctx, user, record.ProjectID, chatID); admitted {
+				return chat, true
+			}
+		}
+	}
 	if !crewSharedWith(root, user) && !crewProjectOwnedByCaller(user, root) {
 		return nil, false
 	}
@@ -159,7 +167,7 @@ func sharedCrewAgentChat(ctx context.Context, user, root, chatID string) (*codeC
 			continue
 		}
 		tab := agent.tab
-		return &codeChat{OwnerID: tab.OwnerID, Key: agent.ChatID, ID: agent.ChatID, Name: agent.Name, Purpose: agent.Purpose, SessionID: tab.Record.SessionID, UpdatedAt: tab.Record.UpdatedAt}, true
+		return &codeChat{OwnerID: tab.OwnerID, Key: agent.ChatID, ID: agent.ChatID, Name: agent.Name, Purpose: agent.Purpose, Examples: agent.Examples, SessionID: tab.Record.SessionID, UpdatedAt: tab.Record.UpdatedAt}, true
 	}
 	return nil, false
 }
@@ -180,6 +188,12 @@ func sharedCrewAgentPeer(ctx context.Context, user string, peer agentMessageEndp
 // The original recipient's Share grant admits this contact, including replies.
 // The caller can keep their own conversation private.
 func recheckSharedCrewAgentContact(ctx context.Context, caller, agent agentMessageEndpoint) error {
+	if agent.TeamAgentID != "" {
+		if _, _, err := resolveTeamMessageEndpoint(ctx, agent, caller.UserID); err != nil {
+			return admissionRefused("Team agent unavailable or access removed")
+		}
+		return nil
+	}
 	if agent.Kind != triggerCallerCrew || agent.ChatKey == "" || strings.HasPrefix(agent.ChatKey, "messages:") || crewProjectOwnedByCaller(caller.UserID, agent.Path) {
 		return nil
 	}
@@ -192,3 +206,26 @@ func recheckSharedCrewAgentContact(ctx context.Context, caller, agent agentMessa
 func logSharedCrewAgent(user, key, action string) {
 	log.Printf("[CREW_SHARED_AGENT] user=%q chat=%q action=%s", sanitizeUserIDForPath(user), key, action)
 }
+
+// Remove only this agent's public listing; preserve the Crew's audience and
+// every other agent. Called by the same confirmed removal used by UI and MCP.
+func removeCrewSharedAgent(root, key string) error {
+	identity, ok := projectIdentityOf(root)
+	if !ok {
+		return nil
+	}
+	return defaultProjectOwners().modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		id := projectOwnerKey(identity.Product, identity.Folder)
+		record, exists := projects[id]
+		if !exists {
+			return false, nil
+		}
+		before := len(record.SharedAgents)
+		record.SharedAgents = slices.DeleteFunc(record.SharedAgents, func(agent string) bool { return agent == key })
+		_, hadSince := record.SharedAgentSince[key]
+		delete(record.SharedAgentSince, key)
+		projects[id] = record
+		return before != len(record.SharedAgents) || hadSince, nil
+	})
+}
+

@@ -23,13 +23,17 @@ import (
 // Browser discovery is scoped to both the signed-in session owner and workflow.
 // Never expose the host-wide dashboard, which includes unrelated workflows.
 func (api *StreamingAPI) liveBrowserSessions(r *http.Request) []map[string]string {
+	return api.liveBrowserSessionsForWorkspace(r.Context(), r.URL.Query().Get("workspace_path"))
+}
+
+func (api *StreamingAPI) liveBrowserSessionsForWorkspace(ctx context.Context, rawWorkspace string) []map[string]string {
 	result := []map[string]string{}
-	workspace := strings.TrimRight(strings.TrimSpace(r.URL.Query().Get("workspace_path")), "/")
+	workspace := strings.TrimRight(strings.TrimSpace(rawWorkspace), "/")
 	if workspace == "" {
 		return result
 	}
-	userID := GetUserIDFromContext(r.Context())
-	claims := GetUserFromContext(r.Context())
+	userID := GetUserIDFromContext(ctx)
+	claims := GetUserFromContext(ctx)
 	result = api.playwrightSessionsFor(claims, workspace)
 	shared := browserSessionForWorkspace(userID, workspace)
 	for _, item := range browser.GetSessionTracker().ActiveSessions() {
@@ -47,7 +51,7 @@ func (api *StreamingAPI) liveBrowserSessions(r *http.Request) []map[string]strin
 				}
 				continue
 			}
-			level, manifest := workflowAccessForWorkspacePath(r.Context(), claims, workspace)
+			level, manifest := workflowAccessForWorkspacePath(ctx, claims, workspace)
 			if manifest != nil {
 				// Workflow access and a supported browser mode are required.
 				item["label"] = "Workflow browser"

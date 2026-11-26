@@ -70,21 +70,17 @@ func TestSourcesLiveReadsMultipleDirectSourcesAndMove(t *testing.T) {
 		t.Fatal("sibling file exposed")
 	}
 
-	// PLAT-746-360: the same reference remains live after the source moves
-	// entirely into a Crew's Files/Private storage.
+	// PLAT-746-360/924: the same reference remains live after the source moves
+	// into its Crew's .agentworks, where its runs sit next to its definition.
 	state := os.Getenv("AGENTWORKS_STATE_ROOT")
-	for _, dir := range []string{filepath.Join(state, "ownership/crew-executables"), filepath.Join(root, "Crew/example/.agentworks/workflows/b"), filepath.Join(root, "_system/crew-data/crew/workflows")} {
+	for _, dir := range []string{filepath.Join(state, "ownership/crew-executables"), filepath.Join(root, "Crew/example/.agentworks/workflows"), filepath.Join(root, "_system/crew-data/crew")} {
 		os.MkdirAll(dir, 0700)
 	}
 	os.WriteFile(filepath.Join(state, "ownership/projects.json"), []byte(`{"projects":{"work/example":{"product":"work","folder":"example","project_id":"crew","owner_id":"owner"}}}`), 0600)
-	encoded, _ := json.Marshal(map[string]string{"id": "b", "crew_id": "crew", "crew_root": "Crew/example", "workspace_path": "Workflow/renamed", "kind": "workflow"})
+	encoded, _ := json.Marshal(map[string]string{"id": "b", "crew_id": "crew", "crew_root": "Crew/example", "workspace_path": "Workflow/renamed", "kind": "workflow", "runtime_root": "workflows/b"})
 	key := fmt.Sprintf("%x.json", sha256.Sum256([]byte("Workflow/renamed")))
 	os.WriteFile(filepath.Join(state, "ownership/crew-executables", key), encoded, 0600)
-	runtime := filepath.Join(root, "_system/crew-data/crew/workflows/b")
-	if err := os.Rename(filepath.Join(root, "Workflow/renamed"), runtime); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(filepath.Join(runtime, "workflow.json"), filepath.Join(root, "Crew/example/.agentworks/workflows/b/workflow.json")); err != nil {
+	if err := os.Rename(filepath.Join(root, "Workflow/renamed"), filepath.Join(root, "Crew/example/.agentworks/workflows/b")); err != nil {
 		t.Fatal(err)
 	}
 	sources, err = Resolve(root, a, nil)

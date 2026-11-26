@@ -9,22 +9,44 @@ import (
 	"path/filepath"
 )
 
+// WriteFileAtomic writes data to path via a unique temp-file-then-rename
+// sequence so readers never observe a partial file.
+// The parent directory is created if missing.
+func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	// A unique temp name per write: two saves of the same file at once must not rename each other's temp away.
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	_, err = f.Write(data)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Chmod(tmp, perm)
+	}
+	if err == nil {
+		err = os.Rename(tmp, path)
+	}
+	if err != nil {
+		_ = os.Remove(tmp)
+	}
+	return err
+}
+
 // WriteJSONAtomic marshals v as indented JSON and writes it to path via a
 // temp-file-then-rename sequence so readers never observe a partial file.
 // The parent directory is created if missing.
 func WriteJSONAtomic(path string, v any, perm fs.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
-	}
 	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return fmt.Errorf("fsutil: marshal %s: %w", path, err)
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, perm); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return WriteFileAtomic(path, data, perm)
 }
 
 // WorkspaceDocsRoot resolves the absolute path to the workspace-docs root

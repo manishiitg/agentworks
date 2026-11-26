@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -28,8 +29,6 @@ func (api *StreamingAPI) startDesktopCrewChats() context.CancelFunc {
 	if !IsLocalMode() {
 		return cancel
 	}
-	// Copies waiting in a debounce when the app last stopped were lost with it: offer every shared agent once.
-	time.AfterFunc(crewStandbyStartupDelay, api.catchUpCrewStandby)
 	go func() {
 		workers := map[string]context.CancelFunc{}
 		defer func() {
@@ -43,18 +42,39 @@ func (api *StreamingAPI) startDesktopCrewChats() context.CancelFunc {
 			for _, crew := range desktopRelayCrews("") {
 				live[crew.connection] = true
 			}
+			// A joined server Crew may have no downloaded copy or sync binding.
+			// Keep the existing desktop socket for exact attached sessions too;
+			// the server still admits each native read from its Crew registry.
+			if root, err := agentworksclient.DefaultLocalBridgeRoot(); err == nil {
+				probe, cancel := context.WithTimeout(ctx, 3*time.Second)
+				attached, err := agentworksclient.CallLocalBridge(probe, root, agentworksclient.LocalBridgeRequest{Action: "attachments"})
+				cancel()
+				if err == nil {
+					connections, _ := readDesktopConnections(GetDefaultUserID())
+					for _, s := range attached.AgentStates {
+						if s.ServerClosed || s.ID == "" || (s.Provider != "claude" && s.Provider != "codex") {
+							continue
+						}
+						for _, connection := range connections {
+							if s.Server != "" && strings.TrimRight(s.Server, "/") == strings.TrimRight(connection.Server, "/") {
+								live[connection.ID] = true
+							}
+						}
+					}
+				}
+			}
 			for id := range live {
 				if workers[id] == nil {
 					child, stop := context.WithCancel(ctx)
 					workers[id] = stop
-					log.Printf("[CREW_RELAY] desktop connection=%s start: a Crew has Reach on", id)
+					log.Printf("[CREW_RELAY] desktop connection=%s start: a project or attached terminal needs reach", id)
 					go api.runDesktopCrewRelay(child, id)
 				}
 			}
 			for id, stop := range workers {
 				if !live[id] {
 					// The Mac stops reaching this server when no Crew on it has Reach on; say so, it is otherwise silent.
-					log.Printf("[CREW_RELAY] desktop connection=%s stop: no Crew has Reach on for it", id)
+					log.Printf("[CREW_RELAY] desktop connection=%s stop: no project or attached terminal needs reach", id)
 					stop()
 					delete(workers, id)
 				}
@@ -118,6 +138,20 @@ type desktopRelayCrew struct {
 	connection string
 }
 
+// desktopRelayLeftOut remembers why a paired Crew is not offered, so the reason is logged once per change, not on
+// every 15s offer check.
+var desktopRelayLeftOut sync.Map // local Crew id -> reason
+
+// desktopRelayRetryUnavailable is how long a Crew the server could not admit waits before it is offered again.
+const desktopRelayRetryUnavailable = 2 * time.Minute
+
+func logDesktopRelayLeftOut(local, peer, reason string) {
+	if previous, ok := desktopRelayLeftOut.Swap(local, reason); ok && previous == reason {
+		return
+	}
+	log.Printf("[CREW_RELAY] desktop left out project=%s peer=%s reason=%q", local, peer, reason)
+}
+
 // desktopRelayCrews lists the Crews this Mac offers, optionally for one connection.
 func desktopRelayCrews(connection string) []desktopRelayCrew {
 	state, err := workflowCLIStateRoot()
@@ -132,10 +166,22 @@ func desktopRelayCrews(connection string) []desktopRelayCrew {
 			continue
 		}
 		b, e := crewroot.ReadSync(id)
-		// A Crew being moved online is no longer offered by this Mac.
-		if e != nil || b == nil || b.Side != "local" || b.Editing != "local" || b.PendingAction == "server" || b.ConnectionID == "" {
+		if e != nil || b == nil || b.Side != "local" {
 			continue
 		}
+		// A Crew that was moved online is no longer offered by this Mac.
+		reason := ""
+		switch {
+		case b.Editing != "local":
+			reason = "editing on " + firstNonEmptyTrimmed(b.Editing, "unknown")
+		case b.ConnectionID == "":
+			reason = "no connection"
+		}
+		if reason != "" {
+			logDesktopRelayLeftOut(id, b.PeerProjectID, reason)
+			continue
+		}
+		desktopRelayLeftOut.Delete(id)
 		if connection != "" && b.ConnectionID != connection {
 			continue
 		}
@@ -167,6 +213,10 @@ func (api *StreamingAPI) runDesktopCrewRelay(ctx context.Context, connectionID s
 		}
 	}
 }
+
+// desktopRelayLive holds the saved connections with an open relay socket now: while it is open that server tells this
+// Mac of its Teams' changes (crew_team_push.go), so their timed check can be slow.
+var desktopRelayLive sync.Map // connection id -> true
 
 func fmt0(err error) string {
 	if err == nil {
@@ -241,22 +291,44 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 		return crews, pairs
 	}
 	crews, pairs := offered()
-	if err = send(crewRelayMessage{Type: "hello", DeviceID: connection.ID, MacName: desktopMacDisplayName(), Crews: crews}); err != nil {
+	if err = send(crewRelayMessage{Type: "hello", DeviceID: desktopRelayDeviceID(connection.ID), MacName: desktopMacDisplayName(), AppVersion: os.Getenv("AGENTWORKS_APP_VERSION"), Crews: crews}); err != nil {
 		return err
 	}
 	log.Printf("[CREW_RELAY] desktop connect connection=%s crews=%d", connectionID, len(crews))
+	desktopRelayLive.Store(connectionID, true)
+	defer desktopRelayLive.Delete(connectionID)
 	var pairsMu sync.Mutex
 	followers := &desktopRelayFollowers{api: api, send: send, active: map[string]*desktopRelayFollower{}}
 	go func() {
 		ping := time.NewTicker(15 * time.Second)
 		defer ping.Stop()
-		states := time.NewTicker(10 * time.Second)
-		defer states.Stop()
-		reported := map[string]string{}
+		heartbeat := time.NewTicker(time.Minute)
+		defer heartbeat.Stop()
+		turns, stopTurns := api.runtimeCoordinator.WatchTurns()
+		defer stopTurns()
+		current := func() map[string]string {
+			pairsMu.Lock()
+			defer pairsMu.Unlock()
+			out := make(map[string]string, len(pairs))
+			for project, pair := range pairs {
+				out[project] = pair
+			}
+			return out
+		}
+		busy := newDesktopRelayBusy(api, send)
+		busy.refresh(session, current(), "connect")
+		busy.prime()
+		busy.reportAll(session, false)
 		for {
 			select {
 			case <-session.Done():
 				return
+			case <-turns.Wake():
+				busy.changed(session, turns.Take(), current)
+			case <-heartbeat.C:
+				busy.refresh(session, current(), "heartbeat")
+				busy.sweep()
+				busy.reportAll(session, true)
 			case <-ping.C:
 				if send(crewRelayMessage{Type: "ping"}) != nil {
 					_ = conn.Close()
@@ -272,22 +344,9 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 				pairs = nextPairs
 				pairsMu.Unlock()
 				if changed {
-					_ = send(crewRelayMessage{Type: "hello", DeviceID: connection.ID, MacName: desktopMacDisplayName(), Crews: next})
-				}
-			case <-states.C:
-				pairsMu.Lock()
-				current := map[string]string{}
-				for project, pair := range pairs {
-					current[project] = pair
-				}
-				pairsMu.Unlock()
-				for project, pair := range current {
-					local := localCrewForPeer(project, pair)
-					state := api.desktopCrewRelayState(session, local, pair)
-					if state != "" && reported[project] != state {
-						reported[project] = state
-						_ = send(crewRelayMessage{Type: "state", Project: project, State: state, LastLine: api.desktopCrewLastLine(session, local, pair), At: time.Now().UTC().Format(time.RFC3339)})
-					}
+					_ = send(crewRelayMessage{Type: "hello", DeviceID: desktopRelayDeviceID(connection.ID), MacName: desktopMacDisplayName(), AppVersion: os.Getenv("AGENTWORKS_APP_VERSION"), Crews: next})
+					busy.refresh(session, current(), "crews_changed")
+					busy.reportAll(session, false)
 				}
 			}
 		}
@@ -314,8 +373,12 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 			go func() {
 				callCtx, done := context.WithTimeout(context.WithoutCancel(session), 55*time.Second)
 				defer done()
-				result := crewChatResult{ID: call.ID, Status: 403, Body: json.RawMessage(`{"error":"This Mac does not offer that Crew."}`)}
-				if local != "" {
+				result := crewChatResult{ID: call.ID, Status: 403, Body: json.RawMessage(`{"error":"This Mac does not offer that project."}`)}
+				if call.Operation == "native_terminal_read" || call.Operation == "native_terminal_status" {
+					// Exact attached-session reads need no Crew folder or sync pair.
+					// The saved server connection and helper tuple are checked locally.
+					result = api.desktopNativeTerminalRead(callCtx, connection, call)
+				} else if local != "" {
 					result = api.runDesktopCrewChat(callCtx, local, pair, call)
 					result.ID = call.ID
 				}
@@ -325,14 +388,39 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 			if local != "" && msg.State == "not_owner" {
 				api.repairDesktopCrewTwin(session, local, pair, connectionID)
 			}
+			if msg.State == "unavailable" {
+				// The server could not admit it (for example its settings are unreadable there). Forget it as
+				// offered after a pause, so a ping offers it again: a repaired Crew is reached without a
+				// reconnect, and a still-broken one is retried every few minutes, not on every ping.
+				project := msg.Project
+				time.AfterFunc(desktopRelayRetryUnavailable, func() {
+					pairsMu.Lock()
+					delete(pairs, project)
+					pairsMu.Unlock()
+				})
+				log.Printf("[CREW_RELAY] desktop refused project=%s local=%s reason=unavailable retry_in=%s", project, local, desktopRelayRetryUnavailable)
+			}
+			if msg.State == "other_mac" {
+				// Forget it as offered: the next ping offers it again, so this computer takes over once the other is gone.
+				pairsMu.Lock()
+				delete(pairs, msg.Project)
+				pairsMu.Unlock()
+				log.Printf("[CREW_RELAY] project=%s not reached from this computer: another of your computers serves it", msg.Project)
+			}
+		case "team.changed":
+			// Someone's change to a Team's shared files or record landed on the server: sync now (crew_team_push.go), and
+			// this Mac's open Team tab for it reads again. Only that Team syncs.
+			crewTeamWakeFor(msg.Project, true)
+			if local := crewLocalCopyOf(msg.Project); local != "" {
+				dropCrewAccessCache(local, msg.Project)
+				publishCrewPanelChanged(local)
+			}
+		case "team.busy":
+			// Team presence or an explicit activity post changed: refresh its existing views.
+			noteCrewTeamBusy(msg.Project)
 		case "resume":
 			if local != "" && msg.Conversation != "" {
 				followers.watch(session, msg.Project, local, pair, msg.Conversation, msg.Since)
-			}
-		case "handback":
-			// Always on: the server answered for this agent while the Mac was off; take it back now.
-			if local != "" && crewMacTabID(msg.State) {
-				go api.handBackCrewStandby(local, msg.State)
 			}
 		}
 	}
@@ -399,31 +487,6 @@ func (f *desktopRelayFollowers) watch(ctx context.Context, project, local, pair,
 			}
 		}
 	}()
-}
-
-// desktopCrewRelayState is the list's working, waiting or idle for one local Crew.
-func (api *StreamingAPI) desktopCrewRelayState(ctx context.Context, local, pair string) string {
-	if local == "" {
-		return ""
-	}
-	result := api.runDesktopCrewChat(ctx, local, pair, crewChatCall{ID: "state", Operation: "status"})
-	if result.Status == http.StatusNotFound {
-		return "idle"
-	}
-	var status struct {
-		Status        string `json:"status"`
-		DisplayStatus string `json:"display_status"`
-	}
-	if result.Status != 200 || json.Unmarshal(result.Body, &status) != nil {
-		return ""
-	}
-	switch {
-	case strings.Contains(strings.ToLower(status.DisplayStatus), "wait"):
-		return "waiting"
-	case status.Status == "running" || status.Status == "active" || status.Status == "processing":
-		return "working"
-	}
-	return "idle"
 }
 
 // desktopCrewLastLine is the last line of the main chat's latest reply (or the
@@ -501,7 +564,7 @@ func (api *StreamingAPI) desktopCrewFile(ctx context.Context, claims *UserClaims
 	}
 	roots, err := api.crewSyncRoots(ctx, claims, project)
 	if err != nil {
-		return fail(403, "This Crew is unavailable on your Mac.")
+		return fail(403, "This project is unavailable on your Mac.")
 	}
 	rel := strings.TrimPrefix(filepath.ToSlash(filepath.Clean("/"+call.Path)), "/")
 	// Reply cards name files relative to the Crew's files, with "_files/" in front when they live
@@ -514,18 +577,18 @@ func (api *StreamingAPI) desktopCrewFile(ctx context.Context, claims *UserClaims
 	}
 	root, err := os.OpenRoot(roots.Files)
 	if err != nil {
-		return fail(404, "The Crew's folder is unavailable on your Mac.")
+		return fail(404, "The project's folder is unavailable on your Mac.")
 	}
 	defer root.Close()
 	file, err := root.Open(rel)
 	if err != nil {
-		return fail(404, "That file is not in this Crew's folder.")
+		return fail(404, "That file is not in this project's folder.")
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	// Only regular files: a FIFO or device would block the read and hold the command.
 	if err != nil || !info.Mode().IsRegular() {
-		return fail(404, "That file is not in this Crew's folder.")
+		return fail(404, "That file is not in this project's folder.")
 	}
 	if info.Size() > crewRelayMaxFile {
 		return fail(413, "This file is too large to open from your phone. Open it on your Mac.")
@@ -547,8 +610,15 @@ func (api *StreamingAPI) repairDesktopCrewTwin(ctx context.Context, local, pair,
 		return
 	}
 	// A member's working copy belongs to the owner's online copy; a refusal means the server no longer takes it here.
-	if readCrewTeamState(local).MemberOf != "" {
+	teamState := readCrewTeamState(local)
+	if teamState.MemberOf != "" {
 		log.Printf("[CREW_TEAM_LOCAL] project=%s event=member_pair_refused", local)
+		return
+	}
+	// A Team's home is never re-paired on its own: a new copy would cut every teammate off from it (#2916). Keep the
+	// pairing and wait; the server offers it again on the next ping.
+	if teamState.TeamOn {
+		log.Printf("[CREW_RELAY] project=%s repair_skipped reason=team_home old_pair=%s server_project=%s", local, pair, b.PeerProjectID)
 		return
 	}
 	state, err := workflowCLIStateRoot()
@@ -578,7 +648,7 @@ func (api *StreamingAPI) repairDesktopCrewTwin(ctx context.Context, local, pair,
 	}
 	_, manifest, ok := api.resolveExternalWorkspace(ctx, &UserClaims{UserID: owner, Username: owner}, local)
 	if !ok {
-		log.Printf("[CREW_RELAY] project=%s stays offline: Crew unavailable", local)
+		log.Printf("[CREW_RELAY] project=%s stays offline: Project unavailable", local)
 		return
 	}
 	if err := api.createDesktopCrewRelayTwin(ctx, owner, saved, local, manifest.displayTitle()); err != nil {

@@ -13,7 +13,6 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
@@ -41,10 +40,10 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 	target := func() map[string]any {
 		return map[string]any{
 			"workflow_id": externalString("Workflow or Flow ID from workflow action=list. Pass this or crew_id."),
-			"crew_id":     externalString("Crew ID from workspace action=list. Pass this or workflow_id."),
+			"crew_id":     externalString("Project ID from workspace action=list. Pass this or workflow_id."),
 		}
 	}
-	add("get_settings", "Read a workflow's, Flow's or Crew's settings: models per role, MCP servers and tools, skills, secrets (the Vault secrets it uses and the ones available; never values), browser mode, notifications (workflows and Flows), plus a version for settings action=update. Builders also receive the names-only project Vault panel inventory under vault.", false, false, target())
+	add("get_settings", "Read a workflow's, Flow's or project's settings: models per role, MCP servers and tools, skills, secrets (the Vault secrets it uses and the ones available; never values), browser mode, notifications (workflows and Flows), plus a version for settings action=update. Builders also receive the names-only project Vault panel inventory under vault.", false, false, target())
 	sourceTarget := target()
 	add("get_secret_sources", "Explain this product's saved secret choices by name: the Vault secrets it uses, lent by its owner, and whether the owner can still use each. Values, token validity and account identities are not checked. Does not change selections. Pass workflow_id or crew_id.", false, false, sourceTarget)
 	props := target()
@@ -65,7 +64,7 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 		"kb_write_grants":       names,
 		"browser_mode":          map[string]any{"type": "string", "enum": browser.ConfigurationModes()},
 		"notifications": map[string]any{"type": "object", "additionalProperties": false, "description": "Workflows and Flows only.", "properties": map[string]any{
-			"wake_tab": map[string]any{"type": "object", "additionalProperties": false, "description": "A Crew chat to message straight away when a run of this workflow fails, stops partway, or never actually ran. Pass the Crew id and the chat id from workspace action=chats (main for its main chat); that chat needs an enabled recurring check. Send both empty to clear.", "properties": map[string]any{
+			"wake_tab": map[string]any{"type": "object", "additionalProperties": false, "description": "A project chat to message straight away when a run of this workflow fails, stops partway, or never actually ran. Pass the project id and the chat id from workspace action=chats (main for its main chat); that chat needs an enabled recurring check. Send both empty to clear.", "properties": map[string]any{
 				"crew_id": map[string]any{"type": "string"}, "chat_id": map[string]any{"type": "string"},
 			}},
 		}},
@@ -75,7 +74,7 @@ func externalSettingsDefinitions(add func(string, string, bool, bool, map[string
 	if browser.CDPEnabled() {
 		props["browser_cdp_port"] = map[string]any{"type": "integer", "minimum": 1, "maximum": 65535, "description": "Local Chrome debugging port; defaults to 9222."}
 	}
-	add("update_settings", "Change a workflow's, Flow's or Crew's settings. Send only what changes. Workflows and Flows need owner or editor access, Crews their owner; setting or removing secret values needs owner. MCP servers come from your own connections, shared Vault connections the server allows you, or the catalog; one that still needs a sign-in is attached and listed under pending_sign_in. Returns the new settings.", true, false, props)
+	add("update_settings", "Change a workflow's, Flow's or project's settings. Send only what changes. Workflows and Flows need owner or editor access, projects their owner; setting or removing secret values needs owner. MCP servers come from your own connections, shared Vault connections the server allows you, or the catalog; one that still needs a sign-in is attached and listed under pending_sign_in. Returns the new settings.", true, false, props)
 }
 
 // externalSettingsState is the part of a workflow's or Crew's capabilities
@@ -360,12 +359,12 @@ func (api *StreamingAPI) applyExternalSettings(ctx context.Context, userID strin
 	}
 	saved := []string{}
 	for _, key := range sortedSecretNames(values) {
-		full, err := api.saveProjectSecret(ctx, userID, t.path, key, values[key])
+		full, _, err := api.saveProjectSecret(ctx, userID, t.path, key, values[key], "")
 		if errors.Is(err, errProjectSecretOwner) {
 			return nil, nil, &externalSettingsError{403, "forbidden", err.Error() + "."}
 		}
 		if err != nil {
-			return nil, nil, &externalSettingsError{502, "secret_store_failed", fmt.Sprintf("Could not save secret %s in the owner's Vault.", key)}
+			return nil, nil, &externalSettingsError{502, "secret_store_failed", fmt.Sprintf("Could not save secret %s: %v.", key, err)}
 		}
 		saved = append(saved, full)
 	}
@@ -557,13 +556,13 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 			scope = "crews:write"
 		}
 		if !t.Allows(scope) || !t.AllowsCrew(workspaceTokenProjectID(crewID)) {
-			externalError(w, 403, "insufficient_scope", "This connection does not allow "+name+" on this Crew.")
+			externalError(w, 403, "insufficient_scope", "This connection does not allow "+name+" on this project.")
 			return
 		}
 	}
 	crew, project, _, ok := api.externalCrewResolve(ctx, claims, crewID)
 	if !ok {
-		externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
+		externalError(w, 404, "not_found", "Project not found or not allowed for this connection.")
 		return
 	}
 	if name == "update_settings" && refuseCrewOwnerOnline(w, r, project.ID, claims.UserID) {
@@ -574,14 +573,14 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 		externalJSON(w, api.secretSources(ctx, claims.UserID, root))
 		return
 	}
-	raw, manifestPath, err := ensureProjectRuntimeManifest(ctx, project.Product, root)
+	raw, _, err := ensureProjectRuntimeManifest(ctx, project.Product, root)
 	if err != nil {
-		externalError(w, 502, "workspace_unavailable", "Crew settings could not be read.")
+		externalError(w, 502, "workspace_unavailable", "Project settings could not be read.")
 		return
 	}
 	var manifest map[string]any
 	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		externalError(w, 502, "workspace_unavailable", "Crew settings are not valid JSON.")
+		externalError(w, 502, "workspace_unavailable", "Project settings are not valid JSON.")
 		return
 	}
 	capabilities, _ := manifest["capabilities"].(map[string]any)
@@ -612,12 +611,17 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 		return
 	}
 	if !crew.OwnedByCaller {
-		externalError(w, 403, "forbidden", "Only the Crew's owner can change its settings.")
+		externalError(w, 403, "forbidden", "Only the project's owner can change its settings.")
+		return
+	}
+	if _, present := args["models"]; present {
+		// One place to choose a model: the chat (owner, 26 Nov). The owner's last pick there is the project's fallback.
+		externalError(w, 400, "invalid_settings", "A project has no model setting: each chat chooses its own model (models action=set scope=tab), and chats without one use the owner's last-used model.")
 		return
 	}
 	for _, key := range []string{"knowledgebase_sources", "kb_write_grants"} {
 		if _, present := args[key]; present {
-			externalError(w, 400, "invalid_settings", "Workflow knowledge links and grants apply to Goals and Flows. Use this Crew's existing Brain and folder tools.")
+			externalError(w, 400, "invalid_settings", "Workflow knowledge links and grants apply to Goals and Flows. Use this project's existing Brain and folder tools.")
 			return
 		}
 	}
@@ -645,41 +649,53 @@ func (api *StreamingAPI) externalCrewSettingsCall(w http.ResponseWriter, r *http
 			return
 		}
 	}
-	// Write only the keys that changed, so fields the Crew panels own and
-	// this tool does not know keep their exact stored form.
-	for _, field := range changed {
-		switch field {
-		case "models":
-			capabilities["llm_config"] = state.LLMConfig
-		case "mcp_servers", "tools":
-			capabilities["selected_servers"], capabilities["selected_tools"] = nonNilStrings(savedAppSelection(state.Servers)), nonNilStrings(state.Tools)
-			if state.ChosenVaultAppsOnly {
-				capabilities["chosen_vault_apps_only"] = true
-			} else {
-				delete(capabilities, "chosen_vault_apps_only")
+	var versionConflict bool
+	saveErr := mutateProjectRuntimeManifest(ctx, project.Product, root, func(_ map[string]any, capabilities map[string]any) (bool, error) {
+		if expected := externalArg(args, "expected_version"); expected != "" {
+			var latestState externalSettingsState
+			if encoded, err := json.Marshal(capabilities); err == nil {
+				_ = json.Unmarshal(encoded, &latestState)
 			}
-		case "skills":
-			capabilities["selected_skills"] = nonNilStrings(state.Skills)
-		case "secrets":
-			delete(capabilities, "selected_secrets")
-			if state.GlobalSecrets != nil {
-				capabilities["selected_global_secret_names"] = nonNilStrings(*state.GlobalSecrets)
+			latestState.ChatInstructions = project.ChatInstructions
+			if expected != latestState.version() {
+				versionConflict = true
+				return false, nil
 			}
-		case "browser_mode":
-			capabilities["browser_mode"] = state.BrowserMode
-		case "browser_cdp_port":
-			capabilities["browser_cdp_port"] = state.BrowserCDPPort
 		}
-	}
-	manifest["capabilities"] = capabilities
-	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-	encoded, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		externalError(w, 500, "encode_failed", err.Error())
+		// Write only the keys that changed, so fields the Crew panels own and
+		// this tool does not know keep their exact stored form.
+		for _, field := range changed {
+			switch field {
+			case "models":
+				capabilities["llm_config"] = state.LLMConfig
+			case "mcp_servers", "tools":
+				capabilities["selected_servers"], capabilities["selected_tools"] = nonNilStrings(savedAppSelection(state.Servers)), nonNilStrings(state.Tools)
+				if state.ChosenVaultAppsOnly {
+					capabilities["chosen_vault_apps_only"] = true
+				} else {
+					delete(capabilities, "chosen_vault_apps_only")
+				}
+			case "skills":
+				capabilities["selected_skills"] = nonNilStrings(state.Skills)
+			case "secrets":
+				delete(capabilities, "selected_secrets")
+				if state.GlobalSecrets != nil {
+					capabilities["selected_global_secret_names"] = nonNilStrings(*state.GlobalSecrets)
+				}
+			case "browser_mode":
+				capabilities["browser_mode"] = state.BrowserMode
+			case "browser_cdp_port":
+				capabilities["browser_cdp_port"] = state.BrowserCDPPort
+			}
+		}
+		return true, nil
+	})
+	if versionConflict {
+		externalError(w, 409, "version_conflict", "Settings changed since you read them; read them again (settings action=get) and reapply your change.")
 		return
 	}
-	if err := writeFileToWorkspace(ctx, manifestPath, string(encoded)+"\n"); err != nil {
-		externalError(w, 502, "workspace_unavailable", "Crew settings could not be saved.")
+	if saveErr != nil {
+		externalError(w, 502, "workspace_unavailable", "Project settings could not be saved.")
 		return
 	}
 	log.Printf("[EXTERNAL_SETTINGS] user=%s crew=%s changed=%s", claims.UserID, crewID, strings.Join(changed, ","))

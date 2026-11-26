@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"sort"
+	"strings"
 )
 
 // Vaults (PLAT-856-400). A vault is a group with owners. Each person has exactly one personal vault, named
@@ -12,6 +13,8 @@ import (
 const (
 	GroupKindVault    = "vault"
 	PersonalVaultName = "My accounts"
+	// CrewVaultRootPrefix marks a server Crew's vault: its ProjectRoot is this prefix and the Crew's project ID.
+	CrewVaultRootPrefix = "crew:"
 )
 
 func (g Group) IsVault() bool { return g.Kind == GroupKindVault }
@@ -32,6 +35,8 @@ type VaultConnection struct {
 	Label    string `json:"label"`
 	Provider string `json:"provider"`
 	Status   string `json:"status"`
+	// SignIn marks a connection that needs each person's own sign-in (so it can never be shared as a key).
+	SignIn bool `json:"sign_in,omitempty"`
 }
 
 // VaultSummary is a vault as one person sees it.
@@ -89,7 +94,7 @@ func (s *MemoryStore) VaultsFor(workspace, userID string) []VaultSummary {
 		for _, c := range s.connectors {
 			if c.VaultID == g.ID {
 				view.ConnectorIDs = append(view.ConnectorIDs, c.ID)
-				view.Connections = append(view.Connections, VaultConnection{ID: c.ID, Label: c.Label, Provider: c.Provider, Status: c.Status})
+				view.Connections = append(view.Connections, VaultConnection{ID: c.ID, Label: c.Label, Provider: c.Provider, Status: c.Status, SignIn: c.OAuthServer != "" || c.OAuthCredentialID != ""})
 			}
 		}
 		for name, secret := range s.secretResources {
@@ -219,4 +224,64 @@ func (s *MemoryStore) EnsureProjectVault(workspace, owner, id, root, name string
 	s.groups[id] = Group{ID: id, WorkspaceID: workspace, Name: name, Kind: GroupKindVault, ProjectRoot: root, Owners: []string{owner}}
 	s.members[id] = map[string]bool{owner: true}
 	return nil
+}
+
+// EnsureCrewVault keeps a server Crew's one vault (decisions log, 22 Nov): a project vault whose owners are exactly the
+// Crew's main owner and co-owners, as the host names them after its own Crew checks. Setting them exactly means a
+// removed co-owner loses the vault at once. It reports whether the vault was created now.
+func (s *MemoryStore) EnsureCrewVault(workspace, id, root, name string, owners []string) (bool, error) {
+	if !strings.HasPrefix(root, CrewVaultRootPrefix) || len(root) == len(CrewVaultRootPrefix) || len(owners) == 0 {
+		return false, errors.New("a Crew and its owners are required")
+	}
+	s.mu.Lock()
+	defer s.persistUnlock()
+	set := map[string]bool{}
+	for _, owner := range owners {
+		if u, ok := s.users[owner]; !ok || u.WorkspaceID != workspace {
+			return false, errors.New("unknown Crew owner")
+		}
+		set[owner] = true
+	}
+	g, exists := s.groups[id]
+	if exists && (g.WorkspaceID != workspace || g.ProjectRoot != root || !g.IsVault()) {
+		return false, errors.New("crew vault identity mismatch")
+	}
+	if !exists {
+		g = Group{ID: id, WorkspaceID: workspace, Kind: GroupKindVault, ProjectRoot: root}
+	}
+	g.Name, g.Owners = name, make([]string, 0, len(set))
+	for owner := range set {
+		g.Owners = append(g.Owners, owner)
+	}
+	sort.Strings(g.Owners)
+	s.groups[id] = g
+	s.members[id] = set
+	return !exists, nil
+}
+
+// IsCrewVault reports whether vaultID is a server Crew's vault.
+func (s *MemoryStore) IsCrewVault(vaultID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	g, ok := s.groups[vaultID]
+	return ok && g.IsVault() && strings.HasPrefix(g.ProjectRoot, CrewVaultRootPrefix)
+}
+
+// CrewVaultSecrets are the secrets of one server Crew's vault for one of its owners. ListSecrets leaves every project
+// scope out of account-wide lists; a Crew's own runtime names its vault (X-Vault-Crew-Vault) and gets these instead.
+func (s *MemoryStore) CrewVaultSecrets(workspace, user, vaultID string) []SecretResource {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	g, ok := s.groups[vaultID]
+	if !ok || !g.IsVault() || g.WorkspaceID != workspace || !strings.HasPrefix(g.ProjectRoot, CrewVaultRootPrefix) || !s.members[vaultID][user] {
+		return nil
+	}
+	rows := []SecretResource{}
+	for name := range s.secretGrants[vaultID] {
+		if row, ok := s.secretResources[name]; ok && row.VaultID == vaultID && row.WorkspaceID == workspace && s.secretGrants[vaultID][name] {
+			rows = append(rows, row)
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
+	return rows
 }

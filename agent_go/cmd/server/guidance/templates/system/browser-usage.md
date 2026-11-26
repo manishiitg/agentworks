@@ -214,7 +214,7 @@ curl -fsSL 'https://raw.githubusercontent.com/manishiitg/coding-agent-loop/main/
 After installation, agents verify reachability with `agent_browser status`;
 they must not probe Chrome's `/json/version` endpoint through shell.
 
-Workflows use the standard Chrome connection. A Crew may select its existing browser connection; use only the endpoint authorized for the current run.
+Workflows use the standard Chrome connection. A project may select its existing browser connection; use only the endpoint authorized for the current run.
 
 ### QA evidence and network debugging
 

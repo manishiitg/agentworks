@@ -1,0 +1,108 @@
+{
+  "test": "TestRealBridgeStreamingE2E_Pi",
+  "summary": "pi over rpc via the REAL mcpbridge → executor → real execute_shell_command: read a build-id file, write a markdown table, read it back — streamed at the mcpagent layer",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text <-> tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)",
+    "paced for a watching human — where the record carries first_signal_ms / longest_silence_ms, something shows up promptly and keeps updating; a long opening wait or one long mid-turn silence reads as a hung app even when the final output is perfect",
+    "actually streamed rather than delivered late — delivered_in_one_block=true, or a clean_content_spread_ms near zero, means the text appeared all at once at the end; that is a single late delivery wearing streaming's clothes, and the chunk COUNT alone cannot tell the difference",
+    "thinking claims match the evidence — thinking_event_count=0 means the turn surfaced NO reasoning content, so any 'thinking' a product shows for it must be streamed reply text under a Thinking label, not the model's reasoning; say which it is rather than assuming",
+    "tool calls completed — every started tool has a matching end (tool_calls_started == tool_calls_ended); a started-but-never-ended call leaves a spinning chip in the UI",
+    "usage is renderable — input and output tokens are non-zero so the product's usage line is not 'Input 0 Output 0'; note when cache_tokens is absent on a provider that normally caches"
+  ],
+  "output": {
+    "answer": "| Field | Value |\n|-------|-------|\n| build_id | BUILD_ID_0eb7a9e6e58c |\n| status | ok |",
+    "build_id_only_via_tool": "BUILD_ID_0eb7a9e6e58c",
+    "clean_content_count": 9,
+    "clean_content_spread_ms": 11644,
+    "clean_transcript_content": [
+      "I will read the project build ID from the file.",
+      "\n\n",
+      "I will write the markdown report table containing the build ID to report.md.",
+      "\n\n",
+      "I will verify the contents of the generated report file",
+      ".",
+      "\n\n",
+      "| Field | Value |\n|-------|-------|\n| build_id | BUILD",
+      "_ID_0eb7a9e6e58c |\n| status | ok |"
+    ],
+    "delivered_in_one_block": false,
+    "delta_content_count": 9,
+    "first_signal_ms": 3431,
+    "first_signal_ms_by_kind": {
+      "clean_content": 4495,
+      "thinking": 3431,
+      "tool_call": 4997
+    },
+    "longest_silence_ms": 3887,
+    "reassembled_message": "I will read the project build ID from the file.\n\nI will write the markdown report table containing the build ID to report.md.\n\nI will verify the contents of the generated report file.\n\n| Field | Value |\n|-------|-------|\n| build_id | BUILD_ID_0eb7a9e6e58c |\n| status | ok |",
+    "report_md_on_disk": "| Field | Value |\n|-------|-------|\n| build_id | BUILD_ID_0eb7a9e6e58c |\n| status | ok |\n",
+    "thinking_event_count": 2,
+    "thinking_texts": [
+      "**Initiating Code Execution**\n\nI'm starting by executing the provided command.\n`cat /var/folders/w2/ln5y7jbx4zbb58chsc0w9q2m0000gn/T/TestRealBridgeStreamingE`\n\n\n",
+      "**Generating Markdown Report**\n\nI've initiated the creation of a GitHub-flavored Markdown report. I'm leveraging a shell command to construct the table directly within the specified file path. The generated report should be available at `/var/folders/w2/ln5y7jbx4zbb58chsc0w9q2m0000gn/T/TestRealBridgeStreamingE2Epirpc3655020`.\n\n\n"
+    ],
+    "token_usage": {
+      "prompt_tokens": 13087,
+      "completion_tokens": 1004,
+      "total_tokens": 14091,
+      "cache_tokens": 0,
+      "reasoning_tokens": 0,
+      "token_usage_events": 1
+    },
+    "tool_call_events": 3,
+    "tool_calls": [
+      {
+        "body": "{\"command\":\"cat /var/folders/w2/ln5y7jbx4zbb58chsc0w9q2m0000gn/T/TestRealBridgeStreamingE2Epirpc3655020383/002/build_id.txt\"}",
+        "body_truncated": false,
+        "bridge_routed": true,
+        "bridge_via": "name",
+        "ended": true,
+        "name": "mcp__api_bridge__execute_shell_command"
+      },
+      {
+        "body": "{\"command\":\"cat << 'EOF' > /var/folders/w2/ln5y7jbx4zbb58chsc0w9q2m0000gn/T/TestRealBridgeStreamingE2Epirpc3655020383/002/report.md\\n| Field | Value |\\n|-------|-------|\\n| build_id | BUILD_ID_0eb7a9e6e58c |\\n| status | ok |\\nEOF\\n\"}",
+        "body_truncated": false,
+        "bridge_routed": true,
+        "bridge_via": "name",
+        "ended": true,
+        "name": "mcp__api_bridge__execute_shell_command"
+      },
+      {
+        "body": "{\"command\":\"cat /var/folders/w2/ln5y7jbx4zbb58chsc0w9q2m0000gn/T/TestRealBridgeStreamingE2Epirpc3655020383/002/report.md\"}",
+        "body_truncated": false,
+        "bridge_routed": true,
+        "bridge_via": "name",
+        "ended": true,
+        "name": "mcp__api_bridge__execute_shell_command"
+      }
+    ],
+    "tool_calls_ended": 3,
+    "tool_calls_started": 3,
+    "tool_names": [
+      "mcp__api_bridge__execute_shell_command",
+      "mcp__api_bridge__execute_shell_command",
+      "mcp__api_bridge__execute_shell_command"
+    ],
+    "total_content_chunks": 9,
+    "total_signal_events": 14,
+    "transport": "rpc",
+    "turn2_answer": "The build ID found was BUILD_ID_0eb7a9e6e58c.",
+    "turn2_first_signal_ms": 2624,
+    "turn2_total_ms": 2637,
+    "went_through_real_bridge": true
+  },
+  "fingerprint": "ee1a31247a8482e0",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "ee1a31247a8482e0",
+    "reviewer": "codex-pi-rpc",
+    "issues": [],
+    "notes": "Three started tools all ended; clean deltas reconstruct narration and table without duplication. First signal 3.4s, text spread 11.6s, longest silence 3.9s. Two reasoning events; positive input/output usage, zero cache in this run."
+  }
+}

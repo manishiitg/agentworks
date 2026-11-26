@@ -56,6 +56,19 @@ describe('concurrent Chat + Schedule session isolation', () => {
     vi.unstubAllGlobals()
   })
 
+  // #2826: persisted terminal selection cannot resurrect the removed app UI;
+  // normalizing it must preserve the chat's event-backed conversation.
+  it('forces saved terminal preferences to chat without discarding conversation events', async () => {
+    const useChatStore = await loadStore()
+    const { normalizeEventViewMode } = await import('./useChatStore')
+    expect(normalizeEventViewMode('terminal')).toBe('formatted')
+    useChatStore.setState({chatTabs:{saved:{tabId:'saved',name:'Saved chat',sessionId:CHAT,viewMode:'terminal',metadata:{mode:'multi-agent'}} as any}})
+    useChatStore.getState().addTabEvent(CHAT,ev(CHAT,'user_message','kept-native-prompt'))
+    useChatStore.getState().setTabViewMode('saved','terminal')
+    expect(useChatStore.getState().chatTabs.saved.viewMode).toBe('formatted')
+    expect(useChatStore.getState().getTabEvents(CHAT).map(row=>row.id)).toContain('kept-native-prompt')
+  })
+
   it('keeps distinct user, assistant, tool, and completion events in their own session', async () => {
     const useChatStore = await loadStore()
     const store = useChatStore.getState()
@@ -134,6 +147,23 @@ describe('concurrent Chat + Schedule session isolation', () => {
     expect(useChatStore.getState().chatTabs).toEqual({})
     expect(useChatStore.getState().activeTabId).toBeNull()
     expect(useChatStore.getState().tabEvents).toEqual({})
+  })
+
+  it('clears active pollingInterval and discards buffered streaming chunks on account change (#4214)', async () => {
+    vi.useFakeTimers()
+    const useChatStore = await loadStore()
+    const pollTick = vi.fn()
+    useChatStore.getState().startPolling(pollTick)
+    expect(useChatStore.getState().pollingInterval).not.toBeNull()
+
+    // Buffer a streaming chunk (flushes on a 16ms timer) and switch accounts before it fires.
+    useChatStore.getState().appendStreamingChunk(CHAT, 1, 'Account A secret text')
+    useChatStore.getState().discardChatStateForAccountChange()
+
+    vi.advanceTimersByTime(2500)
+    expect(useChatStore.getState().pollingInterval).toBeNull()
+    expect(useChatStore.getState().streamingText[CHAT]).toBeUndefined()
+    expect(pollTick).not.toHaveBeenCalled()
   })
 
   it('holds the invariant while both sessions stream interleaved', async () => {

@@ -109,10 +109,10 @@ func (s *ProjectActionDispatcher) CreateCrewProject(ctx context.Context, req Cre
 		return CreatedCrew{}, fmt.Errorf("crew creation requires the current authorized user")
 	}
 	if !userAllowedProduct(claims, "work") {
-		return CreatedCrew{}, fmt.Errorf("Crew product is unavailable or access denied")
+		return CreatedCrew{}, fmt.Errorf("Project product is unavailable or access denied")
 	}
 	if !userAccessForClaims(claims).CanCreateIn("work") {
-		return CreatedCrew{}, fmt.Errorf("this account cannot create Crews; an administrator can allow it under the account's create permissions")
+		return CreatedCrew{}, fmt.Errorf("this account cannot create projects; an administrator can allow it under the account's create permissions")
 	}
 	if err := validateCrewCreationWorkflowPath(workflowPath); err != nil {
 		return CreatedCrew{}, err
@@ -140,7 +140,7 @@ func (s *ProjectActionDispatcher) CreateCrewProject(ctx context.Context, req Cre
 		return CreatedCrew{}, fmt.Errorf("creating workflow is unavailable or access denied")
 	}
 	if access := workflowAccessForManifest(claims, creatingManifest); access != WorkflowAccessWrite && access != WorkflowAccessOwner {
-		return CreatedCrew{}, fmt.Errorf("creating a Crew for this workflow requires write access")
+		return CreatedCrew{}, fmt.Errorf("creating a project for this workflow requires write access")
 	}
 	if s == nil || s.registry == nil {
 		return CreatedCrew{}, fmt.Errorf("product profiles are unavailable")
@@ -203,7 +203,7 @@ func (s *ProjectActionDispatcher) CreateCrewProject(ctx context.Context, req Cre
 			// The receipt outlived its manifests (a crash between the
 			// receipt write and the manifest writes, or deleted
 			// manifests): rebuild under the frozen identity.
-			created, err = writeCrewCreationManifests(ctx, userID, profile, profileID, workflowPath, title, req.Purpose, receipt.CrewID, receipt.WorkspacePath, inheritedLLM)
+			created, err = writeCrewCreationManifests(ctx, userID, profile, profileID, workflowPath, title, receipt.CrewID, receipt.WorkspacePath, inheritedLLM)
 			if err != nil {
 				return CreatedCrew{}, err
 			}
@@ -211,7 +211,7 @@ func (s *ProjectActionDispatcher) CreateCrewProject(ctx context.Context, req Cre
 			created.Pending = pending
 		}
 	} else {
-		created, err = writeCrewCreationManifests(ctx, userID, profile, profileID, workflowPath, title, req.Purpose, receipt.CrewID, receipt.WorkspacePath, inheritedLLM)
+		created, err = writeCrewCreationManifests(ctx, userID, profile, profileID, workflowPath, title, receipt.CrewID, receipt.WorkspacePath, inheritedLLM)
 		if err != nil {
 			return CreatedCrew{}, err
 		}
@@ -324,9 +324,9 @@ func ensureCrewCreationTrigger(ctx context.Context, svc *ProjectActionDispatcher
 	}
 	response, _, err := svc.saveProductWebhookConfig(ctx, userID, productWebhookRequest{
 		ProfileID: profileID, ProjectID: projectID, Name: name, Message: message,
-		Enabled: true, RunDestination: runDestinationIsolated,
-		Kind:   triggerKindInternal,
-		Caller: &triggerCaller{Type: triggerCallerWorkflow, ID: workflowID},
+		Enabled: true,
+		Kind:    triggerKindInternal,
+		Caller:  &triggerCaller{Type: triggerCallerWorkflow, ID: workflowID},
 	}, "")
 	if err != nil {
 		return "", err
@@ -337,21 +337,18 @@ func ensureCrewCreationTrigger(ctx context.Context, svc *ProjectActionDispatcher
 // writeCrewCreationManifests writes a fresh crew's runtime manifest, identity
 // manifest, and code folder, mirroring the UI creation layout.
 type crewCreationOptions struct {
-	Restore   bool
-	LocalRoot string
-	LLMConfig *workflowtypes.PresetLLMConfig
-	// Role is set only by the server (agentWorksRole); a spec never supplies it.
-	Role string
+	SyncBinding *crewroot.SyncBinding
+	Restore     bool
+	LocalRoot   string
+	LLMConfig   *workflowtypes.PresetLLMConfig
 }
 
-func writeCrewCreationManifests(ctx context.Context, userID string, profile agentprofiles.Profile, profileID, workflowPath, title, purpose, crewID, workspacePath string, inheritedLLM *workflowtypes.AgentLLMConfig, options ...crewCreationOptions) (created CreatedCrew, createErr error) {
+func writeCrewCreationManifests(ctx context.Context, userID string, profile agentprofiles.Profile, profileID, workflowPath, title, crewID, workspacePath string, inheritedLLM *workflowtypes.AgentLLMConfig, options ...crewCreationOptions) (created CreatedCrew, createErr error) {
 	var settings crewCreationOptions
 	if len(options) > 0 {
 		settings = options[0]
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	sessionID := profileID + ":project:" + crewID
-	purpose = strings.TrimSpace(purpose)
 	capabilities := map[string]interface{}{
 		"selected_servers":             []string{},
 		"selected_tools":               []string{},
@@ -388,14 +385,9 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		"owner_id":       sanitizeUserIDForPath(userID),
 		"id":             crewID,
 		"title":          title,
-		"description":    purpose,
-		"session_id":     sessionID,
 		"created_at":     now,
 		"updated_at":     now,
 		"identity":       map[string]interface{}{"name": title},
-	}
-	if settings.Role != "" {
-		manifest["role"] = settings.Role
 	}
 	// The server records who owns the project before anything about it exists (PLAT-449): the registry is the
 	// authority, the owner_id above is information for whoever reads the folder.
@@ -407,7 +399,7 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 		// Only create our new resource directory; never adopt or write into a
 		// pre-existing .agentworks tree or the person's ordinary files.
 		if err := os.Mkdir(filepath.Join(settings.LocalRoot, ".agentworks"), 0700); err != nil {
-			return CreatedCrew{}, fmt.Errorf("create Crew resources: %w", err)
+			return CreatedCrew{}, fmt.Errorf("create project resources: %w", err)
 		}
 		if err := os.MkdirAll(filepath.Join(fsutil.WorkspaceDocsRoot(), "Crew"), 0700); err != nil {
 			_ = os.Remove(filepath.Join(settings.LocalRoot, ".agentworks"))
@@ -471,6 +463,24 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	} else {
 		registeredHere = !registeredBefore
 	}
+	// PLAT-746-972: the relay layout must exist BEFORE any manifest write.
+	// SplitFiles changes the settings root; enabling it afterward hides the
+	// newly created manifests and makes the next relay admission fail.
+	if settings.SyncBinding != nil {
+		if settings.SyncBinding.SplitFiles {
+			if err := os.MkdirAll(filepath.Join(fsutil.WorkspaceDocsRoot(), filepath.FromSlash(workspacePath), crewroot.FilesSegment), 0700); err != nil {
+				return CreatedCrew{}, err
+			}
+		}
+		// Only layout is needed during creation. The server owns its own
+		// initialization writes; publish the final editing side after those
+		// writes finish, without changing SplitFiles again.
+		initial := *settings.SyncBinding
+		initial.Editing = initial.Side
+		if err := crewroot.WriteSync(crewID, initial); err != nil {
+			return CreatedCrew{}, err
+		}
+	}
 	if err := writeCrewCreationManifest(ctx, filepath.ToSlash(filepath.Join(workspacePath, "workflow.json")), runtimeManifest); err != nil {
 		return CreatedCrew{}, err
 	}
@@ -478,14 +488,7 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	if err := writeCrewCreationManifest(ctx, manifestPath, manifest); err != nil {
 		return CreatedCrew{}, err
 	}
-	// Raw folder create, not the guarded workspace client: this is a
-	// server-side privileged write outside the Builder session's sandbox
-	// (the session guard confines the model's direct file access, not the
-	// server's own authorized tool implementations). The guarded client
-	// denies the crew path with ACCESS DENIED in every Builder session.
-	if err := createWorkspaceFolder(ctx, filepath.ToSlash(filepath.Join(workspacePath, "code"))); err != nil {
-		return CreatedCrew{}, fmt.Errorf("initialize crew code folder: %w", err)
-	}
+	// No code/ folder (#4009): it is the person's own; the platform keeps its scripts in .agentworks/.
 	// Restored projects receive their own authored commands through sync.
 	if !settings.Restore {
 		// Every new Crew starts with one reply-card command and the marker that keeps it deleted once removed.
@@ -510,7 +513,7 @@ func writeCrewCreationManifests(ctx context.Context, userID string, profile agen
 	if err := selectSoleNewCrewBrowser(ctx, userID, workspacePath, profileID); err != nil {
 		log.Printf("[PROJECT_CREATE] default browser selection unavailable for %s", crewID)
 	}
-	return CreatedCrew{CrewID: crewID, Title: title, WorkspacePath: workspacePath, ManifestPath: manifestPath, SessionID: sessionID}, nil
+	return CreatedCrew{CrewID: crewID, Title: title, WorkspacePath: workspacePath, ManifestPath: manifestPath}, nil
 }
 
 // inheritCrewCreationLLM resolves the creating workflow's model choice into
@@ -624,7 +627,7 @@ func applyCrewCreationStarter(ctx context.Context, workspacePath, title, workflo
 	}
 	var b strings.Builder
 	b.WriteString("# " + strings.TrimSpace(title) + "\n\n")
-	b.WriteString("## " + time.Now().UTC().Format("2006-01-02") + " — Crew brief\n\n")
+	b.WriteString("## " + time.Now().UTC().Format("2006-01-02") + " — Project brief\n\n")
 	b.WriteString("Created by Workflow Builder for workflow `" + workflowPath + "`.\n\n")
 	if purpose != "" {
 		b.WriteString("Purpose: " + purpose + "\n\n")
@@ -690,7 +693,7 @@ func validateCrewCreationSkills(names []string) ([]string, error) {
 		if skills.IsBuiltinSkillIn("Crew", name) {
 			continue
 		}
-		return nil, fmt.Errorf("crew skill %q is not installed inside the new Crew; create it without this attachment, then install and select it there", name)
+		return nil, fmt.Errorf("crew skill %q is not installed inside the new project; create it without this attachment, then install and select it there", name)
 	}
 	return checked, nil
 }
@@ -831,7 +834,7 @@ func (s *ProjectActionDispatcher) validateCrewCreationServers(ctx context.Contex
 		}
 		servers = append(servers, canonical)
 		if !connected {
-			pending = append(pending, PendingConnection{Kind: "mcp_server", Name: canonical, Reason: "configured but not connected; connect it through chat using Vault before the Crew can use its tools"})
+			pending = append(pending, PendingConnection{Kind: "mcp_server", Name: canonical, Reason: "configured but not connected; connect it through chat using Vault before the project can use its tools"})
 		}
 	}
 	return servers, pending, nil

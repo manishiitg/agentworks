@@ -31,7 +31,7 @@ func normalizeDashboardExport(options dashboardExportOptions, composition string
 	}
 	if options.SourceMode == "composition" {
 		if !validDashboardMotionPath(composition) {
-			return options, "", dashboardFailure(400, "Save the separate video composition under code/motion/ and pass its composition_path.")
+			return options, "", dashboardFailure(400, "Save the separate video composition under motion/ and pass its composition_path.")
 		}
 		return options, composition, nil
 	}

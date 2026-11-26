@@ -2,17 +2,16 @@
 # Build a whole release ONCE (PLAT-426); every server then only copies and activates it.
 #
 #   build-release.sh --source mcp-agent-builder-go <url> <sha> \
-#                    --source mcpagent <url> <sha> --source multi-llm-provider-go <url> <sha> \
 #                    [--arch amd64|arm64] [--builds-dir /srv/_builds] [--keep 1] [--force]
 #   build-release.sh --prune-only [--builds-dir /srv/_builds] [--keep 1]     (removes old builds, builds nothing)
 #
 # Runs on a native Linux x86_64 or aarch64 build host, as root by default: set BUILD_AS=<user> to drop to an unprivileged account that
 # owns the builds dir. It
-#   1. takes a lock, and returns the existing build when one already holds exactly these three revisions (unless --force);
-#   2. fetches the three repositories at the given full commit ids into a scratch folder under <builds-dir>/.work;
+#   1. takes a lock, and returns the existing build when one already holds exactly this revision (unless --force);
+#   2. fetches the repository (mcpagent/ and multi-llm-provider-go/ are folders in it) at the given full commit id into a scratch folder under <builds-dir>/.work;
 #   3. builds into <builds-dir>/<builder-sha8>-<utc timestamp>/ : bin/ (agent with cgo native STT and bin/lib, workspace, gateway,
 #      browser, landlock runner, slotctl, slottmux, mcpbridge, workspace-security.test), frontend/, static/, downloads/ (AgentWorks
-#      CLI for four targets), packages/, source/ (the three repos without .git), SOURCE_REVISIONS and manifest.json (revisions, arch,
+#      CLI for four targets), packages/, source/ (the repository without .git), SOURCE_REVISIONS and manifest.json (revisions, arch,
 #      glibc, build time, sha256 of every file; deploy/common/release_manifest.py);
 #   4. prunes old builds: all but the newest --keep (default 1; the products keep their own previous releases for rollback), never one younger than
 #      15 minutes (an activation may still be copying from it), never one pinned with `./deploy.sh pin`. deploy.sh also prunes after every successful deploy.
@@ -37,7 +36,7 @@ WORK=""
 NAME=""
 STARTED="$(date +%s)"
 declare -A URL REV
-ORDER=(mcp-agent-builder-go mcpagent multi-llm-provider-go)
+ORDER=(mcp-agent-builder-go)
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --arch) BUILD_ARCH="$2"; shift 2 ;;
@@ -99,6 +98,37 @@ PASS=(--arch "$BUILD_ARCH" --builds-dir "$BUILDS" --keep "$KEEP" --started "$STA
 [[ "$FORCE" == 1 ]] && PASS+=(--force)
 for repo in "${ORDER[@]}"; do PASS+=(--source "$repo" "${URL[$repo]}" "${REV[$repo]}"); done
 
+# #3035: check the actual build filesystem before downloads or compilation.
+# Embedded in both standalone launchers: neither has a source checkout yet.
+check_build_disk() {
+python3 - "$BUILDS" <<'DISK_CHECK'
+import math, os, shutil, sys
+minimum = os.environ.get("BUILD_DISK_MIN_FREE_GIB", "10")
+try:
+    minimum = float(minimum)
+    if not math.isfinite(minimum) or minimum < 0:
+        raise ValueError()
+except ValueError:
+    print("[DISK_CHECK] event=refused reason=invalid_minimum BUILD_DISK_MIN_FREE_GIB must be a nonnegative number", file=sys.stderr)
+    raise SystemExit(2)
+if "BUILD_DISK_MIN_FREE_GIB" in os.environ:
+    print(f"[DISK_CHECK] event=operator_override minimum_free_gib={minimum:g}", file=sys.stderr)
+try:
+    usage = shutil.disk_usage(sys.argv[1])
+except OSError as exc:
+    print(f"[DISK_CHECK] event=refused reason=check_failed error={exc}", file=sys.stderr)
+    raise SystemExit(2)
+free_gib = usage.free / (1024 ** 3)
+percent = math.ceil(100 * usage.used / max(1, usage.used + usage.free))
+print(f"[DISK_CHECK] used_percent={percent} free_gib={free_gib:.2f}", file=sys.stderr)
+if percent >= 85:
+    print("WARNING: build disk is at least 85% full. Cleanup is needed.", file=sys.stderr)
+if usage.free < minimum * 1024 ** 3:
+    print(f"Build not started: less than {minimum:g} GiB free on the build disk. Free space and retry.", file=sys.stderr)
+    raise SystemExit(2)
+DISK_CHECK
+}
+
 if [[ "$INNER" == 0 ]]; then
   # ---- outer: lock, reuse, toolchain, fetch, then hand over to the script inside the fetched checkout --------------------------
   if [[ "$(id -u)" == 0 && -n "${BUILD_AS:-}" ]]; then
@@ -111,11 +141,11 @@ if [[ "$INNER" == 0 ]]; then
 
   existing=""
   if [[ "$FORCE" == 0 ]]; then
-    existing="$(python3 - "$BUILDS" "${REV[mcp-agent-builder-go]}" "${REV[mcpagent]}" "${REV[multi-llm-provider-go]}" "$(uname -m)" <<'PY'
+    existing="$(python3 - "$BUILDS" "${REV[mcp-agent-builder-go]}" "$(uname -m)" <<'PY'
 import json, sys
 from pathlib import Path
-root, *shas, arch = sys.argv[1:]
-want = dict(zip(["mcp-agent-builder-go", "mcpagent", "multi-llm-provider-go"], shas))
+root, sha, arch = sys.argv[1:]
+want = {"mcp-agent-builder-go": sha}
 for manifest in sorted(Path(root).glob("*/manifest.json"), reverse=True):
     try:
         data = json.loads(manifest.read_text())
@@ -128,11 +158,13 @@ PY
 )"
   fi
   if [[ -n "$existing" ]]; then
-    echo "Reusing build $existing (same three revisions)"
+    echo "Reusing build $existing (same revision)"
     echo "BUILD_NAME=$existing"
     echo "BUILD_DIR=$BUILDS/$existing"
     exit 0
   fi
+
+  check_build_disk
 
   export PATH="$BUILDS/.toolchain/go/bin:$HOME/.local/go/bin:/usr/local/go/bin:$PATH"
   if ! command -v go >/dev/null; then
@@ -183,7 +215,7 @@ export GOMAXPROCS="$JOBS" GOFLAGS="-p=$JOBS -modcacherw" NODE_OPTIONS=--max-old-
 # one over its cap is wiped before the build. Uncapped, the Go cache grew to 68 GB on this host (PLAT-545).
 CACHE="$BUILDS/.cache"
 export GOCACHE="$CACHE/go-build" GOMODCACHE="$CACHE/gomod" npm_config_cache="$CACHE/npm"
-for capped in "$GOCACHE:15" "$GOMODCACHE:6" "$npm_config_cache:3"; do
+for capped in "$GOCACHE:8" "$GOMODCACHE:4" "$npm_config_cache:2"; do
   dir="${capped%:*}" cap_gb="${capped##*:}"
   if [[ -d "$dir" ]] && (( $(du -sk "$dir" | cut -f1) > cap_gb * 1024 * 1024 )); then
     echo "Build cache $dir is over ${cap_gb} GB; wiping it"
@@ -198,9 +230,9 @@ mkdir -p "$OUT/bin" "$OUT/frontend" "$OUT/static" "$OUT/downloads" "$OUT/package
 trap 'rm -rf "$WORK" "$OUT"' EXIT
 step() { echo "==> [$NAME] $* ($(( $(date +%s) - STARTED ))s)"; }
 
-# Build exactly these checkouts, resolving the shared sibling modules from the scratch workspace rather than any checked-in go.work.
+# Build exactly this checkout, resolving the in-repo library modules from a scratch go.work rather than any checked-in one.
 DEPLOY_GOWORK="$OUT/go.work"
-(cd "$OUT" && go work init "$REPO_ROOT/agent_go" "$REPO_ROOT/workspace" "$WORKSPACE_ROOT/mcpagent" "$WORKSPACE_ROOT/multi-llm-provider-go")
+(cd "$OUT" && go work init "$REPO_ROOT/agent_go" "$REPO_ROOT/workspace" "$REPO_ROOT/mcpagent" "$REPO_ROOT/multi-llm-provider-go")
 {
   for repo in "${ORDER[@]}"; do printf '%s=%s\n' "$repo" "${REV[$repo]}"; done
 } > "$OUT/SOURCE_REVISIONS"
@@ -231,7 +263,7 @@ gobuild "$OUT/bin/video-studio-landlock-runner" "$REPO_ROOT/workspace/cmd/landlo
 # Per-user accounts: slotctl and slottmux (deploy/common/slots.sh, shared with both activation scripts).
 source "$REPO_ROOT/deploy/common/slots.sh"
 slots_build "$WORKSPACE_ROOT" "$DEPLOY_GOWORK" "$REPO_ROOT" "$OUT"
-gobuild "$OUT/bin/mcpbridge" ./mcpagent/cmd/mcpbridge
+gobuild "$OUT/bin/mcpbridge" "$REPO_ROOT/mcpagent/cmd/mcpbridge"
 gobuild "$OUT/bin/gateway" "$REPO_ROOT/deploy/aws-ec2/server/auth-gateway.go"
 # Include Vault in the same manifest-verified build. A prebuilt activation never
 # compiles this service or creates its installer on the deployment host.

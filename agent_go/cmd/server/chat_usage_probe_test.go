@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -23,26 +25,65 @@ func TestChatUsageProbeAsksOnlyTheChatsAccount(t *testing.T) {
 	reset()
 	original := readNativeAccountUsage
 	t.Cleanup(func() { readNativeAccountUsage = original; reset() })
-	calls := 0
+	var calls atomic.Int32
+	started, release := make(chan struct{}), make(chan struct{})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
 	readNativeAccountUsage = func(_ context.Context, provider string, environment []string) (llmtypes.AccountUsage, error) {
-		calls++
+		calls.Add(1)
+		close(started)
+		<-release
 		if provider != "claude-code" || envValue(environment, "HOME") != wantHome || envValue(environment, "AUTH_SECRET") != "" {
-			t.Fatal("quota request ran outside the chat account's environment")
+			t.Error("quota request ran outside the chat account's environment")
 		}
 		return llmtypes.AccountUsage{Windows: []llmtypes.AccountUsageWindow{{Label: "5-hour limit", UsedPercent: 42}, {Label: "Weekly · Opus", UsedPercent: 90}}}, nil
 	}
 
-	if limits := env.api.probedChatLimits("bob", "claude-code", account.ID); limits != nil || calls != 0 {
+	if limits := env.api.probedChatLimits("bob", "claude-code", account.ID); limits != nil || calls.Load() != 0 {
 		t.Fatalf("asked about a private account for someone it is not shared with: %v", limits)
 	}
-	if limits := env.api.probedChatLimits("alice", "codex-cli", account.ID); limits != nil || calls != 0 {
+	if limits := env.api.probedChatLimits("alice", "codex-cli", account.ID); limits != nil || calls.Load() != 0 {
 		t.Fatalf("asked another provider about this account: %v", limits)
 	}
-	limits := env.api.probedChatLimits("alice", "claude-code", account.ID)
-	if calls != 1 || len(limits) != 1 || limits[0].Label != "5h" || limits[0].UsedPercent != 42 {
-		t.Fatalf("chat owner's own account: calls=%d limits=%v", calls, limits)
+	// A blocked provider must not block the GET, and another GET must reuse its in-flight probe.
+	returned := make(chan []chatUsageLimit, 1)
+	go func() { returned <- env.api.probedChatLimits("alice", "claude-code", account.ID) }()
+	select {
+	case limits := <-returned:
+		if limits != nil {
+			t.Fatalf("first read should have no cached usage: %v", limits)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("chat-context waited for the provider probe")
 	}
-	if again := env.api.probedChatLimits("alice", "claude-code", account.ID); calls != 1 || len(again) != 1 {
-		t.Fatalf("asked the provider again within the cache time: calls=%d", calls)
+	<-started
+	if limits := env.api.probedChatLimits("alice", "claude-code", account.ID); limits != nil || calls.Load() != 1 {
+		t.Fatalf("in-flight probe was not reused: %v", limits)
+	}
+	close(release)
+	deadline := time.Now().Add(time.Second)
+	for {
+		chatUsageProbes.mu.Lock()
+		running := chatUsageProbes.running["claude-code|"+account.ID]
+		chatUsageProbes.mu.Unlock()
+		if !running {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("probe did not finish")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	limits := env.api.probedChatLimits("alice", "claude-code", account.ID)
+	if calls.Load() != 1 || len(limits) != 1 || limits[0].Label != "5h" || limits[0].UsedPercent != 42 {
+		t.Fatalf("next read did not receive refreshed usage: %v", limits)
+	}
+	if limits := env.api.probedChatLimits("bob", "claude-code", account.ID); limits != nil {
+		t.Fatalf("cached usage bypassed account authorization: %v", limits)
 	}
 }

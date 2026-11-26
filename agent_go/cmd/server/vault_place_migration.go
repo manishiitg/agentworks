@@ -500,32 +500,6 @@ func backupLegacyMCPStore() error {
 	})
 }
 
-// Legacy inventory readers below are used by the one-off importer and retired
-// store cleanup only. Live setup and execution never resolve these accounts.
-func lookupPersonalMCP(person, name string) (placeMCPServer, bool, error) {
-	rows, err := listPlaceMCPServers(person)
-	if err != nil {
-		return placeMCPServer{}, false, err
-	}
-	for _, row := range rows {
-		if strings.EqualFold(row.Name, name) {
-			return row, true, nil
-		}
-	}
-	var match placeMCPServer
-	count := 0
-	for _, row := range rows {
-		if name != "" && strings.EqualFold(row.Catalog, name) {
-			match = row
-			count++
-		}
-	}
-	if count > 1 {
-		return match, false, fmt.Errorf("several legacy accounts match; use the exact name")
-	}
-	return match, count == 1, nil
-}
-
 // Keep a project's existing per-tool picks when its account identity moves.
 func (api *StreamingAPI) migrateProjectMCPToolSelection(ctx context.Context, root, old, internal, next string) error {
 	rewrite := func(items []string) []string {

@@ -1,0 +1,28 @@
+{
+  "test": "TestRealBridgeStreamingConcurrent_Agy",
+  "summary": "2 parallel AGY alpha sessions through the real bridge, each reading its own build ID — session isolation with final-only answers",
+  "review_criteria": [
+    "no duplicated lines, prompt echo, internal instructions, or terminal escape codes in the answer",
+    "human-readable final answer with coherent formatting and no invented work",
+    "real intended bridge tools completed and their results agree with the answer and on-disk work",
+    "multi-turn context, native resume, session isolation, and failure behavior match the test's claim",
+    "AGY alpha delivers assistant content once at turn completion; do not describe it as token-streamed or claim the post-hoc tool events were live"
+  ],
+  "output": {
+    "auth_mode": "gemini_api_key (AGY_P0_KEY_MODE; subscription quota exhausted, transport mechanics unaffected)",
+    "no_cross_leak": true,
+    "provider": "Agy",
+    "worker0_answer": "BUILD_ID_0_fd111459b0",
+    "worker0_build_id": "BUILD_ID_0_fd111459b0",
+    "worker1_answer": "BUILD_ID_1_c7c42a67c0",
+    "worker1_build_id": "BUILD_ID_1_c7c42a67c0"
+  },
+  "fingerprint": "aa599858c82d4599",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "aa599858c82d4599",
+    "reviewer": "codex",
+    "issues": [],
+    "notes": "Reviewed the fresh 2026-09-28 Gemini-key-mode capture. Both parallel AGY sessions returned only their own build IDs with no prompt echo or cross-session leak. AGY alpha final answers are delivered at turn completion."
+  }
+}

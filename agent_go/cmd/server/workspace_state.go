@@ -226,7 +226,8 @@ func (api *StreamingAPI) getRunFoldersFromWorkspace(ctx context.Context, workspa
 		return []RunFolderInfo{}, nil // Empty list, not error
 	}
 
-	if _, _, err := ReadWorkflowManifest(ctx, workspacePath); err != nil {
+	manifest, _, err := ReadWorkflowManifest(ctx, workspacePath)
+	if err != nil {
 		return nil, fmt.Errorf("failed to read workflow manifest: %w", err)
 	}
 	// Extract folder names from response data
@@ -287,6 +288,7 @@ func (api *StreamingAPI) getRunFoldersFromWorkspace(ctx context.Context, workspa
 				metadataPath := workspacePath + "/runs/" + folderName + "/run_metadata.json"
 				metadata, _ := readRunMetadata(ctx, metadataPath)
 				if metadata != nil {
+					setRunResumeCapability(ctx, manifest, workspacePath, folderName, metadata)
 					folderInfos[idx].Metadata = metadata
 				}
 			}(i)
@@ -452,7 +454,6 @@ func runSummarySortTime(metadata *RunMetadata) int64 {
 // handleGetWorkflowsSummary returns lightweight summaries for multiple workflows in one call.
 // GET /api/workflows/summary?workspace_paths=path1,path2,...
 func (api *StreamingAPI) handleGetWorkflowsSummary(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -562,7 +563,6 @@ func (api *StreamingAPI) handleGetWorkflowsSummary(w http.ResponseWriter, r *htt
 // handleGetWorkflowsOverview returns richer overview rows for multiple workflows in one call.
 // GET /api/workflows/overview?workspace_paths=path1,path2,...
 func (api *StreamingAPI) handleGetWorkflowsOverview(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return

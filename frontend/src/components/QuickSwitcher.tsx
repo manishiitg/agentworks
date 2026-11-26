@@ -1,8 +1,20 @@
+import { QuickSwitcherResultGroups } from './QuickSwitcherResultGroups'
+import { quickSwitcherArtifactID, uniqueQuickSwitcherArtifacts, quickSwitcherMatches, quickSwitcherMatchRank as itemSearchMatchRank, quickSwitcherGroups } from '../utils/quickSwitcherResults'
+import { SearchMatch } from './chat/SearchMatch'
+import api, { agentApi } from '../services/api'
+import { projectFilesFolder, requestOpenProjectFile } from '../utils/projectFileLinks'
+import { workspaceGitApi } from '../services/workspaceGit'
+import { openAgentTab } from '../utils/openAgentTab'
+import { loadDashboardDirectory, dashboardDisplayName, dashboardDirectoryLink } from '../services/dashboardDirectory'
+import { schedulerApi } from '../api/scheduler'
+import { timeScheduledJobs } from './scheduler/scheduleRuns/helpers'
+import { useWorkspaceConnectionStore } from '../stores/useWorkspaceConnectionStore'
+import { useAppStore } from '../stores/useAppStore'
 import { currentChatFindRoot, openCurrentChatFind } from '../utils/transcriptSearch'
 import { panelSearchAliases } from './workspace/workspacePanelGroups'
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { isWorkSideChatTab } from '../products/work/workTabs'
-import { Activity, CalendarClock, Cpu, Layers, LayoutGrid, MessageSquare, PanelRight, Plus, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
+import { Activity, CalendarClock, Cpu, FileText, Layers, LayoutGrid, MessageSquare, PanelRight, Plus, Plug, PlugZap, ScrollText, Search, Users, X } from 'lucide-react'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useModeStore } from '../stores/useModeStore'
 import { useChatStore } from '../stores'
@@ -21,6 +33,7 @@ import type { WorkSession } from '../products/work/workSessions'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { usePanelSwitcherStore } from '../stores/usePanelSwitcherStore'
 import { useAuthStore } from '../stores/useAuthStore'
+import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
 import { visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
 import { AGENTWORKS_SUBTITLE, AgentWorksIcon, isOwnAgentWorks } from './ui/AgentWorksIdentity'
@@ -83,7 +96,7 @@ interface ActiveWorkItem {
 }
 
 interface CrewChatItem {
-  /** A Crew, or a Code workspace (same project surface, its own product). */
+  /** A project. */
   type: 'crew'
   id: string
   label: string
@@ -121,7 +134,12 @@ interface PanelItem {
 type ChatFindItem = Omit<PanelItem, 'type' | 'panelId' | 'sectionId'> & { type: 'chat-find' }
 const chatFindItem: ChatFindItem = { type: 'chat-find', id: 'chat:find', label: 'Find in this chat', subtitle: 'Search loaded messages and steps · Ctrl/Cmd+F', searchText: 'search conversation find text', isActive: false, lastAccessedAt: 0, hasLocalActivity: false }
 
-type QuickSwitcherItem = ChatFindItem | PanelItem | WorkflowItem | ChatTabItem | CrewChatItem | ActiveWorkItem | QuickNavigationItem
+type ResourceItem = { chatId?: string; sender?: string; at?: string; filepath?: string; type: 'artifact' | 'schedule' | 'message' | 'file'; id: string; label: string; subtitle: string; searchText: string; href?: string; scheduledProduct?: 'work' | 'agentworks'; isActive: false; lastAccessedAt: 0; activeSession?: undefined; hasLocalActivity: false }
+type SearchCategory = 'quick' | 'all' | 'chat' | 'crew' | 'artifact' | 'schedule' | 'file'
+const searchCategories: { id: SearchCategory; label: string }[] = [{ id: 'quick', label: 'Quick' }, { id: 'all', label: 'All' }, { id: 'chat', label: 'Chats' }, { id: 'crew', label: 'Projects' }, { id: 'file', label: 'Files' }, { id: 'artifact', label: 'Artifacts' }, { id: 'schedule', label: 'Schedules' }]
+type QuickSwitcherItem = ResourceItem | ChatFindItem | PanelItem | WorkflowItem | ChatTabItem | CrewChatItem | ActiveWorkItem | QuickNavigationItem
+
+const isChatDestination = (item: QuickSwitcherItem) => item.type === 'chat' || (item.type === 'crew' && !!item.tabId)
 
 type QuickSwitcherRow = QuickSwitcherItem & { treeChild?: boolean; treeLastChild?: boolean; treeParentLabel?: string }
 
@@ -155,7 +173,7 @@ const projectChatTree = (ranked: QuickSwitcherItem[], inventory: QuickSwitcherIt
     let parent = parents.get(key)
     if (!parent && item.type === 'crew') {
       parent = { ...item, id: `crew-project:${item.projectId}`, label: item.projectLabel || item.label,
-        subtitle: 'Crew', tabId: undefined, isActive: false, activeSession: undefined, hasLocalActivity: false }
+        subtitle: 'Project', tabId: undefined, isActive: false, activeSession: undefined, hasLocalActivity: false }
     }
     if (parent) {
       const representedSession = parent.activeSession && children.some(child => itemActiveSession(child)?.session_id === parent.activeSession?.session_id)
@@ -189,7 +207,7 @@ const activeSessionLabel = (session: ActiveSessionInfo): string => {
       session.title ||
       session.workspace_path?.split('/').filter(Boolean).pop() ||
       session.query ||
-      'Crew work'
+      'Project work'
   }
   if (isWorkflowSession(session)) {
     return session.workflow_label ||
@@ -263,16 +281,6 @@ const compareItemActivity = (a: QuickSwitcherItem, b: QuickSwitcherItem): number
   return b.lastAccessedAt - a.lastAccessedAt
 }
 
-const itemSearchMatchRank = (item: QuickSwitcherItem, query: string): number => {
-  const label = item.label.toLowerCase()
-  if (label === query) return 0
-  if (label.startsWith(query)) return 1
-  // Panel search also accepts words in any order. At equal recency, keep
-  // name matches ahead of parent-label, description or keyword matches.
-  if (label.includes(query) || (item.type === 'panel' && query.split(/\s+/).every(word => label.includes(word)))) return 2
-  return 3
-}
-
 // The row shows only the state (and a bot origin); the rest is debugging detail
 // that stays searchable through activeSessionSearchText (owner, 2026-10-07).
 const activeSessionSuffix = (session?: ActiveSessionInfo): string => {
@@ -301,6 +309,10 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   initialQuery = '',
 }) => {
   const [query, setQuery] = useState('')
+  const [category, setCategory] = useState<SearchCategory>('quick')
+  const workspace = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const [resources, setResources] = useState<{ scope: string; items: ResourceItem[]; error: string; loading: boolean }>({ scope: '', items: [], error: '', loading: false })
+  const [resourceAttempt, setResourceAttempt] = useState(0)
   const [scopeFilter, setScopeFilter] = useState<QuickNavigationScope | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -323,12 +335,105 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
   // Every Crew the user can use (owned and shared), so the switcher lists them
   // all, not only Crews with an open tab or running work. Loaded per opening.
-  const [crewDirectory, setCrewDirectory] = useState<WorkSession[]>([])
-  // Code workspaces are listed only where this deployment offers Code and
-  // the account may open it.
-  const allowedProducts = useAuthStore(state => state.user?.allowed_products)
+  const [crewInventory, setCrewInventory] = useState<{ scope: string; rows: WorkSession[] }>({ scope: '', rows: [] })
   const user = useAuthStore(state => state.user)
   const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
+  const resourceScope = `${workspace}:${user?.id || ''}`
+  const crewDirectory = crewInventory.scope === resourceScope ? crewInventory.rows : []
+  const [messageAttempt, setMessageAttempt] = useState(0)
+  const [messageSearch, setMessageSearch] = useState<{ key: string; items: ResourceItem[]; cursor: string; loading: boolean; error: boolean }>({ key: '', items: [], cursor: '', loading: false, error: false })
+  const messageBatch = useRef({ key: '', items: [] as ResourceItem[], cursor: '', page: 0 })
+  const messageKey = `${resourceScope}:${query.trim()}`
+  // All still matches chat names, but only Chats searches the saved messages.
+  const messageEnabled = isOpen && !!user && category === 'chat' && !scopeFilter && !query.trim().startsWith('@') && [...query.trim()].length >= 2 && [...query.trim()].length <= 200
+  useEffect(() => {
+    if (!messageEnabled) {
+      // Reopening search must get fresh admission, not resurface snippets
+      // cached before a chat was hidden or access was removed.
+      messageBatch.current = { key: '', items: [], cursor: '', page: 0 }
+      setMessageSearch({ key: '', items: [], cursor: '', loading: false, error: false })
+      return
+    }
+    const controller = new AbortController()
+    if (messageBatch.current.key !== messageKey) messageBatch.current = { key: messageKey, items: [], cursor: '', page: 0 }
+    const timer = window.setTimeout(() => {
+      const previous = messageBatch.current
+      setMessageSearch({ ...previous, loading: true, error: false })
+      const search = async () => {
+        let items = [...previous.items], cursor = previous.cursor
+        // One debounced HTTP request per pause; the server batches the bounded
+        // journal scan. Older history is explicit, never an eight-call burst.
+        const { data } = await api.post<{ results: { session_id: string; id: string; title: string; sender: string; at: string; snippet: string; url: string }[]; next_cursor: string }>('/api/chat-search', { query: query.trim(), cursor, page: previous.page }, { signal: controller.signal, skipSessionContext: true })
+        if (controller.signal.aborted) return
+        items = [...items, ...data.results.filter(hit => !items.some(item => item.id === `message:${hit.session_id}:${hit.id}`)).map(hit => ({ type: 'message' as const, id: `message:${hit.session_id}:${hit.id}`, chatId: hit.session_id, sender: hit.sender, at: hit.at, label: hit.title, subtitle: hit.snippet, searchText: '', href: hit.url, isActive: false as const, lastAccessedAt: 0 as const, hasLocalActivity: false as const }))]
+        cursor = data.next_cursor
+        const batch = { key: messageKey, items, cursor, page: previous.page + 1 }
+        messageBatch.current = batch
+        setMessageSearch({ ...batch, loading: false, error: false })
+      }
+      void search().catch(() => { if (!controller.signal.aborted) setMessageSearch({ ...messageBatch.current, loading: false, error: true }) })
+    }, 350)
+    return () => { window.clearTimeout(timer); controller.abort() }
+  }, [messageEnabled, messageKey, messageAttempt, query])
+
+  // Files of the open Crew, found by the server's file-name search (the Files tab's search box). Only in the
+  // Files tab: a whole-project name search is heavy on a large folder, so typing under All never starts one.
+  const filesFolder = isOpen ? projectFilesFolder() : ''
+  const fileKey = `${resourceScope}:${filesFolder}:${query.trim()}`
+  const fileEnabled = isOpen && !!filesFolder && category === 'file' && !scopeFilter && !query.trim().startsWith('@') && [...query.trim()].length >= 2
+  const [fileSearch, setFileSearch] = useState<{ key: string; items: ResourceItem[]; loading: boolean; error: boolean }>({ key: '', items: [], loading: false, error: false })
+  useEffect(() => {
+    if (!fileEnabled) { setFileSearch({ key: '', items: [], loading: false, error: false }); return }
+    const controller = new AbortController()
+    setFileSearch({ key: fileKey, items: [], loading: true, error: false })
+    const timer = window.setTimeout(() => {
+      // Git's file lists answer at once; a project with no repository falls back to the folder search.
+      const search = async (): Promise<string[]> => {
+        const found = await workspaceGitApi.find(filesFolder, query.trim(), 'name', 30, controller.signal)
+        if (found.repos > 0) return found.files.map(file => `${filesFolder}/${file.path}`)
+        const response = await agentApi.searchDocuments({ query: query.trim(), search_type: 'filename', folder: filesFolder, limit: 30 }, undefined, controller.signal)
+        return ((response?.data?.results ?? []) as { filepath: string; type?: string }[]).filter(result => result.type !== 'folder').map(result => result.filepath)
+      }
+      void search()
+        .then(paths => {
+          if (controller.signal.aborted) return
+          const items = paths.map(filepath => {
+            const relative = filepath.startsWith(`${filesFolder}/`) ? filepath.slice(filesFolder.length + 1) : filepath
+            return { type: 'file' as const, id: `file:${filepath}`, filepath, label: relative.split('/').pop() || relative, subtitle: relative, searchText: '', isActive: false as const, lastAccessedAt: 0 as const, hasLocalActivity: false as const }
+          })
+          setFileSearch({ key: fileKey, items, loading: false, error: false })
+        })
+        .catch(() => { if (!controller.signal.aborted) setFileSearch({ key: fileKey, items: [], loading: false, error: true }) })
+    }, 150)
+    return () => { window.clearTimeout(timer); controller.abort() }
+  }, [fileEnabled, fileKey])
+
+  useEffect(() => {
+    if (!isOpen || !user) return
+    const controller = new AbortController()
+    let cancelled = false
+    setResources({ scope: resourceScope, items: [], error: '', loading: true })
+    const jobs = async () => {
+      const out = []
+      for (let offset = 0; ; offset += 200) {
+        const page = await schedulerApi.listJobs({ limit: 200, offset })
+        if (cancelled) return []
+        out.push(...page.jobs)
+        if (!page.jobs.length || offset + page.jobs.length >= page.total) return out
+      }
+    }
+    void Promise.allSettled([loadDashboardDirectory(controller.signal), jobs()]).then(([artifacts, schedules]) => {
+      if (cancelled) return
+      const common = { isActive: false as const, lastAccessedAt: 0 as const, hasLocalActivity: false as const }
+      const items: ResourceItem[] = [
+        ...(artifacts.status === 'fulfilled' ? uniqueQuickSwitcherArtifacts(artifacts.value.dashboards).map(row => ({ ...common, type: 'artifact' as const, id: quickSwitcherArtifactID(row), label: dashboardDisplayName(row), subtitle: row.project_title || 'Artifact', searchText: `${row.project_title || ''} ${row.title || ''}`, href: dashboardDirectoryLink(row) })) : []),
+        ...(schedules.status === 'fulfilled' ? timeScheduledJobs(schedules.value).filter(job => visibleProductSurfaceIDs(user.allowed_products).includes(job.entity_type === 'product' ? 'work' : 'agentworks')).map(job => ({ ...common, type: 'schedule' as const, scheduledProduct: (job.entity_type === 'product' ? 'work' : 'agentworks') as 'work' | 'agentworks', id: `schedule:${job.id}`, label: job.name, subtitle: [job.workflow_label, job.starts, job.status_word || (job.enabled ? 'On' : 'Off'), job.next_run_at ? `Next: ${new Date(job.next_run_at).toLocaleString()}` : ''].filter(Boolean).join(' · '), searchText: `${job.description} ${job.workflow_label || ''} ${job.starts || ''}` })) : []),
+      ]
+      setResources({ scope: resourceScope, items, loading: false, error: [artifacts.status === 'rejected' || (artifacts.status === 'fulfilled' && artifacts.value.partial) ? 'artifacts' : '', schedules.status === 'rejected' ? 'schedules' : ''].filter(Boolean).join(' and ') })
+    })
+    return () => { cancelled = true; controller.abort() }
+  }, [isOpen, resourceScope, resourceAttempt])
+
   const navigationItems = useMemo(() => quickNavigationItems(user, productSurface, isMultiUserMode), [user, productSurface, isMultiUserMode])
   const footerItems = navigationItems.filter(item => item.type === 'menu' && item.action !== 'create')
   useEffect(() => {
@@ -339,18 +444,19 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     const sessions = import('../products/work/workSessions')
     void sessions
       .then(module => module.loadWorkSessionsIncludingShared())
-      .then(crews => { if (!cancelled) setCrewDirectory(crews.filter(crew => !crew.shared || crew.shared.canBuild)) })
-      .catch(() => { if (!cancelled) setCrewDirectory([]) })
+      .then(crews => { if (!cancelled) setCrewInventory({ scope: resourceScope, rows: crews.filter(crew => !crew.shared || crew.shared.canBuild) }) })
+      .catch(() => { if (!cancelled) setCrewInventory({ scope: resourceScope, rows: [] }) })
     // All accessible workflows, even if the workflow view was never opened.
     const presets = useGlobalPresetStore.getState()
     if (!presets.workflowPresetsLoaded) void presets.refreshPresets()
     return () => { cancelled = true }
-  }, [isOpen])
+  }, [isOpen, resourceScope])
 
   // Reset state on open.
   useEffect(() => {
     if (isOpen) {
       setQuery(initialQuery)
+      setCategory('quick')
       setScopeFilter(null)
       setSelectedIndex(0)
       // Paint from the subscribed cache immediately. The normal TTL still
@@ -426,8 +532,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       .sort((a, b) => (b.lastAccessedAt || b.createdAt || 0) - (a.lastAccessedAt || a.createdAt || 0))
       .map(tab => {
         const activeSession = tab.sessionId ? visibleActiveSessions.find(session => session.session_id === tab.sessionId) : undefined
-        const project = tab.metadata?.agentProfileIdentityName || tab.metadata?.agentProfileProjectTitle || 'Crew'
-        const role = tab.metadata?.agentProfileBuilder ? 'Builder' : isWorkSideChatTab(tab) ? tab.name : 'Builder'
+        const project = tab.metadata?.agentProfileIdentityName || tab.metadata?.agentProfileProjectTitle || 'Project'
+        const role = tab.metadata?.agentProfileBuilder ? 'Builder' : isWorkSideChatTab(tab) || tab.metadata?.agentProfileIsMainChat ? tab.name : 'Builder'
         const projectId = workProjectIdForTab(tab) || undefined
         return {
           type: 'crew' as const,
@@ -435,7 +541,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           label: projectId ? role : project,
           projectId,
           projectLabel: project,
-          subtitle: projectId ? `${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`.replace(/^ · /, '') : `Crew · ${role}${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`,
+          subtitle: projectId ? `${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`.replace(/^ · /, '') : `Project · ${role}${builderStateSuffix(tab)}${activeSessionSuffix(activeSession)}`,
           searchText: `${project} ${role} ${activeSessionSearchText(activeSession)}`,
           isActive: productSurface === 'work' && tab.tabId === activeTabId,
           lastAccessedAt: tab.lastAccessedAt || tab.createdAt || 0,
@@ -455,8 +561,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           type: 'crew' as const,
           id: `crew-project:${crew.id}`,
           label: name,
-          subtitle: agentWorks ? AGENTWORKS_SUBTITLE : `Crew · ${owner}${name !== crew.title ? ` · ${crew.title}` : ''}`,
-          searchText: agentWorks ? `${crew.title} Crew` : undefined,
+          subtitle: agentWorks ? AGENTWORKS_SUBTITLE : `Project · ${owner}${name !== crew.title ? ` · ${crew.title}` : ''}`,
+          searchText: agentWorks ? `${crew.title} project` : undefined,
           agentWorks,
           isActive: productSurface === 'work' && useProductSurfaceStore.getState().selectedWorkProjectId === crew.id,
           lastAccessedAt: 0,
@@ -510,7 +616,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           type: 'active' as const,
           id: `active:${session.session_id}`,
           label: titleWithoutOrigin(activeSessionLabel(session), origin),
-          subtitle: `${crew ? 'Active Crew work' : workflow ? 'Active automation' : 'Active chat'} · ${origin} · ${status}${current}`,
+          subtitle: `${crew ? 'Active project work' : workflow ? 'Active automation' : 'Active chat'} · ${origin} · ${status}${current}`,
           searchText: session.session_id,
           activeScopeOnly: coveredByTab || coveredByAutomation,
           isActive: !!tab && tab.tabId === activeTabId && productSurface === (crew ? 'work' : 'agentworks'),
@@ -544,8 +650,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         if (isWorkProductSession(item.session)) return visibleProducts.has('work')
       }
       return visibleProducts.has('agentworks')
-    }), ...navigationItems.filter(item => item.scope), ...navigationItems.filter(item => !item.scope), ...panelItems, ...(currentChatFindRoot() ? [chatFindItem] : [])]
-  }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, navigationItems, panelItems, user?.allowed_products])
+    }), ...(resources.scope === resourceScope ? resources.items : []), ...navigationItems.filter(item => item.scope), ...navigationItems.filter(item => !item.scope), ...panelItems, ...(currentChatFindRoot() ? [chatFindItem] : [])]
+  }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, navigationItems, panelItems, user?.allowed_products, resources, resourceScope])
 
   // Filter and sort
   const matchingItems = useMemo<QuickSwitcherItem[]>(() => {
@@ -565,52 +671,61 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
           if (scope === 'panel' || scope === 'panels') return item.type === 'panel'
           if (scope === 'menu' || scope === 'menus') return item.type === 'menu' || item.type === 'panel' || item.type === 'chat-find'
           if (scope === 'crew') return creates('work') || creates('work') || item.type === 'crew' || (item.type === 'active' && !item.activeScopeOnly && (isWorkProductSession(item.session) || isWorkProductSession(item.session)))
-          if (scope === 'chat' || scope === 'chats') return item.type === 'chat'
+          if (scope === 'chat' || scope === 'chats') return isChatDestination(item)
           return item.type === 'chat' || item.type === 'workflow' || item.type === 'crew'
         })
       : allItems.filter(item => item.type !== 'active' || !item.activeScopeOnly)
 
-    if (!q) return scoped
+    const quick = category === 'quick' && !scope
+    const categorized = scoped.filter(item => {
+      if (category === 'quick') return !quick || isChatDestination(item) || item.type === 'panel' ||
+        (item.type === 'active' && item.mode === 'multi-agent' && itemHasRunningWork(item))
+      if (category === 'all') return true
+      if (category === 'chat') return isChatDestination(item)
+      if (category === 'crew') return (item.type === 'crew' && !item.tabId) || item.type === 'workflow'
+      return item.type === category
+    })
+    if (!q) return categorized
 
-    const filtered = scoped.filter(item => item.type === 'panel'
-      ? q.split(/\s+/).every(word => `${item.label} ${item.subtitle} ${item.searchText} ${'action' in item ? item.action : ''}`.toLowerCase().includes(word))
-      :
-      item.label.toLowerCase().includes(q) ||
-      item.subtitle.toLowerCase().includes(q) ||
-      ('searchText' in item && !!item.searchText?.toLowerCase().includes(q))
-    )
+    const filtered = categorized.filter(item => quickSwitcherMatches(item, q))
 
     filtered.sort((a, b) => {
+      if (quick) {
+        const runningOrder = Number(itemHasRunningWork(b)) - Number(itemHasRunningWork(a))
+        if (runningOrder) return runningOrder
+      }
       const aRank = itemSearchMatchRank(a, q)
       const bRank = itemSearchMatchRank(b, q)
-      if ((aRank === 0) !== (bRank === 0)) return aRank === 0 ? -1 : 1
-      // Commands have no visit history. Give their name matches a fixed
-      // position instead of treating them as the oldest possible chat.
-      // Fixed buckets also keep the comparator transitive across row types.
-      const bucket = (item: QuickSwitcherItem, rank: number) =>
-        rank === 0 ? 0 : item.type === 'panel' || item.type === 'menu' || item.type === 'product'
-          ? rank < 3 ? 0 : 2
-          : 1
-      const bucketOrder = bucket(a, aRank) - bucket(b, bRank)
-      if (bucketOrder) return bucketOrder
-      const recencyOrder = b.lastAccessedAt - a.lastAccessedAt
-      if (recencyOrder) return recencyOrder
       const matchOrder = aRank - bRank
       if (matchOrder) return matchOrder
+      const recencyOrder = b.lastAccessedAt - a.lastAccessedAt
+      if (recencyOrder) return recencyOrder
       const activityOrder = compareItemActivity(a, b)
       if (activityOrder) return activityOrder
       return a.label.localeCompare(b.label) || a.id.localeCompare(b.id)
     })
 
     return filtered
-  }, [query, scopeFilter, allItems])
+  }, [query, scopeFilter, allItems, category])
 
   const filteredItems = useMemo<QuickSwitcherRow[]>(() => {
     const explicitScope = query.trim().match(/^@(active|workflows?|chats?|tabs|crew|products?|menus?|panels?|create)\s*/i)?.[1]?.toLowerCase()
-    return (explicitScope || scopeFilter) === 'active' ? matchingItems : projectChatTree(matchingItems, allItems)
-  }, [matchingItems, allItems, query, scopeFilter])
+    const scope = explicitScope || scopeFilter
+    // Group matching agents under their projects without adding unrelated projects to Quick.
+    const navigation = category === 'chat' || scope === 'active' ? matchingItems : projectChatTree(matchingItems, allItems)
+    const messages = messageEnabled && messageSearch.key === messageKey ? messageSearch.items : []
+    const grouped = new Map<string, ResourceItem[]>()
+    for (const hit of messages) { const key = hit.chatId || hit.id; grouped.set(key, [...(grouped.get(key) || []), hit]) }
+    const hits = Array.from(grouped.values()).flat()
+    const q = query.trim().toLowerCase()
+    // Exact/prefix name matches are the strongest destination; otherwise keep
+    // saved-message hits near the top, as in the approved message-search UI.
+    const files = fileEnabled && fileSearch.key === fileKey ? fileSearch.items : []
+    const rows = q && navigation[0] && itemSearchMatchRank(navigation[0], q) <= 1 ? [...navigation, ...hits, ...files] : [...hits, ...navigation, ...files]
+    return quickSwitcherGroups(rows).flatMap(group => group.rows)
+  }, [matchingItems, allItems, query, scopeFilter, category, messageEnabled, messageSearch, messageKey, fileEnabled, fileSearch, fileKey])
   const firstMatchRef = useRef<string | undefined>(undefined)
-  firstMatchRef.current = matchingItems[0]?.id
+  firstMatchRef.current = filteredItems[0]?.id
 
   // Read filteredItems via a ref so this effect does NOT fire on every new
   // array reference — only on real user intent changes (query, mode, open).
@@ -641,12 +756,27 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
   useEffect(() => {
     if (listRef.current && selectedIndex >= 0) {
-      const el = listRef.current.children[selectedIndex] as HTMLElement
+      const el = document.getElementById(`quick-navigation-${encodeURIComponent(filteredItemsRef.current[selectedIndex]?.id || '')}`)
       el?.scrollIntoView({ block: 'nearest', behavior: 'auto' })
     }
   }, [selectedIndex])
 
   const handleSelect = useCallback(async (item: QuickSwitcherItem) => {
+    if (item.type === 'file') {
+      onClose()
+      if (item.filepath) requestOpenProjectFile({ path: item.filepath }, true)
+      return
+    }
+    if (item.type === 'artifact' || item.type === 'message') {
+      if (item.href) { const target = new URL(item.href, window.location.href); if (target.origin === window.location.origin) window.location.assign(target.href) }
+      onClose(); return
+    }
+    if (item.type === 'schedule') {
+      if (item.scheduledProduct) openProductWorkspace(item.scheduledProduct)
+      const navigation = quickNavigationItems(useAuthStore.getState().user, useProductSurfaceStore.getState().productSurface).find(candidate => candidate.action === 'schedules')
+      if (navigation && openQuickNavigation(navigation)) { useAppStore.setState({ schedulesSearchQuery: item.label, schedulesSearchScope: `${getRawActiveWorkspaceId()}:${useAuthStore.getState().user?.id || ''}` }); onClose() }
+      return
+    }
     if (item.type === 'chat-find') {
       onClose()
       requestAnimationFrame(openCurrentChatFind)
@@ -696,7 +826,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
     if ((item.type === 'chat' || item.type === 'crew') && item.tabId) {
       console.log(`%c[QuickSwitcher] Switching to chat tab: ${item.label} (${item.tabId})`, 'color: #FF9800; font-weight: bold')
-      openGlobalTab(item.tabId)
+      if (item.type === 'crew') openAgentTab(item.tabId)
+      else openGlobalTab(item.tabId)
       onClose()
       return
     }
@@ -740,8 +871,18 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
   if (!isOpen) return null
 
-  const placeholder = 'Search work, products, panels, or create something new...'
-  const emptyText = query ? 'No matching items' : scopeFilter ? 'No items in this list' : 'No work to switch to. Search for a product or menu.'
+  const resourceStatus = (kind: 'artifacts' | 'schedules') => {
+    if (resources.scope !== resourceScope || (category !== 'all' && category !== (kind === 'artifacts' ? 'artifact' : 'schedule'))) return null
+    if (resources.loading) return <p role="status" className="px-4 py-2 text-xs text-muted-foreground">Loading {kind}…</p>
+    if (!resources.error.includes(kind)) return null
+    return <button type="button" onClick={() => setResourceAttempt(value => value + 1)} className="px-4 py-2 text-xs text-muted-foreground underline">Some {kind} could not load. Retry</button>
+  }
+  const messageStatus = <div className="flex items-center gap-3 px-4 py-2 text-xs text-muted-foreground">
+    {messageSearch.loading ? <span role="status">Searching messages…</span> : messageSearch.error ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>Message search could not finish. Retry</button> : messageSearch.cursor ? <button type="button" className="underline" onClick={() => setMessageAttempt(value => value + 1)}>{messageSearch.items.length ? 'Search older messages' : 'No matches in messages searched so far · Search older messages'}</button> : <span>{messageSearch.items.length ? 'Message search complete' : 'No matching messages'}</span>}
+  </div>
+
+  const placeholder = category === 'quick' && !scopeFilter ? 'Find agents and panels…' : category === 'chat' ? 'Search chat names and messages…' : category === 'file' ? 'Search files in this project…' : 'Search…'
+  const emptyText = query ? 'No matching items' : scopeFilter ? 'No items in this list' : category === 'quick' ? 'No agents or panels to switch to.' : 'No work to switch to. Search for a product or menu.'
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]"
@@ -784,6 +925,9 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         </div>
 
 
+        <div role="tablist" aria-label="Search categories" className="flex gap-1 overflow-x-auto border-b border-border px-4 py-2">
+          {searchCategories.filter(choice => choice.id !== 'file' || filesFolder).map(choice => <button key={choice.id} type="button" role="tab" aria-selected={category === choice.id} onClick={() => { setCategory(choice.id); setScopeFilter(null); setSelectedIndex(0); searchInputRef.current?.focus() }} className={`shrink-0 rounded-md px-2.5 py-1 text-xs ${category === choice.id ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{choice.label}</button>)}
+        </div>
         {/* Item list */}
         <div ref={listRef} id="quick-navigation-results" role="listbox" aria-label="Search results" className="overflow-y-auto max-h-[48vh]">
           {filteredItems.length === 0 ? (
@@ -791,9 +935,15 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
               {emptyText}
             </div>
           ) : (
-            filteredItems.map((item, index) => {
+            null
+          )}
+          <QuickSwitcherResultGroups rows={filteredItems} footers={{
+            artifact: resourceStatus('artifacts'), schedule: resourceStatus('schedules'),
+            message: messageEnabled && messageSearch.key === messageKey ? messageStatus : null,
+            file: fileEnabled && fileSearch.key === fileKey && (fileSearch.loading || fileSearch.error || !fileSearch.items.length) ? <p role="status" className="px-4 py-2 text-xs text-muted-foreground">{fileSearch.loading ? 'Searching files…' : fileSearch.error ? 'File search could not finish.' : 'No matching files'}</p> : null,
+          }} renderRow={(item, index) => {
               const isSelected = index === selectedIndex
-              const ItemIcon = item.type === 'chat-find' ? Search : item.type === 'panel' ? PanelRight : item.type === 'workflow'
+              const ItemIcon = item.type === 'file' ? FileText : item.type === 'artifact' ? LayoutGrid : item.type === 'schedule' ? CalendarClock : item.type === 'chat-find' ? Search : item.type === 'panel' ? PanelRight : item.type === 'workflow'
                 ? Layers
                 : item.type === 'product'
                   ? LayoutGrid
@@ -806,8 +956,9 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                   : MessageSquare
               const activeSession = itemActiveSession(item)
               return (
+                <React.Fragment key={item.id}>
+                {item.type === 'message' && (filteredItems[index - 1]?.type !== 'message' || (filteredItems[index - 1] as ResourceItem).chatId !== item.chatId) && <h3 className="px-4 pb-1 pt-3 text-xs font-medium text-muted-foreground">{item.label}</h3>}
                 <div
-                  key={item.id}
                   data-navigation-id={item.id}
                   data-navigation-parent={item.treeChild ? projectTreeKey(item) : undefined}
                   id={`quick-navigation-${encodeURIComponent(item.id)}`}
@@ -816,8 +967,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                   aria-label={item.treeChild ? `${item.treeParentLabel} · ${item.label}` : undefined}
                   className={`relative ${item.treeChild ? 'pl-10 pr-4' : 'px-4'} py-2.5 cursor-pointer flex items-center gap-3 transition-colors ${
                     isSelected
-                      ? 'bg-blue-50 dark:bg-blue-900/30'
-                      : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                      ? 'bg-muted'
+                      : 'hover:bg-muted/60'
                   }`}
                   onMouseEnter={() => setSelectedIndex(index)}
                   onMouseDown={e => { e.preventDefault(); void handleSelect(item) }}
@@ -827,44 +978,46 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                   {item.treeChild ? <MessageSquare aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /> : item.type === 'product' || item.type === 'menu'
                     ? <QuickNavigationIcon item={item} />
                     : item.type === 'crew'
-                    ? item.agentWorks ? <AgentWorksIcon /> : <EntityIdentityIcon icon={item.icon} label={item.label} />
-                    : <ItemIcon className={`w-4 h-4 flex-shrink-0 ${item.isActive ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'}`} />}
+                    ? item.agentWorks ? <AgentWorksIcon /> : <EntityIdentityIcon icon={item.icon} label={item.label} neutral />
+                    : <ItemIcon className="w-4 h-4 flex-shrink-0 text-muted-foreground" />}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className={`text-sm font-medium truncate ${item.isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-gray-100'}`}>
-                        {item.label}
+                      <span className="text-sm font-medium truncate text-foreground">
+                        {item.type === 'message' ? item.sender || 'Message' : item.label}
                       </span>
-                      {!item.treeChild && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 font-medium flex-shrink-0">
-                        {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'menu' && item.action === 'create' ? 'create' : item.type === 'workflow' ? ('Workflow') : item.type === 'crew' ? 'Crew' : item.type === 'chat-find' ? 'search' : item.type}
+                      {!item.treeChild && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium flex-shrink-0">
+                        {(item.type === 'menu' || item.type === 'product') && item.scope ? 'browse' : item.type === 'menu' && item.action === 'create' ? 'create' : item.type === 'workflow' ? ('Workflow') : item.type === 'crew' ? 'Project' : item.type === 'chat-find' ? 'search' : item.type}
                       </span>}
+                      {item.type === 'message' && item.at && <time className="ml-auto shrink-0 text-[10px] text-muted-foreground" dateTime={item.at}>{new Date(item.at).toLocaleString()}</time>}
                       {activeSession && item.type !== 'active' && (
                         runtimeNeedsUserInput(activeSession) ? (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-medium flex-shrink-0">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium flex-shrink-0">
                             needs input
                           </span>
                         ) : (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-medium flex-shrink-0">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium flex-shrink-0">
                             active
                           </span>
                         )
                       )}
                       {!activeSession && itemHasRunningWork(item) && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-medium flex-shrink-0">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium flex-shrink-0">
                           running
                         </span>
                       )}
                       {item.isActive && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 font-medium flex-shrink-0">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium flex-shrink-0">
                           current
                         </span>
                       )}
                     </div>
-                    {item.subtitle && <div className="text-xs text-muted-foreground truncate">{item.subtitle}</div>}
+                    {item.subtitle && <div className="text-xs text-muted-foreground truncate">{item.type === 'message' ? <SearchMatch text={item.subtitle} query={query} /> : item.subtitle}</div>}
+
                   </div>
                 </div>
+                </React.Fragment>
               )
-            })
-          )}
+            }} />
         </div>
 
         {/* Footer */}

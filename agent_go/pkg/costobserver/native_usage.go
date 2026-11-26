@@ -110,7 +110,7 @@ func NativeEntry(base costledger.Entry, provider string, r nativeusage.Record) c
 		e.TotalCostUSD = llmtypes.ComputeUSDCostFromMetadata(meta, &llmtypes.GenerationInfo{PromptTokens: &prompt, CompletionTokens: &out, CachedContentTokens: &cache, Additional: map[string]interface{}{"prompt_tokens_include_cache": r.InputIncludesCache, "cache_creation_input_tokens": e.CacheWriteTokens}})
 		if e.TotalCostUSD > 0 {
 			e.BillingBasis = "token_estimate"
-			if isSubscriptionCodingProvider(provider) {
+			if IsSubscriptionCodingProvider(provider) {
 				e.BillingBasis = "subscription_shadow"
 			}
 			e.PricingSource = "model_registry"
@@ -123,4 +123,16 @@ func unidentifiedAgyModel(provider, model string) bool {
 	p := strings.ToLower(strings.TrimSpace(provider))
 	m := strings.ToLower(strings.TrimSpace(model))
 	return (p == "agy-cli" || p == "agy_cli") && (m == "" || m == "agy-cli" || m == "agy_cli")
+}
+
+// RecordNativeSample accounts an ephemeral sampler response which never enters
+// the parent's native rollout. Attribution stays with the admitted turn; this
+// is one model call, not another chat turn. The native response ID deduplicates.
+func (o *Observer) RecordNativeSample(r nativeusage.Record) {
+	if o == nil || o.ledger == nil || r.ID == "" || r.NativeSessionID == "" {
+		return
+	}
+	base := o.baseEntry(&events.AgentEvent{Timestamp: time.Now()})
+	base.ModelID = o.modelID
+	o.append(NativeEntry(base, o.provider, r))
 }

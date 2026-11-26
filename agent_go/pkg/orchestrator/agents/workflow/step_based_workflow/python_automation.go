@@ -335,7 +335,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 			}
 			execute, ok := hcpo.WorkspaceToolExecutors[name].(func(context.Context, map[string]interface{}) (string, error))
 			if !ok || execute == nil {
-				call.Reply = pythonHelperReply{Error: "This send tool is unavailable; check the automation's connected account in Crew chat."}
+				call.Reply = pythonHelperReply{Error: "This send tool is unavailable; check the automation's connected account in project chat."}
 			} else if result, err := execute(ctx, arguments); err != nil {
 				call.Reply = pythonHelperReply{Error: err.Error()}
 			} else {
@@ -368,7 +368,8 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 				title = pythonHelperPreview(redaction.Text(title))
 				metadata := map[string]string{"source_call": pythonHelperPreview(source), "inspection_kind": "python_step", "run_folder": hcpo.selectedRunFolder, "log_file": log.Path()}
 				started := time.Now()
-				evidence := PythonStepEvidence{ID: id, Name: title, SourceCall: source, StartedAt: started.UTC().Format(time.RFC3339Nano), Status: "running", LogNote: "This step has no separate program log; see the run script log."}
+				group, _ := arguments["parallel_group"].(string)
+				evidence := PythonStepEvidence{ID: id, Name: title, SourceCall: source, StartedAt: started.UTC().Format(time.RFC3339Nano), Status: "running", LogNote: "This step has no separate program log; see the run script log.", ParallelGroup: group}
 				if err := hcpo.savePythonStepEvidence(ctx, evidence); err != nil {
 					call.Reply.Error = "Cannot save step start: " + err.Error()
 					break

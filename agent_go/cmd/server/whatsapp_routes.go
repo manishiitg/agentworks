@@ -27,7 +27,7 @@ func WhatsAppRoutes(router *mux.Router, manager *services.WhatsAppServiceManager
 	if manager == nil {
 		return
 	}
-	waRouter := router.PathPrefix("/api/whatsapp").Subrouter()
+	waRouter := router.PathPrefix("/whatsapp").Subrouter()
 	waRouter.HandleFunc("/pair", whatsappPairHandler(manager, defaults)).Methods("GET")
 	waRouter.HandleFunc("/status", whatsappStatusHandler(manager)).Methods("GET")
 	waRouter.HandleFunc("/session", whatsappUnpairHandler(manager)).Methods("DELETE", "OPTIONS")

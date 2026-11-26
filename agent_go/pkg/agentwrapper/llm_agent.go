@@ -63,6 +63,14 @@ type LLMAgentWrapper struct {
 	lastResult mcpagent.Result
 }
 
+// NativeQuestionMode returns the server-admitted question capability of the
+// current stored wrapper. Synthetic turns must not infer it from request JSON.
+func (a *LLMAgentWrapper) NativeQuestionMode() (string, bool) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return string(a.config.Provider), !a.closed && a.config.CodingAgentUserAnswersNativeQuestions
+}
+
 func providerNeedsPlainTextHistory(provider llm.Provider) bool {
 	return common.IsCLIProvider(string(provider))
 }
@@ -124,6 +132,7 @@ func runtimeConfigForLLMAgent(config LLMAgentConfig, model llmtypes.Model, trace
 		},
 		MCP: mcpagent.MCPRuntimeConfig{
 			SessionID: config.SessionID, UserID: config.UserID, RuntimeOverrides: config.RuntimeOverrides,
+			VirtualToolScopeKey: config.BridgeVirtualToolScopeKey,
 		},
 		Workspace: mcpagent.WorkspaceRuntimeConfig{CodingAgentWorkingDir: config.CodingAgentWorkingDir, CodingAgentRuntimeDir: config.CodingAgentRuntimeDir},
 		Observability: mcpagent.ObservabilityRuntimeConfig{
@@ -328,9 +337,12 @@ type LLMAgentConfig struct {
 	// CodingAgentUserAnswersNativeQuestions: a person attends this chat and can
 	// answer the coding CLI's native questions; otherwise they are auto-answered.
 	CodingAgentUserAnswersNativeQuestions bool
-	CursorBridgeToolsMode                 bool
-	CodingAgentToolsMode                  string
-	CodingAgentApprovalsMode              string
+	// BridgeVirtualToolScopeKey is assigned only by the host main-chat builder.
+	// Helpers leave it empty and keep private per-build virtual handlers.
+	BridgeVirtualToolScopeKey string
+	CursorBridgeToolsMode     bool
+	CodingAgentToolsMode      string
+	CodingAgentApprovalsMode  string
 	// BridgeRoutingInstructionsOverride replaces mcpagent's generic
 	// bridge-only preamble. Product profiles with native coding tools use an
 	// empty override because their own prompt explains the product tools.
@@ -1370,6 +1382,21 @@ func (w *LLMAgentWrapper) StreamWithEventsAndOutcome(ctx context.Context, prompt
 				w.config.Provider, before, len(messages)))
 		}
 		turn := buildSessionTurn(prompt, messages, mcpagent.ToolPolicy{}, streamingCallback)
+		if scope := llmtypes.NextPromptFor(ctx, string(w.config.Provider), w.config.SessionID); scope.Complete != nil {
+			scope.TurnID = turn.ID
+			previousHuman := false
+			for _, message := range messages {
+				if message.Role == llmtypes.ChatMessageTypeHuman {
+					previousHuman = true
+					break
+				}
+			}
+			scope.Eligible = scope.Eligible && previousHuman
+			ctx = llmtypes.WithNextPrompt(ctx, scope)
+			defer func() {
+				time.AfterFunc(5*time.Second, func() { scope.Finish(llmtypes.NextPromptResult{Reason: "unsupported_or_no_suggestion"}) })
+			}()
+		}
 
 		w.logger.Info(fmt.Sprintf("[CANCEL_DEBUG] AskWithHistory starting | history_msgs=%d", len(messages)))
 

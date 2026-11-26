@@ -35,10 +35,11 @@ func ServerOnly(product string) bool {
 }
 
 // Flows are parked for this refactor; saved data and the runtime remain.
-const FlowsDisabledMessage = "Flows are turned off. Use a Crew workflow instead."
+const FlowsDisabledMessage = "Flows are turned off. Use a project workflow instead."
 
 func InstallationAvailable(product string) bool {
-	if Canonical(product) == "relays" {
+	// Brain is a server product: a Mac never runs it (owner, 2026-11-22).
+	if Canonical(product) == "relays" || (Canonical(product) == "knowledgebase" && Local()) {
 		return false
 	}
 	return !Local() || LocalServerProducts() || (Canonical(product) == "agentworks" || Canonical(product) == "work" || Canonical(product) == "bullpen")
@@ -123,7 +124,7 @@ func ToolProduct(name string) string {
 		return "knowledgebase"
 	case "manage_vault_access", "manage_vault_groups", "manage_vault_secret_access", "query_vault_db", "mutate_vault_db", "list_vault_mcp_servers", "call_vault_mcp_tool", "manage_vault_tools", "migrate_place_connections", "migrate_personal_vaults", "read_vault_audit", "manage_my_vaults", "manage_global_secret", "manage_vault_secret", "share_mcp_to_vault":
 		return "mcp-gateway"
-	case "list_review_workspaces", "get_review_costs", "list_review_files", "read_review_file", "list_review_chats", "read_review_chat", "get_review_audit":
+	case "list_review_workspaces", "get_review_costs", "list_review_files", "read_review_file", "get_review_audit":
 		return "work"
 	case "create_relay", "update_relay", "test_relay", "publish_relay", "run_relay", "get_relay_run", "list_relay_runs", "get_relay_releases", "inspect_relay_graph":
 		return "relays"
@@ -154,7 +155,7 @@ func SkillProduct(name string) string {
 		return "knowledgebase"
 	case "vault-access", "caplayer-access":
 		return "mcp-gateway"
-	case "code-mcp", "code-integrations", "code-workflow-files", "code-skills", "code-schedules-and-bots", "code-dashboard", "code-ui-control", "code-background-work", "make-a-crew":
+	case "code-mcp", "code-integrations", "code-workflow-files", "code-skills", "code-schedules-and-bots", "code-dashboard", "code-ui-control", "make-a-crew":
 		return "work"
 	case "relay-builder":
 		return "relays"

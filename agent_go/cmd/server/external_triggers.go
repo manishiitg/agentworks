@@ -2,26 +2,21 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"net/url"
-	"strings"
 )
 
-// Triggers of a workflow, Flow or Crew over MCP: webhooks, function triggers
-// and caller-bound internal triggers. Workflows and Flows share the
-// Builder's manage_workflow_webhook implementation; Crews use the Crew
-// trigger store, which only reaches the caller's own Crews. Changes need
-// owner or editor access on a workflow or Flow; a webhook's secret is
-// returned once, on create or rotate, as in the app.
+// Webhooks of a workflow or Flow over MCP, through the Builder's
+// manage_workflow_webhook implementation. A Crew's webhooks belong to its
+// workflow (#3286). Changes need owner or editor access; a webhook's secret
+// is returned once, on create or rotate, as in the app.
 
 func externalTriggerDefinitions(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("manage_triggers", "List, create, update or delete the triggers of a workflow, Flow or Crew, or read a trigger's recent deliveries (runs): authenticated HTTP webhooks; for workflows and Flows also test a trigger and read a test run's status. Pass project. List first: it shows declared variables, saved routes and existing triggers. A webhook's secret is returned once, when it is created or rotated.", true, false, map[string]any{
+	add("manage_triggers", "List, create, update or delete the webhooks of a workflow or Flow (a project's webhooks belong to its workflow: pass the workflow), or read a trigger's recent deliveries (runs): authenticated HTTP webhooks; for workflows and Flows also test a trigger and read a test run's status. Pass project. List first: it shows declared variables, saved routes and existing triggers. A webhook's secret is returned once, when it is created or rotated.", true, false, map[string]any{
 		"project": externalString("Project ID or name."),
 		"action":  map[string]any{"type": "string", "enum": []any{"list", "create", "update", "delete", "test", "status", "runs"}},
 		"limit":   externalInteger(1, 100),
 		"id":      externalString("Trigger ID from list; required for update, delete, test and runs."),
-		"trigger": map[string]any{"type": "object", "description": "For create and update. Workflows and Flows: name, enabled, auth_mode (bearer or github), route_selections, input_preset, inputs, chat_id, step_id, input_mode, allowed_variables, payload_mappings, rotate_secret. Use functions to manage callable functions. Crews: name, enabled, message, auth_mode, run_destination (chat or isolated), kind (internal), caller, rotate_secret. For test: payload, event, delivery_id; for status: run_id."},
+		"trigger": map[string]any{"type": "object", "description": "For create and update. Workflows and Flows: name, enabled, auth_mode (bearer or github), route_selections, input_preset, inputs, chat_id, step_id, input_mode, allowed_variables, payload_mappings, rotate_secret. Use functions to manage callable functions. For test: payload, event, delivery_id; for status: run_id."},
 	}, "action", "project")
 }
 
@@ -63,135 +58,10 @@ func (api *StreamingAPI) externalWorkflowTriggerCall(w http.ResponseWriter, r *h
 	externalTriggerJSON(w, out)
 }
 
-func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, r *http.Request, args map[string]any, crewID string) {
-	ctx := r.Context()
-	claims := GetUserFromContext(ctx)
-	action := externalArg(args, "action")
-	if trigger, ok := args["trigger"].(map[string]interface{}); ok {
-		if kind, _ := trigger["kind"].(string); kind != "" && kind != "webhook" {
-			externalError(w, 400, "use_functions", "Use functions for reusable work.")
-			return
-		}
-		if trigger["caller"] != nil || trigger["function"] != nil {
-			externalError(w, 400, "use_functions", "Use functions for reusable work.")
-			return
-		}
-	}
-
-	if t := claims.AccessToken; t != nil {
-		scope := "crews:write"
-		if action == "list" || action == "runs" {
-			scope = "crews:read"
-		}
-		if !t.Allows(scope) || !t.AllowsCrew(crewID) {
-			externalError(w, 403, "insufficient_scope", "This connection does not allow "+action+" on this Crew.")
-			return
-		}
-	}
-	if api.projectActions == nil {
-		externalError(w, 503, "triggers_unavailable", "Crew triggers are unavailable.")
-		return
-	}
-	crew, manifest, _, ok := api.externalCrewResolve(ctx, claims, crewID)
-	if !ok {
-		externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
-		return
-	}
-	if action != "list" && action != "runs" && !crew.OwnedByCaller {
-		externalError(w, 403, "forbidden", "Only the Crew's owner can change its triggers.")
-		return
-	}
-	if action != "list" && action != "runs" && refuseCrewOwnerOnline(w, r, manifest.ID, claims.UserID) {
-		return
-	}
-	userID, profileID := claims.UserID, "work"
-	trigger, _ := args["trigger"].(map[string]any)
-	if trigger == nil {
-		trigger = map[string]any{}
-	}
-	str := func(key, fallback string) string {
-		if value, ok := trigger[key].(string); ok && strings.TrimSpace(value) != "" {
-			return value
-		}
-		return fallback
-	}
-	triggers, err := api.projectActions.projectWebhookConfigs(ctx, userID, profileID, crewID)
-	if err != nil {
-		externalError(w, 404, "not_found", err.Error())
-		return
-	}
-	id := externalArg(args, "id")
-	for _, entry := range triggers {
-		if entry.ID == id && entry.IsInternal() {
-			externalError(w, 400, "use_functions", "Use functions or the saved step binding for that entry.")
-			return
-		}
-	}
-	switch action {
-	case "list":
-		out := make([]productWebhookResponse, 0, len(triggers))
-		for _, item := range triggers {
-			if item.IsInternal() {
-				continue
-			}
-			out = append(out, productWebhookDTO(item))
-		}
-		externalJSON(w, map[string]any{"crew_id": crewID, "triggers": out})
-	case "create", "update":
-		req := productWebhookRequest{ProfileID: profileID, ProjectID: crewID, Enabled: true, RunDestination: runDestinationChat}
-		if action == "update" {
-			var current *productWebhookTrigger
-			for i := range triggers {
-				if triggers[i].ID == id {
-					current = &triggers[i]
-				}
-			}
-			if current == nil {
-				externalError(w, 404, "trigger_not_found", "No trigger with that ID on this Crew; use action list.")
-				return
-			}
-			req.Name, req.Message, req.Enabled, req.Kind, req.Caller = current.Name, current.Message, current.Enabled, current.Kind, current.Caller
-			req.RunDestination = firstNonEmptyTrimmed(current.RunDestination, runDestinationChat)
-			if current.Webhook != nil {
-				req.AuthMode = current.Webhook.AuthMode
-			}
-		}
-		req.Name, req.Message, req.AuthMode = str("name", req.Name), str("message", req.Message), str("auth_mode", req.AuthMode)
-		req.RunDestination, req.Kind = str("run_destination", req.RunDestination), str("kind", req.Kind)
-		if value, ok := trigger["enabled"].(bool); ok {
-			req.Enabled = value
-		}
-		req.RotateSecret, _ = trigger["rotate_secret"].(bool)
-		if caller := triggerCallerFromArgs(trigger); caller != nil {
-			req.Caller = caller
-		}
-		if err := authorizeTriggerCallerWorkflow(ctx, userID, req.Caller); err != nil {
-			externalError(w, 403, "forbidden", err.Error())
-			return
-		}
-		saveID := ""
-		if action == "update" {
-			saveID = id
-		}
-		response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, req, saveID)
-		if err != nil {
-			externalError(w, 400, "trigger_rejected", err.Error())
-			return
-		}
-		externalJSON(w, response)
-	case "runs":
-		query := url.Values{"profile_id": {profileID}, "project_id": {crewID}, "limit": {fmt.Sprint(externalInt(args, "limit", 20))}}
-		status, body := scheduleHandler(r, api.projectActions.listProductWebhookRuns, http.MethodGet, "/api/product-webhooks/"+url.PathEscape(id)+"/runs", map[string]string{"id": id}, query, nil)
-		externalScheduleRespond(w, status, body)
-	case "delete":
-		if err := api.projectActions.deleteProductWebhookConfig(ctx, userID, profileID, crewID, id); err != nil {
-			externalError(w, 400, "trigger_rejected", err.Error())
-			return
-		}
-		externalJSON(w, map[string]any{"deleted": id})
-	default:
-		externalError(w, 400, "invalid_arguments", "Crews support list, create, update and delete.")
-	}
+// externalCrewTriggerCall answers manage_triggers for a Crew: a Crew has no webhooks of its own (#3286); its
+// webhooks belong to its workflow.
+func (api *StreamingAPI) externalCrewTriggerCall(w http.ResponseWriter, _ *http.Request, _ map[string]any, _ string) {
+	externalError(w, 400, "use_workflow", errCrewMessageWebhookRemoved.Error()+". Pass the project's workflow as project.")
 }
 
 // externalTriggerJSON passes the shared implementation's JSON through, and

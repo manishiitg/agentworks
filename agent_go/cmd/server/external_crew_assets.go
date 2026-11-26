@@ -20,17 +20,17 @@ func (api *StreamingAPI) externalCrewAssetTarget(w http.ResponseWriter, r *http.
 		return "", "", false
 	}
 	if token := claims.AccessToken; token != nil && (!token.Allows("crews:read") || !token.AllowsCrew(id)) {
-		externalError(w, 403, "insufficient_scope", "This connection cannot read this Crew.")
+		externalError(w, 403, "insufficient_scope", "This connection cannot read this project.")
 		return "", "", false
 	}
 	crew, _, _, ok := api.externalCrewResolve(r.Context(), claims, id)
 	if !ok {
-		externalError(w, 404, "not_found", "Crew not found or not allowed.")
+		externalError(w, 404, "not_found", "Project not found or not allowed.")
 		return "", "", false
 	}
 	clean, err := wf.CleanRelative(relative)
 	if err != nil || clean != relative || clean == "." {
-		externalError(w, 400, "invalid_path", "Use a canonical Crew-relative file or folder path.")
+		externalError(w, 400, "invalid_path", "Use a canonical project-relative file or folder path.")
 		return "", "", false
 	}
 	if sharedProjectHiddenPath(clean) || wf.Private(clean) || !externalFileGuard(r.Context(), false).Allows(clean, false) {
@@ -70,7 +70,7 @@ func (api *StreamingAPI) externalCrewAssetLink(w http.ResponseWriter, r *http.Re
 	// Physical legacy roots identify the owner's tree; shared Crew roots
 	// already identify the project independently of the viewing account.
 	metadata["preview_url"] = sharedAssetPublicURL(getBaseURL(r), kind, path.Join(root, relative))
-	authentication := map[string]string{"preview": "Sign in to AgentWorks with current Crew access. The link grants no access."}
+	authentication := map[string]string{"preview": "Sign in to AgentWorks with current project access. The link grants no access."}
 	if kind == "file" {
 		q := url.Values{"crew_id": {id}, "path": {relative}, "download": {"true"}}
 		metadata["download_url"] = strings.TrimRight(getBaseURL(r), "/") + "/api/external/v1/files/content?" + q.Encode()

@@ -247,19 +247,29 @@ func TestMCPSchemaParityAndDispatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tool := bridge.GetTool("update_scripted_step")
-	if tool == nil {
-		t.Fatal("missing tool")
+	// The bridge lists only the three discovery tools; get_api_spec returns
+	// each server schema unchanged apart from the shared guide receipt (#3563).
+	if len(bridge.ListTools()) != 3 || bridge.GetTool("update_scripted_step") != nil {
+		t.Fatalf("stdio bridge listed full tools: %d", len(bridge.ListTools()))
 	}
-	encoded, err := json.Marshal(tool.Tool)
+	spec, err := bridge.GetTool(MCPToolSpec).Handler(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Name: MCPToolSpec, Arguments: map[string]any{"names": []any{"update_scripted_step"}}}})
+	if err != nil || spec.IsError {
+		t.Fatalf("spec: %#v %v", spec, err)
+	}
+	encoded, err := json.Marshal(spec.StructuredContent)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var description map[string]any
-	_ = json.Unmarshal(encoded, &description)
+	var described struct {
+		Tools []map[string]any `json:"tools"`
+	}
+	_ = json.Unmarshal(encoded, &described)
+	if len(described.Tools) != 1 || described.Tools[0]["description"] != "Native server tool" {
+		t.Fatalf("spec content: %s", encoded)
+	}
 	var expected any
 	_ = json.Unmarshal(schema, &expected)
-	actual := description["inputSchema"].(map[string]any)
+	actual := described.Tools[0]["inputSchema"].(map[string]any)
 	common := actual["properties"].(map[string]any)
 	if common["guidance_session_id"] == nil {
 		t.Fatal("stdio lacks common guidance envelope")
@@ -268,7 +278,8 @@ func TestMCPSchemaParityAndDispatch(t *testing.T) {
 	if !reflect.DeepEqual(actual, expected) {
 		t.Fatalf("schema changed: %s", encoded)
 	}
-	request := mcp.CallToolRequest{Params: mcp.CallToolParams{Name: "update_scripted_step", Arguments: map[string]any{"workflow_id": "wf-1", "patch": "x"}}}
+	tool := bridge.GetTool(MCPToolCall)
+	request := mcp.CallToolRequest{Params: mcp.CallToolParams{Name: MCPToolCall, Arguments: map[string]any{"name": "update_scripted_step", "arguments": map[string]any{"workflow_id": "wf-1", "patch": "x"}}}}
 	result, err := tool.Handler(context.Background(), request)
 	if err != nil || result.IsError || caller.name != "update_scripted_step" || caller.arguments["patch"] != "x" {
 		t.Fatalf("dispatch: %#v %v", result, err)

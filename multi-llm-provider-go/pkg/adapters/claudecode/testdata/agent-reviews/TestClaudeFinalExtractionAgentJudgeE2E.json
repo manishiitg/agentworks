@@ -1,0 +1,38 @@
+{
+  "test": "TestClaudeFinalExtractionAgentJudgeE2E",
+  "summary": "Final-response extraction for claude-code: is EXTRACTED_FINAL the clean final answer from RAW_PROVIDER_OUTPUT?",
+  "review_criteria": [
+    "EXTRACTED_FINAL answers the user goal using the final assistant response in RAW_PROVIDER_OUTPUT",
+    "meaningful formatting is preserved from the final answer (line breaks, bullets, code blocks, paths)",
+    "terminal chrome is omitted — prompts, thought/process headers, tool cards, MCP names, shell/curl/header fragments, JSON tool output, and earlier assistant drafts",
+    "every required fragment is present and no forbidden noise fragment leaked (see output.must_contain / output.forbidden)",
+    "semantic match is enough — exact wording is not required if meaning and formatting are preserved"
+  ],
+  "output": {
+    "expected_note": "The final answer is a heading followed by two bullet lines.",
+    "extracted_final": "Here's the full summary:\n- done\n- verified",
+    "forbidden": [
+      "api-bridge",
+      "execute_shell_command",
+      "stdout",
+      "mcp-agent-20260519",
+      "❯"
+    ],
+    "must_contain": [
+      "Here's the full summary:",
+      "- done",
+      "- verified"
+    ],
+    "provider": "claude-code",
+    "raw_provider_output": "\n⏺ Here's the full summary:\n  - done\n  - verified\n\n✻ Worked for 2s\n\n⏺ api-bridge - execute_shell_command (MCP)(command: \"cat file\")\n  ⎿  {\"stdout\":\"ok\"}\n\n─────────────────────────────────────────────────── mcp-agent-20260519 ──\n❯\n",
+    "user_goal": "Provide a concise summary of completed work."
+  },
+  "fingerprint": "ee6b15b43df6c51e",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "ee6b15b43df6c51e",
+    "reviewer": "claude-opus-4-8",
+    "issues": [],
+    "notes": "Extraction returns the assistant summary (heading + done/verified bullets) as a clean bullet list. Correctly strips the ⏺ turn marker, the '✻ Worked for 2s' status, the api-bridge execute_shell_command MCP tool card, its {\"stdout\":\"ok\"} output, the mcp-agent-20260519 footer rule, and the ❯ prompt. Raw indentation normalized but the bullet structure is semantically preserved. All must_contain present, all forbidden absent."
+  }
+}

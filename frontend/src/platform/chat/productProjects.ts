@@ -1,3 +1,4 @@
+import { randomUUID } from '../../utils/randomUUID'
 import { agentApi } from '../../services/api'
 import type { PresetLLMConfig, SharedProjectSchedule, SharedProjectTrigger } from '../../services/api-types'
 import { dedupeByFilepath, flattenFiles, responseContent, responseFiles, slugifyTitle } from '../../utils/plannerFiles'
@@ -14,6 +15,8 @@ export type ProductProject<P extends string = string> = {
   workspacePath: string
   /** Opaque logical file root supplied by the server for a bound local folder. */
   filesPath?: string
+  /** The Mac connection this project lives on when it is not the window's own server (#3383). */
+  connectionId?: string
   /** The Files root's name from the server, when it is not the folder's own (a Team member's copy). */
   filesName?: string
   createdAt: string
@@ -131,7 +134,7 @@ export function parseProductProjectManifest<P extends string>(
   const id = asString(raw.id)
   const title = asString(raw.title)
   const sessionId = asString(raw.session_id)
-  if (raw.schema_version !== 1 || raw.product !== product || !id || !title || !sessionId) return null
+  if (raw.schema_version !== 1 || raw.product !== product || !id || !title || (product !== 'work' && !sessionId)) return null
   const createdAt = asString(raw.created_at) || lastModified || new Date(0).toISOString()
   return {
     schemaVersion: 1,
@@ -160,6 +163,8 @@ type ProductProjectStorageOptions = {
   runtimeManifestName?: string
   /** Load owned Crews from the server's project catalog. */
   includeOwnSharedProjects?: boolean
+  /** Read them from one of this Mac's connections instead of the window's server (#3383). */
+  connection?: string
 }
 
 function manifestNativeAgentTools(raw: ProductManifest): boolean {
@@ -193,7 +198,7 @@ function applyRuntimeManifest<P extends string>(project: ProductProject<P>, cont
 export async function loadProductProjects<P extends string>(root: string, product: P, storage: ProductProjectStorageOptions = {}): Promise<ProductProject<P>[]> {
   // The server selects each Crew's current registered location. Folder scans
   // can include retired filesystem links and cannot decide project identity.
-  const directory = storage.includeOwnSharedProjects ? (await agentApi.listOwnSharedProjects(product)).projects : undefined
+  const directory = storage.includeOwnSharedProjects ? (await agentApi.listOwnSharedProjects(product, storage.connection)).projects : undefined
   const filesRoots = new Map(directory?.map(project => [project.workspace_path, project.files_path]))
   const manifests = directory
     ? directory.map(project => ({ filepath: `${project.workspace_path}/product.json`, type: 'file', last_modified: undefined }))
@@ -202,13 +207,13 @@ export async function loadProductProjects<P extends string>(root: string, produc
   const projects = await Promise.all(manifests.map(async (file) => {
     const workspacePath = file.filepath.replace(/\/product\.json$/, '')
     const runtimeRead = storage.runtimeManifestName
-      ? agentApi.getPlannerFileContent(`${workspacePath}/${storage.runtimeManifestName}`).then(
+      ? agentApi.getPlannerFileContent(`${workspacePath}/${storage.runtimeManifestName}`, undefined, storage.connection).then(
         (runtimeResponse) => { try { return responseContent(runtimeResponse) } catch { return undefined } },
         () => undefined,
       )
       : undefined
     try {
-      const response = await agentApi.getPlannerFileContent(file.filepath)
+      const response = await agentApi.getPlannerFileContent(file.filepath, undefined, storage.connection)
       const document = responseContent(response)
       if (!document) return null
       const project = parseProductProjectManifest(
@@ -247,25 +252,25 @@ export async function createProductProject<P extends string>(options: {
 }): Promise<ProductProject<P>> {
   const title = options.title.trim()
   const description = options.description.trim()
-  if (options.product === 'work' || options.product === 'code') {
+  if (options.product === 'work') {
     const created = await agentApi.createProductProject(options.product, {
       name: title, purpose: description, root_path: options.rootPath, icon: options.identity?.icon,
       llm_config: options.llmConfig,
       selected_skills: options.selectedSkills, files: options.initialFiles,
     })
     const project = parseProductProjectManifest(JSON.stringify(created.product_manifest), created.workspace_path, options.product)
-    if (!project || project.id !== created.id) throw new Error('The new Crew could not be opened. Reload your projects to find it.')
+    if (!project || project.id !== created.id) throw new Error('The new project could not be opened. Reload your projects to find it.')
     return { ...applyRuntimeManifest(project, JSON.stringify(created.runtime_manifest)), filesPath: created.files_path, creationWarnings: created.warnings }
   }
-  // Personal products retain their existing creation path. Crew and Code
+  // Personal products retain their existing creation path. Projects
   // have already returned through server-owned creation above.
   const reserved = await (async () => agentApi.reserveProject(options.product, title))().catch((error: unknown) => {
     const response = (error as { response?: { status?: number; data?: { error?: string } } })?.response
-    if (response?.status === 403) throw new Error(response.data?.error || 'This account cannot create Crews.')
+    if (response?.status === 403) throw new Error(response.data?.error || 'This account cannot create projects.')
     return { shared: false } as { shared: boolean; id?: string; workspace_path?: string }
   })
   const shared = reserved.shared && !!reserved.id && !!reserved.workspace_path
-  const id = shared ? reserved.id! : globalThis.crypto.randomUUID()
+  const id = shared ? reserved.id! : randomUUID()
   const sessionId = `${options.sessionPrefix}:${id}`
   const workspacePath = shared ? reserved.workspace_path! : `${options.root}/${slugifyTitle(title, options.slugFallback)}-${id.slice(0, 8)}`
   const now = new Date().toISOString()
@@ -440,29 +445,6 @@ export async function updateProductProjectIdentity<P extends string>(
   manifest.updated_at = updatedAt
   await agentApi.updatePlannerFile(path, `${JSON.stringify(manifest, null, 2)}\n`, commitLabel)
   return { ...project, description: asString(manifest.description), identity: parseProductIdentity(manifest.identity), updatedAt }
-}
-
-export async function updateProductProjectLLMConfig<P extends string>(
-  project: ProductProject<P>,
-  llmConfig: PresetLLMConfig,
-  commitLabel: string,
-  runtimeManifestName?: string,
-): Promise<ProductProject<P>> {
-  try {
-    const { path: manifestPath, manifest } = await readProjectRuntimeManifest(project, runtimeManifestName)
-    const capabilities = manifest.capabilities && typeof manifest.capabilities === 'object'
-      ? { ...(manifest.capabilities as Record<string, unknown>) }
-      : {}
-    capabilities.llm_config = llmConfig
-    const updatedAt = new Date().toISOString()
-    manifest.capabilities = capabilities
-    manifest.updated_at = updatedAt
-    await agentApi.updatePlannerFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, commitLabel)
-    if (runtimeManifestName && !project.runtimeConfigInitialized) await stripLegacyRuntimeFromProduct(project, commitLabel)
-    return { ...project, llmConfig, runtimeConfigInitialized: true, updatedAt }
-  } catch {
-    throw new Error('Project configuration is invalid JSON.')
-  }
 }
 
 /** Sets the crew's "Native agent tools" switch (capabilities.native_agent_tools). */

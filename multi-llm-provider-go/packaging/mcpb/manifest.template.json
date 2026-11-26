@@ -1,0 +1,69 @@
+{
+  "manifest_version": "0.3",
+  "name": "llm-provider-mcp",
+  "display_name": "LLM Provider MCP",
+  "version": "0.0.0",
+  "description": "Delegate asynchronous coding jobs between Claude Code, Codex, Cursor Agent, and Pi.",
+  "long_description": "A local MCP server that launches coding-agent jobs in detached tmux sessions, returns a job ID immediately, and lets the host poll progress or collect the final result.",
+  "author": {
+    "name": "Manish",
+    "url": "https://github.com/manishiitg"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/manishiitg/llm-provider-mcp.git"
+  },
+  "homepage": "https://github.com/manishiitg/llm-provider-mcp",
+  "documentation": "https://github.com/manishiitg/llm-provider-mcp/tree/main/docs",
+  "support": "https://github.com/manishiitg/llm-provider-mcp/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "binary",
+    "entry_point": "server/llm-provider-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/server/llm-provider-mcp",
+      "args": [],
+      "env": {}
+    }
+  },
+  "tools": [
+    {
+      "name": "list_coding_agents",
+      "description": "List enabled local coding-agent targets and capabilities."
+    },
+    {
+      "name": "list_coding_agent_models",
+      "description": "Discover curated model selectors for a coding-agent target."
+    },
+    {
+      "name": "delegate_coding_agent",
+      "description": "Start an asynchronous coding task and return a durable job ID."
+    },
+    {
+      "name": "get_coding_agent_job",
+      "description": "Read job progress, terminal output, or the final result."
+    },
+    {
+      "name": "cancel_coding_agent_job",
+      "description": "Cancel a queued or running coding-agent job."
+    }
+  ],
+  "keywords": [
+    "coding-agents",
+    "delegation",
+    "claude-code",
+    "codex",
+    "cursor",
+    "pi",
+    "tmux"
+  ],
+  "license": "BUSL-1.1",
+  "privacy_policies": [
+    "https://github.com/manishiitg/llm-provider-mcp/blob/main/PRIVACY.md"
+  ],
+  "compatibility": {
+    "platforms": [
+      "darwin"
+    ]
+  }
+}

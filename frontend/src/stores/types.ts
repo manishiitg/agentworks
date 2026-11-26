@@ -33,6 +33,8 @@ export interface ToolDetail {
 
 // File Context Types
 export interface FileContextItem {
+  context?: { kind: 'browser' | 'terminal'; label: string; previewPath?: string }
+  admittedAttachment?: { hash: string; name: string }
   name: string
   path: string
   type: 'file' | 'folder'

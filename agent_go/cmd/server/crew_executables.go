@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -28,7 +29,10 @@ type crewExecutableBinding = crewroot.ExecutableBinding
 
 var crewExecutablesMu sync.Mutex
 
-var errCrewWorkflowExists = errors.New("this Crew already has a workflow; edit its existing steps or add a route")
+var errCrewWorkflowNameTaken = errors.New("this project already has a workflow with that name. Choose a different name")
+
+// crewWorkflowNamesMu makes "is this name free?" and "save it" one step, so two creates or renames cannot both take a name.
+var crewWorkflowNamesMu sync.Mutex
 
 func crewExecutablesPath() (string, error) {
 	root, err := workflowCLIStateRoot()
@@ -88,12 +92,63 @@ func readCrewExecutables() (map[string]crewExecutableBinding, error) {
 		if binding.Root != crewExecutableKey(binding.Root) || filepath.Base(expected) != entry.Name() {
 			continue
 		}
-		if binding.Kind != "workflow" && binding.Kind != "script" {
+		if binding.Kind != "script" {
 			continue
 		}
 		result[binding.Root] = binding
 	}
 	return result, nil
+}
+
+// crewWorkflowsOf lists every Python workflow of a Crew, in a stable order (by ID). A Crew can hold any number of them.
+func crewWorkflowsOf(crewWorkspace string) []crewExecutableBinding {
+	records, err := readCrewExecutables()
+	if err != nil || crewWorkspace == "" {
+		return nil
+	}
+	var result []crewExecutableBinding
+	for _, binding := range records {
+		if canonicalCrewWorkspaceRoot(binding.CrewRoot) == canonicalCrewWorkspaceRoot(crewWorkspace) {
+			result = append(result, binding)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].ID != result[j].ID {
+			return result[i].ID < result[j].ID
+		}
+		return result[i].Root < result[j].Root
+	})
+	return result
+}
+
+// crewWorkflowNameKey makes names compare equal when they differ only in letter case or spacing.
+func crewWorkflowNameKey(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(name), " "))
+}
+
+// crewWorkflowNameTaken reports whether another workflow of the Crew (not exceptID) already has this name.
+// A workflow whose saved script cannot be read is skipped: it cannot be compared, and it must not block the Crew.
+// Hold crewWorkflowNamesMu around this check and the save that follows it.
+func crewWorkflowNameTaken(ctx context.Context, crewID, name, exceptID string) (bool, error) {
+	want := crewWorkflowNameKey(name)
+	records, err := readCrewExecutables()
+	if err != nil {
+		return false, err
+	}
+	for _, binding := range records {
+		if binding.Kind != "script" || binding.CrewID != crewID || binding.ID == exceptID {
+			continue
+		}
+		definition, readErr := readCrewScript(ctx, binding.Root)
+		if readErr != nil || definition == nil {
+			log.Printf("[CREW_EXECUTABLE] name_check_skip id=%s reason=script_unavailable", binding.ID)
+			continue
+		}
+		if crewWorkflowNameKey(definition.Name) == want {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func findCrewExecutable(rawRoot string) (*crewExecutableBinding, error) {
@@ -118,12 +173,12 @@ func findCrewExecutable(rawRoot string) (*crewExecutableBinding, error) {
 	if err := json.Unmarshal(data, &binding); err != nil {
 		return nil, fmt.Errorf("read executable binding: %w", err)
 	}
-	if binding.Root != root || binding.ID == "" || binding.CrewID == "" || (binding.Kind != "workflow" && binding.Kind != "script") {
+	if binding.Root != root || binding.ID == "" || binding.CrewID == "" || binding.Kind != "script" {
 		return nil, fmt.Errorf("invalid executable binding")
 	}
 	owner, found := crewProjectOwnerID(binding.CrewRoot)
 	if !found || owner == "" {
-		return nil, fmt.Errorf("owning Crew is unavailable")
+		return nil, fmt.Errorf("owning project is unavailable")
 	}
 	return &binding, nil
 }
@@ -169,17 +224,6 @@ func registerCrewExecutable(binding crewExecutableBinding) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if binding.Kind == "workflow" {
-		records, err := readCrewExecutables()
-		if err != nil {
-			return err
-		}
-		for _, existing := range records {
-			if existing.CrewID == binding.CrewID && existing.Kind == "workflow" {
-				return fmt.Errorf("%w (%s)", errCrewWorkflowExists, existing.Root)
-			}
-		}
-	}
 	data, err := json.MarshalIndent(binding, "", "  ")
 	if err != nil {
 		return err
@@ -194,7 +238,7 @@ func registerCrewExecutable(binding crewExecutableBinding) error {
 // server-owned Crew ID, so a stale folder name cannot retain an orphan binding.
 func removeCrewExecutableBindings(crewID string) error {
 	if strings.TrimSpace(crewID) == "" {
-		return fmt.Errorf("Crew identity is required for executable cleanup")
+		return fmt.Errorf("Project identity is required for executable cleanup")
 	}
 	crewExecutablesMu.Lock()
 	defer crewExecutablesMu.Unlock()
@@ -217,22 +261,52 @@ func removeCrewExecutableBindings(crewID string) error {
 	return nil
 }
 
+// removeCrewExecutableBinding forgets one workflow of a Crew, which frees the Crew's single
+// workflow slot. Its files go first (crew_executables_manage.go), so a failed delete can be retried.
+func removeCrewExecutableBinding(crewID, id string) error {
+	if strings.TrimSpace(crewID) == "" || strings.TrimSpace(id) == "" {
+		return fmt.Errorf("Project and workflow identity are required")
+	}
+	crewExecutablesMu.Lock()
+	defer crewExecutablesMu.Unlock()
+	bindings, err := readCrewExecutables()
+	if err != nil {
+		return err
+	}
+	for root, binding := range bindings {
+		if binding.CrewID != crewID || binding.ID != id {
+			continue
+		}
+		file, err := crewExecutableFile(root)
+		if err != nil {
+			return err
+		}
+		if err := os.Remove(file); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
 // All actions use the existing Crew resolver, including its co-owner and token
 // checks. A Run person cannot author executables through this Builder endpoint.
+// A workflow's description is one or two plain sentences saying what it is for.
+const maxCrewWorkflowDescription = 500
+
 func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Request) {
 	if api.projectActions == nil || api.projectActions.registry == nil {
-		http.Error(w, "Crew services are unavailable", http.StatusServiceUnavailable)
+		http.Error(w, "Project services are unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	caller := GetUserIDFromContext(r.Context())
 	profile, err := api.projectActions.registry.Resolve("work", 0, caller)
 	if err != nil {
-		http.Error(w, "Crew is unavailable", http.StatusNotFound)
+		http.Error(w, "Project is unavailable", http.StatusNotFound)
 		return
 	}
 	project, err := resolveCrewProjectBinding(r.Context(), caller, profile, r.URL.Query().Get("crew_id"), "")
 	if err != nil || !project.OwnedByCaller {
-		http.Error(w, "Only this Crew's owners can manage its workflows.", http.StatusForbidden)
+		http.Error(w, "Only this project's owners can manage its workflows.", http.StatusForbidden)
 		return
 	}
 	root := project.Binding.WorkspacePath
@@ -245,61 +319,53 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		type entry struct {
 			crewExecutableBinding
 			Manifest *WorkflowManifest `json:"manifest"`
-			UsedBy   []crewScriptUsage `json:"used_by,omitempty"`
 			// What a person can change before a run, and the saved settings that fill it in (a Python workflow's script.json).
 			Inputs       []workflow.Variable      `json:"inputs,omitempty"`
 			InputPresets []workflow.VariableGroup `json:"input_presets,omitempty"`
+			// The other files a Python workflow's main.py uses (helpers, prompts), relative to its code folder.
+			Files []string `json:"files,omitempty"`
 		}
 		entries := []entry{}
-		// Python that a workflow's own steps run: listed beside the saved Crew scripts, each labelled by where it is used.
-		type stepScript struct {
-			WorkflowID string `json:"workflow_id"`
-			Workflow   string `json:"workflow"`
-			StepID     string `json:"step_id"`
-			Step       string `json:"step"`
-		}
-		stepScripts := []stepScript{}
 		for _, binding := range records {
 			if binding.CrewRoot != root {
 				continue
 			}
 			manifest, found, err := ReadWorkflowManifest(r.Context(), binding.Root)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
+				// One unavailable saved script must not hide the other workflows.
+				// Do not log manifest contents or change the saved binding on a GET.
+				log.Printf("[CREW_EXECUTABLE] list_skip id=%s reason=manifest_unavailable", binding.ID)
+				continue
 			}
 			if found {
-				var consumers []crewScriptUsage
 				var inputs []workflow.Variable
 				var presets []workflow.VariableGroup
+				var files []string
 				if binding.Kind == "script" {
-					consumers, err = crewScriptConsumers(r.Context(), &binding, nil)
-					if err != nil {
-						http.Error(w, err.Error(), 500)
-						return
+					codeRoot := path.Join(binding.Root, "code")
+					if listed, listErr := listWorkspaceFilesRecursive(r.Context(), codeRoot); listErr == nil {
+						for _, name := range listed {
+							name = strings.TrimPrefix(strings.TrimPrefix(name, codeRoot), "/")
+							if name != "main.py" && name != "script.json" && crewScriptEditableFile(name) {
+								files = append(files, name)
+							}
+						}
 					}
 					if definition, readErr := readCrewScript(r.Context(), binding.Root); readErr == nil {
 						inputs, presets = definition.Inputs, definition.InputPresets
 					}
 				}
-				entries = append(entries, entry{crewExecutableBinding: binding, Manifest: manifest, UsedBy: consumers, Inputs: inputs, InputPresets: presets})
-				if binding.Kind == "workflow" {
-					if plan, planErr := readPlanFromWorkspace(r.Context(), binding.Root); planErr == nil {
-						for _, step := range workflow.CrewWorkflowOwnScriptSteps(plan) {
-							stepScripts = append(stepScripts, stepScript{WorkflowID: binding.ID, Workflow: manifest.Label, StepID: step.ID, Step: firstNonEmptyTrimmed(step.Title, step.ID)})
-						}
-					}
-				}
+				entries = append(entries, entry{crewExecutableBinding: binding, Manifest: manifest, Inputs: inputs, InputPresets: presets, Files: files})
 			}
 		}
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Manifest.Label < entries[j].Manifest.Label })
 		w.Header().Set("Content-Type", "application/json")
 		agents, err := crewExecutableAgentChoices(r.Context(), caller, project.OwnerID, project.Binding.ResourceID, root)
 		if err != nil {
-			http.Error(w, "Could not load this Crew's agents", http.StatusInternalServerError)
+			http.Error(w, "Could not load this project's agents", http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{"executables": entries, "step_scripts": stepScripts, "agents": agents})
+		json.NewEncoder(w).Encode(map[string]interface{}{"executables": entries, "agents": agents})
 		return
 	}
 	if refuseCrewOwnerOnline(w, r, crewProjectIDOfRoot(root), caller) {
@@ -309,9 +375,18 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		http.Error(w, "Your account cannot edit workflows. Ask an administrator to restore edit access.", http.StatusForbidden)
 		return
 	}
+	switch r.Method {
+	case http.MethodPatch:
+		api.renameCrewWorkflow(w, r, project.Binding.ResourceID)
+		return
+	case http.MethodDelete:
+		api.deleteCrewWorkflow(w, r, project.Binding.ResourceID)
+		return
+	}
 	var input struct {
-		Name string `json:"name"`
-		Kind string `json:"kind"`
+		Name        string `json:"name"`
+		Kind        string `json:"kind"`
+		Description string `json:"description"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024))
 	decoder.DisallowUnknownFields()
@@ -320,7 +395,12 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		return
 	}
 	input.Name = strings.TrimSpace(input.Name)
-	if input.Kind != "" && input.Kind != "workflow" && input.Kind != "script" {
+	input.Description = strings.TrimSpace(input.Description)
+	if len(input.Description) > maxCrewWorkflowDescription {
+		http.Error(w, "Keep the description short (up to 500 characters).", http.StatusBadRequest)
+		return
+	}
+	if input.Kind != "" && input.Kind != "script" {
 		http.Error(w, "Create a Python workflow in this project.", http.StatusBadRequest)
 		return
 	}
@@ -328,19 +408,34 @@ func (api *StreamingAPI) handleCrewExecutables(w http.ResponseWriter, r *http.Re
 		http.Error(w, "Enter a workflow name (up to 120 characters).", http.StatusBadRequest)
 		return
 	}
-	// PLAT-746: every new workflow is a Python script; kind "workflow" from an
-	// older caller creates one too. Existing plan workflows keep working.
+	// PLAT-746: every new workflow is a Python script. A Crew can hold several; each has its own name.
+	// The name check and the save are one step, so two creates cannot both take the same name.
+	crewWorkflowNamesMu.Lock()
+	taken, nameErr := crewWorkflowNameTaken(r.Context(), project.Binding.ResourceID, input.Name, "")
+	if nameErr != nil {
+		crewWorkflowNamesMu.Unlock()
+		http.Error(w, nameErr.Error(), http.StatusInternalServerError)
+		return
+	}
+	if taken {
+		crewWorkflowNamesMu.Unlock()
+		http.Error(w, errCrewWorkflowNameTaken.Error(), http.StatusConflict)
+		return
+	}
 	id := uuid.NewString()
 	binding := crewExecutableBinding{ID: id, CrewID: project.Binding.ResourceID, CrewRoot: root, Root: "Workflow/" + id, Kind: "script"}
 	if err := registerCrewExecutable(binding); err != nil {
-		http.Error(w, err.Error(), 500)
+		crewWorkflowNamesMu.Unlock()
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	registerWorkflowOwner(binding.Root, project.OwnerID)
-	if err := initializeCrewScriptSource(r.Context(), binding, input.Name); err != nil {
+	if err := initializeCrewScriptSource(r.Context(), binding, input.Name, input.Description); err != nil {
+		crewWorkflowNamesMu.Unlock()
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	crewWorkflowNamesMu.Unlock()
 	if api.scheduler != nil {
 		api.scheduler.InvalidateWorkflowManifestCache()
 	}
@@ -359,15 +454,15 @@ func crewExecutableKnowledgeAudience(root string, manifest workflowkb.Manifest) 
 		return manifest, err
 	}
 	if manifest.ID != binding.ID {
-		return manifest, fmt.Errorf("knowledge executable identity does not match its Crew")
+		return manifest, fmt.Errorf("knowledge executable identity does not match its project")
 	}
 	id, ok := projectIdentityOf(binding.CrewRoot)
 	if !ok {
-		return manifest, fmt.Errorf("knowledge Crew is unavailable")
+		return manifest, fmt.Errorf("knowledge project is unavailable")
 	}
 	record, found := defaultProjectOwners().Lookup(id.Product, id.Folder)
 	if !found || record.OwnerID == "" {
-		return manifest, fmt.Errorf("knowledge Crew owner is unavailable")
+		return manifest, fmt.Errorf("knowledge project owner is unavailable")
 	}
 	manifest.CreatedBy = record.OwnerID
 	// Keep source-specific writer opt-in; only audience/ownership are inherited.

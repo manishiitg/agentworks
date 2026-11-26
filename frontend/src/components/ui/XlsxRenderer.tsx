@@ -6,11 +6,12 @@ interface XlsxRendererProps {
 }
 
 export function XlsxRenderer({ data }: XlsxRendererProps) {
+  const [page, setPage] = useState(0)
   const [activeSheet, setActiveSheet] = useState(0)
 
   const workbook = useMemo(() => {
     try {
-      return XLSX.read(data, { type: 'array' })
+      return XLSX.read(data, { type: 'array', sheetRows: 10001 })
     } catch (err) {
       console.error('Failed to parse XLSX:', err)
       return null
@@ -43,7 +44,7 @@ export function XlsxRenderer({ data }: XlsxRendererProps) {
         <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
           <span className="font-medium">XLSX Spreadsheet</span>
           <span className="text-xs bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 rounded">
-            {rows.length} rows
+            {rows.length} preview rows (up to 10,000 per sheet)
           </span>
           <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded">
             {headers.length} columns
@@ -57,7 +58,7 @@ export function XlsxRenderer({ data }: XlsxRendererProps) {
           {workbook.SheetNames.map((name, i) => (
             <button
               key={name}
-              onClick={() => setActiveSheet(i)}
+              onClick={() => { setActiveSheet(i); setPage(0) }}
               className={`px-3 py-1.5 text-xs rounded-t border border-b-0 transition-colors ${
                 i === activeSheet
                   ? 'bg-white dark:bg-gray-900 text-blue-600 dark:text-blue-400 border-gray-200 dark:border-gray-700 font-medium'
@@ -70,6 +71,7 @@ export function XlsxRenderer({ data }: XlsxRendererProps) {
         </div>
       )}
 
+      <div className="flex items-center gap-3 text-xs"><button disabled={!page} onClick={() => setPage(page - 1)}>Previous</button><span>Page {page + 1} of {Math.max(1, Math.ceil(rows.length / 200))}</span><button disabled={(page + 1) * 200 >= rows.length} onClick={() => setPage(page + 1)}>Next</button></div>
       <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
         <table className="min-w-full text-xs">
           <thead>
@@ -85,7 +87,7 @@ export function XlsxRenderer({ data }: XlsxRendererProps) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, ri) => (
+            {rows.slice(page * 200, (page + 1) * 200).map((row, ri) => (
               <tr
                 key={ri}
                 className={`${

@@ -1,4 +1,4 @@
-import { HomeEntry } from '../workspace/HomeEntry'
+import { ProjectsEntry } from '../workspace/ProjectsEntry'
 import { useWorkspaceReturn } from '../../hooks/useWorkspaceReturn'
 import { useWorkflowFilesViewSync } from './hooks/useWorkflowFilesViewSync'
 import { openHistoryExecutionLogs } from '../../utils/historyExecutionLogs'
@@ -1959,7 +1959,7 @@ export const WorkflowLayout: React.FC<WorkflowLayoutProps> = ({
   ) : undefined, [activePresetId, workspacePath])
 
   // New work starts from the central Home. Existing creation dialogs stay in their product.
-  if (!activeWorkflowPreset && !workspacePath) return <HomeEntry />
+  if (!activeWorkflowPreset && !workspacePath) return <ProjectsEntry />
 
   const canvasElement = (
     <DashboardLayoutProvider value={dashboardView ? <DashboardLayoutControls

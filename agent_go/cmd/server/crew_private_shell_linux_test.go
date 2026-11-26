@@ -20,8 +20,9 @@ import (
 	wh "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 )
 
-// PLAT-856-383: the MCP execution path must create and use a new top-level
-// directory in one actual kernel-sandboxed command, without platform writes.
+// PLAT-856-383, PLAT-746-924: the MCP execution path must create and use a new
+// top-level directory in one actual kernel-sandboxed command, while the Crew's
+// records in .agentworks/settings stay read-only and the raw database unreadable.
 func TestCrewMCPNativeRootCreationKeepsPlatformStateProtected(t *testing.T) {
 	if os.Getenv("AGENTWORKS_LANDLOCK_RUNNER") == "" {
 		t.Skip("requires the built Linux Landlock runner")
@@ -40,7 +41,7 @@ func TestCrewMCPNativeRootCreationKeepsPlatformStateProtected(t *testing.T) {
 	t.Setenv(browserconfig.ProfileRootEnv, t.TempDir())
 	socketRoot := browserconfig.ManagedSocketRoot()
 	t.Cleanup(func() { _ = os.RemoveAll(socketRoot) })
-	if _, _, err := crewroot.MigratePrivateState(f.docs); err != nil {
+	if _, _, err := crewroot.MigrateToAgentworks(f.docs); err != nil {
 		t.Fatal(err)
 	}
 	roots, _, err := crewroot.Lookup(f.docs, externalCommandCrewRoot)
@@ -48,10 +49,10 @@ func TestCrewMCPNativeRootCreationKeepsPlatformStateProtected(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Both files exist: refusal must be from access policy, never a missing file.
-	if err := os.MkdirAll(filepath.Join(roots.Private, "db"), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Join(roots.Automation, "db"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(roots.Private, "db", "db.sqlite"), []byte("private database"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(roots.Automation, "db", "db.sqlite"), []byte("private database"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	parsed, _ := url.Parse(upstream)
@@ -66,14 +67,14 @@ func TestCrewMCPNativeRootCreationKeepsPlatformStateProtected(t *testing.T) {
 	mcp := serveExternalMCP(t, f.api, crewWriter("owner"))
 	client := dialExternalMCP(t, ctx, mcp.URL+externalMCPPath)
 	initializeExternalMCP(t, ctx, client)
-	command := fmt.Sprintf("mkdir folder-check && printf 'folder creation works' > folder-check/hello.txt && cat folder-check/hello.txt && if printf changed > %q; then exit 41; fi && if cat %q; then exit 42; fi && printf boundary-ok > folder-check/proof.txt", filepath.Join(roots.Private, "product.json"), filepath.Join(roots.Private, "db", "db.sqlite"))
+	command := fmt.Sprintf("mkdir folder-check && printf 'folder creation works' > folder-check/hello.txt && cat folder-check/hello.txt && if printf changed > %q; then exit 41; fi && if cat %q; then exit 42; fi && printf boundary-ok > folder-check/proof.txt", filepath.Join(roots.SettingsDir(), "product.json"), filepath.Join(roots.Automation, "db", "db.sqlite"))
 	result := callRemoteTool(t, ctx, client, "call_tool", map[string]any{"name": "terminal", "arguments": map[string]any{"crew_id": "team", "action": "execute", "command": command}})
 	requireRemoteSuccess(t, result, "terminal.execute")
 	raw, err := os.ReadFile(filepath.Join(roots.Files, "folder-check", "hello.txt"))
 	if err != nil || string(raw) != "folder creation works" {
 		t.Fatalf("new root file: %q %v; MCP=%+v", raw, err, result)
 	}
-	raw, err = os.ReadFile(filepath.Join(roots.Private, "product.json"))
+	raw, err = os.ReadFile(filepath.Join(roots.SettingsDir(), "product.json"))
 	if err != nil || strings.Contains(string(raw), "changed") {
 		t.Fatal("platform record changed", err)
 	}

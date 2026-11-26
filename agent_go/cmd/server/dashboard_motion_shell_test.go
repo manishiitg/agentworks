@@ -27,7 +27,7 @@ func TestDashboardMotionConfigThroughWorkspaceShell(t *testing.T) {
 	previous := viper.Get("docs-dir")
 	viper.Set("docs-dir", root)
 	defer viper.Set("docs-dir", previous)
-	args, err := json.Marshal(map[string]string{"composition_path": "code/motion/config-check'$(touch escaped)", "output_path": "db/assets/motion/check", "cache_path": ".sandbox-cache/dashboard-motion", "renderer_version": dashboardmotion.RendererVersion, "caller": "author"})
+	args, err := json.Marshal(map[string]string{"composition_path": "motion/config-check'$(touch escaped)", "output_path": "db/assets/motion/check", "cache_path": ".sandbox-cache/dashboard-motion", "renderer_version": dashboardmotion.RendererVersion, "caller": "author"})
 	if err != nil {
 		t.Fatal(err)
 	}

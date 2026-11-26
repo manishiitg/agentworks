@@ -4,7 +4,6 @@ import (
 	"log"
 	"strings"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/instructions"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/nativeshell"
 )
@@ -59,12 +58,13 @@ type promptContext struct {
 	IsWorkflowPhase        bool
 	CrewReadOnly           bool
 	MemoryReadOnly         bool
-	// CrewRole is the platform role of the Crew this chat belongs to ("agentworks" or empty).
-	CrewRole string
 	// NativeCodingTools is true when the chat really starts in Full CLI (its
 	// own tools in a sandbox). Sections that describe a
 	// bridge-only world must not apply when this is set.
 	NativeCodingTools bool
+	// SharedServer is false on a person's own Mac, where nobody else runs
+	// processes beside the chat (#3528).
+	SharedServer bool
 
 	ShellRoot           string
 	PerUserChatsFolder  string
@@ -85,6 +85,7 @@ type promptContext struct {
 	WorkflowUIAvailable bool
 	WorkflowContext     string
 	WorkFolders         string
+	ConnectedTools      string
 	ChannelFormatting   string
 	BrowserPointer      string
 	GrantSections       []string
@@ -136,12 +137,6 @@ var promptSections = []promptSection{
 		},
 	},
 	{
-		// The person's own AgentWorks Crew: its job, limits and naming are platform-owned (PLAT-825-99).
-		Name:    "agentworks-agent",
-		Applies: func(c promptContext) bool { return c.CrewRole == agentWorksRole && !c.CrewReadOnly },
-		Build:   func(promptContext) string { return workproduct.AgentWorksAgentPrompt() },
-	},
-	{
 		Name:    "product-features",
 		Applies: func(c promptContext) bool { return c.HasProfile && !c.CrewReadOnly && len(c.FeatureExtensions) > 0 },
 		Build:   func(c promptContext) string { return strings.Join(c.FeatureExtensions, "\n\n") },
@@ -168,6 +163,13 @@ var promptSections = []promptSection{
 		Name:    "work-folders",
 		Applies: func(c promptContext) bool { return isProjectProfileID(c.ProfileID) },
 		Build:   func(c promptContext) string { return c.WorkFolders },
+	},
+	{
+		// Compact local-only summary of integrations connected to this project
+		// (GitHub, Slack as me, Google apps, Computer use, server Slack bot).
+		Name:    "connected-tools",
+		Applies: func(c promptContext) bool { return isProjectProfileID(c.ProfileID) },
+		Build:   func(c promptContext) string { return c.ConnectedTools },
 	},
 	{
 		// Which markup subset the bot platform renders, so replies do not arrive
@@ -208,9 +210,10 @@ var promptSections = []promptSection{
 	},
 	{
 		// With the built-in shell on, the CLI runs on a server other people use
-		// too (owner, 2026-10-15): keep to your own processes and files.
+		// too (owner, 2026-10-15): keep to your own processes and files. A Mac
+		// has no other people on it, so the section is not sent there (#3528).
 		Name:    "native-shell-on",
-		Applies: func(c promptContext) bool { return c.NativeCodingTools && nativeshell.Enabled() },
+		Applies: func(c promptContext) bool { return c.NativeCodingTools && c.SharedServer && nativeshell.Enabled() },
 		Build:   func(promptContext) string { return nativeShellOnGuidance },
 	},
 	{
@@ -229,8 +232,8 @@ Your own built-in shell tool is turned off in this chat. Your file read and edit
 const nativeShellOnGuidance = `## Shared server
 You share this server with other people: only stop processes you started, and never touch other accounts' files or the CLI's sign-in files.`
 
-const crewAgentTabsGuidance = `## Other agents in this Crew
-This Crew can have other agent tabs, and you can open new ones (` + "`list_project_chats`" + `, ` + "`open_project_chat`" + `, ` + "`ask_project_chat`" + `). Hand part of a job to one only when it clearly makes sense, and ask the person first, unless they asked for it (a /deep-work request counts). Agents other people in this Crew's Team share are not tabs here: when asked which agents the Team shares or you got from someone, list them (messages list_agents) instead of reading the tabs. The crew-agents skill has the details.`
+const crewAgentTabsGuidance = `## Other agents in this project
+Project agents are chat tabs with their own conversations, not your app's built-in helpers. Open, list and fork tabs with ` + "`sessions`" + `; message any agent, tab or not, through ` + "`messages`" + ` (find it with action=list_agents, send to its exact address, reply in the returned inbox_id). Main coordinates; specialist tabs own their area. Reuse a fitting tab, and hand work to another tab only when it clearly helps, asking the person first unless they asked. To start another agent, ` + "`sessions action=fork`" + ` carries this conversation and ` + "`sessions action=open`" + ` starts fresh; ` + "`place=beside`" + ` puts it at your level instead of under you, ` + "`engine=<app>`" + ` runs it on another coding app, and ` + "`task`" + ` starts it at once with its answer coming back to you. Details: the crew-agents skill.`
 
 // instructionAppender is the slice of the agent this assembly needs. Narrow so
 // the registry can be tested without constructing an agent.

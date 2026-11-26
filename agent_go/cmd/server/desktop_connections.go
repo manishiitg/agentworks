@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -24,6 +25,9 @@ import (
 	"unicode"
 
 	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // Read once before startup can launch children. Never put these credentials in
@@ -90,6 +94,21 @@ type desktopSignIn struct {
 	Error        string
 }
 
+// Query credentials are already verified by AuthMiddleware. Only the streams a server project opens in place, its
+// Terminal and its live browser view (#3383), and an account's sign-in window may use them, with the normal app proof.
+func desktopProjectStreamUpgrade(r *http.Request) bool {
+	parts := strings.Split(mux.Vars(r)["path"], "/")
+	if !websocket.IsWebSocketUpgrade(r) || len(parts) < 1 || parts[0] != "api" {
+		return false
+	}
+	terminal := len(parts) == 7 && parts[1] == "agent-profiles" && parts[2] != "" && parts[3] == "projects" &&
+		parts[4] != "" && parts[5] == "shell" && parts[6] == "stream"
+	browser := len(parts) == 5 && parts[1] == "browser" && parts[2] == "live" && parts[3] != "" && parts[4] == "stream"
+	// The sign-in window of your own AI account on that server, added from the Mac app (#3807).
+	signIn := len(parts) == 5 && parts[1] == "provider-setup" && parts[2] == "sessions" && parts[3] != "" && parts[4] == "stream"
+	return terminal || browser || signIn
+}
+
 func desktopConnectionGate(w http.ResponseWriter, r *http.Request) bool {
 	secret, host := desktopBootstrapSecret, desktopBootstrapHost
 	appOrigin := desktopStartup.AppOrigin
@@ -100,7 +119,7 @@ func desktopConnectionGate(w http.ResponseWriter, r *http.Request) bool {
 	u := GetUserFromContext(r.Context())
 	// Single-user JWTs alone aren't a desktop proof: localhost login issues them
 	// without a password. Never admit PAT/MCP callers to these saved web sessions.
-	if secret == "" || host == "" || r.Host != host || u == nil || u.AccessToken != nil || r.Header.Get("Authorization") == "" ||
+	if secret == "" || host == "" || r.Host != host || u == nil || u.AccessToken != nil || (r.Header.Get("Authorization") == "" && !(desktopProjectStreamUpgrade(r) && r.URL.Query().Get("token") != "")) ||
 		!hmac.Equal([]byte(secret), []byte(r.Header.Get("X-AgentWorks-Desktop"))) {
 		http.Error(w, `{"error":"Open this connection in the Mac app."}`, http.StatusForbidden)
 		return false
@@ -164,7 +183,7 @@ func writeDesktopConnections(owner string, records []desktopConnection) error {
 	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(sealed), 0600)
+	return fsutil.WriteFileAtomic(path, []byte(sealed), 0600)
 }
 func desktopConnectionFor(owner, id string) (desktopConnection, error) {
 	desktopConnectionsMu.Lock()
@@ -198,6 +217,36 @@ func saveRenewedDesktopToken(owner string, c desktopConnection, token string) er
 		}
 	}
 	return writeDesktopConnections(owner, records)
+}
+
+// desktopServerDo sends one request to a connected server with the connection's saved sign-in and keeps the renewed
+// sign-in the server returns, so a Mac in daily use is never signed out after the session's 7 days. A failed save is
+// only logged: the current sign-in still works. owner is the local person who saved the connection.
+func desktopServerDo(client *http.Client, owner string, c desktopConnection, req *http.Request) (*http.Response, error) {
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	keepRenewedDesktopToken(owner, c, resp.Header)
+	return resp, nil
+}
+
+// keepRenewedDesktopToken saves a renewed sign-in from a server's reply headers and removes it from them, so a
+// proxied reply never hands it on.
+func keepRenewedDesktopToken(owner string, c desktopConnection, header http.Header) {
+	renewed := header.Get(renewedTokenHeader)
+	if renewed == "" {
+		return
+	}
+	header.Del(renewedTokenHeader)
+	if owner == "" {
+		log.Printf("[DESKTOP_CONNECTION] connection=%s event=renewed_sign_in_not_kept reason=no_owner", c.ID)
+		return
+	}
+	if err := saveRenewedDesktopToken(owner, c, renewed); err != nil {
+		log.Printf("[DESKTOP_CONNECTION] connection=%s event=renewed_sign_in_not_kept err=%v", c.ID, err)
+	}
 }
 
 func desktopJSON(w http.ResponseWriter, value any) {
@@ -238,6 +287,9 @@ func (api *StreamingAPI) handleDesktopConnections(w http.ResponseWriter, r *http
 	}
 	for i := range records {
 		records[i].Token = ""
+		// Every screen names a server the same way, as the Servers page does (owner, 10 Nov: the menu showed two
+		// servers as "Agentworkshq" from their web address).
+		records[i].Name = friendlyServerName(records[i].Name, records[i].Server)
 	}
 	desktopJSON(w, map[string]any{"connections": records})
 }
@@ -413,7 +465,8 @@ func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *
 			return
 		}
 	}
-	if strings.HasPrefix(path, "/api/connections") || strings.HasPrefix(path, "/api/desktop-connections") || r.URL.Query().Has("token") {
+	streamUpgrade := desktopProjectStreamUpgrade(r)
+	if strings.HasPrefix(path, "/api/connections") || strings.HasPrefix(path, "/api/desktop-connections") || (r.URL.Query().Has("token") && !streamUpgrade) {
 		http.Error(w, "Invalid server path", 400)
 		return
 	}
@@ -425,16 +478,28 @@ func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *
 			pr.Out.URL.Path = path
 			pr.Out.URL.RawPath = ""
 			pr.Out.Host = target.Host
+			if streamUpgrade {
+				// The renderer's token is for the local backend, never the server.
+				query := pr.Out.URL.Query()
+				query.Del("token")
+				pr.Out.URL.RawQuery = query.Encode()
+			}
 			for key := range pr.Out.Header {
 				lower := strings.ToLower(key)
 				if lower == "cookie" || lower == "origin" || lower == "referer" || strings.HasPrefix(lower, "x-") || strings.HasPrefix(lower, "sec-") {
 					pr.Out.Header.Del(key)
 				}
 			}
+			if streamUpgrade {
+				// Strip local/security headers above, then restore only the two
+				// mandatory WebSocket handshake fields. No subprotocol credentials.
+				pr.Out.Header.Set("Sec-WebSocket-Key", r.Header.Get("Sec-WebSocket-Key"))
+				pr.Out.Header.Set("Sec-WebSocket-Version", r.Header.Get("Sec-WebSocket-Version"))
+			}
 			pr.Out.Header.Set("Authorization", "Bearer "+c.Token)
 			setCrewMacPair(pr.Out.Header, owner, c, path)
 			// Session id is a request selector, validated against the remote user.
-			for _, key := range []string{"X-Session-ID", "X-Client-Submitted-At", "X-Conversation-Continuation", "X-Queued-Chat-Delivery"} {
+			for _, key := range []string{"X-Chat-Input", "X-Session-ID", "X-Client-Submitted-At", "X-Conversation-Continuation", "X-Queued-Chat-Delivery"} {
 				if value := r.Header.Get(key); value != "" {
 					pr.Out.Header.Set(key, value)
 				}
@@ -460,106 +525,27 @@ func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *
 	proxy.ServeHTTP(w, r)
 }
 
-type desktopProject struct {
-	OwnedByCaller *bool  `json:"owned_by_caller,omitempty"`
-	OwnerName     string `json:"owner_name,omitempty"`
-	Icon          string `json:"icon,omitempty"`
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Kind          string `json:"kind"`
-	Mode          string `json:"mode,omitempty"`
-	PersonalAgent bool   `json:"personal_agent,omitempty"`
+// desktopMemberCrew resolves only this person's active member copy on the named
+// connection. The Team lookup remains the single source of the local Crew ID.
+func desktopMemberCrew(owner, connection, project string) string {
+	local := crewTeamMemberCopy(project)
+	if local == "" || ownerOfCrewProjectID(local) != owner {
+		return ""
+	}
+	b, err := crewroot.ReadSync(local)
+	if err != nil || b == nil || b.Editing != "local" || (connection != "local" && b.ConnectionID != connection) {
+		return ""
+	}
+	if _, err := desktopConnectionFor(owner, b.ConnectionID); err != nil {
+		return ""
+	}
+	return local
 }
 
-func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter, r *http.Request) {
+func (api *StreamingAPI) handleDesktopMemberCrew(w http.ResponseWriter, r *http.Request) {
 	if !desktopConnectionGate(w, r) {
 		return
 	}
-	id := mux.Vars(r)["connection"]
-	base, token := "http://"+desktopBootstrapHost, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if id != "local" {
-		c, err := desktopConnectionFor(GetUserFromContext(r.Context()).UserID, id)
-		if err != nil {
-			http.Error(w, `{"error":"Connection is unavailable."}`, 404)
-			return
-		}
-		base, token = c.Server, c.Token
-	}
-	type result struct {
-		projects []desktopProject
-		status   int
-	}
-	results := make(chan result, 2)
-	for _, kind := range []string{"crew", "goal"} {
-		go func(kind string) {
-			path, method, body := "/api/workflows/manifests", "GET", ""
-			if kind == "crew" {
-				path, method, body = "/api/workspaces", "POST", `{"action":"list","detail":"navigation"}`
-				if id != "local" {
-					body = `{"action":"list"}`
-				}
-			}
-			req, err := http.NewRequestWithContext(r.Context(), method, base+path, strings.NewReader(body))
-			if err != nil {
-				results <- result{status: 502}
-				return
-			}
-			req.Header.Set("Authorization", "Bearer "+token)
-			req.Header.Set("Content-Type", "application/json")
-			resp, err := desktopHTTPClient().Do(req)
-			if err != nil {
-				results <- result{status: 502}
-				return
-			}
-			defer resp.Body.Close()
-			if resp.StatusCode != 200 {
-				results <- result{status: resp.StatusCode}
-				return
-			}
-			var inventory struct {
-				Workspaces []struct {
-					OwnedByCaller *bool  `json:"owned_by_caller"`
-					OwnerName     string `json:"owner_name"`
-					ID            string `json:"id"`
-					Name          string `json:"name"`
-					Mode          string `json:"mode"`
-					PersonalAgent bool   `json:"personal_agent"`
-				} `json:"workspaces"`
-				Workflows []struct {
-					Manifest struct {
-						ID    string `json:"id"`
-						Label string `json:"label"`
-						Icon  string `json:"icon"`
-						Kind  string `json:"kind"`
-					} `json:"manifest"`
-				} `json:"workflows"`
-			}
-			if json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&inventory) != nil {
-				results <- result{status: 502}
-				return
-			}
-			projects := []desktopProject{}
-			for _, p := range inventory.Workspaces {
-				projects = append(projects, desktopProject{ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName, PersonalAgent: p.PersonalAgent})
-			}
-			for _, p := range inventory.Workflows {
-				if p.Manifest.Kind != "relay" {
-					projects = append(projects, desktopProject{ID: p.Manifest.ID, Name: p.Manifest.Label, Kind: "goal", Icon: p.Manifest.Icon})
-				}
-			}
-			results <- result{projects: projects, status: 200}
-		}(kind)
-	}
-	projects := []desktopProject{}
-	status := "connected"
-	for range 2 {
-		result := <-results
-		projects = append(projects, result.projects...)
-		if result.status == 401 {
-			status = "sign_in"
-		} else if result.status != 200 && status != "sign_in" {
-			status = "unavailable"
-		}
-	}
-	desktopJSON(w, map[string]any{"projects": projects, "status": status})
+	local := desktopMemberCrew(GetUserFromContext(r.Context()).UserID, mux.Vars(r)["connection"], mux.Vars(r)["project"])
+	desktopJSON(w, map[string]string{"project_id": local})
 }

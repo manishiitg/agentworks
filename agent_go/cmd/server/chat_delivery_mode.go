@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 )
 
 // This is presentation and dispatch eligibility, never an authorization grant.
@@ -21,8 +23,15 @@ func (api *StreamingAPI) queuedMessageDeliveryState(sessionID string, req QueryR
 	api.conversationTurnQueueMu.Lock()
 	refreshing := api.conversationTurnQueueRuntimeChange[sessionID]
 	api.conversationTurnQueueMu.Unlock()
-	if refreshing || req.RestartCodingCLI || sessionSecretsChanged(sessionID) || api.retainedCLIProviderDiffers(sessionID, queuedRequestProvider(req)) || api.launchedAgentProfileDiffers(sessionID) {
+	if sessionSecretsChanged(sessionID) || api.retainedCLIProviderDiffers(sessionID, queuedRequestProvider(req)) {
 		return "refreshing", false
+	}
+	refreshing = refreshing || req.RestartCodingCLI || api.launchedAgentProfileDiffers(sessionID)
+	state := func(allowed bool) (string, bool) {
+		if refreshing {
+			return "refreshing", allowed
+		}
+		return "running", allowed
 	}
 	api.runningAgentsMux.RLock()
 	agent := api.runningAgents[sessionID]
@@ -40,7 +49,7 @@ func (api *StreamingAPI) queuedMessageDeliveryState(sessionID string, req QueryR
 					if !api.liveSteerProviderTransportReady(sessionID, provider) {
 						return api.blockedQueuedTurnReason(sessionID), false
 					}
-					return "running", !req.DisableLiveInputDelivery
+					return state(!req.DisableLiveInputDelivery)
 				}
 			}
 		}
@@ -55,7 +64,7 @@ func (api *StreamingAPI) queuedMessageDeliveryState(sessionID string, req QueryR
 	if !occupied {
 		return "waiting", false
 	}
-	return "running", !req.DisableLiveInputDelivery && agentSupportsLiveInputDelivery(agent) && api.canSteerSession(sessionID)
+	return state(!req.DisableLiveInputDelivery && agentSupportsLiveInputDelivery(agent) && api.canSteerSession(sessionID))
 }
 
 // PLAT-746: a busy lane or missing live-input transport is not startup evidence.
@@ -98,12 +107,22 @@ func (api *StreamingAPI) projectQueuedMessageDelivery(sessionID string, turns []
 		if !ok {
 			continue
 		}
+		if turn.RetryAt != nil {
+			message.QueueReason, message.QueueDetail = "provider_limit", "Waiting for Claude's limit to reset"
+			message.CanSteer = false
+			continue
+		}
 		message.QueueReason, message.CanSteer = api.queuedMessageDeliveryState(sessionID, turn.Request)
 		message.Refreshing = message.QueueReason == "refreshing"
 		message.QueueDetail = api.queuedMessageWaitDetail(sessionID, message.QueueReason)
+		// #3920: the person sent it to go in now, but the chat's Antigravity is older than 1.5 and has no way in until
+		// its reply ends (1.5+ takes it into the running reply). Say so on the message instead of a bare clock.
+		if waitsOnOldAgy(sessionID, *message, turn.Request) {
+			message.QueueDetail, message.ShowDetail = queuedNoSteerDetail, true
+		}
 		// Steer now is only for a message the person queued on purpose (queue mode). In steer mode the server hands the
 		// message in by itself as soon as it can, so offering the button there only adds a choice.
-		if message.Started || message.Steering || message.DeliveryError != "" || turn.Request.DeliveryMode != "queue" {
+		if !message.CanManage || message.Started || message.Steering || message.DeliveryError != "" || turn.Request.DeliveryMode != "queue" {
 			message.CanSteer = false
 		}
 	}
@@ -113,7 +132,7 @@ func (api *StreamingAPI) projectQueuedMessageDelivery(sessionID string, turns []
 // Queue access is already checked by pendingQueuedMessages (PLAT-746-313).
 func (api *StreamingAPI) queuedMessageWaitDetail(sessionID, reason string) string {
 	if reason == "refreshing" {
-		return "Waiting for this chat to restart with its updated setup"
+		return "Updated setup applies next turn. You can steer into the current reply."
 	}
 	if idleCompacts.running(sessionID) != nil {
 		return "Waiting for this chat to finish tidying its context"
@@ -155,6 +174,18 @@ func (api *StreamingAPI) queuedMessageWaitDetail(sessionID, reason string) strin
 	return "Waiting for " + label
 }
 
+// queuedNoSteerDetail says why a message waits behind an Antigravity reply that cannot take it.
+const queuedNoSteerDetail = "This version of Antigravity can't take a message during a reply (agy 1.5 or later can). This sends when the reply ends, or press Stop to send it now."
+
+// waitsOnOldAgy: a message sent to go in now waits behind a running reply of an agy too old to take it.
+func waitsOnOldAgy(sessionID string, message PendingQueuedMessage, req QueryRequest) bool {
+	return message.QueueReason == "running" && !message.CanSteer && message.QueueDetail == "" && message.DeliveryError == "" &&
+		req.DeliveryMode != "queue" && strings.EqualFold(strings.TrimSpace(queuedRequestProvider(req)), "agy-cli") && agyTooOldToSteer(sessionID)
+}
+
+// agyTooOldToSteer: the chat runs an agy older than 1.5, which queues a mid-reply message (tests replace it).
+var agyTooOldToSteer = agycli.AgyACPSessionTooOldToSteer
+
 type queuedMessageSteerKey struct{}
 type queuedMessageRecoveredInputKey struct{}
 
@@ -183,6 +214,7 @@ func (api *StreamingAPI) handleQueuedConversationMessages(w http.ResponseWriter,
 		return
 	}
 	sessionID := mux.Vars(r)["session_id"]
+	api.clearExpiredFailedQueuedRows(r.Context(), userID, sessionID)
 	// Read errors must not look like an empty queue and hide waiting messages.
 	turns, err := api.readConversationTurnQueue(r.Context(), userID)
 	if err != nil {
@@ -190,12 +222,18 @@ func (api *StreamingAPI) handleQueuedConversationMessages(w http.ResponseWriter,
 		return
 	}
 	messages := pendingQueuedMessagesFromTurns(turns, userID, sessionID)
+	if !websiteDeviceClaims(GetUserFromContext(r.Context())) {
+		for i := range messages {
+			messages[i].CanDismiss = false
+		}
+	}
+
 	if messages == nil {
 		messages = []PendingQueuedMessage{}
 	}
 	api.projectQueuedMessageDelivery(sessionID, turns, messages)
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"messages": messages})
+	_ = json.NewEncoder(w).Encode(map[string]any{"messages": messages, "usage_limit_recovery": api.usageLimitQueueStatus(r.Context(), userID, sessionID, turns)})
 }
 
 func (api *StreamingAPI) changeQueuedConversationMessage(ctx context.Context, userID, sessionID, messageID string, steer bool) (queuedConversationTurn, int, error) {
@@ -207,7 +245,20 @@ func (api *StreamingAPI) changeQueuedConversationMessage(ctx context.Context, us
 		return queuedConversationTurn{}, http.StatusServiceUnavailable, err
 	}
 	for i, turn := range turns {
-		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || sanitizeClientMessageID(turn.SubmissionID) == "" {
+		if !steer && turn.ID == messageID && turn.UserID == userID && turn.SessionID == sessionID && turn.UsageLimitRecoveryID != "" {
+			status := api.usageLimitQueueStatus(ctx, userID, sessionID, turns)
+			if !status.CanCancel || status.MessageID != messageID {
+				return turn, http.StatusForbidden, fmt.Errorf("Automatic continuation cannot be cancelled here")
+			}
+			if err := api.cancelUsageLimitRecovery(sessionID, "person_cancelled_recovery"); err != nil {
+				return turn, http.StatusServiceUnavailable, err
+			}
+			if _, err := api.pruneUsageLimitContinues(ctx, userID, turns); err != nil {
+				return turn, http.StatusServiceUnavailable, err
+			}
+			return turn, http.StatusOK, nil
+		}
+		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || (!personTypedQueuedTurn(turn) && (steer || !websiteDeviceClaims(GetUserFromContext(ctx)) || !dismissibleIncomingTurn(turn))) {
 			continue
 		}
 		if turn.StartedAt != nil {
@@ -233,6 +284,9 @@ func (api *StreamingAPI) changeQueuedConversationMessage(ctx context.Context, us
 		}
 		if err := api.writeConversationTurnQueue(ctx, userID, turns); err != nil {
 			return turn, http.StatusServiceUnavailable, err
+		}
+		if !steer {
+			log.Printf("[CHAT_QUEUE] event=removed session=%s message=%s failed=%t", sessionID, turn.ID, turn.DeliveryError != "")
 		}
 		return turn, http.StatusOK, nil
 	}
@@ -288,17 +342,24 @@ func (api *StreamingAPI) retryQueuedConversationMessage(ctx context.Context, use
 		return queuedConversationTurn{}, http.StatusServiceUnavailable, err
 	}
 	for i, turn := range turns {
-		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || sanitizeClientMessageID(turn.SubmissionID) == "" {
+		if turn.ID != messageID || turn.UserID != userID || turn.SessionID != sessionID || (!personTypedQueuedTurn(turn) && (!websiteDeviceClaims(GetUserFromContext(ctx)) || !dismissibleIncomingTurn(turn))) {
 			continue
 		}
 		if turn.StartedAt != nil || turn.Steering || turn.DeliveryError == "" {
 			return turn, http.StatusConflict, fmt.Errorf("Only a failed queued message can be retried")
 		}
-		turn.ID, turn.DeliveryError = uuid.NewString(), ""
+		oldID := turn.ID
+		turn.ID, turn.DeliveryError, turn.DeliveryFailedAt = uuid.NewString(), "", nil
+		if ask := turn.Principal.CrewAskInput; ask != nil {
+			moved := *ask
+			moved.Query = turn.ID // the Ask identity check ties the answer to its turn id
+			turn.Principal.CrewAskInput = &moved
+		}
 		turns[i] = turn
 		if err := api.writeConversationTurnQueue(ctx, userID, turns); err != nil {
 			return turn, http.StatusServiceUnavailable, err
 		}
+		log.Printf("[CHAT_QUEUE] event=resent session=%s message=%s new_message=%s", sessionID, oldID, turn.ID)
 		return turn, http.StatusOK, nil
 	}
 	return queuedConversationTurn{}, http.StatusNotFound, fmt.Errorf("Queued message not found")
@@ -338,6 +399,8 @@ func (api *StreamingAPI) deliverQueuedMessageAsSteer(turn queuedConversationTurn
 		api.restoreQueuedSteer(turn)
 		return
 	}
+	nativeBinding := queuedSteerNativeBinding(turn)
+	endedUnconfirmed := false
 	req := turn.Request
 	req.DeliveryMode = "steer"
 	reqMap, err := queryRequestToMap(req)
@@ -357,6 +420,7 @@ func (api *StreamingAPI) deliverQueuedMessageAsSteer(turn queuedConversationTurn
 					request.Header.Set("X-Session-ID", turn.SessionID)
 					recorded := &internalResponseCapture{header: http.Header{}}
 					api.handleQuery(recorded, request)
+					endedUnconfirmed = recorded.header.Get("X-Live-Input-Ended-Unconfirmed") == "true"
 					if recorded.header.Get("X-Queued-Steer-Unavailable") == "true" {
 						api.restoreQueuedSteer(turn, recovered...)
 						return
@@ -387,9 +451,13 @@ func (api *StreamingAPI) deliverQueuedMessageAsSteer(turn queuedConversationTurn
 		if readErr == nil {
 			for i := range turns {
 				if turns[i].ID == turn.ID {
+					if endedUnconfirmed {
+						turns[i].UnconfirmedSteerAt = turn.StartedAt
+						turns[i].SteerNativeBinding = nativeBinding
+					}
 					turns[i].StartedAt = nil
 					turns[i].Steering = false
-					turns[i].DeliveryError = "Delivery unconfirmed. Check the chat before resending."
+					turns[i].markDeliveryFailed("Delivery unconfirmed. Check the chat before resending.")
 				}
 			}
 			if writeErr := api.writeConversationTurnQueue(storageCtx, turn.UserID, turns); writeErr != nil {
@@ -435,4 +503,23 @@ func (api *StreamingAPI) launchedAgentProfileDiffers(sessionID string) bool {
 	current, known := api.lastAgentProfileKeyBySession[sessionID]
 	launched, launchKnown := api.launchedAgentProfileKeyBySession[sessionID]
 	return known && launchKnown && current != "" && launched != current
+}
+
+// Only the server-recorded delivery identity, never a model-supplied inbox or
+// trigger string, makes an agent message eligible for owner live input.
+func ownAgentDeliveryForSteering(ctx context.Context, req QueryRequest) bool {
+	if req.AgentMessageFromOtherPerson || req.SharedAgentSender != "" || req.PinRunMode || req.CrewGuestCaller != "" {
+		return false
+	}
+	if own, _ := ctx.Value(desktopAppOwnDeliveryKey{}).(bool); own {
+		return true
+	}
+	claims := GetUserFromContext(ctx)
+	stamp, _ := ctx.Value(deliveredAgentMessageKey{}).(map[string]interface{})
+	sender, _ := stamp["sender_user_id"].(string)
+	return claims != nil && sender != "" && sender == claims.UserID
+}
+
+func (api *StreamingAPI) deferPendingSetupForLiveInput(ctx context.Context, req QueryRequest, sessionID string, otherRole bool) bool {
+	return !otherRole && api.conversationTurnOccupied(sessionID) && shouldTryRetainedDeliveryBeforeQueue(ctx, req, sessionID)
 }

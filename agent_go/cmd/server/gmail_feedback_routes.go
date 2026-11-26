@@ -48,7 +48,7 @@ type GmailTestResponse struct {
 
 // GmailFeedbackRoutes wires up the Gmail config/status/test API.
 func GmailFeedbackRoutes(router *mux.Router, api *StreamingAPI) {
-	r := router.PathPrefix("/api/human-feedback/gmail").Subrouter()
+	r := router.PathPrefix("/human-feedback/gmail").Subrouter()
 	r.HandleFunc("/config", getGmailConfigHandler(api)).Methods("GET")
 	r.HandleFunc("/config", requireAdminWrite(updateGmailConfigHandler(api))).Methods("POST", "OPTIONS")
 	r.HandleFunc("/status", getGmailStatusHandler(api)).Methods("GET")
@@ -180,8 +180,10 @@ func updateGmailConfigHandler(api *StreamingAPI) http.HandlerFunc {
 		// carries only the channel fields, and writing it verbatim wiped the
 		// connections registry (accounts, default, adoption/disable flags)
 		// every time Default recipients was saved.
-		cfg := mergeGmailConfigRequest(svc.GetConfig(), req)
-		if err := svc.SaveConfig(r.Context(), cfg); err != nil {
+		if err := svc.UpdateConfig(r.Context(), func(cfg *services.GmailConfig) (bool, error) {
+			*cfg = *mergeGmailConfigRequest(cfg, req)
+			return true, nil
+		}); err != nil {
 			http.Error(w, fmt.Sprintf("failed to save config: %v", err), http.StatusInternalServerError)
 			return
 		}

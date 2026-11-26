@@ -3,10 +3,14 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"strings"
 	"testing"
 	"time"
 
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	pkgevents "github.com/manishiitg/mcpagent/events"
 )
 
 // Exercise delivery with the real workspace transport and permissions, while
@@ -18,6 +22,28 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 	crewOwnerTabsFixture(t, env)
 	ctx := internalBotRequestContext(context.Background(), "owner")
 	target, err := resolveTriggerTarget(ctx, GetUserFromContext(ctx), "crew:Beta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Optional Main no longer creates an implicit destination. Select a real
+	// named chat so this regression reaches message/reply admission itself.
+	profile, err := env.svc.registry.Resolve("work", 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := resolveProductConversationBinding(ctx, "owner", profile, "beta:chat:recipient")
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", profile, binding, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recipientName := "Review agent"
+	if _, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, "owner", "work", record.ConversationKey, &recipientName, nil, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	target, err = env.api.resolveAgentChatTarget(ctx, target, record.ConversationKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,9 +60,20 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 		return internalSessionTurnResult{FinalResponse: "implicit final answer must not be forwarded"}, nil
 	}
 	t.Cleanup(func() { agentMessageTurn = old })
-	receipt, err := env.api.sendAgentMessage(ctx, "owner", caller, target, "Please check this", "", "submission-first")
+	// #2965: the request is the task; its title defaults to the first line and its ref travels with it.
+	taskCtx, err := agentTaskArgsContext(ctx, map[string]interface{}{"action": "ask", "ref": "#1"})
 	if err != nil {
 		t.Fatal(err)
+	}
+	receipt, err := env.api.sendAgentMessage(taskCtx, "owner", caller, target, "Please check this", "", "submission-first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt["answered_by"] != nil {
+		t.Fatal("a new ordinary ask was labelled as an answer", receipt)
+	}
+	if receipt["to_label"] != recipientName {
+		t.Fatalf("receipt names Crew instead of recipient agent: %v", receipt)
 	}
 	id := receipt["inbox_id"].(string)
 	if receipt["accepted"] != true || receipt["call_id"] != nil {
@@ -64,9 +101,28 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	if conv.Messages[0].MessageType != "request" || conv.Messages[0].TaskProgress.Session != conv.Endpoints[1].Session {
+		t.Fatal("real delivered request lost exact task session")
+	}
+	if task := conv.Messages[0]; task.Title != "Please check this" || task.Ref != "#1" || !strings.HasPrefix(task.Text, "Ref: #1\n\n") {
+		t.Fatalf("request lost its task fields: %+v", task)
+	}
 	page, err := env.api.readAgentMessages(ctx, "owner", caller, id, 0, 30, 0)
 	if err != nil || len(page["messages"].([]map[string]interface{})) != 0 {
 		t.Fatalf("final chat leaked: %v %v", page, err)
+	}
+	recipientName = "Renamed review agent"
+	if _, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, "owner", "work", record.ConversationKey, &recipientName, nil, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	// Read again after renaming: existing inboxes resolve the current exact agent.
+	page, err = env.api.readAgentMessages(ctx, "owner", caller, id, 0, 30, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent := page["sent"].([]map[string]interface{})
+	if len(sent) != 1 || sent[0]["to_label"] != recipientName || sent[0]["to"] != recipientName {
+		t.Fatalf("sent history lost exact recipient: %v", sent)
 	}
 	chat := conv.Endpoints[1].Session
 	// Request JSON and pasted text cannot manufacture the private delivery context.
@@ -85,27 +141,95 @@ func TestAgentMessagesRequireExplicitRepliesAndKeepInboxOwnership(t *testing.T) 
 		if err := json.Unmarshal(raw, &payload); err != nil {
 			t.Fatal(err)
 		}
-		if index == 0 && (payload.Metadata["source"] != "agent_message" || payload.Metadata["agent_message_inbox"] != id || payload.Metadata["display_content"] != "Please check this") {
+		if index == 0 && (payload.Metadata["source"] != "agent_message" || payload.Metadata["agent_message_inbox"] != id || payload.Metadata["display_content"] != "Ref: #1\n\nPlease check this") {
 			t.Fatalf("missing trusted durable fields: %#v", payload.Metadata)
 		}
 		if index == 1 && payload.Metadata["source"] == "agent_message" {
 			t.Fatal("typed envelope acquired agent identity")
 		}
 	}
+	// #2837: a delivered request continues without any model plan. Replacing
+	// only the model boundary still exercises store, current admission, exact
+	// turn attribution, reservation, and the Stop guard.
+	env.api.lastQueryRequests = map[string]QueryRequest{chat: {userID: "owner"}}
+	clearTask := env.api.eventStore.ExpectAgentMessageSender(chat, "continue-task", map[string]interface{}{"source": "agent_message", "message_id": conv.Messages[0].ID, "agent_message_inbox": id})
+	env.api.eventStore.AddEvent(chat, testUserMessage("request-resumed", "continue-task"))
+	clearTask()
+	env.api.eventStore.AddEvent(chat, internalevents.Event{ID: "task-end", Type: "unified_completion", Data: pkgevents.NewAgentEvent(internalevents.NewGenericEventData("unified_completion", map[string]interface{}{"status": "completed"}))})
+	agentMessageMu.Lock()
+	taskStore, e := readAgentMessageStore(ctx)
+	if e == nil {
+		for i := range taskStore.Conversations {
+			if taskStore.Conversations[i].ID == id {
+				taskStore.Conversations[i].Messages[0].TaskProgress.NextWake = time.Now().Add(-time.Second)
+			}
+		}
+		e = saveAgentMessageStore(ctx, taskStore)
+	}
+	agentMessageMu.Unlock()
+	if e != nil {
+		t.Fatal(e)
+	}
+	// #2837 live regression: local delivery has already committed its task to
+	// the mailbox. Local-mode continuation must read it even without a network
+	// checkpoint, and write progress back where explicit replies are stored.
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	previousRun, previousAfter := agentTaskTurn, agentTaskAfter
+	wakes := 0
+	agentTaskAfter = func(time.Duration, func()) {}
+	agentTaskTurn = func(_ *StreamingAPI, session, text string, _ func(error)) bool {
+		if session != chat || !strings.Contains(text, "next step") {
+			t.Error("wake went to wrong chat/task", session)
+		}
+		wakes++
+		return true
+	}
+	t.Cleanup(func() { agentTaskTurn = previousRun; agentTaskAfter = previousAfter })
+	if !env.api.continueAgentBridgeTask(chat) || wakes != 1 {
+		t.Fatal("open request without plan did not wake", wakes)
+	}
+	agentMessageMu.Lock()
+	localTasks, readErr := readAgentMessageStore(ctx)
+	agentMessageMu.Unlock()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	storedAttempt := 0
+	for _, c := range localTasks.Conversations {
+		if c.ID == id {
+			storedAttempt = c.Messages[0].TaskProgress.Attempts
+		}
+	}
+	if storedAttempt != 1 {
+		t.Fatal("local wake progress was not saved in the authoritative inbox", storedAttempt)
+	}
+	if env.api.stoppedSessions == nil {
+		env.api.stoppedSessions = map[string]bool{}
+	}
+	env.api.markSessionStopped(chat)
+	env.api.continueAgentBridgeTask(chat)
+	if wakes != 1 {
+		t.Fatal("owner Stop woke again", wakes)
+	}
+	env.api.clearSessionStopped(chat)
 	receiver := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ProfileID: "work", ID: target.stampID()}, Label: target.Label, Path: target.Path, Chat: &codeChat{SessionID: conv.Endpoints[1].Session}}
-	if _, err = env.api.sendAgentMessage(ctx, "owner", receiver, triggerTarget{}, "My explicit reply", id, ""); err != nil {
+	if _, err = env.api.sendAgentMessage(agentTaskSendContext(ctx, "done", false), "owner", receiver, triggerTarget{}, "My explicit reply", id, ""); err != nil {
 		t.Fatal(err)
 	}
 	page, err = env.api.readAgentMessages(ctx, "owner", caller, id, 0, 30, 0)
 	if err != nil || len(page["messages"].([]map[string]interface{})) != 1 {
 		t.Fatalf("explicit reply missing: %v %v", page, err)
 	}
+	ordinary := page["messages"].([]map[string]interface{})[0]
+	if ordinary["message"] != "My explicit reply" {
+		t.Fatal("plain agent reply gained an answer prefix", ordinary)
+	}
 	next := page["next_cursor"].(int)
 	page, err = env.api.readAgentMessages(ctx, "owner", caller, id, next, 30, 0)
 	if err != nil || len(page["messages"].([]map[string]interface{})) != 0 {
 		t.Fatalf("cursor reread: %v %v", page, err)
 	}
-	retry, err := env.api.sendAgentMessage(ctx, "owner", caller, target, "Please check this", "", "submission-first")
+	retry, err := env.api.sendAgentMessage(taskCtx, "owner", caller, target, "Please check this", "", "submission-first")
 	if err != nil || retry["message_id"] != receipt["message_id"] {
 		t.Fatalf("uncertain first-send duplicate: %v %v", retry, err)
 	}
@@ -187,5 +311,118 @@ func TestFixedMainAndPhysicalMessageChatsStayPinned(t *testing.T) {
 		if received != check.want {
 			t.Fatalf("address %q reached %s, want %s", check.key, received, check.want)
 		}
+	}
+}
+
+// PLAT-746: own-agent communications steer in either direction, never across
+// another person, Run/guest scope, or an external terminal destination.
+func TestOnlySamePersonAgentMessagesSteerIntoOwnerTurn(t *testing.T) {
+	asker := agentMessageEndpoint{UserID: "owner", Kind: triggerCallerCrew, ID: "crew", Session: "product-asker", Mode: "builder"}
+	replier := agentMessageEndpoint{UserID: "owner", Kind: triggerCallerUser, ID: "reviewer", External: true}
+	conv := func(a, r agentMessageEndpoint) agentConversation {
+		return agentConversation{ID: "inbox-1", Endpoints: [2]agentMessageEndpoint{a, r}}
+	}
+	localReplier := asker
+	localReplier.Session = "product-replier"
+	other := replier
+	other.UserID = "colleague"
+	runAsker := asker
+	runAsker.Mode = "run"
+	guestAsker := asker
+	guestAsker.Guest = "colleague"
+	for _, tc := range []struct {
+		name string
+		c    agentConversation
+		m    agentMessage
+		want bool
+	}{
+		{"reply from own agent", conv(asker, replier), agentMessage{From: 1}, true},
+		{"external destination", conv(asker, replier), agentMessage{From: 0}, false},
+		{"own Crew first request", conv(asker, localReplier), agentMessage{From: 0}, true},
+		{"queued work never steers", conv(asker, localReplier), agentMessage{From: 0, QueuedRequest: true}, false},
+		{"own Crew follow-up", conv(asker, localReplier), agentMessage{From: 1}, true},
+		{"Run sender", conv(runAsker, localReplier), agentMessage{From: 0}, false},
+		{"guest sender", conv(guestAsker, localReplier), agentMessage{From: 0}, false},
+		{"another person's agent", conv(asker, other), agentMessage{From: 1}, false},
+		{"Run chat asker", conv(runAsker, replier), agentMessage{From: 1}, false},
+		{"guest asker", conv(guestAsker, replier), agentMessage{From: 1}, false},
+		{"person ping", conv(asker, replier), agentMessage{From: 1, Kind: "ping"}, false},
+	} {
+		if got := agentMessageMaySteer(tc.c, tc.m); got != tc.want {
+			t.Errorf("%s: steerable=%v, want %v", tc.name, got, tc.want)
+		}
+	}
+	// #3579: another person's ask running in the agent's one chat counted as the owner's turn, so the owner's own
+	// agent's message steered into it and its answer went to that person. It is Run for them; the message waits, and
+	// its own next turn starts as the owner's again, not as that person's.
+	api := &StreamingAPI{lastQueryRequests: map[string]QueryRequest{"product-replier": {SharedAgentSender: "colleague"}}}
+	fresh := localReplier
+	fresh.Mode = ""
+	running := conv(asker, api.agentMessageCallerRole(fresh))
+	if dest := running.Endpoints[1]; dest.Mode != "run" || dest.Guest != "colleague" || agentMessageMaySteer(running, agentMessage{From: 0}) {
+		t.Fatalf("own agent's message may steer into another person's turn: %+v", dest)
+	}
+	if next := api.agentMessageDeliveryRole(fresh); crewMessageRunMode(next, asker, firstNonEmptyTrimmed(next.Guest, asker.UserID)) {
+		t.Fatalf("the owner's next turn started as the other person's: %+v", next)
+	}
+}
+
+// PLAT-746: an unconfirmed native write used to reopen the same message,
+// allowing the worker to send it again. Only a proven no-target may reopen.
+func TestAgentSteerUnconfirmedNeverReopensForAutomaticResend(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		status          mcpagent.UserMessageDeliveryStatus
+		err             error
+		wantReopen      bool
+		wantUnconfirmed bool
+	}{
+		{"confirmed", mcpagent.UserMessageDeliveryStatusSentToCLI, nil, false, false},
+		{"no target", "", &mcpagent.CodingAgentDeliveryError{Kind: mcpagent.DeliveryErrorKindNoSession}, true, false},
+		{"timeout", "", context.DeadlineExceeded, false, true},
+		{"queued injection", mcpagent.UserMessageDeliveryStatusQueuedForInjection, nil, false, true},
+		{"unknown result", "", nil, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := &StreamingAPI{eventStore: openClientIdentityTestStore(t, "uncertain-steer")}
+			const session = "recipient"
+			if err := api.eventStore.SetSessionPersistenceClass(session, internalevents.SessionPersistenceInteractiveChat); err != nil {
+				t.Fatal(err)
+			}
+			c := agentConversation{ID: "inbox-test", Endpoints: [2]agentMessageEndpoint{
+				{UserID: "owner", Kind: triggerCallerCrew, Session: session, Mode: "builder"},
+				{UserID: "owner", Kind: triggerCallerUser, External: true},
+			}}
+			m := agentMessage{ID: "mail-test", From: 1, Text: "review update", SentAt: time.Now().UTC()}
+			handled, err := api.finishAgentMessageSteer(context.Background(), c, m, "native-message", m.Text,
+				mcpagent.UserMessageDeliveryResult{DeliveryStatus: tc.status}, tc.err)
+			if reopen := !handled && err == nil; reopen != tc.wantReopen {
+				t.Fatalf("worker reopen=%t want %t", reopen, tc.wantReopen)
+			}
+			if errors.Is(err, errAgentMessageSteerUnconfirmed) != tc.wantUnconfirmed {
+				t.Fatalf("unconfirmed=%v err=%v", tc.wantUnconfirmed, err)
+			}
+			rows := api.eventStore.GetAllEventsRaw(session)
+			if tc.wantReopen {
+				if len(rows) != 0 {
+					t.Fatal("unsent message was recorded as delivered")
+				}
+				return
+			}
+			if len(rows) != 1 {
+				t.Fatalf("message rows=%d want one", len(rows))
+			}
+			raw, _ := json.Marshal(rows[0])
+			if tc.wantUnconfirmed && !strings.Contains(string(raw), `"delivery_status":"unconfirmed"`) {
+				t.Fatalf("missing durable unconfirmed receipt: %s", raw)
+			}
+			if tc.wantUnconfirmed {
+				m.Delivery = "unconfirmed"
+				c.Messages = []agentMessage{m}
+				if pendingInternalAgentMessage(c) {
+					t.Fatal("restart would resend unconfirmed mail")
+				}
+			}
+		})
 	}
 }

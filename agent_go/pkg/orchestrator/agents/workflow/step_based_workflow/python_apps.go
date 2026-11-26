@@ -43,7 +43,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonApp(ctx context.Context, act
 	}
 	session, _ := ctx.Value(pythonScriptSessionKey{}).(string)
 	if session == "" {
-		return pythonHelperReply{Error: "Run app helpers from a Crew automation."}
+		return pythonHelperReply{Error: "Run app helpers from a project automation."}
 	}
 	selections, err := pythonAppSelections([]string{app})
 	if err != nil {
@@ -52,7 +52,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonApp(ctx context.Context, act
 	_, executors := hcpo.prepareOrchestratorCustomTools(&AgentConfigs{EnabledCustomTools: selections}, DBAccessNone)
 	execute, ok := executors[name].(func(context.Context, map[string]interface{}) (string, error))
 	if !ok || execute == nil {
-		return pythonHelperReply{Error: "This app is unavailable here. Connect it in this Crew or choose an available app."}
+		return pythonHelperReply{Error: "This app is unavailable here. Connect it in this project or choose an available app."}
 	}
 	// This identity was captured when the server created this exact script's
 	// bridge, never supplied by Python. The existing account guard reads it.

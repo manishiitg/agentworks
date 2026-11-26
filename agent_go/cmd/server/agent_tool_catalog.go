@@ -7,17 +7,31 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 )
 
+// Catalog metadata is initialized from embedded files and never changes at
+// runtime. Readers must not mutate this shared slice; consent is still checked
+// for the current caller on every request.
+var agentActionsCatalog = slices.Clip(append(slices.Clone(platformtools.AgentActions), platformtools.ExperienceActions...))
+
+var agentSourceActionsByMember = func() map[string]platformtools.Action {
+	byMember := make(map[string]platformtools.Action, len(agentActionsCatalog))
+	for _, action := range agentActionsCatalog {
+		if action.Source != "" {
+			if _, exists := byMember[action.Member]; !exists {
+				byMember[action.Member] = action
+			}
+		}
+	}
+	return byMember
+}()
+
+// The returned slice is shared and read-only.
 func agentCatalogActions() []platformtools.Action {
-	return append(slices.Clone(platformtools.AgentActions), platformtools.ExperienceActions...)
+	return agentActionsCatalog
 }
 
 func agentSourceAction(name string) (platformtools.Action, bool) {
-	for _, action := range agentCatalogActions() {
-		if action.Member == name && action.Source != "" {
-			return action, true
-		}
-	}
-	return platformtools.Action{}, false
+	action, ok := agentSourceActionsByMember[name]
+	return action, ok
 }
 
 func agentConsentMember(name string) string {
@@ -54,17 +68,17 @@ func agentSourceMutates(source, operation string, original bool) bool {
 	case brainAdminTool:
 		return brainAdminWriteActions[operation]
 	case "manage_schedules":
-		return operation != "list" && operation != "runs"
+		return operation != "list" && operation != "runs" && operation != "scheduler_status"
 	case "manage_triggers":
 		return operation != "list" && operation != "runs" && operation != "status"
 	case "manage_condition_triggers":
-		return operation != "list" && operation != "history" && operation != "read_script"
+		return operation != "list" && operation != "history" && operation != "read_script" && operation != "items" && operation != "tasks"
 	case "crew_skills", "crew_mcp":
 		return !crewCapabilityRead(operation)
 	case externalCrewCommandsTool:
 		return operation != "list"
 	case externalCrewTeamSyncTool:
-		return operation != "clashes" && operation != "agents" && operation != "invites"
+		return operation != "clashes" && operation != "agents" && operation != "invites" && operation != "way" && operation != "setup_list" && operation != "setup_get" && operation != "setup_targets" && operation != "setup_kit"
 	case "manage_crew_chats":
 		return operation != "list" && operation != "read" && operation != "tools" && operation != "project_context" && operation != "native_list"
 	}
@@ -112,6 +126,9 @@ func agentSourceConsentAllowed(claims *UserClaims, tool externalTool) bool {
 	if !ok {
 		return true
 	}
+	if action.Source == "manage_schedules" && globalSchedulerAction(action.SourceAction) {
+		return schedulerAdminAllowed(claims)
+	}
 	args := map[string]any{action.SourceParameter(): action.SourceAction}
 	if action.Source == brainAdminTool && brainAdminWriteActions[action.SourceAction] && claims != nil && claims.AccessToken != nil && !claims.AccessToken.Allows("knowledgebase:write") {
 		return false
@@ -139,7 +156,7 @@ func agentSourceConsentAllowed(claims *UserClaims, tool externalTool) bool {
 	case "manage_condition_triggers":
 		return externalWatchersAllowed(claims)
 	case externalCrewTeamSyncTool:
-		if action.SourceAction == "clashes" || action.SourceAction == "invites" {
+		if action.SourceAction == "clashes" || action.SourceAction == "invites" || action.SourceAction == "way" || action.SourceAction == "setup_list" || action.SourceAction == "setup_get" || action.SourceAction == "setup_targets" || action.SourceAction == "setup_kit" {
 			return claims.AccessToken.Allows("crews:read")
 		}
 		return claims.AccessToken.Allows("crews:write")
@@ -180,7 +197,7 @@ func crewIntegrationExternalMembers(catalog []externalTool) ([]externalTool, err
 				if err != nil {
 					return nil, err
 				}
-				props["crew_id"] = externalString("Crew ID from workspace action=list.")
+				props["crew_id"] = externalString("Project ID from workspace action=list.")
 				required, _ := schema["required"].([]any)
 				schema["required"] = append([]any{"crew_id"}, required...)
 				member := source

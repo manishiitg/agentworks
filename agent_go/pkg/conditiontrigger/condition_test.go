@@ -64,7 +64,7 @@ print(json.dumps({"events":[{"id":"ticket-123","payload":{"ticket_id":"123"}}],"
 	if err := os.WriteFile(script, []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Config{Script: "code/triggers/check.py", SHA256: Hash(source), Target: Target{Kind: "agent", Message: "Process this ticket"}}
+	cfg := Config{Script: "watchers/check.py", SHA256: Hash(source), Target: Target{Kind: "agent", Message: "Process this ticket"}}
 	store := &diskStore{path: filepath.Join(dir, "ledger.json")}
 	accepted := map[string]string{}
 	effects := 0
@@ -136,7 +136,7 @@ func TestConditionCheckpointAndRecoveryBoundaries(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 	s := &diskStore{path: filepath.Join(t.TempDir(), "state")}
-	c := Config{Script: "code/triggers/check.py", SHA256: Hash("check"), Target: Target{Kind: "agent", Message: "Check"}}
+	c := Config{Script: "watchers/check.py", SHA256: Hash("check"), Target: Target{Kind: "agent", Message: "Check"}}
 	called := 0
 	e := &Engine{Store: s, Run: func(context.Context, Config, json.RawMessage) ([]byte, error) {
 		return []byte(`{"events":[{"id":"a","payload":{}}],"state":{}}`), nil
@@ -181,7 +181,7 @@ func TestConditionFullBacklogStillDrainsAndRetentionStaysBounded(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 	s := &diskStore{path: filepath.Join(t.TempDir(), "ledger")}
-	c := Config{Script: "code/triggers/check.py", SHA256: Hash("check"), Target: Target{Kind: "agent", Message: "Check"}}
+	c := Config{Script: "watchers/check.py", SHA256: Hash("check"), Target: Target{Kind: "agent", Message: "Check"}}
 	l := Ledger{State: json.RawMessage(`{}`)}
 	for i := 0; i < MaxPending; i++ {
 		l.Rows = append(l.Rows, Row{Event: Event{ID: fmt.Sprint(i), Payload: map[string]interface{}{}}, Revision: c.Revision(), Status: "seen", SeenAt: now})
@@ -272,7 +272,7 @@ func TestConditionOncePythonAndRestart(t *testing.T) {
 		resp.Body.Close()
 		return "accepted", nil
 	}
-	cfg := Config{Once: true, Script: "code/triggers/check.py", SHA256: Hash("source"), Target: Target{Kind: "agent", Message: "go"}}
+	cfg := Config{Once: true, Script: "watchers/check.py", SHA256: Hash("source"), Target: Target{Kind: "agent", Message: "go"}}
 	store := &diskStore{path: filepath.Join(dir, "ledger.json")}
 	engine := &Engine{Store: store, Run: run, Dispatch: dispatch}
 	if n, err := engine.Poll(ctx, "once", cfg, now); err != nil || n != 0 {
@@ -313,7 +313,7 @@ func TestConditionDoneWaitsForDurableDelivery(t *testing.T) {
 	now := time.Now().UTC()
 	store := &diskStore{path: filepath.Join(t.TempDir(), "ledger.json")}
 	calls, deliveries := 0, 0
-	cfg := Config{Script: "code/triggers/check.py", SHA256: Hash("test"), Target: Target{Kind: "agent", Message: "report"}}
+	cfg := Config{Script: "watchers/check.py", SHA256: Hash("test"), Target: Target{Kind: "agent", Message: "report"}}
 	runner := func(context.Context, Config, json.RawMessage) ([]byte, error) {
 		calls++
 		return []byte(`{"events":[{"id":"finished","payload":{}}],"state":{},"done":true}`), nil
@@ -348,5 +348,22 @@ func TestConditionDoneWaitsForDurableDelivery(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatal("completed watcher ran again")
+	}
+}
+
+// Feed rows link out from the person's menu (#3476): only https links may be saved.
+func TestFeedTargetLinkMustBeHTTPS(t *testing.T) {
+	base := Config{Script: "watchers/check.py", SHA256: Hash("check"), Target: Target{Kind: "feed", App: "slack"}}
+	for link, ok := range map[string]bool{"": true, "https://example.com/c/1": true, "javascript:alert(1)": false, "http://example.com": false} {
+		c := base
+		c.Target.Link = link
+		if err := c.Validate(); (err == nil) != ok {
+			t.Errorf("link %q: err=%v", link, err)
+		}
+	}
+	c := base
+	c.Target.App = "calendar"
+	if c.Validate() == nil {
+		t.Error("unknown feed app was accepted")
 	}
 }

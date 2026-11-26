@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,7 +17,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/relaypython"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/pythonruntime"
 	workspaceclient "github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
@@ -53,11 +55,11 @@ func TestCrewScriptSourceUsesParentAuthorityAndReferencesStayInCrew(t *testing.T
 	}
 	script := crewExecutableBinding{ID: "qualify", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/qualify", Kind: "script"}
 	other := crewExecutableBinding{ID: "other-script", CrewID: "crew-other", CrewRoot: "Crew/other", Root: "Workflow/other-script", Kind: "script"}
-	parent := crewExecutableBinding{ID: "sequence", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/sequence", Kind: "workflow"}
+	parent := crewExecutableBinding{ID: "sequence", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/sequence", Kind: "script"}
+	// Existing duplicate records exercise source authority and reference
+	// isolation; they are not new workflow creations.
 	for _, binding := range []crewExecutableBinding{script, other, parent} {
-		if err := registerCrewExecutable(binding); err != nil {
-			t.Fatal(err)
-		}
+		seedSavedCrewExecutableForTest(t, binding)
 	}
 	files := &mockWorkspaceAPI{files: map[string]string{"Workflow/qualify/code/script.json": `{"id":"qualify","name":"Qualify","inputs":[{"name":"count","type":"integer","value":"2"}]}`, "Workflow/qualify/code/main.py": "print('saved')\n", "Workflow/other-script/code/script.json": `{"id":"other-script","name":"Other"}`, "Workflow/other-script/code/main.py": "print('private')\n"}}
 	files.files["Crew/lab/product.json"] = `{"product":"work","id":"crew-lab","capabilities":{"browser_mode":"headless","llm_config":{"schema_version":1,"mode":"provider_profile","provider":"codex-cli"},"selected_servers":["example-app"],"selected_tools":["example-app:read"],"selected_global_secret_names":["EXAMPLE_CREDENTIAL"]}}`
@@ -101,7 +103,15 @@ sys.exit(1)
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
-		provided, _ := base64.StdEncoding.DecodeString(params.ExtraEnv["VAR_AUTOMATION_CHECK_FILES"])
+		pieces := ""
+		for i := 0; ; i++ {
+			piece, found := params.ExtraEnv[fmt.Sprintf("VAR_AUTOMATION_CHECK_FILES_%d", i)]
+			if !found {
+				break
+			}
+			pieces += piece
+		}
+		provided, _ := base64.StdEncoding.DecodeString(pieces)
 		if strings.Contains(string(provided), `"outside.py"`) {
 			t.Error("source inspection followed a link into another Crew")
 			c.JSON(400, gin.H{"error": "source link refused"})
@@ -117,7 +127,7 @@ sys.exit(1)
 			c.JSON(500, gin.H{"error": "source unavailable"})
 			return
 		}
-		cmd := exec.CommandContext(c.Request.Context(), python, "-I", "-c", relaypython.SourceInspector)
+		cmd := exec.CommandContext(c.Request.Context(), python, "-I", "-c", pythonruntime.SourceInspector)
 		cmd.Dir = layout.Code
 		cmd.Env = []string{"PATH=" + checkerDir, "PYTHONPATH=" + sdk, "SECRET_FIXTURE=must-not-reach-checker", "MCP_AUTH=fixture-only"}
 		for key, value := range params.ExtraEnv {
@@ -184,6 +194,38 @@ sys.exit(1)
 	if saved, _, err := readFileFromWorkspace(t.Context(), script.Root+"/code/main.py"); err != nil || saved != "print('owner update')\n" {
 		t.Fatal("checker errors prevented source save", err)
 	}
+	// #4151: a save from the project's Files viewer takes the same Builder-only path, and script.json is still checked.
+	filesEndpoint := httptest.NewServer(AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !crewScriptFilesProxyWrite(w, r) {
+			http.Error(w, "not a workflow source save", http.StatusTeapot)
+		}
+	})))
+	defer filesEndpoint.Close()
+	filesSave := func(user, file, content string) int {
+		t.Helper()
+		token, _ := GenerateJWT(user, user, "")
+		body, _ := json.Marshal(map[string]string{"content": content})
+		req, _ := http.NewRequest(http.MethodPut, filesEndpoint.URL+"/api/wp/api/documents/"+url.PathEscape(script.Root+"/code/"+file), bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+token)
+		response, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		return response.StatusCode
+	}
+	if code := filesSave("runner", "main.py", "print('forged')"); code != 403 {
+		t.Fatalf("Run-person Files save HTTP%d", code)
+	}
+	if code := filesSave("owner", "script.json", "{not json"); code != 400 {
+		t.Fatalf("Files save skipped the script.json check: HTTP%d", code)
+	}
+	if code := filesSave("owner", "main.py", "print('from files')\n"); code != 200 {
+		t.Fatalf("Builder Files save HTTP%d", code)
+	}
+	if saved, _, err := readFileFromWorkspace(t.Context(), script.Root+"/code/main.py"); err != nil || saved != "print('from files')\n" {
+		t.Fatal("Files save did not reach the workflow's code", err)
+	}
 	// A planted source link must not give inspection a read into another
 	// Crew. The source resolver must refuse or omit it, and checker includes
 	// must never follow it; inspecting the remaining safe files is allowed.
@@ -212,7 +254,7 @@ sys.exit(1)
 	if err := os.Remove(checker); err != nil {
 		t.Fatal(err)
 	}
-	if code := request("owner", "print('owner update')\n"); code != 200 || !strings.Contains(lastReply, "checker is not installed") {
+	if code := request("owner", "print('owner update')\n"); code != 200 || strings.Contains(lastReply, "checker is not installed") {
 		t.Fatalf("missing checker blocked save or prompted installation: HTTP%d %s", code, lastReply)
 	}
 
@@ -322,6 +364,19 @@ sys.exit(1)
 	resolved, err := resolver.ResolveCrewScript(context.Background(), parent.Root, "script:qualify")
 	if err != nil || string(resolved.Files["main.py"]) != "print('owner update')\n" || string(resolved.Files["helper/values.py"]) != "VALUE = 7\n" || string(resolved.Files["requirements.txt"]) != requirements {
 		t.Fatalf("same-Crew script: %+v %v", resolved, err)
+	}
+	// A joined Team member may start the Crew's saved workflow (it resolves as the owner); someone off the Team may not.
+	if _, err := (&crewWorkflowResources{userID: "runner"}).ResolveCrewScript(context.Background(), parent.Root, "script:qualify"); err == nil || !strings.Contains(err.Error(), "Team") {
+		t.Fatalf("a person off the Team started the Crew's workflow: %v", err)
+	}
+	if err := writeCrewTeam(crewTeam{ProjectID: "crew-lab", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "runner"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if member, err := (&crewWorkflowResources{userID: "runner"}).ResolveCrewScript(context.Background(), parent.Root, "script:qualify"); err != nil || member.Definition.ID != "qualify" {
+		t.Fatalf("a Team member could not start the Crew's workflow: %+v %v", member, err)
+	}
+	if dir, err := crewTeamDir("crew-lab"); err == nil { // the rest of this test runs without a Team
+		_ = os.RemoveAll(dir)
 	}
 	if _, err := resolver.ResolveCrewScript(context.Background(), parent.Root, "other-script"); err == nil || !strings.Contains(err.Error(), "shared function") {
 		t.Fatal("cross-Crew source reference accepted", err)

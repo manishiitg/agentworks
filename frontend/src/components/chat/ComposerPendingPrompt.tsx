@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { CircleHelp, ShieldQuestion } from 'lucide-react'
 import { CodingAgentQuestionCard } from '../CodingAgentQuestionCard'
+import { PlanLine } from './PlanModeControls'
+import { planFromQuestion } from '../../utils/planSummary'
 import type { CodingAgentQuestionAnswerHandler, CodingAgentQuestionPrompt } from '../../utils/codingAgentQuestions'
 
 // The backend's command approval asks "Deny" / "Allow" (allow this command once). The buttons say
 // Decline / Approve and send the backend's own label, so the answer means exactly what it did before.
-const COMMAND_APPROVAL_ID = 'command_permission'
 const BUTTON_TEXT: Record<string, string> = { Allow: 'Approve', Deny: 'Decline' }
 
 // A pending approval or question, docked just above the message box until it is answered, so it
@@ -17,15 +18,10 @@ export function ComposerPendingPrompt({ prompt, onAnswer }: {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const question = prompt.questions[0]
-  // One plain choice gets one-click buttons; anything richer keeps the full card.
-  const oneClick = prompt.questions.length === 1 && !question.multiSelect && !question.allowOther
-    && question.options.length > 0 && question.options.length <= 4
-  if (!oneClick) {
-    return <div className="mb-2 w-full px-3" data-testid="composer-pending-prompt">
-      <CodingAgentQuestionCard prompt={prompt} onAnswer={onAnswer} />
-    </div>
-  }
-  const approval = question.id === COMMAND_APPROVAL_ID
+  // A plan is one slim line; the full plan opens in the plan pane (#3711).
+  const planOptions = prompt.requestKind === 'plan_approval' && prompt.questions.length === 1
+    ? { approve: question.options.find(option => option.label === 'Approve'), reject: question.options.find(option => option.label === 'Reject') } : undefined
+  const approval = prompt.requestKind === 'command_approval'
   const answer = async (label: string) => {
     if (submitting) return
     setSubmitting(true)
@@ -38,6 +34,21 @@ export function ComposerPendingPrompt({ prompt, onAnswer }: {
       setSubmitting(false)
     }
   }
+  if (planOptions?.approve && planOptions.reject) {
+    const { approve, reject } = planOptions
+    return <section className="mb-2 w-full px-3" data-testid="composer-pending-prompt" aria-live="polite">
+      <PlanLine plan={planFromQuestion(question.question)} typeChanges={question.allowOther} answer={{ busy: submitting, approve: () => void answer(approve.label), reject: () => void answer(reject.label) }} />
+      {error && <p role="alert" className="mt-1 text-xs text-destructive">{error}</p>}
+    </section>
+  }
+  // One plain choice gets one-click buttons; anything richer keeps the full card.
+  const oneClick = prompt.questions.length === 1 && !question.multiSelect && !question.allowOther
+    && question.options.length > 0 && question.options.length <= 4
+  if (!oneClick) {
+    return <div className="mb-2 w-full px-3" data-testid="composer-pending-prompt">
+      <CodingAgentQuestionCard prompt={prompt} onAnswer={onAnswer} />
+    </div>
+  }
   // Approve is the main action, so it comes last (next to where people expect "send").
   const options = approval ? [...question.options].sort((a, b) => Number(a.label === 'Allow') - Number(b.label === 'Allow')) : question.options
   return <section className="mb-2 w-full px-3" data-testid="composer-pending-prompt" aria-live="polite">
@@ -46,6 +57,7 @@ export function ComposerPendingPrompt({ prompt, onAnswer }: {
         {approval ? <ShieldQuestion className="h-3.5 w-3.5" aria-hidden="true" /> : <CircleHelp className="h-3.5 w-3.5" aria-hidden="true" />}
         {approval ? 'Approval needed' : (question.header || 'Your agent is asking')}
       </div>
+      {prompt.statusMessage && <p className="mt-2 text-xs text-muted-foreground">{prompt.statusMessage}</p>}
       <p className={`max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-[13px] ${approval ? 'font-mono' : 'font-medium'}`}>{question.question}</p>
       <div className="mt-2.5 flex flex-wrap items-center justify-end gap-2">
         {options.map((option) => {

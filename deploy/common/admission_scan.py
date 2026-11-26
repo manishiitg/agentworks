@@ -66,13 +66,18 @@ def child_dirs(path: Path) -> list[Path]:
 
 
 def manifests(docs: Path) -> list[Path]:
-    crew = docs / "_system/crew-data"
-    roots = [docs / "Workflow", crew if crew.is_dir() else docs / "Crew", docs / "Relays"] + [docs / r for r in PROJECT_ROOTS]
+    # A Crew's records live in its .agentworks/settings/ (PLAT-746-924), never a same-named file in its folder.
+    roots = [docs / "Workflow", docs / "Relays"] + [docs / r for r in PROJECT_ROOTS]
+    found = []
+    for child in child_dirs(docs / "Crew"):
+        for name in ("workflow.json", "product.json"):
+            path = child / ".agentworks/settings" / name
+            if path.is_file() and not path.is_symlink():
+                found.append(path)
     for user in child_dirs(docs / USERS):
         if user.name in (SHARED_OWNER, MANAGED_GLOBALS_OWNER):
             continue
         roots += [user / "Workflow"] + [user / r for r in PROJECT_ROOTS]
-    found = []
     for root in roots:
         for child in child_dirs(root):
             for name in ("workflow.json", "product.json"):
@@ -145,15 +150,8 @@ def scan(docs: Path, env: dict[str, str], grants: set[str] | None) -> tuple[list
         if not isinstance(caps, dict):
             continue
         workspace = "/".join(path.parent.relative_to(docs).parts)
-        if path.parent.parent == docs / "_system/crew-data" and env.get("AGENTWORKS_STATE_ROOT"):
-            try:
-                registry = json.loads((Path(env["AGENTWORKS_STATE_ROOT"]) / "ownership/projects.json").read_text())
-                for record in registry.get("projects", {}).values():
-                    if record.get("product") == "work" and record.get("project_id") == path.parent.name:
-                        workspace = "Crew/" + record["folder"]
-                        break
-            except (OSError, ValueError):
-                warnings.append("WARN Crew secret admission: owner registry unavailable")
+        if path.parent.name == "settings" and path.parent.parent.name == ".agentworks" and path.parent.parent.parent.parent == docs / "Crew":
+            workspace = "Crew/" + path.parent.parent.parent.name
         digest = hashlib.sha256(workspace.encode()).hexdigest()
         available = set(globals_)
         for owner in owners:

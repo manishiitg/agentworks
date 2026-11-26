@@ -3,6 +3,7 @@ package filesnapshots
 // Reply history uses Git-reported paths inside checkouts and private raw
 // snapshots for ordinary files. Project Git stays read-only.
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -17,13 +18,30 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
+
+// Bound metadata and private tree work even when a parent folder contains
+// copied projects, migration output or large untracked backup directories.
+const maxTurnPaths = 10000
+
+// newCheckoutMaxPaths caps the changed files of a checkout that appeared
+// during a reply; above it the checkout is still being created.
+const newCheckoutMaxPaths = 1000
+
+var errTurnPathLimit = errors.New("too many files to track for this reply")
+
+func turnFileLimited(stats CaptureStats) bool {
+	return strings.HasSuffix(stats.Deferred, "file_limit")
+}
 
 type gitTurnRepo struct {
 	Label CheckoutLabel `json:"label"`
 	Head  string        `json:"head"`
 	Dirty []string      `json:"dirty"`
+	// gitDir is where Git keeps this checkout's state; not saved.
+	gitDir string
 }
 type turnBlob struct {
 	mode string
@@ -84,8 +102,24 @@ func (s Store) captureTurnFiles(ctx context.Context, ref, boundary string, loose
 
 // Do not walk checkout contents: Git reports their changed paths. A .git file
 // marks a linked worktree too; turnRepos validates it through safegit.CommandIn.
+// Unrelated linked worktrees are scratch checkouts, not this turn's capture scope.
 // Ordinary folders have no user Git and use our private before/after copies.
-func (s Store) turnPaths(ctx context.Context) (dirs, loose []string, err error) {
+//
+// Over the loose-file limit the walk still visits every folder, so checkouts
+// further on are found (before #3878 they were skipped), and counts the rest
+// for the Git row. That verdict and its checkouts are then reused until the
+// project's layout changes (file_limit.go), so later replies skip the walk.
+func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose []string, err error) {
+	if cached, ok := s.cachedOverLimit(ctx); ok {
+		stats.Deferred = "loose_file_limit"
+		stats.LimitReused = true
+		return cached, nil, nil
+	}
+	walkStarted := time.Now()
+	defer func() { stats.WalkMS = time.Since(walkStarted).Milliseconds() }()
+	folderSet := s.layoutFolders()
+	ignored := s.ignoredFolders(ctx)
+	files, perFolder := 0, map[string]int{}
 	err = filepath.WalkDir(s.Root, func(p string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -98,7 +132,7 @@ func (s Store) turnPaths(ctx context.Context) (dirs, loose []string, err error) 
 			return err
 		}
 		rel = filepath.ToSlash(rel)
-		if p != s.Root && excluded(rel, entry.IsDir()) {
+		if p != s.Root && (excluded(rel, entry.IsDir()) || entry.IsDir() && ignored[rel]) {
 			if entry.IsDir() {
 				return filepath.SkipDir
 			}
@@ -106,16 +140,34 @@ func (s Store) turnPaths(ctx context.Context) (dirs, loose []string, err error) 
 		}
 		if entry.IsDir() {
 			if _, err := os.Lstat(filepath.Join(p, ".git")); err == nil {
+				// Every checkout in the project counts, worktrees included:
+				// agents often edit a worktree while running from the project root.
 				dirs = append(dirs, p)
 				return filepath.SkipDir
 			} else if !os.IsNotExist(err) {
 				return err
 			}
 		} else if validTurnPath(rel) {
-			loose = append(loose, rel)
+			files++
+			if top, _, nested := strings.Cut(rel, "/"); nested {
+				perFolder[top]++
+			}
+			if len(loose) < maxTurnPaths {
+				loose = append(loose, rel)
+			} else {
+				stats.Deferred = "loose_file_limit"
+			}
 		}
 		return nil
 	})
+	if err == nil {
+		s.rememberFileLimit(folderSet, dirs, files, perFolder)
+	}
+	if stats.Deferred == "loose_file_limit" {
+		// An arbitrary prefix cannot be a trustworthy before/after boundary.
+		// Continue tracking checkouts, but omit loose files on this boundary.
+		loose = nil
+	}
 	return
 }
 
@@ -135,6 +187,9 @@ func (s Store) turnCandidatePaths(ctx context.Context, dir, head string) ([]stri
 				return errors.New("invalid Git path metadata")
 			}
 			paths[string(rows[i+1])] = true
+			if len(paths) > maxTurnPaths {
+				return errTurnPathLimit
+			}
 		}
 		return nil
 	}
@@ -156,22 +211,49 @@ func (s Store) turnCandidatePaths(ctx context.Context, dir, head string) ([]stri
 			}
 		}
 	}
-	out, err := gitIn(ctx, s.Root, dir, "ls-files", "--others", "--exclude-standard", "-z").Output()
+	child, stop := context.WithCancel(ctx)
+	defer stop()
+	cmd := gitIn(child, s.Root, dir, "ls-files", "--others", "--exclude-standard", "-z")
+	pipe, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
 	}
-	for _, p := range bytes.Split(out, []byte{0}) {
-		if len(p) > 0 {
-			paths[string(p)] = true
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	reader := bufio.NewReader(pipe)
+	var readErr error
+	for {
+		p, err := reader.ReadString(0)
+		if err != nil {
+			if err != io.EOF {
+				readErr = err
+			}
+			break
+		}
+		paths[strings.TrimSuffix(p, string([]byte{0}))] = true
+		if len(paths) > maxTurnPaths {
+			readErr = errTurnPathLimit
+			stop()
+			break
 		}
 	}
+	_ = pipe.Close()
+	waitErr := cmd.Wait()
+	if readErr != nil {
+		return nil, readErr
+	}
+	if waitErr != nil {
+		return nil, waitErr
+	}
+
 	return turnKeys(paths), nil
 }
 
 // turnRepos reads each checkout's candidate paths. A checkout Git cannot read
 // (a broken .git folder, an index the server account cannot open) is skipped
 // and named in the log, so one bad checkout never fails the whole reply.
-func (s Store) turnRepos(ctx context.Context, dirs []string) (map[string]gitTurnRepo, map[string]bool, error) {
+func (s Store) turnRepos(ctx context.Context, dirs []string, stats *CaptureStats) (map[string]gitTurnRepo, map[string]bool, error) {
 	// Leave the other half of the boundary for importing and publishing healthy
 	// files. One slow checkout must not consume the entire capture deadline.
 	budget := 30 * time.Second
@@ -196,46 +278,89 @@ func (s Store) turnRepos(ctx context.Context, dirs []string) (map[string]gitTurn
 		}
 		results[i].root = filepath.ToSlash(rel)
 	}
+	plans, reusedRepos := s.planRepos(dirs)
+	var reused atomic.Int64
 	_ = parallel(len(dirs), func(i int) error {
 		started := time.Now()
+		token, watched := plans[i].token, plans[i].watched
+		if plans[i].reuse {
+			results[i].repo = reusedRepos[i]
+			reused.Add(1)
+			return nil
+		}
 		repoCtx, stop := context.WithTimeout(discovery, 10*time.Second)
 		defer stop()
-		results[i].repo, results[i].err = s.turnRepo(repoCtx, dirs[i], results[i].root)
+		var shared bool
+		results[i].repo, shared, results[i].err = shareRepoRead(repoCtx, s.Root+"\x00"+dirs[i], func(ctx context.Context) (gitTurnRepo, error) {
+			return s.turnRepo(ctx, dirs[i], results[i].root)
+		})
 		if repoCtx.Err() != nil {
 			results[i].err = repoCtx.Err()
 		}
-		log.Printf("[FILE_SNAPSHOT] phase=checkout_discovery dir=%q elapsed_ms=%d success=%t", results[i].root, time.Since(started).Milliseconds(), results[i].err == nil)
+		if watched && results[i].err == nil {
+			if results[i].repo.gitDir != "" {
+				s.Watch.Located(dirs[i], results[i].repo.gitDir, commonGitDir(results[i].repo.gitDir))
+			}
+			s.rememberRepo(dirs[i], token, results[i].repo)
+		}
+		log.Printf("[FILE_SNAPSHOT] phase=checkout_discovery dir=%q reason=%s elapsed_ms=%d success=%t shared=%t", results[i].root, plans[i].reason, time.Since(started).Milliseconds(), results[i].err == nil, shared)
 		return nil
 	})
+	stats.ReposReused = int(reused.Load())
 	out, skipped := map[string]gitTurnRepo{}, map[string]bool{}
+	count := 0
 	for _, r := range results {
+		if count+len(r.repo.Dirty) > maxTurnPaths {
+			r.err = errTurnPathLimit
+		}
+		if errors.Is(r.err, errTurnPathLimit) && stats.Deferred == "" {
+			stats.Deferred = "file_limit"
+		}
 		if r.err != nil {
 			skipped[r.root] = true
 			log.Printf("[SNAPSHOT] checkout_skipped dir=%q reason=%q", r.root, gitReason(r.err))
 		} else {
 			out[r.root] = r.repo
+			count += len(r.repo.Dirty)
 		}
 	}
 	return out, skipped, ctx.Err()
 }
 
 func (s Store) turnRepo(ctx context.Context, dir, root string) (gitTurnRepo, error) {
-	head, _ := gitIn(ctx, s.Root, dir, "rev-parse", "--verify", "HEAD").Output()
-	dirty, err := s.turnCandidatePaths(ctx, dir, strings.TrimSpace(string(head)))
+	// One call gives the Git folder and the current commit. A checkout with no
+	// commits yet prints only the folder and exits 1. This runs for every
+	// checkout before and after every reply, so the lookups are kept few.
+	meta, err := gitIn(ctx, s.Root, dir, "rev-parse", "--absolute-git-dir", "--verify", "-q", "HEAD").Output()
+	lines := strings.Split(strings.TrimSpace(string(meta)), "\n")
+	var exit *exec.ExitError
+	if lines[0] == "" || (err != nil && !(errors.As(err, &exit) && exit.ExitCode() == 1 && len(lines) == 1)) {
+		if err == nil {
+			err = errors.New("Git did not report the checkout's folder")
+		}
+		return gitTurnRepo{}, err
+	}
+	gitdir, head := lines[0], ""
+	if len(lines) > 1 {
+		head = strings.TrimSpace(lines[1])
+	}
+	identity, err := checkoutIdentity(gitdir)
 	if err != nil {
 		return gitTurnRepo{}, err
 	}
-	branch, _ := gitIn(ctx, s.Root, dir, "symbolic-ref", "--quiet", "--short", "HEAD").Output()
+	dirty, err := s.turnCandidatePaths(ctx, dir, head)
+	if err != nil {
+		return gitTurnRepo{}, err
+	}
+	branch := ""
+	if raw, readErr := os.ReadFile(filepath.Join(gitdir, "HEAD")); readErr == nil {
+		branch = strings.TrimPrefix(strings.TrimSpace(string(raw)), "ref: refs/heads/")
+		if strings.HasPrefix(branch, "ref: ") || branch == head {
+			branch = "" // another kind of ref, or a detached commit
+		}
+	}
 	remote, _ := gitIn(ctx, s.Root, dir, "config", "--get", "remote.origin.url").Output()
-	gitdir, err := gitIn(ctx, s.Root, dir, "rev-parse", "--absolute-git-dir").Output()
-	if err != nil {
-		return gitTurnRepo{}, err
-	}
-	identity, err := checkoutIdentity(strings.TrimSpace(string(gitdir)))
-	if err != nil {
-		return gitTurnRepo{}, err
-	}
-	repo := gitTurnRepo{Head: strings.TrimSpace(string(head)), Dirty: dirty, Label: CheckoutLabel{ID: identity, Root: root, Name: filepath.Base(dir), Branch: strings.TrimSpace(string(branch)), GitHubRepo: GitHubRepo(string(remote))}}
+	repo := gitTurnRepo{Head: head, Dirty: dirty, gitDir: gitdir, Label: CheckoutLabel{ID: identity, Root: root, Name: filepath.Base(dir), Branch: branch, GitHubRepo: GitHubRepo(string(remote))}}
 	if repo.Label.Branch == "" && len(repo.Head) >= 8 {
 		repo.Label.Branch = "detached@" + repo.Head[:8]
 	}
@@ -269,10 +394,10 @@ func (s Store) writeTurnFiles(ctx context.Context, ref string, files map[string]
 	for _, p := range turnKeys(files) {
 		b := files[p]
 		if b.oid != "" {
-			fmt.Fprintf(&input, "M %s %s %s\n", b.mode, b.oid, strconv.Quote(p))
+			fmt.Fprintf(&input, "M %s %s %s\n", b.mode, b.oid, gitQuotePath(p))
 			continue
 		}
-		fmt.Fprintf(&input, "M %s inline %s\ndata %d\n", b.mode, strconv.Quote(p), len(b.data))
+		fmt.Fprintf(&input, "M %s inline %s\ndata %d\n", b.mode, gitQuotePath(p), len(b.data))
 		input.Write(b.data)
 		input.WriteByte('\n')
 	}
@@ -287,29 +412,36 @@ func (s Store) writeTurnFiles(ctx context.Context, ref string, files map[string]
 }
 
 func (s Store) BeginGitTurn(ctx context.Context, execution string) (Record, error) {
+	if r, err := s.read(ID(execution)); err == nil {
+		return r, nil
+	}
+	// Finding checkouts and asking Git what changed only reads the project,
+	// so it runs before taking the store's gate: replies in other chats of the
+	// same project no longer wait behind it (#3878). The gate guards the
+	// private store, which is written below.
+	r := Record{ID: ID(execution), ExecutionID: execution, StartedAt: time.Now().UTC(), Status: "capturing", BeforeHeads: map[string]string{}}
+	discoveryStarted := time.Now()
+	dirs, loose, err := s.turnPaths(ctx, &r.BeforeCapture)
+	if err != nil {
+		return r, err
+	}
+	r.GitTurn, _, err = s.turnRepos(ctx, dirs, &r.BeforeCapture)
+	r.BeforeCapture.DiscoveryMS = time.Since(discoveryStarted).Milliseconds()
+	if err != nil {
+		return r, err
+	}
 	gateStarted := time.Now()
 	unlock, err := s.lock(ctx)
 	if err != nil {
 		return Record{}, err
 	}
 	defer unlock()
-	if r, err := s.read(ID(execution)); err == nil {
-		return r, nil
+	r.BeforeCapture.GateMS = time.Since(gateStarted).Milliseconds()
+	if saved, err := s.read(ID(execution)); err == nil {
+		return saved, nil
 	}
 	if err := s.init(ctx); err != nil {
 		return Record{}, err
-	}
-	r := Record{ID: ID(execution), ExecutionID: execution, StartedAt: time.Now().UTC(), Status: "capturing", BeforeHeads: map[string]string{}}
-	r.BeforeCapture.GateMS = time.Since(gateStarted).Milliseconds()
-	discoveryStarted := time.Now()
-	dirs, loose, err := s.turnPaths(ctx)
-	if err != nil {
-		return r, err
-	}
-	r.GitTurn, _, err = s.turnRepos(ctx, dirs)
-	r.BeforeCapture.DiscoveryMS = time.Since(discoveryStarted).Milliseconds()
-	if err != nil {
-		return r, err
 	}
 	// Remember unreadable roots too: recovering one next boundary must not
 	// mistake its existing committed files for new work made during this turn.
@@ -342,24 +474,30 @@ func (s Store) BeginGitTurn(ctx context.Context, execution string) (Record, erro
 }
 
 func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, error) {
-	gateStarted := time.Now()
-	unlock, err := s.lock(ctx)
+	if r, err := s.read(ID(execution)); err != nil || r.Status != "capturing" {
+		return r, err
+	}
+	// Discovery reads only the project; see BeginGitTurn.
+	var stats CaptureStats
+	discoveryStarted := time.Now()
+	dirs, loose, err := s.turnPaths(ctx, &stats)
 	if err != nil {
 		return Record{}, err
 	}
+	repos, unreadable, err := s.turnRepos(ctx, dirs, &stats)
+	stats.DiscoveryMS = time.Since(discoveryStarted).Milliseconds()
+	gateStarted := time.Now()
+	unlock, lockErr := s.lock(ctx)
+	if lockErr != nil {
+		return Record{}, lockErr
+	}
 	defer unlock()
-	r, err := s.read(ID(execution))
+	r, readErr := s.read(ID(execution))
+	if readErr != nil || r.Status != "capturing" {
+		return r, readErr
+	}
+	r.AfterCapture = stats
 	r.AfterCapture.GateMS = time.Since(gateStarted).Milliseconds()
-	if err != nil || r.Status != "capturing" {
-		return r, err
-	}
-	discoveryStarted := time.Now()
-	dirs, loose, err := s.turnPaths(ctx)
-	if err != nil {
-		return r, err
-	}
-	repos, unreadable, err := s.turnRepos(ctx, dirs)
-	r.AfterCapture.DiscoveryMS = time.Since(discoveryStarted).Milliseconds()
 	if err != nil {
 		return r, err
 	}
@@ -385,8 +523,9 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 		paths[root] = nil
 		start, existed := r.GitTurn[root]
 		dir := filepath.Join(s.Root, filepath.FromSlash(root))
-		if !existed && presentBefore[root] {
-			// No trustworthy before-image for this checkout. Keep other roots.
+		if !existed && (presentBefore[root] || r.BeforeCapture.Deferred == "loose_file_limit") {
+			// No trustworthy before-image, including roots hidden by a capped
+			// ordinary walk. Never call pre-existing dirty files new reply edits.
 			r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
 			continue
 		}
@@ -406,19 +545,16 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 			candidates[p] = true
 		}
 		if start.Head != "" && end.Head != "" && start.Head != end.Head {
-			if gitIn(ctx, s.Root, dir, "merge-base", "--is-ancestor", start.Head, end.Head).Run() != nil {
-				r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
-				continue
-			}
-			raw, e := gitIn(ctx, s.Root, dir, "diff", "--name-only", "--no-renames", "--no-ext-diff", "--no-textconv", "-z", start.Head, end.Head, "--").Output()
+			// Only the reply's own commits, not what a pull, merge or rebase
+			// brought in (own_commits.go).
+			own, e := s.ownCommitPaths(ctx, dir, start.Head, end.Head, r.StartedAt)
 			if e != nil {
+				log.Printf("[FILE_SNAPSHOT] phase=own_commits root=%q err=%v", root, e)
 				r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
 				continue
 			}
-			for _, p := range bytes.Split(raw, []byte{0}) {
-				if len(p) > 0 {
-					candidates[string(p)] = true
-				}
+			for _, p := range own {
+				candidates[p] = true
 			}
 		}
 		if start.Head == "" && end.Head != "" {
@@ -432,6 +568,22 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 					candidates[string(p)] = true
 				}
 			}
+		}
+		if !existed && len(candidates) > newCheckoutMaxPaths {
+			// A checkout that appeared during the reply with thousands of changed
+			// files is one being created (another agent's worktree mid-checkout),
+			// not this reply's edits. Reading it file by file ran the whole
+			// capture out of time (#3878), so it gets no review for this reply.
+			log.Printf("[FILE_SNAPSHOT] phase=new_checkout_skipped root=%q paths=%d", root, len(candidates))
+			r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
+			continue
+		}
+		if len(candidates) > maxTurnPaths {
+			if r.AfterCapture.Deferred == "" {
+				r.AfterCapture.Deferred = "file_limit"
+			}
+			r.Review.IncompleteRoots = append(r.Review.IncompleteRoots, root)
+			continue
 		}
 		starts[root] = start
 		paths[root] = turnKeys(candidates)
@@ -497,8 +649,22 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 	for _, p := range r.Omitted {
 		ignored[p] = true
 	}
+	// The walk skips folders the project's .gitignore leaves out, so a folder
+	// ignored during this reply is simply absent now. Its files are ignored
+	// output, not deletions (as when the walk still read them and the ignore
+	// filter omitted them).
+	nowIgnored := s.ignoredFolders(ctx)
+	for p := range previous {
+		if _, repo := savedRoot(p, roots); !repo && !ignored[p] && underIgnored(nowIgnored, p) {
+			ignored[p] = true
+			r.Omitted = append(r.Omitted, p)
+		}
+	}
 	candidates := map[string]bool{}
 	for _, p := range append(turnKeys(current), turnKeys(previous)...) {
+		if r.BeforeCapture.Deferred == "loose_file_limit" || r.AfterCapture.Deferred == "loose_file_limit" {
+			break
+		}
 		if _, repo := savedRoot(p, roots); !repo && validTurnPath(p) && !ignored[p] {
 			candidates[p] = true
 		}
@@ -538,10 +704,12 @@ func (s Store) FinishGitTurn(ctx context.Context, execution string) (Record, err
 	for _, root := range turnKeys(changedRoots) {
 		r.Review.Spans = append(r.Review.Spans, reviewSpan{Checkout: repos[root].Label, Before: r.Before, After: r.After})
 	}
+	r.Review.ChangedRoots = turnKeys(changedRoots)
 	now := time.Now().UTC()
 	r.CompletedAt = &now
+	s.markSharedTurns(&r)
 	r.Status = "complete"
-	if len(r.Skipped) > 0 || len(r.Review.IncompleteRoots) > 0 {
+	if len(r.Skipped) > 0 || len(r.Review.IncompleteRoots) > 0 || turnFileLimited(r.BeforeCapture) || turnFileLimited(r.AfterCapture) {
 		r.Status = "partial"
 	}
 	r.AfterCapture.Repos = len(repos)
@@ -642,6 +810,9 @@ func (s Store) treeTurnFile(ctx context.Context, list *exec.Cmd, blob func(strin
 // or capture limit) whose size, time and type are the same after the reply.
 // The reply did not change them, so nothing was lost: they stay out of both
 // sides like ignored paths and do not raise the capture-limit warning.
+// A rewrite keeping the same size and modification time is not detected; only
+// the warning is lost then, since these bytes were never captured anyway. A
+// deleted path fails Lstat and stays skipped, so it still warns.
 func (s Store) untouchedSkipped(r Record) map[string]bool {
 	out := map[string]bool{}
 	root, err := os.OpenRoot(s.Root)

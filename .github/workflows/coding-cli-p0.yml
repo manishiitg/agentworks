@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "agent_go/**"
+      - "mcpagent/**"
+      - "multi-llm-provider-go/**"
       - "scripts/run-coding-cli-p0.sh"
       - ".github/workflows/coding-cli-p0.yml"
       # The ticket-register integrity check below guards a docs-only failure
@@ -12,6 +14,8 @@ on:
   pull_request:
     paths:
       - "agent_go/**"
+      - "mcpagent/**"
+      - "multi-llm-provider-go/**"
       - "scripts/run-coding-cli-p0.sh"
       - ".github/workflows/coding-cli-p0.yml"
       # The ticket-register integrity check below guards a docs-only failure
@@ -37,23 +41,13 @@ jobs:
         uses: actions/checkout@v6
         with:
           path: coding-agent-loop
-      - name: Checkout mcpagent
-        uses: actions/checkout@v6
-        with:
-          repository: manishiitg/mcpagent
-          path: mcpagent
-      - name: Checkout llm-provider-mcp
-        uses: actions/checkout@v6
-        with:
-          repository: manishiitg/llm-provider-mcp
-          path: multi-llm-provider-go
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version: "1.26.x"
           cache-dependency-path: |
             coding-agent-loop/agent_go/go.sum
-            multi-llm-provider-go/go.sum
+            coding-agent-loop/multi-llm-provider-go/go.sum
 
       - name: Set up Node
         uses: actions/setup-node@v6
@@ -63,40 +57,36 @@ jobs:
       - name: Install tmux for hermetic lifecycle contracts
         run: sudo apt-get update && sudo apt-get install -y tmux
 
-      - name: Verify production follows coding dependency main branches
-        working-directory: coding-agent-loop
-        run: ./agent_go/scripts/check-production-dependency-refs.sh
-
       - name: Verify coding CLI registry
         working-directory: coding-agent-loop
         run: >-
-          go -C ../multi-llm-provider-go test .
+          go -C multi-llm-provider-go test .
           -run 'TestActiveCodingAgentProvidersSatisfyP0Contract|TestCodingAgentCertificationReferencesExistingTests|TestCodingAgentP0ReleaseMatrix'
           -count=1
 
       - name: Verify provider cleanup and terminal metadata contracts
         working-directory: coding-agent-loop
         run: |
-          go -C ../multi-llm-provider-go test ./pkg/adapters/picli -run '^TestPiBoundedCleanupUsesSharedTmuxKillDelay$' -count=1
-          go -C ../mcpagent test ./agent -run '^TestFinishStreamingTerminalEndIncludesRetentionMetadata$' -count=1
+          go -C multi-llm-provider-go test ./pkg/adapters/picli -run '^TestPiBoundedCleanupUsesSharedTmuxKillDelay$' -count=1
+          go -C mcpagent test ./agent -run '^TestFinishStreamingTerminalEndIncludesRetentionMetadata$' -count=1
 
       - name: Verify AGY promptless terminal recovery
         working-directory: coding-agent-loop
         run: |
-          go -C ../multi-llm-provider-go test ./pkg/adapters/agycli -run '^Test(AgyLaunchOnlyDoesNotRequireHumanPrompt|AgyInteractiveEffortMustMatchModel)$' -count=1
-          go -C ../mcpagent test ./agent -run '^TestRestoredAgyTransportLaunchEnablesInteractiveLane$' -count=1
+          go -C multi-llm-provider-go test ./pkg/adapters/agycli -run '^Test(AgyLaunchOnlyDoesNotRequireHumanPrompt|AgyInteractiveEffortMustMatchModel)$' -count=1
+          go -C mcpagent test ./agent -run '^TestRestoredAgyTransportLaunchEnablesInteractiveLane$' -count=1
 
       - name: Verify Claude multiline live-input submission
         working-directory: coding-agent-loop
         run: >-
-          go -C ../multi-llm-provider-go test ./pkg/adapters/claudecode
+          go -C multi-llm-provider-go test ./pkg/adapters/claudecode
           -run '^TestClaudePromptPasteChipSettlesWhileActiveTurnRepaints$'
           -count=1
 
       - name: Verify mandatory canonical turn lifecycle
         working-directory: coding-agent-loop
         run: >-
-          go -C ../mcpagent test ./agent
+          go -C mcpagent test ./agent
           -run '^TestP0CanonicalTurnContract$'
           -count=1
 
@@ -170,16 +160,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           path: coding-agent-loop
-      - name: Checkout mcpagent
-        uses: actions/checkout@v6
-        with:
-          repository: manishiitg/mcpagent
-          path: mcpagent
-      - name: Checkout llm-provider-mcp
-        uses: actions/checkout@v6
-        with:
-          repository: manishiitg/llm-provider-mcp
-          path: multi-llm-provider-go
 
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
@@ -187,7 +167,7 @@ jobs:
           go-version: "1.26.x"
           cache-dependency-path: |
             coding-agent-loop/agent_go/go.sum
-            multi-llm-provider-go/go.sum
+            coding-agent-loop/multi-llm-provider-go/go.sum
 
       - name: Set up Node
         uses: actions/setup-node@v6

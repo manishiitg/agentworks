@@ -1,12 +1,15 @@
 import { GitHubConnectCompletion } from './components/integrations/GitHubVault'
+import { OAuthReturnCompletion } from './components/integrations/OAuthReturnCompletion'
 import { ServerProductSurface } from './components/ServerProductSurface'
 import LlmModalHost from './components/topbar/LlmModalHost'
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // Code is a second product definition over the same project surface.
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useCallback, useContext, useRef, useState, lazy, Suspense } from "react";
+import { useProjectsPage } from './utils/appNavigation'
 import { DashboardsPageContext } from './contexts/DashboardsPageContext'
 import { ThemeProvider } from "./contexts/ThemeContext.tsx";
+import { NativeSetupNotice } from "./components/NativeSetupNotice";
 import { UpdateProgressToast } from "./components/UpdateProgressToast";
 import { GlobalHumanFeedbackPrompt } from "./components/GlobalHumanFeedbackPrompt";
 import { resetSessionId } from "./services/api";
@@ -38,12 +41,11 @@ declare global {
 
 import { apiLogEntries, summarizeApiTimings } from './utils/apiTiming'
 import { useWorkspaceReturnStore } from './stores/useWorkspaceReturnStore'
-import { WelcomeHome } from './components/WelcomeHome'
 
 const queryClient = new QueryClient();
 
-const WorkflowsOverviewPage = lazy(() => import('./components/ActivityPage'))
 const DashboardsPage = lazy(() => import('./components/DashboardsPage').then(module => ({ default: module.DashboardsPage })))
+const ProjectsDirectory = lazy(() => import('./components/workspace/ProjectsDirectory'))
 const SchedulesPage = lazy(() => import('./components/SchedulesPage'))
 const AdminPages = lazy(() => import('./components/AdminPages'))
 const WorkSurface = lazy(() => loadWorkSurface().then(module => ({ default: module.WorkSurface })))
@@ -97,8 +99,8 @@ const hasOpenWorkspaceCollapsingPopup = () => {
 
 function AppWorkspace() {
   const dashboardsOpen = useContext(DashboardsPageContext)
+  const projectsOpen = useProjectsPage()
   const returnNote = useWorkspaceReturnStore(state => state.note || state.saveError)
-  const firstVisit = useWorkspaceReturnStore(state => state.firstVisit)
   const productSurface = useProductSurfaceStore(state => state.productSurface)
   const setProductSurface = useProductSurfaceStore(state => state.setProductSurface)
   const allowedProducts = useAuthStore(state => state.user?.allowed_products)
@@ -146,19 +148,14 @@ function AppWorkspace() {
   const {
     setSelectedPresetId,
     setWorkspaceMinimizedForLayout,
-    showWorkflowsOverview,
-    setShowWorkflowsOverview,
     showSchedulesOverview,
     adminPage
   } = useAppStore(useShallow(state => ({
     setSelectedPresetId: state.setSelectedPresetId,
     setWorkspaceMinimizedForLayout: state.setWorkspaceMinimizedForLayout,
-    showWorkflowsOverview: state.showWorkflowsOverview,
-    setShowWorkflowsOverview: state.setShowWorkflowsOverview,
     showSchedulesOverview: state.showSchedulesOverview,
     adminPage: state.adminPage,
   })))
-  const [hasOpenedWorkflowsOverview, setHasOpenedWorkflowsOverview] = useState(showWorkflowsOverview)
   const [hasOpenedSchedulesOverview, setHasOpenedSchedulesOverview] = useState(showSchedulesOverview)
   
   // Expose performance diagnostics on window for DevTools console
@@ -581,12 +578,11 @@ function AppWorkspace() {
     if (dashboardsOpen || productSurface !== 'agentworks') return
     if (!hasCompletedInitialSetup || selectedModeCategory !== 'workflow') {
       setModeCategory('workflow')
-      setShowWorkflowsOverview(productSurface === 'agentworks')
       completeInitialSetup()
     }
-  }, [completeInitialSetup, hasCompletedInitialSetup, productSurface, selectedModeCategory, setModeCategory, setShowWorkflowsOverview, dashboardsOpen])
+  }, [completeInitialSetup, hasCompletedInitialSetup, productSurface, selectedModeCategory, setModeCategory, dashboardsOpen])
 
-  useWorkflowTabRestore(!dashboardsOpen && hasCompletedInitialSetup && !showWorkflowsOverview, productSurface, selectedModeCategory)
+  useWorkflowTabRestore(!dashboardsOpen && hasCompletedInitialSetup, productSurface, selectedModeCategory)
 
   // Restore active presets after stores are initialized
   const hasRestoredPresetRef = useRef(false)
@@ -674,11 +670,6 @@ function AppWorkspace() {
     }
   }, [setSelectedPresetId, clearActivePreset, selectedModeCategory, applyPreset]);
 
-  useEffect(() => {
-    if (showWorkflowsOverview) {
-      setHasOpenedWorkflowsOverview(true)
-    }
-  }, [showWorkflowsOverview])
 
   useEffect(() => {
     if (showSchedulesOverview) {
@@ -687,7 +678,7 @@ function AppWorkspace() {
   }, [showSchedulesOverview])
 
   useEffect(() => {
-    if (showWorkflowsOverview || showProviders || showSchedulesOverview || adminPage) {
+    if (showProviders || showSchedulesOverview || adminPage) {
       setWorkspaceMinimizedForLayout(true)
       return
     }
@@ -696,7 +687,7 @@ function AppWorkspace() {
       const { workspaceMinimizedByMode } = useAppStore.getState()
       setWorkspaceMinimizedForLayout(Boolean(workspaceMinimizedByMode?.[selectedModeCategory]))
     }
-  }, [selectedModeCategory, showWorkflowsOverview, showProviders, showSchedulesOverview, adminPage, setWorkspaceMinimizedForLayout])
+  }, [selectedModeCategory, showProviders, showSchedulesOverview, adminPage, setWorkspaceMinimizedForLayout])
 
   useEffect(() => {
     const collapseWorkspaceForPopup = () => {
@@ -721,11 +712,12 @@ function AppWorkspace() {
 
   return (
         <>
-        {/* First visit: products, MCP and providers instead of an empty product surface. */}
-        <WelcomeHome autoOpen={firstVisit} />
         <GitHubConnectCompletion />
+        <OAuthReturnCompletion />
         {returnNote && <div role="status" className="fixed right-4 top-4 z-50 flex max-w-md items-start gap-3 rounded-lg border border-border bg-popover p-3 text-sm text-popover-foreground shadow-lg"><span>{returnNote}</span><button type="button" aria-label="Dismiss workspace notice" onClick={() => useWorkspaceReturnStore.setState({ note: '', saveError: '' })}>×</button></div>}
-        {dashboardsOpen ? (
+        {projectsOpen ? (
+          <Suspense fallback={<FileSurfaceFallback />}><ProjectsDirectory /></Suspense>
+        ) : dashboardsOpen ? (
           <div className="flex h-full min-h-0 bg-background">
             <ProductTopBar>{null}</ProductTopBar>
             <div className="min-h-0 min-w-0 flex-1">
@@ -740,7 +732,7 @@ function AppWorkspace() {
         ) : productSurface === 'knowledgebase' ? (
           <Suspense fallback={<ProductSurfaceFallback label="Brain" />}><KnowledgebaseSurface /></Suspense>
         ) : productSurface === 'work' ? (
-          <Suspense fallback={<ProductSurfaceFallback label="Crew" />}><WorkSurface key="work" /></Suspense>
+          <Suspense fallback={<ProductSurfaceFallback label="Project" />}><WorkSurface key="work" /></Suspense>
         ) : productSurface === 'llm-gateway' ? (
           <ServerProductSurface product="llm-gateway" label="LLM Gateway" />
         ) : productSurface === 'mcp-gateway' ? (
@@ -748,6 +740,7 @@ function AppWorkspace() {
         ) : (
         <>
         <UpdateProgressToast />
+        <NativeSetupNotice />
         <GlobalHumanFeedbackPrompt />
         <div className="h-full bg-background flex">
           {/* All workspace products reuse the same global navigation. */}
@@ -756,13 +749,6 @@ function AppWorkspace() {
             <ModePresetBar />
             
             <div className="flex-1 min-w-0 min-h-0 overflow-hidden relative">
-                {hasOpenedWorkflowsOverview && (
-                  <div className={showWorkflowsOverview && !showProviders ? 'h-full' : 'hidden'}>
-                    <Suspense fallback={<FileSurfaceFallback />}>
-                      <WorkflowsOverviewPage />
-                    </Suspense>
-                  </div>
-                )}
                 {hasOpenedSchedulesOverview && (
                   <div className={showSchedulesOverview && !showProviders ? 'h-full' : 'hidden'}>
                     <Suspense fallback={<FileSurfaceFallback />}>
@@ -778,7 +764,7 @@ function AppWorkspace() {
                   </div>
                 )}
                 <LlmModalHost />
-                <div className={!showWorkflowsOverview && !showProviders && !showSchedulesOverview && !adminPage ? 'h-full' : 'hidden'}>
+                <div className={!showProviders && !showSchedulesOverview && !adminPage ? 'h-full' : 'hidden'}>
                   <Suspense fallback={<FileSurfaceFallback />}>
                     <WorkflowLayout
                       className="h-full"

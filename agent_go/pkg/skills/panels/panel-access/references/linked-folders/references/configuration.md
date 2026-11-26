@@ -10,7 +10,11 @@
   process gained access retroactively.
 - On a Mac this is the same list as Integrations → Folders on this Mac. "Your whole
   Mac" is `folder_attach` on the home folder with alias `mac` and `read_write`. Offer
-  it only when asked; one folder is usually enough. Downloads is on by default and is
+  it only when asked; one exact folder is usually enough. On a Mac most of the home
+  is already open to the chat; a grant matters for AgentWorks data (another project's
+  or project's folder); the whole Mac includes that data on purpose. It also permits process listing and signalling (`ps`, `top`, `kill`) as the
+  person, without extra OS privileges. Opening or scripting apps still needs
+  Computer use (`crew-laptop`). Downloads is on by default and is
   switched on that screen only.
 - Do not attach a folder that holds sign-ins (`.ssh`, `.aws`, keychains, browser
   profiles) unless the person names that exact folder. Say plainly that you will be

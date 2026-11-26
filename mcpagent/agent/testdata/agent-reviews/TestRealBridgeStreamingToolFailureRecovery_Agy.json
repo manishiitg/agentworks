@@ -1,0 +1,34 @@
+{
+  "test": "TestRealBridgeStreamingToolFailureRecovery_Agy",
+  "summary": "AGY alpha recovers from a bridge tool failure: the first call fails, it retries, and the final-only answer contains the build ID",
+  "review_criteria": [
+    "no duplicated lines, prompt echo, internal instructions, or terminal escape codes in the answer",
+    "human-readable final answer with coherent formatting and no invented work",
+    "real intended bridge tools completed and their results agree with the answer and on-disk work",
+    "multi-turn context, native resume, session isolation, and failure behavior match the test's claim",
+    "AGY alpha delivers assistant content once at turn completion; do not describe it as token-streamed or claim the post-hoc tool events were live"
+  ],
+  "output": {
+    "answer": "BUILD_ID_24efc07e25e0",
+    "auth_mode": "gemini_api_key (AGY_P0_KEY_MODE; subscription quota exhausted, transport mechanics unaffected)",
+    "clean_stream": "BUILD_ID_24efc07e25e0",
+    "content_chunks": 1,
+    "injected_first_failure": "TRANSIENT_TOOL_FAILURE on call #1",
+    "provider": "Agy",
+    "recovered_build_id": "BUILD_ID_24efc07e25e0",
+    "streamed_tool_events": 2,
+    "tool_handler_calls": 2,
+    "tool_names": [
+      "execute_shell_command",
+      "execute_shell_command"
+    ]
+  },
+  "fingerprint": "f2db2e396ea7a3a5",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "f2db2e396ea7a3a5",
+    "reviewer": "codex",
+    "issues": [],
+    "notes": "Reviewed the fresh 2026-09-28 Gemini-key-mode capture. The first bridge call failed, AGY retried the intended command, and the clean final answer is the recovered build ID. Two tool receipts are present; content is final-only in Alpha."
+  }
+}

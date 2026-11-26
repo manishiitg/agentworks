@@ -91,6 +91,9 @@ export type ExtendedLLMConfiguration = Omit<LLMConfiguration, 'api_keys'> & {
 
 // Agent streaming types
 export interface AgentQueryRequest {
+  requested_skill_id?: string
+  plan_mode?: boolean
+  pending_attachments?: { hash: string; name: string }[]
   delivery_mode?: 'steer' | 'queue'
   connection_id?: string
   query: string
@@ -123,8 +126,6 @@ export interface AgentQueryRequest {
   // Specialized multi-profile CDP testing. Each port uses a distinct Chrome profile.
   // Selected skills to include in the chat context
   selected_skills?: string[] // Array of skill folder names
-  // Delegation tier configuration: Maps reasoning levels to specific provider/model pairs
-  delegation_tier_config?: DelegationTierConfig
   // Selected global secret names to include (if omitted, no global secrets are included)
   selected_global_secrets?: string[]
   // Workspace paths of workflows to inject context for (via # selector in chat)
@@ -155,31 +156,8 @@ export interface AgentQueryRequest {
   user_interactive_continuation?: boolean
 }
 
-// Delegation tier configuration for multi-LLM support
-export interface DelegationTierConfig {
-  schema_version: 2
-  mode: 'provider_profile' | 'explicit'
-  provider?: string
-  main?: TierModel    // orchestrator/main agent model
-  high?: TierModel
-  medium?: TierModel
-  low?: TierModel
-  custom?: Record<string, CustomTierModel>  // slug → custom tier
-}
-
-export interface TierModel {
-  provider: string
-  model_id: string
-  options?: Record<string, unknown>
-}
-
-export interface CustomTierModel {
-  description: string // LLM guidance, e.g. "low cost model for code reviews"
-  provider: string
-  model_id: string
-}
-
 export interface AgentQueryResponse {
+  notice?: PollingEvent
   sync_notice?: string
   query_id: string
   // 'started' | 'workflow_started' | 'live_input_delivered' | 'accepted' | error states.
@@ -217,6 +195,9 @@ export interface AgentQueryResponse {
 // skills from the same shared controls as AgentWorks; the server accepts those
 // fields only for profiles that explicitly support them.
 export interface AgentProfileChatRequest {
+  requested_skill_id?: string
+  plan_mode?: boolean
+  pending_attachments?: { hash: string; name: string }[]
   delivery_mode?: 'steer' | 'queue'
   /** Optional Crew laptop connection; the server checks the current owner and live folder grants. */
   /** Brain folder context only; the server revalidates visibility. */
@@ -243,6 +224,7 @@ export interface AgentProfileChatRequest {
 }
 
 export interface AgentProfileConversationRequest {
+  requested_agent?: string
   conversation_key?: string
   /** Stable Work project id. Resume derives its tab key on the server. */
   resource_id?: string
@@ -250,6 +232,8 @@ export interface AgentProfileConversationRequest {
   session_id?: string
   /** Required to open a NEW side tab: the agent's name (the server refuses an unnamed one). */
   name?: string
+  /** The chat a new tab is opened from; the server starts the new tab on that chat's model. */
+  opened_from?: string
 }
 
 /** A caller-owned model choice; omitted chats follow the project default. */
@@ -270,13 +254,122 @@ export interface ChatContextView {
   limits?: { label: string; used_percent: number; resets_at?: string }[]
   idle_compaction?: { on: boolean }
   idle_compaction_hint?: string
-  /** On: a reply that ends with the chat over 300K tokens is followed by a compaction. Off by default. */
+  /** On: a reply that ends with the chat over 300K tokens is followed by a compaction. Off unless turned on. */
   compact_early?: { on: boolean }
+  /** Set for a long chat: picking another model first offers to compact (the server's words). */
+  switch_note?: string
   compact_early_hint?: string
   /** A Claude chat only: on runs Claude Code as the native terminal (the AgentWorks mod drives it), off as the chat view. */
   claude_terminal?: { on: boolean }
+  /** The chat's access mode menu: what its coding agent can reach and who approves its actions (#3885). */
+  access?: ChatAccessView
+  /** How this chat's agent writes replies and whether it offers the summary and next-steps card (every coding app). */
+  replies?: ChatRepliesView
+  /** This chat's own Git branch folders, when its agent started any. */
   can_compact: boolean
-  can_fresh: boolean
+  /** "New chat": this tab starts a new conversation; the current one moves to its earlier chats. */
+  can_new_chat: boolean
+  /** What this chat and its helper agents have cost so far; absent when nothing is recorded. */
+  cost?: ChatContextCost
+  /** A coding agent's own CLI runs this chat: it reports its total context, not what fills it. */
+  total_only?: boolean
+  parts?: ChatContextPart[]
+}
+
+/** The chat's mode: project (Auto, works without asking) or auto_review (the coding app's reviewer approves). Reach is the project's access. */
+export type ChatAccessMode = 'project' | 'auto_review'
+
+export interface ChatAccessView {
+  /** The saved choice; effective is what the next message gets with this coding app on this computer. */
+  mode: ChatAccessMode
+  effective: ChatAccessMode
+  options: { mode: ChatAccessMode; available: boolean; why?: string }[]
+  /** On a server every mode stays inside the chat's folders. */
+  on_server?: boolean
+}
+
+export type ChatReplyStyle = 'default' | 'concise' | 'explanatory' | 'learning' | 'proactive'
+
+export interface ChatRepliesView {
+  style: ChatReplyStyle
+  styles: ChatReplyStyle[]
+  next_steps: boolean
+  /** When the person asks here for unrelated work: ask them, open a new tab, or do it here. */
+  unrelated_task?: ChatUnrelatedTask
+  unrelated_tasks?: ChatUnrelatedTask[]
+}
+
+export type ChatUnrelatedTask = 'ask' | 'new_tab' | 'here'
+
+/** One estimated slice of what fills a chat's context (about four characters to a token). */
+export interface ChatContextPart {
+  key: string
+  label: string
+  tokens: number
+  /** Why this part matters, when people can act on it (e.g. instructions sent more than once). */
+  note?: string
+  /** The pane can open this part to list its items with their text (getChatContextPart). */
+  openable?: boolean
+}
+
+/** One item behind a part of the context: a tool, a skill, an instruction file, a kind of reminder. */
+export interface ChatContextPartItem {
+  label: string
+  text: string
+  tokens: number
+  /** How many times it was added, when more than once. */
+  count?: number
+}
+
+/** Tokens by kind; new_input excludes input read from or written to the cache. */
+export interface ChatContextTokens {
+  new_input: number
+  cache_read: number
+  cache_write: number
+  output: number
+  thinking: number
+}
+
+export interface ChatContextModelCost {
+  model: string
+  /** The model's display name, e.g. Claude Opus 5.5. */
+  name?: string
+  provider: string
+  /** The app's display name, e.g. Claude or Codex. */
+  app?: string
+  usd: number
+  calls: number
+  tokens: ChatContextTokens
+  cache_saved_usd?: number
+}
+
+/** A chat's spend while it ran on one app; the server splits at the last move to another app. */
+export interface ChatContextCostPeriod {
+  providers: string[]
+  apps?: string[]
+  from: string
+  to: string
+  total_usd: number
+  helper_usd: number
+  calls: number
+  tokens: ChatContextTokens
+  models: ChatContextModelCost[]
+  cache_percent: number
+  /** What cache reads saved against list prices; absent when no model has a known price. */
+  cache_saved_usd?: number
+  unpriced_calls?: number
+}
+
+export interface ChatContextCost {
+  /** The whole chat, every period. */
+  total_usd: number
+  current: ChatContextCostPeriod
+  earlier?: ChatContextCostPeriod
+  /** actual: the provider's own figure; estimate: subscription equivalent; mixed: both. */
+  basis: 'actual' | 'estimate' | 'mixed'
+  unpriced_calls: number
+  /** Priced spend since local midnight. */
+  today_usd?: number
 }
 
 /** Effective caller-owned runtime resolved by the server for one chat. */
@@ -287,8 +380,13 @@ export interface AgentProfileEffectiveChatModel extends AgentProfileChatModel {
 }
 
 /** An open side tab of a Code or Crew project as the server knows it. */
+/** An online project an agent tab runs in: its ID, name and the saved connection its chats go through. */
+export type OnlineProjectRef = { id: string; name: string; connection: string }
+
 export interface AgentProfileSideChat {
-  chat_location?: 'mac' | 'server'
+  chat_location?: 'mac'
+  /** The person's own agent in an online project the Team uses, shown as a tab of this Mac project (#4121). */
+  online_project?: OnlineProjectRef
   /** The caller's own Mac agent: the Mac app already has it as their own tab. */
   on_your_mac?: boolean
   tab_owner_id?: string
@@ -307,12 +405,19 @@ export interface AgentProfileSideChat {
   /** Pinned tabs stay on the strip; unpinned ones are in the Agents menu. Every tab starts pinned. */
   pinned?: boolean
   /** The agent's one-line purpose, set by its owner or by the agent itself. */
-  purpose?: string
+  examples?: string[]; purpose?: string
+  /** The caller's own agent has its own standing instructions (the text stays in its prompt). */
+  has_instructions?: boolean
   /** The caller's own Main chat, listed only when asked for (withMain). */
   is_main?: boolean
+  /** The agent this one was forked from, by conversation key (#3288): the left menu nests it there. */
+  forked_from?: string
+  /** When its chat last had a message, from saved history, so the left menu's "2m" survives a restart (#3406). */
+  last_message_at?: string
 }
 
 export interface AgentProfileConversationResponse {
+  choose_agent?: boolean
   chat_location?: 'mac'
   model_id?: string
   reasoning_effort?: string
@@ -382,31 +487,11 @@ export interface SharedProjectSummary {
   schedules?: SharedProjectSchedule[]
 }
 
-export interface CodeAdminWorkspace {
-  owner_id: string
-  owner_username?: string
-  id: string
-  title: string
-  workspace_path: string
-  updated_at?: string
-  /** Compatibility field; Code no longer has sharing grants. */
-  shares: never[]
-}
-
-export interface CodeAdminChat {
-  user_id: string
-  username?: string
-  session_id: string
-  title?: string
-  updated_at?: string
-  message_count: number
-}
-
 export interface CodeAdminAuditEntry {
   at: string
   admin_id: string
   admin_username?: string
-  /** What let this account in: an admin, or a Code reviewer. */
+  /** What let this account in: an admin, or a project reviewer. */
   role?: 'admin' | 'reviewer'
   action: string
   owner_id?: string
@@ -529,63 +614,6 @@ export interface PendingHumanFeedbackResponse {
   requests: PendingHumanFeedbackRequest[]
 }
 
-export interface ReportHumanInputOption {
-  id: string
-  title: string
-  description?: string
-}
-
-export interface ReportHumanInputApplyContract {
-  mode?: 'no_change' | 'direct_apply' | 'targeted_fixer' | 'external_wait' | string
-  issue_id?: string
-  approved_scope?: string
-  pre_run_checks?: string[]
-  post_run_proof?: string
-  failure_policy?: 'continue_unchanged' | 'block_run' | string
-}
-
-export interface ReportHumanInput {
-  id: string
-  workspace_path: string
-  source: 'pulse' | 'technical_review' | 'strategic_review' | 'plan_drift_review' | 'engineering_review' | 'ops_review' | 'strategy_auditor' | 'goal_advisor' | string
-  priority: 'low' | 'medium' | 'high' | string
-  question: string
-  context?: string
-  options: ReportHumanInputOption[]
-  allow_free_text: boolean
-	status: 'pending' | 'answered' | 'claimed' | 'consumed' | 'dismissed' | 'withdrawn' | string
-  selected_option_id?: string
-  note?: string
-  run_id?: string
-  evidence?: string
-  created_by?: string
-  answered_by?: string
-  answered_by_kind?: string
-  answered_via?: string
-  answered_session_id?: string
-  consumed_by?: string
-  outcome_summary?: string
-  created_at: string
-  updated_at: string
-  answered_at?: string
-  consumed_at?: string
-	dismissed_at?: string
-	claim_token?: string
-	claimed_at?: string
-	claim_expires_at?: string
-	apply_contract?: ReportHumanInputApplyContract
-  /** Answered decisions only: the Builder chat message that applies it (Needs you "Apply in chat"). */
-  apply_message?: string
-  
-  withdrawal?: {
-    reason: string
-    evidence: string[]
-    actor_id: string
-    session_id: string
-    withdrawn_at: string
-  }
-}
-
 export interface GoalLeadMessage {
   id: string
   at: string
@@ -593,50 +621,6 @@ export interface GoalLeadMessage {
   source?: string
   text: string
   session_id?: string
-}
-
-export interface ReportHumanInputsResponse {
-  success: boolean
-  inputs: ReportHumanInput[]
-  error?: string
-}
-
-export interface ReportHumanInputResponse {
-  success: boolean
-  input: ReportHumanInput
-  error?: string
-  /** Set on answer: the message to send to the Builder chat to apply it now. */
-  apply_message?: string
-}
-
-export interface GoalMeasurements {
-  metrics: GoalMetric[]
-  observations: GoalObservation[]
-}
-
-/** One code-computed silence alarm (PLAT-697): no run or no goal reading for days. */
-
-export interface GoalMetric {
-  goal_id?: string
-  goal_name?: string
-  supports?: string[]
-  support_kind?: 'breakdown' | 'diagnostic' | 'guardrail'
-  dimensions?: Record<string, string>
-  id: string
-  criterion_id: string
-  name: string
-  role: 'primary' | 'supporting'
-  unit: string
-  direction: 'increase' | 'decrease' | 'maintain'
-  definition: string
-  source: string
-  window: string
-  route: string
-  environment: string
-  collection_frequency: string
-  freshness_hours: number
-  target?: number
-  target_date?: string
 }
 
 // Slack Feedback Configuration types
@@ -1262,7 +1246,6 @@ export interface ChatSessionConfig {
   }>;
   workflow_metadata?: WorkflowMetadata; // Workflow-specific metadata (for background workflows)
   selected_skills?: string[]; // Selected skill folder names
-  delegation_tier_config?: DelegationTierConfig; // Delegation tier model config
 }
 
 // Chat History API types
@@ -1541,6 +1524,8 @@ export interface CostScopeAggregate extends CostAggregate {
 export interface CostConversation extends CostAggregate {
   source_platform?: string
   session_id: string
+  /** The chat's tab name, or "Closed chat" when its tab is gone; set by the server. */
+  title?: string
   workflow_id: string
   user_id?: string
   first_seen: string
@@ -1781,6 +1766,9 @@ export interface WorkflowPhase {
 }
 
 export interface CapabilitiesResponse {
+  native_goals?: Record<string, boolean>;
+  /** Programs whose chats run a message in their own plan mode (the Plan switch, /plan). */
+  native_plans?: Record<string, boolean>;
   providers: string[];
   streaming: boolean;
   sse: boolean;
@@ -2111,6 +2099,10 @@ export interface ModelTokenUsage {
   cache_read_cost_usd?: number;
   cache_write_cost_usd?: number;
   total_cost_usd?: number;
+  /** No rate card for this model: its cost is unknown, not $0. */
+  unpriced?: boolean;
+  /** Plan login (Claude Code, Codex, Cursor): dollars are an API-equivalent estimate, not a charge. */
+  subscription_estimate?: boolean;
   context_window_usage?: number;
   model_context_window?: number;
   context_usage_percent?: number;
@@ -2361,6 +2353,8 @@ export interface RunPythonStep {
   status: string; // "running", "completed", "failed"
   detail?: string;
   log_note?: string;
+  /** Shared by the steps one parallel() call ran at the same time. */
+  parallel_group?: string;
 }
 
 /** A check() or notify() a Python run recorded in its own metadata (the latest 200). */
@@ -2377,6 +2371,18 @@ export interface RunPythonEvidence {
 }
 
 export interface RunMetadata {
+  /** Server-recorded Crew asks. Reply bytes stay in answer_file, read only when opened. */
+  python_asks?: Record<string, {
+    id: string;
+    crew: string;
+    status: string;
+    inbox_id?: string;
+    message_id?: string;
+    reply_message_id?: string;
+    detail?: string;
+    log_file?: string;
+    answer_file?: string;
+  }>;
   /** Current server-computed eligibility; full Resume admission may still refuse. */
   can_resume?: boolean;
   python_resume_calls?: Array<{ key: string; action: string; reused: boolean; reason: string; execution_id: string; at: string; source_call?: string }>;
@@ -2390,6 +2396,8 @@ export interface RunMetadata {
   duration_ms?: number;
   status: string; // "running", "completed", "failed", "canceled"
   triggered_by?: string; // "manual", "cron", "workflow_builder"
+  /** The saved setting (input preset) the run started with; a workflow's tasks are named by their saved settings. */
+  input_preset?: string | null;
   models?: RunMetadataModels;
 }
 
@@ -2508,6 +2516,7 @@ export interface GmailOAuthClientsResponse {
 
 // Scheduled Jobs
 export interface ScheduledJob {
+  target_workflow_id?: string
   crew_workspace_path?: string
   kind?: string
 
@@ -2551,6 +2560,9 @@ export interface ScheduledJob {
   consecutive_failures: number
   execution_mode?: 'close_only'
   collision_policy?: 'skip' | 'queue_latest' | 'retry' | 'coalesce'
+  /** Keep this Mac awake for this workflow schedule (#3617): '' sleeps as usual. Only while plugged in unless keep_awake_on_battery. */
+  keep_awake?: '' | 'while_running' | 'upcoming'
+  keep_awake_on_battery?: boolean
   concurrency_mode?: 'sequential' | 'parallel'
   parallel_risk_acknowledged?: boolean
   max_start_delay_minutes?: number
@@ -2566,6 +2578,8 @@ export interface ScheduledJob {
   missed_run_count?: number
   latest_missed_run_at?: string
   missed_run_reason?: string
+  /** The server's plain line for when this schedule runs, for example "Every Monday at 9:00 AM". */
+  timing_summary?: string
   /** Plain status word from the server: Scheduled, Running, Queued, Waiting for capacity, Missed, Needs attention or Paused. */
   status_word?: string
   /** Server decides whether this enabled schedule has a last-run issue. */
@@ -2574,6 +2588,10 @@ export interface ScheduledJob {
   run_outcome?: string
   /** One plain sentence about the last run; the raw error stays in last_error as detail. */
   last_result?: string
+  /** One plain line from the server: what this schedule starts ("Runs the workflow · <saved setting>" or "Sends a message to <agent>"). */
+  starts?: string
+  /** The server's "Changed by <name>, <date>" for a Crew automation: who last changed it, else who made it. */
+  changed_by?: string
   // Pulse schedules synthesize their run-specific messages from current
   // evidence; they intentionally do not persist ordinary messages[].
 
@@ -2585,7 +2603,7 @@ export interface ScheduledJob {
   run_destination?: 'chat' | 'isolated' | 'new'
   /** The tab a Crew or Goal schedule runs in; empty is the main chat. */
   chat_id?: string
-  /** Where this Crew or Goal message schedule can run, listed by the server: main chat, each tab, own conversation. */
+  /** Where this Crew or Goal message schedule can run, listed by the server: its own chat (Crew default), main chat, each tab. */
   run_destinations?: { id: string; label: string }[]
 }
 
@@ -2610,6 +2628,9 @@ export interface CreateScheduledJobRequest {
   resume_previous?: boolean
   execution_mode?: 'close_only'
   collision_policy?: 'skip' | 'queue_latest' | 'retry' | 'coalesce'
+  /** Keep this Mac awake for this workflow schedule (#3617): '' sleeps as usual. Only while plugged in unless keep_awake_on_battery. */
+  keep_awake?: '' | 'while_running' | 'upcoming'
+  keep_awake_on_battery?: boolean
   concurrency_mode?: 'sequential' | 'parallel'
   parallel_risk_acknowledged?: boolean
   max_start_delay_minutes?: number
@@ -2642,6 +2663,9 @@ export interface UpdateScheduledJobRequest {
   resume_previous?: boolean
   execution_mode?: 'close_only' | ''
   collision_policy?: 'skip' | 'queue_latest' | 'retry' | 'coalesce'
+  /** Keep this Mac awake for this workflow schedule (#3617): '' sleeps as usual. Only while plugged in unless keep_awake_on_battery. */
+  keep_awake?: '' | 'while_running' | 'upcoming'
+  keep_awake_on_battery?: boolean
   concurrency_mode?: 'sequential' | 'parallel'
   parallel_risk_acknowledged?: boolean
   max_start_delay_minutes?: number
@@ -2677,6 +2701,7 @@ export interface ListScheduledJobsResponse {
 }
 
 export interface ScheduledJobRun {
+  execution_workspace_path?: string
   id: string
   job_id: string
   webhook?: { trigger_name: string; delivery_id: string; event?: string; received_at: string; commit_sha?: string; component?: string; env?: string; deployed_at?: string }
@@ -2730,8 +2755,6 @@ export interface SkippedWhilePaused {
 export interface SchedulerConfig {
   /** Holds the timed runs of every product. */
   globally_paused: boolean
-  /** Products paused on their own: 'agentworks' (Goals), 'work' (Crews), 'code'. */
-  paused_products?: string[]
   paused_at?: string
   paused_by?: string
   updated_at?: string
@@ -2752,6 +2775,7 @@ export interface WorkflowManifest {
   relay_output_step_id?: string
   version?: string
   label: string
+  description?: string
   icon?: string
   capabilities: WorkflowCapabilities
   ownership: WorkflowOwnership
@@ -2910,49 +2934,6 @@ export interface NotificationPreference {
   whatsapp_disabled?: boolean
 }
 
-export interface OrgDashboardNotificationField {
-  label: string
-  value: string
-}
-
-export interface OrgDashboardNotificationSection {
-  heading: string
-  body: string
-}
-
-export interface NotificationRouteSummary {
-  routing_step_id: string
-  route_id: string
-  label?: string
-  title: string
-  status: OrgDashboardNotification['status']
-  message: string
-  fields?: OrgDashboardNotificationField[]
-  sections?: OrgDashboardNotificationSection[]
-}
-
-export interface OrgDashboardRouteNotifications {
-  routing_step_id?: string
-  route_id: string
-  label: string
-  legacy?: boolean
-  run_summary?: OrgDashboardNotification
-}
-
-export interface OrgDashboardNotification {
-  kind: 'run_summary'
-  id: string
-  workspace_path: string
-  title?: string
-  status: 'completed' | 'partial' | 'failed' | 'blocked' | 'waiting_for_user' | 'waiting_for_platform' | 'monitoring' | 'informational' | 'no_run'
-  route?: string
-  message: string
-  routes?: NotificationRouteSummary[]
-  fields?: OrgDashboardNotificationField[]
-  sections?: OrgDashboardNotificationSection[]
-  created_at: string
-}
-
 export interface KnowledgebaseSource {
   workflow_id: string
   alias: string
@@ -3002,21 +2983,4 @@ export interface WorkspaceStepInspection {
 export interface WorkspaceStepInspectionsResponse {
   items: WorkspaceStepInspection[]
   next_cursor: string | null
-}
-
-export interface GoalObservation {
-  observation_id: string
-  criterion_id: string
-  metric: string
-  run_id: string
-  route?: string
-  environment?: string
-  value?: number
-  status?: string
-  unit?: string
-  observed_at: string
-  window_start?: string
-  window_end?: string
-  evidence?: string[]
-  recorded_at?: string
 }

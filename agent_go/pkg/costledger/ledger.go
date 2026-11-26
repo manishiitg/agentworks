@@ -238,7 +238,9 @@ type ExecutionAggregate struct {
 // one workspace. Executions are separate turns/agent runs, not model-call counts.
 type ConversationAggregate struct {
 	Aggregate
-	SessionID      string                            `json:"session_id"`
+	SessionID string `json:"session_id"`
+	// Title is the chat's name for people, filled by the server when it reads a cost page (not stored).
+	Title          string                            `json:"title,omitempty"`
 	SourcePlatform string                            `json:"source_platform,omitempty"`
 	WorkflowID     string                            `json:"workflow_id"`
 	UserID         string                            `json:"user_id,omitempty"`
@@ -879,7 +881,7 @@ func (l *Ledger) summarizeLegacyFiltered(from, to, executionID, workflowID, scop
 			continue
 		}
 		normalizeEntry(&e)
-		date := e.Timestamp.UTC().Format("2006-01-02")
+		date := Day(e.Timestamp)
 		comparisonValue := date
 		if exactWindow {
 			comparisonValue = e.Timestamp.UTC().Format(time.RFC3339Nano)

@@ -2,17 +2,14 @@ package server
 
 import (
 	"context"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -30,11 +27,15 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
 	}
-	ws, _ := newFakeWorkspaceServer(t)
+	ws, documents := newFakeWorkspaceServer(t)
 	t.Setenv("WORKSPACE_API_URL", ws.URL)
 	store := defaultProductConversationRegistryStore()
 	key := "member-access:chat:own"
 	memberMain := crewOwnerDefaultChatKey("member-access", "member")
+	ownerMain := crewOwnerDefaultChatKey(team.ProjectID, team.OwnerID)
+	documents.mu.Lock()
+	documents.files["Crew/member-access/product.json"] = `{"schema_version":1,"product":"work","id":"member-access","main_chat_key":"` + ownerMain + `"}`
+	documents.mu.Unlock()
 	doc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, key): {ProfileID: crewProfileID, ConversationKey: key, SessionID: "member-session"},
 		productConversationRegistryEntryKey(crewProfileID, memberMain): {ProfileID: crewProfileID, ConversationKey: memberMain, SessionID: "member-main-session"}}}
 	if err := store.writeDocument(t.Context(), productConversationRegistryPath("member"), doc); err != nil {
@@ -43,9 +44,28 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	for _, who := range []string{"owner", "teammate"} {
 		otherKey := "member-access:chat:" + who
 		otherDoc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, otherKey): {ProfileID: crewProfileID, ConversationKey: otherKey, SessionID: who + "-session"}}}
+		if who == "owner" {
+			otherDoc.Entries[productConversationRegistryEntryKey(crewProfileID, ownerMain)] = ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: ownerMain, SessionID: "owner-main-session", WorkspacePath: "Crew/member-access"}
+		}
 		if err := store.writeDocument(t.Context(), productConversationRegistryPath(who), otherDoc); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// Settings admission uses the Team registry, not conversation discovery.
+	// Seed the same owned agents before exercising visibility and its refusals.
+	team.Agents = crewTeamAgentFixtures(team.ProjectID, map[string]map[string]bool{
+		"member":   {key: true, memberMain: true},
+		"owner":    {"member-access:chat:owner": true, ownerMain: true},
+		"teammate": {"member-access:chat:teammate": true},
+	})
+	for id, agent := range team.Agents {
+		if agent.OwnerID == "member" && agent.ChatKey == memberMain {
+			agent.Name = "Main"
+			team.Agents[id] = agent
+		}
+	}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
 	}
 	api := &StreamingAPI{}
 	router := mux.NewRouter()
@@ -66,7 +86,7 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 		r := httptest.NewRequest("GET", "/api/sessions/member-session/events", nil)
 		return watching.crewSessionTabView(r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: who, Username: who})), "member-session")
 	}
-	// Notifications follow the same rule from the same record (crewTeam.AgentChoices, crew_team_in_team.go).
+	// Notifications follow the same rule from the same record (crewTeam.Agents, crew_team_in_team.go).
 	notified := func(who string) bool {
 		return watching.notifyCanSee(t.Context(), who, notifyChat{owner: "member", project: team.ProjectID, found: true}, "member-session")
 	}
@@ -110,7 +130,7 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	tab := crewTeamTabFor(t.Context(), team, "member")
 	own := 0
 	for _, agent := range tab.Agents {
-		if agent.Key == key {
+		if agent.WatchKey == key {
 			own++
 			if !agent.CanChange || agent.InTeam {
 				t.Fatalf("own agent row: %+v", agent)
@@ -150,7 +170,7 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	for viewer, editable := range map[string]bool{"member": true, "owner": false} {
 		seen := false
 		for _, agent := range crewTeamTabFor(t.Context(), team, viewer).Agents {
-			if agent.Key == key {
+			if agent.WatchKey == key {
 				seen = true
 				if agent.WhenOthersAsk != "Only answer about the website." || !agent.HasRule || agent.CanEditRule != editable {
 					t.Fatalf("%s sees rule row %+v", viewer, agent)
@@ -188,9 +208,9 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 			t.Fatalf("%s edits %d of their agents", who, editable)
 		}
 	}
-	// Showcase, 6 Nov: the owner's Main, asked to set the rule of "testing xxx" from chat, named it by its tab, its Mac
-	// chat key and its name, with the Mac off; each was refused. Each now saves, for the caller's own agents only.
-	for _, name := range []string{"e139c703", "mac-copy:chat:e139c703", "helper", "mac-copy"} {
+	// Native adapters and unique chat-tool names resolve only among the caller's agents.
+	// The Team rows above exercise the server-issued IDs; retired Mac project aliases are gone.
+	for _, name := range []string{"e139c703", "helper"} {
 		if w := call("owner", "agent-rule", `{"agent_key":"`+name+`","when_others_ask":"Saved by `+name+`"}`); w.Code != 200 {
 			t.Fatalf("owner could not save the rule of their own Mac agent by %q: %d %s", name, w.Code, w.Body.String())
 		}
@@ -198,13 +218,13 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 			t.Fatalf("member saved the owner's agent rule by %q: %d", name, w.Code)
 		}
 	}
-	if saved, _ := readCrewTeam(team.ProjectID); saved.agentRule("owner", "e139c703").WhenOthersAsk != "Saved by helper" || saved.agentRule("owner", macMainTab).WhenOthersAsk != "Saved by mac-copy" {
-		t.Fatalf("rules by Mac key or name not kept on the owner's agents: %+v", saved.AgentRules["owner"])
+	if saved, _ := readCrewTeam(team.ProjectID); saved.agentRule("owner", "e139c703").WhenOthersAsk != "Saved by helper" || saved.agentRule("owner", macMainTab).WhenOthersAsk != "Ask me first." {
+		t.Fatalf("rules by Mac key or name not kept on the owner's agents: %+v", saved.Agents)
 	}
 	call("owner", "agent-rule", `{"agent_key":"Helper","when_others_ask":"Ask me first."}`)
 	saved, _ := readCrewTeam(team.ProjectID)
 	if saved.agentRule("owner", "e139c703").WhenOthersAsk != "Ask me first." || saved.agentRule("member", memberMain).WhenOthersAsk != "Ask me first." {
-		t.Fatalf("rules not kept: %+v", saved.AgentRules)
+		t.Fatalf("rules not kept: %+v", saved.Agents)
 	}
 	// Public on AgentBridge from the website (owner, 6 Nov): anyone in the Team switches THEIR OWN agent, through their
 	// own Mac; the call never reaches another person's Mac. A person whose Mac is off is told plainly (no Mac here).
@@ -225,6 +245,10 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 			pending: map[string]chan crewChatResult{}, dispatched: map[string]chan struct{}{}}
 		who := who
 		sock.send = func(m crewRelayMessage) error {
+			// Team changes also send notification frames without a command.
+			if m.Call == nil {
+				return nil
+			}
 			sent[who] = append(sent[who], *m.Call)
 			sock.mu.Lock()
 			sock.pending[m.Call.ID] <- crewChatResult{ID: m.Call.ID, Status: 200, Body: []byte(`{}`)}
@@ -283,6 +307,7 @@ func TestCrewTeamRevocationStopsOnlyLostBuilderAccess(t *testing.T) {
 	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "revoked", ProjectID: "revoked", OwnerID: "owner"}); err != nil {
 		t.Fatal(err)
 	}
+	macCrewOnlineCopy(t, "revoked")
 	for _, action := range []string{"leave", "remove", "off"} {
 		t.Run(action, func(t *testing.T) {
 			team := crewTeam{ProjectID: "revoked", OwnerID: "owner", Name: "Example", On: true, People: []crewTeamPerson{{UserID: "member"}}}
@@ -309,7 +334,7 @@ func TestCrewTeamRevocationStopsOnlyLostBuilderAccess(t *testing.T) {
 				body = `{"name":"Example","on":false,"people":[{"user_id":"member"}]}`
 			}
 			r := httptest.NewRequest(method, route, strings.NewReader(body))
-			r.Header.Set(crewMacPairHeader, "pair") // the owner's calls here are the Mac's own
+			r.Header.Set(crewMacPairHeader, testMacPair) // the owner's calls here are the Mac's own
 			r = r.WithContext(context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: who}))
 			router := mux.NewRouter()
 			api.registerCrewTeamRoutes(router.PathPrefix("/api").Subrouter())
@@ -325,134 +350,43 @@ func TestCrewTeamRevocationStopsOnlyLostBuilderAccess(t *testing.T) {
 	}
 }
 
-// PLAT-856-509 (owner, 6 Nov): a teammate opens a Mac Crew's dashboard from the server's read copy, through the real
-// dashboard reader and workspace, while the Crew's own db/ on the server is left alone.
-func TestCrewMacDashboardsAreReadFromTheCopy(t *testing.T) {
+// PLAT-746-1024: an old read-copy folder and marker must not redirect
+// normal file reads away from the Crew's current authoritative content.
+func TestCrewDashboardIgnoresRetiredMacSnapshot(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other","role":"editor","products":["work"]}]}`)
-	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}}); err != nil {
+	key := externalCommandCrewRoot + "/db/reports/index.html"
+	canonical, bound, err := crewroot.Resolve(f.docs, key)
+	if err != nil || !bound {
+		t.Fatalf("canonical Crew resource path: %t %v", bound, err)
+	}
+	if err = os.MkdirAll(filepath.Dir(canonical), 0700); err != nil {
 		t.Fatal(err)
 	}
-	root := filepath.Join(f.docs, externalCommandCrewRoot)
-	own := filepath.Join(root, "db", "reports")
-	if err := os.MkdirAll(own, 0o770); err != nil {
+	if err = os.WriteFile(canonical, []byte("<html>current authoritative page</html>"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(own, "index.html"), []byte("<html><title>Server page</title></html>"), 0o660); err != nil {
-		t.Fatal(err)
-	}
-	store := t.TempDir()
-	page := "<html><head><title>Mac page</title></head><body>from the Mac</body></html>"
-	version, err := chunks.Split(strings.NewReader(page), int64(len(page)), false, func(id string, data []byte) error { return putChunk(store, id, data) })
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = swapCrewMacDashboards(root, store, map[string]chunks.File{"db/reports/index.html": version}); err != nil {
-		t.Fatal(err)
-	}
+	f.write(t, externalCommandCrewRoot+"/mac-dashboards/db/reports/index.html", "<html>retired snapshot</html>")
 	manifest, err := crewSyncManifestPath("team")
-	if err == nil {
-		err = os.MkdirAll(filepath.Dir(manifest), 0o700)
-	}
-	if err == nil {
-		err = os.WriteFile(manifest+".dashboards-updated", []byte("{}"), 0o600)
-	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	claims := &UserClaims{UserID: "other", Username: "other"}
-	ctx := context.WithValue(t.Context(), UserContextKey, claims)
-	// A Crew that lives on the server reads its own db/, even with such a folder present.
-	for _, p := range []string{"/db/reports/index.html", "/db/db.sqlite"} {
-		if got := publishedReadPath(ctx, externalCommandCrewRoot+p); got != externalCommandCrewRoot+p {
-			t.Fatalf("a server Crew was redirected to %s", got)
-		}
-	}
-	if err = crewroot.WriteSync("team", crewroot.SyncBinding{PairID: "pair", Side: "server", Editing: "local", PeerProjectID: "mac"}); err != nil {
+	if err = os.MkdirAll(filepath.Dir(manifest), 0700); err != nil {
 		t.Fatal(err)
 	}
-	mapped := publishedReadPath(ctx, externalCommandCrewRoot+"/db/reports/index.html")
-	if mapped != externalCommandCrewRoot+"/"+crewroot.MacDashboardsFolder+"/db/reports/index.html" {
-		t.Fatalf("read goes to %s", mapped)
+	if err = os.WriteFile(manifest+".dashboards-updated", []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "pair", Side: "server", Editing: "local", PeerProjectID: "mac"}); err != nil {
+		t.Fatal(err)
+	}
+	claims := &UserClaims{UserID: "owner", Username: "owner"}
+	ctx := context.WithValue(t.Context(), UserContextKey, claims)
+	mapped := publishedReadPath(ctx, key)
+	if mapped != key {
+		t.Fatal("read redirected to the retired snapshot")
 	}
 	data, err := f.api.reportPreviewWorkspaceClient(ctx, claims, externalCommandCrewRoot).DownloadFile(ctx, mapped)
-	if err != nil || !strings.Contains(string(data), "from the Mac") {
-		t.Fatalf("the workspace read of the copy: %q %v", data, err)
-	}
-	if got := crewMacDashboardsRead(ctx, externalCommandCrewRoot+"/db/db.sqlite"); got != externalCommandCrewRoot+"/"+crewroot.MacDashboardsFolder+"/db/db.sqlite" {
-		t.Fatalf("database query goes to %s", got)
-	}
-	listing := httptest.NewRecorder()
-	f.api.handleDashboards(listing, adminRequest(http.MethodPost, "/api/dashboards", `{"workspace":"`+externalCommandCrewRoot+`","action":"list"}`, claims, nil))
-	if listing.Code != 200 || !strings.Contains(listing.Body.String(), "Mac page") || strings.Contains(listing.Body.String(), "Server page") {
-		t.Fatalf("listing: %d %s", listing.Code, listing.Body.String())
-	}
-	tab := httptest.NewRecorder()
-	f.api.handleCrewTeamDashboardsTab(tab, adminRequest(http.MethodGet, "/api/crew-teams/team/dashboards-tab", "", claims, map[string]string{"project": "team"}))
-	if tab.Code != 200 || !strings.Contains(tab.Body.String(), "copy on the server") || !strings.Contains(tab.Body.String(), "work on the owner's Mac") {
-		t.Fatalf("tab: %d %s", tab.Code, tab.Body.String())
-	}
-}
-
-// PLAT-856-509 (owner, 6 Nov): with Crew co-owners gone, a Crew's builders are added from its Team; over MCP too. The
-// owner or a joined member may look at the directory and add a person (invited until they accept); an outsider may do neither.
-func TestCrewTeamPeopleOverMCPFollowTheTeamRules(t *testing.T) {
-	f, _ := newExternalCrewCommandFixture(t)
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other","role":"editor","products":["work"]},{"id":"outsider","role":"editor","products":["work"]},{"id":"newbie","role":"editor","products":["work"]}]}`)
-	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}}); err != nil {
-		t.Fatal(err)
-	}
-	call := func(user string, args map[string]any) *httptest.ResponseRecorder {
-		t.Helper()
-		args["crew_id"] = "team"
-		r := adminRequest(http.MethodPost, "/api/external/v1/call", "", &UserClaims{UserID: user, Username: user}, nil)
-		w := httptest.NewRecorder()
-		f.api.externalCrewTeamSyncCall(w, r, args)
-		return w
-	}
-	for _, user := range []string{"owner", "other"} {
-		if w := call(user, map[string]any{"action": "directory"}); w.Code != 200 || !strings.Contains(w.Body.String(), `"user_id":"newbie"`) {
-			t.Fatalf("%s directory: %d %s", user, w.Code, w.Body.String())
-		}
-	}
-	if w := call("outsider", map[string]any{"action": "directory"}); w.Code != http.StatusForbidden {
-		t.Fatalf("an outsider saw the directory: %d %s", w.Code, w.Body.String())
-	}
-	if w := call("outsider", map[string]any{"action": "people", "person": "newbie", "level": "works", "confirm": true}); w.Code < 400 {
-		t.Fatalf("an outsider added someone: %d %s", w.Code, w.Body.String())
-	}
-	if w := call("other", map[string]any{"action": "people", "person": "newbie", "level": "works", "confirm": true}); w.Code != 200 {
-		t.Fatalf("a joined member could not add: %d %s", w.Code, w.Body.String())
-	}
-	team, err := readCrewTeam("team")
-	if err != nil || !slices.ContainsFunc(team.People, func(p crewTeamPerson) bool { return p.UserID == "newbie" && p.Invited }) {
-		t.Fatalf("newbie is not invited: %+v %v", team.People, err)
-	}
-	// The Team's settings over MCP: the Team switch is the main owner's alone; an outsider changes nothing.
-	for _, refused := range []struct {
-		user string
-		args map[string]any
-	}{{"other", map[string]any{"action": "settings", "on": false}}, {"outsider", map[string]any{"action": "settings", "on": false}}} {
-		if w := call(refused.user, refused.args); w.Code < 400 {
-			t.Fatalf("%s changed the Team's settings: %d %s", refused.user, w.Code, w.Body.String())
-		}
-	}
-	if team, _ = readCrewTeam("team"); !team.On {
-		t.Fatal("a refused settings call turned the Team off")
-	}
-	if w := call("owner", map[string]any{"action": "settings", "on": false}); w.Code != 200 {
-		t.Fatalf("owner turn off: %d %s", w.Code, w.Body.String())
-	}
-	if team, _ = readCrewTeam("team"); team.On || len(team.People) != 2 {
-		t.Fatalf("settings did not keep the people while turning off: %+v", team)
-	}
-	if w := call("owner", map[string]any{"action": "settings", "on": true}); w.Code != 200 {
-		t.Fatalf("owner turn on: %d %s", w.Code, w.Body.String())
-	}
-	if team, _ = readCrewTeam("team"); !team.On {
-		t.Fatalf("the owner could not turn the Team on: %+v", team)
-	}
-	if w := call("owner", map[string]any{"action": "settings"}); w.Code != http.StatusBadRequest {
-		t.Fatalf("an empty settings call: %d %s", w.Code, w.Body.String())
+	if err != nil || !strings.Contains(string(data), "current authoritative page") || strings.Contains(string(data), "retired snapshot") {
+		t.Fatalf("canonical workspace read: %q %v", data, err)
 	}
 }

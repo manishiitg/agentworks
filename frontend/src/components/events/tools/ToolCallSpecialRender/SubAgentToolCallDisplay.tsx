@@ -34,7 +34,7 @@ export const SubAgentToolCallDisplay: React.FC<SubAgentToolCallDisplayProps> = (
   const hasExpandable = !!(instructions || successCriteria)
 
   return (
-    <div className="bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded p-2">
+    <div className="bg-muted/50 border border-border rounded p-2">
       {/* Header row */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-start gap-2 min-w-0 flex-1">
@@ -43,17 +43,17 @@ export const SubAgentToolCallDisplay: React.FC<SubAgentToolCallDisplayProps> = (
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-semibold text-gray-800 dark:text-gray-100">
+              <span className="text-xs font-semibold text-foreground">
                 {routeId || 'Sub-agent'}
               </span>
               {preferredTier && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${tierColors[preferredTier] || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}`}>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${tierColors[preferredTier] || 'bg-muted text-muted-foreground'}`}>
                   Tier {preferredTier} · {tierLabels[preferredTier]}
                 </span>
               )}
             </div>
             {todoId && (
-              <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+              <div className="text-[10px] text-muted-foreground mt-0.5">
                 Task: <span className="font-mono">{todoId}</span>
               </div>
             )}
@@ -62,14 +62,14 @@ export const SubAgentToolCallDisplay: React.FC<SubAgentToolCallDisplayProps> = (
 
         <div className="flex items-center gap-2 flex-shrink-0">
           {event.timestamp && (
-            <span className="text-[10px] text-gray-400 dark:text-gray-500">
+            <span className="text-[10px] text-muted-foreground">
               {new Date(event.timestamp).toLocaleTimeString()}
             </span>
           )}
           {hasExpandable && (
             <button
               onClick={toggle}
-              className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 transition-colors"
+              className="p-0.5 rounded hover:bg-muted text-muted-foreground transition-colors"
               title={isExpanded ? 'Collapse' : 'Expand'}
             >
               {isExpanded ? <Minus className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
@@ -80,24 +80,24 @@ export const SubAgentToolCallDisplay: React.FC<SubAgentToolCallDisplayProps> = (
 
       {/* Expanded: instructions + success criteria */}
       {hasExpandable && isExpanded && (
-        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 space-y-3">
+        <div className="mt-2 pt-2 border-t border-border space-y-3">
           {instructions && (
             <div>
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
                 Instructions
               </div>
-              <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2">
-                <MarkdownRenderer content={instructions} className="text-xs text-gray-700 dark:text-gray-300" />
+              <div className="bg-card border border-border rounded p-2">
+                <MarkdownRenderer content={instructions} className="text-xs text-foreground" />
               </div>
             </div>
           )}
           {successCriteria && (
             <div>
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
                 Success Criteria
               </div>
-              <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded p-2">
-                <MarkdownRenderer content={successCriteria} className="text-xs text-gray-700 dark:text-gray-300" />
+              <div className="bg-card border border-border rounded p-2">
+                <MarkdownRenderer content={successCriteria} className="text-xs text-foreground" />
               </div>
             </div>
           )}

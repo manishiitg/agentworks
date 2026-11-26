@@ -197,7 +197,8 @@ type WorkflowManifest struct {
 
 // WorkflowCapabilities stores workflow-wide agent and tool configuration.
 type WorkflowCapabilities struct {
-	SelectedServers []string `json:"selected_servers"`
+	GitHubConnectionID string   `json:"github_connection_id,omitempty"`
+	SelectedServers    []string `json:"selected_servers"`
 	// ChosenVaultAppsOnly is "Use all my apps automatically" switched off: only the Vault apps in SelectedServers
 	// are used. Off (the default) means every Vault app the person may use (owner decision 2026-10-27, PLAT-856-394).
 	ChosenVaultAppsOnly       bool                           `json:"chosen_vault_apps_only,omitempty"`
@@ -294,6 +295,11 @@ type WorkflowSchedule struct {
 	// by another scheduled/execution run. Empty/"skip" preserves the default;
 	// "queue_latest" durably retains the newest occurrence for a later retry.
 	CollisionPolicy string `json:"collision_policy,omitempty"`
+	// KeepAwake (#3617, a Mac's own choice, off by default): "while_running" keeps the Mac awake while this
+	// schedule's run is going; "upcoming" also keeps it awake so upcoming runs are not missed. Only while plugged in
+	// unless KeepAwakeOnBattery.
+	KeepAwake          string `json:"keep_awake,omitempty"`
+	KeepAwakeOnBattery bool   `json:"keep_awake_on_battery,omitempty"`
 	// ConcurrencyMode is sequential by default. Parallel is an explicit,
 	// human-approved risk opt-in for an independently runnable schedule.
 	ConcurrencyMode          string `json:"concurrency_mode,omitempty"`
@@ -378,6 +384,11 @@ func validateScheduleRuntimePolicy(schedule WorkflowSchedule) error {
 	default:
 		return fmt.Errorf("execution_mode must be empty or close_only")
 	}
+	switch schedule.KeepAwake {
+	case "", keepAwakeWhileRunning, keepAwakeUpcoming:
+	default:
+		return fmt.Errorf("keep_awake must be empty, while_running or upcoming")
+	}
 	switch strings.TrimSpace(schedule.CollisionPolicy) {
 	case "", "skip", "queue_latest", "retry", "coalesce":
 	default:
@@ -403,29 +414,7 @@ func validateScheduleRuntimePolicy(schedule WorkflowSchedule) error {
 			return fmt.Errorf("after_schedule_ids[%d] cannot be empty", i)
 		}
 	}
-	for _, dependencyID := range scheduleDependencyIDs(schedule) {
-		if dependencyID == schedule.ID {
-			return fmt.Errorf("schedule dependencies cannot reference the schedule itself")
-		}
-	}
-	switch strings.TrimSpace(schedule.AfterTerminalStatus) {
-	case "", "completed", "any_terminal":
-	default:
-		return fmt.Errorf("after_terminal_status must be completed or any_terminal")
-	}
-	if schedule.AfterDelayMinutes < 0 {
-		return fmt.Errorf("after_delay_minutes cannot be negative")
-	}
-	if deadline := strings.TrimSpace(schedule.DependencyDeadline); deadline != "" {
-		if _, err := time.Parse("15:04", deadline); err != nil {
-			return fmt.Errorf("dependency_deadline must be HH:MM in the schedule timezone")
-		}
-	}
-	if len(scheduleDependencyIDs(schedule)) == 0 &&
-		(strings.TrimSpace(schedule.AfterTerminalStatus) != "" || schedule.AfterDelayMinutes != 0 || strings.TrimSpace(schedule.DependencyDeadline) != "") {
-		return fmt.Errorf("after_terminal_status, after_delay_minutes, and dependency_deadline require after_schedule_id or after_schedule_ids")
-	}
-	return nil
+	return scheduleWhenAfter(schedule).Validate(schedule.ID)
 }
 
 func scheduleAllowsParallel(schedule WorkflowSchedule) bool {
@@ -578,7 +567,7 @@ func ValidateManifest(m *WorkflowManifest) error {
 
 	if m.Capabilities.BrowserMode != "" {
 		if err := browser.ValidateMode(m.Capabilities.BrowserMode); err != nil {
-			return fmt.Errorf("capabilities.browser_mode: %w; in this Crew's chat, check upgrade status and use repair_browser_mode for a retired mode", err)
+			return fmt.Errorf("capabilities.browser_mode: %w; in this project's chat, check upgrade status and use repair_browser_mode for a retired mode", err)
 		}
 	}
 
@@ -643,16 +632,27 @@ func ValidateManifest(m *WorkflowManifest) error {
 			dependencies[sched.ID] = dependencyIDs
 		}
 	}
+	return validateScheduleDependencyGraph(dependencies, nil)
+}
+
+// Both workflow manifests and Crew timer edits validate the complete graph
+// before saving; individually valid timers can still depend on each other.
+func validateScheduleDependencyGraph(dependencies map[string][]string, names map[string]string) error {
 	visitState := make(map[string]uint8, len(dependencies))
+	var path []string
 	var visit func(string) error
 	visit = func(scheduleID string) error {
 		switch visitState[scheduleID] {
 		case 1:
-			return fmt.Errorf("schedule dependency cycle includes %q", scheduleID)
+			from := firstNonEmptyTrimmed(names[path[len(path)-1]], path[len(path)-1])
+			to := firstNonEmptyTrimmed(names[scheduleID], scheduleID)
+			return fmt.Errorf("schedule dependency cycle: %q waits for %q. Remove %q from %q's prerequisite schedules, then save again", from, to, to, from)
 		case 2:
 			return nil
 		}
 		visitState[scheduleID] = 1
+		path = append(path, scheduleID)
+		defer func() { path = path[:len(path)-1] }()
 		for _, dependencyID := range dependencies[scheduleID] {
 			if err := visit(dependencyID); err != nil {
 				return err
@@ -797,7 +797,7 @@ func readWorkflowManifest(ctx context.Context, workspacePath string, persistMigr
 	}
 	if binding != nil {
 		if m.ID != binding.ID {
-			return nil, false, fmt.Errorf("executable identity does not match its registered Crew binding")
+			return nil, false, fmt.Errorf("executable identity does not match its registered project binding")
 		}
 		m.crewExecutable = binding
 		m.CreatedBy, _ = crewProjectOwnerID(binding.CrewRoot)
@@ -1131,6 +1131,17 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 		}
 		defer unlock()
 	}
+	manifestLock := productConversationRegistryMutex(manifestPath(workspacePath))
+	manifestLock.Lock()
+	manifestLocked := true
+	unlockManifest := func() {
+		if manifestLocked {
+			manifestLocked = false
+			manifestLock.Unlock()
+		}
+	}
+	defer unlockManifest()
+
 	previous, previousExists, readErr := readFileFromWorkspace(ctx, manifestPath(workspacePath))
 	if readErr != nil {
 		return fmt.Errorf("read existing workflow.json before update: %w", readErr)
@@ -1203,6 +1214,7 @@ func WriteWorkflowManifest(ctx context.Context, workspacePath string, m *Workflo
 	if err := writeFileToWorkspace(ctx, manifestPath(workspacePath), string(data)); err != nil {
 		return fmt.Errorf("failed to write workflow.json: %w", err)
 	}
+	unlockManifest()
 
 	if !previousExists || previous != string(data) {
 		if changes := workflowManifestChangelogChanges(previous, string(data)); len(changes) > 0 {

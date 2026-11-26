@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -12,12 +13,17 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/browser"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/coding-agent-loop/workspace/browserconfig"
 )
 
 // Drive the real preview executor and workspace HTTP serialization. Slot
 // servers require both the authenticated caller and an enabled folder guard,
 // including for browser helpers, screenshots and the deferred close.
 func TestReportPreviewCarriesCallerAndIsolatedGuard(t *testing.T) {
+	// Use the existing deployment namespace so this fixture never shares another user's /tmp browser directory.
+	t.Setenv("AGENTWORKS_BROWSER_STAGING_NAMESPACE", t.TempDir())
+	stagingRoot := browserconfig.ManagedSocketRoot()
+	t.Cleanup(func() { _ = os.RemoveAll(stagingRoot) })
 	t.Setenv("AUTH_SECRET", "report-preview-test-secret-0123456789abcdef")
 	t.Setenv("AGENT_BROWSER_SHARED_PROFILE", "/tmp/preview-test-shared-profile")
 	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "true") // preview must override this

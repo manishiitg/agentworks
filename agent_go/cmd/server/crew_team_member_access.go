@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -21,15 +22,31 @@ func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *ht
 		externalError(w, 403, "team_forbidden", "Open this Team with your own account.")
 		return
 	}
+	if mux.Vars(r)["op"] == "online-agents" {
+		handleCrewTeamOnlineAgents(w, r, project, claims.UserID)
+		return
+	}
 	t, err := readCrewTeam(project)
-	if err != nil || !t.member(claims.UserID) || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
-		externalError(w, 403, "team_member_required", "Join this Crew's Team first.")
+	// Sharing an agent someone made in one of the Team's online projects is that person's, whether or not they are in
+	// the Team (a co-owner of the project), and is never a change to the Team's Mac project (owner, 26 Nov).
+	onlineAgent := false
+	if op := mux.Vars(r)["op"]; err == nil && (op == "agent-rule" || op == "agent-visibility") {
+		raw, _ := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		var peek struct {
+			Key string `json:"agent_key"`
+		}
+		_ = json.Unmarshal(raw, &peek)
+		_, onlineAgent = crewTeamMemberProjectID(crewTeamRuleActor(t, claims.UserID, peek.Key))
+	}
+	if err != nil || !t.member(claims.UserID) && !onlineAgent || ownerOfCrewProjectID(project) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) {
+		externalError(w, 403, "team_member_required", "Join this project's Team first.")
 		return
 	}
-	if refuseCrewOwnerOnline(w, r, project, claims.UserID) {
+	if !onlineAgent && refuseCrewOwnerOnline(w, r, project, claims.UserID) {
 		return
 	}
-	// The caller's own agent's "When others ask" rule and Answer only / Make changes (crew_when_others_ask.go).
+	// The caller's own agent's "When others ask" rule (crew_when_others_ask.go).
 	if mux.Vars(r)["op"] == "agent-rule" {
 		handleCrewTeamAgentRule(w, r, project, claims.UserID)
 		return
@@ -44,7 +61,7 @@ func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *ht
 			externalError(w, 400, "invalid_agent", "Choose your agent and whether it is shared.")
 			return
 		}
-		if err = setCrewTeamAgentChoice(r.Context(), project, claims.UserID, in.Key, *in.InTeam); errors.Is(err, errCrewTeamLastShared) {
+		if err = setCrewTeamAgentChoice(r.Context(), project, crewTeamRuleActor(t, claims.UserID, in.Key), in.Key, *in.InTeam); errors.Is(err, errCrewTeamLastShared) {
 			externalError(w, 400, "last_shared_agent", err.Error())
 			return
 		} else if errors.Is(err, errCrewTeamAgentNotYours) {
@@ -58,7 +75,7 @@ func (api *StreamingAPI) handleCrewTeamMemberAction(w http.ResponseWriter, r *ht
 		return
 	}
 	if t.OwnerID == claims.UserID {
-		externalError(w, 403, "team_owner_stays", "The Crew's owner stays in its Team. Turn the Team off instead.")
+		externalError(w, 403, "team_owner_stays", "The project's owner stays in its Team. Turn the Team off instead.")
 		return
 	}
 	dir, err := crewTeamDir(project)

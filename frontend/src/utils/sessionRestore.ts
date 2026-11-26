@@ -8,6 +8,7 @@ import { applyLiveInputConfirmations, resolveLiveInputConfirmations, splitLiveIn
 import { keepUnechoedProvisionals, pendingQueuedProvisionals } from './clientMessageIdentity'
 import type { LiveInputConfirmationUpdate } from './liveInputReceipt'
 import axios from 'axios'
+import { replaceEqualDeep } from '@tanstack/react-query'
 
 const TAG = '[SessionRestore]'
 
@@ -240,15 +241,44 @@ export async function hydrateTabEvents(
 ): Promise<RuntimeSessionState> {
   const identity = captureChatIdentity()
   const requestKey = `${identity}:${sessionId}`
+  const observed = Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === sessionId && tab.metadata?.agentProfileTabCanWrite === false)
+  const started = performance.now()
+  const logLoad = (outcome:string) => {
+    if (observed) console.info('[TEAM_VIEW]', {event:'load',session:sessionId,project:observed.metadata?.agentProfileProjectId,outcome,ms:Math.round(performance.now()-started)})
+  }
+  logLoad('started')
   const pending = loadTabEvents(sessionId, options)
   const version = hydrateRequestVersions.get(requestKey)
-  const result = await pending
+  let result:RuntimeSessionState
+  try { result = await pending } catch(error) { logLoad('failed'); throw error }
+  logLoad('loaded')
   assertChatIdentityCurrent(identity)
   // A failed or superseded request is not proof that this chat is empty.
   if (hydrateRequestVersions.get(requestKey) === version) {
     useChatStore.getState().markTabHistoryLoaded(sessionId)
   }
   return result
+}
+
+// A compact page omits older turn details; omission is not deletion. Retain
+// already-rendered steps only before a matching durable row. Edit and resend
+// truncates the journal suffix without reusing its sequence numbers, so rows
+// after the last shared row still get replaced by the authoritative page.
+function keepLoadedCompactSteps(page: PollingEvent[], cached: PollingEvent[], oldest: number): PollingEvent[] {
+  const idsAtSequence = new Map(page.map(event => [event.sequence, event.id]))
+  let confirmedThrough = oldest
+  for (const event of cached) {
+    if (event.id && event.sequence && idsAtSequence.get(event.sequence) === event.id) {
+      confirmedThrough = Math.max(confirmedThrough, event.sequence)
+    }
+  }
+  const steps = cached.filter(event => event.sequence && event.sequence >= oldest &&
+    event.sequence < confirmedThrough && !idsAtSequence.has(event.sequence) &&
+    (event.type === 'tool_call_start' || event.type === 'tool_call_end' || event.type === 'tool_call_error' ||
+      event.type === 'conversation_thinking' || event.type === 'coding_agent_native_activity'))
+  return steps.length
+    ? [...page, ...steps].sort((a, b) => (a.sequence ?? Infinity) - (b.sequence ?? Infinity))
+    : page
 }
 
 async function loadTabEvents(
@@ -310,7 +340,11 @@ async function loadTabEvents(
   }
   const currentStore = useChatStore.getState()
   const eventsNow = currentStore.getTabEvents(sessionId)
-  const concurrentEvents = eventsNow.filter(event => event.id && !startingIDs.has(event.id))
+  const goalSnapshotSequence = response.native_goal_snapshot?.sequence
+  const concurrentEvents = eventsNow.filter(event => event.id && !startingIDs.has(event.id) && !(
+    event.type === 'native_goal_updated' && typeof goalSnapshotSequence === 'number' &&
+    typeof event.sequence === 'number' && event.sequence <= goalSnapshotSequence
+  ))
   const previousPagination = currentStore.tabHistoryPagination?.[sessionId]
   const previousHasMore = currentStore.tabHasMoreOlderEvents?.[sessionId]
   const oldestSequence = response.oldest_sequence
@@ -319,10 +353,23 @@ async function loadTabEvents(
   const olderLoaded = oldestSequence
     ? eventsNow.filter(event => typeof event.sequence === 'number' && event.sequence > 0 && event.sequence < oldestSequence)
     : []
+  const page = compact && oldestSequence && eventsNow.length > 0
+    ? keepLoadedCompactSteps(response.events, eventsNow, oldestSequence)
+    : response.events
   // A provisional bubble survives only until its durable row is on the page.
-  const restored = [...olderLoaded, ...keepUnechoedProvisionals(response.events, eventsNow)]
+  const restored = [...olderLoaded, ...keepUnechoedProvisionals(page, eventsNow)]
+
+  if (response.native_goal_snapshot) {
+    // Projection is not a page row: do not let an old goal's journal sequence
+    // rewind history pagination. Concurrent live events are appended below.
+    restored.push({ ...response.native_goal_snapshot, id: `native-goal-snapshot:${sessionId}`, sequence: undefined })
+  }
   restored.push(...pendingQueuedProvisionals(response.pending_messages, restored, sessionId))
-  chatStore.setTabEvents(sessionId, resolveLiveInputConfirmations(restored))
+  // Reopening an already populated chat is a refresh, not a new transcript.
+  // Compare the contents, not just IDs or the cursor: the journal can update
+  // an existing row (for example a message's delivery state).
+  const nextEvents = replaceEqualDeep(eventsNow, resolveLiveInputConfirmations(restored))
+  if (nextEvents !== eventsNow) chatStore.setTabEvents(sessionId, nextEvents)
   if (concurrentEvents.length > 0) appendRestoredLiveTail(sessionId, concurrentEvents)
   const cursor = response.latest_sequence ?? response.last_processed_index
   if (cursor !== undefined) chatStore.setTabLastEventIndex(sessionId, cursor)

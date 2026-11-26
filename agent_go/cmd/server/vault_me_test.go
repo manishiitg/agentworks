@@ -320,3 +320,16 @@ func TestVaultMeImportKeepsAMovedSignInOnlyAfterOneRenewal(t *testing.T) {
 		t.Fatal("the removed app still had a sign-in")
 	}
 }
+
+// The Mac's "Copy to the server" Team card is gone (#3269), and with it the route that saved a key into any project on
+// the server by its ID. Keys reach an online project only through paths that check who may add them: its owner and
+// co-owners for its project vault (crewVaultFor), the project's editors on the website.
+func TestVaultMeHasNoRouteToCopyAKeyIntoAProject(t *testing.T) {
+	router := mux.NewRouter()
+	(&StreamingAPI{}).registerVaultMeRoutes(router.PathPrefix("/api").Subrouter())
+	var match mux.RouteMatch
+	r := httptest.NewRequest("POST", "/api/vault/me/secrets", strings.NewReader(`{"name":"K","value":"v","crew":"p1"}`))
+	if router.Match(r, &match) && match.MatchErr == nil {
+		t.Fatal("POST /api/vault/me/secrets is still routed; a key must not be copied into a project without an owner check")
+	}
+}

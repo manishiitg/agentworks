@@ -48,7 +48,7 @@ func (api *StreamingAPI) publishAction(ctx context.Context, ownerID, action, age
 		defer agentMessageMu.Unlock()
 		s, err := readAgentMessageStore(ctx)
 		if err != nil {
-			return nil, http.StatusServiceUnavailable, "unavailable", "Publishing is unavailable. Try again."
+			return nil, http.StatusServiceUnavailable, "unavailable", "Discovery is unavailable. Try again."
 		}
 		for _, a := range s.Agents {
 			if a.UserID != ownerID || a.Name != agent {
@@ -57,12 +57,12 @@ func (api *StreamingAPI) publishAction(ctx context.Context, ownerID, action, age
 			n := s.revokeServerShares(a.ID, ownerID, time.Now().UTC())
 			if n > 0 {
 				if err := saveAgentMessageStore(ctx, s); err != nil {
-					return nil, http.StatusServiceUnavailable, "unavailable", "Publishing is unavailable. Try again."
+					return nil, http.StatusServiceUnavailable, "unavailable", "Discovery is unavailable. Try again."
 				}
 			}
 			return oldHelperReply(map[string]interface{}{"agent_name": a.Name, "state": "unpublished", "was_published": n > 0}, oldHelper, "left"), 0, "", ""
 		}
 		return nil, http.StatusNotFound, "unknown_agent", "You have no agent with that name."
 	}
-	return nil, http.StatusBadRequest, "invalid_arguments", "Use share to publish an agent to the network, or unshare to take it back."
+	return nil, http.StatusBadRequest, "invalid_arguments", "Use share to turn on discovery for an agent, or unshare to turn it off."
 }

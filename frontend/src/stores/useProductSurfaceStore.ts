@@ -9,10 +9,10 @@ export type { ProductSurface } from '../products/productSurfaceConfig'
 interface ProductSurfaceState {
   productSurface: ProductSurface
   selectedWorkProjectId: string | null
-  pendingWorkView: 'schedules' | 'bots' | 'triggers' | null
+  pendingWorkView: 'schedules' | 'bots' | 'triggers' | 'conditions' | null
   setProductSurface: (surface: ProductSurface) => void
   setSelectedWorkProjectId: (projectId: string | null) => void
-  setPendingWorkView: (view: 'schedules' | 'bots' | 'triggers' | null) => void
+  setPendingWorkView: (view: 'schedules' | 'bots' | 'triggers' | 'conditions' | null) => void
 }
 
 export const useProductSurfaceStore = create<ProductSurfaceState>()(
@@ -47,3 +47,5 @@ export const useProductSurfaceStore = create<ProductSurfaceState>()(
     },
   ),
 )
+
+// A server project opened in place routes its file reads only while it is the open project (#3383).

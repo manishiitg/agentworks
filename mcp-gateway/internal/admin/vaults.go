@@ -80,6 +80,47 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]string{"id": id})
 	})
+	// A server Crew's vault (decisions log, 22 Nov), for the host only: it names the Crew and its owners (main owner and
+	// co-owners) after its own Crew checks, and the owners are set exactly.
+	mux.HandleFunc("/api/admin/crew-vaults", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Vault-Platform-User") == "1" {
+			writeErr(w, http.StatusForbidden, errors.New("host only"))
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var in struct {
+			ProjectID string   `json:"project_id"`
+			Name      string   `json:"name"`
+			Owners    []string `json:"owners"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		project := strings.TrimSpace(in.ProjectID)
+		if project == "" || len(project) > 200 {
+			writeErr(w, 400, errors.New("crew required"))
+			return
+		}
+		root := store.CrewVaultRootPrefix + project
+		sum := sha256.Sum256([]byte(root))
+		id := "v-" + hex.EncodeToString(sum[:12])
+		name := strings.TrimSpace(in.Name)
+		if name == "" {
+			name = "Crew vault"
+		}
+		if len(name) > 90 {
+			name = name[:90]
+		}
+		created, err := a.Store.EnsureCrewVault(a.WorkspaceID, id, root, name, in.Owners)
+		if err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"id": id, "created": created})
+	}))
 	// One-off conversion of person-created vaults (PLAT-856-400), for the administrator: list them, then apply a plan.
 	mux.HandleFunc("/api/admin/person-vaults", a.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Vault-Platform-User") == "1" {
@@ -220,6 +261,34 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 201, c)
 	})
+	// Copy (PLAT-746-1026): one API-key or no-login connection goes from the actor's own vault into a Team vault, inside
+	// the Vault service, so the credential never reaches the host's caller or a chat. The member keeps their own
+	// connection; the Team stores the key once. A personal sign-in (OAuth) is never copied: each person signs in.
+	route("/api/vaults/{id}/connectors/{cid}/copy", func(w http.ResponseWriter, r *http.Request, actor string) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var in struct {
+			ToVault string `json:"to_vault"`
+			ToOwner string `json:"to_owner"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+		defer cancel()
+		c, err := a.copyVaultConnector(ctx, actor, r.PathValue("id"), r.PathValue("cid"), in.ToVault, in.ToOwner)
+		if err != nil {
+			status := 400
+			if errors.Is(err, errVaultCopyForbidden) {
+				status = 403
+			}
+			writeErr(w, status, err)
+			return
+		}
+		writeJSON(w, 201, c)
+	})
 	route("/api/vaults/{id}/connectors/{cid}/credentials", func(w http.ResponseWriter, r *http.Request, actor string) {
 		if r.Method != http.MethodPut {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -347,4 +416,60 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(w, 200, map[string]string{"status": "synced"})
 	})
+}
+
+var errVaultCopyForbidden = errors.New("only an owner of both vaults can do that")
+
+// copyVaultConnector copies a non-OAuth connection's upstream address, scheme and credential into toVault. The host has
+// already checked that actor is a current member of the Team that owns toVault (toOwner); here the actor must own the
+// source vault and toOwner (a team-<project> account) the destination, and an OAuth connection is refused.
+func (a *Admin) copyVaultConnector(ctx context.Context, actor, fromVault, connectorID, toVault, toOwner string) (store.Connector, error) {
+	if toVault == "" || toOwner == "" || toVault == fromVault {
+		return store.Connector{}, errors.New("choose another vault to copy into")
+	}
+	// Only a Team's own account (team-<project>) or a server Crew's vault the actor owns (copying their own key into
+	// their Crew) can be the destination, so a wrong or forged body can never copy a key into another person's vault.
+	team := strings.HasPrefix(toOwner, "team-") && toOwner != actor
+	crew := toOwner == actor && a.Store.IsCrewVault(toVault)
+	// Nothing is copied out of a Crew vault: what was copied in (the owner's keys on first use) stays inside that Crew.
+	if !team && !crew || a.Store.IsCrewVault(fromVault) {
+		return store.Connector{}, errVaultCopyForbidden
+	}
+	if !a.Store.VaultConnectorOwnedBy(actor, fromVault, connectorID) || !a.Store.VaultOwnedBy(toOwner, toVault) {
+		return store.Connector{}, errVaultCopyForbidden
+	}
+	src, ok := a.Store.GetConnector(connectorID)
+	if !ok {
+		return store.Connector{}, errors.New("unknown connector")
+	}
+	if src.OAuthServer != "" || src.OAuthCredentialID != "" {
+		return store.Connector{}, errors.New("this connection uses a personal sign-in: each person signs in themselves")
+	}
+	// Bearer, Basic and custom headers keep their whole credential in the stored bytes plus the scheme, so they copy
+	// completely. Anything else is refused with a reason instead of making a copy that fails when used.
+	switch src.AuthScheme {
+	case "", "Bearer", "Basic", "Headers":
+	default:
+		return store.Connector{}, errors.New("this connection's sign-in type cannot be shared with the Team yet")
+	}
+	var suffix [4]byte
+	var c store.Connector
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if _, err = rand.Read(suffix[:]); err != nil {
+			return store.Connector{}, err
+		}
+		c, err = a.addConnectorCustomFor(ctx, toVault, src.Provider, src.Label, "t"+hex.EncodeToString(suffix[:]), src.UpstreamURL, a.Store.ConnectorBearer(connectorID), src.AuthScheme, src.Transport)
+		if err == nil || !strings.Contains(err.Error(), "already exists") {
+			break
+		}
+	}
+	if err != nil {
+		return store.Connector{}, err
+	}
+	if err := a.Store.VaultAttachConnector(toOwner, toVault, c.ID); err != nil {
+		_ = a.DeleteConnector(c.ID)
+		return store.Connector{}, err
+	}
+	return c, nil
 }

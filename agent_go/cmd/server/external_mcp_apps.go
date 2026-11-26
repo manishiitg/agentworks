@@ -29,8 +29,18 @@ const dashboardAppFramePath = "/api/mcp-apps/frame"
 //go:embed mcp_apps/frame.html
 var dashboardAppFrameHTML string
 
+func dashboardAppSelectorProperties() map[string]any {
+	return map[string]any{
+		"resource_id": map[string]any{"type": "string", "format": "uuid", "description": "Published dashboard resource_id."},
+	}
+}
+func dashboardAppSelectorSchema() json.RawMessage {
+	data, _ := json.Marshal(map[string]any{"type": "object", "properties": dashboardAppSelectorProperties(), "additionalProperties": false})
+	return data
+}
+
 func externalDashboardAppDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("open_dashboard", "Open a published Crew dashboard inline when the chat host supports MCP Apps, or return its website link. Discover resource_id with dashboard action=list. Opening starts no work.", false, false, map[string]any{"resource_id": map[string]any{"type": "string", "format": "uuid", "description": "Published dashboard resource_id from dashboard action=list."}}, "resource_id")
+	add("open_dashboard", "Open a published project dashboard inline or return its website link. Pass resource_id. Opening starts no work.", false, false, dashboardAppSelectorProperties())
 }
 
 // The resource contains only application code. Project data is delivered by
@@ -54,7 +64,7 @@ func (api *StreamingAPI) registerExternalDashboardApp(s *server.MCPServer, r *ht
 		origin := base.Scheme + "://" + base.Host
 		return []mcp.ResourceContents{mcp.TextResourceContents{URI: dashboardAppURI, MIMEType: dashboardAppMIME, Text: page, Meta: map[string]any{"ui": map[string]any{"csp": map[string]any{"connectDomains": []string{}, "resourceDomains": []string{}, "frameDomains": []string{origin}}}}}}, nil
 	})
-	open := mcp.NewToolWithRawSchema("open_dashboard", "Open a shared Crew's published dashboard inline, with Ask and published actions. Discover its resource_id with dashboard action=list through call_tool. Opening does not start work. Also returns the website link for clients without inline apps.", json.RawMessage(`{"type":"object","properties":{"resource_id":{"type":"string","format":"uuid"}},"required":["resource_id"],"additionalProperties":false}`))
+	open := mcp.NewToolWithRawSchema("open_dashboard", "Open a published project dashboard inline. Pass resource_id. Opening starts no work and also returns its website link.", dashboardAppSelectorSchema())
 	open.Meta = &mcp.Meta{AdditionalFields: map[string]any{"ui": map[string]any{"resourceUri": dashboardAppURI}}}
 	readOnly := true
 	open.Annotations.ReadOnlyHint = &readOnly
@@ -82,7 +92,7 @@ func (api *StreamingAPI) dashboardAppTarget(r *http.Request, args map[string]any
 		return resolved, err
 	}
 	if !resolved.Capability.CanView || resolved.Target.Kind != "crew" {
-		return resolvedDashboardQuestion{}, dashboardFailure(404, "Open an accessible Crew dashboard; other products use their website link.")
+		return resolvedDashboardQuestion{}, dashboardFailure(404, "Open an accessible project dashboard; other products use their website link.")
 	}
 	return resolved, nil
 }
@@ -102,7 +112,7 @@ func (api *StreamingAPI) openDashboardApp(r *http.Request, args map[string]any) 
 		if guard := dashboardFileGuard(claims); guard != nil && !guard.Allows(prefix+"/"+name, false) {
 			continue
 		}
-		files[name] = strings.ReplaceAll(strings.ReplaceAll(content, "{{dashboard_assets}}", prefix), "{{dashboard_scripts}}", "code/reports/managed/"+resolved.Document.ID+"/"+resolved.Document.Published)
+		files[name] = strings.ReplaceAll(strings.ReplaceAll(content, "{{dashboard_assets}}", prefix), "{{dashboard_scripts}}", dashboards.ScriptsPrefix+resolved.Document.ID+"/"+resolved.Document.Published)
 	}
 	page, _, err := api.liveDefaultDashboard(r.Context(), claims, resolved.Target.Root, dashboards.Document(resolved.Document.ID, ""), []byte(files["index.html"]))
 	if err != nil {

@@ -9,7 +9,7 @@
 // components/workflow/workspaceViews.ts (VIEWS); WORKFLOW_PANELS re-exports it.
 import {
   Archive, BookOpen, Brain, BrainCircuit, Database, DollarSign, Files, Fingerprint, KeyRound, LayoutDashboard,
-  Lightbulb, MessageSquareText, Monitor, Plus, Route, Server, ShieldCheck, Target, Terminal, UsersRound, Zap, type LucideIcon,
+  MessageSquareText, Monitor, Plus, Route, Server, ShieldCheck, Terminal, UsersRound, Zap, type LucideIcon,
 } from 'lucide-react'
 import type { WorkWorkspaceView } from './work/WorkWorkspacePane'
 import type { KnowledgebaseView } from './knowledgebase/KnowledgebaseWorkspacePane'
@@ -23,14 +23,11 @@ export interface ProductPanel<Id extends string = string> { id: Id; label: strin
 /** Crew and Code (WorkWorkspacePane). A Code reorders and filters these at render. */
 export const WORK_PANELS: Record<'views' | 'ops' | 'setup', ProductPanel<WorkWorkspaceView>[]> = {
   views: [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'goals', label: 'Goals', icon: Target },
+    { id: 'dashboard', label: 'Artifacts', icon: LayoutDashboard },
     { id: 'memory', label: 'Memory & skills', icon: Brain },
     { id: 'browser', label: 'Browser', icon: Monitor },
     { id: 'workflow', label: 'Workflow', icon: Route },
     { id: 'schedules', label: 'Automations', icon: Zap },
-    // Change requests from other users of this Crew; the owner reviews them.
-    { id: 'suggestions', label: 'Suggestions', icon: Lightbulb },
   ],
   ops: [
     { id: 'files', label: 'Files', icon: Files },
@@ -53,7 +50,7 @@ export const BRAIN_PANELS: ProductPanel<KnowledgebaseView>[] = [
   { id: 'models', label: 'Assistant model', icon: BrainCircuit },
   { id: 'secrets', label: 'Brain secrets', icon: KeyRound },
   { id: 'backup', label: 'Backup', icon: Archive },
-  { id: 'crew', label: 'Use in a Crew', icon: UsersRound },
+  { id: 'crew', label: 'Use in a project', icon: UsersRound },
 ]
 
 /** Vault (GatewaySurface). */
@@ -61,7 +58,7 @@ export const VAULT_PANELS = [
   { id: 'access', label: 'Access', icon: ShieldCheck },
   { id: 'servers', label: 'Connected MCPs', icon: Server },
   { id: 'available-mcps', label: 'Available MCPs', icon: Plus },
-  { id: 'secrets', label: 'Secrets', icon: KeyRound },
+  { id: 'secrets', label: 'Company keys', icon: KeyRound },
   { id: 'people', label: 'People', icon: UsersRound },
 ] as const
 
@@ -85,7 +82,6 @@ export const WORKFLOW_IDENTITY_SECTIONS: PanelSection[] = [
 ]
 export const WORK_IDENTITY_SECTIONS: PanelSection[] = [
   { id: 'general', label: 'General', keywords: 'name soul persona identity' },
-  { id: 'models', label: 'Models', keywords: 'model llm provider ai' },
   // Code only (WorkWorkspacePane drops it for Crews).
   { id: 'location', label: 'Location', keywords: 'files location computer laptop local server cli folder connection start' },
 ]
@@ -117,7 +113,7 @@ export const WORKFLOW_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = 
   knowledge: KNOWLEDGE_SECTIONS, access: ACCESS_SECTIONS,
 }
 export const WORK_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = {
-  mcp: [{ id: 'laptop', label: 'Local laptop', keywords: 'computer folders terminal' }, { id: 'slack-account', label: 'Slack account', keywords: 'personal slack' }, ...INTEGRATION_SECTIONS.filter(section => section.id !== 'skills')], identity: WORK_IDENTITY_SECTIONS, schedules: [{ id: 'workflows', label: 'Workflows', keywords: 'steps sequence plan' }, { id: 'scripts', label: 'Scripts', keywords: 'python code reusable' }, ...AUTOMATION_SECTIONS.filter(section => section.id !== 'bots' && section.id !== 'chats')],
+  mcp: [{ id: 'laptop', label: 'Local laptop', keywords: 'computer folders terminal' }, { id: 'slack-account', label: 'Slack account', keywords: 'personal slack' }, ...INTEGRATION_SECTIONS.filter(section => section.id !== 'skills')], identity: WORK_IDENTITY_SECTIONS, schedules: [{ id: 'workflows', label: 'Workflows', keywords: 'steps sequence plan' }, ...AUTOMATION_SECTIONS.filter(section => section.id !== 'bots' && section.id !== 'chats')],
   memory: [{ id: 'memory', label: 'Memory' }, { id: 'skills', label: 'Skills' }],
 }
 export const VAULT_PANEL_SECTIONS: Partial<Record<string, PanelSection[]>> = { people: VAULT_PEOPLE_SECTIONS }

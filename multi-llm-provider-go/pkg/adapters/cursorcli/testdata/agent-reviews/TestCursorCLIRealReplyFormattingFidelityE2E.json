@@ -1,0 +1,29 @@
+{
+  "test": "TestCursorCLIRealReplyFormattingFidelityE2E",
+  "summary": "Reply-formatting fidelity for cursor-cli: does the final answer preserve native message text, paragraphs and lists?",
+  "review_criteria": [
+    "EXTRACTED_FINAL preserves the paragraph breaks the model authored — a blank line between paragraphs is still a blank line, not collapsed into a single wrapped block",
+    "list items each begin their own line and are not folded into surrounding prose",
+    "no line break appears INSIDE a sentence, word, or inline markdown span (`**bold**`, backticks) where the terminal wrapped it",
+    "the reply reads as markdown a UI could render directly, not as fixed-width terminal output",
+    "content is unchanged — this is about structure only; wording, numbers and punctuation must match what the model wrote"
+  ],
+  "output": {
+    "expected_note": "Real Cursor SDK markdown is compared against the same turn’s streamed reply.",
+    "extracted_final": "First paragraph for FMT_b8199c8b19, written as one single long line of at least one hundred and forty characters so that it is certain to be wrapped by a narrow terminal window.\n\nSecond paragraph for FMT_b8199c8b19, also one single long line of at least one hundred and forty characters, again long enough that the terminal will certainly wrap it onto several rows.\n\n- first bullet for FMT_b8199c8b19\n- second bullet for FMT_b8199c8b19\n- third bullet for FMT_b8199c8b19",
+    "native_final": "First paragraph for FMT_b8199c8b19, written as one single long line of at least one hundred and forty characters so that it is certain to be wrapped by a narrow terminal window.\n\nSecond paragraph for FMT_b8199c8b19, also one single long line of at least one hundred and forty characters, again long enough that the terminal will certainly wrap it onto several rows.\n\n- first bullet for FMT_b8199c8b19\n- second bullet for FMT_b8199c8b19\n- third bullet for FMT_b8199c8b19",
+    "provider": "cursor-cli",
+    "raw_provider_output": "",
+    "user_goal": "Return the two long paragraphs and the three-item list with their markdown structure intact.",
+    "want_bullets": 3,
+    "want_paragraphs": 2
+  },
+  "fingerprint": "84c5afabc96d7042",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "84c5afabc96d7042",
+    "reviewer": "codex",
+    "issues": [],
+    "notes": "Read the captured Composer 2.5 ACP answer and the exact native session answer. They match byte-for-byte: two separate unwrapped paragraphs, blank lines intact, and three distinct Markdown list items. No terminal decoration or tool transcript is present."
+  }
+}

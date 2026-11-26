@@ -1,0 +1,34 @@
+{
+  "test": "TestStructuredTransportMultiTurn_Cursor",
+  "summary": "Cursor (structured/json) multi-turn via native --resume: turn 1 reads a build id, turn 2 recalls it purely from restored session context (no re-read, no write)",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting \u2014 clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable \u2014 reads like an assistant working, coherent and natural",
+    "correct text <-> tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)",
+    "paced for a watching human \u2014 where the record carries first_signal_ms / longest_silence_ms, something shows up promptly and keeps updating; a long opening wait or one long mid-turn silence reads as a hung app even when the final output is perfect",
+    "actually streamed rather than delivered late \u2014 delivered_in_one_block=true, or a clean_content_spread_ms near zero, means the text appeared all at once at the end; that is a single late delivery wearing streaming's clothes, and the chunk COUNT alone cannot tell the difference",
+    "thinking claims match the evidence \u2014 thinking_event_count=0 means the turn surfaced NO reasoning content, so any 'thinking' a product shows for it must be streamed reply text under a Thinking label, not the model's reasoning; say which it is rather than assuming",
+    "tool calls completed \u2014 every started tool has a matching end (tool_calls_started == tool_calls_ended); a started-but-never-ended call leaves a spinning chip in the UI",
+    "usage matches native evidence \u2014 require input/output counts when the provider surfaces them; otherwise record usage as unavailable, never claim zero cost; note absent cache counts"
+  ],
+  "output": {
+    "build_id": "BUILD_ID_60473dc4a062",
+    "conversation_id": "jsonmt-c04854a9",
+    "provider": "Cursor",
+    "transport": "structured/json",
+    "turn1_answer": "BUILD_ID_60473dc4a062",
+    "turn2_answer": "BUILD_ID_60473dc4a062"
+  },
+  "fingerprint": "a4bad6b3d3b9a1eb",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "a4bad6b3d3b9a1eb",
+    "reviewer": "codex-appserver",
+    "issues": [],
+    "notes": "Reviewed both real bounded ACP turns: the second recalls the exact ID read on the first; no extra output or invented ID."
+  }
+}

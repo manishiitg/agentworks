@@ -253,7 +253,7 @@ func (api *StreamingAPI) trackExecutionStart(exec *TrackedWorkflowExecution) {
 	api.pruneTrackedExecutionsLocked(time.Now().UTC())
 	api.trackedWorkflowExecutionsMux.Unlock()
 	api.observeRuntimeSnapshot(exec.SessionID)
-	publishSessionsChanged()
+	api.publishSessionChanged(exec.SessionID)
 }
 
 func (api *StreamingAPI) trackWorkflowRunStart(exec *ActiveWorkflowExecution) {
@@ -367,7 +367,7 @@ func (api *StreamingAPI) completeTrackedExecution(executionID, status, errorMess
 	api.pruneTrackedExecutionsLocked(now)
 	api.trackedWorkflowExecutionsMux.Unlock()
 	api.observeRuntimeSnapshot(sessionID)
-	publishSessionsChanged()
+	api.publishSessionChanged(sessionID)
 	publishWorkflowSettled(settledRun)
 }
 
@@ -401,7 +401,7 @@ func (api *StreamingAPI) cancelTrackedExecutionsForSession(sessionID string) {
 	api.trackedWorkflowExecutionsMux.Unlock()
 	api.observeRuntimeSnapshot(sessionID)
 	if marked > 0 {
-		publishSessionsChanged()
+		api.publishSessionChanged(sessionID)
 		for _, workspacePath := range settled {
 			publishWorkflowSettled(workspacePath)
 		}
@@ -432,7 +432,7 @@ func (api *StreamingAPI) finalizeTrackedExecutionIfRunning(executionID, status, 
 	api.pruneTrackedExecutionsLocked(now)
 	api.trackedWorkflowExecutionsMux.Unlock()
 	defer publishWorkflowSettled(settledRun)
-	defer publishSessionsChanged()
+	defer api.publishSessionChanged(sessionID)
 	api.observeRuntimeSnapshot(sessionID)
 }
 

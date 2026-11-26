@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +13,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -56,15 +59,22 @@ func (api *StreamingAPI) handleCrewTeamWhere(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var in struct {
-		Where string `json:"where"`
-		Pair  string `json:"pair,omitempty"`
+		Where  string `json:"where"`
+		Pair   string `json:"pair,omitempty"`
+		JoinID string `json:"join_id,omitempty"`
 	}
-	if json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&in) != nil || in.Where != "mac" && in.Where != "web" {
+	if json.NewDecoder(io.LimitReader(r.Body, 256<<10)).Decode(&in) != nil || in.Where != "mac" && in.Where != "web" {
 		externalError(w, 400, "invalid_where", "Choose your Mac or the web.")
 		return
 	}
+	if in.JoinID != "" {
+		if _, err := uuid.Parse(in.JoinID); err != nil {
+			externalError(w, 400, "invalid_request", "Use this join's request ID.")
+			return
+		}
+	}
 	if in.Where == "mac" && !crewChatWebsiteClaims(claims) {
-		externalError(w, 403, "mac_sign_in_required", "Add this Crew from the AgentWorks app on your Mac.")
+		externalError(w, 403, "mac_sign_in_required", "Add this project from the AgentWorks app on your Mac.")
 		return
 	}
 	dir, err := crewTeamDir(project)
@@ -113,7 +123,7 @@ func (api *StreamingAPI) handleCrewTeamWhere(w http.ResponseWriter, r *http.Requ
 		// Their server copy goes now: their agents here work on their Mac, with its copy (crew_team_server_copy.go).
 		go api.removeStaleCrewTeamServerCopies(context.WithoutCancel(r.Context()))
 	}
-	externalJSON(w, map[string]any{"where": in.Where, "pair": person.MacPair, "team": t.view(claims.UserID)})
+	externalJSON(w, map[string]any{"where": in.Where, "pair": person.MacPair, "team": t.viewLocked(claims.UserID)})
 }
 
 // crewRelayReadKey marks a relay request that only reads a Mac chat (its events, status or queue).
@@ -164,6 +174,10 @@ func crewLocalCrewPairedWith(project string, keep func(string) bool) string {
 // online copy as the member, and the server records that their agents here work on this Mac.
 func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaims, c desktopConnection, project string, team crewTeam, folder string) (string, error) {
 	local := crewTeamMemberCopy(project)
+	if local == "" && folder != "" {
+		local = crewTeamOrphanCopyAt(ctx, claims.UserID, c, folder, project)
+	}
+	joinedAt := time.Now().UTC().Format(time.RFC3339Nano)
 	pair := ""
 	if local != "" {
 		if b, err := crewroot.ReadSync(local); err == nil && b != nil {
@@ -173,7 +187,7 @@ func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaim
 	var where struct {
 		Pair string `json:"pair"`
 	}
-	if err := crewTeamRemoteJSON(ctx, claims.UserID, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/where", map[string]string{"where": "mac", "pair": pair}, &where); err != nil {
+	if err := crewTeamRemoteJSON(ctx, claims.UserID, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/where", map[string]any{"where": "mac", "pair": pair, "join_id": crewTeamJoinRequestID(ctx)}, &where); err != nil {
 		return "", err
 	}
 	if where.Pair == "" {
@@ -193,14 +207,22 @@ func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaim
 		if len(name) > 60 {
 			name = name[:60]
 		}
-		purpose := "Your working copy of " + firstNonEmptyTrimmed(team.OwnerName, "a teammate") + "'s Crew. Your agents here work on this Mac."
-		id, err := api.createCrewFromSpec(ctx, claims, crewSpec{Name: string(name), Purpose: purpose, RootPath: folder}, false)
+		id, err := api.createCrewFromSpec(ctx, claims, crewSpec{Name: string(name), RootPath: folder}, false)
 		if err != nil {
+			// The server already recorded this Mac; without a copy here the member's agents would vanish from the
+			// Team, so their agents go back to the website until a copy exists.
+			_ = crewTeamRemoteJSON(ctx, claims.UserID, c, http.MethodPost, "/api/crew-teams/"+url.PathEscape(project)+"/where", map[string]string{"where": "web"}, nil)
+			log.Printf("[CREW_TEAM_LOCAL] online_project=%s event=member_copy_failed where_reset=web", project)
 			return "", err
 		}
 		local = id
 	}
-	if err := writeCrewTeamState(local, func(s *crewTeamLocalState) { s.MemberOf = project }); err != nil {
+	if err := writeCrewTeamState(local, func(s *crewTeamLocalState) {
+		if s.MemberOf != project || pair == "" || s.JoinedAt == "" {
+			s.JoinedAt = joinedAt
+		}
+		s.MemberOf, s.SharedBy, s.SharedFrom = project, strings.SplitN(team.OwnerName, "@", 2)[0], crewTeamNetworkName(c)
+	}); err != nil {
 		return "", err
 	}
 	if err := crewroot.WriteSync(local, crewroot.SyncBinding{Mode: "relay", PairID: where.Pair, Side: "local", Editing: "local", ConnectionID: c.ID,
@@ -211,6 +233,47 @@ func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaim
 	publishCrewPanelChanged(local)
 	return local, nil
 }
+
+// crewTeamOrphanCopyAt is a member copy on this Mac in this folder whose own Team is gone (deleted, or the person left
+// it): that Crew and its agents become the working copy of this Team instead of a second Crew in another folder.
+func crewTeamOrphanCopyAt(ctx context.Context, user string, c desktopConnection, folder, project string) string {
+	roots, found, err := localCrewRoots(folder)
+	if err != nil || !found || roots.ID == "" {
+		return ""
+	}
+	old := readCrewTeamState(roots.ID).MemberOf
+	if old == "" || old == project {
+		return ""
+	}
+	var gone *crewRemoteHTTPError
+	if err = crewTeamRemoteJSON(ctx, user, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(old), nil, &crewTeam{}); err == nil || !errors.As(err, &gone) || gone.Status != http.StatusNotFound && gone.Status != http.StatusForbidden {
+		return ""
+	}
+	log.Printf("[CREW_TEAM_LOCAL] project=%s event=member_copy_reused previous_online_project=%s online_project=%s", roots.ID, old, project)
+	return roots.ID
+}
+
+// repairCrewTeamMacCopy: the server says this member's agents in this Team work on a Mac, this Mac joined the Team's
+// folder, but no Crew here is paired with it (the copy failed, or it was paired with a Team that is gone). Pair one
+// now, so their agents reach the Team without the person doing anything.
+func (api *StreamingAPI) repairCrewTeamMacCopy(ctx context.Context, owner string, c desktopConnection, t crewTeam, root string) {
+	if t.OwnerID == c.User.ID || t.Where != "mac" || root == "" || crewTeamMemberCopy(t.ProjectID) != "" {
+		return
+	}
+	key := c.ID + "/" + t.ProjectID
+	if _, tried := crewTeamCopyRepairs.LoadOrStore(key, true); tried {
+		return
+	}
+	local, err := api.addCrewTeamToMac(ctx, &UserClaims{UserID: owner, Username: owner}, c, t.ProjectID, t, root)
+	if err != nil {
+		log.Printf("[CREW_TEAM_LOCAL] online_project=%s event=member_copy_repair_failed reason=%q", t.ProjectID, err)
+		return
+	}
+	log.Printf("[CREW_TEAM_LOCAL] project=%s event=member_copy_repaired online_project=%s", local, t.ProjectID)
+}
+
+// crewTeamCopyRepairs: one automatic repair per Team and connection while the app runs.
+var crewTeamCopyRepairs sync.Map
 
 // handleDesktopCrewTeamRemoveFromMac moves the member's own agents of a Team's Crew back to the website: the server
 // records web first, then this Mac stops offering its copy. The Crew and its folder stay on this Mac as they are.
@@ -284,7 +347,13 @@ func crewTeamWhereFor(project, user string) string {
 	if err != nil || ownerOfCrewProjectID(project) != t.OwnerID {
 		return ""
 	}
-	return t.view(user).Where
+	if t.member(user) && user != t.OwnerID {
+		if _, onMac := t.memberMac(user); onMac {
+			return "mac"
+		}
+		return "web"
+	}
+	return ""
 }
 
 // handleDesktopCrewTeamAddToMac moves the member's agents of a Team's Crew back to this Mac's existing copy ("Add to
@@ -305,7 +374,7 @@ func (api *StreamingAPI) handleDesktopCrewTeamAddToMac(w http.ResponseWriter, r 
 		return
 	}
 	if crewTeamMemberCopy(project) == "" {
-		externalError(w, 404, "no_mac_copy", "This Mac has no copy of this Crew yet. Use Add to my Mac on the Team invite.")
+		externalError(w, 404, "no_mac_copy", "This Mac has no copy of this project yet. Use Add to my Mac on the Team invite.")
 		return
 	}
 	var team crewTeam

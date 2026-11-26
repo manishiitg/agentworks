@@ -1,0 +1,460 @@
+package server
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	agentevents "github.com/manishiitg/mcpagent/events"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
+)
+
+// Fork snapshots the caller's own admitted chat into a new tab. Opening it
+// starts no model turn and never rotates, writes, or stops the source session.
+func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	var input struct {
+		ConversationKey string `json:"conversation_key"`
+		Name            string `json:"name"`
+		// Task: the fork's first task, which the forking chat sends right after; shown on the parent's divider line.
+		Task string `json:"task"`
+	}
+	decoder := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil || strings.TrimSpace(input.ConversationKey) == "" {
+		externalError(w, 400, "invalid_request", "Choose a chat to fork.")
+		return
+	}
+	requestedName := strings.TrimSpace(input.Name)
+	if requestedName != "" {
+		var err error
+		requestedName, err = normalizeChatHistoryTitle(requestedName)
+		if err != nil {
+			externalError(w, 400, "invalid_name", err.Error())
+			return
+		}
+	}
+	user, slot, ok := api.agentProfileConversationSlot(w, r, input.ConversationKey)
+	if !ok {
+		return
+	}
+	if slot.profile.ID != crewProfileID || !slot.canBuild || !canUseCapLayerProfile(r.Context(), slot.profile.ID) {
+		externalError(w, 403, "fork_unavailable", "Open one of your own project chats to fork it.")
+		return
+	}
+	source, found, err := crewTabForKey(r.Context(), user, slot.profile.ID, slot.binding.ConversationKey, slot.binding.WorkspacePath)
+	if err != nil {
+		externalFailure(w, err)
+		return
+	}
+	if !found || source.OwnerID != user {
+		externalError(w, 403, "tab_owner", "Fork one of your own chats, or message this agent from your own tab.")
+		return
+	}
+	if api.crewMacTwinForOwner(r, crewResourceProjectID(source.Record.ConversationKey)) {
+		externalError(w, 409, "use_mac", "Fork this chat in the Mac app where it runs.")
+		return
+	}
+	forkStarted := time.Now()
+	forkCompleted := false
+	defer func() {
+		log.Printf("[CHAT_FORK_PHASE] phase=total source=%s elapsed_ms=%d success=%t", source.Record.SessionID, time.Since(forkStarted).Milliseconds(), forkCompleted)
+	}()
+	phaseStarted := time.Now()
+	raw, err := ReadChatHistoryConversation(user, source.Record.SessionID, source.Record.WorkspacePath)
+	if err != nil {
+		externalError(w, 422, "history_unavailable", "This chat has no saved conversation yet. Send a message first.")
+		return
+	}
+	var saved struct {
+		History []llmtypes.MessageContent `json:"conversation_history"`
+	}
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		externalFailure(w, err)
+		return
+	}
+	if len(saved.History) == 0 {
+		externalError(w, 422, "history_unavailable", "This chat has no saved conversation yet. Send a message first.")
+		return
+	}
+	log.Printf("[CHAT_FORK_PHASE] phase=history source=%s elapsed_ms=%d success=true", source.Record.SessionID, time.Since(phaseStarted).Milliseconds())
+	choice, err := effectiveProfileChatModel(slot.profile, slot.binding, source.Record, source.Identity)
+	if err != nil {
+		externalFailure(w, err)
+		return
+	}
+	query := QueryRequest{Provider: choice.Provider, ModelID: choice.ModelID, ConnectionID: choice.ConnectionID}
+	if err := constrainProductChatModel(r.Context(), &query); err != nil {
+		externalError(w, 422, "model_unavailable", err.Error())
+		return
+	}
+	project := crewResourceProjectID(source.Record.ConversationKey)
+	key := project + codeChatSideMarker + "fork-" + uuid.NewString()
+	baseName := []rune(firstNonEmptyTrimmed(source.Identity.Name, source.Record.Title, "Chat"))
+	if len(baseName) > productAgentNameMaxRunes-7 {
+		baseName = baseName[:productAgentNameMaxRunes-7]
+	}
+	name := firstNonEmptyTrimmed(requestedName, string(baseName)+" (fork)")
+	request := r.Clone(r.Context())
+	request.Header = r.Header.Clone()
+	request.Header.Del("X-Session-ID")
+	request.Header.Del("X-Conversation-Continuation")
+	phaseStarted = time.Now()
+	destination, err := api.resolveAgentProfileConversation(request, slot.profile, key, name)
+	if err != nil {
+		externalFailure(w, err)
+		return
+	}
+	if _, err = defaultProductConversationRegistryStore().setAgentModel(r.Context(), user, slot.profile.ID, key, choice.Engine, query.ModelID, choice.ReasoningEffort, query.ConnectionID, user); err != nil {
+		externalFailure(w, err)
+		return
+	}
+	// The fork remembers its parent, so the left menu draws it under that agent (#3288).
+	parent := source.Record.ConversationKey
+	parentName := firstNonEmptyTrimmed(source.Identity.Name, source.Record.Title, "Chat")
+	// A fork is its own agent unless an agent made it as its helper (the fork tool then replaces this note).
+	forkNote := forkFirstTurnNote(parentName, name, source.Identity.Purpose, true)
+	change := chatContextChange{ForkedFrom: &parent, ForkNote: &forkNote}
+	if source.Identity.ClaudeTerminal && query.Provider == "claude-code" {
+		terminal := true
+		change.ClaudeTerminal = &terminal
+	}
+	if _, err := defaultProductConversationRegistryStore().setChatContextOptions(r.Context(), user, slot.profile.ID, key, change, user); err != nil {
+		externalFailure(w, err)
+		return
+	}
+	log.Printf("[CHAT_FORK_PHASE] phase=register_chat source=%s session=%s elapsed_ms=%d success=true", source.Record.SessionID, destination.SessionID, time.Since(phaseStarted).Milliseconds())
+	destination.Provider, destination.ModelID, destination.ConnectionID = query.Provider, query.ModelID, query.ConnectionID
+	runtime, nativeErr := api.forkCrewNativeRuntime(r, source.Record, destination)
+	note := "Conversation copied into an independent chat."
+	if runtime == nil {
+		note += " This CLI will start a new native session using the copied conversation."
+	}
+	if nativeErr != nil {
+		log.Printf("[CHAT_FORK] source=%s session=%s native=false reason=%q", source.Record.SessionID, destination.SessionID, nativeErr.Error())
+		if strings.Contains(nativeErr.Error(), "This chat is too large to copy") || strings.Contains(nativeErr.Error(), "not enough free space") {
+			note += " Native history was not copied because the chat is too large or available storage is low. The copied conversation is still available."
+		}
+	}
+	if runtime != nil {
+		applyCrewNativeToolPolicy(&slot.profile, true, slot.binding.ProjectNativeAgentTools)
+		runtime.WorkshopMode, runtime.AgentToolsMode = crewCLIMode(false), normalizeAgentToolsMode(slot.profile.Runtime.AgentTools.Mode)
+	}
+	phaseStarted = time.Now()
+	path, pathOK := workProjectChatHistoryConversationPath(user, destination.WorkspacePath, destination.SessionID, time.Now())
+	if !pathOK || path == "" {
+		externalError(w, 500, "history_unavailable", "Could not save the copied conversation. Try again.")
+		return
+	}
+	data, err := json.Marshal(map[string]any{"session_id": destination.SessionID, "user_id": user, "agent_mode": "multi-agent", "workspace_path": destination.WorkspacePath, "workshop_mode": crewCLIMode(false), "title": name, "conversation_history": saved.History, "runtime": runtime, "created_at": destination.CreatedAt, "updated_at": time.Now().UTC().Format(time.RFC3339)})
+	if err != nil {
+		externalFailure(w, err)
+		return
+	}
+	if err = writeRawFileToWorkspace(r.Context(), path, string(data)); err != nil {
+		externalFailure(w, err)
+		return
+	}
+	if err = writeChatHistoryResumeSnapshot(r.Context(), path, data); err != nil {
+		externalFailure(w, err)
+		return
+	}
+	if err = updatePersistedChatHistoryIndex(user, destination.SessionID, "multi-agent", saved.History, runtime, path, int64(len(data)), time.Now(), nil); err != nil {
+		externalFailure(w, err)
+		return
+	}
+	if err = api.seedForkChatJournal(user, destination, source.Record.ConversationKey, firstNonEmptyTrimmed(source.Identity.Name, source.Record.Title, "Chat"), saved.History); err != nil {
+		externalFailure(w, err)
+		return
+	}
+
+	forkCompleted = true
+	api.noteForkCreated(user, source.Record, key, name, strings.TrimSpace(input.Task))
+	log.Printf("[CHAT_FORK_PHASE] phase=save_history source=%s session=%s elapsed_ms=%d success=true", source.Record.SessionID, destination.SessionID, time.Since(phaseStarted).Milliseconds())
+	log.Printf("[CHAT_FORK] project=%s source=%s session=%s native=%t messages=%d", project, source.Record.SessionID, destination.SessionID, runtime != nil, len(saved.History))
+	writeAgentProfileJSON(w, 200, map[string]any{"chat_id": strings.TrimPrefix(key, project+codeChatSideMarker), "conversation_key": key, "conversation_id": destination.ConversationID, "session_id": destination.SessionID, "name": name, "engine": choice.Engine, "provider": query.Provider, "model_id": query.ModelID, "connection_id": query.ConnectionID, "reasoning_effort": choice.ReasoningEffort, "native_resume": runtime != nil, "forked_from": parent, "next": note})
+}
+
+func (api *StreamingAPI) forkCrewNativeRuntime(r *http.Request, source, destination ProductConversationRecord) (*ChatHistoryAgentRuntime, error) {
+	user := productWorkspaceUserID(r.Context())
+	original, found, err := ReadChatHistoryRuntimeForSession(user, source.SessionID, source.WorkspacePath)
+	if err != nil {
+		return nil, err
+	}
+	if !found || original == nil || original.AgentSessionHandle == nil {
+		return nil, fmt.Errorf("no saved native session")
+	}
+	handle := original.AgentSessionHandle.Provider
+	if handle.NativeSessionID == "" || handle.Provider != destination.Provider {
+		return nil, fmt.Errorf("no matching native session")
+	}
+	roots, found, err := crewStorageRoots(source.WorkspacePath)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, fmt.Errorf("Project runtime unavailable")
+	}
+	return api.copyCrewNativeFork(r, roots, source, destination, original)
+}
+
+func (api *StreamingAPI) copyCrewNativeFork(r *http.Request, roots crewroot.Roots, source, destination ProductConversationRecord, original *ChatHistoryAgentRuntime) (*ChatHistoryAgentRuntime, error) {
+	return api.copyCrewNativeForkCut(r, roots, source, destination, original, nil)
+}
+
+// copyCrewNativeForkCut is copyCrewNativeFork with an optional step that
+// shortens the staged export before it is forked (edit and resend, #3134).
+func (api *StreamingAPI) copyCrewNativeForkCut(r *http.Request, roots crewroot.Roots, source, destination ProductConversationRecord, original *ChatHistoryAgentRuntime, cut func(*sessiontransfer.Bundle) error) (*ChatHistoryAgentRuntime, error) {
+	claims := GetUserFromContext(r.Context())
+	handle := original.AgentSessionHandle.Provider
+	source.Provider = handle.Provider
+	if original.AgentSessionHandle.ConnectionID != "" {
+		source.ConnectionID = original.AgentSessionHandle.ConnectionID
+	}
+	store, runtimeDir, err := api.crewProgramStore(r.Context(), claims, roots, source, handle.Transport, false)
+	if err != nil {
+		return nil, err
+	}
+	// Reserve room for all copies before the exporter touches any journal.
+	free, err := localChatFreeBytes(roots.Private)
+	if err != nil || free <= 256<<20 {
+		return nil, fmt.Errorf("not enough free space to copy this chat; continued from copied conversation")
+	}
+	limit := int64(64 << 20)
+	if ceiling := sessiontransfer.MaxBytes(); ceiling < limit {
+		limit = ceiling
+	}
+	if available := (free - (256 << 20)) / 3; available < uint64(limit) {
+		limit = int64(available)
+	}
+	if limit <= 0 {
+		return nil, fmt.Errorf("not enough free space to copy this chat")
+	}
+	staging, err := os.MkdirTemp(roots.Private, "chat-fork-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(staging)
+	cwds := []string{handle.WorkingDir}
+	if cwd, e := crewCLIWorkingDir(roots.Virtual, claims.UserID, source.SessionID, handle.Provider, false); e == nil {
+		cwds = append([]string{cwd}, cwds...)
+	}
+	if handle.Provider == "claude-code" {
+		cwds = append(cwds, claudeSessionWorkingDirs(store, handle.NativeSessionID, handle.WorkingDir)...)
+	}
+	exportStarted := time.Now()
+	var bundle *sessiontransfer.Bundle
+	for _, cwd := range cwds {
+		if cwd == "" {
+			continue
+		}
+		if slot, ok := crewNativeSlot(claims.UserID, runtimeDir, handle.Provider); ok {
+			bundle, err = crewSlotNativeTransferBudget(r.Context(), claims.UserID, slot, runtimeDir, handle.NativeSessionID, handle.Transport, nil, filepath.Join(staging, "source"), limit)
+		} else {
+			bundle, err = exportCrewForkProgram(store, cwd, handle.NativeSessionID, handle.Provider, handle.Transport, filepath.Join(staging, "source"), limit)
+		}
+		if err == nil && bundle != nil {
+			break
+		}
+	}
+	log.Printf("[CHAT_FORK_PHASE] phase=export source=%s session=%s elapsed_ms=%d success=%t", source.SessionID, destination.SessionID, time.Since(exportStarted).Milliseconds(), err == nil && bundle != nil)
+	if err != nil {
+		return nil, err
+	}
+	if bundle == nil {
+		return nil, fmt.Errorf("native conversation unavailable")
+	}
+	// Match local import's existing full-copy budget before making another
+	// native copy. Saved dialogue remains the continuity path for larger chats.
+	var bytes int64
+	for _, file := range bundle.Files {
+		bytes += file.Size
+	}
+	free, spaceErr := localChatFreeBytes(roots.Private)
+	if bytes > 64<<20 || spaceErr != nil || free < uint64(bytes)*3+(256<<20) {
+		return nil, fmt.Errorf("native copy budget exceeded; continued from copied conversation")
+	}
+	cwd, err := crewCLIWorkingDir(roots.Virtual, claims.UserID, destination.SessionID, handle.Provider, false)
+	if err != nil {
+		return nil, err
+	}
+	if cut != nil {
+		if err := cut(bundle); err != nil {
+			return nil, err
+		}
+	}
+	// Import alone preserves the native ID. Always fork first: unsupported
+	// formats use saved history instead of sharing a writer with the original.
+	copyStarted := time.Now()
+	fork, err := sessiontransfer.ForkJSONL(bundle, filepath.Join(staging, "fork"), cwd)
+	log.Printf("[CHAT_FORK_PHASE] phase=copy source=%s session=%s elapsed_ms=%d success=%t", source.SessionID, destination.SessionID, time.Since(copyStarted).Milliseconds(), err == nil)
+	if err != nil {
+		return nil, err
+	}
+	importStarted := time.Now()
+	runtime, err := api.importCrewNativeInto(r.Context(), claims, roots, destination, destination.SessionID, fork, cwd)
+	log.Printf("[CHAT_FORK_PHASE] phase=register_native source=%s session=%s elapsed_ms=%d success=%t", source.SessionID, destination.SessionID, time.Since(importStarted).Milliseconds(), err == nil)
+	return runtime, err
+}
+
+// Avoid exporting formats ForkJSONL cannot fork, and pass the bound before export.
+func exportCrewForkProgram(store, cwd, id, provider, transport, out string, maxBytes int64) (*sessiontransfer.Bundle, error) {
+	switch provider {
+	case "claude-code", "codex-cli":
+		return sessiontransfer.ExportJSONLWithBudget(provider, transport, store, cwd, id, out, maxBytes)
+	case "pi-cli":
+		piStore, err := crewPiStore(store, id, false)
+		if err != nil {
+			return nil, err
+		}
+		return sessiontransfer.ExportJSONLWithBudget(provider, transport, piStore, cwd, id, out, maxBytes)
+	case "agy-cli":
+		return sessiontransfer.ExportAgyWithBudget(transport, store, cwd, id, out, maxBytes)
+	default:
+		return nil, fmt.Errorf("this native format cannot be forked; continued from copied conversation")
+	}
+}
+
+// The resume archive is model context; the chat screen reads the destination's
+// own journal. Copy only dialogue, never source event ownership or tool handles.
+func (api *StreamingAPI) seedForkChatJournal(user string, destination ProductConversationRecord, sourceKey, sourceName string, history []llmtypes.MessageContent) error {
+	if api.eventStore == nil {
+		return fmt.Errorf("the copied conversation journal is unavailable")
+	}
+	// Reuse the one parsed model history. Only text references are projected;
+	// do not marshal/unmarshal another full history including tool payloads.
+	conversation := builderConversationLog{SessionID: destination.SessionID}
+	for _, message := range history {
+		role := string(message.Role)
+		if role != "human" && role != "user" && role != "ai" && role != "assistant" {
+			continue
+		}
+		row := builderConversationMessage{Role: role}
+		for _, part := range message.Parts {
+			if text := chatHistoryPartText(part); text != "" {
+				row.Parts = append(row.Parts, builderConversationPart{Text: text})
+			}
+		}
+		conversation.ConversationHistory = append(conversation.ConversationHistory, row)
+	}
+	api.eventStore.SetSessionOwner(destination.SessionID, user)
+	if err := api.eventStore.SetSessionPersistenceClass(destination.SessionID, storeevents.SessionPersistenceInteractiveChat); err != nil {
+		return err
+	}
+	var dialogue []storeevents.Event
+	for _, row := range builderConversationToRawEventsLimit(conversation, 0) {
+		var event storeevents.Event
+		if err := json.Unmarshal(row, &event); err != nil {
+			return err
+		}
+		dialogue = append(dialogue, event)
+	}
+	if err := api.eventStore.ImportDurableChatEvents(destination.SessionID, dialogue); err != nil {
+		return err
+	}
+	project := crewResourceProjectID(sourceKey)
+	chat := strings.TrimPrefix(sourceKey, project+codeChatSideMarker)
+	if sourceKey == project {
+		chat = "main"
+	}
+	now := time.Now()
+	marker := storeevents.Event{
+		ID: "fork:" + destination.SessionID, Type: "chat_forked", Timestamp: now, SessionID: destination.SessionID,
+		Data: agentevents.NewAgentEvent(storeevents.NewGenericEventData("chat_forked", map[string]interface{}{
+			"source_name": sourceName, "source_project_id": project, "source_chat_id": chat,
+		})),
+	}
+	if err := api.eventStore.AddEventChecked(destination.SessionID, marker); err != nil {
+		return err
+	}
+	log.Printf("[CHAT_FORK_PHASE] phase=display_history session=%s dialogue_rows=%d success=true", destination.SessionID, len(dialogue))
+	return nil
+}
+
+// forkFirstTurnNote is what a new fork's agent reads on its first turn. The copied conversation is the parent's, so
+// without it the fork can believe it is the parent and carry on the parent's role.
+// own is a fork of its own (the person's fork, or place=beside or a group; owner 25 Nov): it works with the person and
+// does not report back to the agent it came from. A helper fork (place=under) sends a hand-off, blocker or result.
+func forkFirstTurnNote(parentName, forkName, parentPurpose string, own bool) string {
+	reach := "To reach it, find it with messages action=list_agents and send through AgentBridge; send only a hand-off, a blocker or a result."
+	if own {
+		reach = fmt.Sprintf("You are your own agent: work with the person here. Do not report to %q or send it updates unless the person asks.", parentName)
+	}
+	note := fmt.Sprintf("[This chat is a fork. It is %q, a separate agent forked from %q. The conversation above is a copy of %q up to the fork: its earlier replies were written by that agent, not by you. You are not %q: do not carry on its role or its unfinished work unless the person asks you to. %q keeps working on its own and does not see what you do here. %s]", forkName, parentName, parentName, parentName, parentName, reach)
+	if purpose := strings.TrimSpace(parentPurpose); purpose != "" {
+		note = strings.TrimSuffix(note, "]") + fmt.Sprintf(" The parent's job was: %s", purpose) + "]"
+	}
+	return note
+}
+
+// noteForkCreated puts a divider line in the parent chat saying a fork is ready, with a way to open it. The person
+// forking from the menu gets no tool result, so this is how the parent chat learns the fork exists.
+func (api *StreamingAPI) noteForkCreated(user string, source ProductConversationRecord, forkKey, forkName, task string) {
+	if api.eventStore == nil || source.SessionID == "" {
+		return
+	}
+	project := crewResourceProjectID(forkKey)
+	fields := map[string]interface{}{"fork_name": forkName, "fork_project_id": project, "fork_chat_id": strings.TrimPrefix(forkKey, project+codeChatSideMarker)}
+	if task != "" {
+		fields["task"] = task
+	}
+	event := agentevents.NewAgentEvent(storeevents.NewGenericEventData("chat_fork_created", fields))
+	event.SessionID = source.SessionID
+	api.eventStore.SetSessionOwner(source.SessionID, user)
+	if err := api.eventStore.SetSessionPersistenceClass(source.SessionID, storeevents.SessionPersistenceInteractiveChat); err != nil {
+		log.Printf("[CHAT_FORK] session=%s parent notice skipped: %v", source.SessionID, err)
+		return
+	}
+	if err := api.eventStore.AddEventChecked(source.SessionID, storeevents.Event{ID: "fork-created:" + uuid.NewString(), Type: "chat_fork_created", Timestamp: time.Now(), SessionID: source.SessionID, Data: event}); err != nil {
+		log.Printf("[CHAT_FORK] session=%s parent notice failed: %v", source.SessionID, err)
+	}
+}
+
+// claudeSessionWorkingDirs finds the folder Claude Code really ran a session in when the saved handle names an older one:
+// Claude keeps <store>/projects/<slug of its folder>/<id>.jsonl, and the folder is one of the CLI runtime folders.
+func claudeSessionWorkingDirs(store, id, saved string) []string {
+	matches, _ := filepath.Glob(filepath.Join(store, "projects", "*", id+".jsonl"))
+	if len(matches) == 0 {
+		return nil
+	}
+	bases := []string{}
+	if state, err := workflowCLIStateRoot(); err == nil {
+		bases = append(bases, filepath.Join(state, "cli-runtimes", "v1"))
+	}
+	if saved != "" {
+		bases = append(bases, filepath.Dir(saved))
+	}
+	// The app's own state folders on this Mac (the name has changed case over time).
+	if config, err := os.UserConfigDir(); err == nil {
+		for _, name := range []string{"agentworks", "AgentWorks"} {
+			bases = append(bases, filepath.Join(config, name, "state", "cli-runtimes", "v1"))
+		}
+	}
+	out := []string{}
+	for _, match := range matches {
+		slug := filepath.Base(filepath.Dir(match))
+		for _, base := range bases {
+			dirs, _ := filepath.Glob(filepath.Join(base, "*"))
+			for _, dir := range dirs {
+				if sessiontransfer.ClaudeSlug(dir) == slug && !slices.Contains(out, dir) {
+					out = append(out, dir)
+				}
+			}
+		}
+	}
+	return out
+}

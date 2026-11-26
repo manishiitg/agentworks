@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/mcpagent/mcpcache"
 	"github.com/manishiitg/mcpagent/mcpcache/openapi"
 
@@ -139,7 +140,7 @@ func (api *StreamingAPI) vaultBridgeToolName(ctx context.Context, session, serve
 		return ctx, server, tool, nil
 	}
 	person := api.mcpSessionPerson(session)
-	// A Crew's Vault apps are its owner's for everyone who uses it (scopeAgentMCP).
+	// The acting person's Vault in a Crew; a Goal's creator's (projectSecretsOwner).
 	lender := person
 	if root := api.projectRootForSession(session); root != "" && person != "" {
 		lender = api.turnSecretsOwner(session, person, root)
@@ -195,7 +196,7 @@ func mcpCaller(ctx context.Context) string {
 // Workflow children carry server-owned parent registrations rather than their
 // own persisted browser session. Never infer an owner from a client-supplied ID.
 func (api *StreamingAPI) mcpSessionPerson(session string) string {
-	if person, isWatcher := api.watcherSlackPerson(session); isWatcher {
+	if person, isWatcher := api.watcherReadPerson(session); isWatcher {
 		return person // a Watcher check's owner, while the check runs
 	}
 	if strings.HasPrefix(session, "report-run-") {
@@ -232,35 +233,29 @@ func activeMCPPerson(person string) bool {
 
 // Only the host supplies the actor; never forward a browser JWT or identity header.
 func vaultRuntimeRequest(ctx context.Context, person, path string) ([]byte, error) {
+	status := 0
+	defer logSlowVaultRequest(ctx, "runtime", time.Now(), &status)
 	if !activeMCPPerson(person) {
 		return nil, errors.New("active MCP user required")
 	}
-	target, secret, err := gatewayAdminServiceConfig()
-	if err != nil {
-		return nil, errors.New("Vault is not configured")
-	}
-	target.Path = strings.TrimRight(target.Path, "/") + path
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+secret)
-	req.Header.Set("X-CapLayer-Actor", person)
-	req.Header.Set("X-Vault-Platform-User", "1")
+	headers := map[string]string{"X-Vault-Platform-User": "1"}
 	if path == "/api/admin/runtime/builder/servers" {
-		req.Header.Set("X-Vault-Builder", "1")
+		headers["X-Vault-Builder"] = "1"
 	}
-	client := &http.Client{Transport: capLayerTransport, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	resp, err := client.Do(req)
-	if err != nil {
+	if scope := crewVaultScope(ctx); scope != "" {
+		headers["X-Vault-Crew-Vault"] = scope // only a server Crew's own runtime (crew_vault.go); the Vault service reads this exact name (mcp-gateway/internal/admin/runtime.go)
+	}
+	var data []byte
+	var err error
+	status, data, err = vaultServiceCall{Method: http.MethodGet, Path: path, Actor: person, Headers: headers, Timeout: 10 * time.Second, Limit: 4 * 1024 * 1024}.do(ctx)
+	switch {
+	case errors.Is(err, errVaultServiceNotConfigured):
+		return nil, errors.New("Vault is not configured")
+	case errors.Is(err, errVaultServiceUnavailable):
 		return nil, errors.New("Vault unavailable")
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
+	case status != 200:
 		return nil, errors.New("Vault access unavailable")
-	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024+1))
-	if len(data) > 4*1024*1024 {
+	case errors.Is(err, errVaultResponseTooLarge):
 		return nil, errors.New("Vault catalog exceeds limit")
 	}
 	return data, err
@@ -370,8 +365,18 @@ func (api *StreamingAPI) handleMyVaultServers(w http.ResponseWriter, r *http.Req
 			}
 		}
 	}
+	// from is where each connection comes from (the Vault group or the person's own vault), shown only to tell apart
+	// two connections with the same name (a company "Notion" and a personal "Notion" are two different accounts).
+	from := map[string]string{}
+	for _, g := range access.Groups {
+		for _, s := range g.Servers {
+			if _, ok := from[s.ID]; !ok && strings.TrimSpace(g.Name) != "" {
+				from[s.ID] = g.Name
+			}
+		}
+	}
 	for _, s := range access.Servers {
-		if actor != owner && len(picks) > 0 && !picks[vaultServerName(s.ID)] {
+		if seen[s.ID] || actor != owner && len(picks) > 0 && !picks[vaultServerName(s.ID)] {
 			continue
 		}
 		rows = append(rows, map[string]any{"id": s.ID, "label": s.Label, "provider": s.Provider, "tools": s.Tools, "status": "active", "can_manage": api.vaultActorCanManage(r.Context(), actor, s.ID)})
@@ -388,10 +393,43 @@ func (api *StreamingAPI) handleMyVaultServers(w http.ResponseWriter, r *http.Req
 					continue
 				}
 				rows = append(rows, map[string]any{"id": s.ID, "label": s.Label, "provider": s.Provider, "tools": []any{}, "status": s.Status, "can_manage": actor == owner})
+				seen[s.ID] = true
+				if _, ok := from[s.ID]; !ok && strings.TrimSpace(v.Group.Name) != "" {
+					from[s.ID] = v.Group.Name
+				}
 			}
 		}
 	}
-	writeUsersJSON(w, 200, map[string]any{"servers": rows})
+	labelSameNameVaultRows(rows, from, actor == owner)
+	writeUsersJSON(w, 200, map[string]any{"servers": rows, "can_connect": personVaultActive(actor)})
+}
+
+// labelSameNameVaultRows tells apart two connections with the same name by where each comes from ("Shared through
+// <group>" or "Personal account"). Only the owner of these connections gets the label: a teammate viewing the owner's
+// Crew must not learn the names of Vault groups they are not in, nor which row is the owner's personal account.
+func labelSameNameVaultRows(rows []map[string]any, from map[string]string, isOwner bool) {
+	if !isOwner {
+		return
+	}
+	labels := map[string]int{}
+	for _, row := range rows {
+		label, _ := row["label"].(string)
+		labels[strings.ToLower(strings.TrimSpace(label))]++
+	}
+	for _, row := range rows {
+		label, _ := row["label"].(string)
+		id, _ := row["id"].(string)
+		if labels[strings.ToLower(strings.TrimSpace(label))] < 2 {
+			continue
+		}
+		switch group := from[id]; group {
+		case "":
+		case personalVaultName:
+			row["detail"] = "Personal account"
+		default:
+			row["detail"] = "Shared through " + group
+		}
+	}
 }
 
 type vaultDelegation struct {
@@ -461,13 +499,13 @@ func (api *StreamingAPI) handleVaultRuntimeMCP(w http.ResponseWriter, r *http.Re
 				http.Error(w, "project connection selection unavailable", 403)
 				return
 			}
-			if !projectVaultAppInUse(selected, chosenOnly, in.Connector) {
+			if !projectVaultAppInUse(r.Context(), selected, chosenOnly, in.Connector) {
 				http.Error(w, "this Vault connection is not selected for the project", 403)
 				return
 			}
 		}
 
-		// The session's own person, or the owner of its Crew/Goal lending that project's Vault MCPs (scopeAgentMCP).
+		// The session's own person, or the creator of its Goal lending that Goal's Vault MCPs (projectSecretsOwner).
 		owner := api.mcpSessionPerson(in.Session)
 		if owner != in.Person {
 			root := api.projectRootForSession(in.Session)
@@ -559,7 +597,7 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 		return nil, fmt.Errorf("%q could mean more than one connected app: %s. Use one of these names.", server, strings.Join(options, ", "))
 	}
 	if len(matches) == 0 {
-		return nil, errors.New("MCP is not available through Vault; use a specific connection ID from the live inventory")
+		return nil, fmt.Errorf("%q is not in your vault. Connect it in Vault (My accounts), or ask someone to put theirs in a shared vault you are in", server)
 	}
 	v := matches[0]
 	cfg, err := api.vaultServerConfig(person, v.ID)
@@ -578,7 +616,37 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 	return &executor.ResolvedMCPServer{Name: name, Config: cfg, ConnectionSessionID: name}, nil
 }
 
+// actingVaultPicks turns a project's chosen Vault connections into the acting person's own: a chosen connection they
+// can use stays; one in someone else's personal vault becomes their connection of the same app (vaultAppChosen), or
+// stays as chosen so the turn logs why it is missing.
+func actingVaultPicks(ctx context.Context, rows []vaultRuntimeServer, names []string) []string {
+	visible := map[string]bool{}
+	for _, row := range rows {
+		visible[vaultServerName(row.ID)] = true
+	}
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		id, ok := strings.CutPrefix(vaultSelectionName(name), "vault_")
+		if !ok || visible[vaultSelectionName(name)] {
+			out = append(out, name)
+			continue
+		}
+		provider, mapped := vaultConnectionProvider(ctx, id), false
+		for _, row := range rows {
+			if provider != "" && strings.EqualFold(row.Provider, provider) {
+				out = append(out, vaultServerName(row.ID))
+				mapped = true
+			}
+		}
+		if !mapped {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, names []string, overrides mcpclient.RuntimeOverrides) ([]string, mcpclient.RuntimeOverrides, map[string]string, error) {
+	defer events.TurnSpeedSpan(sessionID, "mcp_scope")()
 	person := mcpCaller(ctx)
 	inPlace := api.projectRootForSession(sessionID) != ""
 	if inPlace {
@@ -590,9 +658,8 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 		}
 		person = owner
 	}
-	// A Crew's or Goal's Vault MCPs are its owner's, for everyone who uses it (owner-lent, the same rule as its secrets,
-	// projectSecretsOwner; owner 2026-10-21 "one store, Vault only"). The gateway checks the owner's grants; a lent
-	// personal Slack is limited to its send side for anyone else (lentVaultSlackRefusal).
+	// In a Crew everyone uses their own Vault (personal plus shared vaults), the owner too (owner 19 Nov); a Goal lends
+	// its creator's (projectSecretsOwner). The gateway checks that person's grants on every call.
 	lender := person
 	if root := api.projectRootForSession(sessionID); root != "" && person != "" {
 		lender = api.turnSecretsOwner(sessionID, person, root)
@@ -600,35 +667,13 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 	// A product that picks Vault connections gets only those (MCPs come from Vault, owner 2026-10-20); one that picks
 	// none keeps every authorized Vault connection as its default. Cache discovery once; live calls still recheck the
 	// actor's current grants and argument rules at the gateway.
-	rows, inventoryErr := vaultServersFor(ctx, lender)
-	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{lender, rows, inventoryErr})
-	names = append([]string(nil), names...)
-	picksVault := false
-	for _, name := range names {
-		if strings.HasPrefix(strings.TrimSpace(name), "vault_") {
-			picksVault = true
-			break
-		}
-	}
-	explicitNone := false
-	for _, name := range names {
-		if name == mcpclient.NoServers {
-			explicitNone = true
-		}
-	}
-	if inventoryErr == nil && !picksVault && !explicitNone {
-		for _, row := range rows {
-			names = append(names, vaultServerName(row.ID))
-		}
-	}
-	// On the Mac, a Crew linked to its company's server also gets the lender's own Vault apps there (srv_*), under the
-	// same default rule; each call is forwarded to the server and checked there as that person.
-	ctx, remote := api.withServerVaultInventory(ctx, lender, sessionID)
-	if !picksVault && !explicitNone {
-		for _, row := range remote {
-			names = append(names, row.Name)
-		}
-	}
+	picks := append([]string(nil), names...)
+	ctx, names, rows, remote, inventoryErr := api.vaultAppCandidates(ctx, lender, sessionID, names)
+	own := ownChatAppsFrom(ctx)
+	recordLaunchedVaultApps(sessionID, person, lender, picks, vaultAppLabels(names, rows, remote), len(own.ids) > 0, inventoryErr)
+	// A User of a server Crew starts and calls the Crew vault's apps as its main owner (crewVaultReader); the rows are
+	// already only that vault's apps. Apps from the typing person's own vault are always started and called as them.
+	lender = crewVaultReader(ctx, lender)
 	aliasRows := make([]vaultRuntimeServer, 0, len(rows)+len(remote))
 	for _, row := range rows {
 		row.Name = vaultServerName(row.ID)
@@ -650,12 +695,23 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 
 		var resolved *executor.ResolvedMCPServer
 		var err error
+		lender := lender
+		if id, ok := strings.CutPrefix(vaultSelectionName(name), "vault_"); ok && own.ids[id] {
+			lender = own.person
+		}
 		if strings.HasPrefix(vaultSelectionName(name), serverVaultPrefix) {
 			resolved, err = api.resolveServerVaultMCP(ctx, lender, vaultSelectionName(name), sessionID)
 		} else {
 			resolved, err = api.resolveGovernedMCP(ctx, lender, name)
 		}
 		if err != nil {
+			// A selected connection that cannot start used to vanish without a trace; say which one and why, with
+			// the connection IDs the lookup could see (IDs only, no values).
+			ids := make([]string, 0, len(rows))
+			for _, row := range rows {
+				ids = append(ids, row.ID)
+			}
+			log.Printf("[MCP_SCOPE] event=selected_server_skipped server=%s lender=%s session=%s error=%q inventory_error=%v inventory_ids=%v", name, lender, sessionID, err.Error(), inventoryErr, ids)
 			continue
 		}
 		cfg := resolved.Config
@@ -663,6 +719,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 		if strings.HasPrefix(resolved.Name, "vault_") && sessionID != "" && !builder {
 			_, secret, secretErr := gatewayAdminServiceConfig()
 			if secretErr != nil {
+				log.Printf("[MCP_SCOPE] event=selected_server_skipped server=%s lender=%s session=%s error=%q", name, lender, sessionID, secretErr.Error())
 				continue
 			}
 			cfg.Headers = map[string]string{"Authorization": "Bearer " + signVaultDelegation(secret, vaultDelegation{Person: lender, Connector: strings.TrimPrefix(vaultSelectionName(resolved.Name), "vault_"), Session: sessionID, Expires: time.Now().Truncate(time.Hour).Add(24 * time.Hour).Unix()})}
@@ -740,6 +797,10 @@ func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *
 			allowed = true
 		}
 	}
+	resolvedID, resolvedVault := strings.CutPrefix(vaultSelectionName(resolved.Name), "vault_")
+	if !allowed && resolvedVault {
+		allowed = vaultAppChosen(ctx, selected, resolvedID)
+	}
 	if !allowed {
 		return nil, errors.New("MCP is not selected for this project")
 	}
@@ -753,7 +814,14 @@ func (api *StreamingAPI) resolveScopedGovernedMCP(ctx context.Context, catalog *
 		}
 		for _, entry := range tools {
 			n, t, ok := strings.Cut(entry, ":")
-			if ok && canonical(n) == canonical(resolved.Name) && (t == "*" || t == tool || t == upstreamTool) {
+			if !ok {
+				continue
+			}
+			// A tool chosen on another person's connection of the same app is the same tool on the acting
+			// person's own connection (Crew: everyone uses their own Vault).
+			sameApp := canonical(n) == canonical(resolved.Name) || resolvedVault && vaultAppChosen(ctx, []string{n}, resolvedID)
+			_, pickedTool, prefixed := strings.Cut(t, "__")
+			if sameApp && (t == "*" || t == tool || t == upstreamTool || prefixed && pickedTool == upstreamTool) {
 				allowed = true
 			}
 		}

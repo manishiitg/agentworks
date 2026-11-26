@@ -24,6 +24,43 @@ import (
 // Both Builder and Run chat attachments use the existing Crew file writer.
 // The browser supplies a file, never the destination or the caller's role.
 func (api *StreamingAPI) handleCrewChatUpload(w http.ResponseWriter, r *http.Request) {
+	// Capture only the small JSON receipt, never the incoming attachment. Every
+	// refusal, including an upstream writer conflict, gets a reason code.
+	out, receipt := w, &externalBufferedResponse{}
+	w = receipt
+	defer func() {
+		// A crash sends nothing here: net/http drops the connection, so the
+		// browser sees a failed upload, never an empty 200 it would accept.
+		if crash := recover(); crash != nil {
+			log.Printf("[CREW_CHAT_UPLOAD] request_id=%q actor=%q crew=%q status=500 reason=upload_crashed", requestLogID(r), GetUserIDFromContext(r.Context()), mux.Vars(r)["project_id"])
+			panic(crash)
+		}
+		if receipt.status >= 400 {
+			var failure struct {
+				Error struct {
+					Code string `json:"code"`
+				} `json:"error"`
+			}
+			_ = json.Unmarshal(receipt.body.Bytes(), &failure)
+			reason := failure.Error.Code
+			if reason == "" || strings.ContainsAny(reason, " \n\r\t") {
+				reason = map[int]string{400: "invalid_upload", 401: "signin_required", 403: "not_allowed", 404: "crew_unavailable", 409: "binding_conflict", 413: "upload_too_large", 500: "upload_unavailable", 502: "writer_unavailable", 503: "upload_unavailable"}[receipt.status]
+				if reason == "" {
+					reason = "upload_refused"
+				}
+			}
+			log.Printf("[CREW_CHAT_UPLOAD] request_id=%q actor=%q crew=%q status=%d reason=%s", requestLogID(r), GetUserIDFromContext(r.Context()), mux.Vars(r)["project_id"], receipt.status, reason)
+		}
+		for k, values := range receipt.Header() {
+			out.Header()[k] = values
+		}
+		status := receipt.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		out.WriteHeader(status)
+		_, _ = out.Write(receipt.body.Bytes())
+	}()
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -39,23 +76,23 @@ func (api *StreamingAPI) handleCrewChatUpload(w http.ResponseWriter, r *http.Req
 	}
 	projectID := strings.TrimSpace(mux.Vars(r)["project_id"])
 	if mux.Vars(r)["id"] != "work" {
-		writeAgentProfileError(w, http.StatusNotFound, "Open an available Crew, then attach the file again.")
+		writeAgentProfileError(w, http.StatusNotFound, "Open an available project, then attach the file again.")
 		return
 	}
 	crew, _, _, ok := api.externalCrewResolve(r.Context(), claims, projectID)
 	if !ok {
-		writeAgentProfileError(w, http.StatusNotFound, "This Crew is unavailable. Ask its owner to share it with you, then attach the file again.")
+		writeAgentProfileError(w, http.StatusNotFound, "This project is unavailable. Ask its owner to share it with you, then attach the file again.")
 		return
 	}
 	if token := claims.AccessToken; token != nil && !token.Allows("crews:run") && !token.Allows("crews:write") {
-		writeAgentProfileError(w, http.StatusForbidden, "Allow this connection to use the Crew, then attach the file again.")
+		writeAgentProfileError(w, http.StatusForbidden, "Allow this connection to use the project, then attach the file again.")
 		return
 	}
 	folder, mode, limit := "uploads", "Builder", int64(10<<20)
 	if !crew.OwnedByCaller {
 		folder, mode, limit = "shared/"+sanitizeUserIDForPath(claims.UserID), "Run", crewSharedFileMaxBytes
 	} else if status, _ := externalCrewAuthorGate(claims); status != 0 {
-		writeAgentProfileError(w, status, "This account cannot add Crew files. Ask an administrator to allow file uploads.")
+		writeAgentProfileError(w, status, "This account cannot add project files. Ask an administrator to allow file uploads.")
 		return
 	}
 	// A chat attachment goes as chunks (chunk_transfer.go), after the checks above; a dashboard's small upload stays one
@@ -164,9 +201,11 @@ func (api *StreamingAPI) crewChunkedUpload(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var in struct {
-		Name string       `json:"name"`
-		Path string       `json:"path"`
-		File *chunkedFile `json:"file"`
+		Name            string       `json:"name"`
+		Path            string       `json:"path"`
+		File            *chunkedFile `json:"file"`
+		ConversationKey string       `json:"conversation_key"`
+		SessionID       string       `json:"session_id"`
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20)).Decode(&in) != nil || in.File == nil || !in.File.Valid() {
 		writeAgentProfileError(w, http.StatusBadRequest, "The upload was not understood. Attach the file again.")
@@ -176,10 +215,31 @@ func (api *StreamingAPI) crewChunkedUpload(w http.ResponseWriter, r *http.Reques
 		writeAgentProfileError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("This file is too large. Choose a file smaller than %d MB and attach it again.", publication.MaxFileBytes>>20))
 		return
 	}
-	if step == "plan" {
-		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"missing": missingChunks(store, []chunkedFile{*in.File})})
+	bound := in.ConversationKey != "" || in.SessionID != ""
+	key := pendingChatUploadKey{claims.UserID, project, in.ConversationKey, in.SessionID, in.File.Hash}
+	if bound && !api.admitPendingChatUpload(w, r, project, in.ConversationKey, in.SessionID) {
 		return
 	}
+	if step == "plan" {
+		log.Printf("[CHAT_ATTACHMENTS] action=plan caller=%q project=%q session=%q conversation=%q bound=%t", claims.UserID, project, in.SessionID, in.ConversationKey, bound)
+		if bound {
+			api.planPendingChatUpload(key)
+		}
+		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"missing": missingChunks(store, []chunkedFile{*in.File}), "pending_attachments": bound})
+		return
+	}
+	if bound {
+		if _, err := api.pendingChatUpload(key); err != nil {
+			writeAgentProfileError(w, 400, err.Error())
+			return
+		}
+	}
+	committed := false
+	defer func() {
+		if bound && !committed {
+			api.failPendingChatUpload(key)
+		}
+	}()
 	started := time.Now()
 	rel := in.Path
 	if rel == "" {
@@ -214,6 +274,10 @@ func (api *StreamingAPI) crewChunkedUpload(w http.ResponseWriter, r *http.Reques
 		w.WriteHeader(buffer.status)
 		_, _ = w.Write(buffer.body.Bytes())
 		return
+	}
+	if bound {
+		api.finishPendingChatUpload(key, workspace+"/"+rel, in.File.Size)
+		committed = true
 	}
 	pruneChunks(store, nil, crewNativeChunkKeep)
 	logChunkTransfer("upload", project, "up", 1, distinctChunks([]chunkedFile{*in.File}), 0, in.File.Size, started)

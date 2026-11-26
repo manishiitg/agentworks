@@ -23,10 +23,10 @@ func TestPersonalGoogleConnectionsAcrossSurfaces(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("GOG_HOME", t.TempDir())
-	withMemoryUserDirectory(t, `{"users":[{"id":"builder","username":"builder","can_create":true},{"id":"editor","username":"editor","can_create":true},{"id":"runner","username":"runner"},{"id":"boss","username":"boss","admin":true}]}`)
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	withMemoryUserDirectory(t, `{"users":[{"id":"builder","username":"builder","can_create":true,"products":["work"]},{"id":"editor","username":"editor","can_create":true,"products":["work"]},{"id":"runner","username":"runner","products":["work"]},{"id":"boss","username":"boss","admin":true}]}`)
 	wf := WorkflowManifest{ID: "orders", Label: "Orders", Access: &WorkflowAccess{Owners: []string{"builder", "editor"}, Readers: []string{"runner"}}}
 	raw, _ := json.Marshal(wf)
-	flow, _ := json.Marshal(WorkflowManifest{ID: "flow", Kind: "relay", Label: "Flow", Access: &WorkflowAccess{Owners: []string{"builder"}, Readers: []string{"editor"}}})
 	gog := filepath.Join(t.TempDir(), "gog")
 	script := `#!/bin/sh
 case "$*" in
@@ -45,12 +45,10 @@ esac
 		{ID: "company", DisplayName: "Company account", Enabled: true},
 	}}
 	cfg, _ := json.Marshal(config)
-	mock := &mockWorkspaceAPI{files: map[string]string{"config/gmail-config.json": string(cfg), "Workflow/orders/workflow.json": string(raw), "Workflow/flow/workflow.json": string(flow)}}
-	owners := withProjectOwnerRegistry(t)
-	for _, folder := range []string{"second", "account-crew"} {
-		if err := owners.Register(projectOwnerRecord{Product: "work", Folder: folder, ProjectID: folder, OwnerID: "editor", Shared: true}); err != nil {
-			t.Fatal(err)
-		}
+	mock := &mockWorkspaceAPI{files: map[string]string{"config/gmail-config.json": string(cfg), "Workflow/orders/workflow.json": string(raw)}}
+	withProjectOwnerRegistry(t)
+	for folder, owner := range map[string]string{"second": "editor", "account-crew": "editor"} {
+		registerTestCrew(t, folder, owner, true, folder)
 		product, _ := json.Marshal(map[string]any{"schema_version": 1, "product": "work", "id": folder, "title": folder})
 		mock.files["Crew/"+folder+"/product.json"] = string(product)
 		mock.files["Crew/"+folder+"/workflow.json"] = string(product)
@@ -65,7 +63,7 @@ esac
 		t.Fatal(err)
 	}
 	router := mux.NewRouter()
-	GmailConnectionRoutes(router, nil)
+	GmailConnectionRoutes(router.PathPrefix("/api").Subrouter(), nil)
 	selectAccount := func(user, id, path string, selected bool, want int) {
 		t.Helper()
 		body, _ := json.Marshal(map[string]any{"workspace_path": path, "selected": selected})
@@ -77,8 +75,6 @@ esac
 		}
 	}
 	selectAccount("editor", "mine", "Workflow/orders", true, 200)
-	selectAccount("editor", "mine", "Workflow/flow", true, 403)
-	selectAccount("builder", "other", "Workflow/flow", true, 200)
 	selectAccount("builder", "mine", "Workflow/orders", true, 403)
 	selectAccount("runner", "mine", "Workflow/orders", true, 403)
 	selectAccount("boss", "mine", "Workflow/orders", true, 403)
@@ -108,8 +104,8 @@ esac
 		t.Fatal(err)
 	}
 	central := &StreamingAPI{}
-	GoogleAppRoutes(router, central)
-	GmailOAuthRoutes(router, central)
+	GoogleAppRoutes(router.PathPrefix("/api").Subrouter(), central)
+	GmailOAuthRoutes(router.PathPrefix("/api").Subrouter(), central)
 	centralCall := func(body, user string, want int) map[string]any {
 		t.Helper()
 		rec := httptest.NewRecorder()
@@ -272,7 +268,7 @@ esac
 	selectAccount("builder", "other", crew, false, 200)
 	// The connector is no longer a Builder. The owner's explicit decision is
 	// that the existing selection still works until someone removes it.
-	withMemoryUserDirectory(t, `{"users":[{"id":"builder","username":"builder","can_create":true},{"id":"editor","username":"editor"},{"id":"runner","username":"runner"},{"id":"boss","username":"boss","admin":true}]}`)
+	withMemoryUserDirectory(t, `{"users":[{"id":"builder","username":"builder","can_create":true,"products":["work"]},{"id":"editor","username":"editor"},{"id":"runner","username":"runner","products":["work"]},{"id":"boss","username":"boss","admin":true}]}`)
 	common.SetSessionWorkingDir("google-personal-crew", crew)
 	common.SetSessionWorkflowPath("google-personal-crew", crew)
 	t.Cleanup(func() { common.ClearSessionShellConfig("google-personal-crew") })

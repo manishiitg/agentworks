@@ -130,11 +130,9 @@ func (api *StreamingAPI) notifyChatFor(ctx context.Context, job notifyJob) notif
 	}
 	chat.project = crewResourceProjectID(key)
 	chat.agent = "Main"
-	chat.route = "/crew/projects/" + url.PathEscape(chat.project)
+	chat.route = notifyChatRoute(chat.project, key)
 	if isSideChatConversationKey(key) {
 		chat.agent = firstNonEmptyTrimmed(tab.Identity.Name, "An agent")
-		_, side, _ := strings.Cut(key, codeChatSideMarker)
-		chat.route += "?agent=" + url.QueryEscape(side)
 	}
 	if raw, exists, err := readFileFromWorkspace(ctx, strings.TrimRight(tab.Record.WorkspacePath, "/")+"/product.json"); err == nil && exists {
 		var manifest productProjectManifest
@@ -166,7 +164,7 @@ func (api *StreamingAPI) notifyCanSee(ctx context.Context, user string, chat not
 	if chat.owner == t.OwnerID {
 		return t.seesAgent(user, chat.owner, crewTeamAgentKey(ctx, t, chat.owner, chat.tab.Record.ConversationKey))
 	}
-	return slices.ContainsFunc(crewTeamMemberTabs(ctx, chat.project, user), func(tab AgentProfileSideChat) bool { return tab.SessionID == session })
+	return slices.ContainsFunc(crewTeamMacMemberTabs(ctx, chat.project, user), func(tab AgentProfileSideChat) bool { return tab.SessionID == session })
 }
 
 func notifyText(event string, chat notifyChat) (string, string) {
@@ -235,7 +233,7 @@ func (api *StreamingAPI) notifyDeliver(ctx context.Context, user string, device 
 			})
 		}
 	}()
-	if notifyFocused(device.ID, user, job.session) {
+	if notifyFocused(device.ID, user, job.session, device.Kind == notifyKindMac) {
 		result, reason = "skipped", "focused"
 		return
 	}
@@ -382,10 +380,9 @@ func notifyRelayStream(ctx context.Context, owner string, c desktopConnection, d
 					}
 				}
 			}
-			req.Header.Set("Authorization", "Bearer "+c.Token)
 			req.Header.Set("Accept", "text/event-stream")
 			var resp *http.Response
-			if resp, err = client.Do(req); err == nil {
+			if resp, err = desktopServerDo(client, owner, c, req); err == nil {
 				if resp.StatusCode == http.StatusOK {
 					scanner := bufio.NewScanner(resp.Body)
 					event := ""
@@ -414,4 +411,13 @@ func notifyRelayStream(ctx context.Context, owner string, c desktopConnection, d
 		case <-time.After(15 * time.Second):
 		}
 	}
+}
+
+// An explicit Main matters too: a project-only route restores the last agent.
+func notifyChatRoute(project, key string) string {
+	agent := "main"
+	if isSideChatConversationKey(key) {
+		_, agent, _ = strings.Cut(key, codeChatSideMarker)
+	}
+	return "/projects/" + url.PathEscape(project) + "?agent=" + url.QueryEscape(agent)
 }

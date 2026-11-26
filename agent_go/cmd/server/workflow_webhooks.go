@@ -144,6 +144,8 @@ type workflowWebhookResponse struct {
 	Caller           *triggerCaller                  `json:"caller,omitempty"`
 	Function         *WorkflowFunctionSpec           `json:"function,omitempty"`
 	InputSchema      map[string]interface{}          `json:"input_schema,omitempty"`
+	// Starts is the one plain line the Webhooks page prints for what this webhook starts (automation_starts_line.go).
+	Starts string `json:"starts,omitempty"`
 }
 
 type workflowWebhookRequest struct {
@@ -240,7 +242,7 @@ func workflowWebhookDTO(s WorkflowSchedule) workflowWebhookResponse {
 	if s.IsInternalTrigger() {
 		path = ""
 	}
-	out := workflowWebhookResponse{ChatID: s.ChatID, ID: s.ID, Name: s.Name, Enabled: s.Enabled, AuthMode: authMode, Path: path, RouteSelections: s.RouteSelections, InputPreset: s.InputPreset, Inputs: s.Inputs, MaxConcurrency: maxWebhookConcurrency, Kind: normalizeTriggerKind(s.Kind), Caller: s.Caller, Function: s.Function}
+	out := workflowWebhookResponse{ChatID: s.ChatID, ID: s.ID, Name: s.Name, Enabled: s.Enabled, AuthMode: authMode, Path: path, RouteSelections: s.RouteSelections, InputPreset: s.InputPreset, Inputs: s.Inputs, MaxConcurrency: maxWebhookConcurrency, Kind: normalizeTriggerKind(s.Kind), Caller: s.Caller, Function: s.Function, Starts: workflowScheduleStartsLine(nil, s)}
 	if s.Function != nil {
 		out.InputSchema = workflowFunctionInputSchema(s)
 	}
@@ -381,15 +383,15 @@ func validateWebhookPayloadMappings(ctx context.Context, workspacePath string, c
 var workflowWebhookConfigMu sync.Mutex
 
 func WorkflowWebhookRoutes(router *mux.Router, svc *SchedulerService) {
-	router.HandleFunc("/api/workflow-webhooks", svc.listWorkflowWebhooks).Methods("GET")
-	router.HandleFunc("/api/workflow-webhooks", requireWorkflowWriteAccess(svc.saveWorkflowWebhook)).Methods("POST")
-	router.HandleFunc("/api/workflow-webhooks/{id}", requireWorkflowWriteAccess(svc.saveWorkflowWebhook)).Methods("PUT")
-	router.HandleFunc("/api/workflow-webhooks/{id}", requireWorkflowWriteAccess(svc.deleteWorkflowWebhook)).Methods("DELETE")
-	router.HandleFunc("/api/workflow-webhooks/{id}/runs/{run}/payload", svc.getWorkflowWebhookPayload).Methods("GET")
+	router.HandleFunc("/workflow-webhooks", svc.listWorkflowWebhooks).Methods("GET")
+	router.HandleFunc("/workflow-webhooks", requireWorkflowWriteAccess(svc.saveWorkflowWebhook)).Methods("POST")
+	router.HandleFunc("/workflow-webhooks/{id}", requireWorkflowWriteAccess(svc.saveWorkflowWebhook)).Methods("PUT")
+	router.HandleFunc("/workflow-webhooks/{id}", requireWorkflowWriteAccess(svc.deleteWorkflowWebhook)).Methods("DELETE")
+	router.HandleFunc("/workflow-webhooks/{id}/runs/{run}/payload", svc.getWorkflowWebhookPayload).Methods("GET")
 	receiver := webhookReceiver{find: findScheduleByIDAny, start: svc.triggerSavedSchedule, existing: svc.existingWebhookRun}
-	router.HandleFunc("/api/hooks/workflow/{id}", receiver.receive).Methods("POST")
-	router.HandleFunc("/api/hooks/workflow/{id}/runs/{run}", svc.pollWebhookRun).Methods("GET")
-	router.HandleFunc("/api/hooks/workflow/{id}/runs/{run}/artifact", svc.downloadWebhookArtifact).Methods("GET", "HEAD")
+	router.HandleFunc("/hooks/workflow/{id}", receiver.receive).Methods("POST")
+	router.HandleFunc("/hooks/workflow/{id}/runs/{run}", svc.pollWebhookRun).Methods("GET")
+	router.HandleFunc("/hooks/workflow/{id}/runs/{run}/artifact", svc.downloadWebhookArtifact).Methods("GET", "HEAD")
 }
 
 func (s *SchedulerService) getWorkflowWebhookPayload(w http.ResponseWriter, r *http.Request) {
@@ -409,19 +411,12 @@ func (s *SchedulerService) getWorkflowWebhookPayload(w http.ResponseWriter, r *h
 		return
 	}
 
-	runs, err := ReadScheduleRuns(r.Context(), result.WorkspacePath)
+	run, err := findScheduleHistoryDetail(r.Context(), result.WorkspacePath, "run_id=? AND schedule_id=? AND has_webhook=1", runID, id)
 	if err != nil {
 		http.Error(w, "could not read webhook history", http.StatusInternalServerError)
 		return
 	}
-	found := false
-	for _, run := range runs {
-		if run.ID == runID && run.ScheduleID == id && run.Webhook != nil {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if run == nil {
 		http.Error(w, "webhook run not found", http.StatusNotFound)
 		return
 	}
@@ -576,6 +571,12 @@ func (s *SchedulerService) saveWorkflowWebhook(w http.ResponseWriter, r *http.Re
 		spec = manifest.Schedules[index].Function
 	}
 	internal := isInternalTriggerKind(effectiveKind) || function
+	if (function || !internal) && (index < 0 || req.Enabled) {
+		if err := requireServerInteractive("webhook_enable"); err != nil {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+	}
 	if internal {
 		cfg.AuthMode = ""
 		cfg.EncryptedSecret = ""
@@ -841,6 +842,10 @@ func (receiver webhookReceiver) receive(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "API trigger not found", 404)
 		return
 	}
+	if err := requireServerInteractive("webhook_receive"); err != nil {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxWebhookBodyBytes))
 	if err != nil {
 		var sizeErr *http.MaxBytesError
@@ -969,6 +974,11 @@ func (receiver webhookReceiver) dispatchInternal(ctx context.Context, workspaceP
 	if err != nil {
 		return internalTriggerDeliveryResult{}, err
 	}
+	if isFunctionTriggerKind(sched.Kind) {
+		if err := requireServerInteractive("function_call"); err != nil {
+			return internalTriggerDeliveryResult{}, err
+		}
+	}
 	if !sched.Caller.matchesAnyPresented(call.Caller) {
 		return internalTriggerDeliveryResult{}, ErrInternalCallerMismatch
 	}
@@ -1047,5 +1057,12 @@ func (s *SchedulerService) dispatchInternalWorkflowTrigger(ctx context.Context, 
 		return internalTriggerDeliveryResult{}, fmt.Errorf("%w: %w", ErrInternalTriggerNotFound, err)
 	}
 	receiver := webhookReceiver{start: s.triggerSavedSchedule, existing: s.existingWebhookRun}
+	origin := s.api.chatFunctionOrigin(ctx)
+	// Declared calls already have a caller notifier; keep one background item.
+	if _, declared := ctx.Value(declaredFunctionDispatchKey{}).(*crewFunctionCall); !declared && origin != "" {
+		receiver.start = func(root, trigger, _ string, input *WorkflowWebhookDelivery) (string, error) {
+			return s.triggerSavedSchedule(root, trigger, origin, input)
+		}
+	}
 	return receiver.dispatchInternal(ctx, workspacePath, manifest, call.TriggerID, call)
 }

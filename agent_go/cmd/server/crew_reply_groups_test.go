@@ -2,10 +2,14 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 )
@@ -94,5 +98,132 @@ func TestReplyGroupWithoutOwnerConnectionAsksToConnectGitHub(t *testing.T) {
 	attachPullRequests(context.Background(), groups, "", false)
 	if groups[0].PR == nil || groups[0].PR.State != "connect_github" {
 		t.Fatalf("pr = %+v", groups[0].PR)
+	}
+}
+
+// #4271: a stale cached PR returns immediately and refreshes in the background
+// so 60 s card polls never block on GitHub.
+func TestReplyGroupPullRequestCacheServesStaleWhileRevalidating(t *testing.T) {
+	var state atomic.Value
+	state.Store("open")
+	gate := make(chan struct{})
+	var gateActive atomic.Bool
+	refreshed := make(chan struct{}, 1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/pulls"):
+			if gateActive.Load() {
+				<-gate
+			}
+			if state.Load().(string) == "merged" {
+				w.Write([]byte(`[{"number":9,"html_url":"https://github.com/acme/swr/pull/9","state":"closed","merged_at":"2026-01-01T00:00:00Z","head":{"sha":"def"}}]`))
+			} else {
+				w.Write([]byte(`[{"number":9,"html_url":"https://github.com/acme/swr/pull/9","state":"open","head":{"sha":"abc"}}]`))
+			}
+		case strings.HasSuffix(r.URL.Path, "/check-runs"):
+			w.Write([]byte(`{"check_runs":[]}`))
+		case strings.HasSuffix(r.URL.Path, "/status"):
+			w.Write([]byte(`{"state":"success","total_count":0}`))
+		case strings.HasSuffix(r.URL.Path, "/reviews"):
+			w.Write([]byte(`[]`))
+		case strings.HasSuffix(r.URL.Path, "/pulls/9"):
+			w.Write([]byte(`{"mergeable_state":"clean"}`))
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	old := githubAPIURL
+	githubAPIURL = srv.URL
+	defer func() { githubAPIURL = old }()
+
+	pr := cachedGitHubPullRequestStatus(context.Background(), "swr-token", "acme/swr", "feat-swr")
+	if pr == nil || pr.State != "open" {
+		t.Fatalf("initial pr = %+v, want open", pr)
+	}
+
+	// Mark the entry stale (past expires, still within staleUntil) and block
+	// the fake GitHub server so a synchronous fetch would stall.
+	key := sha256.Sum256([]byte(srv.URL + "\x00swr-token\x00acme/swr\x00feat-swr"))
+	replyPRCache.Lock()
+	entry := replyPRCache.entries[key]
+	entry.expires = time.Now().Add(-time.Second)
+	replyPRCache.entries[key] = entry
+	replyPRCache.Unlock()
+
+	state.Store("merged")
+	gateActive.Store(true)
+
+	start := time.Now()
+	stale := cachedGitHubPullRequestStatus(context.Background(), "swr-token", "acme/swr", "feat-swr")
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("stale hit blocked for %v", elapsed)
+	}
+	if stale == nil || stale.State != "open" {
+		t.Fatalf("stale pr = %+v, want cached open", stale)
+	}
+
+	// Release the background refresh and wait for it to update the cache.
+	close(gate)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		replyPRCache.Lock()
+		cur := replyPRCache.entries[key]
+		busy := replyPRCache.refreshing[key]
+		replyPRCache.Unlock()
+		if !busy && cur.pr != nil && cur.pr.State == "merged" {
+			refreshed <- struct{}{}
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	select {
+	case <-refreshed:
+	default:
+		t.Fatal("background refresh did not update cached PR to merged")
+	}
+}
+
+// #4271: multiple repos in a reply card resolve their PR status concurrently.
+func TestReplyGroupPullRequestsFetchConcurrently(t *testing.T) {
+	var arrived atomic.Int32
+	allArrived := make(chan struct{})
+	var once sync.Once
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/pulls") {
+			if arrived.Add(1) == 3 {
+				once.Do(func() { close(allArrived) })
+			}
+			select {
+			case <-allArrived:
+			case <-time.After(2 * time.Second):
+				w.WriteHeader(http.StatusGatewayTimeout)
+				return
+			}
+			w.Write([]byte(`[]`))
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer srv.Close()
+	old := githubAPIURL
+	githubAPIURL = srv.URL
+	defer func() { githubAPIURL = old }()
+
+	groups := []filesnapshots.Group{
+		{Kind: "repo", Branch: "feat-1", GitHubRepo: "acme/r1"},
+		{Kind: "repo", Branch: "feat-2", GitHubRepo: "acme/r2"},
+		{Kind: "repo", Branch: "feat-3", GitHubRepo: "acme/r3"},
+	}
+	attachPullRequests(context.Background(), groups, "conc-token", true)
+	if arrived.Load() != 3 {
+		t.Fatalf("arrived = %d, want 3", arrived.Load())
+	}
+	for i, g := range groups {
+		if g.PR != nil {
+			t.Fatalf("groups[%d].PR = %+v, want nil (no PR)", i, g.PR)
+		}
 	}
 }

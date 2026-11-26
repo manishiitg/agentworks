@@ -10,22 +10,17 @@ import (
 // never passes through here and keeps its own declared run conversation.
 func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target triggerTarget, chatID string) (triggerTarget, error) {
 	if target.Kind == triggerCallerWorkflow {
-		return target, fmt.Errorf("Workflows run directly. Send your message to a Crew agent instead.")
-	}
-	if target.Chat != nil || target.NamedAgentID != "" {
-		return target, nil
+		return target, fmt.Errorf("Workflows run directly. Send your message to a project agent instead.")
 	}
 	caller := GetUserIDFromContext(ctx)
 	chatID = strings.TrimSpace(chatID)
+
+	if target.Chat != nil || target.NamedAgentID != "" {
+		return target, nil
+	}
 	if target.Kind == triggerCallerCrew {
-		if chatID != "" && chatID != "main" {
-			// A Team member's agent on their Mac (crew_team_mac_watch.go): the server decides who may message it.
-			if person, agent, ok := crewMemberMacAgentFor(ctx, target.CrewID, chatID, caller); ok {
-				key := crewMacTabRow(target.CrewID, agent).ConversationKey
-				target.Chat, target.CrewOwner = &codeChat{OwnerID: person, ID: key, Key: key, Name: agent.Name}, person
-				target.Label += " · " + agent.Name
-				return target, nil
-			}
+		// "main" is no stand-in for an agent (owner, 25 Nov, #4046): a chat_id names an agent by its id.
+		if chatID != "" {
 			if !crewProjectOwnedByCaller(caller, target.Path) {
 				chat, ok := sharedCrewAgentChat(ctx, caller, target.Path, chatID)
 				if !ok {
@@ -59,12 +54,38 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 		if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil && !externalOwnerAuthority(claims, target) {
 			return target, nil
 		}
+		// No agent named: the caller's only agent answers; with several, the caller chooses (no implicit Main, #4046).
+		tabs, err := crewOwnerChatRecords(ctx, caller, target.CrewProfile, target.CrewID, target.Path)
+		if err != nil {
+			return target, err
+		}
+		var mine []crewOwnerChat
+		for _, tab := range tabs {
+			if tab.OwnerID == caller && !hiddenFromTabStrip(tab.Record.ConversationKey) {
+				mine = append(mine, tab)
+			}
+		}
+		if len(mine) == 1 {
+			record := mine[0].Record
+			target.CrewOwner = caller
+			target.Chat = &codeChat{OwnerID: caller, ID: record.ConversationKey, Key: record.ConversationKey, Name: firstNonEmptyTrimmed(mine[0].Identity.Name, "Main"), SessionID: record.SessionID}
+			target.Label += " · " + target.Chat.Name
+			return target, nil
+		}
+		if len(mine) > 1 {
+			names := make([]string, 0, len(mine))
+			for _, tab := range mine {
+				names = append(names, fmt.Sprintf("%s (%s)", firstNonEmptyTrimmed(tab.Identity.Name, "Main"), strings.TrimPrefix(tab.Record.ConversationKey, target.CrewID+codeChatSideMarker)))
+			}
+			return target, fmt.Errorf("Choose which agent should answer: pass chat_id, one of %s (list_agents shows each agent's id)", strings.Join(names, ", "))
+		}
+		// No agent yet: the project's first agent is made for this message.
 		registry := api.agentProfiles
 		if registry == nil && api.projectActions != nil {
 			registry = api.projectActions.registry
 		}
 		if registry == nil {
-			return target, fmt.Errorf("Crew chat runtime unavailable")
+			return target, fmt.Errorf("Project chat runtime unavailable")
 		}
 		owner := target.CrewOwner
 		if actual, ok := crewProjectOwnerID(target.Path); ok {

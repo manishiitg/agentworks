@@ -2,18 +2,17 @@ package server
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
 type dashboardQuestionCapability struct {
-	CanView bool   `json:"can_view"`
-	CanAsk  bool   `json:"can_ask"`
-	Reason  string `json:"reason,omitempty"`
-	Mode    string `json:"mode,omitempty"`
-	// FunctionsOff: this dashboard's functions can't run here, so the page shows no buttons for them. A Crew on a Mac:
-	// the server holds only a read copy (crew_mac_dashboards.go).
-	FunctionsOff bool `json:"functions_off,omitempty"`
+	CanUseFunctions bool   `json:"can_use_functions"`
+	CanView         bool   `json:"can_view"`
+	CanAsk          bool   `json:"can_ask"`
+	Reason          string `json:"reason,omitempty"`
+	Mode            string `json:"mode,omitempty"`
 }
 
 type dashboardQuestionPolicy struct {
@@ -61,7 +60,7 @@ type resolvedDashboardQuestion struct {
 // workspace, role, session or captured revision can supply that authority.
 func (api *StreamingAPI) resolveDashboardQuestion(ctx context.Context, claims *UserClaims, id, revision string) (resolvedDashboardQuestion, error) {
 	var out resolvedDashboardQuestion
-	if claims == nil || claims.UserID == "" || claims.Scope != "" || claims.Provider == "bot_route" || !dashboardScopeAllowed(claims, "get") {
+	if claims == nil || claims.UserID == "" || claims.Provider == "bot_route" || !dashboardReadPurposeAllowed(claims) {
 		return out, dashboardFailure(404, "dashboard unavailable")
 	}
 	dashboardQuestionRegistryMu.Lock()
@@ -87,7 +86,10 @@ func (api *StreamingAPI) resolveDashboardQuestion(ctx context.Context, claims *U
 // identity while checking each distinct captured publication's live access.
 func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, claims *UserClaims, resource dashboardQuestionResource, revision string) (resolvedDashboardQuestion, error) {
 	out := resolvedDashboardQuestion{Resource: resource}
-	if claims == nil || claims.UserID == "" || claims.Scope != "" || claims.Provider == "bot_route" || !dashboardScopeAllowed(claims, "get") {
+	if resource.Removed {
+		return out, dashboardFailure(http.StatusGone, dashboardRemovedMessage)
+	}
+	if claims == nil || claims.UserID == "" || claims.Provider == "bot_route" || !dashboardReadPurposeAllowed(claims) {
 		return out, dashboardFailure(404, "dashboard unavailable")
 	}
 	target, err := api.dashboardTarget(ctx, claims, out.Resource.Root)
@@ -139,11 +141,15 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 		}
 	}
 	out.Capability = dashboardQuestionCapabilities(dashboardQuestionPolicy{Authenticated: true, Active: !userAccessForClaims(claims).Disabled, Product: true, View: true, Published: true, AskScope: askScope, Owner: owner})
-	out.Capability.FunctionsOff = target.Kind == "crew" && crewMacDashboardsRoot(target.Root) != target.Root
+	if IsLocalMode() {
+		out.Capability.CanAsk, out.Capability.Mode, out.Capability.Reason = false, "", "server_only"
+	}
+
 	// An Artifact is a finished page to read and share, not a dashboard to ask
 	// (PLAT-750): no chat pane, Ask or function buttons beside it.
 	if out.Snapshot.Artifact {
 		out.Capability.CanAsk, out.Capability.Mode, out.Capability.Reason = false, "", "artifact"
 	}
+	out.Capability.CanUseFunctions = out.Capability.CanView && !IsLocalMode() && !out.Snapshot.Artifact
 	return out, nil
 }

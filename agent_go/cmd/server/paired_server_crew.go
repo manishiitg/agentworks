@@ -1,15 +1,11 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"strings"
-	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
@@ -21,6 +17,7 @@ import (
 // added here, in this process; it never reaches the agent's env, files or MCP
 // config (PLAT-856-493).
 type pairedServerCrew struct {
+	owner  string
 	conn   desktopConnection
 	crewID string
 }
@@ -48,12 +45,12 @@ func pairedServerCrewForRoots(userID string, roots crewroot.Roots) (pairedServer
 	}
 	conn, err := desktopConnectionFor(userID, b.ConnectionID)
 	if err != nil {
-		return pairedServerCrew{}, false, fmt.Errorf("this Crew's server sign-in is missing; sign in to %s again", b.PeerServer)
+		return pairedServerCrew{}, false, fmt.Errorf("this project's server sign-in is missing; sign in to %s again", b.PeerServer)
 	}
 	if strings.TrimRight(conn.Server, "/") != strings.TrimRight(b.PeerServer, "/") {
-		return pairedServerCrew{}, false, fmt.Errorf("this Crew's server sign-in does not match its server")
+		return pairedServerCrew{}, false, fmt.Errorf("this project's server sign-in does not match its server")
 	}
-	return pairedServerCrew{conn: conn, crewID: b.PeerProjectID}, true, nil
+	return pairedServerCrew{owner: userID, conn: conn, crewID: b.PeerProjectID}, true, nil
 }
 
 // mcp calls the server's Crew mcp tool for the paired Crew.
@@ -64,37 +61,9 @@ func (p pairedServerCrew) mcp(ctx context.Context, args map[string]any) (map[str
 // call runs one of the server's Crew tools (mcp, settings) for the paired Crew as the signed-in person.
 func (p pairedServerCrew) call(ctx context.Context, tool string, args map[string]any) (map[string]any, error) {
 	args["crew_id"] = p.crewID
-	payload, err := json.Marshal(map[string]any{"name": tool, "arguments": args})
-	if err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithTimeout(ctx, 55*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(p.conn.Server, "/")+"/api/external/v1/call", bytes.NewReader(payload))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.conn.Token)
-	client := desktopHTTPClient()
-	client.Timeout = 55 * time.Second
-	started := time.Now()
-	res, err := client.Do(req)
-	if err != nil {
-		log.Printf("[CREW_REMOTE_MCP] crew=%s server=%s action=%v app=%v tool=%v -> unreachable (%s)", p.crewID, p.conn.Name, args["action"], args["server"], args["tool"], time.Since(started).Round(time.Millisecond))
-		return nil, fmt.Errorf("%s could not be reached; try again", p.conn.Name)
-	}
-	defer res.Body.Close()
-	var body map[string]any
-	_ = json.NewDecoder(io.LimitReader(res.Body, 8<<20)).Decode(&body)
-	log.Printf("[CREW_REMOTE_MCP] crew=%s server=%s action=%v app=%v tool=%v -> %d (%s)", p.crewID, p.conn.Name, args["action"], args["server"], args["tool"], res.StatusCode, time.Since(started).Round(time.Millisecond))
-	if res.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("your sign-in to %s has expired; sign in again from Settings", p.conn.Name)
-	}
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s refused: %s", p.conn.Name, externalErrorMessage(body, res.Status))
-	}
-	return body, nil
+	body, err := callServerTool(ctx, p.owner, p.conn, tool, args)
+	log.Printf("[CREW_REMOTE_MCP] crew=%s server=%s tool=%s action=%v app=%v app_tool=%v ok=%t", p.crewID, p.conn.Name, tool, args["action"], args["server"], args["tool"], err == nil)
+	return body, err
 }
 
 // usableApps is the server Crew's own app selection: nil means all its Vault apps.
@@ -125,7 +94,7 @@ func (api *StreamingAPI) registerPairedServerAppTools(registrar definitionToolRe
 	current := func() (pairedServerCrew, error) {
 		p, paired, err := pairedServerCrewFor(userID, workspacePath)
 		if err == nil && !paired {
-			err = fmt.Errorf("this Crew is no longer linked to a server")
+			err = fmt.Errorf("this project is no longer linked to a server")
 		}
 		return p, err
 	}
@@ -138,7 +107,7 @@ func (api *StreamingAPI) registerPairedServerAppTools(registrar definitionToolRe
 		parameters        map[string]interface{}
 		execute           func(context.Context, map[string]interface{}) (string, error)
 	}{
-		{"list_server_apps", "List the apps (Gmail, Slack, Notion and other Vault connections) of the server Crew this Crew is linked to. They run on that server with its sign-ins. Pass app to see that app's tools and their parameters; page with offset.", map[string]interface{}{
+		{"list_server_apps", "List the apps (Gmail, Slack, Notion and other Vault connections) of the server project this project is linked to. They run on that server with its sign-ins. Pass app to see that app's tools and their parameters; page with offset.", map[string]interface{}{
 			"type": "object", "properties": map[string]interface{}{
 				"app":    map[string]interface{}{"type": "string", "description": "App name from the list, e.g. vault_c-1234."},
 				"offset": map[string]interface{}{"type": "integer", "minimum": 0},
@@ -186,7 +155,7 @@ func (api *StreamingAPI) registerPairedServerAppTools(registrar definitionToolRe
 				}
 				return out(map[string]any{"server": p.conn.Name, "app": app, "tools": tools, "total": list["total"], "next_offset": list["next_offset"], "has_more": list["has_more"]})
 			}},
-		{"call_server_app", "Call a tool of one of the linked server Crew's apps (see list_server_apps). It runs on that server as you, with its sign-ins and checks; nothing is copied to this computer.", map[string]interface{}{
+		{"call_server_app", "Call a tool of one of the linked server project's apps (see list_server_apps). It runs on that server as you, with its sign-ins and checks; nothing is copied to this computer.", map[string]interface{}{
 			"type": "object", "required": []string{"app", "tool", "arguments"}, "properties": map[string]interface{}{
 				"app":       map[string]interface{}{"type": "string", "description": "App name from list_server_apps."},
 				"tool":      map[string]interface{}{"type": "string", "description": "Tool name from list_server_apps with app."},

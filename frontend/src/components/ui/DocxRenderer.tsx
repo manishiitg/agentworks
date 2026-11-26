@@ -77,9 +77,12 @@ export function DocxRenderer({ data }: DocxRendererProps) {
       )}
 
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
-        <div
-          className="prose prose-sm max-w-none dark:prose-invert prose-headings:font-semibold prose-headings:text-gray-900 dark:prose-headings:text-gray-100 prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-strong:text-gray-900 dark:prose-strong:text-gray-100"
-          dangerouslySetInnerHTML={{ __html: html || '' }}
+        <iframe
+          title="Word document preview"
+          sandbox=""
+          referrerPolicy="no-referrer"
+          className="h-[65vh] w-full border-0 bg-white"
+          srcDoc={`<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'"><style>body{font:16px/1.6 system-ui;padding:16px;overflow-wrap:anywhere}img,table{max-width:100%}</style></head><body>${html || ''}</body></html>`}
         />
       </div>
     </div>

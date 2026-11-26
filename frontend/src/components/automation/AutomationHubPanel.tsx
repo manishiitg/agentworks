@@ -1,4 +1,6 @@
-import { cloneElement, isValidElement, lazy, Suspense, useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react'
+import { openCrewWorkflow } from '../../products/work/workflowRunNavigation'
+import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
+import { cloneElement, isValidElement, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { Zap } from 'lucide-react'
 import api from '../../services/api'
 import type { ProductTriggerScope } from '../../api/productWebhooks'
@@ -11,9 +13,9 @@ import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { AgentInboxPanel, useAgentInboxEnabled } from '../integrations/AgentInboxPanel'
 import { WorkspaceViewIconButton } from '../workflow/WorkspaceViewIconButton'
 import { PageCard, PageTabs } from './AutomationKit'
+import { useCapabilitiesStore } from '../../stores/useCapabilitiesStore'
 
 const WorkflowScheduleRunsPanel = lazy(() => import('../scheduler/WorkflowScheduleRunsPanel'))
-const ProductAPITriggersView = lazy(() => import('../workflow/ProductAPITriggersView'))
 const WorkflowAPITriggersView = lazy(() => import('../workflow/WorkflowAPITriggersView'))
 const CrewFunctionsView = lazy(() => import('./CrewFunctionsView'))
 const WorkflowFunctionsView = lazy(() => import('../workflow/WorkflowFunctionsView'))
@@ -54,6 +56,9 @@ export function AutomationHubPanel({
   const [childrenError, setChildrenError] = useState('')
   const [childFunctionCounts, setChildFunctionCounts] = useState<Record<string, number>>({})
   const [childWebhookCounts, setChildWebhookCounts] = useState<Record<string, { active: number; paused: number }>>({})
+  const localMode = useCapabilitiesStore(state => state.capabilities?.local_mode ?? false)
+  const activeHost = useWorkspaceConnectionStore(state => state.activeWorkspaceId)
+  const localInteractive = localMode && activeHost === 'local'
   const crewID = entityType === 'product' && productTriggerScope?.profileId === 'work' && canManage !== false ? productTriggerScope.projectId : undefined
   useEffect(() => {
     const controller = new AbortController()
@@ -75,16 +80,19 @@ export function AutomationHubPanel({
   const [functionsCounts, setFunctionsCounts] = useState<{ functions: number; running: number } | null>(null)
   const workspaceViewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   const availableSections = useMemo(() => new Set<AutomationHubSection>([
-    ...(incomingEnabled && !isWorkflow && (productTriggerScope?.profileId === 'work' || productTriggerScope?.profileId === 'code') ? ['email' as const] : []),
+    ...(incomingEnabled && !isWorkflow && productTriggerScope?.profileId === 'work' ? ['email' as const] : []),
     ...(chatContent ? ['chats' as const] : []),
     ...(['schedules' as const]),
     ...((isWorkflow || productTriggerScope?.profileId === 'work' || productTriggerScope?.profileId === 'work') ? ['conditions' as const] : []),
-    ...(entityType === 'workflow' || productTriggerScope ? ['triggers' as const] : []),
+    // A Crew's webhooks live on its workflow's Starts tab (owner, 19 Nov), so a Crew page has no Webhooks tab.
+    ...(!localInteractive && (entityType === 'workflow' || (productTriggerScope && productTriggerScope.profileId !== 'work')) ? ['triggers' as const] : []),
     // Functions (PLAT-357): a Crew's declared functions, or a workflow's
     // function triggers plus its assistant ask.
-    ...(((entityType === 'product' && productTriggerScope) || entityType === 'workflow') ? ['functions' as const] : []),
+    ...(!localInteractive && ((entityType === 'product' && productTriggerScope) || entityType === 'workflow') ? ['functions' as const] : []),
     ...(botContent ? ['bots' as const] : []),
-  ]), [botContent, chatContent, entityType, productTriggerScope, incomingEnabled, isWorkflow])
+  ]), [botContent, chatContent, entityType, productTriggerScope, incomingEnabled, isWorkflow, localInteractive])
+  // Watchers keep their own tab on the Automations page (owner, 19 Nov); the side menu counts them with Schedules.
+  const crewPage = entityType === 'product' && productTriggerScope?.profileId === 'work'
   const fallbackSection = availableSections.has(initialSection) ? initialSection : 'schedules'
   const [section, setSection] = useState<AutomationHubSection>(fallbackSection)
 
@@ -92,25 +100,29 @@ export function AutomationHubPanel({
     setSection(fallbackSection)
   }, [fallbackSection])
 
+  // A menu row opens one tab once per click (its token). The parent passes a fresh scope object on
+  // every render, which re-ran this effect and snapped the page back to the row's tab; apply each token once.
+  const appliedTargetToken = useRef(0)
   useEffect(() => {
     if (workspaceViewTarget?.view !== 'workshop') return
+    if (appliedTargetToken.current === workspaceViewTarget.token) return
     const target = workspaceViewTarget?.target
     const normalized = target === 'webhooks' ? 'triggers' : target
     if (normalized && availableSections.has(normalized as AutomationHubSection)) {
+      appliedTargetToken.current = workspaceViewTarget.token
       setSection(normalized as AutomationHubSection)
       if (normalized === 'email') setEmailRefreshToken(token => token + 1)
     }
-  }, [availableSections, workspaceViewTarget])
+  }, [availableSections, workspaceViewTarget, crewPage])
 
   // Per-tab refresh, computed from the section. The bots tab has no
   // refreshable list, so it has no header action.
-  const crewPage = entityType === 'product' && productTriggerScope?.profileId === 'work'
   const refreshAction = section === 'email'
     ? { label: 'Refresh inbox', run: () => setEmailRefreshToken(token => token + 1), spinning: false }
     : section === 'conditions'
     ? { label: 'Refresh watchers', run: () => setTriggersRefreshToken(token => token + 1), spinning: false }
     : section === 'schedules'
-    ? { label: 'Refresh schedules', run: () => setSchedulesRefreshToken(token => token + 1), spinning: schedulesStatus?.isLoading }
+    ? { label: 'Refresh schedules', run: () => { setSchedulesRefreshToken(token => token + 1); if (crewPage) setTriggersRefreshToken(token => token + 1) }, spinning: schedulesStatus?.isLoading }
     : section === 'triggers'
       ? { label: 'Refresh webhooks', run: () => setTriggersRefreshToken(token => token + 1), spinning: false }
       : section === 'functions'
@@ -135,27 +147,20 @@ export function AutomationHubPanel({
     onClose={() => {}}
   />
   const watchersView = <ConditionTriggersView scope={productTriggerScope ?? { profileId: 'agentworks', projectId: workflowScope?.workflowId ?? workspacePath }} refreshToken={triggersRefreshToken} onAsk={ask} canManage={canManage} embedded={crewPage} />
-  const productWebhooksView = (wrap: string) => entityType === 'product' && productTriggerScope ? <div className={wrap}><ProductAPITriggersView
-    embedded
-    pageRows={crewPage}
-    hideEmpty={Object.values(childWebhookCounts).some(count => count.active + count.paused > 0)}
-    scope={productTriggerScope}
-    workspacePath={workspacePath}
-    onAsk={onAskAI}
-    deliveryHistory={<TriggerDeliveryHistoryPanel workspacePath={workspacePath} entityType="product" productTriggerScope={productTriggerScope} />}
-    hideHeader
-    refreshToken={triggersRefreshToken}
-    onCounts={setTriggersCounts}
-  />
+  // A Crew's webhooks are its workflows' webhooks (#3286): each starts that workflow.
+  const childWebhookTotal = Object.values(childWebhookCounts).reduce((sum, count) => sum + count.active + count.paused, 0)
+  const productWebhooksView = (wrap: string) => entityType === 'product' && productTriggerScope ? <div className={wrap}>
+    {!childrenError && children.length > 0 && childWebhookTotal === 0 && <p className="px-4 py-3 text-sm text-muted-foreground">No webhooks yet. A webhook starts this project's workflow when another app calls its web address.</p>}
+    {!childrenError && children.length === 0 && <p className="px-4 py-3 text-sm text-muted-foreground">Make a workflow first: a webhook starts the project's workflow.</p>}
     {childrenError && <p role="alert" className="p-4 text-sm text-destructive">{childrenError}</p>}
-    {children.map(child => <WorkflowAPITriggersView key={child.id} workspacePath={child.workspace_path} embedded pageRows={crewPage} title={child.manifest.label} hideHeader onCounts={count => setChildWebhookCounts(previous => previous[child.id]?.active === count.active && previous[child.id]?.paused === count.paused ? previous : { ...previous, [child.id]: count })} refreshToken={triggersRefreshToken} onAsk={message => onAskAI?.(`${message}\nWorkflow: ${child.manifest.label}\nWorkspace: ${child.workspace_path}`)} />)}
+    {children.map(child => <WorkflowAPITriggersView key={child.id} workspacePath={child.workspace_path} embedded pageRows={crewPage} workflowName={child.manifest.label} onOpenWorkflow={crewID ? () => openCrewWorkflow(crewID, child.id, 'starts') : undefined} hideHeader onCounts={count => setChildWebhookCounts(previous => previous[child.id]?.active === count.active && previous[child.id]?.paused === count.paused ? previous : { ...previous, [child.id]: count })} refreshToken={triggersRefreshToken} onAsk={message => onAskAI?.(`${message}\nWorkflow: ${child.manifest.label}\nWorkspace: ${child.workspace_path}`)} />)}
   </div> : null
   const inboxView = (wrap: string) => <div className={wrap}><AgentInboxPanel workspacePath={workspacePath} refreshToken={emailRefreshToken} embedded={crewPage} /></div>
 
-  const askMessage = section === 'triggers' ? 'Help me set up a webhook for this Crew.' : section === 'conditions' ? 'Help me set up a watcher for this Crew.' : section === 'email' ? 'Help me with this Crew’s inbox.' : 'Help me set up a schedule for this Crew.'
-  const cardTitle = ({ schedules: ['Schedules', undefined], triggers: ['Webhooks', 'Another app starts this by calling a web address.'], conditions: ['Watchers', 'Keeps checking something, and acts when it finds a match.'], email: ['Inbox', 'Email sent to this Crew starts a chat.'] } as Record<string, [string, string | undefined]>)[section]
+  const askMessage = section === 'triggers' ? 'Help me set up a webhook for this project.' : section === 'conditions' ? 'Help me set up a watcher for this project.' : section === 'email' ? 'Help me with this project’s inbox.' : 'Help me set up a schedule for this project.'
+  const cardTitle = ({ schedules: ['Schedules', crewPage ? 'Runs at set times, like every morning at 9.' : undefined], triggers: ['Webhooks', 'Another app starts this by calling a web address.'], conditions: ['Watchers', 'Runs when something happens, like a new email, a changed web page or a new row. It keeps checking for you.'], email: ['Inbox', 'Email sent to this project starts a chat.'] } as Record<string, [string, string | undefined]>)[section]
   // On a Crew page each tab's content sits in one card with its own Ask (owner-approved mock, 8 Nov).
-  const inCard = (content: ReactNode) => crewPage && cardTitle ? <div className="h-full overflow-y-auto p-4"><PageCard title={cardTitle[0]} hint={cardTitle[1]} onAsk={canManage === false ? undefined : () => ask(askMessage)} onRefresh={refreshAction?.run} refreshLabel={refreshAction?.label} refreshing={refreshAction?.spinning} action={section === 'schedules' && schedulesStatus ? <ScheduleStatusPills status={schedulesStatus} /> : undefined}>{content}</PageCard></div> : content
+  const inCard = (content: ReactNode) => crewPage && cardTitle ? <div key={section} className="h-full overflow-y-auto p-4"><PageCard title={cardTitle[0]} hint={cardTitle[1]} onAsk={canManage === false ? undefined : () => ask(askMessage)} onRefresh={refreshAction?.run} refreshLabel={refreshAction?.label} refreshing={refreshAction?.spinning} action={section === 'schedules' && schedulesStatus ? <ScheduleStatusPills status={schedulesStatus} /> : undefined}><Suspense fallback={<p className="px-4 py-3 text-sm text-muted-foreground">Loading {cardTitle[0].toLowerCase()}…</p>}>{content}</Suspense></PageCard></div> : content
 
   return (
     <div
@@ -178,7 +183,7 @@ export function AutomationHubPanel({
       />}
 
       {crewPage && <div className="shrink-0 px-3 pt-3"><PageTabs label="Automations" value={section} onChange={setSection} onBack={onBack}
-        tabs={([['schedules', 'Schedules', 'when it runs'], ['triggers', 'Webhooks', 'when an app calls'], ['conditions', 'Watchers', 'when something changes'], ['email', 'Inbox', 'mail it gets']] as const)
+        tabs={([['schedules', 'Schedules', 'when it runs'], ['conditions', 'Watchers', 'when something happens'], ['email', 'Inbox', 'mail it gets']] as const)
           .filter(([id]) => availableSections.has(id)).map(([id, label, hint]) => ({ id, label, hint }))} /></div>}
       <div className="min-h-0 flex-1 overflow-hidden">
         <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading…</div>}>

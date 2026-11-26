@@ -61,20 +61,26 @@ func externalMessageToolForRequest(r *http.Request, tool externalTool) externalT
 	props := maps.Clone(tool.InputSchema["properties"].(map[string]any))
 	tool.InputSchema["properties"] = props
 	if hostedAgentMailbox(claims) {
-		tool.Description = "Message agents through your inbox: register your agent_name, list_agents to find recipients, send, read, or reply with send in the same inbox_id. The directory includes Crews, Goals, Relays, coding chats and hosted inboxes. Show name, type, provider, presence, last_seen_at and available receipt times; Builder/Run is access, not online status. Acknowledge your incoming message with ack and delivery=delivered. Count shows total/unread/pending and matching filters without paging; delete removes one incoming message_id, and clear removes matching incoming messages from your agent inbox only. Count with the same filters before clear to show the count. Other participants retain their history/receipts. " + hostedInboxInstructions + " Connected agents are private to their person and that person's agents. Published agents can be found and messaged by everyone on this server. Existing account and connection access still applies. Send uses the same message size and rate limits as the CLI. Publishing an agent still needs the person's request."
+		tool.Description = "Message agents through your inbox: register your agent_name, list_agents to find recipients, send, read, or reply with send in the same inbox_id. Choose an exact AgentBridge address from the directory; products and functions have their own Ask/use entry points. Show name, type, provider, presence, last_seen_at and available receipt times; Builder/Run is access, not online status. Acknowledge your incoming message with ack and delivery=delivered. Count shows total/unread/pending and matching filters without paging; delete removes one incoming message_id, and clear removes matching incoming messages from your agent inbox only. Count with the same filters before clear to show the count. Other participants retain their history/receipts. " + hostedInboxInstructions + " " + agentMessageWritingNote + " Connected agents are private to their person and that person's agents. Published agents can be found and messaged by everyone on this server. Existing account and connection access still applies. Send uses the same message size and rate limits as the CLI. Publishing an agent still needs the person's request."
 		props["delivery"] = map[string]any{"type": "string", "enum": []any{"delivered"}, "description": "For ack: delivered means this chat received the message. It does not mean the requested work is finished."}
 		delete(props, "attachment_id")
 		delete(props, "transport")
 	} else if !cliAgentMailRequest(r) {
-		tool.Description = "Send messages to an accessible Crew or workflow, or read that product conversation. For agent-to-agent messaging with this connection, use the AgentWorks CLI. Apps without a terminal can use a normal MCP sign-in and an inbox."
+		tool.Description = "Discover agents with list_agents. Peer messages require your registered AgentBridge identity; product Ask and functions are separate."
 		action := maps.Clone(props["action"].(map[string]any))
-		action["enum"] = []any{"send", "read", "state"}
+		action["enum"] = []any{"list_agents", "agent_status", "state", "history"}
 		props["action"] = action
 	}
 	return tool
 }
 
 func agentDeliveryMode(a namedMessageAgent) string {
+	if a.Hosted != nil {
+		if hostedAgentViewed(a) {
+			return "live"
+		}
+		return "on_request"
+	}
 	if !namedAgentOnline(a) {
 		if a.Attachment != nil || a.EverAttached {
 			return "offline"
@@ -82,7 +88,7 @@ func agentDeliveryMode(a namedMessageAgent) string {
 		return "inbox"
 	}
 	switch a.Attachment.DeliveryRoute {
-	case "codex_desktop", "codex_queue", "claude_session", "claude_channel", "muse_monitor", "pi_extension":
+	case appAgentDeliveryRoute, "codex_desktop", "codex_queue", "claude_session", "claude_channel", "muse_monitor", "pi_extension":
 		return "live"
 	case "codex_hook", "claude_hook", "cursor_hook", "muse_hook", "agy_hook":
 		return "next_step"
@@ -94,8 +100,12 @@ func agentDeliveryMode(a namedMessageAgent) string {
 }
 
 func addAgentPresence(out map[string]any, a namedMessageAgent) {
+	projectAgentHelper(out, a)
 	out["online"], out["presence"], out["delivery_mode"] = namedAgentOnline(a), namedAgentPresence(a), agentDeliveryMode(a)
 	out["type"] = "Hosted agent"
+	if a.Hosted != nil {
+		out["type"] = "App chat"
+	}
 	if a.Attachment != nil || a.EverAttached {
 		out["type"] = "Coding chat"
 	}
@@ -104,18 +114,23 @@ func addAgentPresence(out map[string]any, a namedMessageAgent) {
 		out["delivery_route"] = a.Attachment.DeliveryRoute
 		if !agentBridgeOnlyDeployment() {
 			out["repository"], out["branch"] = a.Attachment.Repository, a.Attachment.Branch
-			out["activity"] = "Unknown"
-			if namedAgentOnline(a) && !a.Attachment.ActivityAt.IsZero() && time.Since(a.Attachment.ActivityAt) <= 10*time.Minute {
-				switch a.Attachment.Activity {
-				case "busy":
-					out["activity"] = "Working"
-				case "idle":
-					out["activity"] = "Idle"
-				}
-				out["activity_at"] = a.Attachment.ActivityAt
-			}
 		}
 	}
+	activity := "Idle"
+	var at time.Time
+	if a.Attachment != nil {
+		at = a.Attachment.ActivityAt
+		switch a.Attachment.Activity {
+		case "busy":
+			activity = "Working"
+		case "idle":
+			activity = "Idle"
+		}
+		if a.Attachment.RuntimeInfo != nil {
+			activity, at = a.Attachment.RuntimeInfo.Activity, a.Attachment.RuntimeInfo.LastActiveAt
+		}
+	}
+	projectAgentActivity(out, activity, at)
 	if !a.LastOnlineAt.IsZero() {
 		out["last_seen_at"] = a.LastOnlineAt
 	}

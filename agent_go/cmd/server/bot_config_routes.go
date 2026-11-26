@@ -27,12 +27,6 @@ func botConfigGetHandler(store chathistory.Store) http.HandlerFunc {
 		if cfg.ConfigJSON != "" {
 			var cfgData map[string]json.RawMessage
 			if err := json.Unmarshal([]byte(cfg.ConfigJSON), &cfgData); err == nil {
-				if tierJSON, ok := cfgData["delegation_tier_config"]; ok {
-					var tierConfig interface{}
-					if err := json.Unmarshal(tierJSON, &tierConfig); err == nil {
-						result["delegation_tier_config"] = tierConfig
-					}
-				}
 				if raw, ok := cfgData["default_servers"]; ok {
 					var servers []string
 					if err := json.Unmarshal(raw, &servers); err == nil {
@@ -67,11 +61,10 @@ func botConfigSaveHandler(store chathistory.Store) http.HandlerFunc {
 		}
 
 		var req struct {
-			DelegationTierConfig json.RawMessage   `json:"delegation_tier_config,omitempty"`
-			ProviderAPIKeys      map[string]string `json:"provider_api_keys,omitempty"`
-			DefaultServers       []string          `json:"default_servers,omitempty"`
-			DefaultSkills        []string          `json:"default_skills,omitempty"`
-			AllowedEmails        []string          `json:"allowed_emails,omitempty"`
+			ProviderAPIKeys map[string]string `json:"provider_api_keys,omitempty"`
+			DefaultServers  []string          `json:"default_servers,omitempty"`
+			DefaultSkills   []string          `json:"default_skills,omitempty"`
+			AllowedEmails   []string          `json:"allowed_emails,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -87,12 +80,6 @@ func botConfigSaveHandler(store chathistory.Store) http.HandlerFunc {
 			json.Unmarshal([]byte(existingCfg.ConfigJSON), &cfgMap)
 		}
 
-		if len(req.DelegationTierConfig) > 0 {
-			var tierData interface{}
-			if err := json.Unmarshal(req.DelegationTierConfig, &tierData); err == nil {
-				cfgMap["delegation_tier_config"] = tierData
-			}
-		}
 		// Store per-provider API keys (from frontend) for bot session use
 		if len(req.ProviderAPIKeys) > 0 {
 			existing, _ := cfgMap["provider_api_keys"].(map[string]interface{})

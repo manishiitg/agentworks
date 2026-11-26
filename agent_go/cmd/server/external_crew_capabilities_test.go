@@ -256,7 +256,7 @@ func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	f.api.logger = loggerv2.NewNoop()
 	// Diagnostics now reads central Vault, never the retired personal store
 	// or its tool cache. Only the selected account's metadata is shared.
-	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"selected_servers":["vault_attached"],"chosen_vault_apps_only":true}}`)
+	f.write(t, externalCommandCrewSettings+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"selected_servers":["vault_attached"],"chosen_vault_apps_only":true}}`)
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/admin/runtime/servers" || r.Header.Get("X-CapLayer-Actor") != "owner" {
 			w.WriteHeader(403)
@@ -454,26 +454,6 @@ func TestExternalCrewAutomationAuthoringOverMCP(t *testing.T) {
 		t.Fatal(got)
 	}
 	call("describe", map[string]any{"operation": "manage_schedules"})
-	// PLAT-746 (owner, 8 Nov): an older plan workflow keeps running and is readable, but is not edited.
-	var script crewExecutableBinding
-	for _, binding := range bindings {
-		script = binding
-	}
-	planWorkflow := crewExecutableBinding{ID: "plan-workflow", CrewID: script.CrewID, CrewRoot: script.CrewRoot, Root: "Workflow/plan-workflow", Kind: "workflow"}
-	if err := registerCrewExecutable(planWorkflow); err != nil {
-		t.Fatal(err)
-	}
-	registerWorkflowOwner(planWorkflow.Root, "owner")
-	manifest := NewWorkflowManifest("MCP workflow")
-	manifest.ID = planWorkflow.ID
-	manifest.CreatedBy = "owner"
-	manifest.Access = &WorkflowAccess{Owners: []string{"owner"}, Readers: []string{}}
-	if err := WriteWorkflowManifest(ctx, planWorkflow.Root, manifest); err != nil {
-		t.Fatal(err)
-	}
-	workflowRoot := planWorkflow.Root
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "workspace", map[string]any{"action": "automation_edit", "workspace_path": workflowRoot, "operation": "update_variable", "arguments": map[string]any{"action": "add", "name": "count", "type": "integer", "value": "2"}}, 400)
-	crewCapabilityHTTP(t, f, crewWriter("owner"), "workspace", map[string]any{"action": "automation_write", "workspace_path": workflowRoot, "file": "planning/plan.json", "content": "{}"}, 400)
 
 	for _, claims := range []*UserClaims{crewReader("owner"), crewWriter("other")} {
 		crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "automation_create", "kind": "script", "name": "Refused"}, 403)

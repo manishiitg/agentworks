@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useChatStore } from '../../stores/useChatStore'
 import { Laptop, Globe } from 'lucide-react'
 import { desktopRequest } from '../../services/desktopConnections'
 import { teamRequest, useTeamTab } from './teamApi'
@@ -6,11 +7,13 @@ import { teamRequest, useTeamTab } from './teamApi'
 /** One working copy per Team member (owner, 5 Nov): a member's own agents in a Crew work either on the website or on
  * their Mac. The server says which (team.where); in the other place the Crew is one plain screen with one button that
  * moves the working copy there. */
-export function useCrewWorksElsewhere(projectId: string) {
+export function useCrewWorksElsewhere(projectId: string, tabId?: string | null) {
+  // Placement describes the viewer's own working copy, never a watched agent.
+  const observed = useChatStore(s => !!tabId && s.chatTabs[tabId]?.metadata?.agentProfileTabCanWrite === false)
   const { view, target } = useTeamTab(projectId)
   const team = view?.team
   const onMacApp = Boolean(target?.connection)
-  const elsewhere: 'mac' | 'web' | undefined = !team?.where ? undefined
+  const elsewhere: 'mac' | 'web' | undefined = observed || !team?.where ? undefined
     : onMacApp && team.where === 'web' ? 'web'
     : !onMacApp && team.where === 'mac' ? 'mac'
     : undefined
@@ -34,7 +37,7 @@ export function CrewWorksElsewhere({ projectId }: { projectId: string }) {
   return <div className="flex h-full min-h-0 flex-1 items-center justify-center p-6">
     <div className="max-w-sm text-center">
       <Icon aria-hidden="true" className="mx-auto mb-3 h-6 w-6 text-muted-foreground" />
-      <h2 className="text-base font-semibold">{elsewhere === 'mac' ? 'This Crew works on your Mac' : 'This Crew works on the website'}</h2>
+      <h2 className="text-base font-semibold">{elsewhere === 'mac' ? 'This project works on your Mac' : 'This project works on the website'}</h2>
       <p className="mt-1 text-sm text-muted-foreground">{elsewhere === 'mac'
         ? 'Your agents here answer on your Mac. Open it in the AgentWorks app on your Mac to use them.'
         : 'Your agents here answer on the website now. Open it there to use them.'}</p>

@@ -884,6 +884,10 @@ func (api *StreamingAPI) handleSendTerminalInput(w http.ResponseWriter, r *http.
 		return
 	}
 
+	if refusal := chatTerminalTurnRefusal(snapshot.SessionID); refusal != "" {
+		externalError(w, 409, "continued_in_terminal", refusal)
+		return
+	}
 	var req sendTerminalInputRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid terminal input request", http.StatusBadRequest)
@@ -923,6 +927,10 @@ func (api *StreamingAPI) handleSendTerminalKey(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	if refusal := chatTerminalTurnRefusal(snapshot.SessionID); refusal != "" {
+		externalError(w, 409, "continued_in_terminal", refusal)
+		return
+	}
 	var req sendTerminalKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid terminal key request", http.StatusBadRequest)

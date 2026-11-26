@@ -40,8 +40,9 @@ type MCPConfigResponse struct {
 // custom servers, and only the latter belong to the JSON editor.
 func (api *StreamingAPI) customServers(overlay *mcpclient.MCPConfig) map[string]mcpclient.MCPServerConfig {
 	custom := make(map[string]mcpclient.MCPServerConfig)
+	base := api.baseMCPConfig().MCPServers
 	for name, server := range overlay.MCPServers {
-		if _, isBase := api.mcpConfig.MCPServers[name]; !isBase {
+		if _, isBase := base[name]; !isBase {
 			custom[name] = server
 		}
 	}
@@ -79,7 +80,8 @@ func writeJSONError(w http.ResponseWriter, code int, message string) {
 // discarded every change to them. Scoping the document to the user's own
 // servers makes what is shown and what is saved the same thing.
 func (api *StreamingAPI) handleGetMCPConfig(w http.ResponseWriter, r *http.Request) {
-	if err := api.mcpConfig.ReloadConfig(api.mcpConfigPath, api.logger); err != nil {
+	base, err := api.reloadedBaseMCPConfig()
+	if err != nil {
 		api.logger.Error(fmt.Sprintf("Failed to reload base MCP config: %v", err), err)
 		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to reload base config: %v", err))
 		return
@@ -94,7 +96,7 @@ func (api *StreamingAPI) handleGetMCPConfig(w http.ResponseWriter, r *http.Reque
 	sort.Strings(names)
 
 	api.logger.Debug(fmt.Sprintf("Returning %d user-defined MCP servers (%d base servers withheld)",
-		len(custom), len(api.mcpConfig.MCPServers)))
+		len(custom), len(base.MCPServers)))
 
 	// Written by hand so the servers keep a stable alphabetical order; Go maps
 	// marshal in a random one, which would reshuffle the editor on every load.
@@ -151,7 +153,8 @@ func (api *StreamingAPI) handleSaveMCPConfig(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if err := api.mcpConfig.ReloadConfig(api.mcpConfigPath, api.logger); err != nil {
+	base, err := api.reloadedBaseMCPConfig()
+	if err != nil {
 		api.logger.Error(fmt.Sprintf("Failed to reload base config: %v", err), err)
 		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to reload base config: %v", err))
 		return
@@ -161,7 +164,7 @@ func (api *StreamingAPI) handleSaveMCPConfig(w http.ResponseWriter, r *http.Requ
 	// appear to rename, retarget or delete a built-in connector.
 	reserved := make([]string, 0)
 	for name := range req.Config.MCPServers {
-		if _, isBase := api.mcpConfig.MCPServers[name]; isBase {
+		if _, isBase := base.MCPServers[name]; isBase {
 			reserved = append(reserved, name)
 		}
 	}
@@ -191,7 +194,7 @@ func (api *StreamingAPI) handleSaveMCPConfig(w http.ResponseWriter, r *http.Requ
 	merged := &mcpclient.MCPConfig{MCPServers: make(map[string]mcpclient.MCPServerConfig)}
 	keptConnections := 0
 	for name, server := range overlay.MCPServers {
-		if _, isBase := api.mcpConfig.MCPServers[name]; isBase {
+		if _, isBase := base.MCPServers[name]; isBase {
 			merged.MCPServers[name] = server
 			keptConnections++
 		}
@@ -331,7 +334,8 @@ func (api *StreamingAPI) validateMCPConfig(config *mcpclient.MCPConfig) error {
 // loadMergedConfig loads the merged configuration (base + user additions)
 func (api *StreamingAPI) loadMergedConfig() (*mcpclient.MCPConfig, error) {
 	// Reload base config to get latest version
-	if err := api.mcpConfig.ReloadConfig(api.mcpConfigPath, api.logger); err != nil {
+	base, err := api.reloadedBaseMCPConfig()
+	if err != nil {
 		return nil, fmt.Errorf("failed to reload base config: %w", err)
 	}
 
@@ -353,8 +357,8 @@ func (api *StreamingAPI) loadMergedConfig() (*mcpclient.MCPConfig, error) {
 
 	// Merge base config with user additions. Keep this local because older
 	// mcpagent releases do not export a merge helper.
-	mergedConfig := &mcpclient.MCPConfig{MCPServers: make(map[string]mcpclient.MCPServerConfig, len(api.mcpConfig.MCPServers)+len(userConfig.MCPServers))}
-	for name, server := range api.mcpConfig.MCPServers {
+	mergedConfig := &mcpclient.MCPConfig{MCPServers: make(map[string]mcpclient.MCPServerConfig, len(base.MCPServers)+len(userConfig.MCPServers))}
+	for name, server := range base.MCPServers {
 		mergedConfig.MCPServers[name] = server
 	}
 	for name, server := range userConfig.MCPServers {
@@ -362,7 +366,7 @@ func (api *StreamingAPI) loadMergedConfig() (*mcpclient.MCPConfig, error) {
 	}
 
 	api.logger.Debug(fmt.Sprintf("Merged config: %d base servers + %d user servers = %d total",
-		len(api.mcpConfig.MCPServers), len(userConfig.MCPServers), len(mergedConfig.MCPServers)))
+		len(base.MCPServers), len(userConfig.MCPServers), len(mergedConfig.MCPServers)))
 
 	// Debug: List all servers in merged config
 	api.logger.Debug("🔍 Final merged config servers:")
@@ -387,7 +391,8 @@ func (api *StreamingAPI) triggerMCPDiscovery() {
 // handleGetMCPConfigStatus handles GET requests to get config status
 func (api *StreamingAPI) handleGetMCPConfigStatus(w http.ResponseWriter, r *http.Request) {
 	// Reload base config to get latest version
-	if err := api.mcpConfig.ReloadConfig(api.mcpConfigPath, api.logger); err != nil {
+	base, err := api.reloadedBaseMCPConfig()
+	if err != nil {
 		api.logger.Error(fmt.Sprintf("Failed to reload base MCP config: %v", err), err)
 		http.Error(w, fmt.Sprintf("Failed to reload base config: %v", err), http.StatusInternalServerError)
 		return
@@ -417,8 +422,8 @@ func (api *StreamingAPI) handleGetMCPConfigStatus(w http.ResponseWriter, r *http
 	api.discoveryMux.RUnlock()
 
 	// Collect base server names
-	baseServerNames := make([]string, 0, len(api.mcpConfig.MCPServers))
-	for name := range api.mcpConfig.MCPServers {
+	baseServerNames := make([]string, 0, len(base.MCPServers))
+	for name := range base.MCPServers {
 		baseServerNames = append(baseServerNames, name)
 	}
 	sort.Strings(baseServerNames)
@@ -426,10 +431,10 @@ func (api *StreamingAPI) handleGetMCPConfigStatus(w http.ResponseWriter, r *http
 	status := map[string]interface{}{
 		"config_path":        api.mcpConfigPath,
 		"user_config_path":   userConfigPath,
-		"base_servers":       len(api.mcpConfig.MCPServers),
+		"base_servers":       len(base.MCPServers),
 		"base_server_names":  baseServerNames,
 		"user_servers":       len(userConfig.MCPServers),
-		"total_servers":      len(api.mcpConfig.MCPServers) + len(userConfig.MCPServers),
+		"total_servers":      len(base.MCPServers) + len(userConfig.MCPServers),
 		"discovered_servers": discoveredCount,
 		"discovery_running":  isDiscoveryRunning,
 		"last_discovery":     lastDiscovery.Format(time.RFC3339),

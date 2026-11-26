@@ -65,8 +65,8 @@ agent. It is bound to that stable agent ID/name, and parent sign-out revokes it.
 Named-peer messages use this child; product functions require a separate connection.
 
 This package uses Codex's supported `.codex-plugin/plugin.json` compatibility
-manifest and `.mcp.json` transport file. The installed loader must report two
-skills, the `agentworks` MCP server and four hooks: SessionStart, SessionEnd,
+manifest and `.mcp.json` transport file. The installed loader must report the installed
+skills (including Team join), the `agentworks` MCP server and four hooks: SessionStart, SessionEnd,
 UserPromptSubmit and Stop. Some installed Codex versions discover skills from a
 portable root manifest but ignore its OpenAI extension and compatibility-shaped
 MCP file; a skills-only listing is an incomplete installation.
@@ -140,3 +140,20 @@ codex plugin add agentworks-codex@agentworks
 Plugin updates do not update the AgentWorks CLI or server, attach chats, or approve hook trust.
 
 On a direct person request, the agent may run `agentworks attach [NAME]` for its own detected chat without installing a plugin. It may also run own detach; Codex limits this to leases originally created through own CLI attach. Person-created Codex leases retain the person detach command. No session overrides, other-chat selection or trust changes are permitted. `agentworks agent` aliases `agents`; purpose may describe responsibilities in up to 512 characters. Routing hints do not isolate same-user credentials.
+
+
+### Join a Crew
+
+Connect this exact native chat to AgentWorks, then ask it to “join my Crew” and give the Crew ID. Use the installed `crew` skill to join or leave. The existing plugin MCP `agentworks` tool uses `action=join|leave` and `project=<Crew ID>`; no session or path overrides. You must own the Crew or be a current member of its active Team. The join returns the Crew instructions and its local folder or accepted Team copy. Work there; keep the Mac app running for shared file sync. If there is no accepted local copy, join still works but the files stay on the server: ask its agents, or add the Crew to this Mac in AgentWorks. No server path is returned.
+
+With Team on, a new session starts **Shared with team**, **Answers only**, with no permission to make changes for others. Switch to **Only me** to hide it or explicitly choose **Live** to share the native conversation. With Team off, only you and your own agents can reach it; turning Team on later needs no rejoin. Rejoin preserves choices. One native agent belongs to one Crew: leave before joining another. A saved Discovery publication is suspended while joined, not deleted; leaving restores it unchanged.
+
+The Team's session brief and Needs-you answers use `action=team_sync` with `team_action=work_brief|work_answer`; an ask itself is an AgentBridge request thread. Normal AgentBridge handles discovery, asks, replies and server-owned instructions. An ask to an offline agent waits for it, or you can read its chat. Answer questions/work in the original inbox, not final chat text. Joining does not grant general Crew tools or copy Team keys or logins to the Mac. Leave removes only the listing, not files or the attachment.
+
+Existing approved Codex hooks check delivery at turn boundaries; idle wake is weaker than Claude’s live channel. `agentworks bridge message watch --provider codex --after 0` waits up to 20 seconds once, returns messages and next_cursor, then exits. Use the returned cursor for later explicit reads, not a polling loop. It does not attach or approve hooks.
+
+### Terminal status
+
+Attached sessions show one quiet metadata line by default. Start `codex` with `AGENTWORKS_TERMINAL_STATUS=0` to turn it off. Unattached sessions show nothing. No hook trust or app setting is changed automatically. Claude uses its existing mod band; Codex uses the hook's visible systemMessage at session/prompt start. Status refreshes only at existing lifecycle boundaries, never on a timer or every repaint.
+
+Joined + Team on: `AgentWorks · Project Design workspace · Shared with team · 2 online · 1 new`; hidden: `AgentWorks · Project Design workspace · Not shared`; no Team: `AgentWorks · Project Design workspace`; attached only: `AgentWorks · connected`; unattached or unavailable: nothing. Counts are omitted when unavailable. Nothing reads or displays chat text, sends a message, or acknowledges mail. Exact current attachment and Crew membership are rechecked by the server.

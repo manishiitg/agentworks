@@ -81,7 +81,15 @@ type Record struct {
 // CaptureStats explains partial captures without exposing file names or contents.
 type CaptureStats struct {
 	// Phase timings distinguish Git change detection from queue and history work.
-	DiscoveryMS   int64 `json:"discovery_ms,omitempty"`
+	DiscoveryMS int64 `json:"discovery_ms,omitempty"`
+	// WalkMS is the part of DiscoveryMS spent walking the project for loose
+	// files and checkouts; LimitReused means the stored too-many-files verdict
+	// skipped that walk (#3878).
+	WalkMS      int64 `json:"walk_ms,omitempty"`
+	LimitReused bool  `json:"limit_reused,omitempty"`
+	// ReposReused counts checkouts whose last read was reused because the
+	// file watcher saw nothing change in them (repo_watch.go).
+	ReposReused   int   `json:"repos_reused,omitempty"`
 	IndexMS       int64 `json:"index_ms,omitempty"`
 	ImportMS      int64 `json:"import_ms,omitempty"`
 	ComposeMS     int64 `json:"compose_ms,omitempty"`
@@ -157,11 +165,17 @@ type Comparison struct {
 	NewRepos []string `json:"-"`
 	versions map[string]savedVersion
 }
-type Store struct{ Root, Private string }
+type Store struct {
+	Root, Private string
+	// Watch, when set, lets unchanged checkouts reuse their last read (repo_watch.go).
+	Watch RepoWatch
+}
 
 type storeState struct {
 	gate    chan struct{}
 	warming atomic.Bool
+	limit   fileLimitCache
+	repos   repoReads
 }
 
 // ErrWarming means the background index build (Warm) holds this Crew's gate;
@@ -274,7 +288,22 @@ func (s Store) init(ctx context.Context) error {
 	}
 	return nil
 }
+
+// A chat's own branch folder (<repo>/.worktrees/<name>, #2922) is checked like
+// the repo it belongs to. The walk still skips .worktrees itself, so only the
+// chat's own checkouts (Store.Checkouts) reach these paths.
+func withoutChatWorktree(p string) string {
+	parts := strings.Split(p, "/")
+	for i := 0; i+2 < len(parts); i++ {
+		if parts[i] == ".worktrees" {
+			return strings.Join(append(parts[:i:i], parts[i+2:]...), "/")
+		}
+	}
+	return p
+}
+
 func excluded(path string, dir bool) bool {
+	path = withoutChatWorktree(path)
 	// Reuse the existing credential/private-state exclusion rules. Git's own
 	// matcher below additionally handles ignore files within nested repositories.
 	for _, part := range strings.Split(path, "/") {
@@ -337,6 +366,7 @@ func (s Store) listRepo(ctx context.Context, dir string) (entries []string, isRe
 func (s Store) candidates(ctx context.Context, stats *CaptureStats) ([]*checkout, []string, error) {
 	paths := []string{} // walked files, still to be ignore-filtered
 	repos := []*checkout{}
+	ignored := s.ignoredFolders(ctx)
 	var walk func(dir string) error
 	walk = func(dir string) error {
 		return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
@@ -351,7 +381,7 @@ func (s Store) candidates(ctx context.Context, stats *CaptureStats) ([]*checkout
 				return err
 			}
 			rel = filepath.ToSlash(rel)
-			if path != s.Root && excluded(rel, d.IsDir()) {
+			if path != s.Root && (excluded(rel, d.IsDir()) || d.IsDir() && ignored[rel]) {
 				if d.IsDir() {
 					return filepath.SkipDir
 				}
@@ -747,9 +777,41 @@ func (s Store) prune(ctx context.Context) {
 		removed = true
 	}
 	if removed {
-		s.dropViews(ctx)
-		_ = s.command(ctx, "gc", "--prune=now", "--quiet").Run()
+		_ = os.WriteFile(s.gcPendingPath(), nil, 0o600)
 	}
+	s.collectGarbage(ctx, time.Now())
+}
+
+// gcEvery spaces out reclaiming expired replies' files. Git rewrites the
+// whole private store to do it (640 MB, about 4-5 s on a large Crew), and it
+// runs under the store gate, so doing it after every reply made the next
+// send in the Crew wait (#4080). Expired replies' records and refs are still
+// removed at once; only the disk space comes back later.
+const gcEvery = 24 * time.Hour
+
+func (s Store) gcPendingPath() string { return filepath.Join(s.dir(), "gc-pending") }
+func (s Store) gcDonePath() string    { return filepath.Join(s.dir(), "gc-done") }
+
+// collectGarbage reclaims expired replies' files when some are waiting and the
+// last reclaim is at least gcEvery old. The caller holds the store gate.
+func (s Store) collectGarbage(ctx context.Context, now time.Time) bool {
+	if _, err := os.Stat(s.gcPendingPath()); err != nil {
+		return false
+	}
+	if done, err := os.Stat(s.gcDonePath()); err == nil && now.Sub(done.ModTime()) < gcEvery {
+		return false
+	}
+	started := time.Now()
+	s.dropViews(ctx)
+	err := s.command(ctx, "gc", "--prune=now", "--quiet").Run()
+	log.Printf("[FILE_SNAPSHOT] phase=gc elapsed_ms=%d err=%v", time.Since(started).Milliseconds(), err)
+	if err != nil {
+		return false
+	}
+	_ = os.WriteFile(s.gcDonePath(), nil, 0o600)
+	_ = os.Chtimes(s.gcDonePath(), now, now)
+	_ = os.Remove(s.gcPendingPath())
+	return true
 }
 
 type limitedOutput struct {

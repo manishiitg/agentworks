@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/oauth"
 )
@@ -22,12 +23,13 @@ import (
 // These records contain provider registration metadata, not group permissions.
 // Both metadata and tokens use the platform's existing sealed credential store.
 type vaultOAuthConnection struct {
-	ID, OAuthServer, OAuthCredentialID, UpstreamURL, Label, Status string
+	ID, Provider, OAuthServer, OAuthCredentialID, UpstreamURL, Label, Status string
 	// VaultID is the person-owned vault the connection belongs to (PLAT-507); empty for a platform connection.
 	VaultID string
 }
 
-var vaultConnectionID = regexp.MustCompile(`^c-[a-f0-9]{8,32}$`)
+// "c1" is the starter connection older Vault installs added by themselves; it stays removable from the screen.
+var vaultConnectionID = regexp.MustCompile(`^(c-[a-f0-9]{8,32}|c1)$`)
 var vaultOAuthGenerations sync.Map         // connection ID -> uint64; accessed under its OAuth mutex
 func vaultCredentialName(id string) string { return "vault_" + id }
 func vaultCredentialConfigPath(id string) string {
@@ -45,42 +47,30 @@ func vaultPersonRequest(ctx context.Context, person, method, path string, payloa
 }
 
 func vaultServiceRequestAs(ctx context.Context, actor string, platformUser bool, method, path string, payload []byte) ([]byte, error) {
-	target, secret, err := gatewayAdminServiceConfig()
-	if err != nil {
-		return nil, errors.New("Vault service is not configured")
-	}
-	target.Path = strings.TrimRight(target.Path, "/") + path
-	req, err := http.NewRequestWithContext(ctx, method, target.String(), bytes.NewReader(payload))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+secret)
-	req.Header.Set("Content-Type", "application/json")
-	if actor != "" {
-		req.Header.Set("X-CapLayer-Actor", actor)
-	}
+	status := 0
+	defer logSlowVaultRequest(ctx, "service", time.Now(), &status)
+	call := vaultServiceCall{Method: method, Path: path, Body: payload, Actor: actor, Timeout: 90 * time.Second, Limit: 2 * 1024 * 1024, Changes: method != http.MethodGet && method != http.MethodHead}
 	if platformUser {
-		req.Header.Set("X-Vault-Platform-User", "1")
+		call.Headers = map[string]string{"X-Vault-Platform-User": "1"}
 	}
-	client := &http.Client{Transport: capLayerTransport, Timeout: 90 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, errors.New("Vault service unavailable")
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024+1))
-	if err != nil || len(body) > 2*1024*1024 {
+	var body []byte
+	var err error
+	status, body, err = call.do(ctx)
+	switch {
+	case errors.Is(err, errVaultServiceNotConfigured), errors.Is(err, errVaultServiceUnavailable):
+		return nil, err
+	case err != nil:
 		return nil, errors.New("invalid Vault response")
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if status < 200 || status >= 300 {
 		// The Vault service's own refusal text (for example "only an owner of this vault can do that") helps the caller.
 		var refusal struct {
 			Error string `json:"error"`
 		}
 		if json.Unmarshal(body, &refusal) == nil && strings.TrimSpace(refusal.Error) != "" && len(refusal.Error) <= 2000 {
-			return nil, fmt.Errorf("Vault operation failed (%d): %s", resp.StatusCode, strings.TrimSpace(refusal.Error))
+			return nil, fmt.Errorf("Vault operation failed (%d): %s", status, strings.TrimSpace(refusal.Error))
 		}
-		return nil, fmt.Errorf("Vault operation failed (%d)", resp.StatusCode)
+		return nil, fmt.Errorf("Vault operation failed (%d)", status)
 	}
 	return body, nil
 }
@@ -137,6 +127,13 @@ func (api *StreamingAPI) vaultOAuthConfig(ctx context.Context, id, name, resourc
 	if err != nil {
 		return cfg, err
 	}
+	return vaultSavedOAuthConfig(id, cfg)
+}
+
+// vaultSavedOAuthConfig reads the connection's saved sign-in onto cfg. A
+// token refresh calls it again once it holds the connection's lock, so a
+// sign-out or new sign-in that finished while it waited is what it uses.
+func vaultSavedOAuthConfig(id string, cfg mcpclient.MCPServerConfig) (mcpclient.MCPServerConfig, error) {
 	data, err := oauth.ReadTokenFile(vaultCredentialConfigPath(id))
 	if err != nil {
 		return cfg, errors.New("sign in to this connection first")
@@ -252,7 +249,7 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 	started := noteVaultSignInStarted(id)
 	notificationID := "vault-oauth:" + id + ":" + newSteerMessageID()
 	start, discovery, flowErr := api.runOAuthFlow(sessionID, redirect, oauthFlowTarget{
-		Name: name, Config: cfg, ClientFile: getUserClientFilePath(platformMCPTokenUserID, vaultCredentialName(id)), ConnectionID: id, LockKey: "vault:" + id,
+		Person: userID, Name: name, Config: cfg, ClientFile: getUserClientFilePath(platformMCPTokenUserID, vaultCredentialName(id)), ConnectionID: id, LockKey: "vault:" + id,
 		// BeforeExchange saved the rejected client as this connection's setup; drop it so the next connect registers again.
 		ForgetClient: func() { _ = os.Remove(vaultCredentialConfigPath(id)) },
 		BeforeExchange: func(flow *OAuthFlowState) error {
@@ -284,6 +281,11 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 			if err := syncErr; err != nil {
 				return errors.New(vaultSyncProblem(name, err))
 			}
+			if strings.EqualFold(name, "slack") || strings.EqualFold(cfg.URL, "https://mcp.slack.com/mcp") {
+				_ = os.Remove(vaultSlackIdentityPath(id))
+				vaultSlackIdentityMiss.Delete(id)
+				_ = api.refreshVaultSlackIdentity(context.Background(), id)
+			}
 			completeMCPURLSignIn(flow.State, id)
 			return nil
 		},
@@ -294,6 +296,7 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 			}
 			log.Printf("[VAULT_SIGNIN] connection=%s app=%s sign-in finished after %s ok=%t detail=%q", id, name, time.Since(started).Round(time.Second), success, shown)
 			recordVaultSignInOutcome(id, started, success, shown)
+			livefeed.Default.PublishToUser(livefeed.VaultConnections, userID, "")
 			if sessionID == "" {
 				return
 			}
@@ -424,6 +427,10 @@ func (api *StreamingAPI) vaultConnectionOAuthStatus(w http.ResponseWriter, r *ht
 	mutex := platformMCPOAuthMutex("vault:" + id)
 	mutex.Lock()
 	defer mutex.Unlock()
+	if cfg, err = vaultSavedOAuthConfig(id, cfg); err != nil {
+		writeUsersJSON(w, 200, map[string]any{"server_name": name, "valid": false, "sign_in_error": vaultOAuthSignInProblem(id, true, err)})
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	token, err := oauth.NewManager(cfg.OAuth, api.logger).GetAccessToken(ctx)
@@ -436,7 +443,8 @@ func (api *StreamingAPI) vaultConnectionOAuthStatus(w http.ResponseWriter, r *ht
 func removeVaultCredentialFiles(id string) {
 	vaultSignInOutcomes.Delete(id)
 	vaultSignInStarts.Delete(id)
-	for _, path := range []string{getUserTokenFilePath(platformMCPTokenUserID, vaultCredentialName(id)), vaultCredentialConfigPath(id), getUserClientFilePath(platformMCPTokenUserID, vaultCredentialName(id))} {
+	vaultSlackIdentityMiss.Delete(id)
+	for _, path := range []string{getUserTokenFilePath(platformMCPTokenUserID, vaultCredentialName(id)), vaultCredentialConfigPath(id), getUserClientFilePath(platformMCPTokenUserID, vaultCredentialName(id)), vaultSlackIdentityPath(id)} {
 		_ = os.Remove(path)
 	}
 }
@@ -568,9 +576,17 @@ func (api *StreamingAPI) capLayerConnectionAccess(ctx context.Context, userID, o
 		problem := ""
 		if err == nil {
 			mutex := platformMCPOAuthMutex("vault:" + c.ID)
+			// Bound the refresh: a stuck sign-in provider would otherwise hold
+			// this lock and block every token request for the connection.
+			refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 			mutex.Lock()
-			token, e := oauth.NewManager(cfg.OAuth, api.logger).GetAccessToken(ctx)
+			var token string
+			saved, e := vaultSavedOAuthConfig(c.ID, cfg)
+			if e == nil {
+				token, e = oauth.NewManager(saved.OAuth, api.logger).GetAccessToken(refreshCtx)
+			}
 			mutex.Unlock()
+			cancel()
 			valid = e == nil && token != ""
 			if !valid {
 				problem = vaultOAuthSignInProblem(c.ID, false, e)

@@ -263,6 +263,10 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 		case "set":
 			secret := externalArg(args, "name")
 			allow, ok := args["allowed"].(bool)
+			if companyKeysOn() {
+				fail(errCompanyKeysGroups.Error() + ".")
+				return
+			}
 			if group == "" || !globalSecretNamePattern.MatchString(secret) || len(secret) > 128 || !ok {
 				fail("set requires group_id, an exact secret name and boolean allowed.")
 				return
@@ -297,6 +301,34 @@ func (api *StreamingAPI) vaultManagementCall(w http.ResponseWriter, r *http.Requ
 			summary := summarizeSecretResults(results)
 			logSecretWrite(claims.UserID, "vault", len(results), summary, requestLogID(r))
 			externalJSON(w, map[string]any{"results": results, "summary": summary, "note": "Values are stored and never shown. Refer to each secret by name only."})
+			return
+		case "company_keys":
+			view, err := api.companyKeysFor(r.Context(), claims.UserID)
+			if err != nil {
+				externalError(w, 502, "vault_operation_failed", "Company keys could not be loaded: Vault isn't answering.")
+				return
+			}
+			externalJSON(w, view)
+			return
+		case "move_company_keys":
+			leaveOut := []string{}
+			if raw, ok := args["leave_out"].([]any); ok {
+				for _, v := range raw {
+					if text, _ := v.(string); strings.TrimSpace(text) != "" {
+						leaveOut = append(leaveOut, strings.TrimSpace(text))
+					}
+				}
+			}
+			moved, left, err := api.moveCompanyKeys(r.Context(), claims.UserID, leaveOut)
+			if errors.Is(err, errGlobalAdmin) {
+				externalError(w, 403, "forbidden", "Only a Vault admin can do this move. Ask an admin.")
+				return
+			}
+			if err != nil {
+				fail(err.Error())
+				return
+			}
+			externalJSON(w, map[string]any{"moved": moved, "left_out": left, "note": "Company keys now reach everyone on this server."})
 			return
 		case "delete":
 			secret := externalArg(args, "name")

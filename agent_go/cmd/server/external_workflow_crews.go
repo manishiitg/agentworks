@@ -20,13 +20,13 @@ func externalWorkflowCrewDefinition(add func(string, string, bool, bool, map[str
 	delete(props, "crew_project_id")
 	delete(props, "crew_profile_id")
 	props["action"].(map[string]any)["enum"] = []any{"list", "detach"}
-	add("workflow_crews", "List or detach this workflow's read-only Crew attachments using the native Builder handler. These are workflow-to-Crew bindings; crew_references manages the opposite direction. Detach takes the alias returned by list, removes its live file grants immediately, and leaves plan steps unchanged. Crew deletion still refuses any remaining workflow attachment. Requires existing Builder consent and current workflow owner/editor access; no model turn or new permission.", true, true, props, "action")
+	add("workflow_crews", "List or detach this workflow's read-only project attachments using the native Builder handler. These are workflow-to-project bindings; crew_references manages the opposite direction. Detach takes the alias returned by list, removes its live file grants immediately, and leaves plan steps unchanged. Project deletion still refuses any remaining workflow attachment. Requires existing Builder consent and current workflow owner/editor access; no model turn or new permission.", true, true, props, "action")
 	return nil
 }
 
 func (api *StreamingAPI) externalWorkflowCrewCall(w http.ResponseWriter, r *http.Request, args map[string]any, workflow DiscoveredWorkflow) {
 	if workflow.Manifest.Kind == "relay" {
-		externalError(w, 400, "wrong_product", "Crew attachments belong to Goals workflows.")
+		externalError(w, 400, "wrong_product", "Project attachments belong to Goals workflows.")
 		return
 	}
 	action := externalArg(args, "action")
@@ -71,7 +71,7 @@ func (api *StreamingAPI) externalWorkflowCrewCall(w http.ResponseWriter, r *http
 			return
 		}
 		if current.Team == nil && api.findRunningTrackedExecutionForWorkspaceWhere(workflow.WorkspacePath, trackedExecutionBlocksNewWorkflowBuilderChat) != nil {
-			externalError(w, 409, "workflow_busy", "Wait for the current Builder turn before detaching a Crew.")
+			externalError(w, 409, "workflow_busy", "Wait for the current Builder turn before detaching a project.")
 			return
 		}
 	}

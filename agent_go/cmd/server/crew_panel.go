@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"log"
 	"net/http"
 	"net/url"
 	"path"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,9 +19,61 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/gmailinbound"
 )
 
+// crewPanelGitRow holds Git checkout metadata for "changes" rows.
+type crewPanelGitRow struct {
+	// Last commit (Unix seconds, first line) and, for a branch tracking a remote,
+	// when the repository last fetched; the panel says how old that check is once
+	// it is more than a day old.
+	CommitAt   int64  `json:"commit_at,omitempty"`
+	Commit     string `json:"commit,omitempty"`
+	FetchedAt  int64  `json:"fetched_at,omitempty"`
+	GitHubRepo string `json:"github_repo,omitempty"`
+	// Changed: the checkout has edits not committed yet. Opening the row
+	// reviews them; a clean checkout opens its folder instead.
+	Changed bool `json:"changed,omitempty"`
+	// ChangedFiles: how many files have edits not committed yet (git status).
+	ChangedFiles int `json:"changed_files,omitempty"`
+}
+
+// crewPanelGitHubRow holds display-only account metadata for the "github" row.
+type crewPanelGitHubRow struct {
+	Login string   `json:"login,omitempty"`
+	Orgs  []string `json:"orgs,omitempty"`
+}
+
+// crewPanelDashboardRow holds display flags for "dashboards" rows.
+type crewPanelDashboardRow struct {
+	Motion   bool `json:"motion,omitempty"`
+	Artifact bool `json:"artifact,omitempty"`
+}
+
+// crewPanelActivityRow holds Project activity feed metadata (#3476, #3625).
+type crewPanelActivityRow struct {
+	// Items: a Project activity row's latest finds, newest first (#3476).
+	Items []crewPanelFeedItem `json:"items,omitempty"`
+	// Project activity steps (#3625): the row's steps first to last, the
+	// person's rules for them, and how many items are at the last step.
+	Steps     []string `json:"steps,omitempty"`
+	Rules     string   `json:"rules,omitempty"`
+	DoneCount int      `json:"done_count,omitempty"`
+}
+
+// crewPanelProjectTasksRow holds shared Project tasks list metadata.
+type crewPanelProjectTasksRow struct {
+	// Project tasks (one shared list per project): its tasks, the lead's
+	// decisions in the last day, and the lead agent's name.
+	Tasks         []crewPanelProjectTask `json:"tasks,omitempty"`
+	Lead          string                 `json:"lead,omitempty"`
+	TasksMode     string                 `json:"tasks_mode,omitempty"`
+	Paused        bool                   `json:"paused,omitempty"`
+	NeedsYouCount int                    `json:"needs_you_count,omitempty"` // Project tasks: shown on the closed row
+	OpenCount     int                    `json:"open_count,omitempty"`
+}
+
 // PLAT-856-542: one read for the Crew menu. Detail/edit APIs keep their own
-// contracts. These readers call those same guarded handlers, never a new
+// contracts. These readers call those same guarded handlers/services, never a new
 // account/Team policy. Only display fields are retained in the response/cache.
+// Section-specific structs are embedded so the flat JSON wire format is unchanged.
 type crewPanelRow struct {
 	nextRun     time.Time // Server-only ordering for the automation summary.
 	ID          string    `json:"id"`
@@ -28,30 +83,50 @@ type crewPanelRow struct {
 	Connected   bool      `json:"connected,omitempty"`
 	Attention   bool      `json:"attention,omitempty"`
 	Path        string    `json:"path,omitempty"`
-	UsedInChat  bool      `json:"used_in_chat,omitempty"`
-	Motion      bool      `json:"motion,omitempty"`
-	Artifact    bool      `json:"artifact,omitempty"`
+	// Shared grouping and compact badge text (Git checkouts, Project activity, Project tasks).
+	Group string `json:"group,omitempty"`
+	Count string `json:"count,omitempty"`
+
+	crewPanelGitRow
+	crewPanelGitHubRow
+	crewPanelDashboardRow
+	crewPanelActivityRow
+	crewPanelProjectTasksRow
 }
 type crewPanelSection struct {
-	ID     string           `json:"id"`
-	Title  string           `json:"title"`
-	Detail string           `json:"detail,omitempty"`
-	Rows   []crewPanelRow   `json:"rows"`
-	Busy   bool             `json:"busy,omitempty"`
-	Stale  bool             `json:"stale,omitempty"`
-	Error  string           `json:"error,omitempty"`
-	Access *crewPanelAccess `json:"access,omitempty"`
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Detail string `json:"detail,omitempty"`
+	// Changed: files not committed yet across the section's repositories (Git only).
+	Changed int              `json:"changed,omitempty"`
+	Rows    []crewPanelRow   `json:"rows"`
+	Busy    bool             `json:"busy,omitempty"`
+	Stale   bool             `json:"stale,omitempty"`
+	Error   string           `json:"error,omitempty"`
+	Access  *crewPanelAccess `json:"access,omitempty"`
+	// FileLimit: the project folder has too many files to track every reply's changes (Git only, #3878).
+	FileLimit *crewPanelFileLimit `json:"file_limit,omitempty"`
 	// shared is the dashboard's audience in the Share tree's words (the sharing section only).
-	shared string
+	shared    string
+	refreshAt time.Time // Server-only: a cached/in-flight snapshot needs one later read.
+}
+type crewPanelFileLimit struct {
+	filesnapshots.FileLimitReport
+	// CanFix: this person may move folders out (the owner, a project in a folder on a Mac).
+	CanFix bool `json:"can_fix"`
 }
 type crewPanelAccess struct {
-	Where   string           `json:"where,omitempty"`
-	Place   string           `json:"place,omitempty"`
-	Role    string           `json:"role,omitempty"`
-	View    string           `json:"view,omitempty"`
-	Summary string           `json:"summary,omitempty"`
-	Tree    []crewAccessLine `json:"tree"`
-	Asking  []crewPanelAsk   `json:"asking"`
+	Where   string `json:"where,omitempty"`
+	Place   string `json:"place,omitempty"`
+	Role    string `json:"role,omitempty"`
+	View    string `json:"view,omitempty"`
+	Summary string `json:"summary,omitempty"`
+	// TeamDetail is the menu's Team row: "Off" or "You + 2" (owner, 11 Nov: Share split into Team and Online).
+	TeamDetail string `json:"team_detail,omitempty"`
+	// CoOwners: a Crew on the server; the Team row is its Co-owners row and offers no Team (owner, 21 Nov).
+	CoOwners bool             `json:"co_owners,omitempty"`
+	Tree     []crewAccessLine `json:"tree"`
+	Asking   []crewPanelAsk   `json:"asking"`
 }
 type crewPanelAsk struct {
 	macAskActivity
@@ -59,7 +134,10 @@ type crewPanelAsk struct {
 	Detail string `json:"detail"`
 }
 type crewPanelReply struct {
-	Details map[string]string `json:"details"`
+	Details        map[string]string `json:"details"`
+	RefreshAfterMS int64             `json:"refresh_after_ms,omitempty"`
+	RefreshAttempt int               `json:"refresh_attempt,omitempty"`
+	RefreshNote    string            `json:"refresh_note,omitempty"`
 
 	Project      string             `json:"project"`
 	Workspace    string             `json:"workspace"`
@@ -72,47 +150,195 @@ type crewPanelSource struct {
 	allowed   bool
 	noCache   bool // Cross-service permissions cannot be rechecked from the Crew record alone.
 	// timeout, when set, is this section's own time limit instead of the panel's (a Git status over several repos).
-	timeout time.Duration
-	read    func(context.Context) (crewPanelSection, error)
+	timeout    time.Duration
+	refreshFor time.Duration // Successful display snapshots; current authority is still checked before and after.
+	// background serves the last good snapshot at once while it is older than refreshFor and re-reads it off the
+	// request, one read at a time. The first read of a Crew still waits for the section.
+	background bool
+	// stamp, when set, names the current version of everything the section shows (#3206). A snapshot taken at the
+	// same stamp is reused, so the many re-reads a busy Crew's notices cause recompute only what changed; ok=false
+	// (no reliable stamp) reads as before. crewPanelCacheTTL still bounds drift from a change nothing stamps.
+	stamp func(context.Context) (string, bool)
+	read  func(context.Context) (crewPanelSection, error)
 }
 type crewPanelReadError struct{ status int }
+
+type crewPanelRefreshing struct{}
+
+func (crewPanelRefreshing) Error() string { return "workflow summary refresh already in progress" }
 
 func (e crewPanelReadError) Error() string { return "Panel section unavailable" }
 
 const crewPanelTimeout = 2 * time.Second
 const crewPanelCacheTTL = 30 * time.Second
 
-type crewPanelCacheKey struct{ caller, project, section, chat, authority string }
+// A background section keeps its last snapshot this long, so an old one can be shown while a new one is read.
+const crewPanelBackgroundKeep = 10 * time.Minute
+const crewPanelCacheMaxEntries = 2000
+
+type crewPanelCacheKey struct{ caller, project, section, authority string }
 type crewPanelCached struct {
 	at      time.Time
 	section crewPanelSection
+	stamp   string
 }
 type crewPanelCache struct {
-	mu      sync.Mutex
-	entries map[crewPanelCacheKey]crewPanelCached
+	mu           sync.Mutex
+	workflowRead sync.Mutex // At most one cold workflow summary scan; never queue UI reads behind it.
+	entries      map[crewPanelCacheKey]crewPanelCached
+	refreshing   map[crewPanelCacheKey]bool // Background reads in flight: at most one per section.
+	denied       map[crewPanelCacheKey]time.Time
+	lastSweep    time.Time
+	maxEntries   int // 0 uses crewPanelCacheMaxEntries.
 }
 
-func (c *crewPanelCache) put(key crewPanelCacheKey, section crewPanelSection) {
+// firstDenial reports whether key's denial has not been logged in the last hour.
+func (c *crewPanelCache) firstDenial(key crewPanelCacheKey) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.denied == nil {
+		c.denied = map[crewPanelCacheKey]time.Time{}
+	}
+	if at, ok := c.denied[key]; ok && time.Since(at) < time.Hour {
+		return false
+	}
+	if len(c.denied) > 10000 {
+		c.denied = map[crewPanelCacheKey]time.Time{}
+	}
+	c.denied[key] = time.Now()
+	return true
+}
+
+func (c *crewPanelCache) put(key crewPanelCacheKey, section crewPanelSection, stamp ...string) {
+	c.putAt(key, section, time.Now(), stamp...)
+}
+
+func (c *crewPanelCache) putAt(key crewPanelCacheKey, section crewPanelSection, at time.Time, stamp ...string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.entries == nil {
 		c.entries = map[crewPanelCacheKey]crewPanelCached{}
 	}
+	limit := c.maxEntries
+	if limit <= 0 {
+		limit = crewPanelCacheMaxEntries
+	}
 	now := time.Now()
-	for k, v := range c.entries {
-		if now.Sub(v.at) >= crewPanelCacheTTL {
-			delete(c.entries, k)
+	if len(c.entries) >= limit || now.Sub(c.lastSweep) >= time.Minute {
+		for k, v := range c.entries {
+			if now.Sub(v.at) >= crewPanelBackgroundKeep {
+				delete(c.entries, k)
+			}
+		}
+		c.lastSweep = now
+	}
+	if _, exists := c.entries[key]; !exists {
+		for len(c.entries) >= limit {
+			var oldestKey crewPanelCacheKey
+			var oldestAt time.Time
+			first := true
+			for k, v := range c.entries {
+				if first || v.at.Before(oldestAt) {
+					oldestKey, oldestAt, first = k, v.at, false
+				}
+			}
+			if first {
+				break
+			}
+			delete(c.entries, oldestKey)
 		}
 	}
+	section.refreshAt = time.Time{}
 	section.Rows = append([]crewPanelRow{}, section.Rows...)
-	c.entries[key] = crewPanelCached{now, section}
+	c.entries[key] = crewPanelCached{at, section, strings.Join(stamp, "")}
 }
-func (c *crewPanelCache) previous(key crewPanelCacheKey) (crewPanelSection, bool) {
+
+// stamped is the snapshot taken at stamp, while it is younger than crewPanelCacheTTL.
+func (c *crewPanelCache) stamped(key crewPanelCacheKey, stamp string) (crewPanelSection, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.entries[key]
+	if !ok || stamp == "" || v.stamp != stamp || time.Since(v.at) >= crewPanelCacheTTL {
+		return crewPanelSection{}, false
+	}
+	v.section.Rows = append([]crewPanelRow{}, v.section.Rows...)
+	return v.section, true
+}
+func (c *crewPanelCache) previous(key crewPanelCacheKey, maximum ...time.Duration) (crewPanelSection, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	v, ok := c.entries[key]
 	v.section.Rows = append([]crewPanelRow{}, v.section.Rows...)
-	return v.section, ok && time.Since(v.at) < crewPanelCacheTTL
+	age := crewPanelCacheTTL
+	if len(maximum) > 0 {
+		age = maximum[0]
+		v.section.refreshAt = v.at.Add(age)
+	}
+	return v.section, ok && time.Since(v.at) < age
+}
+
+// aged is the last snapshot and how old it is, whatever its age.
+func (c *crewPanelCache) aged(key crewPanelCacheKey) (crewPanelSection, time.Duration, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.entries[key]
+	if !ok {
+		return crewPanelSection{}, 0, false
+	}
+	v.section.Rows = append([]crewPanelRow{}, v.section.Rows...)
+	return v.section, time.Since(v.at), true
+}
+
+// refreshInBackground re-reads one section off the request and stores a good answer. A read already in flight for the
+// section is not repeated. base carries the caller's identity but not the request's cancellation.
+func (c *crewPanelCache) refreshInBackground(base context.Context, key crewPanelCacheKey, source crewPanelSource, limit time.Duration) {
+	c.mu.Lock()
+	if c.refreshing == nil {
+		c.refreshing = map[crewPanelCacheKey]bool{}
+	}
+	if c.refreshing[key] {
+		c.mu.Unlock()
+		return
+	}
+	c.refreshing[key] = true
+	c.mu.Unlock()
+	go func() {
+		started := time.Now()
+		var err error
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				err = fmt.Errorf("background refresh panicked")
+				log.Printf("[CREW_PANEL] project=%s section=%s background_refresh panic=%v", key.project, source.id, recovered)
+			}
+			c.mu.Lock()
+			delete(c.refreshing, key)
+			c.mu.Unlock()
+			log.Printf("[CREW_PANEL] project=%s section=%s background_refresh ok=%t ms=%d", key.project, source.id, err == nil, time.Since(started).Milliseconds())
+		}()
+		ctx, cancel := context.WithTimeout(base, limit)
+		defer cancel()
+		var section crewPanelSection
+		section, err = source.read(ctx)
+		if err == nil && ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		if err == nil && section.Error == "" {
+			if marked, ok := crewPanelChangesDirty.Load(key.project); ok && marked.(time.Time).After(started) {
+				return
+			}
+			section.ID, section.Title = source.id, source.title
+			c.putAt(key, section, started)
+		}
+	}()
+}
+
+// dropBefore forgets a snapshot taken before at, so the next read waits for a current one.
+func (c *crewPanelCache) dropBefore(key crewPanelCacheKey, at time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if v, ok := c.entries[key]; ok && v.at.Before(at) {
+		delete(c.entries, key)
+	}
 }
 func (c *crewPanelCache) remove(key crewPanelCacheKey) {
 	c.mu.Lock()
@@ -122,6 +348,14 @@ func (c *crewPanelCache) remove(key crewPanelCacheKey) {
 
 // Deadline bounds the whole fan-out, not one timeout multiplied by the number
 // of sections. A timed-out reader cannot write back late or replace newer data.
+func firstPositive(values ...time.Duration) time.Duration {
+	for _, v := range values {
+		if v > 0 {
+			return v
+		}
+	}
+	return 0
+}
 func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sources []crewPanelSource, timeout time.Duration) []crewPanelSection {
 	// The panel waits for its slowest section; each section stops at its own limit.
 	longest := timeout
@@ -130,15 +364,24 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			longest = source.timeout
 		}
 	}
+	base := context.WithoutCancel(ctx)
 	ctx, cancel := context.WithTimeout(ctx, longest)
 	defer cancel()
+	started := time.Now()
+	slowest, slowestFor := "", time.Duration(0)
+	defer func() {
+		// One line per panel read: which section made it slow (no user data).
+		log.Printf("[CREW_PANEL] project=%s total_ms=%d slowest=%s slowest_ms=%d", key.project, time.Since(started).Milliseconds(), slowest, slowestFor.Milliseconds())
+	}()
 	type result struct {
 		index   int
 		section crewPanelSection
 		err     error
+		took    time.Duration
 	}
 	results := make(chan result, len(sources))
 	out := make([]crewPanelSection, len(sources))
+	stamps := make([]string, len(sources))
 	pending := map[int]bool{}
 	for i, source := range sources {
 		out[i] = crewPanelSection{ID: source.id, Title: source.title, Rows: []crewPanelRow{}}
@@ -148,6 +391,38 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			c.remove(k)
 			continue
 		}
+		if !source.noCache && source.stamp != nil {
+			if stamp, ok := source.stamp(ctx); ok {
+				if same, found := c.stamped(k, stamp); found {
+					out[i] = same
+					continue
+				}
+				stamps[i] = stamp
+			}
+		}
+		if !source.noCache && source.refreshFor > 0 {
+			if marked, ok := crewPanelChangesDirty.Load(key.project); ok && source.background {
+				c.dropBefore(k, marked.(time.Time))
+			}
+			if previous, found := c.previous(k, source.refreshFor); found {
+				if source.background {
+					// Background sections (such as Git status) refresh off-request when stale
+					// and must not ask browsers to schedule trailing refresh_after_ms timers.
+					previous.refreshAt = time.Time{}
+				}
+				out[i] = previous
+				continue
+			}
+			if source.background {
+				// Older than refreshFor but still held: show it now and read the new one in the background.
+				if old, age, held := c.aged(k); held && age < crewPanelBackgroundKeep {
+					old.refreshAt = time.Time{}
+					out[i] = old
+					c.refreshInBackground(base, k, source, firstPositive(source.timeout, timeout))
+					continue
+				}
+			}
+		}
 		pending[i] = true
 		go func(i int, source crewPanelSource) {
 			limit := timeout
@@ -156,11 +431,30 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			}
 			sourceCtx, done := context.WithTimeout(ctx, limit)
 			defer done()
-			section, err := source.read(sourceCtx)
+			began := time.Now()
+			var section crewPanelSection
+			var err error
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					log.Printf("[CREW_PANEL] project=%s section=%s result=panic reason=%v", key.project, source.id, recovered)
+					section = crewPanelSection{}
+					err = fmt.Errorf("panel section %s panicked", source.id)
+				}
+				results <- result{i, section, err, time.Since(began)}
+			}()
+			if source.id == "workflow" {
+				if c.workflowRead.TryLock() {
+					defer c.workflowRead.Unlock()
+					section, err = source.read(sourceCtx)
+				} else {
+					err = crewPanelRefreshing{}
+				}
+			} else {
+				section, err = source.read(sourceCtx)
+			}
 			if err == nil && sourceCtx.Err() != nil {
 				err = sourceCtx.Err()
 			}
-			results <- result{i, section, err}
 		}(i, source)
 	}
 	finish := func(i int, section crewPanelSection, err error) {
@@ -172,29 +466,52 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 				section.Rows = []crewPanelRow{}
 			}
 			if section.Error == "" && !sources[i].noCache {
-				c.put(k, section)
+				c.put(k, section, stamps[i])
 			}
 			out[i] = section
 		} else {
 			denied, ok := err.(crewPanelReadError)
+			if ok && denied.status >= 400 && denied.status < 500 {
+				// Not this caller's to see (a Run person and the owner's GitHub): a settled answer, not a failure. The
+				// section shows nothing and no "Try again"; every panel read re-checks it, so log the denial once per
+				// caller and section, not on every read (83 lines in 40 minutes, 18 Nov).
+				c.remove(k)
+				if c.firstDenial(k) {
+					log.Printf("[CREW_PANEL] project=%s section=%s result=denied status=%d", key.project, sources[i].id, denied.status)
+				}
+				out[i] = crewPanelSection{ID: sources[i].id, Title: sources[i].title, Rows: []crewPanelRow{}}
+				delete(pending, i)
+				return
+			}
 			// Which section shows "Try again", and why: the panel answer alone could not tell (5 Nov, a server Crew).
 			log.Printf("[CREW_PANEL] project=%s section=%s result=failed status=%d reason=%q", key.project, sources[i].id, denied.status, err)
-			if sources[i].noCache || (ok && denied.status >= 400 && denied.status < 500) {
+			if sources[i].noCache {
 				c.remove(k)
 			} else if old, found := c.previous(k); found {
 				// A slow refresh keeps the last good answer, marked stale, rather than asking to try again.
 				out[i] = old
 				out[i].Stale = true
+				if sources[i].id == "workflow" {
+					out[i].refreshAt = time.Now().Add(2 * time.Second)
+				}
 				delete(pending, i)
 				return
 			}
-			out[i].Error = "Could not refresh. Try again."
+			if _, refreshing := err.(crewPanelRefreshing); refreshing {
+				out[i].Rows = []crewPanelRow{{ID: "workflow:loading", Label: "Loading"}}
+				out[i].refreshAt = time.Now().Add(100 * time.Millisecond)
+			} else {
+				out[i].Error = "Could not refresh. Try again."
+			}
 		}
 		delete(pending, i)
 	}
 	for len(pending) > 0 {
 		select {
 		case result := <-results:
+			if result.took > slowestFor {
+				slowest, slowestFor = sources[result.index].id, result.took
+			}
 			finish(result.index, result.section, result.err)
 		case <-ctx.Done():
 			for i := range pending {
@@ -202,7 +519,54 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			}
 		}
 	}
-	return out
+	// A section this place or person cannot have is left out, so the menu shows no row for it (owner, 19 Nov: no
+	// Webhooks row on the Mac, where webhooks cannot be reached).
+	shown := out[:0]
+	for i, section := range out {
+		if sources[i].allowed {
+			shown = append(shown, section)
+		}
+	}
+	return shown
+}
+
+// PLAT-746-513: a connected live feed does not poll. A notification inside the
+// snapshot window therefore needs one server-directed trailing read. Loading
+// backs off; stale errors never retry faster than two seconds. Five attempts
+// stop without another timer, retaining the snapshot and a plain next step.
+func applyCrewPanelRefresh(out *crewPanelReply, rawAttempt string) {
+	var next time.Time
+	var floor time.Duration
+	for _, section := range out.Sections {
+		if !section.refreshAt.IsZero() && section.Stale {
+			floor = 2 * time.Second
+		}
+		if !section.refreshAt.IsZero() && (next.IsZero() || section.refreshAt.Before(next)) {
+			next = section.refreshAt
+		}
+	}
+	if next.IsZero() {
+		return
+	}
+	attempt, err := strconv.Atoi(rawAttempt)
+	if err != nil || attempt < 0 {
+		attempt = 0
+	}
+	if attempt >= 4 {
+		out.RefreshAttempt = 4
+		out.RefreshNote = "Still updating. Select Retry to check again."
+		return
+	}
+	minimum := [...]time.Duration{100 * time.Millisecond, 250 * time.Millisecond, 500 * time.Millisecond, time.Second}
+	delay := time.Until(next)
+	if delay < floor {
+		delay = floor
+	}
+	if delay < minimum[attempt] {
+		delay = minimum[attempt]
+	}
+	out.RefreshAfterMS = int64((delay + time.Millisecond - 1) / time.Millisecond)
+	out.RefreshAttempt = attempt + 1
 }
 
 // Authorization is read both before fan-out and before exposing any result,
@@ -225,37 +589,20 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 	project := mux.Vars(r)["project"]
 	binding, _, authority, ok := api.crewPanelScope(r, project)
 	if !ok {
-		externalError(w, 403, "forbidden", "Open a Crew you can use.")
+		externalError(w, 403, "forbidden", "Open a project you can use.")
 		return
 	}
 	workspace := binding.Binding.WorkspacePath
-	chat := strings.TrimSpace(r.URL.Query().Get("session_id"))
-	// Private chat navigation hints have their own permission, independent of files.
-	if chat != "" {
-		if api.eventStore == nil {
-			chat = ""
-		} else if status, _ := api.authorizeDurableChatRead(r, chat, workspace); status != 0 {
-			chat = ""
-		}
-	}
-	sources := api.crewPanelSources(r, project, workspace, chat, binding)
-	key := crewPanelCacheKey{caller: GetUserIDFromContext(r.Context()), project: project, chat: chat, authority: authority}
+	sources := api.crewPanelSources(r, project, workspace, binding)
+	key := crewPanelCacheKey{caller: GetUserIDFromContext(r.Context()), project: project, authority: authority}
 	sections := api.crewPanels.collect(r.Context(), key, sources, crewPanelTimeout)
 	_, _, current, allowed := api.crewPanelScope(r, project)
 	if !allowed || current != authority {
-		externalError(w, 409, "panel_changed", "Crew access changed. Refresh this Crew.")
+		externalError(w, 409, "panel_changed", "Project access changed. Refresh this project.")
 		return
 	}
-	if chat != "" {
-		if status, _ := api.authorizeDurableChatRead(r, chat, workspace); status != 0 {
-			for i := range sections {
-				for j := range sections[i].Rows {
-					sections[i].Rows[j].UsedInChat = false
-				}
-			}
-		}
-	}
 	out := crewPanelReply{Project: project, Workspace: workspace, Sections: sections, Details: map[string]string{}}
+	applyCrewPanelRefresh(&out, r.URL.Query().Get("refresh_attempt"))
 	api.activeSessionsMux.RLock()
 	for _, session := range api.activeSessions {
 		if session.WorkspacePath == workspace && (session.Status == "running" || session.Status == "pending") {
@@ -292,24 +639,21 @@ func (api *StreamingAPI) handleCrewPanel(w http.ResponseWriter, r *http.Request)
 	externalJSON(w, out)
 }
 
-// crewPanelDashboardLine adds the Crew's dashboard to the Share tree, from the panel's own dashboards and sharing
-// reads (owner, 5 Nov: the side menu's separate Dashboards item moved here).
+// crewPanelDashboardLine adds the Crew's dashboards to the Online tree, from the panel's own dashboards read
+// (owner, 5 Nov: the side menu's separate Dashboards item moved here).
 func crewPanelDashboardLine(sections []crewPanelSection) {
 	var access *crewPanelAccess
-	shared, listed, paths := "", false, []string{}
+	accessAt := -1
+	listed, items := false, []crewAccessDashboard{}
 	for i := range sections {
 		switch s := &sections[i]; s.ID {
 		case "access":
-			access = s.Access
-		case "sharing":
-			if s.Error == "" {
-				shared = s.shared
-			}
+			access, accessAt = s.Access, i
 		case "dashboards":
 			listed = s.Error == ""
 			for _, row := range s.Rows {
 				if row.Path != "" {
-					paths = append(paths, row.Path)
+					items = append(items, crewAccessDashboard{ID: row.ID, Name: firstNonEmptyTrimmed(row.Label, "Dashboard"), Path: row.Path})
 				}
 			}
 		}
@@ -317,7 +661,10 @@ func crewPanelDashboardLine(sections []crewPanelSection) {
 	if access == nil || !listed {
 		return
 	}
-	access.Tree = crewAccessWithDashboard(access.Tree, crewAccessDashboardLine(paths, shared))
+	// A copy: the cached section shares its Access, and adding the line in place would add it again on every read.
+	shown := *access
+	shown.Tree = crewAccessWithDashboard(access.Tree, crewAccessDashboardLine(items))
+	sections[accessAt].Access = &shown
 }
 
 func crewPanelRead(r *http.Request, handler http.HandlerFunc, method, route string, vars map[string]string, query url.Values, body, out any) error {
@@ -351,12 +698,13 @@ func crewPanelAutomationLine(rows []crewPanelRow) string {
 	now := time.Now()
 	for i := range rows {
 		row := &rows[i]
-		if row.Detail == "Paused" || row.Detail == "Completed" {
+		status, _, _ := strings.Cut(row.Detail, " · ")
+		if status == "Paused" || status == "Completed" {
 			paused++
 		} else {
 			on++
 		}
-		if row.Detail == "Running now" {
+		if status == "Running now" {
 			running++
 		}
 		if row.nextRun.After(now) && (next == nil || row.nextRun.Before(next.nextRun)) {
@@ -392,17 +740,18 @@ func crewPanelAgo(since time.Duration) string {
 	return fmt.Sprintf("%dd ago", int(since.Hours()/24))
 }
 
-// crewPanelWorkflowLine is one workflow's summary from its newest run: "4 steps · last run finished 2h ago".
-// folders arrive newest first.
+// crewPanelWorkflowLine is the workflow's line: where it runs, then its newest run ("Local · last run finished 2h
+// ago"). No counts. A workflow that never ran says only where it runs (owner, 19 Nov: "not run yet" made no sense;
+// show local / online instead). folders arrive newest first.
 func crewPanelWorkflowLine(folders []RunFolderInfo, now time.Time) string {
+	parts := []string{"Online"}
+	if IsLocalMode() {
+		parts[0] = "Local"
+	}
 	if len(folders) == 0 || folders[0].Metadata == nil {
-		return "Not run yet"
+		return parts[0]
 	}
 	meta := folders[0].Metadata
-	parts := []string{}
-	if n := len(meta.PythonSteps); n > 0 {
-		parts = append(parts, crewPanelCount(n, "step"))
-	}
 	at, _ := runFolderTime(folders[0])
 	if meta.CompletedAt != nil {
 		at = *meta.CompletedAt
@@ -420,8 +769,6 @@ func crewPanelWorkflowLine(folders []RunFolderInfo, now time.Time) string {
 		parts = append(parts, "last run failed"+when)
 	case "canceled":
 		parts = append(parts, "last run canceled"+when)
-	default:
-		parts = append(parts, "not run yet")
 	}
 	return strings.Join(parts, " · ")
 }
@@ -476,7 +823,7 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 	workflows := []crewPanelRow{}
 	for _, section := range sections {
 		for _, row := range section.Rows {
-			if row.Destination == "workflow" {
+			if section.ID == "workflow" && row.Destination == "workflow" {
 				workflows = append(workflows, row)
 				continue
 			}
@@ -488,8 +835,20 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 				}
 				continue
 			}
-			groups[row.Destination] = append(groups[row.Destination], row)
-			if strings.HasPrefix(row.Destination, "schedules:") {
+			// Classification comes from the server section. A workflow timer
+			// still opens its Workflow page, but is counted as a timer.
+			destination := row.Destination
+			switch section.ID {
+			case "schedules":
+				destination = "schedules:schedules"
+			case "webhooks":
+				destination = "schedules:triggers"
+			case "watchers":
+				// A Watcher is a kind of schedule (owner, 19 Nov): it is counted and summed up in the Schedules line.
+				destination = "schedules:schedules"
+			}
+			groups[destination] = append(groups[destination], row)
+			if strings.HasPrefix(destination, "schedules:") {
 				automations = append(automations, row)
 			}
 		}
@@ -526,16 +885,47 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 		}
 		details[destination] = label
 	}
-	// A kind whose list loaded and is empty says so, instead of showing nothing.
-	for _, kind := range []struct{ section, destination string }{{"schedules", "schedules:schedules"}, {"watchers", "schedules:conditions"}, {"webhooks", "schedules:triggers"}} {
+	// A kind whose lists loaded and are empty says so, instead of showing nothing; Watchers belong to Schedules.
+	for _, kind := range []struct {
+		destination string
+		sections    []string
+	}{{"schedules:schedules", []string{"schedules", "watchers"}}, {"schedules:triggers", []string{"webhooks"}}} {
 		if _, has := details[kind.destination]; has {
 			continue
 		}
 		for _, section := range sections {
-			if section.ID == kind.section && section.Error == "" {
-				details[kind.destination] = "None yet"
+			if !slices.Contains(kind.sections, section.ID) {
+				continue
+			}
+			if section.Error != "" {
+				details[kind.destination] = "Could not load"
+				break
+			}
+			details[kind.destination] = "None yet"
+		}
+	}
+	// The Connections row's one line: how many are on, from the rows above.
+	connectedCount, attentionCount := 0, 0
+	for _, section := range sections {
+		for _, row := range section.Rows {
+			if !strings.HasPrefix(row.Destination, "mcp:") {
+				continue
+			}
+			if row.Connected {
+				connectedCount++
+			}
+			if row.Attention {
+				attentionCount++
 			}
 		}
+	}
+	// No total (owner, 9 Nov): the icons already show what is connected; the line only says what needs a person.
+	details["connections"] = "None yet"
+	switch {
+	case attentionCount > 0:
+		details["connections"] = fmt.Sprintf("%d need%s attention", attentionCount, map[bool]string{true: "s", false: ""}[attentionCount == 1])
+	case connectedCount > 0:
+		details["connections"] = "All connected"
 	}
 	if _, ok := details["mcp:connected"]; !ok {
 		for _, section := range sections {
@@ -548,10 +938,21 @@ func crewPanelDetails(sections []crewPanelSection) map[string]string {
 			}
 		}
 	}
-	if len(workflows) == 1 {
+	// The Workflow row says what it holds like its siblings (owner, 11 Nov: a blank row looked broken).
+	switch {
+	case len(workflows) == 0:
+		details["workflow"] = "None yet"
+	case workflows[0].Detail != "":
 		details["workflow"] = workflows[0].Detail
-	} else if len(workflows) > 1 {
-		details["workflow"] = fmt.Sprintf("%d workflows", len(workflows))
+	default:
+		details["workflow"] = "Ready"
+	}
+	// A webhook always starts a workflow (owner, 19 Nov: "webhooks to be combined with workflows"): the Workflow line
+	// says how many there are, and they are kept on the workflow's Starts tab, not as a row of their own.
+	for _, section := range sections {
+		if section.ID == "webhooks" && len(workflows) > 0 && len(section.Rows) > 0 {
+			details["workflow"] += fmt.Sprintf(" · %d webhook%s", len(section.Rows), map[bool]string{true: "", false: "s"}[len(section.Rows) == 1])
+		}
 	}
 	if len(automations) == 1 {
 		details["automations"] = automations[0].Detail

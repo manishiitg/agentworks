@@ -27,7 +27,16 @@ describe('context compaction rows', () => {
       ev('c1', 'context_compaction', { phase: 'start', compaction_id: 'x', trigger: 'manual' }),
       ev('c2', 'context_compaction', { phase: 'end', compaction_id: 'x', trigger: 'manual' }),
       ev('c3', 'context_compaction', { phase: 'end', compaction_id: 'x', trigger: 'manual', tokens_before: 310_000, tokens_after: 42_000 }),
-    ])).toEqual(['Compacted this chat (310k → 42k)'])
+    ])).toEqual(['Chat summarized (310k → 42k)'])
+  })
+
+  it.each(['manual', 'idle'])('does not declare %s compaction stale when a message arrives while the server holds it (PLAT-746)', trigger => {
+    const start = ev('c1', 'context_compaction', { phase: 'start', compaction_id: 'x', trigger })
+    const next = ev('u2', 'user_message', { content: 'waiting behind compaction' })
+    const info = buildTranscriptItems([start, next]).find(item => item.kind === 'event' && item.event.type === 'context_compaction')
+    expect(info?.kind === 'event' && contextCompactionInfo(info.event)?.stale).toBe(false)
+    const end = ev('c2', 'context_compaction', { phase: 'end', compaction_id: 'x', trigger, outcome: 'success' })
+    expect(compactionRows([start, next, end])).toHaveLength(1)
   })
 
   it('marks a start left open by a finished turn instead of spinning forever', () => {

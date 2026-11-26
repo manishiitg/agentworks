@@ -8,7 +8,7 @@ import { useReviewRevision, type ReviewResult } from '../workspace/chatFileRevie
 import { shownFilePath, type ReplyCardAction, type ReplyFileChangesRef, type ReplyFileGroup, type ReplyPullRequest } from '../../utils/replyFileChanges'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
-import { openChatFiles, openReplyChanges } from '../workspace/chatFileNavigation'
+import { openChatFiles, openReplyChanges, pullRequestClick } from '../workspace/chatFileNavigation'
 import { useChatStore } from '../../stores/useChatStore'
 import { sendWorkspacePaneMessageToChat, openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 import { CommandIcon } from '../../commands/CommandIcon'
@@ -193,14 +193,22 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   // the latest toolbar and the open panel, using the same server-owned lookup and account.
   useEffect(() => {
     if ((!panel && !latest) || !lookUpPullRequests) return
-    const refresh = () => { if (document.visibilityState !== 'hidden') setGitHubRevision(value => value + 1) }
+    let lastAt = Date.now()
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return
+      lastAt = Date.now()
+      setGitHubRevision(value => value + 1)
+    }
+    // Switching back to the window refreshes at most every 30 s; each lookup reads the project's Git state.
+    const onFocus = () => { if (Date.now() - lastAt >= 30_000) refresh() }
     const timer = window.setInterval(refresh, 60_000)
-    window.addEventListener('focus', refresh)
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh) }
+    window.addEventListener('focus', onFocus)
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus) }
   }, [panel, latest, lookUpPullRequests])
   // The file list stays as captured; the server's lookup adds only the PR status.
   const groups = checked?.groups ?? summary?.groups ?? []
-  const actions = (checked?.actions ?? card?.actions ?? summary?.actions ?? []).filter(action => !panel || action.id !== 'review')
+  // The "N files" button already opens the changes, so the card shows no second Review button.
+  const actions = (checked?.actions ?? card?.actions ?? summary?.actions ?? []).filter(action => action.id !== 'review')
   const checkoutOptions = [...new Map(groups.map(group => ({ id: group.checkout_id || (group.kind === 'crew_files' ? 'project-files' : ''), name: group.name })).filter(group => !!group.id).map(group => [group.id, group])).values()]
   const revertCheckoutId = reference.checkoutId || undoCheckoutId || checkoutOptions[0]?.id || ''
   const canEdit = (checked ?? card)?.can_edit === true
@@ -209,13 +217,18 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   const sharedViewer = macChat || (checked ?? card)?.can_edit === false
   const sum = (key: 'added' | 'removed') => result?.summary?.[key] ?? (comparison?.changes ?? []).reduce((n, change) => n + (change[key] ?? 0), 0)
   const total = summary ? summary.files : result?.total_changes ?? comparison?.changes?.length ?? 0
-  const incomplete = checked?.note || card?.note || summary?.note
   const added = summary ? summary.added : sum('added'), removed = summary ? summary.removed : sum('removed')
-  const actionButtons = <ReplyFileActions actions={actions} sessionId={reference.sessionId} onReview={panel ? undefined : () => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)} />
+  const actionButtons = <ReplyFileActions actions={actions} sessionId={reference.sessionId} />
   const repoGroups = groups.filter(group => group.kind === 'repo')
-  const checkoutSummary = (responsive = false) => <button type="button" aria-label={`${repoGroups.length} worktrees`} title={repoGroups.map(group => `${group.name} · ${group.branch || ''}`).join('\n')}
+  // The server names each changed folder's repository; worktrees of one repository count once.
+  const repositories = [...new Set(repoGroups.map(group => group.repository || group.name))]
+  const checkoutText = repoGroups.length === 1 ? repoGroups[0].name
+    : repositories.length === 1 ? `${repoGroups.length} worktrees of ${repositories[0]}`
+      : repositories.length === repoGroups.length ? `${repoGroups.length} repositories`
+        : `${repoGroups.length} folders in ${repositories.length} repositories`
+  const checkoutSummary = (responsive = false) => <button type="button" aria-label={checkoutText} title={repoGroups.map(group => `${group.name} · ${group.branch || ''}${group.worktree && group.repository ? ` · worktree of ${group.repository}` : ''}`).join('\n')}
     className={`${responsive ? 'reply-toolbar-checkout-summary ' : ''}inline-flex min-w-0 items-center gap-1 rounded px-1 text-muted-foreground hover:bg-muted hover:text-foreground`}
-    onClick={() => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)}><GitBranch className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{repoGroups.length} worktree{repoGroups.length === 1 ? '' : 's'}</span></button>
+    onClick={() => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)}><GitBranch className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{checkoutText}</span></button>
 
   // No card until at least one changed file is known (also while loading); a reply that changed nothing shows nothing.
   if (total === 0) return loadFailed ? <section className="my-2 rounded-md border border-border px-2.5 py-2 text-xs text-muted-foreground" aria-label="File changes unavailable">
@@ -224,7 +237,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
   if (!panel) return <TooltipProvider delayDuration={150}><section className="reply-file-toolbar my-2 rounded-md border border-border px-2.5 py-1 text-xs" aria-label="Project changes during this turn">
     <div className="flex min-w-0 items-center gap-2">
       <button type="button" aria-label={`Open ${plural(total)} changed during this turn`} className="flex shrink-0 items-center gap-2 whitespace-nowrap text-left font-medium text-muted-foreground hover:text-foreground [&_svg]:h-3.5 [&_svg]:w-3.5" aria-expanded={sharedViewer ? sharedOpen : undefined} onClick={() => sharedViewer ? setSharedOpen(value => !value) : openReplyChanges(reference)}>
-        <FileDiffIcon /><span title={incomplete || undefined}>{incomplete ? 'Incomplete' : plural(total)}</span>
+        <FileDiffIcon /><span>{plural(total)}</span>
         <span className="reply-toolbar-line-counts font-normal"><span className="text-diff-add">+{added}</span> <span className="text-diff-del">−{removed}</span></span>
       </button>
       <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -266,7 +279,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
         {[...groups].sort((x, y) => Number(x.kind === 'crew_files') - Number(y.kind === 'crew_files')).map(group => (
           <div key={`${group.kind}:${group.root}:${group.branch || ''}`} className="mt-3 border-t border-border pt-2 first:mt-2 first:border-0 first:pt-0">
             <div className="flex flex-wrap items-center gap-2">
-              {group.kind === 'crew_files' ? <span className="text-xs text-muted-foreground">Crew files · not in Git</span> : <b>{group.name}</b>}
+              {group.kind === 'crew_files' ? <span className="text-xs text-muted-foreground">Project files · not in Git</span> : <b>{group.name}</b>}
               {group.working_tree && <span className="text-xs text-muted-foreground" title="Current checkout status; saved diffs remain after commit or push.">{group.working_tree === 'clean' ? 'Working tree clean' : 'Uncommitted changes'}</span>}
               {group.new_checkout && <span className="rounded-full border border-border px-2 text-xs text-muted-foreground">new copy · {group.total_files} files</span>}
               {group.kind === 'repo' && group.branch && <span className="rounded-full border border-border px-2 text-xs text-muted-foreground">branch {group.branch}</span>}
@@ -285,7 +298,7 @@ function ScopedFileChanges({ reference, panel, showFiles }: { reference: ReplyFi
             {group.kind === 'repo' && group.pr?.state === 'unavailable' && <p className="mt-1 text-xs text-muted-foreground">Could not check PR status for {group.github_repo || group.name}. {canEdit ? <><button type="button" className="underline hover:text-foreground" onClick={() => openProjectIntegrations('github', reference.sessionId)}>Change GitHub account</button><span aria-hidden> · </span><button type="button" className="underline hover:text-foreground" onClick={() => setGitHubRevision(value => value + 1)}>Try again</button></> : <>Ask the owner to check their GitHub connection.</>}</p>}
             {group.kind === 'repo' && group.pr?.state === 'connect_github' && canEdit && <button type="button" className="mt-1 text-xs underline" onClick={() => openProjectIntegrations('github', reference.sessionId)}>Connect GitHub to see PR status</button>}
             {group.kind === 'repo' && group.pr && group.pr.number && group.pr.url && <div className="mt-1 flex flex-wrap items-center gap-x-3 text-xs">
-              <a className="underline" href={group.pr.url} target="_blank" rel="noreferrer">{prLine(group.pr)}</a>
+              <a className="underline" href={group.pr.url} target="_blank" rel="noreferrer" onClick={pullRequestClick(reference.sessionId, group.github_repo, group.pr.number)}>{prLine(group.pr)}</a>
               {canEdit && <PRWatcherControls group={group} sessionId={reference.sessionId} />}
               {actions.filter(action => action.placement === 'pr_line' && action.group === group.root).map(action => <button key={action.id} type="button" className="text-muted-foreground underline hover:text-foreground" onClick={() => void ask(action.prompt ?? '')}>{action.label}</button>)}
             </div>}

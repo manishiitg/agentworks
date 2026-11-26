@@ -20,6 +20,8 @@ export interface ContextCompactionInfo {
   tokensBefore: number
   tokensAfter: number
   durationMs: number
+  /** When it ended (RFC3339), or the event's own time. */
+  endedAt: string
   /** Start with no end, followed by a later turn: the CLI never reported a result. */
   stale: boolean
 }
@@ -46,6 +48,7 @@ export function contextCompactionInfo(event: PollingEvent): ContextCompactionInf
     tokensBefore: count(payload.tokens_before),
     tokensAfter: count(payload.tokens_after),
     durationMs: count(payload.duration_ms),
+    endedAt: text(payload.ended_at) || text(event.timestamp),
     stale: payload.stale === true,
   }
 }
@@ -68,8 +71,15 @@ export function collapseContextCompactions(events: PollingEvent[]): PollingEvent
   const open: number[] = []
   events.forEach(event => {
     if (TURN_BOUNDARY_TYPES.has(event.type || '')) {
-      for (const group of open) closedByTurn[group] = true
-      open.length = 0
+      for (let i = open.length - 1; i >= 0; i--) {
+        const group = open[i]
+        const trigger = contextCompactionInfo(latest[group])?.trigger
+        // A new message waits behind manual/idle compaction on the server.
+        // Its arrival is not evidence that the compaction has ended.
+        if (event.type === 'user_message' && (trigger === 'manual' || trigger === 'idle')) continue
+        closedByTurn[group] = true
+        open.splice(i, 1)
+      }
       return
     }
     const info = contextCompactionInfo(event)
@@ -140,9 +150,9 @@ export function contextCompactionText(info: ContextCompactionInfo): string {
   }
   // "Compact now" from the chat's model menu (PLAT-872-71): the person asked for it.
   if (info.trigger === 'manual' && !info.stale && !(info.phase === 'end' && failed)) {
-    if (info.phase === 'start') return 'Compacting this chat…'
+    if (info.phase === 'start') return 'Summarizing chat…'
     const sizes = info.tokensBefore > 0 && info.tokensAfter > 0 ? ` (${formatCompactTokens(info.tokensBefore)} → ${formatCompactTokens(info.tokensAfter)})` : ''
-    return `Compacted this chat${sizes}`
+    return `Chat summarized${sizes}`
   }
   if (info.phase === 'start') {
     return info.stale ? 'Context compaction started (no result recorded)' : 'Compacting context…'

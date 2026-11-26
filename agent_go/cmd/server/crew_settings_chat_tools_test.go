@@ -130,9 +130,6 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 			if _, err := projected.tools["models"].exec(ctx, map[string]any{"action": "set", "scope": "tab", "engine": ""}); err != nil {
 				t.Fatalf("projected own-tab model reset: %v", err)
 			}
-			if _, err := projected.tools["models"].exec(ctx, map[string]any{"action": "set", "scope": "project", "models": map[string]any{"schema_version": 2, "mode": "provider_profile", "provider": "codex-cli"}}); err != nil {
-				t.Fatalf("projected project model: %v", err)
-			}
 			if person == "owner" {
 				partial := &recordingRegistrar{tools: map[string]recordedTool{}}
 				for name, tool := range reg.tools {

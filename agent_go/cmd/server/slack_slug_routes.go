@@ -63,7 +63,7 @@ type SlackTargetSettingsResponse struct {
 }
 
 func registerSlackTargetRoutes(router *mux.Router, api *StreamingAPI) {
-	r := router.PathPrefix("/api/human-feedback/slack/targets").Subrouter()
+	r := router.PathPrefix("/human-feedback/slack/targets").Subrouter()
 	r.HandleFunc("/settings", slackTargetSettingsHandler(api)).Methods("GET", "PUT", "POST", "OPTIONS")
 	r.HandleFunc("/channels/{channel}", addSlackTargetChannelHandler(api)).Methods("POST", "PUT", "OPTIONS")
 	r.HandleFunc("/channels/{channel}", removeSlackTargetChannelHandler(api)).Methods("DELETE")

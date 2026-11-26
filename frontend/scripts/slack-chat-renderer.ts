@@ -5,6 +5,7 @@ import { cardToBlockKit, cardToFallbackText } from '@chat-adapter/slack'
 import { Card, Section, CardText as Text, type CardChild } from 'chat'
 import type { Spec } from '@json-render/core'
 import { compileChatVisual } from '../src/components/ui/chatVisualSpec'
+import { authorChatVisual, authorVisualInputSchema } from '../src/components/ui/chatVisualAuthoring'
 import type { ChatElement } from '../src/components/ui/chatElementSpec'
 
 
@@ -43,7 +44,7 @@ function project(widget: ChatElement) {
     case 'swimlane': add('Table', { headers: ['Who', 'Step', 'Detail'], rows: widget.steps.map(step => [widget.lanes.find(lane => lane.id === step.lane)!.title, step.title, step.description || '']) }); break
     case 'sequence': add('Table', { headers: ['From', 'To', 'Message'], rows: widget.messages.map(message => [widget.participants.find(actor => actor.id === message.from)!.title, widget.participants.find(actor => actor.id === message.to)!.title, message.label]) }); break
   }
-  elements.root = { type: 'Card', props: widget.type === 'chart' ? {} : { title: widget.title }, children }
+  elements.root = { type: 'Card', props: widget.type === 'chart' ? {} : widget.type === 'image' ? (widget.caption ? { title: widget.caption } : {}) : { title: widget.title }, children }
   return { root: 'root', elements }
 }
 
@@ -92,9 +93,17 @@ function format(content: string, final: boolean) {
 }
 
 try {
-  const request = JSON.parse(readFileSync(0, 'utf8'))
-  if (typeof request.content !== 'string' || request.content.length > 200000 || typeof request.final !== 'boolean') throw new Error('input')
-  process.stdout.write(JSON.stringify(format(request.content, request.final)))
+  if (process.argv[2] === '--author-schema') {
+    process.stdout.write(JSON.stringify(authorVisualInputSchema()))
+  } else {
+    const request = JSON.parse(readFileSync(0, 'utf8'))
+    if (Object.hasOwn(request, 'visual')) {
+      process.stdout.write(JSON.stringify(authorChatVisual(request.visual)))
+    } else {
+      if (typeof request.content !== 'string' || request.content.length > 200000 || typeof request.final !== 'boolean') throw new Error('input')
+      process.stdout.write(JSON.stringify(format(request.content, request.final)))
+    }
+  }
 } catch {
   // Never send a prop value, model spec, credential or stack back to the server.
   process.stdout.write(JSON.stringify({ error: 'visual_format_failed' }))

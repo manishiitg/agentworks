@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/terminals"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/cliruntime"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
@@ -173,23 +172,5 @@ func TestWorkflowLinkedRuntimeRefusesWrongLinkWithoutFallback(t *testing.T) {
 	}
 	if got, err := workflowCLIWorkingDir("Workflow/linked", "reader", "chat", "agy-cli", "run"); err == nil || got != "" {
 		t.Fatal("unsafe linked runtime fell back to the writable workflow root")
-	}
-}
-
-func TestWorkflowModePromptsKeepSeparateContractsWithLinkedPaths(t *testing.T) {
-	if agentworksproduct.ChatDefinitionKey("builder") == agentworksproduct.ChatDefinitionKey("run") {
-		t.Fatal("the modes share a prompt/skill fingerprint")
-	}
-	for _, mode := range []string{"builder", "run"} {
-		prompt := agentworksproduct.ChatPromptTemplate(mode)
-		if !strings.Contains(prompt, "project/<path>") || !strings.Contains(prompt, "without the `project/` prefix") {
-			t.Fatalf("%s has no linked native/bridge path distinction", mode)
-		}
-	}
-	if slices.Contains(agentworksproduct.ChatSkills("run"), "workflow-commands") || !slices.Contains(agentworksproduct.ChatSkills("builder"), "workflow-commands") {
-		t.Fatal("Run received Builder-only authoring skills")
-	}
-	if !strings.Contains(workflowCLIWorkspaceInstructions("Workflow/linked"), "never `cd project`") {
-		t.Fatal("native shell commands lack a real-workflow working directory")
 	}
 }

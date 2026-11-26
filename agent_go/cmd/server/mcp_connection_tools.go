@@ -93,6 +93,34 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 			return "", fmt.Errorf("several accounts match; use the exact vault_ connection ID from list_mcp_servers")
 		}
 	}
+	// PLAT-746: catalog Connect for an open service reuses the caller's
+	// saved connection. OAuth and explicit custom/credential setup still allow
+	// distinct accounts. Never match shared or foreign Vault connections.
+	if args["_screen"] == true && !vaultConnectionID.MatchString(id) && rawURL == "" && catalog != "" && apiKey == "" && credential == "" && clientID == "" && clientSecret == "" {
+		if entry, ok := api.mcpCatalogEntry(catalog); ok && !entry.SignIn {
+			own, err := personalVaults(ctx, person)
+			if err != nil {
+				return "", err
+			}
+			for _, v := range own.Vaults {
+				if v.Role != "owner" {
+					continue
+				}
+				for _, c := range v.Connections {
+					if !strings.EqualFold(c.Provider, entry.Catalog) {
+						continue
+					}
+					saved, err := vaultSavedConnection(ctx, c.ID)
+					if err != nil {
+						return "", err
+					}
+					if saved.OAuthServer == "" && saved.UpstreamURL == entry.config.URL && (id == "" || c.ID < id) {
+						id, vaultID = c.ID, v.Group.ID
+					}
+				}
+			}
+		}
+	}
 	exists := vaultConnectionID.MatchString(id)
 	if exists {
 		if operation != "trigger_mcp_discovery" && !api.vaultActorCanManage(ctx, person, id) {
@@ -138,6 +166,9 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 				return "", err
 			}
 		}
+		if args["_screen"] == true {
+			return mcpConnectionScreenStatus(ctx, person, id)
+		}
 		rows, err := vaultServersFor(ctx, person)
 		if err != nil {
 			return "", err
@@ -163,7 +194,11 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 		if _, err := vaultPersonRequest(ctx, person, http.MethodDelete, "/api/vaults/"+url.PathEscape(vaultID)+"/connectors/"+id, nil); err != nil {
 			return "", err
 		}
+		mutex := platformMCPOAuthMutex("vault:" + id)
+		mutex.Lock()
+		advanceVaultOAuthGeneration(id)
 		removeVaultCredentialFiles(id)
+		mutex.Unlock()
 		return "Removed the connection from Vault.", nil
 	}
 	if !exists {
@@ -256,6 +291,9 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 	}
 	reconnect, _ := args["reconnect"].(bool)
 	if c.OAuthServer == "" || c.Status == "active" && !reconnect && clientID == "" && clientSecret == "" {
+		if args["_screen"] == true {
+			return mcpConnectionScreenStatus(ctx, person, id)
+		}
 		payload, _ := json.Marshal(map[string]any{"name": vaultServerName(id), "stored_in": "Vault", "connected": c.Status == "active", "project_selected": root != "", "next": "Verify current tools with trigger_mcp_discovery on this exact name before claiming a pending account connected."})
 		return string(payload), nil
 	}
@@ -266,6 +304,9 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 	start, discovery, err := api.beginVaultConnectionOAuth(ctx, person, chatSessionIDFromContext(ctx), id, c.OAuthServer, redirect, clientID, clientSecret)
 	if err != nil {
 		return "", err
+	}
+	if args["_screen"] == true {
+		return mcpConnectionScreenOAuth(id, start, discovery)
 	}
 	if discovery != nil {
 		return mcpOAuthAppSetupMessage(vaultServerName(id), discovery), nil
@@ -305,6 +346,9 @@ func (api *StreamingAPI) mcpToolOAuthRedirect(ctx context.Context, person string
 	if redirect := deriveOAuthRedirectURIFromEnv(); redirect != "" {
 		return redirect
 	}
+	if redirect, ok := ctx.Value(vaultScreenRedirectKey{}).(string); ok && redirect != "" {
+		return redirect
+	}
 	api.lastQueryMu.RLock()
 	request, found := api.lastQueryRequests[chatSessionIDFromContext(ctx)]
 	api.lastQueryMu.RUnlock()
@@ -312,4 +356,52 @@ func (api *StreamingAPI) mcpToolOAuthRedirect(ctx context.Context, person string
 		return request.oauthRedirectURI
 	}
 	return ""
+}
+
+// mcpConnectionScreenOAuth returns only the sign-in link and public app-setup
+// requirements produced by the authorized native path, never saved credentials.
+func mcpConnectionScreenOAuth(id string, start *OAuthStartResponse, discovery *OAuthDiscoveryResponse) (string, error) {
+	out := map[string]any{"connection_id": id}
+	if start != nil {
+		out["auth_url"] = start.AuthURL
+		out["message"] = "Open the sign-in page, then refresh this connection after approving access."
+	}
+	if discovery != nil {
+		setup := *discovery
+		setup.Message = "Enter the OAuth app details here and register the callback URL with the service."
+		out["setup"] = setup
+		out["message"] = setup.Message
+	}
+	data, err := json.Marshal(out)
+	return string(data), err
+}
+
+// Settings finishes the same request with the caller's discovered tools, not a
+// generic "saved" acknowledgement. A saved row alone is not a live connection.
+func mcpConnectionScreenStatus(ctx context.Context, person, id string) (string, error) {
+	c, err := vaultSavedConnection(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	rows, err := vaultServersFor(ctx, person)
+	if err != nil {
+		return "", err
+	}
+	connected, count := false, 0
+	for _, row := range rows {
+		if row.ID == id && c.Status == "active" {
+			connected, count = true, len(row.Tools)
+			break
+		}
+	}
+	message := "Connection is not ready. Check the connection or update its details."
+	if connected {
+		noun := "tools"
+		if count == 1 {
+			noun = "tool"
+		}
+		message = fmt.Sprintf("%s connected · %d %s available.", c.Label, count, noun)
+	}
+	data, err := json.Marshal(map[string]any{"connection_id": id, "connected": connected, "tool_count": count, "requires_sign_in": c.OAuthServer != "" && !connected, "message": message})
+	return string(data), err
 }

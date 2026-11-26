@@ -1210,6 +1210,11 @@ export interface Variable {
   name?: string;
   value?: string;
   description?: string;
+  type?: string;
+  required?: boolean;
+  schema?: {
+    [k: string]: unknown;
+  };
 }
 export interface RequestHumanFeedbackEvent {
   timestamp?: string;

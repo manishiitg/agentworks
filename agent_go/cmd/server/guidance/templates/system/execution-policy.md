@@ -1,6 +1,6 @@
 # One invocation, one saved-script run
 
-A direct workflow start executes one saved Python program. Inputs resolve from declared defaults, an optional saved input preset and explicit typed values. A preset supplies values; it does not select work or fan out. `@step` labels describe progress inside the program and cannot be started or debugged independently.
+A direct workflow start executes one saved Python program. Inputs resolve from declared defaults, an optional saved input preset and explicit typed values. Saved settings supply input values that the program can use to choose a task path; they do not create another workflow or automatically fan out. `@step` labels describe progress inside the program and cannot be started or debugged independently.
 
 Start several input sets as separate invocations only when requested. Each invocation keeps its own saved input values, frozen source, run identity, outputs and records. Scheduling and webhooks use the same script entry and current access; manage them through their own offered tools. See the schedules reference for their current contract.
 

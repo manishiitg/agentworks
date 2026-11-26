@@ -105,7 +105,7 @@ const ResponseTypeBadge: React.FC<{ type: ParsedContent['type'] }> = ({ type }) 
       case 'structured-data':
         return { label: 'Structured', color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' }
       case 'plain-text':
-        return { label: 'Text', color: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200' }
+        return { label: 'Text', color: 'bg-muted text-foreground' }
       case 'error':
         return { label: 'Error', color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' }
       case 'code':
@@ -113,7 +113,7 @@ const ResponseTypeBadge: React.FC<{ type: ParsedContent['type'] }> = ({ type }) 
       case 'image-gen-result':
         return { label: 'Images', color: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200' }
       default:
-        return { label: 'Unknown', color: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200' }
+        return { label: 'Unknown', color: 'bg-muted text-foreground' }
     }
   }
   
@@ -136,7 +136,7 @@ const StructuredDataRenderer: React.FC<{ content: string; metadata?: Record<stri
       return (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+            <h3 className="text-sm font-semibold text-foreground">
               Pull Request: {data.title}
             </h3>
           </div>
@@ -145,7 +145,7 @@ const StructuredDataRenderer: React.FC<{ content: string; metadata?: Record<stri
             <div><strong>Author:</strong> {data.author}</div>
             <div><strong>State:</strong> 
               <span className={`ml-1 px-2 py-1 rounded-full text-xs ${
-                data.state === 'open' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                data.state === 'open' ? 'bg-green-100 text-green-800' : 'bg-muted text-foreground'
               }`}>
                 {data.state}
               </span>
@@ -154,7 +154,7 @@ const StructuredDataRenderer: React.FC<{ content: string; metadata?: Record<stri
             <div><strong>Updated:</strong> {new Date(data.updated_at).toLocaleDateString()}</div>
           </div>
           
-          <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-md max-h-96 overflow-y-auto">
+          <div className="mt-3 p-3 bg-muted/50 rounded-md max-h-96 overflow-y-auto">
             <pre className="text-xs overflow-x-auto">{JSON.stringify(data, null, 2)}</pre>
           </div>
         </div>
@@ -166,12 +166,12 @@ const StructuredDataRenderer: React.FC<{ content: string; metadata?: Record<stri
       return (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+            <h3 className="text-sm font-semibold text-foreground">
               File Changes
             </h3>
           </div>
           
-          <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-md max-h-96 overflow-y-auto">
+          <div className="p-3 bg-muted/50 rounded-md max-h-96 overflow-y-auto">
             <pre className="text-xs whitespace-pre-wrap break-all overflow-x-auto">{content}</pre>
           </div>
         </div>
@@ -182,18 +182,18 @@ const StructuredDataRenderer: React.FC<{ content: string; metadata?: Record<stri
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          <h3 className="text-sm font-semibold text-foreground">
             Structured Data
           </h3>
         </div>
         
-        <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-md max-h-96 overflow-y-auto">
+        <div className="p-3 bg-muted/50 rounded-md max-h-96 overflow-y-auto">
           <div className="text-xs whitespace-pre-wrap break-all overflow-x-auto">{content}</div>
         </div>
       </div>
     )
   } catch {
-    return <div className="text-sm text-gray-600 dark:text-gray-400">{content}</div>
+    return <div className="text-sm text-muted-foreground">{content}</div>
   }
 }
 
@@ -238,15 +238,15 @@ export const EnhancedToolResponseDisplay: React.FC<{
           <span className="font-medium">
             {isError ? 'Tool Call Failed' : 'Tool Call Completed'}
           </span>
-          <span className="text-xs text-gray-600 dark:text-gray-400">•</span>
+          <span className="text-xs text-muted-foreground">•</span>
           <span className="text-xs">Turn: {event.turn}</span>
-          <span className="text-xs text-gray-600 dark:text-gray-400">•</span>
+          <span className="text-xs text-muted-foreground">•</span>
           <span className="text-xs">Tool: {event.tool_name}</span>
-          <span className="text-xs text-gray-600 dark:text-gray-400">•</span>
+          <span className="text-xs text-muted-foreground">•</span>
           <span className="text-xs">Server: {event.server_name}</span>
           {!isError && event.duration && (
             <>
-              <span className="text-xs text-gray-600 dark:text-gray-400">•</span>
+              <span className="text-xs text-muted-foreground">•</span>
               <span className="text-xs">Duration: {formatDuration(event.duration)}</span>
             </>
           )}
@@ -256,7 +256,7 @@ export const EnhancedToolResponseDisplay: React.FC<{
           <ResponseTypeBadge type={parsedContent.type} />
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
             <Copy className="w-3 h-3" />
             {copied ? 'Copied!' : 'Copy'}
@@ -266,11 +266,11 @@ export const EnhancedToolResponseDisplay: React.FC<{
       
       {/* Content with scrollbar - always visible */}
       <div className="mt-2">
-        <div className="text-xs font-medium mb-2 text-gray-700 dark:text-gray-300">
+        <div className="text-xs font-medium mb-2 text-foreground">
           {isError ? 'Error Details:' : 'Response:'}
         </div>
         
-        <div className="border border-gray-200 dark:border-gray-700 rounded-md p-3 bg-white dark:bg-gray-800 max-h-96 overflow-y-auto overflow-x-auto">
+        <div className="border border-border rounded-md p-3 bg-card max-h-96 overflow-y-auto overflow-x-auto">
           <EnhancedContentRenderer 
             parsedContent={parsedContent} 
           />
@@ -287,7 +287,7 @@ const EnhancedContentRenderer: React.FC<{
   switch (parsedContent.type) {
     case 'json-text':
       return (
-        <div className="text-sm text-gray-700 dark:text-gray-300">
+        <div className="text-sm text-foreground">
           <div className="flex items-center gap-2 mb-2">
             <FileText className="w-3 h-3" />
             <span className="font-medium">JSON Text Response</span>
@@ -318,7 +318,7 @@ const EnhancedContentRenderer: React.FC<{
           : data.cost_note || 'Cost unavailable'
       return (
         <div className="space-y-3">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <p className="text-xs text-muted-foreground">
             Generated {data.count} image{data.count !== 1 ? 's' : ''} · {data.model} · {imageCost}
           </p>
           {data.images && data.images.length > 0 && (
@@ -328,12 +328,12 @@ const EnhancedContentRenderer: React.FC<{
                   <img
                     src={`data:${img.mime_type};base64,${img.data}`}
                     alt={`Generated image ${i + 1}`}
-                    className="max-w-xs max-h-64 rounded border border-gray-200 dark:border-gray-700 object-contain"
+                    className="max-w-xs max-h-64 rounded border border-border object-contain"
                   />
                   <a
                     href={`data:${img.mime_type};base64,${img.data}`}
                     download={`generated-image-${i + 1}.png`}
-                    className="absolute bottom-1 right-1 flex items-center gap-1 bg-black/70 hover:bg-black/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute bottom-1 right-1 flex items-center gap-1 bg-muted/70 hover:bg-muted/90 text-foreground text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <Download className="w-3 h-3" />
                     Save
@@ -342,9 +342,9 @@ const EnhancedContentRenderer: React.FC<{
               ))}
             </div>
           )}
-          <p className="text-xs text-gray-500 dark:text-gray-400 italic">Prompt: {data.prompt}</p>
+          <p className="text-xs text-muted-foreground italic">Prompt: {data.prompt}</p>
           {data.saved_paths && data.saved_paths.length > 0 && (
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-muted-foreground">
               Saved to workspace: {data.saved_paths.join(', ')}
             </p>
           )}
@@ -369,11 +369,11 @@ const EnhancedContentRenderer: React.FC<{
     case 'code':
       return (
         <div className="space-y-2">
-          <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Code className="w-3 h-3" />
             <span>Code Response</span>
           </div>
-          <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all">
+          <div className="bg-muted p-3 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all">
             {parsedContent.content}
           </div>
         </div>
@@ -382,7 +382,7 @@ const EnhancedContentRenderer: React.FC<{
     case 'plain-text':
     default:
       return (
-        <div className="text-sm text-gray-700 dark:text-gray-300">
+        <div className="text-sm text-foreground">
           <div className="flex items-center gap-2 mb-2">
             <FileText className="w-3 h-3" />
             <span className="font-medium">Text Response</span>

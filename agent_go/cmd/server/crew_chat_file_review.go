@@ -69,6 +69,8 @@ type chatFileReview struct {
 	Note         string            `json:"note,omitempty"`
 	// The stored reply_file_changes data by snapshot id, for the reply card.
 	replyData map[string]json.RawMessage
+	// The chat's stored reply_pull_requests data, for the PR panel.
+	linkedPRs []json.RawMessage
 }
 
 // Saved labels show the person's message, not model-only reconnect/session notices.
@@ -106,6 +108,14 @@ func (api *StreamingAPI) chatFileReviewHistory(ctx context.Context, store filesn
 		}
 		out.Replies = append(out.Replies, ref)
 		out.replyData[ref.ID] = raw
+	}
+	for _, event := range history.PullRequests {
+		if event.Data == nil {
+			continue
+		}
+		if raw, err := json.Marshal(event.Data.Data); err == nil {
+			out.linkedPRs = append(out.linkedPRs, raw)
+		}
 	}
 	sort.Slice(out.Replies, func(i, j int) bool { return out.Replies[i].End < out.Replies[j].End })
 	// A reply whose capture failed, or that retention removed, has no saved
@@ -177,7 +187,7 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
 	project := r.URL.Query().Get("history_scope") == "project"
 	if project && !crewProjectOwnedByCaller(GetUserIDFromContext(r.Context()), root) {
-		externalError(w, 403, "forbidden", "Open project history in a Crew you own.")
+		externalError(w, 403, "forbidden", "Open project history in a project you own.")
 		return
 	}
 	if !project && api.eventStore == nil {
@@ -229,6 +239,10 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 	}
 	if claims := GetUserFromContext(r.Context()); claims != nil && claims.AccessToken != nil && !claims.AccessToken.Allows("crews:run") {
 		history.CanReview = false
+	}
+	if op == "pull_request" && !project {
+		api.servePullRequestReview(w, r, roots, history, sessionID)
+		return
 	}
 	if op != "snapshots" && op != "snapshot_compare" && op != "snapshot_file" && op != "snapshot_groups" && op != "reply_card" && op != "chat_status" && op != "snapshot_turn" {
 		externalError(w, 400, "invalid_action", "Choose a saved file comparison.")

@@ -21,6 +21,8 @@ import (
 func agentMailCall(args map[string]any) bool {
 	target := strings.ToLower(strings.TrimSpace(externalArg(args, "target")))
 	switch externalArg(args, "action") {
+	case crewTeamChatReadAction:
+		return false // reading an offline teammate's chat is the signed-in person's read, not a peer message (#3194)
 	case "register", "unregister", "list_agents", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear":
 		return true
 	}
@@ -31,6 +33,7 @@ func agentMailCall(args map[string]any) bool {
 // A registration survives reconnects; deleting and recreating a name gets a new
 // ID so old conversations cannot silently reach a replacement agent.
 type namedMessageAgent struct {
+	Hosted           *hostedBridgeBinding  `json:"hosted_chat,omitempty"`
 	ID               string                `json:"agent_id"`
 	UserID           string                `json:"user_id"`
 	Name             string                `json:"name"`
@@ -39,6 +42,7 @@ type namedMessageAgent struct {
 	CreatedAt        time.Time             `json:"created_at"`
 	LastOnlineAt     time.Time             `json:"last_online_at,omitempty"`
 	Purpose          string                `json:"purpose,omitempty"`
+	Examples         []string              `json:"examples,omitempty"`
 	PurposeUpdatedAt time.Time             `json:"purpose_updated_at,omitempty"`
 	Attachment       *namedAgentAttachment `json:"attachment,omitempty"`
 	// EverAttached: the CLI attached a chat to this name at some point (it may be detached or closed now).
@@ -143,7 +147,7 @@ func resolveNamedMessageAgent(ctx context.Context, userID, name, senderAgentID s
 	}
 	for _, a := range s.Agents {
 		if a.UserID == userID && a.Name == name {
-			return triggerTarget{NamedAgentID: a.ID, Kind: triggerCallerUser, Label: a.Name}, nil
+			return triggerTarget{NamedAgentID: a.ID, Hosted: a.Hosted, Kind: triggerCallerUser, Label: a.Name}, nil
 		}
 	}
 	return triggerTarget{}, fmt.Errorf("named agent unavailable or access denied")
@@ -166,16 +170,25 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 	items := []map[string]interface{}{}
 	now := time.Now().UTC()
 	activity := ownerAgentReceiptActivity(s, userID)
-	for _, a := range s.Agents {
-		if a.UserID == userID && namedAgentDiscoverable(a, now) {
-			item := map[string]interface{}{"agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a), "published": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0, "provider": func() string {
+	for _, a := range uniqueHostedAgents(s.Agents) {
+		if a.UserID == userID && (a.Hosted != nil || namedAgentDiscoverable(a, now)) && appAgentListed(a) && hostedAgentDirectoryVisible(ctx, a) {
+			item := map[string]interface{}{"yours": true, "agent_name": a.Name, "target": "agent:" + a.Name, "created_at": a.CreatedAt, "agent_id": a.ID, "purpose": a.Purpose, "examples": a.Examples, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a), "published": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0, "provider": func() string {
 				if a.Attachment != nil {
 					return a.Attachment.Provider
 				}
 				return ""
 			}()}
+			if a.Hosted != nil {
+				item["target"] = "agent:" + shareOwnerLabel(a.UserID) + "/" + a.Name
+			}
 			item["label"] = agentLabel(a)
 			addAgentPresence(item, a)
+			if a.Attachment != nil {
+				projectAgentRuntimeInfo(item, a.Attachment.RuntimeInfo, a.UserID == userID)
+			}
+			if a.Attachment != nil && a.Attachment.Provider != "agentworks" {
+				item["cli"] = providerAccountProductName(a.Attachment.Provider)
+			}
 			if times := activity[a.ID]; times != nil {
 				for key, value := range times {
 					item[key] = value
@@ -192,6 +205,8 @@ func namedMessageAgentDirectory(ctx context.Context, userID string, s agentMessa
 	}
 	items = append(items, s.sharedAgentItems(userID, now)...)
 	items = append(items, macSharedAgentDirectoryItems(userID)...)
+	items = append(items, crewTeamBridgeDirectoryItems(ctx, userID)...)
+	items = uniqueAgentDirectoryItems(items)
 	projectAgentLabels(items)
 	sort.Slice(items, func(i, j int) bool { return items[i]["agent_name"].(string) < items[j]["agent_name"].(string) })
 	return map[string]interface{}{"agents": items}
@@ -218,6 +233,57 @@ func agentLabel(a namedMessageAgent) string {
 	return a.Name
 }
 
+// Collapse repeated projections, not distinct chats with similar names. Remote
+// networks remain separate routing scopes even when they report the same ID.
+func uniqueAgentDirectoryItems(items []map[string]interface{}) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(items))
+	ids, targets := map[string]int{}, map[string]int{}
+	for _, item := range items {
+		id, _ := item["agent_id"].(string)
+		target, _ := item["target"].(string)
+		scope := ""
+		if strings.HasPrefix(target, "network:") {
+			if end := strings.Index(target, ":agent:"); end >= 0 {
+				scope = target[:end]
+			}
+		}
+		identity := scope + "\x00" + id
+		index, duplicate := ids[identity]
+		if id == "" {
+			duplicate = false
+		}
+		if !duplicate && target != "" {
+			index, duplicate = targets[target]
+		}
+		if id != "" {
+			if duplicate {
+				ids[identity] = index
+			} else {
+				ids[identity] = len(out)
+			}
+		}
+		if target != "" {
+			if duplicate {
+				targets[target] = index
+			} else {
+				targets[target] = len(out)
+			}
+		}
+		if duplicate {
+			// The earlier canonical Team projection owns its label; preserve
+			// additional display metadata supplied by the named-registration pass.
+			for field, value := range item {
+				if _, exists := out[index][field]; !exists {
+					out[index][field] = value
+				}
+			}
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
 // Project labels only over the caller's authorized directory. A title never
 // becomes an address. Show its address when labels collide or resemble another
 // address, including punctuation/case variants and an optional agent: prefix.
@@ -234,7 +300,18 @@ func projectAgentLabels(items []map[string]interface{}) {
 	labels, addresses := map[string]int{}, map[string][]string{}
 	for _, item := range items {
 		name, _ := item["agent_name"].(string)
+		if name == "" {
+			continue
+		}
 		label, _ := item["label"].(string)
+		// Team rows may already have passed through a nested directory. Always
+		// label their original display name, not a previously added suffix.
+		if item["kind"] == "team_agent" {
+			if display, _ := item["name"].(string); display != "" {
+				label = display
+				item["label"] = display
+			}
+		}
 		if label == "" {
 			label = name
 			item["label"] = label
@@ -245,15 +322,38 @@ func projectAgentLabels(items []map[string]interface{}) {
 			addresses[key(short)] = append(addresses[key(short)], name)
 		}
 	}
+	contexts := map[string]int{}
+	contextual := func(item map[string]interface{}) string {
+		label, _ := item["label"].(string)
+		for _, field := range []string{"team_name", "crew_name"} {
+			if context, _ := item[field].(string); strings.TrimSpace(context) != "" {
+				return label + " · " + context
+			}
+		}
+		return ""
+	}
 	for _, item := range items {
-		name := item["agent_name"].(string)
+		if label := contextual(item); label != "" {
+			contexts[key(label)]++
+		}
+	}
+	for _, item := range items {
+		name, _ := item["agent_name"].(string)
+		if name == "" {
+			continue
+		}
 		label := item["label"].(string)
 		clash := labels[key(label)] > 1
 		for _, other := range addresses[key(label)] {
 			clash = clash || other != name
 		}
-		if clash && label != name {
-			item["label"] = label + " (" + name + ")"
+		// A row that already passed through a nested directory keeps its one suffix (#3364).
+		if clash && label != name && !strings.HasSuffix(label, " ("+name+")") {
+			if context := contextual(item); context != "" && contexts[key(context)] == 1 && labels[key(context)] == 0 {
+				item["label"] = context
+			} else {
+				item["label"] = label + " (" + name + ")"
+			}
 		}
 	}
 }
@@ -279,6 +379,10 @@ func (api *StreamingAPI) externalNamedAgentRegistration(w http.ResponseWriter, r
 	name, err := normalizeMessageAgentName(externalArg(args, "agent_name"))
 	if err != nil {
 		externalError(w, 400, "invalid_arguments", err.Error())
+		return
+	}
+	if strings.HasPrefix(name, "chat-") && len(name) == len("chat-")+32 {
+		externalError(w, 400, "reserved_agent_name", "This address belongs to a registered app chat; choose another agent name.")
 		return
 	}
 	// Additional readers must be explicit, live connections of this account.
@@ -399,6 +503,11 @@ func (api *StreamingAPI) externalNamedAgentPurpose(w http.ResponseWriter, r *htt
 		externalError(w, 400, "invalid_arguments", "purpose must be one line of 1 to 512 characters")
 		return
 	}
+	examples, examplesPresent, examplesErr := agentPurposeExamples(args)
+	if examplesErr != nil {
+		externalError(w, 400, "invalid_arguments", examplesErr.Error())
+		return
+	}
 	purpose = cleanAgentPurpose(purpose)
 	if purpose == "" {
 		externalError(w, 400, "invalid_arguments", "purpose must contain visible text")
@@ -426,21 +535,25 @@ func (api *StreamingAPI) externalNamedAgentPurpose(w http.ResponseWriter, r *htt
 				externalError(w, 403, "attachment_refused", "Exact attachment unavailable or changed.")
 				return
 			}
-			if a.Purpose != purpose && time.Since(a.PurposeUpdatedAt) < time.Minute {
+			if (a.Purpose != purpose || examplesPresent && !slices.Equal(a.Examples, examples)) && time.Since(a.PurposeUpdatedAt) < time.Minute {
 				externalError(w, 429, "rate_limited", "Purpose can change at most once per minute.")
 				return
 			}
-			if a.Purpose == purpose {
-				externalJSON(w, map[string]any{"agent_name": name, "purpose": purpose, "status": "updated"})
+			if a.Purpose == purpose && (!examplesPresent || slices.Equal(a.Examples, examples)) {
+				externalJSON(w, map[string]any{"agent_name": name, "purpose": purpose, "examples": s.Agents[i].Examples, "status": "updated"})
 				return
 			}
 			s.Agents[i].Purpose = purpose
+			if examplesPresent {
+				s.Agents[i].Examples = examples
+			}
 			s.Agents[i].PurposeUpdatedAt = time.Now().UTC()
 			if err = saveAgentMessageStore(r.Context(), s); err != nil {
 				externalCommunicationError(w, 400, "purpose_refused", err)
 				return
 			}
-			externalJSON(w, map[string]any{"agent_name": name, "purpose": purpose, "status": "updated"})
+			log.Printf("[AGENT_PURPOSE] agent=%s event=updated examples=%d", a.ID, len(s.Agents[i].Examples))
+			externalJSON(w, map[string]any{"agent_name": name, "purpose": purpose, "examples": s.Agents[i].Examples, "status": "updated"})
 			return
 		}
 	}
@@ -487,24 +600,39 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 		if e != nil {
 			return nil, e
 		}
+		names, _ := readAgentMessageSnapshot(ctx) // senders by their current label; a failed read keeps stored labels
 		items := []map[string]interface{}{}
+		taskStates := map[string]map[string]interface{}{}
 		for _, c := range conversations {
+			if !bridgeOrProductConversation(c) {
+				continue
+			}
 			for side, end := range c.Endpoints {
 				if end.NamedAgentID != a.ID || end.UserID != claims.UserID {
 					continue
 				}
-				if e = api.externalAuthorizeMessagePeer(ctx, claims, c.Endpoints[1-side], false); e != nil {
+				if e = api.externalAuthorizeConversationPeer(ctx, claims, c, side, false); e != nil {
 					continue
 				}
+				for id, state := range agentRequestTaskStates(c, side) {
+					taskStates[id] = state
+				}
 				for _, m := range c.Messages {
-					if m.From == side || m.AgentSequence <= after || !m.InboxRemovedAt.IsZero() {
+					if m.From == side || (m.AgentSequence <= after && !(m.QueuedRequest && m.Delivery == "stored")) || !m.InboxRemovedAt.IsZero() {
+						continue
+					}
+					if !nativeQueueRequestReady(current, conversations, m) {
 						continue
 					}
 					position := sort.Search(len(items), func(i int) bool { return items[i]["sequence"].(int) > m.AgentSequence })
 					if position >= limit {
 						continue
 					}
-					item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "reply_address": c.ID, "message_id": m.ID, "sequence": m.AgentSequence, "conversation_sequence": m.Sequence, "sender": endpointDisplayLabel(c.Endpoints[m.From], claims.UserID), "message": m.Text, "sent_at": m.SentAt, "delivery": m.Delivery, "live_transport": m.LiveTransport, "native_session_id": m.LiveSession}
+					item := map[string]interface{}{"inbox_id": c.ID, "conversation_id": c.ID, "reply_address": c.ID, "message_id": m.ID, "sequence": m.AgentSequence, "conversation_sequence": m.Sequence, "sender": names.endpointName(c.Endpoints[m.From], claims.UserID), "message": m.Text, "message_type": m.MessageType, "queued_request": m.QueuedRequest, "reply_status": m.ReplyStatus, "message_purpose": agentMessagePurpose(m), "sent_at": m.SentAt, "delivery": m.Delivery, "live_transport": m.LiveTransport, "native_session_id": m.LiveSession}
+					agentMessageTaskItem(item, m)
+					if instructions := crewTeamMessageInstructions(ctx, c, m); instructions != "" {
+						item["team_instructions"] = instructions
+					}
 					for k, v := range messageArrivalFields(m) {
 						item[k] = v
 					}
@@ -565,7 +693,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 			if len(items) > 0 {
 				next = items[len(items)-1]["sequence"].(int)
 			}
-			out := map[string]interface{}{"agent_name": a.Name, "messages": items, "next_cursor": next}
+			out := map[string]interface{}{"agent_name": a.Name, "messages": items, "next_cursor": next, "request_tasks": taskStates}
 			log.Printf("[AGENT-READ] scope=mailbox agent=%s after=%d returned=%d next=%d", a.ID, after, len(items), next)
 			if agentUpdateNeeded(a) {
 				out["update_notice"] = cliUpdateNotice
@@ -578,7 +706,7 @@ func (api *StreamingAPI) readNamedAgentMessages(ctx context.Context, claims *Use
 				for _, c := range freshConversations {
 					for side, end := range c.Endpoints {
 						if end.NamedAgentID == a.ID && end.UserID == claims.UserID {
-							sent = append(sent, fresh.sentReceipts(c, side, 10)...)
+							sent = append(sent, fresh.sentReceipts(ctx, c, side, 10)...)
 						}
 					}
 				}

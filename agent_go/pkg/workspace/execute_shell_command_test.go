@@ -769,6 +769,7 @@ func TestBlockAbsoluteHostPaths_AttachedAutomationGrant(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
 	t.Setenv("AGENTWORKS_STATE_ROOT", state)
 	t.Setenv("LOCAL_MODE", "true")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	if err := os.MkdirAll(filepath.Join(docs, crewroot.PrivateDirectory, "crew"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -786,7 +787,7 @@ func TestBlockAbsoluteHostPaths_AttachedAutomationGrant(t *testing.T) {
 		}
 	}
 	write(filepath.Join(state, "ownership/projects.json"), map[string]any{"projects": map[string]crewroot.Record{"work/example": {Product: "work", Folder: "example", ID: "crew", Owner: "owner", LocalRoot: project}}})
-	binding := crewroot.ExecutableBinding{ID: "sequence", Root: "Workflow/sequence", CrewID: "crew", CrewRoot: "Crew/example", Kind: "workflow"}
+	binding := crewroot.ExecutableBinding{ID: "sequence", Root: "Workflow/sequence", CrewID: "crew", CrewRoot: "Crew/example", Kind: "workflow", RuntimeRoot: "workflows/sequence"}
 	write(filepath.Join(state, "ownership/crew-executables", fmt.Sprintf("%x.json", sha256.Sum256([]byte(binding.Root)))), binding)
 	source := filepath.Join(project, ".agentworks/code/sequence/main.py")
 	write(source, "print(42)")

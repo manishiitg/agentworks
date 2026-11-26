@@ -24,6 +24,19 @@ import (
 // provider knowledge: it asks for a result, this decides how to find one.
 func (api *StreamingAPI) installToolResultRecovery() {
 	storeevents.SetToolResultResolver(api.recoverToolResult)
+	storeevents.SetToolCompletionAuthority(func(sessionID, toolID, name string) bool {
+		// These are Codex app-server CommandExecution item IDs, not arbitrary
+		// bridge calls. The selected native session, not UI wording, owns them.
+		if name != "exec_command" || !strings.HasPrefix(toolID, "exec-") {
+			return false
+		}
+		session, ok := mcpagent.LookupSession(sessionID)
+		if !ok {
+			return false
+		}
+		handle := session.Snapshot()
+		return handle != nil && handle.Provider.Provider == "codex-cli"
+	})
 }
 
 // recoverToolResult resolves one tool call against its session's provider

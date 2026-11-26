@@ -7,8 +7,8 @@ import (
 )
 
 func externalCrewCostsDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("get_crew_costs", "What a Crew you own has spent, from the same ledger as the app's Costs and usage tab: total cost, tokens and calls, per day, by what did the work (main chat, schedules, function calls, bots) and by model, for the last `days` days (default 30, at most 90; pass `before` YYYY-MM-DD to page back). Omit crew_id for one row per Crew you own, most expensive first. Only a Crew's owner reads its costs.", false, false, map[string]any{
-		"crew_id": externalString("Crew ID from crew action=list. Omit for every Crew you own."),
+	add("get_crew_costs", "What a project you own has spent, from the same ledger as the app's Costs and usage tab: total cost, tokens and calls, per day, by what did the work (main chat, schedules, function calls, bots) and by model, for the last `days` days (default 30, at most 90; pass `before` YYYY-MM-DD to page back). Omit crew_id for one row per project you own, most expensive first. Only a project's owner reads its costs.", false, false, map[string]any{
+		"crew_id": externalString("Project ID from crew action=list. Omit for every project you own."),
 		"days":    externalInteger(1, 90),
 		"before":  externalString("Only spend before this day (YYYY-MM-DD, UTC), to page back from a previous window's next_before."),
 	})
@@ -44,11 +44,11 @@ func (api *StreamingAPI) externalCrewCosts(w http.ResponseWriter, r *http.Reques
 		head, response, found := load(crewID)
 		switch {
 		case !found:
-			externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
+			externalError(w, 404, "not_found", "Project not found or not allowed for this connection.")
 		case head["error"] != nil:
 			externalError(w, 400, "invalid_arguments", head["error"].(string))
 		case head["owned"] == false:
-			externalError(w, 403, "forbidden", "Only a Crew's owner reads its costs.")
+			externalError(w, 403, "forbidden", "Only a project's owner reads its costs.")
 		default:
 			out := head
 			if summary := response.ScopedCosts; summary != nil {
@@ -65,7 +65,7 @@ func (api *StreamingAPI) externalCrewCosts(w http.ResponseWriter, r *http.Reques
 
 	crews, err := api.externalCrewsVisible(ctx, claims, "")
 	if err != nil {
-		externalError(w, 502, "workspace_unavailable", "Cannot list Crews.")
+		externalError(w, 502, "workspace_unavailable", "Cannot list projects.")
 		return
 	}
 	rows := []map[string]any{}

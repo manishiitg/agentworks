@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/noderuntime"
 	workspaceskills "github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -214,6 +215,9 @@ func syncSkillSource(ctx context.Context, workspacePath string, source SkillSour
 	if !missing && !refreshDue {
 		return false, nil
 	}
+	if err := noderuntime.EnsureDefault(ctx); err != nil {
+		return false, err
+	}
 	npx, err := exec.LookPath("npx")
 	if err != nil {
 		return false, fmt.Errorf("external skills %q require npx: %w", source.ID, err)
@@ -239,6 +243,9 @@ func syncSkillSource(ctx context.Context, workspacePath string, source SkillSour
 func verifyCLI(ctx context.Context, workspacePath string, dependency CLIDependency, lastSync time.Time) (bool, error) {
 	if !lastSync.IsZero() && time.Since(lastSync) < time.Duration(dependency.RefreshHours)*time.Hour {
 		return false, nil
+	}
+	if err := noderuntime.EnsureDefault(ctx); err != nil {
+		return false, err
 	}
 	npx, err := exec.LookPath("npx")
 	if err != nil {

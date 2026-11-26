@@ -30,14 +30,19 @@ func sendNetworkName(s *localSession) string {
 
 // Directory reads select a single authorized connection before any write. A
 // refused or ambiguous send is never retried on another company's connection.
+// An offline joined network is skipped: the send needs exactly one match among
+// the networks that are online.
 func (b *localBridge) sendAcrossNetworks(ctx context.Context, networks []*localSession, in LocalBridgeRequest, out LocalBridgeReply) LocalBridgeReply {
 	name := namedSendTarget(in.Target)
 	var matches []*localSession
+	var online, offline []string
 	for _, network := range networks {
 		if network.Offline || network.client == nil {
-			return LocalBridgeReply{Error: fmt.Sprintf("Cannot locate agent %q while network %s is offline. Choose the intended joined network with network; no message was sent.", name, sendNetworkName(network))}
+			offline = append(offline, sendNetworkName(network))
+			continue
 		}
-		raw, err := network.client.Call(ctx, "messages", map[string]any{"action": "list_agents", "agent_name": network.Attachment.AgentName})
+		online = append(online, sendNetworkName(network))
+		raw, err := network.client.Call(ctx, "messages", map[string]any{"action": "list_agents", "agent_name": network.Attachment.AgentName, "query": name})
 		if err != nil {
 			return LocalBridgeReply{Error: fmt.Sprintf("Cannot locate agent %q on network %s: %v. Choose network explicitly; no message was sent.", name, sendNetworkName(network), err)}
 		}
@@ -58,15 +63,15 @@ func (b *localBridge) sendAcrossNetworks(ctx context.Context, networks []*localS
 		}
 	}
 	if len(matches) != 1 {
-		var choices []string
-		for _, network := range networks {
-			choices = append(choices, sendNetworkName(network))
-		}
 		reason := "was not found"
 		if len(matches) > 1 {
 			reason = "appears on more than one network"
 		}
-		return LocalBridgeReply{Error: fmt.Sprintf("Agent %q %s in the joined directories (%s). Choose network explicitly; no message was sent.", name, reason, strings.Join(choices, ", "))}
+		skipped := ""
+		if len(offline) > 0 {
+			skipped = fmt.Sprintf(" Offline, not searched: %s.", strings.Join(offline, ", "))
+		}
+		return LocalBridgeReply{Error: fmt.Sprintf("Agent %q %s in the online joined directories (%s).%s Choose network explicitly; no message was sent.", name, reason, strings.Join(online, ", "), skipped)}
 	}
 	in.Target = "agent:" + name
 	return sendNetworkResult(b.mailboxCall(ctx, matches[0], in, out), matches[0])

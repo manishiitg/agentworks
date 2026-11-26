@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 )
 
 // registerSecretManagementTools registers list_secrets on the given agent. In
-// project contexts it also registers set_workflow_secret (save in the owner's
-// Vault and use here) and delete_workflow_secret (stop using here).
+// project contexts it also registers set_workflow_secret (save or copy a key
+// where this project reads it, or a named place; #4144) and
+// delete_workflow_secret (stop using here).
 // toolCategory groups the tools in the agent's tool registry (e.g. "secret_tools").
 // afterUpsert, if non-nil, is invoked after set_workflow_secret saved the value
 // in the owner's Vault: it selects vaultName on the project and pushes
@@ -35,45 +35,13 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 
 	if err := registerTool(
 		"list_secrets",
-		"List the Vault secrets you may use ('global', by their Vault names) and the ones this project uses ('project'; scripts read each as $SECRET_<the name after the Vault prefix>). Values are never returned, only names. Use this before saving, removing or selecting secrets.",
+		"List where keys live and which this project uses: your own Vault (only you), this online project's vault (everyone in the project), Team vaults (the Team's people) and company keys (from a Vault administrator), with the key names in each and who each place reaches. Values are never returned. Call this before saving, copying or removing a key, and pick the place by who the key should reach.",
 		map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
 		},
 		func(ctx context.Context, args map[string]interface{}) (string, error) {
-			globals := visibleGlobalSecrets(ctx, userID)
-			globalNames := make([]string, 0, len(globals))
-			for _, gs := range globals {
-				globalNames = append(globalNames, gs.Name)
-			}
-			sort.Strings(globalNames)
-
-			projectNames := []string{}
-			if strings.TrimSpace(workflowPath) != "" {
-				selection, err := projectSecretSelection(ctx, workflowPath)
-				if err != nil {
-					return "", fmt.Errorf("failed to read this project's secrets: %w", err)
-				}
-				projectNames = append(projectNames, selection...)
-				sort.Strings(projectNames)
-			}
-
-			out, _ := json.MarshalIndent(map[string]interface{}{
-				"global": map[string]interface{}{
-					"read_only": true,
-					"source":    "server environment and encrypted managed globals",
-					"names":     globalNames,
-					// Names that exist in Vault for this person but have no stored value yet. They cannot be selected until a
-					// value is added in the Vault panel.
-					"needs_value": globalSecretNamesWithoutValue(ctx, userID),
-				},
-				"project": map[string]interface{}{
-					"source":        "Vault secrets this project uses, lent by its owner",
-					"workflow_path": workflowPath,
-					"names":         projectNames,
-				},
-				"note": "Secret VALUES are never returned by any tool. A name in global.needs_value exists in Vault for this person but has no stored value yet: it cannot be selected until they add its value in the Vault panel, so tell them that. Save a new value for this project with set_workflow_secret (it goes into the owner's Vault and is used here). In a workflow builder, use an existing Vault secret with update_workflow_config(add_secrets=[...]).",
-			}, "", "  ")
+			out, _ := json.MarshalIndent(api.secretPlaces(ctx, userID, workflowPath), "", "  ")
 			return string(out), nil
 		},
 	); err != nil {
@@ -87,42 +55,70 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 	if strings.TrimSpace(workflowPath) != "" {
 		if err := registerTool(
 			"set_workflow_secret",
-			"Save a secret for this project (owner only). The value is saved in the owner's own Vault (My accounts) and this project uses it in the same step; everyone who uses the project gets it lent by the owner without seeing the value. Saving a name again replaces its value everywhere the owner uses it. $SECRET_<NAME> is usable immediately in this session.",
+			"Save a key for this project, from a value the person gave (value) or by copying a key they can already use (copy_from; the server copies it and you never see the value). By default it goes where this project reads keys: an online project's own vault (everyone in the project uses it; only its owner and co-owners may add), otherwise your own Vault. Name a place with where to choose another. Saving a name again replaces its value. $SECRET_<NAME> is usable in this session at once when this project reads that place.",
 			map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"name": map[string]interface{}{
 						"type":        "string",
-						"description": "Secret name. Becomes SECRET_<name> env var at execution. Use UPPER_SNAKE_CASE (e.g. SLACK_TOKEN, OPENAI_API_KEY).",
+						"description": "Key name; scripts read it as $SECRET_<name>. Use UPPER_SNAKE_CASE (e.g. SLACK_TOKEN). With copy_from it defaults to that key's name.",
 					},
 					"value": map[string]interface{}{
 						"type":        "string",
-						"description": "Plaintext secret value. Encrypted before storage; not logged.",
+						"description": "The value the person gave. Encrypted before storage; not logged. Leave empty when copying.",
+					},
+					"copy_from": map[string]interface{}{
+						"type":        "string",
+						"description": "A key the person can already use (a name from list_secrets) to copy here instead of a value.",
+					},
+					"where": map[string]interface{}{
+						"type":        "string",
+						"enum":        []string{secretPlacePersonal, secretPlaceProject, secretPlaceTeam, secretPlaceCompany},
+						"description": "Where to save: personal (only you), project (this online project's vault, everyone in it), company (everyone on this server; Vault admins only) or team (answers how to share with a Team). Omit for this project's default.",
 					},
 				},
-				"required": []string{"name", "value"},
 			},
 			func(ctx context.Context, args map[string]interface{}) (string, error) {
 				name, _ := args["name"].(string)
 				value, _ := args["value"].(string)
+				from, _ := args["copy_from"].(string)
+				where, _ := args["where"].(string)
 				name = strings.TrimSpace(name)
-				if name == "" {
+				var full, place string
+				var err error
+				switch {
+				case strings.TrimSpace(from) != "":
+					if where == "" {
+						where = defaultSecretPlace(workflowPath)
+					}
+					full, name, value, err = api.copySecretInto(ctx, userID, workflowPath, from, where)
+					place = where
+				case name == "":
 					return "Error: 'name' is required.", nil
+				case value == "":
+					return "Error: give 'value' (or 'copy_from' to copy a key you can already use).", nil
+				default:
+					full, place, err = api.saveProjectSecret(ctx, userID, workflowPath, name, value, where)
 				}
-				if value == "" {
-					return "Error: 'value' is required (use delete_workflow_secret to remove a workflow secret).", nil
-				}
-				full, err := api.saveProjectSecret(ctx, userID, workflowPath, name, value)
 				if err != nil {
 					return "", fmt.Errorf("save secret: %w", err)
 				}
-				if afterUpsert != nil {
+				saved := map[string]string{secretPlaceProject: "this project's vault (everyone in the project can use it)", secretPlacePersonal: "your own Vault", secretPlaceCompany: "company keys (everyone on this server can use it)"}[place]
+				reads := defaultSecretPlace(workflowPath) == place || place == secretPlaceCompany
+				if afterUpsert != nil && strings.TrimSpace(workflowPath) != "" && reads {
 					if hookErr := afterUpsert(ctx, name, full, value); hookErr != nil {
-						return fmt.Sprintf("Saved %q in your Vault, but this project could not be set to use it: %v\nTick it in the project's Secrets list so it receives $SECRET_%s.", name, hookErr, name), nil
+						return fmt.Sprintf("Saved %q in %s, but this session could not be given it: %v. It reaches this project from the next message.", name, saved, hookErr), nil
 					}
-					return fmt.Sprintf("Saved %q in your Vault and used it in this project. $SECRET_%s is available in this session now.", name, name), nil
+					return fmt.Sprintf("Saved %q in %s. $SECRET_%s is available in this session now.", name, saved, name), nil
 				}
-				return fmt.Sprintf("Saved %q in your Vault. Choose it in the project's Secrets list so it receives $SECRET_%s.", name, name), nil
+				if place == secretPlacePersonal && serverCrewForPath(workflowPath) != "" {
+					// Your own chats in an online project get your own keys (#4165); schedules and teammates do not.
+					if afterUpsert != nil {
+						_ = afterUpsert(ctx, name, full, value)
+					}
+					return fmt.Sprintf("Saved %q in your own Vault. Your own chats in this project get $SECRET_%s (this one now); its schedules, workflows and other people's chats do not. To let everyone here use it, copy it into the project with copy_from=%q.", name, name, name), nil
+				}
+				return fmt.Sprintf("Saved %q in %s. Choose it in the project's Secrets list so it receives $SECRET_%s.", name, saved, name), nil
 			},
 		); err != nil {
 			return fmt.Errorf("register set_workflow_secret: %w", err)
@@ -146,6 +142,9 @@ func (api *StreamingAPI) registerSecretManagementTools(agent definitionToolRegis
 				name = strings.TrimSpace(name)
 				if name == "" {
 					return "Error: 'name' is required.", nil
+				}
+				if serverCrewForPath(workflowPath) != "" {
+					return fmt.Sprintf("This online project uses every key in its own vault, so %q stays until it is removed there: the project's vault in Settings, or manage_my_vaults (remove_secret with crew_id), by the owner or a co-owner.", name), nil
 				}
 				if afterDelete == nil {
 					return "Remove it from the project's Secrets list.", nil

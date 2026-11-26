@@ -11,9 +11,9 @@ import (
 )
 
 func externalCrewFilesDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("crew_files", "Use action=patch to edit a Crew text file, mkdir to create a folder, move to move a file/folder without overwriting, or delete to remove a file/empty folder. Only a person who builds this Crew (its owner or a Team member) with crews:write and current edit access can change files. Both move paths and every descendant must satisfy file guards; manifests, chats and databases stay protected. Only patch accepts diff and request_id: pass expected_revision from files read and a stable request_id for patch retries. Omit diff and request_id for mkdir, move and delete. File delete/move require expected_revision; mkdir requires expected_revision=missing; folder move/delete must omit expected_revision. Move/delete have no Crew history undo. Lifecycle operations return applied status; inspect paths before retrying them.", true, false, map[string]any{
-		"crew_id": externalString("Crew ID."), "action": map[string]any{"type": "string", "enum": []any{"patch", "mkdir", "move", "delete"}},
-		"path": externalString("Crew-resource-relative path. For a local Crew using an existing folder, use _files/<path> for that folder’s files."), "destination": externalString("Crew-relative destination for move; parent must exist."), "diff": externalString("Patch only: diff accepted by the platform patch parser."), "expected_revision": externalString("Revision returned by files read, or missing for a new folder; omit for existing folders."), "request_id": externalString("Patch only: stable request ID for a retry; omit for mkdir, move and delete."),
+	add("crew_files", "Use action=patch to edit a project text file, mkdir to create a folder, move to move a file/folder without overwriting, or delete to remove a file/empty folder. Only a person who builds this project (its owner or a Team member) with crews:write and current edit access can change files. Both move paths and every descendant must satisfy file guards; manifests, chats and databases stay protected. Only patch accepts diff and request_id: pass expected_revision from files read and a stable request_id for patch retries. Omit diff and request_id for mkdir, move and delete. File delete/move require expected_revision; mkdir requires expected_revision=missing; folder move/delete must omit expected_revision. Move/delete have no project history undo. Lifecycle operations return applied status; inspect paths before retrying them.", true, false, map[string]any{
+		"crew_id": externalString("Project ID."), "action": map[string]any{"type": "string", "enum": []any{"patch", "mkdir", "move", "delete"}},
+		"path": externalString("Project-resource-relative path. For a local project using an existing folder, use _files/<path> for that folder’s files."), "destination": externalString("Project-relative destination for move; parent must exist."), "diff": externalString("Patch only: diff accepted by the platform patch parser."), "expected_revision": externalString("Revision returned by files read, or missing for a new folder; omit for existing folders."), "request_id": externalString("Patch only: stable request ID for a retry; omit for mkdir, move and delete."),
 	}, "crew_id", "action", "path")
 }
 func (api *StreamingAPI) externalCrewFilesCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
@@ -24,16 +24,16 @@ func (api *StreamingAPI) externalCrewFilesCall(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if token := claims.AccessToken; token != nil && (!token.Allows("crews:write") || !token.AllowsCrew(id)) {
-		externalError(w, 403, "insufficient_scope", "This connection cannot edit this Crew.")
+		externalError(w, 403, "insufficient_scope", "This connection cannot edit this project.")
 		return
 	}
 	crew, _, _, ok := api.externalCrewResolve(r.Context(), claims, id)
 	if !ok {
-		externalError(w, 404, "not_found", "Crew not found or not allowed.")
+		externalError(w, 404, "not_found", "Project not found or not allowed.")
 		return
 	}
 	if !crew.OwnedByCaller {
-		externalError(w, 403, "forbidden", "Only the Crew owner can change its files.")
+		externalError(w, 403, "forbidden", "Only the project's owner or co-owners can change its files.")
 		return
 	}
 	root := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
@@ -52,6 +52,15 @@ func (api *StreamingAPI) externalCrewFilesCall(w http.ResponseWriter, r *http.Re
 	if err != nil || wf.ProtectedWrite(p) || !guard.Allows(p, true) {
 		externalError(w, 403, "protected_path", "Path is protected or outside write grants.")
 		return
+	}
+	for _, rel := range []string{p, externalArg(args, "destination")} {
+		if rel == "" {
+			continue
+		}
+		if refusal := crewSetupLockPathRefusal(crew.Binding.WorkspacePath, rel, claims.UserID, "crew_files "+externalArg(args, "action")); refusal != "" {
+			externalError(w, 403, "setup_locked", refusal)
+			return
+		}
 	}
 	action := externalArg(args, "action")
 	if action == "patch" {

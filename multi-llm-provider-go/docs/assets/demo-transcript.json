@@ -1,0 +1,42 @@
+{
+  "performed_at": "2026-07-11T02:32:27Z",
+  "host": {
+    "cli": "claude-code",
+    "version": "2.1.207",
+    "model": "claude-sonnet-5"
+  },
+  "target": {
+    "provider": "cursor-cli",
+    "version": "2026.07.09-c59fd9a",
+    "model": "Composer 2.5"
+  },
+  "job": {
+    "id": "job_a945abbdb5d45df757fe7cf9639565ca",
+    "initial_status": "queued",
+    "running_progress": "Composer 2.5, context 7%, delegation-demo, master",
+    "final_status": "completed",
+    "elapsed_seconds": 28,
+    "usage": {
+      "input_tokens": 166,
+      "output_tokens": 349,
+      "total_tokens": 515
+    }
+  },
+  "initial_test": {
+    "command": "go test ./...",
+    "result": "FAIL: Add(7, 5) = 2, want 12"
+  },
+  "change": {
+    "file": "calculator.go",
+    "before": "return a - b",
+    "after": "return a + b"
+  },
+  "target_verification": {
+    "command": "go test ./...",
+    "result": "ok example.com/delegation-demo 0.497s"
+  },
+  "host_verification": {
+    "command": "go test -count=1 ./...",
+    "result": "ok example.com/delegation-demo 0.198s"
+  }
+}

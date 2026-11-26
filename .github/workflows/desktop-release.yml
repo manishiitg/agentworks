@@ -48,10 +48,6 @@ jobs:
             desktop/package-lock.json
       - name: Install frontend dependencies
         run: cd frontend && npm ci
-      - name: Test desktop onboarding
-        run: |
-          cd frontend
-          npm test -- src/components/WelcomeHome.test.tsx src/components/HomeAgentModel.test.tsx src/products/work/CreateCrewWizard.test.tsx src/products/work/crewOnboarding.test.ts
       # Every Mac runs its own Vault and Brain, so the Mac app includes their screens.
       - name: Build frontend static assets
         env:
@@ -63,12 +59,11 @@ jobs:
           rm -rf agent_go/static
           mkdir -p agent_go/static
           cp -R frontend/dist/. agent_go/static/
-      # Use the dependency versions recorded by the release, never dependency main.
-      - name: Download pinned Go dependencies
+      # mcpagent and multi-llm-provider-go build from their folders in this checkout (agent_go/go.mod replaces).
+      - name: Download Go dependencies
         run: |
           cd agent_go
           go mod download
-          go list -m github.com/manishiitg/mcpagent github.com/manishiitg/multi-llm-provider-go
       - name: Build native servers and speech libraries
         run: |
           bash scripts/build-darwin-voice-binary.sh agent_go desktop/resources/voice/agent-server '${{ matrix.goarch }}'
@@ -83,6 +78,8 @@ jobs:
           go mod download
           CGO_ENABLED=0 GOOS=darwin GOARCH='${{ matrix.goarch }}' go build -o ../desktop/resources/agentworks-vault ./cmd/server
       - name: Bundle native CLI and platform helpers
+        env:
+          AGENTWORKS_DEFAULT_SERVER: ${{ vars.AGENTWORKS_DEFAULT_SERVER }}
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export AGENTWORKS_APP_VERSION="${GITHUB_REF#refs/tags/v}"; fi
           bash scripts/build-desktop-helpers.sh
@@ -203,7 +200,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           if ! gh release view "v$VERSION" >/dev/null 2>&1; then
-            gh release create "v$VERSION" --draft --title "AgentWorks $VERSION" --generate-notes
+            gh release create "v$VERSION" --draft --title "AgentWorks $VERSION" --notes "Release notes are added by scripts/desktop-release.sh."
           fi
           gh release upload "v$VERSION" dist/*.dmg dist/*.zip dist/*.sha256 --clobber
           # Old Apple silicon installations use the former product name.

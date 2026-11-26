@@ -45,40 +45,46 @@ type Reply struct {
 }
 
 func Format(ctx context.Context, content string, final bool) (Reply, error) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		return Reply{}, errors.New("visual formatter unavailable")
-	}
-	script, err := scriptPath()
-	if err != nil {
-		return Reply{}, errors.New("visual formatter unavailable")
-	}
-	// A wedged formatter cannot hold up a person's reply. The caller delivers
-	// normal prose and a readable visual notice when this bounded call fails.
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	data, err := json.Marshal(struct {
+	out, err := runFormatter(ctx, struct {
 		Content string `json:"content"`
 		Final   bool   `json:"final"`
 	}{content, final})
 	if err != nil {
 		return Reply{}, err
 	}
+	var reply Reply
+	if err = json.Unmarshal(out, &reply); err != nil || reply.Error != "" || len(reply.Blocks) == 0 || len(reply.Blocks) > 50 {
+		return reply, errors.New("visual formatter failed")
+	}
+	return reply, nil
+}
+
+func runFormatter(ctx context.Context, request any) ([]byte, error) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		return nil, errors.New("visual formatter unavailable")
+	}
+	script, err := scriptPath()
+	if err != nil {
+		return nil, errors.New("visual formatter unavailable")
+	}
+	data, err := json.Marshal(request)
+	if err != nil {
+		return nil, errors.New("visual input could not be read")
+	}
+	// Formatting only needs a bounded local process with no server environment.
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, node, script)
-	// Formatting needs no server environment, including provider credentials.
 	cmd.Env = []string{}
 	cmd.Dir = filepath.Dir(script)
 	cmd.Stdin = strings.NewReader(string(data))
 	cmd.Stderr = io.Discard
 	out, err := cmd.Output()
 	if err != nil {
-		return Reply{}, errors.New("visual formatter failed")
+		return nil, errors.New("visual formatter failed")
 	}
-	var reply Reply
-	if err = json.Unmarshal(out, &reply); err != nil || reply.Error != "" || len(reply.Blocks) == 0 || len(reply.Blocks) > 50 {
-		return reply, errors.New("visual formatter failed")
-	}
-	return reply, nil
+	return out, nil
 }
 
 var fenceLine = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})(.*)$")

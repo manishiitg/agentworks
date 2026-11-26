@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync/atomic"
 	"testing"
 
@@ -20,10 +22,14 @@ import (
 	"github.com/spf13/viper"
 )
 
+var chromeExtensionGroupsOnly = flag.Bool("chrome-extension-groups-only", false, "qualify only the real project-group reconnect case")
+
+var chromeExtensionE2E = flag.Bool("chrome-extension-e2e", false, "run the real Chrome extension fixture (#2825)")
+
 // This runs the complete tool → real guarded workspace shell → agent-browser
 // → relay → actual unpacked Chrome extension → existing signed-in tab path.
 func TestChromeExtensionToolRealE2E(t *testing.T) {
-	if os.Getenv("RUN_CHROME_EXTENSION_E2E") != "1" {
+	if os.Getenv("RUN_CHROME_EXTENSION_E2E") != "1" && !*chromeExtensionE2E {
 		t.Skip("set RUN_CHROME_EXTENSION_E2E=1 for real Chrome extension qualification")
 	}
 	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "false")
@@ -42,7 +48,7 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	browserrelay.Default = m
 	defer func() { live.Load().Close(); browserrelay.Default = previous }()
 	root := t.TempDir()
-	workspace := "Chats/Code/projects/extension-e2e"
+	workspace := "Crew/extension-e2e"
 	evidence := workspace + "/evidence"
 	os.MkdirAll(filepath.Join(root, evidence), 0755)
 	oldDocs := viper.GetString("docs-dir")
@@ -64,7 +70,7 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 	defer common.ClearSessionShellConfig("code-delegate")
 	defer ReleaseExtensionConversation(context.Background(), sideSession)
 	defer ReleaseExtensionConversation(context.Background(), session)
-	token, err := m.PairForProfile("alice", common.SandboxBrowserSession(session), workspace, "code")
+	token, err := m.PairForProfile("alice", common.SandboxBrowserSession(session), workspace, "work")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +149,7 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 		live.Load().Disconnect("alice", common.SandboxBrowserSession(session))
 	})
 	mux.HandleFunc("/fixture/reset-code", func(w http.ResponseWriter, r *http.Request) {
-		_, err := live.Load().Reset("alice", common.SandboxBrowserSession(session), workspace, "code")
+		_, err := live.Load().Reset("alice", common.SandboxBrowserSession(session), workspace, "work")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 		}
@@ -276,7 +282,19 @@ func TestChromeExtensionToolRealE2E(t *testing.T) {
 		driver = "test-chrome-extension-standalone.mjs"
 	}
 	cmd := exec.Command("node", filepath.Join(project, "scripts", driver))
+	if runtime.GOOS == "linux" && os.Getenv("DISPLAY") == "" {
+		xvfb, err := exec.LookPath("xvfb-run")
+		if err != nil {
+			t.Fatal("real Chrome fixture needs xvfb-run on a headless build host")
+		}
+		cmd = exec.Command(xvfb, "-a", "node", filepath.Join(project, "scripts", driver))
+	}
+
 	cmd.Env = append(os.Environ(), "CHROME_EXTENSION_E2E_URL="+server.URL, "CHROME_EXTENSION_E2E_TOKEN="+token, "CHROME_EXTENSION_E2E_SCOPE="+common.SandboxBrowserSession(session), "CHROME_EXTENSION_E2E_CREW_SCOPE="+common.SandboxBrowserSession(crewSession), "CHROME_EXTENSION_E2E_WORKFLOW_SCOPE="+common.SandboxBrowserSession(workflowSession))
+
+	if *chromeExtensionGroupsOnly {
+		cmd.Env = append(cmd.Env, "CHROME_EXTENSION_E2E_GROUPS_ONLY=1")
+	}
 	output, err := cmd.CombinedOutput()
 	t.Log(string(output))
 	if msg := workspacehandlers.CheckBrowserSessionLimit("agent-browser --session extension-e2e-second open about:blank", nativeEnv); msg == "" {

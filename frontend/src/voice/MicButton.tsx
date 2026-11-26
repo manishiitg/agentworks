@@ -1,6 +1,7 @@
+import { LoadingIndicator } from '../components/ui/LoadingIndicator'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Mic, Square, Loader2, Download } from 'lucide-react'
+import { Mic, Square, Download } from 'lucide-react'
 import { useVoiceDictation } from '../../shared/voice/useVoiceDictation'
 import { getApiBaseUrl, getAuthToken } from '../services/api'
 import type { VoiceEngineStatus } from '../services/api-types'
@@ -301,7 +302,7 @@ export const MicButton = forwardRef(function MicButton({
   if (preparing) {
     banner = (
       <span className={bannerClass} role="status">
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+        <LoadingIndicator className="h-4 w-4 shrink-0" aria-hidden="true" />
         <span className={bannerLabelClass}>Starting</span>
         <span className="min-w-0 flex-1 italic text-slate-300">Getting voice ready — this can take a moment the first time…</span>
       </span>
@@ -324,7 +325,7 @@ export const MicButton = forwardRef(function MicButton({
     const totalMB = Math.round((engine?.total_bytes ?? 0) / (1024 * 1024)) || (engine?.size_mb ?? 690)
     banner = (
       <span className={bannerClass} role="status">
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+        <LoadingIndicator className="h-4 w-4 shrink-0" aria-hidden="true" />
         <span className={bannerLabelClass}>Setting up</span>
         <span className="min-w-0 flex-1">
           {engine?.downloading
@@ -365,6 +366,8 @@ export const MicButton = forwardRef(function MicButton({
         title={label}
         aria-label={label}
         data-testid="chat-input-mic-button"
+        data-theme-action="microphone"
+        data-theme-control="button"
         data-voice-state={micState}
         data-voice-setup={setup}
         className={`relative inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
@@ -374,7 +377,7 @@ export const MicButton = forwardRef(function MicButton({
         } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       >
         {busy
-          ? <Loader2 className="h-4 w-4 animate-spin" />
+          ? <LoadingIndicator className="h-4 w-4" />
           : recording
             ? <Square className="h-3.5 w-3.5" />
             : setup === 'offer'

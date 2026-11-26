@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/manishiitg/coding-agent-loop/workspace/workspaceref"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -238,17 +237,19 @@ func HomeOf(slot string) string {
 	return account.HomeDir
 }
 
-// IsCodeProjectDir says whether dir (absolute, inside docsDir) is in a Code project (_users/<id>/Chats/Code/projects/...), where
-// commands run as the owner's slot get the slot's own home (UserHome) instead of a per-project one.
-func IsCodeProjectDir(docsDir, dir string) bool {
-	rel, err := filepath.Rel(docsDir, dir)
+// RepairReadsServerState reports whether this host's root slot-repair timer reads accounts from the server
+// state database (#3156). provision-slots.sh install-timer writes slot-repair.json beside the slot table
+// when it installs a copy that does. Hosts without slots need no timer.
+func RepairReadsServerState() bool {
+	if !Enabled() {
+		return true
+	}
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(tablePath()), "slot-repair.json"))
 	if err != nil {
 		return false
 	}
-	ref, ok := workspaceref.Parse(filepath.ToSlash(rel))
-	if !ok || !ref.HasOwner() {
-		return false
+	var marker struct {
+		UserDirectory string `json:"user_directory"`
 	}
-	logical := ref.Logical()
-	return logical == workspaceref.CodeProjectsRoot || strings.HasPrefix(logical, workspaceref.CodeProjectsRoot+"/")
+	return json.Unmarshal(raw, &marker) == nil && marker.UserDirectory == "server-state"
 }

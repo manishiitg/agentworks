@@ -36,4 +36,4 @@ Finding to Verified Remediation uses security-remediation-ledger/v1 keyed by fin
 
 ## Boundaries
 
-Do not merge, deploy, change severity, accept risk, close a finding, or publish sensitive details without the required owner approval and authorized tool route. Installing this skill enables no scan, schedule, trigger, function, Automation, notification, or write. Never copy another Crew’s credentials.
+Do not merge, deploy, change severity, accept risk, close a finding, or publish sensitive details without the required owner approval and authorized tool route. Installing this skill enables no scan, schedule, trigger, function, Automation, notification, or write. Never copy another project’s credentials.

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	orchevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
 	toolcatalog "github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools/catalog"
@@ -554,6 +555,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx cont
 			allow[family] = true
 		}
 	}
+	// Managed file reads use this invocation's existing bridge, not broader
+	// shell/native grants or a reusable helper-result receipt.
+	bridgeTools["crew_files_read"] = pythonCrewFileReader(hcpo.GetWorkspacePath())
+	allow["crew_files_read"] = true
 	ctx = context.WithValue(ctx, pythonScriptSessionKey{}, sessionID)
 	helper, finishSteps := hcpo.pythonAutomationHandler(ctx, step, codeDir, outputDir)
 	bridgeTools["python_automation"] = helper
@@ -575,6 +580,12 @@ func (hcpo *StepBasedWorkflowOrchestrator) configureScriptBridgeSession(ctx cont
 		codeexec.CleanupSession(sessionID)
 		common.ClearSessionShellConfig(sessionID)
 		mcpagent.CloseSession(sessionID)
+		// Each run has its own session ID, so anything keyed by it must go
+		// here or it stays in memory until the server restarts.
+		virtualtools.DeleteSessionNotificationDestination(sessionID)
+		if hcpo.httpSessionID != "" {
+			mcpagent.UnregisterHTTPSession(hcpo.httpSessionID, sessionID)
+		}
 	}
 }
 
@@ -882,7 +893,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) tryRunSavedScriptedScript(
 	if !hasShared && !hcpo.hasValidLearnedScriptAPI(ctx, stepID) {
 		scriptRelPath := hcpo.scriptedSourceDir(stepID) + "/main.py"
 		existingScript, _ := hcpo.ReadWorkspaceFile(ctx, scriptRelPath)
-		hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted] No saved script for step %d (%s) — source must be created in Crew chat", stepIndex+1, stepID))
+		hcpo.GetLogger().Info(fmt.Sprintf("🐍 [scripted] No saved script for step %d (%s) — source must be created in project chat", stepIndex+1, stepID))
 		return &ScriptedFastPathResult{RanScript: false, ExistingScript: existingScript}
 	}
 

@@ -167,7 +167,7 @@ export function KnowledgebaseSurface() {
             {canManage && <div hidden={!chatOpen} className="h-full min-h-0 flex-col" style={{ display: chatOpen ? 'flex' : 'none' }}>
               <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2"><WorkspaceViewIconButton label="Close previous Brain conversation" icon={X} onClick={closeChat} /><MessageCircle className="h-4 w-4 text-muted-foreground" /><h2 className="text-sm font-medium">Previous Brain conversation</h2></div>
               <div className="min-h-0 flex-1">{chat.error ? <div className="p-4 text-sm"><p role="alert" className="text-destructive">{chat.error}</p><button type="button" onClick={chat.retry} className="mt-2 underline">Retry history</button></div> : chat.tabId ? <ChatArea ref={chat.chatRef} tabId={chat.tabId} compact hideInput previousChatsWorkspacePath={bootstrap.chat_workspace} knowledgebaseFolderPath={folder}
-                landingContent={<ProductChatLandingCard icon={MessageCircle} title="Previous Brain conversation" examples={[]} description="Revisit previous conversations here. Use a Crew for new knowledge work." />} /> : chatOpen ? <p className="p-5 text-xs text-muted-foreground">Opening previous conversation…</p> : null}</div>
+                landingContent={<ProductChatLandingCard icon={MessageCircle} title="Previous Brain conversation" examples={[]} description="Revisit previous conversations here. Use a project for new knowledge work." />} /> : chatOpen ? <p className="p-5 text-xs text-muted-foreground">Opening previous conversation…</p> : null}</div>
             </div>}
           </div>}
         /></div>}

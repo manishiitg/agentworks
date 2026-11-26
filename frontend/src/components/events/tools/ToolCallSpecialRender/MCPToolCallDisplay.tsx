@@ -25,7 +25,7 @@ export const MCPToolCallDisplay: React.FC<MCPToolCallDisplayProps> = ({ event })
   const { server, tool } = parseMCPToolName(toolName)
 
   const parallelBadge = event.is_parallel ? (
-    <span className="ml-1.5 text-[10px] text-gray-500 dark:text-gray-400 font-normal opacity-75">
+    <span className="ml-1.5 text-[10px] text-muted-foreground font-normal opacity-75">
       (parallel)
     </span>
   ) : null
@@ -92,7 +92,7 @@ export const MCPToolCallDisplay: React.FC<MCPToolCallDisplayProps> = ({ event })
       {/* Collapsed: single-line preview of primary arg */}
       {!isExpanded && primaryValue && (
         <div className="mt-1">
-          <div className="bg-gray-900 dark:bg-gray-950 border border-gray-700 rounded-md px-2 py-1">
+          <div className="bg-muted border border-border rounded-md px-2 py-1">
             <pre className="text-xs text-green-300 font-mono truncate">
               {primaryValue.split('\n')[0]}{primaryValue.split('\n').length > 1 ? ' …' : ''}
             </pre>
@@ -104,11 +104,11 @@ export const MCPToolCallDisplay: React.FC<MCPToolCallDisplayProps> = ({ event })
       {isExpanded && hasArgs && (
         <div className="mt-2 space-y-2">
           {primaryKey && primaryValue && (
-            <div className="bg-gray-900 dark:bg-gray-950 border border-gray-700 rounded-md p-2">
+            <div className="bg-muted border border-border rounded-md p-2">
               <div className="flex items-center justify-between mb-1">
-                <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">{primaryKey}</div>
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{primaryKey}</div>
                 {isCodeLike(primaryValue) && (
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-muted-foreground">
                     {primaryValue.split('\n').length} line{primaryValue.split('\n').length !== 1 ? 's' : ''}
                   </div>
                 )}
@@ -120,7 +120,7 @@ export const MCPToolCallDisplay: React.FC<MCPToolCallDisplayProps> = ({ event })
           )}
 
           {otherArgs.length > 0 && (
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2 space-y-1.5">
+            <div className="bg-card border border-border rounded-md p-2 space-y-1.5">
               {otherArgs.map(([key, val]) => {
                 const strVal = typeof val === 'string' ? val : JSON.stringify(val, null, 2)
                 return (
@@ -129,11 +129,11 @@ export const MCPToolCallDisplay: React.FC<MCPToolCallDisplayProps> = ({ event })
                       {key}
                     </div>
                     {isCodeLike(strVal) ? (
-                      <pre className="text-xs text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap bg-gray-50 dark:bg-gray-900 px-2 py-1 rounded max-h-32 overflow-y-auto">
+                      <pre className="text-xs text-foreground font-mono whitespace-pre-wrap bg-muted/50 px-2 py-1 rounded max-h-32 overflow-y-auto">
                         {strVal}
                       </pre>
                     ) : (
-                      <span className="text-xs font-mono text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 px-1.5 py-0.5 rounded">
+                      <span className="text-xs font-mono text-foreground bg-muted/50 px-1.5 py-0.5 rounded">
                         {strVal}
                       </span>
                     )}

@@ -84,6 +84,7 @@ func workflowPermissionInfo(access WorkflowAccessLevel) WorkflowPermissionInfo {
 }
 
 func userInfoWithWorkflowPermissions(info UserInfo) UserInfo {
+	info.userAvatarFields = avatarFieldsFor(info.ID, "")
 	info.Role = roleForClaims(&UserClaims{UserID: info.ID, Username: info.Username, Email: info.Email})
 	access := workflowAccessForIdentity(info.ID, info.Username, info.Email)
 	perms := workflowPermissionInfo(access)

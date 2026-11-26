@@ -1,3 +1,4 @@
+import { randomUUID } from '../utils/randomUUID'
 import { create } from 'zustand'
 import { agentApi } from '../services/api'
 import { useChatStore } from './useChatStore'
@@ -152,7 +153,7 @@ export const useRunningWorkflowsStore = create<RunningWorkflowsStore>()(
         } else {
           // Create new running workflow entry
           const runningWorkflow: RunningWorkflow = {
-            id: crypto.randomUUID(),
+            id: randomUUID(),
             presetId: params.presetId,
             presetName: params.presetName,
             workspacePath: params.workspacePath,

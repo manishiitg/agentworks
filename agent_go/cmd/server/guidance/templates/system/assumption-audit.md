@@ -1,7 +1,7 @@
 ## Assumption Audit — Keep The Workflow Evolvable
 
-Use this bounded check whenever reviewing or improving the plan, eval, report,
-knowledgebase notes, learnings/skills, database contracts, or saved code. An
+Use this bounded check whenever reviewing or improving the saved Python workflow, checks, dashboard,
+permitted knowledge, skills, database contracts, or saved code. An
 artifact can be internally correct and still preserve an old assumption that
 prevents the workflow from reaching its goal.
 
@@ -10,13 +10,13 @@ prevents the workflow from reaching its goal.
 For each consequential restriction, classify it as exactly one of:
 
 1. **Explicit user constraint** — the user stated or approved it as durable.
-   Preserve it. The Crew's instructions, a User rule card, or direct user
+   Preserve it. The project's instructions, a User rule card, or direct user
    evidence should support this classification.
 2. **Verified external constraint** — a current platform/API/legal/business fact
    supported by evidence. Preserve it with source/freshness; schedule a re-check
    when it can change.
 3. **Current design choice** — an evidence-backed tactic or architecture that is
-   useful now but remains replaceable. Keep it out of the Crew's instructions; describe it as
+   useful now but remains replaceable. Keep it out of the project's instructions; describe it as
    the current approach, not a permanent truth.
 4. **Agent-inferred assumption** — hardcoded or inherited without user approval or
    current evidence. Challenge, remove, generalize, parameterize, or propose a
@@ -46,11 +46,11 @@ cadence, and other agent-chosen constraints around them.
 
 Hardcoded credentials, local paths, account ids, and run ids are Bugs and should
 be fixed within the command's normal boundaries. A strategy/tactic assumption is
-a Goal concern. Do not confuse the two.
+an outcome question. Do not confuse the two.
 
 ### Bounded action
 
-1. Read the Crew's instructions for stable intent, but do not trust architecture
+1. Read the project's instructions for stable intent, but do not trust architecture
    or an unproven assumption merely because older text contains it.
 2. Inspect only assumptions relevant to this command's artifact and direct
    consumers/producers. Do not turn targeted maintenance into a full audit.
@@ -58,10 +58,10 @@ a Goal concern. Do not confuse the two.
    remove stale prose, parameterize a literal, stop treating a tactic as a goal,
    or mark a current choice as revisable.
 4. If changing it would alter business intent, risk, cost, external behaviour or
-   a material plan path, ask the owner in chat.
+   a material task path, ask the owner in chat.
    Include the assumption, source, evidence for and against, and what would
    validate it. Keep one pending question for the same decision.
-5. Record authorized work and its evidence in the existing plan changelog or
+5. Record authorized work and its evidence in the existing project change notes or
    requesting conversation. Close obsolete proposals through the normal
    withdrawal tools; a withdrawal never grants approval.
 
@@ -74,7 +74,7 @@ a Goal concern. Do not confuse the two.
 - **Report:** show goal/outcome truth; do not make the current implementation or
   an inferred proxy look like the user's target.
 - **KB notes:** distinguish durable domain evidence from workflow-design beliefs.
-  Never rewrite user-owned `knowledgebase/context/` without the owner asking.
+  Preserve user-owned context; use current Brain tools and grants instead of retired local knowledge paths.
 - **Learnings/skills:** keep reusable HOW; remove business policy, strategy, and
   stale architecture disguised as execution guidance.
 - **DB:** challenge schemas/enums/cardinality that unnecessarily lock the workflow

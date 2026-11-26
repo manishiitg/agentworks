@@ -3,7 +3,7 @@ import { BookOpen, BriefcaseBusiness, Code2, Network, UserRound, UsersRound, Wor
 /** Onboarding suggestions only. The live menu inventory still admits every link. */
 export const CREW_STARTER_TYPES = [
   {
-    id: 'code', label: 'Code', icon: Code2,
+    id: 'code', label: 'Software', icon: Code2,
     summary: 'Build & fix software',
     purpose: 'Help me build and maintain software, understand code and fix issues.',
     example: 'Review a project, explain how it works or help make a change.',
@@ -46,7 +46,7 @@ export const CREW_STARTER_TYPES = [
       { id: 'identity:general', label: 'Instructions & identity' },
       { id: 'memory:skills', label: 'Skills' },
       { id: 'files', label: 'Files' },
-      { id: 'mcp:access', label: 'Share' },
+      { id: 'mcp:team', label: 'Team' },
     ],
   },
   {
@@ -73,9 +73,9 @@ export const CREW_STARTER_TYPES = [
   },
   {
     id: 'chief-of-staff', label: 'Chief of Staff', icon: Network,
-    summary: 'Coordinate your Crews & workflows',
-    purpose: 'Coordinate my Crews and workflows: track progress, route work through their available functions and triggers, follow up on blockers and prepare status summaries. Help me choose the projects to connect. Use only the projects and actions I have access to.',
-    example: 'Coordinate a launch across my Crews and workflows, highlight blockers and prepare a daily brief.',
+    summary: 'Coordinate your projects & workflows',
+    purpose: 'Coordinate my projects and workflows: track progress, route work through their available functions and triggers, follow up on blockers and prepare status summaries. Help me choose the projects to connect. Use only the projects and actions I have access to.',
+    example: 'Coordinate a launch across my projects and workflows, highlight blockers and prepare a daily brief.',
     shortcuts: [
       { id: 'schedules', label: 'Automations' },
       { id: 'mcp:folders', label: 'Linked projects & folders' },

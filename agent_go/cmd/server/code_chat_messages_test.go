@@ -78,6 +78,7 @@ func TestCrewTabsFindEachOtherOnlyForTheOwner(t *testing.T) {
 	env := newTriggerLinkEnv(t)
 	crewOwnerTabsFixture(t, env)
 	env.api.agentProfiles = env.svc.registry
+	bridgeRouteTestMain(t, env.api, "owner", "beta")
 	ctx := internalBotRequestContext(t.Context(), "owner")
 	profile, err := env.svc.registry.Resolve("work", 0, "owner")
 	if err != nil {
@@ -96,11 +97,87 @@ func TestCrewTabsFindEachOtherOnlyForTheOwner(t *testing.T) {
 		t.Fatalf("owner's Crew chat = %+v, %v", project, err)
 	}
 	reg := &recordingRegistrar{}
-	if err := env.api.registerCodeChatTools(reg, nil, "owner", conversation.SessionID, binding.WorkspacePath); err != nil {
+	if err := env.api.registerCodeChatTools(reg, nil, "owner", conversation.SessionID, binding.WorkspacePath, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reg.tools["ask_project_chat"].exec(ctx, map[string]interface{}{"chat": "main", "message": "Self ask"}); err == nil || err.Error() != "a chat cannot ask itself" {
-		t.Fatalf("main alias self-ask = %v", err)
+	if _, exists := reg.tools["ask_project_chat"]; exists {
+		t.Fatal("retired peer-message tool bypasses AgentBridge")
+	}
+	// Owner, 22 Nov: a fork made with a task starts on it; with no way to send it, no fork is made.
+	fork := reg.tools["fork_project_chat"]
+	if _, offered := fork.params["properties"].(map[string]interface{})["task"]; !offered {
+		t.Fatal("fork_project_chat does not offer a task")
+	}
+	if _, err := fork.exec(ctx, map[string]interface{}{"chat": "main", "task": "Review the tools list"}); err == nil || !strings.Contains(err.Error(), "cannot send a fork its task") {
+		t.Fatalf("a fork with a task and no send path = %v", err)
+	}
+	// Owner, 22 Nov: a fresh agent can start with a task too, and either kind can sit beside its maker.
+	open := reg.tools["open_project_chat"]
+	for name, tool := range map[string]recordedTool{"fork_project_chat": fork, "open_project_chat": open} {
+		properties := tool.params["properties"].(map[string]interface{})
+		if _, offered := properties["place"]; !offered {
+			t.Fatalf("%s does not offer place", name)
+		}
+		if _, offered := properties["task"]; !offered {
+			t.Fatalf("%s does not offer a task", name)
+		}
+	}
+	if _, err := open.exec(ctx, map[string]interface{}{"name": "Critic", "task": "Review the diff"}); err == nil || !strings.Contains(err.Error(), "cannot send a new agent its task") {
+		t.Fatalf("a fresh agent with a task and no send path = %v", err)
+	}
+	if _, err := fork.exec(ctx, map[string]interface{}{"chat": "main", "place": "sideways"}); err == nil || !strings.Contains(err.Error(), "place is under or beside") {
+		t.Fatalf("an unknown place = %v", err)
+	}
+	if place, _ := spawnPlace(map[string]interface{}{}); place != spawnUnder {
+		t.Fatalf("default place = %q", place)
+	}
+	// #3655: making an agent also sets it up, with the same limits and owner rule as sessions action=identity.
+	for name, tool := range map[string]recordedTool{"fork_project_chat": fork, "open_project_chat": open} {
+		properties := tool.params["properties"].(map[string]interface{})
+		for _, field := range []string{"purpose", "instructions", "group"} {
+			if _, offered := properties[field]; !offered {
+				t.Fatalf("%s does not offer %s", name, field)
+			}
+		}
+	}
+	if _, err := open.exec(ctx, map[string]interface{}{"name": "Issue lead", "instructions": strings.Repeat("x", productAgentInstructionsMaxRunes+1)}); err == nil || !strings.Contains(err.Error(), "nothing was made") {
+		t.Fatalf("over-long instructions = %v", err)
+	}
+	// A named group is checked before anything is made, as purpose and instructions are.
+	if _, err := open.exec(ctx, map[string]interface{}{"name": "Issue lead", "group": strings.Repeat("g", agentGroupNameMaxRunes+1)}); err == nil {
+		t.Fatal("an over-long group name opened a tab")
+	}
+	purpose, rules := "Leads the issues row", "Fixer done -> Reviewer checks it.\nAnyone stuck -> ask me."
+	setUp, err := env.api.spawnIdentityArgs(ctx, conversation.SessionID, "owner", map[string]interface{}{"purpose": purpose, "instructions": rules})
+	if err != nil || setUp.empty() {
+		t.Fatalf("owner's own setup = %+v, %v", setUp, err)
+	}
+	saved := map[string]interface{}{}
+	saveSpawnIdentity(ctx, "owner", project, project.Self.Key, setUp, saved)
+	if saved["purpose"] != purpose || saved["instructions_saved"] != true {
+		t.Fatalf("setup not saved: %v", saved)
+	}
+	env.api.lastQueryMu.Lock()
+	if env.api.lastQueryRequests == nil {
+		env.api.lastQueryRequests = map[string]QueryRequest{}
+	}
+	env.api.lastQueryRequests[conversation.SessionID] = QueryRequest{AskedBy: "teammate"}
+	env.api.lastQueryMu.Unlock()
+	if _, err := env.api.spawnIdentityArgs(ctx, conversation.SessionID, "owner", map[string]interface{}{"instructions": rules}); err == nil || !strings.Contains(err.Error(), "own person") {
+		t.Fatalf("a teammate's turn set a new agent's instructions: %v", err)
+	}
+	env.api.lastQueryMu.Lock()
+	delete(env.api.lastQueryRequests, conversation.SessionID)
+	env.api.lastQueryMu.Unlock()
+	holder := &agentSendHolder{}
+	capture := agentSendCaptureRegistrar{&recordingRegistrar{}, holder}
+	_ = capture.RegisterCustomTool("read_agent_messages", "", nil, func(context.Context, map[string]interface{}) (string, error) { return "", nil }, "")
+	if holder.send != nil {
+		t.Fatal("captured a tool other than send_message")
+	}
+	_ = capture.RegisterCustomTool("send_message", "", nil, func(context.Context, map[string]interface{}) (string, error) { return "sent", nil }, "")
+	if out, _ := holder.send(ctx, nil); out != "sent" {
+		t.Fatal("send_message was not kept for a fork's task")
 	}
 	if target := codeChatTarget(project, project.Self, binding.WorkspacePath); target.CrewProfile != "work" {
 		t.Fatalf("a Crew tab is addressed as %q", target.CrewProfile)

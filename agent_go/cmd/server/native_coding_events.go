@@ -17,6 +17,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	agentevents "github.com/manishiitg/mcpagent/events"
+	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
@@ -128,6 +129,10 @@ func (api *StreamingAPI) restoreNativeCodingObservers() {
 		if exists {
 			continue
 		}
+		// Every chat, not only those still on an app that asks questions: a chat
+		// that moved to another app keeps its earlier app's open question cards,
+		// and they must stay answerable (or close) after a restart.
+		api.restoreQuestionsOnce(saved.SessionID)
 		go func() { o.poll(true); close(o.ready); go o.run() }()
 		log.Printf("[NATIVE_RECORD] restored session=%s provider=%s native=%s", saved.SessionID, saved.Provider, saved.NativeID)
 	}
@@ -186,10 +191,25 @@ func (o *nativeTerminalObserver) nativeRecordPath() string {
 		}
 		return musecli.NativeRecordPath(o.nativeID, dataHome)
 	case "agy-cli":
-		if home == "" {
-			home, _ = os.UserHomeDir()
+		// agy keeps its store in the private cli-home only under Landlock; on
+		// a Mac its Seatbelt profile lives in that folder while the store stays
+		// in the account or OS home, so the private guess opened a missing
+		// file (#3191). Use the home that actually holds this conversation.
+		osHome, _ := os.UserHomeDir()
+		first := ""
+		for _, h := range []string{home, o.home, osHome} {
+			if h == "" {
+				continue
+			}
+			p := filepath.Join(h, ".gemini", "antigravity-cli", "conversations", o.nativeID+".db")
+			if first == "" {
+				first = p
+			}
+			if _, err := os.Stat(p); err == nil {
+				return p
+			}
 		}
-		return filepath.Join(home, ".gemini", "antigravity-cli", "conversations", o.nativeID+".db")
+		return first
 	}
 	return ""
 }
@@ -281,6 +301,23 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 	if s.Pending == nil {
 		s.Pending = map[string]nativeevents.Cursor{}
 	}
+	// One operational line per read batch, not one per native tool/status row.
+	// Keep cursor movement visible when a provider returns the same window.
+	accepted, pendingAccepted := 0, 0
+	firstItem, lastItem := "", ""
+	beforeOffset := s.Cursor.Offset
+	noteAccepted := func(record llmtypes.NativeRecord) {
+		if accepted == 0 {
+			firstItem = record.ID
+		}
+		accepted++
+		lastItem = record.ID
+	}
+	defer func() {
+		if accepted > 0 {
+			log.Printf("[NATIVE_RECORD] batch session=%s provider=%s native=%s count=%d pending_count=%d first=%s last=%s cursor_before=%d cursor_after=%d", o.snapshot.SessionID, o.provider, o.nativeID, accepted, pendingAccepted, firstItem, lastItem, beforeOffset, s.Cursor.Offset)
+		}
+	}()
 	pendingChanged := false
 	for id, cursor := range s.Pending {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -297,6 +334,8 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 			}
 			found = true
 			if err := o.acceptNativeCodingRecord(record); err == nil {
+				noteAccepted(record)
+				pendingAccepted++
 				delete(s.Pending, id)
 				pendingChanged = true
 			} else if !errors.Is(err, errNativeForegroundPending) {
@@ -317,7 +356,7 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 		o.nativeCodingGap(s, "checkpoint_write_failed")
 		return
 	}
-	stamp := nativeTerminalFileStamp(path)
+	stamp := nativeSubagentFileStamp(o.provider, path, s.Cursor.Tasks)
 	if stamp != "" && stamp == s.stamp {
 		return
 	}
@@ -334,7 +373,7 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 	// No saved cursor means this is a baseline, not permission to import old
 	// history. Timestamp-less baseline records supply identities only.
 	for _, record := range batch.Records {
-		if !s.Primed && (record.Timestamp.IsZero() || boundary.IsZero() || record.Timestamp.Before(boundary)) {
+		if !s.Primed && (record.Timestamp.IsZero() || boundary.IsZero() || record.Timestamp.Before(boundary)) && !nativeAsyncQuestionBeforeBaseline(record, o.snapshot.CreatedAt) {
 			continue
 		}
 		if err := o.acceptNativeCodingRecord(record); err != nil {
@@ -345,6 +384,7 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 			o.nativeCodingGap(s, "durable_accept_failed")
 			return
 		}
+		noteAccepted(record)
 		record.Text = ""
 		if (record.Kind == "helper" || record.Kind == "background_command") && record.TaskID != "" {
 			s.Work[record.TaskID] = record
@@ -360,6 +400,13 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 		log.Printf("[NATIVE_RECORD] coverage session=%s provider=%s native=%s decoder=%s unknown=%s invalid=%d identity_gaps=%d", o.snapshot.SessionID, o.provider, o.nativeID, nativeevents.DecoderVersion, unknown, batch.Invalid, batch.Gaps)
 	}
 	previousCursor, previousPrimed := s.Cursor, s.Primed
+	if len(batch.Records) == 0 && batch.CaughtUp && previousPrimed && sameNativeCursorPosition(previousCursor, batch.Next) {
+		// An idle chat: nothing moved, so there is nothing to save (#3181).
+		s.Cursor = batch.Next
+		s.stamp = stamp
+		s.lastError = ""
+		return
+	}
 	s.Cursor = batch.Next
 	// JSONL reads are bounded; do not label the first partial batch as a full
 	// baseline. SQLite readers already consume the selected committed boundary.
@@ -375,6 +422,29 @@ func (o *nativeTerminalObserver) pollNativeCodingRecords() {
 		s.stamp = stamp
 	}
 	s.lastError = ""
+}
+
+// nativeAsyncQuestionBeforeBaseline: a new chat's native session id is only
+// known after its first turn ends, so the baseline lands after that turn. An
+// async Codex question asked in that turn has already returned to Codex and
+// waits for the person; skipping it as old history would lose its card. Only
+// such questions asked after this chat started observing its runtime, and
+// still inside their 24h answer window, are taken; every other earlier record
+// stays baseline history (its replies and tools were already streamed).
+func nativeAsyncQuestionBeforeBaseline(record llmtypes.NativeRecord, observedSince time.Time) bool {
+	if record.Provider != "codex-cli" || record.Kind != "question" || record.Name != "request_user_input_async" {
+		return false
+	}
+	if observedSince.IsZero() || record.Timestamp.IsZero() || record.Timestamp.Before(observedSince) {
+		return false
+	}
+	return time.Since(record.Timestamp) < 24*time.Hour
+}
+
+// sameNativeCursorPosition: the persisted part of the read position is unchanged.
+func sameNativeCursorPosition(a, b nativeevents.Cursor) bool {
+	return a.Offset == b.Offset && a.FileID == b.FileID && a.PrefixHash == b.PrefixHash && a.PrefixBytes == b.PrefixBytes &&
+		a.TailOffset == b.TailOffset && a.TailHash == b.TailHash && a.PlanOffset == b.PlanOffset && a.TurnID == b.TurnID && a.LastID == b.LastID
 }
 
 func (o *nativeTerminalObserver) nativeCodingGap(s *nativeCodingRecordState, reason string) {
@@ -403,21 +473,71 @@ func saveNativeCodingState(s *nativeCodingRecordState) error {
 }
 
 func (api *StreamingAPI) saveNativeCodingActivity(sessionID string, record llmtypes.NativeRecord) error {
+	record = api.nativeBackgroundFacts(sessionID, record)
 	id := nativeCodingEventID(sessionID, record)
 	activity := agentevents.NewCodingAgentNativeActivity(record)
 	activity.EventID = id
 	wrapped := agentevents.NewAgentEvent(activity)
 	wrapped.SessionID = sessionID
-	return api.eventStore.AddEventChecked(sessionID, storeevents.Event{ID: id, Type: string(agentevents.CodingAgentNativeActivity), Timestamp: time.Now(), SessionID: sessionID, ExecutionKind: "main_agent", Data: wrapped})
+	err := api.eventStore.AddEventChecked(sessionID, storeevents.Event{ID: id, Type: string(agentevents.CodingAgentNativeActivity), Timestamp: time.Now(), SessionID: sessionID, ExecutionKind: "main_agent", Data: wrapped})
+	if err == nil && record.WorkID != "" && record.Origin != "background_usage" {
+		api.wakeNativeBackgroundAccounting(sessionID)
+	}
+	if err == nil && record.Kind == "helper" && record.WorkID != "" && record.State != "progress" && record.Origin != "background_usage" {
+		log.Printf("[SUBAGENT_ROW] provider=%s session=%s task=%q state=%s", record.Provider, sessionID, record.TaskID, record.State)
+	}
+	return err
 }
 
 func (o *nativeTerminalObserver) acceptNativeCodingRecord(record llmtypes.NativeRecord) error {
+	if record.Kind == "plan" && record.Plan != nil {
+		// Active library turns own their stream/retained checklist. The observer
+		// publishes only a turn typed directly in the admitted terminal session.
+		if session, ok := mcpagent.LookupSession(o.snapshot.SessionID); ok && session.ActiveTurnID() != "" {
+			return nil
+		}
+		if record.TurnID == "" {
+			return nil
+		}
+		plan := *record.Plan
+		plan.Items = append([]llmtypes.CodingAgentPlanItem{}, record.Plan.Items...)
+		plan.PlanID, plan.NativeTurnID = "native:"+record.TurnID, record.TurnID
+		event := &agentevents.CodingAgentPlanEvent{BaseEventData: agentevents.BaseEventData{EventID: nativeCodingEventID(o.snapshot.SessionID, record) + ":plan", Timestamp: time.Now()}, CodingAgentPlan: plan}
+		wrapped := agentevents.NewAgentEvent(event)
+		wrapped.SessionID, wrapped.TurnID = o.snapshot.SessionID, "native:"+record.TurnID
+		err := o.api.eventStore.AddEventChecked(o.snapshot.SessionID, storeevents.Event{ID: event.EventID, Type: string(agentevents.CodingAgentPlan), Timestamp: event.Timestamp, SessionID: o.snapshot.SessionID, ExecutionKind: "main_agent", Data: wrapped})
+		if err == nil {
+			done := 0
+			for _, item := range plan.Items {
+				if item.Status == "completed" {
+					done++
+				}
+			}
+			log.Printf("[CODING_AGENT_PLAN] provider=%s session=%s turn=%s items=%d done=%d", record.Provider, o.snapshot.SessionID, record.TurnID, len(plan.Items), done)
+		}
+		return err
+	}
+
+	if record.Provider == "codex-cli" && record.Kind == "question" && record.Name == "request_user_input_async" {
+		if err := o.api.observeNativeAsyncQuestion(o.snapshot.SessionID, record); err != nil {
+			return err
+		}
+	}
+	if record.Provider == "codex-cli" && record.Kind == "tool" && record.Name == "Command" && (record.State == "completed" || record.State == "failed") {
+		if o.api.eventStore.CompleteNativeTool(o.snapshot.SessionID, record.ID, record.Timestamp, record.State == "failed", record.Output) {
+			go o.api.followUpFinishedCodexCommand(o.snapshot.SessionID, record.ID, record.State == "failed", record.Output)
+		}
+	}
+	// #3132: a Codex helper that finished after its parent's turn ended wakes
+	// the parent, like a finished command: Codex never starts that turn itself.
+	if record.Provider == "codex-cli" && record.Kind == "notice" && record.State == "subagent_finished" && record.ID != "" {
+		go o.api.followUpFinishedCodexHelper(o.snapshot.SessionID, record.ID, record.Name)
+	}
 	id := nativeCodingEventID(o.snapshot.SessionID, record)
 	observedAt := time.Now()
 	if err := o.api.saveNativeCodingActivity(o.snapshot.SessionID, record); err != nil {
 		return err
 	}
-	log.Printf("[NATIVE_RECORD] accepted session=%s provider=%s native=%s turn=%s item=%s kind=%s state=%s followup=%s event=%s", o.snapshot.SessionID, record.Provider, record.SessionID, record.TurnID, record.ID, record.Kind, record.State, record.FollowupID, id)
 	publicationOwner := ""
 	if record.Origin == "helper_finished" && record.TurnID != "" {
 		proposed := nativereplies.Observer
@@ -439,6 +559,13 @@ func (o *nativeTerminalObserver) acceptNativeCodingRecord(record llmtypes.Native
 		if !nativereplies.State(record.Provider, record.SessionID, record.TurnID).Committed {
 			return errNativeForegroundPending
 		}
+		return nil
+	}
+	// The SDK also streams synthetic helper follow-ups. Their transcript turn
+	// root is not necessarily the foreground publication root, but the native
+	// message/block identity is the same. Never publish that completed block twice.
+	if o.api.nativeReplyBlockAlreadyPublished(o.snapshot.SessionID, record.AssistantBlockID) {
+		log.Printf("[NATIVE_RECORD] reply_skipped session=%s provider=%s native=%s turn=%s item=%s reason=native_block_already_published block=%s", o.snapshot.SessionID, record.Provider, record.SessionID, record.TurnID, record.ID, record.AssistantBlockID)
 		return nil
 	}
 	chunk := &agentevents.StreamingChunkEvent{BaseEventData: agentevents.BaseEventData{EventID: id + ":reply", Timestamp: observedAt, Metadata: map[string]interface{}{"native_continuation": true, "provider": record.Provider, "native_record_id": record.ID, "native_turn_id": record.TurnID}}, Source: "transcript", Content: record.Text}
@@ -512,7 +639,10 @@ func (api *StreamingAPI) nativeCodingBackgroundWork(sessionID string) []SessionB
 	api.nativeObserversMu.Lock()
 	var observers []*nativeTerminalObserver
 	for _, o := range api.nativeObservers {
-		if o.snapshot.SessionID == sessionID {
+		// Claude in the chat view (no terminal session): its own live task list (claudeTaskBackgroundWork) is the
+		// running work, with each task's description and Stop. The transcript's started records there never see a
+		// completion and stayed "running" for days (51 items, the oldest a week old) (PLAT-746-854).
+		if o.snapshot.SessionID == sessionID && !(o.provider == string(llmproviders.ProviderClaudeCode) && strings.TrimSpace(o.snapshot.TmuxSession) == "") {
 			observers = append(observers, o)
 		}
 	}
@@ -538,4 +668,27 @@ func (api *StreamingAPI) nativeCodingBackgroundWork(sessionID string) []SessionB
 		o.mu.Unlock()
 	}
 	return items
+}
+
+// Only a completed main-session native block proves publication. Empty IDs,
+// partial streams, another chat and legacy/unstreamed records are not proof.
+func (api *StreamingAPI) nativeReplyBlockAlreadyPublished(sessionID, blockID string) bool {
+	if api == nil || api.eventStore == nil || blockID == "" {
+		return false
+	}
+	for _, event := range api.eventStore.GetAllEventsRaw(sessionID) {
+		if event.Type != "streaming_chunk" || event.TerminalOwnerID != "main:"+sessionID {
+			continue
+		}
+		data := eventPayloadMap(event)
+		metadata, _ := data["metadata"].(map[string]interface{})
+		if metadata["assistant_block_id"] != blockID || metadata["assistant_block_phase"] != "end" || data["source"] != "transcript" {
+			continue
+		}
+		content, _ := data["content"].(string)
+		if content != "" {
+			return true
+		}
+	}
+	return false
 }

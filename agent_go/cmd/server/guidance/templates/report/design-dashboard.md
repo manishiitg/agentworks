@@ -17,11 +17,10 @@ If motion is requested, also load
 
 Read `builder-reference/references/dashboard-authoring.md` with read_skill
 before choosing components, authoring index.tsx, previewing or publishing.
-It is the same canonical authoring procedure as panel-dashboard in Crew and
-Relay Builders. It owns the TSX contract, shared shadcn/Recharts components, default theme, design workflow
+It is the same canonical authoring procedure as panel-dashboard in Crew. It owns the TSX contract, shared shadcn/Recharts components, default theme, design workflow
 and shared widget/API examples. Use dashboard action=catalog for the current
-component contracts. The sections below cover this Goal's own report data and
-runtime; a dashboard edit does not authorize plan or execution changes.
+component contracts. The sections below cover this project's own report data and
+runtime; a dashboard edit does not authorize workflow source or execution changes.
 
 ## Existing HTML documents and runtime
 
@@ -114,5 +113,5 @@ and per-capture `ui_checks`; verify the requested design and local interactions.
 Use only image-viewing capabilities actually available to the current client.
 
 ## When it works
-Call `dashboard action=link` and give the person the link in plain words. Share opens this dashboard, Ask and published functions to the chosen audience and allows MCP reads of product files, runs and logs; secret values and private logs stay excluded. Tell them to press Share, or use MCP `share` action=get|set with their chosen audience. Private Crews have no automatic dashboard. When sharing needs one, ask whether to create a standard dashboard; pass create_dashboard=true to share only after the person agrees. Never put the dashboard on a public website or add a password page. For an MP4 or animation of the data, use the dashboard tool's `export_motion` action after loading the motion guide (`motion-guide` skill).
+Call `dashboard action=link` and give the person the link in plain words. Share opens this dashboard, Ask and published functions to the chosen audience and allows MCP reads of product files, runs and logs; secret values and private logs stay excluded. Tell them to press Share, or use MCP `share` action=get|set with their chosen audience. Private projects have no automatic dashboard. When sharing needs one, ask whether to create a standard dashboard; pass create_dashboard=true to share only after the person agrees. Never put the dashboard on a public website or add a password page. For an MP4 or animation of the data, use the dashboard tool's `export_motion` action after loading the motion guide (`motion-guide` skill).
 

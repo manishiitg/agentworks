@@ -1,3 +1,4 @@
+import { randomUUID } from '../utils/randomUUID'
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios'
 
 // A 409 with this marker means the previous turn still held the session input
@@ -36,7 +37,7 @@ function defaultSleep(ms: number): Promise<void> {
 function rotateIdempotencyKey(headers: unknown): void {
   const holder = headers as { set?: (name: string, value: string) => void; [name: string]: unknown } | undefined
   if (!holder) return
-  const fresh = crypto.randomUUID()
+  const fresh = randomUUID()
   if (typeof holder.set === 'function') {
     holder.set('Idempotency-Key', fresh)
     return

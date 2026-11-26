@@ -1,7 +1,7 @@
 import type { PollingEvent } from '../services/api-types'
 
 // Events that end a turn. After one of these the next user message starts a new turn.
-const TURN_END_EVENTS = new Set(['unified_completion', 'conversation_end', 'conversation_error', 'context_cancelled', 'streaming_end'])
+const TURN_END_EVENTS = new Set(['unified_completion', 'conversation_end', 'conversation_error', 'context_cancelled'])
 
 // The server's own start time of the turn now running: the timestamp the server put on the first user message after
 // the last turn ended. Display only; nothing is decided from it.

@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/projectfunctions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/redaction"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
@@ -230,7 +230,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		// snapshot instead of silently switching an existing native conversation.
 		resolved := hcpo.selectExecutionLLM(ctx, &saved.Config, saved.StepID)
 		if resolved == nil {
-			return nil, nil, fmt.Errorf("No agent model is configured for this automation; choose its model in the Crew chat.")
+			return nil, nil, fmt.Errorf("No agent model is configured for this automation; choose its model in the project chat.")
 		}
 		saved.Config.ExecutionLLM = &AgentLLMConfig{Provider: resolved.Primary.Provider, ModelID: resolved.Primary.ModelID, ConnectionID: resolved.Primary.ConnectionID, Options: resolved.Primary.Options}
 		if args.Reasoning != "" {
@@ -277,7 +277,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 			return nil, nil, err
 		}
 		pool, executors := hcpo.filterOrdinaryStepTools(hcpo.WorkspaceTools, hcpo.WorkspaceToolExecutors)
-		functionSelection := strings.HasPrefix(requested, agentworksproduct.ExecutionFunctionTools().Category+":")
+		functionSelection := strings.HasPrefix(requested, projectfunctions.ExecutionTools().Category+":")
 		if functionSelection {
 			var err error
 			pool, executors, err = hcpo.pythonFunctionTools(ctx, saved.StepID)
@@ -287,7 +287,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		}
 		matched, enabled := orchestrator.FilterCustomToolsByCategory(pool, executors, []string{requested})
 		if len(matched) == 0 {
-			return nil, nil, fmt.Errorf("Tool %q is unavailable to this automation; select an available tool in its Crew.", requested)
+			return nil, nil, fmt.Errorf("Tool %q is unavailable to this automation; select an available tool in its project.", requested)
 		}
 		for _, tool := range matched {
 			name := tool.Function.Name
@@ -310,7 +310,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 				if err := json.Unmarshal(raw, &schema); err != nil {
 					return nil, nil, err
 				}
-				selection.Scripts = append(selection.Scripts, mcpagent.ToolDefinition{Name: name, Description: tool.Function.Description, InputSchema: schema, DisplayGroup: agentworksproduct.ExecutionFunctionTools().Category, Execute: execute})
+				selection.Scripts = append(selection.Scripts, mcpagent.ToolDefinition{Name: name, Description: tool.Function.Description, InputSchema: schema, DisplayGroup: projectfunctions.ExecutionTools().Category, Execute: execute})
 			} else {
 				saved.Config.EnabledCustomTools = append(saved.Config.EnabledCustomTools, requested)
 			}
@@ -329,9 +329,9 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 		}
 		if !found {
 			if toolName == "agent_browser" {
-				return nil, nil, fmt.Errorf("This automation's browser is not available. In its Crew chat, ask to choose and connect its browser, then retry.")
+				return nil, nil, fmt.Errorf("This automation's browser is not available. In its project chat, ask to choose and connect its browser, then retry.")
 			}
-			return nil, nil, fmt.Errorf("The requested %s tool is unavailable to this automation; connect it in the Crew or turn off that selection.", toolName)
+			return nil, nil, fmt.Errorf("The requested %s tool is unavailable to this automation; connect it in the project or turn off that selection.", toolName)
 		}
 	}
 	available := append([]string{}, hcpo.GetSelectedServers()...)
@@ -422,6 +422,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	var args pythonAgentArguments
 	if err = json.Unmarshal(raw, &args); err != nil {
 		return pythonHelperReply{Error: "Invalid agent arguments: " + err.Error()}
+	}
+	expect, err := parsePythonAgentExpect(arguments)
+	if err != nil {
+		return pythonHelperReply{Error: err.Error()}
 	}
 	saved, selection, err := hcpo.preparePythonAgent(ctx, parent, args)
 	if err != nil {
@@ -527,7 +531,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 		return reply
 	}
 	var finalAnswer string
-	for _, message := range args.Messages {
+	runTurn := func(message string) bool {
 		item := AgentItem{ID: fmt.Sprintf("turn-%d", saved.Session.ExecutionTurnCount+1), Type: "user_message", Message: message, WriteAccess: AgentWriteAccess{DB: true}}
 		result, turnErr := hcpo.executeAgentUserMessage(agentCtx, step, item, 0, saved.StepID, &saved.Session)
 		finalAnswer = redaction.Text(result)
@@ -537,13 +541,44 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 		if saveErr := persist(); saveErr != nil {
 			failure = saveErr
 			reply.Error = "The agent ran, but its continuation state could not be saved: " + saveErr.Error()
-			return reply
+			return false
 		}
 		if turnErr != nil {
 			failure = turnErr
 			reply.Error = scriptOutputPreview(redaction.Text(turnErr.Error()), log.Path())
 			log.Note("agent call failed: " + redaction.Text(turnErr.Error()))
+			return false
+		}
+		return true
+	}
+	for _, message := range args.Messages {
+		if !runTurn(message) {
 			return reply
+		}
+	}
+	// expect= (#3616): check the output without a model; failures go back to the same agent for a few
+	// correction turns, then the call fails with the checks that still fail.
+	if expect != nil {
+		for try := 0; ; try++ {
+			data, failures, checkErr := hcpo.checkPythonAgentExpect(ctx, expect, runRoot, attempt, try, finalAnswer)
+			if checkErr != nil {
+				failure = checkErr
+				reply.Error = "The agent answered, but its output could not be checked: " + redaction.Text(checkErr.Error())
+				return reply
+			}
+			if len(failures) == 0 {
+				reply.Value = data
+				break
+			}
+			log.Note(fmt.Sprintf("expect check %d failed: %s", try+1, strings.Join(failures, "; ")))
+			if try >= pythonAgentExpectTries {
+				failure = fmt.Errorf("output checks failed")
+				reply.Error = scriptOutputPreview("The output still failed its checks after "+fmt.Sprint(pythonAgentExpectTries)+" corrections:\n- "+strings.Join(failures, "\n- "), log.Path())
+				return reply
+			}
+			if !runTurn(pythonAgentCorrection(failures)) {
+				return reply
+			}
 		}
 	}
 	answerPath := filepath.ToSlash(filepath.Join("runs", hcpo.selectedRunFolder, "helpers", "answers", attempt+".txt"))

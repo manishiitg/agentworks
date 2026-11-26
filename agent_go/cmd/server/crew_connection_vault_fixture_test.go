@@ -67,9 +67,31 @@ func newCrewConnectionVaultFixture(t *testing.T) *crewConnectionVaultFixture {
 			if in["Provider"] != nil {
 				oauth, status = "Example", "pending"
 			}
-			c := map[string]any{"ID": id, "id": id, "VaultID": "v-123456", "Label": in["Label"], "Provider": "example", "Status": status, "OAuthServer": oauth, "OAuthCredentialID": id}
+			c := map[string]any{"ID": id, "id": id, "VaultID": "v-123456", "Label": in["Label"], "Provider": "example", "Status": status, "OAuthServer": oauth, "OAuthCredentialID": id, "UpstreamURL": "https://mcp.example.com/mcp"}
 			f.connections[id] = c
 			json.NewEncoder(w).Encode(c)
+		case strings.HasPrefix(r.URL.Path, "/api/vaults/v-123456/connectors/") && (r.Method == http.MethodPut || r.Method == http.MethodDelete):
+			id := strings.TrimPrefix(r.URL.Path, "/api/vaults/v-123456/connectors/")
+			c, ok := f.connections[id]
+			if !ok {
+				w.WriteHeader(404)
+				return
+			}
+			if r.Method == http.MethodDelete {
+				delete(f.connections, id)
+			} else {
+				var in map[string]any
+				if json.NewDecoder(r.Body).Decode(&in) != nil {
+					w.WriteHeader(400)
+					return
+				}
+				for key, value := range in {
+					if value != "" {
+						c[key] = value
+					}
+				}
+			}
+			w.WriteHeader(http.StatusNoContent)
 		case strings.HasPrefix(r.URL.Path, "/api/vaults/v-123456/connectors/") && strings.HasSuffix(r.URL.Path, "/sync") && r.Method == http.MethodPost:
 			json.NewEncoder(w).Encode(map[string]any{"tools": []any{}})
 		case r.URL.Path == "/api/admin/connectors/"+crewForeignConnection:

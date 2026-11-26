@@ -2,6 +2,7 @@ package filesnapshots
 
 import (
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
@@ -113,7 +114,7 @@ func CardActions(groups []Group, canEdit bool, cardCommands []commands.Command) 
 		}
 		out = append(out, CardAction{ID: "command:" + fm.Name, Kind: "command", Label: fm.Name, AriaLabel: aria, Description: description, Icon: fm.Icon, Placement: placement, Prompt: commandPrompt(command.Content, cardContext(groups)), EditorsOnly: true})
 	}
-	out = append(out, CardAction{ID: CardAddButton, Kind: "builtin", Label: "Add button", Description: "Save a reusable button on this Crew's file-change toolbar.", Icon: "plus", Placement: "row", Prompt: "Add a reusable button to this Crew's AgentWorks \"Files changed during this reply\" toolbar.\n\nButton name: ___\nMessage to send when clicked: ___\n\nRead the crew-builder skill's reply-card button guidance. Save this Crew command with manage_custom_commands and show_on_card=true, using a fitting icon.", EditorsOnly: true})
+	out = append(out, CardAction{ID: CardAddButton, Kind: "builtin", Label: "Add button", Description: "Save a reusable button on this project's file-change toolbar.", Icon: "plus", Placement: "row", Prompt: "Add a reusable button to this project's AgentWorks \"Files changed during this reply\" toolbar.\n\nButton name: ___\nMessage to send when clicked: ___\n\nRead the crew-builder skill's reply-card button guidance. Save this project command with manage_custom_commands and show_on_card=true, using a fitting icon.", EditorsOnly: true})
 	return append(out, links...)
 }
 
@@ -163,7 +164,7 @@ func getLatestPrompt(g Group) string {
 
 func groupFolder(g Group) string {
 	if g.Root == "" {
-		return "the Crew folder"
+		return "the project folder"
 	}
 	return g.Root
 }
@@ -196,29 +197,63 @@ func fileLines(g Group) string {
 }
 
 // cardContext is this reply's context for a card command: it replaces
-// {{context}} in the command's prompt.
+// {{context}} in the command's prompt. Each changed place gets its own line
+// (folder, repository, branch, PR) so files are never credited to another
+// checkout's branch.
 func cardContext(groups []Group) string {
-	var paths []string
-	var repo *Group
-	for i, g := range groups {
+	const perPlace = 20
+	var lines []string
+	for _, g := range groups {
+		if len(g.Files) == 0 {
+			continue
+		}
+		names := make([]string, 0, len(g.Files))
 		for _, file := range g.Files {
-			paths = append(paths, file.Path)
+			name := file.Path
+			if g.Root != "" {
+				name = strings.TrimPrefix(name, g.Root+"/")
+			}
+			names = append(names, name)
 		}
-		if repo == nil && g.Kind == "repo" && g.Branch != "" {
-			repo = &groups[i]
+		more := g.MoreCount
+		if len(names) > perPlace {
+			more += len(names) - perPlace
+			names = names[:perPlace]
 		}
-	}
-	if len(paths) > 20 {
-		paths = paths[:20]
-	}
-	text := "Context: this reply changed these files: " + strings.Join(paths, ", ")
-	if repo != nil {
-		text += " in " + repo.Name + " on branch " + repo.Branch
-		if repo.PR != nil && repo.PR.URL != "" {
-			text += "; PR " + repo.PR.URL
+		where := "Files outside Git"
+		if g.Kind == "repo" {
+			folder := g.Root
+			if folder == "" {
+				folder = "the project folder"
+			}
+			where = "Folder " + folder
+			switch {
+			case g.Worktree && g.Repository != "":
+				where += " (worktree of " + g.Repository + ")"
+			case g.Repository != "" && g.Repository != path.Base(folder):
+				where += " (repository " + g.Repository + ")"
+			}
+			if g.Branch != "" {
+				where += ", branch " + g.Branch
+			}
+			if g.PR != nil && g.PR.URL != "" {
+				where += ", PR " + g.PR.URL
+			}
 		}
+		line := "- " + where + ": " + strings.Join(names, ", ")
+		if more > 0 {
+			line += fmt.Sprintf(" (and %d more)", more)
+		}
+		lines = append(lines, line)
 	}
-	return text
+	if len(lines) == 0 {
+		return ""
+	}
+	head := "Context: this reply changed these files."
+	if len(lines) > 1 {
+		head = fmt.Sprintf("Context: this reply changed files in %d places.", len(lines))
+	}
+	return head + "\n" + strings.Join(lines, "\n")
 }
 
 // commandPrompt fills a command's {{context}}; a command without the

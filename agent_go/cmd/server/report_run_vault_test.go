@@ -44,15 +44,12 @@ func TestReportRunVaultBridgeUsesLiveViewerAndEndsWithScript(t *testing.T) {
 	if _, err := api.resolveGovernedMCP(ctx, "viewer", "vault_c_notion"); err != nil {
 		t.Fatal(err)
 	}
-	ctx, _, tool, err = api.vaultBridgeToolName(context.Background(), session, "Notion", "fetch-page")
-	if err != nil || tool != "notion__fetch-page" {
-		t.Fatalf("legacy report tool path was lost: %q %v", tool, err)
+	// PLAT-746: current stable tool spelling (23f75add6a) and explicit selection both matter.
+	if _, err := api.resolveScopedGovernedMCP(ctx, nil, []string{"vault_c_notion"}, []string{"vault_c_notion:" + tool}, "viewer", "Notion", tool); err != nil {
+		t.Fatalf("selected current connection/tool was refused: %v", err)
 	}
-	if _, err := api.resolveScopedGovernedMCP(ctx, nil, []string{"Notion"}, []string{"Notion:fetch-page"}, "viewer", "Notion", tool); err != nil {
-		t.Fatalf("legacy selected tool was lost: %v", err)
-	}
-	if _, err := api.resolveScopedGovernedMCP(ctx, nil, []string{"Notion"}, []string{"Notion:other-tool"}, "viewer", "Notion", tool); err != nil {
-		t.Fatal("authorized Vault tools must be independent of project tool selection")
+	if _, err := api.resolveScopedGovernedMCP(ctx, nil, []string{"vault_c_notion"}, []string{"vault_c_notion:other-tool"}, "viewer", "Notion", tool); err == nil || !strings.Contains(err.Error(), "MCP tool is not selected for this project") {
+		t.Fatalf("unselected tool did not hit the current selection rule: %v", err)
 	}
 	allowed = false
 	if _, err := api.resolveGovernedMCP(context.Background(), "viewer", "vault_c_notion"); err == nil {

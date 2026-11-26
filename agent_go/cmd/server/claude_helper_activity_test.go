@@ -24,3 +24,20 @@ func TestNativeHelperProgressKeepsOnlyItsParentActive(t *testing.T) {
 		}
 	}
 }
+
+// A turn sitting on a long step said only "Opening drawers…": the quiet line must
+// name the step by the agent's own summary, not a command's first line ("set -e").
+func TestQuietTurnNamesTheStepItWaitsOn(t *testing.T) {
+	now := time.Now()
+	state := turnInactivityState{sessionID: "chat", startedAt: now.Add(-time.Hour), lastOutputAt: now.Add(-time.Hour), executionID: "turn", tools: map[string]idleTool{}}
+	start := &agentevents.ToolCallStartEvent{ToolName: "set -e", ToolCallID: "call-1", ToolParams: agentevents.ToolParams{Arguments: `{"CommandLine":"set -e\n./deploy.sh verify","toolSummary":"Re-verify the pull request"}`}}
+	state.observe(storeevents.Event{SessionID: "chat", ExecutionID: "turn", Type: "tool_call_start", Timestamp: now, ExecutionKind: "main_agent", Data: agentevents.NewAgentEvent(start)}, now)
+	if got := state.waitingOn(); got != "Re-verify the pull request" {
+		t.Fatalf("waiting on %q, want the step's own summary", got)
+	}
+	end := &agentevents.ToolCallEndEvent{ToolName: "set -e", ToolCallID: "call-1"}
+	state.observe(storeevents.Event{SessionID: "chat", ExecutionID: "turn", Type: "tool_call_end", Timestamp: now, ExecutionKind: "main_agent", Data: agentevents.NewAgentEvent(end)}, now)
+	if got := state.waitingOn(); got != "" {
+		t.Fatalf("still waiting on finished step %q", got)
+	}
+}

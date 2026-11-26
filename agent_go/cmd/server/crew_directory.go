@@ -75,7 +75,6 @@ type sharedProjectTrigger struct {
 	Kind           string         `json:"kind,omitempty"`
 	Message        string         `json:"message,omitempty"`
 	RunDestination string         `json:"run_destination,omitempty"`
-	AuthMode       string         `json:"auth_mode,omitempty"`
 	Caller         *triggerCaller `json:"caller,omitempty"`
 }
 
@@ -323,10 +322,8 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 	return rows
 }
 
-// readCrewProjectManifests loads a crew's product and runtime manifests
-// read-only. It never migrates or writes: a crew missing its runtime
-// manifest lists with whatever product.json carries.
-func readCrewProjectManifests(ctx context.Context, profileID, projectRoot string) (productProjectManifest, error) {
+// readCrewProjectMetadata reads identity and the Main pointer without loading runtime actions.
+func readCrewProjectMetadata(ctx context.Context, profileID, projectRoot string) (productProjectManifest, error) {
 	raw, found, err := readFileFromWorkspace(ctx, projectRoot+"/product.json")
 	if err != nil || !found {
 		if err != nil {
@@ -340,6 +337,15 @@ func readCrewProjectManifests(ctx context.Context, profileID, projectRoot string
 	}
 	if !strings.EqualFold(strings.TrimSpace(manifest.Product), strings.TrimSpace(profileID)) || strings.TrimSpace(manifest.ID) == "" {
 		return productProjectManifest{}, errSharedProjectNotFound
+	}
+	return manifest, nil
+}
+
+// readCrewProjectManifests also expands runtime actions for callers that need them.
+func readCrewProjectManifests(ctx context.Context, profileID, projectRoot string) (productProjectManifest, error) {
+	manifest, err := readCrewProjectMetadata(ctx, profileID, projectRoot)
+	if err != nil {
+		return productProjectManifest{}, err
 	}
 	if isProjectProfileID(profileID) {
 		// Falls back to product.json when workflow.json is absent;
@@ -377,7 +383,7 @@ func summarizeSharedProject(ctx context.Context, claims *UserClaims, ownerID, pr
 		CanBuild:        crewProjectOwnedByCaller(claims.UserID, projectRoot),
 		ID:              manifest.ID,
 		Title:           manifest.Title,
-		Description:     strings.TrimSpace(manifest.Description),
+		Description:     manifest.purpose(),
 		Name:            strings.TrimSpace(manifest.Identity.Name),
 		OwnerID:         ownerID,
 		OwnerUsername:   crewOwnerDisplayName(ownerID),
@@ -429,9 +435,6 @@ func summarizeSharedProjectTrigger(trigger productWebhookTrigger) sharedProjectT
 		Kind:           strings.TrimSpace(trigger.Kind),
 		Message:        trigger.Message,
 		RunDestination: trigger.shownRunDestination(),
-	}
-	if trigger.Webhook != nil {
-		out.AuthMode = strings.TrimSpace(trigger.Webhook.AuthMode)
 	}
 	if trigger.Caller != nil {
 		caller := *trigger.Caller
@@ -678,5 +681,5 @@ func (api *StreamingAPI) handlePutProjectSharing(w http.ResponseWriter, r *http.
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	writeAgentProfileError(w, http.StatusConflict, "Share this Crew from its dashboard: open the dashboard and press Share.")
+	writeAgentProfileError(w, http.StatusConflict, "Share this project from its dashboard: open the dashboard and press Share.")
 }

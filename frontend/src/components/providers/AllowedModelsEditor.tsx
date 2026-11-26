@@ -39,7 +39,16 @@ export default function AllowedModelsEditor({ provider, value, disabled = false,
   }, [provider])
   // A model on the saved list the catalog no longer shows stays listed, so saving never drops it silently.
   const known = new Set(catalog.map(model => model.model_id))
-  const rows = [...catalog.filter(model => !notAModel(provider, model.model_id)), ...selected.filter(id => !known.has(id)).map(id => ({ model_id: id, model_name: id }))]
+  const rows = [...catalog.filter(model => !notAModel(provider, model.model_id)), ...selected.filter(id => !known.has(id)).map(id => ({ model_id: id, model_name: id } as DynamicModelEntry))]
+  // Variants of one model share a family name (seven "Grok 4.6" chips): label each with its variant, and fall
+  // back to the id when two chips would still read the same.
+  const baseLabel = (model: DynamicModelEntry) => {
+    const name = model.family || model.model_name || model.model_id
+    return model.variant && model.variant !== 'Standard' ? `${name} · ${model.variant}` : name
+  }
+  const labelCount = new Map<string, number>()
+  rows.forEach(model => labelCount.set(baseLabel(model), (labelCount.get(baseLabel(model)) ?? 0) + 1))
+  const chipLabel = (model: DynamicModelEntry) => (labelCount.get(baseLabel(model)) ?? 0) > 1 ? model.model_id : baseLabel(model)
   const toggle = (id: string) => setSelected(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id])
   const canSave = !disabled && (!limited || selected.length > 0)
   return (
@@ -55,7 +64,7 @@ export default function AllowedModelsEditor({ provider, value, disabled = false,
           {!loading && rows.length === 0 && <p className="text-xs text-gray-500 dark:text-gray-400">No models listed for this provider.</p>}
           {rows.map(model => (
             <Chip key={model.model_id} on={selected.includes(model.model_id)} disabled={disabled} onClick={() => toggle(model.model_id)} title={model.model_id}>
-              {model.model_name || model.model_id}
+              {chipLabel(model)}
             </Chip>
           ))}
           {selected.length === 0 && !loading && <p className="w-full text-xs text-amber-700 dark:text-amber-300">Pick at least one model, or choose All models.</p>}

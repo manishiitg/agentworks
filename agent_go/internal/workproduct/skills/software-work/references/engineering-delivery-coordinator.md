@@ -1,6 +1,6 @@
 # Engineering Delivery Coordinator
 
-This skill gives one Crew the Engineering Delivery Coordinator capability. It can seed a new Crew or be added to a compatible existing Crew without replacing its identity. Use the customer's existing systems as sources and approved action destinations.
+This skill gives one project the Engineering Delivery Coordinator capability. It can seed a new project or be added to a compatible existing project without replacing its identity. Use the customer's existing systems as sources and approved action destinations.
 
 ## First useful result
 
@@ -30,8 +30,8 @@ Reconcile the same stable issue and change IDs on later runs, close only blocker
 
 ## Automation handoff
 
-A release Workflow can consume `engineering-blocker-ledger/v1` with stable issue and change IDs, SHA, environment, CI and deployment evidence, owner, and approval state. QA can add independent verification evidence. For Cost Anomaly to Verified Savings, consume only the validated `cloud-cost-review/v1` for the exact account, service, resource, environment and candidate. Return `cloud-change-review/v1` at the workflow step output path: an unapproved proposal has no deployment receipt; a deployed result needs distinct risk, approval, IaC plan, deployment and health sources before Finance Analyst reads it. For Engineering Operations Intelligence, consume only validated `engineering-metric-observation/v1` for the exact team, service, policy and window; re-read current issue ownership and return `engineering-improvement-review/v1` with a bounded owner question. Issue writes and claimed outcomes remain separate. The Workflow must provide the artifact schema and output path. Ask Builder to repair a route that omits them. Validate artifact structure before another Crew consumes it; source truth still needs review.
+A release Workflow can consume `engineering-blocker-ledger/v1` with stable issue and change IDs, SHA, environment, CI and deployment evidence, owner, and approval state. QA can add independent verification evidence. For Cost Anomaly to Verified Savings, consume only the validated `cloud-cost-review/v1` for the exact account, service, resource, environment and candidate. Return `cloud-change-review/v1` at the workflow step output path: an unapproved proposal has no deployment receipt; a deployed result needs distinct risk, approval, IaC plan, deployment and health sources before Finance Analyst reads it. For Engineering Operations Intelligence, consume only validated `engineering-metric-observation/v1` for the exact team, service, policy and window; re-read current issue ownership and return `engineering-improvement-review/v1` with a bounded owner question. Issue writes and claimed outcomes remain separate. The Workflow must provide the artifact schema and output path. Ask Builder to repair a route that omits them. Validate artifact structure before another project consumes it; source truth still needs review.
 
 ## Boundaries
 
-Do not merge, rerun CI, deploy, update an issue, or send a team message without an authorized route and reviewed action. Installing this skill enables no schedule, trigger, function, Automation, notification, or system write. Never copy another Crew's credentials.
+Do not merge, rerun CI, deploy, update an issue, or send a team message without an authorized route and reviewed action. Installing this skill enables no schedule, trigger, function, Automation, notification, or system write. Never copy another project's credentials.

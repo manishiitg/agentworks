@@ -1262,7 +1262,7 @@ func isAllowedAbsoluteHostPath(candidate string, guard *FolderGuardConfig) bool 
 			if err != nil || !found {
 				continue
 			}
-			reads, _, _ := crewroot.NativeGrants(docs, []string{grant}, nil)
+			reads, _, _, _ := crewroot.NativeGrants(docs, []string{grant}, nil)
 			for _, allowed := range reads {
 				physical, bound, err := crewroot.Resolve(docs, allowed)
 				if filepath.IsAbs(allowed) {

@@ -20,6 +20,11 @@ func RegisterSkillRoutes(router *mux.Router, api *StreamingAPI) {
 
 	router.HandleFunc("/skills", workspaceSkillRoute(false, listSkillsHandler(workspaceAPIURL))).Methods("GET", "OPTIONS")
 	router.HandleFunc("/skills/runtime", workspaceSkillRoute(false, api.runtimeSkillsHandler)).Methods("GET", "OPTIONS")
+	router.HandleFunc("/skills/discover", api.nativeSkillsRoute(false)).Methods("GET", "OPTIONS")
+	router.HandleFunc("/skills/invocation", api.ownNativeSkillRoute(false, api.nativeSkillCatalogHandler)).Methods("GET", "OPTIONS")
+	router.HandleFunc("/skills/discover", api.nativeSkillsRoute(true)).Methods("POST", "OPTIONS")
+	router.HandleFunc("/skills/validate-folder", workspaceSkillRoute(false, skillFolderUpload(false))).Methods("POST", "OPTIONS")
+	router.HandleFunc("/skills/import-folder", workspaceSkillRoute(true, skillFolderUpload(true))).Methods("POST", "OPTIONS")
 	router.HandleFunc("/skills/import", workspaceSkillRoute(true, importSkillHandler(workspaceAPIURL))).Methods("POST", "OPTIONS")
 	router.HandleFunc("/skills/import-zip", workspaceSkillRoute(true, importSkillZipHandler(workspaceAPIURL))).Methods("POST", "OPTIONS")
 	router.HandleFunc("/skills/validate", workspaceSkillRoute(false, validateSkillHandler(workspaceAPIURL))).Methods("POST", "OPTIONS")
@@ -60,7 +65,7 @@ func workspaceSkillRoute(write bool, handler http.HandlerFunc) http.HandlerFunc 
 		if crew, ok := resolveCrewPath(r.Context(), claims.UserID, clean); ok {
 			access := crewAccessFor(claims, crew)
 			if crew.Rest != "" || access == crewAccessNone || (write && access != crewAccessOwner) {
-				http.Error(w, "Crew skill access denied", 403)
+				http.Error(w, "Project skill access denied", 403)
 				return
 			}
 			clean = crew.Root

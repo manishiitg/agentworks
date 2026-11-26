@@ -9,7 +9,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -182,6 +184,19 @@ func openAgentMailboxFile(path string, wal bool) (*agentMailbox, error) {
 	// Message bodies live here: the server account only (WAL/SHM follow the mode).
 	_ = os.Chmod(path, 0o600)
 	return mb, nil
+}
+
+// closeAgentMailbox closes the server's mailbox at shutdown. It stays
+// registered, closed, so a late write fails instead of landing in a
+// throwaway in-memory mailbox.
+func closeAgentMailbox() {
+	agentMailboxes.Lock()
+	defer agentMailboxes.Unlock()
+	if mb := agentMailboxes.opened; mb != nil {
+		if err := mb.db.Close(); err != nil {
+			log.Printf("[AGENT-MAILBOX] close failed: %v", err)
+		}
+	}
 }
 
 // Unit tests have no server start: each test workspace gets its own private
@@ -425,10 +440,7 @@ func cloneAgentMessages(in []agentMessage) []agentMessage {
 	}
 	out := slices.Clone(in)
 	for i := range out {
-		if out[i].File != nil {
-			f := *out[i].File
-			out[i].File = &f
-		}
+		out[i].Attachments = slices.Clone(out[i].Attachments)
 	}
 	return out
 }
@@ -516,6 +528,9 @@ func agentMailboxTiming(operation string, start time.Time, rows int, ioTime time
 // waiting readers. Callers hold agentMessageMu since their read.
 func saveAgentMessageStore(ctx context.Context, s agentMessageStore) error {
 	start := time.Now()
+	if err := expireAbandonedAgentRegistrations(ctx, &s, time.Now().UTC()); err != nil {
+		return err
+	}
 	mb, err := currentAgentMailbox()
 	if err != nil {
 		return err
@@ -541,6 +556,15 @@ func saveAgentMessageStore(ctx context.Context, s agentMessageStore) error {
 	}
 	if err = tx.Commit(); err != nil {
 		return err
+	}
+	retained := map[string]bool{}
+	for _, a := range next.store.Agents {
+		retained[a.ID] = true
+	}
+	for _, a := range base.store.Agents {
+		if !retained[a.ID] {
+			log.Printf("[AGENTBRIDGE] event=registration_removed agent=%s user=%s result=committed", a.ID, a.UserID)
+		}
 	}
 	ioTime := time.Since(start)
 	mb.mu.Lock()
@@ -587,14 +611,17 @@ func endpointColumns(e agentMessageEndpoint) []any {
 }
 
 func sameAgentMessage(a, b agentMessage) bool {
-	if (a.File == nil) != (b.File == nil) || a.File != nil && *a.File != *b.File {
+	if !slices.Equal(a.Attachments, b.Attachments) {
 		return false
 	}
-	a.File, b.File = nil, nil
-	return a == b
+	a.Attachments, b.Attachments = nil, nil
+	return reflect.DeepEqual(a, b)
 }
 
 func sameNamedAgentRow(a, b namedMessageAgent) bool {
+	if !sameHostedBridgeBinding(a.Hosted, b.Hosted) {
+		return false
+	}
 	if (a.Attachment == nil) != (b.Attachment == nil) || a.Attachment != nil && *a.Attachment != *b.Attachment {
 		return false
 	}
@@ -618,10 +645,11 @@ func messageRowValues(inbox string, m agentMessage) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	fileID := ""
-	if m.File != nil {
-		fileID = m.File.ID
+	ids := make([]string, len(m.Attachments))
+	for i, f := range m.Attachments {
+		ids[i] = f.ID
 	}
+	fileID := strings.Join(ids, ",")
 	return []any{inbox, m.ID, m.Sequence, m.AgentSequence, m.From, m.Submission, m.Delivery, boolInt(!m.DeliveredAt.IsZero()), boolInt(!m.InboxRemovedAt.IsZero()), fileID, string(raw)}, nil
 }
 
@@ -657,8 +685,8 @@ func writeAgentMailboxDiff(tx *sql.Tx, base *agentMailboxImage, s *agentMessageS
 			continue
 		}
 		for _, m := range c.Messages {
-			if m.File != nil {
-				w.deletedFiles = append(w.deletedFiles, m.File.ID)
+			for _, f := range m.Attachments {
+				w.deletedFiles = append(w.deletedFiles, f.ID)
 			}
 		}
 		if err := exec(`DELETE FROM messages WHERE inbox_id=?`, c.ID); err != nil {
@@ -692,7 +720,7 @@ func writeAgentMailboxDiff(tx *sql.Tx, base *agentMailboxImage, s *agentMessageS
 		cols := append([]any{c.ID, ord, c.Next}, endpointColumns(c.Endpoints[0])...)
 		cols = append(cols, endpointColumns(c.Endpoints[1])...)
 		cols = append(cols, string(endpoints))
-		if !existed || old.Conversations[oi].Next != c.Next || old.Conversations[oi].Endpoints != c.Endpoints || base.convOrds[c.ID] != ord {
+		if !existed || old.Conversations[oi].Next != c.Next || !sameAgentMessageEndpoint(old.Conversations[oi].Endpoints[0], c.Endpoints[0]) || !sameAgentMessageEndpoint(old.Conversations[oi].Endpoints[1], c.Endpoints[1]) || base.convOrds[c.ID] != ord {
 			if err := exec(`INSERT INTO conversations(inbox_id, ord, next_sequence, a_user_id, a_kind, a_ref_id, a_named_agent_id, a_external, a_profile, a_session, b_user_id, b_kind, b_ref_id, b_named_agent_id, b_external, b_profile, b_session, endpoints)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(inbox_id) DO UPDATE SET ord=excluded.ord, next_sequence=excluded.next_sequence,
@@ -732,8 +760,8 @@ ON CONFLICT(inbox_id) DO UPDATE SET ord=excluded.ord, next_sequence=excluded.nex
 			if used[i] {
 				continue
 			}
-			if m.File != nil {
-				w.deletedFiles = append(w.deletedFiles, m.File.ID)
+			for _, f := range m.Attachments {
+				w.deletedFiles = append(w.deletedFiles, f.ID)
 			}
 			if err := exec(`DELETE FROM messages WHERE ord=?`, oldOrds[i]); err != nil {
 				return nil, w, err
@@ -853,7 +881,7 @@ ON CONFLICT(agent_id) DO UPDATE SET ord=excluded.ord, user_id=excluded.user_id, 
 	// Expired-conversation metadata (no text) and the small record lists are
 	// rewritten only when they changed.
 	if !slices.EqualFunc(old.Expired, s.Expired, func(a, b expiredAgentConversation) bool {
-		return a.ID == b.ID && a.Endpoints == b.Endpoints && a.ExpiredAt.Equal(b.ExpiredAt)
+		return a.ID == b.ID && sameAgentMessageEndpoint(a.Endpoints[0], b.Endpoints[0]) && sameAgentMessageEndpoint(a.Endpoints[1], b.Endpoints[1]) && a.ExpiredAt.Equal(b.ExpiredAt)
 	}) {
 		if err := exec(`DELETE FROM expired_conversations`); err != nil {
 			return nil, w, err
@@ -950,8 +978,29 @@ func agentMailboxEndpointSQL(side, userID string, c triggerLinkCaller) (string, 
 	if c.Chat != nil {
 		session = c.Chat.SessionID
 	}
-	clause := fmt.Sprintf("(%[1]s_named_agent_id = ? AND %[1]s_user_id = ? AND %[1]s_kind = ? AND %[1]s_ref_id = ? AND (%[1]s_external = 1 OR (%[1]s_profile = ? AND %[1]s_session <> '' AND %[1]s_session = ?)))", side)
-	return clause, []any{c.NamedAgentID, userID, c.Stamp.Type, c.Stamp.ID, normalizeInternalProfileID(c.Stamp.ProfileID), session}
+	index := 0
+	if side == "b" {
+		index = 1
+	}
+	teamID := fmt.Sprintf("COALESCE(json_extract(endpoints, '$[%d].team_agent_id'), '')", index)
+	published := fmt.Sprintf("COALESCE(json_extract(endpoints, '$[%d].published_agent'), '')", index)
+	replyInbox := fmt.Sprintf("COALESCE(json_extract(endpoints, '$[%d].reply_inbox'), '')", index)
+	thread := fmt.Sprintf("COALESCE(json_extract(endpoints, '$[%d].chat_key'), '')", index)
+	key := "\x00"
+	if c.Chat != nil {
+		key = c.Chat.Key
+	}
+	// Match messageEndpointMatches: a published agent's non-external endpoint is
+	// bound to its user, reply inbox, session and chat key, even when the caller
+	// carries a hosted named-agent identity. A Team identity never falls back to
+	// a session when admission was removed.
+	publishedClause := fmt.Sprintf("(%s <> '' AND %s_external = 0 AND %s_user_id = ? AND %s <> '' AND %s_session <> '' AND %s_session = ? AND %s = ?)", published, side, side, replyInbox, side, side, thread)
+	regularIdentity := fmt.Sprintf("((%s = '' AND %s_session <> '' AND %s_session = ?) OR (? <> '' AND %s = ?))", teamID, side, side, teamID)
+	regularClause := fmt.Sprintf("((%s = '' OR %s_external = 1) AND %[3]s_named_agent_id = ? AND %[3]s_user_id = ? AND %[3]s_kind = ? AND %[3]s_ref_id = ? AND (%[3]s_external = 1 OR (%[3]s_profile = ? AND %[4]s)))", published, side, side, regularIdentity)
+	current := messageCallerTeamAgentID(userID, c)
+	clause := "(" + publishedClause + " OR " + regularClause + ")"
+	return clause, []any{userID, session, key, c.NamedAgentID, userID, c.Stamp.Type, c.Stamp.ID, normalizeInternalProfileID(c.Stamp.ProfileID), session, current, current}
+
 }
 
 // queryAgentMailboxConversations loads the conversations matching where, with
@@ -977,6 +1026,9 @@ func queryAgentMailboxConversations(ctx context.Context, where string, args ...a
 		if err := json.Unmarshal([]byte(endpoints), &c.Endpoints); err != nil {
 			rows.Close()
 			return nil, err
+		}
+		if publishedConversation(c) && recheckAgentConversationContact(ctx, c) != nil {
+			continue
 		}
 		out = append(out, c)
 	}
@@ -1018,12 +1070,21 @@ func callerAgentMailboxConversation(ctx context.Context, inboxID, userID string,
 	args := append(append([]any{inboxID}, aArgs...), bArgs...)
 	found, err := queryAgentMailboxConversations(ctx, "inbox_id = ? AND ("+a+" OR "+b+")", args...)
 	if err != nil || len(found) == 0 {
+		if err == nil {
+			logAgentMessageIdentityRefusal(inboxID, "read", "endpoint_identity", &caller, userID)
+		}
 		return agentConversation{}, -1, false, err
 	}
 	c := found[0]
-	side := 1
+	side := -1
 	if messageEndpointMatches(c.Endpoints[0], userID, caller) {
 		side = 0
+	} else if messageEndpointMatches(c.Endpoints[1], userID, caller) {
+		side = 1
+	}
+	if side < 0 {
+		logAgentMessageIdentityRefusal(inboxID, "read", "endpoint_recheck", &caller, userID)
+		return agentConversation{}, -1, false, nil
 	}
 	return c, side, true, nil
 }

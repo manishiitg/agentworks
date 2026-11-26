@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"path"
 	"sort"
 	"strings"
@@ -59,6 +60,9 @@ type projectWebhookDefinition struct {
 	RunAs        string                     `json:"run_as"`
 	Auth         projectWebhookAuth         `json:"auth"`
 	InputMapping projectWebhookInputMapping `json:"input_mapping,omitempty"`
+	// CreatedBy and UpdatedBy: who made and who last changed it (a Team member may change a Crew's automations).
+	CreatedBy *projectactions.Actor `json:"created_by,omitempty"`
+	UpdatedBy *projectactions.Actor `json:"updated_by,omitempty"`
 }
 
 type projectWebhooksDocument struct {
@@ -236,29 +240,6 @@ func workflowWebhookExecutionView(record projectWebhookDefinition) (WorkflowSche
 	return WorkflowSchedule{ChatID: record.Action.Tab, ID: record.ID, Name: record.Name, Enabled: record.Enabled, ScheduleType: "webhook", Mode: "workshop", WorkshopMode: mode, Webhook: webhookExecutionConfig(record), InputPreset: input.InputPreset, Inputs: input.Inputs, RouteSelections: input.Routes, TriggerPayload: input.Payload, Messages: input.Messages, RunAs: record.RunAs, TeamAuthorizedBy: input.TeamAuthorizedBy, TeamPolicyRevision: input.TeamPolicyRevision}, nil
 }
 
-func crewWebhookDefinition(project projectactions.Project, caller string, trigger productWebhookTrigger) (projectWebhookDefinition, error) {
-	input, err := json.Marshal(scheduleExecutionInput{Messages: []string{trigger.Message}})
-	if err != nil {
-		return projectWebhookDefinition{}, err
-	}
-	if trigger.Webhook == nil {
-		return projectWebhookDefinition{}, fmt.Errorf("webhook %s has no authentication settings", trigger.ID)
-	}
-	action := projectactions.Action{Type: "message"}
-	if trigger.ownConversation() {
-		action.Conversation = trigger.shownRunDestination()
-	}
-	return projectWebhookDefinition{ID: trigger.ID, Name: trigger.Name, Project: project, Enabled: trigger.Enabled, Path: "/api/hooks/" + trigger.ID, Action: action, Input: input, RunAs: caller, Auth: projectWebhookAuth{Mode: trigger.Webhook.AuthMode, EncryptedSecret: trigger.Webhook.EncryptedSecret}}, nil
-}
-
-func crewWebhookExecutionView(record projectWebhookDefinition) (productWebhookTrigger, error) {
-	var input scheduleExecutionInput
-	if err := json.Unmarshal(record.Input, &input); err != nil {
-		return productWebhookTrigger{}, err
-	}
-	return productWebhookTrigger{ID: record.ID, Name: record.Name, Enabled: record.Enabled, Message: strings.Join(input.Messages, "\n\n"), RunDestination: runDestinationFromConversation(record.Action.Conversation), Webhook: webhookExecutionConfig(record)}, nil
-}
-
 func internalFunctionName(id string) string { return "binding_" + strings.ReplaceAll(id, "-", "_") }
 
 // Explicit bindings referenced by saved steps become callable records with the
@@ -331,7 +312,7 @@ func loadWorkflowEntryActions(ctx context.Context, root string, manifest *Workfl
 			return fmt.Errorf("webhook project does not match its folder")
 		}
 		if manifest.crewExecutable != nil && (workflowExecutionOwnerUserID(manifest) == "" || record.RunAs != workflowExecutionOwnerUserID(manifest)) {
-			return fmt.Errorf("webhook must run as its Crew owner")
+			return fmt.Errorf("webhook must run as its project owner")
 		}
 		owners := manifest.effectiveOwners()
 		if (len(owners) == 0 && (record.RunAs == "" || record.RunAs != workflowExecutionOwnerUserID(manifest))) || (len(owners) > 0 && !containsID(owners, record.RunAs)) {
@@ -405,37 +386,15 @@ func saveWorkflowEntryActions(ctx context.Context, root string, manifest *Workfl
 	return writeProjectWebhookDefinitions(ctx, root, hooks)
 }
 
+// loadCrewEntryActions fills a Crew's caller bindings from its functions.json. A Crew has no webhooks of its own any
+// more (#3286): a webhook starts the Crew's workflow and lives with it; an old Crew webhooks.json record is ignored
+// and removed by removeCrewMessageWebhooks.
 func loadCrewEntryActions(ctx context.Context, root string, manifest *productProjectManifest) error {
-	hooks, err := readProjectWebhookDefinitions(ctx, root)
-	if err != nil {
-		return err
-	}
 	functions, err := readProjectFunctionDefinitions(ctx, root)
 	if err != nil {
 		return err
 	}
 	manifest.Triggers = nil
-	for _, record := range hooks {
-		if record.Project.Kind != "crew" || record.Project.ID != manifest.ID {
-			return fmt.Errorf("webhook project does not match its Crew")
-		}
-		// The registry decides who owns a Crew, never its manifest (PLAT-449).
-		owner, registered := crewProjectOwnerID(root)
-		if !registered {
-			owner = manifest.OwnerID
-		}
-		if owner == "" && !IsMultiUserMode() {
-			owner = GetDefaultUserID()
-		}
-		if owner == "" || record.RunAs != owner {
-			return fmt.Errorf("webhook caller does not match its Crew owner")
-		}
-		view, err := crewWebhookExecutionView(record)
-		if err != nil {
-			return err
-		}
-		manifest.Triggers = append(manifest.Triggers, view)
-	}
 	for _, record := range functions {
 		var input scheduleExecutionInput
 		if err := json.Unmarshal(record.Input, &input); err != nil {
@@ -465,34 +424,47 @@ func saveCrewEntryActions(ctx context.Context, root string, manifest productProj
 			functions = append(functions, record)
 		}
 	}
-	var hooks []projectWebhookDefinition
-	owner, registered := crewProjectOwnerID(root)
-	if !registered {
-		owner = manifest.OwnerID
-	}
-	if owner == "" && !IsMultiUserMode() {
-		owner = GetDefaultUserID()
-	}
 	for _, view := range manifest.Triggers {
-		if view.WorkspaceFunction {
+		if view.WorkspaceFunction || !view.IsInternal() {
 			continue
 		} // generated views are never written as bindings
-		if view.IsInternal() {
-			record, err := crewBindingDefinition(view)
-			if err != nil {
-				return err
-			}
-			functions = append(functions, record)
-			continue
-		}
-		record, err := crewWebhookDefinition(projectactions.Project{Kind: "crew", ID: manifest.ID}, owner, view)
+		record, err := crewBindingDefinition(view)
 		if err != nil {
 			return err
 		}
-		hooks = append(hooks, record)
+		functions = append(functions, record)
 	}
 	if err := writeProjectFunctionDefinitions(ctx, root, functions); err != nil {
 		return err
 	}
-	return writeProjectWebhookDefinitions(ctx, root, hooks)
+	removeCrewMessageWebhooks(ctx, root)
+	return nil
+}
+
+// removeCrewMessageWebhooks is the one-off cleanup of #3286: a Crew's own webhooks.json record (its message
+// webhooks; a row in automation_records on a colocated server) is backed up to automation-records.imported.jsonl
+// and removed. Workflow webhooks live in each workflow's own folder and are untouched. Best effort: a failure is
+// logged and retried at the next start or save. Remove once every server has started on this version.
+func removeCrewMessageWebhooks(ctx context.Context, root string) {
+	file := path.Join(root, "webhooks.json")
+	raw, found, err := readFileFromWorkspace(ctx, file)
+	if err != nil || !found {
+		if err != nil {
+			log.Printf("[CREW_WEBHOOKS] event=remove_failed root=%s error=%v", root, err)
+		}
+		return
+	}
+	var doc projectWebhooksDocument
+	_ = json.Unmarshal([]byte(raw), &doc)
+	if len(doc.Webhooks) > 0 {
+		if err := backupAutomationFile(file, "", raw); err != nil {
+			log.Printf("[CREW_WEBHOOKS] event=remove_failed root=%s reason=backup error=%v", root, err)
+			return
+		}
+	}
+	if err := deleteWorkspaceFile(ctx, file); err != nil {
+		log.Printf("[CREW_WEBHOOKS] event=remove_failed root=%s error=%v", root, err)
+		return
+	}
+	log.Printf("[CREW_WEBHOOKS] event=removed root=%s webhooks=%d", root, len(doc.Webhooks))
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 // The journal is durable acceptance, not a native-CLI exactly-once claim. An
@@ -26,6 +28,8 @@ import (
 // Workspace PUT and the process-local lock require a single writer per owner;
 // multiple active server replicas need storage-backed compare-and-swap.
 type chatSubmissionRecord struct {
+	nativeBinding string // request-local proof fence, never accepted from callers
+
 	ID         string `json:"submission_id"`
 	Owner      string `json:"owner"`
 	Project    string `json:"project"`
@@ -45,6 +49,7 @@ type chatSubmissionStore struct {
 type chatSubmissionContextKey struct{}
 type chatSubmissionContext struct {
 	ID, Owner, Session, Message string
+	ComposerInput               bool
 	// handle lets a dispatch that outlives the HTTP response (live input to a
 	// busy CLI) record its real outcome after the early "accepted" reply.
 	handle *chatSubmissionHandle
@@ -78,6 +83,11 @@ func submissionStateForResponse(status int, body []byte) string {
 	}
 	var response map[string]interface{}
 	if json.Unmarshal(body, &response) == nil {
+		if status == http.StatusServiceUnavailable {
+			if failure, ok := response["error"].(map[string]interface{}); ok && failure["code"] == "workspace_unavailable" {
+				state = "retryable"
+			}
+		}
 		if response["delivery_status"] == "sent_to_cli" {
 			state = "delivery_confirmed"
 		}
@@ -226,6 +236,10 @@ func (api *StreamingAPI) beginChatSubmission(w http.ResponseWriter, r *http.Requ
 				log.Printf("[CHAT_SUBMISSION] Reconciled submission %s as not delivered after its retained tmux closed; retrying through a resumed turn", previous.ID)
 			}
 		}
+		if exists && previous.State == "retryable" {
+			exists = false
+			log.Printf("[CHAT_SUBMISSION] session=%s submission=%s action=retry reason=workspace_unavailable", session, id)
+		}
 		if exists && previous.State == "rejected" && storedSubmissionWasTurnRunning(previous) {
 			// turn_running proves the message was never sent or queued, so a
 			// retry (same key, or the same queued-delivery identity) safely
@@ -333,7 +347,7 @@ func (api *StreamingAPI) beginChatSubmission(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(status)
 		_, _ = w.Write(capture.body.Bytes())
 	}
-	r = r.WithContext(context.WithValue(r.Context(), chatSubmissionContextKey{}, chatSubmissionContext{ID: id, Owner: owner, Session: session, Message: message, handle: handle}))
+	r = r.WithContext(context.WithValue(r.Context(), chatSubmissionContextKey{}, chatSubmissionContext{ID: id, Owner: owner, Session: session, Message: message, ComposerInput: isComposerChatRequest(r), handle: handle}))
 	return capture, r, finish, true
 }
 
@@ -404,6 +418,10 @@ func replayChatSubmissionOutcome(w http.ResponseWriter, record chatSubmissionRec
 		http.Error(w, "Incomplete durable submission outcome", http.StatusServiceUnavailable)
 		return
 	}
+	if record.HTTPStatus == http.StatusForbidden {
+		w.Header().Set("X-Query-Refusal-Reason", "submission_outcome_replay")
+		log.Printf("[QUERY_ADMISSION] session=%s submission=%s action=refused reason=submission_outcome_replay original_status=%d", record.Session, record.ID, record.HTTPStatus)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(record.HTTPStatus)
 	_, _ = w.Write([]byte(record.Response))
@@ -425,13 +443,26 @@ func (api *StreamingAPI) sessionHasActiveTurn(sessionID string) bool {
 	return ok && retainedSession.ActiveTurnID() != ""
 }
 
+// uncertainSubmissionOutcome: only the exact native journal proves either way.
+type uncertainSubmissionOutcome int
+
+const (
+	submissionUnknown uncertainSubmissionOutcome = iota
+	submissionAbsent
+	submissionDelivered
+)
+
 func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, record chatSubmissionRecord) bool {
+	return api.uncertainChatSubmissionOutcome(ctx, record) == submissionAbsent
+}
+
+func (api *StreamingAPI) uncertainChatSubmissionOutcome(ctx context.Context, record chatSubmissionRecord) uncertainSubmissionOutcome {
 	if api == nil || strings.TrimSpace(record.Session) == "" || strings.TrimSpace(record.Message) == "" {
-		return false
+		return submissionUnknown
 	}
 	recordTime, err := time.Parse(time.RFC3339Nano, record.UpdatedAt)
 	if err != nil {
-		return false
+		return submissionUnknown
 	}
 	// A live terminal, a running turn or a retained session may be the very CLI the submission went to, so they keep it uncertain. But a live terminal that
 	// started AFTER the submission cannot hold it (any CLI: the provider was switched, or the old CLI closed and a new one launched): it and its turns say nothing
@@ -439,7 +470,7 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 	// 409 every time, although the chat kept working (Code on server B, 2026-10-04). The transcript check below stays the proof of non-delivery.
 	if snapshot, live := api.liveMainCodingTmuxSnapshot(record.Session); live {
 		if snapshot.CreatedAt.IsZero() || !snapshot.CreatedAt.After(recordTime) {
-			return false
+			return submissionUnknown
 		}
 	}
 	// A running turn owns the session's one input box whatever terminal it runs
@@ -447,24 +478,27 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 	// a live steer into that turn races its own prompt paste and delivers the
 	// text twice (PLAT-861-116).
 	if api.sessionHasActiveTurn(record.Session) {
-		return false
+		return submissionUnknown
 	}
 
 	raw, err := ReadChatHistoryConversation(record.Owner, record.Session, record.Project)
 	if err != nil || len(raw) == 0 {
-		return false
+		return submissionUnknown
 	}
 	var conversation map[string]interface{}
 	if json.Unmarshal(raw, &conversation) != nil {
-		return false
+		return submissionUnknown
 	}
 	runtimeRaw, err := json.Marshal(conversation["runtime"])
 	if err != nil {
-		return false
+		return submissionUnknown
 	}
 	var runtime claudeNativeTranscriptRuntime
 	if json.Unmarshal(runtimeRaw, &runtime) != nil {
-		return false
+		return submissionUnknown
+	}
+	if record.nativeBinding != "" && nativeSteerBindingDigest(runtime) != record.nativeBinding {
+		return submissionUnknown
 	}
 	provider := strings.ToLower(strings.TrimSpace(runtime.Provider))
 	nativeSessionID := strings.TrimSpace(runtime.ExternalSessionID)
@@ -483,28 +517,31 @@ func (api *StreamingAPI) canRetryUncertainChatSubmission(ctx context.Context, re
 		if runtime.AgentSessionHandle.ConnectionID != "" {
 			keys, keyErr := api.connectionAPIKeys(ctx, providerAccountScope{Principal: record.Owner, WorkspacePath: record.Project}, provider, runtime.AgentSessionHandle.ConnectionID)
 			if keyErr != nil {
-				return false
+				return submissionUnknown
 			}
 			accountHome = keys.RuntimeEnvironment["HOME"]
 		}
 	}
-	messages, maxTimestamp, _, ok, err := nativeTranscriptMessagesForBinding(provider, nativeSessionID, workingDir, runtimeDir, accountHome)
-	if err != nil || !ok || maxTimestamp.IsZero() {
-		return false
+	messages, maxTimestamp, transcriptPath, ok, err := nativeTranscriptMessagesForBinding(provider, nativeSessionID, workingDir, runtimeDir, accountHome)
+	if err != nil || !ok || maxTimestamp.IsZero() || !nativeHistoryCanProveAbsence(provider, transcriptPath) {
+		return submissionUnknown
 	}
 	want := strings.TrimSpace(record.Message)
 	for _, message := range messages {
-		if strings.EqualFold(strings.TrimSpace(message.Role), "human") && strings.TrimSpace(builderConversationMessageText(message)) == want {
-			return false
+		if strings.EqualFold(strings.TrimSpace(message.Role), "human") {
+			text := strings.TrimSpace(builderConversationMessageText(message))
+			if text == want || (record.nativeBinding != "" && cleanChatHistoryQuery(text) == cleanChatHistoryQuery(want)) {
+				return submissionDelivered
+			}
 		}
 	}
-	return true
+	return submissionAbsent
 }
 
 func writeSubmissionUncertain(w http.ResponseWriter, id string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusConflict)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": "delivery_uncertain", "delivery_status": "delivery_uncertain", "submission_id": id, "message": fmt.Sprintf("Submission %s is durable but delivery is uncertain. Reconcile this submission before sending it again.", id)})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": "delivery_uncertain", "delivery_status": "delivery_uncertain", "submission_id": id, "message": "Not sure the last message was delivered. Check this chat before sending it again."})
 }
 
 // ListUnresolvedChatSubmissions exposes durable accepted input for recovery.
@@ -755,4 +792,45 @@ func submissionProjectConversationFiles(ctx context.Context, folder string) ([]s
 	paths := []string{}
 	collectWorkspaceFilePaths(listing, &paths)
 	return paths, nil
+}
+
+// The marker describes a UI submission; the authenticated person identity is still required.
+func isComposerChatRequest(r *http.Request) bool {
+	return r.Header.Get("X-Chat-Input") == "composer" && websiteDeviceClaims(GetUserFromContext(r.Context()))
+}
+
+// A native process ending before its control receipt is not itself proof of
+// non-delivery. Preserve that narrow cause for the durable queue to reconcile
+// after turn cleanup, against the exact final native journal.
+func writeLiveInputUncertain(w http.ResponseWriter, id string, err error) {
+	if errors.Is(err, llmtypes.ErrCodingAgentTurnEndedBeforeInputAck) {
+		w.Header().Set("X-Live-Input-Ended-Unconfirmed", "true")
+	}
+	writeSubmissionUncertain(w, id)
+}
+
+func nativeSteerBindingDigest(runtime claudeNativeTranscriptRuntime) string {
+	if runtime.Provider == "" || runtime.ExternalSessionID == "" {
+		return ""
+	}
+	raw, err := json.Marshal(runtime)
+	if err != nil {
+		return ""
+	}
+	digest := sha256.Sum256(raw)
+	return hex.EncodeToString(digest[:])
+}
+
+func queuedSteerNativeBinding(turn queuedConversationTurn) string {
+	raw, err := ReadChatHistoryConversation(turn.UserID, turn.SessionID, turn.Request.SelectedFolder)
+	if err != nil {
+		return ""
+	}
+	var conversation struct {
+		Runtime claudeNativeTranscriptRuntime `json:"runtime"`
+	}
+	if json.Unmarshal(raw, &conversation) != nil {
+		return ""
+	}
+	return nativeSteerBindingDigest(conversation.Runtime)
 }

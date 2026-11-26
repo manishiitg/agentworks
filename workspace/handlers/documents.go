@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"bufio"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"mime"
 	"net/http"
@@ -12,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -20,6 +23,8 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/models"
 	"github.com/manishiitg/coding-agent-loop/workspace/parsers"
+	"github.com/manishiitg/coding-agent-loop/workspace/schedulehistory"
+	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 	"github.com/manishiitg/coding-agent-loop/workspace/utils"
 
 	"github.com/gin-gonic/gin"
@@ -700,7 +705,7 @@ func GetDocument(c *gin.Context) {
 
 	// Resolve path with user isolation
 	filePath, err := resolveUserPath(c, filePathParam)
-	if err != nil {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
 			Success: false,
 			Message: "Failed to resolve path",
@@ -710,7 +715,7 @@ func GetDocument(c *gin.Context) {
 	}
 
 	// Validate file path for security
-	if !utils.IsValidFilePath(filePath, docsDir) {
+	if err == nil && !utils.IsValidFilePath(filePath, docsDir) {
 		c.JSON(http.StatusBadRequest, models.APIResponse[any]{
 			Success: false,
 			Message: "Invalid file path",
@@ -719,9 +724,12 @@ func GetDocument(c *gin.Context) {
 		return
 	}
 
-	// Check if file exists
-	info, err := os.Stat(filePath)
-	if os.IsNotExist(err) {
+	// Check if file exists (a deleted Crew's folder resolves to fs.ErrNotExist, #4105)
+	var info os.FileInfo
+	if err == nil {
+		info, err = os.Stat(filePath)
+	}
+	if os.IsNotExist(err) || errors.Is(err, fs.ErrNotExist) {
 		// File doesn't exist - return 200 with message indicating file doesn't exist
 		c.JSON(http.StatusOK, models.APIResponse[models.Document]{
 			Success: true,
@@ -744,7 +752,11 @@ func GetDocument(c *gin.Context) {
 	// log; ?tail=N returns only its last N messages (never to be saved back).
 	var content []byte
 	if chatlog.IsConversationPath(filePath) {
-		if tail := c.Query("tail"); tail != "" {
+		if c.Query("header_only") == "true" {
+			content, err = os.ReadFile(filePath)
+		} else if c.Query("runtime_metadata") == "true" {
+			content, err = chatlog.RuntimeMetadata(filePath)
+		} else if tail := c.Query("tail"); tail != "" {
 			n := 0
 			_, _ = fmt.Sscanf(tail, "%d", &n)
 			content, err = chatlog.LoadTail(filePath, n)
@@ -932,6 +944,19 @@ func GetRawDocument(c *gin.Context) {
 	}
 	defer file.Close()
 
+	// ?line_offset=N: where line N starts, so a large file opens in pages at that line (a search result or a
+	// chat code link) without the browser reading everything before it.
+	if raw := c.Query("line_offset"); raw != "" {
+		line, convErr := strconv.Atoi(raw)
+		if convErr != nil || line < 1 {
+			c.JSON(http.StatusBadRequest, models.APIResponse[any]{Success: false, Message: "line_offset must be a line number"})
+			return
+		}
+		offset, found := rawDocumentLineOffset(file, line)
+		c.JSON(http.StatusOK, gin.H{"offset": offset, "found": found, "size": info.Size()})
+		return
+	}
+
 	contentType := mime.TypeByExtension(strings.ToLower(filepath.Ext(filePath)))
 	if contentType == "" {
 		buffer := make([]byte, 512)
@@ -943,6 +968,30 @@ func GetRawDocument(c *gin.Context) {
 	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", filepath.Base(filePath)))
 	c.Header("Accept-Ranges", "bytes")
 	http.ServeContent(c.Writer, c.Request, filepath.Base(filePath), info.ModTime(), file)
+}
+
+// rawDocumentLineOffset is the byte offset where line (1-based) starts; found
+// is false when the file has fewer lines, and the offset is then the end.
+func rawDocumentLineOffset(file io.Reader, line int) (int64, bool) {
+	if line == 1 {
+		return 0, true
+	}
+	reader := bufio.NewReaderSize(file, 64*1024)
+	var offset int64
+	seen := 0
+	for {
+		chunk, err := reader.ReadSlice('\n')
+		offset += int64(len(chunk))
+		if len(chunk) > 0 && chunk[len(chunk)-1] == '\n' {
+			seen++
+			if seen == line-1 {
+				return offset, true
+			}
+		}
+		if err != nil && err != bufio.ErrBufferFull {
+			return offset, false
+		}
+	}
 }
 
 // UpdateDocument handles PUT /api/documents/*filepath
@@ -1005,11 +1054,19 @@ func UpdateDocument(c *gin.Context) {
 		}
 	}
 
+	// Dispatch state contains private caller/configuration selectors. Its mode
+	// is server-owned, never a caller-supplied document option (PLAT-746-919).
+	privateDispatch := filepath.Base(filepath.Dir(filePath)) == "chat_history" &&
+		(filepath.Base(filePath) == "restart-continue.json" || filepath.Base(filePath) == "conversation-turn-dispatch.json")
+	mode := os.FileMode(0644)
+	if privateDispatch {
+		mode = 0600
+	}
 	// Write content (create or update). A chat conversation goes to its
 	// header and history log, appending when only new messages were added.
 	var writeErr error
 	if req.CreateOnly {
-		writeErr = createFileAtomic(filePath, []byte(*req.Content), 0644)
+		writeErr = createFileAtomic(filePath, []byte(*req.Content), mode)
 		if errors.Is(writeErr, os.ErrExist) {
 			c.JSON(http.StatusConflict, models.APIResponse[any]{
 				Success: false,
@@ -1029,7 +1086,12 @@ func UpdateDocument(c *gin.Context) {
 			return
 		}
 	} else {
-		writeErr = writeFileAtomic(filePath, []byte(*req.Content), 0644)
+		writeErr = writeFileAtomic(filePath, []byte(*req.Content), mode)
+	}
+	if writeErr == nil && privateDispatch {
+		// Atomic replacement normally preserves an existing file's mode; correct
+		// a previously created queue file as well as a new continuation document.
+		writeErr = os.Chmod(filePath, mode)
 	}
 	if err := writeErr; err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse[any]{
@@ -1118,8 +1180,23 @@ func DeleteDocument(c *gin.Context) {
 
 	// Use RemoveAll for directories so non-empty dirs are deleted cleanly,
 	// and plain Remove for files (faster, no risk of accidentally nuking a tree).
-	if info.IsDir() {
-		err = os.RemoveAll(filePath)
+	finalInfo, lstatErr := os.Lstat(filePath)
+	if lstatErr != nil {
+		c.JSON(500, gin.H{"error": lstatErr.Error()})
+		return
+	}
+	if finalInfo.Mode()&os.ModeSymlink != 0 {
+		err = os.Remove(filePath) // only the link, not its directory target
+	} else if info.IsDir() {
+		physical, resolveErr := sqliteopen.CanonicalPath(filePath)
+		if resolveErr != nil {
+			err = resolveErr
+		} else {
+			err = os.RemoveAll(filePath)
+			if err == nil {
+				err = schedulehistory.PurgeTree(c.Request.Context(), docsDir, physical)
+			}
+		}
 	} else if chatlog.IsConversationPath(filePath) {
 		err = chatlog.Remove(filePath)
 	} else {

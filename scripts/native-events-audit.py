@@ -15,9 +15,9 @@ from pathlib import Path
 
 
 PROBE = r'''
-import collections,glob,json,os,re,shutil,subprocess,sys
+import collections,contextlib,glob,json,os,re,shutil,sqlite3,subprocess,sys
 from pathlib import Path
-c=json.loads(sys.argv[1]); result={"name":c["name"],"transport_reachable":True,"audit_schema":"1","providers":{},"log_window":"last 8 MiB"}
+c=json.loads(sys.argv[1]); result={"name":c["name"],"transport_reachable":True,"audit_schema":"2","providers":{},"log_window":"last 8 MiB"}
 runtime_root=Path(c["state_root"]).parent
 probe_env=dict(os.environ)
 probe_env["PATH"]=os.pathsep.join(str(runtime_root/p) for p in ("tools/node/bin","tools/bin","home/.local/bin"))+os.pathsep+str(Path.home()/".local/bin")+os.pathsep+probe_env.get("PATH","")
@@ -30,7 +30,7 @@ for provider,binary in {"claude-code":"claude","codex-cli":"codex","cursor-cli":
             entry["version"]=versions[0] if versions else "UNKNOWN"
         except (OSError,subprocess.TimeoutExpired):entry["version"]="UNAVAILABLE"
     result["providers"][provider]=entry
-states=collections.Counter(); helpers=collections.Counter(); claims=collections.Counter()
+states=collections.Counter(); helpers=collections.Counter(); claims=collections.Counter(); claim_committed=set()
 for file in glob.glob(os.path.join(c["state_root"],"native-records","*.json")):
     try:
         state=json.loads(Path(file).read_text()); provider=state.get("provider","unknown"); states[provider]+=1
@@ -39,10 +39,33 @@ for file in glob.glob(os.path.join(c["state_root"],"native-records","*.json")):
 for file in glob.glob(os.path.join(c["state_root"],"native-reply-claims","*.json")):
     try:
         claim=json.loads(Path(file).read_text());claims[claim.get("owner","unknown")+(":committed" if claim.get("committed") else ":unfinished")]+=1
+        if claim.get("owner")=="foreground" and claim.get("committed"):
+            claim_committed.add((claim.get("session"),claim.get("root")))
     except (OSError,ValueError):claims["unreadable"]+=1
 result.update(owned_runtime_states=dict(states),native_work_states=dict(helpers),publication_claims=dict(claims))
-accepted={}; saved=set(); committed=set(); followups=set(); gaps=collections.Counter(); unknown=collections.Counter(); invalid=identity=0
+accepted={}; saved=set(); committed=set(claim_committed); followups=set(); gaps=collections.Counter(); unknown=collections.Counter(); invalid=identity=0
 cost_events=collections.Counter(); cost_gaps=collections.Counter()
+# Batch logs intentionally carry no per-event details. Read only selected
+# metadata columns from the canonical journal; never fetch a payload or text.
+result["event_window"]="last 10000 canonical chat events"
+result["native_event_status"]="UNAVAILABLE"
+try:
+    journal=Path(c["state_root"])/"structured-chat-events-v2.sqlite"
+    with contextlib.closing(sqlite3.connect(journal.resolve().as_uri()+"?mode=ro",uri=True,timeout=5)) as db:
+        rows=db.execute("""SELECT event_id,
+          json_extract(payload,'$.data.data.record.provider'),
+          json_extract(payload,'$.data.data.record.native_session_id'),
+          json_extract(payload,'$.data.data.record.native_turn_id'),
+          json_extract(payload,'$.data.data.record.id'),
+          json_extract(payload,'$.data.data.record.kind'),
+          json_extract(payload,'$.data.data.record.state'),
+          json_extract(payload,'$.data.data.record.followup_turn_id')
+          FROM (SELECT event_id,payload FROM structured_chat_events ORDER BY rowid DESC LIMIT 10000)
+          WHERE json_extract(payload,'$.type')='coding_agent_native_activity'""")
+        for row in rows:
+            accepted[row[0]]=dict(zip(("provider","native","turn","item","kind","state","followup"),(value or "" for value in row[1:])))
+    result["native_event_status"]="AVAILABLE"
+except (OSError,sqlite3.Error):pass
 try:
     with open(c["log_path"],"rb") as f:
         f.seek(0,2); size=f.tell(); f.seek(max(0,size-(8<<20))); lines=f.read().decode("utf-8","replace").splitlines()
@@ -58,8 +81,6 @@ try:
                 cost_events[kind+(":"+mode if mode in ("native","foreground") else "")]+=1
         if "[NATIVE_RECORD]" not in line:continue
         fields=dict(re.findall(r"\b([a-z_]+)=([^\s]+)",line))
-        if " accepted " in line and fields.get("event"):
-            accepted[fields["event"]]={k:fields.get(k,"") for k in ("provider","native","turn","item","kind","state","followup")}
         if " reply_saved " in line:saved.add((fields.get("native"),fields.get("turn")))
         if " foreground_settled " in line and fields.get("committed")=="true":committed.add((fields.get("native"),fields.get("turn")))
         if " gap " in line:
@@ -73,21 +94,21 @@ try:
                         label=k if re.fullmatch(r"[A-Za-z0-9_.:-]{1,80}",k) else "unrecognized_schema_label"
                         unknown[label]+=v
                 except ValueError:unknown["invalid_coverage_record"]+=1
-    kinds=collections.Counter()
-    for record in accepted.values():
-        kinds[record["provider"]+":"+record["kind"]+":"+record["state"]]+=1
-        if record["followup"]:followups.add((record["native"],record["followup"]))
-    missing=followups-saved-committed
-    result.update(observed_events=dict(kinds),gap_reasons=dict(gaps),unknown_kinds=dict(unknown),invalid_records=invalid,identity_gaps=identity,
-                  followups_without_saved_reply=[{"native_session_id":n,"native_turn_id":t,"state":"AWAITING OR MISSING; inspect server evidence"} for n,t in sorted(missing)],
-                  saved_observer_turns=len(saved),committed_foreground_turns=len(committed),
-                  native_cost_events=dict(cost_events),native_cost_gap_reasons=dict(cost_gaps))
 except OSError:result["log_status"]="UNAVAILABLE"
+kinds=collections.Counter()
+for record in accepted.values():
+    kinds[record["provider"]+":"+record["kind"]+":"+record["state"]]+=1
+    if record["followup"]:followups.add((record["native"],record["followup"]))
+missing=followups-saved-committed
+result.update(observed_events=dict(kinds) if result["native_event_status"]=="AVAILABLE" else None,gap_reasons=dict(gaps),unknown_kinds=dict(unknown),invalid_records=invalid,identity_gaps=identity,
+              followups_without_saved_reply=[{"native_session_id":n,"native_turn_id":t,"state":"AWAITING OR MISSING; inspect server evidence"} for n,t in sorted(missing)] if result["native_event_status"]=="AVAILABLE" else None,
+              saved_observer_turns=len(saved),committed_foreground_turns=len(committed),
+              native_cost_events=dict(cost_events),native_cost_gap_reasons=dict(cost_gaps))
 release=c.get("release_path")
 if release:
     try:result["release"]=os.path.basename(os.path.realpath(release))
     except OSError:result["release"]="UNKNOWN"
-result["interpretation"]="Installed is not signed in. Replay is not live-provider proof. No recent records is not a pass. Native turn end is not business success."
+result["interpretation"]="Installed is not signed in. Replay is not live-provider proof. Event/log windows differ; a missing reply in retained evidence is not proof it was never saved. No recent records is not a pass. Native turn end is not business success."
 print(json.dumps(result))
 '''
 

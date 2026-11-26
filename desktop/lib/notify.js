@@ -43,7 +43,7 @@ async function developmentNotifyHeaders(socketPath, apiOrigin, appOrigin) {
 
 // One window-independent stream. Every reconnect gets the current origin and
 // fresh credentials, including after a separately launched backend restarts.
-function startNotifyStream({ getOrigin, getHeaders, show, log }) {
+function startNotifyStream({ getOrigin, getHeaders, show, log, keepAwake }) {
   let stopped = false;
   let request = null;
   let timer = null;
@@ -55,6 +55,8 @@ function startNotifyStream({ getOrigin, getHeaders, show, log }) {
       if (stopped || retrying) return;
       retrying = true;
       log(`[notify] stream=retry reason=${reason}`);
+      // Without the server there is no answer to keep the Mac awake for; the next connect sends it again.
+      keepAwake?.({ hold: false });
       current?.destroy();
       timer = setTimeout(() => { timer = null; connect(); }, 3000);
     };
@@ -77,6 +79,11 @@ function startNotifyStream({ getOrigin, getHeaders, show, log }) {
             buffer = buffer.slice(at + 2);
             const event = /^event: (.*)$/m.exec(block)?.[1];
             const data = /^data: (.*)$/m.exec(block)?.[1];
+            if (event === 'keep_awake' && data) {
+              // The app's own server says whether to keep this Mac awake for workflows (#3617).
+              try { keepAwake?.(JSON.parse(data)); } catch { log('[keep_awake] update=failed reason=invalid_message'); }
+              continue;
+            }
             if (event !== 'notify' || !data) continue;
             let message;
             try { message = JSON.parse(data); } catch { log('[notify] delivery=failed reason=invalid_message'); continue; }
@@ -102,8 +109,36 @@ function startNotifyStream({ getOrigin, getHeaders, show, log }) {
 function notifyRoute(route, remote) {
   const value = typeof route === 'string' && route.startsWith('/') ? route : '/';
   if (!remote) return value;
-  const crew = /^\/crew\/projects\/[a-zA-Z0-9_-]+/.exec(value);
-  return crew ? crew[0] : '/home';
+  let url;
+  try { url = new URL(value, 'https://notify.invalid'); } catch { return '/'; }
+  if (url.origin !== 'https://notify.invalid') return '/';
+  const crew = /^\/projects\/[a-zA-Z0-9_-]+$/.exec(url.pathname);
+  if (!crew) return '/';
+  const agent = url.searchParams.get('agent');
+  // Keep only the chat target the server named; never arbitrary query actions.
+  return crew[0] + (agent && /^[a-zA-Z0-9_.:-]{1,256}$/.test(agent) ? '?agent=' + encodeURIComponent(agent) : '');
 }
 
-module.exports = { startNotifyStream, notifyRoute, sessionToken, developmentNotifyHeaders };
+// A visible Mac window can be on a second monitor while another app has focus.
+// Visibility is the owner's notification policy, not a claim about keyboard focus.
+function notificationWindowActive(window, platform) {
+  return !!(window && !window.isDestroyed() && window.isVisible() && !window.isMinimized()
+    && (platform === 'darwin' || window.isFocused()));
+}
+
+// keepAwakeBlocker applies the server's keep-awake answer with Electron's power-save blocker: held while the server
+// says so, and, when it is only for while plugged in, released on battery. Returns the update function.
+function keepAwakeBlocker({ powerSaveBlocker, powerMonitor, log }) {
+  let wanted = { hold: false, plugged_in_only: true };
+  let id = null;
+  const apply = () => {
+    const hold = !!wanted.hold && !(wanted.plugged_in_only !== false && powerMonitor.isOnBatteryPower());
+    if (hold && id === null) { id = powerSaveBlocker.start('prevent-app-suspension'); log(`[keep_awake] hold=on plugged_in_only=${wanted.plugged_in_only !== false}`); }
+    if (!hold && id !== null) { powerSaveBlocker.stop(id); id = null; log('[keep_awake] hold=off'); }
+  };
+  powerMonitor.on('on-ac', apply);
+  powerMonitor.on('on-battery', apply);
+  return state => { wanted = { hold: !!state?.hold, plugged_in_only: state?.plugged_in_only !== false }; apply(); };
+}
+
+module.exports = { startNotifyStream, notifyRoute, sessionToken, developmentNotifyHeaders, notificationWindowActive, keepAwakeBlocker };

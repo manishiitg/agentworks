@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
@@ -13,6 +14,10 @@ import (
 // supply a project, never another person's session, profile or Builder tab.
 // Sending remains on the normal chat submission/queue and admission path.
 func (api *StreamingAPI) handleProjectAskConversation(w http.ResponseWriter, r *http.Request) {
+	if err := requireServerInteractive("dashboard_ask"); err != nil {
+		externalError(w, 403, "server_only", err.Error())
+		return
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || claims.UserID == "" || claims.Scope != "" || claims.Provider == "bot_route" {
@@ -21,6 +26,7 @@ func (api *StreamingAPI) handleProjectAskConversation(w http.ResponseWriter, r *
 	}
 	var body struct {
 		Workspace string `json:"workspace"`
+		AgentKey  string `json:"agent_key,omitempty"`
 		AsUser    bool   `json:"as_user,omitempty"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
@@ -68,13 +74,69 @@ func (api *StreamingAPI) handleProjectAskConversation(w http.ResponseWriter, r *
 			return
 		}
 		profileID = profile.ID
-		key, name := target.ID, ""
-		if target.Edit && body.AsUser {
-			key = target.ID + codeChatSideMarker + "asuser-main"
-			name = "As a user"
+		type choice struct {
+			Key  string `json:"key"`
+			Name string `json:"name"`
 		}
+		choices := []choice{}
 		if target.Edit && !body.AsUser {
 			mode = "builder"
+			tabs, e := defaultProductConversationRegistryStore().projectChats(r.Context(), claims.UserID, profile.ID, target.ID)
+			if e != nil {
+				externalError(w, 503, "agents_unavailable", "Could not load this project's agents.")
+				return
+			}
+			identities, e := defaultProductConversationRegistryStore().agentIdentities(r.Context(), claims.UserID, profile.ID, target.ID)
+			if e != nil {
+				externalError(w, 503, "agents_unavailable", "Could not load this project's agents.")
+				return
+			}
+			for _, tab := range tabs {
+				if ordinaryProjectChatKey(target.ID, tab.ConversationKey) {
+					choices = append(choices, choice{tab.ConversationKey, firstNonEmptyTrimmed(identities[tab.ConversationKey].Name, tab.Title, "Agent")})
+				}
+			}
+		} else {
+			agents, e := crewShareAgents(r.Context(), claims.UserID, target.Root, false)
+			if e != nil {
+				externalError(w, 503, "agents_unavailable", "Could not load this project's shared agents.")
+				return
+			}
+			for _, agent := range agents {
+				choices = append(choices, choice{agent.ChatID, agent.Name})
+			}
+		}
+		key, name := strings.TrimSpace(body.AgentKey), ""
+		// No agent named: the only one answers; with several, the person chooses (no implicit Main, #4046).
+		if key == "" && len(choices) == 1 {
+			key = choices[0].Key
+		}
+		if key == "" {
+			message := "Choose an agent to answer."
+			if len(choices) == 0 {
+				if target.Edit && !body.AsUser {
+					message = "Create an agent in this project before asking a question."
+				} else {
+					message = "The owner has not shared an agent for this project."
+				}
+			}
+			externalJSON(w, map[string]any{"choose_agent": true, "agents": choices, "message": message})
+			return
+		}
+		allowed := false
+		for _, item := range choices {
+			if item.Key == key {
+				allowed = true
+				name = item.Name
+			}
+		}
+		if !allowed {
+			externalError(w, 404, "agent_unavailable", "Choose an agent shared with you in this project.")
+			return
+		}
+		if target.Edit && body.AsUser {
+			key = target.ID + codeChatSideMarker + "asuser-" + strings.TrimPrefix(key, target.ID+codeChatSideMarker)
+			name = "As a user"
 		}
 
 		// An unrelated active tab's transport headers cannot choose this chat.

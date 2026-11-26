@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -32,7 +33,7 @@ type GmailOAuthStartResponse struct {
 
 // GmailOAuthRoutes wires the sign-in endpoints.
 func GmailOAuthRoutes(router *mux.Router, api *StreamingAPI) {
-	router.HandleFunc("/api/human-feedback/gmail/connections/{id}/auth/start",
+	router.HandleFunc("/human-feedback/gmail/connections/{id}/auth/start",
 		requireGmailConnectionManager(func(w http.ResponseWriter, r *http.Request) {
 			svc, err := ensureGmailService()
 			if err != nil {
@@ -45,7 +46,7 @@ func GmailOAuthRoutes(router *mux.Router, api *StreamingAPI) {
 			}
 			startGmailOAuthHandler(api)(w, r)
 		})).Methods("POST", "OPTIONS")
-	router.HandleFunc(gmailOAuthCallbackPath,
+	router.HandleFunc(strings.TrimPrefix(gmailOAuthCallbackPath, "/api"),
 		gmailOAuthCallbackHandler(api)).Methods("GET")
 }
 
@@ -104,7 +105,7 @@ func startGmailOAuthHandler(api *StreamingAPI) http.HandlerFunc {
 			redirectURI = gmailGoogleAppReturnURI(r)
 		}
 		extraScopes := services.GoogleServiceScopeURIs(conn.Services)
-		authURL, err := services.BeginGmailOAuth(id, conn.ClientName, redirectURI, conn.AllowReadAccess, conn.AllowAgentWriteAccess, extraScopes)
+		authURL, err := services.BeginGmailOAuth(personalConnectionActor(r.Context()), id, conn.ClientName, redirectURI, conn.AllowReadAccess, conn.AllowAgentWriteAccess, extraScopes)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -115,7 +116,10 @@ func startGmailOAuthHandler(api *StreamingAPI) http.HandlerFunc {
 }
 
 // gmailOAuthCallbackHandler receives Google's redirect, stores the credential,
-// and resolves which mailbox was actually authorized.
+// and resolves which mailbox was actually authorized. On a server with several
+// people it only keeps Google's code: the person who started the sign-in finishes
+// it in the app (oauth_return.go), so a link finished in someone else's browser
+// cannot put their mailbox into this connection.
 //
 // It renders HTML rather than JSON because a person is looking at it: this page
 // opens in their browser, not in a fetch.
@@ -133,42 +137,50 @@ func gmailOAuthCallbackHandler(api *StreamingAPI) http.HandlerFunc {
 			writeGmailOAuthPage(w, false, "Sign-in failed", "Google did not return an authorization code.")
 			return
 		}
-
-		connectionID, email, scopes, err := services.CompleteGmailOAuth(r.Context(), state, code)
+		if person := services.GmailOAuthPendingPerson(state); oauthReturnBound(person) {
+			holdOAuthReturn(w, r, state, person, oauthReturnGmail, code)
+			return
+		}
+		email, err := api.finishGmailOAuth(r.Context(), state, code)
 		if err != nil {
-			log.Printf("[GMAIL] OAuth callback failed: %v", err)
 			writeGmailOAuthPage(w, false, "Sign-in failed", html.EscapeString(err.Error()))
 			return
 		}
-
-		svc, svcErr := ensureGmailService()
-		if svcErr != nil {
-			writeGmailOAuthPage(w, false, "Sign-in failed", html.EscapeString(svcErr.Error()))
-			return
-		}
-
-		if err := svc.CompleteGogConnection(r.Context(), connectionID, email, scopes); err != nil {
-			writeGmailOAuthPage(w, false, "Sign-in failed", html.EscapeString(err.Error()))
-			return
-		}
-		completeMCPURLSignIn(state, connectionID)
-
-		// Signing the same Google account in again in this Code (to change its access) replaces
-		// the older connection instead of listing the account twice.
-		for _, old := range svc.PrivateDuplicatesOf(connectionID) {
-			if err := svc.DeleteConnection(r.Context(), old.ID); err != nil {
-				log.Printf("[GMAIL] Could not remove replaced connection %s: %v", old.ID, err)
-			} else {
-				log.Printf("[GMAIL] Connection %s replaced by %s (%s)", old.ID, connectionID, email)
-			}
-		}
-		log.Printf("[GMAIL] Connection %s authorized as %s", connectionID, email)
 		detail := "You can close this tab and return to the app."
 		if email != "" {
 			detail = fmt.Sprintf("Connected as %s. You can close this tab and return to the app.", html.EscapeString(email))
 		}
 		writeGmailOAuthPage(w, true, "Gmail connected", detail)
 	}
+}
+
+// finishGmailOAuth exchanges Google's code for the sign-in state names and saves the connection.
+func (api *StreamingAPI) finishGmailOAuth(ctx context.Context, state, code string) (string, error) {
+	connectionID, email, scopes, err := services.CompleteGmailOAuth(ctx, state, code)
+	if err != nil {
+		log.Printf("[GMAIL] OAuth callback failed: %v", err)
+		return "", err
+	}
+	svc, err := ensureGmailService()
+	if err != nil {
+		return "", err
+	}
+	if err := svc.CompleteGogConnection(ctx, connectionID, email, scopes); err != nil {
+		return "", err
+	}
+	completeMCPURLSignIn(state, connectionID)
+
+	// Signing the same Google account in again in this Code (to change its access) replaces
+	// the older connection instead of listing the account twice.
+	for _, old := range svc.PrivateDuplicatesOf(connectionID) {
+		if err := svc.DeleteConnection(ctx, old.ID); err != nil {
+			log.Printf("[GMAIL] Could not remove replaced connection %s: %v", old.ID, err)
+		} else {
+			log.Printf("[GMAIL] Connection %s replaced by %s (%s)", old.ID, connectionID, email)
+		}
+	}
+	log.Printf("[GMAIL] Connection %s authorized as %s", connectionID, email)
+	return email, nil
 }
 
 // writeGmailOAuthPage renders the small end-of-flow page the user lands on.

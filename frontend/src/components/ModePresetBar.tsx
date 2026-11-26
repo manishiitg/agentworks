@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import NotifyBell from './topbar/NotifyBell'
 import { workflowTriggerLabel } from '../utils/workflowSessionKinds'
 import { useShallow } from 'zustand/react/shallow'
 import { Settings, Copy, Eye } from 'lucide-react'
@@ -20,16 +19,14 @@ import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 import { useWorkspaceStore } from '../stores/useWorkspaceStore'
 import { useWorkflowManifestStore } from '../stores/useWorkflowManifestStore'
 import { dedupeServerNames } from '../utils/mcpServerAlias'
-import { GlobalActivityMonitor } from './GlobalActivityMonitor'
+import { TeamMonitor } from './workspace/TeamMonitor'
 import { useGlobalSchedulerPaused } from '../hooks/useGlobalSchedulerPaused'
-import { ProductTopBar, ProductTopBarActions, ProductTopBarMain } from './workspace/ProductTopBar'
+import { ProductTopBar, ProductTopBarMain } from './workspace/ProductTopBar'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { TopBarEntitySelector } from './topbar/TopBarEntitySelector'
 import { WorkflowIcon } from './workflow/WorkflowIcon'
 import ConfirmationDialog from './ui/ConfirmationDialog'
 import { openWorkflowPresetPage } from '../utils/workflowSessionRestore'
-import { openAppProduct } from '../utils/appNavigation'
-import { captureChatIdentity, isChatIdentityCurrent } from '../utils/chatIdentity'
 import { currentActiveSession, currentSessionId, headerStatusLabel } from '../utils/globalActivityMonitorStatus'
 
 const workflowManifestToPreset = (manifest: WorkflowManifest, workspacePath: string): CustomPreset => {
@@ -89,7 +86,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const isReadOnlyUser = useAuthStore(state => isWorkflowReadOnly(state.user, state.isMultiUserMode))
   // Workflow creation follows the existing account permission.
   const canCreateWorkflows = useAuthStore(state => hasProductCreateAccess(state.user, state.isMultiUserMode, 'agentworks'))
-  const schedulerPaused = useGlobalSchedulerPaused(productSurface)
+  const schedulerPaused = useGlobalSchedulerPaused()
   // Use toolList to get all available servers, not just enabled ones
   const toolList = useMCPStore(state => state.toolList)
   const availableServers = React.useMemo(() =>
@@ -141,8 +138,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [pendingDuplicatePreset, setPendingDuplicatePreset] = useState<{ id: string; label: string } | null>(null)
   const [duplicatingPreset, setDuplicatingPreset] = useState(false)
-  const showWorkflowsOverview = useAppStore(s => s.showWorkflowsOverview)
-  const setShowWorkflowsOverview = useAppStore(s => s.setShowWorkflowsOverview)
   const showSchedulesOverview = useAppStore(s => s.showSchedulesOverview)
   const setShowSchedulesOverview = useAppStore(s => s.setShowSchedulesOverview)
   const adminPage = useAppStore(s => s.adminPage)
@@ -150,7 +145,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
   const setSelectedFile = useWorkspaceStore(state => state.setSelectedFile)
   const setShowFileContent = useWorkspaceStore(state => state.setShowFileContent)
   const showProviders = useLLMStore(state => state.showLLMModal)
-  const isGlobalPage = showWorkflowsOverview || showProviders || showSchedulesOverview || adminPage !== null
+  const isGlobalPage = showProviders || showSchedulesOverview || adminPage !== null
   // GlobalActivityMonitor excludes only the current session from its pills.
   // A simultaneous scheduled run for the same workflow remains a separate
   // activity, while this selector gives the current session its own live
@@ -273,8 +268,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
     browserMode?: 'none' | 'extension' | 'headless' | 'cdp',
     icon?: string
   ) => {
-    const startedAtHome = window.location.pathname === '/home'
-    const identity = captureChatIdentity()
     try {
       const effectiveMode = editingPreset ? editingPreset.agentMode : agentMode
       const globalSecretNamesForBackend = selectedGlobalSecretNames === undefined
@@ -331,7 +324,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
       // Apply the preset immediately if it's a new one
       if (savedPreset && !editingPreset) {
         handlePresetClick(savedPreset)
-        if (startedAtHome && effectiveMode === 'workflow' && window.location.pathname === '/home' && isChatIdentityCurrent(identity)) openAppProduct({ surface: 'agentworks', id: savedPreset.id })
       }
 
       setShowPresetModal(false)
@@ -448,7 +440,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
           {/* Product and current automation */}
           <ProductTopBarMain>
             {/* Product-level navigation stays separate from AgentWorks modes. */}
-            {!activityMonitorInWorkspace && (reduced || isGlobalPage || selectedModeCategory !== 'workflow' || !activePreset) && <GlobalActivityMonitor />}
+            {!activityMonitorInWorkspace && (reduced || isGlobalPage || selectedModeCategory !== 'workflow' || !activePreset) && <TeamMonitor />}
 
             {productControl}
 
@@ -507,7 +499,7 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
                             {!presetsLoading && presetsForMode.length === 0 && (
                               <div className="p-2 text-sm text-gray-500 dark:text-gray-400 text-center">
                                 {canCreateWorkflows
-                                  ? 'No automations available. Create one in your Crew chat.'
+                                  ? 'No automations available. Create one in your project chat.'
                                   : 'No automations are available to your account.'}
                               </div>
                             )}
@@ -571,7 +563,6 @@ export const ModePresetBar: React.FC<ModePresetBarProps> = ({ productControl, re
               })()}
             </div>
           </ProductTopBarMain>
-          {!activityMonitorInWorkspace && <ProductTopBarActions><NotifyBell /></ProductTopBarActions>}
 
       </ProductTopBar>
 

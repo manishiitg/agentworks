@@ -6,6 +6,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/schedulehistory"
+	"github.com/manishiitg/coding-agent-loop/workspace/sqliteopen"
 )
 
 // Move a deleted folder out of the served tree before recursive cleanup. A
@@ -26,6 +29,15 @@ func removeFolderAtomicallyWithContext(ctx context.Context, docsDir, folderPath 
 	}
 	if target == root {
 		return false, fmt.Errorf("cannot delete the workspace documents root")
+	}
+	finalInfo, err := os.Lstat(target)
+	if err != nil {
+		return false, err
+	}
+	removeLink := finalInfo.Mode()&os.ModeSymlink != 0
+	historyRoot, err := sqliteopen.CanonicalPath(target)
+	if err != nil {
+		return false, err
 	}
 	releases, isRelay, err := relayDeletionReleases(root, target)
 	if err != nil {
@@ -59,6 +71,11 @@ func removeFolderAtomicallyWithContext(ctx context.Context, docsDir, folderPath 
 		}
 		_ = os.Remove(staging)
 		return false, fmt.Errorf("move folder for deletion: %w", err)
+	}
+	if !removeLink {
+		if err := schedulehistory.PurgeTree(ctx, docsDir, historyRoot); err != nil {
+			return true, err
+		}
 	}
 	if isRelay {
 		log.Printf("[RELAY_DELETE] Draft and published namespace staged: draft=%s releases=%s staging=%s", target, releases, staging)

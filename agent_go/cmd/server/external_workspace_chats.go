@@ -33,12 +33,12 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 	}
 	// A Crew that lives on its owner's Mac answers there (PLAT-856-509): the owner's own AI app reaches it through
 	// the owner's Mac connection, in its Main chat; nobody else does.
-	if !IsLocalMode() && crewRelayTwin(manifest.ID) && !crewPublishedOwnerRoute(r, manifest.ID, args) {
+	if crewLivesOnMac(manifest.Product, manifest.ID, claims.UserID) {
 		if api.externalMacSharedAgent(w, r, action, args, project, manifest) {
 			return
 		}
 		if project.OwnerID != claims.UserID || project.CoOwner {
-			externalError(w, 403, "crew_on_mac", "This Crew lives on its owner's Mac and isn't shared with you.")
+			externalError(w, 403, "crew_on_mac", "This project lives on its owner's Mac and isn't shared with you.")
 			return
 		}
 		raw, _ := json.Marshal(args)
@@ -72,7 +72,8 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 	// In Main the app reads back only its own turns, never the rest of the owner's Main history.
 	appInMain := ownerApp && chat != nil && chat.Key == manifest.ID
 	if chat == nil && action == "ask" && externalArg(args, "chat_id") == "" {
-		id, status, message := api.externalCodeRunOpenTab(r, claims, project.Binding, manifest.ID, chats, chatID, manifest.Product)
+		callerRequest := r.WithContext(context.WithValue(r.Context(), generatedCallerTabNameKey{}, true))
+		id, status, message := api.externalCodeRunOpenTab(callerRequest, claims, project.Binding, manifest.ID, chats, chatID, manifest.Product)
 		if id == "" {
 			externalError(w, status, "chat_unavailable", message)
 			return
@@ -89,7 +90,7 @@ func (api *StreamingAPI) externalWorkspaceConversation(w http.ResponseWriter, r 
 		return
 	}
 	if (action == "ask" || action == "reply_input") && chat.OwnerID != "" && chat.OwnerID != claims.UserID {
-		externalError(w, 403, "tab_owner", crewOwnerDisplayName(chat.OwnerID)+" controls this tab. Use your own tab, or message_chat to communicate with its agent.")
+		externalError(w, 403, "tab_owner", crewOwnerDisplayName(chat.OwnerID)+" controls this tab. Use your own tab, or the agent's AgentBridge address.")
 		return
 	}
 	if action == "read_chat" {

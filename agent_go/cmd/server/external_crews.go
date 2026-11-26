@@ -19,16 +19,17 @@ import (
 // never exposed, whoever owns the Crew.
 
 var externalCrewTools = map[string]bool{
-	"list_crew_snapshots": true, "compare_crew_snapshot": true, "undo_crew_reply": true,
+	"list_crew_snapshots": true, "compare_crew_snapshot": true, "undo_crew_reply": true, "crew_file_limit": true,
 	// Git review reads (external_crew_git.go), the Files review panel's reads.
 	"crew_git_status": true, "crew_git_diff": true, "crew_git_branch_compare": true, "crew_git_branch_diff": true,
 	"list_crews": true, "get_crew": true, "list_crew_files": true, "search_crew_files": true, "read_crew_file": true,
-	"ask_crew": true, "write_crew_file": true, "suggest_crew_change": true,
+	"ask_crew": true, "write_crew_file": true,
 	// Authoring (external_crew_authoring.go): export reads; the rest need crews:write.
 	"create_crew": true, "update_crew": true, "export_crew": true, "import_crew": true,
 	// Costs of a Crew you own (external_crew_costs.go).
 	"get_crew_costs":         true,
 	"crew_diagnostics":       true,
+	externalCrewOwnersTool:   true,
 	externalCrewTeamSyncTool: true,
 	"crew_execution":         true,
 	"crew_integrations":      true,
@@ -85,7 +86,7 @@ func externalCrewCallResponse(ctx context.Context, call *crewFunctionCall, wait 
 	addFunctionCallPending(out, call)
 	if status, _ := out["status"].(string); status != "completed" && status != "failed" {
 		// A poll that waits is cheap: it returns the moment the call finishes (PLAT-837).
-		where := "in the Crew's chat"
+		where := "in the project's chat"
 		if call.IsolatedExecution {
 			where = "in its own isolated run"
 		}
@@ -189,6 +190,10 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		api.externalCrewDiagnosticsCall(w, r, args)
 		return
 	}
+	if name == externalCrewOwnersTool {
+		api.externalCrewOwnersCall(w, r, args)
+		return
+	}
 	if name == externalCrewTeamSyncTool {
 		api.externalCrewTeamSyncCall(w, r, args)
 		return
@@ -221,7 +226,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	}
 	if name == "project_functions_get_call" || name == "project_functions_reply" {
 		if name == "project_functions_reply" && claims.AccessToken != nil && !claims.AccessToken.Allows("crews:run") {
-			externalError(w, 403, "insufficient_scope", "Answering a Crew question needs crews:run.")
+			externalError(w, 403, "insufficient_scope", "Answering a project question needs crews:run.")
 			return
 		}
 		call := lookupCrewFunctionCall(str("call_id"))
@@ -264,7 +269,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	if name == "list_crews" {
 		crews, err := api.externalCrewsVisible(ctx, claims, str("query"))
 		if err != nil {
-			externalError(w, 502, "workspace_unavailable", "Cannot list Crews.")
+			externalError(w, 502, "workspace_unavailable", "Cannot list projects.")
 			return
 		}
 		items := make([]map[string]interface{}, 0, len(crews))
@@ -282,7 +287,7 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 	}
 	crew, manifest, summary, ok := api.externalCrewResolve(ctx, claims, str("crew_id"))
 	if !ok {
-		externalError(w, 404, "not_found", "Crew not found or not allowed for this connection.")
+		externalError(w, 404, "not_found", "Project not found or not allowed for this connection.")
 		return
 	}
 	label := fmt.Sprint(summary["name"])
@@ -328,34 +333,45 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 			}
 		}
 		api.serveCrewFileSnapshots(w, r, crew.Binding.WorkspacePath, op, str("snapshot_id"), str("file"))
+	case "crew_file_limit":
+		// Too many files to track (#3878): read the stored verdict, check again, move a folder out or ignore it.
+		r = r.Clone(r.Context())
+		q := r.URL.Query()
+		op := "file_limit"
+		switch str("operation") {
+		case "check":
+			op, r.Method = "file_limit_check", http.MethodPost
+		case "move":
+			op, r.Method = "file_limit_move", http.MethodPost
+			q.Set("folder", str("folder"))
+		case "ignore":
+			op, r.Method = "file_limit_ignore", http.MethodPost
+			q.Set("folder", str("folder"))
+		default:
+			r.Method = http.MethodGet
+		}
+		r.URL.RawQuery = q.Encode()
+		api.serveCrewFileSnapshots(w, r, crew.Binding.WorkspacePath, op, "", "")
 	case "crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff":
 		api.externalCrewGit(w, r, crew.Binding.WorkspacePath, name, args)
 	case "get_crew":
 		externalJSON(w, externalCrewDescription(ctx, crew, manifest, summary))
-	case "suggest_crew_change":
-		// Stored at the owner's physical Crew root, where the owner reviews it.
-		crewPath := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
-		input, err := submitCrewSuggestion(ctx, claims, crewPath, "", str("suggestion"), str("reason"), str("about"))
-		if err != nil {
-			externalError(w, 400, "suggestion_refused", err.Error())
-			return
-		}
-		externalJSON(w, map[string]any{"status": "submitted_for_owner_review", "crew_id": manifest.ID, "suggestion_id": input.ID})
 	case "ask_crew":
 		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: crew.OwnerID}
+		r = r.WithContext(context.WithValue(r.Context(), productAskChannelKey{}, true))
 		api.externalSendMessage(w, r, args, target)
 	case "project_functions_call":
 		target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: crew.OwnerID}
 		functions, err := readCrewFunctions(ctx, target)
 		if err != nil {
-			externalError(w, 502, "workspace_unavailable", "Cannot read the Crew's functions.")
+			externalError(w, 502, "workspace_unavailable", "Cannot read the project's functions.")
 			return
 		}
 		fnName := str("function")
 		callArgs, _ := args["input"].(map[string]interface{})
 		fn, found := findCrewFunction(offeredCrewFunctions(ctx, target, functions), fnName)
 		if !found {
-			externalError(w, 404, "not_found", fmt.Sprintf("Crew %q has no function %q; see functions action=list.", label, fnName))
+			externalError(w, 404, "not_found", fmt.Sprintf("Project %q has no function %q; see functions action=list.", label, fnName))
 			return
 		}
 		// Each declared function gets a fresh isolated trigger execution.

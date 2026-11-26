@@ -245,6 +245,7 @@ func TestWebhookDuplicateDeliverySurvivesRestartAndConcurrentRetries(t *testing.
 }
 
 func TestWebhookManagementPermissionsRotationAndClockIsolation(t *testing.T) {
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"reader","username":"reader","can_create":false}]}`)
@@ -283,6 +284,19 @@ func TestWebhookManagementPermissionsRotationAndClockIsolation(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	refused := httptest.NewRecorder()
+	svc.saveWorkflowWebhook(refused, sharedSecretsRequest("POST", "/api/workflow-webhooks", "owner", req))
+	if refused.Code != http.StatusForbidden || !strings.Contains(refused.Body.String(), serverOnlyInteractiveMessage) {
+		t.Fatalf("local external webhook creation: %d %s", refused.Code, refused.Body.String())
+	}
+	refused = httptest.NewRecorder()
+	svc.saveWorkflowWebhook(refused, mux.SetURLVars(sharedSecretsRequest("PUT", "/api/workflow-webhooks/"+created.ID, "owner", req), map[string]string{"id": created.ID}))
+	if refused.Code != http.StatusForbidden || !strings.Contains(refused.Body.String(), serverOnlyInteractiveMessage) {
+		t.Fatalf("local external webhook enable: %d %s", refused.Code, refused.Body.String())
+	}
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+
 	if len(created.Secret) != 64 || len(svc.jobs) != 0 {
 		t.Fatalf("secret missing or clock job registered: %+v", created)
 	}
@@ -422,6 +436,7 @@ func TestWebhookSessionOriginAndHistoryMetadata(t *testing.T) {
 }
 
 func TestWorkflowWebhookPayloadIsLoadedOnDemand(t *testing.T) {
+	scheduleHistoryFixture(t)
 	workspace := "Workflow/test"
 	sched := webhookTestSchedule(t, "bearer")
 	manifest := NewWorkflowManifest("API test")
@@ -440,7 +455,7 @@ func TestWorkflowWebhookPayloadIsLoadedOnDemand(t *testing.T) {
 	for i := 0; i < maxScheduleRuns; i++ {
 		runs = append(runs, ScheduleRunEntry{ID: uuid.NewString(), ScheduleID: sched.ID, Status: "success", StartedAt: time.Now().UTC().Add(time.Duration(i+1) * time.Second)})
 	}
-	runsRaw, _ := json.Marshal(runs)
+	writeLegacyScheduleHistory(t, workspace, runs)
 	deliveryRaw, _ := json.Marshal(WorkflowWebhookDelivery{
 		RunID:      "run-1",
 		DeliveryID: "delivery-1",
@@ -449,7 +464,6 @@ func TestWorkflowWebhookPayloadIsLoadedOnDemand(t *testing.T) {
 	})
 	mock := &mockWorkspaceAPI{files: map[string]string{
 		manifestPath(workspace):              string(manifestRaw),
-		scheduleRunsPath(workspace):          string(runsRaw),
 		webhookInputPath(workspace, "run-1"): string(deliveryRaw),
 	}}
 	ws := httptest.NewServer(mock)
@@ -462,7 +476,7 @@ func TestWorkflowWebhookPayloadIsLoadedOnDemand(t *testing.T) {
 	}
 
 	router := mux.NewRouter()
-	WorkflowWebhookRoutes(router, &SchedulerService{})
+	WorkflowWebhookRoutes(router.PathPrefix("/api").Subrouter(), &SchedulerService{})
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/workflow-webhooks/"+sched.ID+"/runs/run-1/payload", nil))
 	if w.Code != http.StatusOK {

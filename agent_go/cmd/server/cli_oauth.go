@@ -12,6 +12,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 )
 
 const cliOAuthDevicePath = "/api/oauth/cli/device"
@@ -21,6 +23,10 @@ const cliOAuthRevokePath = "/api/oauth/cli/revoke"
 const cliOAuthBrowserPath = "/oauth/cli"
 
 func cliOAuthResource(r *http.Request) (origin, resource string, ok bool) {
+	// The Mac app's private socket has its own fixed audience, reachable only there.
+	if fromLocalAppSocket(r) {
+		return agentworksclient.LocalAppServer, localAppResource, true
+	}
 	origin, _, ok = mcpOAuthURLs()
 	if !ok {
 		// A local install can use browser sign-in without configuring a public URL.
@@ -37,7 +43,7 @@ func cliOAuthResource(r *http.Request) (origin, resource string, ok bool) {
 		if err != nil || u.Scheme != "http" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
 			return "", "", false
 		}
-		if !cliOAuthLoopback(u.Hostname()) {
+		if !cliOAuthLoopback(u.Hostname()) || candidate == agentworksclient.LocalAppServer {
 			return "", "", false
 		}
 		origin = candidate
@@ -235,7 +241,13 @@ func (api *StreamingAPI) handleCLIOAuthRevoke(w http.ResponseWriter, r *http.Req
 		return
 	}
 	defer store.Close()
-	_ = store.RevokeByRefresh(r.Context(), r.PostForm.Get("token"))
+	// An unknown or already-revoked token is a successful sign-out. A failed
+	// write is not: the laptop must not drop its login believing it is revoked.
+	if err := store.RevokeByRefresh(r.Context(), r.PostForm.Get("token")); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		log.Printf("[CLI-OAUTH] event=sign_out_revoke_failed err=%v", err)
+		mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -271,7 +283,7 @@ func authenticateCLIOAuthToken(w http.ResponseWriter, r *http.Request, raw strin
 		mcpOAuthError(w, http.StatusUnauthorized, "invalid_token")
 		return nil, false
 	}
-	if grant.BoundAgentID != "" && !((r.Method == http.MethodPost && (r.URL.Path == "/api/external/v1/agents/attachment" || r.URL.Path == "/api/external/v1/agents/usage" || r.URL.Path == "/api/external/v1/call")) || r.Method == http.MethodGet && r.URL.Path == "/api/external/v1/agents/events") {
+	if grant.BoundAgentID != "" && !crewOfflineCopyOAuthPath(r.Method, r.URL.Path) && !((r.Method == http.MethodPost && (r.URL.Path == "/api/external/v1/agents/attachment" || r.URL.Path == "/api/external/v1/agents/usage" || r.URL.Path == "/api/external/v1/call")) || r.Method == http.MethodGet && r.URL.Path == "/api/external/v1/agents/events") {
 		mcpOAuthError(w, http.StatusForbidden, "invalid_target")
 		return nil, false
 	}
@@ -286,6 +298,9 @@ func authenticateCLIOAuthToken(w http.ResponseWriter, r *http.Request, raw strin
 }
 
 func cliOAuthAllowedPath(method, path string) bool {
+	if crewOfflineCopyOAuthPath(method, path) {
+		return true // Exact source attachment and current registry are rechecked by the ingest handler.
+	}
 	if method == http.MethodPost && (path == "/api/external/v1/mcp/tasks" || path == "/api/external/v1/mcp/elicitation") {
 		return true // Protocol adapters redispatch native operations under the current grant.
 	}
@@ -306,6 +321,9 @@ func cliOAuthAllowedPath(method, path string) bool {
 	}
 	if method == http.MethodPost && path == "/api/external/v1/secrets" {
 		return true // `agentworks secret set|import`; the handler requires the CLI sign-in token and checks the target's permission.
+	}
+	if path == "/api/external/v1/chats/terminal" && (method == http.MethodGet || method == http.MethodPost) {
+		return true
 	}
 	return (method == http.MethodGet && path == "/api/external/v1/devices/connect") || (method == http.MethodGet && path == "/api/external/v1/tools") || (method == http.MethodPost && path == "/api/external/v1/call") || ((method == http.MethodGet || method == http.MethodHead) && path == "/api/external/v1/files/content") || (method == http.MethodGet && (path == "/api/external/v1/skill.md" || path == "/api/external/v1/skill.zip" || path == "/api/external/v1/agentworks.plugin"))
 }

@@ -28,6 +28,9 @@ func TestCreateCrewProjectIsAtTheSharedRoot(t *testing.T) {
 		if !strings.HasPrefix(created.WorkspacePath, "Crew/release-reviewer-two-") {
 			t.Fatalf("workspace = %q", created.WorkspacePath)
 		}
+		if created.SessionID != "" {
+			t.Fatal("ordinary Crew created an implicit agent")
+		}
 		folder := filepath.Base(created.WorkspacePath)
 		if rec, ok := registry.Lookup("work", folder); !ok || rec.OwnerID != "owner" || !rec.Shared || !rec.Private || !rec.AudienceConfigured {
 			t.Fatalf("registry entry = %+v ok=%v", rec, ok)
@@ -35,6 +38,9 @@ func TestCreateCrewProjectIsAtTheSharedRoot(t *testing.T) {
 		raw := mock.files[created.WorkspacePath+"/product.json"]
 		if !strings.Contains(raw, `"owner_id": "owner"`) {
 			t.Fatalf("product.json lacks the informational owner: %s", raw)
+		}
+		if strings.Contains(raw, `"main_chat_key"`) || strings.Contains(raw, `"session_id"`) {
+			t.Fatal("new Crew must have no implicit chat pointer")
 		}
 		// The creator is its owner; the workflow's attachment names the new root.
 		if owner, ok := crewProjectOwnerID(created.WorkspacePath); !ok || owner != "owner" {

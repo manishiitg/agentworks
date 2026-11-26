@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,8 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
+
+const gmailTokenRefreshTimeout = 30 * time.Second
 
 // Browser-driven Google OAuth. The server exchanges the one-time code and
 // imports new credentials into gog; it does not persist or refresh another
@@ -226,7 +229,10 @@ func accessTokenForConnection(ctx context.Context, connectionID, clientName stri
 			gmailTokenSourceMu.Unlock()
 			return "", err
 		}
-		source = cfg.TokenSource(context.Background(), stored)
+		// The cached source holds its lock while it refreshes: without a
+		// timeout one hung refresh would block every call on this connection.
+		refreshCtx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Timeout: gmailTokenRefreshTimeout})
+		source = cfg.TokenSource(refreshCtx, stored)
 		gmailTokenSources[connectionID] = source
 	}
 	gmailTokenSourceMu.Unlock()
@@ -262,6 +268,8 @@ type GmailOAuthPending struct {
 	ExtraScopes []string
 	RedirectURL string
 	CreatedAt   time.Time
+	// Person started this sign-in; on a server with several people only they may finish it.
+	Person string
 }
 
 var (
@@ -276,7 +284,7 @@ const gmailOAuthPendingTTL = 15 * time.Minute
 //
 // state is random and server-held, so a callback cannot be forged to attach
 // someone else's Google account to a connection.
-func BeginGmailOAuth(connectionID, clientName, redirectURL string, includeRead, includeAgentWrite bool, extraScopes []string) (string, error) {
+func BeginGmailOAuth(person, connectionID, clientName, redirectURL string, includeRead, includeAgentWrite bool, extraScopes []string) (string, error) {
 	cfg, err := gmailOAuthConfig(redirectURL, clientName, includeRead, includeAgentWrite, extraScopes)
 	if err != nil {
 		return "", err
@@ -301,6 +309,7 @@ func BeginGmailOAuth(connectionID, clientName, redirectURL string, includeRead, 
 		ExtraScopes:       extraScopes,
 		RedirectURL:       redirectURL,
 		CreatedAt:         time.Now(),
+		Person:            strings.TrimSpace(person),
 	}
 	gmailOAuthPendingMu.Unlock()
 
@@ -313,6 +322,13 @@ func BeginGmailOAuth(connectionID, clientName, redirectURL string, includeRead, 
 		oauth2.ApprovalForce,
 		oauth2.SetAuthURLParam("prompt", "select_account consent"),
 	), nil
+}
+
+// GmailOAuthPendingPerson is who started the pending sign-in state names ("" when none is pending).
+func GmailOAuthPendingPerson(state string) string {
+	gmailOAuthPendingMu.Lock()
+	defer gmailOAuthPendingMu.Unlock()
+	return gmailOAuthPending[state].Person
 }
 
 // CompleteGmailOAuth exchanges the callback code and stores the credential.

@@ -1,12 +1,14 @@
 package server
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/oauth"
@@ -55,10 +57,6 @@ func (api *StreamingAPI) handleCapLayerOAuthToken(w http.ResponseWriter, r *http
 	var cfg mcpclient.MCPServerConfig
 	if isCustomVaultOAuthServer(in.ServerName) {
 		// A custom Vault connection has no catalog entry; the live connection is the only source of its sign-in.
-		if in.ConnectionID == "" {
-			writeUsersError(w, http.StatusForbidden, "OAuth connection does not match the configured server")
-			return
-		}
 		name, cfg = in.ServerName, mcpclient.MCPServerConfig{URL: in.URL}
 	} else {
 		config, loadErr := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)
@@ -77,18 +75,22 @@ func (api *StreamingAPI) handleCapLayerOAuthToken(w http.ResponseWriter, r *http
 		writeUsersError(w, 403, "OAuth connection does not match a live Vault connection")
 		return
 	}
+	mutex := platformMCPOAuthMutex("vault:" + in.ConnectionID)
+	mutex.Lock()
+	defer mutex.Unlock()
+	if cfg, err = vaultSavedOAuthConfig(in.ConnectionID, cfg); err != nil {
+		writeUsersError(w, http.StatusUnauthorized, "administrator sign-in required")
+		return
+	}
 	copied := *cfg.OAuth
 	if copied.TokenFile == "" {
 		copied.TokenFile = getUserTokenFilePath(platformMCPTokenUserID, name)
 	}
-	lockKey := name
-	if in.ConnectionID != "" {
-		lockKey = "vault:" + in.ConnectionID
-	}
-	mutex := platformMCPOAuthMutex(lockKey)
-	mutex.Lock()
-	defer mutex.Unlock()
-	token, err := oauth.NewManager(&copied, api.logger).GetAccessToken(r.Context())
+	// Bound the refresh: a stuck sign-in provider would otherwise hold this
+	// lock and block every token request for the connection.
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	token, err := oauth.NewManager(&copied, api.logger).GetAccessToken(ctx)
 	if err != nil || token == "" {
 		writeUsersError(w, http.StatusUnauthorized, "administrator sign-in required")
 		return

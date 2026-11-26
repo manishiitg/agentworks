@@ -63,7 +63,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
           {/* Model info */}
           {modelId && (
             <div className="flex items-center gap-2">
-              <span className="text-gray-500 dark:text-gray-400">Model:</span>
+              <span className="text-muted-foreground">Model:</span>
               <span className="font-medium">{modelId}</span>
             </div>
           )}
@@ -71,7 +71,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
           {modelContextWindow && modelContextWindow > 0 && (
             <div className="space-y-0.5">
               <div className="flex items-center justify-between gap-4">
-                <span className="text-gray-500 dark:text-gray-400">Context:</span>
+                <span className="text-muted-foreground">Context:</span>
                 <span className="font-medium">
                   {contextWindowUsage ? contextWindowUsage.toLocaleString() : 'N/A'}/{modelContextWindow.toLocaleString()}
                   <span className={`ml-1 ${getPercentageTextColor()}`}>
@@ -79,7 +79,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
                   </span>
                 </span>
               </div>
-              <div className="text-gray-500 dark:text-gray-400 text-[10px]">
+              <div className="text-muted-foreground text-[10px]">
                 Max: {formatTokens(modelContextWindow)}
               </div>
             </div>
@@ -149,7 +149,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
         {/* Model info */}
         {(tokenUsage.model_id || tokenUsage.provider) && (
           <div className="flex items-center gap-2">
-            <span className="text-gray-500 dark:text-gray-400">Model:</span>
+            <span className="text-muted-foreground">Model:</span>
             <span className="font-medium">
               {tokenUsage.model_id || 'N/A'}
               {tokenUsage.provider && ` (${tokenUsage.provider})`}
@@ -160,7 +160,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
         {/* Tokens */}
         <div className="space-y-0.5">
           <div className="flex items-center justify-between gap-4">
-            <span className="text-gray-500 dark:text-gray-400">Input:</span>
+            <span className="text-muted-foreground">Input:</span>
             <span className="font-medium">
               {formatTokens(promptTokens)}
               {inputCost > 0 && (
@@ -170,7 +170,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
           </div>
           {cacheTokens > 0 && (
             <div className="flex items-center justify-between gap-4">
-              <span className="text-gray-500 dark:text-gray-400">Cache:</span>
+              <span className="text-muted-foreground">Cache:</span>
               <span className="font-medium text-sky-600 dark:text-sky-400">
                 {formatTokens(cacheTokens)}
                 {cacheCost > 0 && (
@@ -181,7 +181,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
           )}
           {reasoningTokens > 0 && (
             <div className="flex items-center justify-between gap-4">
-              <span className="text-gray-500 dark:text-gray-400">Reasoning:</span>
+              <span className="text-muted-foreground">Reasoning:</span>
               <span className="font-medium text-purple-600 dark:text-purple-400">
                 {formatTokens(reasoningTokens)}
                 {reasoningCost > 0 && (
@@ -191,7 +191,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
             </div>
           )}
           <div className="flex items-center justify-between gap-4">
-            <span className="text-gray-500 dark:text-gray-400">Output:</span>
+            <span className="text-muted-foreground">Output:</span>
             <span className="font-medium">
               {formatTokens(completionTokens)}
               {outputCost > 0 && (
@@ -201,7 +201,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
           </div>
           {totalCost > 0 && (
             <div className="flex items-center justify-between gap-4 pt-0.5 border-t">
-              <span className="text-gray-500 dark:text-gray-400 font-semibold">Total:</span>
+              <span className="text-muted-foreground font-semibold">Total:</span>
               <span className="font-semibold text-green-600 dark:text-green-400">
                 ${totalCost.toFixed(4)}
               </span>
@@ -213,7 +213,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
         {modelContextWindow > 0 && (
           <div className="space-y-0.5 pt-0.5 border-t">
             <div className="flex items-center justify-between gap-4">
-              <span className="text-gray-500 dark:text-gray-400">Context:</span>
+              <span className="text-muted-foreground">Context:</span>
               <span className="font-medium">
                 {contextWindowUsage.toLocaleString()}/{modelContextWindow.toLocaleString()}
                 <span className={`ml-1 ${getPercentageTextColor()}`}>
@@ -222,7 +222,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
               </span>
             </div>
             {modelContextWindow > 0 && (
-              <div className="text-gray-500 dark:text-gray-400 text-[10px]">
+              <div className="text-muted-foreground text-[10px]">
                 Max: {formatTokens(modelContextWindow)}
               </div>
             )}
@@ -232,7 +232,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
         {/* Stats for total events */}
         {isTotalEvent && llmCallCount > 0 && (
           <div className="flex items-center justify-between gap-4 pt-0.5 border-t">
-            <span className="text-gray-500 dark:text-gray-400">Calls:</span>
+            <span className="text-muted-foreground">Calls:</span>
             <span className="font-medium">
               {llmCallCount}
               {cacheEnabledCallCount > 0 && (
@@ -245,7 +245,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
         {/* Duration */}
         {tokenUsage.duration && (
           <div className="flex items-center justify-between gap-4 pt-0.5 border-t">
-            <span className="text-gray-500 dark:text-gray-400">Time:</span>
+            <span className="text-muted-foreground">Time:</span>
             <span className="font-medium">{formatDuration(tokenUsage.duration)}</span>
           </div>
         )}
@@ -296,7 +296,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
               stroke="currentColor"
               strokeWidth={strokeWidth}
               fill="none"
-              className="text-gray-300/50 dark:text-gray-600/50"
+              className="text-foreground/50"
             />
             {/* Progress circle - animated and colored */}
             <circle
@@ -320,7 +320,7 @@ export const CircularProgress: React.FC<CircularProgressProps> = ({
               }}
             />
           </svg>
-          <span className={`text-[10px] font-medium leading-none ${getPercentageTextColor() || 'text-gray-500 dark:text-gray-400'}`}>
+          <span className={`text-[10px] font-medium leading-none ${getPercentageTextColor() || 'text-muted-foreground '}`}>
             {displayPercent}
           </span>
         </div>

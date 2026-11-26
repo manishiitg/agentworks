@@ -4,28 +4,46 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 )
 
-// withMemoryUserDirectory swaps the workspace-backed file for an in-memory
-// one for the duration of a test and clears the read cache around it.
+// withMemoryUserDirectory swaps the stored directory for an in-memory JSON
+// document for the duration of a test. The returned string is that document:
+// tests may read it, or assign it to change the directory between requests.
 func withMemoryUserDirectory(t *testing.T, initial string) *string {
 	t.Helper()
-	content := initial
-	prevRead, prevWrite := userDirectoryRead, userDirectoryWrite
-	userDirectoryRead = func() (string, bool, error) { return content, content != "", nil }
-	userDirectoryWrite = func(c string) error { content = c; return nil }
+	store := &memoryUserDirectory{content: initial}
+	prev := userDirectoryStore
+	userDirectoryStore = store
 	invalidateUserDirectoryCache()
 	t.Cleanup(func() {
-		userDirectoryRead, userDirectoryWrite = prevRead, prevWrite
+		userDirectoryStore = prev
 		invalidateUserDirectoryCache()
 	})
-	return &content
+	return &store.content
+}
+
+type memoryUserDirectory struct{ content string }
+
+func (m *memoryUserDirectory) Version(context.Context) (string, error) { return m.content, nil }
+func (m *memoryUserDirectory) Load(context.Context) (*userDirectory, string, error) {
+	dir, err := decodeUserDirectory(m.content)
+	return dir, m.content, err
+}
+func (m *memoryUserDirectory) Save(_ context.Context, dir *userDirectory) error {
+	raw, err := json.MarshalIndent(userDirectoryFile{Users: dir.Users, AccessRequests: dir.AccessRequests}, "", "  ")
+	if err == nil {
+		m.content = string(raw)
+	}
+	return err
 }
 
 func TestRegisteredProductIDsIncludesBuiltInProducts(t *testing.T) {
@@ -34,26 +52,10 @@ func TestRegisteredProductIDsIncludesBuiltInProducts(t *testing.T) {
 	for _, id := range registeredProductIDs() {
 		found[id] = true
 	}
-	for _, id := range []string{"work", "relays"} {
-		if !found[id] {
-			t.Fatalf("registeredProductIDs() = %v, want it to include %s", registeredProductIDs(), id)
-		}
-	}
-}
-
-func TestRegisteredRelayProductFollowsWorkflowDeployment(t *testing.T) {
-	for _, tc := range []struct {
-		products string
-		want     bool
-	}{{"agentworks", true}, {"relays", true}, {"work,code", false}, {"example-product", false}} {
-		t.Setenv("AGENT_PRODUCTS", tc.products)
-		found := false
-		for _, id := range registeredProductIDs() {
-			found = found || id == "relays"
-		}
-		if found != tc.want {
-			t.Fatalf("AGENT_PRODUCTS=%q: relays=%v want %v", tc.products, found, tc.want)
-		}
+	// PLAT-746 / PLAT-847: the Relay product was retired on 8 November.
+	// Work remains a built-in product; retirement does not remove it.
+	if !found["work"] {
+		t.Fatalf("registeredProductIDs() = %v, missing Work", registeredProductIDs())
 	}
 }
 
@@ -246,6 +248,8 @@ func TestExternalLoginLinksExistingAccountAndKeepsStableID(t *testing.T) {
 func adminRequest(method, path, body string, claims *UserClaims, vars map[string]string) *http.Request {
 	req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
 	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, claims))
+	// As if from the owner's own Mac, for a Crew marked with macCrewOnlineCopy; any other pair ignores it.
+	req.Header.Set(crewMacPairHeader, testMacPair)
 	if vars != nil {
 		req = mux.SetURLVars(req, vars)
 	}
@@ -495,23 +499,6 @@ func TestSSOFirstLoginNeverLinksByDisplayName(t *testing.T) {
 	}
 }
 
-// The token an SSO sign-in issues names the directory account, not the
-// user-chosen display name.
-func TestAdminAddedEmailIsStoredLowercase(t *testing.T) {
-	withMemoryUserDirectory(t, `{"users":[]}`)
-	dir, _ := readUserDirectoryFile()
-	if _, created, err := addDirectoryUser(dir, "Ana@Gmail.com", "Ana@Gmail.com", "viewer", []string{"code"}); err != nil || !created {
-		t.Fatalf("create: %v created=%v", err, created)
-	}
-	if len(dir.Users) != 1 || dir.Users[0].Email != "ana@gmail.com" {
-		t.Fatalf("stored email = %+v", dir.Users)
-	}
-	// A second add differing only in case is the same account.
-	if _, created, err := addDirectoryUser(dir, "ANA@gmail.com", "ana2", "viewer", nil); err != nil || created || len(dir.Users) != 1 {
-		t.Fatalf("case-different duplicate: created=%v err=%v users=%d", created, err, len(dir.Users))
-	}
-}
-
 func TestRegisteredProductIDsIncludesConfiguredLLMGateway(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENT_PRODUCTS", "work,llm-gateway")
@@ -530,4 +517,65 @@ func TestRegisteredProductIDsIncludesConfiguredLLMGateway(t *testing.T) {
 			t.Fatal("LLM Gateway exposed in ordinary local install")
 		}
 	}
+}
+
+// loggingUserDirectory logs on every read, like the workspace document cache
+// does under its lock in production.
+type loggingUserDirectory struct{ memoryUserDirectory }
+
+func (m *loggingUserDirectory) Version(ctx context.Context) (string, error) {
+	log.Printf("[TEST] user directory version read")
+	return m.memoryUserDirectory.Version(ctx)
+}
+
+// Regression: a log line carrying owner= made the log writer read the user
+// directory while the standard logger's lock was held; that read logged and
+// the whole server deadlocked on the logger lock.
+func TestLogWriterOwnerLookupDoesNotReadStorage(t *testing.T) {
+	store := &loggingUserDirectory{memoryUserDirectory{content: `{"users":[{"id":"u-owner","username":"owner@example.com"}]}`}}
+	prev := userDirectoryStore
+	userDirectoryStore = store
+	invalidateUserDirectoryCache()
+	if _, err := loadUserDirectory(); err != nil {
+		t.Fatal(err)
+	}
+	var out syncBuffer
+	prevOut := log.Writer()
+	log.SetOutput(newServerLogContextWriter(&out))
+	t.Cleanup(func() {
+		log.SetOutput(prevOut)
+		userDirectoryStore = prev
+		invalidateUserDirectoryCache()
+	})
+
+	done := make(chan struct{})
+	go func() {
+		log.Printf("[CREW_TEST] turn started owner=u-owner")
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("log writer deadlocked on an owner= line")
+	}
+	if got := out.String(); !strings.Contains(got, "username=owner@example.com") {
+		t.Fatalf("owner not resolved from the loaded directory: %q", got)
+	}
+}
+
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }

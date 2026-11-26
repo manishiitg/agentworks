@@ -18,6 +18,7 @@ import (
 	"github.com/manishiitg/mcpagent/llm"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 )
 
 // supportedLLMProviders is the product offering: coding-agent CLIs only.
@@ -471,7 +472,11 @@ func discoveryModelOptions(provider string) []string {
 	case "muse-cli":
 		return []string{llmproviders.DefaultMuseCLIModel, "muse-wonder-1.0", "muse-ember-1.0", "muse-spark-1.3-contributor"}
 	case "agy-cli":
-		return []string{"gemini-3.8-flash-high"}
+		var ids []string
+		for _, model := range agycli.GetAllAgyCLIModels() {
+			ids = append(ids, model.ModelID)
+		}
+		return ids
 	case "claude-code":
 		options := append([]string{}, claudeCodeCapabilityModels()...)
 		for _, alias := range []string{"high", "medium", "low"} {

@@ -85,7 +85,7 @@
     "family": "files",
     "name": "folders",
     "member": "list_work_folders",
-    "description": "List this Crew’s attached folders.",
+    "description": "List this project’s attached folders.",
     "external_members": "list_crew_folders"
   },
   {
@@ -99,20 +99,20 @@
     "family": "files",
     "name": "folder_detach",
     "member": "detach_work_folder",
-    "description": "Remove a folder attachment from this Crew.",
+    "description": "Remove a folder attachment from this project.",
     "external_members": "detach_crew_folder"
   },
   {
     "family": "files",
     "name": "request_folder",
     "member": "request_workflow_folder_access",
-    "description": "Request the existing workflow folder access operation."
+    "description": "Ask for access to a workflow's folder."
   },
   {
     "family": "files",
     "name": "patch",
     "member": "patch_crew_file",
-    "description": "Patch a Crew file using the owner, connection and revision checks.",
+    "description": "Patch a project file using the owner, connection and revision checks.",
     "source": "crew_files",
     "source_action": "patch"
   },
@@ -120,7 +120,7 @@
     "family": "files",
     "name": "mkdir",
     "member": "make_crew_folder",
-    "description": "Create a Crew folder through the existing file service.",
+    "description": "Create a project folder through the existing file service.",
     "source": "crew_files",
     "source_action": "mkdir"
   },
@@ -128,7 +128,7 @@
     "family": "files",
     "name": "move",
     "member": "move_crew_file",
-    "description": "Move a Crew file or folder within the current write grants.",
+    "description": "Move a project file or folder within the current write grants.",
     "source": "crew_files",
     "source_action": "move"
   },
@@ -136,7 +136,7 @@
     "family": "files",
     "name": "delete",
     "member": "delete_crew_file",
-    "description": "Delete a Crew file or empty folder through the existing file guards.",
+    "description": "Delete a project file or empty folder through the existing file guards.",
     "source": "crew_files",
     "source_action": "delete"
   },
@@ -230,7 +230,7 @@
     "family": "files",
     "name": "folders",
     "member": "list_crew_folders",
-    "description": "List this Crew’s attached folders.",
+    "description": "List this project’s attached folders.",
     "source": "crew_folders",
     "source_action": "list"
   },
@@ -246,7 +246,7 @@
     "family": "files",
     "name": "folder_detach",
     "member": "detach_crew_folder",
-    "description": "Remove a folder attachment from this Crew.",
+    "description": "Remove a folder attachment from this project.",
     "source": "crew_folders",
     "source_action": "detach"
   },
@@ -254,14 +254,14 @@
     "family": "files",
     "name": "snapshots",
     "member": "list_crew_snapshots",
-    "description": "List saved file comparisons for Crew turns.",
+    "description": "List saved file comparisons for project turns.",
     "external_members": "list_crew_snapshots"
   },
   {
     "family": "files",
     "name": "snapshot_compare",
     "member": "compare_crew_snapshot",
-    "description": "Compare files observed before and after a Crew turn. No undo.",
+    "description": "Compare files observed before and after a project turn. No undo.",
     "external_members": "compare_crew_snapshot"
   },
   {
@@ -280,9 +280,16 @@
   },
   {
     "family": "files",
+    "name": "file_limit",
+    "member": "crew_file_limit",
+    "description": "Whether the project folder has too many files to track every reply's changes, its biggest folders, and fixes: check again, move a folder out or ignore it via .gitignore (owner).",
+    "external_members": "crew_file_limit"
+  },
+  {
+    "family": "files",
     "name": "git_status",
     "member": "crew_git_status",
-    "description": "List the Crew's Git repositories with their branch and files not committed yet. Read only.",
+    "description": "List the project's Git repositories with their branch and files not committed yet. Read only.",
     "external_members": "crew_git_status"
   },
   {

@@ -635,7 +635,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 		return "", err
 	}
 	if hcpo.directCrewScript == nil {
-		return "", fmt.Errorf("This workflow needs a saved Python script. Ask your Crew to create or convert it before running it.")
+		return "", fmt.Errorf("This workflow needs a saved Python script. Ask your project to create or convert it before running it.")
 	}
 	hcpo.variablesManifest = hcpo.directCrewScript.InputDefinitions()
 	existingPlan := CrewScriptPlan(hcpo.directCrewScript, hcpo.GetWorkspacePath())
@@ -672,7 +672,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) CreateTodoList(ctx context.Context, o
 		variableValues = cloneWorkflowStringMap(opts.PythonResume.Values)
 	} else if opts != nil && opts.ResumeFromStep > 0 {
 		if !opts.AllowRunContinuation {
-			return "", fmt.Errorf("Only the Crew owner can continue an existing run; start a new run instead")
+			return "", fmt.Errorf("Only the project owner can continue an existing run; start a new run instead")
 		}
 		variableValues, err = hcpo.readExistingRunInputs(ctx, opts.SelectedRunFolder)
 	} else if opts != nil && opts.ResolvedInputs != nil {

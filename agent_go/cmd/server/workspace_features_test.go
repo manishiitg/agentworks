@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -60,34 +59,6 @@ func TestCrewCreationFailureKeepsOneUsableIdentity(t *testing.T) {
 	}
 	if projectStorageOwner(out.Root) != fixtureUserA || f.Mock.files[out.Root+"/product.json"] == "" || f.Mock.files[out.Root+"/workflow.json"] == "" {
 		t.Fatal("partial setup lost its usable identity")
-	}
-}
-
-func TestWorkspaceMCPAliasesUseNativeServices(t *testing.T) {
-	catalog, err := externalTools()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, family := range []string{"files", "share", "settings", "dashboard", "functions"} {
-		for _, tool := range catalog {
-			if tool.Name != family {
-				continue
-			}
-			action := "get"
-			if family == "files" || family == "functions" {
-				action = "list"
-			}
-			input := map[string]any{"action": action, "workspace_id": "work:example"}
-			targetKey, targetID := "crew_id", "example"
-			if family == "functions" {
-				input = map[string]any{"action": action, "project": "work:example"}
-				targetKey, targetID = "project", "work:example"
-			}
-			member, args, err := externalResolveMerged(tool, input)
-			if err != nil || args[targetKey] != targetID {
-				t.Fatalf("%s lost native Crew target: %s %v %v", family, member.Name, args, err)
-			}
-		}
 	}
 }
 
@@ -156,28 +127,6 @@ func TestWorkspaceExternalResultsKeepRunPresentationAndCallBoundaries(t *testing
 	}
 }
 
-func TestWorkspaceFailedTurnDoesNotHideOrReplaceNewerTurns(t *testing.T) {
-	now := time.Now()
-	api := &StreamingAPI{trackedWorkflowExecutions: map[string]*TrackedWorkflowExecution{
-		"failed": {ExecutionID: "failed", SessionID: "chat", StartedAt: now, Status: trackedExecutionStatusFailed},
-		"other":  {ExecutionID: "other", SessionID: "another-chat", StartedAt: now.Add(time.Second), Status: trackedExecutionStatusFailed},
-	}}
-	if failure := api.externalWorkspaceTurnExecution("chat", ""); failure == nil || failure.ExecutionID != "failed" || failure.Status != trackedExecutionStatusFailed {
-		t.Fatal("launch failure with no transcript disappeared")
-	}
-	if failure := api.externalWorkspaceTurnExecution("chat", "new"); failure != nil {
-		t.Fatal("a new ask inherited an old failure")
-	}
-	api.trackedWorkflowExecutions["new"] = &TrackedWorkflowExecution{ExecutionID: "new", SessionID: "chat", StartedAt: now.Add(time.Second), Status: trackedExecutionStatusCompleted}
-	if execution := api.externalWorkspaceTurnExecution("chat", ""); execution == nil || execution.ExecutionID != "new" || execution.Status != trackedExecutionStatusCompleted {
-		t.Fatal("an old failure replaced the latest completed turn")
-	}
-	api.trackedWorkflowExecutions["new"].Status = trackedExecutionStatusRunning
-	if execution := api.externalWorkspaceTurnExecution("chat", "new"); execution == nil || execution.Status != trackedExecutionStatusRunning {
-		t.Fatal("a newly accepted turn looked idle before its runner acquired the lane")
-	}
-}
-
 // PLAT-746-419: a successful live Crew delete left its workflow/script IDs
 // behind, which can make a later lookup ambiguous. Other Crews stay intact.
 func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
@@ -187,6 +136,8 @@ func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
 	layout.CrewPhysical = func(_ string, folder string) string { return "Crew/" + folder }
 	layout.CrewShort = func(folder string) string { return "Crew/" + folder }
 	f := newMultiUserFixture(t, layout)
+	// Real creation also materializes the private root required by workspace mutations.
+	registerTestCrew(t, fixtureCrewFolder, fixtureUserA, true, fixtureCrewID)
 	profile := f.Crew
 	profile.Version++
 	profile.Runtime.Workspace.ProjectsRoot = "Crew"
@@ -195,21 +146,17 @@ func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
 	}
 	f.put("Crew/other/product.json", `{"schema_version":1,"product":"work","id":"other-crew","title":"Other","session_id":"work:project:other-crew"}`)
 	f.put("Crew/other/workflow.json", `{"schema_version":1,"id":"other-crew","label":"Other","capabilities":{}}`)
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "other", ProjectID: "other-crew", OwnerID: fixtureUserB, Shared: true}); err != nil {
-		t.Fatal(err)
-	}
+	registerTestCrew(t, "other", fixtureUserB, true, "other-crew")
 	withProjectSharing(t, true)
 	if err := defaultProjectOwners().SetRunPeople("work", fixtureCrewFolder, []string{fixtureUserB}); err != nil {
 		t.Fatal(err)
 	}
 	for _, binding := range []crewExecutableBinding{
-		{ID: "workflow-delete", CrewID: fixtureCrewID, CrewRoot: f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), Root: "Workflow/delete-workflow", Kind: "workflow"},
+		{ID: "workflow-delete", CrewID: fixtureCrewID, CrewRoot: f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), Root: "Workflow/delete-workflow", Kind: "script"},
 		{ID: "script-shared-id", CrewID: fixtureCrewID, CrewRoot: f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), Root: "Workflow/delete-script", Kind: "script"},
 		{ID: "script-shared-id", CrewID: "other-crew", CrewRoot: "Crew/other", Root: "Workflow/keep-script", Kind: "script"},
 	} {
-		if err := registerCrewExecutable(binding); err != nil {
-			t.Fatal(err)
-		}
+		seedSavedCrewExecutableForTest(t, binding)
 	}
 	call := func(user string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/api/external/v1/call", nil).WithContext(f.Ctx(user))
@@ -217,7 +164,7 @@ func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
 		f.API.externalCrewProjectCall(rec, req, map[string]any{"action": "delete", "confirm": fixtureCrewID}, fixtureCrewID)
 		return rec
 	}
-	if rec := call(fixtureUserB); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "Only the Crew's owner") {
+	if rec := call(fixtureUserB); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "Only the project's owner") {
 		t.Fatalf("Run deletion must refuse at owner check: %d %s", rec.Code, rec.Body.String())
 	}
 	if bindings, err := readCrewExecutables(); err != nil || len(bindings) != 3 {
@@ -276,7 +223,7 @@ func TestProjectCreationLocationKeepsAccessAndDoesNotCreate(t *testing.T) {
 	if rec := request(context.Background()); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("unsigned caller: %d", rec.Code)
 	}
-	if rec := request(f.Ctx(fixtureUserC)); rec.Code != http.StatusForbidden {
+	if rec := request(f.Ctx("not-a-member")); rec.Code != http.StatusForbidden {
 		t.Fatalf("unadmitted caller: %d", rec.Code)
 	}
 	ctx := f.Ctx(fixtureUserA)

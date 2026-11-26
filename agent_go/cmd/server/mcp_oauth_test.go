@@ -2,12 +2,10 @@ package server
 
 import (
 	"crypto/sha256"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -379,105 +377,5 @@ func TestMCPOAuthStableRefreshConcurrent(t *testing.T) {
 				t.Fatal("revoked stable refresh accepted")
 			}
 		})
-	}
-}
-
-func TestMCPOAuthStableRefreshMigration(t *testing.T) {
-	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
-	t.Setenv("WORKSPACE_DOCS_PATH", filepath.Join(t.TempDir(), "docs"))
-	t.Setenv("AUTH_SECRET", "stable-refresh-migration-test-secret")
-	store, err := openMCPOAuthStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	grant := mcpOAuthGrant{FamilyID: "migration-example", ClientID: cliOAuthClientID, Resource: "https://agentworks.example.com/api/external/v1", UserID: "owner", Scopes: []string{"workflows:read"}}
-	tx, err := store.db.BeginTx(t.Context(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldAccess, consumed, err := issueMCPOAuthPair(t.Context(), tx, &grant)
-	if err != nil {
-		_ = tx.Rollback()
-		t.Fatal(err)
-	}
-	_, active, err := issueMCPOAuthPair(t.Context(), tx, &grant)
-	if err != nil {
-		_ = tx.Rollback()
-		t.Fatal(err)
-	}
-	if err := tx.Commit(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.db.Exec(`ALTER TABLE tokens ADD COLUMN used_at INTEGER`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.db.Exec(`UPDATE tokens SET used_at=? WHERE hash=?`, time.Now().Unix(), mcpOAuthHash(consumed)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.db.Exec(`UPDATE tokens SET expires_at=? WHERE hash=?`, time.Now().Add(-time.Second).Unix(), mcpOAuthHash(oldAccess)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.db.Exec(`INSERT INTO tokens SELECT 'revoked-example',kind,family_id,client_id,resource,scopes,user_id,username,email,provider,expires_at,9,workflow_ids,project_identity,NULL FROM tokens WHERE hash=?`, mcpOAuthHash(active)); err != nil {
-		t.Fatal(err)
-	}
-	var expiry int64
-	if err := store.db.QueryRow(`SELECT expires_at FROM tokens WHERE hash=?`, mcpOAuthHash(active)).Scan(&expiry); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	migrated, err := openMCPOAuthStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer migrated.Close()
-	if _, _, _, err := migrated.Refresh(t.Context(), consumed, grant.ClientID, grant.Resource); err == nil {
-		t.Fatal("migration revived a consumed credential")
-	}
-	var remaining, revoked, savedExpiry int64
-	if err := migrated.db.QueryRow(`SELECT count(*) FROM tokens WHERE hash=?`, mcpOAuthHash(oldAccess)).Scan(&remaining); err != nil || remaining != 0 {
-		t.Fatal("expired access remained", err)
-	}
-	if err := migrated.db.QueryRow(`SELECT revoked_at FROM tokens WHERE hash='revoked-example'`).Scan(&revoked); err != nil || revoked != 9 {
-		t.Fatal("migration changed revocation", err)
-	}
-	if err := migrated.db.QueryRow(`SELECT expires_at FROM tokens WHERE hash=?`, mcpOAuthHash(active)).Scan(&savedExpiry); err != nil || savedExpiry != expiry {
-		t.Fatal("migration changed refresh expiry", err)
-	}
-	if _, _, renewed, err := migrated.Refresh(t.Context(), active, grant.ClientID, grant.Resource); err != nil || renewed != active {
-		t.Fatal("migration lost the active credential", err)
-	}
-	path, err := mcpOAuthSecret()
-	if err != nil {
-		t.Fatal(err)
-	}
-	backups, err := filepath.Glob(path + ".before-stable-refresh-*")
-	if err != nil || len(backups) != 1 {
-		t.Fatal("missing migration backup", err)
-	}
-	info, err := os.Stat(backups[0])
-	if err != nil || info.Mode().Perm() != 0600 {
-		t.Fatal("migration backup is not private", err)
-	}
-	backup, err := sql.Open("sqlite", "file:"+backups[0]+"?mode=ro")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer backup.Close()
-	if err := backup.QueryRow(`SELECT count(*) FROM tokens WHERE used_at IS NOT NULL`).Scan(&remaining); err != nil || remaining != 1 {
-		t.Fatal("backup did not retain the pre-migration state", err)
-	}
-	if err := migrated.Close(); err != nil {
-		t.Fatal(err)
-	}
-	again, err := openMCPOAuthStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer again.Close()
-	backups, err = filepath.Glob(path + ".before-stable-refresh-*")
-	if err != nil || len(backups) != 1 {
-		t.Fatal("migration reran", err)
 	}
 }

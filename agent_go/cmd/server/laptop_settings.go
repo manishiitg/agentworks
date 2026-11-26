@@ -59,12 +59,12 @@ func readLaptopSettings(owner, root string) (crewLaptopSettings, error) {
 func (api *StreamingAPI) laptopSettingsRoot(w http.ResponseWriter, r *http.Request) (string, bool) {
 	claims := GetUserFromContext(r.Context())
 	if !websiteDeviceClaims(claims) || !userAccessForClaims(claims).CanEdit {
-		externalError(w, 403, "forbidden", "Use your website login to manage your own Crew's laptop access.")
+		externalError(w, 403, "forbidden", "Use your website login to manage your own project's laptop access.")
 		return "", false
 	}
 	binding, _, ok := api.authorizeCrewProjectRead(r, mux.Vars(r)["project_id"])
 	if !ok || !crewProjectOwnedByCaller(claims.UserID, agentProfileRuntimeWorkspace(claims.UserID, binding.WorkspacePath)) {
-		externalError(w, 403, "forbidden", "Only a Crew owner can connect a laptop.")
+		externalError(w, 403, "forbidden", "Only a project owner can connect a laptop.")
 		return "", false
 	}
 	return binding.WorkspacePath, true

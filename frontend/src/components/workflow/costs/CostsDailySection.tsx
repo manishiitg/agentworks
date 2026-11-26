@@ -1,7 +1,7 @@
 import CostPricingNotice from '../../providers/CostPricingNotice'
 import CostConversations from '../../providers/CostConversations'
 import React from 'react'
-import { inputTokens, totalTokens, tokenSummary } from '../../../utils/costTokens'
+import { costBasisText, costDayLabel, inputTokens, newTokens, totalTokens, tokenSummary } from '../../../utils/costTokens'
 import type { CostAggregate } from '../../../services/api-types'
 import { Loader2, ChevronDown, ChevronRight } from 'lucide-react'
 import { phaseLabel as costPhaseLabel } from '../../../utils/costActivityBreakdown'
@@ -12,7 +12,18 @@ import CostsScheduleSection from './CostsScheduleSection'
 import { formatTokens } from '../../../utils/formatTokens'
 
 const recordedCost = (usage: CostAggregate) =>
-  usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0 ? 'Not priced' : formatUSD(usage.total_cost_usd)
+  usage.total_cost_usd === 0 && (usage.unpriced_call_count ?? 0) > 0 ? 'Not priced' : `${costBasisText(usage) ? 'about ' : ''}${formatCost(usage.total_cost_usd)}`
+
+const activityCards = (breakdown: CostsData['activityBreakdown'], scopedCosts: CostsData['scopedCosts']) =>
+  breakdown.filter(category => hasUsage(category.total) && !(category.id === 'schedule' && Object.keys(scopedCosts?.by_source || {}).length > 0))
+
+type DailyEntry = CostsData['combinedDailyCostSummaries'][number]
+/** A day's tokens without cache re-reads: from the ledger day when there is one, else the run files' totals. */
+const dayTokensOf = (entry: DailyEntry, scopedCosts: CostsData['scopedCosts']) => {
+  const day = scopedCosts?.by_date?.[entry.date]
+  if (day) return newTokens(day)
+  return entry.totalInputTokens === undefined || entry.totalOutputTokens === undefined ? undefined : entry.totalInputTokens + entry.totalOutputTokens
+}
 
 const hasUsage = (usage: CostAggregate) =>
   usage.total_cost_usd > 0 || totalTokens(usage) > 0 || (usage.unpriced_call_count ?? 0) > 0
@@ -48,20 +59,22 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
 }) => (
   <>
               {/* Canonical product activity hierarchy */}
-              {hasScopedActivity && (!projectMode || activityBreakdown.filter(category => hasUsage(category.total)).length > 1) && (
+              {/* Schedules have their own table below; a card for them only repeated it. */}
+              {hasScopedActivity && (!projectMode || activityCards(activityBreakdown, scopedCosts).length > 1) && (
                 <section className="space-y-3">
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">By activity</h3>
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {activityBreakdown.filter(category => hasUsage(category.total)).map(category => {
+                    {activityCards(activityBreakdown, scopedCosts).map(category => {
                       return (
                       <div key={category.id} className="flex items-center gap-3 rounded-lg border border-border bg-card p-4 shadow-sm">
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold text-foreground">{projectMode && category.id === 'builder' ? 'Chat' : category.label}</div>
                         </div>
-                          <div className="text-right">
-                            <div className="font-mono font-semibold text-foreground">{recordedCost(category.total)}</div>
+                          <div className="text-right tabular-nums">
+                            <div className="font-semibold text-foreground">{formatTokens(newTokens(category.total))} tokens</div>
+                            <div className="text-xs text-muted-foreground">{recordedCost(category.total)}</div>
                           </div>
                       </div>
                       )
@@ -80,6 +93,7 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                       <h3 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2">
                         Daily usage
                       </h3>
+                      {costBasisText(scopedCosts?.total) && <p className="text-xs text-muted-foreground">Costs are {costBasisText(scopedCosts?.total)}.</p>}
 
                     </div>
                   </div>
@@ -88,18 +102,20 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="text-muted-foreground border-b border-border pb-2">
-                          <th className="text-left font-medium pb-2">Date (UTC)</th>
-                          <th className="text-right font-medium pb-2">Tokens</th>
+                          <th className="text-left font-medium pb-2">Day</th>
+                          <th className="text-right font-medium pb-2" title="New input and output; context re-read from cache is not counted">Tokens</th>
                           <th className="text-right font-medium pb-2">Cost</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
-                        {combinedDailyCostSummaries.map(entry => {
+                        {combinedDailyCostSummaries.map((entry, _index, all) => {
                           const isExpanded = expandedDailyDates.has(entry.date)
                           const categories = dailyActivityBreakdown.get(entry.date)
                           const dayUsage = scopedCosts?.by_date?.[entry.date]
                           const modelRows = buildModelCostRows({ by_model: scopedCosts?.by_date?.[entry.date]?.by_model || {} })
                           const dailyRuns = runDailyCostSummaries.filter(run => run.date === entry.date)
+                          const dayTokens = dayTokensOf(entry, scopedCosts)
+                          const maxDayTokens = Math.max(0, ...all.map(other => dayTokensOf(other, scopedCosts) ?? 0))
                           return (
                             <React.Fragment key={entry.date}>
                               <tr className="hover:bg-accent/50 transition-colors">
@@ -118,7 +134,7 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                   >
                                     {isExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
                                     <span>
-                                      <span className="block">{entry.date}</span>
+                                      <span className="block">{costDayLabel(entry.date)}</span>
                                       <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">
                                         {Object.keys(dayUsage?.by_conversation || {}).length > 0
                                           ? `${Object.keys(dayUsage?.by_conversation || {}).length} ${Object.keys(dayUsage?.by_conversation || {}).length === 1 ? 'chat' : 'chats'}`
@@ -128,12 +144,15 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                     </span>
                                   </button>
                                 </td>
-                                <td className="py-2 text-right font-medium tabular-nums text-foreground">
-                                  {entry.totalInputTokens === undefined || entry.totalOutputTokens === undefined ? '—' : formatTokens(entry.totalInputTokens + entry.totalOutputTokens)}
+                                <td className="py-2 text-right font-medium tabular-nums text-foreground" title={dayTokens === undefined ? undefined : `${formatTokens((entry.totalInputTokens ?? 0) + (entry.totalOutputTokens ?? 0))} including what was re-read from cache`}>
+                                  {dayTokens === undefined ? '—' : <span className="inline-flex items-center justify-end gap-2">
+                                    {/* The day's share of the busiest day: the list reads as a small bar chart. */}
+                                    <span aria-hidden="true" className="hidden h-1.5 w-20 overflow-hidden rounded-full bg-muted sm:block"><span className="block h-full rounded-full bg-muted-foreground/60" style={{ width: `${maxDayTokens > 0 ? Math.max(2, (dayTokens / maxDayTokens) * 100) : 0}%` }} /></span>
+                                    {formatTokens(dayTokens)}
+                                  </span>}
                                 </td>
-                                <td className="py-2 text-right font-medium tabular-nums text-muted-foreground" title={formatUSD(entry.totalCost)}>
+                                <td className="py-2 text-right tabular-nums text-muted-foreground" title={[formatUSD(entry.totalCost), costBasisText(dayUsage)].filter(Boolean).join(', ')}>
                                   {entry.totalCost === 0 && (dayUsage?.unpriced_call_count ?? 0) > 0 ? 'Not priced' : formatCost(entry.totalCost)}
-                                  {((dayUsage?.token_estimate_cost_usd ?? 0) > 0 || (dayUsage?.subscription_shadow_cost_usd ?? 0) > 0) && <span className="mt-0.5 block text-[10px]">Estimated</span>}
                                 </td>
                               </tr>
                               {isExpanded && (
@@ -153,12 +172,12 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                                     <span className="font-mono font-medium text-foreground">{getRunFolderDisplayName(run.runFolder)}</span>
                                                     <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">{run.scope}</span>
                                                     <span className="ml-auto font-mono text-muted-foreground">{formatTokens(run.summary.totalInputTokens)} input · {formatTokens(run.summary.totalOutputTokens)} output</span>
-                                                    <span className="font-mono font-semibold text-foreground">{formatUSD(run.summary.totalCost)}</span>
+                                                    <span className="font-semibold tabular-nums text-foreground">{formatCost(run.summary.totalCost)}</span>
                                                   </div>
                                                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
                                                     {Object.entries(run.summary.stageCosts)
                                                       .filter(([, cost]) => cost > 0)
-                                                      .map(([stage, cost]) => <span key={stage}>{stage}: <span className="font-mono">{formatUSD(cost)}</span></span>)}
+                                                      .map(([stage, cost]) => <span key={stage}>{stage}: <span className="tabular-nums">{formatCost(cost)}</span></span>)}
                                                     {Object.entries(run.tokenUsage.by_model || {}).map(([model]) => <span key={model} className="font-mono">{model}</span>)}
                                                   </div>
                                                 </div>
@@ -214,7 +233,7 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                                   <div className="text-right text-[10px] text-muted-foreground">
                                                     <div className="font-mono text-foreground">{recordedCost(category.total)}</div>
                                                     <div>{tokenSummary(category.total)}</div>
-                                                    <div>LLM time: {formatDuration(category.total.llm_generation_duration_ms)}</div>
+                                                    <div>AI time: {formatDuration(category.total.llm_generation_duration_ms)}</div>
                                                 </div>
                                               </div>
                                               {category.executions.length === 0 ? (
@@ -250,14 +269,14 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                                                         <div className="flex items-center gap-2 border-b border-border/70 py-2 text-[10px] last:border-0" title={execution.id}>
                                                           <span className="min-w-0 flex-1 truncate text-foreground">{execution.label}</span>
                                                           <span className="shrink-0 font-mono text-muted-foreground">{tokenSummary(execution.cost)}</span>
-                                                          <span className="shrink-0 font-mono text-muted-foreground">LLM time: {formatDuration(execution.cost.llm_generation_duration_ms)}</span>
+                                                          <span className="shrink-0 font-mono text-muted-foreground">AI time: {formatDuration(execution.cost.llm_generation_duration_ms)}</span>
                                                           <span className="shrink-0 font-mono text-foreground">{recordedCost(execution.cost)}</span>
                                                         </div>
                                                         {showPhaseBreakdown && phaseEntries.map(([phase, phaseCost]) => (
                                                           <div key={phase} className="flex items-center gap-2 border-b border-border/70 py-1 pl-4 text-[10px] text-muted-foreground last:border-0" title="Included in the total above">
                                                             <span className="min-w-0 flex-1 truncate">↳ {costPhaseLabel(phase)}</span>
                                                             <span className="shrink-0 font-mono">{tokenSummary(phaseCost)}</span>
-                                                            <span className="shrink-0 font-mono">LLM time: {formatDuration(phaseCost.llm_generation_duration_ms)}</span>
+                                                            <span className="shrink-0 font-mono">AI time: {formatDuration(phaseCost.llm_generation_duration_ms)}</span>
                                                             <span className="shrink-0 font-mono">{recordedCost(phaseCost)}</span>
                                                           </div>
                                                         ))}
@@ -293,6 +312,7 @@ const CostsDailySection: React.FC<CostsDailySectionProps> = ({
                       </button>
                     </div>
                   )}
+                  {costHistory?.error && <p className="mt-2 text-center text-xs text-destructive">{costHistory.error}</p>}
                 </section>
               )}
   </>

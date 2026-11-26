@@ -13,36 +13,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check out matching MCP bridge runtime
-        uses: actions/checkout@v4
-        with:
-          repository: manishiitg/mcpagent
-          ref: de7ef672f5e0ce2ffe68e5419ec1928236445a5f
-          path: dependencies/mcpagent
-
-      - name: Check out matching LLM runtime
-        uses: actions/checkout@v4
-        with:
-          repository: manishiitg/llm-provider-mcp
-          ref: f32b481c08b1a1d96e75e656c9f36431f1128266
-          path: dependencies/multi-llm-provider-go
-
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version: '1.26.x'
           cache-dependency-path: |
-            go.work.sum
-            mcp-agent-builder-go/agent_go/go.sum
+            agent_go/go.sum
             mcpagent/go.sum
+            multi-llm-provider-go/go.sum
 
       - name: Build Video Studio agent
         working-directory: agent_go
         run: |
-          # Retained-turn support is in the checked-out MCP runtime, which has
-          # not been released in the pinned public module yet.
-          go mod edit -replace github.com/manishiitg/mcpagent=../dependencies/mcpagent
-          go mod edit -replace github.com/manishiitg/multi-llm-provider-go=../dependencies/multi-llm-provider-go
-          go mod tidy
           # Ship the optional speech runtime beside the agent. Its relative
           # rpath avoids a host-wide library install or sudo.
           SHERPA_LIB_DIR="$(go env GOPATH)/pkg/mod/github.com/k2-fsa/sherpa-onnx-go-linux@v1.13.5/lib/x86_64-unknown-linux-gnu"

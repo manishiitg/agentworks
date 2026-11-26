@@ -27,10 +27,11 @@ export type EntityIdentityIconProps = {
   label?: string
   className?: string
   fallback?: ReactNode
+  neutral?: boolean
 }
 
 /** Shared compact identity for workflows and product projects. */
-export function EntityIdentityIcon({ icon, label, className = '', fallback }: EntityIdentityIconProps) {
+export function EntityIdentityIcon({ icon, label, className = '', fallback, neutral = false }: EntityIdentityIconProps) {
   const [failedIcon, setFailedIcon] = useState<string>()
   const trimmed = icon?.trim() || ''
   const displayIcon = failedIcon === trimmed ? '' : trimmed
@@ -47,7 +48,7 @@ export function EntityIdentityIcon({ icon, label, className = '', fallback }: En
   if (!displayIcon && fallback) return <>{fallback}</>
   return (
     <span
-      className={cn('inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded text-[11px] font-semibold leading-none', toneForEntity(label), className)}
+      className={cn('inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded text-[11px] font-semibold leading-none', neutral ? 'bg-secondary text-secondary-foreground' : toneForEntity(label), className)}
       aria-hidden="true"
     >
       {displayIcon || entityInitial(label)}

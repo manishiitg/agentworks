@@ -25,20 +25,20 @@ func (api *StreamingAPI) registerCrewPublishedFunctionTools(registrar definition
 	crewOf := func(ctx context.Context) (*UserClaims, crewProjectBinding, productProjectManifest, string, error) {
 		claims := userClaimsForDirectoryID(strings.TrimSpace(callerID))
 		if claims == nil {
-			return nil, crewProjectBinding{}, productProjectManifest{}, "", fmt.Errorf("your account cannot call this Crew's functions")
+			return nil, crewProjectBinding{}, productProjectManifest{}, "", fmt.Errorf("your account cannot call this project's functions")
 		}
 		manifest, err := readCrewProjectManifests(ctx, crewProfileID, strings.TrimSuffix(strings.TrimSpace(workspacePath), "/"))
 		if err != nil {
-			return nil, crewProjectBinding{}, productProjectManifest{}, "", fmt.Errorf("this Crew's functions are unavailable")
+			return nil, crewProjectBinding{}, productProjectManifest{}, "", fmt.Errorf("this project's functions are unavailable")
 		}
 		crew, resolved, summary, ok := api.externalCrewResolve(ctx, claims, manifest.ID)
 		if !ok {
-			return nil, crewProjectBinding{}, productProjectManifest{}, "", fmt.Errorf("you can no longer use this Crew")
+			return nil, crewProjectBinding{}, productProjectManifest{}, "", fmt.Errorf("you can no longer use this project")
 		}
 		return claims, crew, resolved, fmt.Sprint(summary["name"]), nil
 	}
 	if err := registrar.RegisterCustomTool(crewPublishedCallToolName,
-		"Call one of the functions this Crew's owner published (see functions action=list). The function runs on its own, with the owner's authority, and may write; you cannot. Arguments are validated against its input schema. Returns status=running and a call_id: poll with "+crewPublishedGetToolName+" (wait_seconds up to 25) until it settles, then tell the user the result. Reuse submission_id after an uncertain retry; never call twice for the same work.",
+		"Call one of the functions this project's owner published (see functions action=list). The function runs on its own, with the owner's authority, and may write; you cannot. Arguments are validated against its input schema. Returns status=running and a call_id: poll with "+crewPublishedGetToolName+" (wait_seconds up to 25) until it settles, then tell the user the result. Reuse submission_id after an uncertain retry; never call twice for the same work.",
 		map[string]interface{}{
 			"type": "object", "required": []string{"function"}, "additionalProperties": false,
 			"properties": map[string]interface{}{
@@ -58,15 +58,15 @@ func (api *StreamingAPI) registerCrewPublishedFunctionTools(registrar definition
 			target := triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: crewProfileID, CrewOwner: crew.OwnerID}
 			functions, err := readCrewFunctions(ctx, target)
 			if err != nil {
-				return "", fmt.Errorf("cannot read the Crew's functions")
+				return "", fmt.Errorf("cannot read the project's functions")
 			}
 			name, _ := args["function"].(string)
 			fn, found := findCrewFunction(offeredCrewFunctions(ctx, target, functions), name)
 			if !found {
-				return "", fmt.Errorf("this Crew has no published function %q; see functions action=list", strings.TrimSpace(name))
+				return "", fmt.Errorf("this project has no published function %q; see functions action=list", strings.TrimSpace(name))
 			}
 			if isBuiltinConversationalFunction(target, fn) {
-				return "", fmt.Errorf("%q is the Crew's built-in conversation, not a published function: you are already in a conversation with this Crew", fn.Name)
+				return "", fmt.Errorf("%q is the project's built-in conversation, not a published function: you are already in a conversation with this project", fn.Name)
 			}
 			callArgs, _ := args["input"].(map[string]interface{})
 			if raw, present := args["input"]; present && raw != nil && callArgs == nil {

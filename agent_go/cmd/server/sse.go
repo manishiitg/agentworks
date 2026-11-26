@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -34,6 +35,9 @@ type sseStatusMessage struct {
 	CanSteer                   bool             `json:"can_steer,omitempty"`
 	RuntimeState               *RuntimeSnapshot `json:"runtime_state,omitempty"`
 }
+
+// durableReplayMaxGap is how far behind a reconnecting chat may be before it reloads its history instead of replaying.
+var durableReplayMaxGap int64 = 2000
 
 // handleSSEStream serves a Server-Sent Events stream of session events.
 //
@@ -107,6 +111,11 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
+	// Count only authenticated user views, not EventStore's internal subscribers.
+	// The owner/session pair cannot be supplied by a teammate's view.
+	closeView := observeHostedSessionView(r.Context(), GetUserIDFromContext(r.Context()), sessionID)
+	defer closeView()
+
 	// Each chat stream's life is logged with the person and device class (PLAT-856-509).
 	streamLog := newChatStreamLog(r, "-", sessionID, sinceIndex)
 	defer streamLog.close()
@@ -135,7 +144,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 	// Backfill: subscribe first, then stream every missing durable page. A
 	// one-page read must never advertise the journal tip as its cursor: doing
 	// so silently drops all remaining pages on reconnect.
-	if durableChat && sinceIndex >= 0 {
+	replayDurable := func() bool {
 		requestedIndex := sinceIndex
 		for {
 			page, err := api.eventStore.ReadDurableChatPage(sessionID, events.DurableEventPageOptions{
@@ -143,7 +152,21 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 			})
 			if err != nil {
 				log.Printf("[SSE] durable backfill failed for session %s: %v", sessionID, err)
-				return
+				return false
+			}
+			// A chat far behind its tip reloads its saved history instead of replaying every event: a busy chat
+			// reopened 105,000 events behind streamed 63 MB for 88 s before it showed. LastProcessedIndex -1 is the
+			// app's existing "reload from the durable transcript" signal; the frame id moves its cursor to the tip.
+			if sinceIndex == requestedIndex && requestedIndex > 0 && page.JournalLatestSequence-int64(requestedIndex) > durableReplayMaxGap {
+				tip := int(page.JournalLatestSequence)
+				msg := sseEventMessage{Events: []events.Event{}, SessionStatus: sessionStatus, LastProcessedIndex: -1}
+				if err := writeSSEEvent(w, "event", tip, api.nativeUsageResponse(r, sessionID, msg)); err != nil {
+					return false
+				}
+				flusher.Flush()
+				log.Printf("[CHAT_STREAM_REPLAY] session=%s result=reload_history since=%d tip=%d", sessionID, requestedIndex, tip)
+				sinceIndex = tip
+				return true
 			}
 			if len(page.Events) == 0 {
 				if page.JournalLatestSequence < int64(requestedIndex) {
@@ -151,7 +174,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 					// can be ahead of the durable tip. Rewind before live delivery.
 					sinceIndex = int(page.JournalLatestSequence)
 					if err := writeSSEEvent(w, "cursor", sinceIndex, struct{}{}); err != nil {
-						return
+						return false
 					}
 					flusher.Flush()
 				}
@@ -164,7 +187,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 			}
 			if len(batch) == 0 {
 				if err := writeSSEEvent(w, "cursor", cursor, struct{}{}); err != nil {
-					return
+					return false
 				}
 			} else {
 				runtimeState, _ := api.authoritativeRuntimeSnapshot(sessionID)
@@ -177,7 +200,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 					RuntimeState: &runtimeState,
 				}
 				if err := writeSSEEvent(w, "event", cursor, api.nativeUsageResponse(r, sessionID, msg)); err != nil {
-					return
+					return false
 				}
 			}
 			sinceIndex = cursor
@@ -185,6 +208,12 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 			if !page.HasNewer || ctx.Err() != nil {
 				break
 			}
+		}
+		return true
+	}
+	if durableChat && sinceIndex >= 0 {
+		if !replayDurable() {
+			return
 		}
 	} else if sinceIndex >= 0 {
 		result := api.eventStore.GetEvents(sessionID, events.GetEventsOptions{SinceIndex: sinceIndex, IncludeStreaming: true})
@@ -261,6 +290,31 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
+	// Recover the active token prefix after durable backfill. Token deltas have
+	// no durable cursor, so the journal alone cannot restore a mid-word rejoin.
+	// The ordinary authorization above also covers this same-session read.
+	var replayedStreaming map[string]bool
+	if durableChat {
+		prefix, covered := api.eventStore.StreamingPrefix(sessionID)
+		replayedStreaming = covered
+		if len(prefix) > 0 {
+			runtimeState, _ := api.authoritativeRuntimeSnapshot(sessionID)
+			runtimeStatus := sessionDisplayStatusFromRuntime(runtimeState)
+			msg := sseEventMessage{
+				Events: prefix, SessionStatus: sessionStatus,
+				DisplayStatus: runtimeStatus.Status, LastProcessedIndex: -2,
+				HasRunningBackgroundAgents: runtimeStatus.HasRunningBackgroundAgents,
+				IsSyntheticTurn:            api.isSyntheticTurn(sessionID), CanSteer: runtimeStatus.CanSteer,
+				RuntimeState: &runtimeState,
+			}
+			if err := writeSSEEvent(w, "event", -1, api.nativeUsageResponse(r, sessionID, msg)); err != nil {
+				return
+			}
+			flusher.Flush()
+			log.Printf("[CHAT_STREAM_REPLAY] session=%s result=restored chunks=%d bytes=%d", sessionID, len(prefix)-1, events.StreamingPrefixBytes(prefix))
+		}
+	}
+
 	// 5. Event loop
 	statusTicker := time.NewTicker(2 * time.Second)
 	defer statusTicker.Stop()
@@ -276,6 +330,20 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 	// until the tab was reopened (PLAT-746-158).
 	lastIndex := sinceIndex
 	backfilledThrough := sinceIndex
+	var lastRuntimeState RuntimeSnapshot
+	var hasLastRuntimeState bool
+	var lastRuntimeAt time.Time
+	var lastStatusPayload []byte
+	snapshotFor := func(allowCached bool) RuntimeSnapshot {
+		if allowCached && hasLastRuntimeState && time.Since(lastRuntimeAt) < 2*time.Second {
+			return lastRuntimeState
+		}
+		snap, _ := api.authoritativeRuntimeSnapshot(sessionID)
+		lastRuntimeState = snap
+		hasLastRuntimeState = true
+		lastRuntimeAt = time.Now()
+		return snap
+	}
 
 	for {
 		select {
@@ -288,6 +356,22 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 				// Channel closed (unsubscribed)
 				return
 			}
+			// Fork import writes historical rows without publishing them as new
+			// activity. Its final marker wakes an early subscriber; reuse the
+			// authorized, paged replay before advancing past those rows.
+			if durableChat && event.Type == "chat_forked" {
+				sinceIndex = lastIndex
+				if !replayDurable() {
+					return
+				}
+				lastIndex, backfilledThrough = sinceIndex, sinceIndex
+				continue
+			}
+			// A subscribe-before-snapshot race may queue packets the prefix already
+			// includes. Skip only those exact transport IDs, never durable chat rows.
+			if durableChat && !events.IsDurableChatEvent(event) && replayedStreaming[event.ID] {
+				continue
+			}
 			if durableChat && !events.IsDurableChatEvent(event) {
 				// Live-only updates still drive the streaming UI, but never become
 				// chat history or advance the journal cursor. No SSE id means a
@@ -295,7 +379,10 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 				if workingSetOnly && !events.RetainEventInSessionWorkingSet(sessionID, event) {
 					continue
 				}
-				runtimeState, _ := api.authoritativeRuntimeSnapshot(sessionID)
+				// Pure text-streaming packets do not change runtime phase, waiting state, or
+				// background agents; reuse the recent snapshot to avoid copying 300 events per token.
+				isStreamingToken := event.Type == "streaming_text" || event.Type == "streaming_chunk" || event.Type == "streaming_progress"
+				runtimeState := snapshotFor(isStreamingToken)
 				runtimeStatus := sessionDisplayStatusFromRuntime(runtimeState)
 				// -2 is the client's "no cursor information" sentinel; -1 would
 				// be read as "server lost this session" and trigger a resync.
@@ -344,7 +431,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 				currentStatus = sessionStatus
 			}
 
-			runtimeState, _ := api.authoritativeRuntimeSnapshot(sessionID)
+			runtimeState := snapshotFor(false)
 			runtimeStatus := sessionDisplayStatusFromRuntime(runtimeState)
 			msg := sseEventMessage{
 				Events:                     []events.Event{event},
@@ -373,7 +460,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 			} else {
 				sessionStatus = currentStatus // update cached status
 			}
-			runtimeState, _ := api.authoritativeRuntimeSnapshot(sessionID)
+			runtimeState := snapshotFor(false)
 			runtimeStatus := sessionDisplayStatusFromRuntime(runtimeState)
 			msg := sseStatusMessage{
 				SessionStatus:              currentStatus,
@@ -382,6 +469,17 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 				IsSyntheticTurn:            api.isSyntheticTurn(sessionID),
 				CanSteer:                   runtimeStatus.CanSteer,
 				RuntimeState:               &runtimeState,
+			}
+			if encoded, err := json.Marshal(msg); err == nil {
+				if bytes.Equal(encoded, lastStatusPayload) {
+					if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
+						streamLog.keepaliveMiss()
+						return
+					}
+					flusher.Flush()
+					continue
+				}
+				lastStatusPayload = encoded
 			}
 			if err := writeSSEEvent(w, "status", -1, msg); err != nil {
 				return

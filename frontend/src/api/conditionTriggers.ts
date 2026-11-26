@@ -20,10 +20,12 @@ export interface ConditionTrigger {
   sha256: string
   revision: string
   secrets?: string[]
-  target: { kind: 'agent' | 'function' | 'route' | 'trigger'; name?: string; function?: string; chat_id?: string; message?: string; trigger_id?: string; route_selections?: Record<string, string>; group_names?: string[] }
+  target: { kind: 'agent' | 'function' | 'route' | 'trigger' | 'feed'; app?: string; link?: string; name?: string; function?: string; chat_id?: string; message?: string; trigger_id?: string; route_selections?: Record<string, string>; group_names?: string[] }
   last_status?: string
   last_error?: string
   last_run_at?: string
+  /** The server's "Changed by <name>, <date>": who last changed this Watcher, else who made it. */
+  changed_by?: string
 }
 export type WatcherCaller = { owner_id: string; id: string; name: string; target: ConditionTrigger['target']; enabled: boolean; last_status?: string; last_run_at?: string; last_dispatch_at?: string }
 export interface ConditionHistory {
@@ -36,7 +38,7 @@ function config() {
   return { baseURL: getApiBaseUrl(), headers: token ? { Authorization: `Bearer ${token}` } : {} }
 }
 export const conditionTriggersApi = {
-  list: (projectId: string, profileId = 'code', includeCompleted = false) => axios.get<{ triggers: ConditionTrigger[]; callers?: WatcherCaller[]; chats?: { id: string; name: string }[] }>('/api/condition-triggers', { ...config(), params: { project_id: projectId, profile_id: profileId, ...(includeCompleted ? { include_completed: true } : {}) } }).then(r => r.data),
-  manage: (projectId: string, action: string, id: string, trigger?: Record<string, unknown>, expectedRevision?: string, profileId = 'code') => axios.post('/api/condition-triggers', { project_id: projectId, profile_id: profileId, action, id, ...(trigger ? { trigger } : {}), ...(expectedRevision ? { expected_revision: expectedRevision } : {}) }, config()).then(r => r.data),
-  history: (projectId: string, id: string, profileId = 'code') => axios.get<ConditionHistory>(`/api/condition-triggers/${encodeURIComponent(id)}/history`, { ...config(), params: { project_id: projectId, profile_id: profileId } }).then(r => r.data),
+  list: (projectId: string, profileId = 'work', includeCompleted = false) => axios.get<{ triggers: ConditionTrigger[]; callers?: WatcherCaller[]; chats?: { id: string; name: string }[] }>('/api/condition-triggers', { ...config(), params: { project_id: projectId, profile_id: profileId, ...(includeCompleted ? { include_completed: true } : {}) } }).then(r => r.data),
+  manage: (projectId: string, action: string, id: string, trigger?: Record<string, unknown>, expectedRevision?: string, profileId = 'work') => axios.post('/api/condition-triggers', { project_id: projectId, profile_id: profileId, action, id, ...(trigger ? { trigger } : {}), ...(expectedRevision ? { expected_revision: expectedRevision } : {}) }, config()).then(r => r.data),
+  history: (projectId: string, id: string, profileId = 'work') => axios.get<ConditionHistory>(`/api/condition-triggers/${encodeURIComponent(id)}/history`, { ...config(), params: { project_id: projectId, profile_id: profileId } }).then(r => r.data),
 }

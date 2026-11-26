@@ -1,9 +1,10 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 )
 
 // What the Team tab shows of another person's agents while they work (owner, 6 Nov: "when their agent is
@@ -11,7 +12,6 @@ import (
 // the events its Mac relays (crewRelayStream.running), a server agent's from the server's own turn queue.
 
 var crewActivityStart = map[string]bool{"user_message": true, "conversation_start": true, "llm_generation_start": true, "streaming_start": true}
-var crewActivityEnd = map[string]bool{"llm_generation_end": true, "unified_completion": true, "agent_end": true, "conversation_end": true, "conversation_error": true, "context_cancelled": true}
 
 // crewRelayBatchRunning reads one batch of relayed events: whether its last lifecycle event starts or ends a turn;
 // known is false when it holds none.
@@ -19,6 +19,11 @@ func crewRelayBatchRunning(body []byte) (running, known bool) {
 	var envelope struct {
 		Events []struct {
 			Type string `json:"type"`
+			Data struct {
+				Data struct {
+					Metadata map[string]interface{} `json:"metadata"`
+				} `json:"data"`
+			} `json:"data"`
 		} `json:"events"`
 	}
 	if json.Unmarshal(body, &envelope) != nil {
@@ -28,7 +33,7 @@ func crewRelayBatchRunning(body []byte) (running, known bool) {
 		switch {
 		case crewActivityStart[event.Type]:
 			running, known = true, true
-		case crewActivityEnd[event.Type]:
+		case events.IsTurnEndType(event.Type):
 			running, known = false, true
 		}
 	}
@@ -38,15 +43,29 @@ func crewRelayBatchRunning(body []byte) (running, known bool) {
 // crewActivityStale: a turn the Mac never reported the end of (it was closed or lost its connection) stops counting.
 const crewActivityStale = 20 * time.Minute
 
-// crewMacConversationRunning: a turn is going in this Mac conversation now, from its relayed events.
-func crewMacConversationRunning(owner, project, conversation string) bool {
+// crewMacConversationActivity is what this Mac conversation is doing now, from its Mac's reports and relayed events:
+// "running", "waiting" (for its person) or "".
+func crewMacConversationActivity(owner, project, conversation string) string {
+	activity, _ := crewMacConversationActivitySince(owner, project, conversation)
+	return activity
+}
+
+func crewMacConversationActivitySince(owner, project, conversation string) (string, time.Time) {
 	if conversation == "" {
-		return false
+		return "", time.Time{}
 	}
 	crewRelayStreams.Lock()
 	defer crewRelayStreams.Unlock()
 	stream := crewRelayStreams.streams[owner+"/"+project+"/"+conversation]
-	return stream != nil && stream.running && time.Since(stream.since) < crewActivityStale
+	switch {
+	case stream == nil:
+		return "", time.Time{}
+	case stream.waiting:
+		return "waiting", stream.since
+	case stream.running && time.Since(stream.activityAt) < crewActivityStale:
+		return "running", stream.since
+	}
+	return "", time.Time{}
 }
 
 // crewServerChatRunning: a turn is going in this server chat now.
@@ -54,19 +73,42 @@ func crewServerChatRunning(sessionID string) bool {
 	return runningServerAPI != nil && sessionID != "" && runningServerAPI.sessionTurnRunning(sessionID)
 }
 
-// crewStandbyServedRunning: the server is answering for this Mac agent and a turn of its own chats here is going.
-func crewStandbyServedRunning(owner, project, tab string) bool {
-	if rows, err := readCrewStandby(project, owner); err != nil || rows[tab].Writer != "server" {
-		return false
+// One live-state rule for every Team projection. The maker retains their own
+// pending question indefinitely; teammates stop seeing a wait after 30 minutes.
+func crewTeamLiveActivity(activity string, since time.Time, mine bool, now time.Time) string {
+	if activity == "waiting" && !mine && (since.IsZero() || !now.Before(since.Add(30*time.Minute))) {
+		return ""
 	}
-	doc, err := defaultProductConversationRegistryStore().loadDocument(context.Background(), productConversationRegistryPath(owner))
-	if err != nil {
-		return false
+	return activity
+}
+
+// Metadata only from the existing relay lifecycle. Idle housekeeping is not
+// work: use the last transition, not the socket's last-seen/heartbeat time.
+func crewMacConversationLastWorkedAt(owner, project, conversation string) time.Time {
+	if conversation == "" {
+		return time.Time{}
 	}
-	for _, record := range doc.Entries {
-		if record.ProfileID == crewProfileID && crewResourceProjectID(record.ConversationKey) == project && crewStandbyTabForKey(project, record.ConversationKey) == tab && crewServerChatRunning(record.SessionID) {
-			return true
-		}
+	crewRelayStreams.Lock()
+	defer crewRelayStreams.Unlock()
+	stream := crewRelayStreams.streams[owner+"/"+project+"/"+conversation]
+	if stream == nil {
+		return time.Time{}
 	}
-	return false
+	if stream.running || stream.waiting {
+		return stream.activityAt
+	}
+	return stream.since
+}
+
+func crewServerChatLastWorkedAt(session string) time.Time {
+	api := runningServerAPI
+	if api == nil || session == "" {
+		return time.Time{}
+	}
+	api.activeSessionsMux.RLock()
+	defer api.activeSessionsMux.RUnlock()
+	if row := api.activeSessions[session]; row != nil {
+		return row.LastWorkedAt
+	}
+	return time.Time{}
 }

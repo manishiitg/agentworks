@@ -3,7 +3,10 @@ package server
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
+	"github.com/manishiitg/coding-agent-loop/workspace/schedulehistory"
 	"io"
 	"io/fs"
 	"os"
@@ -19,7 +22,7 @@ func removeLocalCrew(folder string) error {
 		return err
 	}
 	if !bound {
-		return fmt.Errorf("local Crew binding is unavailable")
+		return fmt.Errorf("local project binding is unavailable")
 	}
 	state, err := workflowCLIStateRoot()
 	if err != nil {
@@ -85,7 +88,7 @@ func removeLocalCrew(folder string) error {
 	}
 	err = copyTree(roots.Resources, "resources")
 	if err == nil {
-		err = copyTree(roots.Private, "settings")
+		err = copyTree(roots.Private, "private")
 	}
 	for _, close := range []func() error{tw.Close, gz.Close, file.Close} {
 		if e := close(); err == nil {
@@ -93,10 +96,13 @@ func removeLocalCrew(folder string) error {
 		}
 	}
 	if err != nil {
-		return fmt.Errorf("back up Crew before removal: %w", err)
+		return fmt.Errorf("back up project before removal: %w", err)
 	}
 	if err := os.RemoveAll(roots.Resources); err != nil {
 		return err
 	}
-	return os.RemoveAll(roots.Private)
+	if err := os.RemoveAll(roots.Private); err != nil {
+		return err
+	}
+	return schedulehistory.PurgeTree(context.Background(), fsutil.WorkspaceDocsRoot(), roots.Private)
 }

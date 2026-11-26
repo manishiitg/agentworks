@@ -1,4 +1,8 @@
+import { NativeGoalRow } from './NativeGoal'
+import { CodingAgentPlan } from './CodingAgentPlan'
+import { NativeBackgroundTaskLine } from './NativeBackgroundTaskLine'
 import React from 'react'
+import { openAppProduct } from '../../utils/appNavigation'
 import { nativeActivityText } from '../../utils/nativeActivityText'
 import { WorkingStatus } from '../chat/WorkingStatus'
 import { InspectExecutionButton } from '../chat/InspectExecutionButton'
@@ -104,6 +108,7 @@ const DelegationStreamingCard: React.FC<{ delegationId: string }> = ({ delegatio
 }
 
 // Live elapsed timer for running delegation events
+const MAX_LIVE_ELAPSED_MS = 24 * 60 * 60 * 1000
 const ElapsedTimer: React.FC<{ startTimestamp: string; className?: string }> = ({ startTimestamp, className }) => {
   const [elapsed, setElapsed] = React.useState('')
 
@@ -112,7 +117,8 @@ const ElapsedTimer: React.FC<{ startTimestamp: string; className?: string }> = (
     if (isNaN(startTime)) return
 
     const update = () => {
-      const seconds = Math.floor((Date.now() - startTime) / 1000)
+      const diffMs = Math.max(0, Date.now() - startTime)
+      const seconds = Math.floor(diffMs / 1000)
       if (seconds < 60) {
         setElapsed(`${seconds}s`)
       } else {
@@ -120,10 +126,20 @@ const ElapsedTimer: React.FC<{ startTimestamp: string; className?: string }> = (
         const s = seconds % 60
         setElapsed(`${m}m${s.toString().padStart(2, '0')}s`)
       }
+      return diffMs
     }
-    update()
-    const interval = setInterval(update, 1000)
-    return () => clearInterval(interval)
+    if (update() >= MAX_LIVE_ELAPSED_MS) return
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      if (update() >= MAX_LIVE_ELAPSED_MS) clearInterval(interval)
+    }
+    const interval = setInterval(tick, 1000)
+    const onVisibility = () => { if (typeof document !== 'undefined' && !document.hidden) tick() }
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      clearInterval(interval)
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [startTimestamp])
 
   if (!elapsed) return null
@@ -314,6 +330,10 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     )
   }
 
+  if (event.type === 'native_goal_updated') return <NativeGoalRow event={event} onSendMessage={onSendMessage} />
+
+  if (event.type === 'coding_agent_plan') return <CodingAgentPlan event={event} />
+
   // Type-safe event rendering using discriminated unions
   // Each case uses isEventType for type narrowing, then getEventData for typed access
 
@@ -413,6 +433,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
   if (event.type === 'coding_agent_native_activity') {
     const envelope = event.data as { data?: { record?: Record<string, unknown> } } | undefined
     const record = envelope?.data?.record || {}
+    if (record.work_id && ['helper', 'background_command'].includes(String(record.kind))) return <NativeBackgroundTaskLine record={record} sessionId={event.session_id || undefined} />
     const content = nativeActivityText(record)
     if (!content) return null
     return <CompactWrapper compact={compact}><div className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground">{content}</div></CompactWrapper>
@@ -481,6 +502,37 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
       </CompactWrapper>
     )
   }
+  if (event.type === 'chat_forked') {
+    const data = ((event.data as { data?: Record<string, unknown> } | undefined)?.data || {})
+    const name = typeof data.source_name === 'string' ? data.source_name : 'another chat'
+    const project = typeof data.source_project_id === 'string' ? data.source_project_id : ''
+    const chat = typeof data.source_chat_id === 'string' ? data.source_chat_id : ''
+    // The agent's one-time fork note is kept out of the person's first message; this line says it for them (owner, 22 Nov).
+    return <div role="status" className="py-3 text-xs text-muted-foreground"><div className="flex items-center gap-3"><span className="flex-1 border-t border-border" /><span>Forked from {project && chat ? <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => openAppProduct({ surface: 'work', id: project, agent: chat })}>{name}</button> : name}</span><span className="flex-1 border-t border-border" /></div><p className="mt-1 text-center">A separate agent with this conversation so far. {name} keeps going on its own.</p></div>
+  }
+  if (event.type === 'chat_fork_created') {
+    const data = ((event.data as { data?: Record<string, unknown> } | undefined)?.data || {})
+    if (typeof data.answer === 'string') {
+      const person = typeof data.person === 'string' && data.person ? data.person : 'A teammate'
+      return <div role="status" className="flex items-center gap-3 py-3 text-xs text-muted-foreground"><span className="flex-1 border-t border-border" /><span>{person} {data.answer === 'declined' ? 'declined' : 'accepted'} a copy of this agent.</span><span className="flex-1 border-t border-border" /></div>
+    }
+    const name = typeof data.fork_name === 'string' ? data.fork_name : 'a new chat'
+    const project = typeof data.fork_project_id === 'string' ? data.fork_project_id : ''
+    const chat = typeof data.fork_chat_id === 'string' ? data.fork_chat_id : ''
+    // A fork made with a task starts on it at once (owner, 22 Nov).
+    const task = typeof data.task === 'string' ? data.task.trim() : ''
+    const status = task ? `It is working on: ${task.length > 80 ? `${task.slice(0, 80).trimEnd()}…` : task}` : 'It is ready.'
+    return <div role="status" className="flex items-center gap-3 py-3 text-xs text-muted-foreground"><span className="flex-1 border-t border-border" /><span>Forked into {project && chat ? <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => openAppProduct({ surface: 'work', id: project, agent: chat })}>{name}</button> : name}. {status}</span><span className="flex-1 border-t border-border" /></div>
+  }
+  if (event.type === 'chat_model_changed') {
+    const data = ((event.data as { data?: Record<string, unknown> } | undefined)?.data || {})
+    const model = typeof data.model === 'string' ? data.model : ''
+    const previous = typeof data.previous_model === 'string' ? data.previous_model : ''
+    const effort = typeof data.effort === 'string' && data.effort ? ` · ${data.effort}` : ''
+    const oldEffort = typeof data.previous_effort === 'string' && data.previous_effort ? ` · ${data.previous_effort}` : ''
+    if (!model) return null
+    return <div role="status" className="flex items-center gap-3 py-3 text-xs text-muted-foreground"><span className="flex-1 border-t border-border" /><span>Next reply: {previous && `${previous}${oldEffort} → `}{model}{effort}</span><span className="flex-1 border-t border-border" /></div>
+  }
   if (event.type === 'context_compaction') {
     return <ContextCompactionEventDisplay event={event} />
   }
@@ -498,10 +550,10 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
     // only when the durable cursor says there is another page to fetch.
     if (agentEvent?.data?.has_more_history !== true) return null
     return (
-      <div className={`flex items-center gap-2 ${compact ? 'py-1' : 'py-2'} ${compact ? 'text-[10px]' : 'text-xs'} text-gray-400 dark:text-gray-500`}>
-        <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+      <div className={`flex items-center gap-2 ${compact ? 'py-1' : 'py-2'} ${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground`}>
+        <div className="flex-1 border-t border-border" />
         <span className="shrink-0 px-2">Previous conversation{count > 0 ? ` (${count} events)` : ''}</span>
-        <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+        <div className="flex-1 border-t border-border" />
       </div>
     )
   }
@@ -662,17 +714,17 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
               {data.preferred_tier_label}
             </span>
           )}
-          <span className={`font-medium ${actionColors[data.next_action || ''] || 'text-gray-700 dark:text-gray-300'}`}>
+          <span className={`font-medium ${actionColors[data.next_action || ''] || 'text-foreground'}`}>
             {data.next_action || 'unknown'}
           </span>
           {/* Iteration is deliberately not shown: it is identical for every
               route in a run, so repeating it per row is the same noise this
               layout exists to remove. It stays available in the run header. */}
           {data.todo_title && (
-            <span className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-400">{data.todo_title}</span>
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">{data.todo_title}</span>
           )}
           {data.progress_summary && (
-            <span className="w-full truncate text-[11px] text-gray-500 dark:text-gray-500">{data.progress_summary}</span>
+            <span className="w-full truncate text-[11px] text-muted-foreground">{data.progress_summary}</span>
           )}
         </div>
       </CompactWrapper>
@@ -695,17 +747,17 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
           </div>
           <div className={`space-y-1 ${compact ? 'text-xs' : 'text-sm'}`}>
             <div className="flex items-center gap-2">
-              <span className="text-gray-500 dark:text-gray-400">Todos:</span>
+              <span className="text-muted-foreground">Todos:</span>
               <span className="text-purple-600 dark:text-purple-400">
                 {data.completed_count}/{data.total_todos_count} completed
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-gray-500 dark:text-gray-400">Iterations:</span>
+              <span className="text-muted-foreground">Iterations:</span>
               <span className="text-purple-600 dark:text-purple-400">{data.total_iterations}</span>
             </div>
             {data.completion_reason && (
-              <div className={`${compact ? 'text-[10px]' : 'text-xs'} text-gray-600 dark:text-gray-400 italic mt-1`}>
+              <div className={`${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground italic mt-1`}>
                 {data.completion_reason}
               </div>
             )}
@@ -964,7 +1016,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
                 </span>
               )}
               {reasoningLevel && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${reasoningColors[reasoningLevel] || 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${reasoningColors[reasoningLevel] || 'bg-muted text-muted-foreground'}`}>
                   {reasoningLevel}
                 </span>
               )}
@@ -1204,11 +1256,11 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
 
     const bgColor = isSuccess ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' :
                     isFailed ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' :
-                    'bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-800'
+                    'bg-muted/50 border-border'
     const textColor = isSuccess ? 'text-green-700 dark:text-green-300' :
                       isFailed ? 'text-red-700 dark:text-red-300' :
-                      'text-gray-700 dark:text-gray-300'
-    const dotColor = isSuccess ? 'bg-green-500' : isFailed ? 'bg-red-500' : 'bg-gray-400'
+                      'text-foreground'
+    const dotColor = isSuccess ? 'bg-green-500' : isFailed ? 'bg-red-500' : 'bg-muted-foreground/40'
     const statusLabel = isSuccess ? 'completed' : isFailed ? 'failed' : status
 
     return (
@@ -1234,7 +1286,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
               <div className="text-red-600 dark:text-red-400 whitespace-pre-wrap">{error}</div>
             )}
             {result && (
-              <div className="text-gray-600 dark:text-gray-400 max-h-40 overflow-y-auto overscroll-y-contain">
+              <div className="text-muted-foreground max-h-40 overflow-y-auto overscroll-y-contain">
                 <MarkdownRenderer content={result} />
               </div>
             )}
@@ -1252,13 +1304,13 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
 
     return (
       <CompactWrapper compact={compact}>
-        <div className={`bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-800 rounded-md ${compact ? 'p-2' : 'p-3'}`}>
+        <div className={`bg-muted/50 border border-border rounded-md ${compact ? 'p-2' : 'p-3'}`}>
           <div className="flex items-center gap-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-gray-400" />
-            <span className={`${compact ? 'text-xs' : 'text-sm'} font-medium text-gray-500 dark:text-gray-400`}>
+            <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground/40" />
+            <span className={`${compact ? 'text-xs' : 'text-sm'} font-medium text-muted-foreground`}>
               {displayName}
             </span>
-            <span className={`${compact ? 'text-[10px]' : 'text-xs'} text-gray-400 dark:text-gray-500`}>
+            <span className={`${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground`}>
               cancelled
             </span>
             <InspectExecutionButton target={fields.metadata?.inspection} />
@@ -1297,6 +1349,19 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
   // the next turn. Keep the copy user-facing: "steered" and provider routing
   // described the implementation but made a successful notification look
   // like an unexplained diagnostic.
+  if (event.type === 'chat_image_notice' || event.type === 'native_goal_notice' || event.type === 'work_folder_notice' || event.type === 'restart_continue_notice' || event.type === 'team_settings_notice' || event.type === 'usage_limit_notice') {
+    const envelope = event.data as unknown as Record<string, unknown> | undefined
+    const inner = (envelope?.data ?? envelope ?? {}) as Record<string, unknown>
+    const payload = (inner.data ?? inner) as Record<string, unknown>
+    const resetAt = typeof payload.retry_at === 'string' ? new Date(payload.retry_at) : null
+    const message = event.type === 'usage_limit_notice' && resetAt && Number.isFinite(resetAt.getTime())
+      ? `Usage limit reset time: ${resetAt.toLocaleString()}.`
+      : typeof payload.message === 'string' ? payload.message : ''
+    return message ? <CompactWrapper compact={compact}>
+      <div role="status" className="text-sm text-muted-foreground">{message}</div>
+    </CompactWrapper> : null
+  }
+
   if (isEventType(event, 'auto_notification_steered')) {
     const fields = getEventData(event)
     const rawName = fields.name || ''
@@ -1345,7 +1410,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
         <div className={`border rounded-md ${statusColor} ${compact ? 'p-2' : 'p-3'}`}>
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`${compact ? 'text-xs' : 'text-sm'} font-medium ${textColor}`}>{label}</span>
-            <span className={`${compact ? 'text-[10px]' : 'text-xs'} text-gray-500 dark:text-gray-400`}>{d?.step_title || d?.step_path}</span>
+            <span className={`${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground`}>{d?.step_title || d?.step_path}</span>
             {success
               ? <span className={`${compact ? 'text-[10px]' : 'text-xs'} text-green-600 dark:text-green-400`}>✓ passed</span>
               : <span className={`${compact ? 'text-[10px]' : 'text-xs'} text-red-600 dark:text-red-400`}>✗ {exitLabel}</span>
@@ -1361,7 +1426,7 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
                 </div>
                 {isTruncated && (
                   <details className="mt-2">
-                    <summary className={`cursor-pointer ${compact ? 'text-[10px]' : 'text-xs'} text-gray-500 dark:text-gray-400 select-none`}>
+                    <summary className={`cursor-pointer ${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground select-none`}>
                       View full error
                     </summary>
                     <pre className={`mt-1 font-mono ${compact ? 'text-[10px]' : 'text-xs'} text-red-600 dark:text-red-400 whitespace-pre-wrap break-all bg-red-50 dark:bg-red-950/20 rounded p-2 max-h-64 overflow-y-auto`}>
@@ -1374,20 +1439,20 @@ export const EventDispatcher: React.FC<EventDispatcherProps> = React.memo(({
           })()}
           {successOutput && (
             <details className="mt-2">
-              <summary className={`cursor-pointer ${compact ? 'text-[10px]' : 'text-xs'} text-gray-500 dark:text-gray-400 select-none`}>
+              <summary className={`cursor-pointer ${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground select-none`}>
                 Output
               </summary>
-              <pre className={`mt-1 font-mono ${compact ? 'text-[10px]' : 'text-xs'} text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-all bg-gray-50 dark:bg-gray-800 rounded p-2 max-h-64 overflow-y-auto`}>
+              <pre className={`mt-1 font-mono ${compact ? 'text-[10px]' : 'text-xs'} text-foreground whitespace-pre-wrap break-all bg-muted/50 rounded p-2 max-h-64 overflow-y-auto`}>
                 {successOutput}
               </pre>
             </details>
           )}
           {d?.script_content && (
             <details className="mt-1">
-              <summary className={`cursor-pointer ${compact ? 'text-[10px]' : 'text-xs'} text-gray-500 dark:text-gray-400 select-none`}>
+              <summary className={`cursor-pointer ${compact ? 'text-[10px]' : 'text-xs'} text-muted-foreground select-none`}>
                 View main.py
               </summary>
-              <pre className={`mt-1 font-mono ${compact ? 'text-[10px]' : 'text-xs'} text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-all bg-gray-50 dark:bg-gray-800 rounded p-2 max-h-64 overflow-y-auto`}>
+              <pre className={`mt-1 font-mono ${compact ? 'text-[10px]' : 'text-xs'} text-foreground whitespace-pre-wrap break-all bg-muted/50 rounded p-2 max-h-64 overflow-y-auto`}>
                 {d.script_content}
               </pre>
             </details>

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -170,13 +171,62 @@ func workFolderRootsForKey(doc workFolderAccessDoc, key string) []string {
 // workFolderGrantsForClaims returns the stored external folder grants for
 // the calling identity. An unknown identity gets none.
 func workFolderAccessForClaims(ctx context.Context, claims *UserClaims) ([]workflowtypes.WorkflowFolderGrant, []string) {
+	grants, roots, _ := workFolderAccessForClaimsChecked(ctx, claims)
+	return grants, roots
+}
+
+// A turn must not interpret a failed authority read as an empty grant set.
+// workspacePath is the turn's Crew: a Team connection failing says so only when it is that Crew's Team.
+func workFolderGrantsForTurn(ctx context.Context, claims *UserClaims, workspacePath string) ([]workflowtypes.WorkflowFolderGrant, string, error) {
+	grants, _, err := workFolderAccessForClaimsChecked(ctx, claims)
+	if err != nil {
+		return nil, "", err
+	}
+
+	actor := ""
+	if claims != nil {
+		actor = claims.UserID
+	}
+	internal, missing := 0, 0
+	for _, grant := range grants {
+		if workflowtypes.InternalAttachmentPath(grant.Path) {
+			internal++
+		} else if !workproduct.FolderGrantAvailable(grant.Path) {
+			missing++
+		}
+	}
+	session, _ := ctx.Value(common.ChatSessionIDKey).(string)
+	if internal > 0 {
+		log.Printf("[WORK FOLDER GUARD] actor=%s session=%s ignored=%d reason=internal", actor, session, internal)
+	}
+	if missing > 0 {
+		log.Printf("[WORK FOLDER GUARD] actor=%s session=%s ignored=%d reason=missing", actor, session, missing)
+	}
+	project := ""
+	if _, id, ok := projectProductForPath(workspacePath); ok {
+		project = id
+	}
+	teamGrants, teamErr := crewTeamNativeFoldersFor(ctx, claims, project)
+	return workFolderTurnResult(grants, teamGrants, teamErr)
+}
+
+func workFolderTurnResult(own, team []workflowtypes.WorkflowFolderGrant, teamErr error) ([]workflowtypes.WorkflowFolderGrant, string, error) {
+	notice := ""
+	if teamErr != nil {
+		// Do not expose remote URLs, response bodies or internal paths.
+		notice = "Team folders are unavailable this turn: a Team connection could not be reached."
+	}
+	return workproduct.AvailableAttachedGrants(append(own, team...)), notice, nil
+}
+
+func workFolderAccessForClaimsChecked(ctx context.Context, claims *UserClaims) ([]workflowtypes.WorkflowFolderGrant, []string, error) {
 	doc, err := workFolderAccessStore.read(ctx)
 	if err != nil {
-		return nil, nil
+		return nil, nil, err
 	}
 	key := workFolderAccessKeyForClaims(doc, claims)
 	if key == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	roots := workFolderRootsForKey(doc, key)
 	grants := doc.Grants[key]
@@ -192,7 +242,7 @@ func workFolderAccessForClaims(ctx context.Context, claims *UserClaims) ([]workf
 		}
 		grants = authorized
 	}
-	return append([]workflowtypes.WorkflowFolderGrant(nil), grants...), roots
+	return append([]workflowtypes.WorkflowFolderGrant(nil), grants...), roots, nil
 }
 
 func workFolderClaimsAreAdmin(claims *UserClaims) bool {
@@ -217,8 +267,7 @@ func workFolderRootsForClaims(ctx context.Context, claims *UserClaims) []string 
 
 // workFolderGuardInputs resolves the calling user's attached Work folders
 // into folder-guard paths plus WORK_FOLDER_<ALIAS> session env. A folder that
-// later becomes unavailable remains in the guard but is reported as unavailable
-// by the folders API; current assigned roots are revalidated before this point.
+// later becomes unavailable is omitted from the next turn; current assigned roots are revalidated before this point.
 func workFolderGuardInputs(ctx context.Context) (read, write, readOnly []string, env map[string]string) {
 	return workproduct.ResolveGrants(workFolderGrantsForClaims(ctx, GetUserFromContext(ctx)))
 }
@@ -373,7 +422,7 @@ func (api *StreamingAPI) handleListWorkFolders(w http.ResponseWriter, r *http.Re
 	}
 	views := make([]grantView, 0, len(grants))
 	for _, grant := range grants {
-		views = append(views, grantView{WorkflowFolderGrant: grant, Available: workproduct.FolderGrantAvailable(grant.Path)})
+		views = append(views, grantView{WorkflowFolderGrant: grant, Available: !workflowtypes.InternalAttachmentPath(grant.Path) && workproduct.FolderGrantAvailable(grant.Path)})
 	}
 	if roots == nil {
 		roots = []string{}
@@ -414,6 +463,9 @@ func (api *StreamingAPI) handleAddWorkFolder(w http.ResponseWriter, r *http.Requ
 			Reason: input.Reason,
 		}, isAdmin)
 		if err != nil {
+			if workflowtypes.InternalAttachmentPath(input.Path) {
+				logWorkFolderChange(r.Context(), claims.UserID, "", "refused", "", input.Path)
+			}
 			return err
 		}
 		added = grant
@@ -430,6 +482,7 @@ func (api *StreamingAPI) handleAddWorkFolder(w http.ResponseWriter, r *http.Requ
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	logWorkFolderChange(r.Context(), claims.UserID, "", "added", added.ID, added.Path)
 	json.NewEncoder(w).Encode(map[string]interface{}{"folder": added})
 }
 
@@ -457,9 +510,15 @@ func (api *StreamingAPI) handleDeleteWorkFolder(w http.ResponseWriter, r *http.R
 		}
 		key = target
 	}
+	removedPath := ""
 	err := workFolderAccessStore.update(r.Context(), func(doc *workFolderAccessDoc) error {
 		if key == "" {
 			key = workFolderAccessKeyForClaims(*doc, claims)
+		}
+		for _, grant := range doc.Grants[key] {
+			if grant.ID == id {
+				removedPath = grant.Path
+			}
 		}
 		return applyWorkFolderDelete(doc, key, id)
 	})
@@ -474,6 +533,7 @@ func (api *StreamingAPI) handleDeleteWorkFolder(w http.ResponseWriter, r *http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	logWorkFolderChange(r.Context(), claims.UserID, "", "removed", id, removedPath)
 	invalidateWorkFolderSessions(r.Context(), key, "Work folder access was revoked")
 }
 
@@ -519,6 +579,9 @@ func (api *StreamingAPI) registerWorkFolderTools(registrar definitionToolRegistr
 			key := workFolderAccessKeyForClaims(*doc, claims)
 			identityKey = key
 			grant, addErr := applyWorkFolderAdd(doc, key, workFolderAddInput{Path: path, Alias: alias, Access: access, Reason: reason}, workFolderClaimsAreAdmin(claims))
+			if addErr != nil && workflowtypes.InternalAttachmentPath(path) {
+				logWorkFolderChange(ctx, userID, sessionID, "refused", "", path)
+			}
 			added = grant
 			if addErr == nil {
 				_, _, _, folderEnv = workproduct.ResolveGrants(doc.Grants[key])
@@ -544,6 +607,7 @@ func (api *StreamingAPI) registerWorkFolderTools(registrar definitionToolRegistr
 			invalidateWorkFolderSessions(ctx, identityKey, "Work folder access changed")
 		}
 		common.ReplaceSessionShellEnvPrefix(sessionID, "WORK_FOLDER_", folderEnv)
+		logWorkFolderChange(ctx, userID, sessionID, "added", added.ID, added.Path)
 		encoded, err := json.MarshalIndent(map[string]interface{}{"folder": added, "note": "The folder is attached and available now."}, "", "  ")
 		return string(encoded), err
 	}); err != nil {
@@ -601,6 +665,7 @@ func (api *StreamingAPI) registerWorkFolderTools(registrar definitionToolRegistr
 			invalidateWorkFolderSessions(ctx, key, "Work folder access was revoked")
 		}
 		common.ReplaceSessionShellEnvPrefix(sessionID, "WORK_FOLDER_", folderEnv)
+		logWorkFolderChange(ctx, userID, sessionID, "removed", id, removedPath)
 		return "Folder detached from Work.", nil
 	})
 }
@@ -629,4 +694,11 @@ func workFolderGuardDiagnostic(ctx context.Context, claims *UserClaims) string {
 	return fmt.Sprintf("diag: key_field=%s key_has_grants=%t grants=%d roots=%d admin=%t website_device=%t provider=%q access_token=%t scope=%t exec_principal=%t doc_grant_keys=%d",
 		field, hasGrants, len(doc.Grants[key]), len(workFolderRootsForKey(doc, key)), workFolderClaimsAreAdmin(claims),
 		websiteDeviceClaims(claims), claims.Provider, claims.AccessToken != nil, claims.Scope != "", claims.ExecutionPrincipal != nil, len(doc.Grants))
+}
+
+func logWorkFolderChange(ctx context.Context, actor, session, event, id, path string) {
+	if session == "" {
+		session, _ = ctx.Value(common.ChatSessionIDKey).(string)
+	}
+	log.Printf("[WORK_FOLDER] event=%s actor=%s session=%s grant=%s path=%q", event, actor, session, id, path)
 }

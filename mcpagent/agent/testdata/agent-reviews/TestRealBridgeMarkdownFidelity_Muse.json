@@ -1,0 +1,40 @@
+{
+ "test": "TestRealBridgeMarkdownFidelity_Muse",
+ "summary": "muse via the REAL mcpbridge → executor → real execute_shell_command: write+read back a markdown table AND a nested code fence, byte-exact, no duplication, streamed at the mcpagent layer",
+ "review_criteria": [
+  "no duplicated lines or chunks",
+  "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+  "human-readable — reads like an assistant working, coherent and natural",
+  "correct text <-> tool interleaving order (narration then the tool it describes)",
+  "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+  "the final answer is coherent and matches the work performed",
+  "real work actually happened (e.g. the file was written to disk)",
+  "paced for a watching human — where the record carries first_signal_ms / longest_silence_ms, something shows up promptly and keeps updating; a long opening wait or one long mid-turn silence reads as a hung app even when the final output is perfect",
+  "actually streamed rather than delivered late — delivered_in_one_block=true, or a clean_content_spread_ms near zero, means the text appeared all at once at the end; that is a single late delivery wearing streaming's clothes, and the chunk COUNT alone cannot tell the difference",
+  "thinking claims match the evidence — thinking_event_count=0 means the turn surfaced NO reasoning content, so any 'thinking' a product shows for it must be streamed reply text under a Thinking label, not the model's reasoning; say which it is rather than assuming",
+  "tool calls completed — every started tool has a matching end (tool_calls_started == tool_calls_ended); a started-but-never-ended call leaves a spinning chip in the UI",
+  "usage is renderable — input and output tokens are non-zero so the product's usage line is not 'Input 0 Output 0'; note when cache_tokens is absent on a provider that normally caches"
+ ],
+ "output": {
+  "answer": "# Report\n\n| Field | Value |\n|-------|-------|\n| build_id | BUILD_ID_81b83bfe011a |\n| status | ok |\n\nNested fence example:\n\n````text\nOuter fence wraps an inner one:\n```bash\necho \"nested-BUILD_ID_81b83bfe011a\"\n```\n````",
+  "build_id_only_via_tool": "BUILD_ID_81b83bfe011a",
+  "clean_transcript_content": [
+   "# Report\n\n| Field | Value |\n|-------|-------|\n| build_id | BUILD_ID_81b83bfe011a |\n| status | ok |\n\nNested fence example:\n\n````text\nOuter fence wraps an inner one:\n```bash\necho \"nested-BUILD_ID_81b83bfe011a\"\n```\n````\n"
+  ],
+  "expected_template": "# Report\n\n| Field | Value |\n|-------|-------|\n| build_id | <BUILD_ID> |\n| status | ok |\n\nNested fence example:\n\n````text\nOuter fence wraps an inner one:\n```bash\necho \"nested-<BUILD_ID>\"\n```\n````",
+  "report_md_on_disk": "# Report\n\n| Field | Value |\n|-------|-------|\n| build_id | BUILD_ID_81b83bfe011a |\n| status | ok |\n\nNested fence example:\n\n````text\nOuter fence wraps an inner one:\n```bash\necho \"nested-BUILD_ID_81b83bfe011a\"\n```\n````\n",
+  "tool_names": [
+   "mcp__api_bridge__execute_shell_command",
+   "mcp__api_bridge__execute_shell_command",
+   "mcp__api_bridge__execute_shell_command"
+  ]
+ },
+ "fingerprint": "808768c8065df766",
+ "agent_review": {
+  "verdict": "good",
+  "reviewed_fingerprint": "808768c8065df766",
+  "reviewer": "muse-code",
+  "issues": null,
+  "notes": "Byte-exact report.md (table + nested 4/3-backtick fences, id substituted twice, count==2, fence opens once) via 3 bridge-tool calls — this also proves the bounded-lane MCP mount: fidelity runs bounded (no persistent opt) and previously would have had zero bridge tools. Streamed transcript and final answer duplication-free, 59s."
+ }
+}

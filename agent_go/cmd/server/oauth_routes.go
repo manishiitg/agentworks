@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"log"
 	"net/http"
 	"os"
@@ -24,6 +23,8 @@ import (
 
 // OAuthFlowState tracks ongoing OAuth flows
 type OAuthFlowState struct {
+	// Person started this sign-in; on a server with several people only they may finish it (oauth_return.go).
+	Person            string
 	ServerName        string
 	ConnectionID      string
 	Outcome           string // guarded by oauthFlowsMu
@@ -126,15 +127,6 @@ type OAuthLoginRequest struct {
 	ClientSecret string `json:"client_secret,omitempty"`
 }
 
-// MCPConnectRequest represents a request to connect a server. APIKey is optional
-// and only meaningful for servers with no oauth block.
-type MCPConnectRequest struct {
-	Scope        string `json:"scope,omitempty"`
-	ConnectionID string `json:"connection_id,omitempty"`
-	ServerName   string `json:"server_name"`
-	APIKey       string `json:"api_key,omitempty"`
-}
-
 // OAuthDiscoveryResponse is returned when the server doesn't support DCR and needs a client_id
 type OAuthDiscoveryResponse struct {
 	// It deliberately carries no auth_url: clients open any auth_url they are
@@ -175,25 +167,13 @@ type OAuthLogoutRequest struct {
 
 // handleOAuthCallback handles GET /api/oauth/callback - receives OAuth authorization code
 func (api *StreamingAPI) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
-	api.logger.Info(fmt.Sprintf("🔔 OAuth callback received: state=%s, code_present=%v, error=%s",
-		r.URL.Query().Get("state"), r.URL.Query().Get("code") != "", r.URL.Query().Get("error")))
-
 	query := r.URL.Query()
+	// The state and code are one-time credentials of this sign-in: never logged.
+	api.logger.Info(fmt.Sprintf("🔔 OAuth callback received: code_present=%v, error=%s", query.Get("code") != "", query.Get("error")))
 
-	// Get state parameter
 	state := query.Get("state")
 	if state == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, `
-<!DOCTYPE html>
-<html>
-<head><title>OAuth Error</title></head>
-<body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-	<h1>❌ Invalid Request</h1>
-	<p>Missing state parameter</p>
-	<p>You can close this window.</p>
-</body>
-</html>`)
+		writeOAuthPage(w, http.StatusBadRequest, "Invalid request", "Missing state parameter. You can close this window.")
 		return
 	}
 
@@ -209,46 +189,21 @@ func (api *StreamingAPI) handleOAuthCallback(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Find the OAuth flow
 	oauthFlowsMu.RLock()
 	flow, exists := oauthFlows[state]
 	oauthFlowsMu.RUnlock()
-
 	if !exists {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, `
-<!DOCTYPE html>
-<html>
-<head><title>OAuth Error</title></head>
-<body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-	<h1>❌ Invalid or Expired State</h1>
-	<p>OAuth flow not found or expired</p>
-	<p>You can close this window and try again.</p>
-</body>
-</html>`)
+		writeOAuthPage(w, http.StatusBadRequest, "Invalid or expired sign-in", "This sign-in was not found or has expired. You can close this window and try again.")
 		return
 	}
 
-	// Check for error from OAuth provider
+	// The provider's error text comes from the URL, so it is shown only as escaped text.
 	if errCode := query.Get("error"); errCode != "" {
 		errDesc := query.Get("error_description")
 		if errDesc == "" {
 			errDesc = errCode
 		}
-
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, `
-<!DOCTYPE html>
-<html>
-<head><title>Authentication Failed</title></head>
-<body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-	<h1>❌ Authentication Failed</h1>
-	<p>%s</p>
-	<p>You can close this window.</p>
-</body>
-</html>`, errDesc)
-
-		// Send error to flow
+		writeOAuthPage(w, http.StatusBadRequest, "Authentication failed", errDesc+" You can close this window.")
 		select {
 		case flow.ErrChan <- fmt.Errorf("OAuth error: %s - %s", errCode, errDesc):
 		default:
@@ -256,106 +211,28 @@ func (api *StreamingAPI) handleOAuthCallback(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Get authorization code
 	code := query.Get("code")
 	if code == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, `
-<!DOCTYPE html>
-<html>
-<head><title>OAuth Error</title></head>
-<body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-	<h1>❌ Missing Authorization Code</h1>
-	<p>No authorization code received</p>
-	<p>You can close this window.</p>
-</body>
-</html>`)
+		writeOAuthPage(w, http.StatusBadRequest, "Missing authorization code", "No authorization code was received. You can close this window.")
 		return
 	}
 
-	// Send code to flow
-	select {
-	case flow.CodeChan <- code:
-		if flow.ValidatesIdentity {
-			select {
-			case <-flow.Done:
-				oauthFlowsMu.RLock()
-				failure := flow.Failure
-				oauthFlowsMu.RUnlock()
-				if failure != "" {
-					w.WriteHeader(http.StatusBadRequest)
-					fmt.Fprintf(w, "<html><body><h1>Sign-in could not finish</h1><p>%s</p><p>Close this window and return to Integrations → Slack.</p></body></html>", html.EscapeString(failure))
-					return
-				}
-			case <-time.After(45 * time.Second):
-				w.WriteHeader(http.StatusAccepted)
-				fmt.Fprint(w, "<html><body><p>Still checking this account. Return to Integrations → Slack to see its status.</p></body></html>")
-				return
-			case <-r.Context().Done():
-				return
-			}
-		}
-		// Success - show nice page
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `
-<!DOCTYPE html>
-<html>
-<head>
-	<title>Authentication Successful</title>
-	<style>
-		body {
-			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			min-height: 100vh;
-			margin: 0;
-			background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%);
-		}
-		.container {
-			background: white;
-			border-radius: 16px;
-			padding: 48px;
-			box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-			text-align: center;
-			max-width: 400px;
-		}
-		.success-icon {
-			font-size: 64px;
-			margin-bottom: 24px;
-		}
-		h1 {
-			color: #2d3748;
-			margin: 0 0 16px 0;
-			font-size: 24px;
-		}
-		p {
-			color: #718096;
-			margin: 0;
-			font-size: 16px;
-		}
-	</style>
-</head>
-<body>
-	<div class="container">
-		<div class="success-icon">✅</div>
-		<h1>Authentication Successful!</h1>
-		<p>You can close this window and return to the application.</p>
-	</div>
-</body>
-</html>`)
+	// On a server with several people the person who started the sign-in finishes it in the app (oauth_return.go).
+	if oauthReturnBound(flow.Person) {
+		holdOAuthReturn(w, r, state, flow.Person, oauthReturnMCP, code)
+		return
+	}
+
+	result := deliverOAuthFlowCode(r.Context(), flow, code)
+	switch {
+	case result.failure != "":
+		writeOAuthPage(w, http.StatusBadRequest, "Sign-in could not finish", result.failure+" Close this window and return to the app.")
+	case !result.accepted:
+		writeOAuthPage(w, http.StatusInternalServerError, "Internal error", "Failed to process the authorization code. You can close this window and try again.")
+	case result.checking:
+		writeOAuthPage(w, http.StatusAccepted, "Still checking this account", "Return to the app to see its status.")
 	default:
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `
-<!DOCTYPE html>
-<html>
-<head><title>OAuth Error</title></head>
-<body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-	<h1>❌ Internal Error</h1>
-	<p>Failed to process authorization code</p>
-	<p>You can close this window and try again.</p>
-</body>
-</html>`)
+		writeOAuthPage(w, http.StatusOK, "Authentication successful", "You can close this window and return to the application.")
 	}
 }
 
@@ -476,6 +353,7 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 	}
 
 	return api.runOAuthFlow(sessionID, redirectURI, oauthFlowTarget{
+		Person:     userID,
 		Name:       serverName,
 		Config:     serverConfig,
 		ClientFile: expandPath(getUserClientFilePath(platformMCPTokenUserID, serverName)),
@@ -525,6 +403,7 @@ func (api *StreamingAPI) beginOAuthFlow(userID, sessionID, serverName, redirectU
 // registration is cached, the HTTP client for discovery and registration
 // (public-only for a personal server), and what to do once connected.
 type oauthFlowTarget struct {
+	Person         string // who started the sign-in (oauth_return.go)
 	Name           string
 	DisplayName    string // what a person calls the app ("Vercel"); Name when empty
 	Config         mcpclient.MCPServerConfig
@@ -637,6 +516,7 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 
 	// Register the OAuth flow state
 	flow := &OAuthFlowState{
+		Person:            target.Person,
 		ConnectionID:      target.ConnectionID,
 		ValidatesIdentity: target.ValidateToken != nil,
 		Done:              make(chan struct{}),
@@ -996,148 +876,6 @@ func (api *StreamingAPI) invalidateServerDiscovery(serverName, logMessage string
 	api.clearDiscoveryFailure(serverName)
 	api.appendServerLog(serverName, "info", logMessage)
 
-}
-
-// handleConnectServer connects a server by writing it into the user config
-// overlay. OAuth servers are redirected to the authorization flow instead — the
-// overlay write happens on callback success.
-func (api *StreamingAPI) handleConnectServer(w http.ResponseWriter, r *http.Request) {
-
-	var req MCPConnectRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
-		return
-	}
-	if req.ServerName == "" {
-		http.Error(w, "server_name is required", http.StatusBadRequest)
-		return
-	}
-
-	if !vaultOAuthScope(w, r, req.Scope) {
-		return
-	}
-	// The lock protects the shared catalog; private account stores are separate.
-	if isMCPConfigLocked() {
-		http.Error(w, "MCP configuration is locked by administrator", http.StatusForbidden)
-		return
-	}
-
-	config, err := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)
-	if err != nil {
-		api.logger.Error(fmt.Sprintf("Failed to load config: %v", err), err)
-		http.Error(w, "Failed to load server config", http.StatusInternalServerError)
-		return
-	}
-
-	serverConfig, err := config.GetServer(req.ServerName)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Server '%s' not found", req.ServerName), http.StatusNotFound)
-		return
-	}
-
-	// OAuth servers cannot be connected by a config write alone; the caller must
-	// run the authorization flow, which persists the overlay entry on success.
-	if serverConfig.OAuth != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
-			"status":      "oauth_required",
-			"server_name": req.ServerName,
-			"message":     fmt.Sprintf("Server '%s' uses OAuth; start the authorization flow via /api/oauth/start", req.ServerName),
-		})
-		return
-	}
-
-	// An API key is optional for open servers. Stored as a bearer header, which
-	// the transport layer already forwards.
-	if req.APIKey != "" {
-		if serverConfig.Headers == nil {
-			serverConfig.Headers = make(map[string]string)
-		}
-		serverConfig.Headers["Authorization"] = "Bearer " + req.APIKey
-		api.logger.Info(fmt.Sprintf("🔑 Stored API key header for %s", req.ServerName))
-	}
-
-	// persistOAuthConfig is misnamed but generic: it upserts a whole server entry
-	// into the overlay. Writing the merged entry keeps base fields intact, since
-	// overlay entries replace base entries wholesale rather than field-by-field.
-	if err := api.persistOAuthConfig(req.ServerName, serverConfig); err != nil {
-		api.logger.Error(fmt.Sprintf("Failed to persist config for %s: %v", req.ServerName, err), err)
-		http.Error(w, fmt.Sprintf("Failed to save connection: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	api.invalidateServerDiscovery(req.ServerName, "Connected — discovering tools...")
-	api.startServerDiscovery(GetUserIDFromContext(r.Context()), req.ServerName)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status":      "connected",
-		"server_name": req.ServerName,
-		"message":     fmt.Sprintf("Connected to %s", req.ServerName),
-	})
-}
-
-// handleDisconnectServer removes the caller's private connection by default.
-// Explicit Vault scope removes shared credential metadata and requires admin access.
-func (api *StreamingAPI) handleDisconnectServer(w http.ResponseWriter, r *http.Request) {
-
-	var req MCPConnectRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("Invalid request: %v", err), http.StatusBadRequest)
-		return
-	}
-	if req.ServerName == "" {
-		http.Error(w, "server_name is required", http.StatusBadRequest)
-		return
-	}
-
-	if !vaultOAuthScope(w, r, req.Scope) {
-		return
-	}
-	// The lock protects the shared catalog; private account stores are separate.
-	if isMCPConfigLocked() {
-		http.Error(w, "MCP configuration is locked by administrator", http.StatusForbidden)
-		return
-	}
-
-	userID := GetUserIDFromContext(r.Context())
-	api.logger.Info(fmt.Sprintf("🔌 Platform disconnect %s initiated_by %s", req.ServerName, userID))
-
-	config, err := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)
-	if err != nil {
-		api.logger.Error(fmt.Sprintf("Failed to load config: %v", err), err)
-		http.Error(w, "Failed to load server config", http.StatusInternalServerError)
-		return
-	}
-
-	// Remove the token first. A server absent from config has no token to remove,
-	// which is not an error — the overlay removal below still needs to run.
-	if serverConfig, err := config.GetServer(req.ServerName); err == nil && serverConfig.OAuth != nil {
-		if strings.TrimSpace(serverConfig.OAuth.TokenFile) == "" {
-			serverConfig.OAuth.TokenFile = getUserTokenFilePath(platformMCPTokenUserID, req.ServerName)
-		}
-		oauthMgr := oauth.NewManager(serverConfig.OAuth, api.logger)
-		if err := oauthMgr.Logout(); err != nil {
-			api.logger.Warn(fmt.Sprintf("Failed to remove token for %s: %v", req.ServerName, err))
-		}
-	}
-
-	if err := api.removeOverlayEntry(req.ServerName); err != nil {
-		api.logger.Error(fmt.Sprintf("Failed to disconnect %s: %v", req.ServerName, err), err)
-		http.Error(w, fmt.Sprintf("Failed to disconnect: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Drop the shared live connection as well as the saved token.
-	closePlatformMCPConnection(req.ServerName)
-	api.invalidateServerDiscovery(req.ServerName, "Disconnected — rediscovering tools...")
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status":      "disconnected",
-		"server_name": req.ServerName,
-		"message":     fmt.Sprintf("Disconnected from %s", req.ServerName),
-	})
 }
 
 // persistOAuthConfig saves the OAuth configuration to the user config file

@@ -26,7 +26,7 @@ per-product configuration. Video Studio and Dominion have their own cases in
 
 ## How it works
 
-`./deploy.sh <product>` builds one release on the shared build host, or reuses an existing verified build. The target copies that release and runs its own activation script. No Go or frontend compiler runs on the target. The release records all three source revisions and verifies its manifest before switching `current` and checking services.
+`./deploy.sh <product>` builds one release on the shared build host, or reuses an existing verified build. The target copies that release and runs its own activation script. No Go or frontend compiler runs on the target. The release records its source revision and verifies its manifest before switching `current` and checking services.
 
 ## Build once, deploy everywhere (PLAT-426)
 
@@ -34,13 +34,13 @@ per-product configuration. Video Studio and Dominion have their own cases in
 **once** on the Hetzner box and each server only copies and activates it:
 
 1. `deploy/common/build-release.sh` (shipped and run over ssh as `root` by `deploy.sh`, under `systemd-run` limits: 800% CPU,
-   12 GB, nice 10; set `BUILD_AS=<user>` to build as an unprivileged account that owns the builds folder) fetches the three
-   repositories at the revisions `deploy.sh` resolves (head of `DEPLOY_BRANCH`, default `main`) and builds into
+   12 GB, nice 10; set `BUILD_AS=<user>` to build as an unprivileged account that owns the builds folder) fetches the
+   repository at the revision `deploy.sh` resolves (head of `DEPLOY_BRANCH`, default `main`) and builds into
    `/srv/_builds/<builder-sha8>-<utc timestamp>/`: `bin/` (agent with cgo native STT and `bin/lib`, workspace, gateway, browser,
    landlock runner, slotctl, slottmux, mcpbridge, workspace-security.test), `frontend/`, `static/`, `downloads/`, `packages/`,
-   `source/` (the three repos without `.git`), `SOURCE_REVISIONS` and `manifest.json` (revisions, os, arch, glibc, build time and
+   `source/` (the repository without `.git`), `SOURCE_REVISIONS` and `manifest.json` (revisions, os, arch, glibc, build time and
    sha256 of every file; `deploy/common/release_manifest.py`). The folder is world-readable, so every product account can copy
-   from it. A build of the same three revisions is reused. Old builds are removed by default: after every deploy (and after each build)
+   from it. A build of the same revision is reused. Old builds are removed by default: after every deploy (and after each build)
    only the newest build is kept, plus pinned ones and any younger than 15 minutes (`./deploy.sh prune-builds` does it now;
    `BUILD_KEEP=2` keeps more). The products keep their own previous releases for rollback.
 2. `bootstrap-build.sh` (given a `prebuilt` file instead of repository URLs) runs `build-and-activate.sh --prebuilt <build>` from
@@ -57,12 +57,12 @@ per-product configuration. Video Studio and Dominion have their own cases in
 
 ```
 ./deploy.sh build                      # build (or reuse) the build of main's head; deploys nothing
-./deploy.sh builds                     # list builds: name, age, build seconds, the three revisions, pinned
+./deploy.sh builds                     # list builds: name, age, build seconds, revision, pinned
 ./deploy.sh <server>                 # build once if needed, then copy + activate
 ./deploy.sh all-hetzner                # Server B, server C in sequence from ONE build (never dominion)
 ./deploy.sh <server>                        # same build, shipped to server A
-./deploy.sh <server> --build 7357c770   # deploy an existing build (name or any revision prefix); its three revisions must be
-                                       # ancestors of origin/<DEPLOY_BRANCH>, so a known-good older build can go out while the branch is held
+./deploy.sh <server> --build 7357c770   # deploy an existing build (name or any revision prefix); its revision must be an
+                                       # ancestor of origin/<DEPLOY_BRANCH>, so a known-good older build can go out while the branch is held
 ./deploy.sh pin 7357c770               # keep that build from being pruned by later builds ("unpin" to release it)
 ```
 
@@ -76,7 +76,7 @@ Dominion has its own script and is not part of this.
 ### Builds on GitHub (PLAT-426)
 
 The build host publishes each build to the public repo `github.com/manishiitg/agentworks-builds` (releases only; tag
-`build-<builder8>-<mcpagent8>-<provider8>`; assets `build.tar.gz`, `build-rts.tar.gz`, `manifest.json`, `SHA256SUMS`; newest 8 kept;
+`build-<builder8>`; assets: the full and the trimmed archive, `manifest.json`, `SHA256SUMS`; newest 8 kept;
 never marked latest). `build-release.sh` does it after a build, best effort (`BUILD_PUBLISH=0` skips). It needs a write token on the
 build host: a fine-grained token (only `agentworks-builds`, Contents read and write, 90 days) as the single line `GH_TOKEN=...` in
 `/root/.config/agentworks/builds.env`, mode 600 (`install -d -m 700 /root/.config/agentworks`; a looser file is refused). Without it
@@ -227,3 +227,40 @@ list change is needed. For products sharing a host, set `SLOT_PREFIX` and
 service settings, so root provisioning uses that product's own slot accounts
 and table. Host preparation must provide an initial `current/bin/slotctl`
 before the first slot provisioning pass.
+
+## Service logs
+
+When `/usr/sbin/logrotate` is installed, activation installs a per-product timer
+for every `logs/*.log` file, including agent, workspace, gateway and scheduler
+logs. It checks sizes every ten minutes, rotates files above 100 MiB and keeps
+three rotated copies. `copytruncate` keeps systemd's append output and child
+stderr connected. This is not a hard byte cap: a file can exceed 100 MiB by the
+writes between checks and while rotation runs. No process is added to the
+services' output path. If logrotate is missing, deployment warns and continues
+without installing the timer. A host's existing daily rotation may also run;
+its separate state can cause an extra rotation of the same logs.
+
+### Build disk floor
+
+New shared builds and verifications warn at 85% filesystem use and refuse to
+start below 10 GiB free. Existing build reuse and cleanup-only commands remain
+available. To ship a cleanup fix during an incident, an operator can explicitly
+set `BUILD_DISK_MIN_FREE_GIB=2 ./deploy.sh verify <name>` (or use the same variable
+for a normal authorized deploy). The override is forwarded to the build host and
+logged as `[DISK_CHECK] event=operator_override`; it does not free disk space or
+make a large build safe. Leave it unset for the normal 10 GiB floor.
+
+### Crew temporary background logs
+
+On Linux servers the existing workspace housekeeping sweep checks ordinary
+`Crew/<folder>/.tmp/**/*.log` files at startup and every five minutes. Logs over
+50 MiB keep a last-50-MiB `.1` archive and one prior `.2` archive; the original
+inode is truncated so a detached append writer can continue. This is a periodic
+rotation threshold, not a per-write hard cap, and copytruncate can lose output
+written during the copy/truncate interval. It does not stop a process.
+
+Symlink and hard-linked files are not rotated. Project data outside `.tmp`,
+provider journals and desktop/local deployments are excluded. Cleanup logs report
+file counts and estimated allocated bytes freed. The walk skips `node_modules`, `node-compile-cache*`, `.git`, `.cache` and
+`__pycache__`, and reports `elapsed_ms` even when nothing rotates. Run-log
+retention, runtime retention and cache cleanup are separate policies.

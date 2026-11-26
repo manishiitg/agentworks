@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/projectfunctions"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
@@ -58,7 +58,7 @@ func (api *StreamingAPI) workflowAgentFunctionToolsForRun(ctx context.Context) s
 				return triggerLinkCaller{}, err
 			}
 			if binding != nil && binding.Kind == "script" && resolved.Stamp.ID != binding.CrewID {
-				return triggerLinkCaller{}, fmt.Errorf("the source Crew no longer matches this automation")
+				return triggerLinkCaller{}, fmt.Errorf("the source project no longer matches this automation")
 			}
 			if token := actor.AccessToken; token != nil {
 				if !token.Allows("runs:execute") || !token.AllowsWorkflow(manifest.ID) {
@@ -89,7 +89,7 @@ func (api *StreamingAPI) workflowAgentFunctionToolsForRun(ctx context.Context) s
 						scope = "crews:run"
 					}
 					if !token.Allows(scope) || !token.AllowsCrew(target.CrewID) {
-						return fmt.Errorf("this connection does not allow %s on this Crew", scope)
+						return fmt.Errorf("this connection does not allow %s on this project", scope)
 					}
 				} else if !token.AllowsWorkflow(target.stampID()) || execute && !token.Allows("runs:execute") || !execute && !token.Allows("workflows:read") {
 					return fmt.Errorf("this connection does not allow this workflow function")
@@ -98,7 +98,7 @@ func (api *StreamingAPI) workflowAgentFunctionToolsForRun(ctx context.Context) s
 			return nil
 		}
 		draft := &workflowAgentFunctionDraft{executors: map[string]interface{}{}}
-		err := api.registerCrewFunctionToolSet(draft, actor.UserID, scope.SessionID, QueryRequest{}, resolveCaller, nil, crewFunctionToolOptions{Claims: &actor, ExecutionScope: executionScope, FunctionTools: agentworksproduct.ExecutionFunctionTools(), CheckTarget: checkTarget})
+		err := api.registerCrewFunctionToolSet(draft, actor.UserID, scope.SessionID, QueryRequest{}, resolveCaller, nil, crewFunctionToolOptions{Claims: &actor, ExecutionScope: executionScope, FunctionTools: projectfunctions.ExecutionTools(), CheckTarget: checkTarget})
 		if err == nil {
 			api.bindPythonAskExecutors(draft.executors, actor, resolveCaller, checkTarget)
 		}

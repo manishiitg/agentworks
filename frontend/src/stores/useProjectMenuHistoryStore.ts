@@ -17,6 +17,7 @@ export const useProjectMenuHistoryStore = create<{
   startHere: Record<string, string[]>
   pinned: Record<string, string[]>
   setPinned: (scope: string, destination: string, pinned: boolean) => void
+  movePinned: (scope: string, destination: string, target: string) => void
   seedStartHere: (scope: string, destinations: string[]) => void
   visit: (scope: string, destination: string) => void
 }>()(persist(set => ({
@@ -28,6 +29,15 @@ export const useProjectMenuHistoryStore = create<{
     const previous = state.pinned[scope] || []
     if (previous.includes(destination) === pinned) return state
     return { pinned: { ...state.pinned, [scope]: pinned ? [...previous, destination] : previous.filter(id => id !== destination) } }
+  }),
+  movePinned: (scope, destination, target) => set(state => {
+    const previous = state.pinned[scope] || []
+    const from = previous.indexOf(destination)
+    const to = previous.indexOf(target)
+    if (!scope || from < 0 || to < 0 || from === to) return state
+    const ordered = [...previous]
+    ;[ordered[from], ordered[to]] = [ordered[to], ordered[from]]
+    return { pinned: { ...state.pinned, [scope]: ordered } }
   }),
   seedStartHere: (scope, destinations) => set(state => {
     if (!scope || Object.hasOwn(state.startHere, scope)) return state

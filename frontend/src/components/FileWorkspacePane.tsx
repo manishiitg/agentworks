@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import type { ReadOnlyFileWorkspaceSource } from './workspace/fileWorkspaceSource'
 import { WorkspacePanelHeaderBoundary } from './workspace/WorkspacePanelHeaderSlots'
+import { OpenFolderInEditors } from './workspace/OpenInEditor'
 import { ReadOnlyFileTree } from './workspace/ReadOnlyFileTree'
 import { FileContentViewerBody } from './FileContentViewer'
 import Workspace from './Workspace'
@@ -26,6 +27,10 @@ function readTreeWidth(): number {
 
 type FileWorkspacePaneProps = {
   showGit?: boolean
+  /** The Source Control rail (commit box, branches, stashes). Work leaves it out: its Changes tab is the one Git place (owner, 20 Nov). */
+  sourceControl?: boolean
+  /** Project folder the header's editor icons open (local Mac app only). */
+  editorWorkspace?: string
   source?: ReadOnlyFileWorkspaceSource
   workspacePath?: string
   title?: string
@@ -40,6 +45,10 @@ type FileWorkspacePaneProps = {
   headerAction?: ReactNode
   /** A product can name its read-only library without changing the shared viewer. */
   treeHeader?: ReactNode
+  /** Extra folders a product shows below its project tree, such as a Crew's Workflows (#4151). */
+  treeFooter?: ReactNode
+  /** Other roots whose open files stay open in this view (the folders treeFooter shows). */
+  keepOpenRoots?: string[]
   emptyState?: ReactNode
   /** Offers Edit in the file viewer (the person's own project files). */
   editable?: boolean
@@ -56,6 +65,8 @@ type FileWorkspacePaneProps = {
 function FileWorkspacePaneBody({
   source,
   showGit = true,
+  sourceControl = true,
+  editorWorkspace,
   workspacePath,
   title,
   rootName,
@@ -67,6 +78,8 @@ function FileWorkspacePaneBody({
   testId,
   headerAction,
   treeHeader,
+  treeFooter,
+  keepOpenRoots,
   emptyState,
   editable = false,
   onAsk,
@@ -81,7 +94,7 @@ function FileWorkspacePaneBody({
   const files = source?.files ?? workspaceFiles
   const selectedPath = source ? source.selectedFile?.path ?? null : workspaceSelectedPath
   const gitPanel = useFileGitStore(state => state.panel)
-  const hasRepos = useFileGitStore(state => state.repos.length > 0)
+  const showRail = useFileGitStore(state => state.repos.length > 0) && sourceControl
   const [changesOpen, setChangesOpen] = useState(false)
 
   // Git status for the folder this pane shows: on mount, whenever the tree
@@ -101,14 +114,14 @@ function FileWorkspacePaneBody({
     return () => window.clearTimeout(timer)
   }, [files, gitPath, gitEnabled, git.store])
   // Tabs belong to one workspace: switching projects must not carry the last one's files along.
-  useEffect(() => { if (!source && workspacePath) useWorkspaceStore.getState().pruneOpenTabs(workspacePath) }, [gitPath, gitEnabled, git.store])
+  useEffect(() => { if (!source && workspacePath) useWorkspaceStore.getState().pruneOpenTabs(workspacePath, keepOpenRoots) }, [gitPath, gitEnabled, git.store]) // eslint-disable-line react-hooks/exhaustive-deps
   // Follow the open file in the tree (VS Code's auto-reveal): expand its folders and scroll to it.
   useEffect(() => {
     if (!source && showFileContent && selectedPath) void useWorkspaceStore.getState().scrollToFile(selectedPath)
   }, [showFileContent, selectedPath, !!source])
   // Opening a file from the tree replaces any diff or history panel.
   useEffect(() => { if (gitEnabled) git.store.getState().openPanel(null) }, [selectedPath, !!source])
-  useEffect(() => { if (!hasRepos) setChangesOpen(false) }, [hasRepos])
+  useEffect(() => { if (!showRail) setChangesOpen(false) }, [showRail])
 
   const rightOpen = showFileContent || (gitEnabled && !!gitPanel && gitPath !== undefined)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -157,15 +170,17 @@ function FileWorkspacePaneBody({
         hidden={rightOpen && !split}
       >
         <div className="flex h-full min-h-0 flex-row">
-          {gitEnabled && gitPath !== undefined && hasRepos && <ActivityRail view={changesOpen ? 'scm' : 'files'} onChange={next => setChangesOpen(next === 'scm')} />}
+          {gitEnabled && gitPath !== undefined && showRail && <ActivityRail view={changesOpen ? 'scm' : 'files'} onChange={next => setChangesOpen(next === 'scm')} />}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {gitEnabled && gitPath !== undefined && !changesOpen && <GitBar />}
-            {gitEnabled && gitPath !== undefined && changesOpen && hasRepos && (
+            {gitEnabled && gitPath !== undefined && changesOpen && showRail && (
               <div className="min-h-0 flex-1"><GitChangesList workspacePath={gitPath!} onAsk={onAsk} /></div>
             )}
-            <div className="min-h-0 flex-1" hidden={gitEnabled && changesOpen && hasRepos}>
-              <WorkspacePanelHeaderBoundary active={!(gitEnabled && changesOpen && hasRepos)}>
-                {source ? <ReadOnlyFileTree source={source} title={title || 'Files'} headerAction={split ? undefined : headerAction} header={treeHeader} emptyState={emptyState} /> : <Workspace
+            <div className="min-h-0 flex-1" hidden={gitEnabled && changesOpen && showRail}>
+              {/* A tree hidden behind the open file (narrow pane) must not add its upload/new/refresh icons to the file's header. */}
+              <WorkspacePanelHeaderBoundary active={!(gitEnabled && changesOpen && showRail) && !(rightOpen && !split)}>
+                {editorWorkspace && <OpenFolderInEditors workspacePath={editorWorkspace} />}
+                {source ? <ReadOnlyFileTree source={source} title={title || 'Files'} headerAction={split ? undefined : headerAction} header={treeHeader} emptyState={emptyState} /> : <div className="flex h-full min-h-0 flex-col"><div className="min-h-0 flex-1"><Workspace
                   scopedWorkspacePath={workspacePath}
                   rootName={rootName}
                   hiddenRootFolders={hiddenRootFolders}
@@ -176,7 +191,7 @@ function FileWorkspacePaneBody({
                   hideManagedEntriesByDefault={hideManagedEntriesByDefault}
                   title={title}
                   headerAction={split ? undefined : headerAction}
-                />}
+                /></div>{treeFooter && <div className="max-h-[45%] shrink-0 overflow-y-auto">{treeFooter}</div>}</div>}
               </WorkspacePanelHeaderBoundary>
             </div>
           </div>

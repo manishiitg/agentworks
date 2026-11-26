@@ -1,7 +1,6 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
-import { usePersistentTab } from '../../hooks/usePersistentTab'
-import { Fingerprint, FolderOpen, Loader2, Lock, Settings, Tag, Trash2, X } from 'lucide-react'
+import { Fingerprint, FolderOpen, Globe, Loader2, Lock, Settings, Tag, Trash2, X } from 'lucide-react'
 import { FolderGrantList } from '../../components/folders/FolderGrantList'
 import { WorkflowReferenceAccess } from '../../components/folders/WorkflowReferenceAccess'
 import { Button } from '../../components/ui/Button'
@@ -19,9 +18,7 @@ import type { PresetLLMConfig, WorkFolderGrant } from '../../services/api-types'
 import { loadWorkSessions } from './workSessions'
 import { useProjectProduct } from './projectProduct'
 import { isWorkIdentityTabEnabled } from './workViewGating'
-import { WorkModelsPanel } from './WorkModelsPanel'
 import { ProjectInstructionsCard } from './ProjectInstructionsCard'
-import type { WorkRuntimeSelection } from './workTabs'
 import { useChatStore } from '../../stores/useChatStore'
 
 import { localFileError } from './codeLocalFiles'
@@ -29,21 +26,20 @@ import { isLocalDeployment } from '../productSurfaceConfig'
 
 const CodeLocalFilesSettings = lazy(() => import('./CodeFilesPanel').then(module => ({ default: module.CodeLocalFilesSettings })))
 
-export type WorkIdentityTab = 'general' | 'models' | 'location'
+export type WorkIdentityTab = 'general' | 'skills' | 'memory' | 'location'
 
 const IDENTITY_TABS: Array<{ value: WorkIdentityTab; label: string }> = [
-  { value: 'general', label: 'General' },
-  { value: 'models', label: 'Models' },
+  { value: 'general', label: 'Settings' },
+  { value: 'skills', label: 'Skills' },
+  { value: 'memory', label: 'Memory' },
   // Code only: where this chat's files and commands live (the server, or your own computer through the CLI).
   { value: 'location', label: 'Laptop access' },
 ]
 
-function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpdateIdentity, onDeleteRequest }: {
+function WorkGeneralPanel({ projectTitle, projectIdentity, onUpdateIdentity }: {
   projectTitle: string
-  projectPurpose: string
   projectIdentity?: ProductIdentity
   onUpdateIdentity: (patch: ProductIdentityPatch) => Promise<unknown>
-  onDeleteRequest: () => void
 }) {
   const [nameDraft, setNameDraft] = useState('')
   const [saving, setSaving] = useState(false)
@@ -52,7 +48,7 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
   useEffect(() => {
     setNameDraft(projectIdentity?.name ?? '')
     setError(null)
-  }, [projectIdentity?.name, projectPurpose])
+  }, [projectIdentity?.name])
 
   const dirty = nameDraft.trim() !== (projectIdentity?.name ?? '')
 
@@ -61,10 +57,8 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
     setSaving(true)
     setError(null)
     try {
-      await onUpdateIdentity({
-        name: nameDraft.trim(),
-        purpose: projectPurpose, // unchanged here; Main's card edits it
-      })
+      // A project has a name and no description (owner, 25 Nov, #4046).
+      await onUpdateIdentity({ name: nameDraft.trim() })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to save.')
     } finally {
@@ -95,22 +89,36 @@ function WorkGeneralPanel({ projectTitle, projectPurpose, projectIdentity, onUpd
         </div>
       </SettingsCard>
 
-      {/* The purpose is Main's: set it from Main's card (✎) or by asking Main (owner, 5 Nov: removed from Settings). */}
-
-
-      <SettingsCard
-        icon={<Trash2 aria-hidden="true" className="h-4 w-4 text-primary" />}
-        title="Delete project"
-        description="Removes the project folder and everything in it. This cannot be undone."
-      >
-        <div>
-          <Button variant="destructive" onClick={onDeleteRequest} disabled={saving}>
-            <Trash2 className="h-4 w-4" /> Delete project
-          </Button>
-        </div>
-      </SettingsCard>
     </div>
   )
+}
+
+type ServerLink = { project_id: string; name: string; where: string; can_remove: boolean }
+
+/** Links to a project on the other machine (#3663): a Mac project linked to a server project, or the server project's
+ * link back. The server lists them and removes both sides; its message is shown as it says it. Also from chat:
+ * "link <project> on <server>" / "unlink <project>". Nothing shows until a link exists. */
+function ServerLinksCard({ workspacePath }: { workspacePath: string }) {
+  const [links, setLinks] = useState<ServerLink[]>([])
+  const [pending, setPending] = useState('')
+  const [note, setNote] = useState('')
+  const load = () => api.get<{ links: ServerLink[] }>('/api/work/remote-links', { params: { workspace_path: workspacePath } }).then(({ data }) => setLinks(data.links || [])).catch(() => setLinks([]))
+  useEffect(() => { void load() }, [workspacePath]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (links.length === 0 && !note) return null
+  const remove = async (link: ServerLink) => {
+    setPending(link.project_id); setNote('')
+    try { const { data } = await api.post<{ note?: string }>('/api/work/remote-links', { workspace_path: workspacePath, project_id: link.project_id }); setNote(data.note || ''); await load() }
+    catch (cause) { setNote(localFileError(cause)) }
+    finally { setPending('') }
+  }
+  return <SettingsCard icon={<Globe aria-hidden="true" className="h-4 w-4 text-primary" />} title="Linked on another machine" count={`${links.length} linked`}
+    description="Projects on a server (or on a Mac) linked to this one. Your agents in both can find and message each other.">
+    <div className="divide-y divide-border">{links.map(link => <div key={link.project_id} className="flex items-center gap-3 py-2">
+      <p className="min-w-0 flex-1 truncate text-sm">{link.name} <span className="text-xs text-muted-foreground">· {link.where}</span></p>
+      {link.can_remove && <button type="button" disabled={Boolean(pending)} onClick={() => void remove(link)} className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-50">{pending === link.project_id ? <Loader2 aria-label="Removing" className="h-3.5 w-3.5 animate-spin" /> : 'Remove'}</button>}
+    </div>)}</div>
+    {note && <p className="text-xs text-muted-foreground">{note}</p>}
+  </SettingsCard>
 }
 
 /** part (owner, 4 Nov): in the Mac app "Linked projects" shows only the linked projects and "Folders on this Mac" only the
@@ -233,19 +241,24 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
         onChange={onWorkflowContextPathsChange}
         excludeWorkspacePath={workspacePath}
         additionalReferences={crewReferences}
-        additionalLabel="Crew"
+        additionalLabel="Project"
         showAdditionalGroup
       />}
+      {part !== 'attached' && <ServerLinksCard workspacePath={workspacePath} />}
       {part !== 'linked' && <SettingsCard
         icon={<FolderOpen aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Attached folders"
-        description={local ? "Folders on your Mac that your Crews can open. They stay on your Mac." : "Folders available on this server. Use Your computer for folders on your laptop."}
+        description={local ? "Folders on your Mac that your projects can open. They stay on your Mac." : "Folders available on this server. Use Your computer for folders on your laptop."}
         count={`${folders.length} attached`}
       >
-        {home && !wholeMac && <div className="mb-2 flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3">
+        {/* Your whole Mac is one on/off row at the top (owner, 26 Nov: "an easy way to give full mac access"); its
+            home-folder grant is not listed again below. */}
+        {home && <div data-testid="whole-mac-row" className={`mb-2 flex items-center gap-3 rounded-lg border p-3 ${wholeMac ? 'border-primary/40 bg-primary/5' : 'border-border bg-muted/20'}`}>
           <FolderOpen aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />
-          <div className="min-w-0 flex-1"><p className="text-sm font-medium">Your whole Mac</p><p className="text-xs text-muted-foreground">Everything in your home folder ({home}), read &amp; write, for all your Crews. macOS system folders stay out.</p></div>
-          <button type="button" disabled={adding} onClick={() => void attachWholeMac()} className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50">Give access</button>
+          <div className="min-w-0 flex-1"><p className="text-sm font-medium">Your whole Mac{wholeMac ? ' · On' : ''}</p><p className="text-xs text-muted-foreground">Everything in your home folder ({home}), read &amp; write, for all your projects. macOS system folders stay out.</p></div>
+          {wholeMac
+            ? <button type="button" disabled={adding} onClick={() => void remove(wholeMac)} className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50">Turn off</button>
+            : <button type="button" disabled={adding} onClick={() => void attachWholeMac()} className="shrink-0 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">Give access</button>}
         </div>}
         {/* On a person's own Mac agents may use their Downloads folder by default; it can be removed and added back. */}
         {downloads.available && !downloads.removed && <div className="mb-2 flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3">
@@ -255,7 +268,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
           <button type="button" aria-label="Remove Downloads" onClick={() => void setDownloadsRemoved(true)} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
         </div>}
         {downloads.available && downloads.removed && <button type="button" onClick={() => void setDownloadsRemoved(false)} className="mb-2 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">Add Downloads back</button>}
-        {loading ? <p className="text-xs text-muted-foreground">Loading…</p> : <FolderGrantList grants={folders} onRemove={remove} />}
+        {loading ? <p className="text-xs text-muted-foreground">Loading…</p> : <FolderGrantList grants={wholeMac ? folders.filter(folder => folder !== wholeMac) : folders} onRemove={remove} />}
         {canPick ? <div className="mt-3 flex flex-wrap items-center gap-2">
           <select aria-label="Access for the new folder" value={addAccess} disabled={adding} onChange={event => setAddAccess(event.target.value as 'read_only' | 'read_write')} className="h-8 rounded-md border border-border bg-background px-2 text-xs">
             <option value="read_only">Read only</option><option value="read_write">Read &amp; write</option>
@@ -268,23 +281,24 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
   )
 }
 
-export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTitle, projectDescription, projectIdentity, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedGlobalSecrets, projectLLMConfig, enabledPanels, onRuntimeChange, nativeAgentTools, onNativeAgentToolsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, modelsOnly = false }: {
+export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTitle, projectIdentity, tabId, openLocalFilesSettings, onLocalFilesSettingsOpened, selectedGlobalSecrets, projectLLMConfig, enabledPanels, nativeAgentTools, onNativeAgentToolsChange, onSelectedGlobalSecretsChange, onUpdateIdentity, onDeleteRequest, settingsView = 'identity', skillsPanel, memoryPanel, onSettingsTabChange }: {
   workspacePath: string
   /** A Crew opened by a reader: the project instructions editor is the owner's. */
   shared?: boolean
   /** The project's id. */
   projectId?: string
   projectTitle: string
-  projectDescription: string
   projectIdentity?: ProductIdentity
   tabId: string
-  modelsOnly?: boolean
+  settingsView?: 'identity' | 'memory'
+  skillsPanel?: ReactNode
+  memoryPanel?: ReactNode
+  onSettingsTabChange?: (tab: 'general' | 'skills' | 'memory') => void
   openLocalFilesSettings?: boolean
   onLocalFilesSettingsOpened?: () => void
   selectedGlobalSecrets: string[]
   projectLLMConfig?: PresetLLMConfig
   enabledPanels?: Set<string>
-  onRuntimeChange: (selection: WorkRuntimeSelection) => void | Promise<void>
   nativeAgentTools?: boolean
   /** Omitted for readers: only the Crew owner can change it. */
   onNativeAgentToolsChange?: (enabled: boolean) => Promise<unknown>
@@ -294,15 +308,19 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
 }) {
   const product = useProjectProduct()
   const sessionId = useChatStore(state => state.chatTabs[tabId]?.sessionId || '')
-  const visibleTabs = IDENTITY_TABS.filter(option => (!modelsOnly || option.value === 'models') && isWorkIdentityTabEnabled(option.value, enabledPanels))
-  const [tab, setTab] = usePersistentTab<WorkIdentityTab>('agentworks.tab.crew-identity', 'general', IDENTITY_TABS.map(option => option.value))
+  const visibleTabs = IDENTITY_TABS.filter(option => (option.value !== 'skills' || skillsPanel != null) && (option.value !== 'memory' || memoryPanel != null) && isWorkIdentityTabEnabled(option.value, enabledPanels))
+  const [tab, setTab] = useState<WorkIdentityTab>(settingsView === 'memory' ? 'memory' : 'general')
+  useEffect(() => { setTab(settingsView === 'memory' ? 'memory' : 'general') }, [settingsView])
   useEffect(() => {
     if (!openLocalFilesSettings) return
     setTab('location')
     onLocalFilesSettingsOpened?.()
   }, [openLocalFilesSettings, onLocalFilesSettingsOpened, setTab])
-  const activeTab = visibleTabs.some(option => option.value === tab) ? tab : visibleTabs[0].value
+  const activeTab = visibleTabs.some(option => option.value === tab) ? tab : (settingsView === 'memory' ? visibleTabs.find(option => option.value === 'memory' || option.value === 'skills') : undefined)?.value ?? visibleTabs[0].value
   useWorkspaceViewTarget('identity', target => { if (visibleTabs.some(option => option.value === target)) setTab(target as WorkIdentityTab) })
+  useWorkspaceViewTarget('memory', target => { if ((target === 'memory' || target === 'skills') && visibleTabs.some(option => option.value === target)) setTab(target) })
+  const settingsTabs = visibleTabs.filter(option => option.value === 'general' || option.value === 'skills' || option.value === 'memory')
+  const isSettingsTab = activeTab === 'general' || activeTab === 'skills' || activeTab === 'memory'
   // Every tab loads on mount, so Refresh always remounts.
   const [tabNonce, setTabNonce] = useState(0)
 
@@ -310,37 +328,48 @@ export function WorkIdentityPanel({ workspacePath, projectId, shared, projectTit
     <div className="flex h-full min-h-0 flex-col bg-background">
       <WorkspaceViewHeader
         icon={product.hasIdentity ? Fingerprint : Settings}
-        title={modelsOnly ? 'Models' : 'Settings'}
+        title={activeTab === 'location' ? 'Laptop access' : 'Settings'}
         actions={(
           <WorkspaceViewActions
             onRefresh={() => setTabNonce(nonce => nonce + 1)}
             refreshLabel={`Refresh ${visibleTabs.find(option => option.value === activeTab)?.label ?? 'view'}`}
           />
         )}
-        /* No sub-tabs: Settings, Models and Laptop access are separate items in the side list (owner, 2026-10-20). */
+        tabs={isSettingsTab ? {
+          value: activeTab,
+          options: settingsTabs,
+          ariaLabel: 'Project settings',
+          onChange: value => {
+            if (value !== 'general' && value !== 'skills' && value !== 'memory') return
+            setTab(value)
+            onSettingsTabChange?.(value)
+          },
+        } : undefined}
       />
-      <div key={`${activeTab}:${tabNonce}`} className="min-h-0 flex-1 overflow-y-auto p-4">
-
+      <div key={`${activeTab}:${tabNonce}`} data-ui-view-section={activeTab} className={activeTab === 'memory' ? 'min-h-0 flex-1 overflow-hidden' : 'min-h-0 flex-1 overflow-y-auto p-4'}>
+        {activeTab === 'skills' && skillsPanel}
+        {activeTab === 'memory' && memoryPanel}
         {activeTab === 'general' && product.hasIdentity && <WorkGeneralPanel
           projectTitle={projectTitle}
-          projectPurpose={projectDescription}
           projectIdentity={projectIdentity}
           onUpdateIdentity={onUpdateIdentity}
-          onDeleteRequest={onDeleteRequest}
         />}
-        {activeTab === 'general' && !shared && <div className="mt-4"><ProjectInstructionsCard workspacePath={workspacePath} /></div>}
-        {activeTab === 'location' && <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} workspaceName={projectIdentity?.name?.trim() || projectTitle} /></Suspense>}
-        {activeTab === 'models' && <div className="space-y-4">
-          <WorkModelsPanel
-            tabId={tabId}
-            workspacePath={workspacePath}
-            projectId={projectId}
-            projectLLMConfig={projectLLMConfig}
-            onRuntimeChange={onRuntimeChange}
-            hideHeader
-          />
-          {!modelsOnly && product.hasNativeAgentToolsSetting && <NativeAgentToolsSetting enabled={!!nativeAgentTools} onChange={onNativeAgentToolsChange} />}
+        {activeTab === 'general' && !shared && <div className="mt-4"><ProjectInstructionsCard workspacePath={workspacePath} projectId={projectId} provider={projectLLMConfig?.mode === 'explicit' ? projectLLMConfig.builder_llm?.provider : projectLLMConfig?.provider} model={projectLLMConfig?.builder_llm?.model_id} /></div>}
+        {activeTab === 'general' && product.hasNativeAgentToolsSetting && <div className="mt-4"><NativeAgentToolsSetting enabled={!!nativeAgentTools} onChange={onNativeAgentToolsChange} /></div>}
+        {activeTab === 'general' && product.hasIdentity && <div className="mt-4">
+          <SettingsCard
+            icon={<Trash2 aria-hidden="true" className="h-4 w-4 text-primary" />}
+            title="Delete project"
+            description="Removes the project folder and everything in it. This cannot be undone."
+          >
+            <div>
+              <Button variant="destructive" onClick={onDeleteRequest}>
+                <Trash2 className="h-4 w-4" /> Delete project
+              </Button>
+            </div>
+          </SettingsCard>
         </div>}
+        {activeTab === 'location' && <Suspense fallback={<p className="text-sm text-muted-foreground">Loading connection settings…</p>}><CodeLocalFilesSettings sessionId={sessionId} workspaceName={projectIdentity?.name?.trim() || projectTitle} /></Suspense>}
       </div>
     </div>
   )

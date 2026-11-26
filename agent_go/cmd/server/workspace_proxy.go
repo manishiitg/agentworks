@@ -95,7 +95,7 @@ func workspaceProxyHandler() http.Handler {
 				if status == http.StatusForbidden {
 					message = "cross-user workspace access denied"
 					if workspaceProxyRelativePath(r) == "api/upload" {
-						message = "This folder is unavailable for uploads. Reopen the Crew and attach the file from its chat."
+						message = "This folder is unavailable for uploads. Reopen the project and attach the file from its chat."
 					}
 				}
 				http.Error(w, message, status)
@@ -107,6 +107,19 @@ func workspaceProxyHandler() http.Handler {
 		if internalPath := path.Clean("/" + workspaceProxyRelativePath(r)); internalPath == "/api/workflow-files" || internalPath == "/api/shared-assets" || internalPath == "/api/shared-file-write" || internalPath == "/api/shared-file-upload" || internalPath == "/api/dashboards" {
 			http.NotFound(w, r)
 			return
+		}
+		// A co-owner whose setup the owner locked cannot change the project's setup files through the Files proxy
+		// either (#3796); the server's own writers check the same rule.
+		if r.Method == http.MethodPut || r.Method == http.MethodPatch || r.Method == http.MethodPost || r.Method == http.MethodDelete {
+			rel := workspaceProxyRelativePath(r)
+			for _, prefix := range []string{"api/documents/", "api/folders/"} {
+				if strings.HasPrefix(rel, prefix) {
+					if refusal := crewSetupLockWorkspaceRefusal(r.Context(), strings.TrimPrefix(rel, prefix), "files "+strings.ToLower(r.Method)); refusal != "" {
+						http.Error(w, refusal, http.StatusForbidden)
+						return
+					}
+				}
+			}
 		}
 		// Live browser access must go through workflow ownership and input gating.
 		if strings.HasPrefix(workspaceProxyRelativePath(r), "api/browser/live/") {
@@ -130,6 +143,9 @@ func workspaceProxyHandler() http.Handler {
 					log.Printf("[WORKFLOW_DELETE] %s deleted by=%s main_owner=%s", folder, sanitizeUserIDForPath(GetUserIDFromContext(r.Context())), manifest.executionOwner())
 				}
 			}
+		}
+		if crewScriptFilesProxyWrite(w, r) {
+			return
 		}
 		// The workspace API scopes per-user paths by X-User-ID and has no
 		// auth of its own; it must carry the identity this server verified,
@@ -602,16 +618,10 @@ func workspaceProxyBodyVerdict(r *http.Request, policy workspaceProxyPolicy) (st
 			spooled.close()
 			return http.StatusBadRequest, "request body is not valid multipart", nil
 		}
-		// Forward the same destination the gate authorized. Multipart fields do
-		// not pass through the JSON workspace transport's path translation.
-		rewritten := &workspaceProxySpillWriter{mem: &bytes.Buffer{}, memCap: workspaceProxyBodyMemoryCap, maxCap: workspaceProxyBodyMaxCap}
-		defer rewritten.abort()
-		form := multipart.NewWriter(rewritten)
-		if err := form.SetBoundary(params["boundary"]); err != nil {
-			spooled.close()
-			return http.StatusBadRequest, "request body is not valid multipart", nil
-		}
-		changed := false
+		// Validate every multipart path field in-place without duplicating up to
+		// 256 MB of file payload into a second buffer. Draining non-path parts
+		// guarantees fields appearing after file parts are still enforced before
+		// replaying the original spooled body.
 		partReader := multipart.NewReader(spooled.open(), params["boundary"])
 		for {
 			part, err := partReader.NextPart()
@@ -622,13 +632,9 @@ func workspaceProxyBodyVerdict(r *http.Request, policy workspaceProxyPolicy) (st
 				spooled.close()
 				return http.StatusBadRequest, "request body is not valid multipart", nil
 			}
-			destination, err := form.CreatePart(part.Header)
-			if err != nil {
-				spooled.close()
-				return http.StatusBadRequest, "request body could not be prepared", nil
-			}
 			if part.FileName() == "" && workspaceProxyMultipartPathFields[part.FormName()] {
 				value, err := io.ReadAll(part)
+				_ = part.Close()
 				if err != nil {
 					spooled.close()
 					return http.StatusBadRequest, "request body could not be read", nil
@@ -638,30 +644,15 @@ func workspaceProxyBodyVerdict(r *http.Request, policy workspaceProxyPolicy) (st
 					spooled.close()
 					return http.StatusForbidden, "multipart form path", nil
 				}
-
-				if _, err := destination.Write(value); err != nil {
-					spooled.close()
-					return http.StatusBadRequest, "request body could not be prepared", nil
-				}
 				continue
 			}
-			// Copy file bytes and unrelated fields without interpreting them.
-			if _, err := io.Copy(destination, part); err != nil {
+			// Drain file bytes and unrelated fields without buffering or modifying them.
+			if _, err := io.Copy(io.Discard, part); err != nil {
+				_ = part.Close()
 				spooled.close()
 				return http.StatusBadRequest, "request body could not be read", nil
 			}
-		}
-		if err := form.Close(); err != nil {
-			spooled.close()
-			return http.StatusBadRequest, "request body could not be prepared", nil
-		}
-		if changed {
-			spooled.close()
-			spooled = &workspaceProxySpooledBody{file: rewritten.file, size: rewritten.total}
-			if rewritten.file == nil {
-				spooled.mem = rewritten.mem.Bytes()
-			}
-			rewritten.file = nil // replay now owns the temporary file
+			_ = part.Close()
 		}
 		return replay()
 	}

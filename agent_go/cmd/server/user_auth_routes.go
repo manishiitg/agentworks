@@ -33,6 +33,7 @@ type AuthResponse struct {
 
 // UserInfo represents public user information
 type UserInfo struct {
+	userAvatarFields
 	ID                      string   `json:"id"`
 	Username                string   `json:"username"`
 	Email                   string   `json:"email,omitempty"`
@@ -673,15 +674,13 @@ func (api *StreamingAPI) handleGetCurrentUser(w http.ResponseWriter, r *http.Req
 		response[key] = value
 	}
 	acc := userAccessForClaims(user)
+	avatar := avatarFieldsFor(user.UserID, "")
+	response["avatar_url"], response["avatar_icon"], response["avatar_color"] = avatar.AvatarURL, avatar.AvatarIcon, avatar.AvatarColor
 	response["is_admin"] = acc.Admin
 	response["can_create"] = acc.CanCreate
 	response["can_create_in"] = canCreateInProducts(acc)
 	if access, err := effectiveWorkflowAccessMap(r.Context(), user); err == nil {
 		response["workflows"] = access
-	}
-	// Every person gets their own AgentWorks on their first visit (owner, 2026-10-26); the platform makes it.
-	if user.AccessToken == nil && !acc.Disabled {
-		api.ensureAgentWorksOnVisit(user.UserID)
 	}
 	json.NewEncoder(w).Encode(response)
 }

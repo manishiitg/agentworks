@@ -13,7 +13,8 @@ Typed saved-script example::
 from __future__ import annotations
 
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import wraps
 import inspect
@@ -26,7 +27,7 @@ from typing import Any, Mapping, Sequence, TypeAlias, Union
 import urllib.error
 import urllib.request
 
-__all__ = ["AutomationError", "Reply", "AskResult", "ask_agent", "agent", "call_function", "function_status", "FunctionResult", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step", "send_email", "send_slack", "google", "slack", "github"]
+__all__ = ["AutomationError", "Reply", "AskResult", "ask_agent", "agent", "call_function", "function_status", "FunctionResult", "check", "inputs", "notify", "run_folder", "run_script", "ScriptResult", "JSONValue", "step", "parallel", "send_email", "send_slack", "google", "slack", "github"]
 __all__.append("secret")
 
 
@@ -47,6 +48,7 @@ class Reply:
     log_kind: str = "activity"
     answer_file: Path | None = None
     reused: bool = False
+    data: "JSONValue" = None
 
 
 JSONValue: TypeAlias = Union[None, bool, int, float, str, list["JSONValue"], dict[str, "JSONValue"]]
@@ -86,6 +88,9 @@ class AskResult(Reply):
 
 
 _active_step: ContextVar[tuple[str, str] | None] = ContextVar("agentworks_step", default=None)
+# (group id, part index) while a parallel() part runs, so its step record says it ran with the others.
+_parallel_part: ContextVar[tuple[str, int] | None] = ContextVar("agentworks_parallel", default=None)
+_parallel_groups = 0
 _order = 0
 _order_lock = threading.Lock()
 _run_dir = os.environ.get("WORKFLOW_RUN_DIR", "")
@@ -168,7 +173,8 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
                  log_error=result.get("log_error", ""),
                  log_kind=result.get("log_kind", "activity"),
                  answer_file=Path(result["answer_file"]) if result.get("answer_file") else None,
-                 reused=bool(result.get("reused")))
+                 reused=bool(result.get("reused")),
+                 data=result.get("value") if action == "agent" else None)
     if action == "ask_agent":
         receipt = result.get("value") or {}
         return AskResult(**vars(reply), inbox_id=receipt.get("inbox_id", ""),
@@ -252,7 +258,11 @@ def _source_site(frame) -> str:
 def _step_activity(title: str, function, site: str):
     identity = f"{_source_name(function.__code__.co_filename)}:{function.__name__}@{site}"
     try:
-        started = _call("step", {"phase": "start", "title": title, "source_call": identity}, None, True)
+        start = {"phase": "start", "title": title, "source_call": identity}
+        part = _parallel_part.get()
+        if part is not None:
+            start["parallel_group"] = part[0]
+        started = _call("step", start, None, True)
     except Exception:
         started = Reply(ok=False)
     token = _active_step.set((identity, started.conversation_id if started.ok else ""))
@@ -300,6 +310,49 @@ def step(title: str):
                 return function(*args, **kwargs)
         return synchronous
     return decorate
+
+
+def parallel(*calls, names: Sequence[str] | None = None, max_workers: int | None = None) -> list:
+    """Run zero-argument callables at the same time and return their results in call order.
+
+    results = parallel(lambda: agent("acme", task_a), lambda: agent("globex", task_b),
+                       names=["Research Acme", "Research Globex"])
+    Each part is recorded as its own step (named from names, else the function's
+    name, else "Part N of M"), and the run view shows the parts side by side.
+    Every part finishes; then the first exception, if any, is raised.
+    """
+    global _parallel_groups
+    if not calls or any(not callable(call) for call in calls):
+        raise ValueError("parallel needs one or more functions to call, such as lambda: agent(...)")
+    if names is not None and len(names) != len(calls):
+        raise ValueError("parallel needs one name per call")
+    with _order_lock:
+        _parallel_groups += 1
+        group = f"parallel-{os.getpid()}-{_parallel_groups}"
+    frame = inspect.currentframe()
+    site = _source_site(frame.f_back if frame else None)
+    del frame
+
+    def run(index: int, call):
+        _parallel_part.set((group, index))
+        label = names[index] if names is not None else getattr(call, "__name__", "")
+        if not label or label == "<lambda>":
+            label = f"Part {index + 1} of {len(calls)}"
+        with _step_activity(label, call if hasattr(call, "__code__") else run, f"{site}#{index + 1}"):
+            return call()
+
+    with ThreadPoolExecutor(max_workers=max_workers or len(calls)) as pool:
+        futures = [pool.submit(copy_context().run, run, index, call) for index, call in enumerate(calls)]
+        outcomes = []
+        for future in futures:
+            try:
+                outcomes.append((future.result(), None))
+            except BaseException as error:  # every part finishes before the first failure is raised
+                outcomes.append((None, error))
+    for _, error in outcomes:
+        if error is not None:
+            raise error
+    return [result for result, _ in outcomes]
 
 
 def ask_agent(crew: str, message: str, *, chat_id: str | None = None,
@@ -388,7 +441,8 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
           mcp: Sequence[str] = (), skills: Sequence[str] = (), tools: Sequence[str] = (), apps: Sequence[str] = (),
           browser: bool = False, knowledge: str | None = None,
           timeout_seconds: float | None = None, conversation_id: str | None = None,
-          key: str | None = None, redo: bool = False) -> Reply:
+          key: str | None = None, redo: bool = False,
+          expect: Mapping[str, Any] | None = None) -> Reply:
     """Run ordinary agent turns in this run folder, with no external MCPs by default.
 
     Pass a stable key when this result should survive a failed run. On Resume,
@@ -418,6 +472,16 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
     when no successful final answer was saved. log_file contains the provider transcript the
     platform received, including available streamed text and tool records;
     log_complete does not claim uncaptured operating-system output.
+
+    expect (optional) has the platform check the output without a model:
+    {"files": [{"file_name": "report.json", "must_exist": True,
+                "json_checks": [{"path": "$.items", "value_type": "array", "min_length": 1}]}],
+     "db": [{"name": "rows saved", "sql": "SELECT * FROM leads", "min_rows": 1}],
+     "answer": [{"path": "$.status", "must_exist": True, "value_type": "string"}]}
+    files are relative to this run folder (db/... to the workflow's db folder).
+    answer checks need a JSON final answer; reply.data holds it when they pass.
+    Failures go back to the same agent up to two times; then ok is False and
+    error lists the checks that still fail.
     """
     frame = inspect.currentframe()
     source_call = "agent@" + _source_site(frame.f_back if frame else None)
@@ -430,9 +494,11 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
                      "tier": tier, "reasoning": reasoning, "scripts": list(scripts), "mcp": list(mcp),
                      "skills": list(skills), "tools": list(tools), "apps": list(apps), "browser": browser,
                      "knowledge": knowledge, "timeout_seconds": timeout_seconds,
-                     "conversation_id": conversation_id, "source_call": source_call}, key, redo)
+                     "conversation_id": conversation_id, "source_call": source_call,
+                     **({"expect": dict(expect)} if expect is not None else {})}, key, redo)
     except AutomationError as error:
         return Reply(ok=False, error=str(error))
 
 
-from . import google, slack, github
+from . import google, slack, github, files
+__all__.append("files")

@@ -33,7 +33,6 @@ func resolveChatConfigUserID(r *http.Request) string {
 
 func getMultiAgentChatCapabilitiesHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		setCORS(w)
 		if r.Method == "OPTIONS" {
 			return
 		}
@@ -50,7 +49,6 @@ func getMultiAgentChatCapabilitiesHandler() http.HandlerFunc {
 
 func saveMultiAgentChatCapabilitiesHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		setCORS(w)
 		if r.Method == "OPTIONS" {
 			return
 		}

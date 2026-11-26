@@ -1,3 +1,4 @@
+import { randomUUID } from '../utils/randomUUID'
 import { useCallback } from 'react'
 import type { ChatHistorySession } from '../services/api-types'
 import { agentApi } from '../services/api'
@@ -14,7 +15,7 @@ import { hydrateTabEvents } from '../utils/sessionRestore'
 import { hydrateExecutionConversation } from '../utils/executionConversationRestore'
 import { isScheduledChatHistorySession } from '../utils/chatHistoryOpenDisposition'
 import { startRestoredTransportTerminal } from '../utils/restoredTerminal'
-import { WORK_SIDE_CHAT_LIMIT, isWorkSideChatTab, workSideChatKey } from '../products/work/workTabs'
+import { workSideChatKey } from '../products/work/workTabs'
 
 /**
  * Shared resume handler for product-owned chat history.
@@ -189,12 +190,7 @@ export function useResumePreviousChat() {
     // comes back as a side chat of its own, like a new tab (PLAT-827). From a side chat it still resumes in place.
     const codeProjectId = targetTab.metadata?.agentProfileProjectId
     if (profileId === 'work' && codeProjectId && conversationKey === codeProjectId && !createResumedTab) {
-      const open = Object.values(chatStore.chatTabs).filter(tab => isWorkSideChatTab(tab, codeProjectId)).length
-      if (open >= WORK_SIDE_CHAT_LIMIT) {
-        useChatStore.getState().addToast(`This project already has ${open} side chats open. Close one first, then open this chat.`, 'error')
-        return
-      }
-      conversationKey = workSideChatKey(codeProjectId, globalThis.crypto.randomUUID().slice(0, 8))
+      conversationKey = workSideChatKey(codeProjectId, randomUUID().slice(0, 8))
       createResumedTab = true
     }
 

@@ -39,8 +39,8 @@ func Measure(ctx context.Context, roots crewroot.Roots) (Measurement, error) {
 	if !roots.SeparateFiles() {
 		areas = areas[1:]
 	}
-	if roots.Private != "" {
-		areas = append(areas, struct{ name, root string }{"knowledge", roots.Private})
+	if roots.Automation != "" {
+		areas = append(areas, struct{ name, root string }{"knowledge", roots.Automation})
 	}
 	for _, area := range areas {
 		ignored, err := publication.GitIgnored(ctx, area.root)

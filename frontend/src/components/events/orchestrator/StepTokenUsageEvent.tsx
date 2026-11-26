@@ -27,7 +27,7 @@ export const StepTokenUsageEventDisplay: React.FC<StepTokenUsageEventDisplayProp
           </span>
         </div>
         {event.timestamp && (
-          <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
+          <span className="text-xs text-muted-foreground flex-shrink-0">
             {new Date(event.timestamp).toLocaleTimeString()}
           </span>
         )}
@@ -81,7 +81,7 @@ export const StepTokenUsageEventDisplay: React.FC<StepTokenUsageEventDisplayProp
                 <span className="font-semibold">Context:</span>
                 <span className="ml-1">{contextUsagePercent.toFixed(1)}%</span>
                 {modelContextWindow !== undefined && modelContextWindow > 0 && (
-                  <span className="text-gray-600 dark:text-gray-400">
+                  <span className="text-muted-foreground">
                     {' ('}{formatTokens(modelContextWindow)}{')'}
                   </span>
                 )}

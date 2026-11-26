@@ -54,14 +54,14 @@ profile:
       - id: cursor-cli
         label: Cursor CLI
         provider: cursor-cli
-        model_id: composer-2.5
+        model_id: auto
         reasoning_efforts: [low, medium, high, xhigh, max]
         options:
           reasoning_effort: high
       - id: pi-cli
         label: Pi CLI
         provider: pi-cli
-        model_id: google/gemini-3.8-flash
+        model_id: google/gemini-4-hydrogen
         reasoning_efforts: [low, medium, high, xhigh]
         options:
           reasoning_effort: high
@@ -75,8 +75,8 @@ profile:
       - id: agy-cli
         label: Antigravity CLI (Alpha)
         provider: agy-cli
-        model_id: gemini-3.8-flash-high
-        reasoning_efforts: [low, medium, high]
+        model_id: gemini-4-hydrogen-high
+        reasoning_efforts: [low, medium, high, xhigh]
         options:
           reasoning_effort: high
     capabilities:
@@ -95,7 +95,6 @@ branding: {icon: book-open, favicon: ""}
 ui:
   tips:
     - id: quick-switcher
-    - id: toolbar-hide
   surface: knowledgebase
   files_panel: false
   workflow_panel: false

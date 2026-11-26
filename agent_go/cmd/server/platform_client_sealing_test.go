@@ -14,7 +14,7 @@ import (
 )
 
 // A platform OAuth client secret never stays in the MCP config overlay:
-// connecting, the startup migration and the JSON editor all move it into the
+// connecting and the JSON editor both move it into the
 // sealed platform client file, and mcpagent reads it back from there.
 func TestPlatformClientSecretsLiveSealedOutsideTheOverlay(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
@@ -46,32 +46,14 @@ func TestPlatformClientSecretsLiveSealedOutsideTheOverlay(t *testing.T) {
 		t.Fatalf("sealed secret = %q, %v", secret, err)
 	}
 
-	// An overlay written before the change is migrated at start.
-	legacy := &mcpclient.MCPConfig{MCPServers: map[string]mcpclient.MCPServerConfig{"Old": server("s3cret-legacy")}}
-	if err := mcpclient.SaveConfig(api.getUserConfigPath(), legacy); err != nil {
-		t.Fatal(err)
-	}
-	if err := api.migratePlatformClientSecrets(); err != nil {
-		t.Fatal(err)
-	}
-	overlay, _ = os.ReadFile(api.getUserConfigPath())
-	loaded, _ = mcpclient.LoadConfig(api.getUserConfigPath(), api.logger)
-	if strings.Contains(string(overlay), "s3cret") {
-		t.Fatalf("migration left the secret inline: %s", overlay)
-	}
-	if secret, _ := oauth.ReadClientSecretFile(loaded.MCPServers["Old"].OAuth.ClientSecretFile); secret != "s3cret-legacy" {
-		t.Fatalf("migrated secret = %q", secret)
-	}
-
 	// The editor may not point a server at another file.
-	if isPlatformClientSecretFile("Old", "/etc/passwd") || !isPlatformClientSecretFile("Old", loaded.MCPServers["Old"].OAuth.ClientSecretFile) {
+	if isPlatformClientSecretFile("Svc", "/etc/passwd") || !isPlatformClientSecretFile("Svc", loaded.MCPServers["Svc"].OAuth.ClientSecretFile) {
 		t.Fatal("client_secret_file reference check")
 	}
 }
 
 // Platform OAuth tokens and client registrations are never plain JSON on
-// disk: new writes are sealed, files written before sealing are sealed at
-// start, and both still read back through the token store.
+// disk: every write is sealed and reads back through the token store.
 func TestPlatformTokensAreSealedOnDisk(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	withMCPConnectionsRoot(t)
@@ -88,42 +70,16 @@ func TestPlatformTokensAreSealedOnDisk(t *testing.T) {
 		t.Fatalf("load = %+v %v", loaded, err)
 	}
 
-	// A legacy plain token (older catalog path) and a plain DCR client file.
-	legacy := filepath.Join(mcpagentTokensRoot(), "default", "Notion.json")
-	client := expandPath(getUserClientFilePath(platformMCPTokenUserID, "Notion"))
-	githubAccount := githubRecordPath("alice")
-	for path, body := range map[string]string{
-		legacy:                     `{"access_token":"legacy-secret","token_type":"Bearer"}`,
-		client:                     `{"client_id":"cid","client_secret":"dcr-secret","redirect_uri":"https://x/cb"}`,
-		githubAccount:              `{"login":"example-user","source":"gh","vault_id":"v-example","secret_name":"VLT_example__GITHUB_TOKEN"}`,
-		registrationFailuresPath(): `{"https://example.com/register https://example.com/callback":{"reason":"Needs setup","at":"2026-10-31T00:00:00Z"}}`,
-	} {
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
+	// PLAT-746-260: GitHub account records are sealed and bound to their person; the reader opens them.
+	githubAccount := githubConnectionPath("alice", "0123456789abcdef0123456789abcdef")
+	if err := writeGitHubRecord("alice", githubAccountRecord{ID: "0123456789abcdef0123456789abcdef", Login: "example-user", Source: "gh", VaultID: "v-example", SecretName: "VLT_example__GITHUB_TOKEN"}); err != nil {
+		t.Fatal(err)
 	}
-	if n, err := sealPlainPlatformCredentials(); err != nil || n != 4 {
-		t.Fatalf("sealed %d, %v", n, err)
-	}
-	for _, path := range []string{legacy, client, tokenPath} {
-		raw, _ := os.ReadFile(path)
-		if strings.Contains(string(raw), "secret") {
-			t.Fatalf("%s still plain: %s", path, raw)
-		}
-	}
-	if secret, err := oauth.ReadClientSecretFile(client); err != nil || secret != "dcr-secret" {
-		t.Fatalf("client after sealing = %q %v", secret, err)
-	}
-	// PLAT-746-260: startup also seals GitHub account records; their reader must
-	// open them rather than forgetting the connection on every restart.
-	account := readGitHubRecord("alice")
+	account := readGitHubConnection("alice", "0123456789abcdef0123456789abcdef")
 	if account == nil || account.Login != "example-user" || account.Source != "gh" || account.SecretName != "VLT_example__GITHUB_TOKEN" {
-		t.Fatal("GitHub account was lost after startup sealing")
+		t.Fatal("GitHub account could not be read back")
 	}
-	if readGitHubRecord("bob") != nil {
+	if readGitHubConnection("bob", "0123456789abcdef0123456789abcdef") != nil {
 		t.Fatal("another person inherited the GitHub connection")
 	}
 	account.Scopes = "repo"
@@ -134,24 +90,21 @@ func TestPlatformTokensAreSealedOnDisk(t *testing.T) {
 	if err != nil || strings.HasPrefix(strings.TrimSpace(string(rawAccount)), "{") || strings.Contains(string(rawAccount), "example-user") {
 		t.Fatal("GitHub account update must stay sealed")
 	}
-	if account = readGitHubRecord("alice"); account == nil || account.Scopes != "repo" {
+	if account = readGitHubConnection("alice", "0123456789abcdef0123456789abcdef"); account == nil || account.Scopes != "repo" {
 		t.Fatal("updated GitHub account could not be read")
 	}
-	if err := os.WriteFile(githubRecordPath("bob"), rawAccount, 0o600); err != nil {
+	if err := os.MkdirAll(filepath.Dir(githubConnectionPath("bob", "0123456789abcdef0123456789abcdef")), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if readGitHubRecord("bob") != nil {
-		t.Fatal("copied GitHub connection bypassed person-bound sealing")
+	if err := os.WriteFile(githubConnectionPath("bob", "0123456789abcdef0123456789abcdef"), rawAccount, 0o600); err != nil {
+		t.Fatal(err)
 	}
-	if !registrationFailed("https://example.com/register", "https://example.com/callback") {
-		t.Fatal("provider registration failure was lost after startup sealing")
+	if readGitHubConnection("bob", "0123456789abcdef0123456789abcdef") != nil {
+		t.Fatal("copied GitHub connection bypassed person-bound sealing")
 	}
 	setRegistrationFailure("https://example.com/register", "https://example.com/callback", "Still needs setup")
 	registrationRecord, err := os.ReadFile(registrationFailuresPath())
 	if err != nil || strings.HasPrefix(strings.TrimSpace(string(registrationRecord)), "{") || !registrationFailed("https://example.com/register", "https://example.com/callback") {
-		t.Fatal("provider registration update must stay sealed and readable")
-	}
-	if n, _ := sealPlainPlatformCredentials(); n != 0 {
-		t.Fatalf("second pass sealed %d", n)
+		t.Fatal("provider registration record must be sealed and readable")
 	}
 }

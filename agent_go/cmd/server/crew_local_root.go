@@ -16,7 +16,7 @@ func crewLocalPathsOverlap(a, b string) bool {
 
 func validateNewLocalCrewRoot(input string) (string, error) {
 	if !IsLocalMode() {
-		return "", fmt.Errorf("choosing an existing folder is available in the local app; create a managed Crew here")
+		return "", fmt.Errorf("choosing an existing folder is available in the local app; create a managed project here")
 	}
 	input = strings.TrimSpace(input)
 	if !filepath.IsAbs(input) {
@@ -43,7 +43,7 @@ func validateNewLocalCrewRoot(input string) (string, error) {
 		}
 	}
 	if _, err := os.Lstat(filepath.Join(root, ".agentworks")); !os.IsNotExist(err) {
-		return "", fmt.Errorf("this folder already contains .agentworks; choose a folder without an existing Crew")
+		return "", fmt.Errorf("this folder already contains .agentworks; choose a folder without an existing project")
 	}
 	return root, nil
 }

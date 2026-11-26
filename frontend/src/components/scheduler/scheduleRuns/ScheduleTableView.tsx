@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight, Play, Square } from 'lucide-react'
 import { WebhookEndpoint } from './WebhookEndpoint'
 import { describeCron } from './cron'
-import { formatDuration, formatExactDateTime, formatLastRunLabel, getLocalizedJobName, getScheduleDependencyIds, getScheduleExecutionScope, isMissedSchedule, hasScheduleRunIssue, isScheduleWaitingStatus } from './helpers'
+import { formatDuration, formatExactDateTime, formatLastRunLabel, getLocalizedJobName, getScheduleDependencyIds, isMissedSchedule, hasScheduleRunIssue, isScheduleWaitingStatus } from './helpers'
 import { ScheduleRowActions } from './ScheduleRowActions'
 import { ScheduleExecutionHistoryList } from '../../ScheduleExecutionHistoryList'
 import type { ScheduleRunsPanelState } from './useScheduleRunsData'
@@ -32,7 +32,7 @@ export function ScheduleTableView({ panel, entityType = 'workflow' }: ScheduleTa
       <table className="w-full min-w-[1080px] text-left text-sm">
         <thead className="border-b border-border bg-muted/30 text-xs text-muted-foreground">
           <tr>
-            <th className="px-4 py-2 font-medium">Schedule / {entityType === 'product' ? 'Crew' : 'automation'}</th>
+            <th className="px-4 py-2 font-medium">Schedule / {entityType === 'product' ? 'Project' : 'automation'}</th>
             <th className="px-3 py-2 font-medium">Frequency</th>
             <th className="px-3 py-2 font-medium">State</th>
             <th className="px-3 py-2 font-medium">Next run (local)</th>
@@ -64,7 +64,6 @@ export function ScheduleTableView({ panel, entityType = 'workflow' }: ScheduleTa
               else next.add(job.id)
               return next
             })
-            const scope = getScheduleExecutionScope(job)
             const dependencyIds = getScheduleDependencyIds(job)
             const dependencyNames = dependencyIds.map(id => panel.filteredJobs.find(candidate => candidate.id === id)?.name ?? id)
             const hasRuntimePolicy = dependencyIds.length > 0 || !!job.collision_policy || !!job.max_start_delay_minutes || job.concurrency_mode === 'parallel'
@@ -95,7 +94,7 @@ export function ScheduleTableView({ panel, entityType = 'workflow' }: ScheduleTa
               {open && <tr><td colSpan={8} className="bg-muted/15 px-4 py-4">
                 <div id={detailsId} role="region" aria-label={`${name} details`} className="min-h-36 space-y-3">
                   <div className="flex items-center justify-between gap-4">
-                    <p className="text-xs text-muted-foreground">{job.run_count} runs · Last result: {job.last_status || 'Not run yet'}{scope ? ` · ${scope.label}` : ''}</p>
+                    <p className="text-xs text-muted-foreground">{job.run_count} runs · Last result: {job.last_status || 'Not run yet'}{job.starts ? ` · ${job.starts}` : ''}</p>
                     {!panel.isReadOnlyUser && <div className="flex items-center gap-1">
                       <ScheduleRowActions {...panel} job={job} isRunning={isRunning} isMissedJob={isMissed} menuButtonClassName="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" />
                     </div>}
@@ -125,7 +124,7 @@ export function ScheduleTableView({ panel, entityType = 'workflow' }: ScheduleTa
                     compact
                   />}
                   <p className="text-xs text-muted-foreground">{entityType === 'product'
-                    ? 'Open this Crew’s Automation panel to change this schedule.'
+                    ? 'Open this project’s Automation panel to change this schedule.'
                     : isWebhook ? 'Ask the workflow builder chat to configure this webhook.' : 'Ask the workflow Builder chat to change timing, busy-run handling, or schedule dependencies.'}</p>
                 </div>
               </td></tr>}

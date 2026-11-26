@@ -1,6 +1,7 @@
+const { makeEditorOpener } = require('./lib/editorOpen');
 const { app, BrowserWindow, dialog, shell, nativeTheme, Menu, Tray, ipcMain, nativeImage, session, Notification } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
@@ -28,6 +29,7 @@ app.setPath('userData', USER_DATA_PATH);
 
 const { localProductEnv } = require('./lib/localProducts');
 const { migrateAccountAvailability } = require('./lib/accountAvailabilityMigration');
+const { migrateTeamPathIdentities } = require('./lib/teamPathIdentityMigration');
 const { createWalkthroughState } = require('./walkthroughState');
 // Initialize lazily, after legacy profile migration has completed.
 let walkthroughState;
@@ -471,6 +473,10 @@ function withDesktopVersionCacheBust(url) {
 // IPC Handlers for Settings
 ipcMain.handle('get-settings', () => loadSettings());
 ipcMain.handle('get-app-version', () => app.getVersion());
+ipcMain.on('get-notification-window-active', event => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  event.returnValue = window === mainWindow && require('./lib/notify').notificationWindowActive(window, process.platform);
+});
 ipcMain.handle('pick-docs-dir', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Select workspace-docs folder',
@@ -777,6 +783,15 @@ ipcMain.on('set-running-activity', (_event, payload) => {
 // External-URL handling is shared with the other desktop shells (lib/externalNav.js).
 const openExternalUrl = makeOpenExternalUrl(shell);
 
+const openChosenEditor = makeEditorOpener(shell, execFile);
+ipcMain.handle('open-editor', async (event, payload) => {
+  // Only the trusted main renderer, never a report iframe or auxiliary window.
+  if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) {
+    return { ok: false, error: 'Open the editor from your project in the main app window.' };
+  }
+  return openChosenEditor(payload);
+});
+
 // IPC Handler for opening external URLs
 ipcMain.on('open-external', (event, url) => {
   // External sign-in and browser-connection links may contain one-use credentials.
@@ -1020,6 +1035,9 @@ function createTray() {
 
 function spawnWorkspace(userDataPath) {
   return new Promise((resolve, reject) => {
+    try {
+      migrateTeamPathIdentities({ stateDir: process.env.AGENTWORKS_STATE_ROOT || path.join(userDataPath, 'state'), docsDir: process.env.RUNLOOP_DOCS_DIR || path.join(userDataPath, 'workspace-docs') });
+    } catch (error) { return reject(error); }
     const bin = getBinaryPath('workspace-server');
     if (!fs.existsSync(bin)) {
       return reject(new Error(`Workspace server binary not found at ${bin}. Place workspace-server in desktop/resources/ for development.`));
@@ -1110,6 +1128,7 @@ async function spawnVault(userDataPath) {
 }
 
 async function spawnDevelopmentAgent() {
+  migrateTeamPathIdentities({ stateDir: process.env.AGENTWORKS_STATE_ROOT || path.join(app.getPath('userData'), 'state'), docsDir: process.env.RUNLOOP_DOCS_DIR || path.join(app.getPath('userData'), 'workspace-docs') });
   const { startDevelopmentAgent } = require('./lib/devAgent');
   developmentAuthSecret ??= fs.readFileSync(0, 'utf8').trim();
   const result = await startDevelopmentAgent({
@@ -1234,6 +1253,8 @@ function spawnAgent(userDataPath) {
       RUNLOOP_USER_DATA_DIR: userDataPath,
       AGENTWORKS_STATE_ROOT: process.env.AGENTWORKS_STATE_ROOT || path.join(userDataPath, 'state'),
       WORKSPACE_API_URL: `http://127.0.0.1:${dynamicWorkspacePort}`,
+      // The Mac app's version, for the Team page: which version each teammate's Mac runs.
+      AGENTWORKS_APP_VERSION: app.getVersion(),
       AGENTWORKS_VOICE_UNAVAILABLE_REASON: selected.voiceUnavailableReason,
       WORKSPACE_DOCS_PATH: docsDir,
       DOCS_DIR: docsDir,
@@ -1445,20 +1466,19 @@ function isNewerVersion(a, b) {
   return false;
 }
 
-// Render a GitHub release body (markdown) down to plain text for the native
-// update dialog's `detail` field, so users see what's in the update before
-// downloading it. Strips markdown syntax and caps the length to keep it sane.
-function formatReleaseNotes(body, maxLen = 1400) {
-  if (!body || !body.trim()) return '';
-  let text = body
-    .replace(/```[\s\S]*?```/g, '')        // drop fenced code blocks
-    .replace(/^#{1,6}\s*/gm, '')           // strip header marks (## …)
-    .replace(/\*\*(.*?)\*\*/g, '$1')       // bold
-    .replace(/`([^`]+)`/g, '$1')           // inline code
-    .replace(/^\s*[-*]\s+/gm, '• ')        // bullets
-    .replace(/^\s*---+\s*$/gm, '')         // horizontal rules
-    .replace(/\n{3,}/g, '\n\n')            // collapse blank runs
-    .trim();
+// The update dialog shows only the release body's "## What's new" section,
+// which scripts/desktop-release.sh writes as at most five short bullets plus an
+// "and N more" line. Install text and the full commit list stay on the release
+// page ("Full Notes…"). A body without that section shows no notes.
+function formatReleaseNotes(body, maxLen = 400) {
+  const match = /^##\s+What's new\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/m.exec(body || '');
+  if (!match) return '';
+  let text = match[1]
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^[-*]\s+/.test(line))
+    .map((line) => '• ' + line.replace(/^[-*]\s+/, '').replace(/\*\*(.*?)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1'))
+    .join('\n');
   if (text.length > maxLen) {
     text = text.slice(0, maxLen).replace(/\s+\S*$/, '') + '…';
   }
@@ -1683,21 +1703,34 @@ function handleLocalServerExit(name, child, code, signal) {
 // Notifications this Mac has turned on arrive here, window open or not (lib/notify.js); clicking opens the chat.
 function startNotifications() {
   if (stopNotifyStream) return;
-  const { startNotifyStream, notifyRoute, sessionToken, developmentNotifyHeaders } = require('./lib/notify');
+  const { startNotifyStream, notifyRoute, sessionToken, developmentNotifyHeaders, keepAwakeBlocker } = require('./lib/notify');
+  const { powerSaveBlocker, powerMonitor } = require('electron');
+  const keepAwake = keepAwakeBlocker({ powerSaveBlocker, powerMonitor, log: diagLog });
   stopNotifyStream = startNotifyStream({
+    keepAwake,
     getOrigin: currentDesktopOrigin,
     getHeaders: origin => splitDevelopment
       ? developmentNotifyHeaders(process.env.AGENTWORKS_DESKTOP_SOCKET, origin, currentDesktopAppOrigin())
       : { 'X-AgentWorks-Notify': notifySecret, Authorization: `Bearer ${sessionToken(developmentAuthSecret || process.env.AUTH_SECRET, process.env.DEFAULT_USER_ID || 'default')}` },
     log: diagLog,
     show: msg => {
+      // In-app indicators handle every agent while the Mac window is visible.
+      // Recheck at delivery time: renderer heartbeats can lag hide/minimize.
+      const activeWindow = require('./lib/notify').notificationWindowActive(mainWindow, process.platform);
+      if (process.platform === 'darwin' && activeWindow) {
+        diagLog('[notify] delivery=skipped reason=app_visible');
+        return;
+      }
+      diagLog(`[notify] delivery=checking notification_window_active=${activeWindow} session=${typeof msg.session === 'string' ? msg.session : ''}`);
       if (!Notification.isSupported()) { diagLog('[notify] delivery=skipped reason=unsupported'); return; }
       if (typeof msg.title !== 'string') return;
       const notice = new Notification({ title: msg.title, body: typeof msg.body === 'string' ? msg.body : '', silent: !msg.sound });
       notice.on('click', () => {
         const connection = typeof msg.connection === 'string' && /^[a-f0-9]{32}$/.test(msg.connection) ? msg.connection : 'local';
         openMainWindow();
-        desktopConnectionsApi?.open(connection, notifyRoute(msg.route, connection !== 'local')).catch(err => diagLog('[notify] could not open the chat:', err.message));
+        const route = notifyRoute(msg.route, connection !== 'local');
+        diagLog(`[notify] click connection=${connection} route=${route} session=${typeof msg.session === 'string' ? msg.session : ''}`);
+        desktopConnectionsApi?.open(connection, route).catch(err => diagLog('[notify] could not open the chat:', err.message));
       });
       const event = ['finished', 'failed', 'needs_you', 'team_clash'].includes(msg.event) ? msg.event : 'notification';
       notice.on('show', () => diagLog(`[notify] delivery=shown event=${event}`));
@@ -1720,6 +1753,12 @@ function showErrorAndExit(message) {
 }
 
 function createWindow(initialUrl) {
+  // One app window: the Dock's activate can open it while the local agent is still starting, so startup reuses it.
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    return;
+  }
   const targetUrl = withDesktopVersionCacheBust(initialUrl || `http://127.0.0.1:${dynamicAgentPort}`);
   console.log('[main] Creating main window for:', targetUrl);
 
@@ -1812,6 +1851,21 @@ function createWindow(initialUrl) {
       process.env.AGENTWORKS_DESKTOP_SOCKET, currentDesktopOrigin(), currentDesktopAppOrigin()) : undefined,
   });
   }
+  // Native visibility is authoritative on Mac, including on another monitor.
+  // Websites and other desktop platforms retain the active-window rule.
+  const chatWindow = mainWindow;
+  let lastNotificationFocus;
+  const reportNotificationFocus = () => {
+    if (chatWindow.isDestroyed() || chatWindow.webContents.isDestroyed()) return;
+    const focused = require('./lib/notify').notificationWindowActive(chatWindow, process.platform);
+    chatWindow.webContents.send('notification-window-active-changed', focused);
+    if (focused !== lastNotificationFocus) {
+      diagLog(`[notify] window_active=${focused} visible=${chatWindow.isVisible()} minimized=${chatWindow.isMinimized()} focused=${chatWindow.isFocused()}`);
+      lastNotificationFocus = focused;
+    }
+  };
+  ['focus', 'blur', 'hide', 'minimize', 'restore', 'show'].forEach(event => chatWindow.on(event, reportNotificationFocus));
+  chatWindow.webContents.on('did-finish-load', reportNotificationFocus);
   mainWindow.loadURL(targetUrl);
 
   ['minimize', 'hide', 'restore', 'show', 'focus'].forEach((eventName) => {
@@ -1829,9 +1883,11 @@ function createWindow(initialUrl) {
     }, 1200);
   }
   
-  mainWindow.on('closed', () => {
+  const closingWindow = mainWindow;
+  closingWindow.on('closed', () => {
     console.log('[main] Main window closed');
-    mainWindow = null;
+    // Only forget the window that closed: the open one keeps its access to saved servers.
+    if (mainWindow === closingWindow) mainWindow = null;
     updateDockActivityAnimation();
   });
 }
@@ -1893,6 +1949,21 @@ app.whenReady().then(async () => {
     }
   } else if (settings.authSecret) {
     process.env.AUTH_SECRET = settings.authSecret;
+  }
+
+  // Packaged Mac installs/updates prepare native integrations without blocking the app.
+  // Source development never modifies the person's CLI or provider configuration.
+  if (process.platform === 'darwin' && app.isPackaged) {
+    try {
+      const { createNativeAutoSetup, installNativeSetupIPC } = require('./lib/nativeAutoSetup');
+      const controller = createNativeAutoSetup({
+        stateFile: path.join(userDataPath, 'native-auto-setup.json'),
+        bin: path.join(process.resourcesPath, 'bin', 'agentworks'), version: app.getVersion(),
+        log: line => diagLog(line),
+      });
+      installNativeSetupIPC({ ipcMain, controller, getWindow: () => mainWindow, getOrigin: currentDesktopAppOrigin });
+      void controller.start().catch(() => diagLog('[NATIVE_CONNECT] event=auto_setup outcome=failed provider=app'));
+    } catch (_) { diagLog('[NATIVE_CONNECT] event=auto_setup outcome=state_failed provider=app'); }
   }
 
   // 2. Spawn servers (in sequence: Workspace first, then Agent)

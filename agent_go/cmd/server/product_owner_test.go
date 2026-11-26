@@ -104,24 +104,3 @@ func TestResolveProjectOwnerIgnoresTheManifest(t *testing.T) {
 		}
 	}
 }
-
-func TestResolveCrewPathUsesTheRegistryNeverTheManifest(t *testing.T) {
-	withProjectOwnerRegistry(t)
-	docs := t.TempDir()
-	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	const root = "Crew/crew-a"
-	ctx := context.Background()
-	ref, ok := resolveCrewPath(ctx, "alice", root+"/code")
-	if !ok || ref.OwnerID != "" {
-		t.Fatalf("unregistered Crew acquired an owner: %+v ok=%v", ref, ok)
-	}
-	registerTestCrew(t, "crew-a", "carol", false, "crew-a")
-	writeOwnerFixture(t, docs, root+"/product.json", `{"product":"work","id":"crew-a","owner_id":"alice"}`)
-	ref, ok = resolveCrewPath(ctx, "alice", root+"/code")
-	if !ok || ref.OwnerID != "carol" || ref.Root != root || ref.Rest != "code" {
-		t.Fatalf("registered Crew identity: %+v ok=%v", ref, ok)
-	}
-	if crewAccessFor(&UserClaims{UserID: "carol"}, ref) != crewAccessOwner || crewAccessFor(&UserClaims{UserID: "alice"}, ref) != crewAccessNone {
-		t.Fatal("editable manifest changed private Crew access")
-	}
-}

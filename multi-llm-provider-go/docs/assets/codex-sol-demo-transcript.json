@@ -1,0 +1,46 @@
+{
+  "performed_at": "2026-07-11T03:47:43Z",
+  "host": {
+    "cli": "claude-code",
+    "version": "2.1.207",
+    "model": "claude-sonnet-5"
+  },
+  "target": {
+    "provider": "codex-cli",
+    "version": "0.145.0-alpha.4",
+    "model": "gpt-5.6-sol"
+  },
+  "mcp_server": {
+    "version": "0.6.1"
+  },
+  "job": {
+    "id": "job_7c516599b9988b65c1debf2ce9146295",
+    "initial_status": "queued",
+    "running_progress": "gpt-5.6-sol high · /private/tmp/llm-provider-mcp-codex-sol-demo-success-20260711",
+    "final_status": "completed",
+    "elapsed_seconds": 36,
+    "usage": {
+      "input_tokens": 412,
+      "output_tokens": 56,
+      "total_tokens": 17620
+    }
+  },
+  "initial_test": {
+    "command": "go test ./...",
+    "result": "FAIL: Multiply(7, 6) = 13, want 42"
+  },
+  "change": {
+    "file": "calculator.go",
+    "before": "return a + b",
+    "after": "return a * b"
+  },
+  "target_verification": {
+    "command": "go test ./...",
+    "result": "ok example.com/codex-sol-demo 0.487s"
+  },
+  "host_verification": {
+    "command": "go test -count=1 ./...",
+    "result": "ok example.com/codex-sol-demo 0.272s"
+  },
+  "compatibility_note": "Stable Codex CLI 0.144.1 rejected gpt-5.6-sol; the successful run used npm alpha 0.145.0-alpha.4."
+}

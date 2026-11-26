@@ -41,7 +41,7 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	localFiles := localBound && localRoots.Local && rootPath == localRoots.FilesPath()
 	crewRoot = crewRoot || localFiles
 	if !crewRoot && (len(parts) != 2 || parts[0] != "Workflow" || parts[1] == ".") {
-		return wf.Result{}, &externalUpstreamError{400, "root must identify one workflow or Crew"}
+		return wf.Result{}, &externalUpstreamError{400, "root must identify one workflow or project"}
 	}
 	p, err := wf.CleanRelative(req.Path)
 	if err != nil {
@@ -53,6 +53,11 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	}
 	if externalPathPrivate(crewRoot, p) {
 		return wf.Result{}, &externalUpstreamError{403, "private path"}
+	}
+	// State has a dedicated permission-checked Runs API. Do not return a stale
+	// file, an empty synthetic file, or an imported backup through file tools.
+	if req.Operation == "read" && p == "schedule-runs.json" {
+		return wf.Result{}, &externalUpstreamError{400, "Run history is available under Automations → Runs, or use the runs tool to list executions."}
 	}
 	if err := wf.ValidateGlob(req.Glob); err != nil {
 		return wf.Result{}, &externalUpstreamError{400, err.Error()}
@@ -177,7 +182,7 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 		definition.Close()
 	}
 	if localBound {
-		private, openErr := os.OpenRoot(localRoots.Private)
+		private, openErr := os.OpenRoot(localRoots.SettingsDir())
 		if openErr != nil {
 			return wf.Result{}, openErr
 		}
@@ -189,7 +194,11 @@ func externalFileRequest(ctx context.Context, req wf.Request) (wf.Result, error)
 	}
 	switch req.Operation {
 	case "read":
-		file, err := externalScopedFile(root, p)
+		limit := wf.MaxFileBytes
+		if yes, _ := ctx.Value(appearanceImageReadKey{}).(bool); yes {
+			limit = appearanceImageMaxBytes
+		}
+		file, err := externalScopedFileLimit(root, p, limit)
 		if filesPrefix != "" {
 			file.Path = path.Join(filesPrefix, file.Path)
 		}
@@ -258,6 +267,9 @@ func externalNoSymlinks(root *os.Root, p string) error {
 }
 
 func externalScopedFile(root *os.Root, p string) (wf.File, error) {
+	return externalScopedFileLimit(root, p, wf.MaxFileBytes)
+}
+func externalScopedFileLimit(root *os.Root, p string, inlineLimit int) (wf.File, error) {
 	result := wf.File{Path: p, Revision: wf.MissingRevision}
 	if err := externalNoSymlinks(root, p); err != nil {
 		return result, err
@@ -290,7 +302,7 @@ func externalScopedFile(root *os.Root, p string) (wf.File, error) {
 	result.Exists = true
 	result.Size = int64(len(data))
 	result.Revision = wf.Revision(data)
-	if len(data) > wf.MaxFileBytes {
+	if len(data) > inlineLimit {
 		result.Encoding = "binary"
 		return result, nil
 	}
@@ -314,7 +326,7 @@ func externalIsCrewRoot(rootPath string) bool {
 	}
 	ref := workspaceref.MustParse(rootPath)
 	root, _, ok := ref.ProjectRoot()
-	return ok && (root == workspaceref.CrewProjectsRoot || root == workspaceref.CodeProjectsRoot) && ref.HasOwner() && ref.String() == rootPath
+	return ok && root == workspaceref.CrewProjectsRoot && ref.HasOwner() && ref.String() == rootPath
 }
 
 // externalPathPrivate is the workflow file privacy rule, plus a Crew's own

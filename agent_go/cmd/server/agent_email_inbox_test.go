@@ -196,7 +196,7 @@ func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "local"))
 	local := &StreamingAPI{}
 	router := mux.NewRouter()
-	stop := local.initGmailInbound(router)
+	stop := local.initGmailInbound(router.PathPrefix("/api").Subrouter())
 	stop()
 	if local.gmailInbound != nil {
 		t.Fatal("local receiving enabled")
@@ -210,7 +210,7 @@ func TestAgentEmailInboxUsesOwnerVaultAccountAndServerOnly(t *testing.T) {
 	}
 }
 func TestInboxWatcherCheckpointAndNoPublicEventSecret(t *testing.T) {
-	cfg := conditiontrigger.Config{CheckMode: "inbox", Script: "code/triggers/mail.py", SHA256: conditiontrigger.Hash("source"), Target: conditiontrigger.Target{Kind: "agent", Message: "Summarize the email data"}}
+	cfg := conditiontrigger.Config{CheckMode: "inbox", Script: "watchers/mail.py", SHA256: conditiontrigger.Hash("source"), Target: conditiontrigger.Target{Kind: "agent", Message: "Summarize the email data"}}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}

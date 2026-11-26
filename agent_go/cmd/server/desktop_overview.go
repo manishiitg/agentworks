@@ -67,7 +67,7 @@ func (api *StreamingAPI) handleDesktopOverview(w http.ResponseWriter, r *http.Re
 		wg.Add(1)
 		go func(c desktopConnection, index int) {
 			defer wg.Done()
-			own, status, err := remoteAccountViews(ctx, c)
+			own, status, err := remoteAccountViews(ctx, owner, c)
 			reachable := err == nil && status == http.StatusOK
 			mu.Lock()
 			defer mu.Unlock()
@@ -117,13 +117,12 @@ func (api *StreamingAPI) handleDesktopOverview(w http.ResponseWriter, r *http.Re
 }
 
 // remoteAccountViews lists every account the person sees on a connected server (metadata only).
-func remoteAccountViews(ctx context.Context, c desktopConnection) ([]providerAccountView, int, error) {
+func remoteAccountViews(ctx context.Context, owner string, c desktopConnection) ([]providerAccountView, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Server+"/api/provider-connections", nil)
 	if err != nil {
 		return nil, 0, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-	resp, err := desktopHTTPClient().Do(req)
+	resp, err := desktopServerDo(desktopHTTPClient(), owner, c, req)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -174,8 +173,7 @@ func (api *StreamingAPI) handleDesktopTokenUsage(w http.ResponseWriter, r *http.
 		desktopJSONError(w, 500, "Cannot reach the server.")
 		return
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-	resp, err := desktopHTTPClient().Do(req)
+	resp, err := desktopServerDo(desktopHTTPClient(), GetUserFromContext(r.Context()).UserID, c, req)
 	if err != nil {
 		desktopJSONError(w, 502, "Cannot reach "+c.Name+".")
 		return

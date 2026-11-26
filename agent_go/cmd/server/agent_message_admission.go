@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -19,16 +20,62 @@ func (e agentAdmissionRefusal) Unwrap() error { return e.err }
 
 func admissionRefused(text string) error { return agentAdmissionRefusal{err: errors.New(text)} }
 
+type agentAdmissionRuleError struct {
+	Rule string
+	Err  error
+}
+
+func (e agentAdmissionRuleError) Error() string { return e.Err.Error() }
+func (e agentAdmissionRuleError) Unwrap() error { return e.Err }
+func agentAdmissionErrorClass(err error) string {
+	if errors.Is(err, context.Canceled) {
+		return "canceled"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "deadline"
+	}
+	var refusal agentAdmissionRefusal
+	if errors.As(err, &refusal) {
+		return "refused"
+	}
+	return "unavailable"
+}
+
 // Resolve authority again immediately before a queued delivery enters a turn.
 // Persist only the connection ID, never its bearer token. Own named-agent mail
 // follows current account access across CLI sign-in replacement; narrowed keys,
 // other people and project callers retain their original grant checks.
-func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c agentConversation, m agentMessage) error {
+func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c agentConversation, m agentMessage) (retErr error) {
+	check := "destination"
+	defer func() {
+		if retErr == nil && ctx.Err() != nil {
+			retErr = ctx.Err()
+		}
+		if retErr != nil {
+			// A canceled lookup is not proof that a sender lost permission.
+			// In particular Team discovery can fail closed after its request expires.
+			var nested agentAdmissionRuleError
+			if errors.As(retErr, &nested) {
+				check += "." + nested.Rule
+			}
+			var team crewTeamReachRefusal
+			if errors.As(retErr, &team) {
+				check += ".team_" + team.reason
+			}
+			if ctx.Err() != nil {
+				retErr = ctx.Err()
+			}
+			retErr = agentAdmissionRuleError{Rule: check, Err: retErr}
+			log.Printf("[AGENT-MESSAGE] action=admission_failed thread=%s message=%s rule=%s class=%s", c.ID, m.ID, check, agentAdmissionErrorClass(retErr))
+			logAgentMessageIdentityRefusal(c.ID, "delivery", check, nil, "")
+		}
+	}()
 	source, dest := c.Endpoints[m.From], c.Endpoints[1-m.From]
 	if err := validateMessageDestination(ctx, dest); err != nil {
 		return err
 	}
-	if err := recheckSharedCrewAgentContact(ctx, c.Endpoints[0], c.Endpoints[1]); err != nil {
+	check = "shared_contact"
+	if err := recheckAgentConversationContact(ctx, c); err != nil {
 		return err
 	}
 	if source.ConditionJob != "" {
@@ -75,7 +122,12 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			return err
 		}
 	}
+	check = "sender_login"
+	if m.SenderWebsiteSession != "" && sessionRevoked(m.SenderWebsiteSession) {
+		return admissionRefused("sending login is no longer authorized")
+	}
 	if m.SenderConnectionID != "" {
+		check = "sender_connection"
 		claims, err := agentMessageConnectionClaims(ctx, m.SenderConnectionID)
 		if err != nil && source.External && source.NamedAgentID != "" && source.UserID == dest.UserID && strings.HasPrefix(m.SenderConnectionID, "oauth-") {
 			// The historical CLI grant proves provenance only. It is never made
@@ -99,17 +151,36 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			return admissionRefused("sending connection is no longer authorized")
 		}
 		if source.NamedAgentID != "" {
+			check = "sender_named_binding"
 			agent, err := namedAgentByID(ctx, source.UserID, source.NamedAgentID)
 			if err != nil || !namedAgentConnectionAllowed(agent, claims) {
 				return admissionRefused("sending named agent is no longer authorized")
 			}
 		}
-		view := hostedInboxReplyClaims(claims, c, m.From)
-		if err := api.externalAuthorizeMessagePeer(context.WithValue(ctx, UserContextKey, claims), view, dest, true); err != nil {
-			return err
+		// A published runtime may reply only in the inbox already admitted for
+		// this exact asker (checked above). That message delivery does not need
+		// or grant product tools in the asker's private Crew.
+		if source.PublishedAgent == "" {
+			check = "sender_peer_grant"
+			view := hostedInboxReplyClaims(claims, c, m.From)
+			peer, peerErr := publishedAgentAuthorizationPeer(ctx, dest)
+			if peerErr != nil {
+				return peerErr
+			}
+			_ = peer // publication identity was checked above; mailbox authority stays scoped to c
+			if err := api.externalAuthorizeConversationPeer(context.WithValue(ctx, UserContextKey, claims), view, c, m.From, view == claims); err != nil {
+				return err
+			}
 		}
 	}
 	for _, e := range c.Endpoints {
+		if e.Hosted != nil {
+			check = "hosted_participant_binding"
+			if err := validateMessageDestination(ctx, e); err != nil {
+				return err
+			}
+		}
+		check = "participant_account"
 		claims := &UserClaims{UserID: e.UserID}
 		if userAccessForClaims(claims).Disabled {
 			return fmt.Errorf("message participant account is disabled")
@@ -128,7 +199,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 		}
 		if e.Kind == triggerCallerWorkflow {
 			if strings.Contains(e.ChatKey, codeChatSideMarker) {
-				return admissionRefused("Workflow chat tabs are retired. Use a Crew agent instead.")
+				return admissionRefused("Workflow chat tabs are retired. Use a project agent instead.")
 			}
 			manifest, found, err := ReadWorkflowManifest(ctx, e.Path)
 			if err != nil || !found || manifest == nil || manifest.ID != e.ID {
@@ -138,18 +209,21 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 				return fmt.Errorf("message participant no longer has workflow access")
 			}
 		} else if e.Kind == triggerCallerCrew {
+			check = "crew_runtime"
 			if api.projectActions == nil || api.projectActions.registry == nil {
-				return fmt.Errorf("Crew runtime unavailable")
+				return fmt.Errorf("Project runtime unavailable")
 			}
+			check = "crew_profile"
 			profile, err := api.projectActions.registry.Resolve(e.Profile, 0, actor)
 			if err != nil || !userAllowedProduct(&UserClaims{UserID: actor}, profile.Product) {
-				return fmt.Errorf("message participant no longer has Crew access")
+				return fmt.Errorf("message participant no longer has project access")
 			}
 			// A Team member on their Mac is an endpoint of a Crew they don't own (owner, 6 Nov: any two people in a Team can
 			// message each other's agents). Their Team record is the access, checked again at each delivery.
 			if crewTeamMemberOnMac(e.ID, e.UserID) {
 				continue
 			}
+			check = "crew_binding"
 			binding, err := resolveCrewProjectBinding(ctx, actor, profile, e.ID, "")
 			if err != nil || (binding.OwnerID != e.UserID && !(binding.OwnedByCaller && isSideChatConversationKey(e.ChatKey) && crewIsCoOwner(binding.Binding.WorkspacePath, e.UserID))) || canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(binding.OwnerID, binding.Binding.WorkspacePath)) != canonicalCrewWorkspaceRoot(e.Path) {
 				return fmt.Errorf("message Crew is unavailable or ownership changed")

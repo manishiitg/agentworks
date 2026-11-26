@@ -28,7 +28,7 @@ type codeSessionPin struct {
 	CreatedAt string `json:"created_at"`
 }
 
-var errCodeSessionPinnedToAnother = errors.New("this Crew chat belongs to another person")
+var errCodeSessionPinnedToAnother = errors.New("this project chat belongs to another person")
 
 // cleanCodeRoot keeps a Code's full physical path (_users/<owner>/...): unlike
 // normalizeConversationWorkspace it never drops the owner, so two people's
@@ -77,7 +77,7 @@ func pinCodeSession(sessionID, person, codeRoot string) error {
 	person = sanitizeUserIDForPath(strings.TrimSpace(person))
 	codeRoot = cleanCodeRoot(codeRoot)
 	if strings.TrimSpace(sessionID) == "" || person == "" || codeRoot == "" {
-		return fmt.Errorf("a Crew chat needs a session, a person and a Crew")
+		return fmt.Errorf("a project chat needs a session, a person and a project")
 	}
 	path, err := codeSessionPinPath(sessionID)
 	if err != nil {
@@ -128,13 +128,13 @@ func inheritCodeSessionPin(parentSessionID, childSessionID string) error {
 func codeSessionTurnRefusal(sessionID string, claims *UserClaims) string {
 	pin, pinned, err := codeSessionPinFor(sessionID)
 	if err != nil {
-		return "This Crew chat is unavailable."
+		return "This project chat is unavailable."
 	}
 	if !pinned {
 		return ""
 	}
 	if claims == nil || claims.Provider == "bot_route" || sanitizeUserIDForPath(strings.TrimSpace(claims.UserID)) != pin.Person {
-		return "This Crew chat belongs to another person. Open your own chat of this Code."
+		return "This project chat belongs to another person. Open your own chat in this project."
 	}
 	return ""
 }

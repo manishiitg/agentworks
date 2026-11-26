@@ -1,6 +1,51 @@
 [
   {
     "family": "skills",
+    "name": "native_discover",
+    "member": "discover_native_skills",
+    "description": "Discover or preview own-project native skills without importing or executing.",
+    "external_members": "discover_native_skills|crew_skills__native_discover"
+  },
+  {
+    "family": "skills",
+    "name": "native_discover",
+    "member": "crew_skills__native_discover",
+    "description": "Discover or preview own-project native skills without importing or executing.",
+    "source": "crew_skills",
+    "source_action": "native_discover"
+  },
+  {
+    "family": "skills",
+    "name": "native_import",
+    "member": "import_native_skill",
+    "description": "Explicitly copy a discovered skill into the existing project skill folder.",
+    "external_members": "import_native_skill|crew_skills__native_import"
+  },
+  {
+    "family": "skills",
+    "name": "native_import",
+    "member": "crew_skills__native_import",
+    "description": "Explicitly copy a discovered skill into the existing project skill folder.",
+    "source": "crew_skills",
+    "source_action": "native_import"
+  },
+  {
+    "family": "skills",
+    "name": "native_invocable",
+    "member": "list_invocable_skills",
+    "description": "List this exact current chat's prepared explicit native skill choices.",
+    "external_members": "list_invocable_skills|crew_skills__native_invocable"
+  },
+  {
+    "family": "skills",
+    "name": "native_invocable",
+    "member": "crew_skills__native_invocable",
+    "description": "List this exact current chat's prepared explicit native skill choices.",
+    "source": "crew_skills",
+    "source_action": "native_invocable"
+  },
+  {
+    "family": "skills",
     "name": "list",
     "member": "list_skills",
     "description": "List skills available in this chat or project.",
@@ -62,7 +107,7 @@
     "family": "skills",
     "name": "commands_list",
     "member": "crew_commands__list",
-    "description": "Use the existing skills commands list operation with its current access.",
+    "description": "List this project's saved slash commands.",
     "source": "manage_crew_commands",
     "source_action": "list"
   },
@@ -78,7 +123,7 @@
     "family": "skills",
     "name": "commands_create",
     "member": "crew_commands__create",
-    "description": "Use the existing skills commands create operation with its current access.",
+    "description": "Save a new slash command for this project.",
     "source": "manage_crew_commands",
     "source_action": "create"
   },
@@ -94,7 +139,7 @@
     "family": "skills",
     "name": "commands_update",
     "member": "crew_commands__update",
-    "description": "Use the existing skills commands update operation with its current access.",
+    "description": "Change a saved slash command.",
     "source": "manage_crew_commands",
     "source_action": "update"
   },
@@ -110,7 +155,7 @@
     "family": "skills",
     "name": "commands_delete",
     "member": "crew_commands__delete",
-    "description": "Use the existing skills commands delete operation with its current access.",
+    "description": "Delete a saved slash command.",
     "source": "manage_crew_commands",
     "source_action": "delete"
   },
@@ -118,7 +163,7 @@
     "family": "skills",
     "name": "list",
     "member": "crew_skills__list",
-    "description": "Use the existing skills list operation with its current access.",
+    "description": "List the skills installed in this project.",
     "source": "crew_skills",
     "source_action": "list"
   },
@@ -126,7 +171,7 @@
     "family": "skills",
     "name": "search",
     "member": "crew_skills__search",
-    "description": "Use the existing skills search operation with its current access.",
+    "description": "Search the skill catalog for skills to install.",
     "source": "crew_skills",
     "source_action": "search"
   },
@@ -134,7 +179,7 @@
     "family": "skills",
     "name": "install",
     "member": "crew_skills__install",
-    "description": "Use the existing skills install operation with its current access.",
+    "description": "Install a catalog skill into this project.",
     "source": "crew_skills",
     "source_action": "install"
   },
@@ -142,7 +187,7 @@
     "family": "skills",
     "name": "import",
     "member": "crew_skills__import",
-    "description": "Use the existing skills import operation with its current access.",
+    "description": "Import a skill from a file or link into this project.",
     "source": "crew_skills",
     "source_action": "import"
   },
@@ -150,7 +195,7 @@
     "family": "skills",
     "name": "uninstall",
     "member": "crew_skills__uninstall",
-    "description": "Use the existing skills uninstall operation with its current access.",
+    "description": "Remove a skill from this project.",
     "source": "crew_skills",
     "source_action": "uninstall"
   },
@@ -227,7 +272,7 @@
     "family": "mcp",
     "name": "list",
     "member": "crew_mcp__list",
-    "description": "Use the existing mcp list operation with its current access.",
+    "description": "List the MCP connections this project uses.",
     "source": "crew_mcp",
     "source_action": "list"
   },
@@ -235,7 +280,7 @@
     "family": "mcp",
     "name": "search",
     "member": "crew_mcp__search",
-    "description": "Use the existing mcp search operation with its current access.",
+    "description": "Search the MCP catalog for a connection that fits the task.",
     "source": "crew_mcp",
     "source_action": "search"
   },
@@ -243,7 +288,7 @@
     "family": "mcp",
     "name": "install",
     "member": "crew_mcp__install",
-    "description": "Use the existing mcp install operation with its current access.",
+    "description": "Add a catalog MCP connection to this project.",
     "source": "crew_mcp",
     "source_action": "install"
   },
@@ -251,7 +296,7 @@
     "family": "mcp",
     "name": "remove",
     "member": "crew_mcp__remove",
-    "description": "Use the existing mcp remove operation with its current access.",
+    "description": "Remove an MCP connection from this project.",
     "source": "crew_mcp",
     "source_action": "remove"
   },
@@ -259,7 +304,7 @@
     "family": "mcp",
     "name": "discover",
     "member": "crew_mcp__discover",
-    "description": "Use the existing mcp discover operation with its current access.",
+    "description": "Reload an MCP connection's tool list.",
     "source": "crew_mcp",
     "source_action": "discover"
   },
@@ -277,7 +322,7 @@
     "family": "brain",
     "name": "folders",
     "member": "brain_browse__folders",
-    "description": "Use the existing brain folders operation with its current access.",
+    "description": "List Brain folders you can read, with their roles and versions.",
     "source": "brain_browse",
     "source_action": "folders"
   },
@@ -285,7 +330,7 @@
     "family": "brain",
     "name": "entries",
     "member": "brain_browse__entries",
-    "description": "Use the existing brain entries operation with its current access.",
+    "description": "List the notes, facts, sources and skills in a Brain folder; filter by glob, type or tag.",
     "source": "brain_browse",
     "source_action": "entries"
   },
@@ -293,7 +338,7 @@
     "family": "brain",
     "name": "changes",
     "member": "brain_browse__changes",
-    "description": "Use the existing brain changes operation with its current access.",
+    "description": "List recent Brain commits; pass since (an earlier head) to see only newer ones.",
     "source": "brain_browse",
     "source_action": "changes"
   },
@@ -317,7 +362,7 @@
     "family": "brain",
     "name": "diff",
     "member": "brain_read__diff",
-    "description": "Use the existing brain diff operation with its current access.",
+    "description": "Show what one Brain note changed between two versions.",
     "source": "brain_read",
     "source_action": "diff"
   },
@@ -325,7 +370,7 @@
     "family": "brain",
     "name": "create",
     "member": "brain_update__create",
-    "description": "Use the existing brain create operation with its current access.",
+    "description": "Create a Brain note; it is shared at once. Use a stable request_id.",
     "source": "brain_update",
     "source_action": "create"
   },
@@ -333,7 +378,7 @@
     "family": "brain",
     "name": "update",
     "member": "brain_update__update",
-    "description": "Use the existing brain update operation with its current access.",
+    "description": "Change a Brain note; pass its expected_version so you never overwrite someone else's edit.",
     "source": "brain_update",
     "source_action": "update"
   },
@@ -341,7 +386,7 @@
     "family": "brain",
     "name": "delete",
     "member": "brain_update__delete",
-    "description": "Use the existing brain delete operation with its current access.",
+    "description": "Delete a Brain note (its history is kept).",
     "source": "brain_update",
     "source_action": "delete"
   },
@@ -349,7 +394,7 @@
     "family": "brain",
     "name": "move",
     "member": "brain_update__move",
-    "description": "Use the existing brain move operation with its current access.",
+    "description": "Move or rename a Brain note, keeping its ID and history.",
     "source": "brain_update",
     "source_action": "move"
   },
@@ -357,7 +402,7 @@
     "family": "brain",
     "name": "restore",
     "member": "brain_update__restore",
-    "description": "Use the existing brain restore operation with its current access.",
+    "description": "Bring back an earlier version of a Brain note as a new version.",
     "source": "brain_update",
     "source_action": "restore"
   },
@@ -365,7 +410,7 @@
     "family": "brain",
     "name": "create_folder",
     "member": "brain_update__create_folder",
-    "description": "Use the existing brain create folder operation with its current access.",
+    "description": "Create a Brain folder.",
     "source": "brain_update",
     "source_action": "create_folder"
   },
@@ -373,7 +418,7 @@
     "family": "brain",
     "name": "migration_preview",
     "member": "brain_update__migration_preview",
-    "description": "Use the existing brain migration preview operation with its current access.",
+    "description": "Preview importing a workflow's old local knowledge into Brain; changes nothing.",
     "source": "brain_update",
     "source_action": "migration_preview"
   },
@@ -381,7 +426,7 @@
     "family": "brain",
     "name": "migration_import",
     "member": "brain_update__migration_import",
-    "description": "Use the existing brain migration import operation with its current access.",
+    "description": "Import a workflow's old local knowledge into Brain.",
     "source": "brain_update",
     "source_action": "migration_import"
   },
@@ -389,7 +434,7 @@
     "family": "brain",
     "name": "migration_cutover",
     "member": "brain_update__migration_cutover",
-    "description": "Use the existing brain migration cutover operation with its current access.",
+    "description": "Switch a workflow from its old local knowledge to Brain.",
     "source": "brain_update",
     "source_action": "migration_cutover"
   },
@@ -397,7 +442,7 @@
     "family": "brain",
     "name": "migration_rollback",
     "member": "brain_update__migration_rollback",
-    "description": "Use the existing brain migration rollback operation with its current access.",
+    "description": "Undo a Brain cutover and return the workflow to its old local knowledge.",
     "source": "brain_update",
     "source_action": "migration_rollback"
   },
@@ -405,7 +450,7 @@
     "family": "brain",
     "name": "skills_list",
     "member": "brain_skills__list",
-    "description": "Use the existing brain skills list operation with its current access.",
+    "description": "List company skills published in Brain.",
     "source": "brain_skills",
     "source_action": "list"
   },
@@ -413,7 +458,7 @@
     "family": "brain",
     "name": "skills_get",
     "member": "brain_skills__get",
-    "description": "Use the existing brain skills get operation with its current access.",
+    "description": "Read one company skill from Brain.",
     "source": "brain_skills",
     "source_action": "get"
   },
@@ -421,7 +466,7 @@
     "family": "brain",
     "name": "skills_publish",
     "member": "brain_skills__publish",
-    "description": "Use the existing brain skills publish operation with its current access.",
+    "description": "Publish a skill to Brain so the whole company can use it.",
     "source": "brain_skills",
     "source_action": "publish"
   },
@@ -429,7 +474,7 @@
     "family": "brain",
     "name": "access_inspect",
     "member": "brain_access__inspect",
-    "description": "Use the existing brain access inspect operation with its current access.",
+    "description": "Show who can read or edit a Brain folder.",
     "source": "brain_access",
     "source_action": "inspect"
   },
@@ -437,7 +482,7 @@
     "family": "brain",
     "name": "access_list",
     "member": "brain_access__list",
-    "description": "Use the existing brain access list operation with its current access.",
+    "description": "List the people and service accounts with Brain access.",
     "source": "brain_access",
     "source_action": "list"
   },
@@ -445,7 +490,7 @@
     "family": "brain",
     "name": "access_grant",
     "member": "brain_access__grant",
-    "description": "Use the existing brain access grant operation with its current access.",
+    "description": "Give a person or service account a role (Reader, Editor, Owner) on a Brain folder.",
     "source": "brain_access",
     "source_action": "grant"
   },
@@ -453,7 +498,7 @@
     "family": "brain",
     "name": "access_revoke",
     "member": "brain_access__revoke",
-    "description": "Use the existing brain access revoke operation with its current access.",
+    "description": "Remove someone's role on a Brain folder.",
     "source": "brain_access",
     "source_action": "revoke"
   },
@@ -461,7 +506,7 @@
     "family": "brain",
     "name": "create_service_account",
     "member": "brain_access__create_service_account",
-    "description": "Use the existing brain create service account operation with its current access.",
+    "description": "Create a Brain service account for an outside tool.",
     "source": "brain_access",
     "source_action": "create_service_account"
   },
@@ -469,7 +514,7 @@
     "family": "brain",
     "name": "disable_service_account",
     "member": "brain_access__disable_service_account",
-    "description": "Use the existing brain disable service account operation with its current access.",
+    "description": "Turn off a Brain service account.",
     "source": "brain_access",
     "source_action": "disable_service_account"
   },
@@ -477,7 +522,7 @@
     "family": "brain",
     "name": "configure_backup",
     "member": "brain_access__configure_backup",
-    "description": "Use the existing brain configure backup operation with its current access.",
+    "description": "Set the Git repository Brain backs up to (token by secret name only).",
     "source": "brain_access",
     "source_action": "configure_backup"
   },
@@ -485,7 +530,7 @@
     "family": "brain",
     "name": "inspect_project",
     "member": "brain_access__inspect_project",
-    "description": "Use the existing brain inspect project operation with its current access.",
+    "description": "Show this workflow's Brain access (off, read or write) and its manifest_version.",
     "source": "brain_access",
     "source_action": "inspect_project"
   },
@@ -493,7 +538,7 @@
     "family": "brain",
     "name": "set_project_access",
     "member": "brain_access__set_project_access",
-    "description": "Use the existing brain set project access operation with its current access.",
+    "description": "Set this workflow's Brain access to off, read or write.",
     "source": "brain_access",
     "source_action": "set_project_access"
   },
@@ -503,7 +548,7 @@
     "member": "brain_admin__backup_status",
     "source": "brain_admin",
     "source_action": "backup_status",
-    "description": "Use Brain backup status with its existing person and folder access."
+    "description": "Show whether the Brain Git backup works: pending files, last push and any error."
   },
   {
     "family": "brain",
@@ -511,7 +556,7 @@
     "member": "brain_admin__backup_reconcile",
     "source": "brain_admin",
     "source_action": "backup_reconcile",
-    "description": "Use Brain backup reconcile with its existing person and folder access."
+    "description": "Re-check the Brain backup against its repository (administrators)."
   },
   {
     "family": "brain",
@@ -519,7 +564,7 @@
     "member": "brain_admin__secrets_list",
     "source": "brain_admin",
     "source_action": "secrets_list",
-    "description": "Use Brain secrets list with its existing person and folder access."
+    "description": "List Brain secret names (values are never shown)."
   },
   {
     "family": "brain",
@@ -527,7 +572,7 @@
     "member": "brain_admin__secrets_request_set",
     "source": "brain_admin",
     "source_action": "secrets_request_set",
-    "description": "Use Brain secrets request set with its existing person and folder access."
+    "description": "Get the command the person types in their own terminal to set a Brain secret."
   },
   {
     "family": "brain",
@@ -535,7 +580,7 @@
     "member": "brain_admin__secrets_set",
     "source": "brain_admin",
     "source_action": "secrets_set",
-    "description": "Use Brain secrets set with its existing person and folder access."
+    "description": "Store a Brain secret value the person supplied."
   },
   {
     "family": "brain",
@@ -543,7 +588,7 @@
     "member": "brain_admin__secrets_delete",
     "source": "brain_admin",
     "source_action": "secrets_delete",
-    "description": "Use Brain secrets delete with its existing person and folder access."
+    "description": "Delete a Brain secret."
   },
   {
     "family": "brain",
@@ -551,7 +596,7 @@
     "member": "brain_admin__whats_new",
     "source": "brain_admin",
     "source_action": "whats_new",
-    "description": "Use Brain whats new with its existing person and folder access."
+    "description": "List what changed in Brain since you last marked it seen."
   },
   {
     "family": "brain",
@@ -559,7 +604,7 @@
     "member": "brain_admin__mark_seen",
     "source": "brain_admin",
     "source_action": "mark_seen",
-    "description": "Use Brain mark seen with its existing person and folder access."
+    "description": "Record the newest Brain commit you have read."
   },
   {
     "family": "vault",
@@ -599,7 +644,7 @@
     "family": "vault",
     "name": "mine_project",
     "member": "manage_my_vaults__project",
-    "description": "Use the existing vault mine project operation with its current access.",
+    "description": "Show what a project can use from your own Vault: apps, secret names and computers, and which ones it has selected. No values.",
     "source": "manage_my_vaults",
     "source_action": "project",
     "source_key": "operation"
@@ -608,7 +653,7 @@
     "family": "vault",
     "name": "mine_project_select",
     "member": "manage_my_vaults__project_select",
-    "description": "Use the existing vault mine project select operation with its current access.",
+    "description": "Turn one of your apps, secrets or computers on or off for a project, or switch 'Use all my apps automatically'.",
     "source": "manage_my_vaults",
     "source_action": "project_select",
     "source_key": "operation"
@@ -617,7 +662,7 @@
     "family": "vault",
     "name": "mine_laptops",
     "member": "manage_my_vaults__laptops",
-    "description": "Use the existing vault mine laptops operation with its current access.",
+    "description": "List your connected computers and the one-time steps to set one up.",
     "source": "manage_my_vaults",
     "source_action": "laptops",
     "source_key": "operation"
@@ -626,7 +671,7 @@
     "family": "vault",
     "name": "mine_github_status",
     "member": "manage_my_vaults__github_status",
-    "description": "See whether your GitHub account is connected, and which GitHub login it is.",
+    "description": "See this project's selected GitHub connection and your reusable saved connections.",
     "source": "manage_my_vaults",
     "source_action": "github_status",
     "source_key": "operation"
@@ -635,7 +680,7 @@
     "family": "vault",
     "name": "mine_github_connect",
     "member": "manage_my_vaults__github_connect",
-    "description": "Connect your own GitHub account. Choose method=gh on a single-user local installation, method=pat with token on local or server, or optional method=oauth for browser sign-in. gh saves a copy of the current login; later native account changes do not change it. Never return or repeat tokens.",
+    "description": "Select a saved GitHub connection for this project with method=saved and connection_id, or connect a new account. Choose method=gh on a single-user local installation, method=pat with token on local or server, or optional method=oauth for browser sign-in. gh saves a copy of the current login; later native account changes do not change it. Never return or repeat tokens.",
     "source": "manage_my_vaults",
     "source_action": "github_connect",
     "source_key": "operation"
@@ -644,7 +689,7 @@
     "family": "vault",
     "name": "mine_github_disconnect",
     "member": "manage_my_vaults__github_disconnect",
-    "description": "Remove your saved GitHub connection from AgentWorks. Native gh logins and PATs stay unchanged; OAuth access is also revoked at GitHub when available.",
+    "description": "Unselect GitHub for this project only. Saved connections, other projects and native gh logins are unchanged.",
     "source": "manage_my_vaults",
     "source_action": "github_disconnect",
     "source_key": "operation"
@@ -653,7 +698,7 @@
     "family": "vault",
     "name": "mine_apps",
     "member": "manage_my_vaults__apps",
-    "description": "Use the existing vault mine apps operation with its current access.",
+    "description": "List the apps Vault can connect, by catalog name, and which need an administrator's setup first.",
     "source": "manage_my_vaults",
     "source_action": "apps",
     "source_key": "operation"
@@ -662,7 +707,7 @@
     "family": "vault",
     "name": "mine_connect",
     "member": "manage_my_vaults__connect",
-    "description": "Use the existing vault mine connect operation with its current access.",
+    "description": "Connect an app from the Vault catalog (or a custom server by name and URL) in your own Vault; returns the sign-in link to open.",
     "source": "manage_my_vaults",
     "source_action": "connect",
     "source_key": "operation"
@@ -671,25 +716,16 @@
     "family": "vault",
     "name": "mine_sign_in",
     "member": "manage_my_vaults__sign_in",
-    "description": "Use the existing vault mine sign in operation with its current access.",
+    "description": "Finish or renew sign-in for one of your saved connections.",
     "source": "manage_my_vaults",
     "source_action": "sign_in",
     "source_key": "operation"
   },
   {
     "family": "vault",
-    "name": "mine_promote_secret",
-    "member": "manage_my_vaults__promote_secret",
-    "description": "Use the existing vault mine promote secret operation with its current access.",
-    "source": "manage_my_vaults",
-    "source_action": "promote_secret",
-    "source_key": "operation"
-  },
-  {
-    "family": "vault",
     "name": "mine_set_secret",
     "member": "manage_my_vaults__set_secret",
-    "description": "Use the existing vault mine set secret operation with its current access.",
+    "description": "Store a secret value the person gave you in their own Vault; the value is never shown again.",
     "source": "manage_my_vaults",
     "source_action": "set_secret",
     "source_key": "operation"
@@ -698,7 +734,7 @@
     "family": "vault",
     "name": "mine_remove_secret",
     "member": "manage_my_vaults__remove_secret",
-    "description": "Use the existing vault mine remove secret operation with its current access.",
+    "description": "Delete one of your own secrets and its value.",
     "source": "manage_my_vaults",
     "source_action": "remove_secret",
     "source_key": "operation"
@@ -707,7 +743,7 @@
     "family": "vault",
     "name": "mine_sync",
     "member": "manage_my_vaults__sync",
-    "description": "Use the existing vault mine sync operation with its current access.",
+    "description": "Refresh the list of tools of one of your saved connections.",
     "source": "manage_my_vaults",
     "source_action": "sync",
     "source_key": "operation"
@@ -716,7 +752,7 @@
     "family": "vault",
     "name": "mine_remove_connection",
     "member": "manage_my_vaults__remove_connection",
-    "description": "Use the existing vault mine remove connection operation with its current access.",
+    "description": "Remove one of your saved connections and its sign-in.",
     "source": "manage_my_vaults",
     "source_action": "remove_connection",
     "source_key": "operation"
@@ -725,7 +761,7 @@
     "family": "vault",
     "name": "access_inspect_environment",
     "member": "manage_vault_access__inspect_environment",
-    "description": "Use the existing vault access inspect environment operation with its current access.",
+    "description": "Show Vault connections, their tools and the groups, to look up IDs before changing access.",
     "source": "manage_vault_access",
     "source_action": "inspect_environment",
     "source_key": "operation"
@@ -734,7 +770,7 @@
     "family": "vault",
     "name": "access_list_users",
     "member": "manage_vault_access__list_users",
-    "description": "Use the existing vault access list users operation with its current access.",
+    "description": "List active people on this server with their email, username and ID.",
     "source": "manage_vault_access",
     "source_action": "list_users",
     "source_key": "operation"
@@ -743,7 +779,7 @@
     "family": "vault",
     "name": "access_inspect_group",
     "member": "manage_vault_access__inspect_group",
-    "description": "Use the existing vault access inspect group operation with its current access.",
+    "description": "Show which tools one group can use.",
     "source": "manage_vault_access",
     "source_action": "inspect_group",
     "source_key": "operation"
@@ -752,7 +788,7 @@
     "family": "vault",
     "name": "access_inspect_user",
     "member": "manage_vault_access__inspect_user",
-    "description": "Use the existing vault access inspect user operation with its current access.",
+    "description": "Show what one person can reach and which group gives it.",
     "source": "manage_vault_access",
     "source_action": "inspect_user",
     "source_key": "operation"
@@ -761,7 +797,7 @@
     "family": "vault",
     "name": "access_remove_group_mcp",
     "member": "manage_vault_access__remove_group_mcp",
-    "description": "Use the existing vault access remove group mcp operation with its current access.",
+    "description": "Take one connection away from one group, with its tool grants and saved rules; the connection and other groups stay.",
     "source": "manage_vault_access",
     "source_action": "remove_group_mcp",
     "source_key": "operation"
@@ -770,7 +806,7 @@
     "family": "vault",
     "name": "access_inspect_tool",
     "member": "manage_vault_access__inspect_tool",
-    "description": "Use the existing vault access inspect tool operation with its current access.",
+    "description": "Show one connected tool's exact schema.",
     "source": "manage_vault_access",
     "source_action": "inspect_tool",
     "source_key": "operation"
@@ -779,7 +815,7 @@
     "family": "vault",
     "name": "access_save_permissions",
     "member": "manage_vault_access__save_permissions",
-    "description": "Use the existing vault access save permissions operation with its current access.",
+    "description": "Save and apply a group's tool rules (which values a tool may be called with).",
     "source": "manage_vault_access",
     "source_action": "save_permissions",
     "source_key": "operation"
@@ -788,7 +824,7 @@
     "family": "vault",
     "name": "access_connect_server",
     "member": "manage_vault_access__connect_server",
-    "description": "Use the existing vault access connect server operation with its current access.",
+    "description": "Connect a catalog or custom MCP server to Vault; it is shared with everyone until moved to a group.",
     "source": "manage_vault_access",
     "source_action": "connect_server",
     "source_key": "operation"
@@ -797,7 +833,7 @@
     "family": "vault",
     "name": "access_sign_in_apps",
     "member": "manage_vault_access__sign_in_apps",
-    "description": "Use the existing vault access sign in apps operation with its current access.",
+    "description": "List the apps whose sign-in needs an OAuth app, with the callback address to register.",
     "source": "manage_vault_access",
     "source_action": "sign_in_apps",
     "source_key": "operation"
@@ -806,7 +842,7 @@
     "family": "vault",
     "name": "access_configure_sign_in_app",
     "member": "manage_vault_access__configure_sign_in_app",
-    "description": "Use the existing vault access configure sign in app operation with its current access.",
+    "description": "Save or remove an app's OAuth client details (administrators only; stored encrypted).",
     "source": "manage_vault_access",
     "source_action": "configure_sign_in_app",
     "source_key": "operation"
@@ -815,7 +851,7 @@
     "family": "vault",
     "name": "access_sign_in_connection",
     "member": "manage_vault_access__sign_in_connection",
-    "description": "Use the existing vault access sign in connection operation with its current access.",
+    "description": "Start sign-in for a Vault connection and return the real sign-in link.",
     "source": "manage_vault_access",
     "source_action": "sign_in_connection",
     "source_key": "operation"
@@ -824,7 +860,7 @@
     "family": "vault",
     "name": "access_connection_status",
     "member": "manage_vault_access__connection_status",
-    "description": "Use the existing vault access connection status operation with its current access.",
+    "description": "Show a Vault connection's status.",
     "source": "manage_vault_access",
     "source_action": "connection_status",
     "source_key": "operation"
@@ -833,7 +869,7 @@
     "family": "vault",
     "name": "access_sync_connection",
     "member": "manage_vault_access__sync_connection",
-    "description": "Use the existing vault access sync connection operation with its current access.",
+    "description": "Refresh the list of tools of a Vault connection.",
     "source": "manage_vault_access",
     "source_action": "sync_connection",
     "source_key": "operation"
@@ -842,7 +878,7 @@
     "family": "vault",
     "name": "access_disconnect_connection",
     "member": "manage_vault_access__disconnect_connection",
-    "description": "Use the existing vault access disconnect connection operation with its current access.",
+    "description": "Disconnect a Vault connection the person asked to remove.",
     "source": "manage_vault_access",
     "source_action": "disconnect_connection",
     "source_key": "operation"
@@ -851,7 +887,7 @@
     "family": "vault",
     "name": "groups_list",
     "member": "manage_vault_groups__list",
-    "description": "Use the existing vault groups list operation with its current access.",
+    "description": "List Vault groups.",
     "source": "manage_vault_groups",
     "source_action": "list",
     "source_key": "operation"
@@ -860,7 +896,7 @@
     "family": "vault",
     "name": "groups_create",
     "member": "manage_vault_groups__create",
-    "description": "Use the existing vault groups create operation with its current access.",
+    "description": "Create a Vault group.",
     "source": "manage_vault_groups",
     "source_action": "create",
     "source_key": "operation"
@@ -869,7 +905,7 @@
     "family": "vault",
     "name": "groups_update",
     "member": "manage_vault_groups__update",
-    "description": "Use the existing vault groups update operation with its current access.",
+    "description": "Rename a Vault group or change its description.",
     "source": "manage_vault_groups",
     "source_action": "update",
     "source_key": "operation"
@@ -878,7 +914,7 @@
     "family": "vault",
     "name": "groups_list_members",
     "member": "manage_vault_groups__list_members",
-    "description": "Use the existing vault groups list members operation with its current access.",
+    "description": "List the people in a Vault group.",
     "source": "manage_vault_groups",
     "source_action": "list_members",
     "source_key": "operation"
@@ -887,7 +923,7 @@
     "family": "vault",
     "name": "groups_add_member",
     "member": "manage_vault_groups__add_member",
-    "description": "Use the existing vault groups add member operation with its current access.",
+    "description": "Add an active person to a Vault group.",
     "source": "manage_vault_groups",
     "source_action": "add_member",
     "source_key": "operation"
@@ -896,7 +932,7 @@
     "family": "vault",
     "name": "groups_remove_member",
     "member": "manage_vault_groups__remove_member",
-    "description": "Use the existing vault groups remove member operation with its current access.",
+    "description": "Remove a person from a Vault group.",
     "source": "manage_vault_groups",
     "source_action": "remove_member",
     "source_key": "operation"
@@ -905,7 +941,7 @@
     "family": "vault",
     "name": "groups_attach_server",
     "member": "manage_vault_groups__attach_server",
-    "description": "Use the existing vault groups attach server operation with its current access.",
+    "description": "Give a group a whole connection, or only its read tools.",
     "source": "manage_vault_groups",
     "source_action": "attach_server",
     "source_key": "operation"
@@ -914,7 +950,7 @@
     "family": "vault",
     "name": "groups_detach_server",
     "member": "manage_vault_groups__detach_server",
-    "description": "Use the existing vault groups detach server operation with its current access.",
+    "description": "Take a connection away from a group.",
     "source": "manage_vault_groups",
     "source_action": "detach_server",
     "source_key": "operation"
@@ -923,7 +959,7 @@
     "family": "vault",
     "name": "shared_secrets",
     "member": "manage_vault_secret_access__list",
-    "description": "Use the existing vault shared secrets operation with its current access.",
+    "description": "List company Vault secret names, or those a group may use. No values.",
     "source": "manage_vault_secret_access",
     "source_action": "list",
     "source_key": "operation"
@@ -932,7 +968,7 @@
     "family": "vault",
     "name": "grant_secret",
     "member": "manage_vault_secret_access__set",
-    "description": "Use the existing vault grant secret operation with its current access.",
+    "description": "Allow or stop one group using one company secret (Vault administrators).",
     "source": "manage_vault_secret_access",
     "source_action": "set",
     "source_key": "operation"
@@ -941,25 +977,16 @@
     "family": "vault",
     "name": "set_value",
     "member": "manage_vault_secret_access__set_value",
-    "description": "Use the existing vault set value operation with its current access.",
+    "description": "Store secret values the person gave you as company Vault secrets; values are never shown again.",
     "source": "manage_vault_secret_access",
     "source_action": "set_value",
     "source_key": "operation"
   },
   {
     "family": "vault",
-    "name": "share_secret",
-    "member": "manage_vault_secret_access__share",
-    "description": "Use the existing vault share secret operation with its current access.",
-    "source": "manage_vault_secret_access",
-    "source_action": "share",
-    "source_key": "operation"
-  },
-  {
-    "family": "vault",
     "name": "delete_shared_secret",
     "member": "manage_vault_secret_access__delete",
-    "description": "Use the existing vault delete shared secret operation with its current access.",
+    "description": "Delete a company Vault secret; repeat its name to confirm.",
     "source": "manage_vault_secret_access",
     "source_action": "delete",
     "source_key": "operation"
@@ -968,7 +995,7 @@
     "family": "vault",
     "name": "tools_list",
     "member": "manage_vault_tools__list",
-    "description": "Use the existing vault tools list operation with its current access.",
+    "description": "List a Vault connection's tools with their status and read or write label.",
     "source": "manage_vault_tools",
     "source_action": "list",
     "source_key": "operation"
@@ -977,7 +1004,7 @@
     "family": "vault",
     "name": "tools_versions",
     "member": "manage_vault_tools__versions",
-    "description": "Use the existing vault tools versions operation with its current access.",
+    "description": "Show a Vault tool's earlier definitions.",
     "source": "manage_vault_tools",
     "source_action": "versions",
     "source_key": "operation"
@@ -986,7 +1013,7 @@
     "family": "vault",
     "name": "tools_set_access",
     "member": "manage_vault_tools__set_access",
-    "description": "Use the existing vault tools set access operation with its current access.",
+    "description": "Label a Vault tool as read or write for read-only group grants.",
     "source": "manage_vault_tools",
     "source_action": "set_access",
     "source_key": "operation"
@@ -995,7 +1022,7 @@
     "family": "vault",
     "name": "audit_events",
     "member": "read_vault_audit__events",
-    "description": "Use the existing vault audit events operation with its current access.",
+    "description": "Read the Vault audit log: who called which tool, when, and whether it was allowed.",
     "source": "read_vault_audit",
     "source_action": "events",
     "source_key": "operation"
@@ -1004,7 +1031,7 @@
     "family": "vault",
     "name": "audit_usage",
     "member": "read_vault_audit__usage",
-    "description": "Use the existing vault audit usage operation with its current access.",
+    "description": "Read a Vault usage summary.",
     "source": "read_vault_audit",
     "source_action": "usage",
     "source_key": "operation"
@@ -1013,7 +1040,7 @@
     "family": "vault",
     "name": "governance_query",
     "member": "query_vault_db__query",
-    "description": "Use the existing vault governance query operation with its current access.",
+    "description": "Run a read-only SQL query on the Vault access database.",
     "source": "query_vault_db",
     "source_action": "query"
   },
@@ -1021,7 +1048,7 @@
     "family": "vault",
     "name": "governance_describe",
     "member": "query_vault_db__describe",
-    "description": "Use the existing vault governance describe operation with its current access.",
+    "description": "Describe the Vault access database's tables and columns.",
     "source": "query_vault_db",
     "source_action": "describe"
   },
@@ -1029,7 +1056,7 @@
     "family": "vault",
     "name": "governance_integrity_check",
     "member": "query_vault_db__integrity_check",
-    "description": "Use the existing vault governance integrity check operation with its current access.",
+    "description": "Check the Vault access database's integrity without changing it.",
     "source": "query_vault_db",
     "source_action": "integrity_check"
   },
@@ -1037,31 +1064,31 @@
     "family": "vault",
     "name": "governance_mutate",
     "member": "mutate_vault_db",
-    "description": "Use the existing Vault governance mutate service with its current access."
+    "description": "Change groups, members or grants in the Vault access database with checked SQL."
   },
   {
     "family": "vault",
     "name": "connections",
     "member": "list_vault_mcp_servers",
-    "description": "Use the existing Vault connections service with its current access."
+    "description": "List all Vault connections, their tool schemas, groups and secret names, for administrator setup."
   },
   {
     "family": "vault",
     "name": "call",
     "member": "call_vault_mcp_tool",
-    "description": "Use the existing Vault call service with its current access."
+    "description": "Call a Vault connection's tool as an administrator for setup; the call is audited."
   },
   {
     "family": "vault",
     "name": "migrate_connections",
     "member": "migrate_place_connections",
-    "description": "Use the existing Vault migrate connections service with its current access."
+    "description": "One-off move of old project connections into their owners' Vaults (administrators; lists only unless apply=true)."
   },
   {
     "family": "vault",
     "name": "migrate_vaults",
     "member": "migrate_personal_vaults",
-    "description": "Use the existing Vault migrate vaults service with its current access."
+    "description": "One-off merge of old person-made vaults into personal vaults and Company groups (administrators; lists only unless apply=true)."
   },
   {
     "family": "functions",
@@ -1164,7 +1191,7 @@
     "family": "functions",
     "name": "crew_triggers",
     "member": "manage_crew_trigger__list",
-    "description": "Use the existing functions crew triggers operation with its current access.",
+    "description": "List a project's caller bindings: which workflows or projects may call it.",
     "source": "manage_crew_trigger",
     "source_action": "list"
   },
@@ -1172,7 +1199,7 @@
     "family": "functions",
     "name": "crew_trigger_create",
     "member": "manage_crew_trigger__create",
-    "description": "Use the existing functions crew trigger create operation with its current access.",
+    "description": "Let a workflow or project call a project, without a public address or secret.",
     "source": "manage_crew_trigger",
     "source_action": "create"
   },
@@ -1180,7 +1207,7 @@
     "family": "functions",
     "name": "crew_trigger_update",
     "member": "manage_crew_trigger__update",
-    "description": "Use the existing functions crew trigger update operation with its current access.",
+    "description": "Change a project caller binding's name, message or whether it is on.",
     "source": "manage_crew_trigger",
     "source_action": "update"
   },
@@ -1188,7 +1215,7 @@
     "family": "functions",
     "name": "crew_trigger_delete",
     "member": "manage_crew_trigger__delete",
-    "description": "Use the existing functions crew trigger delete operation with its current access.",
+    "description": "Remove a project caller binding.",
     "source": "manage_crew_trigger",
     "source_action": "delete"
   },
@@ -1262,57 +1289,53 @@
     "family": "sessions",
     "name": "list",
     "member": "list_project_chats",
-    "description": "Use the current project\u2019s list session operation with existing person and tab access.",
+    "description": "List this project's chat tabs and their status.",
     "external_members": "sessions_list_crew"
+  },
+  {
+    "family": "sessions",
+    "name": "fork",
+    "member": "fork_project_chat",
+    "description": "Fork a caller-owned chat into an independent tab carrying its saved context. Prefer fork for related work. With task, the fork starts on it at once and answers you; place=beside makes it its own agent that does not report back; group puts it in a named group of the person's; purpose and instructions set it up in the same call; without task no turn starts.",
+    "external_members": "sessions_fork_crew"
+  },
+  {
+    "family": "sessions",
+    "name": "group",
+    "member": "group_project_chats",
+    "description": "Arrange the person's own left-menu groups of this project's agents when they ask: new, move, rename or ungroup. Layout only, never access.",
+    "external_members": "sessions_group_crew"
   },
   {
     "family": "sessions",
     "name": "open",
     "member": "open_project_chat",
-    "description": "Use the current project\u2019s open session operation with existing person and tab access.",
+    "description": "Open a named agent tab for separate work (name required); with task it starts at once and answers you, place=beside makes it its own agent that does not report back, group puts it in a named group of the person's, purpose and instructions set it up in the same call. Use new only to start a fresh conversation in an existing Main.",
     "external_members": "sessions_open_crew"
-  },
-  {
-    "family": "sessions",
-    "name": "ask",
-    "member": "ask_project_chat",
-    "description": "Use the current project\u2019s ask session operation with existing person and tab access."
   },
   {
     "family": "sessions",
     "name": "identity",
     "member": "set_my_agent_identity",
-    "description": "Use the current project\u2019s identity session operation with existing person and tab access."
+    "description": "Set your own agent tab's name and purpose."
   },
   {
     "family": "sessions",
-    "name": "background_start",
-    "member": "run_in_background",
-    "description": "Use the current project\u2019s background start session operation with existing person and tab access."
+    "name": "delete",
+    "member": "delete_project_chat",
+    "description": "Delete a fork or helper tab you made while it is still under you in the left menu: preview, then confirm. Its saved chats go; project files stay."
   },
   {
     "family": "sessions",
-    "name": "background_status",
-    "member": "query_agent",
-    "description": "Use the current project\u2019s background status session operation with existing person and tab access."
-  },
-  {
-    "family": "sessions",
-    "name": "background_list",
-    "member": "list_background_agents",
-    "description": "Use the current project\u2019s background list session operation with existing person and tab access."
-  },
-  {
-    "family": "sessions",
-    "name": "background_stop",
-    "member": "terminate_agent",
-    "description": "Use the current project\u2019s background stop session operation with existing person and tab access."
+    "name": "move_out",
+    "member": "move_project_chat_out",
+    "description": "Move one of the person's forks out from under its agent in the left menu when they ask; with under, put it back. Its parent can then no longer delete it."
   },
   {
     "family": "sessions",
     "name": "list",
     "member": "sessions_list_crew",
-    "description": "Use the existing sessions list operation with its current access.",
+    "description": "List this project's chat tabs and their status.",
     "source": "manage_crew_chats",
     "source_action": "list"
   },
@@ -1320,7 +1343,7 @@
     "family": "sessions",
     "name": "read",
     "member": "sessions_read_crew",
-    "description": "Use the existing sessions read operation with its current access.",
+    "description": "Read another chat tab's recent messages.",
     "source": "manage_crew_chats",
     "source_action": "read"
   },
@@ -1328,15 +1351,23 @@
     "family": "sessions",
     "name": "new",
     "member": "sessions_new_crew",
-    "description": "Use the existing sessions new operation with its current access.",
+    "description": "Archive the existing Main conversation and start a fresh one in that same agent. This does not create Main or a named agent; use open with name to create an agent tab.",
     "source": "manage_crew_chats",
     "source_action": "new"
   },
   {
     "family": "sessions",
+    "name": "fork",
+    "member": "sessions_fork_crew",
+    "description": "Fork one of your own project chats using the existing fork operation.",
+    "source": "manage_crew_chats",
+    "source_action": "fork"
+  },
+  {
+    "family": "sessions",
     "name": "open",
     "member": "sessions_open_crew",
-    "description": "Use the existing sessions open operation with its current access.",
+    "description": "Open a named agent tab for separate work (name required). Use new only to start a fresh conversation in an existing Main.",
     "source": "manage_crew_chats",
     "source_action": "side_open"
   },
@@ -1344,15 +1375,23 @@
     "family": "sessions",
     "name": "close",
     "member": "sessions_close_crew",
-    "description": "Use the existing sessions close operation with its current access.",
+    "description": "Close a chat tab (it can be opened again).",
     "source": "manage_crew_chats",
     "source_action": "side_close"
   },
   {
     "family": "sessions",
+    "name": "group",
+    "member": "sessions_group_crew",
+    "description": "Put chat tabs into a named group in the left menu.",
+    "source": "manage_crew_chats",
+    "source_action": "group"
+  },
+  {
+    "family": "sessions",
     "name": "rename",
     "member": "sessions_rename_crew",
-    "description": "Use the existing sessions rename operation with its current access.",
+    "description": "Rename a chat tab.",
     "source": "manage_crew_chats",
     "source_action": "side_rename"
   },
@@ -1360,7 +1399,7 @@
     "family": "sessions",
     "name": "delete",
     "member": "sessions_delete_crew",
-    "description": "Use the existing sessions delete operation with its current access.",
+    "description": "Delete a chat tab you own.",
     "source": "manage_crew_chats",
     "source_action": "delete"
   },
@@ -1368,23 +1407,23 @@
     "family": "sessions",
     "name": "stop",
     "member": "sessions_stop_crew",
-    "description": "Use the existing sessions stop operation with its current access.",
+    "description": "Stop a chat tab's running turn.",
     "source": "manage_crew_chats",
     "source_action": "stop"
   },
   {
     "family": "sessions",
-    "name": "message",
-    "member": "sessions_message_crew",
-    "description": "Use the existing sessions message operation with its current access.",
+    "name": "goal",
+    "member": "sessions_goal_crew",
+    "description": "Set, show, pause, resume or clear a Codex goal on one of your own project chats, as /goal does when you type it.",
     "source": "manage_crew_chats",
-    "source_action": "message"
+    "source_action": "goal"
   },
   {
     "family": "sessions",
     "name": "runtime_tools",
     "member": "sessions_runtime_tools_crew",
-    "description": "Use the existing sessions runtime tools operation with its current access.",
+    "description": "List the direct tools of your own chat's coding app.",
     "source": "manage_crew_chats",
     "source_action": "tools"
   },
@@ -1392,7 +1431,7 @@
     "family": "sessions",
     "name": "runtime_call",
     "member": "sessions_runtime_call_crew",
-    "description": "Use the existing sessions runtime call operation with its current access.",
+    "description": "Run one direct tool of your own chat's coding app.",
     "source": "manage_crew_chats",
     "source_action": "tool"
   },
@@ -1400,7 +1439,7 @@
     "family": "sessions",
     "name": "compact",
     "member": "sessions_compact_crew",
-    "description": "Compact one of your Crew chats now: its conversation is summarised so the next message costs less.",
+    "description": "Compact one of your project chats now: its conversation is summarised so the next message costs less.",
     "source": "manage_crew_chats",
     "source_action": "compact"
   },
@@ -1408,7 +1447,7 @@
     "family": "sessions",
     "name": "fresh",
     "member": "sessions_fresh_crew",
-    "description": "Start one of your Crew chats fresh: its next message begins a new conversation with a short summary of this one.",
+    "description": "Start one of your project chats fresh: its next message begins a new conversation with a short summary of this one.",
     "source": "manage_crew_chats",
     "source_action": "fresh"
   },
@@ -1456,8 +1495,24 @@
     "family": "sessions",
     "name": "native_resume",
     "member": "sessions_native_resume_crew",
-    "description": "Copy a listed native conversation into an independent private Crew tab with its original account and history. Opening does not start a turn.",
+    "description": "Copy a listed native conversation into an independent private project tab with its original account and history. Opening does not start a turn.",
     "source": "manage_crew_chats",
     "source_action": "native_resume"
+  },
+  {
+    "family": "sessions",
+    "name": "terminal",
+    "member": "sessions_terminal_crew",
+    "description": "Show the command to continue your own Claude chat in your terminal; showing it does not move the chat.",
+    "source": "manage_crew_chats",
+    "source_action": "terminal"
+  },
+  {
+    "family": "sessions",
+    "name": "continue_here",
+    "member": "sessions_continue_here_crew",
+    "description": "Recover your own chat here instead of its terminal copy, superseding the old handoff.",
+    "source": "manage_crew_chats",
+    "source_action": "continue_here"
   }
 ]

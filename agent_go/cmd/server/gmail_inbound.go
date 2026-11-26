@@ -17,7 +17,7 @@ import (
 func userInboxClient(owner string) (services.GmailInboundClient, string, error) {
 	svc := services.GetGmailService()
 	if svc == nil {
-		return services.GmailInboundClient{}, "", fmt.Errorf("Connect Gmail in your project's Vault panel or in chat and choose Use for Crew inboxes")
+		return services.GmailInboundClient{}, "", fmt.Errorf("Connect Gmail in your project's Vault panel or in chat and choose Use for project inboxes")
 	}
 	conn, err := svc.AgentInboxConnection(owner)
 	if err != nil {
@@ -51,8 +51,8 @@ func (api *StreamingAPI) initGmailInbound(router *mux.Router) func() {
 		},
 		Stored: func(ctx context.Context, i gmailinbound.Inbox) error { return api.wakeAgentInboxWatchers(ctx, i) }}
 	api.gmailInbound = service
-	router.HandleFunc("/api/agent-email/inbox", api.agentEmailInboxHTTP).Methods("GET")
-	router.HandleFunc("/api/agent-email/inbox", api.agentEmailInboxEnabledHTTP).Methods("POST")
+	router.HandleFunc("/agent-email/inbox", api.agentEmailInboxHTTP).Methods("GET")
+	router.HandleFunc("/agent-email/inbox", api.agentEmailInboxEnabledHTTP).Methods("POST")
 	ctx, cancel := context.WithCancel(context.Background())
 	// Reconcile Crew receiving settings before workers can use persisted inbox rows.
 	if err := api.syncAgentEmailInboxes(ctx); err != nil {
@@ -92,7 +92,7 @@ func inboundAddress(account, id string) (string, error) {
 	suffix := strings.ReplaceAll(id, "-", "")[:16]
 	local := base + "+agent-" + suffix
 	if len(local) > 64 {
-		return "", fmt.Errorf("Choose a shorter Gmail address in your project's Vault panel or in chat for Crew inboxes")
+		return "", fmt.Errorf("Choose a shorter Gmail address in your project's Vault panel or in chat for project inboxes")
 	}
 	return local + "@" + parts[1], nil
 }

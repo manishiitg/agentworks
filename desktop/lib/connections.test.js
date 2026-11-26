@@ -15,6 +15,13 @@ test('saved remote sessions are available only to the app top frame, never dashb
     { url: 'https://example.com/api/connections/abc/api/events' },
     { url: origin + '/api/auth/me' },
   ]) assert.equal(connectionRequest({ ...request, ...change }, contents, origin), false);
+  // #3807: a socket gets proof only for an account's sign-in window on a connected server.
+  const ws = origin.replace('http:', 'ws:');
+  const signIn = { ...request, resourceType: 'webSocket', url: ws + '/api/connections/abc/api/provider-setup/sessions/s1/stream' };
+  assert.equal(connectionRequest(signIn, contents, origin), true);
+  for (const url of [signIn.url.replace('/stream', ''), ws + '/api/connections/abc/api/events'])
+    assert.equal(connectionRequest({ ...signIn, url }, contents, origin), false);
+  assert.equal(connectionRequest({ ...signIn, frame: { url: frame.url } }, contents, origin), false);
 
   let beforeHeaders;
   installDesktopConnections({ session: { webRequest: { onBeforeSendHeaders: (_, cb) => { beforeHeaders = cb; } } },
@@ -30,7 +37,7 @@ test('saved remote sessions are available only to the app top frame, never dashb
 // PLAT-746-207: a restart must never stamp the retired port or the startup gap.
 test('connection proof follows the live server and is absent during restart', () => {
   let origin = 'http://127.0.0.1:18743', beforeHeaders;
-  const frame = { url: origin + '/crew' }, contents = { id: 4, mainFrame: frame };
+  const frame = { url: origin + '/projects' }, contents = { id: 4, mainFrame: frame };
   installDesktopConnections({ session: { webRequest: { onBeforeSendHeaders: (_, cb) => { beforeHeaders = cb; } } },
     ipcMain: { on() {}, handle() {} }, getWindow: () => ({ webContents: contents }), getOrigin: () => origin, secret: 'app-proof' });
   const request = url => new Promise(resolve => beforeHeaders({ webContentsId: 4, frame, resourceType: 'xhr', url,
@@ -40,7 +47,7 @@ test('connection proof follows the live server and is absent during restart', ()
     assert.equal(await request(retired), 'app-proof');
     origin = null;
     assert.equal(await request(retired), undefined);
-    origin = 'http://127.0.0.1:18744'; frame.url = origin + '/crew';
+    origin = 'http://127.0.0.1:18744'; frame.url = origin + '/projects';
     assert.equal(await request(retired), undefined);
     assert.equal(await request(origin + '/api/desktop-connections'), 'app-proof');
   })();
@@ -118,8 +125,18 @@ test('development window selects connections on Vite and sends proof only to its
   proof = '';
   const stopped = await new Promise(resolve => beforeHeaders({ ...request, url: origin + '/api/desktop-connections' }, resolve));
   assert.equal(stopped.cancel, true);
-  await openConnection(event, 'a'.repeat(32), '/crew/projects/example');
-  assert.equal(loaded, appOrigin + '/crew/projects/example');
+  // #3779: the window stays on this Mac; a server is never opened in it.
+  await assert.rejects(openConnection(event, 'a'.repeat(32), '/projects/example'), /Unknown connection/);
+  // PLAT-746-820: switching to a member copy retains the agent/panel link.
+  await openConnection(event, 'local', '/projects/member-local?view=files&agent=agent-stable');
+  assert.equal(loaded, appOrigin + '/projects/member-local?view=files&agent=agent-stable');
+  // #3749: the start page ('/') must open, or the window stays on another server's connection.
+  await openConnection(event, 'local', '/')
+  assert.equal(loaded, appOrigin + '/');
+  for (const path of ['//example.com/projects', '/projects/../private', '/projects/member-local?redirect=https://example.com']) {
+    await assert.rejects(openConnection(event, 'local', path), /Unknown project/);
+  }
+
 });
 
 // PLAT-856-561: split development never connected the Mac notification stream.
@@ -189,4 +206,18 @@ test('split desktop gets notifications again after its backend restarts with fre
   assert.ok(logs.some(line => line.includes('stream=retry')));
   assert.ok(logs.every(line => !line.includes('local-session-') && !line.includes(proof())));
   stop();
+});
+
+// #3779: a notification for work on a server opens it on that server's website; the window stays on this Mac.
+test('a notification click for a server opens its website, not this window', async () => {
+  const sent = [], loaded = [];
+  const contents = { id: 1, mainFrame: {}, send: (name, value) => sent.push([name, value]) };
+  const api = installDesktopConnections({ session: { webRequest: { onBeforeSendHeaders: () => {} } }, ipcMain: { on: () => {}, handle: () => {} },
+    getWindow: () => ({ webContents: contents, loadURL: async url => { loaded.push(url); } }), getOrigin: () => 'http://127.0.0.1:1', secret: 'proof' });
+  const server = '0123456789abcdef0123456789abcdef';
+  await api.open(server, '/projects/remote-crew?agent=helper');
+  assert.deepEqual(sent, [['open-on-server-website', { connection: server, route: '/projects/remote-crew?agent=helper' }]]);
+  assert.deepEqual(loaded, []);
+  await api.open('local', '/projects/mac-crew');
+  assert.deepEqual(loaded, ['http://127.0.0.1:1/projects/mac-crew']);
 });

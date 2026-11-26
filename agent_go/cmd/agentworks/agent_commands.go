@@ -27,7 +27,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const personCommandHelp = "AgentWorks: /agentworks share publishes this chat's agent to the network (everyone on the server can find and message it; share @LOGIN for a network joined with --also), /agentworks unshare takes it back; /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks attach [NAME] --also LOGIN adds this chat to another network too (send there with NAME@LOGIN); /agentworks detach stops delivery (--from LOGIN leaves only that network); /agentworks auto off|on turns off or on automatic reconnect of a new chat in this folder; /agentworks agents shows available agents. Type the command yourself."
+const personCommandHelp = "AgentWorks: /agentworks share turns on discovery for this chat's agent (everyone on the server can find and message it; share @LOGIN for a network joined with --also), /agentworks unshare turns discovery off; /agentworks attach [NAME] [--on LOGIN] connects or reconnects this chat (--on moves it to another saved login); /agentworks attach [NAME] --also LOGIN adds this chat to another network too (send there with NAME@LOGIN); /agentworks detach stops delivery (--from LOGIN leaves only that network); /agentworks auto off|on turns off or on automatic reconnect of a new chat in this folder; /agentworks agents shows available agents; in Codex, /agentworks team shows your Team. Type the command yourself."
 
 // Reuse the exact session's saved identity and parent login, even when the
 // default CLI login has changed. The person's attach refreshes the process fence.
@@ -75,7 +75,7 @@ func prepareAttachment(ctx context.Context, root string, o *options, req *agentw
 		req.ConfigPath, req.SwitchConnection = o.switchPath, true
 		return nil
 	}
-	req.ConfigPath, err = o.path()
+	_, req.ConfigPath, err = o.connection(false)
 	if err != nil {
 		return err
 	}
@@ -142,6 +142,7 @@ func pluginAgents(ctx context.Context, root string, o *options, req agentworkscl
 
 func agentsCommand(o *options) *cobra.Command {
 	var query string
+	var working, idle bool
 	cmd := &cobra.Command{Use: "agents", Aliases: []string{"agent"}, Args: cobra.NoArgs, Short: "Show agents visible through your authorized connections", RunE: func(cmd *cobra.Command, _ []string) error {
 		root, err := agentworksclient.DefaultLocalBridgeRoot()
 		if err != nil {
@@ -149,13 +150,23 @@ func agentsCommand(o *options) *cobra.Command {
 		}
 		local, _ := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "list"})
 		if o.serverURL == "" && o.configPath == "" && o.getenv("AGENTWORKS_CONFIG") == "" {
-			dirs, _ := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "directories", Query: query})
-			if len(dirs.Directories) > 0 {
-				if o.jsonOutput {
-					return o.output(map[string]any{"directories": dirs.Directories, "local": local.AgentStates})
+			fromChats, _ := agentworksclient.CallLocalBridge(cmd.Context(), root, agentworksclient.LocalBridgeRequest{Action: "directories", Query: query})
+			dirs := agentDirectories(cmd.Context(), query, fromChats.Directories)
+			if len(dirs) > 0 {
+				for i := range dirs {
+					if dirs[i].Error == "" {
+						dirs[i].Agents = filterAgentRosterActivity(dirs[i].Agents, working, idle)
+					}
 				}
-				for _, d := range dirs.Directories {
+				if o.jsonOutput {
+					return o.output(map[string]any{"directories": dirs, "local": local.AgentStates})
+				}
+				for _, d := range dirs {
 					fmt.Fprintln(o.stdout, d.Server+loginLabel(d.Server))
+					if d.Error != "" {
+						fmt.Fprintf(o.stdout, "Could not list agents on this server: %s\n\n", d.Error)
+						continue
+					}
 					fmt.Fprintln(o.stdout, agentRoster(d.Agents, local))
 				}
 				return nil
@@ -169,13 +180,87 @@ func agentsCommand(o *options) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		raw = filterAgentRosterActivity(raw, working, idle)
 		if o.jsonOutput {
 			return o.output(map[string]any{"agents": json.RawMessage(raw), "local": local.AgentStates})
 		}
 		_, err = fmt.Fprintln(o.stdout, agentRoster(raw, local))
 		return err
 	}}
-	cmd.Flags().StringVarP(&query, "query", "q", "", "Find agents by name or purpose")
+	cmd.Flags().StringVarP(&query, "query", "q", "", "Find agents by name, purpose, address or Team (20 rows maximum)")
+	cmd.Flags().BoolVar(&working, "working", false, "Show only agents the server reports as working")
+	cmd.Flags().BoolVar(&idle, "idle", false, "Show only agents the server reports as idle")
+	limit := 0
+	show := &cobra.Command{Use: "show NAME_OR_ADDRESS", Args: cobra.ExactArgs(1), Short: "Read an agent's status and recent messages and tool calls without messaging it", RunE: func(cmd *cobra.Command, args []string) error {
+		client, err := o.client()
+		if err != nil {
+			return err
+		}
+		request := map[string]any{"action": "agent_status", "target": args[0]}
+		if limit > 0 {
+			request["limit"] = limit
+		}
+		raw, err := client.Call(cmd.Context(), "messages", request)
+		if err != nil {
+			return err
+		}
+		if o.jsonOutput {
+			return o.output(json.RawMessage(raw))
+		}
+		var status struct {
+			Agent  map[string]interface{} `json:"agent"`
+			Notice string                 `json:"notice"`
+		}
+		if err := json.Unmarshal(raw, &status); err != nil {
+			return err
+		}
+		roster, _ := json.Marshal(map[string]interface{}{"agents": []any{status.Agent}})
+		fmt.Fprint(o.stdout, agentRoster(roster, agentworksclient.LocalBridgeReply{}))
+		for _, field := range []struct{ key, label string }{{"current_task", "Current task"}, {"current_step", "Current step"}, {"last_messages", "Last message"}, {"replies", "Reply to you"}} {
+			clean := func(value string) string {
+				return strings.Map(func(r rune) rune {
+					if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+						return ' '
+					}
+					return r
+				}, value)
+			}
+			switch value := status.Agent[field.key].(type) {
+			case string:
+				fmt.Fprintf(o.stdout, "%s: %s\n", field.label, clean(value))
+			case []interface{}:
+				for _, line := range value {
+					if text, ok := line.(string); ok {
+						fmt.Fprintf(o.stdout, "%s: %s\n", field.label, clean(text))
+					}
+				}
+			}
+		}
+		// recent: the chat's last messages and tool calls with their results, newest last (#3532).
+		if items, ok := status.Agent["recent"].([]interface{}); ok && len(items) > 0 {
+			fmt.Fprintln(o.stdout, "Recent:")
+			for _, raw := range items {
+				item, _ := raw.(map[string]interface{})
+				role, _ := item["role"].(string)
+				text, _ := item["text"].(string)
+				fmt.Fprintf(o.stdout, "  [%s] %s\n", role, agentShowShort(text))
+				if result, _ := item["result"].(string); result != "" {
+					label := "result"
+					if failed, _ := item["error"].(bool); failed {
+						label = "failed"
+					}
+					fmt.Fprintf(o.stdout, "    %s: %s\n", label, agentShowShort(result))
+				}
+			}
+		}
+		if notice := strings.TrimSpace(status.Notice); notice != "" {
+			fmt.Fprintln(o.stdout, notice)
+		}
+		return nil
+	}}
+	show.Flags().IntVar(&limit, "limit", 0, "How many recent messages and tool calls to show (default 5, at most 50)")
+	cmd.AddCommand(show)
+	cmd.MarkFlagsMutuallyExclusive("working", "idle")
 	return cmd
 }
 
@@ -184,14 +269,25 @@ func agentsCommand(o *options) *cobra.Command {
 func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) string {
 	var data struct {
 		Agents []struct {
-			Name      string `json:"agent_name"`
-			Label     string `json:"label"`
-			ID        string `json:"agent_id"`
-			Provider  string `json:"provider"`
-			Purpose   string `json:"purpose"`
-			Online    bool   `json:"online"`
-			Presence  string `json:"presence"`
-			Published bool   `json:"published"`
+			Name            string `json:"name"`
+			AgentName       string `json:"agent_name"`
+			Address         string `json:"id"`
+			Target          string `json:"target"`
+			Label           string `json:"label"`
+			ID              string `json:"agent_id"`
+			Provider        string `json:"provider"`
+			CLI             string `json:"cli"`
+			ClientBuild     string `json:"client_build"`
+			UpdateNeeded    bool   `json:"update_needed"`
+			Activity        string `json:"activity"`
+			LastActiveLabel string `json:"last_active_label"`
+			ModelID         string `json:"model_id"`
+			Effort          string `json:"reasoning_effort"`
+			Crew            string `json:"crew_name"`
+			Purpose         string `json:"purpose"`
+			Online          bool   `json:"online"`
+			Presence        string `json:"presence"`
+			Published       bool   `json:"published"`
 		} `json:"agents"`
 		Hint   string `json:"hint"`
 		Hosted []struct {
@@ -202,6 +298,24 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 	}
 	if json.Unmarshal(raw, &data) != nil {
 		return "Agent roster unavailable."
+	}
+	for i := range data.Agents {
+		a := &data.Agents[i]
+		if a.Name == "" {
+			a.Name = a.AgentName
+		}
+		if a.Name == "" {
+			a.Name = a.Label
+		}
+		if a.Label == "" {
+			a.Label = a.Name
+		}
+		if a.Address == "" {
+			a.Address = a.Target
+		}
+		if a.Address == "" && a.AgentName != "" {
+			a.Address = "agent:" + a.AgentName
+		}
 	}
 	sort.SliceStable(data.Agents, func(i, j int) bool {
 		if data.Agents[i].Online != data.Agents[j].Online {
@@ -249,18 +363,37 @@ func agentRoster(raw json.RawMessage, local agentworksclient.LocalBridgeReply) s
 		}
 		shared := ""
 		if a.Published {
-			shared = " | published to the network"
+			shared = " | discoverable on the network"
 		}
-		fmt.Fprintf(&b, "%s | agent:%s | %s | %s | %s%s | %s%s\n", clean(a.Label), clean(a.Name), clean(a.Provider), presence, route, detail, clean(a.Purpose), shared)
+		fmt.Fprintf(&b, "%s | %s | %s | %s | %s%s | %s%s\n", clean(a.Label), a.Address, clean(firstAgentRosterValue(a.CLI, a.Provider)), clean(a.Activity)+" | "+presence, route, detail, clean(a.Purpose), shared)
+		var info []string
+		if a.ClientBuild != "" {
+			helper := "AgentWorks " + clean(a.ClientBuild)
+			if a.UpdateNeeded {
+				helper += " · Update needed"
+			}
+			info = append(info, helper)
+		}
+		if a.LastActiveLabel != "" {
+			info = append(info, clean(a.LastActiveLabel))
+		}
+		for _, field := range []struct{ label, value string }{{"Model", a.ModelID}, {"Effort", a.Effort}, {"Project", a.Crew}} {
+			if field.value != "" {
+				info = append(info, field.label+": "+clean(field.value))
+			}
+		}
+		if len(info) > 0 {
+			fmt.Fprintf(&b, "  %s\n", strings.Join(info, " | "))
+		}
 	}
 	if len(data.Agents) == 0 {
 		b.WriteString("No registered agents.\n")
 	}
 	if data.Hint != "" {
-		b.WriteString(clean(data.Hint) + "\n")
+		b.WriteString(data.Hint + "\n")
 	}
 	if len(data.Hosted) > 0 {
-		b.WriteString("\nChats inside AgentWorks (they can't receive messages yet):\n")
+		b.WriteString("\nChats inside AgentWorks:\n")
 		for _, h := range data.Hosted {
 			fmt.Fprintf(&b, "agent:%s | %s | %s\n", clean(h.Name), clean(h.Display), clean(h.Why))
 		}
@@ -533,6 +666,9 @@ func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chos
 	if chosen.host == "" {
 		return errors.New("cannot verify the provider process")
 	}
+	if handled, err := returnTerminalChat(ctx, o, chosen); handled {
+		return err
+	}
 	if installPlugin && chosen.provider != "pi" {
 		if err = installAgentPlugin(ctx, o, chosen.provider); err != nil {
 			return err
@@ -572,7 +708,7 @@ func attachLiveAgentWithSetup(ctx context.Context, o *options, root string, chos
 		fmt.Fprintln(o.stderr, "Warning:", out.Warning)
 	}
 	if !installPlugin && !out.NativeDelivery && o.switchPath == "" {
-		fmt.Fprintf(o.stdout, "AgentWorks attached as agent:%s. Native delivery is unavailable; use the CLI inbox for recovery. No plugin was installed.\n", out.Attachment.AgentName)
+		fmt.Fprintf(o.stdout, "AgentWorks attached as agent:%s%s. Native delivery is unavailable; use the CLI inbox for recovery. No plugin was installed.\n", out.Attachment.AgentName, attachedWhere(out.OwnServer))
 		if reason := nativeRouteReason(); reason != "" && chosen.provider == "codex" {
 			fmt.Fprintf(o.stdout, "Live delivery was not selected because: %s\n", reason) // PLAT-874: say why, not only that
 		}
@@ -743,7 +879,15 @@ func installAgentPlugin(ctx context.Context, o *options, provider string) error 
 		scope = "user"
 	}
 	steps := [][]string{{"plugin", "marketplace", "add", "manishiitg/agentworks-plugins", "--scope", scope}, {"plugin", "install", "agentworks@agentworks", "--scope", scope}}
-	return runPluginSteps(ctx, o, provider, steps)
+	if err := runPluginSteps(ctx, o, provider, steps); err != nil {
+		return err
+	}
+	// Only setup/update owns cleanup. An interactive own-chat attach must not
+	// reconcile any other project's plugin copies.
+	if !o.setupAll {
+		return nil
+	}
+	return finishClaudePluginSetup(ctx, o, home, claudeFullPlugin, scope)
 }
 
 func installMusePlugin(ctx context.Context, o *options) error {
@@ -1228,11 +1372,11 @@ func loginLabel(server string) string {
 // which a coding agent may do for its own exact session when the person asked.
 func shareCommand(o *options, unshare bool) *cobra.Command {
 	var agent string
-	use, short := "share [@LOGIN]", "Publish an agent to the network (everyone on the server can find and message it)"
+	use, short := "share [@LOGIN]", "Turn on discovery for an agent (everyone on the server can find and message it)"
 	if unshare {
-		use, short = "unshare [@LOGIN]", "Take an agent back from the network (only you and your agents can reach it)"
+		use, short = "unshare [@LOGIN]", "Turn off discovery for an agent (only you and your agents can reach it)"
 	}
-	cmd := &cobra.Command{Use: use, Args: cobra.MaximumNArgs(1), Short: short, Long: "An agent is connected (reachable only by you and your own agents) or published to the network (everyone on the server can find and message it). Messages from other people's agents arrive marked as untrusted. @LOGIN acts on a network this chat joined with --also.", RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: use, Args: cobra.MaximumNArgs(1), Short: short, Long: "An agent is connected (reachable only by you and your own agents) or discoverable on the network (everyone on the server can find and message it). Messages from other people's agents arrive marked as untrusted. @LOGIN acts on a network this chat joined with --also.", RunE: func(cmd *cobra.Command, args []string) error {
 		network := ""
 		if len(args) == 1 {
 			var ok bool
@@ -1312,12 +1456,12 @@ func shareResultText(raw json.RawMessage) string {
 	}
 	switch data.State {
 	case "published":
-		return fmt.Sprintf("agent:%s is published to the network. Everyone on the server can find and message it; their messages arrive marked as untrusted.", data.Agent)
+		return fmt.Sprintf("Discovery is on for agent:%s. Everyone on the server can find and message it; their messages arrive marked as untrusted.", data.Agent)
 	case "unpublished":
 		if !data.WasPublished {
-			return fmt.Sprintf("agent:%s was not published.", data.Agent)
+			return fmt.Sprintf("Discovery was already off for agent:%s.", data.Agent)
 		}
-		return fmt.Sprintf("agent:%s is no longer published. Only you and your own agents can reach it.", data.Agent)
+		return fmt.Sprintf("Discovery is off for agent:%s. Only you and your own agents can reach it.", data.Agent)
 	}
 	return "AgentWorks sent back an unexpected result, so this may not have changed anything. Check with /agentworks agents."
 }
@@ -1451,4 +1595,64 @@ func bridgeCallOnce(ctx context.Context, root string, o *options, req agentworks
 		return out, errors.New("The AgentWorks helper is not running and could not be started. Run agentworks update, then try again.")
 	}
 	return agentworksclient.CallLocalBridge(ctx, root, req)
+}
+
+func firstAgentRosterValue(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+// Filters consume only the server's state, never a local heuristic about
+// message delivery. Waiting and offline agents are not counted as idle.
+func filterAgentRosterActivity(raw json.RawMessage, working, idle bool) json.RawMessage {
+	if !working && !idle {
+		return raw
+	}
+	var directory map[string]json.RawMessage
+	if json.Unmarshal(raw, &directory) != nil {
+		return raw
+	}
+	var rows []map[string]json.RawMessage
+	if json.Unmarshal(directory["agents"], &rows) != nil {
+		return raw
+	}
+	kept := make([]map[string]json.RawMessage, 0, len(rows))
+	for _, row := range rows {
+		var activity string
+		_ = json.Unmarshal(row["activity"], &activity)
+		if working && activity == "Working" || idle && activity == "Idle" {
+			kept = append(kept, row)
+		}
+	}
+	directory["agents"], _ = json.Marshal(kept)
+	// Hosted hints are not agent rows and carry no server activity state.
+	delete(directory, "chats_inside_agentworks")
+	encoded, err := json.Marshal(directory)
+	if err != nil {
+		return raw
+	}
+	return encoded
+}
+
+// agentShowLine keeps one recent item on one terminal line: control characters become spaces.
+// agentShowShort keeps a Recent line readable; --json returns the full text.
+func agentShowShort(value string) string {
+	line := []rune(agentShowLine(value))
+	if len(line) <= 200 {
+		return string(line)
+	}
+	return strings.TrimSpace(string(line[:200])) + "..."
+}
+
+func agentShowLine(value string) string {
+	return strings.Join(strings.Fields(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return ' '
+		}
+		return r
+	}, value)), " ")
 }

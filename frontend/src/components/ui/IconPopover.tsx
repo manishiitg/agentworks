@@ -4,7 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip'
 
 /** Shared styling for the compact icon buttons used across the top bar. */
 export const iconButtonClass =
-  'p-1.5 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors'
+  'p-1.5 rounded-md text-muted-foreground  hover:bg-muted  hover:text-foreground  transition-colors'
 
 interface IconPopoverProps {
   icon: React.ReactNode
@@ -70,7 +70,7 @@ export default function IconPopover({
             onClick={() => setOpen(prev => !prev)}
             aria-label={label}
             aria-expanded={open}
-            className={`relative ${iconButtonClass} ${open ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200' : ''}`}
+            className={`relative ${iconButtonClass} ${open ? 'bg-muted text-foreground  ' : ''}`}
           >
             {icon}
             <ProductNavigationLabel>{navigationLabel || label}</ProductNavigationLabel>
@@ -82,7 +82,8 @@ export default function IconPopover({
 
       {open && (
         <div
-          className={`absolute ${sidebar ? 'left-[calc(100%+12px)] bottom-0' : `${align === 'right' ? 'right-0' : 'left-0'} top-full mt-2`} ${panelClassName} max-w-[calc(100vw-5rem)] max-h-[75vh] overflow-y-auto rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl z-[60] p-3`}
+          data-theme-surface="popover"
+          className={`absolute ${sidebar ? 'left-[calc(100%+12px)] bottom-0' : `${align === 'right' ? 'right-0' : 'left-0'} top-full mt-2`} ${panelClassName} max-w-[calc(100vw-5rem)] max-h-[75vh] overflow-y-auto rounded-lg border border-border  bg-surface-popover shadow-xl z-[60] p-3`}
         >
           {typeof children === 'function' ? children(() => setOpen(false)) : children}
         </div>

@@ -73,7 +73,7 @@ func TestBuildAttachedFoldersPrompt(t *testing.T) {
 		t.Fatalf("empty prompt section = %q", empty)
 	}
 	withGrants := BuildAttachedFoldersPrompt([]FolderGrant{
-		{ID: "1", Alias: "proj", Access: AccessReadWrite},
+		{ID: "1", Alias: "proj", Path: t.TempDir(), Access: AccessReadWrite},
 	})
 	if !strings.Contains(withGrants, "**proj**") || !strings.Contains(withGrants, "$WORK_FOLDER_PROJ") {
 		t.Fatalf("grant prompt section = %q", withGrants)
@@ -132,5 +132,37 @@ func TestNormalizeRootsDropsUnusable(t *testing.T) {
 	roots := NormalizeRoots([]string{root, filepath.Join(root, "missing"), "relative", ""})
 	if len(roots) != 1 {
 		t.Fatalf("expected only the live root, got %v", roots)
+	}
+}
+
+// #2825: one old private runtime grant must not contaminate every new turn.
+func TestAttachedFoldersRejectRuntimeAndDropStalePaths(t *testing.T) {
+	root := t.TempDir()
+	runtime := filepath.Join(root, "slots", "state", "slot01", "cli-runtimes", "v1", "old-chat")
+	if err := os.MkdirAll(runtime, 0700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "friendly")
+	if err := os.Symlink(runtime, alias); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{runtime, alias} {
+		if _, err := ValidateGrantForUser(path, "runtime", AccessReadWrite, []string{root}, true); err == nil {
+			t.Fatalf("internal attachment accepted: %s", path)
+		}
+	}
+	work := t.TempDir()
+	stale := filepath.Join(root, "deleted")
+	grants := []FolderGrant{{Alias: "runtime", Path: runtime, Access: AccessReadWrite}, {Alias: "stale", Path: stale, Access: AccessReadWrite}, {Alias: "work", Path: work, Access: AccessReadWrite}}
+	read, write, _, env := ResolveGrants(grants)
+	if len(read) != 1 || len(write) != 1 || write[0] != work || len(env) != 1 {
+		t.Fatalf("stale/internal grant escaped: %v %v %v", read, write, env)
+	}
+	if err := os.Mkdir(stale, 0700); err != nil {
+		t.Fatal(err)
+	}
+	_, write, _, _ = ResolveGrants(grants)
+	if len(write) != 2 {
+		t.Fatal("next turn did not recompute existing folders")
 	}
 }

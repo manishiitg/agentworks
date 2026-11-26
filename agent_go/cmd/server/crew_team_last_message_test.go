@@ -1,0 +1,169 @@
+package server
+
+import (
+	"encoding/json"
+	storeEvents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	agentevents "github.com/manishiitg/mcpagent/events"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+)
+
+// PLAT-746-926: cached Mac metadata must not bypass a current Only-me/Hidden
+// choice; tool output and index rewrites must not become message previews.
+func TestCrewTeamLastMessageRequiresLiveSharedChat(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	newExternalCrewCommandFixture(t)
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"other": {"live": true, "hidden": true, "private": false, "unknown": true, "terminal-private": true, "terminal-live": true}})}
+	preview := crewTeamMessagePreview{Typing: true, LastMessage: "Visible update", LastMessageAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	person := crewTeamAgentsPerson{UserID: "other", Name: "Colleague"}
+	for id, agent := range team.Agents {
+		switch agent.Tab {
+		case "hidden":
+			agent.Rule.ChatShare = crewChatShareAgent
+		case "unknown":
+			agent.Rule.ChatShare = "unknown"
+		case "terminal-private":
+			agent.Kind = "terminal"
+			agent.Rule.ChatShare = crewChatShareAgent
+		case "terminal-live":
+			agent.Kind = "terminal"
+		}
+		team.Agents[id] = agent
+		person.Agents = append(person.Agents, crewTeamAgent{ID: id, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Tab, Place: "mac", InTeam: agent.InTeam, Activity: "running", lastMessage: preview})
+	}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+
+	live := crewTeamLiveFor(t.Context(), team, []crewTeamAgentsPerson{person}, "owner")
+	seen := false
+	for _, row := range live.Agents {
+		if row.Tab == "live" {
+			seen = row.LastMessage == preview.LastMessage && row.LastMessageAt == preview.LastMessageAt && row.Typing
+		} else if row.LastMessage != "" || row.LastMessageAt != "" || row.Typing {
+			t.Fatal("private/hidden/unknown chat metadata leaked")
+		}
+	}
+
+	// A terminal or Hidden chat shows only its explicit Team posts: its newest decision
+	// or the task it is doing (request threads, #2965), never chat text or typing.
+	posts := crewTeamActivityPostsFor(team, "owner")
+	for _, agent := range person.Agents {
+		registered := team.Agents[agent.ID]
+		switch registered.Tab {
+		case "terminal-private":
+			posts.Decisions = append(posts.Decisions, crewTeamActivityPost{Kind: "decision", Line: "Explicit Team decision", AgentID: agent.ID, OwnerID: "other", At: time.Now().UTC()})
+		case "hidden":
+			posts.Doing[agent.ID] = crewTeamActivityPost{Kind: "doing", Line: "Reviewing the shared result", AgentID: agent.ID, OwnerID: "other", At: time.Now().UTC()}
+		}
+	}
+	reader := crewTeamAgentMessagePreviews(t.Context(), team, posts)
+	for _, agent := range person.Agents {
+		got := reader("other", agent)
+		switch team.Agents[agent.ID].Tab {
+		case "terminal-private":
+			if got.LastMessage != "Explicit Team decision" || got.Typing {
+				t.Fatal("terminal preview exposed native text/typing or lost explicit post")
+			}
+		case "hidden":
+			if got.LastMessage != "Reviewing the shared result" || got.Typing {
+				t.Fatal("answers-only did not show Doing without private text/typing")
+			}
+		}
+	}
+	for _, agent := range person.Agents {
+		forged := agent
+		forged.ChatKey = "forged"
+		if got := reader("other", forged); got.LastMessage != "" || got.Typing {
+			t.Fatal("chat-key mismatch exposed a preview")
+		}
+	}
+	leaver := team
+	leaver.People = nil
+	for _, agent := range person.Agents {
+		if got := crewTeamAgentMessagePreviews(t.Context(), leaver, posts)("other", agent); got.LastMessage != "" || got.Typing {
+			t.Fatal("removed member retained live text")
+		}
+	}
+	off := team
+	off.On = false
+	if got := crewTeamLiveFor(t.Context(), off, []crewTeamAgentsPerson{person}, "owner"); len(got.Agents) > 0 {
+		for _, row := range got.Agents {
+			if row.LastMessage != "" || row.Typing {
+				t.Fatal("Team-off retained preview")
+			}
+		}
+	}
+	if !seen {
+		t.Fatal("current Live shared chat preview was not shown")
+	}
+	raw, _ := json.Marshal(live)
+	if strings.Contains(string(raw), `"name":"private"`) {
+		t.Fatal("Only-me agent leaked")
+	}
+	if got := crewTeamMessageLine("example-schedule · update\n\nStarting the check"); got != "Starting the check" {
+		t.Fatalf("scheduled preview repeated its title/kind: %q", got)
+	}
+	now := time.Now().UTC()
+	history := []llmtypes.MessageContent{{Role: llmtypes.ChatMessageType("user"), Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "Hello\n  there API_KEY=fixture-key-value"}}}}
+	updated := crewTeamMessagePreviewUpdate(ChatHistorySession{}, chatHistoryPreviewMessages(history), history, now)
+	if updated.LastMessageAt == "" || strings.Contains(updated.LastMessage, "fixture-key-value") || strings.Contains(updated.LastMessage, "\n") {
+		t.Fatal("message timestamp/redaction/one-line rule failed")
+	}
+	previous := ChatHistorySession{PreviewMessages: chatHistoryPreviewMessages(history), LastMessageAt: updated.LastMessageAt}
+	history = append(history, llmtypes.MessageContent{Role: llmtypes.ChatMessageType("tool"), Parts: []llmtypes.ContentPart{llmtypes.TextContent{Text: "private tool output"}}})
+	unchanged := crewTeamMessagePreviewUpdate(previous, chatHistoryPreviewMessages(history), history, now.Add(time.Hour))
+	if unchanged.LastMessageAt != updated.LastMessageAt || strings.Contains(unchanged.LastMessage, "tool output") {
+		t.Fatal("tool-only rewrite changed last visible message")
+	}
+	old := previous
+	old.LastMessageAt = ""
+	if got := crewTeamMessagePreviewUpdate(old, chatHistoryPreviewMessages(history), history, now); got.LastMessageAt != "" {
+		t.Fatal("old preview invented a timestamp")
+	}
+	if len([]rune(crewTeamMessageLine(strings.Repeat("界", 100)))) > 80 {
+		t.Fatal("preview exceeded Unicode character limit")
+	}
+	// A real disk-index refresh reparses the transcript without these fields.
+	// It must not erase metadata that the turn-save writer already stamped.
+	file := localChatHistoryFile{workspacePath: "_system/crew-data/team/builder/conversation/2026-11-13/main-conversation.json", sessionID: "code:project:team", size: 42, modTime: now.Add(time.Hour)}
+	parsed := ChatHistorySession{SessionID: file.sessionID, PreviewMessages: previous.PreviewMessages}
+	index := newChatHistoryIndex()
+	index.Entries[file.workspacePath] = chatHistoryIndexEntry{Session: ChatHistorySession{SessionID: file.sessionID, PreviewMessages: previous.PreviewMessages, LastMessage: updated.LastMessage, LastMessageAt: updated.LastMessageAt}}
+	putLocalChatHistoryIndexEntry(&index, file, parsed)
+	saved := index.Entries[file.workspacePath].Session
+	if saved.LastMessage != updated.LastMessage || saved.LastMessageAt != updated.LastMessageAt {
+		t.Fatal("disk refresh erased the turn writer's preview or clock")
+	}
+	parsed.PreviewMessages = nil
+	putLocalChatHistoryIndexEntry(&index, file, parsed)
+	if saved := index.Entries[file.workspacePath].Session; saved.LastMessage != "" || saved.LastMessageAt != "" {
+		t.Fatal("changed or old content reused a saved preview or invented a clock")
+	}
+
+}
+
+// The one-line monitor must use visible assistant content, not a terminal frame,
+// tool payload, reasoning stream or child agent. Split deltas redact as one text.
+func TestCrewTeamStreamingPreviewExcludesNonChatContent(t *testing.T) {
+	now := time.Now().UTC()
+	chunk := func(text, source string, delta, tool bool, level int) storeEvents.Event {
+		return storeEvents.Event{Type: "streaming_chunk", Timestamp: now, Data: &agentevents.AgentEvent{HierarchyLevel: level, Data: &agentevents.StreamingChunkEvent{Content: text, Source: source, IsDelta: delta, IsToolCall: tool}}}
+	}
+	rows := []storeEvents.Event{chunk("Checking the page API_", "content", true, false, 0), chunk("KEY=fixture-secret-value", "content", true, false, 0)}
+	for _, row := range []storeEvents.Event{chunk("terminal private", "terminal", false, false, 0), chunk("tool private", "content", false, true, 0), chunk("thinking private", "reasoning", false, false, 0), chunk("child private", "content", false, false, 1)} {
+		rows = append(rows, row)
+	}
+	got := crewTeamStreamingPreview(rows)
+	if !got.Typing || !strings.HasPrefix(got.LastMessage, "Checking the page") || strings.Contains(got.LastMessage, "fixture-secret-value") || strings.Contains(got.LastMessage, "private") {
+		t.Fatalf("unsafe or missing visible preview: %+v", got)
+	}
+	rows = append(rows, storeEvents.Event{Type: "tool_call_start", Data: &agentevents.AgentEvent{}})
+	if crewTeamStreamingPreview(rows).Typing {
+		t.Fatal("tool execution falsely says typing")
+	}
+}

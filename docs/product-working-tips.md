@@ -15,7 +15,7 @@ ui:
       text: 'Open another chat with Alt+Shift+T.'
       skip_if_used: chat-tab-new
       when: {code_tabs: {max: 1}}
-    - id: toolbar-hide
+    - id: reminders
 ```
 
 Shared text lives in `agent_go/pkg/agentprofiles/working_tips.yaml`; products

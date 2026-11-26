@@ -57,40 +57,8 @@ func TestExternalGuardedWriteOverMCPSeparateVolume(t *testing.T) {
 		}
 	}
 
-	// Relay co-owners can edit source, memory and local skills with their existing
-	// consent. No additional file permission is issued or attached to this client.
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["relays"]}]}`)
-	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other","owner"]}}`)
-	relayClaims := writeTestClaims("owner")
-	relayClaims.AccessToken.Scopes = []string{"workflows:read", "files:read", "runs:execute", "relays:write"}
-	relaySrv := serveExternalMCP(t, f.api, relayClaims)
-	relayClient := dialExternalMCP(t, ctx, relaySrv.URL)
-	initializeExternalMCP(t, ctx, relayClient)
-	for _, p := range []string{"relay.py", "MEMORY.md", "skills/check/SKILL.md"} {
-		result := callRemoteTool(t, ctx, relayClient, "call_tool", map[string]any{"name": "files", "arguments": map[string]any{"action": "write", "workflow_id": "invoices", "path": p, "content": "saved", "expected_revision": "missing", "request_id": "relay-" + p}})
-		requireRemoteSuccess(t, result, p)
-		if f.read(t, "Workflow/invoices/"+p) != "saved" {
-			t.Fatal("Relay file missing", p)
-		}
-	}
-	// An old editor entry grants Run access, not Builder access.
-	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["other"],"readers":["owner"]}}`)
-	projectDenied := callRemoteTool(t, ctx, relayClient, "call_tool", map[string]any{"name": "files", "arguments": map[string]any{"action": "write", "workflow_id": "invoices", "path": "docs/reader.md", "content": "denied", "expected_revision": "missing", "request_id": "reader"}})
-	if !projectDenied.IsError {
-		t.Fatal("project downgrade retained file write access")
-	}
-	f.write(t, "Workflow/invoices/workflow.json", `{"id":"invoices","kind":"relay","access":{"owners":["owner"]}}`)
-	// The same connected app loses editing rights as soon as the user's role changes.
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"viewer","products":["relays"]}]}`)
-	// A changed account role invalidates the retained MCP session. Reinitialize
-	// to prove the write is refused by current authoring rules as well.
-	currentClient := dialExternalMCP(t, ctx, relaySrv.URL)
-	initializeExternalMCP(t, ctx, currentClient)
-	denied := callRemoteTool(t, ctx, currentClient, "call_tool", map[string]any{"name": "files", "arguments": map[string]any{"action": "write", "workflow_id": "invoices", "path": "docs/revoked.md", "content": "denied", "expected_revision": "missing", "request_id": "revoked"}})
-	if !denied.IsError {
-		t.Fatal("role downgrade retained file write access")
-	}
 }
+
 func TestExternalWritesRequireScopeLiveRoleAndWorkflowGrant(t *testing.T) {
 	f := newExternalToolsFixture(t)
 	t.Setenv("AGENTWORKS_MCP_BUILDER_ENABLED", "true")

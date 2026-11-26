@@ -15,11 +15,10 @@ The reference covers both paths using available capabilities; it prescribes no v
 
 Read `builder-reference/references/dashboard-authoring.md` with read_skill
 before choosing components, authoring index.tsx, previewing or publishing.
-It is the same canonical authoring procedure as panel-dashboard in Crew and
-Relay Builders. It owns the TSX contract, shared shadcn/Recharts components, default theme, design workflow
+It is the same canonical authoring procedure as panel-dashboard in Crew. It owns the TSX contract, shared shadcn/Recharts components, default theme, design workflow
 and shared widget/API examples. Use dashboard action=catalog for the current
-component contracts. The sections below cover this Goal's own report data and
-runtime; a dashboard edit does not authorize plan or execution changes.
+component contracts. The sections below cover this project's own report data and
+runtime; a dashboard edit does not authorize workflow source or execution changes.
 
 ### HTML page contract
 
@@ -121,7 +120,7 @@ runtime; a dashboard edit does not authorize plan or execution changes.
 
 ## Optional native chat widgets
 
-In a managed Crew or workflow<!-- product:relays --> or Flow<!-- /product --> dashboard, the designer may add an open
+In a managed project or workflow<!-- product:relays --> or Flow<!-- /product --> dashboard, the designer may add an open
 chat panel, a button, or both. Choose the placement, size, label, visibility and
 responsive layout in the dashboard's HTML/CSS. There is no required sidebar.
 For example (dimensions are only an example):
@@ -173,7 +172,7 @@ panel, to make the chat light or dark whatever the app's own mode is. Add
 `data-report-chat-fit="viewport"` to a panel to keep it inside the visible window so its
 composer never sits below the fold.
 
-Crew includes projects formerly called Code. Both use these same widgets and
+Project includes projects formerly called Code. Both use these same widgets and
 the signed-in person’s existing project conversation; Run access stays in Run
 mode. Keep the project identity returned by discovery; do not convert it to
 another origin. Preview has no conversation: `chat.available` is false. Check
@@ -250,8 +249,7 @@ either function, and no declaration step is needed first:
 
 Dashboard-owned approval buttons are supported: update an existing business row
 (an email's `status`, an audit finding's approval), then optionally offer a
-scoped agent request using `sendChatMessage` below. Do not edit `report_human_inputs` through the business-field write API or
-invent a duplicate platform decision store.
+scoped agent request using `sendChatMessage` below.
 
 ### Live data from a script: `window.report.run`
 
@@ -263,7 +261,7 @@ run stored. Anyone who can open the workflow — owner or read-only — can
 trigger it. The workspace selects MCP servers/tools, secrets (`$SECRET_*`) and
 variables (`$VAR_*`); the authenticated viewer's live MCP<!-- product:mcp-gateway -->/Vault<!-- /product --> permissions
 still govern access. Viewing a workspace does not grant credentials.
-The same runner supports Workflow/Goals, <!-- product:relays -->Flows, <!-- /product -->Crew
+The same runner supports Workflow/Goals, <!-- product:relays -->Flows, <!-- /product -->Project
 project roots. Published static copies cannot run scripts.
 
 The script contract:
@@ -335,15 +333,14 @@ for real).
 
 ### Sending a Dashboard request to the workflow agent
 
-When choosing between a business approval, an AgentWorks decision, a blocking
-checkpoint, and an agent request, read
+When choosing between a business approval, a blocking checkpoint, and an agent
+request, read
 `read_skill(skills=[{"name":"builder-reference","path":"references/human-in-the-loop.md"}])`.
 The API details below implement the Dashboard-to-chat pattern.
 
 `await window.report.sendChatMessage(message, { requestId })` sends directly
 from the Dashboard action, without a second popup or chat-choice step. The app
-uses the same workflow-scoped chat queue as the human-decision panel's
-**Ask in chat**: reuse an interactive chat,
+uses the workflow-scoped chat queue: reuse an interactive chat,
 queue behind its running foreground turn, or create a chat if none exists.
 Scheduled/view-only/bot tabs are excluded. This sends a conversational request;
 it does not directly execute a route or trigger the scheduler.
@@ -413,13 +410,12 @@ variables is invisible to it — prefer literal paths, or verify those yourself.
 
 ### Builder and Run boundaries
 
-The Crew's Builder owns Dashboard authoring and may create or edit `db/reports/index.html`.
+The project's Builder owns Dashboard authoring and may create or edit `db/reports/index.html`.
 Keep Dashboard-only changes presentational unless the user also asked to change
 workflow behavior or evaluation. Run mode never authors Dashboard pages; it only
 produces the durable data those pages read.
 
-Platform human-decision lifecycles stay in AgentWorks panel and chat. A Dashboard
-can expose its own business approval buttons using `updateField`/`updateFields`
+A Dashboard can expose its own business approval buttons using `updateField`/`updateFields`
 and hand a specific request to the workflow agent using `sendChatMessage`.
 See "Writing back" and "Sending a Dashboard request" above.
 
@@ -504,7 +500,7 @@ window.report.ready(async function () {
 
 ## Function buttons
 
-In a managed Crew or workflow dashboard, a button can open a native form for one
+In a managed project or workflow dashboard, a button can open a native form for one
 of this project's published functions. Mark it with the function's name:
 
 ```html
@@ -514,17 +510,18 @@ of this project's published functions. Mark it with the function's name:
 
 The host shows a form built from the function's input schema, with the optional
 `data-report-action-defaults` JSON (an object) pre-filled and editable. The
-person presses Run; it runs as the signed-in person and shows the result in the
-dialog. The page cannot run a function itself: there is no script method, only
+person presses Run; the request is attributed to them and the declared Action
+uses its configured owner execution access. The dialog shows the result; the
+caller does not acquire those credentials. The page cannot run a function itself: there is no script method, only
 the person's click and Run. The function must be one the signed-in person can
 already use in this project (the owner's published functions); a button naming
 anything else shows that it is unavailable. Button text, placement and styling
-are the designer's choice. Both Crew project origins and workflow dashboards
+are the designer's choice. Both project project origins and workflow dashboards
 support these buttons. The chat’s `/` menu lists the same published functions.
 Current project access and each function’s allowed people are checked by the
-server when called.<!-- product:relays --> Flow dashboards have no function buttons yet.<!-- /product -->
+server when called.
 
 
 Dashboard `sendChatMessage(message, {requestId})` uses the current person's normal project chat, including standalone links and shared recipients. It does not select a workflow Builder tab by a path. A queued receipt is acceptance, not a finished action: show progress/results from the existing chat, function call or data refresh. Ask widgets and direct message buttons use the same conversation. Keep placement and appearance in the designer's control.
 
-Relay `FunctionButton` uses its active published version and input schema (the object argument is normally named `INPUT`). New draft code or function declarations do not change the shared form until published. Existing sharing and live function checks still decide who can call; a removed share stops access. Use the current function catalog rather than inventing a function or a second Python runner.
+An Action button uses the current callable definition and declared input contract. A draft dashboard is not a new publication or an access grant; current sharing/function checks still decide who can call. Use the returned function catalog rather than inventing another runner.

@@ -22,6 +22,9 @@ var imageAttachment = regexp.MustCompile(`(?i)\.(png|jpe?g|gif|webp|bmp|avif)$`)
 func userMessageAttachments(content string) []map[string]string {
 	seen := map[string]bool{}
 	var out []map[string]string
+	// A message with no text starts with its line once the session notice is removed, so the line has no blank line in
+	// front of it; an image sent alone showed as an empty bubble.
+	content = "\n\n" + strings.TrimSpace(stripSessionMode(content))
 	// Messages joined into one turn each keep their own line.
 	for _, section := range strings.Split(content, filesInContextMarker)[1:] {
 		line, _, _ := strings.Cut(section, "\n")
@@ -73,7 +76,7 @@ func crewAttachedFilesNotice(crewFolder, query string) string {
 	if len(lines) == 0 {
 		return ""
 	}
-	return sessionModeOpen + "\nWhere the files in this message are on this computer. Native file tools and terminal commands use these full paths; workspace tools keep the Crew paths.\n" +
+	return sessionModeOpen + "\nWhere the files in this message are on this computer. Native file tools and terminal commands use these full paths; workspace tools keep the project paths.\n" +
 		strings.Join(lines, "\n") + "\n" + sessionModeClose
 }
 

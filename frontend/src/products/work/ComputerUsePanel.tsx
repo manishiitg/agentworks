@@ -63,11 +63,11 @@ export function ComputerUsePanel({ projectId }: { projectId: string }) {
   ]
   const ready = status?.installed && (status.platform !== 'darwin' || permissionRows.every(({ state }) => state === 'granted' || state === 'not_required'))
   return <section aria-label="Computer use" className="w-full min-w-0 space-y-4 text-sm">
-    <p className="text-muted-foreground">Give this Crew control of this computer, including apps, Terminal and clipboard.</p>
+    <p className="text-muted-foreground">Give this project control of this computer, including apps, Terminal and clipboard.</p>
     {error && <p role="alert" className="text-destructive">{error} <button className="underline" onClick={() => setRevision(value => value + 1)}>Retry</button></p>}
     {!status && !error && <p role="status">Checking Computer use…</p>}
     {status && <div className="space-y-4">
-      <div className="flex items-center gap-3"><MonitorCog aria-hidden="true" className="h-5 w-5 text-muted-foreground"/><div className="min-w-0 flex-1"><p className="font-medium">This computer</p><p role="status" className="text-xs text-muted-foreground">{status.active ? 'Desktop action running' : !status.installed ? 'Needs setup' : !ready ? 'Needs permission' : status.enabled ? 'Ready' : 'Off for this Crew'}</p></div>
+      <div className="flex items-center gap-3"><MonitorCog aria-hidden="true" className="h-5 w-5 text-muted-foreground"/><div className="min-w-0 flex-1"><p className="font-medium">This computer</p><p role="status" className="text-xs text-muted-foreground">{status.active ? 'Desktop action running' : !status.installed ? 'Needs setup' : !ready ? 'Needs permission' : status.enabled ? 'Ready' : 'Off for this project'}</p></div>
         {status.installed && <button type="button" role="switch" aria-label="Enable computer use" aria-checked={status.enabled} disabled={busy} onClick={() => void run(status.enabled ? 'disable' : 'enable')} className={`relative h-6 w-10 shrink-0 rounded-full transition-colors disabled:opacity-50 ${status.enabled ? 'bg-primary' : 'bg-muted'}`}><span className={`absolute top-1 h-4 w-4 rounded-full bg-foreground transition-transform ${status.enabled ? 'left-5' : 'left-1'}`}/></button>}
       </div>
       {status.installed && status.platform === 'darwin' && <dl className="space-y-2 border-t border-border pt-3" aria-label="Computer permissions">
@@ -88,7 +88,7 @@ export function ComputerUsePanel({ projectId }: { projectId: string }) {
     <details className="text-xs text-muted-foreground">
       <summary className="cursor-pointer">About computer use</summary>
       <div className="mt-2 space-y-2">
-        <p>Only you can use this Crew’s computer control, including from your phone or website chat.</p>
+        <p>Only you can use this project’s computer control, including from your phone or website chat.</p>
         <p>App content goes to your AI provider. Screenshots stay in private chat storage.</p>
         {status?.platform === 'darwin' && <p>macOS permissions apply to the app named in the permission guide and processes it starts.</p>}
       </div>

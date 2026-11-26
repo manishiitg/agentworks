@@ -1,3 +1,4 @@
+import { randomUUID } from '../utils/randomUUID'
 import { readWorkspaceViewPreference, writeWorkspaceViewPreference } from '../utils/workspaceViewPreference'
 import { create } from 'zustand'
 import { WORKFLOW_REPORT_REFRESH_EVENT } from '../components/workflow/reportRefreshEvent'
@@ -1033,7 +1034,7 @@ export const useWorkflowStore = create<WorkflowStore>()(
         const tabId = `phase_${phaseId}_${Date.now()}`
         
         // Generate new session ID for tab
-        const sessionIdForTab = crypto.randomUUID()
+        const sessionIdForTab = randomUUID()
         
         // Create tab entry
         const tab: WorkflowChatTab = {

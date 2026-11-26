@@ -14,6 +14,9 @@ import (
 	"time"
 
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costledger"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/nativeusage"
@@ -21,7 +24,7 @@ import (
 
 // Context options of one chat tab (PLAT-872-71), shown in the composer's model menu and offered to the chat's
 // own models/sessions tools and MCP: how full the context is, the account's plan windows,
-// "Auto-compact when idle", "Compact now" and "Fresh chat". The server decides every value and what is
+// "Auto-compact when idle", "Compact now" and "New chat". The server decides every value and what is
 // offered; the browser only shows it. Only the tab's owner reads or changes them.
 
 // chatContextTab is a chat tab as its owner's conversation registry records it.
@@ -78,13 +81,34 @@ type chatContextView struct {
 	IdleCompaction *chatContextSwitch `json:"idle_compaction,omitempty"`
 	// ClaudeTerminal: on runs Claude Code as the native terminal, off as the chat view. Claude chats only.
 	ClaudeTerminal *chatContextSwitch `json:"claude_terminal,omitempty"`
-	CanCompact     bool               `json:"can_compact"`
-	CanFresh       bool               `json:"can_fresh"`
-	Hint           string             `json:"idle_compaction_hint,omitempty"`
-	// CompactEarly compacts the chat when a reply ends with its conversation over compactEarlyTokens. Off by default.
+	// Access is the chat's access mode menu (chat_access_mode.go); absent for a chat no coding app runs.
+	Access *chatAccessView `json:"access,omitempty"`
+	// Replies is the chat's reply style and summary card (chat_reply_style.go); absent where Access is.
+	Replies    *chatRepliesView `json:"replies,omitempty"`
+	CanCompact bool             `json:"can_compact"`
+	// CanNewChat offers "New chat": this tab starts a new conversation and the current one moves to its earlier chats.
+	CanNewChat bool   `json:"can_new_chat"`
+	Hint       string `json:"idle_compaction_hint,omitempty"`
+	// CompactEarly compacts the chat when a reply ends with its conversation over compactEarlyTokens. On by default.
 	CompactEarly     *chatContextSwitch `json:"compact_early,omitempty"`
 	CompactEarlyHint string             `json:"compact_early_hint,omitempty"`
+	// SwitchNote is shown when the person picks another model in a long chat (owner, 10 Nov, approved mockup "Model
+	// Switch Choice"): each model keeps its own saved copy of a chat, so the new one re-reads all of it once. ""
+	// for a short chat or one that cannot be compacted now: the model then switches at once.
+	SwitchNote string `json:"switch_note,omitempty"`
+	// Cost is what this chat (and the helper agents it started) has cost so far; absent when the ledger has
+	// nothing for it or cannot be read.
+	Cost *costledger.SessionCost `json:"cost,omitempty"`
+	// TotalOnly is set for a chat run by a coding agent's own CLI (Claude Code, Codex...): it reports its total
+	// context but not what fills it, so the panel says so instead of showing made-up parts.
+	TotalOnly bool `json:"total_only,omitempty"`
+	// Parts is an estimate of what fills the context (instructions, tools, skills, conversation): for a chat
+	// AgentWorks builds the prompt for, from that prompt; for a Claude Code chat, from its own transcript.
+	Parts []chatContextPart `json:"parts,omitempty"`
 }
+
+// switchNoteTokens is the chat size from which picking another model offers to compact first.
+const switchNoteTokens = 100_000
 
 // idleCompactHint says when "Auto-compact when idle" acts, from the idle sweep's own setting.
 func idleCompactHint() string {
@@ -96,8 +120,7 @@ func idleCompactHint() string {
 // conversation is saved to resume.
 func chatContextRuntime(owner string, tab chatContextTab) (provider, model, transport string, hasHandle bool) {
 	provider, model = strings.TrimSpace(tab.Record.Provider), strings.TrimSpace(tab.Record.ModelID)
-	if target, found, err := resolveProductResumeTarget(owner, tab.Record); err == nil && found && target != nil && target.Runtime != nil {
-		runtime := target.Runtime
+	if runtime := chatContextRuntimeMetadata(owner, tab.Record); runtime != nil {
 		provider = firstNonEmptyTrimmed(runtime.Provider, provider)
 		model = firstNonEmptyTrimmed(runtime.ModelID, model)
 		transport = strings.TrimSpace(runtime.Transport)
@@ -247,7 +270,7 @@ func appendChatUsageLimit(limits []chatUsageLimit, name string, percent float64,
 }
 
 // productChatTab reports whether a tab's turns run through the product chat path (Crew and Code tabs), where
-// the per-tab model and "Fresh chat" apply.
+// the per-tab model and "New chat" apply.
 func productChatTab(tab chatContextTab) bool {
 	return limitsSideChats(tab.ProfileID)
 }
@@ -423,24 +446,58 @@ func chatCompactRefusal(sessionID string) (idleCompactChat, int, string) {
 	return chat, 0, ""
 }
 
-func (api *StreamingAPI) chatContextViewFor(owner string, tab chatContextTab) chatContextView {
+func (api *StreamingAPI) chatContextViewFor(ctx context.Context, owner string, tab chatContextTab) chatContextView {
 	sessionID := tab.Record.SessionID
 	subject, transport := api.chatUsageSubjectForTab(owner, tab)
 	view := chatContextView{SessionID: sessionID}
 	view.UsedTokens, view.WindowTokens, view.Limits = api.chatUsage(sessionID, subject, true)
+	view.TotalOnly = isCodingAgentProvider(subject.provider, subject.model)
+	var breakdown nativeBreakdown
+	transcript := false
+	if view.TotalOnly && !subject.switched {
+		// After a restart the chat has not reported its size yet: Claude Code's transcript's last reply has it
+		// (Muse's trace is a byte estimate, never a reported size).
+		if breakdown, transcript = api.nativeChatBreakdown(ctx, owner, tab); transcript && view.UsedTokens <= 0 && breakdown.app == claudeCodeApp {
+			view.UsedTokens = breakdown.Total
+		}
+	}
+	if view.UsedTokens > 0 && view.WindowTokens <= 0 && !subject.switched {
+		// A coding agent's own app reports what it uses but not its limit: take the limit from the model catalog.
+		view.WindowTokens = orchestrator.ModelContextWindow(subject.provider, subject.model)
+	}
 	if llmproviders.IdleCompactSupported(llmproviders.Provider(strings.ToLower(subject.provider)), transport) {
-		pref := loadCompactionPreferences(context.Background(), owner)
+		pref := loadCompactionPreferences(ctx, owner)
 		view.IdleCompaction = &chatContextSwitch{On: !pref.IdleOff}
 		view.Hint = idleCompactHint()
-		view.CompactEarly = &chatContextSwitch{On: pref.CompactEarly}
+		view.CompactEarly = &chatContextSwitch{On: pref.compactEarly()}
 		view.CompactEarlyHint = compactEarlyHint()
 	}
 	if strings.EqualFold(strings.TrimSpace(subject.provider), string(llmproviders.ProviderClaudeCode)) {
 		view.ClaudeTerminal = &chatContextSwitch{On: tab.Identity.ClaudeTerminal}
 	}
+	if isCodingAgentProvider(subject.provider, subject.model) && productChatTab(tab) {
+		view.Access = chatAccessViewFor(tab.Identity.AccessMode, subject.provider, cliPersonalMac())
+		view.Replies = chatRepliesViewFor(tab.Identity)
+	}
+	if api.costLedger != nil {
+		if cost, err := api.costLedger.SessionCost(sessionID); err == nil && (cost.TotalUSD > 0 || cost.UnpricedCalls > 0) {
+			labelChatCost(cost)
+			view.Cost = cost
+		}
+	}
+	if !view.TotalOnly {
+		if sizes, ok := api.promptParts.Load(sessionID); ok {
+			view.Parts = chatContextParts(sizes.(mcpagent.PromptPartSizes), view.UsedTokens)
+		}
+	} else if transcript && view.UsedTokens > 0 {
+		view.Parts = api.nativeChatContextParts(sessionID, breakdown, view.UsedTokens)
+	}
 	_, _, refusal := chatCompactRefusal(sessionID)
 	view.CanCompact = refusal == ""
-	view.CanFresh = productChatTab(tab) && isCodingAgentProvider(subject.provider, subject.model)
+	view.CanNewChat = productChatTab(tab)
+	if view.CanCompact && view.UsedTokens >= switchNoteTokens {
+		view.SwitchNote = fmt.Sprintf("This chat is long (%dk). A new model re-reads all of it once before it answers.", view.UsedTokens/1000)
+	}
 	return view
 }
 
@@ -542,8 +599,13 @@ func (api *StreamingAPI) compactEarlyAfterTurn(sessionID, personUser string) {
 		return
 	}
 	owner := api.idleCompactOwner(sessionID, personUser)
+	if !loadCompactionPreferences(context.Background(), owner).compactEarly() {
+		return
+	}
 	tab, found := chatContextTabForSession(context.Background(), owner, sessionID)
-	if !found || !loadCompactionPreferences(context.Background(), owner).CompactEarly {
+	if !found {
+		// Every give-up says why: chats grew 19K -> 419K with no compact_early line at all (PLAT-746-855).
+		log.Printf("[IDLE_COMPACT] session=%s owner=%s action=skip reason=compact_early_no_tab", sessionID, owner)
 		return
 	}
 	followed := func() (provider string, lastPerson time.Time) {
@@ -557,6 +619,7 @@ func (api *StreamingAPI) compactEarlyAfterTurn(sessionID, personUser string) {
 	provider, person := followed()
 	tokens, _, _ := api.chatContextUsage(sessionID, provider, "", false)
 	if tokens < compactEarlyTokens {
+		log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d action=skip reason=compact_early_below_mark", sessionID, provider, owner, tokens)
 		return
 	}
 	// Wait for a quiet chat: the person is often still reading the reply or typing the next message, and a
@@ -585,32 +648,6 @@ func (api *StreamingAPI) compactChatAfterTurn(owner string, tab chatContextTab) 
 	log.Printf("[IDLE_COMPACT] session=%s owner=%s action=skip reason=compact_now_wait_exceeded", sessionID, owner)
 }
 
-// freshChat makes the tab's next message start a new native conversation. The visible chat stays; the new
-// conversation receives the usual continuity notice: the last turns (shortened) and where the full chat is saved.
-// The idea is the same as an account change in prepareProductConversationTurn, which already does exactly this.
-func (api *StreamingAPI) freshChat(ctx context.Context, owner string, tab chatContextTab) (int, string) {
-	sessionID := tab.Record.SessionID
-	if !productChatTab(tab) {
-		return http.StatusConflict, "Fresh chat is not available for this chat."
-	}
-	if err := defaultProductConversationRegistryStore().setFreshNative(ctx, owner, tab.ProfileID, tab.Record.ConversationKey, true); err != nil {
-		return http.StatusUnprocessableEntity, err.Error()
-	}
-	if api.conversationTurnOccupied(sessionID) || idleCompacts.running(sessionID) != nil {
-		// Asked from inside a reply (the chat's own tool): the next message after it starts fresh.
-		log.Printf("[CHAT_CONTEXT] fresh chat requested owner=%s session=%s key=%q after_running_turn=true", owner, sessionID, tab.Record.ConversationKey)
-		return http.StatusOK, "After this reply, the next message starts a fresh conversation with a short summary of this one. This chat's history stays here."
-	}
-	retireProductCodingCLI(sessionID, "fresh chat")
-	idleCompacts.mu.Lock()
-	if c := idleCompacts.chats[sessionID]; c != nil && c.running == nil {
-		delete(idleCompacts.chats, sessionID) // the next person message follows the new conversation
-	}
-	idleCompacts.mu.Unlock()
-	log.Printf("[CHAT_CONTEXT] fresh chat requested owner=%s session=%s key=%q", owner, sessionID, tab.Record.ConversationKey)
-	return http.StatusOK, "Your next message starts a fresh conversation with a short summary of this one. This chat's history stays here."
-}
-
 // chatContextRequest is the body of POST /api/chat-context. Each field is optional; action runs after the
 // switches are saved.
 type chatContextRequest struct {
@@ -618,7 +655,16 @@ type chatContextRequest struct {
 	IdleCompaction *bool  `json:"idle_compaction,omitempty"`
 	CompactEarly   *bool  `json:"compact_early,omitempty"`
 	ClaudeTerminal *bool  `json:"claude_terminal,omitempty"`
-	Action         string `json:"action,omitempty"` // "compact" or "fresh"
+	// AccessMode: project, auto_review or full_access (chat_access_mode.go).
+	AccessMode *string `json:"access_mode,omitempty"`
+	// ReplyStyle and NextSteps: chat_reply_style.go.
+	ReplyStyle *string `json:"reply_style,omitempty"`
+	NextSteps  *bool   `json:"next_steps,omitempty"`
+	// UnrelatedTask: ask, new_tab or here (chat_reply_style.go).
+	UnrelatedTask *string `json:"unrelated_task,omitempty"`
+	Action        string  `json:"action,omitempty"` // "compact"
+	// fromTool marks an agent tool's call (chatContextArgs): it can lower the chat's access, never raise it.
+	fromTool bool
 }
 
 // applyChatContext changes one of the caller's own chats and answers with its view. The status is the HTTP status.
@@ -648,6 +694,20 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 		}
 		tab.Identity = identity
 	}
+	if input.AccessMode != nil {
+		changed, err := setChatAccessMode(ctx, owner, tab, *input.AccessMode, input.fromTool)
+		if err != nil {
+			return http.StatusUnprocessableEntity, map[string]any{"error": err.Error()}
+		}
+		tab = changed
+	}
+	if input.ReplyStyle != nil || input.NextSteps != nil || input.UnrelatedTask != nil {
+		changed, err := setChatReplies(ctx, owner, tab, input.ReplyStyle, input.NextSteps, input.UnrelatedTask)
+		if err != nil {
+			return http.StatusUnprocessableEntity, map[string]any{"error": err.Error()}
+		}
+		tab = changed
+	}
 	if runtimeChanged && !afterTurn {
 		// The next message launches Claude on the chosen transport and resumes the same conversation; a change
 		// made from inside a reply is relaunched by that next message (prepareProductConversationTurn).
@@ -671,12 +731,10 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 	case "":
 	case "compact":
 		status, message = api.compactChatNow(owner, tab, afterTurn)
-	case "fresh":
-		status, message = api.freshChat(ctx, owner, tab)
 	default:
-		return http.StatusBadRequest, map[string]any{"error": "Choose compact or fresh."}
+		return http.StatusBadRequest, map[string]any{"error": "Choose compact."}
 	}
-	out := map[string]any{"context": api.chatContextViewFor(owner, tab)}
+	out := map[string]any{"context": api.chatContextViewFor(ctx, owner, tab)}
 	if status >= http.StatusBadRequest {
 		out["error"] = message
 	} else if message != "" {
@@ -705,7 +763,7 @@ func (api *StreamingAPI) handleChatContext(w http.ResponseWriter, r *http.Reques
 			writeAgentProfileError(w, http.StatusNotFound, "Only this chat's owner can see its context options.")
 			return
 		}
-		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"context": api.chatContextViewFor(owner, tab)})
+		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"context": api.chatContextViewFor(r.Context(), owner, tab)})
 		return
 	}
 	var input chatContextRequest
@@ -720,8 +778,33 @@ func (api *StreamingAPI) handleChatContext(w http.ResponseWriter, r *http.Reques
 // chatContextArgs reads the switches of a models/sessions tool call (idle_compaction, claude_terminal): a
 // boolean, or "true"/"false" text from callers that pass every argument as a string.
 func chatContextArgs(args map[string]any) (chatContextRequest, error) {
-	var out chatContextRequest
-	for name, target := range map[string]**bool{"idle_compaction": &out.IdleCompaction, "compact_early": &out.CompactEarly, "claude_terminal": &out.ClaudeTerminal} {
+	out := chatContextRequest{fromTool: true}
+	if value, exists := args["access_mode"]; exists && value != nil {
+		mode, ok := value.(string)
+		if !ok {
+			return out, fmt.Errorf("access_mode must be auto or auto_review")
+		}
+		if strings.TrimSpace(mode) != "" {
+			out.AccessMode = &mode
+		}
+	}
+	if value, exists := args["reply_style"]; exists && value != nil {
+		style, ok := value.(string)
+		if !ok {
+			return out, fmt.Errorf("reply_style must be one of %s", strings.Join(chatReplyStyles, ", "))
+		}
+		out.ReplyStyle = &style
+	}
+	if value, exists := args["unrelated_task"]; exists && value != nil {
+		choice, ok := value.(string)
+		if !ok {
+			return out, fmt.Errorf("unrelated_task must be one of %s", strings.Join(chatUnrelatedTaskChoices, ", "))
+		}
+		if strings.TrimSpace(choice) != "" {
+			out.UnrelatedTask = &choice
+		}
+	}
+	for name, target := range map[string]**bool{"idle_compaction": &out.IdleCompaction, "compact_early": &out.CompactEarly, "claude_terminal": &out.ClaudeTerminal, "next_steps": &out.NextSteps} {
 		value, exists := args[name]
 		if !exists || value == nil {
 			continue
@@ -746,7 +829,7 @@ func chatContextArgs(args map[string]any) (chatContextRequest, error) {
 }
 
 func (r chatContextRequest) changesSwitch() bool {
-	return r.IdleCompaction != nil || r.CompactEarly != nil || r.ClaudeTerminal != nil
+	return r.IdleCompaction != nil || r.CompactEarly != nil || r.ClaudeTerminal != nil || r.AccessMode != nil || r.ReplyStyle != nil || r.NextSteps != nil || r.UnrelatedTask != nil
 }
 
 // externalChatContext answers an MCP call that changes one of the caller's chats, with the same checks as the screen.
@@ -787,7 +870,7 @@ func (api *StreamingAPI) applyCompactEarlyToClaude(cfg *agent.LLMAgentConfig, se
 		return
 	}
 	owner := api.idleCompactOwner(sessionID, personUser)
-	if !loadCompactionPreferences(context.Background(), owner).CompactEarly {
+	if !loadCompactionPreferences(context.Background(), owner).compactEarly() {
 		return
 	}
 	if cfg.CodingAgentSecretEnvironment == nil {
@@ -817,7 +900,7 @@ func (api *StreamingAPI) compactBeforeQueuedTurn(sessionID string) bool {
 		return false
 	}
 	owner := api.idleCompactOwner(sessionID, chat.personUser)
-	if !loadCompactionPreferences(context.Background(), owner).CompactEarly {
+	if !loadCompactionPreferences(context.Background(), owner).compactEarly() {
 		return false
 	}
 	if api.sessionAwaitsBackgroundResults(sessionID) || len(claudeBackgroundTasks(sessionID)) > 0 {
@@ -829,14 +912,36 @@ func (api *StreamingAPI) compactBeforeQueuedTurn(sessionID string) bool {
 	}
 	run := newIdleCompactRun()
 	run.beforeQueued = true
-	if !idleCompacts.start(sessionID, run, math.MaxInt, time.Now()) {
+	if !api.reserveQueuedCompaction(sessionID, run) {
 		return false
 	}
-	compactBeforeQueuedAttempts.Store(sessionID, time.Now())
 	log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d action=compact reason=compact_early_before_queued", sessionID, chat.provider, owner, tokens)
 	go func() {
 		api.runIdleCompaction(sessionID, owner, chat, tokens, 0, run)
 		api.kickConversationTurnQueue(sessionID) // the queued messages go on after it
 	}()
 	return true
+}
+
+// reserveQueuedCompaction transfers the queue reservation to compaction before
+// any request can observe dispatch_pending as a competing turn.
+func (api *StreamingAPI) reserveQueuedCompaction(sessionID string, run *idleCompactRun) bool {
+	if !idleCompacts.start(sessionID, run, math.MaxInt, time.Now()) {
+		return false
+	}
+	compactBeforeQueuedAttempts.Store(sessionID, time.Now())
+	api.conversationTurnQueueMu.Lock()
+	delete(api.conversationTurnQueueDraining, sessionID)
+	api.conversationTurnQueueMu.Unlock()
+	return true
+}
+
+// A reserved pre-queue compaction must precede the backlog, not yield to it.
+// All other new turns preserve the existing queued-message ordering.
+func shouldYieldToConversationBacklog(ctx context.Context) bool {
+	if conversationTurnQueueExecution(ctx) {
+		return false
+	}
+	run := idleCompactRunFromContext(ctx)
+	return run == nil || !run.beforeQueued
 }

@@ -21,7 +21,7 @@ import (
 
 // ChatHistoryRoutes registers chat history endpoints.
 func ChatHistoryRoutes(router *mux.Router, api *StreamingAPI) {
-	r := router.PathPrefix("/api/chat-history").Subrouter()
+	r := router.PathPrefix("/chat-history").Subrouter()
 	r.HandleFunc("/sessions", listChatHistoryHandler(api)).Methods("GET")
 	r.HandleFunc("/sessions/cleanup", cleanupChatHistoryHandler(api)).Methods("DELETE")
 	r.HandleFunc("/restored-terminal", startRestoredTerminalHandler(api)).Methods("POST", "OPTIONS")
@@ -247,16 +247,24 @@ func chatHistoryCanResume(userID, viewerID string, platformAdmin bool) bool {
 	return chatHistoryVisibleTo(userID, viewerID, platformAdmin)
 }
 
-func workflowPathFromBuilderConversation(conversationPath string) string {
-	conversationPath = strings.Trim(strings.TrimSpace(conversationPath), "/")
-	const marker = "/builder/conversation/"
-	if !strings.HasPrefix(conversationPath, "Workflow/") {
-		return ""
+// workflowPathFromBuilderConversation names the workflow a restored conversation file belongs to. isWorkflow is
+// true for every file under Workflow/, in any spelling the restore accepts (absolute, under workspace-docs, the
+// older builder/<file>.json form): such a file is another product's history, so its workflow's access and the
+// chat's owner are checked. A Workflow/ file whose workflow cannot be named is refused, never treated as the
+// caller's own history.
+func workflowPathFromBuilderConversation(conversationPath string) (workflow string, isWorkflow bool) {
+	cleaned, ok := cleanRestoredChatHistoryPath(conversationPath)
+	if !ok || !strings.HasPrefix(cleaned, "Workflow/") {
+		return "", false
 	}
-	if index := strings.Index(conversationPath, marker); index > 0 {
-		return conversationPath[:index]
+	index := strings.Index(cleaned, "/builder/conversation/")
+	if index < 0 {
+		index = strings.LastIndex(cleaned, "/builder/")
 	}
-	return ""
+	if index <= len("Workflow") {
+		return "", true
+	}
+	return cleaned[:index], true
 }
 
 func startRestoredTerminalHandler(api *StreamingAPI) http.HandlerFunc {
@@ -287,7 +295,11 @@ func startRestoredTerminalHandler(api *StreamingAPI) http.HandlerFunc {
 			userID = "default"
 		}
 		requestedWorkspace := strings.Trim(strings.TrimSpace(req.WorkspacePath), "/")
-		pathWorkspace := workflowPathFromBuilderConversation(req.RestoredConversationPath)
+		pathWorkspace, pathIsWorkflow := workflowPathFromBuilderConversation(req.RestoredConversationPath)
+		if pathIsWorkflow && pathWorkspace == "" {
+			http.Error(w, "conversation path does not belong to a workflow", http.StatusBadRequest)
+			return
+		}
 		if requestedWorkspace != "" && pathWorkspace != "" && requestedWorkspace != pathWorkspace {
 			http.Error(w, "conversation path does not belong to workspace", http.StatusBadRequest)
 			return
@@ -709,11 +721,6 @@ func getChatHistoryConversationHandler(api *StreamingAPI) http.HandlerFunc {
 			userID = "default"
 		}
 		sessionID := mux.Vars(r)["session_id"]
-		// These routes sit outside the /api subrouter's session check (crewChatRelayMiddleware).
-		if private := api.crewSessionChatSavedRead(r, sessionID); private != nil {
-			private.refuse(w, userID)
-			return
-		}
 		workspacePath := r.URL.Query().Get("workspace_path")
 		resumeTurns := parsePositiveQueryInt(r, "resume_turns")
 		resumeOffset := parseNonNegativeQueryInt(r, "resume_offset")
@@ -922,6 +929,11 @@ func projectChatHistoryConversationForResume(data []byte, maxTurns int) []byte {
 // That makes the formatted transcript's "Load earlier" control a real backend
 // pagination action instead of a client-side scroll shortcut.
 func projectChatHistoryConversationForResumePage(data []byte, maxTurns, offset int) []byte {
+	return projectChatHistoryResumeWindow(data, maxTurns, offset, 0, 0, 0)
+}
+
+// A bounded saved tail keeps its absolute source and turn positions.
+func projectChatHistoryResumeWindow(data []byte, maxTurns, offset, sourceBase, sourceTotal, turnBase int) []byte {
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return data
@@ -985,12 +997,12 @@ func projectChatHistoryConversationForResumePage(data []byte, maxTurns, offset i
 	turns = turns[start:end]
 	projected := make([]json.RawMessage, 0, len(turns)*2+1)
 	if len(turns) == 0 && len(assistantWithoutUser.raw) > 0 {
-		projected = append(projected, annotateResumedChatMessage(assistantWithoutUser.raw, assistantWithoutUser.order, len(history)))
+		projected = append(projected, annotateResumedChatMessage(assistantWithoutUser.raw, assistantWithoutUser.order+sourceBase, max(sourceTotal, len(history))))
 	}
 	for _, item := range turns {
-		projected = append(projected, annotateResumedChatMessage(item.user.raw, item.user.order, len(history)))
+		projected = append(projected, annotateResumedChatMessage(item.user.raw, item.user.order+sourceBase, max(sourceTotal, len(history))))
 		for _, assistant := range item.assistants {
-			projected = append(projected, annotateResumedChatMessage(assistant.raw, assistant.order, len(history)))
+			projected = append(projected, annotateResumedChatMessage(assistant.raw, assistant.order+sourceBase, max(sourceTotal, len(history))))
 		}
 	}
 	encoded, err := json.Marshal(projected)
@@ -1001,12 +1013,12 @@ func projectChatHistoryConversationForResumePage(data []byte, maxTurns, offset i
 	// The formatted client uses these stable source positions only to interleave
 	// readable assistant updates with the persisted tool trace. They are not
 	// terminal events and do not affect the conversation's durable identity.
-	doc["history_source_message_count"], _ = json.Marshal(len(history))
+	doc["history_source_message_count"], _ = json.Marshal(max(sourceTotal, len(history)))
 	pagination, err := json.Marshal(map[string]interface{}{
-		"has_more":    start > 0,
+		"has_more":    start+turnBase > 0,
 		"next_offset": offset + len(turns),
-		"start_turn":  start,
-		"total_turns": totalTurns,
+		"start_turn":  start + turnBase,
+		"total_turns": totalTurns + turnBase,
 	})
 	if err != nil {
 		return data

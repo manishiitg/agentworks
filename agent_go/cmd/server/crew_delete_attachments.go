@@ -14,7 +14,7 @@ import (
 func crewUsedByWorkflow(ctx context.Context, profileID, projectID, workspacePath string) (bool, error) {
 	targetRoot := workflowtypes.CanonicalCrewAttachmentRoot(workspacePath)
 	if targetRoot == "" {
-		return false, fmt.Errorf("Crew workspace path is missing")
+		return false, fmt.Errorf("Project workspace path is missing")
 	}
 	folders, err := listWorkspaceFolders(ctx)
 	if err != nil {

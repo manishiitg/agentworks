@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/caplayerproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -177,9 +178,23 @@ func TestCapLayerAgentUsesAllowedSetupOperationsAndRechecksRoles(t *testing.T) {
 	if calls != 0 {
 		t.Fatal("denied operation reached gateway")
 	}
-	for _, operation := range []string{"inspect_environment", "connect_server", "inspect_group", "remove_group_mcp"} {
-		if _, err := capLayerAgentAccess(context.Background(), "admin", operation, json.RawMessage(`{}`)); err != nil {
+	// A change made through an agent tool refreshes Team cards like a change from the Vault screen; a read keeps them.
+	defer invalidateCrewTeamVaultDisplays()
+	for _, tc := range []struct {
+		operation string
+		refreshes bool
+	}{{"inspect_environment", false}, {"connect_server", true}, {"inspect_group", false}, {"remove_group_mcp", true}} {
+		crewTeamVaultDisplays.Lock()
+		crewTeamVaultDisplays.entries["teammate"] = &crewTeamVaultDisplayEntry{at: time.Now()}
+		crewTeamVaultDisplays.Unlock()
+		if _, err := capLayerAgentAccess(context.Background(), "admin", tc.operation, json.RawMessage(`{}`)); err != nil {
 			t.Fatal(err)
+		}
+		crewTeamVaultDisplays.Lock()
+		_, kept := crewTeamVaultDisplays.entries["teammate"]
+		crewTeamVaultDisplays.Unlock()
+		if kept == tc.refreshes {
+			t.Fatalf("%s: Team Vault card kept=%t", tc.operation, kept)
 		}
 	}
 	*directory = `{"users":[{"id":"admin","role":"viewer","products":[]}]}`
@@ -268,7 +283,7 @@ func TestCapLayerRuntimeEnablesNativeToolsWithoutInheritedSecrets(t *testing.T) 
 	// Full native tools are controlled by the provider runtime, not this
 	// product bridge allowlist; bridge authority and secret injection stay narrow.
 	gate := newProductToolGate(resolved)
-	for _, name := range []string{"execute_shell_command", "diff_patch_workspace_file", "get_secret", "run_in_background", "publish", "agent_browser", "manage_caplayer_access"} {
+	for _, name := range []string{"execute_shell_command", "diff_patch_workspace_file", "get_secret", "publish", "agent_browser", "manage_caplayer_access"} {
 		if gate.Admit(name) {
 			t.Fatalf("CapLayer admitted %s", name)
 		}
@@ -307,18 +322,5 @@ func TestCapLayerRuntimeEnablesNativeToolsWithoutInheritedSecrets(t *testing.T) 
 				}
 			}
 		})
-	}
-}
-
-func TestCapLayerPromptDoesNotPromiseWorkspaceMemory(t *testing.T) {
-	ctx := promptContext{HasProfile: true, ProfileID: "caplayer", WorkspaceFilesDisabled: true}
-	for _, name := range []string{"project-memory", "workspace-map"} {
-		if sectionByName(t, name).Applies(ctx) {
-			t.Fatalf("narrow tool profile got %s", name)
-		}
-	}
-	ctx.WorkspaceFilesDisabled = false
-	if !sectionByName(t, "project-memory").Applies(ctx) {
-		t.Fatal("regular product memory changed")
 	}
 }

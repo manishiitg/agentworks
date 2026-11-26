@@ -28,12 +28,13 @@ func (b visualSlackBlock) BlockType() slack.MessageBlockType {
 // WriteReply retains the connection/thread selected by the server. Formatting
 // knows no token, account, routing grant or function execution capability.
 func (s *SlackService) WriteReply(ctx context.Context, threadID ThreadID, messageID, content string, final bool) (string, error) {
+	cli := s.apiClient()
 	if target, err := s.serviceForThread(threadID); err != nil {
 		return "", err
 	} else if target != s {
 		return target.WriteReply(ctx, threadID, messageID, content, final)
 	}
-	if s.client == nil {
+	if cli == nil {
 		return "", fmt.Errorf("slack client not initialized")
 	}
 	if !chatvisuals.HasVisual(content) {
@@ -63,7 +64,7 @@ func (s *SlackService) WriteReply(ctx context.Context, threadID ThreadID, messag
 	}
 	opts := []slack.MsgOption{slack.MsgOptionText(reply.Text, false), slack.MsgOptionBlocks(blocks...)}
 	if messageID == "" {
-		_, id, err := s.client.PostMessageContext(ctx, threadID.ChannelID, append(opts, slackThreadOption(threadID.ChannelID, threadID.ThreadTS)...)...)
+		_, id, err := cli.PostMessageContext(ctx, threadID.ChannelID, append(opts, slackThreadOption(threadID.ChannelID, threadID.ThreadTS)...)...)
 		if rejectedVisualBlocks(err) {
 			return plain(reply.Text)
 		}
@@ -73,7 +74,7 @@ func (s *SlackService) WriteReply(ctx context.Context, threadID ThreadID, messag
 		log.Printf("[SLACK_VISUAL] channel=%s thread=%s message=%s final=%t blocks=%d action=post", threadID.ChannelID, threadID.ThreadTS, id, final, len(blocks))
 		return id, nil
 	}
-	_, _, _, err = s.client.UpdateMessageContext(ctx, threadID.ChannelID, messageID, opts...)
+	_, _, _, err = cli.UpdateMessageContext(ctx, threadID.ChannelID, messageID, opts...)
 	if rejectedVisualBlocks(err) {
 		return plain(reply.Text)
 	}

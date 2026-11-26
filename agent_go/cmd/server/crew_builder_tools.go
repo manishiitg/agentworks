@@ -36,21 +36,19 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 				return nil, fmt.Errorf("Workflow is unavailable or access denied")
 			}
 			if access := workflowAccessForManifest(GetUserFromContext(ctx), manifest); access != WorkflowAccessWrite && access != WorkflowAccessOwner {
-				return nil, fmt.Errorf("Crew setup changes require current workflow write access")
+				return nil, fmt.Errorf("Project setup changes require current workflow write access")
 			}
 		}
 		return ctx, nil
 	}
-	if err := reg.RegisterCustomTool("manage_crew_trigger", "List, create, update, or delete a Crew project's triggers from the Crew's chat. First list to discover a crew's triggers and their kind/caller bindings. Use kind=internal with a workflow caller to bind a calling workflow without a public URL or secret; the caller defaults to this workflow when omitted. Internal triggers never expose a URL or secret. create returns a one-time secret only for public triggers: provide it only to the requesting user, never shell logs. All calls enforce current crew and workflow permissions.", map[string]interface{}{
+	if err := reg.RegisterCustomTool("manage_crew_trigger", "List, create, update, or delete a project project's caller bindings: a calling workflow or project reaches the project without a public URL or secret. First list to discover the bindings and their callers; the caller defaults to this workflow when omitted. All calls enforce current crew and workflow permissions.", map[string]interface{}{
 		"type": "object", "additionalProperties": false, "required": []string{"action", "crew_project_id"}, "properties": map[string]interface{}{
 			"action":          map[string]interface{}{"type": "string", "enum": []string{"list", "create", "update", "delete"}},
-			"crew_project_id": map[string]interface{}{"type": "string", "description": "Stable Crew project ID from list_accessible_workflows."},
-			"crew_profile_id": map[string]interface{}{"type": "string", "description": "Crew product profile; defaults to work."},
+			"crew_project_id": map[string]interface{}{"type": "string", "description": "Stable project project ID from list_accessible_workflows."},
+			"crew_profile_id": map[string]interface{}{"type": "string", "description": "Project product profile; defaults to work."},
 			"id":              map[string]interface{}{"type": "string"}, "name": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"},
-			"auth_mode": map[string]interface{}{"type": "string", "enum": []string{"bearer", "github"}}, "enabled": map[string]interface{}{"type": "boolean"}, "rotate_secret": map[string]interface{}{"type": "boolean"},
-			"run_destination": map[string]interface{}{"type": "string", "enum": runDestinationEnum(), "description": runDestinationHelp + " Internal project callers use the main chat when source and target share any owner; otherwise a separate continuing conversation."},
-			"kind":            map[string]interface{}{"type": "string", "enum": []string{"internal"}},
-			"caller":          triggerCallerToolSchema(triggerCallerWorkflow, triggerCallerCrew),
+			"enabled": map[string]interface{}{"type": "boolean"},
+			"caller":  triggerCallerToolSchema(triggerCallerWorkflow, triggerCallerCrew),
 		}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx, err := authorize(ctx, args["action"] == "list")
 		if err != nil {
@@ -77,15 +75,12 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 		case "create":
 			name, _ := args["name"].(string)
 			message, _ := args["message"].(string)
-			authMode, _ := args["auth_mode"].(string)
-			destination, _ := args["run_destination"].(string)
-			kind, _ := args["kind"].(string)
 			enabled, ok := args["enabled"].(bool)
 			if !ok {
 				enabled = true
 			}
 			caller := triggerCallerFromArgs(args)
-			if isInternalTriggerKind(kind) && caller == nil {
+			if caller == nil {
 				workflowID, err := boundWorkflowID(ctx, workspace)
 				if err != nil {
 					return "", err
@@ -95,7 +90,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			if err := authorizeTriggerCallerWorkflow(ctx, userID, caller); err != nil {
 				return "", err
 			}
-			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RunDestination: destination, Kind: kind, Caller: caller}, "")
+			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, Enabled: enabled, Kind: triggerKindInternal, Caller: caller}, "")
 			if err != nil {
 				return "", err
 			}
@@ -117,29 +112,15 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			if current == nil {
 				return "", fmt.Errorf("trigger not found")
 			}
-			name, message, enabled, destination := current.Name, current.Message, current.Enabled, firstNonEmptyTrimmed(current.RunDestination, runDestinationChat)
-			authMode := ""
-			if current.Webhook != nil {
-				authMode = current.Webhook.AuthMode
-			}
-			kind, caller := current.Kind, current.Caller
+			name, message, enabled, caller := current.Name, current.Message, current.Enabled, current.Caller
 			if value, ok := args["name"].(string); ok && strings.TrimSpace(value) != "" {
 				name = value
 			}
 			if value, ok := args["message"].(string); ok && strings.TrimSpace(value) != "" {
 				message = value
 			}
-			if value, ok := args["auth_mode"].(string); ok && strings.TrimSpace(value) != "" {
-				authMode = value
-			}
 			if value, ok := args["enabled"].(bool); ok {
 				enabled = value
-			}
-			if value, ok := args["run_destination"].(string); ok && strings.TrimSpace(value) != "" {
-				destination = value
-			}
-			if value, ok := args["kind"].(string); ok && strings.TrimSpace(value) != "" {
-				kind = value
 			}
 			if updated := triggerCallerFromArgs(args); updated != nil {
 				caller = updated
@@ -147,8 +128,7 @@ func (api *StreamingAPI) registerCrewBuilderTools(reg definitionToolRegistrar, u
 			if err := authorizeTriggerCallerWorkflow(ctx, userID, caller); err != nil {
 				return "", err
 			}
-			rotate, _ := args["rotate_secret"].(bool)
-			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RotateSecret: rotate, RunDestination: destination, Kind: kind, Caller: caller}, current.ID)
+			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, Enabled: enabled, Kind: triggerKindInternal, Caller: caller}, current.ID)
 			if err != nil {
 				return "", err
 			}
@@ -272,11 +252,11 @@ func attachCrewProjectToWorkflow(ctx context.Context, svc *ProjectActionDispatch
 		}
 	}
 	if svc == nil {
-		return "", false, fmt.Errorf("Crew project is unavailable or access denied")
+		return "", false, fmt.Errorf("project is unavailable or access denied")
 	}
 	_, binding, _, err := svc.projectManifest(ctx, userID, profileID, projectID)
 	if err != nil {
-		return "", false, fmt.Errorf("Crew project is unavailable or access denied")
+		return "", false, fmt.Errorf("project is unavailable or access denied")
 	}
 	previousRoots := crewAttachmentStoredRoots(manifest.CrewAttachments)
 	root := filepath.ToSlash(binding.WorkspacePath)
@@ -284,7 +264,7 @@ func attachCrewProjectToWorkflow(ctx context.Context, svc *ProjectActionDispatch
 		ID: uuid.NewString(), Alias: alias, CrewProfileID: profileID, CrewProjectID: projectID,
 		CrewWorkspacePath: root, CreatedAt: time.Now().UTC().Format(time.RFC3339),
 	})
-	if err := writeWorkflowManifest(ctx, workspace, manifest); err != nil {
+	if err := WriteWorkflowManifest(ctx, workspace, manifest); err != nil {
 		return "", false, err
 	}
 	live := liveCrewAttachmentBindings(manifest.CrewAttachments)
@@ -318,28 +298,15 @@ func crewAttachmentStoredRoots(attachments []workflowtypes.CrewAttachment) []str
 	return roots
 }
 
-// writeWorkflowManifest persists a mutated workflow manifest.
-func writeWorkflowManifest(ctx context.Context, workspace string, manifest *WorkflowManifest) error {
-	manifest.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	data, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("cannot encode workflow manifest: %w", err)
-	}
-	if err := writeFileToWorkspace(ctx, manifestPath(workspace), string(data)); err != nil {
-		return fmt.Errorf("cannot save workflow manifest: %w", err)
-	}
-	return nil
-}
-
 // registerCrewAttachmentTool is shared by the native Builder and direct MCP.
 // The transport supplies its current, bound workflow authorization.
 func (api *StreamingAPI) registerCrewAttachmentTool(reg definitionToolRegistrar, userID, workspace string, authorize func(context.Context, bool) (context.Context, error)) error {
-	return reg.RegisterCustomTool("manage_crew_attachment", "Attach a Crew project's workspace to this workflow read-only so downstream steps can read crew files as <alias>/<crew-relative path>. First discover crews with list_accessible_workflows. Attach validates crew access and alias uniqueness, then records the fixed crew workspace path; reads re-resolve through the alias on every access while run-start and per-step checks fail fast on revoked access. Detach removes the alias immediately.", map[string]interface{}{
+	return reg.RegisterCustomTool("manage_crew_attachment", "Attach a project project's workspace to this workflow read-only so downstream steps can read crew files as <alias>/<crew-relative path>. First discover crews with list_accessible_workflows. Attach validates crew access and alias uniqueness, then records the fixed crew workspace path; reads re-resolve through the alias on every access while run-start and per-step checks fail fast on revoked access. Detach removes the alias immediately.", map[string]interface{}{
 		"type": "object", "additionalProperties": false, "required": []string{"action"}, "properties": map[string]interface{}{
 			"action":          map[string]interface{}{"type": "string", "enum": []string{"list", "attach", "detach"}},
 			"alias":           map[string]interface{}{"type": "string", "description": "Short lowercase alias for crew file reads, for example reviewer-crew."},
-			"crew_project_id": map[string]interface{}{"type": "string", "description": "Stable Crew project ID from list_accessible_workflows."},
-			"crew_profile_id": map[string]interface{}{"type": "string", "description": "Crew product profile; defaults to work."},
+			"crew_project_id": map[string]interface{}{"type": "string", "description": "Stable project project ID from list_accessible_workflows."},
+			"crew_profile_id": map[string]interface{}{"type": "string", "description": "Project product profile; defaults to work."},
 		}}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx, err := authorize(ctx, args["action"] == "list")
 		if err != nil {
@@ -365,7 +332,7 @@ func (api *StreamingAPI) registerCrewAttachmentTool(reg definitionToolRegistrar,
 			if !created {
 				return "", fmt.Errorf("alias %q is already attached", alias)
 			}
-			return fmt.Sprintf("Crew project %q attached as %q (read-only). Downstream steps read crew files as %s/<path>.", projectID, alias, alias), nil
+			return fmt.Sprintf("Project %q attached as %q (read-only). Downstream steps read crew files as %s/<path>.", projectID, alias, alias), nil
 		case "detach":
 			alias := strings.TrimSpace(fmt.Sprint(args["alias"]))
 			kept := make([]workflowtypes.CrewAttachment, 0, len(manifest.CrewAttachments))
@@ -382,7 +349,7 @@ func (api *StreamingAPI) registerCrewAttachmentTool(reg definitionToolRegistrar,
 			}
 			previousRoots := crewAttachmentStoredRoots(manifest.CrewAttachments)
 			manifest.CrewAttachments = kept
-			if err := writeWorkflowManifest(ctx, workspace, manifest); err != nil {
+			if err := WriteWorkflowManifest(ctx, workspace, manifest); err != nil {
 				return "", err
 			}
 			live := liveCrewAttachmentBindings(manifest.CrewAttachments)

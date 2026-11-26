@@ -261,18 +261,21 @@ func (api *StreamingAPI) runReportPreview(ctx context.Context, sessionID, userID
 		return "", fmt.Errorf("open preview page: %w", err)
 	}
 
-	// Wait for the page to settle: the host runtime marks the document ready
-	// once every report.ready() callback and replayed early call has settled,
-	// or error as soon as the report's script throws.
-	state := "loading"
+	// A lifecycle flag alone can precede a late React mount or data render.
+	// Poll the document snapshot too; never accept Loading as a ready capture.
+	var snapshot reportPreviewSnapshot
 	deadline := time.Now().Add(reportPreviewSettleTimeout)
+	settled := false
 	for time.Now().Before(deadline) {
-		current, err := eval("document.documentElement.getAttribute('data-preview-state') || 'loading'")
-		if err == nil {
-			state = strings.Trim(strings.TrimSpace(current), `"`)
-		}
-		if state == "ready" || state == "error" || state == "missing" || state == "failed" {
-			break
+		raw, err := eval("JSON.stringify(window.__reportPreview ? window.__reportPreview.getState() : {previewState:'loading'})")
+		var current reportPreviewSnapshot
+		if err == nil && json.Unmarshal([]byte(raw), &current) == nil {
+			snapshot = current
+			if snapshot.PreviewState == "error" || snapshot.PreviewState == "missing" || snapshot.PreviewState == "failed" ||
+				(snapshot.PreviewState == "ready" && snapshot.Report.State == "ready" && len(snapshot.Report.LoadingTexts) == 0 && snapshot.Report.Height > 0) {
+				settled = true
+				break
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -280,16 +283,11 @@ func (api *StreamingAPI) runReportPreview(ctx context.Context, sessionID, userID
 		case <-time.After(reportPreviewPollInterval):
 		}
 	}
+	if !settled {
+		snapshot.PreviewState = "loading"
+	}
 
-	var snapshot reportPreviewSnapshot
-	if raw, err := eval("JSON.stringify(window.__reportPreview ? window.__reportPreview.getState() : {previewState:'failed'})"); err == nil {
-		if jsonErr := json.Unmarshal([]byte(raw), &snapshot); jsonErr != nil {
-			log.Printf("[REPORT_PREVIEW] could not parse preview state %q: %v", truncateForLog(raw, 200), jsonErr)
-		}
-	}
-	if snapshot.PreviewState == "" {
-		snapshot.PreviewState = state
-	}
+	log.Printf("[REPORT_PREVIEW] settled session=%s document=%q state=%s document_state=%s height=%.0f loading_placeholders=%d", session, documentPath, snapshot.PreviewState, snapshot.Report.State, snapshot.Report.Height, len(snapshot.Report.LoadingTexts))
 
 	// The report is closed to screenshots when there is nothing to show.
 	screenshots := []reportPreviewScreenshot{}

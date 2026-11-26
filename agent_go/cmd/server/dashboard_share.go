@@ -59,7 +59,7 @@ type runShareState struct {
 	NeedsDashboard bool `json:"needs_dashboard,omitempty"`
 	// Owner says the caller owns the project (a Crew on their Mac is theirs even while sharing is blocked).
 	Owner bool `json:"owner,omitempty"`
-	// HasOwners says the project keeps an owner list (Goals and Flows). A Crew has none: its builders are its Team.
+	// HasOwners says the project keeps an owner list: Goals, Flows and Crews on the server (co-owners). A Mac Crew has its Team.
 	HasOwners bool `json:"has_owners,omitempty"`
 	// ShareBlocked is the plain reason sharing is unavailable, shown as given.
 	ShareBlocked string `json:"share_blocked,omitempty"`
@@ -124,7 +124,7 @@ func (api *StreamingAPI) dashboardShareOwner(ctx context.Context, claims *UserCl
 	switch target.Kind {
 	case "crew":
 		crew, ok := resolveCrewPath(ctx, claims.UserID, target.Root)
-		return ok && crewAccessFor(claims, crew) == crewAccessOwner
+		return ok && crew.OwnerID == sanitizeUserIDForPath(claims.UserID)
 	case "workflow", "relay":
 		access, _ := workflowAccessForWorkspacePath(ctx, claims, target.Root)
 		return access == WorkflowAccessOwner
@@ -186,6 +186,11 @@ func logDashboardShareRefusal(claims *UserClaims, target dashboardTarget, mode, 
 }
 
 func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, target dashboardTarget, mode string, emails []string, createDashboard bool, changes ...crewAgentShareChange) (state runShareState, err error) {
+	if target.Kind == "crew" && claims != nil {
+		if refusal := crewSetupLockRefusalFor(target.Root, claims.UserID, "share"); refusal != "" {
+			return runShareState{}, dashboardFailure(http.StatusForbidden, refusal)
+		}
+	}
 	// One agent switched from the Team tab (shared_agent) with no mode: who it is shared with stays as it is.
 	if strings.TrimSpace(mode) == "" && len(changes) > 0 && changes[0].Agent != "" {
 		current, readErr := api.readRunShare(ctx, claims, target)
@@ -215,6 +220,9 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 	stage = "owner"
 
 	if !api.dashboardShareOwner(ctx, claims, target) {
+		if target.Kind == "crew" {
+			return runShareState{}, dashboardFailure(403, "Only the owner changes who can open these")
+		}
 		return runShareState{}, dashboardFailure(403, "only the owner can share this project")
 	}
 	// Sharing is sharing the dashboard: there must be one published to share. Making it private needs none.
@@ -222,7 +230,7 @@ func (api *StreamingAPI) applyRunShare(ctx context.Context, claims *UserClaims, 
 	stage = "dashboard"
 	if mode != runSharePrivate && !hasPublishedDashboard(ctx, target.Root) {
 		if target.Kind == "crew" && !createDashboard {
-			return runShareState{NeedsDashboard: true}, dashboardFailure(409, "Create a dashboard for this Crew before sharing it. Ask the owner whether to create a standard dashboard, then retry with create_dashboard=true only if they agree.")
+			return runShareState{NeedsDashboard: true}, dashboardFailure(409, "Create a dashboard for this project before sharing it. Ask the owner whether to create a standard dashboard, then retry with create_dashboard=true only if they agree.")
 		}
 		if _, generated, defaultErr := api.ensureDefaultDashboard(ctx, claims, target); defaultErr != nil || !hasPublishedDashboard(ctx, target.Root) {
 			cause = defaultErr
@@ -279,7 +287,7 @@ func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserCl
 		if err := registry.SetAudience(id.Product, id.Folder, mode != runShareEveryone, ids, keys); err != nil {
 			return runShareState{}, dashboardFailure(500, "could not save the sharing choice")
 		}
-		log.Printf("[RUN_SHARE] %s set Crew %s/%s share=%s", sanitizeUserIDForPath(claims.UserID), id.Product, id.Folder, mode)
+		log.Printf("[RUN_SHARE] %s set project %s/%s share=%s", sanitizeUserIDForPath(claims.UserID), id.Product, id.Folder, mode)
 		state, err := api.readRunShare(ctx, claims, target)
 		state.Unknown = unknown
 		return state, err
@@ -383,7 +391,7 @@ func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Req
 		return
 	}
 	state.Owner = api.dashboardShareOwner(r.Context(), claims, target)
-	state.HasOwners = target.Kind != "crew"
+	state.HasOwners = target.Kind != "crew" || crewLivesOnServer(target.ID)
 	state.CanShare = state.Owner && dashboardAuthoringAllowed(claims, &target) && !macTwin
 	if macTwin {
 		state.ShareBlocked = macCrewShareBlocked

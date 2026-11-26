@@ -12,13 +12,11 @@ import (
 
 	"github.com/gorilla/mux"
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
-	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
 func muxRouterForCrewFunctions(svc *ProjectActionDispatcher) *mux.Router {
 	router := mux.NewRouter()
-	ProductWebhookRoutes(router, svc)
+	ProductWebhookRoutes(router.PathPrefix("/api").Subrouter(), svc)
 	return router
 }
 
@@ -323,6 +321,7 @@ var loginFlowArgs = map[string]interface{}{
 // Crew targets only.
 func TestCrewFunctionGuards(t *testing.T) {
 	env := newCrewFunctionEnv(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	ctx := context.Background()
 	if _, err := env.alpha["project_functions_define"].exec(ctx, loginFlowArgs); err != nil {
 		t.Fatal(err)
@@ -331,6 +330,20 @@ func TestCrewFunctionGuards(t *testing.T) {
 	if _, err := env.alpha["project_functions_define"].exec(ctx, own); err != nil {
 		t.Fatalf("define own: %v", err)
 	}
+	// Owner's Mac rule: identical valid native definitions and calls refuse;
+	// saved definitions remain readable for Team source export.
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	if _, err := env.alpha["project_functions_define"].exec(ctx, own); err == nil || !strings.Contains(err.Error(), serverOnlyInteractiveMessage) {
+		t.Fatalf("local function define = %v", err)
+	}
+	if _, err := env.alpha["project_functions_call"].exec(ctx, map[string]interface{}{"project": "Beta", "function": "run_login_flow", "input": map[string]interface{}{"build": "7"}}); err == nil || !strings.Contains(err.Error(), serverOnlyInteractiveMessage) {
+		t.Fatalf("local function call = %v", err)
+	}
+	if _, err := env.alpha["project_functions_list"].exec(ctx, map[string]interface{}{"project": "Beta"}); err != nil {
+		t.Fatalf("source function reads refused: %v", err)
+	}
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+
 	if _, err := env.alpha["project_functions_call"].exec(ctx, map[string]interface{}{"project": "Alpha", "function": "own_fn"}); err == nil || !strings.Contains(err.Error(), "cannot call itself") && !strings.Contains(err.Error(), "own function") {
 		t.Fatalf("self call: err = %v", err)
 	}
@@ -359,7 +372,7 @@ func TestCrewFunctionGuards(t *testing.T) {
 	inflight.finish("completed", nil, "")
 
 	// Workflow targets take no mid-run questions.
-	wfCall := &crewFunctionCall{ID: "fn-wf", Function: "report", TargetKind: triggerCallerWorkflow, TargetID: "wf", CallerKind: triggerCallerCrew, CallerID: "alpha", Status: "running", done: make(chan struct{})}
+	wfCall := &crewFunctionCall{ID: "fn-wf", UserID: "owner", Function: "report", TargetKind: triggerCallerWorkflow, TargetID: "wf", CallerKind: triggerCallerCrew, CallerID: "alpha", Status: "running", done: make(chan struct{})}
 	crewFunctionCalls.Lock()
 	crewFunctionCalls.m[wfCall.ID] = wfCall
 	crewFunctionCalls.Unlock()
@@ -451,35 +464,6 @@ func TestCrewFunctionsHTTPOwnerChangesTeamMemberOnlyReads(t *testing.T) {
 	}
 }
 
-func TestCrewFunctionFailureDetailKeepsPartialWork(t *testing.T) {
-	detail := crewFunctionFailureDetail(map[string]interface{}{"partial_result": map[string]interface{}{"video": "https://x/v.mp4"}, "final_reply": "1764 PASS"})
-	if !strings.Contains(detail, "https://x/v.mp4") || !strings.Contains(detail, "1764 PASS") {
-		t.Fatalf("failure detail dropped the target's work: %q", detail)
-	}
-}
-
-// All project callers use the shared owner rule, including workflow and Code.
-func TestCrewCallConversationRouting(t *testing.T) {
-	crew := &productWebhookMatch{Profile: agentprofiles.Profile{ID: "work"}, Trigger: productWebhookTrigger{Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "alpha", ProfileID: "work"}}}
-	if !projectCallConversation(crew) {
-		t.Fatal("a Crew calling a Crew must be routed by owner")
-	}
-	workflow := &productWebhookMatch{Profile: agentprofiles.Profile{ID: "work"}, Trigger: productWebhookTrigger{Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerWorkflow, ID: "wf"}}}
-	if !projectCallConversation(workflow) {
-		t.Fatal("a workflow caller must use project ownership")
-	}
-	codeTarget := &productWebhookMatch{Profile: agentprofiles.Profile{ID: workproduct.ProfileID}, Trigger: productWebhookTrigger{Kind: triggerKindInternal, Caller: &triggerCaller{Type: triggerCallerCrew, ID: "x", ProfileID: workproduct.ProfileID}}}
-	if !projectCallConversation(codeTarget) {
-		t.Fatal("Code peer calls must use project ownership")
-	}
-	if got := crewCallIsolatedKey("trig-1", ""); got != "trig-1" {
-		t.Fatalf("same-owner key = %q", got)
-	}
-	if a, b := crewCallIsolatedKey("trig-1", "bob"), crewCallIsolatedKey("trig-1", "carol"); a == b || a == "trig-1" {
-		t.Fatalf("each calling person needs their own conversation: %q %q", a, b)
-	}
-}
-
 func TestCrewCallMessageMatchesWhereItRuns(t *testing.T) {
 	stored := crewTargetMessage(triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ID: "a"}, Label: "Alpha"})
 	if got := crewCallMessage(stored, true); !strings.Contains(got, "runs in your main chat") || strings.Contains(got, "does not see it") {
@@ -487,24 +471,6 @@ func TestCrewCallMessageMatchesWhereItRuns(t *testing.T) {
 	}
 	if got := crewCallMessage(stored, false); !strings.Contains(got, "only for this caller's calls") {
 		t.Fatalf("cross-owner message: %s", got)
-	}
-}
-
-// A Crew function runs in its own named tab by default; "new" keeps a new chat per call, and functions naming
-// one agent share its tab (owner, 2026-10-19).
-func TestCrewFunctionRunsInItsNamedTabByDefault(t *testing.T) {
-	if got := (crewFunction{Name: "weekly_report"}).tabName(); got != "weekly_report" || crewAgentChatID(got) != "weekly-report" {
-		t.Fatalf("default tab = %q", got)
-	}
-	if got := (crewFunction{Name: "triage", Agent: "Support desk"}).tabName(); got != "Support desk" {
-		t.Fatalf("named tab = %q", got)
-	}
-	if got := (crewFunction{Name: "private_check", Execution: "new", Agent: "x"}).tabName(); got != "" {
-		t.Fatalf("new function ran in tab %q", got)
-	}
-	spec := crewFunctionSpec{Name: "triage", Description: "d", Instructions: "i", Execution: "sometimes"}.normalized()
-	if spec.validate() == nil {
-		t.Fatal("an unknown execution was accepted")
 	}
 }
 

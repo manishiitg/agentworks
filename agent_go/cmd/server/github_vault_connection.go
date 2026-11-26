@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/google/uuid"
 	"log"
 	"os"
 	"os/exec"
@@ -77,8 +78,8 @@ func githubCLIAvailable(person string) bool {
 	return err == nil
 }
 
-// Every connection source writes the same owner-scoped encrypted secret and
-// account record. PR status and the existing Crew secret selection reuse it.
+// Each connection has its own encrypted secret. Connecting selects it only
+// for the authorized project; other saved connections are never overwritten.
 func (api *StreamingAPI) saveGitHubAccount(ctx context.Context, person, token, scopes, source, expectedLogin string) (*githubAccountRecord, error) {
 	if !personVaultActive(person) {
 		return nil, errors.New("Your account cannot keep its own Vault items.")
@@ -94,17 +95,22 @@ func (api *StreamingAPI) saveGitHubAccount(ctx context.Context, person, token, s
 	if expectedLogin != "" && !strings.EqualFold(login, expectedLogin) {
 		return nil, errors.New("GitHub returned a different account. Choose your account again.")
 	}
+	id := strings.ReplaceAll(uuid.NewString(), "-", "")
+	ctx = context.WithValue(ctx, githubConnectionSecretKey{}, "GITHUB_"+strings.ToUpper(id))
 	vaultID, secretName, err := githubStoreToken(ctx, api, person, token)
 	if err != nil {
 		log.Printf("[GITHUB_VAULT] saving the account failed person=%s", person)
 		return nil, errors.New("Your GitHub account could not be saved. Try again.")
 	}
-	rec := githubAccountRecord{Login: login, Source: source, Scopes: scopes, VaultID: vaultID, SecretName: secretName, ConnectedAt: time.Now().UTC().Format(time.RFC3339)}
+	rec := githubAccountRecord{ID: id, Login: login, Source: source, Scopes: scopes, VaultID: vaultID, SecretName: secretName, ConnectedAt: time.Now().UTC().Format(time.RFC3339)}
 	// Organisation access is informational, never a condition of connecting.
 	rec.Orgs, rec.NeedsApproval = githubOrgAccess(ctx, token)
 	rec.OrgsCheckedAt = rec.ConnectedAt
 	if err := writeGitHubRecord(person, rec); err != nil {
 		return nil, errors.New("Your GitHub connection details could not be saved. Try again.")
+	}
+	if err := selectProjectGitHubConnection(ctx, person, rec.ID); err != nil {
+		return nil, err
 	}
 	log.Printf("[GITHUB_VAULT] connected person=%s github_login=%s source=%s", person, login, source)
 	publishCrewPanelForPerson(person)
@@ -118,7 +124,11 @@ func (api *StreamingAPI) connectGitHubAccount(ctx context.Context, person, metho
 	expectedLogin := ""
 	switch method {
 	case "oauth":
-		link, err := startGitHubConnect(person, redirect)
+		projectID, err := githubProjectID(ctx, githubProjectRoot(ctx))
+		if err != nil {
+			return nil, err
+		}
+		link, err := startGitHubConnect(person, redirect, githubProjectRoot(ctx), projectID)
 		return map[string]any{"auth_url": link}, err
 	case "gh":
 		if !localGitHubCLIAllowed(person) {
@@ -154,17 +164,4 @@ func (api *StreamingAPI) connectGitHubAccount(ctx context.Context, person, metho
 		return nil, err
 	}
 	return map[string]any{"connected": true, "login": rec.Login, "source": rec.Source, "summary": githubAccessSummary(rec)}, nil
-}
-
-func githubDisconnectNote(source string, revoked bool) string {
-	switch source {
-	case "gh":
-		return "Disconnected from AgentWorks. Your gh login is unchanged."
-	case "pat":
-		return "Disconnected from AgentWorks. The token itself is unchanged; you can revoke it in GitHub settings."
-	}
-	if revoked {
-		return "GitHub disconnected."
-	}
-	return "Removed from AgentWorks. You can also remove the app in your GitHub settings."
 }

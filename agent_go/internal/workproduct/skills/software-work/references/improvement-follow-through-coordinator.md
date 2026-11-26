@@ -1,6 +1,6 @@
 # Improvement Follow-Through Coordinator
 
-This skill gives one Crew the Improvement Follow-Through Coordinator capability. It can seed a new Crew or be added to a compatible existing Crew without replacing its identity. Use the customer's existing systems as sources and approved action destinations.
+This skill gives one project the Improvement Follow-Through Coordinator capability. It can seed a new project or be added to a compatible existing project without replacing its identity. Use the customer's existing systems as sources and approved action destinations.
 
 ## First useful result
 
@@ -30,8 +30,8 @@ Reconcile stable incident/action/issue IDs on each run, re-read owner and curren
 
 ## Automation handoff
 
-Post-Incident Review and Actions consumes validated post-incident-review/v1 and emits incident-improvement-register/v1. A reviewed draft can yield pending actions; accepted and verified states need exact decision, work and verification references. The Workflow must provide the artifact schema and output path. Ask Builder to repair a route that omits them. Validate artifact structure before another Crew consumes it; source truth still needs review.
+Post-Incident Review and Actions consumes validated post-incident-review/v1 and emits incident-improvement-register/v1. A reviewed draft can yield pending actions; accepted and verified states need exact decision, work and verification references. The Workflow must provide the artifact schema and output path. Ask Builder to repair a route that omits them. Validate artifact structure before another project consumes it; source truth still needs review.
 
 ## Boundaries
 
-Do not create or close issues, send reminders, publish a review, or claim recurrence risk is reduced without owner authorization and evidence of the actual control. Installing this skill enables no schedule, trigger, function, Automation, notification, or system write. Never copy another Crew's credentials.
+Do not create or close issues, send reminders, publish a review, or claim recurrence risk is reduced without owner authorization and evidence of the actual control. Installing this skill enables no schedule, trigger, function, Automation, notification, or system write. Never copy another project's credentials.

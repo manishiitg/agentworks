@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -17,6 +19,9 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 	name, id := externalArg(args, "agent_name"), externalArg(args, "attachment_id")
 	agent, live, err := currentAgentAttachment(r.Context(), claims, name, id)
 	if err != nil {
+		if transientAgentInboxFailure(w, r.Context(), err) {
+			return
+		}
 		externalError(w, 403, "agent_attachment_closed", "This chat is no longer connected. Connect it again to receive messages.")
 		return
 	}
@@ -40,7 +45,10 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 		for _, message := range conversation.Messages {
 			destination := conversation.Endpoints[1-message.From]
 			if destination.NamedAgentID != agent.ID || destination.UserID != agent.UserID ||
-				message.AgentSequence <= after || message.Delivery != "stored" || !message.InboxRemovedAt.IsZero() || agentMessagePendingExpired(message, now) {
+				(message.AgentSequence <= after && !message.QueuedRequest) || message.Delivery != "stored" || !message.InboxRemovedAt.IsZero() || agentMessagePendingExpired(message, now) {
+				continue
+			}
+			if !nativeQueueRequestReady(agent, store.Conversations, message) {
 				continue
 			}
 			waiting = append(waiting, incoming{conversation, message})
@@ -54,20 +62,35 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 	hold := func(message agentMessage, source agentMessageEndpoint, reason, why string) {
 		held[reason]++
 		heldIDs = append(heldIDs, message.ID+":"+reason)
+		log.Printf("[AGENT-INBOX] action=hold agent=%s message=%s reason=%s sender_kind=%s project=%s chat=%s same_owner=%t", agent.ID, message.ID, reason, source.Kind, source.ID, source.ChatKey, source.UserID == live.UserID)
 		if len(details) < 20 {
-			details = append(details, map[string]string{"sender": endpointDisplayLabel(source, agent.UserID), "reason": why,
+			details = append(details, map[string]string{"sender": store.endpointName(source, agent.UserID), "reason": why,
 				"next": "Ask the sender to send it again once access is restored. It stops waiting 24 hours after it was sent; its history is kept."})
 		}
 	}
 	for _, pending := range waiting {
 		conversation, message := pending.conversation, pending.message
+		if quietAgentAttachedMessage(message, agent) {
+			continue
+		}
 		source := conversation.Endpoints[message.From]
 		if !serverAuthoredKind(message.Kind) {
-			if !store.shareSenderAllowed(conversation, message.From, agent.UserID, now) {
+			if agent.Attachment.DeliveryRoute == appAgentDeliveryRoute && !appAgentPeerAllowed(r.Context(), agent.UserID, source) {
+				hold(message, source, "named_agent_not_published", "This named agent is not available through AgentBridge.")
+				continue
+			}
+			if err := store.shareSenderAdmission(r.Context(), conversation, message.From, agent.UserID, now); err != nil {
+				if transientAgentInboxFailure(w, r.Context(), err) {
+					return
+				}
+				log.Printf("[AGENT-INBOX] action=refused message=%s rule=share_sender class=%s", message.ID, agentAdmissionErrorClass(err))
 				hold(message, source, "share_check_failed", "Sharing with this chat has ended.")
 				continue
 			}
 			if err := api.recheckAgentMessageAdmission(r.Context(), conversation, message); err != nil {
+				if transientAgentInboxFailure(w, r.Context(), err) {
+					return
+				}
 				why := "The sender or its sign-in no longer has access to this chat."
 				if strings.Contains(err.Error(), "connection is no longer authorized") {
 					why = "The sign-in that sent it is no longer connected."
@@ -75,14 +98,26 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 				hold(message, source, "admission_recheck_failed", why)
 				continue
 			}
-			if api.externalAuthorizeMessagePeer(r.Context(), live, source, false) != nil {
+			if err := api.externalAuthorizeConversationPeer(r.Context(), live, conversation, 1-message.From, false); err != nil {
+				if transientAgentInboxFailure(w, r.Context(), err) {
+					return
+				}
+				log.Printf("[AGENT-INBOX] action=refused message=%s rule=receiver_peer_authorization class=%s", message.ID, agentAdmissionErrorClass(err))
 				hold(message, source, "sender_authorization_failed", "This sender no longer has access to this chat.")
 				continue
 			}
 		}
 		row := map[string]any{"attachment_id": id, "message_id": message.ID, "inbox_id": conversation.ID,
-			"sender": endpointDisplayLabel(source, agent.UserID), "sender_id": source.NamedAgentID,
-			"message": message.Text, "sequence": message.AgentSequence, "delivery": message.Delivery, "sent_at": message.SentAt}
+			"sender": store.endpointName(source, agent.UserID), "sender_id": source.NamedAgentID,
+			"message": agentMessageLabeledBody(message), "message_type": message.MessageType, "queued_request": message.QueuedRequest, "reply_status": message.ReplyStatus, "task_reply_to": message.TaskReplyTo, "sequence": message.AgentSequence, "delivery": message.Delivery, "sent_at": message.SentAt}
+		agentMessageTaskItem(row, message)
+		if instructions := crewTeamMessageInstructions(r.Context(), conversation, message); instructions != "" {
+			row["team_instructions"] = instructions
+		}
+		if agent.Attachment.DeliveryRoute == appAgentDeliveryRoute {
+			row["sender_user_id"] = source.UserID
+			row["own_agent_message"] = !message.SenderNonOwnerTurn && crewOwnAgentMessage(conversation.Endpoints[1-message.From], source)
+		}
 		if serverAuthoredKind(message.Kind) {
 			row["sender"], row["sender_id"], row["kind"] = "AgentWorks", "", message.Kind
 		}
@@ -92,19 +127,23 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 		if person := crossPersonOwner(source, agent.UserID); person != "" && !serverAuthoredKind(message.Kind) {
 			row["from_person"], row["untrusted"] = person, true
 		}
-		messages = append(messages, row)
+		if message.QueuedRequest && agent.Attachment.DeliveryRoute != appAgentDeliveryRoute { log.Printf("[QUERY->LIVE] session=%s message=%s action=dequeued reason=%s", agent.Attachment.SessionID, message.ID, nativeQueueReleaseReason(agent,message,now)) }
+        messages = append(messages, row)
 		if len(messages) == limit {
 			break
 		}
 	}
 	// The same generation still owns the mailbox when the bodies are released.
 	if _, _, err = currentAgentAttachment(r.Context(), claims, name, id); err != nil {
+		if transientAgentInboxFailure(w, r.Context(), err) {
+			return
+		}
 		externalError(w, 403, "agent_attachment_closed", "This chat's connection changed. Connect it again to receive messages.")
 		return
 	}
 	next := after
 	if len(messages) > 0 {
-		next = messages[len(messages)-1]["sequence"].(int)
+		next = max(after, messages[len(messages)-1]["sequence"].(int))
 	}
 	count := 0
 	for _, n := range held {
@@ -116,4 +155,18 @@ func (api *StreamingAPI) readAttachedAgentInbox(w http.ResponseWriter, r *http.R
 		revision = fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(heldIDs, "\n"))))
 	}
 	externalJSON(w, map[string]any{"messages": messages, "next_cursor": next, "pending": len(waiting), "held": count, "held_reasons": held, "held_details": details, "held_revision": revision})
+}
+
+// A canceled batch releases no bodies or cursor and must not close a valid
+// attachment. The existing event hint/reconnect can retry the same stored mail.
+func transientAgentInboxFailure(w http.ResponseWriter, ctx context.Context, err error) bool {
+	if ctx.Err() != nil {
+		err = ctx.Err()
+	}
+	if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	log.Printf("[AGENT-INBOX] action=retry reason=%s", agentAdmissionErrorClass(err))
+	externalError(w, http.StatusServiceUnavailable, "admission_retry", "Delivery checks were interrupted. Retry this inbox without advancing its cursor.")
+	return true
 }

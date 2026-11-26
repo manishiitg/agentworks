@@ -31,7 +31,7 @@ export const FileSelectionDialog: React.FC<FileSelectionDialogProps> = ({
 }) => {
   const generatedId = useId()
   const optionListId = listId ?? generatedId
-  const { files: workspaceFiles } = useWorkspaceStore()
+  const workspaceFiles = useWorkspaceStore(state => state.files)
 
   // Merge workspace files with extra files (deduplicated by filepath)
   const files = useMemo(() => {
@@ -42,7 +42,6 @@ export const FileSelectionDialog: React.FC<FileSelectionDialogProps> = ({
     return [...workspaceFiles, ...newFiles]
   }, [workspaceFiles, extraFiles, filesOverride])
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [filteredFiles, setFilteredFiles] = useState<PlannerFile[]>([])
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const dialogRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -78,6 +77,7 @@ export const FileSelectionDialog: React.FC<FileSelectionDialogProps> = ({
 
   // Memoize flattened files for search to avoid re-calculating on every search query change
   const allFlattenedFiles = useMemo(() => {
+    if (!isOpen) return [] as PlannerFile[]
     const result: PlannerFile[] = []
     const flatten = (fileList: PlannerFile[]) => {
       for (const file of fileList) {
@@ -89,99 +89,60 @@ export const FileSelectionDialog: React.FC<FileSelectionDialogProps> = ({
     }
     flatten(files)
     return result
-  }, [files])
+  }, [files, isOpen])
 
   // Flatten hierarchical structure while respecting expanded folders (for non-search view)
-  const flattenWithExpandedFolders = useCallback((files: PlannerFile[], expandedFolders: Set<string>): PlannerFile[] => {
+  const flattenWithExpandedFolders = useCallback((fileList: PlannerFile[], expanded: Set<string>): PlannerFile[] => {
     const result: PlannerFile[] = []
     
-    const flatten = (fileList: PlannerFile[], depth = 0) => {
-      for (const file of fileList) {
-        // Add the file/folder to result
+    const flatten = (items: PlannerFile[], depth = 0) => {
+      for (const file of items) {
         result.push({ ...file, depth })
-        
-        // If it's a folder and it's expanded, add its children
-        if (file.type === 'folder' && expandedFolders.has(file.filepath) && file.children) {
+        if (file.type === 'folder' && expanded.has(file.filepath) && file.children) {
           flatten(file.children, depth + 1)
         }
       }
     }
     
-    flatten(files)
+    flatten(fileList)
     return result
   }, [])
 
-  // Filter files based on search query with VS Code-style fuzzy matching
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      // Show hierarchical structure when no search, respecting expanded folders
-      const flattened = flattenWithExpandedFolders(files, expandedFolders)
-      setFilteredFiles(flattened)
-      setSelectedIndex(0)
-      return
+  // Filter and score files in a single memoized pass (Schwartzian transform avoids O(N log N) rescoring in sort).
+  const filteredFiles = useMemo(() => {
+    if (!isOpen) return [] as PlannerFile[]
+    const query = searchQuery.toLowerCase().trim()
+    if (!query) {
+      return flattenWithExpandedFolders(files, expandedFolders)
     }
 
-    const query = searchQuery.toLowerCase().trim()
-    
-    let filtered = allFlattenedFiles.filter(file => {
-      // Filter by filepath with fuzzy matching (like VS Code) - includes both files and folders
+    const insideFolder = query.endsWith('/')
+    const scored: Array<{ file: PlannerFile; score: number }> = []
+    for (const file of allFlattenedFiles) {
       const filepath = file.filepath.toLowerCase()
-      
-      // VS Code-style fuzzy search: find query characters in order within the filepath
+      if (insideFolder && !filepath.startsWith(query)) continue
+
       let queryIndex = 0
       for (let i = 0; i < filepath.length && queryIndex < query.length; i++) {
-        if (filepath[i] === query[queryIndex]) {
-          queryIndex++
-        }
+        if (filepath[i] === query[queryIndex]) queryIndex++
       }
-      
-      // All query characters must be found in order
       const fuzzyMatch = queryIndex === query.length
-      
-      // Fallback: simple substring match for better user experience
-      const substringMatch = filepath.includes(query)
-      
-      return fuzzyMatch || substringMatch
-    })
+      if (!fuzzyMatch && !filepath.includes(query)) continue
 
-    // When query ends with / we're "inside" a folder — show only items under that path
-    if (query.endsWith('/')) {
-      filtered = filtered.filter(file => file.filepath.toLowerCase().startsWith(query))
+      const exact = filepath === query ? 100 : 0
+      const startsWith = filepath.startsWith(query) ? 50 : 0
+      const slash = filepath.lastIndexOf('/')
+      const fileName = slash >= 0 ? filepath.slice(slash + 1) : filepath
+      const fileNameMatch = fileName.includes(query) ? 25 : 0
+      const fuzzyScore = calculateFuzzyScore(filepath, query) * 10
+      scored.push({ file, score: exact + startsWith + fileNameMatch + fuzzyScore })
     }
-    
-    // Sort by relevance: exact matches first, then partial matches
-    const sorted = filtered.sort((a, b) => {
-      const aPath = a.filepath.toLowerCase()
-      const bPath = b.filepath.toLowerCase()
-      
-      // Exact match bonus
-      const aExact = aPath === query ? 1 : 0
-      const bExact = bPath === query ? 1 : 0
-      
-      // Starts with query bonus
-      const aStartsWith = aPath.startsWith(query) ? 1 : 0
-      const bStartsWith = bPath.startsWith(query) ? 1 : 0
-      
-      // Filename match bonus (last part of path)
-      const aFileName = aPath.split('/').pop() || ''
-      const bFileName = bPath.split('/').pop() || ''
-      const aFileNameMatch = aFileName.includes(query) ? 1 : 0
-      const bFileNameMatch = bFileName.includes(query) ? 1 : 0
-      
-      // Fuzzy match score (how close the characters are together)
-      const aFuzzyScore = calculateFuzzyScore(aPath, query)
-      const bFuzzyScore = calculateFuzzyScore(bPath, query)
-      
-      // Calculate final score
-      const aScore = aExact * 100 + aStartsWith * 50 + aFileNameMatch * 25 + aFuzzyScore * 10
-      const bScore = bExact * 100 + bStartsWith * 50 + bFileNameMatch * 25 + bFuzzyScore * 10
-      
-      return bScore - aScore
-    })
 
-    setFilteredFiles(sorted)
-    setSelectedIndex(0) // Reset selection when filtering
-  }, [files, allFlattenedFiles, searchQuery, expandedFolders, flattenWithExpandedFolders, calculateFuzzyScore])
+    scored.sort((a, b) => b.score - a.score)
+    return scored.map(entry => entry.file)
+  }, [isOpen, files, allFlattenedFiles, searchQuery, expandedFolders, flattenWithExpandedFolders, calculateFuzzyScore])
+
+  useEffect(() => { setSelectedIndex(0) }, [searchQuery, expandedFolders, isOpen])
 
   // Limit displayed results to improve performance
   const displayLimit = 50
@@ -323,12 +284,12 @@ export const FileSelectionDialog: React.FC<FileSelectionDialogProps> = ({
 
     if (queryParts.length === 0) return text
 
-    // Create a regex that matches any of the query parts
+    // Create a capturing regex so split() places matches at odd indices (avoiding /g lastIndex state bugs).
     const regex = new RegExp(`(${queryParts.map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi')
     const parts = text.split(regex)
 
     return parts.map((part, index) =>
-      regex.test(part) ? (
+      index % 2 === 1 ? (
         <mark key={index} className="bg-warning/20 text-warning px-0.5 rounded">
           {part}
         </mark>

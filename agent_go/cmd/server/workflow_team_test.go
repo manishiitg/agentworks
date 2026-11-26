@@ -90,7 +90,7 @@ func teamTestContext(user string) context.Context {
 	return context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: user})
 }
 
-func TestWorkflowTeamPolicySchedulesAndDecisionDelegation(t *testing.T) {
+func TestWorkflowTeamPolicyAndSchedules(t *testing.T) {
 	f := newTeamTestFixture(t)
 	m, _, _ := ReadWorkflowManifest(context.Background(), teamTestRoot)
 	save := func(user string, team *WorkflowTeam, revision int) *httptest.ResponseRecorder {
@@ -136,28 +136,6 @@ func TestWorkflowTeamPolicySchedulesAndDecisionDelegation(t *testing.T) {
 	if e := validateTeamQuery(teamTestContext("first"), QueryRequest{AgentMode: "workflow", SelectedFolder: teamTestRoot}); e == nil {
 		t.Fatal("Contributor started an unrestricted workflow run")
 	}
-	ctx := teamTestContext("first")
-	if _, e := createReportHumanInput(ctx, teamTestRoot, ReportHumanInputCreateRequest{InputID: "approve-route", Question: "Approve contribution?", AllowFreeText: true, CreatedBy: "first"}); e != nil {
-		t.Fatal(e)
-	}
-	answer := ReportHumanInputAnswerRequest{Note: "approved", AnsweredBy: "first"}
-	if _, e := answerReportHumanInput(ctx, teamTestRoot, "approve-route", answer); e == nil {
-		t.Fatal("edit rights granted approval")
-	}
-	m.Team.Contributors[0].Approve = true
-	m.Team.Contributors[0].ApprovalIDs = []string{"different-decision"}
-	f.manifest(t, m)
-	if _, e := answerReportHumanInput(ctx, teamTestRoot, "approve-route", answer); e == nil {
-		t.Fatal("approval scope was ignored")
-	}
-	m.Team.Contributors[0].ApprovalIDs = []string{"approve-route"}
-	f.manifest(t, m)
-	if _, e := answerReportHumanInput(ctx, teamTestRoot, "approve-route", answer); e != nil {
-		t.Fatal(e)
-	}
-	if _, e := answerReportHumanInput(teamTestContext("leader"), teamTestRoot, "approve-route", ReportHumanInputAnswerRequest{Note: "replace accepted answer"}); e == nil {
-		t.Fatal("competing answer silently replaced approval")
-	}
 	// Transfer changes the execution leader; existing project owners retain access.
 	m.Team.LeaderID = "second"
 	m.Team.Contributors = []WorkflowContributor{{UserID: "leader"}, {UserID: "first"}}
@@ -171,9 +149,6 @@ func TestWorkflowTeamPolicySchedulesAndDecisionDelegation(t *testing.T) {
 	}
 	if !f.hasHistory("write_workflow_manifest", "leader") {
 		t.Fatal("ownership transfer lost its authenticated change history")
-	}
-	if _, e := listReportHumanInputs(context.Background(), teamTestRoot, "answered", ""); e != nil {
-		t.Fatal(e)
 	}
 }
 

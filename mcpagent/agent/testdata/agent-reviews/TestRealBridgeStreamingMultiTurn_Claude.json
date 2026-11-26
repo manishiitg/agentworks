@@ -1,0 +1,33 @@
+{
+  "test": "TestRealBridgeStreamingMultiTurn_Claude",
+  "summary": "Claude persistent multi-turn through the REAL bridge: turn 1 reads a build id, turn 2 reuses the session and writes it into report.md",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text \u003c-\u003e tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "build_id_only_in_file": "BUILD_ID_d2428d3ba9d0",
+    "provider": "Claude",
+    "report_md_on_disk": "| Key | Value |\n| --- | --- |\n| build_id | BUILD_ID_d2428d3ba9d0 |\n| status | ok |\n",
+    "reused_tmux_session": true,
+    "turn1_answer": "The build ID is BUILD_ID_d2428d3ba9d0.",
+    "turn1_content_chunks": 2,
+    "turn1_tool_events": 1,
+    "turn2_answer": "Here's the contents of the report.md file:\n\n| Key | Value |\n| --- | --- |\n| build_id | BUILD_ID_d2428d3ba9d0 |\n| status | ok |",
+    "turn2_content_chunks": 2,
+    "turn2_tool_events": 1
+  },
+  "fingerprint": "2209fcae5cace408",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "2209fcae5cace408",
+    "reviewer": "claude-sonnet-5",
+    "issues": null,
+    "notes": "Turn 1 reads the build id and answers correctly; turn 2 reuses the same tmux session, writes the exact markdown table requested, and reads it back verbatim — report_md_on_disk confirms real disk state, not a hallucinated claim. No duplication or garbling, coherent narration, tool usage matches what was asked."
+  }
+}

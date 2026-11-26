@@ -3,12 +3,14 @@ package server
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -88,7 +90,9 @@ func accessTokenClaims(t accesstokens.Token) (*UserClaims, error) {
 			return nil, accesstokens.ErrInvalid
 		}
 	} else {
-		dir, err := readUserDirectoryFile()
+		// #3147/#3156: one version-row read per request; the decoded directory
+		// is reloaded only after a save, so a disabled account applies at once.
+		dir, err := loadUserDirectory()
 		if err != nil {
 			return nil, err
 		}
@@ -281,7 +285,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		if t.Allows("crews:review") && !currentUserCanReviewCode(r) {
-			externalError(w, 403, "forbidden", "crews:review is for admins and Code reviewers.")
+			externalError(w, 403, "forbidden", "crews:review is for admins and project reviewers.")
 			return
 		}
 		if t.Allows("users:manage") && !currentUserIsAdmin(r) {
@@ -291,7 +295,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 		if !t.AllCrews && len(t.CrewIDs) > 0 {
 			crews, err := listAccessibleCrewProjects(r.Context(), c.UserID, "")
 			if err != nil {
-				externalError(w, 502, "workspace_unavailable", "Cannot check Crew access.")
+				externalError(w, 502, "workspace_unavailable", "Cannot check project access.")
 				return
 			}
 			allowed := map[string]bool{}
@@ -300,7 +304,7 @@ func (api *StreamingAPI) handleAccessTokens(w http.ResponseWriter, r *http.Reque
 			}
 			for _, id := range t.CrewIDs {
 				if !allowed[id] {
-					externalError(w, 403, "forbidden", "One or more selected Crews are not accessible.")
+					externalError(w, 403, "forbidden", "One or more selected projects are not accessible.")
 					return
 				}
 			}
@@ -374,6 +378,7 @@ func tokenSessionWorkflowReadRoot(_ *UserClaims, workflowPhaseFolder string) str
 }
 
 func externalTokenAllows(c *UserClaims, tool externalTool) bool {
+	schedulerAdmin := globalSchedulerMember(tool.Name)
 	if !agentSourceConsentAllowed(c, tool) {
 		return false
 	}
@@ -400,6 +405,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 	}
 	if c == nil || !(productpolicy.Selection{}).AllowsTool(tool.Name) {
 		return false
+	}
+	if schedulerAdmin {
+		return schedulerAdminAllowed(c)
 	}
 	if c.AccessToken != nil && c.AccessToken.ProjectKind != "" && tool.actions == nil && !projectMCPToolAllowed(c.AccessToken.ProjectKind, tool.Name) {
 		return false
@@ -444,6 +452,9 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 
 	if tool.Name == externalUsersTool || tool.Name == externalSignInAppsTool {
 		return externalUsersAllowed(c)
+	}
+	if tool.Name == providerAccountsTool {
+		return providerAccountsToolAllowed(c)
 	}
 	if tool.actions != nil {
 		return externalMergedAllows(c, tool)
@@ -551,7 +562,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 			// Discovery includes list for readers; dispatch checks the action,
 			// live ownership and authoring consent before any mutation.
 			return t.Allows("crews:read") || t.Allows("crews:write")
-		case "ask_crew", "suggest_crew_change":
+		case "ask_crew":
 			return t.Allows("crews:run")
 		case "undo_crew_reply":
 			return t.Allows("crews:write")
@@ -573,8 +584,8 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return t.Allows("runs:execute")
 	}
 	switch tool.Name {
-	case "chat_preferences":
-		return true // Only the authenticated caller's display is read or changed.
+	case "appearance", "profile_picture":
+		return true // Only the authenticated caller's own display is read or changed.
 	case "get_file_link":
 		return t.Allows("files:read") || t.Allows("crews:read")
 	case "list_files", "read_file", "search_files", "list_step_code":
@@ -591,7 +602,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return t.Allows("crews:read") || t.Allows("crews:run")
 	case "get_secret_sources":
 		return reads || t.Allows("crews:read") || externalCodeRunAllowed(c)
-	case "get_settings", "update_settings", "manage_schedules", "manage_triggers", "list_needs_you", "answer_needs_you", "dismiss_needs_you", "manage_project":
+	case "get_settings", "update_settings", "manage_schedules", "manage_triggers", "manage_project":
 		// Workflow or Crew settings: each target rechecks its own scope and role.
 		return reads || t.Allows("crews:read") || t.Allows("crews:write")
 	case "get_agent_context", "list_guidance_topics", "get_guidance_topic", "get_guidance_skills", "get_skill":
@@ -632,7 +643,7 @@ type accessTokenSessionRegistry struct {
 	sessions map[string]accessTokenSession
 }
 
-func (api *StreamingAPI) cancelAccessTokenSessions(id string) {
+func (api *StreamingAPI) cancelAccessTokenSessions(id string) []string {
 	api.accessTokenSessions.Lock()
 	sessions := []string{}
 	for sid, s := range api.accessTokenSessions.sessions {
@@ -645,6 +656,7 @@ func (api *StreamingAPI) cancelAccessTokenSessions(id string) {
 	for _, sid := range sessions {
 		api.cancelSessionRuntimeWork(sid, "access token revoked or expired", runtimePhaseCanceled)
 	}
+	return sessions
 }
 
 func (api *StreamingAPI) watchAccessTokenSession(c *UserClaims, sessionID, workspace string, access WorkflowAccessLevel) {
@@ -670,42 +682,117 @@ func (api *StreamingAPI) watchAccessTokenSession(c *UserClaims, sessionID, works
 				return
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-			allowed := accessTokenSessionAllowed(ctx, entry)
+			ended := api.recheckAccessTokenSession(ctx, entry)
 			cancel()
-			if !allowed {
-				api.cancelAccessTokenSessions(entry.tokenID)
+			if ended {
 				return
 			}
 		}
 	}()
 }
 
-func accessTokenSessionAllowed(ctx context.Context, entry accessTokenSession) bool {
+// A failed lookup is not evidence of revocation. Calls still refuse when
+// authorization is unavailable; the watcher preserves already-authorized work.
+// PLAT-746-512: one slow manifest lookup used to cancel every run of a token.
+type tokenSessionVerdict struct {
+	reason string
+	token  bool
+}
+
+func accessTokenSessionCheck(ctx context.Context, entry accessTokenSession, running bool) (tokenSessionVerdict, error) {
+	var token accesstokens.Token
 	if strings.HasPrefix(entry.tokenID, "oauth-") {
-		grant, err := mcpOAuthFamilyActive(ctx, strings.TrimPrefix(entry.tokenID, "oauth-"))
+		store, err := openMCPOAuthStore()
 		if err != nil {
-			return false
+			return tokenSessionVerdict{}, err
 		}
-		claims, err := accessTokenClaims(mcpOAuthTokenForGrant(grant))
+		defer store.Close()
+		family := strings.TrimPrefix(entry.tokenID, "oauth-")
+		var grant mcpOAuthGrant
+		if running {
+			// PLAT-746-512: authorized work outlives a short access token,
+			// but stops when the whole sign-in expires or is revoked.
+			grant, err = store.LiveFamily(ctx, family)
+		} else {
+			grant, err = store.ActiveFamily(ctx, family)
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			return tokenSessionVerdict{"revoked_or_expired", true}, nil
+		}
 		if err != nil {
-			return false
+			return tokenSessionVerdict{}, err
 		}
-		level, manifest := workflowAccessForWorkspacePath(ctx, claims, entry.workspace)
-		return manifest != nil && level == entry.access
-	}
-	store, err := openAccessTokens()
-	if err != nil {
-		return false
-	}
-	defer store.Close()
-	token, err := store.Active(ctx, entry.tokenID, time.Now())
-	if err != nil {
-		return false
+		token = mcpOAuthTokenForGrant(grant)
+	} else {
+		store, err := openAccessTokens()
+		if err != nil {
+			return tokenSessionVerdict{}, err
+		}
+		defer store.Close()
+		token, err = store.Active(ctx, entry.tokenID, time.Now())
+		if errors.Is(err, accesstokens.ErrInvalid) {
+			return tokenSessionVerdict{"revoked_or_expired", true}, nil
+		}
+		if err != nil {
+			return tokenSessionVerdict{}, err
+		}
 	}
 	claims, err := accessTokenClaims(token)
+	if errors.Is(err, accesstokens.ErrInvalid) {
+		return tokenSessionVerdict{"account_access_changed", false}, nil
+	}
 	if err != nil {
+		return tokenSessionVerdict{}, err
+	}
+	manifest, exists, err := ReadWorkflowManifest(ctx, entry.workspace)
+	if err != nil {
+		return tokenSessionVerdict{}, err
+	}
+	if !exists || manifest == nil || workflowAccessForManifest(claims, manifest) != entry.access {
+		return tokenSessionVerdict{"project_access_changed", false}, nil
+	}
+	return tokenSessionVerdict{}, nil
+}
+
+func accessTokenSessionAllowed(ctx context.Context, entry accessTokenSession) bool {
+	verdict, err := accessTokenSessionCheck(ctx, entry, false)
+	return err == nil && verdict.reason == ""
+}
+
+// Confirm a definite negative with a second store/access read. A deadline, busy
+// database or unavailable workspace stays unknown and is retried on the next tick.
+func (api *StreamingAPI) recheckAccessTokenSession(ctx context.Context, entry accessTokenSession) bool {
+	verdict, err := accessTokenSessionCheck(ctx, entry, true)
+	if err == nil && verdict.reason == "" {
 		return false
 	}
-	level, manifest := workflowAccessForWorkspacePath(ctx, claims, entry.workspace)
-	return manifest != nil && level == entry.access
+	prefix := entry.tokenID
+	if len(prefix) > 16 {
+		prefix = prefix[:16]
+	}
+	if err != nil {
+		log.Printf("[TOKEN_WATCH] unknown token=%s session=%s reason=%q", prefix, entry.sessionID, err)
+		return false
+	}
+	confirmed, err := accessTokenSessionCheck(ctx, entry, true)
+	if err != nil || confirmed != verdict {
+		log.Printf("[TOKEN_WATCH] unknown token=%s session=%s reason=negative_not_confirmed error=%v", prefix, entry.sessionID, err)
+		return false
+	}
+	log.Printf("[TOKEN_WATCH] denied token=%s session=%s reason=%s confirmed_reads=2 checked_at=%s", prefix, entry.sessionID, verdict.reason, time.Now().UTC().Format(time.RFC3339Nano))
+	if verdict.token {
+		logTokenWatchOAuthExpiry(ctx, entry.tokenID)
+		canceled := api.cancelAccessTokenSessions(entry.tokenID)
+		// Setup may have registered its runtime after an earlier revocation
+		// already removed this session from the watch registry (Codex1758 P1).
+		if !containsID(canceled, entry.sessionID) {
+			api.cancelSessionRuntimeWork(entry.sessionID, "access token revoked or expired", runtimePhaseCanceled)
+		}
+	} else {
+		api.accessTokenSessions.Lock()
+		delete(api.accessTokenSessions.sessions, entry.sessionID)
+		api.accessTokenSessions.Unlock()
+		api.cancelSessionRuntimeWork(entry.sessionID, "access token project or account access changed", runtimePhaseCanceled)
+	}
+	return true
 }

@@ -149,7 +149,7 @@ export const messagingGuides: MessagingGuide[] = [
     delivery: 'The chat gets its messages when it is used: at your next prompt or when its current turn ends. An idle chat is not woken; messages wait safely. A message that is only stored has not been seen by the chat yet.',
     menus: [
       { entry: '/agentworks attach, detach, agents, share, unshare', who: 'You', description: 'Type in this Cursor CLI conversation after reviewing the project hooks.' },
-      { entry: 'AgentWorks messaging MCP tools', who: 'The agent', description: 'Restricted to this verified CLI session; a separate HTTP MCP connection supplies workflow and Crew tools.' },
+      { entry: 'AgentWorks messaging MCP tools', who: 'The agent', description: 'Restricted to this verified CLI session; a separate HTTP MCP connection supplies workflow and project tools.' },
     ],
     troubleshooting: [
       { title: 'The attach command reaches the model', text: 'Check the selected project and its .cursor/hooks.json. This CLI version may skip plugin-only prompt and stop hooks; rerun the reviewed project setup, then restart Cursor CLI.' },
@@ -180,7 +180,7 @@ export const messagingGuides: MessagingGuide[] = [
   },
   {
     id: 'agy', name: 'agy', status: 'Tools only · no live messaging setup', available: false,
-    requirements: ['A compatible MCP client may use AgentWorks workflow and Crew tools. No supported AgentWorks live-messaging plugin or native attachment setup is published for agy.'],
+    requirements: ['A compatible MCP client may use AgentWorks workflow and project tools. No supported AgentWorks live-messaging plugin or native attachment setup is published for agy.'],
     versions: 'No tested agy live-attachment version is claimed. Shared provider names in code do not establish a working integration.',
     install: [], update: [], installNote: 'Use the separate MCP tools setup if your client supports it. There is no AgentWorks messaging plugin install/update command to run for agy today.', approval: 'Review your client’s MCP connection permissions. Tool access and a registered mailbox do not attach a running chat or provide idle wake.',
     attach: '', ownRequest: '', delivery: 'A registered mailbox needs an explicit read. No native live route or idle-wake claim is made for agy.',

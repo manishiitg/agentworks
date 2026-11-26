@@ -270,7 +270,7 @@ func (api *StreamingAPI) workflowChatNativeAgentTools(ctx context.Context, req Q
 // errRetiredGeneralChat is the refusal for a request that names neither a
 // workflow nor a product: there is no general-purpose chat, only workflows,
 // Crews and Code.
-var errRetiredGeneralChat = errors.New("there is no general chat; start a chat in a workflow, a Crew or a Code")
+var errRetiredGeneralChat = errors.New("there is no general chat; start a chat in a workflow or a project")
 
 // isRetiredGeneralChat reports whether req is an interactive multi-agent chat
 // with no workflow, Crew or Code behind it. Bots, schedules, triggers, child

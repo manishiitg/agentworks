@@ -29,7 +29,7 @@ func dashboardFailure(status int, message string) error {
 	return &wf.FileError{Status: status, Message: message}
 }
 func dashboardMutation(action string) bool {
-	return action == "create" || action == "update" || action == "publish" || action == "restore"
+	return action == "create" || action == "update" || action == "publish" || action == "restore" || action == "delete" || action == "undelete"
 }
 
 // dashboardExportAction renders the dashboard in the server's browser with the caller's data.
@@ -74,6 +74,12 @@ func dashboardAuthoringAllowed(claims *UserClaims, target *dashboardTarget) bool
 	return false
 }
 
+// MCP-purpose readers retain the validated connection's consent. Preview or
+// share-purpose claims are not general dashboard read/Open authority.
+func dashboardReadPurposeAllowed(claims *UserClaims) bool {
+	return claims != nil && (claims.Scope == "" || claims.Scope == "mcp" && claims.AccessToken != nil) && dashboardScopeAllowed(claims, "get")
+}
+
 func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	// Uploads reuse Crew attachment use-access, not dashboard authoring consent.
 	if action == "upload" {
@@ -82,7 +88,7 @@ func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if claims == nil || userAccessForClaims(claims).Disabled {
 		return false
 	}
-	if (dashboardMutation(action) || action == "share" || dashboardOwnersWrite(action) || dashboardExportAction(action)) && !userAccessForClaims(claims).CanEdit {
+	if (dashboardMutation(action) || action == "share" || action == dashboardTeamAction || dashboardOwnersWrite(action) || dashboardExportAction(action)) && !userAccessForClaims(claims).CanEdit {
 		return false
 	}
 	if claims.AccessToken == nil {
@@ -91,7 +97,7 @@ func dashboardScopeAllowed(claims *UserClaims, action string) bool {
 	if !claims.AccessToken.Allows("dashboards:read") {
 		return false
 	}
-	if (dashboardMutation(action) || action == "share" || dashboardOwnersWrite(action) || dashboardExportAction(action)) && !dashboardAuthoringAllowed(claims, nil) {
+	if (dashboardMutation(action) || action == "share" || action == dashboardTeamAction || dashboardOwnersWrite(action) || dashboardExportAction(action)) && !dashboardAuthoringAllowed(claims, nil) {
 		return false
 	}
 	if (action == "preview" || dashboardExportAction(action)) && !claims.AccessToken.Allows("runs:execute") {
@@ -131,7 +137,7 @@ func (api *StreamingAPI) dashboardTarget(ctx context.Context, claims *UserClaims
 	}
 
 	if !isReportRunWorkflowRoot(clean) {
-		return target, dashboardFailure(400, "Workflow, Flow, Crew or owned Code root required")
+		return target, dashboardFailure(400, "Workflow, Flow or project root required")
 	}
 	access, manifest := workflowAccessForWorkspacePath(ctx, claims, clean)
 	if access == WorkflowAccessNone || manifest == nil || !userAllowedWorkflowID(claims, manifest.ID) {
@@ -148,7 +154,6 @@ func (api *StreamingAPI) dashboardTarget(ctx context.Context, claims *UserClaims
 }
 func dashboardWorkspaceRequest(ctx context.Context, req dashboards.Request) (dashboards.Result, error) {
 	if !dashboardMutation(req.Action) {
-		req.Root = crewMacDashboardsRoot(req.Root)
 		if publication, e := readPublishedProject(ctx, req.Root); e != nil {
 			return dashboards.Result{}, e
 		} else if publishedDashboardSource(publication) {
@@ -195,7 +200,7 @@ func publishedDashboardSource(publication *publishedProject) bool {
 	return false
 }
 func (api *StreamingAPI) resolveDashboardDocument(r *http.Request, root, p string) (string, error) {
-	if !strings.HasPrefix(p, dashboards.Prefix) && !strings.HasPrefix(p, "code/reports/managed/") {
+	if !strings.HasPrefix(p, dashboards.Prefix) && !strings.HasPrefix(p, dashboards.ScriptsPrefix) {
 		return p, nil
 	}
 	claims := GetUserFromContext(r.Context())
@@ -280,6 +285,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		SharedWithMe    bool              `json:"shared_with_me"`
 		PublishedOnly   bool              `json:"published_only"`
 		Emails          []string          `json:"emails"`
+		LockedPaths     []string          `json:"locked_paths"`
 		crewAgentShareChange
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20))
@@ -318,7 +324,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if dashboardOwnersAction(args.Action) {
-		api.handleDashboardOwners(w, r, claims, target, args.Action, args.Emails)
+		api.handleDashboardOwners(w, r, claims, target, args.Action, args.Emails, args.LockedPaths)
 		return
 	}
 	if dashboardShareAction(args.Action) {
@@ -327,6 +333,10 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	}
 	if args.Action == dashboardPublicAction {
 		api.handleDashboardPublicLink(w, r, claims, target, args.Mode, args.ID)
+		return
+	}
+	if args.Action == dashboardTeamAction {
+		api.handleDashboardTeamShare(w, r, claims, target, args.Mode, args.ID)
 		return
 	}
 	if args.Action == "export_static" {
@@ -376,6 +386,10 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	}
 	if claims.AccessToken != nil {
 		req.Guard = claims.AccessToken.FileGuard
+	}
+	if args.Action == "delete" {
+		api.deleteDashboard(w, r, target, req)
+		return
 	}
 	if args.Action == "get" || args.Action == "validate" || args.Action == "preview" || args.Action == "link" {
 		req.Action = "get"
@@ -446,28 +460,6 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if args.Action == "list" {
-		// Goals retain their starting dashboard. Crew discovery never creates one;
-		// its owner can explicitly create one when sharing.
-		// Run requests, bounded file connections, Local projects and published
-		// laptop source never acquire writes through catalog discovery.
-		if len(result.Dashboards) == 0 && includeDraft && req.Guard == nil && target.Kind == "workflow" {
-			publication, err := readPublishedProject(r.Context(), target.Root)
-			if err != nil {
-				dashboardError(w, err)
-				return
-			}
-			if publication == nil {
-				if _, _, err := api.ensureDefaultDashboard(r.Context(), claims, target); err != nil {
-					dashboardError(w, err)
-					return
-				}
-				result, err = dashboardWorkspaceRequest(r.Context(), req)
-				if err != nil {
-					dashboardError(w, err)
-					return
-				}
-			}
-		}
 		rows := []map[string]any{}
 		resources := []dashboardQuestionDiscovery{}
 		for _, d := range result.Dashboards {

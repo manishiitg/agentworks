@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -20,6 +19,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	orchestratorevents "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productschedule"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectactions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
@@ -219,7 +219,9 @@ type SchedulerService struct {
 	workspaceIndex   map[string]string // scheduleID → workspacePath
 	workspaceIndexMu sync.RWMutex
 
-	queuedResumeMu  sync.Mutex
+	queuedResumeMu sync.Mutex
+	// projectTimersMu lets one project-timer pass run at a time, off the clock tick.
+	projectTimersMu sync.Mutex
 	queuedLaunchMu  sync.Mutex
 	queuedLaunching map[string]bool
 }
@@ -252,20 +254,32 @@ func (s *SchedulerService) InvalidateWorkflowManifestCache() {
 	invalidateWorkflowManifestIndex()
 }
 
-// Start scans all workspace folders for workflow.json manifests, loads enabled schedules,
-// and starts the wall-clock tick loop.
-func (s *SchedulerService) Start(ctx context.Context) error {
-	scheduleLogf("[SCHEDULER] Starting manifest-based scheduler service...")
+// initializeRunLedger opens occurrence evidence independently of the clock.
+// Secondary machines disable automatic firing but still offer manual Run now.
+// Opening the shared store never interrupts another machine's active work;
+// startup recovery remains with Start on the clock-owning machine.
+func (s *SchedulerService) initializeRunLedger() error {
 	s.stateStoreMu.Lock()
+	defer s.stateStoreMu.Unlock()
 	if s.stateStore == nil {
 		storePath := filepath.Join(fsutil.WorkspaceDocsRoot(), "_system", "schedule-state.sqlite")
 		store, err := schedulerstate.Open(storePath)
 		if err != nil {
-			s.stateStoreMu.Unlock()
 			return fmt.Errorf("initialize schedule state store: %w", err)
 		}
 		s.stateStore = store
 	}
+	return nil
+}
+
+// Start scans all workspace folders for workflow.json manifests, loads enabled schedules,
+// and starts the wall-clock tick loop.
+func (s *SchedulerService) Start(ctx context.Context) error {
+	scheduleLogf("[SCHEDULER] Starting manifest-based scheduler service...")
+	if err := s.initializeRunLedger(); err != nil {
+		return err
+	}
+	s.stateStoreMu.Lock()
 	if interrupted, err := s.stateStore.InterruptActiveRuns(ctx, "interrupted: server restarted", time.Now().UTC()); err != nil {
 		s.stateStoreMu.Unlock()
 		return fmt.Errorf("reconcile interrupted schedule runs: %w", err)
@@ -283,41 +297,31 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 		s.reportManualRunOutcome(workspacePath, runFolder, status, sessionID)
 	}
 
-	// Reconcile the legacy/UI schedule-runs.json projection from the durable
-	// scheduler ledger. A final workspace write can fail after the canonical
-	// terminal transition succeeds; restart is not evidence that such a run was
-	// interrupted (PLAT-017).
+	// Restore display outcomes from the durable scheduler ledger. Update each
+	// still-running row conditionally so a concurrent completion is preserved.
 	for _, wf := range workflows {
-		runs, err := ReadScheduleRuns(ctx, wf.WorkspacePath)
+		runs, err := readScheduleRunStates(ctx, wf.WorkspacePath, "", true)
 		if err != nil {
+			scheduleLogf("[SCHEDULER] Cannot read run history for %s: %v", wf.WorkspacePath, err)
 			continue
 		}
 		fixed := 0
-		for i := range runs {
-			if runs[i].Status == "running" {
-				status, errMsg, completedAt, ok := s.durableScheduleRunProjection(ctx, runs[i].ID)
-				if !ok {
-					status = "interrupted"
-					errMsg = "interrupted: server restarted without durable terminal evidence"
-					now := time.Now().UTC()
-					completedAt = &now
-				}
-				runs[i].Status = status
-				runs[i].Error = errMsg
-				runs[i].CompletedAt = completedAt
-				if completedAt != nil {
-					duration := completedAt.Sub(runs[i].StartedAt).Milliseconds()
-					if duration < 0 {
-						duration = 0
-					}
-					runs[i].DurationMs = &duration
-				}
-				fixed++
+		for _, run := range runs {
+			status, message, completedAt, ok := s.durableScheduleRunProjection(ctx, run.ID)
+			if !ok {
+				status = "interrupted"
+				message = "interrupted: server restarted without durable terminal evidence"
+				now := time.Now().UTC()
+				completedAt = &now
 			}
+			if err := finalizeRunningScheduleRun(ctx, wf.WorkspacePath, run.ID, status, message, completedAt); err != nil {
+				scheduleLogf("[SCHEDULER] Cannot restore run %s: %v", run.ID, err)
+				continue
+			}
+			fixed++
 		}
 		if fixed > 0 {
-			_ = WriteScheduleRuns(ctx, wf.WorkspacePath, runs)
-			scheduleLogf("[SCHEDULER] Marked %d stale running run(s) as error in %s", fixed, wf.WorkspacePath)
+			scheduleLogf("[SCHEDULER] Reconciled %d running run(s) in %s", fixed, wf.WorkspacePath)
 		}
 	}
 
@@ -337,7 +341,7 @@ func (s *SchedulerService) Start(ctx context.Context) error {
 		loaded, time.Now().Format(time.RFC3339), time.Now().Location().String())
 
 	// Wall-clock tick loop: every 60s, evaluate all registered schedules against current time.
-	go s.tickLoop(ctx)
+	go s.runSchedulerClock(ctx.Done(), func() { s.tickLoop(ctx) })
 
 	// Wait for context cancellation
 	<-ctx.Done()
@@ -400,7 +404,16 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case t := <-ticker.C:
-			s.dispatchProjectTimers(ctx, t)
+			// Project timers and Watchers read every user's state over the
+			// workspace service; run them beside the tick so a slow pass never
+			// holds up workflow schedules. One pass at a time; a busy tick skips.
+			if s.projectTimersMu.TryLock() {
+				tick := t
+				goRecover("project timers", func() {
+					defer s.projectTimersMu.Unlock()
+					s.dispatchProjectTimers(ctx, tick)
+				})
+			}
 			gap := t.Sub(lastTick)
 			if gap > wakeThreshold {
 				scheduleLogf("[SCHEDULER] 💤 WAKE_DETECTED gap=%s now=%s prev_tick=%s",
@@ -411,7 +424,11 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 			parts := make([]string, 0, len(s.jobs))
 			var toFire []dueRegisteredJob
 			var missed []dueRegisteredJob
+			upcomingAwake := map[string]bool{}
 			for sid, job := range s.jobs {
+				if job.sctx != nil && job.sctx.Schedule.Enabled && job.sctx.Schedule.KeepAwake == keepAwakeUpcoming {
+					upcomingAwake[sid] = job.sctx.Schedule.KeepAwakeOnBattery
+				}
 				if job.cronSched != nil {
 					occurrences := dueCronOccurrences(job.cronSched, job.lastFired, t)
 					skipped, fire := splitOnTimeOccurrences(occurrences, t)
@@ -433,6 +450,7 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 				}
 			}
 			s.mu.Unlock()
+			desktopKeepAwake.setUpcoming("workflow", upcomingAwake)
 
 			scheduleLogf("[SCHEDULER] ❤️ heartbeat now=%s gap=%s jobs=%d due=%d missed=%d | %s",
 				t.Format(time.RFC3339), gap.Round(time.Second), len(parts), len(toFire), len(missed), strings.Join(parts, ", "))
@@ -461,14 +479,15 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 					due.job.lastFired = due.scheduledFor
 				}
 				s.mu.Unlock()
-				go s.triggerSchedule(due.job.sctx, due.scheduledFor)
+				goRecover("schedule start", func() { s.triggerSchedule(due.job.sctx, due.scheduledFor) })
 			}
 
 			// Suspended runs wake on their own reset time rather than on a
 			// cron occurrence, so they are evaluated every tick alongside the
 			// schedules (PLAT-101).
-			go s.resumeDueCapacityWaits(context.Background(), t.UTC())
-			go s.resumeQueuedScheduleOccurrences(context.Background(), t.UTC())
+			tick := t.UTC()
+			goRecover("capacity wait resume", func() { s.resumeDueCapacityWaits(context.Background(), tick) })
+			goRecover("queued schedule resume", func() { s.resumeQueuedScheduleOccurrences(context.Background(), tick) })
 			lastTick = t
 		}
 	}
@@ -655,11 +674,51 @@ func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
 		}
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	sched := sctx.Schedule
 	runtimeKey := scheduleRuntimeKey(sctx)
+	scheduleType := scheduleTypeOrDefault(sched.ScheduleType)
+
+	// File and database reads happen before s.mu: the schedule clock and every
+	// other schedule wait on that lock, and the workspace service can be slow.
+	if err := EnsureWorkflowScheduleExecutionTracker(context.Background(), sctx.WorkspacePath, sched, time.Now().UTC()); err != nil {
+		s.logf(sctx, "[SCHEDULER] Warning: failed to initialize execution history for %s: %v", sched.ID, err)
+	}
+	var (
+		cronSched cron.Schedule
+		lastFired time.Time
+	)
+	if sched.Enabled && scheduleType != "webhook" && scheduleType != "calendar" {
+		// Cron schedules: parse the expression and find where the clock resumes.
+		var err error
+		cronSched, err = (projectactions.When{Cron: sched.CronExpression, Timezone: scheduleTimezoneOrDefault(sched.Timezone)}).CronSchedule()
+		if err != nil {
+			return fmt.Errorf("failed to parse project clock: %w", err)
+		}
+		now := time.Now().UTC()
+		lastFired = now.Add(-30 * time.Second) // a genuinely new schedule starts with its next future occurrence
+		windowStart, hasWindow := WorkflowScheduleTrackingWindowStart(context.Background(), sctx.WorkspacePath, sched.ID)
+		if latest, ok := s.latestCronOccurrence(sctx); ok {
+			lastFired = latest
+		} else if hasWindow && windowStart.Before(now) {
+			// The scheduler-state DB can legitimately be empty after an upgrade,
+			// replacement, or first deployment of durable fire decisions. Resume
+			// from the schedule's persisted tracking window instead of treating an
+			// old schedule as newly created and silently skipping every occurrence
+			// before this process started.
+			lastFired = windowStart
+		}
+		// An old decision is only a cursor within the current enabled timing
+		// window. Re-enabling or retiming must never replay a slot from before
+		// that edit; an unchanged restart still catches up inside its window.
+		if hasWindow && windowStart.After(lastFired) {
+			lastFired = windowStart
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.scheduleFingerprints == nil {
 		s.scheduleFingerprints = make(map[string]string)
 	}
@@ -679,16 +738,11 @@ func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
 	s.workspaceIndex[runtimeKey] = sctx.WorkspacePath
 	s.workspaceIndexMu.Unlock()
 
-	if err := EnsureWorkflowScheduleExecutionTracker(context.Background(), sctx.WorkspacePath, sched, time.Now().UTC()); err != nil {
-		s.logf(sctx, "[SCHEDULER] Warning: failed to initialize execution history for %s: %v", sched.ID, err)
-	}
-
 	if !sched.Enabled {
 		s.scheduleFingerprints[runtimeKey] = scheduleConfigFingerprint(sctx)
 		return nil
 	}
 
-	scheduleType := scheduleTypeOrDefault(sched.ScheduleType)
 	if scheduleType == "webhook" {
 		s.scheduleFingerprints[runtimeKey] = scheduleConfigFingerprint(sctx)
 		s.updateRuntimeState(runtimeKey, func(state *ScheduleRuntimeState) { state.NextRunAt = nil })
@@ -722,32 +776,6 @@ func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
 			s.logf(sctx, "[SCHEDULER] Calendar schedule %s (%s) has no future items; not registering", sched.ID, sched.Name)
 		}
 	} else {
-		// Cron schedules: parse the expression and register for wall-clock eval.
-		cronSched, err := (projectactions.When{Cron: sched.CronExpression, Timezone: scheduleTimezoneOrDefault(sched.Timezone)}).CronSchedule()
-		if err != nil {
-			return fmt.Errorf("failed to parse project clock: %w", err)
-		}
-		now := time.Now().UTC()
-		lastFired := now.Add(-30 * time.Second) // a genuinely new schedule starts with its next future occurrence
-		if latest, ok := s.latestCronOccurrence(sctx); ok {
-			lastFired = latest
-		} else {
-			// The scheduler-state DB can legitimately be empty after an upgrade,
-			// replacement, or first deployment of durable fire decisions. Resume
-			// from the schedule's persisted tracking window instead of treating an
-			// old schedule as newly created and silently skipping every occurrence
-			// before this process started.
-			if windowStart, ok := WorkflowScheduleTrackingWindowStart(context.Background(), sctx.WorkspacePath, sched.ID); ok && windowStart.Before(now) {
-				lastFired = windowStart
-			}
-		}
-		// An old decision is only a cursor within the current enabled timing
-		// window. Re-enabling or retiming must never replay a slot from before
-		// that edit; an unchanged restart still catches up inside its window.
-		if windowStart, ok := WorkflowScheduleTrackingWindowStart(context.Background(), sctx.WorkspacePath, sched.ID); ok && windowStart.After(lastFired) {
-			lastFired = windowStart
-		}
-
 		s.jobs[runtimeKey] = &registeredJob{
 			sctx:      &sctxCopy,
 			cronSched: cronSched,
@@ -903,8 +931,11 @@ func (s *SchedulerService) GetRuntimeStateForWorkflow(workspacePath, scheduleID 
 	ownsActiveRun := merged.ActiveRunID != "" && s.runCancels[merged.ActiveRunID] != nil
 	s.runCancelsMu.Unlock()
 	_ = s.reconcileWorkflowScheduleRuns(context.Background(), workspacePath, scheduleID)
-	runs, err := ReadScheduleRuns(context.Background(), workspacePath)
+	runs, count, err := readScheduleRuntimeProjection(context.Background(), workspacePath, scheduleID)
 	if err == nil {
+		if merged.RunCount < count {
+			merged.RunCount = count
+		}
 		durableRunID := ""
 		if !ownsActiveRun {
 			latest := -1
@@ -1006,45 +1037,25 @@ func (s *SchedulerService) reconcileWorkflowScheduleRuns(ctx context.Context, wo
 		return nil
 	}
 
-	runs, err := ReadScheduleRuns(ctx, workspacePath)
+	runs, err := readScheduleRunStates(ctx, workspacePath, scheduleID, true)
 	if err != nil {
 		return err
 	}
-
 	now := time.Now().UTC()
-	changed := false
 	for i := range runs {
-		if runs[i].Status != "running" {
+		status, message, finalize := s.reconciledScheduleRunStatus(&runs[i], now)
+		if !finalize {
 			continue
 		}
-		if scheduleID != "" && runs[i].ScheduleID != scheduleID {
-			continue
-		}
-
-		status, errMsg, shouldFinalize := s.reconciledScheduleRunStatus(&runs[i], now)
-		if !shouldFinalize {
-			continue
-		}
-
-		runs[i].Status = status
-		runs[i].Error = errMsg
 		completedAt := now
 		if _, _, terminalAt, ok := s.durableScheduleRunProjection(ctx, runs[i].ID); ok && terminalAt != nil {
 			completedAt = *terminalAt
 		}
-		durationMs := completedAt.Sub(runs[i].StartedAt).Milliseconds()
-		if durationMs < 0 {
-			durationMs = 0
+		if err := finalizeRunningScheduleRun(ctx, workspacePath, runs[i].ID, status, message, &completedAt); err != nil {
+			return err
 		}
-		runs[i].DurationMs = &durationMs
-		runs[i].CompletedAt = &completedAt
-		changed = true
 	}
-
-	if !changed {
-		return nil
-	}
-	return WriteScheduleRuns(ctx, workspacePath, runs)
+	return nil
 }
 
 func (s *SchedulerService) reconciledScheduleRunStatus(run *ScheduleRunEntry, now time.Time) (string, string, bool) {
@@ -1331,13 +1342,11 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 		return "", errors.New("target is not a webhook")
 	}
 	sctx.OriginSessionID = originSessionID
-	if input == nil {
-		s.rememberScheduleCaller(sctx, originSessionID)
-	}
+	s.rememberScheduleCaller(sctx, originSessionID)
 	startTime := time.Now().UTC()
 	sctx.ScheduledFor = startTime
-	if disposition, reason := s.scheduleDependencyDisposition(ctx, sctx, startTime); disposition != scheduleDependencyReady {
-		if disposition == scheduleDependencyWaiting && s.queueScheduleOccurrence(ctx, sctx, reason, startTime, "retry") {
+	if disposition, reason := s.scheduleDependencyDisposition(ctx, sctx, startTime); disposition != productschedule.DependencyReady {
+		if disposition == productschedule.DependencyWaiting && s.queueScheduleOccurrence(ctx, sctx, reason, startTime, "retry") {
 			return "queued", nil
 		}
 		_ = s.recordScheduleFireDecision(ctx, sctx, "blocked_dependency", reason, "", startTime)
@@ -1428,11 +1437,11 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 		s.logf(sctx, "[SCHEDULER] Warning: failed to record manual schedule execution for %s: %v", scheduleID, err)
 	}
 
-	go func() {
+	goRecover("schedule run", func() {
 		if _, err := s.runJob(runCtx, sctx, runID); err != nil {
 			scheduleLogf("[SCHEDULER] Triggered job %s failed: %v", scheduleID, err)
 		}
-	}()
+	})
 
 	if input != nil {
 		return runID, nil
@@ -1442,7 +1451,7 @@ func (s *SchedulerService) triggerSavedSchedule(workspacePath, scheduleID, origi
 
 // StopRunningJob stops a running scheduled job by canceling its session.
 func (s *SchedulerService) StopRunningJobForWorkflow(workspacePath, scheduleID string) {
-	s.stopRunningJob(workflowScheduleRuntimeKey(workspacePath, scheduleID), scheduleID)
+	s.stopRunningJob(workflowScheduleRuntimeKey(workspacePath, scheduleID), scheduleID, "")
 }
 
 func (s *SchedulerService) StopRunningJob(scheduleID string) {
@@ -1450,12 +1459,38 @@ func (s *SchedulerService) StopRunningJob(scheduleID string) {
 	if len(keys) != 1 {
 		return
 	}
-	s.stopRunningJob(keys[0], scheduleID)
+	s.stopRunningJob(keys[0], scheduleID, "")
 }
 
-func (s *SchedulerService) stopRunningJob(runtimeKey, scheduleID string) {
+// stopChatWorkflowRun uses the run identity admitted to this chat's background
+// item. It never selects all runs of a workflow or another delivery's worker.
+func (s *SchedulerService) stopChatWorkflowRun(runID, scheduleID string) {
+	if s == nil || runID == "" {
+		return
+	}
+	s.runtimeStatesMu.RLock()
+	key := ""
+	for candidate, state := range s.runtimeStates {
+		if state.ActiveRunID == runID && state.LastStatus == "running" {
+			key = candidate
+			break
+		}
+	}
+	s.runtimeStatesMu.RUnlock()
+	if key != "" {
+		s.stopRunningJob(key, scheduleID, runID)
+	}
+}
+
+func (s *SchedulerService) stopRunningJob(runtimeKey, scheduleID, expectedRunID string) {
 	s.runtimeStatesMu.Lock()
 	state := s.getRuntimeStateLocked(runtimeKey)
+	// A manual schedule reuses its key. The chat owns the admitted run, not
+	// a replacement that acquired this key after the registry lookup.
+	if expectedRunID != "" && state.ActiveRunID != expectedRunID {
+		s.runtimeStatesMu.Unlock()
+		return
+	}
 	sessionID := state.LastSessionID
 	runID := state.ActiveRunID
 	state.LastStatus = "stopped"
@@ -1533,7 +1568,7 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 	}
 	s.runtimeStatesMu.RUnlock()
 
-	paused, cfg, err := s.IsProductPaused(context.Background(), workflowPauseProduct(sctx.WorkflowKind))
+	paused, cfg, err := s.IsGloballyPaused(context.Background())
 	if err != nil {
 		s.logf(sctx, "[SCHEDULER] ⚠️ Failed to read scheduler config before trigger %s: %v", schedID, err)
 	} else if paused {
@@ -1544,12 +1579,9 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 		if pausedAt != "" {
 			s.logf(sctx, "[SCHEDULER] ⏸️ Global scheduler pause active since %s, skipping %s", pausedAt, schedID)
 		} else {
-			s.logf(sctx, "[SCHEDULER] ⏸️ Scheduler pause active for %s, skipping %s", workflowPauseProduct(sctx.WorkflowKind), schedID)
+			s.logf(sctx, "[SCHEDULER] ⏸️ Global scheduler pause active, skipping %s", schedID)
 		}
 		reason := "global scheduler pause is active"
-		if cfg != nil && !cfg.GloballyPaused {
-			reason = "this product's schedules are paused"
-		}
 		s.recordScheduleFireDecision(ctx, sctx, "skipped_paused", reason, "", now.UTC())
 		return
 	}
@@ -1646,8 +1678,8 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 	startTime := time.Now().UTC()
 	freshCtx.QueuedExpiresAt = sctx.QueuedExpiresAt
 	freshCtx.QueuedOccurrenceCount = sctx.QueuedOccurrenceCount
-	if disposition, reason := s.scheduleDependencyDisposition(ctx, freshCtx, startTime); disposition != scheduleDependencyReady {
-		if disposition == scheduleDependencyBlocked {
+	if disposition, reason := s.scheduleDependencyDisposition(ctx, freshCtx, startTime); disposition != productschedule.DependencyReady {
+		if disposition == productschedule.DependencyBlocked {
 			decision := "blocked_dependency"
 			if strings.Contains(reason, "deadline") {
 				decision = "expired_dependency_deadline"
@@ -1670,6 +1702,23 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 		runID = freshCtx.CapacityResumeRunID
 	}
 	runtimeKey = scheduleRuntimeKey(freshCtx)
+	// The capacity checks read keys, the history database and workspace files,
+	// which can take minutes when the file service is slow. Read them before
+	// taking runtimeStatesMu: Stop, status and webhook triggers all wait on it.
+	// The results are used below, after the running checks, as before.
+	var (
+		quotaBlocked  bool
+		quotaWindow   string
+		quotaResetsAt time.Time
+		waitingRun    *ScheduleRunEntry
+		waitingFor    *stepworkflow.WorkflowCapacityWait
+	)
+	if freshCtx.CapacityResumeRunID == "" {
+		quotaWindow, quotaResetsAt, quotaBlocked = s.scheduleQuotaBlock(ctx, freshCtx, now)
+		if !quotaBlocked {
+			waitingRun, waitingFor = s.outstandingCapacityWait(ctx, freshCtx.WorkspacePath)
+		}
+	}
 	s.runtimeStatesMu.Lock()
 	state := s.getRuntimeStateLocked(runtimeKey)
 	if state.LastStatus == "running" {
@@ -1690,7 +1739,8 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 		return
 	}
 	if freshCtx.CapacityResumeRunID == "" {
-		if window, resetsAt, blocked := s.scheduleQuotaBlock(ctx, freshCtx, now); blocked {
+		if quotaBlocked {
+			window, resetsAt := quotaWindow, quotaResetsAt
 			s.runtimeStatesMu.Unlock()
 			// The account's window is at its limit, so this run cannot even
 			// reach step one. Starting it would record a red run and, once
@@ -1700,7 +1750,8 @@ func (s *SchedulerService) triggerSchedule(sctx *ScheduleContext, scheduledFor t
 			s.recordScheduleFireDecision(ctx, freshCtx, "skipped_waiting_for_capacity", reason, "", startTime)
 			return
 		}
-		if waitingRun, wait := s.outstandingCapacityWait(ctx, freshCtx.WorkspacePath); waitingRun != nil {
+		if waitingRun != nil {
+			wait := waitingFor
 			s.runtimeStatesMu.Unlock()
 			// Firing here is what turned one capacity wall into a run storm: the
 			// new run restarts from step 1, replays the completed steps' side
@@ -1831,109 +1882,15 @@ func (s *SchedulerService) markScheduleWaiting(sctx *ScheduleContext, reason str
 	})
 }
 
-type scheduleDependencyResult int
-
-const (
-	scheduleDependencyReady scheduleDependencyResult = iota
-	scheduleDependencyWaiting
-	scheduleDependencyBlocked
-)
-
-func (s *SchedulerService) scheduleDependencyDisposition(ctx context.Context, sctx *ScheduleContext, now time.Time) (scheduleDependencyResult, string) {
-	dependencyIDs := scheduleDependencyIDs(sctx.Schedule)
-	if len(dependencyIDs) == 0 {
-		return scheduleDependencyReady, ""
-	}
+func (s *SchedulerService) scheduleDependencyDisposition(ctx context.Context, sctx *ScheduleContext, now time.Time) (productschedule.DependencyResult, string) {
 	scopeType, scopeID, _ := scheduleStateScope(sctx)
-	location, err := time.LoadLocation(strings.TrimSpace(sctx.Schedule.Timezone))
-	if err != nil {
-		location = time.UTC
-	}
-	occurrence := sctx.ScheduledFor
-	if occurrence.IsZero() {
-		occurrence = time.Now()
-	}
-	localOccurrence := occurrence.In(location)
-	year, month, day := localOccurrence.Date()
-	dayStart := time.Date(year, month, day, 0, 0, 0, 0, location).UTC()
-	dayEnd := dayStart.In(location).AddDate(0, 0, 1).UTC()
-	// A later occurrence of the prerequisite must never release an older
-	// dependent occurrence after restart. Limit the lookup to prerequisite
-	// occurrences scheduled no later than this dependent's own durable time.
-	if dependentEnd := occurrence.UTC().Add(time.Nanosecond); dependentEnd.Before(dayEnd) {
-		dayEnd = dependentEnd
-	}
-	var dependencyDeadline time.Time
-	if deadline := strings.TrimSpace(sctx.Schedule.DependencyDeadline); deadline != "" {
-		parsed, _ := time.Parse("15:04", deadline)
-		dependencyDeadline = time.Date(year, month, day, parsed.Hour(), parsed.Minute(), 0, 0, location)
-	}
+	when := projectactions.When{Timezone: sctx.Schedule.Timezone, After: &projectactions.After{
+		Schedules: scheduleDependencyIDs(sctx.Schedule), Outcome: sctx.Schedule.AfterTerminalStatus,
+		DelayMinutes: sctx.Schedule.AfterDelayMinutes, Deadline: sctx.Schedule.DependencyDeadline,
+	}}
 	s.stateStoreMu.RLock()
-	store := s.stateStore
-	if store == nil {
-		s.stateStoreMu.RUnlock()
-		return scheduleDependencyWaiting, "dependency state is unavailable"
-	}
 	defer s.stateStoreMu.RUnlock()
-	terminalPolicy := strings.TrimSpace(sctx.Schedule.AfterTerminalStatus)
-	if terminalPolicy == "" {
-		terminalPolicy = "completed"
-	}
-	waitingReasons := make([]string, 0, len(dependencyIDs))
-	for _, dependencyID := range dependencyIDs {
-		run, err := store.RunForScheduleOccurrence(ctx, scopeType, scopeID, dependencyID, dayStart, dayEnd)
-		if err != nil {
-			if errors.Is(err, schedulerstate.ErrRunNotFound) {
-				if decision, decisionErr := store.FireDecisionForScheduleOccurrence(ctx, scopeType, scopeID, dependencyID, dayStart, dayEnd); decisionErr == nil && terminalScheduleFireDecision(decision.Decision) {
-					return scheduleDependencyBlocked, fmt.Sprintf("prerequisite schedule %s did not run: %s", dependencyID, decision.Reason)
-				}
-				waitingReasons = append(waitingReasons, fmt.Sprintf("waiting for prerequisite schedule %s occurrence on %04d-%02d-%02d", dependencyID, year, month, day))
-				continue
-			}
-			waitingReasons = append(waitingReasons, fmt.Sprintf("could not read prerequisite schedule %s occurrence: %v", dependencyID, err))
-			continue
-		}
-		if !schedulerstate.IsTerminal(run.State) {
-			waitingReasons = append(waitingReasons, fmt.Sprintf("prerequisite schedule %s occurrence %s is still %s", dependencyID, run.RunID, run.State))
-			continue
-		}
-		if terminalPolicy == "completed" && run.State != schedulerstate.StateCompleted {
-			return scheduleDependencyBlocked, fmt.Sprintf("prerequisite schedule %s occurrence %s ended %s; completed is required", dependencyID, run.RunID, run.State)
-		}
-		if !dependencyDeadline.IsZero() {
-			if run.CompletedAt == nil {
-				waitingReasons = append(waitingReasons, fmt.Sprintf("prerequisite schedule %s is terminal but its completion timestamp is unavailable", dependencyID))
-				continue
-			}
-			releaseAt := run.CompletedAt.Add(time.Duration(sctx.Schedule.AfterDelayMinutes) * time.Minute)
-			if releaseAt.After(dependencyDeadline) {
-				return scheduleDependencyBlocked, fmt.Sprintf("prerequisite schedule %s released at %s after dependency deadline %s", dependencyID, releaseAt.Format(time.RFC3339), dependencyDeadline.Format(time.RFC3339))
-			}
-		}
-		if delay := sctx.Schedule.AfterDelayMinutes; delay > 0 {
-			if run.CompletedAt == nil {
-				waitingReasons = append(waitingReasons, fmt.Sprintf("prerequisite schedule %s is terminal but its completion timestamp is unavailable", dependencyID))
-				continue
-			}
-			releaseAt := run.CompletedAt.Add(time.Duration(delay) * time.Minute)
-			if now.Before(releaseAt) {
-				waitingReasons = append(waitingReasons, fmt.Sprintf("prerequisite schedule %s completed; waiting until %s for configured delay", dependencyID, releaseAt.Format(time.RFC3339)))
-			}
-		}
-	}
-	if len(waitingReasons) > 0 {
-		if !dependencyDeadline.IsZero() && !now.Before(dependencyDeadline) {
-			return scheduleDependencyBlocked, fmt.Sprintf("dependency deadline %s %s passed before prerequisites %s released: %s", sctx.Schedule.DependencyDeadline, location, strings.Join(dependencyIDs, ", "), strings.Join(waitingReasons, "; "))
-		}
-		return scheduleDependencyWaiting, strings.Join(waitingReasons, "; ")
-	}
-	return scheduleDependencyReady, ""
-}
-
-func terminalScheduleFireDecision(decision string) bool {
-	return strings.HasPrefix(decision, "skipped_") || strings.HasPrefix(decision, "blocked_") ||
-		strings.HasPrefix(decision, "expired_") || decision == "failed_to_start" ||
-		decision == "missed_scheduler_gap" || decision == "launch_outcome_unknown"
+	return productschedule.EvaluateDependencies(ctx, s.stateStore, scopeType, scopeID, when, sctx.ScheduledFor, now)
 }
 
 // End this occurrence before dropping its queue row. Dependents can then follow
@@ -1994,6 +1951,11 @@ func (s *SchedulerService) resumeQueuedScheduleOccurrences(ctx context.Context, 
 		return
 	}
 	for _, item := range pending {
+		if item.ScopeType == "crew" {
+			// The single project clock dispatches Crew dependency retries through
+			// its existing conversation claim, never the workflow scope lease.
+			continue
+		}
 		// A queued delivery may survive an interrupted launch, but it must not
 		// restart that same occurrence. Startup already released the old run's
 		// lease; retain its outcome and leave the lane for the next cron slot.
@@ -2050,10 +2012,10 @@ func (s *SchedulerService) resumeQueuedScheduleOccurrences(ctx context.Context, 
 		if !s.beginQueuedLaunch(launchKey) {
 			continue
 		}
-		go func() {
+		goRecover("queued schedule start", func() {
 			defer s.endQueuedLaunch(launchKey)
 			s.triggerSchedule(sctx, item.ScheduledFor)
-		}()
+		})
 	}
 }
 
@@ -2095,6 +2057,7 @@ func (s *SchedulerService) runJob(ctx context.Context, sctx *ScheduleContext, ru
 	}
 	defer s.releaseScheduleRunContext(runID)
 	defer s.maintainRunLease(ctx, runID)()
+	defer desktopKeepAwake.holdRun(runID, sctx.Schedule)()
 	schedID := sctx.Schedule.ID
 	runtimeKey := scheduleRuntimeKey(sctx)
 	startTime := time.Now().UTC()
@@ -2461,20 +2424,6 @@ func (turn scheduledWorkshopTurn) workshopMode() string {
 	return "workshop"
 }
 
-func scheduledDecisionApplyMode(input ReportHumanInput) string {
-	// Owner acceptance of a user suggestion is review, not unattended edit authority.
-	if input.Source == "user_suggestion" {
-		return "legacy_manual"
-	}
-	mode := strings.ToLower(strings.TrimSpace(input.ApplyContract.Mode))
-	switch mode {
-	case "no_change", "direct_apply", "targeted_fixer", "external_wait":
-		return mode
-	default:
-		return "legacy_manual"
-	}
-}
-
 // executeJob builds a session request from the manifest and runs it.
 // Returns (sessionID, runFolder, error).
 func (s *SchedulerService) executeJob(ctx context.Context, sctx *ScheduleContext, runID string) (sessionID, runFolder string, runErr error) {
@@ -2569,25 +2518,6 @@ func (s *SchedulerService) scheduledWorkflowExecutionProducedEvidence(sessionID 
 		}
 	}
 	return false
-}
-
-func readLocalScheduleRuns(workspacePath string) ([]ScheduleRunEntry, bool, error) {
-	localPath, err := fsutil.WorkspacePath(fsutil.WorkspaceDocsRoot(), scheduleRunsPath(workspacePath))
-	if err != nil {
-		return nil, true, err
-	}
-	data, err := os.ReadFile(localPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, false, nil
-		}
-		return nil, true, err
-	}
-	var runs []ScheduleRunEntry
-	if err := json.Unmarshal(data, &runs); err != nil {
-		return nil, true, err
-	}
-	return runs, true, nil
 }
 
 // scheduleSessionTrigger preserves the webhook origin in active session metadata.
@@ -3172,7 +3102,11 @@ func getNextRunTimeAt(cronExpr string, timezone string, now time.Time) *time.Tim
 		return nil
 	}
 
-	next := schedule.Next(now.In(loc)).UTC()
+	next := schedule.Next(now.In(loc))
+	if next.IsZero() {
+		return nil
+	}
+	next = next.UTC()
 	return &next
 }
 
@@ -3278,9 +3212,12 @@ func ValidateScheduleTimezone(timezone string) error {
 // ValidateCronExpression validates a 5-field cron expression.
 func ValidateCronExpression(expr string) error {
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	_, err := parser.Parse(expr)
+	parsed, err := parser.Parse(expr)
 	if err != nil {
 		return fmt.Errorf("invalid cron expression: %w", err)
+	}
+	if parsed.Next(time.Now()).IsZero() {
+		return fmt.Errorf("this schedule never runs: no date matches %q (for example 30 February)", expr)
 	}
 	return nil
 }

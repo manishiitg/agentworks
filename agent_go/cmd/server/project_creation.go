@@ -20,17 +20,17 @@ import (
 // whose current turn uses the main owner's provider account.
 func projectCreationGate(claims *UserClaims, profileID string) (int, string) {
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
-		return http.StatusUnauthorized, "Sign in to create a Crew."
+		return http.StatusUnauthorized, "Sign in to create a project."
 	}
 	access := userAccessForClaims(claims)
 	if !isProjectProfileID(profileID) || !workspaceOriginAllowed(claims, profileID) || access.Disabled || !access.CanEdit || !access.CanCreateIn(profileID) || !workspaceCreateTokenAllowed(claims) {
-		return http.StatusForbidden, "This account cannot create a Crew here. An administrator can change its create permissions."
+		return http.StatusForbidden, "This account cannot create a project here. An administrator can change its create permissions."
 	}
 	return 0, ""
 }
 
 func projectCreationWarning(err error) string {
-	return "The Crew was created, but some setup needs attention: " + err.Error() + ". Open it to finish setup; you do not need to create it again."
+	return "The project was created, but some setup needs attention: " + err.Error() + ". Open it to finish setup; you do not need to create it again."
 }
 
 func crewCreationPath(root, name, suffix string) string {
@@ -89,7 +89,7 @@ func (api *StreamingAPI) createdProjectResponse(ctx context.Context, claims *Use
 			return nil, err
 		}
 		if !exists {
-			return nil, fmt.Errorf("created Crew settings are unavailable")
+			return nil, fmt.Errorf("created project settings are unavailable")
 		}
 		var doc map[string]any
 		err = json.Unmarshal([]byte(raw), &doc)
@@ -118,12 +118,12 @@ func (api *StreamingAPI) handleCreateAgentProfileProject(w http.ResponseWriter, 
 		return
 	}
 	if api == nil || api.agentProfiles == nil {
-		writeAgentProfileError(w, http.StatusNotFound, "Crew creation is unavailable")
+		writeAgentProfileError(w, http.StatusNotFound, "Project creation is unavailable")
 		return
 	}
 	var spec crewSpec
 	if err := json.NewDecoder(io.LimitReader(r.Body, 2<<20)).Decode(&spec); err != nil {
-		writeAgentProfileError(w, http.StatusBadRequest, "Send a Crew name and its optional settings.")
+		writeAgentProfileError(w, http.StatusBadRequest, "Send a project name and its optional settings.")
 		return
 	}
 	id, setupErr := api.createWorkspaceFromSpec(r.Context(), claims, profileID, spec, false)
@@ -154,10 +154,10 @@ func (api *StreamingAPI) projectCreationTool(profileID, userID, sessionID string
 			claims = GetUserFromContext(ctx)
 		}
 		if claims == nil || claims.UserID != userID {
-			return "", fmt.Errorf("open your Crew's Builder to create another Crew")
+			return "", fmt.Errorf("open your project's Builder to create another project")
 		}
 		ctx = context.WithValue(ctx, UserContextKey, claims)
-		spec := crewSpec{Name: externalArg(args, "name"), Purpose: externalArg(args, "description"), RootPath: externalArg(args, "root_path")}
+		spec := crewSpec{Name: externalArg(args, "name"), RootPath: externalArg(args, "root_path")}
 		id, setupErr := api.createWorkspaceFromSpec(ctx, claims, profileID, spec, false)
 		if setupErr != nil && id == "" {
 			return "", fmt.Errorf("%s", externalCrewCreateError(id, setupErr))
@@ -175,7 +175,7 @@ func (api *StreamingAPI) projectCreationTool(profileID, userID, sessionID string
 		if setupErr != nil {
 			response["warnings"] = []string{projectCreationWarning(setupErr)}
 		}
-		response["message"] = "The Crew is ready. Select it from the project menu to open it."
+		response["message"] = "The project is ready. Select it from the project menu to open it."
 		delete(response, "product_manifest")
 		delete(response, "runtime_manifest")
 		data, err := json.Marshal(response)

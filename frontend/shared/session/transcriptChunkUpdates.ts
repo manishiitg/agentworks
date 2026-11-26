@@ -23,8 +23,10 @@ export function intermediateUpdateFromTranscriptChunk(event: PollingEvent): Poll
   if (inner.is_delta === true || outer.is_delta === true) return null
   if (metadata.kind === 'terminal' || metadata.replace === true) return null
   if (inner.is_tool_call === true) return null
-  const content = typeof inner.content === 'string' ? inner.content.trim() : ''
-  if (!content) return null
+  const rawContent = typeof inner.content === 'string' ? inner.content : ''
+  // Native block snapshots are exact prose/code, including leading indentation.
+  const content = metadata.assistant_block_id ? rawContent : rawContent.trim()
+  if (!content.trim()) return null
 
   const timestamp = event.timestamp || (typeof inner.timestamp === 'string' ? inner.timestamp : new Date().toISOString())
   return {
@@ -40,7 +42,7 @@ export function intermediateUpdateFromTranscriptChunk(event: PollingEvent): Poll
         content,
         result: content,
         status: 'completed',
-        restored_intermediate_update: metadata.native_continuation !== true,
+        restored_intermediate_update: metadata.native_continuation !== true && metadata.assistant_block_phase !== 'end',
       },
     } as PollingEvent['data'],
   }

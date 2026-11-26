@@ -1,0 +1,269 @@
+// @vitest-environment happy-dom
+import React, { act } from 'react'
+import { createRoot } from 'react-dom/client'
+import { expect, it, vi } from 'vitest'
+import type { PollingEvent } from '../services/api-types'
+import { TerminalEventTranscript } from './TerminalEventTranscript'
+import { useChatDisplayStore } from '../stores/useChatDisplayStore'
+import { UsageLimitRecoveryNotice } from './chat/UsageLimitRecoveryNotice'
+import { useQueuedMessageControlsStore } from '../stores/useQueuedMessageControlsStore'
+import { NativeBackgroundTaskLine } from './events/NativeBackgroundTaskLine'
+
+vi.mock('react-virtuoso', () => ({ Virtuoso: ({ data, itemContent, computeItemKey, firstItemIndex = 0 }: {
+  data: { key: string }[]; firstItemIndex?: number
+  itemContent: (index: number, item: { key: string }) => React.ReactNode
+  computeItemKey: (index: number, item: { key: string }) => string
+}) => <>{data.map((item, index) => <React.Fragment key={computeItemKey(index, item)}>{itemContent(firstItemIndex + index, item)}</React.Fragment>)}</> }))
+vi.mock('./useTranscriptScroll', async original => ({
+  ...await original<typeof import('./useTranscriptScroll')>(),
+  useTranscriptScroll: () => ({ following: true, settled: true, scrollerRef: vi.fn(), layoutChanged: vi.fn(), jumpToLatest: vi.fn(), jumpToKey: vi.fn(), preserveDisclosure: vi.fn(), preserveReadingPosition: vi.fn() }),
+}))
+vi.mock('./events/EventDispatcher', () => ({ EventDispatcher: () => null }))
+vi.mock('./ui/MarkdownRenderer', () => ({ ConversationMarkdownRenderer: ({ content }: { content: string }) => <span>{content}</span> }))
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+
+// PLAT-746-995: Codex reasoning hidden between tool batches left a ladder
+// of separate count rows between two replies. Exercise the real chat pipeline.
+it('shows one 5 steps row across hidden thinking and preserves visible boundaries and the growing tool disclosure', async () => {
+  let sequence = 0
+  const event = (id: string, type: string, fields: Record<string, unknown>): PollingEvent => ({
+    id, type, sequence: ++sequence, session_id: 'steps-chat', timestamp: '2026-11-14T12:00:00Z', data: { type, data: fields },
+  } as PollingEvent)
+  const calls = (ids: string[]) => ids.flatMap(id => [
+    event(id, 'tool_call_start', { tool_call_id: id, tool_name: 'exec_command', tool_params: { arguments: '{"cmd":"echo ok"}' } }),
+    event(`${id}-end`, 'tool_call_end', { tool_call_id: id, tool_name: 'exec_command', result: 'ok' }),
+  ])
+  const before = event('before', 'llm_generation_end', { content: 'First reply' })
+  const first = calls(['a', 'b'])
+  const thought = event('thought', 'conversation_thinking', { thinking: 'A supplied reasoning summary' })
+  const middle = calls(['c'])
+  const empty = event('empty', 'conversation_thinking', { thinking: '', metadata: { presentation: 'assistant_update' } })
+  const status = event('status', 'status_line', { content: 'Working' })
+  const last = calls(['d', 'e'])
+  const after = event('after', 'llm_generation_end', { content: 'Second reply' })
+  const events = [before, ...first, thought, ...middle, empty, status, ...last, after]
+  const original = JSON.stringify(events)
+  const host = document.createElement('div'), root = createRoot(host)
+  const render = (rows = events) => act(async () => root.render(<TerminalEventTranscript terminal={null} events={rows.map((row, index) => ({ ...row, sequence: index + 1 }))} searchable scrollKey="combined-steps-regression" />))
+  try {
+    useChatDisplayStore.setState({ showThinking: false, showTools: false })
+    await render()
+    expect([...host.querySelectorAll('[data-testid="terminal-work-summary"]')].map(row => row.textContent)).toEqual(['Ran 5 commands'])
+    // Historical completed calls must not advertise live tool activity to a theme.
+    expect(host.querySelector('[data-theme-tools-running="true"]')).toBeNull()
+    expect(host.querySelector('[data-theme-tools-running="false"]')).toBeTruthy()
+    expect(host.textContent).toContain('First reply')
+    expect(host.textContent).toContain('Second reply')
+    expect(host.querySelector('[data-theme-chat-row] [data-theme-message-role="assistant"]')).toBeTruthy()
+    await act(async () => useChatDisplayStore.setState({ showThinking: true }))
+    expect([...host.querySelectorAll('[data-testid="terminal-work-summary"]')].map(row => row.textContent)).toEqual(['Ran 2 commands', 'Ran 3 commands'])
+    expect(host.textContent).toContain('A supplied reasoning summary')
+    // A real message between tools must still break the run with thinking off.
+    await act(async () => useChatDisplayStore.setState({ showThinking: false }))
+    await render([before, ...first, event('message', 'user_message', { content: 'Please check this' }), ...middle, ...last, after])
+    expect(host.querySelectorAll('[data-testid="terminal-work-summary"]')).toHaveLength(2)
+    expect(host.querySelector('[data-theme-chat-row] [data-theme-message-role="user"] [data-theme-message-body]')).toBeTruthy()
+    await act(async () => useChatDisplayStore.setState({ showTools: true }))
+    await render([before, ...first])
+    const button = host.querySelector<HTMLButtonElement>('[data-testid="terminal-tool-call-group"] button')!
+    await act(async () => button.click())
+    expect(button.getAttribute('aria-expanded')).toBe('true')
+    await render()
+    expect(host.querySelectorAll('[data-testid="terminal-tool-call-group"]')).toHaveLength(1)
+    expect(host.querySelector('[data-theme-surface="tool"][data-theme-tool-state="ok"]')).toBeTruthy()
+    const grown = host.querySelector('[data-testid="terminal-tool-call-group"] button')!
+    expect(grown.textContent).toBe('Ran 5 commands')
+    expect(grown.getAttribute('aria-expanded')).toBe('true')
+    expect(JSON.stringify(events)).toBe(original)
+  } finally {
+    await act(async () => root.unmount())
+    useChatDisplayStore.setState({ showThinking: false, showTools: false })
+  }
+})
+
+it('groups ended shells by server kind and absorbs only their exact adjacent tool wrappers (PLAT-746-995)', async () => {
+  const event = (id: string, type: string, fields: Record<string, unknown>): PollingEvent => ({
+    id, type, session_id: 'shell-chat', timestamp: '2026-11-14T12:00:00Z', data: { type, data: fields },
+  } as PollingEvent)
+  const shell = (id: string, state: string) => [
+    event(`${id}-tool`, 'tool_call_end', { tool_call_id: id, tool_name: 'exec_command', result: 'private tool output' }),
+    event(id, 'coding_agent_native_activity', { record: { kind: 'background_command', work_id: `work-${id}`, tool_id: id, state, command_label: `check ${id}`, started_at: '0001-01-01T00:00:00Z', ended_at: '0001-01-01T00:00:00Z' } }),
+  ]
+  const rows = [...shell('one', 'finished'), ...shell('two', 'failed'), ...shell('three', 'stopped'), ...shell('four', 'interrupted')]
+  const host = document.createElement('div'), root = createRoot(host)
+  const render = (events = rows) => act(async () => root.render(<TerminalEventTranscript terminal={null} events={events.map((row, index) => ({ ...row, sequence: index + 1 }))} searchable scrollKey="shell-groups-regression" />))
+  try {
+    useChatDisplayStore.setState({ showThinking: false, showTools: false })
+    await render()
+    expect(host.querySelectorAll('[data-testid="compact-shell-group"]')).toHaveLength(1)
+    expect(host.textContent).toContain('4 commands ran in the background')
+    expect(host.querySelector('[data-testid="terminal-work-summary"]')).toBeNull()
+    const button = host.querySelector<HTMLButtonElement>('[data-testid="compact-shell-group"] button')!
+    await act(async () => button.click())
+    for (const line of ['A background command finished', "A background command didn't finish", 'A background command was stopped', 'A background command was interrupted']) expect(host.textContent).toContain(line)
+    expect(host.textContent).not.toContain('check one')
+    expect(host.textContent).not.toContain('private tool output')
+    expect(host.textContent).not.toContain('restart')
+    await act(async () => useChatDisplayStore.setState({ showTools: true }))
+    expect(host.querySelector('[data-testid="terminal-tool-call-group"]')).toBeNull()
+    expect(host.textContent).toContain('Ran a command')
+    // Owner, 20 Nov: with Tool calls on, the exact command is the row's tooltip, not part of the line.
+    expect(host.textContent).not.toContain('check one')
+    expect(host.querySelector('[title="check one"]')).not.toBeNull()
+    // A running shell is shown only in the line above the message box (owner, 26 Nov): no chat line while it runs.
+    const running = event('running', 'coding_agent_native_activity', { record: { kind: 'background_command', work_id: 'running', state: 'started', command_label: 'cd /workspace/project && npm run check', name: '/workspace/project' } })
+    await act(async () => useChatDisplayStore.setState({ showTools: false }))
+    await act(async () => root.render(<NativeBackgroundTaskLine record={((running.data as { data: { record: Record<string, unknown> } }).data.record)} />))
+    expect(host.querySelector('[data-testid="native-background-task-line"]')).toBeNull()
+    // Once it ends, its line follows the existing Tool calls toggle (#2874).
+    const ended = { ...((running.data as { data: { record: Record<string, unknown> } }).data.record), state: 'finished', ended_at: new Date().toISOString() }
+    await act(async () => root.render(<NativeBackgroundTaskLine record={ended} />))
+    expect(host.textContent).toContain('A background command finished')
+    expect(host.textContent).not.toContain('/workspace/project')
+    expect(host.querySelector('[data-testid="native-background-task-line"]')?.getAttribute('title')).toBeNull()
+    await act(async () => useChatDisplayStore.setState({ showTools: true }))
+    expect(host.textContent).not.toContain('npm run check')
+    expect(host.querySelector('[data-testid="native-background-task-line"]')?.getAttribute('title')).toBe('cd /workspace/project && npm run check')
+    // A single ended shell uses the compact summary path as well.
+    await render(shell('one', 'finished'))
+    expect(host.textContent).toContain('A background command finished')
+    expect(host.textContent).not.toContain('check one')
+    await act(async () => useChatDisplayStore.setState({ showTools: false }))
+    expect(host.textContent).not.toContain('check one')
+    // An unrelated tool is still shown and breaks the shell run.
+    await act(async () => useChatDisplayStore.setState({ showTools: false }))
+    await render([...rows.slice(0, 2), event('other', 'tool_call_end', { tool_call_id: 'unrelated', tool_name: 'read_file', result: 'ok' }), ...rows.slice(2)])
+    expect(host.querySelector('[data-testid="terminal-work-summary"]')?.textContent).toBe('Read 1 file, ran 1 command')
+    expect(host.textContent).toContain('3 commands ran in the background')
+  } finally {
+    await act(async () => root.unmount())
+    useChatDisplayStore.setState({ showThinking: false, showTools: false })
+  }
+})
+
+// #3049: with no visible step row, native updates touched because every
+// Markdown root trims its last paragraph margin. Preserve paragraph rhythm,
+// not separate message bubbles, through the live -> committed handover.
+it('keeps adjacent native updates readable before and after their live block commits', async () => {
+  const block = (id: string, content: string, sequence: number): PollingEvent => ({
+    id, type: 'streaming_chunk', generation_id: `start-${id}`, generation_start_sequence: sequence, sequence,
+    session_id: 'paragraph-chat', timestamp: '2026-11-17T12:00:00Z',
+    data: { data: { content, source: 'transcript', is_delta: false, metadata: { assistant_block_id: id, assistant_block_phase: 'end' } } },
+  } as PollingEvent)
+  const first = block('first-block', 'Preparing the changes.', 1)
+  const second = block('second-block', 'Checking the result.', 2)
+  const host = document.createElement('div'), root = createRoot(host)
+  const render = (completed: boolean) => act(async () => root.render(<TerminalEventTranscript
+    terminal={null} searchable scrollKey="paragraph-rhythm"
+    events={completed ? [first, second] : [first]}
+    streamingGeneration={completed ? undefined : { id: 'start-second-block', sequence: 2, nativeBlock: true }}
+    streamingText={completed ? '' : 'Checking the result.'}
+  />))
+  try {
+    useChatDisplayStore.setState({ showThinking: false, showTools: false })
+    await render(false)
+    const before = [...host.querySelectorAll('[data-theme-message-role="assistant"]')]
+    const beforeText = before.map(row => row.textContent)
+    const beforeClasses = before.map(row => row.className)
+    expect(beforeText).toEqual(['Preparing the changes.', 'Checking the result.'])
+    // These carriers intentionally share normal paragraph spacing, not my-4
+    // message framing; the live carrier must not jump when committed.
+    expect(before.every(row => row.classList.contains('pb-2') && !row.classList.contains('my-4'))).toBe(true)
+    await render(true)
+    const after = [...host.querySelectorAll('[data-theme-message-role="assistant"]')]
+    expect(after.map(row => row.textContent)).toEqual(beforeText)
+    expect(after.map(row => row.className)).toEqual(beforeClasses)
+    expect(host.querySelectorAll('[data-testid="terminal-clear-assistant-header"]')).toHaveLength(1)
+    expect(host.querySelector('[data-testid="terminal-work-summary"]')).toBeNull()
+  } finally {
+    await act(async () => root.unmount())
+    useChatDisplayStore.setState({ showThinking: false, showTools: false })
+  }
+})
+
+// #3071: a reset time is not proof the queue armed recovery. Render the same
+// server projection the real composer publishes; a click alone cannot claim cancellation.
+it('promises auto-resume only for the exact server-armed failure and respects cancel capability', async () => {
+  const host = document.createElement('div'), root = createRoot(host)
+  let cancellations = 0
+  const controls = { messages: {}, canEdit: true, editable: false, busyMessageId: null, act: () => {}, cancelRecovery: async () => { cancellations += 1 } }
+  const publish = (state: 'scheduled' | 'not_scheduled', can_cancel = false, event_id = 'failed') => act(async () => {
+    useQueuedMessageControlsStore.getState().set('quota-chat', { ...controls, recovery: { state, event_id, can_cancel, retry_at: '2026-11-17T18:10:00Z', message_id: 'recovery-row' } })
+  })
+  try {
+    await publish('not_scheduled')
+    await act(async () => root.render(<UsageLimitRecoveryNotice sessionId="quota-chat" eventId="failed" />))
+    expect(host.textContent).toContain('No automatic continuation')
+    await publish('scheduled')
+    expect(host.textContent).toContain('Will resume automatically')
+    expect(host.querySelector('button')).toBeNull()
+    await publish('scheduled', true)
+    await act(async () => host.querySelector<HTMLButtonElement>('button')!.click())
+    expect(cancellations).toBe(1)
+    expect(host.textContent).toContain('Will resume automatically')
+    await publish('not_scheduled')
+    expect(host.textContent).not.toContain('Will resume automatically')
+    await publish('scheduled', true, 'another-failure')
+    expect(host.textContent).toBe('')
+  } finally {
+    await act(async () => root.unmount())
+    useQueuedMessageControlsStore.getState().set('quota-chat', undefined)
+  }
+})
+
+// #3132: Codex has no helper row; its helper agent is the spawnAgent step, which opens the same live panel by call id.
+it('opens a Codex helper agent from its spawnAgent step', async () => {
+  const { agentApi } = await import('../services/api')
+  const read = vi.spyOn(agentApi, 'getSessionSubagent').mockResolvedValue({ running: false, transcript: { session_id: 'codex-chat', agent_id: 'codex:child', name: 'Helper', status: 'completed', started_at: '2026-11-18T12:00:00Z', events: [] } } as never)
+  const event = (id: string, type: string, fields: Record<string, unknown>, sequence: number): PollingEvent => ({
+    id, type, sequence, session_id: 'codex-chat', timestamp: '2026-11-18T12:00:00Z', data: { type, data: fields },
+  } as PollingEvent)
+  const events = [
+    event('s', 'tool_call_start', { tool_call_id: 'call-1', tool_name: 'spawnAgent', tool_params: { arguments: '{"prompt":"look"}' } }, 1),
+    event('x', 'tool_call_start', { tool_call_id: 'call-2', tool_name: 'exec_command', tool_params: { arguments: '{"cmd":"ls"}' } }, 2),
+  ]
+  const host = document.createElement('div'), root = createRoot(host)
+  try {
+    useChatDisplayStore.setState({ showThinking: true, showTools: true })
+    await act(async () => root.render(<TerminalEventTranscript terminal={null} events={events} scrollKey="codex-helper-step" />))
+    const group = host.querySelector<HTMLButtonElement>('[data-testid="terminal-tool-call-group"] button')
+    if (group) await act(async () => group.click())
+    const open = [...host.querySelectorAll('button')].filter(button => button.textContent === 'Open')
+    expect(open).toHaveLength(1)
+    await act(async () => open[0].click())
+    expect(document.querySelector('[data-testid="subagent-chat-panel"]')).toBeTruthy()
+    expect(read).toHaveBeenCalledWith('codex-chat', 'call-1')
+  } finally {
+    await act(async () => root.unmount())
+    read.mockRestore()
+  }
+})
+
+// #3919: Antigravity hands a long command to the background after ten seconds and keeps thinking and writing while it
+// runs. The step that has not ended stays the running step (with its timer) while the turn works, even with thinking
+// or reply text after it; once the turn is not working it is not advertised as running.
+it('keeps a running Antigravity command live when thinking and reply text come after it', async () => {
+  let sequence = 0
+  const event = (id: string, type: string, fields: Record<string, unknown>): PollingEvent => ({
+    id, type, sequence: ++sequence, session_id: 'agy-chat', timestamp: new Date(Date.now() - 90_000).toISOString(), data: { type, data: fields },
+  } as PollingEvent)
+  const events = [
+    event('user', 'user_message', { content: 'run the build' }),
+    event('start', 'tool_call_start', { tool_call_id: 'call_1', tool_name: 'sleep 1500 && echo done', server_name: 'agy-cli', tool_params: { arguments: '{"CommandLine":"sleep 1500 && echo done","toolSummary":"Wait for the build"}' } }),
+    event('thought', 'conversation_thinking', { thinking: 'The command is still running; I will wait for it.' }),
+  ]
+  const host = document.createElement('div'), root = createRoot(host)
+  const render = (state: 'running' | 'ready', streamingText = '') => act(async () => root.render(<TerminalEventTranscript terminal={null} events={events} searchable scrollKey="agy-running-step" runtimeActivity={{ state, label: state }} streamingText={streamingText} />))
+  try {
+    useChatDisplayStore.setState({ showThinking: true, showTools: false })
+    await render('running')
+    expect(host.querySelector('[data-theme-tools-running="true"]')?.textContent).toMatch(/^Running "Wait for the build"….*· 1m/)
+    await render('running', 'Waiting for the command to finish before replying.')
+    expect(host.querySelector('[data-theme-tools-running="true"]')).toBeTruthy()
+    await render('ready')
+    expect(host.querySelector('[data-theme-tools-running="true"]')).toBeNull()
+  } finally {
+    await act(async () => root.unmount())
+    useChatDisplayStore.setState({ showThinking: false, showTools: false })
+  }
+})

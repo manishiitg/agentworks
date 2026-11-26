@@ -17,12 +17,21 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // Exercise the chat route and actual guarded workspace writer, with different
 // owner/caller identities. A client-supplied folder must never choose the target.
 func TestCrewChatUploadUsesCallerFolder(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	f, _ := newExternalCrewCommandFixture(t)
+	// #3060: screenshots remain runtime attachments while source editing is on
+	// the paired Mac; the same caller-folder and revoked-access checks still run.
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Side: "server", Editing: "local", PairID: "pair", PeerProjectID: "local-team"}); err != nil {
+		t.Fatal(err)
+	}
+
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other","role":"editor","products":["work"]},{"id":"runner","role":"viewer","products":["work"]}]}`)
 	image, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aOS8AAAAASUVORK5CYII=")
 	if err != nil {
@@ -170,8 +179,8 @@ func TestCrewUploadIsReachableFromTheTurnAndTheChat(t *testing.T) {
 	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "test-custom", ProjectID: "custom", OwnerID: "owner", CanonicalRoot: customRoot, LocalRoot: project, Shared: true, Private: true, AudienceConfigured: true}); err != nil {
 		t.Fatal(err)
 	}
-	f.write(t, "_system/crew-data/custom/product.json", `{"schema_version":1,"product":"work","id":"custom","title":"Custom","session_id":"sess-custom"}`)
-	f.write(t, "_system/crew-data/custom/workflow.json", `{"id":"custom","label":"Custom","created_by":"owner"}`)
+	writeLocalCrewSettings(t, project, "product.json", `{"schema_version":1,"product":"work","id":"custom","title":"Custom","session_id":"sess-custom"}`)
+	writeLocalCrewSettings(t, project, "workflow.json", `{"id":"custom","label":"Custom","created_by":"owner"}`)
 	f.write(t, externalCommandCrewRoot+"/other.txt", "another Crew's file")
 	docs, err := filepath.EvalSymlinks(f.docs)
 	if err != nil {
@@ -228,6 +237,11 @@ func TestCrewUploadIsReachableFromTheTurnAndTheChat(t *testing.T) {
 		sent := withSessionMode(notice, query)
 		if stripSessionMode(sent) != query || userMessageAttachments(sent)[0]["path"] != response.Filepath {
 			t.Fatalf("%s stored message changed: %s", crew.id, sent)
+		}
+		// An image sent with no text: the stored message is the notice, then the line alone. It showed as an empty bubble.
+		alone := "📁 Files in context: " + response.Filepath
+		if got := userMessageAttachments(withSessionMode(notice, alone)); len(got) != 1 || got[0]["path"] != response.Filepath || got[0]["kind"] != "image" {
+			t.Fatalf("%s image sent alone has no attachment: %v", crew.id, got)
 		}
 		if w := open(owner, response.Filepath); w.Code != http.StatusOK || w.Body.String() != "image" {
 			t.Fatalf("%s image route = %d %s", crew.id, w.Code, w.Body.String())

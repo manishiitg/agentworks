@@ -1,9 +1,9 @@
-import { BookOpen, Cable, Cpu, Database, DollarSign, Files, Folder, Github, Hand, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Zap, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
+import { BookOpen, Cable, Database, DollarSign, Files, Folder, Github, Globe, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Zap, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
-import { isLocalDeployment, visibleProductSurfaceIDs } from '../productSurfaceConfig'
-import { isWorkIdentityTabEnabled, isWorkIntegrationTabEnabled } from './workViewGating'
+import { isLocalDeployment } from '../productSurfaceConfig'
+import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { PROJECT_MENU_GROUPS } from '../../components/workspace/projectMenuGroups'
 import { hasDesktopConnections } from '../../stores/useConnectedWorkStore'
 
@@ -25,18 +25,25 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
   const add = (view: WorkWorkspaceView, group: CrewMenuGroup, label: string, icon: LucideIcon, target?: string, subgroup?: string) => {
     if (has(view)) items.push({ id: target ? `${view}:${target}` : view, view, group, label, icon, target, subgroup })
   }
-  add('dashboard', 'Build', 'Dashboards', LayoutDashboard)
+  add('dashboard', 'Build', 'Artifacts', LayoutDashboard)
   add('workflow', 'Build', 'Workflow', Route)
   add('schedules', 'Build', 'Automations', Zap)
-  if (!enabledPanels || enabledPanels.has('skills')) add('memory', 'Build', 'Skills', Sparkles, 'skills')
+  if (!enabledPanels || enabledPanels.has('skills')) add('memory', 'Integrations', 'Skills', Sparkles, 'skills')
   add('files', 'Build', 'Files', Files)
   add('database', 'Build', 'Database', Database)
   add('browser', 'Use', 'Browser', panels.find(item => item.id === 'browser')?.icon || Laptop)
   add('history', 'Use', 'Chat history', MessageSquareText)
   if (has('mcp')) {
-    // One Share row for every Crew (owner, 3 Nov): where it lives, who can use it and connected agents on one page.
-    add('mcp', 'Share', 'Share', UsersRound, 'access', 'Share')
-    for (const item of projectChannelSections(bots, bots)) {
+    // Two rows for every Crew (owner, 11 Nov: the one Share row split): Team, the people who work on it with you, and
+    // Online, how everyone else reaches it (Mac online, Online agents); your agents and actions are Team › Agents. Each opens its own page.
+    add('mcp', 'Share', 'Team', UsersRound, 'team')
+    // Remote Control turns on reaching a Mac project from your phone; a server project is always on the web,
+    // so the row shows only on the Mac (owner, 25 Nov: "on server i see.. phone why").
+    if (isLocalDeployment()) add('mcp', 'Share', 'Remote Control', Globe, 'online')
+    add('mcp', 'Share', 'Artifacts', LayoutDashboard, 'artifacts')
+    // The Slack bot row opens Connections → Slack bot on server projects (owner, 14 Nov).
+    // Local Mac projects keep Slack as me only (owner, 25 Nov).
+    for (const item of projectChannelSections(bots && !isLocalDeployment(), bots)) {
       add('mcp', item.id === 'slack' ? 'Integrations' : 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, item.id === 'slack' ? undefined : 'Use from other apps')
     }
     for (const item of projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} })) {
@@ -44,19 +51,48 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
       add('mcp', 'Integrations', item.id === 'mcp:folders' ? 'Linked projects' : item.label, item.icon, item.id.slice(4), item.subgroup)
     }
     if (hasDesktopConnections() || isLocalDeployment()) add('mcp', 'Integrations', 'Folders on this Mac', Folder, 'mac-folders')
-    if (visibleProductSurfaceIDs(allowedProducts).includes('bullpen')) add('mcp', 'Use', 'Message other agents', MessageSquareText, 'message-agents')
     if (isWorkIntegrationTabEnabled('secrets', enabledPanels)) add('mcp', 'Integrations', 'GitHub', Github, 'github')
     if (isLocalDeployment()) add('mcp', 'Integrations', 'Computer use', MonitorCog, 'computer-use')
     if (!enabledPanels || enabledPanels.has('bots')) add('mcp', 'Integrations', 'My Slack account', MessageSquareText, 'slack-account')
   }
-  add('suggestions', 'Share', 'Suggestions', Hand)
   add('identity', 'Setup', 'Instructions & identity', Settings, 'general')
-  if (isWorkIdentityTabEnabled('models', enabledPanels)) add('identity', 'Setup', 'Models', Cpu, 'models')
   if (!enabledPanels || enabledPanels.has('memory')) add('memory', 'Setup', 'Memory', BookOpen, 'memory')
   add('costs', 'Setup', 'Costs & usage', DollarSign)
   add('shell', 'Setup', 'Terminal', Terminal, undefined, 'Advanced')
   const integrationOrder = ['mcp:connected', 'mcp:available', 'mcp:secrets', 'mcp:github', 'mcp:gmail', 'mcp:slack-account', 'mcp:computer-use', 'mcp:brain', 'mcp:folders', 'mcp:mac-folders']
   return items.sort((a, b) => CREW_MENU_GROUPS.indexOf(a.group) - CREW_MENU_GROUPS.indexOf(b.group) || (a.group === 'Integrations' ? integrationOrder.indexOf(a.id) - integrationOrder.indexOf(b.id) : 0))
+}
+
+// Full menu groups are presentation only. Callers still use the same
+// admitted inventory for search, opening items, and the compact menu.
+export function crewFullMenuGroups(inventory: CrewMenuItem[]) {
+  const groups: { title: string; items: CrewMenuItem[] }[] = [
+    { title: 'Files & data', items: [] },
+    { title: 'Automations', items: [] },
+    { title: 'Connections', items: [] },
+    { title: 'Team & access', items: [] },
+    { title: 'Project settings', items: [] },
+  ]
+  const order = [
+    ['mcp:artifacts', 'dashboard', 'files', 'database', 'shell'],
+    ['workflow', 'schedules'],
+    ['browser', 'mcp:connected', 'mcp:cli', 'mcp:gmail', 'mcp:github', 'mcp:slack-account', 'mcp:slack-bot', 'mcp:whatsapp', 'mcp:folders', 'mcp:mac-folders', 'mcp:computer-use', 'mcp:secrets', 'memory:skills'],
+    ['mcp:team', 'mcp:online'],
+    ['identity:general', 'identity:models', 'memory:memory', 'history', 'costs'],
+  ]
+  const hasSharedArtifacts = inventory.some(item => item.id === 'mcp:artifacts')
+  for (const item of inventory) {
+    if (item.id === 'dashboard' && hasSharedArtifacts) continue
+    let group = order.findIndex(ids => ids.includes(item.id))
+    if (group === -1) group = item.group === 'Integrations' ? 2 : 4
+    groups[group].items.push(item)
+  }
+  for (const [index, group] of groups.entries()) {
+    const ids = order[index]
+    const rank = (item: CrewMenuItem) => ids.includes(item.id) ? ids.indexOf(item.id) : ids.length
+    group.items.sort((a, b) => rank(a) - rank(b))
+  }
+  return groups.filter(group => group.items.length > 0)
 }
 
 export function crewMenuTarget(view: WorkWorkspaceView) {

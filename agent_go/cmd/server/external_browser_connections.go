@@ -17,12 +17,12 @@ func externalBrowserConnectionsAllowed(c *UserClaims) bool {
 	return t.Allows("workflows:read") || t.Allows("runs:execute") || t.Allows("crews:read") || t.Allows("crews:write") || externalCodeRunAllowed(c)
 }
 func externalBrowserConnectionsDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("browser_connections", "Your saved Chrome and Edge connections. List your own browsers or get a setup link; select or disconnect a browser for one project under existing Builder access. No account credentials or other projects' tabs are returned. Connect native browsers once from Account → Browser connections.", true, false, map[string]any{
-		"action":      map[string]any{"type": "string", "enum": []any{"list", "setup", "select", "disconnect"}},
-		"browser_id":  externalString("Browser ID returned by list; required for select."),
+	add("browser_connections", "Your saved Chrome and Edge connections. List your own browsers or get a setup link; for one project under existing Builder access, select its main browser, add or remove other browsers it also uses at the same time (each its own Chrome or profile, with its own sign-ins), or disconnect them all. No account credentials or other projects' tabs are returned. Connect native browsers once from Account → Browser connections.", true, false, map[string]any{
+		"action":      map[string]any{"type": "string", "enum": []any{"list", "setup", "select", "add", "remove", "disconnect"}},
+		"browser_id":  externalString("Browser ID returned by list; required for select, add and remove."),
 		"workflow_id": externalString("Workflow ID for a project selection."),
-		"crew_id":     externalString("Crew ID for a project selection."),
-		"project_id":  externalString("Your own Code project ID for a project selection."),
+		"crew_id":     externalString("Project ID for a project selection."),
+		"project_id":  externalString("Your own project ID for a project selection."),
 	}, "action")
 }
 func (api *StreamingAPI) externalBrowserConnectionsCall(w http.ResponseWriter, r *http.Request, args map[string]any) {
@@ -40,7 +40,7 @@ func (api *StreamingAPI) externalBrowserConnectionsCall(w http.ResponseWriter, r
 		}
 	}
 	if count != 1 {
-		externalError(w, 400, "invalid_arguments", "Choose one workflow, Crew or Code project.")
+		externalError(w, 400, "invalid_arguments", "Choose one workflow, project or project.")
 		return
 	}
 	root, profile := "", ""
@@ -63,7 +63,7 @@ func (api *StreamingAPI) externalBrowserConnectionsCall(w http.ResponseWriter, r
 		profile = "workflow"
 	case cid != "":
 		if t := c.AccessToken; t != nil && (!t.Allows("crews:write") || !t.AllowsCrew(cid)) {
-			externalError(w, 403, "forbidden", "Use this Crew's Builder connection, or choose its browser in the app.")
+			externalError(w, 403, "forbidden", "Use this project's Builder connection, or choose its browser in the app.")
 			return
 		}
 		if status, message := externalCrewAuthorGate(c); status != 0 {
@@ -72,18 +72,18 @@ func (api *StreamingAPI) externalBrowserConnectionsCall(w http.ResponseWriter, r
 		}
 		crew, _, _, ok := api.externalCrewResolve(r.Context(), c, cid)
 		if !ok {
-			externalError(w, 404, "not_found", "Crew unavailable.")
+			externalError(w, 404, "not_found", "Project unavailable.")
 			return
 		}
 		root, profile = crew.Binding.WorkspacePath, "work"
 	case pid != "":
 		if !externalCodeRunAllowed(c) {
-			externalError(w, 403, "forbidden", "Use your own Code connection, or choose its browser in the app.")
+			externalError(w, 403, "forbidden", "Use your own project's connection, or choose its browser in the app.")
 			return
 		}
 		binding, _, ok := api.externalCodeRunOwnProject(r.Context(), c.UserID, pid)
 		if !ok {
-			externalError(w, 404, "not_found", "Code project unavailable.")
+			externalError(w, 404, "not_found", "Project unavailable.")
 			return
 		}
 		root, profile = binding.WorkspacePath, crewProfileID
@@ -96,6 +96,25 @@ func (api *StreamingAPI) externalBrowserConnectionsCall(w http.ResponseWriter, r
 	if action == "disconnect" {
 		if err := browserrelay.Default.Disconnect(c.UserID, scope); err != nil {
 			externalError(w, 503, "unavailable", err.Error())
+			return
+		}
+	} else if action == "remove" {
+		if err := browserrelay.Default.StopAlsoBrowser(c.UserID, scope, externalArg(args, "browser_id")); err != nil {
+			externalError(w, 503, "unavailable", err.Error())
+			return
+		}
+	} else if action == "add" {
+		id := externalArg(args, "browser_id")
+		if id == "" {
+			externalError(w, 400, "invalid_arguments", "Choose browser_id from browser_connections action=list.")
+			return
+		}
+		if _, err := browserrelay.Default.PairForProfile(c.UserID, scope, root, profile); err != nil {
+			externalError(w, 503, "unavailable", "Could not prepare this project's browser.")
+			return
+		}
+		if err := browserrelay.Default.AlsoUseBrowser(c.UserID, scope, id); err != nil {
+			externalError(w, 400, "invalid_arguments", err.Error())
 			return
 		}
 	} else {

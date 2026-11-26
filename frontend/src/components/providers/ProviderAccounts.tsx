@@ -5,6 +5,9 @@ import ConfirmationDialog from '../ui/ConfirmationDialog'
 import { ADMIN_MANAGED_ACCOUNT_LABEL } from '../../utils/providerAccountLabels'
 import { AvailabilityFields, SharingFields, sharingSummary } from './SharingEditor'
 import AllowedModelsEditor from './AllowedModelsEditor'
+import { AccountModelsLine } from './AccountModels'
+import { AddOnServerForm, ServerSignIn, YourAccountsOnServer } from './ServerAccounts'
+import { Segmented } from './ChoiceChips'
 // Loaded on first use: the key setup is rare and kept the eager bundle over budget (PLAT-717).
 const ByokSetup = lazy(() => import('./ByokSetup'))
 const ByokModelBrowser = lazy(() => import('./ByokModelBrowser'))
@@ -21,13 +24,21 @@ import {
   type ProviderAvailableTo,
   type ProviderConnection,
   type ProviderSetupSession,
+  type ServerLoginState,
 } from '../../services/llm-config-api'
 import { formatTokens } from '../../utils/formatTokens'
+import { SharedAccountUsageLine } from './SharedTokenUsageNotice'
+import { AccountHealthLine } from './AccountHealth'
 import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { desktopRequest, type DesktopConnection } from '../../services/desktopConnections'
 
 // Providers with a browser login the server can sign out (the CLI's own logout).
 const SIGN_OUT_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'])
+// Programs whose own sign-in an account keeps in its private home (Antigravity: a Google sign-in).
+const BROWSER_LOGIN_PROVIDERS = new Set(['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli', 'agy-cli'])
+// Programs a person can sign in once on the server: the server keeps the login, and their Mac and online agents both
+// use it (PLAT-856-441).
+const SERVER_LOGIN_PROVIDERS = new Set(['codex-cli'])
 
 /** One line for an account's status; never a credential. */
 export function accountStatusText(status?: ProviderAccountStatus | 'loading', keyAccount = false): string {
@@ -71,7 +82,7 @@ export const ACCOUNT_GROUPS: { label: string; relations: ProviderAccountRelation
   { label: 'Your accounts', relations: ['own'] },
   { label: 'Shared with you', relations: ['shared_with_you'] },
   { label: 'Shared with this workflow', relations: ['shared_with_workflow'] },
-  { label: 'Shared with this Crew', relations: ['shared_with_crew'] },
+  { label: 'Shared with this project', relations: ['shared_with_crew'] },
 ]
 
 /** Short label for a selectable account in a picker. */
@@ -87,9 +98,9 @@ export const NO_LONGER_AVAILABLE = 'No longer available here'
 
 type ServerAccountState = 'ready' | 'sign_in' | 'different_login' | 'missing' | 'unavailable' | 'loading'
 /** Where one of your accounts on this Mac stands on a server, with the login each side reports (an email, usually). */
-type ServerAccount = { state: ServerAccountState; mac_login?: string; server_login?: string }
+type ServerAccount = { state: ServerAccountState; mac_login?: string; server_login?: string; server_account_id?: string }
 
-export default function ProviderAccounts({ provider, providerLabel, selectedId, onSelect, disabled = false, addRequest = 0, addService, formOnly = false, selectionOnly = false, workspacePath, product }: {
+export default function ProviderAccounts({ provider, providerLabel, selectedId, onSelect, disabled = false, addRequest = 0, addService, formOnly = false, selectionOnly = false, workspacePath, product, directory = false, inventory }: {
   provider: string
   /** Display name of the provider, e.g. "Claude Code". */
   providerLabel?: string
@@ -104,6 +115,9 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   /** Workflow, Crew or Code path the selection is for. */
   workspacePath?: string | null
   product?: string
+  /** Settings supplies one authorized inventory for all provider rows. */
+  inventory?: ProviderConnection[]
+  directory?: boolean
 }) {
   const manage = !onSelect && !formOnly && !selectionOnly
   const [connections, setConnections] = useState<ProviderConnection[]>([])
@@ -123,12 +137,19 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const [confirmSharedLogin, setConfirmSharedLogin] = useState<ProviderConnection | null>(null)
   // These CLIs sign in with the person's own browser login in a terminal, as an admin does for the server account; that is what
   // most people want, so it is the default. An API key stays one choice away.
-  const defaultAuthMethod = ['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'].includes(provider) ? 'cli_login' : 'api_key'
+  // On a server, a program that can sign in once there defaults to that: one login for this server, the Mac and online agents.
+  const serverLoginChoice = SERVER_LOGIN_PROVIDERS.has(provider) && window.electronAPI?.getDesktopConnection?.() !== 'local'
+  const defaultAuthMethod = serverLoginChoice ? 'server_login' : BROWSER_LOGIN_PROVIDERS.has(provider) ? 'cli_login' : 'api_key'
   const [authMethod, setAuthMethod] = useState(defaultAuthMethod)
   const [session, setSession] = useState<ProviderSetupSession | null>(null)
   const [sessionRowId, setSessionRowId] = useState<string | null>(null)
   const [statuses, setStatuses] = useState<Record<string, ProviderAccountStatus | 'loading'>>({})
   const [adding, setAdding] = useState(false)
+  // Where a new account goes: this Mac, or one of your connected servers (its id). Read again after a change there.
+  const [addWhere, setAddWhere] = useState('local')
+  // One of your accounts on a server being signed in, in a window inside the app.
+  const [serverSignIn, setServerSignIn] = useState<{ recordId: string; serverId: string; accountId: string } | null>(null)
+  const [serverAccountsVersion, setServerAccountsVersion] = useState(0)
   const [name, setName] = useState('')
   const [credential, setCredential] = useState('')
   const [newSharing, setNewSharing] = useState<ProviderAccountSharing>({ mode: 'private' })
@@ -140,7 +161,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   // Connected servers, when this page shows the Mac app's own accounts: each own account can also be added there.
   const onThisMac = window.electronAPI?.getDesktopConnection?.() === 'local'
   const servers = useConnectedWorkStore(state => state.connections).filter(connection => connection.id !== 'local')
-  useEffect(() => { if (onThisMac && manage) void useConnectedWorkStore.getState().refresh() }, [onThisMac, manage])
+  useEffect(() => { if (onThisMac && manage && !directory) void useConnectedWorkStore.getState().refresh() }, [onThisMac, manage, directory])
   // Where each of your accounts stands on each connected server: ready, needs sign-in, or not there yet.
   const [onServers, setOnServers] = useState<Record<string, Record<string, ServerAccount> | 'unavailable'>>({})
   const serverIds = servers.map(server => server.id).join(',')
@@ -154,6 +175,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   useEffect(() => {
     let cancelled = false
     setError(null)
+    if (inventory) { setConnections(inventory.filter(record => record.provider === provider)); return }
     const refresh = () => {
       void llmConfigService.getProviderConnections(workspacePath || product ? { workspacePath, product } : undefined).then(records => {
         if (!cancelled) setConnections(records.filter(record => record.provider === provider))
@@ -161,7 +183,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     }
     refresh(); window.addEventListener('provider-connections-changed', refresh)
     return () => { cancelled = true; window.removeEventListener('provider-connections-changed', refresh) }
-  }, [provider, workspacePath, product])
+  }, [provider, workspacePath, product, inventory])
   // Each row shows its status; the cheap check runs on load, the real one on Refresh.
   useEffect(() => {
     if (!manage) return
@@ -231,6 +253,27 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     catch (macError) { setError(providerApiErrorText(macError, action === 'sign_in' ? 'Could not start the sign-in.' : 'Could not turn it off.')) }
     finally { setBusy(false) }
   }
+  // "Sign in once on this server": the link and code waiting for approval, per account, checked until it is signed in.
+  const [serverLogins, setServerLogins] = useState<Record<string, ServerLoginState>>({})
+  const waitingServerLogins = Object.entries(serverLogins).filter(([, state]) => state.signing_in && !state.signed_in_as).map(([id]) => id).join(',')
+  useEffect(() => {
+    if (!waitingServerLogins) return
+    const timer = setInterval(() => {
+      for (const id of waitingServerLogins.split(',')) {
+        void llmConfigService.getServerLogin(id).then(state => {
+          setServerLogins(current => ({ ...current, [id]: state }))
+          if (state.signed_in_as) { changed(); const record = connections.find(item => item.id === id); if (record) void refreshStatus(record) }
+        }).catch(() => undefined)
+      }
+    }, 3000)
+    return () => clearInterval(timer)
+  }, [waitingServerLogins])
+  const startServerLogin = async (record: ProviderConnection) => {
+    setBusy(true); setError(null)
+    try { const state = await llmConfigService.startServerLogin(record.id); setServerLogins(current => ({ ...current, [record.id]: state })) }
+    catch (loginError) { setError(providerApiErrorText(loginError, 'Could not start the sign-in.')) }
+    finally { setBusy(false) }
+  }
   const save = async () => {
     if (disabled || !personalAllowed) return
     setBusy(true); setError(null)
@@ -242,9 +285,9 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
       } else {
         record = await llmConfigService.addProviderConnection({
           provider, display_name: name,
-          ...(authMethod === 'cli_login' ? { auth_method: 'cli_login' } : { credential }),
+          ...(authMethod === 'cli_login' || authMethod === 'server_login' ? { auth_method: authMethod } : { credential }),
           ...(provider === 'pi-cli' ? { underlying_provider: underlyingProvider } : {}),
-          ...(newSharing.mode === 'shared' ? { sharing: newSharing } : {}),
+          ...(newSharing.mode === 'shared' && authMethod !== 'server_login' ? { sharing: newSharing } : {}),
         })
         record = { relation: 'own', kind: 'user', can_manage: true, ...record }
       }
@@ -253,6 +296,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
       changed()
       onSelect?.(record.id)
       if (record.auth_method === 'cli_login' && !editingId) await login(record)
+      if (record.auth_method === 'server_login' && !editingId) await startServerLogin(record)
     } catch (saveError) { setError(providerApiErrorText(saveError, 'Could not save account. Check the provider and administrator policy.')) }
     finally { setBusy(false) }
   }
@@ -286,7 +330,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     void login(record)
   }, [connections, disabled])
   const remove = async (record: ProviderConnection) => {
-    if (!window.confirm(`Remove ${record.display_name}? Workflows, Crews and Codes that use it will stop working until they pick another account.`)) return
+    if (!window.confirm(`Remove ${record.display_name}? Workflows, projects and Codes that use it will stop working until they pick another account.`)) return
     setBusy(true); setError(null)
     try { await llmConfigService.deleteProviderConnection(record.id); setConnections(current => current.filter(item => item.id !== record.id)); changed() }
     catch (removeError) { setError(providerApiErrorText(removeError, 'Could not remove account.')) }
@@ -355,7 +399,7 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const secondaryButtonClass = 'inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
   const badgeClass = 'rounded-md px-1.5 py-0.5 text-[10px] font-medium'
   const cancel = () => { setAdding(false); setEditingId(null); resetForm() }
-  const openAdd = () => { setAdding(true); setEditingId(null); resetForm() }
+  const openAdd = () => { setAdding(true); setEditingId(null); setAddWhere('local'); resetForm() }
 
   // Per-account actions. The server enforces who may run each one.
   // One status line: a dot and a few words, checked automatically on load.
@@ -382,17 +426,50 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     const who = signedInAs(server) ? ` for ${signedInAs(server)}` : ''
     setBusy(true); setError(null); setNotice(null)
     try {
-      const result = await desktopRequest<{ status: 'copied' | 'sign_in' | 'exists'; server_url: string }>(`/${encodeURIComponent(server.id)}/provider-accounts`, 'POST', { account_id: record.id })
-      if (result.status === 'sign_in' || signInAgain) {
-        setNotice({ id: record.id, text: signInAgain ? `Sign in on ${server.name} with the same login as this Mac.` : `Added to ${server.name} as a private account${who}. Sign in to it on the page that opened.`, signInUrl: result.server_url })
-        window.electronAPI?.openExternal?.(result.server_url)
+      const result = await desktopRequest<{ status: 'copied' | 'sign_in' | 'exists'; account_id?: string; server_url: string }>(`/${encodeURIComponent(server.id)}/provider-accounts`, 'POST', { account_id: record.id })
+      if ((result.status === 'sign_in' || signInAgain) && result.account_id) {
+        setServerSignIn({ recordId: record.id, serverId: server.id, accountId: result.account_id })
+      } else if (result.status === 'sign_in' || signInAgain) {
+        openAddOn(server)
       } else setNotice({ id: record.id, text: result.status === 'exists' ? `Already on ${server.name} as a private account${who}.` : `Added to ${server.name} as a private account${who}. It is ready to use there.` })
     } catch (addError) { setError(addError instanceof Error ? addError.message : 'Could not add the account.') }
     finally { setBusy(false); void loadOnServer(server.id) }
   }
   // "On your servers": one line under each of your accounts on this Mac, with what to do on each server.
+  // Codex: move this Mac's login to the server instead of signing in there again. One copy only (two copies of one
+  // login sign each other out); the Mac then uses it through the server, and so do the online agents.
+  const canMoveToServer = (record: ProviderConnection) => SERVER_LOGIN_PROVIDERS.has(provider) && !needsSignIn(record)
+    && (record.id === `global:${provider}` || record.auth_method === 'cli_login')
+  const moveToServer = async (record: ProviderConnection, target: { id: string; name: string }) => {
+    setBusy(true); setError(null)
+    try {
+      const result = await llmConfigService.moveLoginToServer(record.id, target.id)
+      setNotice({ id: record.id, text: `Moved to ${target.name}${result.signed_in_as ? ` (${result.signed_in_as})` : ''}. It now works on this Mac and for your online agents.` })
+      changed()
+    } catch (moveError) { setError(providerApiErrorText(moveError, 'Could not move the login.')) }
+    finally { setBusy(false) }
+  }
+  // The summary names each server whose copy of this account needs attention; this Mac's own login is not affected.
+  const serversWith = (record: ProviderConnection, state: string) => servers.filter(item => { const entry = onServers[item.id]; return entry !== 'unavailable' && entry?.[record.id]?.state === state }).map(item => item.name)
+  const serverNotes = (record: ProviderConnection) => {
+    const signIn = serversWith(record, 'sign_in'), other = serversWith(record, 'different_login')
+    return <>{signIn.length > 0 && <span className="ml-2 text-warning">Sign-in needed on {signIn.join(', ')}</span>}
+      {other.length > 0 && <span className="ml-2 text-warning">Different login on {other.join(', ')}</span>}</>
+  }
+  // A browser login is added in the app's own form (paste a key or token, or sign in in a window here); a key is
+  // copied straight over. Neither opens the server's website.
+  const isKeyAccount = (record: ProviderConnection) => record.auth_method !== 'cli_login' && record.auth_method !== 'server_login' && record.auth_method !== 'server'
+  const openAddOn = (server: DesktopConnection) => { setAdding(true); setEditingId(null); setAddWhere(server.id); resetForm() }
+  const signInOnServer = (record: ProviderConnection, server: DesktopConnection, account: ServerAccount) => account.server_account_id
+    ? setServerSignIn({ recordId: record.id, serverId: server.id, accountId: account.server_account_id })
+    : openAddOn(server)
+  const serverSignInFor = (record: ProviderConnection) => {
+    const server = serverSignIn?.recordId === record.id ? servers.find(item => item.id === serverSignIn.serverId) : undefined
+    return server && serverSignIn ? <ServerSignIn server={server} provider={provider} accountId={serverSignIn.accountId} onDone={() => { setServerSignIn(null); void loadOnServer(server.id) }} /> : null
+  }
   const serverRow = (record: ProviderConnection) => onThisMac && manage && record.can_manage && !record.via_connection && servers.length > 0 && (
-    <div className="mt-2 w-full pl-11 text-xs">
+    <details className="mt-2 w-full pl-11 text-xs" open={directory ? undefined : true}>
+      {<summary className={directory ? 'w-fit cursor-pointer text-muted-foreground' : 'hidden'}>Available on {servers.length} {servers.length === 1 ? 'server' : 'servers'}{directory && serverNotes(record)}</summary>}
       <div className="flex flex-wrap items-center gap-2">
       <span className="text-gray-500 dark:text-gray-400">Servers:</span>
       {servers.map(server => {
@@ -404,24 +481,25 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
           <span key={server.id} title={title} className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 dark:border-gray-700">
             <span className="font-medium text-gray-800 dark:text-gray-200">{server.name}</span>
             {state === 'ready' && <span className="text-emerald-600 dark:text-emerald-400">{account.server_login && account.mac_login ? `✓ Same login · ${account.server_login}` : '✓ Ready'}</span>}
-            {state === 'sign_in' && <button type="button" disabled={busy} className="font-medium text-amber-600 hover:underline disabled:opacity-50 dark:text-amber-400" onClick={() => void addToServer(record, server)}>Sign in needed</button>}
+            {state === 'sign_in' && !canMoveToServer(record) && <button type="button" disabled={busy} className="font-medium text-amber-600 hover:underline disabled:opacity-50 dark:text-amber-400" onClick={() => signInOnServer(record, server, account)}>Sign in needed</button>}
             {state === 'different_login' && <>
               <span className="text-amber-600 dark:text-amber-400">Different login: {account.server_login}</span>
-              <button type="button" disabled={busy} className="font-medium text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => void addToServer(record, server, true)}>Sign in again</button>
+              <button type="button" disabled={busy} className="font-medium text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => signInOnServer(record, server, account)}>Sign in again</button>
             </>}
-            {state === 'missing' && <button type="button" disabled={busy} className="font-medium text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => void addToServer(record, server)}>Add</button>}
+            {(state === 'missing' || state === 'sign_in') && canMoveToServer(record) && <button type="button" disabled={busy} title="Moves this login to the server: it then works on this Mac and for your online agents, with no second sign-in" className="font-medium text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => void moveToServer(record, server)}>Move login here</button>}
+            {state === 'missing' && !canMoveToServer(record) && <button type="button" disabled={busy} className="font-medium text-primary hover:underline disabled:opacity-50" onClick={() => isKeyAccount(record) ? void addToServer(record, server) : openAddOn(server)}>Add</button>}
             {state === 'loading' && <span className="text-gray-400">…</span>}
             {state === 'unavailable' && <span className="text-gray-400">Status unknown</span>}
           </span>
         )
       })}
       </div>
-    </div>
+    </details>
   )
-  const canSignOut = (record: ProviderConnection) => record.can_manage === true && SIGN_OUT_PROVIDERS.has(provider) && (accountRelation(record) === 'server' || record.auth_method === 'cli_login')
+  const canSignOut = (record: ProviderConnection) => record.can_manage === true && SIGN_OUT_PROVIDERS.has(provider) && (accountRelation(record) === 'server' || record.auth_method === 'cli_login' || record.auth_method === 'server_login')
   // The terminal is where a person signs in by hand and checks usage (/usage); there is no
   // separate usage check.
-  const terminalItem = (record: ProviderConnection) => record.can_manage ? [{ label: 'Terminal (check usage)', onSelect: () => void runSetup(record, 'inspect') }] : []
+  const terminalItem = (record: ProviderConnection) => record.can_manage && record.auth_method !== 'server_login' ? [{ label: 'Terminal (check usage)', onSelect: () => void runSetup(record, 'inspect') }] : []
   const checkItem = (record: ProviderConnection) => statuses[record.id] !== undefined || byokServiceOf(record) ? [{ label: byokServiceOf(record) ? 'Test key again' : 'Check it works', onSelect: () => void refreshStatus(record) }] : []
   const terminalFor = (record: ProviderConnection) => (session && sessionRowId === record.id && (
     <div className="mt-3 w-full"><GuidedProviderTerminal session={session} onFinished={value => { setSession(value); changed() }} onClose={() => { setSession(null); setSessionRowId(null) }} /></div>
@@ -436,13 +514,22 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
     </form>
   )
 
+  // The sign-in of an account kept on this server: a link and a code to approve with the person's own account.
+  const serverLoginPanel = (record: ProviderConnection) => {
+    const waiting = serverLogins[record.id]?.signing_in
+    if (!waiting || serverLogins[record.id]?.signed_in_as) return null
+    return <div className="mt-3 w-full rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs text-violet-900 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-100">
+      Open <a className="font-medium underline" href={waiting.url} target="_blank" rel="noreferrer">{waiting.url}</a>{waiting.code && <> and enter <strong className="font-mono">{waiting.code}</strong></>}, then approve with your own {providerLabel || provider} account. This updates by itself.
+    </div>
+  }
   const userRow = (record: ProviderConnection) => {
     const relation = accountRelation(record)
     const own = relation === 'own'
     const canManage = own || record.can_manage === true
     let detail: string
     const keyService = byokServiceOf(record)
-    if (own) detail = `${keyService ? `${keyService.label} · ` : ''}${sharingSummary(record.sharing)}`
+    if (own && record.auth_method === 'server_login') detail = 'Signed in on this server · your Mac and your online agents use it'
+    else if (own) detail = `${keyService ? `${keyService.label} · ` : ''}${sharingSummary(record.sharing)}`
     else if (relation === 'admin_view') detail = otherAccountDetail(record, sharingSummary(record.sharing))
     else detail = `Shared by ${record.owner_name || 'another person'}`
     return (
@@ -457,30 +544,37 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
               {own && <span className={`${badgeClass} bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300`}>{record.sharing?.mode === 'shared' ? 'Shared' : 'Private'}</span>}
             </div>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{detail}</p>
-            {manage && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Models: {keyService && record.allowed_models?.length ? allowedModelsText(record.allowed_models.map(id => id.slice(id.indexOf('/') + 1))) : allowedModelsSummary(record.allowed_models)}</p>}
+            {manage && (keyService
+              ? <p className="mt-0.5 text-xs text-muted-foreground">Models: {record.allowed_models?.length ? allowedModelsText(record.allowed_models.map(id => id.slice(id.indexOf('/') + 1))) : allowedModelsSummary(record.allowed_models)}</p>
+              : !record.via_connection && <AccountModelsLine provider={provider} accountId={record.id} allowed={record.allowed_models} />)}
             {relation === 'shared_with_you' && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">You cannot see its credential.</p>}
             {statusLine(record)}
+            {!record.via_connection && <AccountHealthLine provider={provider} accountId={record.id} />}
           </div>
         </div>
         {!disabled && (
           <div className="flex flex-wrap items-center gap-1">
             {canManage && record.auth_method === 'cli_login' && personalAllowed && needsSignIn(record) && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => void login(record)}><LogIn className="h-3.5 w-3.5" /> Sign in</button>}
+            {canManage && record.auth_method === 'server_login' && needsSignIn(record) && !serverLogins[record.id]?.signing_in && <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => void startServerLogin(record)}><LogIn className="h-3.5 w-3.5" /> Sign in</button>}
             <ActionsMenu label={`More for ${record.display_name}`} disabled={busy} items={[
               ...terminalItem(record),
               ...(onThisMac ? [] : checkItem(record)),
               ...(canManage && record.auth_method === 'cli_login' && personalAllowed && !needsSignIn(record) ? [{ label: 'Sign in again', onSelect: () => void login(record) }] : []),
+              ...(canManage && record.auth_method === 'server_login' && !needsSignIn(record) ? [{ label: 'Sign in again', onSelect: () => void startServerLogin(record) }] : []),
               ...(personalAllowed && canSignOut(record) ? [{ label: 'Sign out', onSelect: () => void signOut(record) }] : []),
-              ...(canManage && manage && !onThisMac ? [{ label: 'Who can use it', onSelect: () => { setSharingId(sharingId === record.id ? null : record.id); setSharingDraft(record.sharing ?? { mode: 'private' }) } }] : []),
+              ...(canManage && manage && !onThisMac && record.auth_method !== 'server_login' ? [{ label: 'Who can use it', onSelect: () => { setSharingId(sharingId === record.id ? null : record.id); setSharingDraft(record.sharing ?? { mode: 'private' }) } }] : []),
               ...(own ? modelsItem({ ...record, can_manage: true }) : []),
-              ...(own && personalAllowed ? [{ label: keyService ? 'Rename or replace key' : 'Rename or change key', onSelect: () => { setEditingId(record.id); setAdding(true); setName(record.display_name); setCredential(''); setAuthMethod(record.auth_method === 'cli_login' ? 'cli_login' : 'api_key'); setUnderlyingProvider(record.underlying_provider || 'google') } }] : []),
+              ...(own && personalAllowed ? [{ label: record.auth_method === 'server_login' ? 'Rename' : keyService ? 'Rename or replace key' : 'Rename or change key', onSelect: () => { setEditingId(record.id); setAdding(true); setName(record.display_name); setCredential(''); setAuthMethod(record.auth_method === 'cli_login' || record.auth_method === 'server_login' ? record.auth_method : 'api_key'); setUnderlyingProvider(record.underlying_provider || 'google') } }] : []),
               ...(canManage ? [{ label: 'Remove', danger: true, onSelect: () => void remove(record) }] : []),
             ]} />
           </div>
         )}
+        {modelsEditor(record)}
         {serverRow(record)}
+        {serverSignInFor(record)}
+        {serverLoginPanel(record)}
         {noticeFor(record)}
         {sharingEditor(record)}
-        {modelsEditor(record)}
         {keyModelsEditor(record)}
         {terminalFor(record)}
       </li>
@@ -519,22 +613,22 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   const serverBlock = (record: ProviderConnection) => {
     const availability = record.availability
     return (
-      <div className={onThisMac ? '' : 'rounded-lg border border-gray-200 p-3 dark:border-gray-700'}>
+      <div className={onThisMac || directory ? '' : 'rounded-lg border border-gray-200 p-3 dark:border-gray-700'}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"><ShieldCheck className="h-4 w-4" /></div>
             <div className="min-w-0">
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{onThisMac ? `${providerLabel || provider} on this Mac` : ADMIN_MANAGED_ACCOUNT_LABEL}</span>
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{onThisMac ? directory ? 'This Mac' : `${providerLabel || provider} on this Mac` : ADMIN_MANAGED_ACCOUNT_LABEL}</span>
               {statusLine(record) || (record.identity && <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-300">Signed in as {record.identity}</p>)}
               {/* On a personal Mac nobody else uses it: who may use it and per-person limits only matter on a server. */}
               {!onThisMac && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                 {record.usable === false ? 'Not available to you' : `Used by ${availability?.text?.toLowerCase() || 'everyone'}`}
                 {availability?.pinned && <span className="ml-1 inline-flex items-center gap-1"><Lock className="h-3 w-3" /> set by the installation</span>}
               </p>}
-              {manage && !(onThisMac && !accountModels(record)?.length) && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title="Models anyone may run on this account; a different list for one person is set in Access → Users. A turn on another model runs on the first allowed one.">
-                Models: {allowedModelsText(accountModels(record))}
-                {record.can_manage && !disabled && !onThisMac && <button type="button" disabled={busy} className="ml-1.5 text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => setModelsId(modelsId === record.id ? null : record.id)}>Edit</button>}
-              </p>}
+              {record.usable !== false && <AccountHealthLine provider={provider} accountId={record.id} onSignIn={record.can_manage && !disabled ? () => setConfirmSharedLogin(record) : undefined} />}
+              {!onThisMac && record.usable !== false && <SharedAccountUsageLine provider={provider} />}
+              {manage && record.usable !== false && <AccountModelsLine provider={provider} accountId={record.id} allowed={accountModels(record)}
+                action={record.can_manage && !disabled && !onThisMac && <button type="button" disabled={busy} title="Models anyone may run on this account; a different list for one person is set in Access → Users. A turn on another model runs on the first allowed one." className="ml-1.5 text-violet-600 hover:underline disabled:opacity-50 dark:text-violet-400" onClick={() => setModelsId(modelsId === record.id ? null : record.id)}>Limit</button>} />}
               {manage && !onThisMac && <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" title="Tokens (input + output) each person may use on this account; overrides per person are in Access → Users. Day and week are UTC; weeks start Monday.">
                 Limit per person: {record.token_limits?.daily || record.token_limits?.weekly
                   ? [record.token_limits?.daily ? `${formatTokens(record.token_limits.daily)} a day` : '', record.token_limits?.weekly ? `${formatTokens(record.token_limits.weekly)} a week` : ''].filter(Boolean).join(' · ')
@@ -557,13 +651,18 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             </div>
           )}
         </div>
+        {modelsEditor(record)}
         {serverRow(record)}
+        {serverSignInFor(record)}
         {macAppRow(record)}
         {noticeFor(record)}
         {availabilityDraft !== null && record.availability_editable && (
           <form className="mt-3 space-y-3 border-t border-gray-200 pt-3 dark:border-gray-700" onSubmit={event => { event.preventDefault(); void saveAvailability(availabilityDraft) }} onKeyDown={event => { if (event.key === 'Escape') setAvailabilityDraft(null) }}>
             <AvailabilityFields value={availabilityDraft} onChange={setAvailabilityDraft} disabled={busy} />
-            <button disabled={busy} type="submit" className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>
+            <div className="flex gap-2">
+              <button disabled={busy} type="submit" className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-50">{busy ? 'Saving…' : 'Save'}</button>
+              <button disabled={busy} type="button" className={secondaryButtonClass} onClick={() => setAvailabilityDraft(null)}>Cancel</button>
+            </div>
           </form>
         )}
         {limitsDraft !== null && record.can_manage && (
@@ -583,14 +682,13 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
             </div>
           </form>
         )}
-        {modelsEditor(record)}
         {terminalFor(record)}
       </div>
     )
   }
 
   const group = (title: string, records: ProviderConnection[], extra?: ReactNode) => (records.length > 0 || extra) && (
-    <div className="mt-5">
+    <div className={directory ? 'mt-3' : 'mt-5'}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{title}</h4>
         {extra}
@@ -616,23 +714,41 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
       }} /></Suspense>
     </div>
   )
+  // "Where": on the Mac app, a new account can go straight onto one of your connected servers (#3807).
+  const whereServers = onThisMac && manage && !editingId && provider !== 'pi-cli' ? servers : []
+  const addServer = whereServers.find(item => item.id === addWhere)
+  const whereChoice = whereServers.length > 0 && <div className="space-y-1.5"><p className="text-xs font-medium text-foreground">Where</p>
+    <Segmented label="Where" value={addServer ? addServer.id : 'local'} options={[{ value: 'local', label: 'This Mac' }, ...whereServers.map(item => ({ value: item.id, label: item.name }))]} onChange={setAddWhere} disabled={busy} /></div>
+  // This Mac's own account to reuse there: Codex moves its login (one copy, used by both); a key is copied.
+  const macCopyFor = (target: DesktopConnection) => {
+    const login = [server, ...own].find(record => record && record.can_manage && canMoveToServer(record))
+    if (login) return { label: "Use this Mac's login", note: `Moves this Mac's ${providerLabel || provider} login to ${target.name}. The Mac then uses it through ${target.name}, so there is one login and no second sign-in. It is added for you only.`, run: () => moveToServer(login, target) }
+    const key = own.find(record => record.can_manage && record.auth_method !== 'cli_login' && record.auth_method !== 'server_login')
+    if (key) return { label: "Use this Mac's key", note: `Copies the key of "${key.display_name}" to ${target.name} as your account there, for you only. Change who can use it there afterwards.`, run: () => addToServer(key, target) }
+    return undefined
+  }
   const addForm = keySetup || adding && (
     <form className={formOnly ? 'space-y-4' : 'mt-4 space-y-4 border-t border-gray-200 pt-4 dark:border-gray-700'} onSubmit={event => { event.preventDefault(); void save() }}>
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">{editingId ? 'Edit your account' : 'Add your account'}</h4>
         <button disabled={busy} type="button" aria-label="Cancel account form" className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800" onClick={cancel}><X className="h-4 w-4" /></button>
       </div>
+      {whereChoice}
+      {addServer ? <AddOnServerForm key={addServer.id} server={addServer} provider={provider} providerLabel={providerLabel || provider} macCopy={macCopyFor(addServer)}
+        onSaved={() => { setAdding(false); setAddWhere('local'); setServerAccountsVersion(value => value + 1); void loadOnServer(addServer.id); setNotice(null) }} onCancel={cancel} /> : <>
       <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Account name<input required maxLength={120} placeholder="e.g. Personal account" value={name} onChange={event => setName(event.target.value)} className={inputClass} /></label>
-      {!editingId && ['claude-code', 'codex-cli', 'cursor-cli', 'muse-cli'].includes(provider) && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Authentication<select value={authMethod} onChange={event => { setAuthMethod(event.target.value); setCredential('') }} className={inputClass}><option value="cli_login">Browser login (sign in with your own account)</option><option value="api_key">API key</option></select></label>}
-      {authMethod !== 'cli_login' && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">{provider === 'claude-code' ? 'Claude Code OAuth token' : 'API key'}<input required={!editingId} type="password" placeholder={editingId ? 'Leave blank to keep current credential' : 'Paste your credential'} autoComplete="new-password" value={credential} onChange={event => setCredential(event.target.value)} className={inputClass} /></label>}
+      {!editingId && BROWSER_LOGIN_PROVIDERS.has(provider) && <label className="block text-xs font-medium text-foreground">Authentication<select value={authMethod} onChange={event => { setAuthMethod(event.target.value); setCredential('') }} className={inputClass}>{serverLoginChoice && <option value="server_login">Sign in once on this server (works on your Mac and online)</option>}<option value="cli_login">{serverLoginChoice ? 'Browser login on this server only' : 'Browser login (sign in with your own account)'}</option><option value="api_key">API key</option></select></label>}
+      {authMethod === 'server_login' && <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">You sign in once with a link and a code. This server keeps the login: your online agents use it, and so does the Mac app when it is connected here. Uses your own plan, not API billing. Only you can use it.</p>}
+      {authMethod !== 'cli_login' && authMethod !== 'server_login' && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">{provider === 'claude-code' ? 'Claude Code OAuth token' : 'API key'}<input required={!editingId} type="password" placeholder={editingId ? 'Leave blank to keep current credential' : 'Paste your credential'} autoComplete="new-password" value={credential} onChange={event => setCredential(event.target.value)} className={inputClass} /></label>}
       {provider === 'claude-code' && authMethod !== 'cli_login' && <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">Generate a token with <code className="rounded bg-gray-100 px-1 py-0.5 dark:bg-gray-800">claude setup-token</code> for the account you want to add.</p>}
       {provider === 'pi-cli' && !editingId && <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Pi provider ID<input required value={underlyingProvider} onChange={event => setUnderlyingProvider(event.target.value)} className={inputClass} /></label>}
-      {!editingId && manage && <SharingFields value={newSharing} onChange={setNewSharing} disabled={busy} peopleOnly={!isAdmin} />}
+      {!editingId && manage && authMethod !== 'server_login' && <SharingFields value={newSharing} onChange={setNewSharing} disabled={busy} peopleOnly={!isAdmin} />}
       <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">Credentials are encrypted. Nobody else sees them, even when the account is shared.</p>
       <div className="flex items-center gap-2">
-        <button disabled={busy || disabled || !personalAllowed} type="submit" className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50">{busy && <Loader2 className="h-4 w-4 animate-spin" />}{busy ? 'Saving…' : editingId ? 'Update account' : authMethod === 'cli_login' ? 'Save and sign in' : 'Save account'}</button>
+        <button disabled={busy || disabled || !personalAllowed} type="submit" className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50">{busy && <Loader2 className="h-4 w-4 animate-spin" />}{busy ? 'Saving…' : editingId ? 'Update account' : authMethod === 'cli_login' || authMethod === 'server_login' ? 'Save and sign in' : 'Save account'}</button>
         <button disabled={busy} type="button" className={secondaryButtonClass} onClick={cancel}>Cancel</button>
       </div>
+      </>}
     </form>
   )
   const addButton = !disabled && personalAllowed && !adding && (
@@ -646,37 +762,47 @@ export default function ProviderAccounts({ provider, providerLabel, selectedId, 
   )
   // A connected server's company login, used from this Mac: added and removed by the backend as the server allows.
   // The program runs here; the server applies its own limits and records the usage.
-  const companyRows = connections.filter(record => record.via_connection)
-  const companySection = companyRows.length > 0 && <div className="mt-5">
-    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">From your company's servers</div>
+  // Your own login signed in once on a server comes the same way, marked own_on_server: one login for this Mac and
+  // your online agents there.
+  const serverRows = (own: boolean) => connections.filter(record => record.via_connection && Boolean(record.own_on_server) === own)
+  const serverSection = (own: boolean) => serverRows(own).length > 0 && <div className="mt-5">
+    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{own ? 'Signed in once on your server' : "From your company's servers"}</div>
     <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-      {companyRows.map(record => {
+      {serverRows(own).map(record => {
         const server = servers.find(item => item.id === record.via_connection)?.name || 'your server'
         return <li key={record.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"><Users className="h-4 w-4" /></div>
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">{own ? <UserRound className="h-4 w-4" /> : <Users className="h-4 w-4" />}</div>
           <div className="min-w-0">
             <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{record.display_name}</p>
-            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Runs on this Mac with {server}'s login. {server}'s limits apply and the usage counts there.</p>
-            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Models: {allowedModelsText(record.allowed_models)}</p>
+            {own
+              ? <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Your own login, kept on {server}. Works on this Mac and for your online agents. Sign it out or remove it on {server}.</p>
+              : <>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Runs on this Mac with {server}'s login. {server}'s limits apply and the usage counts there.</p>
+                {record.via_connection && <AccountHealthLine place={record.via_connection} provider={provider} accountId={`global:${provider}`} />}
+                {record.via_connection && <SharedAccountUsageLine provider={provider} serverConnection={record.via_connection} />}
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Models: {allowedModelsText(record.allowed_models)}</p>
+              </>}
           </div>
         </li>
       })}
     </ul>
   </div>
+  const companySection = <>{serverSection(true)}{serverSection(false)}</>
   const errorLine = error && <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>
 
   if (manage) {
     return (
       <>
-        <section className={onThisMac ? 'mb-5' : 'mb-5 rounded-xl border border-gray-200 p-4 dark:border-gray-700'}>
-          {server && <div>
+        <section className={directory ? '' : onThisMac ? 'mb-5' : 'mb-5 rounded-xl border border-gray-200 p-4 dark:border-gray-700'}>
+          {server && (!directory || server.configured !== false) && <div>
             {!onThisMac && <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{ADMIN_MANAGED_ACCOUNT_LABEL}</div>}
             {serverBlock(server)}
           </div>}
-          {own.length > 0 ? group('Your accounts', own, addButton) : personalAllowed && !adding && <div className="mt-4">{addButton}</div>}
+          {own.length > 0 ? group('Your accounts', own, directory ? undefined : addButton) : !directory && personalAllowed && !adding && <div className="mt-4">{addButton}</div>}
           {provider === 'pi-cli' && own.length === 0 && !adding && <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">OpenRouter, NVIDIA NIM, Groq, Google AI Studio… many have free models.</p>}
           {addForm}
           {companySection}
+          {onThisMac && servers.map(item => <YourAccountsOnServer key={item.id} server={item} provider={provider} version={serverAccountsVersion} onChanged={() => setServerAccountsVersion(value => value + 1)} />)}
           {group('Shared with you', connections.filter(record => accountRelation(record) === 'shared_with_you'))}
           {group('Other people\'s accounts', connections.filter(record => accountRelation(record) === 'admin_view'))}
           {errorLine}

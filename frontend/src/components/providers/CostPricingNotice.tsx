@@ -7,9 +7,9 @@ export default function CostPricingNotice({ usage }: { usage: CostAggregate }) {
   const unpriced = Math.max(0, (usage.unpriced_call_count ?? 0) - missing)
   if (missing === 0 && unpriced === 0) return null
   const label = [
-    missing > 0 ? `${missing.toLocaleString()} missing usage` : '',
-    unpriced > 0 ? `${unpriced.toLocaleString()} not priced` : ''].filter(Boolean).join(' · ')
-  return <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+    missing > 0 ? `${missing.toLocaleString()} ${missing === 1 ? 'call' : 'calls'} without usage data` : '',
+    unpriced > 0 ? `${unpriced.toLocaleString()} without a price` : ''].filter(Boolean).join(' · ')
+  return <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title="These calls are not in the cost shown, so it is a little low.">
     <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
     {label}
   </span>

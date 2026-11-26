@@ -3,7 +3,6 @@ package server
 // PLAT-856-509: a Team is a folder grant, never another person's Crew Builder.
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -41,38 +40,49 @@ type crewTeamPerson struct {
 
 // crewTeamInvite is a Team invite as the invited person sees it.
 type crewTeamInvite struct {
-	ProjectID string `json:"project_id"`
-	Name      string `json:"name"`
-	OwnerName string `json:"owner_name"`
+	userAvatarFields
+	ProjectID string               `json:"project_id"`
+	Name      string               `json:"name"`
+	OwnerName string               `json:"owner_name"`
+	Notice    crewTeamInviteNotice `json:"notice"`
+	// CanAddToMac: the Team shares a folder, so the Mac app can add this Crew to the person's Mac (Add to my Mac). The
+	// server decides; the Mac app shows that button first when it is true.
+	CanAddToMac bool `json:"can_add_to_mac"`
+	// Folder is what the Team shares, so the Mac can accept an existing folder whose shared paths are still free.
+	Folder crewTeamFolder `json:"folder"`
 }
 
-// crewTeamFolder is what the Team shares (owner, 5 Nov): one or more of the Crew's folders, or the Whole Crew. Files
+// crewTeamFolder is what the Team shares (owner, 5 Nov): one or more chosen folders inside the Crew. Files
 // sync relative to the Crew's own folder, so a teammate's copy has the same layout (team/…, code/…). ID names the
 // Team's file store. It stays the same when the choice changes (6 Nov: a new store for every added folder made every
 // copy upload all its files again, thousands of false clashes): only what holds() admits changes, so files still
 // shared stay in step and nothing is uploaded again.
 type crewTeamFolder struct {
-	ID      string   `json:"id"`
-	Whole   bool     `json:"whole,omitempty"`
-	Folders []string `json:"folders,omitempty"`
+	ID      string               `json:"id"`
+	Folders []string             `json:"-"` // derived path list; the wire and saved record use identities
+	Paths   []crewTeamSharedPath `json:"-"`
 }
 
 // crewTeamMaxFolders keeps the folder list a choice people can read.
 const crewTeamMaxFolders = 20
 
-func (f crewTeamFolder) shared() bool { return f.Whole || len(f.Folders) > 0 }
+func (f crewTeamFolder) shared() bool { return len(f.Folders) > 0 }
 
-// holds: the path (relative to the Crew) is inside what the Team shares. Whole Crew leaves out each person's own
-// memory as well as everything crewTeamAllowed always keeps private.
+// Personal memory, each person's own PROJECT_INSTRUCTIONS.md and the private per-member working copies never enter a
+// Team share. Team-wide rules travel as a Team Todo whose instructions file is in a shared folder (owner, 17 Nov):
+// everyone keeps and edits their own project instructions, and nobody's edit reaches anyone else (#2942).
+func crewTeamPrivatePath(rel string) bool {
+	return rel == "MEMORY.md" || rel == "PROJECT_INSTRUCTIONS.md" || rel == "memory" || strings.HasPrefix(rel, "memory/") ||
+		rel == crewroot.TeamCopiesFolder || strings.HasPrefix(rel, crewroot.TeamCopiesFolder+"/")
+}
+
+// holds admits only a selected folder or the deliberately shared Crew setup.
 func (f crewTeamFolder) holds(rel string) bool {
-	if rel == crewroot.TeamCopiesFolder || strings.HasPrefix(rel, crewroot.TeamCopiesFolder+"/") {
-		return false // each member's own copy (crew_team_member_copy.go), never shared, Whole Crew included
+	if crewTeamPrivatePath(rel) {
+		return false
 	}
 	if crewTeamSetupPath(rel) {
 		return f.shared() // the Crew's setup is always part of what a Team shares (crew_team_setup.go)
-	}
-	if f.Whole {
-		return rel != "MEMORY.md" && rel != "memory" && !strings.HasPrefix(rel, "memory/")
 	}
 	for _, folder := range f.Folders {
 		if rel == folder || strings.HasPrefix(rel, folder+"/") {
@@ -84,14 +94,11 @@ func (f crewTeamFolder) holds(rel string) bool {
 
 // walks: a capture descends into this folder (relative to the Crew): it is shared or leads to a shared folder.
 func (f crewTeamFolder) walks(rel string) bool {
-	return f.holds(rel) || !f.Whole && slices.ContainsFunc(f.Folders, func(folder string) bool { return strings.HasPrefix(folder, rel+"/") })
+	return f.holds(rel) || slices.ContainsFunc(f.Folders, func(folder string) bool { return strings.HasPrefix(folder, rel+"/") })
 }
 
-// display is how people read the choice: "Whole Crew" or "team/, code/express/".
+// display names the selected folders, for example "team/, code/express/".
 func (f crewTeamFolder) display() string {
-	if f.Whole {
-		return "Whole Crew"
-	}
 	names := make([]string, 0, len(f.Folders))
 	for _, folder := range f.Folders {
 		names = append(names, folder+"/")
@@ -100,7 +107,7 @@ func (f crewTeamFolder) display() string {
 }
 
 func (f crewTeamFolder) same(g crewTeamFolder) bool {
-	return f.Whole == g.Whole && slices.Equal(f.Folders, g.Folders)
+	return slices.Equal(f.Folders, g.Folders)
 }
 
 // cleanCrewTeamFolders checks a folder choice and keeps it short: sorted, no repeats, no folder inside another. A
@@ -113,11 +120,11 @@ func cleanCrewTeamFolders(in, previous []string) ([]string, error) {
 	out := []string{}
 	for _, folder := range in {
 		folder = strings.Trim(strings.TrimSpace(folder), "/")
-		if _, e := publication.CleanPath(folder); e != nil || publication.ExcludedDirectory(folder) || !crewTeamAllowed(folder+"/file.txt") || !(crewTeamFolder{Whole: true}).holds(folder+"/file.txt") {
+		if _, e := publication.CleanPath(folder); e != nil || publication.ExcludedDirectory(folder) || !crewTeamAllowed(folder+"/file.txt") || crewTeamPrivatePath(folder+"/file.txt") {
 			if folder == "" {
-				return nil, fmt.Errorf("Choose a folder inside this Crew to share.")
+				return nil, fmt.Errorf("Choose a folder inside this project to share.")
 			}
-			return nil, fmt.Errorf("%s/ is not a folder the team can share. Choose a folder inside this Crew, outside private state and credentials.", folder)
+			return nil, fmt.Errorf("%s/ is not a folder the team can share. Choose a folder inside this project, outside private state and credentials.", folder)
 		}
 		out = append(out, folder)
 	}
@@ -141,30 +148,31 @@ type crewTeamServerData struct {
 	TeamProjectID string `json:"team_project_id"`
 }
 type crewTeam struct {
-	ServerData *crewTeamServerData `json:"server_data,omitempty"`
-	ProjectID  string              `json:"project_id"`
-	Name       string              `json:"name"`
-	OwnerID    string              `json:"owner_id"`
+	// OnlineHome and RosterSource are left in older records by the removed Team online home. Only the one-off server
+	// migration (crew_team_server_migration.go) reads them; remove them with it.
+	OnlineHome      string              `json:"online_home,omitempty"`
+	RosterSource    string              `json:"roster_source,omitempty"`
+	RegistryVersion int                 `json:"registry_version"`
+	ServerData      *crewTeamServerData `json:"server_data,omitempty"`
+	ProjectID       string              `json:"project_id"`
+	Name            string              `json:"name"`
+	OwnerID         string              `json:"owner_id"`
 	// On is the Team tab's switch (owner, 4 Nov): off, the roster stays saved but only the owner is in the team.
-	On bool `json:"on"`
-	// AgentsOnlyMe is the old Team-wide All agents in team, read only by migrateCrewTeamRecord.
-	AgentsOnlyMe bool `json:"agents_only_me,omitempty"`
-	// AgentChoices is each person's own In team (true) / Only me (false) per agent key (crew_team_in_team.go): the one
-	// place this choice is kept, for every Crew kind. A viewer sees only their own.
-	AgentChoices map[string]map[string]bool `json:"agent_choices,omitempty"`
-	// AgentRules is each person's "When others ask" rule and Answer only / Make changes per agent, by the same key
-	// as AgentChoices (crew_when_others_ask.go). Only the agent's own person sets it.
-	AgentRules map[string]map[string]crewTeamAgentRule `json:"agent_rules,omitempty"`
-	People     []crewTeamPerson                        `json:"people"`
-	Folder     crewTeamFolder                          `json:"folder"`
-	// LastFolders are the folders shared before the Whole Crew, for going back to Folders (owner only).
-	LastFolders  []string `json:"last_folders,omitempty"`
-	Revision     uint64   `json:"revision"`
-	OwnerName    string   `json:"owner_name,omitempty"`
-	CanManage    bool     `json:"can_manage"`
-	FolderAccess bool     `json:"folder_access"`
-	// Lent is what the owner lends the Team's agents in this Crew (names only, from the server, never saved).
-	Lent *crewTeamLent `json:"lent,omitempty"`
+	On     bool                               `json:"on"`
+	Agents map[string]crewTeamRegisteredAgent `json:"agents,omitempty"`
+	People []crewTeamPerson                   `json:"people"`
+	// Projects are the online projects in this Team (#3664, crew_team_projects.go), changed only by their own route.
+	Projects []crewTeamProject `json:"projects,omitempty"`
+	// AgentDefaults is how a maker's new agents in an online project start, by their row owner
+	// (project:<id>/<maker>): "whole_team", or absent for Only me (crew_team_online_agents_sharing.go).
+	AgentDefaults map[string]string `json:"agent_defaults,omitempty"`
+	Folder        crewTeamFolder    `json:"folder"`
+	// FolderNote is a server/migration-authored setup note, never accepted from a settings caller.
+	FolderNote   string `json:"folder_note,omitempty"`
+	Revision     uint64 `json:"revision"`
+	OwnerName    string `json:"owner_name,omitempty"`
+	CanManage    bool   `json:"can_manage"`
+	FolderAccess bool   `json:"folder_access"`
 	// Where the caller's own agents in this Crew work, for a member: "mac" or "web" (crew_team_where.go; never saved).
 	Where string `json:"where,omitempty"`
 	// ChangeOnMac is the screen's line when the viewer is the owner of a Mac Crew reaching it through the server: all of
@@ -193,13 +201,107 @@ func readCrewTeam(project string) (crewTeam, error) {
 		return t, err
 	}
 	err = json.Unmarshal(b, &t)
-	if err == nil && (t.ProjectID != project || t.OwnerID == "") {
+	if err == nil && (t.RegistryVersion != 1 || t.ProjectID != project || t.OwnerID == "") {
 		err = fmt.Errorf("team record is unavailable")
 	}
-	migrateCrewTeamRecord(&t)
 	return t, err
 }
 func writeCrewTeam(t crewTeam) error {
+	return writeCrewTeamWithAgents(t, nil)
+}
+
+func pruneRemovedCrewTeamAgents(t *crewTeam) {
+	for id, a := range t.Agents {
+		project, online := crewTeamMemberProjectID(a.OwnerID)
+		if online && t.hasProject(project) {
+			continue // an online project's agents stay while it is in the Team (#3664)
+		}
+		if a.OwnerID != t.OwnerID && !slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == a.OwnerID }) {
+			delete(t.Agents, id)
+		}
+	}
+}
+
+func notifyCrewTeamSaved(t crewTeam) {
+	publishCrewPanelChanged(t.ProjectID)
+	go pushCrewTeamRecordChanged(t)
+	if !IsLocalMode() {
+		// The Team's vault (PLAT-746-1026) follows the roster; a no-op until something has been shared.
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			if err := syncCrewTeamVault(ctx, t.ProjectID, t); err != nil {
+				log.Printf("[TEAM_WAY] team=%s event=vault_members_failed reason=%q", t.ProjectID, err)
+			}
+		}()
+	}
+}
+
+// updateCrewTeam runs a locked read-modify-write on team.json under
+// crewTeamRecordMutex(dir), always advancing Revision strictly above the
+// stored revision so concurrent saves never lose updates or emit duplicate
+// revisions that crewTeamPushed would drop.
+func updateCrewTeam(project string, mutate func(*crewTeam) (bool, error)) (crewTeam, error) {
+	dir, err := crewTeamDir(project)
+	if err != nil {
+		return crewTeam{}, err
+	}
+	if err = agentworksclient.EnsurePrivateDirectory(dir); err != nil {
+		return crewTeam{}, err
+	}
+	mu := crewTeamRecordMutex(dir)
+	mu.Lock()
+	var t crewTeam
+	raw, readErr := os.ReadFile(filepath.Join(dir, "team.json"))
+	if readErr != nil {
+		mu.Unlock()
+		return crewTeam{}, readErr
+	}
+	if err = json.Unmarshal(raw, &t); err != nil {
+		mu.Unlock()
+		return crewTeam{}, err
+	}
+	if t.RegistryVersion != 1 || t.ProjectID != project || t.OwnerID == "" {
+		mu.Unlock()
+		return crewTeam{}, fmt.Errorf("team record is unavailable")
+	}
+	prevRev := t.Revision
+	changed, err := mutate(&t)
+	if err != nil || !changed {
+		mu.Unlock()
+		return t, err
+	}
+	t.RegistryVersion = 1
+	if t.Revision <= prevRev {
+		t.Revision = prevRev + 1
+	}
+	t.ServerData = nil
+	t.Projects = slices.Clone(t.Projects)
+	for i := range t.Projects {
+		t.Projects[i].Name = ""
+	}
+	t.CanManage = false
+	t.FolderAccess = false
+	t.OwnerName = ""
+	if t.Agents == nil {
+		t.Agents = map[string]crewTeamRegisteredAgent{}
+	}
+	if err = t.Folder.assignPaths(t.Folder, true); err != nil {
+		mu.Unlock()
+		return crewTeam{}, err
+	}
+	pruneRemovedCrewTeamAgents(&t)
+	err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
+	mu.Unlock()
+	if err == nil {
+		notifyCrewTeamSaved(t)
+	}
+	return t, err
+}
+
+func writeCrewTeamWithAgents(t crewTeam, choices func(map[string]crewTeamRegisteredAgent)) error {
+	t.RegistryVersion = 1
+	// Every Team write comes here, so a path that skips the Team handler still cannot share the AgentWorks project.
 	dir, err := crewTeamDir(t.ProjectID)
 	if err != nil {
 		return err
@@ -208,14 +310,50 @@ func writeCrewTeam(t crewTeam) error {
 		return err
 	}
 	t.ServerData = nil
-	t.Lent = nil
+	t.Projects = slices.Clone(t.Projects)
+	for i := range t.Projects {
+		t.Projects[i].Name = ""
+	}
 	t.CanManage = false
 	t.FolderAccess = false
 	t.OwnerName = ""
-	err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
+	mu := crewTeamRecordMutex(dir)
+	mu.Lock()
+	if raw, readErr := os.ReadFile(filepath.Join(dir, "team.json")); readErr == nil {
+		var latest crewTeam
+		if err = json.Unmarshal(raw, &latest); err == nil {
+			if latest.RegistryVersion != 1 || latest.ProjectID != t.ProjectID || latest.OwnerID != t.OwnerID {
+				err = fmt.Errorf("Team setup needs to be reset for this release")
+			} else {
+				t.OnlineHome, t.RosterSource = latest.OnlineHome, latest.RosterSource
+				t.Agents = latest.Agents
+				if t.Revision <= latest.Revision {
+					t.Revision = latest.Revision + 1
+				}
+			}
+		}
+	} else if !os.IsNotExist(readErr) {
+		err = readErr
+	} else {
+		t.OnlineHome, t.RosterSource = "", ""
+	}
 	if err == nil {
-		publishCrewPanelChanged(t.ProjectID)
-		pruneCrewStandby(t.ProjectID) // Team off or an agent turned Only me drops its standby copy
+		if t.Agents == nil {
+			t.Agents = map[string]crewTeamRegisteredAgent{}
+		}
+		if choices != nil {
+			choices(t.Agents)
+		}
+		if err = t.Folder.assignPaths(t.Folder, true); err != nil {
+			mu.Unlock()
+			return err
+		}
+		pruneRemovedCrewTeamAgents(&t)
+		err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
+	}
+	mu.Unlock()
+	if err == nil {
+		notifyCrewTeamSaved(t)
 	}
 	return err
 }
@@ -234,6 +372,17 @@ func (t crewTeam) invited(user string) bool {
 
 // Joined members manage the Team together. The main owner and each person's own
 // machine/agent controls remain separate.
+// readCrewTeamOrNew is the Crew's Team record, or, for a Crew that never had one, the empty Team its owner starts from.
+// Every route that lets the owner act on a new Team (the Team tab, settings, people, the directory) reads it here, so
+// the card, the settings and a person change agree on who can manage.
+func readCrewTeamOrNew(project, caller string) (crewTeam, error) {
+	t, err := readCrewTeam(project)
+	if os.IsNotExist(err) && crewProjectOwnedByCallerStrict(caller, crewProjectRootByID(project)) {
+		return crewTeam{ProjectID: project, OwnerID: ownerOfCrewProjectID(project), People: []crewTeamPerson{}}, nil
+	}
+	return t, err
+}
+
 func crewTeamCanManage(t crewTeam, user string) bool {
 	return user != "" && crewTeamAccountActive(user) && (t.member(user) || crewProjectOwnedByCallerStrict(user, crewProjectRootByID(t.ProjectID)))
 }
@@ -248,9 +397,7 @@ func crewTeamOwnerOnlyChange(previous, input crewTeam, user string) string {
 	switch {
 	case input.On != previous.On:
 		return fmt.Sprintf("Only %s can turn the Team on or off.", owner)
-	case input.Folder.Whole != previous.Folder.Whole:
-		return fmt.Sprintf("Only %s can switch between Folders and the Whole Crew.", owner)
-	case !input.Folder.Whole && slices.ContainsFunc(previous.Folder.Folders, func(f string) bool { return !slices.Contains(input.Folder.Folders, f) }):
+	case slices.ContainsFunc(previous.Folder.Folders, func(f string) bool { return !slices.Contains(input.Folder.Folders, f) }):
 		return fmt.Sprintf("Only %s can stop sharing a folder.", owner)
 	}
 	return ""
@@ -271,8 +418,14 @@ func (api *StreamingAPI) stopRemovedCrewTeamSessions(previous, current crewTeam)
 	}
 }
 
-func (t crewTeam) view(user string) crewTeam {
+func (t crewTeam) view(user string) crewTeam { return t.viewLedger(user, false) }
+
+// Writers already hold the Team filesystem lock, including during first import.
+func (t crewTeam) viewLocked(user string) crewTeam { return t.viewLedger(user, true) }
+
+func (t crewTeam) viewLedger(user string, writerLocked bool) crewTeam {
 	t.CanManage = crewTeamCanManage(t, user)
+	t = t.withProjectNames()
 	t.Where = ""
 	if t.member(user) && user != t.OwnerID {
 		t.Where = "web"
@@ -283,20 +436,20 @@ func (t crewTeam) view(user string) crewTeam {
 	t.FolderAccess = t.edits(user)
 	t.OwnerName = shareOwnerLabel(t.OwnerID)
 	if t.edits(user) {
-		if s, e := readCrewTeamFileState(t.ProjectID); e == nil {
+		if summary, e := readCrewTeamLedgerSummary(t.ProjectID, t.Folder, writerLocked); e == nil {
 			d := &crewTeamServerData{Kind: "team_folder", Name: t.Folder.display(), TeamProjectID: t.ProjectID}
-			for _, v := range s.held(t.Folder) {
-				d.SizeBytes += v.File.Size
-			}
+			d.SizeBytes = summary.bytes
 			t.ServerData = d
 		}
 	}
-	// Each person's In team / Only me choices are their own.
-	if mine, ok := t.AgentChoices[user]; ok {
-		t.AgentChoices = map[string]map[string]bool{user: mine}
-	} else {
-		t.AgentChoices = nil
+	// Only an agent's person receives its editable settings snapshot.
+	visible := map[string]crewTeamRegisteredAgent{}
+	for id, a := range t.Agents {
+		if a.OwnerID == user {
+			visible[id] = a
+		}
 	}
+	t.Agents = visible
 	// The Mac pair is only the person's own routing fence.
 	t.People = slices.Clone(t.People)
 	for i := range t.People {
@@ -307,9 +460,6 @@ func (t crewTeam) view(user string) crewTeam {
 	// Team-only members can discover shared agents but do not learn folder contents.
 	if !t.FolderAccess && !t.CanManage {
 		t.Folder = crewTeamFolder{}
-	}
-	if !t.CanManage {
-		t.LastFolders = nil
 	}
 	return t
 }
@@ -396,6 +546,11 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		api.listCrewTeams(w, r)
 		return
 	}
+	// An online project's own copy reads the Team it syncs with (#3664): the shared folder, not the people's settings.
+	if t, ok := crewTeamProjectAdmitted(r, claims, project); ok && r.Method == http.MethodGet {
+		externalJSON(w, crewTeam{ProjectID: t.ProjectID, Name: t.Name, OwnerID: t.OwnerID, On: t.On, Folder: t.Folder, Revision: t.Revision, FolderAccess: true, People: []crewTeamPerson{}})
+		return
+	}
 	if !crewTeamClaims(claims, project, r.Method != http.MethodGet) {
 		externalError(w, 403, "team_forbidden", "Use your own account to open this team.")
 		return
@@ -408,17 +563,23 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 			e = nil
 		}
 		if e != nil || !crewTeamCanManage(t, claims.UserID) || t.OwnerID != owner || !crewTeamAccountActive(owner) {
-			externalError(w, 403, "team_forbidden", "This Crew isn't shared with you right now. Ask its owner to add you to its Team.")
+			externalError(w, 403, "team_forbidden", "This project isn't shared with you right now. Ask its owner to add you to its Team.")
 			return
 		}
 		// Exclude disabled/deleted members from all live audience resolutions.
 		t.People = slices.DeleteFunc(t.People, func(p crewTeamPerson) bool { return !crewTeamAccountActive(p.UserID) })
 		view := t.view(claims.UserID)
-		view.Lent = crewTeamLentNow(r.Context(), t, claims.UserID)
 		if crewOwnerOnlineOfMacCrew(r, project, claims.UserID) {
 			view.ChangeOnMac, view.CanManage = crewChangeOnMacLine, false
 		}
 		externalJSON(w, view)
+		return
+	}
+	if refuseServerCrewTeam(w, project) {
+		return
+	}
+	if r.Method == http.MethodDelete {
+		deleteCrewTeamRecord(w, claims.UserID, project, owner)
 		return
 	}
 	if mux.Vars(r)["op"] == "invite" {
@@ -433,7 +594,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		current = crewTeam{ProjectID: project, OwnerID: owner}
 	}
 	if owner == "" || current.OwnerID != owner || !crewTeamAccountActive(owner) || !crewTeamCanManage(current, claims.UserID) {
-		externalError(w, 403, "team_owner_required", "Join this Crew's Team to change its settings.")
+		externalError(w, 403, "team_owner_required", "Join this project's Team to change its settings.")
 		return
 	}
 	var input crewTeam
@@ -477,32 +638,27 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		previous = crewTeam{ProjectID: project, OwnerID: owner}
 	}
 	if previous.OwnerID != owner || !crewTeamCanManage(previous, claims.UserID) {
-		externalError(w, 403, "team_owner_required", "Join this Crew's Team to change its settings.")
+		externalError(w, 403, "team_owner_required", "Join this project's Team to change its settings.")
 		return
 	}
-	if input.Folder.Whole {
-		input.Folder.Folders = nil
-	} else if folders, e := cleanCrewTeamFolders(input.Folder.Folders, previous.Folder.Folders); e != nil {
+	if folders, e := cleanCrewTeamFolders(input.Folder.Folders, previous.Folder.Folders); e != nil {
 		externalError(w, 400, "invalid_folder", e.Error())
 		return
 	} else {
 		input.Folder.Folders = folders
 	}
-	// The Crew's main owner alone turns the Team on or off, switches Folders / Whole Crew and stops sharing a folder
+	// The Crew's main owner alone turns the Team on or off and stops sharing a folder
 	// (owner, 5 Nov). Members add people and folders. Every caller (website, Mac app, chat,
 	// MCP) saves here, so this is the one check.
 	if refusal := crewTeamOwnerOnlyChange(previous, input, claims.UserID); refusal != "" {
 		externalError(w, 403, "team_owner_only", refusal)
 		return
 	}
-	// Whole Crew is refused only when the Crew is over the Team's limits now (owner, 6 Nov), with one plain line.
-	if input.Folder.Whole && !previous.Folder.Whole {
-		if count, bytes, measured := crewTeamWholeSize(r.Context(), owner, project); measured {
-			if line := crewTeamTooBigLine("This Crew", count, bytes); line != "" {
-				log.Printf("[CREW_TEAM] project=%s actor=%s event=whole_refused files=%d bytes=%d", project, logUsernameForUserID(claims.UserID), count, bytes)
-				externalError(w, 400, "crew_too_big", line)
-				return
-			}
+	// team-<project> names a Team vault's owner in the Vault service, never a person, so it can't be invited.
+	for _, p := range input.People {
+		if strings.HasPrefix(p.UserID, "team-") && !slices.ContainsFunc(previous.People, func(q crewTeamPerson) bool { return q.UserID == p.UserID }) {
+			externalError(w, http.StatusBadRequest, "team_account", "That isn't a person, so it can't join a Team. Invite the people instead.")
+			return
 		}
 	}
 	// A person added to the Team is invited until they accept; existing people keep their own state.
@@ -522,47 +678,32 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 			log.Printf("[CREW_TEAM] project=%s actor=%s event=removed user=%s was_invited=%t", project, logUsernameForUserID(claims.UserID), logUsernameForUserID(p.UserID), p.Invited)
 		}
 	}
-	// Each person's agent choices are theirs (agent-visibility), never replaced by a save; a person who left takes theirs.
-	input.AgentChoices = map[string]map[string]bool{}
-	for person, choices := range previous.AgentChoices {
-		if person == owner || slices.ContainsFunc(input.People, func(p crewTeamPerson) bool { return p.UserID == person }) {
-			input.AgentChoices[person] = choices
-		}
-	}
-	input.AgentRules = map[string]map[string]crewTeamAgentRule{}
-	for person, rules := range previous.AgentRules {
-		if person == owner || slices.ContainsFunc(input.People, func(p crewTeamPerson) bool { return p.UserID == person }) {
-			input.AgentRules[person] = rules
-		}
-	}
+	input.Agents = previous.Agents
+	input.Projects = previous.Projects
 	// Team on (owner, 4-5 Nov) starts, with nothing shared yet, with the Crew's team/ folder. The server decides it for
 	// every caller (website, Mac app, chat, MCP); the owner's Mac makes the folder there when it applies the record
 	// (crew_team_apply.go).
-	input.AgentsOnlyMe = false
 	if input.On && !previous.On && !input.Folder.shared() {
 		input.Folder = crewTeamFolder{Folders: []string{crewTeamDefaultFolder}}
 	}
-	// Back to Folders from the Whole Crew picks the folders shared before it, or team/ (owner, 5 Nov); the server decides.
-	input.LastFolders = previous.LastFolders
-	if len(previous.Folder.Folders) > 0 {
-		input.LastFolders = previous.Folder.Folders
-	}
-	if previous.Folder.Whole && !input.Folder.Whole && len(input.Folder.Folders) == 0 {
-		input.Folder.Folders = input.LastFolders
-		if len(input.Folder.Folders) == 0 {
-			input.Folder.Folders = []string{crewTeamDefaultFolder}
-		}
-	}
 	// Folders always shares at least one (owner, 6 Nov): stopping the last one is refused for every caller.
 	if previous.Folder.shared() && !input.Folder.shared() {
-		externalError(w, 400, "last_folder", "The Team shares at least one folder. Share another folder first, or switch to Whole Crew.")
+		externalError(w, 400, "last_folder", "The Team shares at least one folder. Share another folder first.")
 		return
 	}
 	// The same store for a changed choice (crewTeamFolder): copies keep what is still shared, nothing goes up again.
 	input.Folder.ID = previous.Folder.ID
+	if e = input.Folder.assignPaths(previous.Folder, claims.UserID == owner); e != nil {
+		externalError(w, 400, "invalid_folder", e.Error())
+		return
+	}
 	folderChanged := !previous.Folder.same(input.Folder)
+	input.FolderNote = previous.FolderNote
 	if folderChanged {
-		log.Printf("[CREW_TEAM] project=%s actor=%s event=folder whole=%t folders=%d store=%s", project, logUsernameForUserID(claims.UserID), input.Folder.Whole, len(input.Folder.Folders), input.Folder.ID)
+		input.FolderNote = ""
+	}
+	if folderChanged {
+		log.Printf("[CREW_TEAM] project=%s actor=%s event=folder folders=%d store=%s", project, logUsernameForUserID(claims.UserID), len(input.Folder.Folders), input.Folder.ID)
 	}
 	if input.Folder.shared() && input.Folder.ID == "" {
 		input.Folder.ID = uuid.NewString()
@@ -597,8 +738,27 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 	}
+	pathChanges, e := crewTeamPathRenameChanges(project, previous.Folder, input.Folder, claims)
+	if e != nil {
+		if errors.Is(e, errCrewTeamRenameForbidden) {
+			externalError(w, 403, "team_folder_forbidden", e.Error())
+			return
+		}
+		externalError(w, 409, "folder_rename_failed", e.Error())
+		return
+	}
+	for _, change := range pathChanges {
+		if !crewTeamGuardAllows(claims, change.Path, true) {
+			externalError(w, 403, "team_folder_forbidden", "This connection cannot rename those shared files.")
+			return
+		}
+	}
 	if e = writeCrewTeam(input); e != nil {
 		externalError(w, 409, "team_save_failed", e.Error())
+		return
+	}
+	if e = applyCrewTeamPathRenames(r.Context(), project, claims.UserID, pathChanges); e != nil {
+		externalError(w, 409, "folder_rename_failed", e.Error())
 		return
 	}
 	log.Printf("[CREW_TEAM] project=%s actor=%s event=updated on=%t people=%d folder=%q revision=%d", project, logUsernameForUserID(claims.UserID), input.On, len(input.People), input.Folder.display(), input.Revision)
@@ -608,75 +768,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	api.stopRemovedCrewTeamSessions(previous, input)
-	externalJSON(w, input.view(claims.UserID))
-}
-
-// crewTeamLent is what a Team's agents use of the owner's in this Crew (owner, 5 Nov: "my work can depend on mcps
-// and secrets I use"; approved mockup "Team tab: what teammates' agents use from you"): the owner's server Vault apps in
-// use here and the Crew's selected secrets, with the card's words for this viewer. A member's turn in the Crew gets them
-// from the owner (crewSecretsPerson, projectSecretsOwner); values never leave Vault. Yours marks the owner's own view,
-// where the Mac app adds what only the owner's Mac has (crew_team_lent_mac.go).
-type crewTeamLent struct {
-	Title string `json:"title"`
-	Line  string `json:"line"`
-	Foot  string `json:"foot,omitempty"`
-	// Empty is the owner's line while nothing is lent; a teammate gets no card then.
-	Empty string             `json:"empty,omitempty"`
-	Yours bool               `json:"yours"`
-	Items []crewTeamLentItem `json:"items"`
-}
-
-type crewTeamLentItem struct {
-	Name string `json:"name"`
-	Kind string `json:"kind"` // "app" or "secret"
-}
-
-func crewTeamLentNow(ctx context.Context, t crewTeam, viewer string) *crewTeamLent {
-	root := crewProjectRootByID(t.ProjectID)
-	if IsLocalMode() || !t.On || root == "" {
-		return nil
-	}
-	out := &crewTeamLent{Items: []crewTeamLentItem{}, Yours: viewer == t.OwnerID}
-	if out.Yours {
-		out.Title, out.Line = "What teammates' agents use from you", "Their agents in this Crew use these as you. Values are never shown."
-		out.Empty = "Nothing shared yet. Pick apps and secrets for this Crew from your Vault, or ask your agent."
-	} else {
-		owner := crewPersonShortName(t.OwnerID)
-		out.Title, out.Line = "What your agents use from "+owner, "Your agents in this Crew use these as "+owner+". Values are never shown."
-	}
-	apps, secrets := []string{}, []string{}
-	if servers, err := vaultServersFor(ctx, t.OwnerID); err == nil {
-		selected, chosenOnly, _ := projectAppSelection(ctx, root)
-		for _, server := range servers {
-			if projectVaultAppInUse(selected, chosenOnly, server.ID) {
-				apps = append(apps, firstNonEmptyTrimmed(server.Label, vaultServerName(server.ID)))
-			}
-		}
-	}
-	if names, err := productSelectedGlobalSecrets(ctx, crewProfileID, root); err == nil && names != nil {
-		for _, name := range *names {
-			secrets = append(secrets, vaultSecretShortName(name))
-		}
-	}
-	slices.Sort(secrets)
-	for _, name := range crewTeamOneNamePerApp(apps) {
-		out.Items = append(out.Items, crewTeamLentItem{Name: name, Kind: "app"})
-	}
-	for _, name := range slices.Compact(secrets) {
-		out.Items = append(out.Items, crewTeamLentItem{Name: name, Kind: "secret"})
-	}
-	if !out.Yours && len(out.Items) == 0 {
-		return nil // a teammate sees the card only when something is lent (owner, 5 Nov)
-	}
-	return out
-}
-
-// crewTeamOneNamePerApp sorts app names and keeps one spelling of each (crewTeamAppKey).
-func crewTeamOneNamePerApp(apps []string) []string {
-	slices.SortFunc(apps, func(a, b string) int {
-		return cmp.Or(cmp.Compare(crewTeamAppKey(a), crewTeamAppKey(b)), cmp.Compare(a, b))
-	})
-	return slices.CompactFunc(apps, func(a, b string) bool { return crewTeamAppKey(a) == crewTeamAppKey(b) })
+	externalJSON(w, input.viewLocked(claims.UserID))
 }
 
 // answerCrewTeamInvite is the invited person's own answer: accept makes them a member, decline takes them off the roster.
@@ -717,7 +809,7 @@ func (api *StreamingAPI) answerCrewTeamInvite(w http.ResponseWriter, r *http.Req
 		externalError(w, 409, "team_save_failed", e.Error())
 		return
 	}
-	log.Printf("[CREW_TEAM] project=%s actor=%s event=%s revision=%d", project, logUsernameForUserID(claims.UserID), event, t.Revision)
+	log.Printf("[CREW_TEAM] event=%s project=%s actor=%s revision=%d", event, project, logUsernameForUserID(claims.UserID), t.Revision)
 	if !input.Accept {
 		externalJSON(w, map[string]any{"declined": true})
 		return
@@ -733,7 +825,7 @@ func (api *StreamingAPI) answerCrewTeamInvite(w http.ResponseWriter, r *http.Req
 			_, _ = api.syncCrewTeamServerCopy(round, member, project, true)
 		}()
 	}
-	externalJSON(w, t.view(claims.UserID))
+	externalJSON(w, t.viewLocked(claims.UserID))
 }
 
 func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
@@ -762,14 +854,35 @@ func (api *StreamingAPI) listCrewTeams(w http.ResponseWriter, r *http.Request) {
 		if e != nil || ownerOfCrewProjectID(t.ProjectID) != t.OwnerID || !crewTeamAccountActive(t.OwnerID) || !crewTeamClaims(claims, t.ProjectID, false) {
 			continue
 		}
+		// Registry reads can create a Main-only record before Team setup. That
+		// is not a Team to list; a configured but paused Team still is.
+		if !t.On && strings.TrimSpace(t.Name) == "" && !t.Folder.shared() && len(t.People) == 0 {
+			continue
+		}
 		if t.member(claims.UserID) {
 			out = append(out, t.view(claims.UserID))
 		} else if t.invited(claims.UserID) {
-			invites = append(invites, crewTeamInvite{ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID)})
+			invites = append(invites, crewTeamInvite{userAvatarFields: avatarFieldsFor(t.OwnerID, t.ProjectID), ProjectID: t.ProjectID, Name: t.Name, OwnerName: shareOwnerLabel(t.OwnerID), CanAddToMac: t.Folder.shared(), Folder: t.Folder, Notice: crewTeamInvitePresentation(t)})
 		}
 	}
+	log.Printf("[CREW_TEAM] event=invites_listed actor=%s teams=%d invites=%d", logUsernameForUserID(claims.UserID), len(out), len(invites))
 	externalJSON(w, map[string]any{"teams": out, "invites": invites})
 }
+
+// Preserve the existing display text while letting callers distinguish a
+// rejected operation from transport, authorization or temporary server failure.
+type crewRemoteHTTPError struct {
+	Status        int
+	Code, Message string
+}
+
+func (e *crewRemoteHTTPError) Error() string { return e.Message }
+
+// No response was received. Callers may distinguish offline local work from
+// an actual server refusal without inspecting or weakening HTTP admission.
+type crewRemoteTransportError struct{ Message string }
+
+func (e *crewRemoteTransportError) Error() string { return e.Message }
 
 func crewTeamRemoteJSON(ctx context.Context, localOwner string, c desktopConnection, method, route string, input, out any) error {
 	var body io.Reader
@@ -786,7 +899,8 @@ func crewTeamRemoteJSON(ctx context.Context, localOwner string, c desktopConnect
 	}
 	defer resp.Body.Close()
 	if out != nil {
-		return json.NewDecoder(io.LimitReader(resp.Body, 64<<20)).Decode(out)
+		// A copied agent's conversation is the largest reply (#3218).
+		return json.NewDecoder(io.LimitReader(resp.Body, crewHandoffHistoryLimit+(1<<20))).Decode(out)
 	}
 	return nil
 }
@@ -804,9 +918,9 @@ func crewTeamRemoteDo(ctx context.Context, localOwner string, c desktopConnectio
 	resp, e := crewTeamHTTPClient(ctx).Do(req)
 	if e != nil {
 		if errors.Is(e, context.DeadlineExceeded) || os.IsTimeout(e) {
-			return nil, fmt.Errorf("the server took too long; retrying")
+			return nil, &crewRemoteTransportError{Message: "the server took too long; retrying"}
 		}
-		return nil, fmt.Errorf("cannot reach your company's server; local changes stay on this computer")
+		return nil, &crewRemoteTransportError{Message: "cannot reach your company's server; local changes stay on this computer"}
 	}
 	if resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
 		resp.Body.Close()
@@ -817,9 +931,17 @@ func crewTeamRemoteDo(ctx context.Context, localOwner string, c desktopConnectio
 		return nil, err
 	}
 	if resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 		resp.Body.Close()
-		return nil, fmt.Errorf("%s", laptopActionErrorText(string(b)))
+		var refusal struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(b, &refusal) == nil && refusal.Error.Code == "team_history_catch_up" {
+			return nil, errCrewTeamHistoryCatchUp
+		}
+		return nil, &crewRemoteHTTPError{Status: resp.StatusCode, Code: refusal.Error.Code, Message: laptopActionErrorText(string(b))}
 	}
 	return resp, nil
 }
@@ -841,7 +963,7 @@ func (api *StreamingAPI) runDesktopCrewTeam(w http.ResponseWriter, r *http.Reque
 	}
 	b, e := crewroot.ReadSync(roots.ID)
 	if e != nil || b == nil || b.Side != "local" || b.ConnectionID != mux.Vars(r)["connection"] {
-		externalError(w, 409, "team_connection_required", "Turn on this Crew's connection to your company first.")
+		externalError(w, 409, "team_connection_required", "Turn on this project's connection to your company first.")
 		return
 	}
 	c, e := desktopConnectionFor(claims.UserID, b.ConnectionID)
@@ -859,28 +981,14 @@ func (api *StreamingAPI) runDesktopCrewTeam(w http.ResponseWriter, r *http.Reque
 		if _, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, id); ok {
 			input.Name = firstNonEmptyTrimmed(manifest.Title, manifest.Label)
 		}
-		// Each chosen folder is an existing ordinary folder in this Crew; Whole Crew is the Crew's folder itself.
+		// Each chosen folder is an ordinary folder inside this Crew, never its root.
 		for _, rel := range input.Folder.Folders {
 			if folder, err := crewTeamFolderPath(roots.Files, rel); err != nil || folder == roots.Files {
-				externalError(w, 400, "invalid_folder", "Choose existing folders inside this Crew.")
+				externalError(w, 400, "invalid_folder", "Choose existing folders inside this project.")
 				return
 			}
 		}
-		if input.Folder.Whole {
-			files, bytes := crewTeamShareSize(roots.Files, input.Folder)
-			log.Printf("[CREW_TEAM] local project=%s event=folder whole=true files=%d bytes=%d", roots.ID, files, bytes)
-		} else if len(input.Folder.Folders) == 0 {
-			// Back to Folders with none chosen before: the server picks team/, so it exists here (as Team on makes it).
-			var current crewTeam
-			if crewTeamRemoteJSON(r.Context(), claims.UserID, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(b.PeerProjectID), nil, &current) == nil && current.Folder.Whole && len(current.LastFolders) == 0 {
-				if dir := filepath.Join(roots.Files, crewTeamDefaultFolder); !fileExists(dir) {
-					if err := os.MkdirAll(dir, 0o755); err != nil {
-						externalError(w, 409, "invalid_folder", "The team folder could not be made on this Mac.")
-						return
-					}
-				}
-			}
-		}
+
 	}
 	var out crewTeam
 	if e = crewTeamRemoteJSON(r.Context(), claims.UserID, c, r.Method, "/api/crew-teams/"+url.PathEscape(b.PeerProjectID), input, &out); e != nil {
@@ -909,8 +1017,12 @@ func crewTeamFolderPath(root, rel string) (string, error) {
 	return filepath.Join(root, filepath.FromSlash(rel)), nil
 }
 
-// Team folder membership needs Crew access, not an AgentBridge product grant.
+// Team folder membership needs Crew access, not an AgentBridge product grant. A Mac app's own person has no row in
+// the Mac's people list (it has one person), so on a Mac that person is always active (#3790).
 func crewTeamAccountActive(user string) bool {
+	if user != "" && IsLocalMode() && !IsMultiUserMode() && user == GetDefaultUserID() {
+		return true
+	}
 	directory, err := loadUserDirectory()
 	if err != nil || directory == nil {
 		return false
@@ -936,9 +1048,12 @@ func crewTeamContentDir(project string) (string, error) {
 	return filepath.Join(d, "folders", crewTransferDigest(t.Folder.ID+"\x00"+crewTeamSyncFormat)), nil
 }
 func crewTeamRequestAuthorize(r *http.Request, claims *UserClaims, project, rel string, write, folder bool) (crewTeam, error) {
-	t, err := crewTeamAuthorize(claims, project, rel, write, folder)
-	if err != nil {
-		return t, err
+	t, ok := crewTeamProjectAdmitted(r, claims, project)
+	if !ok {
+		var err error
+		if t, err = crewTeamAuthorize(claims, project, rel, write, folder); err != nil {
+			return t, err
+		}
 	}
 	if id := r.URL.Query().Get("folder_id"); id != "" && id != t.Folder.ID || write && id == "" {
 		return crewTeam{}, fmt.Errorf("the shared folder changed; reopen it before continuing")
@@ -971,9 +1086,65 @@ func moveCrewTeamToTwin(owner, previous, created string) {
 		return
 	}
 	old.ProjectID, old.On = created, false
-	if err = writeCrewTeam(old); err != nil {
+	for id, agent := range old.Agents {
+		if agent.ChatKey == previous {
+			agent.ChatKey = created
+		} else if suffix, ok := strings.CutPrefix(agent.ChatKey, previous+codeChatSideMarker); ok {
+			agent.ChatKey = created + codeChatSideMarker + suffix
+		}
+		old.Agents[id] = agent
+	}
+	// This is the explicit identity-preserving move. Ordinary writes correctly
+	// reject a record belonging to a different project, including the renamed one.
+	if err = fsutil.WriteJSONAtomic(filepath.Join(to, "team.json"), old, 0600); err != nil {
 		log.Printf("[CREW_TEAM] project=%s event=moved_failed from=%s reason=%q", created, previous, err)
 		return
 	}
 	log.Printf("[CREW_TEAM] project=%s event=moved from=%s people=%d folder=%q", created, previous, len(old.People), old.Folder.display())
+}
+
+// A Crew that lives on the server has co-owners and no Team (owner, 21 Nov): every Team change is refused there, with the
+// one next step. Mac Crews and their online copies keep the Team.
+const crewServerNoTeam = "A project on the server has co-owners instead of a Team. Add people under Access › Co-owners."
+
+func refuseServerCrewTeam(w http.ResponseWriter, project string) bool {
+	if !crewLivesOnServer(project) {
+		return false
+	}
+	log.Printf("[CREW_TEAM] project=%s event=refused reason=server_crew", project)
+	externalError(w, http.StatusConflict, "server_crew", crewServerNoTeam)
+	return true
+}
+
+// deleteCrewTeamRecord: the owner's Mac deleted this Crew, so its Team goes too, synced chats included (owner,
+// 24 Nov). Only the Crew's own owner may do it; a missing Team is already gone.
+func deleteCrewTeamRecord(w http.ResponseWriter, caller, project, owner string) {
+	dir, err := crewTeamDir(project)
+	if err != nil {
+		externalError(w, 400, "team_invalid", "Choose a valid team.")
+		return
+	}
+	mu := crewTeamRecordMutex(dir)
+	mu.Lock()
+	t, err := readCrewTeam(project)
+	if os.IsNotExist(err) {
+		mu.Unlock()
+		externalJSON(w, map[string]any{"deleted": false})
+		return
+	}
+	if err != nil || caller != owner || t.OwnerID != caller {
+		mu.Unlock()
+		log.Printf("[CREW_TEAM] project=%s actor=%s event=delete_refused", project, logUsernameForUserID(caller))
+		externalError(w, 403, "team_forbidden", "Only this project's owner can delete its Team.")
+		return
+	}
+	err = os.RemoveAll(dir)
+	mu.Unlock()
+	if err != nil {
+		externalError(w, 500, "team_delete_failed", "The Team could not be deleted now. Try again in a minute.")
+		return
+	}
+	log.Printf("[CREW_TEAM] project=%s actor=%s event=deleted reason=crew_deleted agents=%d people=%d", project, logUsernameForUserID(caller), len(t.Agents), len(t.People))
+	publishCrewPanelChanged(project)
+	externalJSON(w, map[string]any{"deleted": true})
 }

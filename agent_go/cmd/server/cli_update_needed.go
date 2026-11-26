@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -61,4 +62,45 @@ func agentUpdateNeeded(a namedMessageAgent) bool {
 	}
 	latest := latestServedCLIBuild()
 	return latest != "" && latest != a.Attachment.ClientBuild
+}
+
+// The existing attachment is authoritative; directory callers cannot supply a
+// version. Source builds are hashes, not semantic versions: never invent 1.x.
+func projectAgentHelper(out map[string]any, a namedMessageAgent) {
+	if a.Attachment == nil {
+		return
+	}
+	build := cleanClientBuild(a.Attachment.ClientBuild)
+	if build == "" {
+		return
+	}
+	out["client_build"] = build
+	needed := agentUpdateNeeded(a)
+	out["update_needed"] = needed
+	if needed {
+		logAgentHelperUpdate(a.ID, build, latestServedCLIBuild())
+	}
+}
+
+var helperUpdateLogs = struct {
+	sync.Mutex
+	rows map[string]string
+}{rows: map[string]string{}}
+
+func logAgentHelperUpdate(id, build, latest string) {
+	key := build + "/" + latest
+	helperUpdateLogs.Lock()
+	if helperUpdateLogs.rows[id] == key {
+		helperUpdateLogs.Unlock()
+		return
+	}
+	if len(helperUpdateLogs.rows) >= 256 {
+		for old := range helperUpdateLogs.rows {
+			delete(helperUpdateLogs.rows, old)
+			break
+		}
+	}
+	helperUpdateLogs.rows[id] = key
+	helperUpdateLogs.Unlock()
+	log.Printf("[AGENT_CLI] agent=%q action=update_needed client_build=%q server_build=%q", id, build, latest)
 }

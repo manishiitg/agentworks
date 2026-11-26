@@ -1,0 +1,29 @@
+{
+  "test": "TestRealBridgeStreamingConcurrent_Claude",
+  "summary": "2 parallel Claude sessions through the REAL bridge, each reading its own build id — stream isolation",
+  "review_criteria": [
+    "no duplicated lines or chunks",
+    "proper formatting — clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+    "human-readable — reads like an assistant working, coherent and natural",
+    "correct text \u003c-\u003e tool interleaving order (narration then the tool it describes)",
+    "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+    "the final answer is coherent and matches the work performed",
+    "real work actually happened (e.g. the file was written to disk)"
+  ],
+  "output": {
+    "no_cross_leak": true,
+    "provider": "Claude",
+    "worker0_answer": "The build ID is BUILD_ID_0_0c2b0178e2.",
+    "worker0_build_id": "BUILD_ID_0_0c2b0178e2",
+    "worker1_answer": "The build ID is BUILD_ID_1_ac475c4b6f.",
+    "worker1_build_id": "BUILD_ID_1_ac475c4b6f"
+  },
+  "fingerprint": "aa599858c82d4599",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "aa599858c82d4599",
+    "reviewer": "claude-sonnet-5",
+    "issues": null,
+    "notes": "Claude: two parallel sessions, each reads its OWN build id via execute_shell_command and reports it correctly; no cross-leak of the other worker build id in either answer or clean stream text. Real concurrent isolation, no garbling."
+  }
+}

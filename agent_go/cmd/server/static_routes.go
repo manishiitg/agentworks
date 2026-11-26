@@ -85,10 +85,12 @@ func (api *StreamingAPI) handleCapabilities(w http.ResponseWriter, r *http.Reque
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"providers":   append([]string(nil), supportedLLMProviders...),
-		"streaming":   true,
-		"sse":         true,
-		"agent_modes": []string{"multi-agent", "workflow"},
+		"providers":    append([]string(nil), supportedLLMProviders...),
+		"streaming":    true,
+		"native_goals": nativeGoalProgramCapabilities(),
+		"native_plans": nativePlanProgramCapabilities(),
+		"sse":          true,
+		"agent_modes":  []string{"multi-agent", "workflow"},
 		"tracing": map[string]interface{}{
 			"enabled":  tracingProvider != "noop",
 			"provider": tracingProvider,

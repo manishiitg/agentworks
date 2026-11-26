@@ -44,6 +44,21 @@ func TestBridgeListProbesOutsideTheLockAndBusyAnswersQuickly(t *testing.T) {
 		t.Fatalf("list = %d chats after %d probes", len(reply.AgentStates), probes.Load())
 	}
 
+	// Desktop native readers need binding metadata, not another process scan.
+	client, err := New("https://example.com", "fixture-credential")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.sessions[localBridgeKey("claude", "a")].client = client
+	metadata := b.handle(context.Background(), context.Background(), LocalBridgeRequest{Action: "attachments"})
+	if probes.Load() != 3 || len(metadata.AgentStates) != 3 {
+		t.Fatal("metadata-only read probed processes")
+	}
+	raw, _ := json.Marshal(metadata)
+	if !strings.Contains(string(raw), "https://example.com") || strings.Contains(string(raw), "fixture-credential") {
+		t.Fatal("attachment origin metadata lost its server or disclosed a credential")
+	}
+
 	b.mu.Lock() // a step that is holding the bridge for a long server call
 	defer b.mu.Unlock()
 	if b.lockWithin(30 * time.Millisecond) {
@@ -165,6 +180,22 @@ func TestMailboxReadChecksLeaseBesideTheReadAndLogRolls(t *testing.T) {
 			http.Error(w, `{"error":"gone"}`, http.StatusForbidden)
 			return
 		}
+		if strings.HasSuffix(r.URL.Path, "/call") {
+			var body struct {
+				Arguments map[string]any `json:"arguments"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			if body.Arguments["action"] == "read" {
+				if body.Arguments["wait_seconds"] != float64(20) || body.Arguments["after"] != float64(7) || body.Arguments["agent_name"] != "a" {
+					t.Errorf("bounded wait changed identity/cursor: %v", body.Arguments)
+				}
+				_, _ = w.Write([]byte(`{"messages":[],"next_cursor":7}`))
+				return
+			}
+		}
+
 		_, _ = w.Write([]byte(`{"agents":[]}`))
 	}))
 	defer server.Close()
@@ -181,6 +212,19 @@ func TestMailboxReadChecksLeaseBesideTheReadAndLogRolls(t *testing.T) {
 	denied.Store(true)
 	if reply := b.mailboxCall(context.Background(), s, LocalBridgeRequest{Action: "peers"}, LocalBridgeReply{}); reply.Error == "" || reply.Result != nil {
 		t.Fatalf("peers after the lease was revoked = %+v", reply)
+	}
+
+	// Codex watch uses this same read, with no listener or new authority.
+	denied.Store(false)
+	if reply := b.mailboxCall(context.Background(), s, LocalBridgeRequest{Action: "read", Cursor: 7, WaitSeconds: 20}, LocalBridgeReply{}); reply.Error != "" || len(reply.Result) == 0 {
+		t.Fatalf("admitted bounded wait: %+v", reply)
+	}
+	denied.Store(true)
+	if reply := b.mailboxCall(context.Background(), s, LocalBridgeRequest{Action: "read", Cursor: 7, WaitSeconds: 20}, LocalBridgeReply{}); reply.Error == "" || reply.Result != nil {
+		t.Fatal("revoked lease released bounded-wait result")
+	}
+	if reply := b.mailboxCall(context.Background(), s, LocalBridgeRequest{Action: "read", WaitSeconds: 26}, LocalBridgeReply{}); reply.Error == "" {
+		t.Fatal("unbounded watch accepted")
 	}
 
 	path := filepath.Join(t.TempDir(), "bridge.log")
@@ -1165,5 +1209,25 @@ func TestMessagingSurvivesRestartAndHookCallerExit(t *testing.T) {
 	got := <-done
 	if got.Error != "" || !strings.Contains(string(got.Result), "acked") || receipts.Load() != 1 {
 		t.Fatalf("hook exit lost receipt: %+v", got)
+	}
+}
+
+// #3357: a forked chat's agent re-attached under the name it read in the copied history and took the
+// original chat's place. While the chat holding a name is still open, another chat cannot take it.
+func TestOpenChatKeepsItsNameFromAForkedChat(t *testing.T) {
+	root := t.TempDir()
+	b := &localBridge{root: root, sessions: map[string]*localSession{}, changed: make(chan struct{}), options: LocalBridgeOptions{
+		HostAlive: func(_ string, host string) bool { return host == "original-process" },
+	}}
+	b.sessions[localBridgeKey("claude", "original")] = &localSession{Attachment: AgentAttachment{AgentName: "ai-work", ID: "att", Provider: "claude", SessionID: "original"}, HostKey: "original-process", ParentConfigPath: "login.json"}
+	fork := LocalBridgeRequest{Action: "attach", Provider: "claude", SessionID: "fork", HostKey: "fork-process", AgentName: "ai-work", ConfigPath: "login.json"}
+	reply := b.handle(context.Background(), context.Background(), fork)
+	if !strings.Contains(reply.Error, "in use by another open chat") || b.sessions[localBridgeKey("claude", "original")].Attachment.SessionID != "original" {
+		t.Fatalf("a forked chat took an open chat's name: %+v", reply)
+	}
+	// Once the original chat's process is gone, the name may move (the existing restart path).
+	b.sessions[localBridgeKey("claude", "original")].HostKey = "closed-process"
+	if reply = b.handle(context.Background(), context.Background(), fork); strings.Contains(reply.Error, "in use by another open chat") {
+		t.Fatalf("a closed chat still held its name: %+v", reply)
 	}
 }

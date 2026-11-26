@@ -7,20 +7,19 @@ import (
 )
 
 // crewAskModelSentence is the one sentence every Crew-facing description states about a free-text ask (856-59).
-const crewAskModelSentence = "Everyone except the Crew's owners uses it in Run mode: a chat or ask there understands the Crew (files, memory, skills, functions) and runs what its owner published; it changes nothing and uses no MCP tools. To make a Crew do something, call one of its functions. An owner's own chat is Builder mode, with full access. Only its owners change a Crew."
+const crewAskModelSentence = "Everyone except the project's owners uses it in Run mode: a chat or ask there understands the project (files, memory, skills, functions) and runs what its owner published; it changes nothing and uses no MCP tools. To make a project do something, call one of its functions. An owner's own chat is Builder mode, with full access. Only its owners change a project."
 
 // crewAskAllowedTools is the whole tool surface of a guest's free-text ask (856-59, reviewer: an allow list, so a new tool
 // is refused until someone classifies it). Everything here reads; nothing acts. The guest acts by calling the functions the
-// owner exposes. No shell: it could send data out or use secrets; reads go through the CLI's own file tools. send_message only replies inside the same conversation; submit_crew_suggestion lands in the owner's inbox.
+// owner exposes. No shell: it could send data out or use secrets; reads go through the CLI's own file tools. send_message only replies inside the same conversation.
 var crewAskAllowedTools = map[string]bool{
-	"request_clarification": true, // Registered only for an attended external Ask; no project authority.
-	crewAskFilesToolName:    true, "query_workflow_db": true, "read_skill": true, "search_tools": true, "get_api_spec": true,
+	crewAskFilesToolName: true, chatVisualToolName: true, "query_workflow_db": true, "read_skill": true, "search_tools": true, "get_api_spec": true,
 	"list_skills": true, "search_skills": true, "send_message": true, "read_agent_messages": true,
 	"list_mcp_servers": true, "list_accessible_workflows": true,
-	"list_workflow_triggers": true, "list_project_schedules": true, "list_project_triggers": true,
+	"list_workflow_triggers": true, "list_project_schedules": true,
 	"get_workflow_trigger_run": true, "project_functions_list": true,
 	crewPublishedCallToolName: true, crewPublishedGetToolName: true,
-	crewSuggestionToolName: true, "WebSearch": true, "EndConversation": true,
+	"WebSearch": true, "EndConversation": true,
 }
 
 // crewAskReadOnlyTurn is the one server-side test for Run mode (856-59, owner 2026-10-13): every chat a non-owner has with

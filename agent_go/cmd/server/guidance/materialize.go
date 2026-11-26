@@ -52,7 +52,7 @@ func materializeWorkflowUIControlSkill(mode string) (*llmtypes.Skill, error) {
 	}
 	return &llmtypes.Skill{
 		Name:        "workflow-ui-control",
-		Description: "Present the correct AgentWorks Workflow view with acknowledged UI control. Use for Workflow Builder or Run workspace navigation; do not use Crew panel IDs or semantics.",
+		Description: "Present the correct AgentWorks Workflow view with acknowledged UI control. Use for Workflow Builder or Run workspace navigation; do not use project panel IDs or semantics.",
 		Content:     content,
 		Metadata:    map[string]string{"mode": mode, "kind": "workspace-views"},
 		Source:      llmtypes.SkillSource{Origin: "builtin"},

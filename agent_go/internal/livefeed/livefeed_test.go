@@ -62,7 +62,7 @@ func TestIsPlanPathAcrossProducts(t *testing.T) {
 		"Crew/team/workflow.json":                                         true,
 		"Chats/Work/projects/team/planning/plan.json":                     true,
 		"_users/alice/Chats/Work/projects/team/planning/step_config.json": true,
-		"Chats/Code/projects/site/workflow.json":                          true,
+		"Chats/Code/projects/site/workflow.json":                          false,
 		"Workflow/relay/planning/workflow_layout.json":                    false,
 		"Workflow/relay/planning/changelog.json":                          false,
 		"Workflow/relay/db/reports/index.html":                            false,
@@ -92,7 +92,6 @@ func TestPublishPlanPathKeepsLegacyProjectPathsPrivate(t *testing.T) {
 func TestIsPlanPathBothSpellings(t *testing.T) {
 	for _, logical := range []string{
 		"Chats/Work/projects/c/workflow.json",
-		"Chats/Code/projects/p/planning/plan.json",
 		"Workflow/w/planning/step_config.json",
 	} {
 		for _, spelling := range []string{logical, "_users/alice/" + logical, "_users/bob/" + logical} {
@@ -112,7 +111,7 @@ func TestIsPlanPathBothSpellings(t *testing.T) {
 func TestDashboardDeclarationNoticesKeepPrivatePathsOutOfTheFeed(t *testing.T) {
 	sub := Default.Subscribe()
 	defer Default.Unsubscribe(sub)
-	for _, p := range []string{"Crew/support/functions.json", "Workflow/invoices/workflow.json", "_users/owner/Chats/Code/projects/private/functions.json", "Crew/support/code/functions.json"} {
+	for _, p := range []string{"Crew/support/functions.json", "Workflow/invoices/workflow.json", "_users/owner/Chats/Work/projects/private/functions.json", "Crew/support/code/functions.json"} {
 		PublishDashboardDeclaration(p)
 	}
 	got, _ := sub.Drain()

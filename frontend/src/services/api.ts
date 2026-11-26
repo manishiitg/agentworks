@@ -1,6 +1,9 @@
+import { readChat, clearChatAccess } from './chatAccess'
+import { randomUUID } from '../utils/randomUUID'
+import type { TeamLiveView } from '../components/workspace/TeamLiveAgents'
+import { admissionWindowHeaders } from '../utils/chatDeliveryTelemetry'
 console.log('Cache bust: 2026-02-08-150000');
-import { remoteSessionPath } from '../utils/remoteSessions'
-import { needsYouDecisions } from '../utils/needsYouDecisions'
+import { remoteRequestConnection } from '../utils/remoteSessions'
 import axios from 'axios'
 import type { CrewLocationFields } from '../components/workspace/macCrews'
 import { assertChatIdentityCurrent, captureChatIdentity } from '../utils/chatIdentity'
@@ -8,7 +11,8 @@ import { createRequestCoalescer } from './requestCoalescer'
 import type { AxiosInstance, InternalAxiosRequestConfig } from 'axios'
 
 declare module 'axios' {
-  interface AxiosRequestConfig { chatIdentityGeneration?: number; skipSessionContext?: boolean }
+  /** connection: send this request to one of this Mac's connections (a server project opened in place, #3383). */
+  interface AxiosRequestConfig { chatIdentityGeneration?: number; skipSessionContext?: boolean; connection?: string }
 }
 
 export interface ChatRequestContext {
@@ -26,7 +30,8 @@ function chatRequestConfig(sessionId?: string, context: ChatRequestContext = {})
     chatIdentityGeneration: generation,
     headers: {
       ...(sessionId ? { 'X-Session-ID': sessionId } : {}),
-      'Idempotency-Key': context.submissionId || crypto.randomUUID(),
+      'X-Chat-Input': 'composer',
+      'Idempotency-Key': context.submissionId || randomUUID(),
       ...(context.submittedAtClientTime ? { 'X-Client-Submitted-At': context.submittedAtClientTime } : {}),
       ...(context.continuation ? { 'X-Conversation-Continuation': 'true' } : {}),
       ...(context.queuedDelivery ? { 'X-Queued-Chat-Delivery': 'true' } : {}),
@@ -41,7 +46,7 @@ import { apiTimingPathFor, recordApiTiming, sanitizeApiBody } from '../utils/api
 import { retryUncertainChatSubmission } from './uncertainSubmissionRetry'
 import { retryTurnRunningSubmission } from './turnRunningRetry'
 import { configureChatDeliveryTelemetryTransport } from '../utils/chatDeliveryTelemetry'
-import type { FileTreeVisibility, PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, ChatContextView, SharedProjectFileEntry, SharedProjectSummary, CodeAdminWorkspace, CodeAdminChat, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunFolderInfo, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, ReportHumanInputResponse, ReportHumanInputsResponse, GoalMeasurements, OrgDashboardNotification, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
+import type { FileTreeVisibility, PresetLLMConfig, AgentQueryRequest, AgentQueryResponse, AgentProfileChatRequest, AgentProfileConversationRequest, AgentProfileConversationResponse, AgentProfileSideChat, AgentProfileChatModel, AgentProfileEffectiveChatModel, ChatAccessMode, ChatContextView, ChatContextPartItem, SharedProjectFileEntry, SharedProjectSummary, CodeAdminAuditEntry, GetEventsResponse, PollingEvent, TerminalEventsResponse, MCPServerConfig, ChatHistoryConversation, ChatHistorySession, ChatHistoryCleanupResult, WorkflowStatusResponse, WorkflowConstantsResponse, WorkflowSelectedOptions, GetActiveSessionsResponse, HeaderSummaryResponse, ReconnectSessionResponse, SessionStatusResponse, SessionExecutionTreeResponse, SessionBackgroundWorkResponse, LLMGuidanceResponse, LLMGuidanceRequest, HumanFeedbackResponse, PendingHumanFeedbackResponse, RunFoldersResponse, RunMetadataModels, CreateRunFolderResponse, VariableGroupsResponse, VariablesManifest, SlackConfigRequest, SlackConfigResponse, SlackConnection, SlackConnectionRequest, SlackConnectionsResponse, SlackUsableBot, SlackUsableBotsResponse, SlackTargetSettings, SlackPlatformBotSettings, SlackBotChannelsResponse, ProjectSlackSelectionResponse, SlackTestResponse, SlackTestReplyResponse, GmailConfigRequest, GmailConfigResponse, GmailConnection, GmailConnectionRequest, GmailConnectionsResponse, GmailOAuthClient, GmailOAuthClientsResponse, GmailAuthStatus, GmailTestResponse, ExecutionLogsResponse, WorkflowCostsResponse, WorkspaceStateResponse, CapabilitiesResponse, ListWorkflowManifestsResponse, GetWorkflowManifestResponse, CreateWorkflowManifestRequest, UpdateWorkflowManifestRequest, DuplicateWorkflowManifestRequest, MigrateWorkflowsResponse, RunningWorkflowInfo, UpdateRunningWorkflowRequest, CostSummary, CostOverview, NotificationPreference, ListTerminalsResponse, TerminalSnapshot, StartRestoredTerminalRequest, StartRestoredTerminalResponse, WorkflowCapabilities, WhatsAppRoute, WhatsAppStatus, WorkFolderGrant, WorkFolderListResponse, WorkFolderAddRequest } from './api-types'
 
 // Re-export types for other components to use
 export type {
@@ -93,31 +98,6 @@ export interface CdpCheckResult {
   browser?: string
   endpoint?: string
   source?: 'workspace' | 'agent'
-}
-
-export interface WorkflowOverviewRunFolderDetail {
-  folder: RunFolderInfo
-  total_steps: number
-  completed_steps: number
-  last_updated?: string
-  cost_usd?: number
-  started_at?: string
-  completed_at?: string
-  triggered_by?: string
-  status: string
-  models?: RunMetadataModels | null
-}
-
-export interface WorkflowOverviewBatchResponse {
-  success: boolean
-  workflows: Array<{
-    workspace_path: string
-    run_folders: WorkflowOverviewRunFolderDetail[]
-    last_updated?: string
-    total_run_count: number
-    active_run_paths?: string[]
-    error?: string
-  }>
 }
 
 type AppWindow = Window & {
@@ -253,9 +233,16 @@ export function getDesktopApiBaseUrl(): string {
   return window.electronAPI?.getDesktopApiBaseUrl?.() || getLocalApiBaseUrl()
 }
 
+const desktopAppWindow = () => typeof window !== 'undefined' && Boolean(window.electronAPI)
+
 export function getApiBaseUrl(): string {
   const id = getRawActiveWorkspaceId()
   return id === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${id}`
+}
+
+/** One of this Mac's connections: the local app itself, or a server through this Mac's saved sign-in. */
+export function connectionApiBase(id: string): string {
+  return id === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${encodeURIComponent(id)}`
 }
 
 export function getLocalApiBaseUrl(): string {
@@ -325,7 +312,46 @@ function getWorkspaceApiBaseUrl(): string {
 
 const API_BASE_URL = getApiBaseUrl()
 export { API_BASE_URL }
+
+/** The other connection a request goes to when it names a teammate chat from there, else undefined (this window's
+ * own server). */
+function projectServer(config: { connection?: string; url?: string; params?: unknown; headers?: unknown; data?: unknown }): string | undefined {
+  const remote = config.connection ?? remoteRequestConnection(config)
+  return remote && remote !== getRawActiveWorkspaceId() ? remote : undefined
+}
+
+/** Every API client of this window's server follows the same rule (a Crew's files, functions, schedules, skills…), so
+ * a server project's screens read and write its own server. It is registered when the client is made, before the
+ * client's own interceptors: axios runs request interceptors last-registered first, so this one sees the base they set. */
+function followProjectServer(instance: AxiosInstance) {
+  // A test's stand-in client may have no interceptors.
+  instance?.interceptors?.request?.use?.(config => {
+    if (/^[a-z]+:\/\//i.test(config.url || '') || config.baseURL !== getApiBaseUrl()) return config
+    const remote = projectServer(config)
+    if (remote) { config.connection = remote; config.baseURL = connectionApiBase(remote) }
+    return config
+  })
+}
+// Clients that call axios directly with this server's base (src/api/*), and every client made with axios.create.
+followProjectServer(axios)
+if (typeof axios?.create === 'function') {
+  const createClient = axios.create.bind(axios)
+  axios.create = (config => { const instance = createClient(config); followProjectServer(instance); return instance }) as typeof axios.create
+}
+
 export const WORKSPACE_API_BASE_URL = getWorkspaceApiBaseUrl()
+
+export type ToolChanges = { added: string[]; removed: string[]; reload_requested: boolean }
+
+// A server without the tool-changes endpoint (an older laptop backend) can answer with something else; show nothing then.
+function toolChanges(data: unknown): ToolChanges {
+  const value = (data && typeof data === 'object' ? data : {}) as Partial<ToolChanges>
+  return {
+    added: Array.isArray(value.added) ? value.added : [],
+    removed: Array.isArray(value.removed) ? value.removed : [],
+    reload_requested: value.reload_requested === true,
+  }
+}
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -457,7 +483,7 @@ export function getSessionId(): string {
 
   // If no active tab or tab has no session ID, generate a new one for the tab
   if (activeTab) {
-    const newSessionId = crypto.randomUUID()
+    const newSessionId = randomUUID()
     useChatStore.getState().updateTabSessionId(activeTab.tabId, newSessionId)
     console.log(`[API] Generated new session ID for tab ${activeTab.tabId}: ${newSessionId}`)
     return newSessionId
@@ -470,7 +496,7 @@ export function getSessionId(): string {
   if (selectedModeCategory === 'multi-agent') {
     console.warn('[API] No active tab - generating temporary session ID')
   }
-  return crypto.randomUUID()
+  return randomUUID()
 }
 
 export function resetSessionId(): void {
@@ -480,7 +506,7 @@ export function resetSessionId(): void {
   const activeTab = useChatStore.getState().getActiveTab()
   if (activeTab) {
     // Generate a new session ID instead of null to avoid type issues
-    const newSessionId = crypto.randomUUID()
+    const newSessionId = randomUUID()
     useChatStore.getState().updateTabSessionId(activeTab.tabId, newSessionId)
     console.log(`[API] Reset session ID for tab ${activeTab.tabId} - generated new: ${newSessionId}`)
   }
@@ -518,8 +544,18 @@ api.interceptors.request.use((config) => {
   if (config.chatIdentityGeneration !== undefined) assertChatIdentityCurrent(config.chatIdentityGeneration)
   config.baseURL = getApiBaseUrl()
   config.headers = config.headers || {}
-  // A Team member's chat shown in the Mac app reads from its server (utils/remoteSessions.ts).
-  if (config.url) config.url = remoteSessionPath(config.url)
+  Object.assign(config.headers, admissionWindowHeaders())
+  // A Team member's chat or a server project shown in the Mac app talks to its server (utils/remoteSessions.ts).
+  // Those go through the Mac app's own address (getDesktopApiBaseUrl), which carries the app proof the connection proxy
+  // requires; the local base refused them (owner, 10 Nov: a teammate's chat said "Could not load this conversation").
+  const remote = projectServer(config)
+  if (remote) {
+    config.connection = remote
+    config.baseURL = connectionApiBase(remote)
+  }
+  // The desktop app shows the person's own Mac theme on every server (owner, 20 Nov, #3400): reading and saving the
+  // look stay on this Mac, so opening another server's project no longer switches to that server's theme.
+  if (config.url?.startsWith('/api/appearance') && desktopAppWindow()) config.baseURL = getLocalApiBaseUrl()
 
   // Only add session ID if not already provided
   if (!config.skipSessionContext && config.headers['X-Session-ID'] !== false && !config.headers['X-Session-ID']) {
@@ -573,7 +609,8 @@ api.interceptors.response.use(
     }
     if (error.config?.headers?.Authorization && error.config.headers.Authorization !== `Bearer ${getAuthToken()}`) return Promise.reject(error)
     if (redirectOnGatewayAuthenticationRequired(error)) return Promise.reject(error)
-    if (is401DueToBadToken(error) && error.config?.headers?.Authorization === `Bearer ${getAuthToken()}`) {
+    // Another server refusing its saved sign-in never signs this window out (the menu offers "Sign in again").
+    if (is401DueToBadToken(error) && !error.config?.connection && error.config?.headers?.Authorization === `Bearer ${getAuthToken()}`) {
       clearAuthToken()
     }
     try {
@@ -620,7 +657,14 @@ function getUserIdFromToken(token: string): string | null {
 // --- Workspace API interceptors for auth ---
 workspaceApi.interceptors.request.use((config) => {
   config.baseURL = getWorkspaceApiBaseUrl()
+  // A server project's files open in place, through this Mac's sign-in to its server (#3383).
+  const remote = projectServer(config)
+  if (remote) {
+    config.connection = remote
+    config.baseURL = `${connectionApiBase(remote).replace(/\/+$/, '')}/api/wp`
+  }
   config.headers = config.headers || {}
+  Object.assign(config.headers, admissionWindowHeaders())
 
   // Add auth token if available
   const authToken = getAuthToken()
@@ -649,7 +693,7 @@ workspaceApi.interceptors.response.use(
     }
     if (error.config?.headers?.Authorization && error.config.headers.Authorization !== `Bearer ${getAuthToken()}`) return Promise.reject(error)
     if (redirectOnGatewayAuthenticationRequired(error)) return Promise.reject(error)
-    if (is401DueToBadToken(error) && error.config?.headers?.Authorization === `Bearer ${getAuthToken()}`) {
+    if (is401DueToBadToken(error) && !error.config?.connection && error.config?.headers?.Authorization === `Bearer ${getAuthToken()}`) {
       clearAuthToken()
     }
     try {
@@ -696,6 +740,19 @@ function uploadFrames(pieces: { id: string; data: Uint8Array }[]): Uint8Array {
   }
   return frames
 }
+
+export interface ChatCompactionSummary {
+  at: string
+  provider: string
+  kind: 'summary' | 'kept_messages'
+  text?: string
+  messages?: string[]
+  tokens_before?: number
+  tokens_after?: number
+}
+
+// One in-flight chat-context read per chat, shared by everyone asking while it is on its way.
+const chatContextReads = new Map<string, Promise<ChatContextView>>()
 
 export const agentApi = {
   startCrewStorageCheck: async (): Promise<{ operation_id: string }> => {
@@ -760,11 +817,11 @@ export const agentApi = {
       throw new Error('Either sinceIndex (for polling) or limit (for pagination) must be provided')
     }
 
-    const response = await api.get(`/api/sessions/${sessionId}/events`, {
+    const response = await readChat(sessionId, () => api.get(`/api/sessions/${sessionId}/events`, {
       params,
       // The visible chat must offer Retry if native-history sync stalls.
       ...(options?.syncNativeTranscript ? { timeout: RUNTIME_READ_TIMEOUT_MS } : {}),
-    })
+    }))
     return response.data
   },
 
@@ -800,9 +857,9 @@ export const agentApi = {
   // Refresh needs runtime state and the SSE resume position, not the retained
   // raw event payloads. Durable chat history supplies the visible transcript.
   getSessionEventCursor: async (sessionId: string, workspacePath?: string): Promise<GetEventsResponse> => {
-    const response = await api.get(`/api/sessions/${sessionId}/events`, {
+    const response = await readChat(sessionId, () => api.get(`/api/sessions/${sessionId}/events`, {
       params: { cursor_only: 1, durable_chat: 1, ...(workspacePath ? { workspace_path: workspacePath } : {}) },
-    })
+    }))
     return response.data
   },
 
@@ -972,8 +1029,9 @@ export const agentApi = {
   },
 
   // Cancel only the currently running LLM turn for a session.
-  cancelCurrentTurn: async (sessionId: string): Promise<void> => {
-    await api.post('/api/session/cancel-turn', {}, {
+  // force: close the agent's program for this chat when Stop did not end the turn (#3188).
+  cancelCurrentTurn: async (sessionId: string, force = false): Promise<void> => {
+    await api.post(force ? '/api/session/cancel-turn?force=true' : '/api/session/cancel-turn', {}, {
       headers: { 'X-Session-ID': sessionId }
     })
   },
@@ -1016,7 +1074,7 @@ export const agentApi = {
     const params: Record<string, string> = {}
     if (workspacePath) params.workspace_path = workspacePath
     if (previewMessages && previewMessages > 0) params.preview_messages = String(previewMessages)
-    const response = await api.get(`/api/chat-history/sessions/${sessionId}`, { params })
+    const response = await readChat(sessionId, () => api.get(`/api/chat-history/sessions/${sessionId}`, { params }))
     return response.data
   },
 
@@ -1030,7 +1088,7 @@ export const agentApi = {
     if (includeUiEvents) params.include_ui_events = '1'
     if (includePromptSizes) params.include_saved_prompt_sizes = '1'
     if (workspacePath) params.workspace_path = workspacePath
-    const response = await api.get(`/api/chat-history/sessions/${sessionId}`, { params })
+    const response = await readChat(sessionId, () => api.get(`/api/chat-history/sessions/${sessionId}`, { params }))
     return response.data
   },
 
@@ -1082,9 +1140,19 @@ export const agentApi = {
     return response.data
   },
 
+  // Vault apps changed since this chat started (#3528); reload applies them on the next message.
+  getToolChanges: async (sessionId: string): Promise<ToolChanges> => {
+    const response = await readChat(sessionId, () => api.get(`/api/sessions/${sessionId}/tool-changes`))
+    return toolChanges(response.data)
+  },
+  reloadTools: async (sessionId: string): Promise<ToolChanges> => {
+    const response = await api.post(`/api/sessions/${sessionId}/tool-changes`)
+    return toolChanges(response.data)
+  },
+
   // Get session status (active, completed, or not found)
   getSessionStatus: async (sessionId: string): Promise<SessionStatusResponse> => {
-    const response = await api.get(`/api/sessions/${sessionId}/status`)
+    const response = await readChat(sessionId, () => api.get(`/api/sessions/${sessionId}/status`))
     return response.data
   },
 
@@ -1094,6 +1162,24 @@ export const agentApi = {
       params: { workspace_path: target.workspace_path }, timeout: RUNTIME_READ_TIMEOUT_MS,
     })
     return response.data
+  },
+
+  /** A coding agent's subagent conversation as it is now (#3132); the chat's own user only. */
+  getSessionSubagent: async (sessionId: string, toolCallId: string): Promise<{ running: boolean; stop_id?: string; transcript: import('./api-types').ExecutionInspectionResponse['transcript'] }> => {
+    const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(toolCallId)}`, { timeout: RUNTIME_READ_TIMEOUT_MS })
+    return response.data
+  },
+
+  /** The saved events about the chat's helper agents, the whole chat (#3245). */
+  getSessionHelperEvents: async (sessionId: string): Promise<{ events: import('./api-types').PollingEvent[] }> => {
+    const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/helper-events`, { timeout: RUNTIME_READ_TIMEOUT_MS })
+    return { events: Array.isArray(response.data?.events) ? response.data.events : [] }
+  },
+
+  /** The tasks this chat handed to its owner's other tabs (#3245). */
+  getSessionLinkedHelpers: async (sessionId: string): Promise<import('../utils/chatHelpers').ChatLinkedHelper[]> => {
+    const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/linked-helpers`, { timeout: RUNTIME_READ_TIMEOUT_MS })
+    return Array.isArray(response.data?.helpers) ? response.data.helpers : []
   },
 
   getSessionBackgroundWork: async (sessionId: string): Promise<SessionBackgroundWorkResponse> => {
@@ -1120,8 +1206,12 @@ export const agentApi = {
 
   // Start a new agent query
   getQueuedMessages: async (sessionId: string): Promise<import('../../shared/session/types').PendingQueuedMessage[]> => {
+    return (await agentApi.getChatQueueState(sessionId)).messages
+  },
+
+  getChatQueueState: async (sessionId: string): Promise<import('../../shared/session/types').ChatQueueState> => {
     const response = await api.get(`/api/sessions/${encodeURIComponent(sessionId)}/queued-messages`, { headers: { 'X-Session-ID': sessionId } })
-    return response.data.messages
+    return response.data
   },
 
   removeQueuedMessage: async (sessionId: string, messageId: string) => {
@@ -1186,12 +1276,14 @@ export const agentApi = {
     // Opening a project resolves its canonical chat. An unrelated active tab's
     // session must not become a continuation candidate (shared Code returned 422).
     // Axios omits a false header; the interceptor preserves this opt-out.
+    const identity = captureChatIdentity()
     const headers: Record<string, string | false> = { 'X-Session-ID': existingSessionId || false }
     const response = await api.post(
       `/api/agent-profiles/${encodeURIComponent(profileId)}/conversation`,
       request,
       { headers, skipSessionContext: existingSessionId === null },
     )
+    if (response.data.session_id) clearChatAccess(response.data.session_id, identity)
     return response.data
   },
 
@@ -1221,13 +1313,33 @@ export const agentApi = {
   },
 
   /** This chat's context options as the server decides them (PLAT-872-71); only the chat's owner gets them. */
-  getChatContext: async (sessionId: string): Promise<ChatContextView> => {
-    const response = await api.get('/api/chat-context', { params: { session_id: sessionId } })
-    return response.data.context
+  getChatContext: (sessionId: string): Promise<ChatContextView> => {
+    // Several parts of one chat (usage chip, model menu, terminal toggle, context menu) ask at the same moment;
+    // they share the request already on its way instead of sending 5-6 identical ones (PLAT-746-840).
+    const pending = chatContextReads.get(sessionId)
+    if (pending) return pending
+    const read = api.get('/api/chat-context', { params: { session_id: sessionId } })
+      .then(response => response.data.context as ChatContextView)
+      .finally(() => chatContextReads.delete(sessionId))
+    chatContextReads.set(sessionId, read)
+    return read
+  },
+
+  /** What this chat kept when it was compacted nearest to `at` (the row's time), as the server reads it from the
+   *  chat's own saved session (#3236); the chat's owner only. A 404 carries the plain reason in `error`. */
+  getChatCompactionSummary: async (sessionId: string, at?: string): Promise<ChatCompactionSummary> => {
+    const response = await api.get('/api/chat-context/summary', { params: { session_id: sessionId, ...(at ? { at } : {}) }, timeout: RUNTIME_READ_TIMEOUT_MS })
+    return response.data.summary as ChatCompactionSummary
+  },
+
+  /** What one part of the caller's own Claude Code chat is made of, each item with its text, biggest first. */
+  getChatContextPart: async (sessionId: string, key: string): Promise<{ items: ChatContextPartItem[]; note?: string }> => {
+    const response = await api.get('/api/chat-context/part', { params: { session_id: sessionId, key }, timeout: RUNTIME_READ_TIMEOUT_MS })
+    return response.data
   },
 
   /** Changes this chat's context switches or runs compact/fresh; answers with the new view and a message to show. */
-  setChatContext: async (body: { session_id: string; idle_compaction?: boolean; compact_early?: boolean; claude_terminal?: boolean; action?: 'compact' | 'fresh' }): Promise<{ context: ChatContextView; message?: string; starter_message?: string }> => {
+  setChatContext: async (body: { session_id: string; idle_compaction?: boolean; compact_early?: boolean; claude_terminal?: boolean; access_mode?: ChatAccessMode; action?: 'compact' }): Promise<{ context: ChatContextView; message?: string; starter_message?: string }> => {
     const response = await api.post('/api/chat-context', body)
     return response.data
   },
@@ -1238,15 +1350,38 @@ export const agentApi = {
     return response.data
   },
 
+  /** The person's own left-menu groups of a Crew's agents (#3288): conversation key → group name. */
+  agentGroups: async (projectId: string): Promise<Record<string, string>> => {
+    const response = await api.get('/api/agent-profiles/work/side-chats/groups', { params: { project_id: projectId } })
+    return response.data?.groups || {}
+  },
+
+  /** One change to those groups (new, move, rename, ungroup); the server decides names and answers with all of them. */
+  editAgentGroups: async (projectId: string, edit: { op: 'new' | 'move' | 'rename' | 'ungroup'; key?: string; group?: string; name?: string }): Promise<Record<string, string>> => {
+    const response = await api.post('/api/agent-profiles/work/side-chats/groups', { project_id: projectId, ...edit })
+    return response.data?.groups || {}
+  },
+
+  /** Moves a fork out from under the agent it hangs under (forkedFrom ''), or puts it back under that agent (#3504);
+   * the server decides and answers with the project's tabs. */
+  setAgentForkParent: async (profileId: string, projectId: string, conversationKey: string, forkedFrom: string): Promise<AgentProfileSideChat[]> => {
+    const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats/fork-parent`, { project_id: projectId, conversation_key: conversationKey, forked_from: forkedFrom })
+    return response.data
+  },
+
   /** Saves whether a side tab stays on the strip; answers with the project's tabs. */
   pinAgentProfileSideChat: async (profileId: string, projectId: string, conversationKey: string, pinned: boolean): Promise<AgentProfileSideChat[]> => {
     const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats/pin`, { project_id: projectId, conversation_key: conversationKey, pinned })
     return response.data
   },
 
-  /** Forgets a closed Code side chat (tab) on the server; its history is kept. */
-  closeAgentProfileSideChat: async (profileId: string, conversationKey: string): Promise<void> => {
-    await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/conversation/close`, { conversation_key: conversationKey })
+  /** Server-owned removal preview; nothing is deleted until its effects are confirmed. */
+  previewAgentRemoval: async (profileId: string, conversationKey: string) => {
+    const response = await api.post<{ confirmation: string; dependencies: { id: string; kind: string; name: string; can_reassign: boolean; when_removed?: string[] }[]; destinations: { key: string; name: string }[]; effects: string[] }>(`/api/agent-profiles/${encodeURIComponent(profileId)}/conversation/close`, { conversation_key: conversationKey, preview_removal: true })
+    return response.data
+  },
+  closeAgentProfileSideChat: async (profileId: string, conversationKey: string, confirmation: string, choices: Record<string, string>): Promise<void> => {
+    await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/conversation/close`, { conversation_key: conversationKey, removal_confirmation: confirmation, removal_choices: choices })
   },
 
   startNewAgentProfileConversation: async (
@@ -1261,11 +1396,6 @@ export const agentApi = {
   },
 
   // Admin inspection of Code (read-only; every call is audited server-side).
-  adminListCodeWorkspaces: async (): Promise<{ workspaces: CodeAdminWorkspace[] }> => {
-    const response = await api.get('/api/admin/crew/workspaces')
-    return response.data
-  },
-
   adminListCodeFiles: async (ownerId: string, projectId: string): Promise<{ files: SharedProjectFileEntry[]; truncated?: boolean }> => {
     const response = await api.get(`/api/admin/crew/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/files`)
     return response.data
@@ -1273,16 +1403,6 @@ export const agentApi = {
 
   adminGetCodeFile: async (ownerId: string, projectId: string, path: string): Promise<{ path: string; content: string; binary?: boolean; truncated?: boolean }> => {
     const response = await api.get(`/api/admin/crew/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/file`, { params: { path } })
-    return response.data
-  },
-
-  adminListCodeChats: async (ownerId: string, projectId: string): Promise<{ chats: CodeAdminChat[] }> => {
-    const response = await api.get(`/api/admin/crew/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/chats`)
-    return response.data
-  },
-
-  adminGetCodeChat: async (ownerId: string, projectId: string, sessionId: string, userId: string): Promise<{ conversation_history?: Array<{ Role?: string; role?: string; Parts?: Array<Record<string, unknown>>; parts?: Array<Record<string, unknown>> }> }> => {
-    const response = await api.get(`/api/admin/crew/workspaces/${encodeURIComponent(ownerId)}/${encodeURIComponent(projectId)}/chats/${encodeURIComponent(sessionId)}`, { params: { user: userId } })
     return response.data
   },
 
@@ -1297,20 +1417,20 @@ export const agentApi = {
   },
 
   /** Minimal app navigation from the current canonical project inventory. */
-  listWorkspaceNavigation: async (): Promise<{ workspaces: Array<{ workspace_id: string; id: string; profile_id: 'work'; name: string; icon?: string; owned_by_caller: boolean; owner_name?: string; personal_agent?: boolean; mode: 'builder' | 'run'; workspace_path: string; aliases?: string[] } & CrewLocationFields> }> => {
+  listWorkspaceNavigation: async (): Promise<{ workspaces: Array<{ workspace_id: string; id: string; profile_id: 'work'; name: string; team_live?: TeamLiveView; icon?: string; owned_by_caller: boolean; owner_name?: string; shared_line?: string; mode: 'builder' | 'run'; workspace_path: string; aliases?: string[] } & CrewLocationFields> }> => {
     const response = await api.post('/api/workspaces', { action: 'list', detail: 'navigation' })
     const result = response.data
     if (!Array.isArray(result.workspaces) || result.workspaces.some((item: { workspace_id?: string; id?: string; profile_id?: string; workspace_path?: string }) =>
-      !item.id || !['work', 'code'].includes(item.profile_id || '') || !item.workspace_path || item.workspace_id !== `${item.profile_id}:${item.id}`)) {
+      !item.id || item.profile_id !== 'work' || !item.workspace_path || item.workspace_id !== `${item.profile_id}:${item.id}`)) {
       throw new Error('Project navigation is unavailable.')
     }
     return result
   },
 
   /** The Crews the signed-in user owns that live at the shared root (Crew/<folder>); older servers have none. */
-  listOwnSharedProjects: async (profileId: string): Promise<{ projects: Array<{ id: string; title?: string; workspace_path: string; files_path: string }> }> => {
+  listOwnSharedProjects: async (profileId: string, connection?: string): Promise<{ projects: Array<{ id: string; title?: string; workspace_path: string; files_path: string }> }> => {
     const response = await api.get(
-      `/api/agent-profiles/${encodeURIComponent(profileId)}/own-shared-projects`,
+      `/api/agent-profiles/${encodeURIComponent(profileId)}/own-shared-projects`, { connection },
     )
     return response.data
   },
@@ -1340,9 +1460,9 @@ export const agentApi = {
     return response.data
   },
 
-  listSharedProjects: async (profileId: string): Promise<{ projects: SharedProjectSummary[] }> => {
+  listSharedProjects: async (profileId: string, connection?: string): Promise<{ projects: SharedProjectSummary[] }> => {
     const response = await api.get(
-      `/api/agent-profiles/${encodeURIComponent(profileId)}/shared-projects`,
+      `/api/agent-profiles/${encodeURIComponent(profileId)}/shared-projects`, { connection },
     )
     return response.data
   },
@@ -1820,7 +1940,7 @@ export const agentApi = {
 
   // --- Shared bot connector config ("_global": allowed_emails etc.) ---
 
-  getBotConfig: async (): Promise<{ delegation_tier_config?: Record<string, unknown>; default_servers?: string[]; default_skills?: string[]; allowed_emails?: string[] }> => {
+  getBotConfig: async (): Promise<{ default_servers?: string[]; default_skills?: string[]; allowed_emails?: string[] }> => {
     const response = await api.get('/api/bot/config')
     return response.data
   },
@@ -1884,34 +2004,9 @@ export const agentApi = {
     return response.data
   },
 
-  // Save delegation tier config to workspace filesystem (shared by chat and bot connector)
-  saveDelegationTierConfig: async (config: Record<string, unknown>, providerApiKeys?: Record<string, string>): Promise<{ success: boolean }> => {
-    await api.put('/api/delegation-tier-config', config)
-    // Save provider API keys to encrypted workspace file if provided
-    if (providerApiKeys && Object.keys(providerApiKeys).length > 0) {
-      await api.put('/api/provider-keys', providerApiKeys).catch(() => {})
-    }
-    return { success: true }
-  },
-
-  // Load delegation tier config from workspace filesystem
-  getDelegationTierConfig: async (): Promise<Record<string, unknown>> => {
-    const response = await api.get('/api/delegation-tier-config')
-    return response.data
-  },
-
   // Get tool list and status
   getTools: async () => {
     const response = await api.get('/api/tools')
-    return response.data
-  },
-
-  // Set enabled tools for a query/session
-  setEnabledTools: async (queryId: string, enabledTools: string[]) => {
-    const response = await api.post('/api/tools/enabled', {
-      query_id: queryId,
-      enabled_tools: enabledTools,
-    })
     return response.data
   },
 
@@ -1951,9 +2046,9 @@ export const agentApi = {
     return response.data
   },
 
-  getPlannerFileContent: async (filepath: string, timeoutMs?: number) => {
+  getPlannerFileContent: async (filepath: string, timeoutMs?: number, connection?: string) => {
     // API handles path conversion internally
-    const response = await workspaceApi.get(`/api/documents/${encodeURIComponent(filepath)}`, timeoutMs ? { timeout: timeoutMs } : undefined)
+    const response = await workspaceApi.get(`/api/documents/${encodeURIComponent(filepath)}`, { ...(timeoutMs ? { timeout: timeoutMs } : {}), connection })
     return response.data
   },
 
@@ -2009,72 +2104,6 @@ export const agentApi = {
     }
   },
 
-	listReportHumanInputs: async (workspacePath: string, status?: string, source?: string) => {
-    const response = await api.get('/api/report-human-inputs', {
-      params: {
-        workspace_path: workspacePath,
-        ...(status ? { status } : {}),
-        ...(source ? { source } : {}),
-      },
-    })
-		return response.data as ReportHumanInputsResponse
-	},
-
-	// Decisions that need the person: unanswered ones, plus answered ones that are
-	// not applied yet (runs never apply decisions; they wait for "Apply in chat").
-	listNeedsYouDecisionsAggregate: async (workspacePaths: string[]): Promise<ReportHumanInputsResponse> => {
-		const [pending, answered] = await Promise.all([
-			agentApi.listReportHumanInputsAggregate(workspacePaths, 'pending'),
-			agentApi.listReportHumanInputsAggregate(workspacePaths, 'answered'),
-		])
-		return {
-			...pending,
-			success: pending.success && answered.success,
-			inputs: needsYouDecisions(pending.inputs || [], answered.inputs || []),
-		}
-	},
-	listReportHumanInputsAggregate: async (workspacePaths: string[], status?: string, source?: string) => {
-		const response = await api.get('/api/report-human-inputs/aggregate', {
-			params: {
-				workspace_paths: workspacePaths.join(','),
-				...(status ? { status } : {}),
-				...(source ? { source } : {}),
-			},
-		})
-		return response.data as ReportHumanInputsResponse
-	},
-
-  getGoalMetrics: async (workspacePath: string, signal?: AbortSignal) => {
-    const response = await api.get('/api/workflow/goal-metrics', {
-      params: { workspace_path: workspacePath }, signal,
-    })
-    return response.data as GoalMeasurements
-  },
-
-
-
-  /** Confirm, reject, add, extend or close a focus area. */
-
-  answerReportHumanInput: async (
-    workspacePath: string,
-    inputId: string,
-    body: { selected_option_id?: string; note?: string },
-  ) => {
-    const response = await api.post(`/api/report-human-inputs/${encodeURIComponent(inputId)}/answer`, {
-      workspace_path: workspacePath,
-      selected_option_id: body.selected_option_id || '',
-      note: body.note || '',
-    })
-    return response.data as ReportHumanInputResponse
-  },
-
-  dismissReportHumanInput: async (workspacePath: string, inputId: string) => {
-    const response = await api.post(`/api/report-human-inputs/${encodeURIComponent(inputId)}/dismiss`, {
-      workspace_path: workspacePath,
-    })
-    return response.data as ReportHumanInputResponse
-  },
-
   updatePlannerFile: async (filepath: string, content: string, commitMessage?: string, options?: { createOnly?: boolean }) => {
     const requestBody: { content: string; commit_message?: string; create_only?: boolean } = { content }
     if (options?.createOnly) requestBody.create_only = true
@@ -2126,32 +2155,47 @@ export const agentApi = {
 
   // One helper for every chat attachment: the file goes as chunks (plan, the chunks the server lacks, finish), so no
   // single request is big enough to hit the gateway's limit. The server decides what is allowed and where it goes.
-  uploadCrewChatFile: async (file: File, projectId: string) => {
+  prepareCrewChatFile: async (file: File, projectId: string, scope?: { sessionId: string; conversationKey: string }): Promise<{ attachment: { hash: string; name: string }; upload: () => Promise<{ filepath: string }> }> => {
     const route = `/api/agent-profiles/work/projects/${encodeURIComponent(projectId)}/uploads`
     const hex = (digest: ArrayBuffer) => Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
-    try {
-      const bytes = new Uint8Array(await file.arrayBuffer())
-      const pieces: { id: string; data: Uint8Array }[] = []
-      for (let at = 0; at < bytes.length; at += UPLOAD_CHUNK_BYTES) {
-        const data = bytes.subarray(at, at + UPLOAD_CHUNK_BYTES)
-        pieces.push({ id: hex(await crypto.subtle.digest('SHA-256', data)), data })
-      }
-      const version = { hash: hex(await crypto.subtle.digest('SHA-256', bytes)), size: bytes.length, chunks: pieces.map(piece => ({ id: piece.id, n: piece.data.length })) }
-      const plan = await api.post(`${route}/plan`, { file: version })
-      const missing = new Set<string>(plan.data.missing)
-      const send = pieces.filter(piece => missing.delete(piece.id))
-      for (let at = 0; at < send.length; at += UPLOAD_CHUNKS_PER_REQUEST) {
-        await api.put(`${route}/chunks`, uploadFrames(send.slice(at, at + UPLOAD_CHUNKS_PER_REQUEST)), { headers: { 'Content-Type': 'application/octet-stream' } })
-      }
-      const response = await api.post(route, { name: file.name, file: version })
-      return response.data
-    } catch (error) {
+    const serverMessage = (error: unknown) => {
       if (axios.isAxiosError(error)) {
         const message = error.response?.data?.error?.message || error.response?.data?.error || error.response?.data?.message
-        if (typeof message === 'string') throw new Error(message)
+        if (typeof message === 'string') return new Error(message)
       }
-      throw error
+      return error
     }
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const pieces: { id: string; data: Uint8Array }[] = []
+    for (let at = 0; at < bytes.length; at += UPLOAD_CHUNK_BYTES) {
+      const data = bytes.subarray(at, at + UPLOAD_CHUNK_BYTES)
+      pieces.push({ id: hex(await crypto.subtle.digest('SHA-256', data)), data })
+    }
+    const version = { hash: hex(await crypto.subtle.digest('SHA-256', bytes)), size: bytes.length, chunks: pieces.map(piece => ({ id: piece.id, n: piece.data.length })) }
+    const binding = scope ? { session_id: scope.sessionId, conversation_key: scope.conversationKey } : {}
+    // The hash is all a message needs: it can be sent now, and the server waits for the plan and upload below.
+    return {
+      attachment: { hash: version.hash, name: file.name },
+      upload: async () => {
+        try {
+          const plan = await api.post(`${route}/plan`, { file: version, ...binding })
+          const missing = new Set<string>(plan.data.missing)
+          const send = pieces.filter(piece => missing.delete(piece.id))
+          for (let at = 0; at < send.length; at += UPLOAD_CHUNKS_PER_REQUEST) {
+            await api.put(`${route}/chunks`, uploadFrames(send.slice(at, at + UPLOAD_CHUNKS_PER_REQUEST)), { headers: { 'Content-Type': 'application/octet-stream' } })
+          }
+          const response = await api.post(route, { name: file.name, file: version, ...binding })
+          return response.data
+        } catch (error) {
+          throw serverMessage(error)
+        }
+      },
+    }
+  },
+
+  uploadCrewChatFile: async (file: File, projectId: string): Promise<{ filepath: string }> => {
+    const prepared = await agentApi.prepareCrewChatFile(file, projectId)
+    return prepared.upload()
   },
 
   uploadPlannerFile: async (file: File, folderPath: string, commitMessage?: string) => {
@@ -2380,24 +2424,6 @@ export const agentApi = {
     return response.data
   },
 
-  getOrgDashboardNotifications: async (workspacePaths: string[], recentLimit = 10): Promise<{
-    success: boolean
-    workflows: Array<{
-      workspace_path: string
-      run_summary?: OrgDashboardNotification
-      recent?: OrgDashboardNotification[]
-      by_route?: import('./api-types').OrgDashboardRouteNotifications[]
-      error?: string
-    }>
-  }> => {
-    const response = await api.get('/api/org-dashboard/notifications', {
-      params: {
-        workspace_paths: workspacePaths.join(','),
-        recent_limit: recentLimit,
-      },
-    })
-    return response.data
-  },
   // *** NEW CONSOLIDATED API ***
   // Load all workspace state in a single API call (run folders, variables, phases, progress)
   // This replaces multiple individual API calls (getRunFolders, getVariableGroups, constants, progress)
@@ -2436,14 +2462,6 @@ export const agentApi = {
       })
       return response.data
     })
-  },
-
-  // Rich overview rows for multiple workflows in one backend call.
-  getWorkflowsOverview: async (workspacePaths: string[]): Promise<WorkflowOverviewBatchResponse> => {
-    const response = await api.get('/api/workflows/overview', {
-      params: { workspace_paths: workspacePaths.join(',') }
-    })
-    return response.data
   },
 
   // --- Workflow Manifest API (file-backed workflow definitions) ---
@@ -2511,6 +2529,9 @@ export const agentApi = {
 
 // --- Auth API ---
 export interface AuthUser {
+  avatar_url?: string
+  avatar_icon?: string
+  avatar_color?: string
   id: string
   username: string
   email?: string
@@ -2546,6 +2567,9 @@ export interface AuthUser {
 
 /** One account as the admin page sees it (never the password hash). */
 export interface AdminUser {
+  avatar_url?: string
+  avatar_icon?: string
+  avatar_color?: string
   id: string
   username: string
   email?: string

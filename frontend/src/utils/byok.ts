@@ -2,7 +2,6 @@
 // kept as a private Pi account. Pi is the engine; people pick a service, not
 // a Pi provider id.
 import type { ProviderConnection } from '../services/llm-config-api'
-import { usePanelSwitcherStore } from '../stores/usePanelSwitcherStore'
 import { useCommandDialogStore } from '../stores/useCommandDialogStore'
 
 export interface ByokService {
@@ -56,10 +55,7 @@ export function freeModelErrorHint(error?: string | null): string | null {
   return 'This model is busy, rate-limited or gone (common for free models). Pick another model and send again.'
 }
 
-/** Opens the project's Models tab where it exists, else the Providers dialog. */
+/** Opens the Providers dialog (accounts and their models); a chat's own model is chosen in its message box. */
 export function openModelPicker() {
-  const entries = Object.values(usePanelSwitcherStore.getState().entries)
-  const entry = entries.find(candidate => candidate?.panels.some(panel => panel.id === 'identity'))
-  if (entry) { entry.open('identity', 'models'); return }
   useCommandDialogStore.getState().openDialog('models')
 }

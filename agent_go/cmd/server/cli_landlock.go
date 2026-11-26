@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/noderuntime"
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/clisecurity"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
@@ -75,7 +76,7 @@ func applyCLILandlock(llmAgent *agent.LLMAgentWrapper, sessionID, personID, prov
 		failClosedToBridgeOnly(llmAgent, sessionID, fmt.Sprintf("the Landlock policy could not be attached (%v)", err))
 		return
 	}
-	// Blocked paths (planning/, the raw database, AGENTS.md) are enforced inside
+	// Blocked paths (planning/, the raw database, CLI policy files) are enforced inside
 	// the lock: multi-llm-provider-go splits the grants around them (PLAT-385).
 	if upgraded, err := llmAgent.UpgradeCodingAgentToolsToFull(); err != nil {
 		log.Printf("[CLI_LANDLOCK] session %s: could not turn on Full CLI: %v", sessionID, err)
@@ -193,12 +194,23 @@ func cliSeatbeltProtectedRoots() []string {
 	return roots
 }
 
+// cliSeatbeltRuntimeReadPaths reopens, read-only, the programs that live in the
+// closed app folder: a Mac without its own Node.js runs the app's private copy
+// under state/node, and a Node-based CLI (Cursor, Codex, Claude) failed to start
+// with "env: .../node: Operation not permitted" without it.
+func cliSeatbeltRuntimeReadPaths() []string {
+	if dir := noderuntime.DefaultDir(); dir != "" {
+		return []string{dir}
+	}
+	return nil
+}
+
 func cliArtifactRoot(workingDir string, runtimeDir ...string) string {
 	return clisecurity.ArtifactRoot(workingDir, runtimeDir...)
 }
 
 func cliConfinementHost() clisecurity.Host {
-	return clisecurity.Host{PersonalMac: cliPersonalMac(), PersonalWindows: cliPersonalWindows(), SeatbeltAvailable: cliSeatbeltAvailable(), LandlockRunner: cliLandlockRunner, ResolvePath: cliPolicyPath, LookupRoots: crewStorageRoots, ProtectedRoots: cliSeatbeltProtectedRoots(), DownloadsFolder: macDownloadsFolder(), DocsRoot: fsutil.WorkspaceDocsRoot()}
+	return clisecurity.Host{PersonalMac: cliPersonalMac(), PersonalWindows: cliPersonalWindows(), SeatbeltAvailable: cliSeatbeltAvailable(), LandlockRunner: cliLandlockRunner, ResolvePath: cliPolicyPath, LookupRoots: crewStorageRoots, ProtectedRoots: cliSeatbeltProtectedRoots(), RuntimeReadPaths: cliSeatbeltRuntimeReadPaths(), DownloadsFolder: macDownloadsFolder(), DocsRoot: fsutil.WorkspaceDocsRoot()}
 }
 
 func cliHomeName(provider string) string { return clisecurity.HomeName(provider) }

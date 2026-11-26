@@ -44,13 +44,13 @@ func (api *StreamingAPI) crewReaderSharedAsset(w http.ResponseWriter, r *http.Re
 	}
 	crewRoot, crewRelative := strings.Join(parts[:2], "/"), strings.Join(parts[2:], "/")
 	if !crewLinkReadAllowed(api, claims, crewRoot) {
-		externalError(w, 403, "forbidden", "You do not have access to this Crew.")
+		externalError(w, 403, "forbidden", "You do not have access to this project.")
 		return "", "", false, true, false
 	}
 	if token := claims.AccessToken; token != nil {
 		manifest, err := readCrewProjectManifests(r.Context(), "work", crewRoot)
 		if err != nil || !token.Allows("crews:read") || !token.AllowsCrew(manifest.ID) {
-			externalError(w, 403, "insufficient_scope", "This token does not allow this Crew asset.")
+			externalError(w, 403, "insufficient_scope", "This token does not allow this project asset.")
 			return "", "", false, true, false
 		}
 	}
@@ -58,7 +58,7 @@ func (api *StreamingAPI) crewReaderSharedAsset(w http.ResponseWriter, r *http.Re
 	if rootView {
 		crewRelative = "."
 	} else if _, confined := confineSharedProjectPath(crewRoot, crewRelative); !confined {
-		externalError(w, 403, "protected_path", "This part of the Crew is private to its owner.")
+		externalError(w, 403, "protected_path", "This part of the project is private to its owner.")
 		return "", "", false, true, false
 	}
 	if wf.Private(crewRelative) || !externalFileGuard(r.Context(), false).Allows(crewRelative, false) {

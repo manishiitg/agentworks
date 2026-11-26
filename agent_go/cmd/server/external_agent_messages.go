@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,18 +11,32 @@ import (
 	"time"
 )
 
-func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claims *UserClaims, caller triggerLinkCaller, inboxID string, send bool) (agentMessageEndpoint, error) {
+func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claims *UserClaims, caller triggerLinkCaller, inboxID string, send bool) (peer agentMessageEndpoint, retErr error) {
+	check := "thread_identity"
+	defer func() {
+		if send && retErr != nil {
+			log.Printf("[AGENT-REPLY] check=%s status=refused inbox=%s agent=%s", check, inboxID, caller.NamedAgentID)
+		}
+	}()
 	store, err := readAgentMessageSnapshot(ctx)
 	if err != nil {
 		return agentMessageEndpoint{}, err
 	}
 	for _, conversation := range store.Conversations {
-		if conversation.ID != inboxID {
+		if conversation.ID != inboxID || !bridgeOrProductConversation(conversation) {
 			continue
 		}
 		for side, endpoint := range conversation.Endpoints {
 			if endpoint.External && messageEndpointMatches(endpoint, claims.UserID, caller) {
+				check = "contact_admission"
+				if err := recheckAgentConversationContact(ctx, conversation); err != nil {
+					return agentMessageEndpoint{}, err
+				}
 				peer := conversation.Endpoints[1-side]
+				peer, err = publishedAgentAuthorizationPeer(ctx, peer)
+				if err != nil {
+					return agentMessageEndpoint{}, err
+				}
 				peerClaims := claims
 				// The hosted chat opened this inbox with this exact attached
 				// agent. Answering it is mail, not a grant of product tools.
@@ -29,10 +44,8 @@ func (api *StreamingAPI) externalMessagePeerForCaller(ctx context.Context, claim
 				if send {
 					peerClaims = hostedInboxReplyClaims(claims, conversation, side)
 				}
-				if err := api.externalAuthorizeMessagePeer(ctx, peerClaims, peer, send); err != nil {
-					if send {
-						log.Printf("[AGENT-REPLY] check=peer_authorization status=refused inbox=%s agent=%s peer_session=%s", conversation.ID, caller.NamedAgentID, peer.Session)
-					}
+				check = "peer_authorization"
+				if err := api.externalAuthorizeConversationPeer(ctx, peerClaims, conversation, side, send && peerClaims == claims); err != nil {
 					return agentMessageEndpoint{}, err
 				}
 				if peerClaims != claims {
@@ -88,6 +101,18 @@ func messagePeerView(claims *UserClaims, send bool) *UserClaims {
 func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claims *UserClaims, peer agentMessageEndpoint, send bool) error {
 	token := claims.AccessToken
 	denied := fmt.Errorf("conversation unavailable or access denied")
+	if peer.TeamAgentID != "" && peer.UserID != claims.UserID && namedAgentOperationAllowed(claims, send) {
+		return crewTeamAdmitEndpoint(ctx, claims.UserID, peer)
+	}
+
+	// A published sender thread is mail to an admitted audience, not a grant of
+	// Crew tools to an attached agent's messaging-only connection.
+	if peer.PublishedAgent != "" && token != nil && token.BoundAgentID != "" {
+		if _, err := publishedAgentAuthorizationPeer(ctx, peer); err == nil && claims.UserID == peer.PublishedAsker && namedAgentOperationAllowed(claims, send) {
+			return nil
+		}
+		return denied
+	}
 	if peer.External {
 		if peer.UserID != claims.UserID && peer.ShareID != "" {
 			return api.externalAuthorizeSharedPeer(ctx, claims, peer, send)
@@ -102,12 +127,16 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 		}
 		return nil
 	}
-	// A person may contact a shared Mac agent through their attached chat just as on the website.
+	// An attached chat may contact a shared Mac agent, including its own person's published Mac agent.
 	// Check the current audience before the own-hosted-chat receive guard: this is an explicit share,
 	// and the attached connection carries messaging permissions, not general Crew tool permissions.
-	if peer.Kind == triggerCallerCrew && peer.UserID != claims.UserID && peer.ChatKey != "" && !strings.HasPrefix(peer.ChatKey, "messages:") && !IsLocalMode() && crewRelayTwin(peer.ID) {
+	if peer.Kind == triggerCallerCrew && peer.ChatKey != "" && !strings.HasPrefix(peer.ChatKey, "messages:") && !IsLocalMode() && crewRelayTwin(peer.ID) {
+		if ownerOfCrewProjectID(peer.ID) != peer.UserID {
+			return denied
+		}
 		tab := macSharedAgentTab(peer.ID, peer.ChatKey)
 		_, reason := macSharedAgentForAgent(peer.ID, tab, claims.UserID, peer.UserID)
+
 		if reason == "" && token != nil {
 			if token.BoundAgentID != "" {
 				if !namedAgentOperationAllowed(claims, send) {
@@ -197,86 +226,23 @@ func (api *StreamingAPI) externalMessageTarget(ctx context.Context, claims *User
 }
 
 func (api *StreamingAPI) externalMessageTargetForOperation(ctx context.Context, claims *UserClaims, args map[string]any, send bool) (triggerTarget, error) {
-	crewID, workflowID, name := externalArg(args, "crew_id"), externalArg(args, "workflow_id"), strings.TrimSpace(externalArg(args, "target"))
-	if base, key, ok := strings.Cut(name, "/agent/"); ok && strings.HasPrefix(base, "workspace:work:") {
-		if explicit := externalArg(args, "chat_id"); explicit != "" && explicit != key {
-			return triggerTarget{}, fmt.Errorf("target and chat_id name different agents")
-		}
-		name = base
-		args["chat_id"] = key
+	name := strings.TrimSpace(externalArg(args, "target"))
+	if externalArg(args, "crew_id") != "" || externalArg(args, "workflow_id") != "" || externalArg(args, "chat_id") != "" {
+		log.Printf("[AGENT-MESSAGE] action=refused reason=retired_product_target")
+		return triggerTarget{}, fmt.Errorf("Use an agent address from list_agents, not a product or chat target")
 	}
-	if (crewID != "" && workflowID != "") || (name != "" && (crewID != "" || workflowID != "")) {
-		return triggerTarget{}, fmt.Errorf("choose exactly one of crew_id, workflow_id or target")
+	if !namedAgentOperationAllowed(claims, send) {
+		return triggerTarget{}, fmt.Errorf("connection lacks messaging access")
 	}
-	agentTarget := func(agentName string) (triggerTarget, error) {
-		if !namedAgentOperationAllowed(claims, send) {
-			return triggerTarget{}, fmt.Errorf("connection lacks messaging access")
-		}
-		senderAgentID := ""
-		if sender := externalArg(args, "agent_name"); sender != "" {
-			if a, err := namedAgentForClaims(ctx, claims, sender); err == nil {
-				senderAgentID = a.ID
-			}
-		}
-		return resolveNamedMessageAgent(ctx, claims.UserID, agentName, senderAgentID)
-	}
-	if strings.HasPrefix(strings.ToLower(name), "agent:") {
-		return agentTarget(name[len("agent:"):])
-	}
-	targets := []triggerTarget{}
-	if workflowID == "" {
-		crews, err := api.externalCrewsVisible(ctx, claims, "")
+	sender := ""
+	if label := externalArg(args, "agent_name"); label != "" {
+		a, err := namedAgentForClaims(ctx, claims, label)
 		if err != nil {
 			return triggerTarget{}, err
 		}
-		for _, summary := range crews {
-			id, label := fmt.Sprint(summary["id"]), fmt.Sprint(summary["name"])
-			if crewID != id && !(crewID == "" && name != "" && (strings.EqualFold(name, label) || strings.EqualFold(name, id) || strings.EqualFold(name, "crew:"+id) || strings.EqualFold(name, "workspace:work:"+id))) {
-				continue
-			}
-			crew, manifest, _, ok := api.externalCrewResolve(ctx, claims, id)
-			if ok {
-				targets = append(targets, triggerTarget{Kind: triggerCallerCrew, Path: crew.Binding.WorkspacePath, Label: label, CrewID: manifest.ID, CrewProfile: "work", CrewOwner: crew.OwnerID})
-			}
-		}
+		sender = a.ID
 	}
-	if crewID == "" {
-		workflows, err := DiscoverWorkflowManifests(ctx)
-		if err != nil {
-			return triggerTarget{}, err
-		}
-		for _, workflow := range filterWorkflowManifestsForUser(claims, workflows) {
-			m := workflow.Manifest
-			if m == nil || m.Kind == "relay" && externalArg(args, "chat_id") == "" || claims.AccessToken != nil && !claims.AccessToken.AllowsWorkflow(m.ID) {
-				continue
-			}
-			if workflowID != m.ID && !(workflowID == "" && name != "" && (strings.EqualFold(name, m.ID) || strings.EqualFold(name, m.Label) || strings.EqualFold(name, "workflow:"+m.ID))) {
-				continue
-			}
-			targets = append(targets, triggerTarget{Kind: triggerCallerWorkflow, Path: workflow.WorkspacePath, Label: firstNonEmptyTrimmed(m.Label, m.ID), Manifest: m})
-		}
-	}
-	if len(targets) == 0 && crewID == "" && workflowID == "" && name != "" && !strings.Contains(name, ":") {
-		// A bare name that is no Crew or workflow is an agent when one of the caller's agents has that name.
-		if target, err := agentTarget(name); err == nil {
-			return target, nil
-		}
-	}
-	if len(targets) != 1 {
-		return triggerTarget{}, fmt.Errorf("no single accessible Crew, workflow or agent matches; use agent:NAME for an agent, or choose a Crew or workflow by ID")
-	}
-	target := targets[0]
-	if chatID := externalArg(args, "chat_id"); chatID != "" {
-		var err error
-		target, err = api.resolveAgentChatTarget(ctx, target, chatID)
-		if err != nil {
-			return triggerTarget{}, err
-		}
-	}
-	if err := api.externalAuthorizeMessagePeer(ctx, claims, targetMessageEndpoint(claims.UserID, target), send); err != nil {
-		return triggerTarget{}, err
-	}
-	return target, nil
+	return api.resolveBridgeMessageAgent(ctx, claims, name, sender)
 }
 
 // externalOwnerAuthority reports whether a message to a Crew over this connection may start the Crew owner's own turn
@@ -313,12 +279,50 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		externalCommunicationError(w, 404, "not_found", err)
 		return
 	}
-	caller.OwnerAuthority = caller.NamedAgentID == "" && externalOwnerAuthority(claims, target)
+	productAskChannel, _ := r.Context().Value(productAskChannelKey{}).(bool)
+	// A person asks a Team agent as themselves (the Ask box under a teammate's agent): Team admission below is the
+	// check. Every other unnamed send is refused (#2762).
+	teamAsk := false
+	refuseUnnamed := func() bool {
+		if productAskChannel || caller.NamedAgentID != "" || teamAsk {
+			return false
+		}
+		log.Printf("[AGENT-MESSAGE] action=refused reason=named_sender_required")
+		externalError(w, 403, "named_sender_required", "Use your registered AgentBridge identity to send messages.")
+		return true
+	}
+	if (externalArg(args, "action") == "ask" || agentMessageQueueArgs(args)) && externalArg(args, "inbox_id") == "" {
+		target, err = crewTeamAskTarget(r.Context(), claims.UserID, target, externalArg(args, "offline"))
+		var choice crewTeamOfflineChoiceNeeded
+		if errors.As(err, &choice) {
+			writeCrewTeamOfflineChoice(w, choice)
+			return
+		}
+		if err != nil {
+			externalCommunicationError(w, 409, "ask_unavailable", err)
+			return
+		}
+		teamAsk = target.TeamAgentID != ""
+	}
+	if externalArg(args, "inbox_id") == "" && refuseUnnamed() {
+		return
+	}
+	productAsk, _ := r.Context().Value(productAskChannelKey{}).(bool)
+	caller.OwnerAuthority = !productAsk && caller.NamedAgentID == "" && externalOwnerAuthority(claims, target)
 	inbox := strings.TrimSpace(externalArg(args, "inbox_id"))
 	if inbox != "" {
 		peer, err := api.externalMessagePeerForCaller(r.Context(), claims, caller, inbox, true)
 		if err != nil {
 			externalCommunicationError(w, 404, "not_found", err)
+			return
+		}
+		if caller.NamedAgentID == "" && !productAskChannel {
+			if address, err := crewTeamEndpointAddress(r.Context(), peer); err == nil {
+				_, _, err = crewTeamAdmitAddress(r.Context(), claims.UserID, address)
+				teamAsk = err == nil
+			}
+		}
+		if refuseUnnamed() {
 			return
 		}
 		if target.Kind != "" && (target.NamedAgentID != "" && peer.NamedAgentID != target.NamedAgentID || target.NamedAgentID == "" && (peer.Kind != target.Kind || peer.ID != target.stampID() || peer.Profile != normalizeInternalProfileID(target.CrewProfile) || target.Chat != nil && peer.Session != target.Chat.SessionID)) {
@@ -329,20 +333,31 @@ func (api *StreamingAPI) externalSendMessage(w http.ResponseWriter, r *http.Requ
 		externalCommunicationError(w, 404, "not_found", err)
 		return
 	}
-	file, err := prepareMessageFile(args)
+	files, err := prepareMessageFiles(args)
 	if err != nil {
 		externalError(w, 400, "message_refused", err.Error())
 		return
 	}
-	out, err := api.sendAgentMessage(context.WithoutCancel(r.Context()), claims.UserID, caller, target, externalArg(args, "message"), inbox, externalArg(args, "submission_id"), file)
+	taskCtx, err := agentTaskArgsContext(context.WithoutCancel(r.Context()), args)
+	if err != nil {
+		externalError(w, 400, "message_refused", err.Error())
+		return
+	}
+	out, err := api.sendAgentMessage(taskCtx, claims.UserID, caller, target, externalArg(args, "message"), inbox, externalArg(args, "submission_id"), files...)
 	if err != nil {
 		externalCommunicationError(w, 400, "message_refused", err)
 		return
 	}
+	if agentMessageQueueArgs(args) {
+		log.Printf("[AGENTBRIDGE] event=queue_saved owner=%s message=%v inbox=%v", claims.UserID, out["message_id"], out["inbox_id"])
+	}
 	if caller.NamedAgentID != "" {
 		recordNamedAgentActivity(r.Context(), caller.NamedAgentID, "", false)
 		out["agent_name"] = caller.Label
-		out["next"] = "Check replies with messages action=read. Reply with action=send in the same inbox, using your agent_name and a new submission_id. Replies are optional; sending does not prove the other agent has it."
+		out["next"] = "Check replies with messages action=read. Reply with action=send in the same inbox, using your agent_name and a new submission_id. If the sender asked you a question or for work, send your answer back in the same inbox when you're done, as one short message; don't reply to plain notices or status. Normal final chat text is not forwarded. Sending does not prove the other agent has it."
+		if out["reply_expected"] == false {
+			out["next"] = fmt.Sprint(out["next"]) + " FYI only: no reply requested. For a question or work needing a reply use messages action=ask or expects_reply=true; prose such as 'please reply' does not mark a request."
+		}
 	}
 	externalJSON(w, out)
 }
@@ -363,11 +378,25 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		} else {
 			api.externalAgentAttachment(w, r, args)
 		}
+	case "agent_status":
+		if !namedAgentOperationAllowed(claims, false) {
+			externalError(w, 403, "insufficient_scope", "Connection lacks messaging read access.")
+			return
+		}
+		out, err := api.readAgentStatus(r.Context(), claims, externalArg(args, "target"), false, externalInt(args, "limit", 0))
+		if err != nil {
+			agentStatusHTTPError(w, err)
+			return
+		}
+		externalJSON(w, out)
 	case "list_agents":
 		if !namedAgentOperationAllowed(claims, false) {
 			externalError(w, 403, "insufficient_scope", "Connection lacks messaging read access.")
 			return
 		}
+		ctx, finishReads := startDirectoryRegistryReads(r.Context())
+		defer finishReads()
+		r = r.WithContext(ctx)
 		out, err := listNamedMessageAgents(withAgentUsageTimezone(r.Context(), externalArg(args, "usage_timezone")), claims.UserID)
 		if err != nil {
 			externalCommunicationError(w, 400, "directory_refused", err)
@@ -383,7 +412,7 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 			out["chats_inside_agentworks"] = items
 		}
 		if list, _ := out["agents"].([]map[string]interface{}); !slices.ContainsFunc(list, func(a map[string]interface{}) bool { _, other := a["owner"]; return other }) {
-			out["hint"] = "Agents of other people appear here once they publish them to the network. Ask the other person to tell their agent to publish it (agentworks share)."
+			out["hint"] = "Agents of other people appear here once discovery is on for them. Ask the other person to tell their agent to turn on discovery (agentworks share)."
 		}
 		if list, _ := out["agents"].([]map[string]interface{}); slices.ContainsFunc(list, func(a map[string]interface{}) bool {
 			_, other := a["owner"]
@@ -393,20 +422,38 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		}
 		// The same one list as inside the app (PLAT-861-297): Crews, Goals and Relays this person owns or that are
 		// shared with them, with their functions, next to their AgentBridge agents.
-		if directory, err := listAgentDirectory(r.Context(), claims); err == nil {
+		if directory, err := listAgentDirectory(r.Context(), claims, api); err == nil {
 			out["agents"] = directory["agents"]
 			out["note"] = directory["note"]
 			out["how_to_call"] = agentDirectoryHowToCall(directory["agents"])
 		}
-		filterAgentDirectory(out, externalArg(args, "query"))
+		out = compactAgentDirectory(r.Context(), claims.UserID, out, externalArg(args, "query"), externalInt(args, "offset", 0))
 		externalJSON(w, out)
 	case "state":
 		api.externalAgentMessageState(w, r, args)
+	case crewTeamChatReadAction:
+		// #3194: read an offline teammate agent's synced chat, as this signed-in person.
+		out, err := crewTeamReadChat(r.Context(), claims.UserID, externalArg(args, "target"), args)
+		if err != nil {
+			externalCommunicationError(w, 403, "history_refused", err)
+			return
+		}
+		externalJSON(w, out)
 	case "ping_person":
 		api.externalAgentPing(w, r, args)
 	case "get_file":
 		api.externalAgentMessageFile(w, r, args)
-	case "send":
+	case "stop":
+		api.externalAgentMessageStop(w, r, args)
+	case "send", "ask", "queue":
+		if out, handled, err := api.externalAgentTeamSend(r, claims, args); handled {
+			if err != nil {
+				externalCommunicationError(w, 400, "message_refused", err)
+				return
+			}
+			externalJSON(w, out)
+			return
+		}
 		var target triggerTarget
 		if inbox == "" || externalArg(args, "crew_id") != "" || externalArg(args, "workflow_id") != "" || externalArg(args, "target") != "" {
 			var err error
@@ -474,23 +521,23 @@ func (api *StreamingAPI) externalAgentMessages(w http.ResponseWriter, r *http.Re
 		recordNamedAgentActivity(r.Context(), caller.NamedAgentID, "", false)
 		externalJSON(w, out)
 	default:
-		externalError(w, 400, "invalid_arguments", "action must be register, unregister, list_agents, send, read, count, delete, clear, state, ack or update_purpose; live attachment is configured by the person through the CLI")
+		externalError(w, 400, "invalid_arguments", "action must be register, unregister, list_agents, agent_status, send, ask, queue, read, history, state, ack, update_purpose, ping_person, get_file, count, delete or clear; live attachment is configured by the person through the CLI")
 	}
 }
 
 func externalAgentMessageDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add("messages", "AgentBridge messages use an inbox for normal MCP sign-ins from apps without a terminal, or the live CLI bridge for attached coding chats. Register an agent_name; list_agents lists every agent you can use (Crews, Goals and Relays you own or that are shared with you, with their functions and ids, and your AgentBridge agents); send, read, reply with send in the same inbox_id, or ack your incoming messages. Inbox count/delete/clear use the same owner and connection checks. Inbox names receive nothing pushed into the app: check when the person asks or at the start of a conversation. The CLI gives live delivery if you can install it. The server shows the route and whether the recipient has acknowledged it. Existing account, connection, sharing, size and rate checks apply. Normal final chat replies are not forwarded. No attachment or selection of another chat is available here. Read/send product conversations through their existing access. Read results use non-destructive cursors. Named AgentBridge reads always use the same mailbox-wide position, including when inbox_id filters one conversation; use the returned next_cursor for later reads. wait_seconds is at most 25. State inspects only owned product delivery metadata. Count reports incoming totals/unread/pending and filter matches without paging. Delete removes one incoming message_id; clear removes filtered incoming messages from your own agent inbox. Count with the same filters before clear to show how many match. Other participants keep their history and receipts.", false, false, map[string]any{
-		"query":                  map[string]any{"type": "string", "description": "list_agents: case-insensitive name or purpose search within agents you can access."},
+	add("messages", "AgentBridge messages use an inbox for normal MCP sign-ins from apps without a terminal, or the live CLI bridge for attached coding chats. agent_status with target reads existing activity, runtime and authorized status without messaging or starting the agent, plus recent: its last messages and tool calls with their results, newest last (limit, default 5, at most 50; another person's agent only when it shares its chat Live). Register an agent_name; list_agents lists every agent you can use (Projects, Goals and Relays you own or that are shared with you, with their functions and ids, and your AgentBridge agents); send, read, reply with send in the same inbox_id, or ack your incoming messages. Inbox count/delete/clear use the same owner and connection checks. Inbox names receive nothing pushed into the app: check when the person asks or at the start of a conversation. The CLI gives live delivery if you can install it. The server shows the route and whether the recipient has acknowledged it. Existing account, connection, sharing, size and rate checks apply. Normal final chat replies are not forwarded. No attachment or selection of another chat is available here. Product Ask and functions are separate from peer messaging. Read results use non-destructive cursors. Named AgentBridge reads always use the same mailbox-wide position, including when inbox_id filters one conversation; use the returned next_cursor for later reads. wait_seconds is at most 25. State inspects only owned product delivery metadata. Count reports incoming totals/unread/pending and filter matches without paging. Delete removes one incoming message_id; clear removes filtered incoming messages from your own agent inbox. Count with the same filters before clear to show how many match. Other participants keep their history and receipts.", false, false, withAgentTaskSchema(map[string]any{
+		"query":                  map[string]any{"type": "string", "description": "list_agents: case-insensitive name, purpose, exact address or Team search within admitted agents. Up to 20 compact rows a call. history: words to find in the agent's chat (newest matches first)."},
+		"offset":                 map[string]any{"type": "integer", "minimum": 0, "description": "list_agents: start from this match; when a reply has next_offset, call again with offset=next_offset to see the rest. history with line: where to continue a long message, from next_offset."},
 		"usage_timezone":         map[string]any{"type": "string", "description": "Optional IANA timezone for owner-only native hourly-reading daily totals (default UTC)."},
-		"chat_id":                externalString("Optional registered project chat_id from list_agents. Omit for the Crew main Builder."),
-		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "send", "read", "state", "ack", "update_purpose", "ping_person", "get_file", "count", "delete", "clear"}},
+		"action":                 map[string]any{"type": "string", "enum": []any{"register", "unregister", "list_agents", "agent_status", "send", "ask", "queue", "read", "history", "state", "ack", "update_purpose", "ping_person", "get_file", "stop", "count", "delete", "clear"}},
 		"older_than":             externalString("Inbox cleanup filter: age such as 24h or 7d."),
 		"from_agent":             externalString("Inbox cleanup filter: sender's registered agent name or agent ID."),
 		"delivered_only":         map[string]any{"type": "boolean", "description": "Inbox cleanup filter: only messages with a delivered receipt."},
 		"unread_only":            map[string]any{"type": "boolean", "description": "Inbox cleanup filter: only messages with no admission or processing acknowledgement."},
 		"purpose":                externalString("What this attached agent works on; 1 to 512 characters."),
 		"attachment_id":          externalString("Exact attachment generation in the channel event; required for receipt acknowledgements."),
-		"message_id":             externalString("Incoming message ID being acknowledged or removed with delete; for ping_person, a message this agent sent that is still waiting for a reply (one ping per message: the target's person gets a desktop notification)."),
+		"message_id":             externalString("Incoming message ID being acknowledged or removed with delete; for stop, your own ask to stop (with its inbox_id): withdrawn if not started, else only the turn working on it stops; for ping_person, a message this agent sent that is still waiting for a reply (one ping per message: the target's person gets a desktop notification)."),
 		"delivery":               externalString("The one receipt: delivered, once this chat received the message. It does not claim that work is finished."),
 		"transport":              externalString("Receipt route: codex_queue, codex_desktop, codex_hook, claude_channel, claude_session, claude_hook, cursor_hook, muse_hook, agy_hook, pi_hook, pi_extension or mailbox."),
 		"agent_name":             externalString("Account-owned registered name. Register/unregister selects it; send selects the named sender; read without inbox_id polls all incoming contacts for this name. Only its allowed connections can use it."),
@@ -498,18 +545,22 @@ func externalAgentMessageDefinition(add func(string, string, bool, bool, map[str
 		"provider":               externalString("CLI register only: observed provider of this chat, used to refuse taking an active conversation's name. Does not attach a chat."),
 		"native_session_id":      externalString("CLI register only: this chat's observed native session, used only for the active-name check. Does not attach or select another chat."),
 		"allowed_connection_ids": map[string]any{"type": "array", "maxItems": 32, "uniqueItems": true, "items": externalString("Active connection ID belonging to this account; register only. Defaults to the registering connection. A reconnect with a new connection ID must be explicitly allowed.")},
-		"crew_id":                externalString("Crew ID for an initial send or owner-only state inspection."),
-		"workflow_id":            externalString("Workflow ID for an initial send or owner-only state inspection."),
-		"target":                 externalString("Accessible Crew or workflow name/ID, agent:<name> from this account's directory, or agent:<owner>/<name> for an agent its owner published to the network, for an initial send."),
+		"crew_id":                externalString("Project ID for owner-only state inspection; not a peer target."),
+		"workflow_id":            externalString("Workflow ID for owner-only state inspection; not a peer target."),
+		"target":                 externalString("Exact AgentBridge agent: address from list_agents; never a product, chat ID or guessed name. In a Team also person:<name> (ask one person, with buttons; their click is the reply)."),
 		"message":                externalString("Message to send; required for action send."),
-		"file_name":              externalString("Send a file with the message (action send, also a reply): its name. Needs file_base64. Up to 5 MB; the receiver saves it with action=get_file."),
-		"file_base64":            externalString("The file's bytes, base64 encoded; send with file_name."),
+		"status":                 agentReplyStatusSchema(),
+		"examples":               agentPurposeExamplesSchema(),
+		"offline":                map[string]any{"type": "string", "enum": []string{"wait"}, "description": "Only after an ask says the agent has been offline for a while and your person chose to wait: it answers when it is back. To read its chat instead, use action=history."},
+		"line":                   map[string]any{"type": "integer", "minimum": 1, "description": "history: read this one message of the agent's chat (from a search result's line)."},
+		"expects_reply":          map[string]any{"type": "boolean", "description": "Send a request that expects a reply. action=ask is always a request; ordinary send is an FYI notification."},
+		"attachments":            map[string]any{"type": "array", "maxItems": agentMessageFilesMax, "description": "Files sent with the message (send, ask, queue, also a reply): up to 10, 5 MB each. The receiver saves each with action=get_file.", "items": map[string]any{"type": "object", "required": []string{"file_name", "file_base64"}, "properties": map[string]any{"file_name": map[string]any{"type": "string"}, "file_base64": map[string]any{"type": "string", "description": "The file's bytes, base64 encoded."}}}},
 		"file_id":                externalString("File ID from a received message's file note; action=get_file with its inbox_id returns file_name and content_base64 (and content for small text files)."),
 		"inbox_id":               externalString("Inbox returned by send; required for action read, reusable for later sends."),
 		"submission_id":          map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "description": "Unique ID for this message. Reuse on uncertain delivery."},
 		"after":                  externalInteger(0, 1000000000), "limit": externalInteger(1, 100),
 		"wait_seconds": externalInteger(0, externalCrewMaxWaitSeconds),
-	}, "action")
+	}), "action")
 }
 
 func (api *StreamingAPI) externalFunctionReadDetails(w http.ResponseWriter, ctx context.Context, args map[string]any, call *crewFunctionCall, out map[string]interface{}) bool {

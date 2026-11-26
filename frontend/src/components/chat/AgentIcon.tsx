@@ -1,25 +1,37 @@
-import { Globe, Loader2, Users, Zap } from 'lucide-react'
+import { LoadingIndicator } from '../ui/LoadingIndicator'
+import { Clock, Cloud, Globe, Users } from 'lucide-react'
 import type { AgentMenuState } from './agentMenuState'
 import type { TeamTabPresence, TeamTabSetup } from '../../products/work/teamApi'
 
 /** The switch-agent key on this computer: ⌘ on a Mac, Ctrl elsewhere. */
 export const AGENT_KEY = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+'
 
-/** The one setup icon right of an agent's name (owner, 6 Nov, approved mockup): a green globe when it is public on
- * AgentBridge (and so shared), people when it is shared with the team, nothing when only you use it. A small amber bolt
- * (a shape, never a dot, so it never reads as a message state) sits on it when something starts the agent on its own;
- * on an only-you agent the bolt stands alone. The server decides all of it (crew_tab_setup.go). */
-export function AgentSetupMark({ setup }: { setup?: TeamTabSetup }) {
-  if (!setup || (!setup.reach && !setup.starts_on_own)) return null
-  const reach = setup.reach === 'agentbridge' ? 'Public on AgentBridge' : setup.reach === 'team' ? 'Shared with the team' : 'Only you'
-  const label = setup.starts_on_own ? `${reach} · starts on its own` : reach
-  const bolt = (className: string) => <Zap aria-hidden="true" className={`${className} fill-[hsl(var(--warning))] stroke-none text-[hsl(var(--warning))]`} />
-  if (!setup.reach) return <span role="img" aria-label={label} title={label} className="grid shrink-0 place-items-center">{bolt('h-3 w-3')}</span>
-  const Icon = setup.reach === 'agentbridge' ? Globe : Users
-  return <span role="img" aria-label={label} title={label} className={`relative grid shrink-0 place-items-center ${setup.reach === 'agentbridge' ? 'text-emerald-500' : 'text-muted-foreground'}`}>
-    <Icon aria-hidden="true" className="h-3 w-3" />
-    {setup.starts_on_own && bolt('absolute -right-1.5 -top-1 h-2.5 w-2.5')}
+/** Sharing and automation are independent. Use only the server's enabled setup rows. */
+export function enabledAgentAutomations(setup?: TeamTabSetup) {
+  return setup?.starts_on_own ? setup.automations.filter(item => item.on) : []
+}
+/** The one sharing mark per agent: shared with the team, plus chosen people when only they can ask. */
+export function AgentSetupMark({ setup, chosen }: { setup?: TeamTabSetup; chosen?: boolean }) {
+  if (!setup) return null
+  const active = enabledAgentAutomations(setup)
+  const showReach = !!setup.reach
+  if (!showReach && !active.length) return null
+  const reach = setup.reach === 'agentbridge' ? 'Public on AgentBridge' : setup.reach === 'team' ? `Shared with team${chosen ? ' · chosen people' : ''}` : 'Only you'
+  const label = [...(showReach ? [reach] : []), ...active.map(item => `${item.kind}: ${item.name} · ${item.line}`)].join('\n')
+  const ReachIcon = setup.reach === 'agentbridge' ? Globe : Users
+  return <span role="img" aria-label={label} title={label} className="inline-flex shrink-0 items-center gap-1.5">
+    {showReach && <span className="relative inline-flex"><ReachIcon aria-hidden="true" className={`h-3 w-3 ${setup.reach === 'agentbridge' ? 'text-emerald-500'  : 'text-primary'}`} />
+</span>}
+    {/* One clock for every automation (schedule, Watcher, webhook), shown on hover or keyboard focus; the title names each (owner, 18 Nov). */}
+    {active.length > 0 && <Clock aria-hidden="true" className="invisible h-3 w-3 text-[hsl(var(--warning))] group-hover:visible group-focus-within:visible" />}
   </span>
+}
+
+/** Where an agent runs, from the server's row (owner, 15 Nov): a cloud for an agent on the server; nothing on a Mac.
+ * The left menu and the chat header use this one mark. */
+export function AgentPlaceMark({ place }: { place?: 'mac' | 'server' }) {
+  if (place !== 'server') return null
+  return <span title="Runs on the server, always available" aria-label="Runs on the server, always available" role="img" className="shrink-0"><Cloud aria-hidden="true" className="h-3 w-3 text-sky-500" /></span>
 }
 
 /** The dot by a teammate's name (owner, 6 Nov): green with their Mac on, blue with it off while their shared agents
@@ -31,17 +43,40 @@ export function PersonPresenceDot({ presence, className = 'h-1.5 w-1.5' }: { pre
   return <span role="img" aria-label={presence.line} title={presence.line} className={`${className} shrink-0 rounded-full ${tone}`} />
 }
 
-/** The one mark an agent shows, the same as the chat tabs have always shown (owner, 4 Nov): a spinner while it works,
+/** The one mark an agent shows, the same as the chat tabs have always shown (owner, 4 Nov): the shared indicator while it works,
  * a pulsing amber ring when it needs you, red when it failed (until opened), green when a reply is not read yet, and a
  * green pulse while someone else is asking it. Nothing when all is quiet. */
-export function AgentMark({ state, asking }: { state: AgentMenuState; asking?: boolean }) {
-  if (state === 'running') return <Loader2 role="img" aria-label="Working" className="h-3 w-3 shrink-0 animate-spin text-[hsl(var(--info))]" />
-  if (state === 'waiting') return <span role="img" aria-label="Needs you" title="Needs you" className="relative grid h-3 w-3 shrink-0 place-items-center">
+export function AgentMark({ state, asking, dot = false }: { state: AgentMenuState; asking?: boolean; dot?: boolean }) {
+  // The left menu's quieter form (PLAT-746): one small dot per state, working pulsing gently (still under reduced motion).
+  if (dot && state === 'running') return <span data-theme-agent-state="running" role="img" aria-label="Working" title="Working" className="h-2 w-2 shrink-0 rounded-full bg-info motion-safe:animate-pulse" />
+  if (dot && state === 'waiting') return <span data-theme-agent-state="waiting" role="img" aria-label="Needs you" title="Needs you" className="h-2 w-2 shrink-0 rounded-full bg-[hsl(var(--warning))]" />
+  if (state === 'running') return <LoadingIndicator data-theme-agent-state="running" role="img" aria-label="Working" className="h-3 w-3 shrink-0 text-info" />
+  if (state === 'waiting') return <span data-theme-agent-state="waiting" role="img" aria-label="Needs you" title="Needs you" className="relative grid h-3 w-3 shrink-0 place-items-center">
     <span className="absolute inline-flex h-3 w-3 animate-ping rounded-full bg-[hsl(var(--warning))] opacity-60" />
     <span className="relative h-2.5 w-2.5 rounded-full bg-[hsl(var(--warning))]" />
   </span>
   const [label, tone] = state === 'failed' ? ['Failed', 'bg-[hsl(var(--destructive))]']
     : asking ? ['Someone is asking it now', 'bg-emerald-500 motion-safe:animate-pulse']
       : state === 'done' ? ['Completed — open to mark as seen', 'bg-[hsl(var(--success))]'] : ['', '']
-  return label ? <span role="img" aria-label={label} title={label} className={`h-2 w-2 shrink-0 rounded-full ${tone}`} /> : null
+  return label ? <span data-theme-agent-state={state || undefined} role="img" aria-label={label} title={label} className={`h-2 w-2 shrink-0 rounded-full ${tone}`} /> : null
+}
+
+/** How long ago, short: "now", "5m", "3h", "1d", "2w", "1y". Empty when unknown. */
+/** The newer of two times (a live session's activity and the saved last message), for shortAgo. */
+export function latestTime(...values: (string | undefined)[]) {
+  return values.reduce<string | undefined>((best, value) => (Date.parse(value || '') || 0) > (Date.parse(best || '') || 0) ? value : best, undefined)
+}
+
+export function shortAgo(value?: string, now = Date.now()) {
+  const at = Date.parse(value || '')
+  if (!Number.isFinite(at) || at <= 0) return ''
+  const minutes = Math.max(0, Math.floor((now - at) / 60_000))
+  if (minutes < 1) return 'now'
+  if (minutes < 60) return `${minutes}m`
+  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}h`
+  // At most a number and one letter, so the agent's name keeps the room (owner, 20 Nov).
+  const days = Math.floor(minutes / (24 * 60))
+  if (days < 7) return `${days}d`
+  if (days < 365) return `${Math.floor(days / 7)}w`
+  return `${Math.floor(days / 365)}y`
 }

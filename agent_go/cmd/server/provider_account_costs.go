@@ -152,7 +152,7 @@ func hiddenWorkName(kind string) string {
 	case costOverviewKindWorkflow:
 		return "a workflow you can't see"
 	case costOverviewKindCrew:
-		return "a Crew you can't see"
+		return "a project you can't see"
 	default:
 		return "work you can't see"
 	}
@@ -216,7 +216,7 @@ func (api *StreamingAPI) handleProviderAccountCosts(w http.ResponseWriter, r *ht
 		return
 	}
 	if !currentUserCanReviewCode(r) {
-		writeWorkflowPermissionDenied(w, "admin or Code reviewer")
+		writeWorkflowPermissionDenied(w, "admin or project reviewer")
 		return
 	}
 	if api.costLedger == nil {

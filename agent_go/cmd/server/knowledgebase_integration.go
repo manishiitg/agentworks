@@ -68,7 +68,7 @@ func knowledgeHash(v any) string {
 func knowledgeProjectLoad(ctx context.Context, userID, workspace string, requireOwner bool) (*knowledgeProject, error) {
 	kind, root := common.ClassifySessionWorkspace(userID, workspace)
 	if kind == common.SessionWorkspaceUnknown {
-		return nil, fmt.Errorf("an owned workflow, Crew or Crew workspace is required")
+		return nil, fmt.Errorf("an owned workflow, project or project workspace is required")
 	}
 	if kind == common.SessionWorkspaceCrewProject {
 		owner := userID
@@ -133,15 +133,15 @@ func knowledgeProjectLoad(ctx context.Context, userID, workspace string, require
 	} else {
 		owner, ok := crewProjectOwnerID(root)
 		if !ok {
-			return nil, fmt.Errorf("Crew ownership is unavailable")
+			return nil, fmt.Errorf("Project ownership is unavailable")
 		}
 		productData, err := os.ReadFile(filepath.Join(filepath.Dir(path), "product.json"))
 		if err != nil {
-			return nil, fmt.Errorf("Crew stable identity is unavailable: %w", err)
+			return nil, fmt.Errorf("Project stable identity is unavailable: %w", err)
 		}
 		var product productProjectManifest
 		if err := json.Unmarshal(productData, &product); err != nil || product.ID != p.ID {
-			return nil, fmt.Errorf("Crew runtime identity does not match its product manifest")
+			return nil, fmt.Errorf("Project runtime identity does not match its product manifest")
 		}
 		p.Owners = []string{owner}
 		p.Audience = append([]string{}, p.Owners...)
@@ -150,7 +150,7 @@ func knowledgeProjectLoad(ctx context.Context, userID, workspace string, require
 		if !isProjectWorkspacePath(root) {
 			directory, err := loadUserDirectory()
 			if err != nil || directory == nil {
-				return nil, fmt.Errorf("Crew audience is unavailable")
+				return nil, fmt.Errorf("Project audience is unavailable")
 			}
 			for _, user := range directory.Users {
 				if !user.Disabled && crewSharedWith(root, user.ID) && userAllowedProduct(&UserClaims{UserID: user.ID, Username: user.Username}, "work") {
@@ -233,7 +233,7 @@ func knowledgebaseRuntimePolicy(ctx context.Context, userID string, principal *k
 	}
 	kind, _ := common.ClassifySessionWorkspace(userID, workspace)
 	if kind == common.SessionWorkspaceUnknown {
-		return &knowledgebase.Error{Code: "FORBIDDEN", Message: "A workflow, Crew or Code session is required."}
+		return &knowledgebase.Error{Code: "FORBIDDEN", Message: "A workflow or project session is required."}
 	}
 	project, err := knowledgeProjectLoad(ctx, userID, workspace, false)
 	if err != nil {

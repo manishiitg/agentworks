@@ -11,6 +11,8 @@
 // A server-revalidated workspace return may hydrate this cache with the same
 // person's saved device and width; ordinary product opens remain read-only.
 // Do not add a default-setting writer back here or at a call site.
+import { getWorkspaceScopedStorageKey } from '../stores/useWorkspaceConnectionStore'
+
 export const REPORT_PREVIEW_PREFERENCE_KEY = 'workflow_report_preview_preference'
 export const REPORT_PREVIEW_PREFERENCE_CHANGED_EVENT = 'workflow-report-preview-preference-changed'
 export const WORKFLOW_SPLIT_PREFERENCE_KEY = 'workflow_workspace_split_ratio'
@@ -18,8 +20,12 @@ export const WORKFLOW_SPLIT_PREFERENCE_KEY = 'workflow_workspace_split_ratio'
 export type ReportPreviewDevice = 'mobile' | 'tablet' | 'desktop'
 export const DEFAULT_REPORT_PREVIEW_DEVICE: ReportPreviewDevice = 'tablet'
 
-export function reportPreviewPreferenceKey(scopeId?: string | null): string {
+function legacyReportPreviewPreferenceKey(scopeId?: string | null): string {
   return scopeId ? `${REPORT_PREVIEW_PREFERENCE_KEY}:${scopeId}` : REPORT_PREVIEW_PREFERENCE_KEY
+}
+
+export function reportPreviewPreferenceKey(scopeId?: string | null): string {
+  return getWorkspaceScopedStorageKey(legacyReportPreviewPreferenceKey(scopeId))
 }
 
 export function isReportPreviewDevice(value: unknown): value is ReportPreviewDevice {
@@ -29,8 +35,15 @@ export function isReportPreviewDevice(value: unknown): value is ReportPreviewDev
 export function readReportPreviewPreference(scopeId?: string | null): ReportPreviewDevice {
   if (typeof window === 'undefined') return DEFAULT_REPORT_PREVIEW_DEVICE
   try {
-    const saved = window.localStorage.getItem(reportPreviewPreferenceKey(scopeId))
-    return isReportPreviewDevice(saved) ? saved : DEFAULT_REPORT_PREVIEW_DEVICE
+    const scopedKey = reportPreviewPreferenceKey(scopeId)
+    const saved = window.localStorage.getItem(scopedKey)
+    if (saved !== null) return isReportPreviewDevice(saved) ? saved : DEFAULT_REPORT_PREVIEW_DEVICE
+    const legacy = window.localStorage.getItem(legacyReportPreviewPreferenceKey(scopeId))
+    if (isReportPreviewDevice(legacy)) {
+      window.localStorage.setItem(scopedKey, legacy)
+      return legacy
+    }
+    return DEFAULT_REPORT_PREVIEW_DEVICE
   } catch {
     return DEFAULT_REPORT_PREVIEW_DEVICE
   }
@@ -51,16 +64,33 @@ export function writeReportPreviewPreference(
   }))
 }
 
-function workflowSplitPreferenceKey(scopeId?: string | null, device?: ReportPreviewDevice): string {
+function legacyWorkflowSplitPreferenceKey(scopeId?: string | null, device?: ReportPreviewDevice): string {
   const scope = scopeId ? `${WORKFLOW_SPLIT_PREFERENCE_KEY}:${scopeId}` : WORKFLOW_SPLIT_PREFERENCE_KEY
   return device ? `${scope}:${device}` : scope
+}
+
+function workflowSplitPreferenceKey(scopeId?: string | null, device?: ReportPreviewDevice): string {
+  return getWorkspaceScopedStorageKey(legacyWorkflowSplitPreferenceKey(scopeId, device))
 }
 
 export function readWorkflowSplitPreference(scopeId?: string | null, device?: ReportPreviewDevice): number | null {
   if (typeof window === 'undefined') return null
   try {
-    const value = Number.parseFloat(window.localStorage.getItem(workflowSplitPreferenceKey(scopeId, device)) || '')
-    return Number.isFinite(value) && value >= 0.15 && value <= 0.85 ? value : null
+    const scopedKey = workflowSplitPreferenceKey(scopeId, device)
+    const raw = window.localStorage.getItem(scopedKey)
+    if (raw !== null) {
+      const value = Number.parseFloat(raw)
+      return Number.isFinite(value) && value >= 0.15 && value <= 0.85 ? value : null
+    }
+    const legacy = window.localStorage.getItem(legacyWorkflowSplitPreferenceKey(scopeId, device))
+    if (legacy !== null) {
+      const value = Number.parseFloat(legacy)
+      if (Number.isFinite(value) && value >= 0.15 && value <= 0.85) {
+        window.localStorage.setItem(scopedKey, legacy)
+        return value
+      }
+    }
+    return null
   } catch {
     return null
   }

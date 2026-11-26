@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/mcpagent/llm"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 )
@@ -60,6 +62,33 @@ func (api *StreamingAPI) historyWithNativeTurnAnswers(sessionID string, history 
 	merged, added := mergeNativeTurnAnswers(history, answers)
 	log.Printf("[NATIVE_ANSWER] saved session=%s answers=%d added=%d history=%d->%d", sessionID, len(answers), added, len(history), len(merged))
 	return merged
+}
+
+// idleAnswerProviders keep the answer already streamed when the idle limit ends
+// a turn. Claude has its own release (releaseAnsweredCodingTurn). Cursor's
+// bridge ends a turn itself once Cursor reports turn-ended; a run that goes
+// quiet without it reached the idle limit and lost the answer (PLAT-872-117,
+// agentworks#3128).
+var idleAnswerProviders = map[string]bool{string(llm.ProviderCursorCLI): true}
+
+// keepStreamedAnswerOnIdle records the answer the turn already streamed, just
+// before the idle limit cancels it, so the turn's normal history save (also run
+// on cancel) keeps it after the person's message. Only the platform's own
+// contiguous main-chat prose counts, never screen captures or a stream with
+// gaps. The turn still ends as idle; false when there is nothing to keep.
+func (api *StreamingAPI) keepStreamedAnswerOnIdle(sessionID, provider, prompt string) bool {
+	provider = strings.TrimSpace(provider)
+	if api == nil || api.eventStore == nil || !idleAnswerProviders[provider] {
+		return false
+	}
+	prefix, _ := api.eventStore.StreamingPrefix(sessionID)
+	text := strings.TrimSpace(storeevents.StreamingPrefixText(prefix))
+	if text == "" {
+		return false
+	}
+	recordNativeTurnAnswer(claudecode.SDKAnswer{Owner: sessionID, Text: text, Answers: prompt, At: time.Now()})
+	log.Printf("[TURN IDLE] session=%s provider=%s: kept the answer already streamed (chars=%d) in the chat history before ending the quiet turn", sessionID, provider, len(text))
+	return true
 }
 
 const canceledNoResponseText = "[Request canceled — no response generated]"

@@ -53,11 +53,6 @@ func NewPersistent(root string) (*Manager, error) {
 				break
 			}
 		}
-		// Preserve fail-closed Code selections from the initial release, which
-		// persisted labels but no profile or reusable credential.
-		if profile == "" && strings.Contains("/"+label+"/", "/Chats/Code/projects/") {
-			profile = "code"
-		}
 		m.bindings[key] = &Binding{key: key, label: label, profile: profile, browserID: m.selectedBrowsers[key], browserName: m.browserRecords[strings.SplitN(key, "\x00", 2)[0]+"\x00"+m.selectedBrowsers[key]].Name, gate: make(chan struct{}, 1)}
 	}
 	return m, nil
@@ -71,7 +66,7 @@ func (m *Manager) persistSelection(exclude string, extra *grant) error {
 	}
 	selected := make(map[string]string, len(m.bindings))
 	for key, b := range m.bindings {
-		if key != exclude {
+		if key != exclude && !b.extra {
 			selected[key] = b.label
 		}
 	}

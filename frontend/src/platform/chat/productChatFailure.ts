@@ -129,8 +129,8 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
 
   // A durable submission may already be running: the journal reconciles it.
   if (normalizedCode === 'delivery_uncertain') {
-    return { code: 'delivery_uncertain', title: 'Delivery is still being checked',
-      message: 'Your message was saved, but delivery has not been confirmed. Check the conversation before sending it again.',
+    return { code: 'delivery_uncertain', title: 'Delivery not confirmed',
+      message: 'Not sure the last message was delivered. Check this chat before sending it again.',
       retryable: false, technicalDetails }
   }
 
@@ -213,7 +213,7 @@ export function normalizeProductChatFailure(rawError: string, hints: FailureHint
     return {
       code: 'authentication_failed',
       title: `${providerLabel} is not signed in`,
-      message: `${providerLabel} has no working login here. Pick a provider that is set up in Setup → Models, add your own account under Providers → Add my account, or ask an admin to sign in the shared account.`,
+      message: `${providerLabel} has no working login here. Pick a provider that is set up in the model menu in the message box, add your own account under Providers → Add my account, or ask an admin to sign in the shared account.`,
       provider,
       retryable: false,
       technicalDetails,

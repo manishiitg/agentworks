@@ -30,6 +30,21 @@ api.interceptors.request.use((config) => {
 })
 
 export const skillsApi = {
+  invocation: async (workspacePath: string, sessionId: string, provider?: string): Promise<NativeSkillCatalog> => {
+    return (await api.get('/api/skills/invocation', { params: { workspace_path: workspacePath, session_id: sessionId, provider } })).data
+  },
+  folder: async (workspacePath: string, files: File[], importing: boolean): Promise<{ document?: string; name?: string; files?: string[]; success?: boolean; skill_name?: string }> => {
+    const data = new FormData()
+    data.append('paths', JSON.stringify(files.map(file => file.webkitRelativePath)))
+    files.forEach((file,index) => data.append(`file${index}`,file))
+    return (await api.post(`/api/skills/${importing ? 'import-folder' : 'validate-folder'}`,data,{ params: { workspace_path: workspacePath }, headers: { 'Content-Type': 'multipart/form-data' } })).data
+  },
+  discover: async (workspacePath: string, provider: string, id?: string): Promise<NativeSkillDiscovery | DiscoveredSkill> => {
+    return (await api.get('/api/skills/discover', { params: { workspace_path: workspacePath, provider, id } })).data
+  },
+  importDiscovered: async (workspacePath: string, provider: string, id: string): Promise<ImportSkillResponse> => {
+    return (await api.post('/api/skills/discover', { id }, { params: { workspace_path: workspacePath, provider } })).data
+  },
   workspaceSummary: async (workspacePath: string): Promise<{ custom_count: number; total: number }> => {
     return (await api.get('/api/skills', { params: { workspace_path: workspacePath, summary: true } })).data;
   },
@@ -92,5 +107,13 @@ export const skillsApi = {
     await api.delete(`/api/skills/${encodeURIComponent(name)}`, { params: { workspace_path: workspacePath } });
   },
 };
+
+export interface DiscoveredSkill {
+  id: string; name: string; description: string; source: string; user_invocable: boolean
+  document?: string; files?: string[]
+}
+export interface NativeSkillDiscovery { skills: DiscoveredSkill[]; message: string }
+export interface NativeSkillChoice { id: string; name: string; description: string; source: string; provider: string }
+export interface NativeSkillCatalog { skills: NativeSkillChoice[]; provider: string; prepared: boolean; supported: boolean; message: string }
 
 export default skillsApi;

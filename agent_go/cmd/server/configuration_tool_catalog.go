@@ -43,11 +43,11 @@ func configurationExternalMembers(catalog []externalTool) ([]externalTool, error
 					return nil, err
 				}
 				keep := []string{"crew_id", "chat_id"}
-				member.Name, member.Description, member.mutates = "get_tab_models", "Read this Crew's tab models and offered account choices through its existing chat service.", false
+				member.Name, member.Description, member.mutates = "get_tab_models", "Read this project's tab models and offered account choices through its existing chat service.", false
 				member.InputSchema["required"] = []any{"crew_id"}
 				if set {
-					member.Name, member.Description, member.mutates = "set_tab_model", "Change one of your Crew chat models using its existing tab ownership and account checks. An empty engine uses the Crew default. idle_compaction changes that chat's Auto-compact when idle and claude_terminal a Claude chat's native terminal or chat view; without engine only they change.", true
-					keep = append(keep, "engine", "model_id", "connection_id", "reasoning_effort", "idle_compaction", "compact_early", "claude_terminal")
+					member.Name, member.Description, member.mutates = "set_tab_model", "Change one of your project chat models using its existing tab ownership and account checks. An empty engine uses the project's fallback: the owner's last-used model. idle_compaction changes that chat's Auto-compact when idle and claude_terminal a Claude chat's native terminal or chat view; without engine only they change.", true
+					keep = append(keep, "engine", "model_id", "connection_id", "reasoning_effort", "idle_compaction", "compact_early", "claude_terminal", "access_mode", "reply_style", "next_steps", "unrelated_task")
 					member.InputSchema["required"] = []any{"crew_id", "chat_id"}
 					// The app's existing reset sends an empty engine.
 					engine, ok := props["engine"].(map[string]any)
@@ -89,10 +89,10 @@ func configurationExternalMembers(catalog []externalTool) ([]externalTool, error
 			}
 			keep := []string{"workflow_id", "crew_id"}
 			model.Name = "get_project_models"
-			model.Description = "Read this product's saved models and settings version, using its existing access."
+			model.Description = "Read a workflow's saved models and settings version, or a project's fallback model (its owner's last-used model), using existing access."
 			if tool.Name == "update_settings" {
 				model.Name = "set_project_models"
-				model.Description = "Change this product's model defaults using the existing Builder and account checks. Send the models object from get with your changes."
+				model.Description = "Change a workflow's model defaults using the existing Builder and account checks. Send the models object from get with your changes. A project has no model setting: each chat chooses its own (scope=tab)."
 				keep = append(keep, "models", "expected_version")
 				model.InputSchema["required"] = []any{"models"}
 				// Models have their own job. This is a schema move, not a second setter.
@@ -111,7 +111,7 @@ func configurationExternalMembers(catalog []externalTool) ([]externalTool, error
 					delete(props, key)
 				}
 			}
-			props["scope"] = map[string]any{"type": "string", "enum": []any{"project"}, "description": "Project model defaults."}
+			props["scope"] = map[string]any{"type": "string", "enum": []any{"project"}, "description": "Workflow model defaults; a project only reads its fallback here."}
 			result = append(result, model)
 		}
 		result = append(result, tool)
@@ -241,5 +241,5 @@ func scopedExternalModelMember(names []string, args map[string]any) (string, err
 			}
 		}
 	}
-	return "", fmt.Errorf("Choose an offered model scope: project defaults or your own tab")
+	return "", fmt.Errorf("Choose an offered model scope: a workflow's models (project) or your own chat (tab)")
 }

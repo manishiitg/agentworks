@@ -1211,7 +1211,7 @@ func (f *BotEventFilter) describeToolCall(event BotEventData) string {
 	switch {
 	case name == "execute_shell_command":
 		return "Working on the request"
-	case name == "delegate" || name == "call_sub_agent" || name == "call_scripted_sub_agent" || name == "call_generic_agent":
+	case name == "call_sub_agent" || name == "call_scripted_sub_agent" || name == "call_generic_agent":
 		return "Delegating to a sub-agent"
 	case name == "agent_browser" || strings.HasPrefix(name, "browser_") || name == "web_search":
 		return "Browsing the web"

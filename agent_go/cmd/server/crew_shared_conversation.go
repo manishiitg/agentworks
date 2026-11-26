@@ -15,6 +15,11 @@ func (api *StreamingAPI) externalSharedCrewConversation(w http.ResponseWriter, r
 	if !ok || chat.OwnerID == claims.UserID {
 		return false
 	}
+	if action == "read_chat" && crewOfflineCopyHomeKey(manifest.ID, chat.Key) {
+		// A leftover copy tab from the removed offline copies holds the source's private history (#3194 cleanup).
+		externalError(w, 403, "agent_unavailable", "Read your answer in your own conversation with this agent.")
+		return true
+	}
 	if action != "ask" && action != "read_chat" {
 		externalError(w, 403, "tab_owner", "Send this agent a message; its owner controls its settings and confirmations.")
 		return true
@@ -33,6 +38,16 @@ func (api *StreamingAPI) externalSharedCrewConversation(w http.ResponseWriter, r
 	out := map[string]any{"workspace_id": manifest.Product + ":" + manifest.ID, "chat_id": chat.Key, "name": chat.Name, "purpose": chat.Purpose, "can_write": false, "shared": true}
 	if action == "ask" {
 		target := triggerTarget{Kind: triggerCallerCrew, Path: project.Binding.WorkspacePath, Label: chat.Name, CrewID: manifest.ID, CrewProfile: manifest.Product, CrewOwner: chat.OwnerID, Chat: chat}
+		if team, e := readCrewTeam(manifest.ID); e == nil && crewTeamAgentsVisible(team, claims.UserID) {
+			if agent, ok := team.registeredAgent(chat.OwnerID, chat.Key); ok && agent.InTeam {
+				var resolveErr error
+				target, resolveErr = api.resolveTeamAgentTarget(r.Context(), target, agent.ID)
+				if resolveErr != nil {
+					externalCommunicationError(w, 403, "agent_unavailable", resolveErr)
+					return true
+				}
+			}
+		}
 		caller, err := api.externalMessageCaller(r.Context(), claims, args)
 		if err != nil {
 			externalCommunicationError(w, 400, "message_refused", err)
@@ -42,7 +57,12 @@ func (api *StreamingAPI) externalSharedCrewConversation(w http.ResponseWriter, r
 			externalCommunicationError(w, 403, "access_denied", err)
 			return true
 		}
-		receipt, err := api.sendAgentMessage(context.WithoutCancel(r.Context()), claims.UserID, caller, target, externalArg(args, "message"), externalArg(args, "inbox_id"), externalArg(args, "submission_id"))
+		files, err := prepareMessageFiles(args)
+		if err != nil {
+			externalError(w, 400, "message_refused", err.Error())
+			return true
+		}
+		receipt, err := api.sendAgentMessage(context.WithValue(context.WithoutCancel(r.Context()), productAskChannelKey{}, true), claims.UserID, caller, target, externalArg(args, "message"), externalArg(args, "inbox_id"), externalArg(args, "submission_id"), files...)
 		if err != nil {
 			externalCommunicationError(w, 400, "message_refused", err)
 			return true

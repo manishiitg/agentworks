@@ -100,8 +100,12 @@ const (
 const crewFunctionTabPrefix = "fn."
 
 // crewFunctionTabKey is a function's own tab (fn.<name>). It is the owner's agent: a function is how everyone else uses
-// a Crew, so the Team never lists, shares or lets anyone message that tab (owner, 7 Nov).
+// a Crew, so the Team never lists, shares or lets anyone message that tab (owner, 7 Nov). A Mac has no functions
+// (#4078): there an fn. tab is an ordinary agent tab.
 func crewFunctionTabKey(key string) bool {
+	if IsLocalMode() {
+		return false
+	}
 	_, id, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker)
 	return ok && strings.HasPrefix(id, crewFunctionTabPrefix)
 }
@@ -329,7 +333,7 @@ const crewFunctionAskName = "ask"
 func defaultAskCrewFunction() crewFunction {
 	return crewFunction{
 		Name:        crewFunctionAskName,
-		Description: "Ask this Crew anything in free text; the answer is its final reply. Available on every Crew without setup.",
+		Description: "Ask this project anything in free text; the answer is its final reply. Available on every project without setup.",
 		InputSchema: map[string]interface{}{"type": "object", "required": []interface{}{"message"}, "properties": map[string]interface{}{
 			"message": map[string]interface{}{"type": "string", "description": "Self-contained question or task; the target does not see this conversation."},
 		}},
@@ -368,7 +372,7 @@ func offeredCrewFunctions(_ context.Context, _ triggerTarget, functions []crewFu
 // errWorkflowFunctionsAreTriggers refuses define/project_functions_delete on a
 // workflow: its functions are function triggers owned by its Crew.
 func errWorkflowFunctionsAreTriggers(target triggerTarget) error {
-	return fmt.Errorf("workflow %q defines its functions as function triggers in its workflow (manage_workflow_webhook kind=function: a route plus typed inputs bound to workflow variables); ask the Crew's chat to add or change one", target.Label)
+	return fmt.Errorf("workflow %q defines its functions as function triggers in its workflow (manage_workflow_webhook kind=function: a route plus typed inputs bound to workflow variables); ask the project's chat to add or change one", target.Label)
 }
 
 func findCrewFunction(functions []crewFunction, name string) (crewFunction, bool) {
@@ -914,7 +918,7 @@ What to do:
 Arguments (validated against the function's input schema):
 %s
 
-%s Read the Crew's MEMORY.md and relevant skills/files before assuming information is unknown. Shared project files remain available under the owner's existing authority. Your output folder is %s; put files for this caller there. Do not assume an isolated chat isolates shared files.
+%s Read the project's MEMORY.md and relevant skills/files before assuming information is unknown. Shared project files remain available under the owner's existing authority. Your output folder is %s; put files for this caller there. Do not assume an isolated chat isolates shared files.
 Report meaningful progress with report_function_progress(call_id=%q, message=...). Complete required work and await any background outcome required by the function before ending. Your final assistant message is automatically returned to the caller; do not call a result-return tool.
 %s`, call.ID, call.CallerKind, call.CallerLabel, fn.Name, instructions, string(encodedArgs), crewFunctionPlaceText(call), call.outputRelativeFolder(), call.ID, structuredFunctionOutputInstructions(call))
 }
@@ -930,6 +934,9 @@ func crewFunctionPlaceText(call *crewFunctionCall) string {
 // startCrewFunctionCall validates, records and dispatches one call and
 // starts its supervisor.
 func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, fn crewFunction, args map[string]interface{}, timeout time.Duration, submissionIDs ...string) (*crewFunctionCall, error) {
+	if err := requireServerInteractive("function_call"); err != nil {
+		return nil, err
+	}
 	if isBuiltinConversationalFunction(target, fn) || target.Chat != nil {
 		return nil, fmt.Errorf("conversations use messages action=send; functions action=call accepts declared internal triggers only")
 	}
@@ -1315,7 +1322,15 @@ func (api *StreamingAPI) beginCrewFunctionNotification(parentReq QueryRequest, s
 	}
 	notifier.OnExecutionStart(todo_creation_human.WorkshopExecutionStart{
 		ID: executionID, ParentExecutionID: parentExecutionID, Name: name,
-		Kind: "trigger_auto_notify", Cancel: cancel,
+		Kind: "trigger_auto_notify", Cancel: func() {
+			cancel()
+			if call.TargetKind == triggerCallerWorkflow && api.scheduler != nil {
+				call.mu.Lock()
+				runID := call.RunID
+				call.mu.Unlock()
+				api.scheduler.stopChatWorkflowRun(runID, call.TriggerID)
+			}
+		},
 		Metadata: map[string]string{
 			"execution_type": "function-call-auto-notify",
 			"call_id":        call.ID,
@@ -1457,6 +1472,20 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		return context.WithValue(ctx, UserContextKey, &copy)
 	}
 	register := func(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error)) error {
+		// Functions are online only and a Mac project has none (#4078): its chats get no function tools.
+		if IsLocalMode() && crewFunctionToolName(name) {
+			return nil
+		}
+		if name == "project_functions_define" || name == "project_functions_call" {
+			run := execute
+			execute = func(ctx context.Context, args map[string]interface{}) (string, error) {
+				if err := requireServerInteractive(name); err != nil {
+					return "", err
+				}
+				return run(ctx, args)
+			}
+		}
+
 		category := crewFunctionToolCategory
 		if options.ExecutionScope != "" {
 			if !slices.Contains(options.FunctionTools.Tools, name) {
@@ -1464,7 +1493,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 			}
 			category = options.FunctionTools.Category
 			if name == "project_functions_call" {
-				description = "Call a declared function of another Crew, workflow or published Flow. Inputs and declared results are validated. Returns a call_id; poll functions action=status until it settles before using the result. With no submission_id, identical target, function and arguments within the same run, step and group reuse the first call, including its completed result. Use a new explicit submission_id for intentionally repeated work; reuse that ID after an uncertain retry. No chat auto-notification is scheduled."
+				description = "Call a declared function of another project, workflow or published Flow. Inputs and declared results are validated. Returns a call_id; poll functions action=status until it settles before using the result. With no submission_id, identical target, function and arguments within the same run, step and group reuse the first call, including its completed result. Use a new explicit submission_id for intentionally repeated work; reuse that ID after an uncertain retry. No chat auto-notification is scheduled."
 				parameters["properties"].(map[string]interface{})["notify"] = map[string]interface{}{"type": "boolean", "enum": []interface{}{false}, "description": "Execution agents poll results; only false is accepted."}
 			}
 		}
@@ -1482,7 +1511,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		}
 		return resolveFunctionTarget(ctx, claims, caller, name)
 	}
-	targetSchema := map[string]interface{}{"type": "string", "description": "The project or workflow name/tag/path. For a shared Crew use workspace:work:<id>."}
+	targetSchema := map[string]interface{}{"type": "string", "description": "The project or workflow name/tag/path. For a shared project use workspace:work:<id>."}
 	callFunction := func(ctx context.Context, caller triggerLinkCaller, target triggerTarget, function string, args map[string]interface{}, submissionID string, notify bool, timeout, wait time.Duration) (string, error) {
 		if args == nil {
 			args = map[string]interface{}{}
@@ -1519,7 +1548,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		fn, ok := findCrewFunction(functions, function)
 		if !ok {
 			if len(functions) == 0 {
-				return "", fmt.Errorf("%s %q offers no functions; ask the Crew's chat to expose one (a function trigger with typed inputs)", target.Kind, target.Label)
+				return "", fmt.Errorf("%s %q offers no functions; ask the project's chat to expose one (a function trigger with typed inputs)", target.Kind, target.Label)
 			}
 			return "", fmt.Errorf("%s %q has no function %q; it has: %s", target.Kind, target.Label, function, strings.Join(crewFunctionNames(functions), ", "))
 		}
@@ -1559,7 +1588,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		addFunctionCallPending(response, call)
 		response["status"] = "running"
 		if _, joined := response["joined"]; !joined {
-			response["note"] = "Started; the target is working on it. Poll with functions action=status, or ask a Crew target for an update with ask_function_update. Do not call again for the same work."
+			response["note"] = "Started; the target is working on it. Poll with functions action=status, or ask a project target for an update with ask_function_update. Do not call again for the same work."
 			if options.ExecutionScope != "" {
 				response["note"] = "Started; poll functions action=status until the target finishes. Do not call again for the same work."
 			}
@@ -1601,7 +1630,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		}
 	}
 
-	if err := register("project_functions_list", "List the typed functions a Crew or workflow offers (name, description, input and result schemas). Omit target for this workspace's own functions.", map[string]interface{}{
+	if err := register("project_functions_list", "List the typed functions a project or workflow offers (name, description, input and result schemas). Omit target for this workspace's own functions.", map[string]interface{}{
 		"type": "object", "properties": map[string]interface{}{"project": targetSchema},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)
@@ -1631,7 +1660,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		return err
 	}
 
-	if err := register("project_functions_call", "Call a declared function of a Crew or workflow. In an interactive Builder chat you may also call this Crew's own published functions as the signed-in person. Arguments are validated against its input schema; the target follows its declared execution policy and returns its final message plus file outputs. Crew functions default to their own named tab, retain earlier calls and queue to take turns; execution=new starts a new chat per call. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Reuse submission_id after an uncertain retry. Poll with functions action=status and answer pending_inputs with functions action=reply.", map[string]interface{}{
+	if err := register("project_functions_call", "Call a declared function of a project or workflow. In an interactive Builder chat you may also call this project's own published functions as the signed-in person. Arguments are validated against its input schema; the target follows its declared execution policy and returns its final message plus file outputs. Project functions default to their own named tab, retain earlier calls and queue to take turns; execution=new starts a new chat per call. It returns status=running and a call_id; the result arrives later as an [AUTO-NOTIFICATION] unless notify=false. Reuse submission_id after an uncertain retry. Poll with functions action=status and answer pending_inputs with functions action=reply.", map[string]interface{}{
 		"type": "object", "required": []string{"project", "function"}, "properties": map[string]interface{}{
 			"project":         targetSchema,
 			"function":        map[string]interface{}{"type": "string", "description": "Function name from functions action=list."},
@@ -1768,7 +1797,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		return err
 	}
 
-	if err := register("project_functions_reply", "Answer a pending input request on a function call you made. Use the request_id in functions action=status.pending_inputs; a listed choice must match exactly. Works for Crew and workflow targets.", map[string]interface{}{
+	if err := register("project_functions_reply", "Answer a pending input request on a function call you made. Use the request_id in functions action=status.pending_inputs; a listed choice must match exactly. Works for project and workflow targets.", map[string]interface{}{
 		"type": "object", "required": []string{"call_id", "request_id", "response"}, "properties": map[string]interface{}{
 			"call_id":    callIDSchema,
 			"request_id": map[string]interface{}{"type": "string", "description": "Pending request ID from functions action=status."},
@@ -1801,7 +1830,7 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		return err
 	}
 
-	if err := register("ask_function_update", "Ask a Crew that is running your function call how it is going. The question is delivered into its running turn (Crew targets only; workflow runs do not take mid-run messages). It answers with report_function_progress; read the answer with functions action=status, or it arrives with the final result.", map[string]interface{}{
+	if err := register("ask_function_update", "Ask a project that is running your function call how it is going. The question is delivered into its running turn (Project targets only; workflow runs do not take mid-run messages). It answers with report_function_progress; read the answer with functions action=status, or it arrives with the final result.", map[string]interface{}{
 		"type": "object", "required": []string{"call_id", "question"}, "properties": map[string]interface{}{
 			"call_id":  callIDSchema,
 			"question": map[string]interface{}{"type": "string", "description": "What you want to know, self-contained."},
@@ -1812,14 +1841,14 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 		if err != nil {
 			return "", err
 		}
-		if !isCaller(call, caller) {
+		if !isCaller(call, caller) || call.UserID != userID {
 			return "", fmt.Errorf("only the caller of function call %s can ask for an update", call.ID)
 		}
 		if call.TargetKind != triggerCallerCrew {
 			return "", fmt.Errorf("workflow runs do not accept mid-run messages; use functions action=status for status and progress")
 		}
 		if call.TargetChat != "" {
-			return "", fmt.Errorf("a chat of this Code takes no mid-turn questions; read its progress and recent activity with functions action=status")
+			return "", fmt.Errorf("a chat of this project takes no mid-turn questions; read its progress and recent activity with functions action=status")
 		}
 		question, _ := args["question"].(string)
 		if strings.TrimSpace(question) == "" {
@@ -1893,4 +1922,9 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 	}
 
 	return nil
+}
+
+// crewFunctionToolName is a tool for defining, calling or answering functions.
+func crewFunctionToolName(name string) bool {
+	return strings.HasPrefix(name, "project_functions_") || name == "ask_function_update" || name == "report_function_progress"
 }

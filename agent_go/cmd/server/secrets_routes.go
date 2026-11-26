@@ -278,14 +278,14 @@ func (api *StreamingAPI) handleStoreWorkflowSecret(w http.ResponseWriter, r *htt
 		http.Error(w, "encrypted_value must be produced by /api/secrets/encrypt in this session", http.StatusBadRequest)
 		return
 	}
-	full, err := api.saveProjectSecret(r.Context(), userID, workspacePath, req.Name, plaintext)
+	full, _, err := api.saveProjectSecret(r.Context(), userID, workspacePath, req.Name, plaintext, "")
 	if errors.Is(err, errProjectSecretOwner) {
 		http.Error(w, err.Error()+".", http.StatusForbidden)
 		return
 	}
 	if err != nil {
-		log.Printf("[SECRETS] Failed to save a project secret in the owner's Vault: %v", err)
-		http.Error(w, "Could not save this secret in your Vault", http.StatusInternalServerError)
+		log.Printf("[SECRETS] Failed to save a project secret: %v", err)
+		http.Error(w, "Could not save this secret: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if err := selectProjectSecret(r.Context(), crewProfileID, workspacePath, full); err != nil {

@@ -105,6 +105,33 @@
   },
   {
     "family": "automations",
+    "name": "scheduler_status",
+    "scope": "schedule",
+    "member": "global_scheduler_status",
+    "description": "Read the one pause for all schedules. No project needed. Administrator connection only.",
+    "source": "manage_schedules",
+    "source_action": "scheduler_status"
+  },
+  {
+    "family": "automations",
+    "name": "pause_all",
+    "scope": "schedule",
+    "member": "pause_all_schedules",
+    "description": "Pause every schedule with the one global switch. No project needed. Administrator connection only; ask an administrator to change it from Schedules.",
+    "source": "manage_schedules",
+    "source_action": "pause_all"
+  },
+  {
+    "family": "automations",
+    "name": "resume_all",
+    "scope": "schedule",
+    "member": "resume_all_schedules",
+    "description": "Resume every schedule held by the global switch. No project needed. Administrator connection only; ask an administrator to change it from Schedules.",
+    "source": "manage_schedules",
+    "source_action": "resume_all"
+  },
+  {
+    "family": "automations",
     "name": "create_calendar",
     "scope": "schedule",
     "member": "create_calendar_schedule",
@@ -126,10 +153,7 @@
     "member": "project_webhooks_list",
     "description": "Use this project\u2019s list HTTP webhook action.",
     "source": "manage_workflow_webhook",
-    "source_action": "list",
-    "aliases": [
-      "list_project_triggers"
-    ]
+    "source_action": "list"
   },
   {
     "family": "automations",
@@ -147,10 +171,7 @@
     "member": "project_webhooks_create",
     "description": "Use this project\u2019s create HTTP webhook action.",
     "source": "manage_workflow_webhook",
-    "source_action": "create",
-    "aliases": [
-      "create_project_trigger"
-    ]
+    "source_action": "create"
   },
   {
     "family": "automations",
@@ -168,10 +189,7 @@
     "member": "project_webhooks_update",
     "description": "Use this project\u2019s update HTTP webhook action.",
     "source": "manage_workflow_webhook",
-    "source_action": "update",
-    "aliases": [
-      "update_project_trigger"
-    ]
+    "source_action": "update"
   },
   {
     "family": "automations",
@@ -189,10 +207,7 @@
     "member": "project_webhooks_delete",
     "description": "Use this project\u2019s delete HTTP webhook action.",
     "source": "manage_workflow_webhook",
-    "source_action": "delete",
-    "aliases": [
-      "delete_project_trigger"
-    ]
+    "source_action": "delete"
   },
   {
     "family": "automations",
@@ -301,5 +316,68 @@
     "description": "Use this caller\u2019s check Watcher action, retaining selected credentials, target and revision checks.",
     "source": "manage_condition_triggers",
     "source_action": "check"
+  },
+  {
+    "family": "automations",
+    "name": "items",
+    "scope": "watcher",
+    "member": "project_watchers_items",
+    "description": "Read a Project activity Watcher's steps, rules and items, with the state of each linked task. Your own feed Watchers only.",
+    "source": "manage_condition_triggers",
+    "source_action": "items"
+  },
+  {
+    "family": "automations",
+    "name": "item_update",
+    "scope": "watcher",
+    "member": "project_watchers_item_update",
+    "description": "Move a Project activity item to one of its steps, add a short note, or link the ask you sent for it (task from messages). Your own feed Watchers only.",
+    "source": "manage_condition_triggers",
+    "source_action": "item_update"
+  },
+  {
+    "family": "automations",
+    "name": "tasks",
+    "scope": "watcher",
+    "member": "project_watchers_tasks",
+    "description": "Read this project's shared task list: steps, rules, lead, open tasks with their sources, links, activity and linked asks, and the lead's recent sorting decisions.",
+    "source": "manage_condition_triggers",
+    "source_action": "tasks"
+  },
+  {
+    "family": "automations",
+    "name": "task_add",
+    "scope": "watcher",
+    "member": "project_watchers_task_add",
+    "description": "Create a Project task from something a Watcher found, or for work an agent starts that nobody asked for (title, source, step, assignee, linked ask, checklist).",
+    "source": "manage_condition_triggers",
+    "source_action": "task_add"
+  },
+  {
+    "family": "automations",
+    "name": "task_update",
+    "scope": "watcher",
+    "member": "project_watchers_task_update",
+    "description": "Change a Project task: move its step, rename it, set who has it, link an ask, add a source, a linked resource (ticket, doc, thread, pull request) or an activity line, or add and tick off checklist items.",
+    "source": "manage_condition_triggers",
+    "source_action": "task_update"
+  },
+  {
+    "family": "automations",
+    "name": "task_sorted",
+    "scope": "watcher",
+    "member": "project_watchers_task_sorted",
+    "description": "Record what the lead did with something that came in: dropped as noise, or added to an existing task.",
+    "source": "manage_condition_triggers",
+    "source_action": "task_sorted"
+  },
+  {
+    "family": "automations",
+    "name": "task_settings",
+    "scope": "watcher",
+    "member": "project_watchers_task_settings",
+    "description": "Set the project's task steps, rules and lead agent (name and chat), choose auto or ask-me-first hand-outs, or pause and resume the lead.",
+    "source": "manage_condition_triggers",
+    "source_action": "task_settings"
   }
 ]

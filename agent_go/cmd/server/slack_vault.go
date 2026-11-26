@@ -43,10 +43,10 @@ func (api *StreamingAPI) slackVaultTarget(r *http.Request, workspace string) (se
 		raw, found, err := readFileFromWorkspace(r.Context(), scope.Workspace+"/product.json")
 		var manifest productProjectManifest
 		if err != nil || !found || json.Unmarshal([]byte(raw), &manifest) != nil || manifest.ID == "" {
-			return ref, false, fmt.Errorf("Open an existing Crew to choose its Slack bot.")
+			return ref, false, fmt.Errorf("Open an existing project to choose its Slack bot.")
 		}
 		ref.ProfileID = manifest.Product
-		return ref, true, nil
+		return ref, !IsLocalMode(), nil
 	}
 	manifest, found, err := ReadWorkflowManifest(r.Context(), scope.Workspace)
 	if err != nil || !found || manifest == nil {
@@ -88,7 +88,7 @@ func (api *StreamingAPI) slackVaultScopes(r *http.Request) []slackVaultScope {
 			}
 			path := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
 			if requireSlackTargetOwner(r.Context(), api, services.SlackTargetRef{WorkspacePath: path, ProfileID: manifest.Product}) == nil {
-				out = append(out, slackVaultScope{path, "Crew · " + manifest.displayTitle()})
+				out = append(out, slackVaultScope{path, "Project · " + manifest.displayTitle()})
 			}
 		}
 	}
@@ -188,13 +188,16 @@ func (api *StreamingAPI) slackVaultBotOperation(r *http.Request, workspace strin
 	}
 	if action == "select" {
 		if workspace == "" {
-			return nil, fmt.Errorf("Open the Crew or Goal's Slack page to choose a bot from your project's Vault panel.")
+			return nil, fmt.Errorf("Open the project or Goal's Slack page to choose a bot from your project's Vault panel.")
 		}
 		ref, allowed, err := api.slackVaultTarget(r, workspace)
 		if err != nil {
 			return nil, err
 		}
 		if !allowed {
+			if IsLocalMode() && ref.ProfileID != "" {
+				return nil, fmt.Errorf("Local projects use Slack as me only. Connect your personal Slack account instead.")
+			}
 			return nil, fmt.Errorf("Flows support Act in Slack only. Choose a personal account on the Slack page.")
 		}
 		if err := requireSlackTargetOwner(r.Context(), api, ref); err != nil {
@@ -284,7 +287,10 @@ func (api *StreamingAPI) slackVaultBotOperation(r *http.Request, workspace strin
 					return nil, e
 				}
 				if !allowed {
-					return nil, fmt.Errorf("Choose a Crew or Goal to manage this bot. Flows use personal Slack accounts only.")
+					if IsLocalMode() && ref.ProfileID != "" {
+						return nil, fmt.Errorf("Local projects use Slack as me only. Connect your personal Slack account instead.")
+					}
+					return nil, fmt.Errorf("Choose a project or Goal to manage this bot. Flows use personal Slack accounts only.")
 				}
 				payload["workspace_path"], payload["profile_id"] = ref.WorkspacePath, ref.ProfileID
 			}
@@ -352,7 +358,7 @@ func (api *StreamingAPI) handleSlackVaultBots(w http.ResponseWriter, r *http.Req
 	writeAgentProfileJSON(w, 200, result)
 }
 func (api *StreamingAPI) registerSlackVaultBotTool(reg definitionToolRegistrar, workspace string) error {
-	return reg.RegisterCustomTool("manage_slack_bot", "Choose a saved Slack bot for this Crew or Goal, using the same server action as its Slack page. list_saved shows available bots and the current selection. select uses a listed connection_id without copying credentials. Flows support Act in Slack only; use manage_slack_account there. Bot credentials are managed in your project's Vault panel or in chat with existing owner/admin permissions. Preserve existing channel routes and personal account permissions.", map[string]any{"type": "object", "additionalProperties": false, "required": []string{"action"}, "properties": map[string]any{
+	return reg.RegisterCustomTool("manage_slack_bot", "Choose a saved Slack bot for this project or Goal, using the same server action as its Slack page. list_saved shows available bots and the current selection. select uses a listed connection_id without copying credentials. Flows support Act in Slack only; use manage_slack_account there. Bot credentials are managed in your project's Vault panel or in chat with existing owner/admin permissions. Preserve existing channel routes and personal account permissions.", map[string]any{"type": "object", "additionalProperties": false, "required": []string{"action"}, "properties": map[string]any{
 		"action": map[string]any{"type": "string", "enum": []string{"list_saved", "select"}}, "connection_id": map[string]any{"type": "string", "description": "Existing bot ID returned by list_saved."},
 	}}, func(ctx context.Context, args map[string]any) (string, error) {
 		action, _ := args["action"].(string)

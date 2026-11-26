@@ -6,12 +6,12 @@ import { Button } from '../ui/Button'
 import { SlackSignInSetup } from './SlackSignInSetup'
 import { slackErrorText } from '../workflow/bots/SlackSlugsSection'
 
-type SlackAccount = { id: string; owner: string; label: string; mine: boolean; selected: boolean; connected: boolean; can_add: boolean; can_detach: boolean; can_manage: boolean; can_reconnect: boolean; problem?: string }
+type SlackAccount = { id: string; owner: string; label: string; team_name?: string; team_domain?: string; user_name?: string; mine: boolean; selected: boolean; connected: boolean; can_add: boolean; can_detach: boolean; can_manage: boolean; can_reconnect: boolean; problem?: string }
 type SlackAccounts = { accounts: SlackAccount[]; can_connect: boolean; sign_in_ready?: boolean }
 const key = (account: SlackAccount) => `${account.owner}:${account.id}`
 
 /** A single account view; saving a sign-in and lending it to a project keep their separate server checks. */
-export default function SlackAccountsPanel({ workspacePath, noun = 'Crew', embedded = false, savedBotNames = [], onStatus }: { workspacePath: string; noun?: string; tabId?: string; embedded?: boolean; savedBotNames?: string[]; onStatus?: (status: string) => void }) {
+export default function SlackAccountsPanel({ workspacePath, noun = 'Project', embedded = false, savedBotNames = [], onStatus }: { workspacePath: string; noun?: string; tabId?: string; embedded?: boolean; savedBotNames?: string[]; onStatus?: (status: string) => void }) {
  const [saved, setSaved] = useState<SlackAccounts | null>(null)
  const [scoped, setScoped] = useState<SlackAccounts | null>(null)
  const [busy, setBusy] = useState(false)
@@ -50,8 +50,11 @@ export default function SlackAccountsPanel({ workspacePath, noun = 'Crew', embed
    {!accounts.length && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4"><div><p className="text-sm font-medium">No account connected</p><p className="mt-1 text-xs text-muted-foreground">Connect your account, then choose to use it in this {noun}.</p></div>{saved.can_connect && saved.sign_in_ready !== false && <Button size="sm" variant="outline" disabled={busy} onClick={() => void act('connect')}><Plus className="mr-1.5 h-4 w-4"/>Connect my Slack</Button>}</div>}
    {accounts.map(account => {
     const here = scopedByKey.get(key(account))
+    const heading = account.team_name || account.label || 'Slack account'
+    const handle = account.user_name ? `@${account.user_name.replace(/^@/, '')}` : ''
+    const subtitle = [account.team_domain, account.connected ? 'Connected' : 'Needs sign-in', here?.selected ? `Used by this ${noun}` : `Not used by this ${noun}`].filter(Boolean).join(' · ')
     return <div key={key(account)} className="space-y-3 rounded-lg border border-border p-4">
-     <div className="flex flex-wrap items-center gap-3"><div className="min-w-0 flex-1"><p className="break-words text-sm font-medium">{account.label || 'Slack account'}</p><p className="mt-1 text-xs text-muted-foreground">{account.connected ? 'Connected' : 'Needs sign-in'} · {here?.selected ? `Used by this ${noun}` : `Not used by this ${noun}`}</p></div>
+     <div className="flex flex-wrap items-center gap-3"><div className="min-w-0 flex-1"><p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 break-words text-sm font-medium"><span>{heading}</span>{handle && <span className="font-normal text-muted-foreground">{handle}</span>}</p><p className="mt-1 text-xs text-muted-foreground">{subtitle}</p></div>
       {here?.can_add && !here.selected && <Button size="sm" variant="outline" disabled={busy} onClick={() => void act('attach', account)}>Use here</Button>}
       {here?.can_detach && <Button size="sm" variant="outline" disabled={busy} onClick={() => void act('detach', account)}>Remove from this {noun}</Button>}
       {account.can_reconnect && !account.connected && <Button size="sm" variant="outline" disabled={busy || saved.sign_in_ready === false} onClick={() => void act('reconnect', account)}>Sign in again</Button>}

@@ -66,7 +66,7 @@ func scheduleMessagesNeedExplicitReason(messages []string) (bool, string) {
 // messages. An agent is involved only through a Crew agent's own schedule, which can run the workflow.
 func validateScheduleMessages(messages []string, _ string) error {
 	if len(compactScheduleMessages(messages)) > 0 {
-		return fmt.Errorf("a workflow schedule runs the workflow directly and takes no messages; to have an agent do something on a timer, schedule a message on a Crew agent, which can run this workflow")
+		return fmt.Errorf("a workflow schedule runs the workflow directly and takes no messages; to have an agent do something on a timer, schedule a message on a project agent, which can run this workflow")
 	}
 	return nil
 }

@@ -65,7 +65,7 @@ func projectGmailOAuthClient(c services.GmailOAuthClient) GmailOAuthClientRespon
 
 // GmailOAuthClientRoutes wires the named OAuth client registry API.
 func GmailOAuthClientRoutes(router *mux.Router, api *StreamingAPI) {
-	r := router.PathPrefix("/api/human-feedback/gmail/oauth-clients").Subrouter()
+	r := router.PathPrefix("/human-feedback/gmail/oauth-clients").Subrouter()
 	r.HandleFunc("", listGmailOAuthClientsHandler(api)).Methods("GET")
 	r.HandleFunc("", createGmailOAuthClientHandler(api)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/{name}", requireAdminWrite(deleteGmailOAuthClientHandler(api))).Methods("DELETE", "OPTIONS")

@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch, MagicMock
 
 ROOT = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('vault_install', ROOT / 'install-vault-service.py')
@@ -13,6 +14,109 @@ spec.loader.exec_module(module)
 
 
 class VaultInstallTest(unittest.TestCase):
+    def test_lifecycle_keeps_healthy_unchanged_vault_and_restarts_otherwise(self):
+        # #2989: exercise the real shell lifecycle, mocking only host commands
+        # and the renderer/identity executable; never touch a live service.
+        for answers, bootstrap_status in (([0, 0], 0), ([1], 0), ([0, 1], 0), ([1], 7)):
+            with self.subTest(answers=answers, bootstrap_status=bootstrap_status), tempfile.TemporaryDirectory(dir=ROOT) as temporary:
+                root = Path(temporary)
+                app, build = root / 'app', root / 'build'
+                (app / 'state/vault').mkdir(parents=True)
+                (app / 'state/vault/service.env').write_text('EXAMPLE=value\n')
+                (build / 'bin').mkdir(parents=True)
+                program = build / 'bin/agentworks-vault'
+                program.write_text(f'#!/bin/bash\necho bootstrap >> "$APP/commands"\nexit {bootstrap_status}\n')
+                program.chmod(0o755)
+                (build / 'bin/install-vault-service.py').write_text("""import json, os, sys
+from pathlib import Path
+root = Path(os.environ['APP'])
+if '--check-running' in sys.argv:
+    queue = root / 'answers'
+    answers = json.loads(queue.read_text())
+    status = answers.pop(0)
+    queue.write_text(json.dumps(answers))
+    sys.exit(status)
+""")
+                (app / 'answers').write_text(__import__('json').dumps(answers))
+                script = r'''set -euo pipefail
+source "$1/vault.sh"
+export APP="$2"
+VAULT_ENABLED=true
+systemctl() { echo "$*" >> "$APP/commands"; }
+curl() { return 0; }
+vault_prepare "$3" "$APP" "$APP/docs" example 24000 24003
+vault_install "$3" "$APP" example
+vault_start example 24003
+[[ -z "${VAULT_RESTART_PRODUCT:-}" ]]
+'''
+                result = subprocess.run(['bash', '-c', script, 'test', str(ROOT), str(app), str(build)], capture_output=True, text=True)
+                self.assertEqual(result.returncode, bootstrap_status, result.stderr)
+                commands = (app / 'commands').read_text() if (app / 'commands').exists() else ''
+                if answers == [0, 0]:
+                    self.assertEqual(commands, '')
+                    self.assertIn('event=kept_running', result.stdout)
+                else:
+                    self.assertIn('stop example-vault.service', commands)
+                    self.assertIn('bootstrap', commands)
+                    if bootstrap_status == 0:
+                        self.assertIn('restart example-vault.service', commands)
+                    else:
+                        self.assertNotIn('restart', commands)
+
+    def test_reuse_only_exact_healthy_running_binary_and_config(self):
+        # #2989: app-only deploy must keep Vault up, but never reuse a stale
+        # executable, credential, unit, config or another process incarnation.
+        with tempfile.TemporaryDirectory(dir=ROOT) as temporary:
+            root = Path(temporary)
+            app, build, proc = root / 'app', root / 'build', root / 'proc'
+            state = app / 'state/vault'
+            state.mkdir(parents=True)
+            (build / 'bin').mkdir(parents=True)
+            process = proc / '42'
+            process.mkdir(parents=True)
+            for path in (build / 'bin/agentworks-vault', process / 'exe'):
+                path.write_bytes(b'vault-binary')
+            for name in ('service.env', 'agent.env', 'service-token'):
+                (state / name).write_text('private-fixture')
+            (process / 'stat').write_text('42 (vault) ' + ' '.join(['0'] * 19 + ['123']))
+            unit = f'EnvironmentFile={state}/service.env\n'
+            def systemctl(args, **kwargs):
+                return '42\n' if 'show' in args else unit.encode()
+            response = MagicMock()
+            response.__enter__.return_value.status = 200
+            with patch.object(module.subprocess, 'run'), patch.object(module.subprocess, 'check_output', side_effect=systemctl), patch.object(module, 'urlopen', return_value=response):
+                def reuse(record=False):
+                    return module.reuse_running(app, build, 'example', 24003, record, proc)
+                with self.assertRaises(FileNotFoundError):
+                    reuse()  # First rollout always restarts.
+                self.assertTrue(reuse(True))
+                receipt = state / 'deploy-identity.json'
+                self.assertEqual(receipt.stat().st_mode & 0o777, 0o600)
+                self.assertNotIn('private-fixture', receipt.read_text())
+                self.assertTrue(reuse())
+                for name in ('service.env', 'agent.env', 'service-token'):
+                    (state / name).write_text('changed')
+                    self.assertFalse(reuse())
+                    (state / name).write_text('private-fixture')
+                unit += 'Environment=EXAMPLE=changed\n'
+                self.assertFalse(reuse())
+                unit = f'EnvironmentFile={state}/service.env\nEnvironmentFile=/extra.env\n'
+                with self.assertRaises(ValueError):
+                    reuse()
+                unit = f'EnvironmentFile={state}/service.env\n'
+                (process / 'stat').write_text('42 (vault) ' + ' '.join(['0'] * 19 + ['124']))
+                self.assertFalse(reuse())
+                (process / 'exe').write_bytes(b'different-binary')
+                with self.assertRaises(ValueError):
+                    reuse()
+                (process / 'exe').write_bytes(b'vault-binary')
+                response.__enter__.return_value.status = 503
+                with self.assertRaises(ValueError):
+                    reuse()
+                with patch.object(module.subprocess, 'run', side_effect=subprocess.CalledProcessError(3, 'systemctl')):
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        reuse()
+
     def test_prebuilt_copy_preserves_vault_assets_and_needs_no_compiler(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -47,17 +151,20 @@ class VaultInstallTest(unittest.TestCase):
             app.mkdir()
             (app / '.env').write_text('VAULT_AUDIT_PROVIDER=sqlite\n')
             state = module.render(app, docs, 'agents', 24000, 24003, units)
-            first = (state / 'service-token').read_bytes()
+            # #2989: atomic rewrites must be byte-identical, or every deploy
+            # would invalidate the running-service identity and restart Vault.
+            paths = [state / name for name in ('service-token', 'service.env', 'agent.env')]
+            paths += [units / 'agents-vault.service', units / 'agents-agent.service.d/zz-vault.conf']
+            first = {path: path.read_bytes() for path in paths}
             module.render(app, docs, 'agents', 24000, 24003, units)
-            self.assertEqual(first, (state / 'service-token').read_bytes())
+            self.assertEqual(first, {path: path.read_bytes() for path in paths})
             for name in ('service-token', 'service.env', 'agent.env'):
                 self.assertEqual((state / name).stat().st_mode & 0o777, 0o600)
             env = module.read_env(state / 'service.env')
             self.assertEqual(env['GATEWAY_AUTH_MODE'], 'platform')
             self.assertEqual(env['GATEWAY_BIND'], '127.0.0.1')
             self.assertEqual(env['GATEWAY_WORKSPACE_DIR'], str(docs / 'Chats/CapLayer'))
-            self.assertEqual(env['GATEWAY_UPSTREAM_URL'], 'none')
-            self.assertNotIn('GATEWAY_GRANT_TOOLS', env)
+            self.assertNotIn('GATEWAY_UPSTREAM_URL', env)
             self.assertIn('UMask=0077', (units / 'agents-vault.service').read_text())
             self.assertIn('EnvironmentFile=', (units / 'agents-agent.service.d/zz-vault.conf').read_text())
 

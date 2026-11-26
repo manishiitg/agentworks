@@ -2,9 +2,13 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 )
 
 // The browser and Builder tools use the same caller-authorized directory.
@@ -14,7 +18,27 @@ func (api *StreamingAPI) handleAgentDirectory(w http.ResponseWriter, r *http.Req
 		externalError(w, http.StatusUnauthorized, "unauthenticated", "Sign in to see the agents you can reach.")
 		return
 	}
-	out, err := listAgentDirectory(r.Context(), claims)
+	ctx := r.Context()
+	if project := r.URL.Query().Get("crew"); IsLocalMode() && project != "" {
+		root := crewProjectRootByID(project)
+		if root == "" || !crewProjectOwnedByCaller(claims.UserID, root) {
+			externalError(w, 404, "crew_unavailable", "This project is unavailable.")
+			return
+		}
+		ctx = withDirectoryThisCrew(ctx, root)
+	}
+	if target := r.URL.Query().Get("agent_status"); target != "" {
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		out, err := api.readAgentStatus(ctx, claims, target, false, limit)
+		if err != nil {
+			agentStatusHTTPError(w, err)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		externalJSON(w, out)
+		return
+	}
+	out, err := listAgentDirectory(ctx, claims, api)
 	if err != nil {
 		externalError(w, http.StatusServiceUnavailable, "directory_unavailable", "Could not load your agents. Try again.")
 		return
@@ -38,9 +62,10 @@ func (api *StreamingAPI) handleAgentDirectory(w http.ResponseWriter, r *http.Req
 }
 
 // listAgentDirectory is the one list of agents a person can use (PLAT-861-297, owner 2026-10-20: "all should be a
-// group of agents users can easily.. once shared"): every Crew, Goal and Relay they own or that is shared with them,
-// and their agents connected through AgentBridge (local Claude Code and others). From inside a Crew, the person's other Crews show only when linked to it.
-// Rows come only from the existing access paths, and the list is built only when asked, never at message start.
+// group of agents users can easily.. once shared"): every Crew and Relay they own or that is shared with them,
+// and their agents connected through AgentBridge (local Claude Code and others). From inside a Crew, only that Crew, its Team and the Crews linked to it show (crew_reach.go).
+// Rows come only from the existing access paths, and the list is built only when asked, never at message start (except a
+// Crew agent's new network message on the Mac, checked against its own list).
 // directoryThisCrewKey carries the folder of the Crew whose agent is asking, so the list can say which Crew is "this" one.
 type directoryThisCrewKey struct{}
 
@@ -54,11 +79,29 @@ func withDirectoryThisCrew(ctx context.Context, crewPath string) context.Context
 // directoryRelationRank orders the Crew rows: the Crew the agent works in, then the person's own, their Teams', then the rest.
 var directoryRelationRank = map[string]int{"this_crew": 0, "yours": 1, "team": 2, "shared": 3}
 
-func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]interface{}, error) {
+func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*StreamingAPI) (map[string]interface{}, error) {
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" {
 		return map[string]interface{}{"agents": []map[string]interface{}{}}, nil
 	}
+	ctx, finishReads := startDirectoryRegistryReads(ctx)
+	defer finishReads()
 	agents := []map[string]interface{}{}
+	// Reuse an existing canonical registration without writing during discovery.
+	// A historical alias for this binding must not become a second row.
+	hosted := map[hostedAgentKey]namedMessageAgent{}
+	named := map[string]namedMessageAgent{}
+	if snapshot, err := readAgentMessageSnapshot(ctx); err == nil {
+		for _, a := range uniqueHostedAgents(snapshot.Agents) {
+			if a.UserID == claims.UserID && a.Hosted != nil {
+				hosted[hostedAgentKey{a.UserID, *a.Hosted}] = a
+			}
+		}
+		for _, a := range snapshot.Agents {
+			if a.UserID == claims.UserID {
+				named[a.ID] = a
+			}
+		}
+	}
 	here, _ := ctx.Value(directoryThisCrewKey{}).(string)
 	thisCrew := ""
 	// The same rows on the website and over MCP: the person's live access decides, not connection scopes.
@@ -66,28 +109,13 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 	if err != nil {
 		return nil, err
 	}
-	// Asked from inside a Crew, the person's other Crews are listed only when linked to this one (owner, 7 Nov: not all of
-	// a person's Crews talk to each other). Over MCP from outside a Crew there is no "here" and every owned Crew shows.
-	// The person's AgentWorks main agent reaches all their Crews (owner, 7 Nov: "can access other agents.. thats it");
-	// the server decides by its role.
-	linked := map[string]bool{}
-	onlyLinked := here != "" && !isAgentWorksCrew(ctx, here)
-	if onlyLinked {
-		refs, _ := readWorkWorkflowReferences(ctx, here)
-		for _, ref := range refs {
-			linked[canonicalCrewWorkspaceRoot(ref)] = true
-		}
-	}
+	// Asked from inside a Crew, only this Crew, its Team and the Crews linked to it are listed, with their agents
+	// (owner, 7 and 19 Nov). Over MCP from outside a Crew there is no "here" and nothing changes.
+	reach, _ := crewReachFrom(ctx, here)
 	for _, crew := range crews {
 		id, _ := crew["id"].(string)
 		profileID, _ := crew["profile_id"].(string)
 		crewPath, _ := crew["workspace_path"].(string)
-		if onlyLinked && crewProjectOwnedByCaller(claims.UserID, crewPath) {
-			root := canonicalCrewWorkspaceRoot(crewPath)
-			if root != canonicalCrewWorkspaceRoot(here) && !linked[root] {
-				continue
-			}
-		}
 		name, _ := crew["name"].(string)
 		if identity, ok := crew["identity"].(accessibleProjectIdentity); ok && strings.TrimSpace(identity.Name) != "" {
 			name = identity.Name
@@ -105,14 +133,16 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			"your_access": crew["access"], "description": crew["description"], "functions": agentDirectoryFunctions(functions),
 			"reach": crewDirectoryReach(false),
 		}
-		if role, _ := crew["role"].(string); role != "" {
-			row["role"] = role
+		owned := crewProjectOwnedByCallerStrict(claims.UserID, crewPath)
+		team, teamErr := readCrewTeam(id)
+		inTeam := !IsLocalMode() && teamErr == nil && crewTeamAgentsVisible(team, claims.UserID) && team.OwnerID == owner
+		if reach != nil && (owned || inTeam) && !reach.crew(crewPath, id) {
+			continue
 		}
-		owned := crewProjectOwnedByCaller(claims.UserID, crewPath)
 		// How this Crew relates to the person (backend decides): the Crew the asking agent works in, one they own, one whose
 		// Team they are in, or one shared with them (owner, 7 Nov).
 		relation := "shared"
-		if t, err := readCrewTeam(id); err == nil && t.On && t.member(claims.UserID) {
+		if inTeam {
 			relation = "team"
 		}
 		if owned {
@@ -122,15 +152,47 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			relation, thisCrew = "this_crew", id
 		}
 		row["relation"] = relation
+		// Team reach filters other people, never the owner's own ordinary tabs.
+		// Otherwise an unregistered/Only-me tab disappears before lazy binding.
+		if inTeam && !owned {
+			chats := []map[string]interface{}{}
+			for _, agent := range crewTeamReachableIn(ctx, team, claims.UserID) {
+				chats = append(chats, map[string]interface{}{"chat_id": agent.ID, "name": agent.Name, "target": agent.Address, "owner_name": agent.Person, "place": agent.Place, "can_write": false})
+			}
+			row["chats"] = chats
+			agents = append(agents, row)
+			continue
+		}
 		if owned {
 			tabs, err := crewOwnerChatRecords(ctx, claims.UserID, profileID, id, crewPath)
 			if err != nil {
 				return nil, err
 			}
 			chats := []map[string]interface{}{}
+			hostedListed, hostedHidden := 0, 0
 			for _, tab := range tabs {
-				chats = append(chats, map[string]interface{}{"chat_id": tab.Record.ConversationKey, "name": firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Builder"), "purpose": tab.Identity.Purpose, "owner_name": crewOwnerDisplayName(tab.OwnerID), "can_write": tab.OwnerID == claims.UserID, "is_main": tab.Record.IsMainChat, "shared_by": crewPersonShortName(tab.OwnerID), "yours": tab.OwnerID == claims.UserID, "function_agent": crewFunctionTabKey(tab.Record.ConversationKey)})
+				if tab.OwnerID == claims.UserID && profileID == crewProfileID && !hiddenFromTabStrip(tab.Record.ConversationKey) && !crewFunctionTabKey(tab.Record.ConversationKey) {
+					record := tab.Record
+					if hostedDirectoryTab(tab) {
+						hostedListed++
+						address := bridgeChatAddress(tab.OwnerID, profileID, id, record.ConversationKey)
+						registered := hosted[hostedAgentKey{tab.OwnerID, hostedBindingForRecord(record)}]
+						if registered.ID != "" {
+							address = "agent:" + shareOwnerLabel(registered.UserID) + "/" + registered.Name
+						}
+						online := hostedChatViewed(tab.OwnerID, hostedBindingForRecord(record))
+						presence, mode := "Runs when called", "on_request"
+						if online {
+							presence, mode = "Wakes now", "live"
+						}
+						agents = append(agents, map[string]interface{}{"kind": "connected_agent", "id": address, "target": address, "agent_id": registered.ID, "owner_id": tab.OwnerID, "chat_id": record.ConversationKey, "crew_id": record.ResourceID, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "examples": tab.Identity.Examples, "yours": true, "online": online, "presence": presence, "delivery_mode": mode, "reach": "Reply in the returned inbox_id"})
+					} else {
+						hostedHidden++
+					}
+				}
+				chats = append(chats, map[string]interface{}{"target": bridgeChatAddress(tab.OwnerID, profileID, id, tab.Record.ConversationKey), "chat_id": tab.Record.ConversationKey, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "examples": tab.Identity.Examples, "owner_name": shareOwnerLabel(tab.OwnerID), "can_write": tab.OwnerID == claims.UserID, "is_main": tab.Record.IsMainChat, "shared_by": crewPersonShortName(tab.OwnerID), "yours": tab.OwnerID == claims.UserID, "function_agent": crewFunctionTabKey(tab.Record.ConversationKey)})
 			}
+			log.Printf("[AGENTBRIDGE] event=directory owner=%s project=%s hosted_listed=%d hosted_hidden=%d", claims.UserID, id, hostedListed, hostedHidden)
 			row["chats"] = chats
 		} else {
 			selected, err := crewShareAgents(ctx, claims.UserID, crewPath, false)
@@ -143,17 +205,24 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 		agents = append(agents, row)
 		if !owned {
 			for _, agent := range row["chats"].([]sharedCrewAgent) {
-				agents = append(agents, map[string]any{"kind": "crew_agent", "type": "Crew agent", "id": "workspace:" + profileID + ":" + id + "/agent/" + agent.ChatID, "target": "workspace:" + profileID + ":" + id, "crew_id": id, "chat_id": agent.ChatID, "name": agent.Name, "crew_name": name, "relation": relation, "shared_by": crewPersonShortName(agent.tab.OwnerID), "purpose": agent.Purpose, "presence": "Runs when called", "your_access": "run", "reach": "messages action=send(target=<target>, chat_id=<chat_id>); same existing tab on the website and MCP"})
+				agents = append(agents, map[string]any{"kind": "crew_agent", "type": "Project agent", "id": "workspace:" + profileID + ":" + id + "/agent/" + agent.ChatID, "target": "", "crew_id": id, "chat_id": agent.ChatID, "name": agent.Name, "crew_name": name, "relation": relation, "shared_by": crewPersonShortName(agent.tab.OwnerID), "purpose": agent.Purpose, "examples": agent.Examples, "presence": "Runs when called", "your_access": "run", "reach": "Use the product Ask entry point, or discover this agent's AgentBridge address for a peer message."})
 			}
 		}
 	}
 	// Agents shared from Crews on their owners' Macs, for the people in each agent's audience (PLAT-856-509).
 	if !IsLocalMode() {
-		agents = append(agents, macSharedAgentRows(claims.UserID, false)...)
+		for _, row := range macSharedAgentRows(claims.UserID, false) {
+			project, _ := row["crew_id"].(string)
+			if t, err := readCrewTeam(project); err == nil && t.On && t.member(claims.UserID) {
+				continue
+			}
+			agents = append(agents, row)
+		}
 	}
-	// On this Mac: the Team members' own agents of each Crew whose Team is on, from its online copy (owner, 5 Nov).
-	if IsLocalMode() {
-		agents = append(agents, teamMemberAgentRows(ctx, claims.UserID, crews)...)
+	agents = append(agents, crewTeamBridgeDirectoryItems(ctx, claims.UserID)...)
+	// A joined online project's Builder turn also lists the Team agents it may ask as the project (#3664).
+	if viewer := crewTeamViewer(ctx, claims.UserID); viewer != claims.UserID {
+		agents = append(agents, crewTeamBridgeDirectoryItems(ctx, viewer)...)
 	}
 	discovered, err := DiscoverWorkflowManifests(ctx)
 	if err != nil {
@@ -161,12 +230,9 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 	}
 	for _, workflow := range filterWorkflowManifestsForUser(claims, discovered) {
 		manifest := workflow.Manifest
-		if manifest == nil {
+		// Old workflow projects are no longer listed as Goals (owner, 19 Nov); Relays stay.
+		if !manifestIsRelay(manifest) {
 			continue
-		}
-		kind := "goal"
-		if manifestIsRelay(manifest) {
-			kind = "relay"
 		}
 		access := "run"
 		if workflow.MyAccess == WorkflowAccessOwner {
@@ -175,7 +241,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			access = "editor"
 		}
 		row := map[string]interface{}{
-			"kind": kind, "type": map[string]string{"goal": "Goal", "relay": "Relay"}[kind], "presence": "Runs when called", "delivery_mode": "on_request", "id": "workflow:" + manifest.ID, "workflow_id": manifest.ID, "name": firstNonEmptyTrimmed(manifest.Label, workflow.WorkspacePath),
+			"kind": "relay", "type": "Relay", "presence": "Runs when called", "delivery_mode": "on_request", "id": "workflow:" + manifest.ID, "workflow_id": manifest.ID, "name": firstNonEmptyTrimmed(manifest.Label, workflow.WorkspacePath),
 			"your_access": access, "description": strings.TrimSpace(manifest.Description), "functions": agentDirectoryFunctions(workflowFunctions(manifest)),
 			"reach": "functions action=call(target=<id>, function=<name>)",
 		}
@@ -193,6 +259,45 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 			agents = append(agents, row)
 		}
 	}
+	networkRows, networkError := desktopAgentNetworkRows(ctx, claims.UserID)
+	agents = append(agents, networkRows...)
+	agents = uniqueAgentDirectoryItems(agents)
+	projectAgentLabels(agents)
+	// Hiding is the caller's preference, not the agent owner's sharing policy.
+	registryPath := productConversationRegistryPath(claims.UserID)
+	registryMu := productConversationRegistryMutex(registryPath)
+	registryMu.Lock()
+	preferences, preferenceErr := defaultProductConversationRegistryStore().loadDocument(ctx, registryPath)
+	registryMu.Unlock()
+	if preferenceErr == nil {
+		annotateDirectoryHiddenAgents(agents, preferences, desktopMachineID())
+		annotateDirectoryAgentGroups(agents, preferences)
+	}
+	appCrews := map[string]string{}
+	if len(apis) > 0 && apis[0] != nil {
+		apis[0].annotateAgentRuntimeInfo(ctx, claims.UserID, agents)
+		if IsLocalMode() {
+			if source, err := apis[0].agentDirectorySource(ctx, claims.UserID); err == nil {
+				agents = mergeOwnAppChatRows(agents, source.Document.Entries, desktopMachineID())
+				projectAgentLabels(agents)
+				for _, record := range source.Document.Entries {
+					if record.ProfileID == crewProfileID && record.ConversationID != "" {
+						appCrews[desktopAppAgentName(desktopMachineID(), record.ConversationID)] = record.ResourceID
+					}
+				}
+			}
+		}
+	}
+	if reach != nil {
+		terminals, _ := terminalCrewMemberships()
+		kept := agents[:0]
+		for _, row := range agents {
+			if reach.keepsRow(row, named, terminals, appCrews) {
+				kept = append(kept, row)
+			}
+		}
+		agents = kept
+	}
 	sort.SliceStable(agents, func(i, j int) bool {
 		rank := func(row map[string]interface{}) int {
 			relation, _ := row["relation"].(string)
@@ -206,7 +311,10 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 	out := map[string]interface{}{
 		"signed_in_as": firstNonEmptyTrimmed(claims.Email, claims.Username, claims.UserID),
 		"agents":       agents,
-		"note":         "Every agent you own or that is shared with you. Show name, type, provider, presence and last_seen_at; include last_delivered_at when supplied. Builder/Run describes access, not connection or delivery. Crews run when called and have no laptop heartbeat. Each Crew row says how it relates to you in relation: this_crew (the Crew you are working in), yours (you own it and linked it to this Crew), team (you are in its Team) or shared (shared with you); chats say who shared them (shared_by) and function_agent marks a function's own agent, which only its owner talks to. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
+		"note":         "Every agent you own or that is shared with you. hidden=true means hidden by you and used less often, not disabled or private. group is your own left-menu group holding the agent (agents in one group usually work together, so ask them first) and forked_from the agent it was forked from; neither is access. Prefer visible agents unless a hidden agent is named or specifically relevant; schedules and messages remain unchanged. Show name, type, cli, model_id, reasoning_effort, presence and last_seen_at when supplied; internal project names are projected only for their authorized audience; include last_delivered_at when supplied. Builder/Run describes access, not connection or delivery. Projects run when called and have no laptop heartbeat. Each project row says how it relates to you in relation: this_crew (the project you are working in), yours (you own it and linked it to this project), team (you are in its Team) or shared (shared with you); chats say who shared them (shared_by) and function_agent marks a function's own agent, which only its owner talks to. Last seen is connection activity, not proof that the model read a message. Missing timestamps are unknown, never zero activity. Use the id; a name works only when unique.",
+	}
+	if networkError != "" {
+		out["network_error"] = networkError
 	}
 	if thisCrew != "" {
 		out["this_crew"] = thisCrew
@@ -219,7 +327,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims) (map[string]int
 func crewDirectoryReach(chats bool) string {
 	call := "To use its features call a function: functions action=call(project=<crew_id>, function=<name>, input=<its asks_for>), then functions action=status(call_id) until it settles. A function runs in its own agent, which only the owner talks to."
 	if chats {
-		return "messages action=send(target=<id>, chat_id=<chat_id from chats>) messages one of its agents; omit chat_id for the Crew ask. " + call
+		return "Message an agent through its exact AgentBridge address; product IDs are only for product Ask and functions. " + call
 	}
 	return call
 }
@@ -278,15 +386,32 @@ func filterAgentDirectory(directory map[string]any, query string) {
 	if query == "" {
 		return
 	}
-	for _, key := range []string{"agents", "chats_inside_agentworks"} {
+	for _, key := range []string{"agents", "chats_inside_agentworks", "projects"} {
 		rows, ok := directory[key].([]map[string]any)
 		if !ok {
 			continue
 		}
 		filtered := make([]map[string]any, 0)
 		for _, row := range rows {
-			for _, field := range []string{"agent_name", "name", "label", "purpose", "description", "display"} {
+			aliasMatch := false
+			for _, address := range agentDirectoryAddresses(row) {
+				if strings.Contains(strings.ToLower(address), query) {
+					aliasMatch = true
+					break
+				}
+			}
+			if aliasMatch {
+				filtered = append(filtered, row)
+				continue
+			}
+			for _, field := range []string{"agent_name", "name", "label", "purpose", "description", "display", "id", "target", "team_name", "crew_name", "owner"} {
 				value, _ := row[field].(string)
+				if field == "purpose" {
+					if row["examples"] != nil {
+						raw, _ := json.Marshal(row["examples"])
+						value += " " + string(raw)
+					}
+				}
 				if strings.Contains(strings.ToLower(value), query) {
 					filtered = append(filtered, row)
 					break
@@ -309,7 +434,7 @@ func agentDirectoryHowToCall(rows any) string {
 	}
 	parts := []string{}
 	if kinds["crew"] {
-		parts = append(parts, "Crew: functions action=call(project=<crew_id>, function=<name>, input=<its asks_for>), then functions action=status(call_id) until it settles; or workspace action=ask. A function's own agent is not a chat to message")
+		parts = append(parts, "Project: functions action=call(project=<crew_id>, function=<name>, input=<its asks_for>), then functions action=status(call_id) until it settles; or workspace action=ask. A function's own agent is not a chat to message")
 	}
 	if kinds["goal"] {
 		parts = append(parts, "Goal: functions action=call with workflow_id and function")
@@ -321,4 +446,99 @@ func agentDirectoryHowToCall(rows any) string {
 		parts = append(parts, "Connected agent: messages action=send target=agent:<name>")
 	}
 	return strings.Join(parts, ". ") + "."
+}
+
+// crewDirectoryChatName is a chat's name as the header shows it: a person's Main is "Main", never its saved title
+// "<person> · Builder".
+func crewDirectoryChatName(tab crewOwnerChat) string {
+	if tab.Record.IsMainChat {
+		return "Main"
+	}
+	return firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Main")
+}
+
+// Only the viewing person's saved preferences are supplied here. Do not copy
+// another owner's pin setting onto shared or remote agents.
+func annotateDirectoryHiddenAgents(rows []map[string]interface{}, preferences productConversationRegistryDocument, device string) {
+	hiddenChats := map[string]bool{}
+	hiddenApps := map[string]bool{}
+	for key, identity := range preferences.Agents {
+		if !identity.Unpinned {
+			continue
+		}
+		hiddenChats[strings.TrimPrefix(key, crewProfileID+"/")] = true
+		if record, ok := preferences.Entries[key]; ok && device != "" && record.ConversationID != "" {
+			hiddenApps[desktopAppAgentName(device, record.ConversationID)] = true
+		}
+	}
+	mark := func(row map[string]interface{}) {
+		row["hidden"] = true
+		row["usage_note"] = "Hidden by you — used less often. Still available for messages and scheduled work."
+	}
+	for _, row := range rows {
+		chat, _ := row["chat_id"].(string)
+		name, _ := row["agent_name"].(string)
+		yours, _ := row["yours"].(bool)
+		if hiddenChats[chat] || (yours && hiddenApps[name]) {
+			mark(row)
+		}
+		if chats, ok := row["chats"].([]map[string]interface{}); ok {
+			for _, child := range chats {
+				chat, _ := child["chat_id"].(string)
+				if hiddenChats[chat] {
+					mark(child)
+				}
+			}
+		}
+	}
+}
+
+// annotateDirectoryAgentGroups adds the caller's own left-menu group and, for a fork, the agent it came from (#3288,
+// owner 19 Nov: agents are told about groups and forks). It only decorates rows already admitted to the caller.
+func annotateDirectoryAgentGroups(rows []map[string]interface{}, preferences productConversationRegistryDocument) {
+	groups := map[string]string{}
+	for _, members := range preferences.AgentGroups {
+		for key, group := range members {
+			groups[key] = group
+		}
+	}
+	parentName := func(parent string) string {
+		if identity, ok := preferences.Agents[productConversationRegistryEntryKey(crewProfileID, parent)]; ok && strings.TrimSpace(identity.Name) != "" {
+			return strings.TrimSpace(identity.Name)
+		}
+		if !strings.Contains(parent, codeChatSideMarker) {
+			return "Main"
+		}
+		return parent[strings.LastIndex(parent, codeChatSideMarker)+len(codeChatSideMarker):]
+	}
+	annotate := func(row map[string]interface{}) {
+		chat, _ := row["chat_id"].(string)
+		if chat == "" {
+			return
+		}
+		if group := groups[chat]; group != "" {
+			row["group"] = group
+		}
+		if identity, ok := preferences.Agents[productConversationRegistryEntryKey(crewProfileID, chat)]; ok && identity.ForkedFrom != "" {
+			row["forked_from"] = parentName(identity.ForkedFrom)
+		}
+	}
+	for _, row := range rows {
+		annotate(row)
+		if chats, ok := row["chats"].([]map[string]interface{}); ok {
+			for _, child := range chats {
+				annotate(child)
+			}
+		}
+	}
+}
+
+var teamAgentReachLogged sync.Map
+
+// logTeamAgentReach logs how many Team agents a Crew chat's list offered, once per change (IDs and counts only).
+func logTeamAgentReach(caller, workspace string, count int) {
+	if previous, ok := teamAgentReachLogged.Swap(caller+"/"+workspace, count); ok && previous == count {
+		return
+	}
+	log.Printf("[TEAM_AGENT_REACH] caller=%s workspace=%s event=discover team_agents=%d", caller, workspace, count)
 }

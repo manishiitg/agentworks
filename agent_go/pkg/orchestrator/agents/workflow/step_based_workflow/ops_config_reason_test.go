@@ -29,7 +29,6 @@ func TestExecutionTierPinRequiresAReason(t *testing.T) {
 		"execution_tier_reason",
 		"successful-run counts do not change it", // configuration remains stable
 		"architecture_review",                    // where the evidence must come from
-		"create_human_input_request",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("tier rejection missing %q: %v", want, err)
@@ -55,7 +54,7 @@ func TestExecutionLLMPinRequiresAReason(t *testing.T) {
 	}
 	// A pin outranks tier entirely — that is the consequence worth surfacing,
 	// because it silently voids every tier decision above it.
-	for _, want := range []string{"execution_llm_reason", "outranks execution_tier", "create_human_input_request"} {
+	for _, want := range []string{"execution_llm_reason", "outranks execution_tier"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("pin rejection missing %q: %v", want, err)
 		}

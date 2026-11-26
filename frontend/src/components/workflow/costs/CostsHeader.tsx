@@ -5,7 +5,7 @@ import CostTokenBreakdown from '../../providers/CostTokenBreakdown'
 import { DollarSign } from 'lucide-react'
 import { formatStartedAt } from '../../../utils/duration'
 import { formatCost, formatUSD } from './helpers'
-import { costAmountLabel } from '../../../utils/costTokens'
+import { costAmountLabel, costBasisText } from '../../../utils/costTokens'
 import type { CostsData } from './useCostsData'
 import { WorkspaceViewHeader } from '../WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from '../WorkspaceViewIconButton'
@@ -23,18 +23,24 @@ type CostsOverviewProps = Pick<CostsData, 'overallSummary' | 'aggregateSummary' 
 export function CostsOverview({ scopedCosts, overallSummary, aggregateSummary, phaseCostSummary }: CostsOverviewProps) {
   if (!overallSummary) return null
   const usage = { ...scopedCosts?.total, total_cost_usd: overallSummary.totalCost }
-  return <section aria-label="Cost summary" className="min-w-0 rounded-lg border border-border bg-card p-4">
+  // Tokens first (owner, 22 Nov): new input and output lead; re-read cache and the dollar figure are secondary, and
+  // a subscription's dollar figure says it is not charged.
+  const fresh = Math.max(0, overallSummary.totalInputTokens - overallSummary.cacheReadTokens)
+  const basis = costBasisText(scopedCosts?.total)
+  return <section aria-label="Usage summary" className="min-w-0 rounded-lg border border-border bg-card p-4">
     <div className="flex flex-wrap items-start justify-between gap-5">
       <div>
-        <p className="text-xs text-muted-foreground">Recorded tokens</p>
-        <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums text-foreground" title={(overallSummary.totalInputTokens + overallSummary.totalOutputTokens).toLocaleString()}>
-          {formatTokens(overallSummary.totalInputTokens + overallSummary.totalOutputTokens)}
+        <p className="text-xs text-muted-foreground">Tokens</p>
+        <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums text-foreground" title={(fresh + overallSummary.totalOutputTokens).toLocaleString()}>
+          {formatTokens(fresh + overallSummary.totalOutputTokens)}
         </p>
-        <p className="mt-2 text-xs text-muted-foreground">{formatTokens(overallSummary.totalInputTokens)} input · {formatTokens(overallSummary.totalOutputTokens)} output</p>
+        <p className="mt-2 text-xs text-muted-foreground">{formatTokens(fresh)} input · {formatTokens(overallSummary.totalOutputTokens)} output</p>
+        {overallSummary.cacheReadTokens > 0 && <p className="text-xs text-muted-foreground">plus {formatTokens(overallSummary.cacheReadTokens)} re-read from cache</p>}
       </div>
-      <div className="space-y-1 text-left sm:text-right">
-        <p className="text-xs text-muted-foreground">Cost · USD</p>
-        <p className="text-lg font-medium tabular-nums text-foreground" title={formatUSD(overallSummary.totalCost)}>{costAmountLabel(usage, formatCost)}</p>
+      <div className="space-y-0.5 text-left sm:text-right">
+        <p className="text-xs text-muted-foreground">Cost</p>
+        <p className="text-sm font-medium tabular-nums text-foreground" title={formatUSD(overallSummary.totalCost)}>{basis ? 'about ' : ''}{costAmountLabel(usage, formatCost)}</p>
+        {basis && <p className="text-xs text-muted-foreground">{basis}</p>}
         {scopedCosts && <CostPricingNotice usage={scopedCosts.total} />}
       </div>
     </div>
@@ -60,7 +66,7 @@ const CostsHeader: React.FC<CostsHeaderProps> = ({ startedAt, loading, loadAllCo
     <WorkspaceViewHeader
       bare
       icon={DollarSign}
-      title="Usage & cost"
+      title="Costs and usage"
       context={startedAt ? <span className="text-xs font-normal text-muted-foreground">{formatStartedAt(startedAt)}</span> : undefined}
       actions={<WorkspaceViewIconButton label="Refresh costs" onClick={loadAllCosts} disabled={loading} spinning={loading} />}
     />

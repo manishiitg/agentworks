@@ -24,8 +24,8 @@ const projectMCPBetaRoot = "Crew/beta"
 // OAuth and workspace HTTP use the same isolated fixtures and owner registry.
 func projectMCPCrewFixture(t *testing.T) (triggerLinkEnv, string) {
 	t.Helper()
-	owners := withProjectOwnerRegistry(t)
 	env := newTriggerLinkEnv(t)
+	owners := defaultProjectOwners()
 	registry := agentprofiles.NewRegistry()
 	profile := workproduct.BuiltinAgentProfile()
 	profile.Product = "work"
@@ -43,6 +43,11 @@ func projectMCPCrewFixture(t *testing.T) (triggerLinkEnv, string) {
 	for _, row := range []struct{ id, folder, owner string }{{"alpha", "alpha", "owner"}, {"beta", "beta", "owner"}, {"checks", "checks-folder", "owner"}, {"gamma", "gamma", "other"}} {
 		root := "Crew/" + row.folder
 		if err := owners.Register(projectOwnerRecord{Product: "work", Folder: row.folder, ProjectID: row.id, OwnerID: row.owner, Shared: true, CanonicalRoot: root, Private: true, AudienceConfigured: true}); err != nil {
+			t.Fatal(err)
+		}
+		// Registration preserves an existing Crew's audience; the base fixture
+		// creates shared Crews, so explicitly make this OAuth fixture private.
+		if err := owners.SetAudience("work", row.folder, true, nil); err != nil {
 			t.Fatal(err)
 		}
 		raw, _ := json.Marshal(map[string]any{"schema_version": 1, "product": "work", "id": row.id, "title": row.id, "session_id": "sess-" + row.id, "owner_id": row.owner, "created_at": "2026-10-01T00:00:00Z"})
@@ -146,18 +151,12 @@ func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", filepath.Join(t.TempDir(), "docs"))
 	t.Setenv("AUTH_SECRET", "project-mcp-isolated-signing-secret")
 	t.Setenv("PUBLIC_URL", "https://agentworks.example.com")
-	t.Setenv("AGENT_PRODUCTS", "agentworks,work,relays")
+	t.Setenv("AGENT_PRODUCTS", "agentworks,work")
 	env.mock.mu.Lock()
 	var goal WorkflowManifest
 	if err := json.Unmarshal([]byte(env.mock.files[manifestPath("Workflow/reports")]), &goal); err != nil {
 		t.Fatal(err)
 	}
-	relay := goal
-	relay.ID = "wf_project_relay"
-	relay.Label = "Project Flow"
-	relay.Kind = "relay"
-	raw, _ := json.Marshal(relay)
-	env.mock.files[manifestPath("Workflow/project-flow")] = string(raw)
 	env.mock.mu.Unlock()
 
 	router := mux.NewRouter()
@@ -196,7 +195,7 @@ func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
 	verifier := strings.Repeat("a", 43)
 	sum := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
-	for _, fixture := range []struct{ kind, id, root string }{{"work", "beta", projectMCPBetaRoot}, {"work", "checks", checksRoot}, {"workflow", goal.ID, "Workflow/reports"}, {"relay", relay.ID, "Workflow/project-flow"}} {
+	for _, fixture := range []struct{ kind, id, root string }{{"work", "beta", projectMCPBetaRoot}, {"work", "checks", checksRoot}, {"workflow", goal.ID, "Workflow/reports"}} {
 		for _, mode := range []string{"view", "use"} {
 			t.Run(fixture.kind+"/"+fixture.id+"/"+mode, func(t *testing.T) {
 				path := projectMCPPrefix + fixture.kind + "/" + fixture.id + "/" + mode
@@ -310,7 +309,7 @@ func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
 						t.Fatal("tampered selector", selector, status, out)
 					}
 				}
-				status, listed = call("list_workflows", map[string]any{})
+				status, listed = call("workflow", map[string]any{"action": "list"})
 				if fixture.kind == "workflow" || fixture.kind == "relay" {
 					rows, _ := listed["workflows"].([]any)
 					if status != 200 || len(rows) != 1 {
@@ -337,7 +336,7 @@ func TestProjectMCPOAuthDiscoveryPermissionsAndRevocation(t *testing.T) {
 					t.Fatal("Builder conversation exposed", status)
 				}
 				if mode == "view" {
-					for name, action := range map[string]string{"functions": "call", "relay": "run"} {
+					for name, action := range map[string]string{"functions": "call"} {
 						definition, exists := externalCatalogTool(name)
 						if !exists {
 							t.Fatal("missing canonical tool", name)
@@ -423,20 +422,15 @@ func TestProjectMCPSharingRemovalCheckedNextRequest(t *testing.T) {
 	env, checksRoot := projectMCPCrewFixture(t)
 	invalidateWorkflowManifestIndex()
 	t.Cleanup(invalidateWorkflowManifestIndex)
-	t.Setenv("AGENT_PRODUCTS", "agentworks,work,relays")
+	t.Setenv("AGENT_PRODUCTS", "agentworks,work")
 	env.mock.mu.Lock()
 	var goal WorkflowManifest
 	_ = json.Unmarshal([]byte(env.mock.files[manifestPath("Workflow/reports")]), &goal)
 	goal.Access.Readers = []string{"other"}
 	raw, _ := json.Marshal(goal)
 	env.mock.files[manifestPath("Workflow/reports")] = string(raw)
-	relay := goal
-	relay.ID = "wf_share_relay"
-	relay.Kind = "relay"
-	relayRaw, _ := json.Marshal(relay)
-	env.mock.files[manifestPath("Workflow/share-flow")] = string(relayRaw)
 	env.mock.mu.Unlock()
-	for _, fixture := range []struct{ kind, id, root string }{{"work", "beta", projectMCPBetaRoot}, {"work", "checks", checksRoot}, {"workflow", goal.ID, "Workflow/reports"}, {"relay", relay.ID, "Workflow/share-flow"}} {
+	for _, fixture := range []struct{ kind, id, root string }{{"work", "beta", projectMCPBetaRoot}, {"work", "checks", checksRoot}, {"workflow", goal.ID, "Workflow/reports"}} {
 		t.Run(fixture.kind+"/"+fixture.id, func(t *testing.T) {
 			if fixture.kind == "work" {
 				if err := defaultProjectOwners().SetAudience(fixture.kind, strings.TrimPrefix(fixture.root, "Crew/"), true, []string{"other"}); err != nil {

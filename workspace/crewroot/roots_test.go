@@ -2,14 +2,19 @@ package crewroot
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // PLAT-856-145: selecting a folder must neither shadow its files with managed
-// state nor let a file tool escape it or remove the selected root.
+// state nor let a file tool escape it or remove the selected root. PLAT-746-924:
+// records and the database live in its .agentworks; only chats stay private.
 func TestBoundCrewPreservesProjectAndConfinesIssuedPaths(t *testing.T) {
 	base := t.TempDir()
 	docs := filepath.Join(base, "docs")
@@ -48,10 +53,11 @@ func TestBoundCrewPreservesProjectAndConfinesIssuedPaths(t *testing.T) {
 	cases := map[string]string{
 		"Crew/example/_files":                         project,
 		"Crew/example/_files/product.json":            filepath.Join(project, "product.json"),
-		"Crew/example/product.json":                   filepath.Join(private, "product.json"),
+		"Crew/example/product.json":                   filepath.Join(project, ".agentworks", "settings", "product.json"),
+		"Crew/example/runs/run-1/log.txt":             filepath.Join(project, ".agentworks", "runs", "run-1", "log.txt"),
 		"Crew/example/builder/conversation/chat.json": filepath.Join(private, "builder", "conversation", "chat.json"),
 		"Crew/example/skills/research/SKILL.md":       filepath.Join(project, ".agentworks", "skills", "research", "SKILL.md"),
-		"Crew/example/db/db.sqlite":                   filepath.Join(private, "db", "db.sqlite"),
+		"Crew/example/db/db.sqlite":                   filepath.Join(project, ".agentworks", "db", "db.sqlite"),
 	}
 	for virtual, want := range cases {
 		got, bound, err := Resolve(docs, virtual)
@@ -71,7 +77,8 @@ func TestBoundCrewPreservesProjectAndConfinesIssuedPaths(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(project, "escape")); err != nil {
 		t.Fatal(err)
 	}
-	for _, virtual := range []string{"Crew/example/_files/../outside", "Crew/example/_files/escape/secret.txt", "Crew/example/_files/.agentworks/db/db.sqlite"} {
+	// Records are reached by their own names, never through settings/ (they change only through their tools).
+	for _, virtual := range []string{"Crew/example/_files/../outside", "Crew/example/_files/escape/secret.txt", "Crew/example/_files/.agentworks/db/db.sqlite", "Crew/example/settings/schedules.json", "Crew/example/Settings"} {
 		if _, _, err := Resolve(docs, virtual); err == nil {
 			t.Fatalf("accepted escape %s", virtual)
 		}
@@ -112,6 +119,10 @@ func TestBoundCrewPreservesProjectAndConfinesIssuedPaths(t *testing.T) {
 	if _, _, err := Lookup(docs, "Crew/example"); err == nil {
 		t.Fatal("missing resource root granted access")
 	}
+	// #4105: a deleted Crew still in the registry reads as "file does not exist", not a server error.
+	if _, _, err := Resolve(docs, "Crew/example/product.json"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("missing Crew folder: %v", err)
+	}
 	if err := os.Symlink(outside, filepath.Join(project, ".agentworks")); err != nil {
 		t.Fatal(err)
 	}
@@ -121,5 +132,44 @@ func TestBoundCrewPreservesProjectAndConfinesIssuedPaths(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	if _, bound, err := Resolve(docs, "Crew/example/_files"); !bound || err == nil {
 		t.Fatal("hosted mode admitted local binding")
+	}
+}
+
+// #3147: every path lookup calls EnsureAutomation. A repeated no-op chmod moved
+// settings/'s ctime, which made the server forget absent schedule, function and
+// webhook files every few seconds for every Crew without them.
+func TestEnsureAutomationLeavesSettingsFolderUnchanged(t *testing.T) {
+	r := Roots{Automation: filepath.Join(t.TempDir(), AutomationFolder)}
+	if err := r.EnsureAutomation(); err != nil {
+		t.Fatal(err)
+	}
+	settings := filepath.Join(r.Automation, SettingsFolder)
+	before, err := os.Stat(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if err := r.EnsureAutomation(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := func(info os.FileInfo) any {
+		v := reflect.ValueOf(info.Sys()).Elem()
+		for _, name := range []string{"Ctim", "Ctimespec"} {
+			if f := v.FieldByName(name); f.IsValid() {
+				return f.Interface()
+			}
+		}
+		t.Skip("no change time on this platform")
+		return nil
+	}
+	if change(before) != change(after) {
+		t.Fatalf("settings folder changed on a repeated lookup: %v -> %v", change(before), change(after))
+	}
+	if got := after.Mode() & (os.ModePerm | os.ModeSetgid); got != 0o750|os.ModeSetgid {
+		t.Fatalf("settings mode = %v", got)
 	}
 }

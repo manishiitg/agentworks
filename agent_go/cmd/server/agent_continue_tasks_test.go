@@ -1,0 +1,122 @@
+package server
+
+import (
+	"testing"
+	"time"
+)
+
+// #2837: only a later send from the recipient closes a delivered task.
+func TestAgentBridgeTaskRequiresRecipientThreadReply(t *testing.T) {
+	now := time.Now().UTC()
+	task := agentMessage{ID: "task", MessageType: "request", Sequence: 2, From: 0, Delivery: "delivered"}
+	c := agentConversation{Messages: []agentMessage{task, {Sequence: 3, From: 0, Text: "sender followup"}, {Sequence: 4, From: 1, Kind: "ping"}}}
+	if state, _ := agentTaskState(c, task, now); state != "open" {
+		t.Fatal("notice or sender followup closed task", state)
+	}
+	// needs_owner is the old name of needs_you, still sent by older Mac apps for one release.
+	for _, status := range []string{"", "done", "in_progress", "blocked", "needs_you", "needs_owner"} {
+		c.Messages = append(c.Messages[:3], agentMessage{Sequence: 5, From: 1, ReplyStatus: status, SentAt: now})
+		state, next := agentTaskState(c, task, now)
+		want := agentReplyStatus(status)
+		if want == "" {
+			want = "done"
+		}
+		if state != want || status == "in_progress" && !next.Equal(now.Add(2*time.Minute)) {
+			t.Fatal("wrong reply state", status, state, next)
+		}
+	}
+	// #3579: a counter-question back closed the task it asked about, and one done closed every open task.
+	other := agentMessage{ID: "other", MessageType: "request", Sequence: 6, From: 0, Delivery: "delivered"}
+	c.Messages = append(c.Messages[:3], other,
+		agentMessage{Sequence: 7, From: 1, MessageType: "request", ReplyStatus: agentReplySendStatus("", true), Text: "Which branch?"},
+		agentMessage{Sequence: 8, From: 1, MessageType: "notification", ReplyStatus: agentReplySendStatus("", false), TaskReplyTo: "other"})
+	if state, _ := agentTaskState(c, task, now); state != "open" {
+		t.Fatal("a question back or another task's reply closed this task", state)
+	}
+	if state, _ := agentTaskState(c, other, now); state != "done" {
+		t.Fatal("the tagged reply did not close its own task", state)
+	}
+	c.Messages = c.Messages[:3]
+	task.TaskProgress.NoProgress = 2
+	if state, _ := agentTaskState(c, task, now); state != "stalled" {
+		t.Fatal("two tool-free wake turns did not stall", state)
+	}
+	task.MessageType = "notification"
+	if state, _ := agentTaskState(c, task, now); state != "" {
+		t.Fatal("ordinary reply became a task", state)
+	}
+}
+
+// #2837: send is FYI unless explicitly marked; action=ask always requests a reply.
+func TestAgentBridgeNotificationsNeverOpenTasks(t *testing.T) {
+	for _, tc := range []struct {
+		args    map[string]interface{}
+		request bool
+	}{
+		{map[string]interface{}{"action": "send"}, false},
+		{map[string]interface{}{"action": "ask"}, true},
+		{map[string]interface{}{"action": "queue"}, true},
+		{map[string]interface{}{"queue": true}, true},
+		{map[string]interface{}{"action": "send", "expects_reply": true}, true},
+		{map[string]interface{}{"ask": true}, true},
+		{map[string]interface{}{"action": "send", "expects_reply": false}, false},
+	} {
+		if got := agentMessageRequestArgs(tc.args); got != tc.request {
+			t.Fatal("wrong message purpose", tc.args, got)
+		}
+	}
+	// Owner, 18 Nov: an FYI starts the recipient's turn like any message (no reply needed), but it
+	// never steers into a running turn; it waits and starts its own.
+	fyi := agentMessage{MessageType: "notification", From: 0}
+	if !agentFYIMessage(fyi) || agentMessageMaySteer(agentConversation{}, fyi) {
+		t.Fatal("an FYI must start its own turn and never steer")
+	}
+	for _, route := range []string{"claude_channel", appAgentDeliveryRoute} {
+		agent := namedMessageAgent{Attachment: &namedAgentAttachment{DeliveryRoute: route}}
+		if got := quietAgentAttachedMessage(agentMessage{MessageType: "notification"}, agent); got {
+			t.Fatalf("FYI was excluded from delivery on %s", route)
+		}
+		if !quietAgentAttachedMessage(agentMessage{MessageType: "notification", ReplyStatus: "in_progress"}, agent) {
+			t.Fatal("automatic progress would wake a receiver")
+		}
+	}
+	if agentFYIMessage(agentMessage{MessageType: "notification", ReplyStatus: "done", TaskReplyTo: "task"}) {
+		t.Fatal("a request's reply was treated as an FYI instead of an answer that may steer its asker")
+	}
+	notification := agentMessage{MessageType: "notification", Kind: "", Delivery: "delivered", Sequence: 1, From: 0}
+	if state, _ := agentTaskState(agentConversation{Messages: []agentMessage{notification}}, notification, time.Now()); state != "" {
+		t.Fatal("FYI opened task", state)
+	}
+}
+
+// #2837: progress is not completion and the guard is hourly, not a lifetime cap.
+func TestAgentBridgeProgressPausesTwoMinutesAndWakeBudgetRecovers(t *testing.T) {
+	now := time.Now().UTC()
+	task := agentMessage{ID: "task", MessageType: "request", Delivery: "delivered", Sequence: 1, From: 0}
+	c := agentConversation{Messages: []agentMessage{task, {From: 1, Sequence: 2, ReplyStatus: "in_progress", SentAt: now}}}
+	state, due := agentTaskState(c, task, now)
+	if state != "in_progress" || !due.Equal(now.Add(2*time.Minute)) {
+		t.Fatal("progress must pause, not close", state, due)
+	}
+	c.Messages = c.Messages[:1]
+	for range 12 {
+		task.TaskProgress.WakeTimes = append(task.TaskProgress.WakeTimes, now.Add(-30*time.Minute))
+	}
+	task.TaskProgress.Attempts = 40 // Lifetime history must not strand the task.
+	state, due = agentTaskState(c, task, now)
+	if state != "open" || !due.Equal(now.Add(30*time.Minute)) {
+		t.Fatal("hourly guard did not pause", state, due)
+	}
+	state, due = agentTaskState(c, task, now.Add(31*time.Minute))
+	if state != "open" || due.After(now.Add(31*time.Minute)) {
+		t.Fatal("hourly guard never recovered", state, due)
+	}
+	task.TaskProgress.NoProgress = 2
+	if state, _ = agentTaskState(c, task, now); state != "stalled" {
+		t.Fatal("tool-free runaway did not stop", state)
+	}
+	c.Messages = append(c.Messages, agentMessage{From: 1, Sequence: 3, ReplyStatus: "done", SentAt: now})
+	if state, _ = agentTaskState(c, task, now); state != "done" {
+		t.Fatal("explicit completion failed to settle stalled request", state)
+	}
+}

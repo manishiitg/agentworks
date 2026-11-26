@@ -12,6 +12,8 @@ export interface SSECallbacks {
   onMessage: (msg: SSEEventMessage) => void
   onStatusUpdate: (msg: SSEStatusMessage) => void
   onError?: (error: Event) => void
+  /** Terminal refusal: no reconnect, wake retry or polling fallback. */
+  onForbidden?: () => void
   onOpen?: () => void
   /** 'live' once frames flow; 'reconnecting' while a dropped stream is retried. */
   onConnection?: (state: 'live' | 'reconnecting') => void
@@ -150,6 +152,11 @@ export class SSEConnection {
           credentials: 'include',
           cache: 'no-store',
         })
+        if (res.status === 403) {
+          this.close()
+          this.opts.callbacks.onForbidden?.()
+          return
+        }
         if (!res.ok || !res.body) throw new Error(`event stream HTTP ${res.status}`)
         this.consecutiveErrors = 0
         this.open = true

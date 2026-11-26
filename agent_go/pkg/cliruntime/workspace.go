@@ -32,6 +32,12 @@ func prepare(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session,
 	return runtimeDirectory(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session, provider, mode, true)
 }
 
+// ExistingMoved locates an exact previously prepared private artifact root.
+// Unlike PrepareMoved it never creates a runtime or changes its files.
+func ExistingMoved(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session, provider, mode string) (string, error) {
+	return runtimeDirectory(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session, provider, mode, false)
+}
+
 // ExistingLinkedProject locates this exact session's existing projection without
 // creating directories, refreshing skills, or adopting another session's files.
 func ExistingLinkedProject(stateRoot, workspaceRoot, user, workflow, legacyDigestRel, session, provider, mode string) (string, error) {

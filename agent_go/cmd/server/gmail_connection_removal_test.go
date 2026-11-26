@@ -106,8 +106,8 @@ func TestLegacyGmailOwnerCanDisconnectOnlyOwnAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := mux.NewRouter()
-	GmailConnectionRoutes(router, nil)
-	GmailOAuthClientRoutes(router, nil)
+	GmailConnectionRoutes(router.PathPrefix("/api").Subrouter(), nil)
+	GmailOAuthClientRoutes(router.PathPrefix("/api").Subrouter(), nil)
 	call := func(method, path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, "/api/human-feedback/gmail/"+path, strings.NewReader(`{"email":"alice@example.com"}`))
 		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "alice", Username: "alice"}))

@@ -18,13 +18,15 @@ interface SecretSelectionSectionProps {
  selectedGlobalSecrets?:string[]|null;onGlobalSecretChange?:(names:string[]|null)=>void|Promise<unknown>
  workflowPath?:string;fillAvailableHeight?:boolean;workspaceNoun?:string;workspaceSecretHeading?:string;showGlobalSecrets?:boolean
  projectSource?:'project'|'vault';persistExplicitGlobalSelection?:boolean
- mode?:'project'|'vault'|'group';groupId?:string;groupSelectedNames?:string[];onGroupAccessChange?:(name:string,allowed:boolean)=>Promise<unknown>
+ mode?:'project'|'vault'
+ /** Vault mode: removes a company key (administrators). */
+ onRemove?:(name:string)=>Promise<unknown>
 }
 type Row={name:string;managed?:boolean}
 const displayName=(name:string)=>name.replace(/^VLT_[^_]+__/, '')
-/** Vault secrets: the administrator's Vault list, a group's grants, or the secrets a project uses. A project's new
+/** Vault secrets: the administrator's company keys, or the secrets a project uses. A project's new
  * secret is saved in its owner's Vault (My accounts) and used by the project in one step. */
-export function SecretSelectionSection({selectedGlobalSecrets=[],onGlobalSecretChange,workflowPath='',workspaceSecretHeading,projectSource='project',mode='project',groupSelectedNames=[],onGroupAccessChange,inventory}:SecretSelectionSectionProps){
+export function SecretSelectionSection({selectedGlobalSecrets=[],onGlobalSecretChange,workflowPath='',workspaceSecretHeading,projectSource='project',mode='project',onRemove,inventory}:SecretSelectionSectionProps){
  const [rows,setRows]=useState<Row[]>([]);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [revealed,setRevealed]=useState<Record<string,string>>({})
  const [editing,setEditing]=useState(false)
  const [secretName,setSecretName]=useState('')
@@ -35,7 +37,7 @@ export function SecretSelectionSection({selectedGlobalSecrets=[],onGlobalSecretC
  const listed=mode!=='project'||projectSource==='vault'
  const canAdd=mode==='project'&&projectSource==='project'&&canWrite
  const canReveal=mode==='vault'
- const load=useCallback(async()=>{if(!listed){setLoading(false);return}setLoading(true);try{setRows(await secretsApi.getGlobalSecrets(mode==='vault'));setError('')}catch(cause){setError(cause instanceof Error?cause.message:'Secrets are unavailable.')}finally{setLoading(false)}},[listed,mode])
+ const load=useCallback(async()=>{if(!listed){setLoading(false);return}setLoading(true);try{setRows((await secretsApi.getGlobalSecrets(mode==='vault')).filter(row=>mode!=='vault'||!row.name.startsWith('VLT_')));setError('')}catch(cause){setError(cause instanceof Error?cause.message:'Secrets are unavailable.')}finally{setLoading(false)}},[listed,mode])
  // Values belong to one view: forget them, and drop late replies, when the view changes.
  const scope=useRef('');const scopeKey=`${mode}:${projectSource}:${workflowPath}`;scope.current=scopeKey
  useEffect(()=>{setRevealed({});setCopied('')},[scopeKey])
@@ -45,8 +47,8 @@ export function SecretSelectionSection({selectedGlobalSecrets=[],onGlobalSecretC
   if(active?.metadata?.agentProfileWorkspace===workflowPath || !workflowPath&&active?.metadata?.agentProfileId==='caplayer') await openWorkspacePaneChatWithDraft({tabId:active!.tabId,message})
   else await openWorkspacePaneChatWithDraft({workspacePath:workflowPath||'Chats/CapLayer',message})
  }catch(cause){setError(cause instanceof Error?cause.message:'Could not open chat.')}}
- const selected=mode==='group'?groupSelectedNames:(selectedGlobalSecrets??[])
- const toggle=async(name:string)=>{try{const on=!selected.includes(name);if(mode==='group'){await onGroupAccessChange?.(name,on);return}await onGlobalSecretChange?.(on?[...selected,name]:selected.filter(item=>item!==name))}catch(cause){setError(cause instanceof Error?cause.message:'Could not save selection.')}}
+ const selected=selectedGlobalSecrets??[]
+ const toggle=async(name:string)=>{try{const on=!selected.includes(name);await onGlobalSecretChange?.(on?[...selected,name]:selected.filter(item=>item!==name))}catch(cause){setError(cause instanceof Error?cause.message:'Could not save selection.')}}
  const fetchValue=async(row:Row)=>{const at=scope.current;const value=await secretsApi.revealGlobalSecret(row.name);return scope.current===at?value.value:null}
  const reveal=async(row:Row)=>{try{const value=await fetchValue(row);if(value!==null)setRevealed(old=>({...old,[row.name]:value}))}catch(cause){setError(cause instanceof Error?cause.message:'Could not reveal this secret.')}}
  // Copy asks the server each time, so a value whose access was removed is never copied from memory, and it is never shown.
@@ -64,10 +66,10 @@ export function SecretSelectionSection({selectedGlobalSecrets=[],onGlobalSecretC
   }catch(cause){setError(cause instanceof Error?cause.message:'Could not save this secret.')}
   finally{setSaving(false)}
  }
- const actionsFor=(row:Row)=>canReveal&&<div className="flex flex-wrap items-center gap-1.5"><Button size="xs" variant="ghost" aria-label={`Reveal ${displayName(row.name)}`} onClick={()=>void reveal(row)}><Eye className="h-3.5 w-3.5"/></Button><Button size="xs" variant="ghost" aria-label={`${copied===row.name?'Copied':'Copy'} ${displayName(row.name)}`} onClick={()=>void copy(row)}><Copy className="h-3.5 w-3.5"/></Button><Button size="xs" variant="ghost" onClick={()=>void ask(`Manage the Vault secret ${row.name}. Help me rotate, remove or share it through the existing Vault tools. Never repeat its value; preserve existing permissions.`)}>Manage in chat</Button>{revealed[row.name]!==undefined&&<div className="flex gap-2"><code className="min-w-0 flex-1 break-all text-xs">{revealed[row.name]}</code><Button size="xs" variant="ghost" onClick={()=>setRevealed(old=>{const next={...old};delete next[row.name];return next})}>Hide</Button></div>}</div>
+ const actionsFor=(row:Row)=>canReveal&&<div className="flex flex-wrap items-center gap-1.5"><Button size="xs" variant="ghost" aria-label={`Reveal ${displayName(row.name)}`} onClick={()=>void reveal(row)}><Eye className="h-3.5 w-3.5"/></Button><Button size="xs" variant="ghost" aria-label={`${copied===row.name?'Copied':'Copy'} ${displayName(row.name)}`} onClick={()=>void copy(row)}><Copy className="h-3.5 w-3.5"/></Button>{onRemove&&<Button size="xs" variant="ghost" onClick={()=>void onRemove(row.name).then(load).catch(cause=>setError(cause instanceof Error?cause.message:'Could not remove this key.'))}>Remove</Button>}<Button size="xs" variant="ghost" onClick={()=>void ask(`Manage the company key ${row.name}. Help me rotate, remove or share it through the existing Vault tools. Never repeat its value; preserve existing permissions.`)}>Manage in chat</Button>{revealed[row.name]!==undefined&&<div className="flex gap-2"><code className="min-w-0 flex-1 break-all text-xs">{revealed[row.name]}</code><Button size="xs" variant="ghost" onClick={()=>setRevealed(old=>{const next={...old};delete next[row.name];return next})}>Hide</Button></div>}</div>
  return <section className="space-y-3" aria-label={workspaceSecretHeading||'Secrets'}>
-  {!inventory&&<><div className="flex items-center justify-between gap-2"><h3 className="text-sm font-medium">{workspaceSecretHeading||'Secrets'}</h3><Button size="sm" variant="ghost" aria-label="Refresh secrets" onClick={()=>void load()}><RefreshCw className="h-3.5 w-3.5"/></Button></div>
-  <p className="text-xs text-muted-foreground">Choose the Vault secrets this uses. Manage sharing in chat. Saved values stay hidden.</p></>}
+  {!inventory&&<><div className="flex items-center justify-between gap-2">{mode==='vault'?<span/>:<h3 className="text-sm font-medium">{workspaceSecretHeading||'Secrets'}</h3>}<Button size="sm" variant="ghost" aria-label="Refresh secrets" onClick={()=>void load()}><RefreshCw className="h-3.5 w-3.5"/></Button></div>
+  <p className="text-xs text-muted-foreground">{mode==='vault'?'Values stay hidden. Saving a name that is already here replaces its value.':'Choose the Vault secrets this uses. Manage sharing in chat. Saved values stay hidden.'}</p></>}
   {error&&<p role="alert" className="text-xs text-destructive">{error}</p>}
   {inventory??(listed&&(loading?<p className="text-xs text-muted-foreground">Loading Secrets…</p>:<div className="divide-y divide-border rounded-md border border-border">
    {rows.map(row=><div key={row.name} className="space-y-2 px-3 py-2.5"><div className="flex flex-wrap items-center gap-2">

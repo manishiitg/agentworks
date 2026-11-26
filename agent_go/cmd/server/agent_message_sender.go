@@ -2,61 +2,70 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 )
 
-// agentMessageSender names who sent an agent message and through what, in plain words, for the receiving chat's
-// "From …" line (owner, 5 Nov: "it shows From Crew · test, it should show which agent also, or web or mcp etc"):
-// agent is which agent (and whose, when it is another person's), channel how it came. No ids.
+// agentMessageSender is the server-owned person and current agent name for a
+// chat row. Transport/routing metadata stays separate, never in the name.
 func agentMessageSender(ctx context.Context, source agentMessageEndpoint, receiver string) (label, agent, channel string) {
+	// A CLI's authenticated bound-agent identity is stronger than its MCP
+	// connection label. Use it for display only, never alter routing authority.
+	if source.NamedAgentID == "" {
+		if claims := GetUserFromContext(ctx); claims != nil && claims.UserID == source.UserID && claims.AccessToken != nil && claims.AccessToken.BoundAgentID != "" {
+			source.NamedAgentID = claims.AccessToken.BoundAgentID
+		}
+	}
+	agent, channel = "Agent", "AgentBridge"
+	// A Watcher's event is an automatic message, not the Crew's own chat: the row says so
+	// (it used to read "<person> · Main" because the caller is stamped with the Crew).
+	if source.ConditionJob != "" {
+		name := agentMessageReadableName(strings.TrimPrefix(strings.TrimPrefix(source.Label, "Watcher: "), "Condition: "))
+		if name == "Agent" {
+			name = "unnamed"
+		}
+		return "Watcher: " + name, "Watcher", channel
+	}
 	switch {
+	case source.TeamAgentID != "":
+		if team, err := readCrewTeam(source.ID); err == nil {
+			if row, ok := team.Agents[source.TeamAgentID]; ok && row.OwnerID == source.UserID {
+				agent = row.Name
+			}
+		}
 	case source.NamedAgentID != "":
-		agent, channel = "an agent", "AgentBridge"
 		if named, err := namedAgentByID(ctx, source.UserID, source.NamedAgentID); err == nil {
-			name := firstNonEmptyTrimmed(named.Label, named.Name)
-			agent = name
-			if named.Attachment != nil {
-				if program := attachedProgramName(named.Attachment.Provider); program != "" {
-					agent = program + " (" + name + ")"
-				}
-			}
+			agent = firstNonEmptyTrimmed(named.Label, named.Name)
 		}
-	case source.ConditionJob != "":
-		agent, channel = firstNonEmptyTrimmed(source.Label, "A watcher"), "watcher"
 	case source.Kind == triggerCallerCrew:
-		name := "Main"
-		if strings.Contains(source.ChatKey, codeChatSideMarker) {
-			name = "an agent"
-			if identity, err := defaultProductConversationRegistryStore().agentIdentity(ctx, source.UserID, source.Profile, source.ChatKey); err == nil && strings.TrimSpace(identity.Name) != "" {
-				name = strings.TrimSpace(identity.Name)
+		agent = "Main"
+		if source.ChatKey != "" {
+			if identity, err := defaultProductConversationRegistryStore().agentIdentity(ctx, source.UserID, source.Profile, source.ChatKey); err == nil {
+				agent = firstNonEmptyTrimmed(identity.Name, agent)
 			}
-		}
-		// Label may already contain a tab name. Read the project identity
-		// instead of composing that decorated label a second time (PLAT-746).
-		crew := ""
-		if raw, exists, err := readFileFromWorkspace(ctx, strings.TrimRight(source.Path, "/")+"/product.json"); err == nil && exists {
-			var manifest productProjectManifest
-			if json.Unmarshal([]byte(raw), &manifest) == nil {
-				crew = firstNonEmptyTrimmed(manifest.Identity.Name, manifest.Title)
-			}
-		}
-		agent, channel = crewMessageSenderName(crew, name), "website"
-		if source.External {
-			channel = "MCP"
 		}
 	case source.Kind == triggerCallerWorkflow:
-		agent, channel = firstNonEmptyTrimmed(source.Label, "A Goal"), "Goal"
-		if agentMessageSenderKindIn(ctx, source) == "flow" {
-			channel = "Flow"
-		}
-	default: // a person's own AI app over MCP: its connection is named after the app ("ChatGPT")
-		agent, channel = externalConnectionApp(source.Label), "MCP"
+		agent = source.Label
 	}
-	if source.UserID != "" && receiver != "" && source.UserID != receiver && source.Kind != triggerCallerCrew && source.Kind != triggerCallerWorkflow {
-		agent = shareOwnerLabel(source.UserID) + "'s " + agent
+	agent = agentMessageReadableName(agent)
+	person := agentMessageReadableName(shareOwnerLabel(source.UserID))
+	if account, _, ok := macSenderAccount(source); ok && (person == "Agent" || person == "unknown") {
+		person = agentMessageReadableName(account.Username)
 	}
-	return agent + " · " + channel, agent, channel
+	if person == "Agent" || person == "unknown" {
+		person = "Person"
+	}
+	return person + " · " + agent, agent, channel
+}
+
+// A removed/unnamed sender stays an agent, never an opaque routing identifier
+// or a transport/connection label in a person's chat bar.
+func agentMessageReadableName(name string) string {
+	name = cleanAgentLabel(name)
+	lower := strings.ToLower(name)
+	if name == "" || lower == "mcp" || lower == "agentbridge" || strings.Contains(lower, "external connection") || len(lower) > 30 && (strings.HasPrefix(lower, "app-") || strings.HasPrefix(lower, "agent-") || strings.HasPrefix(lower, "team-agent-")) || strings.HasPrefix(lower, "network:") {
+		return "Agent"
+	}
+	return name
 }
 
 // attachedProgramName is the coding app an attached chat runs in, as people call it.

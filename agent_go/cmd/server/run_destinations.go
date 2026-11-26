@@ -10,7 +10,7 @@ import (
 // Where the messages of a schedule or a trigger run. One list, read by the screens
 // and by the chat tools, so they offer the same choices:
 //   - new: a new conversation for every run
-//   - chat: the main chat, or one of the Crew's own chats (chat_id)
+//   - chat: one of the project's agents (chat_id), or the chat a schedule is made from
 //   - isolated: one conversation of its own, kept for that schedule or trigger
 //
 // Saved runs with no messages have no chat, so none of this applies to them.
@@ -27,8 +27,8 @@ type runDestinationChoice struct {
 
 var (
 	runDestinationChoiceNew      = runDestinationChoice{ID: runDestinationNew, Label: "New conversation each time"}
-	runDestinationChoiceChat     = runDestinationChoice{ID: runDestinationChat, Label: "Main chat"}
-	runDestinationChoiceIsolated = runDestinationChoice{ID: runDestinationIsolated, Label: "Own conversation"}
+	runDestinationChoiceChat     = runDestinationChoice{ID: runDestinationChat, Label: "An agent"}
+	runDestinationChoiceIsolated = runDestinationChoice{ID: runDestinationIsolated, Label: "Its own chat"}
 	// runDestinationChoices are the choices in screen order. The Crew's own chats fall between chat and isolated.
 	runDestinationChoices = []runDestinationChoice{runDestinationChoiceNew, runDestinationChoiceChat, runDestinationChoiceIsolated}
 )
@@ -53,7 +53,26 @@ func runDestinationEnumAny() []any {
 }
 
 // runDestinationHelp is the one description every tool gives the run_destination argument.
-const runDestinationHelp = `Where the messages run. "chat" (default): the Crew's main chat, or one of its chats with chat_id. "new": a new conversation for every run. "isolated": one conversation of its own, kept for this schedule or trigger.`
+const runDestinationHelp = `Where the messages run. "chat": one of the project's agents by chat_id. "new": a new conversation for every run. "isolated": one conversation of its own, kept for this schedule or trigger.`
+
+// A Crew schedule that sends a message offers two places: an existing chat (the default from chat: the chat it was
+// made from, owner 22 Nov) or its own chat, a new chat for this schedule kept across runs and listed with the Crew's
+// chats. "new" still works for schedules saved with it, and for functions and webhooks, but is not offered here.
+const messageScheduleDestinationHelp = `Where the message goes. "chat" (the default): an existing chat; with no chat_id it is the chat the schedule is made from, else one of the project's agents by chat_id; with no agent it gets its own chat. "isolated": its own chat, a new chat for this schedule that every run continues, listed with the project's chats; use it only when the person asks for that.`
+
+// messageScheduleDestinationEnum is the run_destination values the schedule tools offer for a message schedule.
+func messageScheduleDestinationEnum() []string {
+	return []string{runDestinationIsolated, runDestinationChat}
+}
+
+// crewScheduleDefaultsToOwnChat reports a new Crew schedule (a message or a workflow timer) that names no place: no
+// run_destination and no chat_id. Made outside a chat (the Schedules page, external MCP) it then gets its own chat
+// (owner, 25 Nov, #4046: a schedule runs in an agent or its own chat, never an implied Main); the chat tools run it in
+// the chat it was made from instead.
+func crewScheduleDefaultsToOwnChat(profileID, projectID, destination, chatID string) bool {
+	return isProjectProfileID(profileID) && strings.TrimSpace(projectID) != "" &&
+		strings.TrimSpace(destination) == "" && strings.TrimSpace(chatID) == ""
+}
 
 // runDestinationSetting is what a destination means for a saved schedule. A new
 // conversation each time is an isolated conversation whose key changes every run.

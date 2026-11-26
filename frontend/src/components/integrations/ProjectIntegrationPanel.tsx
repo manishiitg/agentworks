@@ -12,6 +12,7 @@ import { WorkspacePanelActions } from '../workspace/WorkspacePanelHeaderSlots'
 import type { ProjectVaultInventory } from '../../api/projectVault'
 import type { VaultItemKind } from '../../api/projectVault'
 import { ProjectVaultPanel } from './ProjectVaultPanel'
+import { isLocalDeployment } from '../../products/productSurfaceConfig'
 
 export type IntegrationSection = 'connected' | 'available' | 'secrets' | 'gmail' | 'slack-account' | 'laptop' | 'github'
 export const INTEGRATION_LABELS: Record<IntegrationSection, string> = {
@@ -37,7 +38,7 @@ function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section =
   const [apps, setApps] = useState<'connected' | 'available'>(section === 'available' ? 'available' : 'connected')
   useEffect(() => { if (section === 'connected' || section === 'available') setApps(section) }, [section])
   const kinds: Record<IntegrationSection, VaultItemKind[]> = {github:[],connected:['mcp'],available:['mcp'],secrets:['shared_secret'],gmail:['google'],'slack-account':['slack'],laptop:['computer']}
-  if (section === 'github' && (!canEdit || !github)) return <p className="text-sm text-muted-foreground">Open your own Crew to manage your GitHub connection.</p>
+  if (section === 'github' && (!canEdit || !github)) return <p className="text-sm text-muted-foreground">Open your own project to manage your GitHub connection.</p>
   if (!canEdit) return <ProjectVaultPanel workspacePath={workspacePath} tabId={tabId} disabled title={INTEGRATION_LABELS[section]} itemKinds={kinds[section]} />
   return <div className="space-y-5" aria-label={INTEGRATION_LABELS[section]}>
     {(section === 'connected' || section === 'available') && <>
@@ -45,11 +46,10 @@ function ProjectIntegrationContents({ workspacePath, tabId, placeNoun, section =
       <ProjectMcpPanel view={apps} workspacePath={workspacePath} tabId={tabId} placeNoun={placeNoun} canEdit={canEdit} onAsk={onAsk} onSelectionSaved={onAppsSaved} />
 
     </>}
-    {section === 'github' && github && <GitHubVaultCard changeConnectionOpen />}
-    {section === 'secrets' && github && <GitHubVaultCard />}
+    {section === 'github' && github && <GitHubVaultCard workspacePath={workspacePath} changeConnectionOpen />}
     {section === 'secrets' && <><ProjectSecretsPanel workspacePath={workspacePath} tabId={tabId} onSelectionSaved={secrets.onSecretSelectionSaved} /></>}
     {section === 'gmail' && <><WorkflowEmailPanel workspacePath={workspacePath} /><CompanySignInSetup provider="Google" tabId={tabId} /></>}
-    {section === 'slack-account' && <><ProductSlackPanel workspacePath={workspacePath} noun={placeNoun} section="account" allowBots={placeNoun !== 'Flow'} tabId={tabId}/></>}
+    {section === 'slack-account' && <><ProductSlackPanel workspacePath={workspacePath} noun={placeNoun} section="account" allowBots={placeNoun !== 'Flow' && !isLocalDeployment()} tabId={tabId}/></>}
     {section === 'laptop' && laptop}
   </div>
 }

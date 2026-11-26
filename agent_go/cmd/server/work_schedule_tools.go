@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -47,35 +50,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			listUserID = ownerID
 		}
 	}
-	// Only a Crew is callable through functions; a Code never is.
-	crewFunctionsHint := ""
-	if strings.EqualFold(profileID, "work") {
-		crewFunctionsHint = " Other Crews, workflows and external connections do not need a webhook: they call this Crew's functions (functions action=call; `ask` is always available), which sets up their binding automatically."
-	}
 	register := func(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error)) error {
-		if strings.HasSuffix(name, "_project_trigger") {
-			properties, _ := parameters["properties"].(map[string]interface{})
-			delete(properties, "kind")
-			delete(properties, "caller")
-			original := execute
-			execute = func(ctx context.Context, args map[string]interface{}) (string, error) {
-				if kind, _ := args["kind"].(string); kind != "" && kind != "webhook" {
-					return "", fmt.Errorf("use functions for reusable work")
-				}
-				if id, _ := args["id"].(string); id != "" {
-					entries, err := api.projectActions.projectWebhookConfigs(ctx, listUserID, profileID, projectID)
-					if err != nil {
-						return "", err
-					}
-					for _, entry := range entries {
-						if entry.ID == id && entry.IsInternal() {
-							return "", fmt.Errorf("use functions or its saved step binding for that entry")
-						}
-					}
-				}
-				return original(ctx, args)
-			}
-		}
 		return registrar.RegisterCustomTool(name, description, parameters, execute, "work_schedule_tools")
 	}
 	resolveID := func(value string) string {
@@ -85,43 +60,72 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 		}
 		return projectScheduleJobID(profileID, projectID, value)
 	}
-	if err := register("list_project_schedules", "List this project's recurring message schedules and their latest run status.", map[string]interface{}{
+	if err := register("list_project_schedules", "List this project's timers, including its workflow timers, with the same scope as its Schedules panel. Workflow timers must be converted to project schedules before these project tools can edit them. This chat is already bound to its project: use automations action=list scope=schedule, without a project argument.", map[string]interface{}{
 		"type": "object", "properties": map[string]interface{}{},
 	}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
-		jobs, err := api.projectActions.JobsForBuilder(ctx, listUserID)
+		out, err := api.chatProjectScheduleRows(ctx, userID, projectWorkspace)
 		if err != nil {
 			return "", err
 		}
-		var out []ScheduledJobResponse
-		for _, job := range jobs {
-			if strings.EqualFold(job.Profile.ID, profileID) && job.ProjectID == projectID && job.Schedule.Condition == nil {
+		// Run-mode chat already has access to this exact Crew. Preserve its
+		// owner-scoped message schedules without impersonating the owner for
+		// workflow discovery or broadening access to any other project.
+		if readOnly && listUserID != userID {
+			jobs, listErr := api.projectActions.JobsForBuilder(ctx, listUserID)
+			if listErr != nil {
+				return "", listErr
+			}
+			seen := make(map[string]bool, len(out))
+			for _, row := range out {
+				seen[row.ID] = true
+			}
+			for _, job := range jobs {
+				if !strings.EqualFold(job.Profile.ID, profileID) || job.ProjectID != projectID || job.Schedule.Condition != nil {
+					continue
+				}
 				runsWorkspace, _ := api.projectActions.RunsWorkspace(ctx, job)
-				out = append(out, withScheduleStatusText(ctx, api.projectActions.jobResponse(job, runsWorkspace)))
+				row := withScheduleStatusText(ctx, api.projectActions.jobResponse(job, runsWorkspace))
+				if !seen[row.ID] {
+					out = append(out, row)
+					seen[row.ID] = true
+				}
 			}
 		}
-		encoded, err := json.MarshalIndent(map[string]interface{}{"schedules": out}, "", "  ")
+		result := map[string]interface{}{"schedules": out}
+		for _, job := range out {
+			if job.EntityType == "workflow" {
+				result["notice"] = "This list includes workflow timers shown in this project's Schedules panel. Timers with entity_type=workflow still need conversion to project schedules before the project schedule tools can change them. Do not guess a product schedule ID or recreate these timers."
+				break
+			}
+		}
+		encoded, err := json.MarshalIndent(result, "", "  ")
 		return string(encoded), err
 	}); err != nil {
 		return err
 	}
+
 	if !readOnly {
-		if err := register("create_project_schedule", "Repeat work using cron_expression: every 5 minutes is */5 * * * *, every hour is 0 * * * *, with timezone. Use in_minutes or run_at ONLY for a one-time reminder (for example, check the deploy in 3 hours). in_minutes:5 means once in five minutes, NEVER every five minutes. Confirm the saved timing_summary to the person. Choose chat to send a normal message into the project chat (steering it if already running), isolated for this schedule's own persistent automation conversation, or new for a new conversation every run.", map[string]interface{}{
+		if err := register("create_project_schedule", "Repeat work using cron_expression: every 5 minutes is */5 * * * *, every hour is 0 * * * *, with timezone. Use in_minutes or run_at ONLY for a one-time reminder (for example, check the deploy in 3 hours). in_minutes:5 means once in five minutes, NEVER every five minutes. Confirm the saved timing_summary to the person. Where the message goes: chat (the default) is an existing chat: this chat when no chat_id is given, or the default agent or a tab by chat_id, steering it if already running. isolated is its own chat, a new chat for this schedule that every run continues, only when the person asks for that.", map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"name":            map[string]interface{}{"type": "string"},
-				"message":         map[string]interface{}{"type": "string", "description": "The single instruction the agent should perform at each occurrence."},
+				"message":         map[string]interface{}{"type": "string", "description": "The instruction the agent should perform at each occurrence. For several turns in order, use messages."},
+				"messages":        map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Several instructions sent in order in the same chat, each after the previous turn finishes (a follow-up is a second item). Use instead of message."},
 				"cron_expression": map[string]interface{}{"type": "string", "description": "REPEATING schedule: every 5 minutes = */5 * * * *; every hour = 0 * * * *. Five fields, plus timezone. Use this for every/repeat requests, not in_minutes."},
 				"in_minutes":      map[string]interface{}{"type": "integer", "minimum": 1, "maximum": oneTimeMaxMinutes, "description": "ONE TIME ONLY: run once this many minutes from now (5 = once in five minutes; 180 = once in three hours). Never use for every N minutes or repeating work."},
 				"run_at":          map[string]interface{}{"type": "string", "description": "One-time: run once at this exact moment, RFC3339 with an offset, for example 2026-10-05T21:30:00+05:30. Must be in the future."},
 				"timezone":        map[string]interface{}{"type": "string", "description": "IANA timezone, for example Asia/Kolkata. Required with cron_expression; for a one-time schedule it only sets how the time is shown."},
 				"enabled":         map[string]interface{}{"type": "boolean"},
-				"run_destination": map[string]interface{}{"type": "string", "enum": runDestinationEnum(), "description": runDestinationHelp},
-				"chat_id":         map[string]interface{}{"type": "string", "description": "Run in this tab of the project (a chat_id from the project's chat list) instead of the main chat. Omit to use the chat this is called from."},
+				"run_destination": map[string]interface{}{"type": "string", "enum": messageScheduleDestinationEnum(), "description": messageScheduleDestinationHelp},
+				"chat_id":         map[string]interface{}{"type": "string", "description": "With run_destination chat: run in this tab of the project (a chat_id from the project's chat list) instead of the default agent. With run_destination chat and no chat_id, it runs in the chat this is called from."},
 			},
-			"required": []string{"name", "message"},
+			"required": []string{"name"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 			name, _ := args["name"].(string)
-			message, _ := args["message"].(string)
+			messages := scheduleToolMessages(args)
+			if len(messages) == 0 {
+				return "", fmt.Errorf("give message, or messages for several turns in order")
+			}
 			cronExpression, _ := args["cron_expression"].(string)
 			timezone, _ := args["timezone"].(string)
 			runAt, err := oneTimeRunAt(args, time.Now())
@@ -140,12 +144,13 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			if err != nil {
 				return "", err
 			}
+			// Naming no place runs it in the chat it was made from (owner, 22 Nov; replaces 9 Nov's own chat by default).
 			isolated := destinationSetting.Isolated
 			if !hasEnabled {
 				enabled = true
 			}
-			// Set from a project side chat (tab), it runs back in that chat
-			// (owner, 2026-10-07); from the main chat it runs in the main chat.
+			// Set from one of the project's agents, it runs back in that agent's chat (owner, 2026-10-07). With no agent
+			// to name it runs in its own chat, never an implied Main (#4046).
 			chatKey := ""
 			if chatID, _ := args["chat_id"].(string); strings.TrimSpace(chatID) != "" {
 				if isolated {
@@ -157,12 +162,15 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				}
 				chatKey = key
 			} else if !isolated && isProjectProfileID(profileID) {
-				if project, chatErr := api.codeChatsFor(internalBotRequestContext(ctx, userID), userID, sessionID, workspacePath); chatErr == nil && !project.Self.IsMain {
+				if project, chatErr := api.codeChatsFor(internalBotRequestContext(ctx, userID), userID, sessionID, workspacePath); chatErr == nil && strings.HasPrefix(project.Self.Key, strings.TrimSpace(projectID)+codeChatSideMarker) {
 					chatKey = project.Self.Key
+				}
+				if chatKey == "" {
+					isolated = true
 				}
 			}
 			job, err := api.projectActions.CreateProjectSchedule(ctx, userID, profileID, projectID, productschedule.Schedule{
-				Name: strings.TrimSpace(name), Messages: []string{strings.TrimSpace(message)}, CronExpression: strings.TrimSpace(cronExpression), RunAt: runAt, Timezone: strings.TrimSpace(timezone), Enabled: enabled, Isolated: isolated, New: destinationSetting.New, ChatKey: chatKey,
+				Name: strings.TrimSpace(name), Messages: messages, CronExpression: strings.TrimSpace(cronExpression), RunAt: runAt, Timezone: strings.TrimSpace(timezone), Enabled: enabled, Isolated: isolated, New: destinationSetting.New, ChatKey: chatKey,
 			})
 			if err != nil {
 				return "", err
@@ -177,11 +185,12 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			"type": "object",
 			"properties": map[string]interface{}{
 				"id": map[string]interface{}{"type": "string"}, "name": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"},
+				"messages":        map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Replace all of the schedule's messages, sent in order each after the previous turn finishes."},
 				"cron_expression": map[string]interface{}{"type": "string"}, "timezone": map[string]interface{}{"type": "string"},
 				"in_minutes": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": oneTimeMaxMinutes, "description": "Make it one-time: run once this many minutes from now. Replaces the recurring timing."},
 				"run_at":     map[string]interface{}{"type": "string", "description": "Make it one-time: run once at this RFC3339 moment. Replaces the recurring timing."}, "enabled": map[string]interface{}{"type": "boolean"},
-				"run_destination": map[string]interface{}{"type": "string", "enum": runDestinationEnum(), "description": runDestinationHelp},
-				"chat_id":         map[string]interface{}{"type": "string", "description": "Move the schedule to this tab of the project (a chat_id from the project's chat list). An empty string moves it back to the main chat."},
+				"run_destination": map[string]interface{}{"type": "string", "enum": messageScheduleDestinationEnum(), "description": messageScheduleDestinationHelp},
+				"chat_id":         map[string]interface{}{"type": "string", "description": "Move the schedule to this tab of the project (a chat_id from the project's chat list). It runs there until moved again; use run_destination isolated for its own chat."},
 			},
 			"required": []string{"id"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -206,6 +215,9 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				}
 				requestedChatKey = &key
 			}
+			if requestedChatKey != nil && *requestedChatKey == "" && (requestedDestination == nil || !requestedDestination.Isolated) && isProjectProfileID(profileID) {
+				return "", fmt.Errorf("%s", scheduleChooseAgentMessage)
+			}
 			job, err := api.projectActions.UpdateProjectSchedule(ctx, userID, resolveID(id), func(schedule *productschedule.Schedule) {
 				if requestedChatKey != nil {
 					schedule.ChatKey = *requestedChatKey
@@ -216,8 +228,8 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 				if value, ok := args["name"].(string); ok && strings.TrimSpace(value) != "" {
 					schedule.Name = strings.TrimSpace(value)
 				}
-				if value, ok := args["message"].(string); ok && strings.TrimSpace(value) != "" {
-					schedule.Messages = []string{strings.TrimSpace(value)}
+				if messages := scheduleToolMessages(args); len(messages) > 0 {
+					schedule.Messages = messages
 				}
 				if value, ok := args["cron_expression"].(string); ok && strings.TrimSpace(value) != "" {
 					schedule.CronExpression, schedule.CadenceHours, schedule.RunAt = strings.TrimSpace(value), 0, ""
@@ -256,126 +268,7 @@ func (api *StreamingAPI) registerWorkScheduleTools(registrar definitionToolRegis
 			return err
 		}
 	}
-	if err := register("list_project_triggers", "List the authenticated webhook triggers stored in this project's webhooks.json. Secrets are never returned.", map[string]interface{}{
-		"type": "object", "properties": map[string]interface{}{},
-	}, func(ctx context.Context, _ map[string]interface{}) (string, error) {
-		triggers, err := api.projectActions.projectWebhookConfigs(ctx, listUserID, profileID, projectID)
-		if err != nil {
-			return "", err
-		}
-		out := make([]productWebhookResponse, 0, len(triggers))
-		for _, trigger := range triggers {
-			if trigger.IsInternal() {
-				continue
-			}
-			out = append(out, productWebhookDTO(trigger))
-		}
-		encoded, err := json.MarshalIndent(map[string]interface{}{"triggers": out}, "", "  ")
-		return string(encoded), err
-	}); err != nil {
-		return err
-	}
 	if !readOnly {
-		if err := register("create_project_trigger", "Create an authenticated webhook trigger for this project. Choose chat to queue work in the main project conversation, isolated for this webhook's own continuing conversation, or new for a new conversation every call. Return the one-time secret immediately, and tell the user that anyone holding the URL and secret can start a run as them, with their connections and secrets."+crewFunctionsHint, map[string]interface{}{
-			"type": "object", "properties": map[string]interface{}{
-				"name": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"},
-				"auth_mode": map[string]interface{}{"type": "string", "enum": []string{"bearer", "github"}}, "enabled": map[string]interface{}{"type": "boolean"},
-				"run_destination": map[string]interface{}{"type": "string", "enum": runDestinationEnum(), "description": runDestinationHelp},
-				"kind":            map[string]interface{}{"type": "string", "enum": []string{"internal"}},
-				"caller":          triggerCallerToolSchema(triggerCallerWorkflow, triggerCallerCrew),
-			}, "required": []string{"name", "message"},
-		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-			name, _ := args["name"].(string)
-			message, _ := args["message"].(string)
-			authMode, _ := args["auth_mode"].(string)
-			destination, _ := args["run_destination"].(string)
-			kind, _ := args["kind"].(string)
-			enabled, ok := args["enabled"].(bool)
-			if !ok {
-				enabled = true
-			}
-			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RunDestination: destination, Kind: kind, Caller: triggerCallerFromArgs(args)}, "")
-			if err != nil {
-				return "", err
-			}
-			encoded, err := json.MarshalIndent(response, "", "  ")
-			return string(encoded), err
-		}); err != nil {
-			return err
-		}
-		if err := register("update_project_trigger", "Update, enable, disable, or rotate a project webhook trigger. Call list_project_triggers first. A rotated secret is returned only once. Internal triggers carry kind and caller instead of a secret.", map[string]interface{}{
-			"type": "object", "properties": map[string]interface{}{
-				"id": map[string]interface{}{"type": "string"}, "name": map[string]interface{}{"type": "string"}, "message": map[string]interface{}{"type": "string"},
-				"auth_mode": map[string]interface{}{"type": "string", "enum": []string{"bearer", "github"}}, "enabled": map[string]interface{}{"type": "boolean"}, "rotate_secret": map[string]interface{}{"type": "boolean"},
-				"run_destination": map[string]interface{}{"type": "string", "enum": runDestinationEnum(), "description": runDestinationHelp},
-				"kind":            map[string]interface{}{"type": "string", "enum": []string{"internal"}},
-				"caller":          triggerCallerToolSchema(triggerCallerWorkflow, triggerCallerCrew),
-			}, "required": []string{"id"},
-		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-			id, _ := args["id"].(string)
-			triggers, err := api.projectActions.projectWebhookConfigs(ctx, userID, profileID, projectID)
-			if err != nil {
-				return "", err
-			}
-			var current *productWebhookTrigger
-			for i := range triggers {
-				if triggers[i].ID == strings.TrimSpace(id) {
-					current = &triggers[i]
-					break
-				}
-			}
-			if current == nil {
-				return "", fmt.Errorf("trigger not found")
-			}
-			name, message, enabled, destination := current.Name, current.Message, current.Enabled, firstNonEmptyTrimmed(current.RunDestination, runDestinationChat)
-			authMode := ""
-			if current.Webhook != nil {
-				authMode = current.Webhook.AuthMode
-			}
-			kind := current.Kind
-			caller := current.Caller
-			if value, ok := args["name"].(string); ok && strings.TrimSpace(value) != "" {
-				name = value
-			}
-			if value, ok := args["message"].(string); ok && strings.TrimSpace(value) != "" {
-				message = value
-			}
-			if value, ok := args["auth_mode"].(string); ok && strings.TrimSpace(value) != "" {
-				authMode = value
-			}
-			if value, ok := args["enabled"].(bool); ok {
-				enabled = value
-			}
-			if value, ok := args["run_destination"].(string); ok && strings.TrimSpace(value) != "" {
-				destination = value
-			}
-			if value, ok := args["kind"].(string); ok && strings.TrimSpace(value) != "" {
-				kind = value
-			}
-			if updated := triggerCallerFromArgs(args); updated != nil {
-				caller = updated
-			}
-			rotate, _ := args["rotate_secret"].(bool)
-			response, _, err := api.projectActions.saveProductWebhookConfig(ctx, userID, productWebhookRequest{ProfileID: profileID, ProjectID: projectID, Name: name, Message: message, AuthMode: authMode, Enabled: enabled, RotateSecret: rotate, RunDestination: destination, Kind: kind, Caller: caller}, current.ID)
-			if err != nil {
-				return "", err
-			}
-			encoded, err := json.MarshalIndent(response, "", "  ")
-			return string(encoded), err
-		}); err != nil {
-			return err
-		}
-		if err := register("delete_project_trigger", "Delete a project webhook trigger. Call list_project_triggers first and use its exact id.", map[string]interface{}{
-			"type": "object", "properties": map[string]interface{}{"id": map[string]interface{}{"type": "string"}}, "required": []string{"id"},
-		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-			id, _ := args["id"].(string)
-			if err := api.projectActions.deleteProductWebhookConfig(ctx, userID, profileID, projectID, strings.TrimSpace(id)); err != nil {
-				return "", err
-			}
-			return "Trigger deleted.", nil
-		}); err != nil {
-			return err
-		}
 		return register("trigger_project_schedule", "Run a project schedule now. Call list_project_schedules first and use its exact id.", map[string]interface{}{
 			"type": "object", "properties": map[string]interface{}{"id": map[string]interface{}{"type": "string"}}, "required": []string{"id"},
 		}, func(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -426,4 +319,51 @@ func oneTimeRunAt(args map[string]interface{}, now time.Time) (string, error) {
 		return "", fmt.Errorf("run_at %s is not in the future", runAt)
 	}
 	return at.UTC().Format(time.RFC3339), nil
+}
+
+// PLAT-746: the Schedules panel includes workflow timers inside a Crew.
+// Chat must list the same owner-filtered, workspace-scoped rows rather than
+// only the Crew message schedules in ProjectActionDispatcher.
+func (api *StreamingAPI) chatProjectScheduleRows(ctx context.Context, user, root string) ([]ScheduledJobResponse, error) {
+	if api.scheduler == nil {
+		return nil, fmt.Errorf("the scheduler is unavailable")
+	}
+	r := httptest.NewRequest(http.MethodGet, "/api/scheduler/jobs", nil).WithContext(internalBotRequestContext(ctx, user))
+	status, body := scheduleHandler(r, listScheduledJobsHandler(api.scheduler), http.MethodGet, "/api/scheduler/jobs", nil,
+		url.Values{"entity_type": {"product"}, "workspace_path": {root}, "limit": {"1000"}}, nil)
+	if status >= 400 {
+		return nil, fmt.Errorf("could not list this project's schedules: %s", strings.TrimSpace(string(body)))
+	}
+	var page struct {
+		Jobs []ScheduledJobResponse `json:"jobs"`
+	}
+	if err := json.Unmarshal(body, &page); err != nil {
+		return nil, err
+	}
+	out := make([]ScheduledJobResponse, 0, len(page.Jobs))
+	for _, job := range page.Jobs {
+		if job.ScheduleType != "webhook" && job.Kind != "condition" {
+			out = append(out, job)
+		}
+	}
+	return out, nil
+}
+
+// scheduleToolMessages reads a schedule's instructions: messages (several, in order) or
+// the single message. Blank entries are dropped.
+func scheduleToolMessages(args map[string]interface{}) []string {
+	var out []string
+	if list, ok := args["messages"].([]interface{}); ok {
+		for _, item := range list {
+			if text, ok := item.(string); ok && strings.TrimSpace(text) != "" {
+				out = append(out, strings.TrimSpace(text))
+			}
+		}
+	}
+	if len(out) == 0 {
+		if text, ok := args["message"].(string); ok && strings.TrimSpace(text) != "" {
+			out = []string{strings.TrimSpace(text)}
+		}
+	}
+	return out
 }

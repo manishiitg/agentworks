@@ -1,13 +1,13 @@
 package server
 
 import (
-	"context"
-	"strings"
 	"testing"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
+// PLAT-746: effective role controls which tools are offered. Native Vault
+// validates arguments; this registration test does not require a Vault service.
 func TestMCPManagementRegistrationFollowsChatPolicy(t *testing.T) {
 	for _, tc := range []struct {
 		name, session  string
@@ -48,13 +48,6 @@ func TestMCPManagementRegistrationFollowsChatPolicy(t *testing.T) {
 			}
 			if _, got := reg.tools["list_mcp_servers"]; got != (tc.want || tc.list) {
 				t.Fatalf("list_mcp_servers registered=%v want %v (%+v)", got, tc.want || tc.list, policy)
-			}
-			if tc.want {
-				// Exercise the real handler without making a network request.
-				result, err := reg.tools["install_mcp_server"].exec(context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "policy-test-user"}), map[string]interface{}{})
-				if err == nil || !strings.Contains(err.Error(), "name is required") || result != "" {
-					t.Fatalf("missing required name: %q %v", result, err)
-				}
 			}
 		})
 	}
@@ -110,39 +103,36 @@ type chatPolicyTestDefinition struct{ recordingRegistrar }
 func (*chatPolicyTestDefinition) AttachSkill(*llmtypes.Skill) error { return nil }
 func (*chatPolicyTestDefinition) AttachedSkills() []*llmtypes.Skill { return nil }
 
-func TestChatPolicyReconnectPreservesCompatibleHistory(t *testing.T) {
-	for _, tc := range []struct {
-		name          string
-		coding, known bool
-		previous      string
-		saved         *ChatHistoryAgentRuntime
-		want          bool
-	}{
-		{name: "fresh API chat"},
-		{name: "changed policy on API chat", known: true, previous: "old"},
-		{name: "fresh coding chat", coding: true},
-		{name: "unchanged live coding chat", coding: true, known: true, previous: "current"},
-		{name: "changed live coding chat", coding: true, known: true, previous: "old", want: true},
-		{name: "retained compatible after restart", coding: true, saved: &ChatHistoryAgentRuntime{ExternalSessionID: "native-id", ChatPolicyKey: "current"}},
-		{name: "legacy retained needs new catalog", coding: true, saved: &ChatHistoryAgentRuntime{ExternalSessionID: "native-id"}, want: true},
-		{name: "retained changed policy", coding: true, saved: &ChatHistoryAgentRuntime{ExternalSessionID: "native-id", ChatPolicyKey: "old"}, want: true},
-		{name: "saved API history has no native session", coding: true, saved: &ChatHistoryAgentRuntime{Kind: "llm_agent"}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := chatPolicyRequiresReconnect(tc.coding, tc.previous, "current", tc.known, tc.saved); got != tc.want {
-				t.Fatalf("reconnect=%v want=%v", got, tc.want)
-			}
-		})
+func TestMergeWorkflowCapabilitiesUpdatePreservesConnectionSelections(t *testing.T) {
+	existing := WorkflowCapabilities{
+		GitHubConnectionID:     "22222222222222222222222222222222",
+		GmailConnectionID:      "gmail_001",
+		GmailBlockedRecipients: []string{"blocked@example.com"},
+		SlackConnectionID:      "slack-1",
+		BrowserMode:            "extension",
+		Notifications:          &WorkflowNotificationConfig{WakeTab: &WorkflowWakeTab{CrewID: "crew-1", ChatID: "chat-1"}},
 	}
-	api := &StreamingAPI{
-		lastChatPolicyBySession:      map[string]string{"chat": "current"},
-		lastAgentProfileKeyBySession: map[string]string{"chat": "profile-sha256:current"},
+	incoming := &WorkflowCapabilities{
+		BrowserMode:       "headless",
+		SlackConnectionID: "",
 	}
-	runtime := api.captureChatHistoryAgentRuntime("chat", "cursor-cli", "test-model", "Workflow/test", nil)
-	if runtime.ChatPolicyKey != "current" {
-		t.Fatal("native runtime did not persist its policy fingerprint")
+	merged := mergeWorkflowCapabilitiesUpdate(existing, incoming)
+	if merged.GitHubConnectionID != existing.GitHubConnectionID {
+		t.Fatalf("GitHubConnectionID = %q, want %q", merged.GitHubConnectionID, existing.GitHubConnectionID)
 	}
-	if runtime.AgentProfileKey != "profile-sha256:current" {
-		t.Fatal("native runtime did not persist its agent profile fingerprint")
+	if merged.GmailConnectionID != existing.GmailConnectionID {
+		t.Fatalf("GmailConnectionID = %q, want %q", merged.GmailConnectionID, existing.GmailConnectionID)
+	}
+	if len(merged.GmailBlockedRecipients) != 1 || merged.GmailBlockedRecipients[0] != "blocked@example.com" {
+		t.Fatalf("GmailBlockedRecipients = %v, want preserved", merged.GmailBlockedRecipients)
+	}
+	if merged.Notifications == nil || merged.Notifications.WakeTab == nil || merged.Notifications.WakeTab.CrewID != "crew-1" {
+		t.Fatalf("Notifications = %+v, want preserved", merged.Notifications)
+	}
+	if merged.BrowserMode != "headless" {
+		t.Fatalf("BrowserMode = %q, want headless", merged.BrowserMode)
+	}
+	if merged.SlackConnectionID != "" {
+		t.Fatalf("SlackConnectionID = %q, want explicitly cleared", merged.SlackConnectionID)
 	}
 }

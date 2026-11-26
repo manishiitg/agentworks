@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -322,7 +323,7 @@ func TestGitTurnCapturesFirstCommitCreatedDuringReply(t *testing.T) {
 
 // PLAT-746-319: capture discovery skipped linked worktrees, and ordinary files
 // had no path at all. Both must produce private diffs and scoped Undo.
-func TestTurnDiscoversLinkedWorktreeAndOrdinaryFiles(t *testing.T) {
+func TestTurnCapturesLinkedWorktreeAndOrdinaryFiles(t *testing.T) {
 	for _, linked := range []bool{false, true} {
 		name := "ordinary"
 		if linked {
@@ -544,6 +545,96 @@ func TestTurnSlowCheckoutKeepsHealthyReplyChanges(t *testing.T) {
 	}
 }
 
+// PLAT-746-319: a U+202F filename produced a Go \u escape that Git rejects,
+// failing every reply capture for the newly imported project.
+func TestGitTurnKeepsUnicodeFilename(t *testing.T) {
+	f := newCrew(t)
+	name := "report 2026.md"
+	repo := "repo 2026"
+	f.repo(repo, map[string]string{name: "committed\n"})
+	paths := []string{name, repo + "/" + name}
+	for _, p := range paths {
+		f.put(p, "before\n")
+	}
+	if _, err := f.s.BeginGitTurn(t.Context(), "unicode"); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range paths {
+		f.put(p, "after\n")
+	}
+	r, err := f.s.FinishGitTurn(t.Context(), "unicode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(c.Changes) != 2 {
+		t.Fatalf("Unicode changes lost: %v %+v", err, c.Changes)
+	}
+	for _, p := range paths {
+		diff, err := f.s.CompareSaved(t.Context(), []string{r.ID}, p, "", func(string) bool { return true })
+		if err != nil || !strings.Contains(diff.Diff, "+after") || !strings.Contains(diff.Diff, "-before") {
+			t.Fatalf("saved Unicode diff: %v %+v", err, diff)
+		}
+	}
+	plan, err := f.s.PlanUndo(t.Context(), r.ID, func(string) bool { return true }, func(string) bool { return true })
+	if err != nil || len(plan.Restore) != 2 || len(plan.Skipped) != 0 {
+		t.Fatalf("Unicode Undo paths lost: %v %+v", err, plan)
+	}
+}
+
+// PLAT-746-319: a parent-folder import contained 123k backup/untracked paths.
+// Bound those sets without losing a healthy checkout or inventing deletions
+// when the ordinary-file prefix stops fitting at the next boundary.
+func TestTurnFileLimitKeepsHealthyCheckoutAndOmitsUnknownLooseDiff(t *testing.T) {
+	f := newCrew(t)
+	f.repo("huge", map[string]string{"tracked.txt": "original"})
+	f.repo("z-project", map[string]string{"edit.txt": "original"})
+	for i := 0; i <= maxTurnPaths; i++ {
+		f.put(fmt.Sprintf("huge/untracked-%05d", i), "")
+	}
+	f.put("note.md", "before")
+	f.put("z-project/edit.txt", "before")
+	before, err := f.s.BeginGitTurn(t.Context(), "limited")
+	if err != nil || !turnFileLimited(before.BeforeCapture) || len(before.GitTurn) != 1 {
+		t.Fatalf("large untracked checkout was not bounded: %v %+v", err, before.BeforeCapture)
+	}
+	for i := 0; i <= maxTurnPaths; i++ {
+		f.put(fmt.Sprintf("backup/copy-%05d", i), "")
+	}
+	f.put("z-project/edit.txt", "after")
+	after, err := f.s.FinishGitTurn(t.Context(), "limited")
+	if err != nil || after.Status != "partial" || after.AfterCapture.Deferred != "loose_file_limit" {
+		t.Fatalf("large ordinary set lost healthy capture: %v %+v", err, after.AfterCapture)
+	}
+	comparison, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "z-project/edit.txt" {
+		t.Fatalf("bounded prefix invented or lost changes: %v %+v", err, comparison.Changes)
+	}
+	if after.AfterCapture.ImportedBytes > 20 {
+		t.Fatalf("read large untracked/backup contents: %+v", after.AfterCapture)
+	}
+	// PR1807 P1: a nested checkout hidden by the before walk's cap must not
+	// turn pre-existing dirty bytes into this reply's changes or Undo targets.
+	f.repo("m-parent/nested", map[string]string{"old.txt": "committed"})
+	f.put("m-parent/nested/old.txt", "pre-existing dirty work")
+	before, err = f.s.BeginGitTurn(t.Context(), "recovered")
+	if err != nil || before.BeforeCapture.Deferred != "loose_file_limit" {
+		t.Fatalf("before discovery was not capped: %v", err)
+	}
+	if err := os.RemoveAll(filepath.Join(f.s.Root, "backup")); err != nil {
+		t.Fatal(err)
+	}
+	f.put("z-project/edit.txt", "third")
+	after, err = f.s.FinishGitTurn(t.Context(), "recovered")
+	if err != nil {
+		t.Fatal(err)
+	}
+	comparison, err = f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "z-project/edit.txt" {
+		t.Fatalf("recovered checkout claimed old dirty work: %v %+v", err, comparison.Changes)
+	}
+}
+
 // PLAT-746: every reply in a large project warned "exceeded the capture size
 // limit" because files changed by others before the reply did not fit the
 // before capture, even when the reply never touched them. Warn only when a
@@ -591,5 +682,371 @@ func TestTurnCaptureLimitWarnsOnlyForFilesTheReplyChanged(t *testing.T) {
 				t.Fatalf("want only the edited note, got %v %+v", err, c.Changes)
 			}
 		})
+	}
+}
+
+// #3074: agents often edit worktrees while running from the project root;
+// skipping them (PLAT-746-876) hid every change made there.
+func TestCrewRootTurnCapturesEveryWorktree(t *testing.T) {
+	f := newCrew(t)
+	f.repo("app", map[string]string{"a.txt": "committed\n"})
+	for _, dir := range []string{"first", "second"} {
+		f.git("app", "worktree", "add", "--quiet", "-b", dir, filepath.Join(f.s.Root, dir))
+		f.put(dir+"/a.txt", "dirty before\n")
+	}
+	f.put("app/a.txt", "main before\n")
+	f.backdateAll()
+	if _, err := f.s.BeginGitTurn(t.Context(), "root-reply"); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{"app", "first", "second"} {
+		f.put(dir+"/a.txt", "changed during reply\n")
+	}
+	after, err := f.s.FinishGitTurn(t.Context(), "root-reply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(c.Changes) != 3 {
+		t.Fatalf("want the main repo and both worktrees, got %v %+v", err, c.Changes)
+	}
+}
+
+// #2922 task 1: a pull, merge or rebase during a reply used to list every file
+// it brought in (and a rebase left no list). Only the reply's own commits
+// count, including after a rebase; a rebase that only moves older commits
+// lists nothing. A teammate's commit pushed during the reply is still not ours.
+func TestTurnListsOnlyTheReplysOwnCommitsAcrossPullMergeAndRebase(t *testing.T) {
+	f := newCrew(t)
+	f.repo("app", map[string]string{"a.txt": "one\n"})
+	outside := t.TempDir()
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "init.defaultBranch=main"}, args...)...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	remote, mate := filepath.Join(outside, "remote.git"), filepath.Join(outside, "mate")
+	run(outside, "init", "--quiet", "--bare", remote)
+	f.git("app", "remote", "add", "origin", remote)
+	f.git("app", "push", "--quiet", "-u", "origin", "main")
+	run(outside, "clone", "--quiet", remote, mate)
+	teammatePushes := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(mate, name), []byte("from a teammate\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		run(mate, "pull", "--quiet", "--rebase")
+		run(mate, "add", name)
+		run(mate, "commit", "--quiet", "-m", name)
+		run(mate, "push", "--quiet")
+	}
+	commit := func(name string) {
+		t.Helper()
+		f.put("app/"+name, "mine\n")
+		f.git("app", "add", name)
+		f.git("app", "commit", "--quiet", "-m", name)
+	}
+	turn := func(id string, during func()) []string {
+		t.Helper()
+		if _, err := f.s.BeginGitTurn(t.Context(), id); err != nil {
+			t.Fatal(err)
+		}
+		during()
+		r, err := f.s.FinishGitTurn(t.Context(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(r.Review.IncompleteRoots) != 0 {
+			t.Fatalf("%s: checkout marked incomplete", id)
+		}
+		c, err := f.s.CompareSaved(t.Context(), []string{r.ID}, "", "", func(string) bool { return true })
+		if err != nil {
+			t.Fatal(err)
+		}
+		var paths []string
+		for _, change := range c.Changes {
+			paths = append(paths, change.Path)
+		}
+		return paths
+	}
+	cases := []struct {
+		id     string
+		before func()
+		during func()
+		want   string
+	}{
+		{"merge", func() {}, func() {
+			teammatePushes("up1.txt")
+			commit("mine1.txt")
+			f.git("app", "-c", "pull.rebase=false", "pull", "--quiet", "--no-edit")
+		}, "app/mine1.txt"},
+		{"rebase", func() {}, func() {
+			teammatePushes("up2.txt")
+			commit("mine2.txt")
+			f.git("app", "pull", "--quiet", "--rebase")
+		}, "app/mine2.txt"},
+		{"moved only", func() { commit("older.txt") }, func() {
+			teammatePushes("up3.txt")
+			f.git("app", "pull", "--quiet", "--rebase")
+		}, ""},
+	}
+	for _, tc := range cases {
+		tc.before()
+		if got := strings.Join(turn(tc.id, tc.during), ","); got != tc.want {
+			t.Fatalf("%s: card lists %q, want %q", tc.id, got, tc.want)
+		}
+	}
+}
+
+// #2922 task 1: two chats editing the same checkout at once both get a note
+// naming it; a reply that ran alone gets none.
+func TestTurnNotesAnotherChatChangingTheSameCheckout(t *testing.T) {
+	f := newCrew(t)
+	f.repo("app", map[string]string{"a.txt": "one\n"})
+	begin := func(id string) {
+		t.Helper()
+		if _, err := f.s.BeginGitTurn(t.Context(), id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	finish := func(id string) string {
+		t.Helper()
+		r, err := f.s.FinishGitTurn(t.Context(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.ID
+	}
+	compared := func(id string) string {
+		t.Helper()
+		c, err := f.s.CompareSaved(t.Context(), []string{id}, "", "", func(string) bool { return true })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c.Note
+	}
+	begin("first")
+	begin("second")
+	f.put("app/a.txt", "two\n")
+	first, second := finish("first"), finish("second")
+	for _, id := range []string{first, second} {
+		if got := compared(id); !strings.Contains(got, "Another chat was also changing app") {
+			t.Fatalf("%s: no shared-work note: %q", id, got)
+		}
+	}
+	begin("alone")
+	f.put("app/a.txt", "three\n")
+	if got := compared(finish("alone")); strings.Contains(got, "Another chat") {
+		t.Fatalf("reply that ran alone got a shared-work note: %q", got)
+	}
+}
+
+// #2922: a chat's own branch folder sits in the repository's hidden
+// .worktrees folder, which the walk skips. Started during the reply, its edits
+// still belong to that reply, and nothing from the main checkout is added.
+
+// #3878: over the file limit, (1) a checkout after the big folder was skipped,
+// so its edits were never tracked, and (2) every reply walked the whole folder
+// again. The verdict is now decided once and reused until the layout changes.
+func TestTurnFileLimitFindsLaterCheckoutsAndIsDecidedOnce(t *testing.T) {
+	f := newCrew(t)
+	for i := 0; i <= maxTurnPaths; i++ {
+		f.put(fmt.Sprintf("a-data/s/t/f-%05d", i), "")
+	}
+	f.repo("z-later/app", map[string]string{"edit.txt": "original"})
+	before, err := f.s.BeginGitTurn(t.Context(), "once")
+	if err != nil || before.BeforeCapture.Deferred != "loose_file_limit" {
+		t.Fatalf("limit not reached: %v %+v", err, before.BeforeCapture)
+	}
+	if _, ok := before.GitTurn["z-later/app"]; !ok {
+		t.Fatalf("checkout after the big folder was skipped: %v", turnKeys(before.GitTurn))
+	}
+	report, ok := f.s.FileLimit()
+	if !ok || !report.Over || report.Files != maxTurnPaths+1 || len(report.Folders) == 0 || report.Folders[0].Path != "a-data" {
+		t.Fatalf("verdict not stored: %+v", report)
+	}
+	f.put("a-data/s/t/one-more", "")
+	f.put("z-later/app/edit.txt", "after")
+	after, err := f.s.FinishGitTurn(t.Context(), "once")
+	if err != nil || after.AfterCapture.Deferred != "loose_file_limit" {
+		t.Fatalf("after capture: %v %+v", err, after.AfterCapture)
+	}
+	if again, _ := f.s.FileLimit(); !again.CheckedAt.Equal(report.CheckedAt) {
+		t.Fatal("an unchanged layout walked the folder again")
+	}
+	comparison, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "z-later/app/edit.txt" {
+		t.Fatalf("later checkout's edit lost: %v %+v", err, comparison.Changes)
+	}
+	// Everyday churn keeps the verdict: files saved at the root and one level
+	// down, and a worktree an agent adds, are not a reason to walk again.
+	f.put("notes.md", "x")
+	f.put("a-data/top.txt", "x")
+	f.repo("wt-new", map[string]string{"a.txt": "a"})
+	churn, err := f.s.BeginGitTurn(t.Context(), "churn")
+	if err != nil || !churn.BeforeCapture.LimitReused {
+		t.Fatalf("churn walked again: %v %+v", err, churn.BeforeCapture)
+	}
+	if _, ok := churn.GitTurn["wt-new"]; !ok {
+		t.Fatalf("added worktree not found: %v", turnKeys(churn.GitTurn))
+	}
+	if again, _ := f.s.FileLimit(); !again.CheckedAt.Equal(report.CheckedAt) || again.Checkouts != 2 {
+		t.Fatalf("verdict not kept through churn: %+v", again)
+	}
+	if err := os.RemoveAll(filepath.Join(f.s.Root, "wt-new")); err != nil {
+		t.Fatal(err)
+	}
+	gone, err := f.s.FinishGitTurn(t.Context(), "churn")
+	if err != nil || !gone.AfterCapture.LimitReused {
+		t.Fatalf("removed worktree walked again: %v %+v", err, gone.AfterCapture)
+	}
+	if again, _ := f.s.FileLimit(); again.Checkouts != 1 {
+		t.Fatalf("removed worktree kept: %+v", again)
+	}
+	f.s.RecheckFileLimit()
+	if _, err := f.s.BeginGitTurn(t.Context(), "recheck"); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := f.s.FileLimit(); again.Files != maxTurnPaths+4 {
+		t.Fatalf("check again did not count afresh: %+v", again)
+	}
+}
+
+// Moving out one of the biggest folders decides the verdict again at once.
+func TestTurnFileLimitRemovingABigFolderDecidesAgain(t *testing.T) {
+	f := newCrew(t)
+	for i := 0; i <= maxTurnPaths; i++ {
+		f.put(fmt.Sprintf("a-data/s/f-%05d", i), "")
+	}
+	if _, err := f.s.BeginGitTurn(t.Context(), "big"); err != nil {
+		t.Fatal(err)
+	}
+	if report, _ := f.s.FileLimit(); !report.Over {
+		t.Fatalf("limit not reached: %+v", report)
+	}
+	if err := os.RemoveAll(filepath.Join(f.s.Root, "a-data")); err != nil {
+		t.Fatal(err)
+	}
+	after, err := f.s.FinishGitTurn(t.Context(), "big")
+	if err != nil || after.AfterCapture.LimitReused || after.AfterCapture.Deferred == "loose_file_limit" {
+		t.Fatalf("big folder gone but verdict reused: %v %+v", err, after.AfterCapture)
+	}
+	if report, _ := f.s.FileLimit(); report.Over {
+		t.Fatalf("still over after moving the folder out: %+v", report)
+	}
+}
+
+type fakeRepoWatch struct {
+	mu      sync.Mutex
+	tokens  map[string]uint64
+	settled int
+}
+
+func (f *fakeRepoWatch) Token(dir string) (uint64, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.tokens[dir], true
+}
+func (f *fakeRepoWatch) Located(string, string, string) {}
+func (f *fakeRepoWatch) Settle()                        { f.mu.Lock(); f.settled++; f.mu.Unlock() }
+func (f *fakeRepoWatch) touch(dir string)               { f.mu.Lock(); f.tokens[dir]++; f.mu.Unlock() }
+
+// #3878: a checkout the file watcher saw no change in reuses its last read;
+// one it saw change is read again, so the reply's edit is still captured.
+func TestTurnReposReuseUnchangedCheckouts(t *testing.T) {
+	f := newCrew(t)
+	f.repo("idle", map[string]string{"a.txt": "a"})
+	f.repo("busy", map[string]string{"b.txt": "b"})
+	watch := &fakeRepoWatch{tokens: map[string]uint64{}}
+	f.s.Watch = watch
+	before, err := f.s.BeginGitTurn(t.Context(), "w1")
+	if err != nil || before.BeforeCapture.ReposReused != 0 || len(before.GitTurn) != 2 {
+		t.Fatalf("first read: %v %+v", err, before.BeforeCapture)
+	}
+	f.put("busy/b.txt", "edited")
+	watch.touch(filepath.Join(f.s.Root, "busy"))
+	after, err := f.s.FinishGitTurn(t.Context(), "w1")
+	if err != nil || after.AfterCapture.ReposReused != 1 || watch.settled < 2 {
+		t.Fatalf("idle checkout not reused: %v %+v settled=%d", err, after.AfterCapture, watch.settled)
+	}
+	comparison, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "busy/b.txt" {
+		t.Fatalf("edit in the changed checkout lost: %v %+v", err, comparison.Changes)
+	}
+}
+
+// #3878 proof run: checkouts first read together must not all be redone by one
+// reply when their reads age out; only the oldest few are.
+func TestTurnReposRedoAgedReadsAFewAtATime(t *testing.T) {
+	f := newCrew(t)
+	for _, name := range []string{"one", "two", "three"} {
+		f.repo(name, map[string]string{"a.txt": name})
+	}
+	f.s.Watch = &fakeRepoWatch{tokens: map[string]uint64{}}
+	if _, err := f.s.BeginGitTurn(t.Context(), "aged"); err != nil {
+		t.Fatal(err)
+	}
+	c := &f.s.state().repos
+	c.mu.Lock()
+	for dir, r := range c.reads {
+		r.at = r.at.Add(-2 * repoReuseFor)
+		c.reads[dir] = r
+	}
+	c.mu.Unlock()
+	after, err := f.s.FinishGitTurn(t.Context(), "aged")
+	if err != nil || after.AfterCapture.ReposReused != 3-repoRedoPerCapture {
+		t.Fatalf("aged reads not spread: %v %+v", err, after.AfterCapture)
+	}
+}
+
+// #3878: another agent's worktree being created inside the project while a
+// reply ends showed thousands of files; reading them one by one ran the
+// capture out of time and lost the reply's own changes too.
+func TestTurnSkipsCheckoutCreatedDuringReplyWithThousandsOfFiles(t *testing.T) {
+	f := newCrew(t)
+	f.put("notes.md", "before")
+	if _, err := f.s.BeginGitTurn(t.Context(), "busy"); err != nil {
+		t.Fatal(err)
+	}
+	f.repo("wt-other", map[string]string{"README.md": "x"})
+	for i := 0; i <= newCheckoutMaxPaths; i++ {
+		f.put(fmt.Sprintf("wt-other/src/f-%04d.txt", i), "")
+	}
+	f.put("notes.md", "after")
+	after, err := f.s.FinishGitTurn(t.Context(), "busy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	comparison, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
+	if err != nil || len(comparison.Changes) != 1 || comparison.Changes[0].Path != "notes.md" {
+		t.Fatalf("reply's own edit lost or new checkout read: %v %d changes", err, len(comparison.Changes))
+	}
+}
+
+// #3878 "Ignore": a folder in the project's own .gitignore is not walked, so it
+// no longer counts toward the file limit; the stored verdict is decided again.
+func TestTurnFileLimitHonoursProjectGitignore(t *testing.T) {
+	f := newCrew(t)
+	for i := 0; i <= maxTurnPaths; i++ {
+		f.put(fmt.Sprintf("reviews/s/f-%05d", i), "")
+	}
+	f.put("notes.md", "x")
+	if _, err := f.s.BeginGitTurn(t.Context(), "ignore"); err != nil {
+		t.Fatal(err)
+	}
+	if report, _ := f.s.FileLimit(); !report.Over {
+		t.Fatalf("limit not reached: %+v", report)
+	}
+	f.put(".gitignore", "/reviews/\n")
+	if _, ok := f.s.cachedOverLimit(t.Context()); ok {
+		t.Fatal("a changed .gitignore kept the old verdict")
+	}
+	report, err := f.s.CheckFileLimit(t.Context())
+	if err != nil || report.Over || report.Files > 2 {
+		t.Fatalf("ignored folder still counted: %v %+v", err, report)
 	}
 }

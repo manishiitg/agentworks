@@ -241,7 +241,8 @@ func TestDurableSSEBackfillStreamsEveryPageWithoutSkipping(t *testing.T) {
 	if err := store.SetSessionPersistenceClass(sessionID, events.SessionPersistenceInteractiveChat); err != nil {
 		t.Fatal(err)
 	}
-	for i := 1; i <= events.MaxPollingLimit+5; i++ {
+	total := events.MaxPollingLimit + 5
+	for i := 1; i <= total; i++ {
 		if _, _, err := journal.Append(sessionID, events.Event{
 			ID: fmt.Sprintf("message-%d", i), Type: "user_message", Timestamp: time.Now(),
 		}); err != nil {
@@ -266,6 +267,21 @@ func TestDurableSSEBackfillStreamsEveryPageWithoutSkipping(t *testing.T) {
 	}
 	if !strings.Contains(body, "id: 1000\n") || !strings.Contains(body, "id: 1005\n") {
 		t.Fatal("durable backfill did not advance one page at a time")
+	}
+	// A chat reopened far behind its tip reloads its saved history instead of replaying every event (a busy chat
+	// streamed 63 MB for 88 s before it showed). The frame id moves the cursor to the tip so a reconnect resumes there.
+	gap := durableReplayMaxGap
+	durableReplayMaxGap = 100
+	defer func() { durableReplayMaxGap = gap }()
+	stale := httptest.NewRequest("GET", "/api/sessions/"+sessionID+"/events/stream?durable_chat=1&since=2", nil)
+	stale = mux.SetURLVars(stale, map[string]string{"session_id": sessionID})
+	staleCtx, staleCancel := context.WithTimeout(stale.Context(), 100*time.Millisecond)
+	defer staleCancel()
+	sw := httptest.NewRecorder()
+	api.handleSSEStream(sw, stale.WithContext(staleCtx))
+	staleBody := sw.Body.String()
+	if !strings.Contains(staleBody, `"last_processed_index":-1`) || !strings.Contains(staleBody, fmt.Sprintf("id: %d\n", total)) || strings.Contains(staleBody, `"id":"message-3"`) {
+		t.Fatalf("a far-behind chat replayed its events instead of reloading: %.300s", staleBody)
 	}
 }
 
@@ -365,5 +381,44 @@ func TestDurableSSEDeliversCompletionPublishedAfterANewerEvent(t *testing.T) {
 	}
 	if !strings.Contains(body, `"id":"turn-completion"`) {
 		t.Fatalf("the completion published after a newer event was dropped: %s", body)
+	}
+}
+
+// PLAT-746-838: durable reconnect restores completed rows AND the active
+// prefix, whose 657 bytes existed before the subscriber opened.
+func TestDurableSSEReconnectIncludesActivePrefixWithoutMovingDurableCursor(t *testing.T) {
+	journal, err := events.OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := events.NewEventStore(200)
+	defer store.Stop()
+	store.SetDurableJournal(journal)
+	const sid = "prefix-chat"
+	if err := store.SetSessionPersistenceClass(sid, events.SessionPersistenceInteractiveChat); err != nil {
+		t.Fatal(err)
+	}
+	store.AddEvent(sid, events.Event{ID: "prompt", Type: "user_message", Timestamp: time.Now(), ExecutionKind: "main", Data: pkgevents.NewAgentEvent(pkgevents.NewUserMessageEvent(1, "question", "user"))})
+	store.AddEvent(sid, events.Event{ID: "start", Type: "streaming_start", Timestamp: time.Now(), ExecutionKind: "main", Data: pkgevents.NewAgentEvent(&pkgevents.StreamingStartEvent{})})
+	for i := 1; i <= 45; i++ {
+		size := 14
+		if i == 45 {
+			size = 41
+		}
+		store.AddEvent(sid, events.Event{ID: fmt.Sprintf("piece-%d", i), Type: "streaming_chunk", Timestamp: time.Now(), ExecutionKind: "main", Data: pkgevents.NewAgentEvent(&pkgevents.StreamingChunkEvent{Content: strings.Repeat("a", size), ChunkIndex: i, Source: "content", IsDelta: true})})
+	}
+	api := &StreamingAPI{eventStore: store, runtimeCoordinator: NewRuntimeCoordinator(), activeSessions: map[string]*ActiveSessionInfo{sid: {SessionID: sid, Status: "running", CreatedAt: time.Now()}}}
+	req := httptest.NewRequest("GET", "/api/sessions/"+sid+"/events/stream?durable_chat=1&since=0&working_set=session", nil)
+	req = mux.SetURLVars(req, map[string]string{"session_id": sid})
+	ctx, cancel := context.WithTimeout(req.Context(), 100*time.Millisecond)
+	defer cancel()
+	w := httptest.NewRecorder()
+	api.handleSSEStream(w, req.WithContext(ctx))
+	body := w.Body.String()
+	if !strings.Contains(body, `"id":"start"`) || !strings.Contains(body, `"id":"piece-1"`) || !strings.Contains(body, `"id":"piece-45"`) {
+		t.Fatalf("active prefix was not replayed: %s", body)
+	}
+	if strings.Count(body, "id: ") != 1 || !strings.Contains(body, "id: 1\n") {
+		t.Fatalf("token replay changed the durable cursor: %s", body)
 	}
 }

@@ -112,12 +112,6 @@
     "external_members": "google_workspace_cli"
   },
   {
-    "family": "media",
-    "name": "edit",
-    "member": "image_edit",
-    "description": "Use the current media edit operation."
-  },
-  {
     "family": "workspace",
     "name": "references_list",
     "member": "list_accessible_workflows",
@@ -151,17 +145,18 @@
     "external_members": "messages__read"
   },
   {
+    "family": "messages",
+    "name": "history",
+    "member": "read_agent_chat",
+    "description": "Read a teammate agent's chat, online or offline, without interrupting it: search it or read one line.",
+    "external_members": "messages__history"
+  },
+  {
     "family": "integrations",
     "name": "slack_route_delete",
     "member": "remove_slack_bot_route",
     "description": "Use the current integrations slack route delete operation.",
     "external_members": "remove_slack_bot_route"
-  },
-  {
-    "family": "needs_you",
-    "name": "clarify",
-    "member": "request_clarification",
-    "description": "Use the current needs_you clarify operation."
   },
   {
     "family": "messages",
@@ -174,7 +169,30 @@
     "name": "send",
     "member": "send_message",
     "description": "Use the current messages send operation.",
-    "external_members": "messages__send"
+    "external_members": "messages__send",
+    "source": "send_message",
+    "source_key": "message_kind",
+    "source_action": "send"
+  },
+  {
+    "family": "messages",
+    "name": "ask",
+    "member": "agent_message_ask",
+    "source": "send_message",
+    "source_key": "message_kind",
+    "source_action": "ask",
+    "description": "Request something needed now; may steer the running turn.",
+    "external_members": "messages__ask"
+  },
+  {
+    "family": "messages",
+    "name": "queue",
+    "member": "agent_message_queue",
+    "source": "send_message",
+    "source_key": "message_kind",
+    "source_action": "queue",
+    "description": "Hand off new work without steering; FIFO, one request per turn.",
+    "external_members": "messages__queue"
   },
   {
     "family": "messages",
@@ -182,30 +200,6 @@
     "member": "send_slack_message",
     "description": "Use the current messages slack send operation.",
     "external_members": "send_slack_message"
-  },
-  {
-    "family": "media",
-    "name": "character",
-    "member": "show_character",
-    "description": "Use the current media character operation."
-  },
-  {
-    "family": "media",
-    "name": "document",
-    "member": "show_document",
-    "description": "Use the current media document operation."
-  },
-  {
-    "family": "media",
-    "name": "reference",
-    "member": "show_reference",
-    "description": "Use the current media reference operation."
-  },
-  {
-    "family": "media",
-    "name": "video",
-    "member": "show_video",
-    "description": "Use the current media video operation."
   },
   {
     "family": "integrations",
@@ -218,14 +212,7 @@
     "family": "integrations",
     "name": "github",
     "member": "github",
-    "description": "Read and change GitHub repositories with the GitHub login this workflow or Crew already uses."
-  },
-  {
-    "family": "needs_you",
-    "name": "suggest",
-    "member": "submit_workflow_suggestion",
-    "description": "Use the current needs_you suggest operation.",
-    "external_members": "suggest_workflow_change|suggest_crew_change"
+    "description": "Read and change GitHub repositories with the GitHub login this workflow or project already uses."
   },
   {
     "family": "integrations",
@@ -279,6 +266,22 @@
     "description": "Use the current browser connections disconnect operation.",
     "source": "browser_connections",
     "source_action": "disconnect"
+  },
+  {
+    "family": "browser",
+    "name": "connections_add",
+    "member": "browser_connections__add",
+    "description": "Use the current browser connections add operation.",
+    "source": "browser_connections",
+    "source_action": "add"
+  },
+  {
+    "family": "browser",
+    "name": "connections_remove",
+    "member": "browser_connections__remove",
+    "description": "Use the current browser connections remove operation.",
+    "source": "browser_connections",
+    "source_action": "remove"
   },
   {
     "family": "ui",
@@ -354,6 +357,14 @@
   },
   {
     "family": "workspace",
+    "name": "team_overview",
+    "member": "crew_team_sync__overview",
+    "description": "What a project Team is doing now and got done in the last day or week: who is working, chats, Team file changes, commits, decisions and tokens used, also per person.",
+    "source": "crew_team_sync",
+    "source_action": "overview"
+  },
+  {
+    "family": "workspace",
     "name": "team_dashboards",
     "member": "crew_team_sync__dashboards",
     "description": "Use the current workspace team dashboards operation.",
@@ -364,7 +375,7 @@
     "family": "workspace",
     "name": "team_invites",
     "member": "crew_team_sync__invites",
-    "description": "List the Crew Teams you are in and your open Team invites.",
+    "description": "List the project Teams you are in and your open Team invites.",
     "source": "crew_team_sync",
     "source_action": "invites"
   },
@@ -372,7 +383,7 @@
     "family": "workspace",
     "name": "team_accept",
     "member": "crew_team_sync__accept",
-    "description": "Accept your open invite to a Crew Team (crew_id from team_invites).",
+    "description": "Accept your open invite to a project Team (crew_id from team_invites).",
     "source": "crew_team_sync",
     "source_action": "accept"
   },
@@ -380,9 +391,73 @@
     "family": "workspace",
     "name": "team_decline",
     "member": "crew_team_sync__decline",
-    "description": "Decline your open invite to a Crew Team (crew_id from team_invites).",
+    "description": "Decline your open invite to a project Team (crew_id from team_invites).",
     "source": "crew_team_sync",
     "source_action": "decline"
+  },
+  {
+    "family": "workspace",
+    "name": "team_setup_list",
+    "member": "crew_team_sync__setup_list",
+    "description": "List this Team’s setups and your checked progress.",
+    "source": "crew_team_sync",
+    "source_action": "setup_list"
+  },
+  {
+    "family": "workspace",
+    "name": "team_setup_get",
+    "member": "crew_team_sync__setup_get",
+    "description": "Read a Team setup and its current shared instructions and revisions.",
+    "source": "crew_team_sync",
+    "source_action": "setup_get"
+  },
+  {
+    "family": "workspace",
+    "name": "team_setup_share",
+    "member": "crew_team_sync__setup_share",
+    "description": "Share Team setup instructions and a checklist with current Team members.",
+    "source": "crew_team_sync",
+    "source_action": "setup_share"
+  },
+  {
+    "family": "workspace",
+    "name": "team_setup_edit",
+    "member": "crew_team_sync__setup_edit",
+    "description": "Update a Team setup using its current revision.",
+    "source": "crew_team_sync",
+    "source_action": "setup_edit"
+  },
+  {
+    "family": "workspace",
+    "name": "team_setup_remove",
+    "member": "crew_team_sync__setup_remove",
+    "description": "Remove a Team setup for everyone using its current revision; the Team owner or the person who shared it only.",
+    "source": "crew_team_sync",
+    "source_action": "setup_remove"
+  },
+  {
+    "family": "workspace",
+    "name": "team_setup_checklist",
+    "member": "crew_team_sync__setup_checklist",
+    "description": "Record only your own agent-checked Team setup progress using current setup and instruction revisions.",
+    "source": "crew_team_sync",
+    "source_action": "setup_checklist"
+  },
+  {
+    "family": "workspace",
+    "name": "team_setup_targets",
+    "member": "crew_team_sync__setup_targets",
+    "description": "List your connected agents in this Team’s project; never another person’s agents.",
+    "source": "crew_team_sync",
+    "source_action": "setup_targets"
+  },
+  {
+    "family": "workspace",
+    "name": "team_setup_apply",
+    "member": "crew_team_sync__setup_apply",
+    "description": "Send a Team setup to one of your connected agents from team_setup_targets; acceptance is not completion.",
+    "source": "crew_team_sync",
+    "source_action": "setup_apply"
   },
   {
     "family": "workspace",
@@ -932,6 +1007,12 @@
   },
   {
     "family": "account",
+    "name": "subscription_limits",
+    "member": "get_subscription_limits",
+    "description": "Read reported provider plan limits for admitted accounts."
+  },
+  {
+    "family": "account",
     "name": "usage",
     "member": "get_token_usage",
     "description": "Use the current account usage operation."
@@ -979,24 +1060,6 @@
     "description": "Use the current help skill operation."
   },
   {
-    "family": "needs_you",
-    "name": "list",
-    "member": "list_needs_you",
-    "description": "Use the current needs_you list operation."
-  },
-  {
-    "family": "needs_you",
-    "name": "answer",
-    "member": "answer_needs_you",
-    "description": "Use the current needs_you answer operation."
-  },
-  {
-    "family": "needs_you",
-    "name": "dismiss",
-    "member": "dismiss_needs_you",
-    "description": "Use the current needs_you dismiss operation."
-  },
-  {
     "family": "messages",
     "name": "register",
     "member": "messages__register",
@@ -1030,11 +1093,35 @@
   },
   {
     "family": "messages",
+    "name": "ask",
+    "member": "messages__ask",
+    "description": "Ask an agent; for a Team agent offline a while, the reply says how long: wait (offline=wait) or read its chat (action=history).",
+    "source": "messages",
+    "source_action": "ask"
+  },
+  {
+    "family": "messages",
+    "name": "queue",
+    "member": "messages__queue",
+    "description": "Queue tracked work for the next turn without steering a busy agent.",
+    "source": "messages",
+    "source_action": "queue"
+  },
+  {
+    "family": "messages",
     "name": "read",
     "member": "messages__read",
     "description": "Use the current messages read operation.",
     "source": "messages",
     "source_action": "read"
+  },
+  {
+    "family": "messages",
+    "name": "history",
+    "member": "messages__history",
+    "description": "Read a teammate agent's chat, online or offline, without interrupting it: search it (query) or read one line (line).",
+    "source": "messages",
+    "source_action": "history"
   },
   {
     "family": "messages",
@@ -1078,6 +1165,14 @@
   },
   {
     "family": "messages",
+    "name": "stop",
+    "member": "messages__stop",
+    "description": "Stop your own ask (its inbox_id and message_id): withdrawn if it has not started, otherwise only the turn working on it stops.",
+    "source": "messages",
+    "source_action": "stop"
+  },
+  {
+    "family": "messages",
     "name": "count",
     "member": "messages__count",
     "description": "Use the current messages count operation.",
@@ -1115,14 +1210,6 @@
     "description": "Use the current workspace get operation.",
     "source": "workspace",
     "source_action": "get"
-  },
-  {
-    "family": "workspace",
-    "name": "agentworks",
-    "member": "workspace__agentworks",
-    "description": "Open your own AgentWorks agent and its main chat; it is made on first use.",
-    "source": "workspace",
-    "source_action": "agentworks"
   },
   {
     "family": "workspace",
@@ -1184,7 +1271,7 @@
     "family": "workspace",
     "name": "open_chat",
     "member": "workspace__open_chat",
-    "description": "Use the current workspace open chat operation.",
+    "description": "Create a new named agent tab in this project (name required), even when the project has no Main. Use ask with the returned chat_id to talk to it.",
     "source": "workspace",
     "source_action": "open_chat"
   },
@@ -1208,7 +1295,7 @@
     "family": "workspace",
     "name": "new_chat",
     "member": "workspace__new_chat",
-    "description": "Use the current workspace new chat operation.",
+    "description": "Reset an existing Main conversation, keeping the project. This does not create a named agent. To create an agent use open_chat with name.",
     "source": "workspace",
     "source_action": "new_chat"
   },
@@ -1227,14 +1314,6 @@
     "description": "Use the current workspace stop operation.",
     "source": "workspace",
     "source_action": "stop"
-  },
-  {
-    "family": "workspace",
-    "name": "message_chat",
-    "member": "workspace__message_chat",
-    "description": "Use the current workspace message chat operation.",
-    "source": "workspace",
-    "source_action": "message_chat"
   },
   {
     "family": "workspace",
@@ -1307,6 +1386,54 @@
     "description": "Use the current workspace storage move operation.",
     "source": "workspace",
     "source_action": "storage_move"
+  },
+  {
+    "family": "workspace",
+    "name": "open_editor",
+    "member": "workspace__open_editor",
+    "description": "Resolve an admitted local Git project, file and line in the chosen editor. No command or app is run by resolving.",
+    "source": "workspace",
+    "source_action": "open_editor"
+  },
+  {
+    "family": "workspace",
+    "name": "git_action",
+    "member": "workspace__git_action",
+    "description": "Draft editable commit and pull request text, commit, push and open a reviewed pull request using the selected project GitHub account.",
+    "source": "workspace",
+    "source_action": "git_action"
+  },
+  {
+    "family": "workspace",
+    "name": "add_context",
+    "member": "workspace__add_context",
+    "description": "Capture an owned project browser element as ordinary chat attachments. Probe the current source first; never clicks, sends or queues a message.",
+    "source": "workspace",
+    "source_action": "add_context"
+  },
+  {
+    "family": "workspace",
+    "name": "search_messages",
+    "member": "workspace__search_messages",
+    "description": "Find readable messages in the selected workspace using query and cursor, with snippets and exact message links.",
+    "source": "workspace",
+    "source_action": "search_messages"
+  },
+  {
+    "family": "workspace",
+    "name": "sync",
+    "member": "workspace__sync",
+    "description": "Read or change this project’s Mac reach through the existing owner-only sync service; sync_action selects the operation.",
+    "source": "workspace",
+    "source_action": "sync"
+  },
+  {
+    "family": "workspace",
+    "name": "reply_input",
+    "member": "workspace__reply_input",
+    "description": "Answer a pending question from your own Ask turn using its query_id, request_id and answers.",
+    "source": "workspace",
+    "source_action": "reply_input"
   },
   {
     "family": "terminal",
@@ -1384,7 +1511,7 @@
     "family": "mcp",
     "name": "diagnostics",
     "member": "crew_diagnostics__connections",
-    "description": "Use the current mcp diagnostics operation.",
+    "description": "Check whether this project's MCP connections are reachable and signed in.",
     "source": "crew_diagnostics",
     "source_action": "connections"
   },
@@ -1398,7 +1525,7 @@
     "family": "terminal",
     "name": "history",
     "member": "crew_execution__history",
-    "description": "Read the existing owner-only execution history for this Crew.",
+    "description": "Read the existing owner-only execution history for this project.",
     "source": "crew_execution",
     "source_action": "history"
   },
@@ -1406,7 +1533,7 @@
     "family": "workspace",
     "name": "automation_list",
     "member": "crew_workflows__list",
-    "description": "Use the Crew automation list operation.",
+    "description": "Use the project automation list operation.",
     "source": "crew_workflows",
     "source_action": "list"
   },
@@ -1414,7 +1541,7 @@
     "family": "workspace",
     "name": "automation_create",
     "member": "crew_workflows__create",
-    "description": "Use the Crew automation create operation.",
+    "description": "Use the project automation create operation.",
     "source": "crew_workflows",
     "source_action": "create"
   },
@@ -1422,7 +1549,7 @@
     "family": "workspace",
     "name": "automation_read",
     "member": "crew_workflows__read",
-    "description": "Use the Crew automation read operation.",
+    "description": "Use the project automation read operation.",
     "source": "crew_workflows",
     "source_action": "read"
   },
@@ -1430,7 +1557,7 @@
     "family": "workspace",
     "name": "automation_write",
     "member": "crew_workflows__write",
-    "description": "Use the Crew automation write operation.",
+    "description": "Use the project automation write operation.",
     "source": "crew_workflows",
     "source_action": "write"
   },
@@ -1438,7 +1565,7 @@
     "family": "workspace",
     "name": "automation_describe",
     "member": "crew_workflows__describe",
-    "description": "Use the Crew automation describe operation.",
+    "description": "Use the project automation describe operation.",
     "source": "crew_workflows",
     "source_action": "describe"
   },
@@ -1446,8 +1573,72 @@
     "family": "workspace",
     "name": "automation_edit",
     "member": "crew_workflows__edit",
-    "description": "Use the Crew automation edit operation.",
+    "description": "Use the project automation edit operation.",
     "source": "crew_workflows",
     "source_action": "edit"
+  },
+  {
+    "family": "workspace",
+    "name": "automation_rename",
+    "member": "crew_workflows__rename",
+    "description": "Rename this project's workflow (display name only; its files and runs stay).",
+    "source": "crew_workflows",
+    "source_action": "rename"
+  },
+  {
+    "family": "workspace",
+    "name": "automation_delete",
+    "member": "crew_workflows__delete",
+    "description": "Delete this project's workflow with its code, runs and saved settings. Cannot be undone; ask the person first and pass confirm=true.",
+    "source": "crew_workflows",
+    "source_action": "delete"
+  },
+  {
+    "family": "workspace",
+    "name": "team_fork_from",
+    "member": "crew_team_sync__fork_from",
+    "description": "Fork a teammate's Live shared Mac agent from its validated saved source into your own private local agent. Hidden chats refuse; no original is changed.",
+    "source": "crew_team_sync",
+    "source_action": "fork_from"
+  },
+  {
+    "family": "workspace",
+    "name": "team_fork_send",
+    "member": "crew_team_sync__fork_send",
+    "description": "Send a copy of your own agent’s conversation to a teammate it is shared with in this project (share it in Team first). A very large chat sends its newest part. Their accepted copy starts Only me.",
+    "source": "crew_team_sync",
+    "source_action": "fork_send"
+  },
+  {
+    "family": "workspace",
+    "name": "team_forks",
+    "member": "crew_team_sync__forks",
+    "description": "List your pending agent copies in this project.",
+    "source": "crew_team_sync",
+    "source_action": "forks"
+  },
+  {
+    "family": "workspace",
+    "name": "team_fork_accept",
+    "member": "crew_team_sync__fork_accept",
+    "description": "Accept a teammate’s copy as your own new Only-me agent.",
+    "source": "crew_team_sync",
+    "source_action": "fork_accept"
+  },
+  {
+    "family": "workspace",
+    "name": "team_fork_decline",
+    "member": "crew_team_sync__fork_decline",
+    "description": "Decline a copy and delete its staged conversation.",
+    "source": "crew_team_sync",
+    "source_action": "fork_decline"
+  },
+  {
+    "family": "workspace",
+    "name": "team_fork_cancel",
+    "member": "crew_team_sync__fork_cancel",
+    "description": "Cancel a pending copy you sent and delete its staged conversation.",
+    "source": "crew_team_sync",
+    "source_action": "fork_cancel"
   }
 ]

@@ -1,3 +1,4 @@
+import { randomUUID } from '../../utils/randomUUID'
 import { useState, type FormEvent } from 'react'
 import { Archive, CheckCircle2, CircleAlert } from 'lucide-react'
 import { knowledgebaseApi, knowledgebaseError, type KnowledgeBootstrap } from '../../services/knowledgebaseApi'
@@ -20,7 +21,7 @@ export function KnowledgebaseBackupPanel({ bootstrap, onPrepared, onSecrets }: {
     event.preventDefault(); if (!canConfigure || busy) return
     setBusy(true); setError(''); setPrepared(false)
     try {
-      await knowledgebaseApi.prepareAccess({ action: 'configure_backup', remote_url: remote.trim(), username: username.trim(), branch: branch.trim(), request_id: crypto.randomUUID(), ...(secret.trim() ? { pat_secret: secret.trim() } : {}) })
+      await knowledgebaseApi.prepareAccess({ action: 'configure_backup', remote_url: remote.trim(), username: username.trim(), branch: branch.trim(), request_id: randomUUID(), ...(secret.trim() ? { pat_secret: secret.trim() } : {}) })
       setPrepared(true); setEditing(false); onPrepared()
     } catch (cause) { setError(knowledgebaseError(cause)) }
     finally { setBusy(false) }

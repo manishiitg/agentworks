@@ -307,7 +307,10 @@ async function start() {
   documentHost = new OpaqueReportFrame(frame, () => ({
     runtimeUrl, title: 'Dashboard preview', dataApi, theme: currentTheme, tokenSource: document.documentElement,
     widgets: () => ({ functionsAvailable: Boolean(staticSnapshot?.live_url) }),
-    onState: state => { if (state.state === 'ready' || state.state === 'error') setPreviewState(state.state); resizeFrame() },
+    onState: state => {
+      if (state.state === 'loading' || state.state === 'ready' || state.state === 'error') setPreviewState(state.state)
+      resizeFrame()
+    },
   }))
   if (staticSnapshot?.live_url && /^https?:\/\//.test(staticSnapshot.live_url)) {
     documentHost.bridge.handle('action.open', () => { window.open(staticSnapshot.live_url, '_blank', 'noopener,noreferrer') })

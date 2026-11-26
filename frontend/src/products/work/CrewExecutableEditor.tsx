@@ -1,11 +1,18 @@
-import { isAxiosError } from 'axios'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import api from '../../services/api'
 import { CrewWorkflowRuns, type RunsView } from './CrewWorkflowRuns'
-import { CrewFileView } from './CrewFileView'
+import { requestOpenProjectFile } from '../../utils/projectFileLinks'
 import { CrewWorkflowSteps } from './CrewWorkflowSteps'
-import { PageCard, PageRow, RowButton } from '../../components/automation/AutomationKit'
-import { FileCode2, FileJson } from 'lucide-react'
+import { CrewWorkflowTasks, runTaskName, taskFileName } from './CrewWorkflowTasks'
+import { CrewWorkflowFiles } from './CrewWorkflowFiles'
+import { CrewWorkflowStarts } from './CrewWorkflowStarts'
+import { CrewWorkflowUsesBlock, useCrewWorkflowUses } from './CrewWorkflowUses'
+import { PageCard } from '../../components/automation/AutomationKit'
+import type { StepsRunsSection } from './StepsRunsSwitch'
+import { CrewRunBanner } from './CrewRunBanner'
+import { useRunWatch } from './useRunWatch'
+import { callExternal } from '../../api/externalCall'
+import { isAxiosError } from 'axios'
 import type { RunPythonStep } from '../../services/api-types'
 import { useWorkspaceState } from '../../components/workflow/hooks/useWorkspaceState'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
@@ -13,123 +20,129 @@ import { openWorkspacePaneChatWithDraft } from '../../utils/workspacePaneChat'
 
 export type CrewExecutable = {
   id: string
-  kind: 'workflow' | 'script'
+  kind: 'script'
   workspace_path: string
-  manifest: { label: string }
-  used_by?: Array<{ workflow: string; step: string }>
+  manifest: { label: string; /** One short line about what the workflow is for; may be empty. */ description?: string }
   /** What a person can change before a run, and the saved settings that fill it in. */
-  inputs?: Array<{ name: string; value: string; description?: string; type?: string; required?: boolean }>
+  inputs?: Array<{ name: string; value: string; description?: string; type?: string; required?: boolean; schema?: { enum?: unknown[]; descriptions?: Record<string, unknown> } }>
   input_presets?: Array<{ name: string; values: Record<string, string> }>
+  files?: string[]
 }
 
-const inputKind = (type?: string) => ({ number: 'Number', integer: 'Number', boolean: 'Yes or no', array: 'List', object: 'Details' } as Record<string, string>)[type ?? ''] ?? 'Text'
+/**
+ * A Crew can have several workflows, and each can hold several tasks that a `task` input picks between.
+ * Returns those task names (the values the `task` input allows), or an empty list when it has none.
+ */
+export const workflowTaskNames = (inputs: CrewExecutable['inputs']): string[] => {
+  const allowed = inputs?.find(input => input.name === 'task')?.schema?.enum
+  return Array.isArray(allowed) ? allowed.filter((name): name is string => typeof name === 'string' && name !== '') : []
+}
+
+/** One plain line per task, from the `task` input's `schema.descriptions` (task name to sentence). Tasks without one are left out. */
+export const workflowTaskDescriptions = (inputs: CrewExecutable['inputs']): Record<string, string> => {
+  const written = inputs?.find(input => input.name === 'task')?.schema?.descriptions
+  if (!written || typeof written !== 'object') return {}
+  return Object.fromEntries(Object.entries(written).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].trim() !== '').map(([task, text]) => [task, text.trim()]))
+}
 
 /** The Crew keeps its chat. Only the selected definition/run changes in this pane. */
 export function CrewExecutableEditor({
   item,
   chatTabId,
   section,
-  file,
-  onFile,
   runs,
   onRuns,
-  onStarted,
   onBack,
+  onOpenRun,
 }: {
   item: CrewExecutable
   chatTabId: string
-  /** The page owns the Steps | Runs switch (StepsRunsSwitch) and which file is open, so its back arrow can close the file first. */
-  section: 'steps' | 'runs'
-  file: string | null
-  onFile: (file: string | null) => void
+  /** The page owns the Tasks | Runs switch (StepsRunsSwitch). */
+  section: StepsRunsSection
   runs: RunsView
   onRuns: (view: RunsView) => void
   /** A run was started: the page moves to its Runs. */
-  onStarted: () => void
   onBack?: () => void
+  /** Opens one run on the Runs tab (from a webhook's recent calls on the Starts tab). */
+  onOpenRun?: (runFolder: string) => void
 }) {
   const [error, setError] = useState('')
-  const [starting, setStarting] = useState(false)
   const workspace = useWorkspaceState(item.workspace_path, null, false)
+  const uses = useCrewWorkflowUses(item.workspace_path)
   // A run may have started while this workflow page was closed. Do not rely on its mount cache.
   useEffect(() => { if (runs.run) void workspace.refresh() }, [runs.run, workspace.refresh])
   const folders = workspace.state?.run_folders ?? []
   // The steps of the latest run, in the order they started: the dots on the Steps page.
-  const latestRun = useMemo(() => {
-    const latest = [...folders].filter(folder => folder.metadata?.python_steps).sort((a, b) => (b.metadata?.created_at ?? '').localeCompare(a.metadata?.created_at ?? ''))[0]
-    return latest
-  }, [folders])
+  // A run that is in progress counts as the latest even before it has recorded its first step.
+  const newestFirst = (a: { metadata?: { created_at?: string } }, b: { metadata?: { created_at?: string } }) => (b.metadata?.created_at ?? '').localeCompare(a.metadata?.created_at ?? '')
+  // Follow the runs: look often while one runs or was just started, and keep how it ended on screen.
+  const { running: runningRun, starting, result, dismiss, watch } = useRunWatch(folders, workspace.refresh)
+  const shownRun = runningRun ?? (result ? folders.find(folder => folder.name === result) : undefined)
+  const latestRun = useMemo(() => shownRun ?? [...folders].filter(folder => folder.metadata?.python_steps).sort(newestFirst)[0], [folders, shownRun])
   const latestSteps: RunPythonStep[] = Object.values(latestRun?.metadata?.python_steps ?? {}).sort((a, b) => a.started_at.localeCompare(b.started_at))
+  const taskNames = useMemo(() => workflowTaskNames(item.inputs), [item.inputs])
+  const runningTask = runningRun ? runTaskName(taskNames, runningRun.metadata) : undefined
+  const runningStep = runningRun ? latestSteps.find(step => step.status === 'running') : undefined
+  const taskDescriptions = useMemo(() => workflowTaskDescriptions(item.inputs), [item.inputs])
   useLiveRefetch(
     () => {
       void workspace.refresh()
     },
     { kinds: ['sessions', 'plan'], workflow: item.workspace_path, fallbackMs: 15_000, minIntervalMs: 1000 },
   )
-  // Run starts the workflow directly, the same way a schedule does: no chat and no model turn.
-  async function run(preset?: string) {
-    setError(''); setStarting(true)
+  // Starts a run of one task with its saved setting (named after it), or with the task input when it has none.
+  async function runTask(task: string) {
+    const hasPreset = item.input_presets?.some(preset => preset.name === task)
     try {
-      await api.post('/api/workflow/run', preset ? { input_preset: preset } : {}, { params: { workspace_path: item.workspace_path } })
-      onStarted()
+      await callExternal('runs', { action: 'start', workflow_id: item.id, ...(hasPreset ? { input_preset: task } : { inputs: { task } }) })
     } catch (cause) {
-      // The route answers with plain text, or with the platform's {error: {message}} (for example an input that fails validation).
       const data: unknown = isAxiosError(cause) ? cause.response?.data : undefined
-      const message = typeof data === 'string' ? data : (data as { error?: { message?: string } } | undefined)?.error?.message ?? ''
-      const nextStep = /missing required input/i.test(message)
-        ? item.input_presets?.length
-          ? ' Pick saved settings from Run with, or run it from chat or the CLI with inputs.'
-          : ' Run it from chat or the CLI with inputs, or ask your agent to save a preset.'
-        : ''
-      setError((message || 'Could not start the workflow. Try again.') + nextStep)
-    } finally { setStarting(false) }
+      const message = typeof data === 'string' ? data : (data as { error?: { message?: string } } | undefined)?.error?.message
+      throw new Error(message || (cause instanceof Error ? cause.message : 'Could not start this task. Try again.'))
+    }
+    watch()
+    void workspace.refresh()
   }
+  // A workflow's file opens in the project's Files viewer, the same one as every other file (#4151).
+  const openFile = (file: string) => requestOpenProjectFile({ path: `${item.workspace_path}/code/${file}` }, true)
   async function ask(task: string) {
     setError('')
     try {
       await openWorkspacePaneChatWithDraft({
         tabId: chatTabId,
-        message: `${task}\n\nWorkflow: ${item.manifest.label}\nWorkspace: ${item.workspace_path}`,
+        message: `${task}\n\nWorkflow: ${item.manifest.label}`,
       })
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Open your Crew chat to continue.')
+      setError(cause instanceof Error ? cause.message : 'Open your project chat to continue.')
     }
   }
-  const script = item.kind === 'script'
   return (
     <div className="space-y-4">
-      {script && !!item.used_by?.length && <p className="border-b px-3 py-2 text-xs text-muted-foreground">Used by {Array.from(new Set(item.used_by.map(use => use.workflow))).join(', ')}. Changes here apply to all of them.</p>}
       {(error || workspace.error) && (
         <p role="alert" className="p-3 text-sm text-destructive">
           {error || workspace.error}
         </p>
       )}
+      {(starting || runningRun || shownRun) && <CrewRunBanner state={runningRun ? 'running' : starting ? 'starting' : 'ended'} run={shownRun} task={shownRun ? runTaskName(taskNames, shownRun.metadata) : undefined} steps={latestSteps} onDismiss={runningRun ? undefined : dismiss} />}
       <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading…</p>}>
-        {file ? (
-          <CrewFileView key={file} workspacePath={item.workspace_path} file={file} onClose={() => onFile(null)} onAsk={ask} />
-        ) : section === 'steps' ? (
-          !script ? (
-            <PageCard title={item.manifest.label} testId="crew-old-workflow-card">
-              <p className="px-4 py-3 text-sm text-muted-foreground">This workflow was made in the old format. Ask your agent to convert it to a new workflow; what it does stays the same.</p>
-              <div className="px-4 pb-3"><RowButton primary onClick={() => void ask('Convert this workflow to a new workflow and keep what it does.')}>Ask your agent to convert it</RowButton></div>
-            </PageCard>
-          ) : (
+        {section === 'steps' ? (
+          (
             <div className="space-y-4">
-              <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps} latestEvidence={latestRun?.metadata?.python_evidence ?? []}
-                onRun={preset => void run(preset)} runPresets={item.input_presets?.map(preset => preset.name)} runBusy={starting} onCode={() => onFile('main.py')} onAsk={ask} />
-              {!!(item.inputs?.length || item.input_presets?.length) && <PageCard title="Inputs" hint="What you can change before a run." onAsk={() => ask('Help me change the inputs of this workflow.')}>
-                {item.inputs?.map(input => <PageRow key={input.name} title={input.name}
-                  lines={[`${inputKind(input.type)}${input.required ? ' · required' : ''}${input.value ? ` · default “${input.value}”` : ''}`, input.description]} />)}
-                {!!item.input_presets?.length && <PageRow title="Saved settings" lines={[item.input_presets.map(preset => preset.name).join(' · ')]} />}
-              </PageCard>}
-              <PageCard title="Files" hint="The workflow's code and what it uses." onAsk={() => ask('Help me understand the files of this workflow.')}>
-                <PageRow lead={<span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted"><FileCode2 className="h-4 w-4" aria-hidden="true" /></span>} title="main.py" lines={['The workflow']} action={<RowButton onClick={() => onFile('main.py')}>View</RowButton>} />
-                <PageRow lead={<span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted"><FileJson className="h-4 w-4" aria-hidden="true" /></span>} title="script.json" lines={['Name, inputs and saved settings']} action={<RowButton onClick={() => onFile('script.json')}>View</RowButton>} />
-              </PageCard>
+              {taskNames.length > 0 && uses && <PageCard title={item.manifest.label} hint={uses.place} testId="crew-workflow-uses-card"><CrewWorkflowUsesBlock uses={uses} onAsk={ask} /></PageCard>}
+              {taskNames.length > 0
+                ? <CrewWorkflowTasks tasks={taskNames} descriptions={taskDescriptions} workspacePath={item.workspace_path} files={item.files} onOpenFile={openFile} runActive={!!runningRun} runningTask={runningTask} latestSteps={latestSteps}
+                  onAskTask={task => ask(`Change the task “${task}” in this workflow. I want: `)}
+                  onRunTask={runTask}
+                  onDeleteTask={task => ask(`Delete the task “${task}” from this workflow. Remove it from the task input and its saved setting, delete its file (${taskFileName(task)}), and take its branch out of main.py. Tell me what you will remove and wait for my OK before deleting anything.`)} />
+                : <CrewWorkflowSteps workspacePath={item.workspace_path} title={item.manifest.label} latestSteps={latestSteps} latestEvidence={latestRun?.metadata?.python_evidence ?? []} uses={uses} onCode={() => openFile('main.py')} onAsk={ask} />}
             </div>
           )
+        ) : section === 'starts' ? (
+          <CrewWorkflowStarts workspacePath={item.workspace_path} workflowName={item.manifest.label} onAsk={ask} onOpenRun={folder => onOpenRun?.(folder)} />
+        ) : section === 'files' ? (
+          <CrewWorkflowFiles workspacePath={item.workspace_path} tasks={taskNames} descriptions={taskDescriptions} onOpenFile={openFile} />
         ) : (
-          <CrewWorkflowRuns workflowId={item.id} workspacePath={item.workspace_path} script={script} view={runs} onView={onRuns} folders={folders} loading={workspace.loading || !workspace.state} onRefresh={workspace.refresh} onAsk={ask} />
+          <CrewWorkflowRuns workflowId={item.id} workspacePath={item.workspace_path} script tasks={taskNames} view={runs} onView={onRuns} folders={folders} loading={workspace.loading || !workspace.state} onRefresh={workspace.refresh} onAsk={ask} />
         )}
       </Suspense>
     </div>

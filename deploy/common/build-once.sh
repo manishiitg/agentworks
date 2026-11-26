@@ -3,18 +3,23 @@
 # Talks to the build host over ssh (BUILD_HOST, BUILD_PORT, BUILD_USER, BUILD_SSH_KEY, BUILDS_DIR) to build, list, select and ship
 # a release made by deploy/common/build-release.sh. Written for bash 3.2 (macOS): no associative arrays, no ${var@Q}.
 
-BUILD_REPOS="mcp-agent-builder-go mcpagent multi-llm-provider-go"
 BUILDS_DIR="${BUILDS_DIR:-/srv/_builds}"
+
+# An operator may temporarily lower the default 10 GiB floor to ship cleanup.
+# Validate before constructing a remote command; never pass shell text through.
+build_disk_override_arg() {
+  [[ -n "${BUILD_DISK_MIN_FREE_GIB+x}" ]] || return 0
+  [[ "$BUILD_DISK_MIN_FREE_GIB" =~ ^[0-9]+([.][0-9]+)?$ ]] || {
+    echo "BUILD_DISK_MIN_FREE_GIB must be a nonnegative number" >&2; return 2;
+  }
+  printf ' --setenv=BUILD_DISK_MIN_FREE_GIB=%s' "$BUILD_DISK_MIN_FREE_GIB"
+}
 
 build_ssh() {
   local key=()
   [[ -z "${BUILD_SSH_KEY:-}" ]] || key=(-i "$BUILD_SSH_KEY")
-  ssh -p "${BUILD_PORT:?set BUILD_PORT in the private deployments/deploy.env}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new ${key[@]+"${key[@]}"} \
+  ssh -p "${BUILD_PORT:?set BUILD_PORT in the private deployments/deploy.env}" -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o StrictHostKeyChecking=accept-new ${key[@]+"${key[@]}"} \
     "${BUILD_USER:-root}@${BUILD_HOST:?set BUILD_HOST in the private deployments/deploy.env}" "$@"
-}
-
-repo_dir() { # the local checkout of a repository: this one, or its sibling
-  if [[ "$1" == mcp-agent-builder-go ]]; then echo "$REPO_ROOT"; else echo "$REPO_ROOT/../$1"; fi
 }
 
 # DEPLOY_BRANCH chooses what a deploy ships: main (default) or dev, the shared integration branch of this repository.
@@ -25,20 +30,17 @@ deploy_branch() {
   esac
 }
 
-# branch_ref <dir>: origin/<DEPLOY_BRANCH> of that checkout. Only a sibling repository without that branch uses its origin/main;
-# this repository must have the branch (fetched when missing), so a dev deploy never passes a main-only app revision as dev.
+# branch_ref <dir>: origin/<DEPLOY_BRANCH> of that checkout (fetched when missing), so a dev deploy never passes a main-only
+# revision as dev.
 branch_ref() {
   local branch
   branch="$(deploy_branch)" || return 1
   if git -C "$1" rev-parse -q --verify "refs/remotes/origin/$branch^{commit}" >/dev/null 2>&1; then echo "origin/$branch"; return; fi
-  if [[ "$1" -ef "$REPO_ROOT" ]]; then
-    git -C "$1" fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 \
-      && git -C "$1" rev-parse -q --verify "refs/remotes/origin/$branch^{commit}" >/dev/null 2>&1 \
-      && { echo "origin/$branch"; return; }
-    echo "DEPLOY_BRANCH=$branch: this repository has no origin/$branch (cannot fetch it); refusing." >&2
-    return 1
-  fi
-  echo origin/main
+  git -C "$1" fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 \
+    && git -C "$1" rev-parse -q --verify "refs/remotes/origin/$branch^{commit}" >/dev/null 2>&1 \
+    && { echo "origin/$branch"; return; }
+  echo "DEPLOY_BRANCH=$branch: this repository has no origin/$branch (cannot fetch it); refusing." >&2
+  return 1
 }
 
 # commit_on_branch <dir> <sha>: the pushed deploy branch (branch_ref) holds this commit, or the commit is an older commit of it plus
@@ -74,68 +76,39 @@ to_https_url() {
   printf '%s\n' "$url"
 }
 
-# Builds on the build host, printing the build's name on stdout (progress on stderr). Reuses the build of the same three revisions.
-# gomod_pinned_sha <app sha> <module repo>: the full commit agent_go/go.mod at that app commit pins for the module
-# (its pseudo-version suffix), so a release builds what the app was tested against, not whatever main moved on to.
-gomod_pinned_sha() {
-  local app="$1" repo="$2" module version short full
-  case "$repo" in
-    mcpagent) module="github.com/manishiitg/mcpagent" ;;
-    multi-llm-provider-go) module="github.com/manishiitg/multi-llm-provider-go" ;;
-    *) return 1 ;;
-  esac
-  git -C "$REPO_ROOT" fetch -q origin "$app" 2>/dev/null || true
-  version="$(git -C "$REPO_ROOT" show "$app:agent_go/go.mod" 2>/dev/null | awk -v m="$module" '$1 == m {print $2; exit}')"
-  [[ -n "$version" ]] || return 1
-  git -C "$(repo_dir "$repo")" fetch -q --tags origin 2>/dev/null || true
-  if [[ "$version" =~ -[0-9a-f]{12}$ ]]; then
-    short="${version##*-}"   # pseudo-version: its commit
-  else
-    short="$version"          # a release tag such as v1.2.3
-  fi
-  full="$(git -C "$(repo_dir "$repo")" rev-parse -q --verify "$short^{commit}" 2>/dev/null)" || return 1
-  printf '%s\n' "$full"
-}
-
+# Builds on the build host, printing the build's name on stdout (progress on stderr). Reuses the build of the same revision.
 build_release_remote() {
-  local branch repo url sha args=() out name app_sha="" source
+  local disk_override
+  disk_override="$(build_disk_override_arg)" || return $?
+  local branch url sha args=() out name source=""
   branch="$(deploy_branch)" || return 1
-  for repo in $BUILD_REPOS; do
-    url="$(to_https_url "$(git -C "$(repo_dir "$repo")" remote get-url origin)")" || return 1
-    # DEPLOY_SHA_<REPO> (REPO upper-case, - as _) builds that commit instead of the branch head, so a release can leave out work still landing on the branch.
-    # It must pass commit_on_branch for that repository.
-    local pin_var="DEPLOY_SHA_$(printf '%s' "$repo" | tr 'a-z-' 'A-Z_')" pinned
-    pinned="${!pin_var:-}"
-    source=""
-    if [[ -n "$pinned" ]]; then
-      [[ "$pinned" =~ ^[0-9a-f]{40}$ ]] || { echo "$pin_var must be a full 40-hex commit" >&2; return 1; }
-      commit_on_branch "$(repo_dir "$repo")" "$pinned" \
-        || { echo "$pin_var ${pinned:0:10} is not an ancestor of $(branch_ref "$(repo_dir "$repo")") of $repo, and not an ancestor plus changes already on it; refusing." >&2; return 1; }
-      sha="$pinned" source=" (pinned)"
-    elif [[ "$repo" != mcp-agent-builder-go ]] && sha="$(gomod_pinned_sha "$app_sha" "$repo")"; then
-      # The app's go.mod decides the dependency revisions; main's head of a dependency may be untested with this app.
-      source=" (agent_go/go.mod)"
-    elif [[ "$repo" == mcp-agent-builder-go ]]; then
-      sha="$(git ls-remote "$url" "refs/heads/$branch" | awk '{print $1}')"
-    else
-      # Never fall back to a branch head: that is how an untested dependency reached servers.
-      echo "agent_go/go.mod at ${app_sha:0:10} pins a $repo version this checkout cannot resolve; fetch $(repo_dir "$repo") or set $pin_var=<40-hex>." >&2
-      return 1
-    fi
-    [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Cannot resolve $branch of $url" >&2; return 1; }
-    [[ "$repo" != mcp-agent-builder-go ]] || app_sha="$sha"
-    echo "  $repo $branch = ${sha:0:10}$source" >&2
-    args+=(--source "$repo" "$url" "$sha")
-  done
+  url="$(to_https_url "$(git -C "$REPO_ROOT" remote get-url origin)")" || return 1
+  # DEPLOY_SHA_MCP_AGENT_BUILDER_GO builds that commit instead of the branch head, so a release can leave out work still landing on the branch.
+  # It must pass commit_on_branch.
+  if [[ -n "${DEPLOY_SHA_MCP_AGENT_BUILDER_GO:-}" ]]; then
+    [[ "$DEPLOY_SHA_MCP_AGENT_BUILDER_GO" =~ ^[0-9a-f]{40}$ ]] || { echo "DEPLOY_SHA_MCP_AGENT_BUILDER_GO must be a full 40-hex commit" >&2; return 1; }
+    commit_on_branch "$REPO_ROOT" "$DEPLOY_SHA_MCP_AGENT_BUILDER_GO" \
+      || { echo "DEPLOY_SHA_MCP_AGENT_BUILDER_GO ${DEPLOY_SHA_MCP_AGENT_BUILDER_GO:0:10} is not an ancestor of $(branch_ref "$REPO_ROOT"), and not an ancestor plus changes already on it; refusing." >&2; return 1; }
+    sha="$DEPLOY_SHA_MCP_AGENT_BUILDER_GO" source=" (pinned)"
+  else
+    sha="$(git ls-remote "$url" "refs/heads/$branch" | awk '{print $1}')"
+  fi
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Cannot resolve $branch of $url" >&2; return 1; }
+  echo "  $branch = ${sha:0:10}$source" >&2
+  args+=(--source mcp-agent-builder-go "$url" "$sha")
   [[ "${DEPLOY_FORCE_BUILD:-0}" != 1 ]] || args+=(--force)
   local quoted="" arg
   for arg in "${args[@]}"; do quoted+=" $(printf '%q' "$arg")"; done
-  echo "==> Building the release once on ${BUILD_HOST:-the build host} (reused when these revisions were already built)" >&2
+  echo "==> Building the release once on ${BUILD_HOST:-the build host} (reused when this revision was already built)" >&2
   build_ssh "install -d -m 0755 '$BUILDS_DIR' && cat > '$BUILDS_DIR/.build-release.sh' && chmod 0755 '$BUILDS_DIR/.build-release.sh'" < "$REPO_ROOT/deploy/common/build-release.sh"
   # CPU and memory limits keep the live products on this box responsive (override with BUILD_CPU_QUOTA / BUILD_MEMORY_MAX).
-  out="$(build_ssh "systemd-run --quiet --wait --pipe --collect --setenv=HOME=/root --setenv=BUILDS_DIR='$BUILDS_DIR' -p CPUQuota=${BUILD_CPU_QUOTA:-800%} -p MemoryMax=${BUILD_MEMORY_MAX:-12G} -p Nice=10 bash '$BUILDS_DIR/.build-release.sh'$quoted" | tee /dev/stderr)"
+  local unit="agentworks-build-$(date +%s)-$$"
+  deploy_lock_phase building "$unit"
+  out="$(build_ssh "systemd-run --unit='$unit' --quiet --wait --pipe --collect --setenv=HOME=/root$disk_override --setenv=BUILDS_DIR='$BUILDS_DIR' -p CPUQuota=${BUILD_CPU_QUOTA:-800%} -p MemoryMax=${BUILD_MEMORY_MAX:-12G} -p Nice=10 bash '$BUILDS_DIR/.build-release.sh'$quoted" | tee /dev/stderr)" || true
   name="$(printf '%s\n' "$out" | sed -n 's/^BUILD_NAME=//p' | tail -n 1)"
+  if [[ -z "$name" ]] && deploy_build_cancelled; then echo "[DEPLOY] build cancelled by a newer request" >&2; return 75; fi
   [[ -n "$name" ]] || { echo "The build did not report a build name" >&2; return 1; }
+  deploy_lock_phase activating
   printf '%s\n' "$name"
 }
 
@@ -143,6 +116,8 @@ build_release_remote() {
 # The commit must be pushed for the host to fetch it, so it goes to a throwaway branch hetzner-verify/<name> (not verify/*, which
 # would also start the GitHub workflow) that is deleted afterwards.
 verify_change_remote() {
+  local disk_override
+  disk_override="$(build_disk_override_arg)" || return $?
   local name="${1:-$(git -C "$REPO_ROOT" rev-parse --short HEAD)}" sha url branch rc
   sha="$(git -C "$REPO_ROOT" rev-parse HEAD)"
   branch="hetzner-verify/$name"
@@ -154,7 +129,7 @@ verify_change_remote() {
     || { git -C "$REPO_ROOT" push -q origin --delete "$branch" >/dev/null 2>&1; echo "Cannot reach the build host" >&2; return 1; }
   # Lower limits than a build so a verification never starves a deploy build that runs at the same time.
   rc=0
-  build_ssh "systemd-run --quiet --wait --pipe --collect --setenv=HOME=/root --setenv=BUILDS_DIR='$BUILDS_DIR' -p CPUQuota=${VERIFY_CPU_QUOTA:-400%} -p MemoryMax=${VERIFY_MEMORY_MAX:-8G} -p Nice=15 bash '$BUILDS_DIR/.verify-change.sh' --url '$url' --sha '$sha' --builds-dir '$BUILDS_DIR'" || rc=$?
+  build_ssh "systemd-run --quiet --wait --pipe --collect --setenv=HOME=/root$disk_override --setenv=BUILDS_DIR='$BUILDS_DIR' -p CPUQuota=${VERIFY_CPU_QUOTA:-400%} -p MemoryMax=${VERIFY_MEMORY_MAX:-8G} -p Nice=15 bash '$BUILDS_DIR/.verify-change.sh' --url '$url' --sha '$sha' --builds-dir '$BUILDS_DIR'" || rc=$?
   git -C "$REPO_ROOT" push -q origin --delete "$branch" >/dev/null 2>&1 || true
   return $rc
 }
@@ -168,30 +143,19 @@ prune_builds_remote() {
     || echo "Build pruning failed (the deploy itself succeeded)" >&2
 }
 
-# find_build <name|sha prefix>: prints "<name> <sha1> <sha2> <sha3>" for the one matching build, or fails.
+# find_build <name|sha prefix>: prints "<name> <sha>" for the one matching build, or fails.
 find_build() {
   [[ "$1" =~ ^[0-9A-Za-z._-]+$ ]] || { echo "Invalid build selector: $1" >&2; return 1; }
   build_ssh "python3 - find '$BUILDS_DIR' '$1'" < "$REPO_ROOT/deploy/common/release_manifest.py"
 }
 
-# A chosen (older) build may be deployed only if each of its revisions passes commit_on_branch.
-check_build_on_branch() { # name sha1 sha2 sha3
-  local name="$1" repo sha dir branch; shift
+# A chosen (older) build may be deployed only if its revision passes commit_on_branch.
+check_build_on_branch() { # name sha
+  local name="$1" sha="$2" branch
   branch="$(deploy_branch)" || return 1
-  for repo in $BUILD_REPOS; do
-    sha="$1"; shift
-    dir="$(repo_dir "$repo")"
-    git -C "$dir" fetch -q origin "+refs/heads/main:refs/remotes/origin/main" >/dev/null 2>&1 || { echo "Cannot fetch $repo to check ancestry" >&2; return 1; }
-    if [[ "$branch" != main ]]; then
-      if [[ "$repo" == mcp-agent-builder-go ]]; then
-        git -C "$dir" fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 || { echo "Cannot fetch origin/$branch of $repo to check ancestry; refusing." >&2; return 1; }
-      else
-        git -C "$dir" fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 || true  # a sibling may have no such branch
-      fi
-    fi
-    commit_on_branch "$dir" "$sha" \
-      || { echo "Build $name holds $repo ${sha:0:10}, which is not an ancestor of $(branch_ref "$dir"), nor one plus changes already on it; refusing." >&2; return 1; }
-  done
+  git -C "$REPO_ROOT" fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 || { echo "Cannot fetch origin/$branch to check ancestry; refusing." >&2; return 1; }
+  commit_on_branch "$REPO_ROOT" "$sha" \
+    || { echo "Build $name holds ${sha:0:10}, which is not an ancestor of $(branch_ref "$REPO_ROOT"), nor one plus changes already on it; refusing." >&2; return 1; }
 }
 
 # Prints the build name to deploy: the pinned one (all-hetzner), the chosen one (--build), or a build of the current branch head.
@@ -212,7 +176,7 @@ ensure_prebuilt_build() {
 # Streams a trimmed copy of a build to server A (no mcpagent/provider source, no downloads/: that host never used them).
 ship_build_to_rts() { # name remote_job_dir
   local name="$1" job="$2"
-  build_ssh "tar -C '$BUILDS_DIR' --exclude='$name/source/mcpagent' --exclude='$name/source/multi-llm-provider-go' --exclude='$name/downloads' -cf - '$name' | gzip -3" \
+  build_ssh "tar -C '$BUILDS_DIR' --exclude='$name/source/mcp-agent-builder-go/mcpagent' --exclude='$name/source/mcp-agent-builder-go/multi-llm-provider-go' --exclude='$name/downloads' -cf - '$name' | gzip -3" \
     | "${SSH[@]}" "cd '$job' && tar -xzf - && mv '$name' build"
 }
 
@@ -290,18 +254,47 @@ deploy_lock_who() {
   printf '%s@%s (%s) %s' "$(id -un)" "$(hostname -s)" "${DEPLOY_WHO:-$(basename "$REPO_ROOT")}" "$rev"
 }
 
+# Latest wins per server (owner, 17 Nov). Every deploy builds the branch head, so of the deploys waiting for one server only
+# the newest needs to run: each waiter leaves its request in .deploys/.queue-<server>/, and an older waiter exits 0 as
+# superseded as soon as a newer one is queued. A newer request also cancels a build that is still compiling (phase file
+# "building", never once activation started), and a request whose commit was the last one deployed exits as superseded.
+deploy_requested_sha() {
+  git -C "$REPO_ROOT" ls-remote origin "refs/heads/${DEPLOY_BRANCH:-main}" 2>/dev/null | awk '{print $1; exit}'
+}
+
 deploy_lock_take() { # server
-  local server="$1" who out last=""
+  local server="$1" who out last="" sha id
   who="$(deploy_lock_who)"
+  sha="$(deploy_requested_sha)"; sha="${sha:-unknown}"
+  id="$(date +%s%N)-$$"
+  DEPLOY_REQUESTED_SHA="$sha"; export DEPLOY_REQUESTED_SHA
+  build_ssh "d='$BUILDS_DIR/.deploys'; install -d -m 0777 \"\$d/.queue-$server\" 2>/dev/null || mkdir -p \"\$d/.queue-$server\"; printf '%s\n' '$sha' > \"\$d/.queue-$server/$id\"" || return 1
+  echo "[DEPLOY] queued server=$server sha=${sha:0:10}" >&2
   while :; do
-    out="$(build_ssh "d='$BUILDS_DIR/.deploys'; install -d -m 0777 \"\$d\" 2>/dev/null || mkdir -p \"\$d\"
-      l=\"\$d/$server\"
+    out="$(build_ssh "d='$BUILDS_DIR/.deploys'; q=\"\$d/.queue-$server\"; l=\"\$d/$server\"
       if [ -d \"\$l\" ] && [ \$(( \$(date +%s) - \$(stat -c %Y \"\$l\") )) -gt $(( ${DEPLOY_LOCK_STALE_MINUTES:-40} * 60 )) ]; then
         echo \"abandoned: \$(cat \"\$l/holder\" 2>/dev/null)\" >&2; rm -rf \"\$l\"
       fi
-      if mkdir \"\$l\" 2>/dev/null; then printf '%s\n' '$who' > \"\$l/holder\"; echo TAKEN
-      else echo \"HELD \$(cat \"\$l/holder\" 2>/dev/null) since \$(date -u -d @\$(stat -c %Y \"\$l\") +%H:%MZ) (\$(( (\$(date +%s) - \$(stat -c %Y \"\$l\")) / 60 )) min)\"; fi")" || return 1
-    [[ "$out" == TAKEN ]] && { echo "==> Deploying $server (others wait until this deploy is live)" >&2; return 0; }
+      touch \"\$q/$id\" 2>/dev/null; find \"\$q\" -type f -mmin +2 -delete 2>/dev/null  # a waiter that died stops counting
+      newest=\$(ls \"\$q\" 2>/dev/null | sort | tail -n 1)
+      if [ -n \"\$newest\" ] && [ \"\$newest\" != '$id' ]; then
+        echo \"SUPERSEDED \$(cat \"\$q/\$newest\" 2>/dev/null)\"; rm -f \"\$q/$id\"; exit 0
+      fi
+      if [ \"\$(cat \"\$d/.last-$server\" 2>/dev/null)\" = '$sha' ] && [ '$sha' != unknown ] && [ '${DEPLOY_FORCE_BUILD:-0}' != 1 ]; then
+        echo \"SUPERSEDED $sha\"; rm -f \"\$q/$id\"; exit 0
+      fi
+      if mkdir \"\$l\" 2>/dev/null; then printf '%s\n' '$who' > \"\$l/holder\"; printf '%s\n' '$sha' > \"\$l/sha\"; rm -f \"\$q/$id\"; echo TAKEN; exit 0; fi
+      if [ \"\$(cut -d' ' -f1 \"\$l/phase\" 2>/dev/null)\" = building ] && [ \"\$(cat \"\$l/sha\" 2>/dev/null)\" != '$sha' ] && [ ! -e \"\$l/cancelled\" ]; then
+        touch \"\$l/cancelled\"; systemctl stop \"\$(cut -d' ' -f2 \"\$l/phase\")\" >/dev/null 2>&1 || true
+        echo \"CANCELLED \$(cat \"\$l/sha\" 2>/dev/null)\"; exit 0
+      fi
+      t=\$(stat -c %Y \"\$l\" 2>/dev/null || date +%s)  # the holder may finish between the checks above and here
+      echo \"HELD \$(cat \"\$l/holder\" 2>/dev/null) since \$(date -u -d @\$t +%H:%MZ) (\$(( (\$(date +%s) - t) / 60 )) min)\"")" || return 1
+    case "$out" in
+      TAKEN) echo "[DEPLOY] started server=$server sha=${sha:0:10}" >&2; echo "==> Deploying $server (others wait until this deploy is live)" >&2; return 0 ;;
+      SUPERSEDED*) echo "[DEPLOY] superseded server=$server sha=${sha:0:10} by ${out#SUPERSEDED }" >&2; exit 0 ;;
+      CANCELLED*) echo "[DEPLOY] cancelled_build server=$server old=${out#CANCELLED } new=${sha:0:10}" >&2; continue ;;
+    esac
     if [[ "${out%% since*}" != "$last" ]]; then
       echo "==> Waiting: $server is being deployed by ${out#HELD }" >&2
       last="${out%% since*}"
@@ -310,8 +303,20 @@ deploy_lock_take() { # server
   done
 }
 
-deploy_lock_release() { # server
-  build_ssh "rm -rf '$BUILDS_DIR/.deploys/$1'" >/dev/null 2>&1 || true
+# Marks the holder's phase for waiters: "building <unit>" may be cancelled by a newer request, "activating" never is.
+deploy_lock_phase() { # phase [unit]
+  [[ -n "${DEPLOY_LOCK_NAME:-}" ]] || return 0
+  build_ssh "l='$BUILDS_DIR/.deploys/$DEPLOY_LOCK_NAME'; [ -d \"\$l\" ] && printf '%s\n' '$1 ${2:-}' > \"\$l/phase\"" >/dev/null 2>&1 || true
+}
+
+deploy_build_cancelled() {
+  [[ -n "${DEPLOY_LOCK_NAME:-}" ]] && build_ssh "test -e '$BUILDS_DIR/.deploys/$DEPLOY_LOCK_NAME/cancelled'" >/dev/null 2>&1
+}
+
+deploy_lock_release() { # server [rc]
+  local done=""
+  [[ "${2:-1}" == 0 && -n "${DEPLOY_REQUESTED_SHA:-}" ]] && done="printf '%s\n' '$DEPLOY_REQUESTED_SHA' > '$BUILDS_DIR/.deploys/.last-$1';"
+  build_ssh "$done rm -rf '$BUILDS_DIR/.deploys/$1'" >/dev/null 2>&1 || true
 }
 
 deploy_lock_list() {

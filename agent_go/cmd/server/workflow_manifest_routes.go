@@ -19,24 +19,18 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 )
 
-// setCORS sets permissive CORS headers shared across workflow/manifest/config route handlers.
-func setCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-}
-
 // --- List / Discovery ---
 
 // handleListWorkflowManifests returns all workflows discovered from workspace manifests.
 func (api *StreamingAPI) handleListWorkflowManifests(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	discovered, err := DiscoverWorkflowManifests(r.Context())
+	// The manifest index re-reads only changed workflow.json files (a listing, not one read per folder) and drops its
+	// view at once on a write made here. The sidebar inventory calls this every few seconds.
+	discovered, err := workflowManifests.discover(r.Context(), 5*time.Second)
 	if err != nil {
 		log.Printf("[MANIFEST] Error discovering workflows: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to discover workflows: %v", err), http.StatusInternalServerError)
@@ -56,7 +50,6 @@ func (api *StreamingAPI) handleListWorkflowManifests(w http.ResponseWriter, r *h
 
 // handleGetWorkflowManifest returns the manifest for a specific workspace.
 func (api *StreamingAPI) handleGetWorkflowManifest(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -68,6 +61,12 @@ func (api *StreamingAPI) handleGetWorkflowManifest(w http.ResponseWriter, r *htt
 		return
 	}
 
+	// Access first, from a read that saves nothing: a person who may not open this workflow must not cause a write
+	// to its workflow.json (read-time migrations) or learn why it fails to load.
+	if access, _ := workflowAccessForWorkspacePath(r.Context(), GetUserFromContext(r.Context()), workspacePath); access == WorkflowAccessNone {
+		writeWorkflowPermissionDenied(w, "read")
+		return
+	}
 	manifest, exists, err := ReadWorkflowManifest(r.Context(), workspacePath)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to read manifest: %v", err), http.StatusInternalServerError)
@@ -115,7 +114,6 @@ func enforceDeploymentBrowserCapability(capabilities *WorkflowCapabilities) erro
 }
 
 func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -187,6 +185,15 @@ func (api *StreamingAPI) handleCreateWorkflowManifest(w http.ResponseWriter, r *
 		return
 	}
 
+	// PLAT-750-50: generate the starting page here, never from later reads/sync.
+	kind := "workflow"
+	if manifest.Kind == "relay" {
+		kind = "relay"
+	}
+	if _, _, err := api.ensureDefaultDashboard(r.Context(), GetUserFromContext(r.Context()), dashboardTarget{Root: req.WorkspacePath, Kind: kind, ID: manifest.ID, Title: manifest.Label, Edit: true}); err != nil {
+		log.Printf("[DASHBOARD_DEFAULT] creation failed kind=%s", kind)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -234,12 +241,23 @@ func mergeWorkflowCapabilitiesUpdate(existing WorkflowCapabilities, incoming *Wo
 		// An explicitly supplied empty object clears workflow notification preferences.
 		updated.Notifications = nil
 	}
+	// Connection selections owned by dedicated endpoints (GitHub Vault, Gmail)
+	// are omitted from the frontend WorkflowCapabilities payload; preserve them
+	// when unrelated manifest capabilities are saved.
+	if strings.TrimSpace(updated.GitHubConnectionID) == "" {
+		updated.GitHubConnectionID = existing.GitHubConnectionID
+	}
+	if strings.TrimSpace(updated.GmailConnectionID) == "" {
+		updated.GmailConnectionID = existing.GmailConnectionID
+	}
+	if updated.GmailBlockedRecipients == nil {
+		updated.GmailBlockedRecipients = existing.GmailBlockedRecipients
+	}
 
 	return updated
 }
 
 func (api *StreamingAPI) handleUpdateWorkflowManifest(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -426,7 +444,6 @@ func normalizeWorkflowFolderGrants(requested, previous []workflowtypes.WorkflowF
 // --- Delete manifest ---
 
 func (api *StreamingAPI) handleDeleteWorkflowManifest(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -476,7 +493,6 @@ type DeleteWorkflowFolderRequest struct {
 }
 
 func (api *StreamingAPI) handleDeleteWorkflowFolder(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -536,11 +552,21 @@ func (api *StreamingAPI) handleDeleteWorkflowFolder(w http.ResponseWriter, r *ht
 	}
 	markPhase("list_chats")
 
+	historyRoot, err := scheduleHistoryRemovalScope(workspacePath)
+	if err != nil {
+		http.Error(w, "Could not resolve run history before deletion: "+err.Error(), 500)
+		return
+	}
 	cleanupPending, err := deleteWorkspaceFolderWithCleanup(r.Context(), workspacePath)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to delete workflow folder: %v", err), http.StatusInternalServerError)
 		return
 	}
+	if err := purgeRemovedScheduleHistory(r.Context(), historyRoot); err != nil {
+		http.Error(w, "Folder removed; run history cleanup failed: "+err.Error(), 500)
+		return
+	}
+	noteScheduleSummaryChange()
 	markPhase("remove_folder")
 
 	deleteWorkflowRuntime(manifest.ID)
@@ -588,7 +614,6 @@ type DuplicateWorkflowManifestRequest struct {
 }
 
 func (api *StreamingAPI) handleDuplicateWorkflowManifest(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -713,10 +738,6 @@ func (api *StreamingAPI) resolveWorkspacePathFromPreset(ctx context.Context, pre
 
 	return "", fmt.Errorf("workflow %s not found in discovered manifests", presetQueryID)
 }
-
-// --- Helper: check if a setCORS-like helper already exists ---
-// The existing workflow handlers use inline CORS headers. This centralizes it.
-// For backward compatibility we keep inline CORS in existing handlers untouched.
 
 // LoadManifestForExecution loads workflow defaults from manifest for use in execution bootstrap.
 // Returns parsed capabilities that can be applied to the agent request.

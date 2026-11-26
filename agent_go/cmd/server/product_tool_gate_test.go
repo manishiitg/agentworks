@@ -9,7 +9,6 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/workproduct"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
 )
 
 type gateRecordingRegistrar struct {
@@ -58,56 +57,13 @@ func TestProductToolGateObserveModeAdmitsEverything(t *testing.T) {
 	}
 }
 
-func TestDelegatedWorkflowToolGatePreservesProductAndRole(t *testing.T) {
-	server, store := newFakeWorkspaceServer(t)
-	defer server.Close()
-	t.Setenv("WORKSPACE_API_URL", server.URL)
-	store.files["Workflow/relay/workflow.json"] = `{"kind":"relay"}`
-	store.files["Workflow/broken/workflow.json"] = `{broken`
-	for _, tt := range []struct {
-		name, session, workspace, agentMode string
-		readOnly                            bool
-		tools                               []string
-	}{
-		{"builder", "chat", "Workflow/goals", "workflow_phase", false, agentworksproduct.ChatTools("builder")},
-		{"reader", "chat", "Workflow/goals", "workflow_phase", true, agentworksproduct.ChatTools("run")},
-		{"executor", "chat", "Workflow/goals", "workflow", false, agentworksproduct.ChatTools("run")},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			gate, err := newDelegatedWorkflowToolGate(context.Background(), tt.session, QueryRequest{AgentMode: tt.agentMode}, tt.workspace, tt.readOnly)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !gate.enforcing() || gate.Admit("unlisted_child_tool") {
-				t.Fatal("child agent must reject tools outside its YAML surface")
-			}
-			var allowed []string
-			for name := range gate.allowed {
-				allowed = append(allowed, name)
-			}
-			expected := make([]string, 0, len(tt.tools))
-			for _, name := range tt.tools {
-				expected = append(expected, platformtools.Identity(name))
-			}
-			if err := compareProductSurface(allowed, expected); err != nil {
-				t.Fatal(err)
-			}
-		})
-	}
-	for _, workspace := range []string{"", "Workflow/broken", "Workflow/relay"} {
-		if _, err := newDelegatedWorkflowToolGate(context.Background(), "chat", QueryRequest{}, workspace, false); err == nil {
-			t.Fatalf("invalid scope %q must fail closed", workspace)
-		}
-	}
-}
-
 // A nil profile is ordinary (non-product) chat: never filtered, never logged.
 func TestProductToolGateNilProfileAdmitsEverything(t *testing.T) {
 	gate := newProductToolGate(nil)
 	if gate.enforcing() {
 		t.Fatal("a nil profile must not enforce")
 	}
-	if !gate.Admit("delegate") {
+	if !gate.Admit("execute_shell_command") {
 		t.Fatal("a nil profile declined a tool")
 	}
 	if gate.profileID != "" {

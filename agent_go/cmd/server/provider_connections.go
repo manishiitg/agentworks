@@ -50,6 +50,9 @@ type ProviderConnection struct {
 	// ViaConnection is set on a Mac account that runs on a connected server's company login (the saved connection's
 	// id): the program runs on the Mac and its model requests go through that server (company_model_proxy.go).
 	ViaConnection string `json:"via_connection,omitempty"`
+	// OwnOnServer marks such a Mac account that runs on the person's own login signed in on that server (not a
+	// company login), shared with their online agents (personal_server_login.go).
+	OwnOnServer bool `json:"own_on_server,omitempty"`
 }
 type storedProviderConnection struct {
 	ProviderConnection
@@ -182,7 +185,7 @@ func connectionCredentialKeys(record storedProviderConnection) (*llm.ProviderAPI
 			return nil, fmt.Errorf("isolated browser login is unavailable for this provider; use a token or API key")
 		}
 		empty := ""
-		return &llm.ProviderAPIKeys{ClaudeCodeOAuthToken: &empty, CodexCLI: &empty, CursorCLI: &empty, MuseCLI: &empty}, nil
+		return &llm.ProviderAPIKeys{ClaudeCodeOAuthToken: &empty, CodexCLI: &empty, CursorCLI: &empty, MuseCLI: &empty, AgyCLI: &empty}, nil
 	}
 	if strings.TrimSpace(record.Credential) == "" {
 		return nil, fmt.Errorf("provider connection needs authentication")
@@ -197,6 +200,8 @@ func connectionCredentialKeys(record storedProviderConnection) (*llm.ProviderAPI
 		keys.CursorCLI = &record.Credential
 	case "muse-cli":
 		keys.MuseCLI = &record.Credential
+	case "agy-cli":
+		keys.AgyCLI = &record.Credential
 	case "pi-cli":
 		if record.UnderlyingProvider == "" {
 			return nil, fmt.Errorf("Pi connection requires an underlying provider")
@@ -297,7 +302,9 @@ func providerConnectionRuntimeKeys(record storedProviderConnection) (*llm.Provid
 			// Claude Code adds /v1/messages itself.
 			keys.RuntimeEnvironment[llmtypes.AnthropicBaseURLKey] = strings.TrimSuffix(companyAccountBaseURL(record), "/v1")
 		case "codex-cli":
-			// Codex reads its address from its own config, which belongs to this account alone.
+			// A confined Codex gets a home of its own with only the login linked in, so the address also goes on its
+			// command line (llmtypes.CodexBaseURLKey); the config keeps it for an unconfined run.
+			keys.RuntimeEnvironment[llmtypes.CodexBaseURLKey] = companyAccountBaseURL(record)
 			config := fmt.Sprintf("cli_auth_credentials_store = \"file\"\nopenai_base_url = %q\n", companyAccountBaseURL(record))
 			if err := os.WriteFile(filepath.Join(keys.RuntimeEnvironment["CODEX_HOME"], "config.toml"), []byte(config), 0600); err != nil {
 				return nil, fmt.Errorf("cannot configure Codex for the company account")
@@ -308,6 +315,15 @@ func providerConnectionRuntimeKeys(record storedProviderConnection) (*llm.Provid
 			if err := os.WriteFile(filepath.Join(keys.RuntimeEnvironment["CODEX_HOME"], "auth.json"), login, 0600); err != nil {
 				return nil, fmt.Errorf("cannot configure Codex for the company account")
 			}
+		}
+	}
+	if record.AuthMethod == providerAuthServerLogin && record.Provider == "codex-cli" {
+		// The login stays in the owner's proxy (personal_server_login.go): Codex sends its model requests to this
+		// server's relay, which uses it, and holds only the account's placeholder as an API-key login.
+		keys.RuntimeEnvironment[llmtypes.CodexBaseURLKey] = personalModelProxyBase(record)
+		login, _ := json.Marshal(map[string]string{"auth_mode": "apikey", "OPENAI_API_KEY": record.Credential})
+		if err := os.WriteFile(filepath.Join(keys.RuntimeEnvironment["CODEX_HOME"], "auth.json"), login, 0600); err != nil {
+			return nil, fmt.Errorf("cannot configure Codex for the account")
 		}
 	}
 	if record.Provider == "codex-cli" {
@@ -335,11 +351,34 @@ func (api *StreamingAPI) withConnectionResolver(keys *llm.ProviderAPIKeys, scope
 			if _, err := api.admitProviderAccount(ctx, scope, string(provider), id); err != nil {
 				return nil, err
 			}
+			logTurnLogin(scope, string(provider), id, nil)
 			return keys.Clone(), nil
 		}
-		return api.connectionAPIKeys(ctx, scope, string(provider), id)
+		record, err := api.admitProviderAccount(ctx, scope, string(provider), id)
+		if err != nil {
+			return nil, err
+		}
+		logTurnLogin(scope, string(provider), id, record)
+		if record == nil {
+			return MergedProviderAPIKeys(ctx), nil
+		}
+		return providerConnectionRuntimeKeys(*record)
 	}
 	return keys
+}
+
+// logTurnLogin names whose AI login a turn uses, so a Crew co-owner's turn can be checked: company (the server's
+// shared account), own (the person's own account) or shared (another person's account shared with them, with its
+// owner). A turn never uses another person's account unless it is shared with them; no credentials are logged.
+func logTurnLogin(scope providerAccountScope, provider, id string, record *storedProviderConnection) {
+	login, owner := "company", ""
+	if record != nil {
+		login, owner = "own", record.OwnerUserID
+		if record.OwnerUserID != scope.Principal {
+			login = "shared"
+		}
+	}
+	log.Printf("[TURN_LOGIN] provider=%s account=%s login=%s account_owner=%s user=%s workspace=%s", provider, canonicalProviderConnectionID(provider, id), login, owner, scope.Principal, scope.WorkspacePath)
 }
 
 // The HTTP handlers for provider accounts live in provider_account_routes.go.
@@ -363,7 +402,7 @@ func providerConnectionSetupEnvironment(label string, keys *llm.ProviderAPIKeys,
 	opts := &llmtypes.CallOptions{}
 	llmtypes.WithProviderAccountEnvironment(keys.RuntimeEnvironment)(opts)
 	env = llmtypes.MergeCodingAgentSecretEnvironment(env, opts)
-	for name, value := range map[string]*string{"CLAUDE_CODE_OAUTH_TOKEN": keys.ClaudeCodeOAuthToken, "CODEX_API_KEY": keys.CodexCLI, "CURSOR_API_KEY": keys.CursorCLI, "META_API_KEY": keys.MuseCLI} {
+	for name, value := range map[string]*string{"CLAUDE_CODE_OAUTH_TOKEN": keys.ClaudeCodeOAuthToken, "CODEX_API_KEY": keys.CodexCLI, "CURSOR_API_KEY": keys.CursorCLI, "META_API_KEY": keys.MuseCLI, "GEMINI_API_KEY": keys.AgyCLI} {
 		if value != nil && *value != "" {
 			env = append(env, name+"="+*value)
 		}
@@ -377,7 +416,7 @@ func providerConnectionSetupEnvironment(label string, keys *llm.ProviderAPIKeys,
 // for the account never touches the server's own login.
 func providerSupportsPrivateCLILogin(provider string) bool {
 	switch provider {
-	case "claude-code", "codex-cli", "cursor-cli", "muse-cli":
+	case "claude-code", "codex-cli", "cursor-cli", "muse-cli", "agy-cli":
 		return true
 	}
 	return false

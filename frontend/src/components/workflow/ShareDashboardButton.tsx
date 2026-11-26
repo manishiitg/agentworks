@@ -10,8 +10,11 @@ import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIden
 import { OnlineOnlyNote } from '../../products/work/useMacCrew'
 import { WorkspaceContextRow as Row } from '../workspace/WorkspaceContextCard'
 import { PublicLinkControl, type PublicLink } from './PublicLinkControl'
+import { ProjectTeamAgents, type ProjectTeamAgent } from './ProjectTeamAgents'
 
 type Person = { id: string; email?: string; username?: string }
+/** One account from GET /api/users/directory. */
+type DirectoryUser = { id: string; username?: string; email?: string }
 type ShareState = {
   mode: 'everyone' | 'people' | 'private'; people?: Person[]; can_share: boolean; share_blocked?: string; needs_dashboard?: boolean
   /** Goals and Flows keep an owner list; a Crew's builders are its Team. */
@@ -19,7 +22,12 @@ type ShareState = {
   accounts?: { kind: string; name: string; use: string }[]
   public_links?: PublicLink[]
 }
-type OwnersState = { owner?: Person; co_owners: Person[]; can_manage: boolean }
+/** users: a project on the server only. Users work in it through chat with its setup and cannot change it; each has extra
+ * locked paths besides always_locked. */
+type ProjectUser = Person & { locked_paths?: string[] }
+/** A Team in the project's Users (#4087): everyone in it works here as a User. */
+type ProjectTeam = { team_id: string; name: string; owner: string; people: number; can_remove: boolean; agents?: ProjectTeamAgent[]; members?: { id: string; name: string }[]; new_agents?: 'only_me' | 'whole_team'; project_id?: string }
+type OwnersState = { owner?: Person; co_owners: Person[]; can_manage: boolean; users?: ProjectUser[]; always_locked?: string[]; teams?: ProjectTeam[]; team_choices?: ProjectTeam[] }
 const who = (person: Person) => person.email || person.username || person.id
 const audience = (state: ShareState) => state.mode === 'everyone' ? 'Everyone' : state.mode === 'people' ? 'Chosen people' : state.has_owners ? 'Only owners' : 'Only me'
 const errorText = (cause: unknown, fallback: string) => {
@@ -28,9 +36,11 @@ const errorText = (cause: unknown, fallback: string) => {
 }
 
 /** One Access overview. Changes use the project's visible chat and its existing server tools. */
-export function ShareDashboardButton({ workspacePath, documentPath, label = 'Share', variant = 'button', onOpen, tabId }: {
+export function ShareDashboardButton({ workspacePath, documentPath, label = 'Share', variant = 'button', onOpen, tabId, coOwnersOnly = false }: {
   /** The open dashboard or artifact; Copy link copies its link rather than the project's first dashboard. */
   workspacePath: string; documentPath?: string; label?: string; variant?: 'button' | 'row' | 'panel'; onOpen?: () => void
+  /** A server project's Co-owners page (owner, 24 Nov): who builds it, nothing about who uses it or its artifacts. */
+  coOwnersOnly?: boolean
   onAsk?: (message: string) => void | Promise<unknown>; tabId?: string
 }) {
   const user = useAuthStore(state => state.user?.id)
@@ -43,7 +53,9 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   const state = snapshot?.scope === scope ? snapshot.state : null
   const [ownerSnapshot, setOwnerSnapshot] = useState<{ scope: string; owners: OwnersState } | null>(null)
     const owners = ownerSnapshot?.scope === scope ? ownerSnapshot.owners : undefined
-  const [ownerEmail, setOwnerEmail] = useState('')
+  // Everyone who can be picked: the server's account list (GET /api/users/directory), the same people as the Team's picker.
+  const [directory, setDirectory] = useState<{ scope: string; users: DirectoryUser[] } | null>(null)
+  const users = directory?.scope === scope ? directory.users : undefined
   const [choosing, setChoosing] = useState(false)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
@@ -51,7 +63,6 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   const [attempt, setAttempt] = useState(0)
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
-  const [email, setEmail] = useState('')
   const [pendingShare, setPendingShare] = useState<{ scope: string; mode: ShareState['mode']; emails?: string[] }>()
   const confirmation = pendingShare?.scope === scope ? pendingShare : undefined
   const trigger = useRef<HTMLButtonElement>(null)
@@ -81,6 +92,15 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     return () => { disposed = true }
   }, [expanded, state?.can_share, state?.has_owners, workspacePath, user, server, scope, streaming, attempt])
   useEffect(() => {
+    if (!expanded || !state?.can_share) return
+    const identity = captureChatIdentity()
+    let disposed = false
+    void api.get<{ users?: DirectoryUser[] }>('/api/users/directory')
+      .then(({ data }) => { if (!disposed && isChatIdentityCurrent(identity)) setDirectory({ scope, users: data.users || [] }) })
+      .catch(() => { if (!disposed && isChatIdentityCurrent(identity)) setDirectory({ scope, users: [] }) })
+    return () => { disposed = true }
+  }, [expanded, state?.can_share, scope])
+  useEffect(() => {
     if (!open) return
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); close() } }
     document.addEventListener('keydown', escape)
@@ -97,7 +117,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     try {
       const { data } = await api.post<ShareState & { unknown_emails?: string[] }>('/api/dashboards', { workspace: workspacePath, action: 'share', mode: next, ...(list ? { emails: list } : {}), ...(createDashboard ? { create_dashboard: true } : {}) })
       if (!isChatIdentityCurrent(identity)) return
-      setSnapshot({ scope, state: data }); setEmail(''); setPendingShare(undefined)
+      setSnapshot({ scope, state: data }); setPendingShare(undefined)
       if (createDashboard) window.dispatchEvent(new CustomEvent(WORKFLOW_REPORT_REFRESH_EVENT, { detail: { workspacePath } }))
       if (data.unknown_emails?.length) setNotice(`No account for ${data.unknown_emails.join(', ')}.`)
     } catch (cause) {
@@ -131,20 +151,21 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   const companyWide = state.mode === 'everyone'
   const shareList = (list: string[]) => putShare('people', list)
   const choice: 'private' | 'people' | 'everyone' = companyWide ? 'everyone' : state.mode === 'people' || choosing ? 'people' : 'private'
-  const addOwner = () => {
-    const value = ownerEmail.trim().toLowerCase()
-    if (!value) return
+  const addOwner = (value: string) => {
     void run(async () => {
       await changeOwners('owner_add', value)
       const { data } = await api.post<ShareState>('/api/dashboards', { workspace: workspacePath, action: 'share_status' })
-      setSnapshot({ scope, state: data }); setOwnerEmail('')
+      setSnapshot({ scope, state: data })
     })
   }
-  const addPerson = () => {
-    const value = email.trim().toLowerCase()
-    if (!value) return
-    if (emails.includes(value)) { setEmail(''); return }
+  const addPerson = (value: string) => {
+    if (emails.includes(value)) return
     void run(() => shareList([...emails, value]))
+  }
+  const changeUsers = async (action: 'user_add' | 'user_remove' | 'user_files' | 'team_add' | 'team_remove', value: string, lockedPaths?: string[]) => {
+    const { data } = await api.post<OwnersState & { note?: string }>('/api/dashboards', { workspace: workspacePath, action, emails: [value], locked_paths: lockedPaths })
+    setOwnerSnapshot({ scope, owners: data })
+    if (data.note) setNotice(data.note)
   }
   const changeOwners = async (action: 'owner_add' | 'owner_remove', value: string) => {
     const { data } = await api.post<OwnersState & { note?: string }>('/api/dashboards', { workspace: workspacePath, action, emails: [value] })
@@ -155,13 +176,23 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   const removeButton = (person: Person, remove: (value: string) => Promise<void>) => person.email
     ? <button type="button" aria-label={`Remove ${who(person)}`} disabled={busy} onClick={() => void run(() => remove(person.email as string))} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
     : null
-  const emailForm = (value: string, setValue: (next: string) => void, submit: () => void, label: string) => <form onSubmit={event => { event.preventDefault(); submit() }} className="flex gap-2">
-    <input type="email" aria-label={label} placeholder="name@company.com" value={value} disabled={busy} onChange={event => setValue(event.target.value)} className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm" />
-    <button type="submit" disabled={busy || !value.trim()} className="h-9 rounded-md border border-border px-3 text-sm hover:bg-muted disabled:opacity-50">Add</button>
-  </form>
+  // Pick a person from the server's accounts, like the Team's "+ Add person" (owner, 25 Nov): no typed email, so no
+  // browser autofill. People already added and the owner are left out.
+  const taken = new Set([user, owners?.owner?.id, ...(owners?.co_owners || []).map(person => person.id), ...(owners?.users || []).map(person => person.id), ...(state.people || []).map(person => person.id)].filter(Boolean))
+  const personPicker = (exclude: Set<string | undefined>, pick: (email: string) => void, label: string) => {
+    if (!users) return <p role="status" className="text-xs text-muted-foreground">Loading people…</p>
+    const options = users.filter(person => person.email && !exclude.has(person.id))
+    if (!users.some(person => person.id !== user)) return <p className="text-xs text-muted-foreground">Nobody else has signed in to this server yet.</p>
+    if (!options.length) return <p className="text-xs text-muted-foreground">Everyone on this server is already added.</p>
+    return <select aria-label={label} value="" disabled={busy} onChange={event => { if (event.target.value) pick(event.target.value) }}
+      className="h-9 w-full rounded-md border border-dashed border-border bg-background px-2 text-sm text-primary">
+      <option value="">+ Add person</option>
+      {options.map(person => <option key={person.id} value={person.email}>{person.username && person.username !== person.email ? `${person.username} (${person.email})` : person.email}</option>)}
+    </select>
+  }
   const choices = [['private', 'Only me'], ['people', 'Chosen people'], ['everyone', 'Everyone']] as const
   const peopleContent = <div className="space-y-6 text-sm">
-    <OnlineOnlyNote projectId={crewProjectId} />
+    {!coOwnersOnly && <><OnlineOnlyNote projectId={crewProjectId} />
     <section aria-label="Shared with" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold">Shared with</h3>
@@ -177,7 +208,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
         <ul aria-label="People it is shared with" className="space-y-2">
           {(state.people || []).map(person => <li key={person.id} className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{removeButton(person, value => shareList(emails.filter(item => item !== value)))}</li>)}
         </ul>
-        {emailForm(email, setEmail, addPerson, 'Share with a person by email')}
+        {personPicker(taken, addPerson, 'Share with a person')}
       </>}
     </section>
     {!!state.public_links?.length && <section aria-label="Public links" className="space-y-3 border-t border-border pt-4">
@@ -187,27 +218,52 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
       </div>)}
     </section>}
     {confirmation && <section role="region" aria-label="Create a dashboard to share" className="space-y-3 rounded-lg border border-border p-3">
-      <h3 className="font-semibold">Create a dashboard for this Crew?</h3>
-      <p className="text-xs text-muted-foreground">People will open it to chat with this Crew and use its published functions.</p>
+      <h3 className="font-semibold">Create a dashboard for this project?</h3>
+      <p className="text-xs text-muted-foreground">People will open it to chat with this project and use its published functions.</p>
       <p className="text-xs">Share with: {confirmation.mode === 'everyone' ? 'Everyone at the company' : confirmation.emails?.join(', ')}</p>
       <div className="flex flex-wrap gap-2">
         <button type="button" disabled={busy} onClick={() => void run(() => putShare(confirmation.mode, confirmation.emails, true))} className="rounded-md bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50">Create dashboard and share</button>
         <button type="button" disabled={busy} onClick={() => setPendingShare(undefined)} className="rounded-md border border-border px-3 py-2 text-xs hover:bg-muted">Cancel</button>
       </div>
     </section>}
-    {state.has_owners && <section aria-label="Co-owners" className="space-y-3 border-t border-border pt-4">
+    </>}
+    {state.has_owners && owners?.users && <section aria-label="Users" className={`space-y-3${coOwnersOnly ? '' : ' border-t border-border pt-4'}`}>
+      <div><h3 className="font-semibold">Users</h3><p className="text-xs text-muted-foreground">Work in it through chat with your setup. They can't change it.</p></div>
+      {owners.users.length > 0 && <ul aria-label="Users" className="space-y-3">
+        {owners.users.map(person => <li key={person.id} className="space-y-2">
+          <div className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{owners.can_manage && removeButton(person, value => changeUsers('user_remove', value))}</div>
+          {owners.can_manage && person.email && <ProjectUserFiles person={person} alwaysLocked={owners.always_locked || []} busy={busy} change={paths => { void run(() => changeUsers('user_files', person.email as string, paths)) }} />}
+        </li>)}
+      </ul>}
+      {!!owners.teams?.length && <ul aria-label="Teams" className="space-y-2">
+        {owners.teams.map(team => <li key={team.team_id} className="space-y-1.5"><div className="flex min-w-0 items-center gap-2">
+          <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><Users className="h-3.5 w-3.5" /></span>
+          <span className="min-w-0 flex-1"><span className="block truncate">{team.name} <span className="text-xs text-muted-foreground">Team</span></span><span className="block truncate text-xs text-muted-foreground">{team.owner}'s Team · everyone in it · {team.people} {team.people === 1 ? 'person' : 'people'}</span></span>
+          {team.can_remove && <button type="button" aria-label={`Remove ${team.name}`} disabled={busy} onClick={() => void run(() => changeUsers('team_remove', team.team_id))} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>}
+        </div>
+        <ProjectTeamAgents teamId={team.team_id} projectId={team.project_id} newAgents={team.new_agents} agents={team.agents || []} members={team.members || []} busy={busy} run={run} changed={() => setAttempt(n => n + 1)} />
+        </li>)}
+      </ul>}
+      {owners.can_manage && personPicker(taken, value => { void run(() => changeUsers('user_add', value)) }, 'Add a user')}
+      {!!owners.team_choices?.length && <select aria-label="Add a Team" value="" disabled={busy} onChange={event => { const id = event.target.value; if (id) void run(() => changeUsers('team_add', id)) }}
+        className="h-9 w-full rounded-md border border-dashed border-border bg-background px-2 text-sm text-primary">
+        <option value="">+ Add a Team you're in</option>
+        {owners.team_choices.map(team => <option key={team.team_id} value={team.team_id}>{team.name} · {team.owner}'s Team · {team.people} {team.people === 1 ? 'person' : 'people'}</option>)}
+      </select>}
+    </section>}
+    {state.has_owners && <section aria-label="Co-owners" className={`space-y-3${coOwnersOnly && !owners?.users ? '' : ' border-t border-border pt-4'}`}>
       <div><h3 className="font-semibold">Co-owners</h3><p className="text-xs text-muted-foreground">Can build and change it, like you.</p></div>
       <ul aria-label="Owners" className="space-y-2">
         {owners?.owner && <li className="flex min-w-0 items-center gap-2">{avatar(owners.owner)}<span className="min-w-0 flex-1 truncate" title={who(owners.owner)}>{who(owners.owner)}</span><span className="shrink-0 text-xs text-muted-foreground">Created it</span></li>}
         {(owners?.co_owners || []).map(person => <li key={person.id} className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{owners?.can_manage && removeButton(person, value => changeOwners('owner_remove', value))}</li>)}
       </ul>
       {ownersError && <p role="alert" className="text-xs text-destructive">{ownersError} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p>}
-      {owners?.can_manage && emailForm(ownerEmail, setOwnerEmail, addOwner, 'Add a co-owner by email')}
+      {owners?.can_manage && personPicker(taken, addOwner, 'Add a co-owner')}
     </section>}
     {notice && <p role="status" className="text-xs text-muted-foreground">{notice}</p>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     {/* Which agents others can message is each agent's Public on AgentBridge, in the Team tab's one agent list. */}
-    {!!state.accounts?.length && <details className="border-t border-border pt-3 text-xs"><summary className="cursor-pointer py-1 text-muted-foreground">Details</summary>
+    {!coOwnersOnly && !!state.accounts?.length && <details className="border-t border-border pt-3 text-xs"><summary className="cursor-pointer py-1 text-muted-foreground">Details</summary>
       <div className="mt-2 space-y-3">
         {!!state.accounts?.length && <div><p className="font-medium">Accounts used</p><ul className="mt-1 space-y-1">{state.accounts.map((account, i) => <li key={i}>{account.name}<span className="block text-muted-foreground">{account.use}</span></li>)}</ul></div>}
       </div>
@@ -219,4 +275,28 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     <button ref={trigger} type="button" aria-label={label} aria-expanded={open} onClick={() => setOpen(value => !value)} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted md:h-auto"><ShareIcon aria-hidden="true" className="h-3.5 w-3.5" />{label}</button>
     {open && createPortal(<div ref={node => node?.focus()} tabIndex={-1} role="dialog" aria-label="Access" className="fixed right-4 top-4 z-[100] flex max-h-[calc(100dvh-2rem)] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-border bg-background shadow-xl outline-none sm:top-16 sm:max-h-[calc(100dvh-5rem)]"><div className="flex shrink-0 items-center justify-between border-b border-border p-3"><h2 className="text-sm font-semibold">Access</h2><button type="button" onClick={close} className="rounded px-2 py-1 text-xs hover:bg-muted">Close</button></div><div data-share-dialog-body className="min-h-0 overflow-y-auto overscroll-contain p-4">{content}</div></div>, document.body)}
   </>
+}
+
+/** One User's locked files (a project on the server; the main owner only): always the instructions, skills and
+ * settings, plus the files or folders added here. */
+function ProjectUserFiles({ person, alwaysLocked, busy, change }: {
+  person: ProjectUser; alwaysLocked: string[]; busy: boolean; change: (lockedPaths: string[]) => void
+}) {
+  const [path, setPath] = useState('')
+  const extra = person.locked_paths || []
+  const name = person.username || person.email || 'This user'
+  return <details className="ml-9 text-xs">
+    <summary className="cursor-pointer text-muted-foreground">Locked files{extra.length ? ` · ${extra.length} more` : ''}</summary>
+    <div className="mt-1.5 space-y-1.5 rounded-md border border-border p-2">
+      <p className="text-muted-foreground">Always: {alwaysLocked.join(', ')}</p>
+      {extra.length > 0 && <ul aria-label={`More locked files for ${name}`} className="flex flex-wrap gap-1.5">
+        {extra.map(item => <li key={item} className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5">{item}
+          <button type="button" aria-label={`Unlock ${item}`} disabled={busy} onClick={() => change(extra.filter(other => other !== item))} className="text-muted-foreground hover:text-foreground"><X aria-hidden="true" className="h-3 w-3" /></button></li>)}
+      </ul>}
+      <form className="flex gap-2" onSubmit={event => { event.preventDefault(); const value = path.trim(); if (!value) return; change([...extra, value]); setPath('') }}>
+        <input aria-label={`Lock another file or folder for ${name}`} placeholder="briefs/ or docs/plan.md" value={path} disabled={busy} onChange={event => setPath(event.target.value)} className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2" />
+        <button type="submit" disabled={busy || !path.trim()} className="h-8 rounded-md border border-border px-2.5 hover:bg-muted disabled:opacity-50">Lock</button>
+      </form>
+    </div>
+  </details>
 }

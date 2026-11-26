@@ -7,12 +7,17 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	agentevents "github.com/manishiitg/mcpagent/events"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -412,4 +417,104 @@ func TestExternalMCPCallLogLineNamesToolAndOutcomeButNoArguments(t *testing.T) {
 	if strings.Contains(line, "PRIVATE_PATH_ONLY") || strings.Contains(line, "PRIVATE_CONTENT_ONLY") {
 		t.Fatalf("scoped log contains file arguments: %s", line)
 	}
+}
+
+// PLAT-856-570: a native workspace action is unusable by MCP unless its
+// projected catalog member exists. Exercise discovery AND dispatch, retaining
+// the underlying search visibility, owner-only sync and private Ask guards.
+func TestExternalMCPWorkspaceCatalogReachesSearchSyncAndReplyInput(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	f, _ := newExternalCrewCommandFixture(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	const key = "team:chat:root-owner"
+	const session = "owner-main"
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","main_chat_key":"`+key+`"}`)
+	record := ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: key, WorkspacePath: externalCommandCrewRoot, SessionID: session, Title: "Owner agent"}
+	if err := defaultProductConversationRegistryStore().writeDocument(t.Context(), productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, key): record}}); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := storeevents.OpenSQLiteEventJournal(filepath.Join(t.TempDir(), "events.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := storeevents.NewEventStore(100)
+	t.Cleanup(store.Stop)
+	store.SetDurableJournal(journal)
+	f.api.eventStore = store
+	for _, row := range []struct{ session, user, body string }{{session, "owner", "catalog needle visible"}, {"private-stranger", "stranger", "catalog needle private"}} {
+		store.SetSessionOwner(row.session, row.user)
+		if err := store.SetSessionPersistenceClass(row.session, storeevents.SessionPersistenceInteractiveChat); err != nil {
+			t.Fatal(err)
+		}
+		store.AddEvent(row.session, storeevents.Event{ID: row.session + "-message", Type: "user_message", Timestamp: time.Now(), Data: agentevents.NewAgentEvent(agentevents.NewUserMessageEvent(1, row.body, "user"))})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	claims := &UserClaims{UserID: "owner", Username: "owner"}
+	srv := serveExternalMCP(t, f.api, claims)
+	cli := dialExternalMCP(t, ctx, srv.URL+externalMCPPath)
+	initializeExternalMCP(t, ctx, cli)
+	spec := callRemoteTool(t, ctx, cli, externalMCPToolSpec, map[string]any{"names": "workspace"})
+	requireRemoteSuccess(t, spec, "workspace schema")
+	var decoded struct {
+		Schemas map[string]struct {
+			InputSchema struct {
+				Properties map[string]json.RawMessage `json:"properties"`
+			} `json:"inputSchema"`
+		} `json:"schemas"`
+	}
+	if err := json.Unmarshal([]byte(marshalStructured(t, spec)), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	var actions struct {
+		Enum []string `json:"enum"`
+	}
+	if err := json.Unmarshal(decoded.Schemas["workspace"].InputSchema.Properties["action"], &actions); err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []string{"search_messages", "sync", "reply_input"} {
+		if !slices.Contains(actions.Enum, action) {
+			t.Fatalf("native action missing from real MCP schema: %s", action)
+		}
+	}
+	call := func(args map[string]any) *mcp.CallToolResult {
+		t.Helper()
+		args["workspace_id"] = "work:team"
+		return callRemoteTool(t, ctx, cli, externalMCPToolCall, map[string]any{"name": "workspace", "arguments": args})
+	}
+	search := call(map[string]any{"action": "search_messages", "query": "needle"})
+	requireRemoteSuccess(t, search, "workspace message search")
+	if got := marshalStructured(t, search); !strings.Contains(got, "catalog needle visible") || strings.Contains(got, "catalog needle private") {
+		t.Fatalf("MCP search lost admission: %s", got)
+	}
+	// PLAT-856-571: work:<id> is an MCP address, not a second storage ID.
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{PairID: "fixture-pair", Side: "local", Editing: "local", PeerProjectID: "peer"}); err != nil {
+		t.Fatal(err)
+	}
+	status := call(map[string]any{"action": "sync", "sync_action": "status"})
+	requireRemoteSuccess(t, status, "owner sync status")
+	if got := marshalStructured(t, status); !strings.Contains(got, `"project_id":"team"`) || !strings.Contains(got, `"pair_id":"fixture-pair"`) {
+		t.Fatalf("sync did not reach its project: %s", got)
+	}
+	f.api.sessionBusy = map[string]bool{session: true}
+	f.api.trackedWorkflowExecutions = map[string]*TrackedWorkflowExecution{"query": {ExecutionID: "query", SessionID: session, Source: trackedExecutionSourceConversationTurn, Status: trackedExecutionStatusRunning, StartedAt: time.Now()}}
+	scope := &crewAskInputScope{User: "owner", Connection: "website", Workspace: "work:team", Chat: "root-owner", Session: session, Query: "query"}
+	asking := context.WithValue(ctx, crewAskInputKey{}, scope)
+	done := make(chan error, 1)
+	go func() {
+		_, err := f.api.waitForCodingAgentClarification(asking, session, "codex-cli", clarificationTestArgs())
+		done <- err
+	}()
+	pending := pendingClarificationForTest(t, f.api, session)
+	answers := []codingAgentQuestionAnswerInput{{ID: "scope", SelectedLabels: []string{"Gmail"}}, {ID: "purpose", SelectedLabels: []string{"Read"}}}
+	args := map[string]any{"action": "reply_input", "chat_id": "root-owner", "query_id": "query", "request_id": pending.promptID, "answers": answers}
+	reply := call(args)
+	requireRemoteSuccess(t, reply, "own pending Ask answer")
+	if got := marshalStructured(t, reply); !strings.Contains(got, `"status":"submitted"`) {
+		t.Fatalf("answer did not settle: %s", got)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	requireRemoteError(t, call(args), "already answered Ask", "input_not_pending")
 }

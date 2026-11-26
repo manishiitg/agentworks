@@ -4,7 +4,6 @@ import type {
   LLMDefaultsResponse,
   APIKeyValidationRequest,
   APIKeyValidationResponse,
-  DelegationTierConfig,
   SavedLLM,
   LLMDiscoveryResponse,
   ProductDefault,
@@ -42,6 +41,12 @@ export interface MacAppLending {
   signing_in?: { url: string; code?: string; needs_callback?: boolean }
 }
 
+/** An account signed in once on the server: who it is signed in as, or the sign-in waiting for approval. */
+export interface ServerLoginState {
+  signed_in_as?: string
+  signing_in?: { url: string; code?: string }
+}
+
 export interface ProviderConnection {
   id: string
   provider: string
@@ -54,6 +59,8 @@ export interface ProviderConnection {
   base_url?: string
   /** On the Mac: the connected server whose company login this account runs on. */
   via_connection?: string
+  /** On the Mac: that server's login is the person's own, signed in once there (also used by their online agents). */
+  own_on_server?: boolean
   owner_user_id?: string
   updated_at?: string
   sharing?: ProviderAccountSharing
@@ -176,18 +183,13 @@ export interface ProviderTierModelRef {
   options?: Record<string, unknown>
 }
 
+/** A provider's defaults: `main` is the model a chat starts with; high, medium
+ * and low are the workflow tiers (background work uses high). */
 export interface ProviderDefaultTierModels {
-  builder?: ProviderTierModelRef
+  main: ProviderTierModelRef
   high: ProviderTierModelRef
   medium: ProviderTierModelRef
   low: ProviderTierModelRef
-  maintenance?: ProviderTierModelRef
-  pulse?: ProviderTierModelRef
-  // Read-only compatibility for a backend that is still restarting during a
-  // desktop update. New provider manifests never emit these fields.
-  main?: ProviderTierModelRef
-  phase?: ProviderTierModelRef
-  auto_improve?: ProviderTierModelRef
 }
 
 export interface IntegrationKindInfo {
@@ -298,17 +300,39 @@ llmConfigApi.interceptors.request.use((config) => {
   return config
 })
 
-/** The person's own display choices (server-side, per person). */
-export type ChatPreferences = { show_context_indicator: boolean }
+/** The Projects page's last filter (all, mine or shared) and location, kept on the server per person. */
+export type MenuFilter = { filter?: string; network?: string }
+
+export interface AccountLimitsView {
+  account_id: string
+  provider: string
+  name: string
+  owner: string
+  shared_server: boolean
+  snapshot?: { checked_at: string; source: 'probe' | 'event'; windows: Array<{ label: string; used_percent: number; resets_at?: string }> }
+  /** Set by the server while turns on this account are rejected for their login. */
+  sign_in?: { needed: boolean; since?: string; failed_at?: string; reason?: string }
+  status: string
+  /** How the account is paid for, decided by the server. */
+  billing?: 'api_key' | 'subscription'
+  /** API-key accounts: spend today and this week (own_share: only the caller's part). */
+  spend?: { today_usd: number; week_usd: number; own_share: boolean }
+}
 
 // LLM Configuration API service
 export const llmConfigService = {
-  getChatPreferences: async (): Promise<ChatPreferences> => {
-    return (await llmConfigApi.get('/api/chat-preferences')).data
+  getAccountLimits: async (): Promise<AccountLimitsView[]> => {
+    return (await llmConfigApi.get('/api/provider-accounts/limits')).data.accounts
   },
-  // A change names only what it changes; the server keeps the rest.
-  setChatPreferences: async (change: Partial<ChatPreferences>): Promise<ChatPreferences> => {
-    return (await llmConfigApi.put('/api/chat-preferences', change)).data
+  // Count only, for the header badge; the server starts no usage checks for it.
+  getSignInNeeded: async (): Promise<number> => {
+    return (await llmConfigApi.get('/api/provider-accounts/sign-in-needed')).data.sign_in_needed ?? 0
+  },
+  getMenuFilter: async (): Promise<MenuFilter> => {
+    return (await llmConfigApi.get('/api/menu-filter')).data
+  },
+  setMenuFilter: async (filter: MenuFilter): Promise<MenuFilter> => {
+    return (await llmConfigApi.put('/api/menu-filter', filter)).data
   },
   // Get LLM configuration defaults from backend
   getLLMDefaults: async (): Promise<LLMDefaultsResponse> => {
@@ -461,6 +485,22 @@ export const llmConfigService = {
     return response.data
   },
 
+  /** "Sign in once on this server" for one of your own accounts: GET reads it, sign_in starts the link-and-code sign-in. */
+  getServerLogin: async (connectionId: string): Promise<ServerLoginState> => {
+    const response = await llmConfigApi.get(`/api/provider-connections/${encodeURIComponent(connectionId)}/server-login`)
+    return response.data
+  },
+  startServerLogin: async (connectionId: string): Promise<ServerLoginState> => {
+    const response = await llmConfigApi.post(`/api/provider-connections/${encodeURIComponent(connectionId)}/server-login`, { action: 'sign_in' })
+    return response.data
+  },
+
+  /** On the Mac: moves this account's Codex login to a connected server (one copy, used by the Mac and online agents). */
+  moveLoginToServer: async (connectionId: string, server: string): Promise<{ signed_in_as?: string; server?: string }> => {
+    const response = await llmConfigApi.post(`/api/provider-connections/${encodeURIComponent(connectionId)}/move-to-server`, { server })
+    return response.data
+  },
+
   /** Runs the CLI's own logout in the account's HOME. The account stays. */
   signOutProviderAccount: async (connectionId: string): Promise<void> => {
     await llmConfigApi.post(`/api/provider-connections/${encodeURIComponent(connectionId)}/sign-out`)
@@ -481,12 +521,6 @@ export const llmConfigService = {
     const token = getAuthToken()
     if (token) url.searchParams.set('token', token)
     return url.toString()
-  },
-
-  // Get delegation tier defaults from environment variables
-  getDelegationTierDefaults: async (): Promise<DelegationTierConfig> => {
-    const response = await llmConfigApi.get('/api/llm-config/delegation-tiers')
-    return response.data
   },
 
   // Load published LLMs from the workspace config folder

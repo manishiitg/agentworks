@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 	"io"
 	"log"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowrun"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspacereads"
 
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 )
@@ -171,13 +173,18 @@ func readConversationTailFromWorkspace(ctx context.Context, filePath string, n i
 
 // appendConversationHistoryInWorkspace adds messages to a chat conversation
 // and sets top-level fields, without rewriting the conversation.
-func appendConversationHistoryInWorkspace(ctx context.Context, filePath string, messages []json.RawMessage, patch map[string]interface{}) error {
+func appendConversationHistoryInWorkspace(ctx context.Context, filePath string, messages []json.RawMessage, patch map[string]interface{}, expected ...*chatlog.Version) error {
+	defer invalidateHotDocuments(filePath, false)
 	noteWorkspaceMutation(filePath, false)
 	segments := strings.Split(filePath, "/")
 	for i, segment := range segments {
 		segments[i] = url.PathEscape(segment)
 	}
-	body, err := json.Marshal(map[string]interface{}{"messages": messages, "patch": patch})
+	requestBody := map[string]interface{}{"messages": messages, "patch": patch}
+	if len(expected) > 0 {
+		requestBody["expected_version"] = expected[0]
+	}
+	body, err := json.Marshal(requestBody)
 	if err != nil {
 		return err
 	}
@@ -207,6 +214,25 @@ var errWorkspaceReadLimit = errors.New("workspace response exceeds read limit")
 // A nonzero limit bounds the HTTP body before allocation or JSON decoding.
 // Oversized records can be skipped by read-only callers without altering them.
 func readFileFromWorkspaceQueryWithLimit(ctx context.Context, filePath, rawQuery string, maxBytes int64) (string, bool, error) {
+	if rawQuery == "" {
+		if raw, found, handled, err := readAutomationRecord(ctx, filePath); handled {
+			if err == nil && maxBytes > 0 && int64(len(raw)) > maxBytes {
+				return "", false, errWorkspaceReadLimit
+			}
+			return raw, found, err
+		}
+	}
+	if rawQuery == "" && maxBytes == 0 {
+		return readFileFromWorkspaceHotDocument(ctx, filePath, func() (string, bool, error) {
+			return readFileFromWorkspaceQueryUncached(ctx, filePath, rawQuery, maxBytes)
+		})
+	}
+	return readFileFromWorkspaceQueryUncached(ctx, filePath, rawQuery, maxBytes)
+}
+
+func readFileFromWorkspaceQueryUncached(ctx context.Context, filePath, rawQuery string, maxBytes int64) (string, bool, error) {
+	started := time.Now()
+	defer func() { workspacereads.Record(ctx, filePath, time.Since(started)) }()
 	// URL-encode the filepath segments
 	pathSegments := strings.Split(filePath, "/")
 	encodedSegments := make([]string, len(pathSegments))
@@ -251,6 +277,9 @@ func readFileFromWorkspaceQueryWithLimit(ctx context.Context, filePath, rawQuery
 		return "", false, nil // File doesn't exist, but not an error
 	}
 
+	if resp.StatusCode >= 500 {
+		return "", false, fmt.Errorf("%w: status %d", errWorkspaceUnavailable, resp.StatusCode)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", false, fmt.Errorf("workspace API returned status %d: %s", resp.StatusCode, string(body))
 	}
@@ -319,16 +348,36 @@ func deleteWorkspaceFile(ctx context.Context, configPath string) error {
 	if reason := publishedWriteRefusal(ctx, configPath); reason != "" {
 		return fmt.Errorf("%s", reason)
 	}
+	if refusal := crewSetupLockWorkspaceRefusal(ctx, configPath, "delete"); refusal != "" {
+		return fmt.Errorf("%s", refusal)
+	}
 	if e := teamStructuralMutation(ctx, configPath); e != nil {
 		return e
 	}
+	defer invalidateHotDocuments(configPath, false)
 	noteWorkspaceMutation(configPath, false)
+	if handled, err := writeAutomationRecord(ctx, configPath, nil); handled {
+		if err == nil {
+			publishPlanChanged(configPath)
+		}
+		return err
+	}
 	if held, err := deleteHeldTeamFile(ctx, configPath); held {
 		if err == nil {
 			publishPlanChanged(configPath)
 		}
 		return err
 	}
+	if err := deleteWorkspaceDocument(ctx, configPath); err != nil {
+		return err
+	}
+	publishPlanChanged(configPath)
+	return nil
+}
+
+// deleteWorkspaceDocument is the workspace service's file delete alone; an
+// absent file is not an error.
+func deleteWorkspaceDocument(ctx context.Context, configPath string) error {
 	pathSegments := strings.Split(configPath, "/")
 	encodedSegments := make([]string, len(pathSegments))
 	for i, segment := range pathSegments {
@@ -359,13 +408,15 @@ func deleteWorkspaceFile(ctx context.Context, configPath string) error {
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("workspace API returned status %d: %s", resp.StatusCode, string(body))
 	}
-	publishPlanChanged(configPath)
 	return nil
 }
 
 // writeFileToWorkspace writes content to a file in the workspace via the workspace API
 func writeFileToWorkspace(ctx context.Context, filePath, content string) error {
 	if refusal := publishedWriteRefusal(ctx, filePath); refusal != "" {
+		return fmt.Errorf("%s", refusal)
+	}
+	if refusal := crewSetupLockWorkspaceRefusal(ctx, filePath, "write"); refusal != "" {
 		return fmt.Errorf("%s", refusal)
 	}
 	content = keepWorkflowCreator(ctx, filePath, content)
@@ -378,6 +429,13 @@ func writeFileToWorkspace(ctx context.Context, filePath, content string) error {
 	}
 	defer release()
 	noteWorkspaceMutation(filePath, false)
+	if handled, err := writeAutomationRecord(ctx, filePath, &content); handled {
+		if err == nil {
+			teamPlanSaved(ctx, filePath, content)
+			publishPlanChanged(filePath)
+		}
+		return err
+	}
 	if held, err := writeHeldTeamFile(ctx, filePath, content); held {
 		if err == nil {
 			teamPlanSaved(ctx, filePath, content)
@@ -429,6 +487,11 @@ func readRunMetadata(ctx context.Context, metadataFilePath string) (*RunMetadata
 	if !exists {
 		return nil, nil
 	}
+	return decodeRunMetadata(content)
+}
+
+// Shared decoding only: run routes still compute their own current Resume eligibility.
+func decodeRunMetadata(content string) (*RunMetadata, error) {
 	var metadata RunMetadata
 	if err := json.Unmarshal([]byte(content), &metadata); err != nil {
 		return nil, nil
@@ -808,7 +871,6 @@ func deleteWorkflowRuntime(presetQueryID string) {
 
 // handleCreateWorkflow handles workflow creation (in-memory runtime state).
 func (api *StreamingAPI) handleCreateWorkflow(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -864,7 +926,6 @@ func (api *StreamingAPI) handleCreateWorkflow(w http.ResponseWriter, r *http.Req
 
 // handleGetWorkflowStatus handles getting workflow status (in-memory runtime state).
 func (api *StreamingAPI) handleGetWorkflowStatus(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -913,7 +974,6 @@ func (api *StreamingAPI) handleGetWorkflowStatus(w http.ResponseWriter, r *http.
 
 // handleUpdateWorkflow handles workflow updates (in-memory runtime state).
 func (api *StreamingAPI) handleUpdateWorkflow(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -3001,6 +3061,7 @@ func (api *StreamingAPI) handleGetCosts(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		nameCostConversations(r.Context(), response.ScopedCosts)
 		json.NewEncoder(w).Encode(response)
 		return
 	}
@@ -3008,7 +3069,9 @@ func (api *StreamingAPI) handleGetCosts(w http.ResponseWriter, r *http.Request) 
 		json.NewEncoder(w).Encode(loadWorkflowRunTotals(r.Context(), cleanedWorkspacePath))
 		return
 	}
-	json.NewEncoder(w).Encode(loadWorkflowCosts(r.Context(), cleanedWorkspacePath))
+	response := loadWorkflowCosts(r.Context(), cleanedWorkspacePath)
+	nameCostConversations(r.Context(), response.ScopedCosts)
+	json.NewEncoder(w).Encode(response)
 }
 
 func costWorkspacePathForUser(workspacePath, userID string) string {
@@ -3537,10 +3600,14 @@ func deleteWorkspaceFolder(ctx context.Context, folderPath string) error {
 }
 
 func deleteWorkspaceFolderWithCleanup(ctx context.Context, folderPath string) (bool, error) {
+	if refusal := crewSetupLockWorkspaceRefusal(ctx, folderPath, "delete folder"); refusal != "" {
+		return false, fmt.Errorf("%s", refusal)
+	}
 	if e := teamStructuralMutation(ctx, folderPath); e != nil {
 		return false, e
 	}
 	noteWorkspaceMutation(folderPath, true)
+	forgetWorkspaceFolderAutomationRecords(ctx, folderPath)
 	pathSegments := strings.Split(folderPath, "/")
 	encodedSegments := make([]string, len(pathSegments))
 	for i, segment := range pathSegments {

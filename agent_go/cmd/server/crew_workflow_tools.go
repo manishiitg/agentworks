@@ -27,7 +27,6 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 	if api.scheduler == nil {
 		return nil
 	}
-	_ = sessionID
 	register := func(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error)) error {
 		return registrar.RegisterCustomTool(name, description, parameters, execute, "work_workflow_reference_tools")
 	}
@@ -87,7 +86,7 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 	if err := register("run_workflow_trigger", "Run a saved workflow or script with its declared inputs. Omit trigger_id for a direct run; no function setup is needed. Returns a run ID to check with get_workflow_trigger_run. Reuse delivery_id only when retrying the same delivery. Payloads must be JSON within 1 MiB.", map[string]interface{}{
 		"type": "object", "required": []string{"workspace_path"}, "properties": map[string]interface{}{
 			"workspace_path": map[string]interface{}{"type": "string", "description": "The workflow's id from list_agents (workflow:<id>) or its workspace_path."},
-			"trigger_id":     map[string]interface{}{"type": "string", "description": "Internal trigger ID bound to this Crew; omit to reuse or create it."},
+			"trigger_id":     map[string]interface{}{"type": "string", "description": "Internal trigger ID bound to this project; omit to reuse or create it."},
 			"inputs":         map[string]interface{}{"type": "object", "description": "Typed values for declared workflow or script inputs. Omitted values use saved defaults; unknown, protected or invalid values are rejected."},
 			"input_preset":   map[string]interface{}{"type": "string", "description": "Direct run only: saved input preset from workflow get; explicit inputs override its values."},
 			"payload":        map[string]interface{}{"type": "object", "description": "JSON delivery payload within 1 MiB."},
@@ -166,6 +165,7 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 		if strings.TrimSpace(event) == "" {
 			event = "crew.trigger"
 		}
+		ctx = context.WithValue(ctx, structuredFunctionCallerSessionKey{}, sessionID)
 		delivery, err := api.scheduler.dispatchInternalWorkflowTrigger(ctx, internalWorkflowTriggerCall{
 			WorkflowID: manifest.ID, TriggerID: strings.TrimSpace(triggerID),
 			Caller: crew, DeliveryID: deliveryID, Event: event, Payload: data, DirectInputs: directInputs, DirectInputPreset: preset,
@@ -183,7 +183,7 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 		return err
 	}
 
-	return register("get_workflow_trigger_run", "Poll one workflow run started by run_workflow_trigger. Returns its status, terminal flag, step outputs, progress, and signed artifact links. The binding must still exist and name this Crew, and you must still own or edit the workflow.", map[string]interface{}{
+	return register("get_workflow_trigger_run", "Poll one workflow run started by run_workflow_trigger. Returns its status, terminal flag, step outputs, progress, and signed artifact links. The binding must still exist and name this project, and you must still own or edit the workflow.", map[string]interface{}{
 		"type": "object", "required": []string{"workspace_path", "trigger_id", "run_id"}, "properties": map[string]interface{}{
 			"workspace_path": map[string]interface{}{"type": "string", "description": "The workflow's id from list_agents (workflow:<id>) or its workspace_path."},
 			"trigger_id":     map[string]interface{}{"type": "string", "description": "Internal trigger ID from run_workflow_trigger."},
@@ -220,14 +220,14 @@ func (api *StreamingAPI) registerCrewWorkflowRunTools(registrar definitionToolRe
 func crewWorkflowRunCaller(ctx context.Context, crewWorkspacePath string) (triggerCaller, error) {
 	raw, exists, err := readFileFromWorkspace(ctx, strings.TrimSuffix(strings.TrimSpace(crewWorkspacePath), "/")+"/product.json")
 	if err != nil || !exists {
-		return triggerCaller{}, fmt.Errorf("Crew project is unavailable")
+		return triggerCaller{}, fmt.Errorf("project is unavailable")
 	}
 	var manifest productProjectManifest
 	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return triggerCaller{}, fmt.Errorf("Crew project is unavailable")
+		return triggerCaller{}, fmt.Errorf("project is unavailable")
 	}
 	if strings.TrimSpace(manifest.ID) == "" {
-		return triggerCaller{}, fmt.Errorf("Crew project is unavailable")
+		return triggerCaller{}, fmt.Errorf("project is unavailable")
 	}
 	return triggerCaller{Type: triggerCallerCrew, ID: strings.TrimSpace(manifest.ID), ProfileID: normalizeInternalProfileID(manifest.Product)}, nil
 }
@@ -272,7 +272,7 @@ func crewWorkflowTriggerBinding(ctx context.Context, api *StreamingAPI, workspac
 	if err := validateTriggerCaller(&crew, triggerCallerCrew); err != nil {
 		return "", err
 	}
-	id, _, err := workflowTriggerBinding(ctx, api, workspacePath, manifest, crew, "Crew invocation")
+	id, _, err := workflowTriggerBinding(ctx, api, workspacePath, manifest, crew, "Project invocation")
 	return id, err
 }
 
@@ -294,7 +294,7 @@ func workflowTriggerBinding(ctx context.Context, api *StreamingAPI, workspacePat
 	}
 	if caller.Type == triggerCallerCrew {
 		if api.projectActions == nil || !api.projectActions.crewProjectExists(ctx, productWorkspaceUserID(ctx), caller.ProfileID, caller.ID) {
-			return "", false, fmt.Errorf("caller Crew project not found")
+			return "", false, fmt.Errorf("caller project not found")
 		}
 	} else {
 		if manifest != nil && strings.TrimSpace(caller.ID) == strings.TrimSpace(manifest.ID) {

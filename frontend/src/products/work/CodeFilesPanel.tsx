@@ -68,7 +68,7 @@ export function LaptopConnectionSetup({ connected }: { connected: boolean }) {
         <p className="text-xs leading-5 text-muted-foreground">Run from any folder. Sign in with the same account you use here. AgentBridge and laptop access use the same CLI and saved login. No folder is shared automatically. It can stay connected in the background.</p>
       </SetupStep>
       <SetupStep number={3} title="Choose where to use it">
-        <p className="text-xs leading-5 text-muted-foreground">Open Your computer, choose this computer for a Crew, then set its folders to Read or Read &amp; write. Terminal commands have a separate switch. You can use the same computer in several projects. <code>agentworks status</code> checks the connection; <code>agentworks stop</code> stops laptop access and pauses AgentBridge messaging. Detaching one chat leaves the laptop connection available.</p>
+        <p className="text-xs leading-5 text-muted-foreground">Open Your computer, choose this computer for a project, then set its folders to Read or Read &amp; write. Terminal commands have a separate switch. You can use the same computer in several projects. <code>agentworks status</code> checks the connection; <code>agentworks stop</code> stops laptop access and pauses AgentBridge messaging. Detaching one chat leaves the laptop connection available.</p>
       </SetupStep>
     </div>
   </details>

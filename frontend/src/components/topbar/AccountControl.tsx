@@ -14,9 +14,11 @@ interface AccountControlProps {
   children?: ReactNode
   messagingOnly?: boolean
   onOpenUsage?: () => void
+  accountLabel?: string
+  hideVersion?: boolean
 }
 
-export default function AccountControl({ onOpenShortcuts, menuOnly = false, children, messagingOnly = false, onOpenUsage }: AccountControlProps) {
+export default function AccountControl({ onOpenShortcuts, menuOnly = false, children, messagingOnly = false, onOpenUsage, accountLabel, hideVersion = false }: AccountControlProps) {
   const sidebar = useProductNavigationSidebar()
   const { user, logout, isMultiUserMode, providers } = useAuthStore()
   // A password can be changed only where people sign in with one: a server with single sign-on only (Google) has nothing to change.
@@ -52,7 +54,7 @@ export default function AccountControl({ onOpenShortcuts, menuOnly = false, chil
 
   if (!user) return null
 
-  const displayName = isMultiUserMode ? (user.username || user.email || 'User') : 'Local account'
+  const displayName = accountLabel || (isMultiUserMode ? (user.username || user.email || 'User') : 'Local account')
   const initial = displayName.trim().charAt(0).toUpperCase() || '?'
   const itemClass =
     'flex min-h-8 w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-xs text-foreground/85 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -60,10 +62,10 @@ export default function AccountControl({ onOpenShortcuts, menuOnly = false, chil
   const menuContent = <>
           <div className="px-2 py-1.5 mb-1 border-b border-gray-200 dark:border-slate-700">
             <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{displayName}</p>
-            {isMultiUserMode && user?.email && user.username !== user.email && (
+            {!accountLabel && isMultiUserMode && user?.email && user.username !== user.email && (
               <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>
             )}
-            <p className="text-xs text-gray-500 dark:text-gray-400">{`AgentWorks v${APP_VERSION}`}</p>
+            {!hideVersion && <p className="text-xs text-gray-500 dark:text-gray-400">{`AgentWorks v${APP_VERSION}`}</p>}
           </div>
           {children}
           {onOpenUsage && <button type="button" role="menuitem" className={itemClass} onClick={() => { setOpen(false); onOpenUsage() }}>

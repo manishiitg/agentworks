@@ -27,6 +27,7 @@ type ScheduleRunDestination struct {
 // ScheduledJobResponse is the API response for a scheduled job.
 // Designed to be backward-compatible with the old DB-based ScheduledJob shape.
 type ScheduledJobResponse struct {
+	TargetWorkflowID  string            `json:"target_workflow_id,omitempty"`
 	CrewWorkspacePath string            `json:"crew_workspace_path,omitempty"`
 	InputPreset       string            `json:"input_preset,omitempty"`
 	Inputs            map[string]string `json:"inputs,omitempty"`
@@ -77,6 +78,8 @@ type ScheduledJobResponse struct {
 	DeferredReason           string     `json:"deferred_reason,omitempty"`
 	ExecutionMode            string     `json:"execution_mode,omitempty"`
 	CollisionPolicy          string     `json:"collision_policy,omitempty"`
+	KeepAwake                string     `json:"keep_awake,omitempty"`
+	KeepAwakeOnBattery       bool       `json:"keep_awake_on_battery,omitempty"`
 	ConcurrencyMode          string     `json:"concurrency_mode,omitempty"`
 	ParallelRiskAcknowledged bool       `json:"parallel_risk_acknowledged,omitempty"`
 	MaxConcurrency           int        `json:"max_concurrency,omitempty"`
@@ -99,8 +102,11 @@ type ScheduledJobResponse struct {
 	RunOutcome  string `json:"run_outcome"`
 	HasRunIssue bool   `json:"has_run_issue"`
 	LastResult  string `json:"last_result,omitempty"`
-	// pauseProduct is the pause group of a workflow schedule ("relays" or "agentworks").
-	pauseProduct string
+	// Starts is the one plain line the Automations pages print for what this schedule starts ("Runs the workflow ·
+	// <saved setting>" or "Sends a message to <agent>"; see automation_starts_line.go).
+	Starts string `json:"starts,omitempty"`
+	// ChangedBy is "Changed by <name>, <date>" for a Crew automation: the person who last changed it, else who made it.
+	ChangedBy string `json:"changed_by,omitempty"`
 
 	CreatedAt      string `json:"created_at,omitempty"`
 	UpdatedAt      string `json:"updated_at,omitempty"`
@@ -109,6 +115,7 @@ type ScheduledJobResponse struct {
 
 // CreateScheduleRequest is the request body for creating a schedule.
 type CreateScheduleRequest struct {
+	TargetWorkflowID         string                 `json:"target_workflow_id,omitempty"`
 	InputPreset              string                 `json:"input_preset,omitempty"`
 	Inputs                   map[string]string      `json:"inputs,omitempty"`
 	EntityType               string                 `json:"entity_type,omitempty"`
@@ -133,6 +140,8 @@ type CreateScheduleRequest struct {
 	ResumePrevious           *bool                  `json:"resume_previous,omitempty"` // Coding-agent CLI only: explicit true resumes latest prior thread; nil/false starts fresh
 	ExecutionMode            string                 `json:"execution_mode,omitempty"`
 	CollisionPolicy          string                 `json:"collision_policy,omitempty"`
+	KeepAwake                string                 `json:"keep_awake,omitempty"`
+	KeepAwakeOnBattery       bool                   `json:"keep_awake_on_battery,omitempty"`
 	ConcurrencyMode          string                 `json:"concurrency_mode,omitempty"`
 	ParallelRiskAcknowledged bool                   `json:"parallel_risk_acknowledged,omitempty"`
 	MaxStartDelayMinutes     int                    `json:"max_start_delay_minutes,omitempty"`
@@ -149,6 +158,7 @@ type CreateScheduleRequest struct {
 
 // UpdateScheduleRequest is the request body for updating a schedule.
 type UpdateScheduleRequest struct {
+	TargetWorkflowID         *string                `json:"target_workflow_id,omitempty"`
 	InputPreset              *string                `json:"input_preset"`
 	Inputs                   map[string]string      `json:"inputs"`
 	Name                     string                 `json:"name,omitempty"`
@@ -169,6 +179,8 @@ type UpdateScheduleRequest struct {
 	ResumePrevious           *bool                  `json:"resume_previous,omitempty"` // Coding-agent CLI only: explicit true resumes latest prior thread; nil/false starts fresh
 	ExecutionMode            *string                `json:"execution_mode,omitempty"`
 	CollisionPolicy          *string                `json:"collision_policy,omitempty"`
+	KeepAwake                *string                `json:"keep_awake,omitempty"`
+	KeepAwakeOnBattery       *bool                  `json:"keep_awake_on_battery,omitempty"`
 	ConcurrencyMode          *string                `json:"concurrency_mode,omitempty"`
 	ParallelRiskAcknowledged *bool                  `json:"parallel_risk_acknowledged,omitempty"`
 	RunDestination           *string                `json:"run_destination,omitempty"`
@@ -191,17 +203,13 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 		collisionPolicy = ""
 		concurrencyMode = ""
 	}
-	pauseProduct := "agentworks"
-	if manifest != nil && manifest.Kind == "relay" {
-		pauseProduct = "relays"
-	}
 	destination, chatKey, chatID, destinations := goalScheduleDestinationView(manifest, workspacePath, sched)
 	return ScheduledJobResponse{
 		RunDestination:  destination,
 		ChatKey:         chatKey,
 		ChatID:          chatID,
 		RunDestinations: destinations,
-		pauseProduct:    pauseProduct,
+		Starts:          workflowScheduleStartsLine(manifest, sched),
 		Kind:            normalizeTriggerKind(sched.Kind),
 		StepID:          workflowWebhookDTO(sched).StepID,
 		ID:              sched.ID,
@@ -235,6 +243,8 @@ func buildJobResponse(workspacePath string, manifest *WorkflowManifest, sched Wo
 		ConsecutiveFailures:      state.ConsecutiveFailures,
 		ExecutionMode:            sched.ExecutionMode,
 		CollisionPolicy:          collisionPolicy,
+		KeepAwake:                sched.KeepAwake,
+		KeepAwakeOnBattery:       sched.KeepAwakeOnBattery,
 		ConcurrencyMode:          concurrencyMode,
 		ParallelRiskAcknowledged: sched.ParallelRiskAcknowledged,
 		MaxConcurrency:           maxConcurrency,
@@ -356,6 +366,24 @@ func replaceScheduleDependencyIDs(schedule *WorkflowSchedule, ids []string, lega
 	}
 }
 
+func applyScheduleDependencyUpdate(schedule *WorkflowSchedule, req UpdateScheduleRequest) {
+	if req.AfterScheduleID != nil {
+		schedule.AfterScheduleID = strings.TrimSpace(*req.AfterScheduleID)
+	}
+	if req.AfterScheduleIDs != nil {
+		replaceScheduleDependencyIDs(schedule, req.AfterScheduleIDs, req.AfterScheduleID != nil)
+	}
+	if req.AfterTerminalStatus != nil {
+		schedule.AfterTerminalStatus = strings.TrimSpace(*req.AfterTerminalStatus)
+	}
+	if req.AfterDelayMinutes != nil {
+		schedule.AfterDelayMinutes = *req.AfterDelayMinutes
+	}
+	if req.DependencyDeadline != nil {
+		schedule.DependencyDeadline = strings.TrimSpace(*req.DependencyDeadline)
+	}
+}
+
 type badRequestError string
 
 func (e badRequestError) Error() string { return string(e) }
@@ -429,7 +457,7 @@ func (r *workflowMissedStatusResolver) get(workspacePath string, sched WorkflowS
 
 // SchedulerRoutes registers the scheduler API routes.
 func SchedulerRoutes(router *mux.Router, svc *SchedulerService) {
-	apiRouter := router.PathPrefix("/api/scheduler").Subrouter()
+	apiRouter := router.PathPrefix("/scheduler").Subrouter()
 
 	apiRouter.HandleFunc("/config", getSchedulerConfigHandler(svc)).Methods("GET", "OPTIONS")
 	// The global pause stops every schedule on the platform: administrators only (PLAT-504).
@@ -623,7 +651,7 @@ func listScheduledJobsHandler(svc *SchedulerService) http.HandlerFunc {
 			allJobs = allJobs[offset:end]
 		}
 
-		// One history read per workspace keeps the list useful without making a
+		// One small SQL aggregate per workspace keeps the list useful without making a
 		// separate request for every schedule. Missing history is not a list error.
 		durationByWorkspace := make(map[string]map[string]scheduleRunDurationAverage)
 		for i := range allJobs {
@@ -633,10 +661,7 @@ func listScheduledJobsHandler(svc *SchedulerService) http.HandlerFunc {
 			}
 			averages, ok := durationByWorkspace[job.WorkspacePath]
 			if !ok {
-				runs, err := ReadScheduleRuns(r.Context(), job.WorkspacePath)
-				if err == nil {
-					averages = recentSuccessfulRunAverages(runs, 10)
-				}
+				averages, _ = readScheduleDurationAverages(r.Context(), job.WorkspacePath, 10)
 				durationByWorkspace[job.WorkspacePath] = averages
 			}
 			if average, found := averages[job.ID]; found {
@@ -685,7 +710,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 				http.Error(w, "product schedules are not available", http.StatusNotFound)
 				return
 			}
-			if len(req.Messages) != 1 || strings.TrimSpace(req.Messages[0]) == "" {
+			if req.TargetWorkflowID == "" && (len(req.Messages) != 1 || strings.TrimSpace(req.Messages[0]) == "") {
 				http.Error(w, "a Work project schedule requires exactly one message", http.StatusBadRequest)
 				return
 			}
@@ -694,8 +719,16 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+			// A new Crew message schedule that names no place gets its own chat, kept across runs (owner, 9 Nov). A
+			// chosen place (run_destination, or chat_id for a tab) is kept; workflow timers have no chat.
+			if crewScheduleDefaultsToOwnChat(req.ProductProfileID, req.ProductProjectID, req.RunDestination, req.ChatID) {
+				destination = runDestinationSetting{Isolated: true}
+			}
 			ownerID := productWorkspaceUserID(r.Context())
 			chatKey, err := projectScheduleChatKey(r.Context(), ownerID, req.ProductProfileID, req.ProductProjectID, req.ChatID)
+			if err == nil && !destination.Isolated && chatKey == "" && isProjectProfileID(req.ProductProfileID) {
+				err = fmt.Errorf("%s", scheduleChooseAgentMessage)
+			}
 			if err == nil && chatKey != "" && destination.Isolated {
 				err = fmt.Errorf("a schedule with its own or a new conversation does not use chat_id; choose chat_id or run_destination %s or %s", runDestinationNew, runDestinationIsolated)
 			}
@@ -713,9 +746,17 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			if len(req.CalendarItems) > 0 {
 				when = &projectactions.When{Timezone: timezone, Dates: crewScheduleDates(req.CalendarItems)}
 			}
+			if after := scheduleWhenAfter(WorkflowSchedule{AfterScheduleID: req.AfterScheduleID, AfterScheduleIDs: req.AfterScheduleIDs, AfterTerminalStatus: req.AfterTerminalStatus, AfterDelayMinutes: req.AfterDelayMinutes, DependencyDeadline: req.DependencyDeadline}); after != nil {
+				if when == nil {
+					when = &projectactions.When{Timezone: timezone}
+				}
+				when.After = after
+			}
 			job, err := svc.api.projectActions.CreateProjectSchedule(r.Context(), ownerID, req.ProductProfileID, req.ProductProjectID, productschedule.Schedule{
 				Name: req.Name, Description: req.Description, Enabled: req.Enabled,
-				CronExpression: req.CronExpression, RunAt: runAt, When: when, Timezone: timezone, Messages: req.Messages, Isolated: destination.Isolated, New: destination.New, ChatKey: chatKey,
+				CronExpression: req.CronExpression, RunAt: runAt, When: when, Timezone: timezone, Messages: req.Messages,
+				WorkflowID: req.TargetWorkflowID, InputPreset: req.InputPreset, Inputs: req.Inputs, RouteSelections: req.RouteSelections, Isolated: destination.Isolated, New: destination.New, ChatKey: chatKey,
+				KeepAwake: strings.TrimSpace(req.KeepAwake), KeepAwakeOnBattery: req.KeepAwakeOnBattery,
 			})
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -727,7 +768,7 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			_ = json.NewEncoder(w).Encode(withScheduleStatusText(r.Context(), svc.api.projectActions.jobResponse(job, runsWorkspace)))
 			return
 		}
-		if req.WorkspacePath != "" && !requireWorkflowOwner(w, r, req.WorkspacePath) {
+		if req.WorkspacePath != "" && !requireWorkflowScheduleOwner(w, r, req.WorkspacePath) {
 			return
 		}
 		messagesForValidation := append([]string(nil), req.Messages...)
@@ -791,6 +832,8 @@ func createScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			ResumePrevious:           req.ResumePrevious,
 			ExecutionMode:            strings.TrimSpace(req.ExecutionMode),
 			CollisionPolicy:          strings.TrimSpace(req.CollisionPolicy),
+			KeepAwake:                strings.TrimSpace(req.KeepAwake),
+			KeepAwakeOnBattery:       req.KeepAwakeOnBattery,
 			ConcurrencyMode:          strings.TrimSpace(req.ConcurrencyMode),
 			ParallelRiskAcknowledged: req.ParallelRiskAcknowledged,
 			MaxStartDelayMinutes:     req.MaxStartDelayMinutes,
@@ -902,7 +945,7 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			return
 		}
 
-		if !requireWorkflowOwner(w, r, result.WorkspacePath) {
+		if !requireWorkflowScheduleOwner(w, r, result.WorkspacePath) {
 			return
 		}
 
@@ -912,6 +955,12 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		idx := result.Index
 
 		sched := &manifest.Schedules[idx]
+		if req.Enabled != nil && *req.Enabled && sched.ScheduleType == "webhook" && (isFunctionTriggerKind(sched.Kind) || !sched.IsInternalTrigger()) {
+			if err := requireServerInteractive("webhook_enable"); err != nil {
+				http.Error(w, err.Error(), http.StatusForbidden)
+				return
+			}
+		}
 
 		if req.Name != "" {
 			sched.Name = req.Name
@@ -1004,6 +1053,12 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		if req.CollisionPolicy != nil {
 			sched.CollisionPolicy = strings.TrimSpace(*req.CollisionPolicy)
 		}
+		if req.KeepAwake != nil {
+			sched.KeepAwake = strings.TrimSpace(*req.KeepAwake)
+		}
+		if req.KeepAwakeOnBattery != nil {
+			sched.KeepAwakeOnBattery = *req.KeepAwakeOnBattery
+		}
 		if req.ConcurrencyMode != nil {
 			sched.ConcurrencyMode = strings.TrimSpace(*req.ConcurrencyMode)
 			if sched.ConcurrencyMode != "parallel" && req.ParallelRiskAcknowledged == nil {
@@ -1016,21 +1071,7 @@ func updateScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		if req.MaxStartDelayMinutes != nil {
 			sched.MaxStartDelayMinutes = *req.MaxStartDelayMinutes
 		}
-		if req.AfterScheduleID != nil {
-			sched.AfterScheduleID = strings.TrimSpace(*req.AfterScheduleID)
-		}
-		if req.AfterScheduleIDs != nil {
-			replaceScheduleDependencyIDs(sched, req.AfterScheduleIDs, req.AfterScheduleID != nil)
-		}
-		if req.AfterTerminalStatus != nil {
-			sched.AfterTerminalStatus = strings.TrimSpace(*req.AfterTerminalStatus)
-		}
-		if req.AfterDelayMinutes != nil {
-			sched.AfterDelayMinutes = *req.AfterDelayMinutes
-		}
-		if req.DependencyDeadline != nil {
-			sched.DependencyDeadline = strings.TrimSpace(*req.DependencyDeadline)
-		}
+		applyScheduleDependencyUpdate(sched, req)
 		if manifest.Kind != "relay" {
 			validGroupNames, err := validateScheduleGroupNamesForWorkspace(r.Context(), workspacePath, sched.GroupNames)
 			if err != nil {
@@ -1094,7 +1135,7 @@ func deleteScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 			return
 		}
 
-		if !requireWorkflowOwner(w, r, result.WorkspacePath) {
+		if !requireWorkflowScheduleOwner(w, r, result.WorkspacePath) {
 			return
 		}
 
@@ -1125,7 +1166,7 @@ func enableScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 
 		refused := false
 		result, err := setScheduleEnabled(r.Context(), id, true, func(workspacePath string) bool {
-			refused = !requireWorkflowOwner(w, r, workspacePath)
+			refused = !requireWorkflowScheduleOwner(w, r, workspacePath)
 			return !refused
 		}, nil)
 		if refused {
@@ -1169,7 +1210,7 @@ func disableScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 		refused := false
 		var state ScheduleRuntimeState
 		result, err := setScheduleEnabled(r.Context(), id, false, func(workspacePath string) bool {
-			refused = !requireWorkflowOwner(w, r, workspacePath)
+			refused = !requireWorkflowScheduleOwner(w, r, workspacePath)
 			return !refused
 		}, func(workspacePath string) {
 			if found, findErr := findScheduleByIDAny(r.Context(), id); findErr == nil {
@@ -1292,7 +1333,7 @@ func stopScheduledJobHandler(svc *SchedulerService) http.HandlerFunc {
 
 		// Update the latest workflow run entry in the same resolved scope.
 		if result.WorkspacePath != "" {
-			runs, err := ReadScheduleRuns(r.Context(), result.WorkspacePath)
+			runs, err := readScheduleRunStates(r.Context(), result.WorkspacePath, id, true)
 			if err == nil && len(runs) > 0 {
 				for i := range runs {
 					if runs[i].ScheduleID == id && runs[i].Status == "running" {
@@ -1470,7 +1511,7 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 	case "enable", "disable":
 		updated, err := ps.SetEnabled(ctx, userID, id, action == "enable")
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeScheduleSaveError(w, err)
 			return true
 		}
 		respond(updated)
@@ -1556,6 +1597,11 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 			}
 			requestedChatKey = &key
 		}
+		// Clearing the agent without choosing its own chat would leave the schedule with no place to run (#4046).
+		if requestedChatKey != nil && *requestedChatKey == "" && (requestedDestination == nil || !requestedDestination.Isolated) && isProjectProfileID(job.Profile.ID) {
+			http.Error(w, scheduleChooseAgentMessage, http.StatusBadRequest)
+			return true
+		}
 		runAt, runAtErr := oneTimeRunAt(map[string]interface{}{"run_at": req.RunAt}, time.Now())
 		if runAtErr != nil {
 			http.Error(w, runAtErr.Error(), http.StatusBadRequest)
@@ -1568,12 +1614,35 @@ func handleProductScheduleJob(w http.ResponseWriter, r *http.Request, svc *Sched
 			}
 		}
 		updated, err := ps.UpdateProjectSchedule(ctx, userID, id, func(schedule *productschedule.Schedule) {
+			if req.TargetWorkflowID != nil {
+				schedule.WorkflowID = *req.TargetWorkflowID
+				if schedule.WorkflowID == "" {
+					schedule.InputPreset, schedule.Inputs, schedule.RouteSelections = "", nil, nil
+				}
+			}
+			if req.InputPreset != nil {
+				schedule.InputPreset = *req.InputPreset
+			}
+			if req.Inputs != nil {
+				schedule.Inputs = req.Inputs
+			}
+			if req.RouteSelections != nil {
+				schedule.RouteSelections = req.RouteSelections
+			}
+			if req.KeepAwake != nil {
+				schedule.KeepAwake = strings.TrimSpace(*req.KeepAwake)
+			}
+			if req.KeepAwakeOnBattery != nil {
+				schedule.KeepAwakeOnBattery = *req.KeepAwakeOnBattery
+			}
+
 			if requestedChatKey != nil {
 				schedule.ChatKey = *requestedChatKey
 				if *requestedChatKey != "" {
 					schedule.Isolated, schedule.New = false, false
 				}
 			}
+			updateCrewScheduleDependencies(schedule, req)
 			if req.Name != "" {
 				schedule.Name = req.Name
 			}

@@ -116,6 +116,10 @@ func AutomaticDeliveryReceipt(transport string) bool {
 
 func MessageBlock(m AgentLiveMessage, attachmentID string, transport string) string {
 	var b strings.Builder
+	if m.TeamInstructions != "" {
+		b.WriteString(m.TeamInstructions)
+		b.WriteString("\n\n")
+	}
 	if network := sanitizeAgentMessageToken(m.Network); network != "" {
 		// From another network this chat joined: say so before the sender, every time.
 		fmt.Fprintf(&b, "[network %s, another server; a reply goes back there] ", network)

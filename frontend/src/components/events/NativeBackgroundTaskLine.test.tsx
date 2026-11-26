@@ -1,0 +1,75 @@
+import { expect, it } from 'vitest'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { backgroundTaskLine, NativeBackgroundTaskLine } from './NativeBackgroundTaskLine'
+import { coalesceNativeHelperActivity } from '../../utils/nativeHelperActivity'
+import { buildTranscriptItems } from '../../utils/terminalEventTranscript'
+import type { PollingEvent } from '../../services/api-types'
+
+it('formats reported running/finished facts, with no invented command usage', () => {
+  const start = '2026-11-13T10:00:00Z'
+  const record = { work_id: 'a', kind: 'helper', state: 'started', started_at: start, tokens: 18400 }
+  expect(backgroundTaskLine(record, Date.parse(start) + 134000)).toBe('Background agent running… · 2m 14s · 18.4k tokens')
+  const done = { ...record, state: 'finished', ended_at: '2026-11-13T10:03:02Z', tokens: 24100 }
+  expect(backgroundTaskLine(done, Date.parse(start) + 999999)).toBe('Background agent finished · 3m 02s · 24.1k tokens')
+  expect(backgroundTaskLine({ ...record, kind: 'background_command', command_label: 'deploy.sh verify', tokens: undefined }, Date.parse(start) + 1000)).toBe('Running a command in the background · 1s')
+  const command = { ...record, kind: 'background_command', command_label: 'cd /workspace/project && npm run check', name: '/workspace/project' }
+  expect(backgroundTaskLine(command, Date.parse(start) + 1000)).not.toContain('/workspace')
+  // Owner, 20 Nov: the raw command is never on the line; Claude's own short description is.
+  expect(backgroundTaskLine(command, Date.parse(start) + 1000)).not.toContain('npm run check')
+  const claude = { ...command, tokens: undefined, provider: 'claude-code', origin: 'sdk_helper', name: 'Commit the changes' }
+  expect(backgroundTaskLine(claude, Date.parse(start) + 1000)).toBe('Running in the background: Commit the changes · 1s')
+  expect(backgroundTaskLine({ ...claude, state: 'finished', ended_at: '2026-11-13T10:01:27Z' }, Date.now())).toBe('Finished in the background: Commit the changes · 1m 27s')
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={done} />)).not.toContain('<button')
+})
+
+it('keeps one server-owned row per task run across live updates and replay', () => {
+  const event = (id: string, work: string, state: string, tokens?: number) => ({ id, session_id: 'task-chat', timestamp: '2026-11-13T10:00:00Z', type: 'coding_agent_native_activity', data: { data: { record: { work_id: work, kind: 'helper', state, tokens } } } }) as unknown as PollingEvent
+  const raw = [event('a1', 'a-run1', 'started'), event('b1', 'b-run1', 'started', 500), event('a2', 'a-run1', 'started', 18400), event('a3', 'a-run1', 'finished', 24100), event('a4', 'a-run2', 'started')]
+  const rows = coalesceNativeHelperActivity(raw)
+  expect(rows).toHaveLength(3)
+  expect(buildTranscriptItems(rows)).toHaveLength(3)
+  const rawDiagnostic = { id: 'raw-tool', type: 'coding_agent_native_activity', data: { data: { record: { kind: 'tool', state: 'completed' } } } } as unknown as PollingEvent
+  expect(buildTranscriptItems([rawDiagnostic])).toHaveLength(0)
+  expect(rows[0].id).toBe('a1')
+  expect(coalesceNativeHelperActivity(JSON.parse(JSON.stringify(raw)))).toEqual(rows)
+})
+
+it('shows typed long foreground helpers but keeps short ones as ordinary steps', () => {
+  const start = '2026-11-14T10:00:00Z', at = Date.parse(start)
+  const helper = { work_id: 'explore', kind: 'helper', state: 'started', helper_type: 'Explore', helper_description: 'Find routing code', helper_mode: 'foreground', started_at: start }
+  expect(backgroundTaskLine(helper, at + 2000)).toBe('')
+  expect(backgroundTaskLine(helper, at + 4000)).toBe('Explore · Find routing code · 4s')
+  const short = { ...helper, state: 'finished', ended_at: '2026-11-14T10:00:02Z' }
+  expect(backgroundTaskLine(short, at + 90000)).toBe('')
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={short} />)).toBe('')
+  const async = { ...helper, helper_mode: 'async', current_step: 'Grepping coding.go', tokens: 154200 }
+  expect(backgroundTaskLine(async, at + 288000)).toBe('Explore · Grepping coding.go · 4m 48s · 154.2k tokens')
+  expect(backgroundTaskLine({ ...async, tokens: undefined }, at + 1000)).not.toContain('tokens')
+})
+
+it('shows only reported outcomes and omits duration when native times are zero (PLAT-746-995)', () => {
+  const record = { kind: 'background_command', command_label: 'npm run check', started_at: '0001-01-01T00:00:00Z', ended_at: '0001-01-01T00:00:00Z' }
+  for (const state of ['finished', 'failed', 'stopped', 'interrupted']) {
+    const text = backgroundTaskLine({ ...record, state }, Date.now())
+    expect(text).toBe({ finished: 'A background command finished', failed: "A background command didn't finish", stopped: 'A background command was stopped', interrupted: 'A background command was interrupted' }[state])
+    expect(text).not.toContain('restart')
+  }
+})
+
+it('makes a Claude subagent row open its conversation, and nothing else (#3132)', () => {
+  const helper = { work_id: 'h', kind: 'helper', provider: 'claude-code', tool_id: 'toolu_1', helper_type: 'Explore', state: 'finished', started_at: '2026-11-13T10:00:00Z', ended_at: '2026-11-13T10:00:09Z' }
+  const clickable = renderToStaticMarkup(<NativeBackgroundTaskLine record={helper} sessionId="s1" />)
+  expect(clickable).toContain('<button')
+  expect(clickable).toContain('Open its conversation')
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={helper} />)).not.toContain('<button')
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={{ ...helper, provider: 'codex-cli' }} sessionId="s1" />)).not.toContain('<button')
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={{ ...helper, tool_id: '' }} sessionId="s1" />)).not.toContain('<button')
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={{ ...helper, kind: 'background_command' }} sessionId="s1" />)).not.toContain('<button')
+})
+
+// Owner, 26 Nov: a running background command shows once, in the line above the message box; the chat line comes when it ends.
+it('shows no chat line for a running background command, only once it ends', () => {
+  const command = { work_id: 'c', kind: 'background_command', provider: 'claude-code', origin: 'sdk_helper', name: 'Wait for the re-reviews', started_at: '2026-11-26T03:00:00Z' }
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={{ ...command, state: 'started' }} />)).toBe('')
+  expect(renderToStaticMarkup(<NativeBackgroundTaskLine record={{ ...command, state: 'finished', ended_at: '2026-11-26T03:01:07Z' }} />)).toContain('Finished in the background: Wait for the re-reviews')
+})

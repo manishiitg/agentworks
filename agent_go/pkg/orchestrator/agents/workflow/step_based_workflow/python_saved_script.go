@@ -27,21 +27,21 @@ func pythonScriptStack(ctx context.Context, step PlanStepInterface) []string {
 func (hcpo *StepBasedWorkflowOrchestrator) preparePythonScriptCall(ctx context.Context, parent PlanStepInterface, args map[string]interface{}) (*CrewScriptConfiguration, []string, error) {
 	id, _ := args["id"].(string)
 	if strings.TrimSpace(id) == "" {
-		return nil, nil, fmt.Errorf("Choose a saved script from this Crew by its ID.")
+		return nil, nil, fmt.Errorf("Choose a saved script from this project by its ID.")
 	}
 	if _, ok := args["inputs"].(map[string]interface{}); !ok {
 		return nil, nil, fmt.Errorf("Script inputs must be a named object matching its saved input definitions.")
 	}
 	opts := hcpo.executionOptions
 	if opts == nil || opts.CrewResources == nil || opts.CrewResources.Scripts == nil {
-		return nil, nil, fmt.Errorf("Saved scripts are unavailable; run this automation from its owning Crew.")
+		return nil, nil, fmt.Errorf("Saved scripts are unavailable; run this automation from its owning project.")
 	}
 	child, err := opts.CrewResources.Scripts.ResolveCrewScript(ctx, hcpo.GetWorkspacePath(), id)
 	if err != nil {
 		return nil, nil, err
 	}
 	if child.Definition.ID == "" || strings.TrimSpace(string(child.Files["main.py"])) == "" {
-		return nil, nil, fmt.Errorf("Save this script's main.py in its Crew before running it.")
+		return nil, nil, fmt.Errorf("Save this script's main.py in its project before running it.")
 	}
 	// A top may pass its complete input object. Forward only this child's
 	// declared names; extra parent names are harmless, while a typo declared
@@ -75,7 +75,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonScriptCall(ctx context.C
 		if childNames[name] {
 			inputs[name] = value
 		} else if !parentNames[name] {
-			return nil, nil, fmt.Errorf("Input %q is not declared by this script or its caller. Fix its name or declare the input in the Crew chat.", name)
+			return nil, nil, fmt.Errorf("Input %q is not declared by this script or its caller. Fix its name or declare the input in the project chat.", name)
 		}
 	}
 	// Normalize this invocation's private envelope, not the caller's map.

@@ -1,5 +1,6 @@
+import { LoadingIndicator } from '../ui/LoadingIndicator'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronDown, Loader2, MessageSquare, MessageSquareText, Pencil, PinOff, X } from 'lucide-react'
+import { ChevronDown, MessageSquare, Pencil, PinOff, X } from 'lucide-react'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
 import { readableGeneratedChatTitle } from '../../utils/generatedChatTitle'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
@@ -68,7 +69,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
   const rawTooltip = titleOverride || tab.name || displayName
   const nameTooltip = readableGeneratedChatTitle(rawTooltip, tab.metadata?.isScheduledRun) || rawTooltip
   const tooltip = ownerName ? `${nameTooltip} · ${yourTab ? 'Your tab' : 'Owned by'} · ${ownerName}` : nameTooltip
-  const workspacePickable = !!productSurface && ['agentworks', 'work', 'code'].includes(productSurface)
+  const workspacePickable = !!productSurface && ['agentworks', 'work'].includes(productSurface)
   const workspaceTrigger = useRef<HTMLButtonElement | null>(null)
   const pickerOpen = useProductNavigationToolbarStore(state => state.pickerOpen)
   const registerWorkspaceTrigger = useCallback((node: HTMLButtonElement | null) => {
@@ -127,6 +128,8 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
       aria-label={tooltip}
       tabIndex={0}
       data-tab-active={isActive ? 'true' : undefined}
+      data-theme-agent-state={menuState || 'quiet'}
+      data-theme-agent-selected={isActive ? 'true' : 'false'}
       className={`group relative flex min-w-0 cursor-pointer items-center font-medium outline-none transition-colors ${agent ? 'gap-1.5 rounded-lg px-2.5 py-1 text-[13px]' : `gap-1.5 border-b-2 border-transparent px-2 ${productSurface ? 'rounded-lg py-1.5 text-sm' : 'rounded-md py-1 text-xs'}`} ${
         // A soft background identifies the selected tab without changing its height.
         isActive
@@ -145,7 +148,7 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
         {!isBlank && status === 'ready' && onSetPurpose && <AgentPurposeButton name={displayName} purpose={purpose} onSetPurpose={onSetPurpose} />}
         {/* No dot for an idle chat (owner, 2 Nov): only Working, Needs you, Completed and Failed show; red means Failed only. */}
         {!isBlank && status !== 'ready' && (status === 'busy'
-          ? <Loader2 className="h-3 w-3 animate-spin text-[hsl(var(--info))]" aria-label={dot.label} role="img"><title>{dot.label}</title></Loader2>
+          ? <LoadingIndicator className="h-3 w-3 text-info" aria-label={dot.label} role="img" />
           : status === 'waiting'
             // Waiting for the person (a question or an approval): a ring keeps pulsing so a stuck chat stands out.
             ? <span className="relative grid h-3 w-3 place-items-center" title={dot.label} aria-label={dot.label} role="img">
@@ -179,12 +182,11 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
           >
             {displayName}
           </span></AgentHoverCard>
-          <AgentSetupMark setup={agent?.info?.setup} />
+          <AgentSetupMark setup={agent?.info?.setup} chosen={agent?.info?.sharedChosen} />
           {/* Another person's agent shows no mark (owner, 6 Nov): their name is the strip's group label. */}
           {ownerName && !yourTab && <span className="sr-only">Only {ownerName} types here</span>}
         </>
       )}
-      <ShowChatButton tabId={tab.tabId} />
       {productSurface && <>
         {workspacePickable && <button ref={registerWorkspaceTrigger} type="button" data-workspace-setup-trigger aria-label="Switch workspace" aria-haspopup="menu" aria-expanded={pickerOpen}
           title="Switch workspace or product"
@@ -252,18 +254,3 @@ export const ChatTabPill = React.memo<ChatTabPillProps>(({
 })
 
 ChatTabPill.displayName = 'ChatTabPill'
-
-
-// While a tab shows its terminal, one click shows the chat again (the terminal keeps running).
-function ShowChatButton({ tabId }: { tabId: string }) {
-  const terminalView = useChatStore(state => state.chatTabs[tabId]?.viewMode === 'terminal')
-  if (!terminalView) return null
-  return (
-    <button type="button" aria-label="Show chat" title="Show chat"
-      onClick={event => { event.stopPropagation(); useChatStore.getState().setTabViewMode(tabId, 'formatted') }}
-      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation() }}
-      className="grid h-5 w-5 shrink-0 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <MessageSquareText aria-hidden="true" className="h-3 w-3" />
-    </button>
-  )
-}

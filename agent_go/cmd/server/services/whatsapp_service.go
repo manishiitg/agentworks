@@ -10,6 +10,7 @@ import (
 	"log"
 	"math/big"
 	"mime"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -1230,11 +1231,11 @@ func formatWhatsAppSlugChoices(routing WhatsAppRouting) string {
 	}
 	sort.Strings(slugs)
 	if len(slugs) == 0 {
-		return "No WhatsApp destinations are configured yet. Use @list to see available workflows and Crews."
+		return "No WhatsApp destinations are configured yet. Use @list to see available workflows and projects."
 	}
 
 	var sb strings.Builder
-	sb.WriteString("Choose a workflow or Crew for this chat:\n")
+	sb.WriteString("Choose a workflow or project for this chat:\n")
 	for i, slug := range slugs {
 		fmt.Fprintf(&sb, "%d. @%s\n", i+1, slug)
 	}
@@ -1324,7 +1325,7 @@ func (w *WhatsAppService) handleWorkflowCommand(ctx context.Context, text, chatJ
 	case "list", "workflows":
 		candidates, err := w.discoverDestinationCandidates(ctx, owner)
 		if err != nil {
-			w.sendWorkflowCommandReply(ctx, chatJID, fmt.Sprintf("Couldn't list workflows and Crews: %v", err))
+			w.sendWorkflowCommandReply(ctx, chatJID, fmt.Sprintf("Couldn't list workflows and projects: %v", err))
 			return true
 		}
 		w.sendWorkflowCommandReply(ctx, chatJID, formatWhatsAppDestinationList(candidates))
@@ -1401,7 +1402,7 @@ func (w *WhatsAppService) handleWorkflowCommand(ctx context.Context, text, chatJ
 		active := w.activeSlug(chatJID)
 		w.clearActiveSlug(chatJID)
 		if active != "" {
-			w.sendWorkflowCommandReply(ctx, chatJID, "Destination off. Send a new @slug to choose another workflow or Crew; use @list to see the options.")
+			w.sendWorkflowCommandReply(ctx, chatJID, "Destination off. Send a new @slug to choose another workflow or project; use @list to see the options.")
 		} else {
 			w.sendWorkflowCommandReply(ctx, chatJID, "No active destination. Use @list to choose one.")
 		}
@@ -1699,11 +1700,11 @@ func (w *WhatsAppService) discoverDestinationCandidates(ctx context.Context, own
 
 func formatWhatsAppDestinationList(candidates []whatsappDestinationCandidate) string {
 	if len(candidates) == 0 {
-		return "No workflows or Crews found."
+		return "No workflows or projects found."
 	}
 	const maxList = 25
 	var sb strings.Builder
-	sb.WriteString("Goals, Crews and Flows:\n")
+	sb.WriteString("Goals, projects and Flows:\n")
 	othersHeader := false
 	for i, c := range candidates {
 		if i >= maxList {
@@ -1789,7 +1790,7 @@ func (c whatsappDestinationCandidate) kindLabel() string {
 	case c.Kind != "crew":
 		return "Workflow"
 	}
-	return "Crew"
+	return "Project"
 }
 
 func (c whatsappDestinationCandidate) autoRouteKey() string {
@@ -2617,7 +2618,7 @@ func (w *WhatsAppService) HandleMessage(ctx context.Context, msg *whatsappbot.Me
 		if _, err := w.SendThreadMessage(ctx, ThreadID{Platform: "whatsapp", ChannelID: chatJID}, reply); err != nil {
 			log.Printf("[WHATSAPP] Failed to send route choices for chat=%s user=%s: %v", chatJID, owner.UserID, err)
 		}
-		log.Printf("[WHATSAPP] Unrouted message held for chat=%s user=%s; offered workflow/Crew slug choices", chatJID, owner.UserID)
+		log.Printf("[WHATSAPP] Unrouted message held for chat=%s user=%s; offered workflow/project slug choices", chatJID, owner.UserID)
 		return
 	}
 
@@ -3170,4 +3171,30 @@ func splitLongText(s string, maxLen int) []string {
 		out = append(out, s)
 	}
 	return out
+}
+
+// A removal preview is read-only, including when the phone service is offline.
+func (w *WhatsAppService) routingOffline(ctx context.Context) (WhatsAppRouting, error) {
+	if _, err := os.Stat(w.dbPath); errors.Is(err, os.ErrNotExist) {
+		return WhatsAppRouting{}, nil
+	} else if err != nil {
+		return nil, err
+	}
+	uri := url.URL{Scheme: "file", Path: w.dbPath, RawQuery: "mode=ro"}
+	db, err := sql.Open("sqlite", uri.String())
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	var raw string
+	if err = db.QueryRowContext(ctx, `SELECT value FROM whatsapp_meta WHERE key = ?`, metaKeyRouting).Scan(&raw); errors.Is(err, sql.ErrNoRows) {
+		return WhatsAppRouting{}, nil
+	} else if err != nil {
+		return nil, err
+	}
+	var routes WhatsAppRouting
+	if err = json.Unmarshal([]byte(raw), &routes); err != nil {
+		return nil, err
+	}
+	return routes, nil
 }

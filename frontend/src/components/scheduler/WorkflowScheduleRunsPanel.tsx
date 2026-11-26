@@ -13,15 +13,14 @@ import { ScheduleGroupsView } from './scheduleRuns/ScheduleGroupsView'
 import { ScheduleListView } from './scheduleRuns/ScheduleListView'
 import { ScheduleTableView } from './scheduleRuns/ScheduleTableView'
 import WorkflowAPITriggersView from '../workflow/WorkflowAPITriggersView'
-import type { ProductTriggerScope } from '../../api/productWebhooks'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { TriggerDeliveryHistoryPanel } from '../automation/TriggerDeliveryHistoryPanel'
 import { WorkspaceViewHeader } from '../workflow/WorkspaceViewHeader'
 import { useCanPauseSchedules } from '../../hooks/useCanPauseSchedules'
 
-const ProductAPITriggersView = lazy(() => import('../workflow/ProductAPITriggersView'))
 
 interface WorkflowScheduleRunsPanelProps {
+  initialSearch?: string
   onClose: () => void
   embedded?: boolean
   active?: boolean
@@ -31,7 +30,6 @@ interface WorkflowScheduleRunsPanelProps {
   productProfileId?: string
   canManage?: boolean
   scopeNoun?: 'automation' | 'project'
-  productTriggerScope?: ProductTriggerScope
   botContent?: React.ReactNode
   showAutomationTabs?: boolean
   /** Embedded hosts with their own header (the Automation hub) hide this panel's header row. */
@@ -42,9 +40,10 @@ interface WorkflowScheduleRunsPanelProps {
   onStatus?: (status: ScheduleStatusSnapshot) => void
 }
 
-const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, canManage, scopeNoun = 'automation', productTriggerScope, botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus }) => {
+const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ initialSearch, onClose, onJobsLoaded, workflowScope, embedded = false, active = true, entityType = 'workflow', productProfileId, canManage, scopeNoun = 'automation', botContent, showAutomationTabs = true, hideHeader = false, refreshToken = 0, onStatus }) => {
   const panel = useScheduleRunsData({ onClose, onJobsLoaded, workflowScope, entityType, productProfileId, canManage, active })
-  const { loadJobs, summary, workflowScheduleSummary, isLoading, isSchedulerPaused, isGloballyPaused, pauseProductLabel, isWorkflowScoped } = panel
+  useEffect(() => { if (initialSearch !== undefined) panel.setSearchQuery(initialSearch) }, [initialSearch, panel.setSearchQuery])
+  const { loadJobs, summary, workflowScheduleSummary, isLoading, isSchedulerPaused, isWorkflowScoped } = panel
   useEffect(() => {
     if (refreshToken) void loadJobs(true)
   }, [refreshToken, loadJobs])
@@ -53,9 +52,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
   }, [onStatus, summary, workflowScheduleSummary, isLoading, isSchedulerPaused, isWorkflowScoped])
   const workspaceViewTarget = useWorkflowStore(state => state.workspaceViewTarget)
   const hasWorkflowWebhooks = entityType === 'workflow' && Boolean(workflowScope?.workspacePath)
-  const hasProductWebhooks = entityType === 'product' && Boolean(productTriggerScope)
-
-  const hasWebhooks = hasWorkflowWebhooks || hasProductWebhooks
+  const hasWebhooks = hasWorkflowWebhooks
   const [automationSection, setAutomationSection] = useState<'schedules' | 'webhooks' | 'bots'>(() =>
     hasWebhooks && workspaceViewTarget?.view === 'schedules' && workspaceViewTarget.target === 'webhooks'
       ? 'webhooks'
@@ -89,7 +86,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
   const compact = embedded && !isWorkflowScoped
 
   const views = [
-    { key: 'by-workflow' as const, label: entityType === 'product' ? 'Crews' : 'Workflows' },
+    { key: 'by-workflow' as const, label: entityType === 'product' ? 'Projects' : 'Workflows' },
     { key: 'schedules' as const, label: 'List' },
     { key: 'calendar' as const, label: 'Calendar' },
   ]
@@ -127,7 +124,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
             {hasWebhooks && <button type="button" role="tab" aria-selected={automationSection === 'webhooks'}
               onClick={() => setAutomationSection('webhooks')}
               className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${automationSection === 'webhooks' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'}`}>
-              <Webhook className="h-3.5 w-3.5" />{hasProductWebhooks ? 'Triggers' : 'Webhooks'}
+              <Webhook className="h-3.5 w-3.5" />Webhooks
             </button>}
             {botContent && <button type="button" role="tab" aria-selected={automationSection === 'bots'}
               onClick={() => setAutomationSection('bots')}
@@ -141,14 +138,6 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
           <div className="flex min-h-0 flex-1 flex-col">
             {!hideHeader && <WorkspaceViewHeader icon={Bot} title="Bots" />}
             <div className="min-h-0 flex-1 overflow-y-auto">{botContent}</div>
-          </div>
-        ) : automationSection === 'webhooks' && hasProductWebhooks && productTriggerScope ? (
-          <div className="min-h-0 flex-1">
-            <ProductAPITriggersView
-              scope={productTriggerScope}
-              workspacePath={workflowScope?.workspacePath || undefined}
-              deliveryHistory={workflowScope?.workspacePath ? <TriggerDeliveryHistoryPanel workspacePath={workflowScope.workspacePath} entityType="product" /> : undefined}
-            />
           </div>
         ) : automationSection === 'webhooks' && workflowScope?.workspacePath ? (
           <div className="min-h-0 flex-1">
@@ -168,19 +157,19 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
           {isSchedulerPaused && !isLoading && !error && (
-            <div role="status" aria-label={isGloballyPaused ? 'All schedules paused' : `${pauseProductLabel} schedules paused`} className="border-b border-border bg-muted/30 px-4 py-2">
+            <div role="status" aria-label="All schedules paused" className="border-b border-border bg-muted/30 px-4 py-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                   <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
                     <Pause className="h-3.5 w-3.5 shrink-0" />
-                    {isGloballyPaused ? 'All schedules are paused.' : `${pauseProductLabel} schedules are paused.`}
+                    All schedules are paused.
                   </span>
-                  <span className="text-muted-foreground">{isGloballyPaused ? "Timed runs of every product won't start until you resume them." : "Timed runs won't start until you resume them. Other products keep running."}</span>
+                  <span className="text-muted-foreground">Timed runs across the company won't start until you resume them.</span>
                 </div>
                 {!isReadOnlyUser && canPauseSchedules && (
                   <Button variant="outline" size="sm" onClick={() => void handleToggleGlobalPause()} disabled={isUpdatingSchedulerPause}>
                     {isUpdatingSchedulerPause ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-                    {isGloballyPaused ? 'Resume all schedules' : `Resume ${pauseProductLabel} schedules`}
+                    Resume all schedules
                   </Button>
                 )}
               </div>
@@ -222,12 +211,12 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
                       )}
                       {!isWorkflowScoped && (activeView !== 'by-workflow' || selectedWorkflowFilter !== 'all') && (
                         <select
-                          aria-label={entityType === 'product' ? 'Filter by Crew' : 'Filter by automation'}
+                          aria-label={entityType === 'product' ? 'Filter by project' : 'Filter by automation'}
                           value={selectedWorkflowFilter}
                           onChange={(event) => setSelectedWorkflowFilter(event.target.value)}
                           className="min-w-40 max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                         >
-                          <option value="all">{entityType === 'product' ? 'All Crews' : 'All automations'}</option>
+                          <option value="all">{entityType === 'product' ? 'All projects' : 'All automations'}</option>
                           {workflowOptions.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
                           ))}
@@ -285,7 +274,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
                     }}
                     className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                   >
-                    <ChevronLeft className="h-3.5 w-3.5" /> {entityType === 'product' ? 'All Crews' : 'All workflows'}
+                    <ChevronLeft className="h-3.5 w-3.5" /> {entityType === 'product' ? 'All projects' : 'All workflows'}
                   </button>
                   <span className="truncate text-xs text-muted-foreground">
                     {workflowOptions.find(option => option.value === selectedWorkflowFilter)?.label}
@@ -309,12 +298,12 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
                       </div>
                       {!isWorkflowScoped && (activeView !== 'by-workflow' || selectedWorkflowFilter !== 'all') && (
                         <select
-                          aria-label={entityType === 'product' ? 'Filter by Crew' : 'Filter by automation'}
+                          aria-label={entityType === 'product' ? 'Filter by project' : 'Filter by automation'}
                           value={selectedWorkflowFilter}
                           onChange={(event) => setSelectedWorkflowFilter(event.target.value)}
                           className="min-w-40 max-w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                         >
-                          <option value="all">{entityType === 'product' ? 'All Crews' : 'All automations'}</option>
+                          <option value="all">{entityType === 'product' ? 'All projects' : 'All automations'}</option>
                           {workflowOptions.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
                           ))}
@@ -351,7 +340,7 @@ const WorkflowScheduleRunsPanel: React.FC<WorkflowScheduleRunsPanelProps> = ({ o
             </div>
           )}
           {panelJobs.length > 0 && activeView === 'by-workflow' && workflowGroups.length > 0 && (
-            <ScheduleGroupsView panel={panel} entityLabel={entityType === 'product' ? 'Crew' : 'Automation'} />
+            <ScheduleGroupsView panel={panel} entityLabel={entityType === 'product' ? 'Project' : 'Automation'} />
           )}
           {panelJobs.length > 0 && activeView === 'schedules' && filteredJobs.length === 0 && (
             <div className="flex flex-col items-center justify-center h-40 gap-2 text-sm text-muted-foreground px-6 text-center">

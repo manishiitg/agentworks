@@ -1,0 +1,35 @@
+{
+  "test": "TestSessionLiveInputAtTurnEndReachesChat_Claude_AtCompletion",
+  "summary": "Claude (AtCompletion): live input sent into a Session.Run at its end is answered after the Run returns; the reply arrives as exactly one follow-up canonical completion",
+  "review_criteria": [
+    "delivered_into_run=true: the input was sent while the Run was still active (the race)",
+    "when queued_behind_turn=true the run's answer lacks the live-input word and the follow-up final text is the CLI's reply (the ZEBRA word), not a repeat of the run's answer",
+    "when queued_behind_turn=false the follow-up is answered_by_previous_response with empty final text (no duplicate message)",
+    "exactly one follow-up completion; the input was sent once (delivery sent_to_cli)"
+  ],
+  "output": {
+    "conversation_id": "turnend-6155b63f",
+    "delivered_into_run": true,
+    "followup_after_run_ms": 2805,
+    "followup_answered_previous": false,
+    "followup_completions": 1,
+    "followup_final": "ZEBRA_4cd98471c3f8",
+    "live_input_word": "ZEBRA_4cd98471c3f8",
+    "mode": "AtCompletion",
+    "provider": "Claude",
+    "queued_behind_turn": true,
+    "run_completion_marked": null,
+    "run_stream_chunks": 1,
+    "run_text": "Lighthouses stand as timeless sentinels along treacherous coastlines, guiding maritime vessels safely through darkness and storms. These architectural marvels have served humanity for centuries, their rotating beams cutting through fog and night to warn of dangerous rocks and shallow waters. Built from stone, brick, or steel, lighthouses vary dramatically in design—from towering structures reaching hundreds of feet to modest cottage-like stations. The keepers who maintained these lights performed solitary, essential work, often living isolated lives while ensuring ships' passage. Though modern GPS and electronic navigation have diminished their practical necessity, lighthouses remain culturally significant symbols of safety, hope, and resilience. Many historic lighthouses have been automated or converted into museums and tourist attractions, preserving their stories. Their enduring presence inspires photographers, writers, and visitors worldwide, representing humanity's determination to conquer nature's challenges and provide guidance to those lost at sea.",
+    "send_ack_after_run_end_ms": 3,
+    "send_start_before_run_end": 30
+  },
+  "fingerprint": "9bdfe0e1593ae493",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "9bdfe0e1593ae493",
+    "reviewer": "claude-code",
+    "issues": [],
+    "notes": "Race hit: Send started 30ms before Run returned and its tmux ack landed 37ms after (the Excellence muse shape). Run answered only the lighthouse paragraph; the Claude CLI then answered the live input and the follow-up watch delivered it as exactly one mcpagent_session completion with final ZEBRA_49b035829057, 2.9s after the Run. Same test against pre-fix origin/main: no follow-up completion within 5 minutes (reply lost)."
+  }
+}

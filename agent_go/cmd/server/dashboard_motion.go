@@ -20,7 +20,7 @@ const dashboardMotionTimeout = 10 * time.Minute
 // Export is an authoring execution, like preview. It never grants a Run person
 // shell access or invokes a product run as a side effect of loading a page.
 func validDashboardMotionPath(composition string) bool {
-	return path.Clean(composition) == composition && strings.HasPrefix(composition, "code/motion/") && !strings.ContainsAny(composition, "\\\x00")
+	return path.Clean(composition) == composition && strings.HasPrefix(composition, "motion/") && !strings.ContainsAny(composition, "\\\x00")
 }
 
 func dashboardMotionGuard(claims *UserClaims, target dashboardTarget, composition, id string) (*workspace.FolderGuardConfig, error) {
@@ -29,7 +29,7 @@ func dashboardMotionGuard(claims *UserClaims, target dashboardTarget, compositio
 	guard := &workspace.FolderGuardConfig{Enabled: true, ReadPaths: []string{path.Join(target.Root, composition)}, WritePaths: []string{path.Join(target.Root, output), path.Join(target.Root, cache)}}
 	if grants := dashboardFileGuard(claims); grants != nil {
 		if !grants.Allows(composition, false) || !grants.Allows(output, true) || !grants.Allows(cache, true) {
-			return nil, fmt.Errorf("This connection cannot read the animation and save its export. Use the Crew's chat or a connection with those project folders selected.")
+			return nil, fmt.Errorf("This connection cannot read the animation and save its export. Use the project's chat or a connection with those project folders selected.")
 		}
 		for _, p := range grants.BlockedPaths {
 			guard.BlockedPaths = append(guard.BlockedPaths, path.Join(target.Root, p))
@@ -58,7 +58,7 @@ func (api *StreamingAPI) renderDashboardMotion(parentCtx context.Context, claims
 			return nil, fmt.Errorf("This published dashboard is no longer available. Choose a current dashboard and export again.")
 		}
 	} else if !validDashboardMotionPath(composition) {
-		return nil, fmt.Errorf("Save the animation in a folder under code/motion/ first.")
+		return nil, fmt.Errorf("Save the animation in a folder under motion/ first.")
 	}
 	guard, err := dashboardMotionGuard(claims, target, composition, id)
 	if err != nil {

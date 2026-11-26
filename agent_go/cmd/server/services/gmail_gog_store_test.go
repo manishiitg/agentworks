@@ -244,7 +244,7 @@ func TestOAuthCallbackStoresOnlyInGog(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(bin, "gog"), []byte("#!/bin/sh\nexit "+exit+"\n"), 0755); err != nil {
 			t.Fatal(err)
 		}
-		authURL, err := BeginGmailOAuth("gmail_001", "primary", "http://localhost/callback", false, false, nil)
+		authURL, err := BeginGmailOAuth("", "gmail_001", "primary", "http://localhost/callback", false, false, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

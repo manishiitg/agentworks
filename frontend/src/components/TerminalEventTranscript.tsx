@@ -1,5 +1,14 @@
+import { LoadingIndicator } from './ui/LoadingIndicator'
+import { groupBackgroundShells, endedBackgroundShell, type BackgroundShellGroup } from '../utils/backgroundShellGroups'
+import { NativeBackgroundTaskLine, backgroundTaskLine } from './events/NativeBackgroundTaskLine'
+import { groupTranscriptMessages, type CompactMessageGroup } from '../utils/compactMessageGroups'
+import { BackgroundWakeNotice, isAutomaticContinueNotice } from './chat/BackgroundWakeNotice'
+import { thinkingSummary } from '../utils/thinkingSummary'
+import { useChatDisplayStore } from '../stores/useChatDisplayStore'
 import { ReplyFileChanges } from './chat/ReplyFileChanges'
-import { replyFileChangesByMessage } from '../utils/replyFileChanges'
+import { EditMessageButton, EditResendEditor, MessageEditContext, type MessageEditActions } from './chat/EditResendMessage'
+import { replyFileChangesByMessage, replyPullRequestsByMessage } from '../utils/replyFileChanges'
+import { ReplyLinkedPullRequests } from './chat/ReplyLinkedPullRequests'
 import { TranscriptFind } from './chat/TranscriptFind'
 import { transcriptSearchText } from '../utils/transcriptSearch'
 import { CodingAgentQuestionCard } from './CodingAgentQuestionCard'
@@ -11,19 +20,24 @@ import type { ChatRuntimeActivity } from '../utils/chatRuntimeActivity'
 import React, { memo, createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { prependedIndex, transcriptReadingState, useTranscriptScroll, type TranscriptReadingState } from './useTranscriptScroll'
-import { CheckCircle2, ChevronDown, ChevronRight, CircleDashed, FileText, Mic, Send, Terminal as TerminalIcon, XCircle } from 'lucide-react'
+import { Bot, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, FilePlus, FileText, Globe, Hourglass, ListChecks, Mic, Pencil, Search, Terminal as TerminalIcon, Wrench, XCircle } from 'lucide-react'
+import { describeToolStep, summarizeSteps, type StepDescription, type StepKind } from '../utils/describeToolStep'
 import { isVoiceMessage } from '../voice/voiceMessages'
 import { WorkspaceImage } from './ui/WorkspaceImage'
-import { isImageAttachmentPath } from '../utils/chatMessageContent'
+import { getDisplaySafeUserMessageContent, getUserMessageAttachmentPaths, isImageAttachmentPath, attachmentDisplayName } from '../utils/chatMessageContent'
 import { InspectExecutionButton } from './chat/InspectExecutionButton'
 import { readInspectionTarget } from '../utils/stepInspection'
 import { RunInspectionButton } from './chat/RunInspectionButton'
 import { EventDispatcher } from './events/EventDispatcher'
+import { agentApi } from '../services/api'
+import { PinnedGoalBar } from './events/PinnedGoalBar'
 import { ConversationMarkdownRenderer } from './ui/MarkdownRenderer'
-import { ChatElementDisclosureContext } from './ui/ChatElement'
+import { ChatFilePathText } from './ui/chatFilePathLinks'
+import { ChatElementDisclosureContext, ChatVisualRepairContext, type FixChatVisual } from './ui/ChatElement'
 import { failureHints, normalizeProductChatFailure } from '../platform/chat/productChatFailure'
 import {
   buildTranscriptItems,
+  transcriptServerPosition,
   collapseTurnFailures,
   turnFailureText,
   internalTranscriptMessageTitle,
@@ -35,10 +49,13 @@ import {
   shouldCollapseTranscriptUserMessage,
   transcriptUserMessagePreview,
   type PairedToolCall,
+  type LiveToolOutput,
   selectTerminalEvents,
+  assistantReplyText,
   type TranscriptItem,
 } from '../utils/terminalEventTranscript'
 import { withToolCallVisibility } from '../utils/toolCallVisibility'
+import { SubagentChatPanel } from './events/SubagentChatPanel'
 import { formatDurationCompact } from '../utils/duration'
 import { formatElapsed, turnDoneWord } from './chat/workingWords'
 import { liveUsageSummary, type LiveUsageSummary } from './terminalUsage'
@@ -48,14 +65,17 @@ import type { PollingEvent, TerminalSnapshot } from '../services/api-types'
 import { parseProductInteraction, type ProductInteraction } from '../../shared/session/interactions'
 import { ConversationContinuityNotice, isConversationContinuityNotice } from './ConversationContinuityNotice'
 import { DeliveryFailedResend, DeliveryTick } from './events/system/DeliveryTick'
+import { QueuedInboxStatus, QueuedMessageControls, QueuedMessageNotice } from './chat/QueuedMessageControls'
 import { deliveryTickState } from './events/system/deliveryTickState'
+import { UsageLimitRecoveryNotice } from './chat/UsageLimitRecoveryNotice'
 import { QueuedProviderLabel } from './chat/ProviderChangeNotice'
 import { askAIDisplayText, hasAskAIMessage } from '../utils/askAIMessage'
-import { isChatDeliveryTelemetryEvent, recordChatDeliveryTelemetry } from '../utils/chatDeliveryTelemetry'
+import { isChatDeliveryTelemetryEvent, paintedTelemetryTransport, recordChatDeliveryTelemetry } from '../utils/chatDeliveryTelemetry'
 import { ShowFullContentButton, chatArtifactRef, useChatArtifactText } from './ChatArtifactExpander'
 import { WebSearchToolCallDisplay } from './events/tools/ToolCallSpecialRender/WebSearchToolCallDisplay'
 import { isWebSearchToolCall } from '../utils/webSearchToolCall'
 import { isAgentMessageSendToolCall, parseAgentMessageSend } from '../utils/agentMessageSend'
+import { AgentMessageIdentity } from './AgentMessageIdentity'
 import { AgentInboxMessage, agentInboxMessage } from './AgentInboxMessage'
 
 
@@ -63,7 +83,7 @@ import { AgentInboxMessage, agentInboxMessage } from './AgentInboxMessage'
 // a bigger reading size without coupling the transcript to its zoom control.
 type WorkingStep = Extract<TranscriptItem, { kind: 'tools' | 'thinking' }>
 
-type TranscriptRenderItem = TranscriptItem | {
+type TranscriptRenderItem = TranscriptItem | CompactMessageGroup | BackgroundShellGroup | {
   kind: 'live'
   key: string
   text: string
@@ -80,17 +100,30 @@ function isWorkingStep(item: TranscriptItem): item is WorkingStep {
   return item.kind === 'tools' || (item.kind === 'thinking' && !item.assistantUpdate)
 }
 
-// groupWorkingSteps folds every run of two or more steps into one Working row. The row keeps the
-// key of its first step, so a run that grows while the agent works keeps its open/closed state.
-function groupWorkingSteps(items: TranscriptItem[]): TranscriptRenderItem[] {
+// Chat joins tools across hidden thinking; inspectors retain the complete Working row.
+// Both keep the first step key so a growing run preserves its open/closed state.
+function groupWorkingSteps(items: TranscriptItem[], showThinking?: boolean): TranscriptRenderItem[] {
   const out: TranscriptRenderItem[] = []
   let run: WorkingStep[] = []
   const flush = () => {
-    if (run.length > 1) out.push({ kind: 'working', key: `working:${run[0].key}`, events: run.flatMap(step => step.events), steps: run })
+    if (showThinking !== undefined && run.length) {
+      // Chat keeps one optional tool disclosure across invisible summaries.
+      // Build a new item once, without mutating the recorded batches.
+      const tools = run.filter((step): step is Extract<TranscriptItem, { kind: 'tools' }> => step.kind === 'tools')
+      out.push({ kind: 'tools', key: tools[0].key, events: tools.flatMap(step => step.events), toolCount: tools.reduce((count, step) => count + step.toolCount, 0) })
+    } else if (run.length > 1) out.push({ kind: 'working', key: `working:${run[0].key}`, events: run.flatMap(step => step.events), steps: run })
     else out.push(...run)
     run = []
   }
   for (const item of items) {
+    // Main chat separates optional provider summaries from tools. Execution
+    // inspectors keep their existing complete recorded-event view.
+    if (showThinking !== undefined && item.kind === 'thinking' && !item.assistantUpdate) {
+      if (showThinking) { flush(); out.push(item) }
+      continue
+    }
+    // Hidden thinking is no boundary; visible thinking and message cards are.
+    if (showThinking !== undefined && item.kind === 'tools') { run.push(item); continue }
     if (isWorkingStep(item)) { run.push(item); continue }
     flush()
     out.push(item)
@@ -139,7 +172,7 @@ const TranscriptActivityFooter = ({ context }: { context?: TranscriptHistoryCont
   return <div data-testid="transcript-activity-footer" className="flex min-h-7 min-w-0 items-center gap-2 px-3 py-0.5 text-xs text-muted-foreground">
     {working && <>
       {activity.label === 'running'
-        // The twinkling star is the motion here, so no separate spinner.
+        // WorkingStatus owns the one shared working indicator.
         ? <WorkingStatus className="truncate" startedAt={context?.turnStartedAt} lastOutputAt={context?.lastOutputAt} phase={context?.turnPhase} />
         : <>
           <AgentRuntimeActivityIndicator state={activity.state} label={activity.label} />
@@ -204,11 +237,7 @@ function transcriptEventPayload(event: PollingEvent): Record<string, unknown> {
 
 function assistantResponseText(event: PollingEvent): string {
   if (!AGENT_RESPONSE_EVENT_TYPES.has(event.type || '')) return ''
-  const payload = transcriptEventPayload(event)
-  const content = typeof payload.content === 'string' ? payload.content.trim() : ''
-  const finalResult = typeof payload.final_result === 'string' ? payload.final_result.trim() : ''
-  const result = typeof payload.result === 'string' ? payload.result.trim() : ''
-  return content || finalResult || result
+  return assistantReplyText(event)
 }
 
 // The streamed text stays on screen for a moment after the turn ends, and the finished reply is
@@ -266,6 +295,7 @@ const TranscriptEvent: React.FC<{
   onRetryLastMessage?: () => void | Promise<void>
   /** Resends a user message whose delivery failed. */
   onResendMessage?: (msg: string) => void
+  onFixVisual?: FixChatVisual
   compactUserBottom?: boolean
   /** Rendered inside a turn block that already draws the border and header. */
   inTurn?: boolean
@@ -274,7 +304,7 @@ const TranscriptEvent: React.FC<{
   assistantIcon?: React.ReactNode
   /** The turn's clock is shown elsewhere or not at all; draw no time on this row. */
   hideTimestamp?: boolean
-}> = ({ event, onSendMessage, onRetryLastMessage, onResendMessage, compactUserBottom = false, inTurn = false, renderInteraction, assistantLabel, assistantIcon, hideTimestamp = false }) => {
+}> = ({ event, onSendMessage, onRetryLastMessage, onResendMessage, onFixVisual, compactUserBottom = false, inTurn = false, renderInteraction, assistantLabel, assistantIcon, hideTimestamp = false }) => {
   if (event.type === 'product_interaction') {
     const interaction = parseProductInteraction(event)
     return interaction && renderInteraction ? <>{renderInteraction(interaction, event)}</> : null
@@ -303,7 +333,7 @@ const TranscriptEvent: React.FC<{
   // failure events to the last one.
   const failureText = turnFailureText(event)
   if (failureText) {
-    return <TurnFailureMessage failure={normalizeProductChatFailure(failureText, failureHints(payload))} timestamp={timestamp} onRetry={onRetryLastMessage} />
+    return <TurnFailureMessage sessionId={event.session_id || ''} eventId={event.id} failure={normalizeProductChatFailure(failureText, failureHints(payload))} timestamp={timestamp} onRetry={onRetryLastMessage} />
   }
 
   const presentation = presentationActivity(event)
@@ -318,11 +348,11 @@ const TranscriptEvent: React.FC<{
   // Different runtime transports carry a completed agent answer in different
   // fields.  They are all agent responses, so render them with one component
   // and one type scale instead of falling through to several event cards.
-  const finalResult = typeof payload.final_result === 'string' ? payload.final_result.trim() : ''
-  const result = typeof payload.result === 'string' ? payload.result.trim() : ''
-  const responseContent = content || finalResult || result
+  const responseContent = assistantResponseText(event)
   if (AGENT_RESPONSE_EVENT_TYPES.has(event.type || '') && responseContent) {
-    return <AssistantTranscriptMessage event={event} content={responseContent} timestamp={timestamp} framed={!inTurn} label={assistantLabel} icon={assistantIcon} />
+    return <ChatVisualRepairContext.Provider value={onFixVisual}>
+      <AssistantTranscriptMessage event={event} content={responseContent} timestamp={timestamp} framed={!inTurn} label={assistantLabel} icon={assistantIcon} />
+    </ChatVisualRepairContext.Provider>
   }
 
   // A generation that ended with no text (the turn only ran tools) has nothing
@@ -337,23 +367,32 @@ const TranscriptEvent: React.FC<{
     return <EventDispatcher event={event} onSendMessage={onSendMessage} compact hideOrchestratorContext />
   }
 
-  const metadata = payload.metadata && typeof payload.metadata === 'object'
+  const storedMetadata = payload.metadata && typeof payload.metadata === 'object'
     ? payload.metadata as Record<string, unknown>
     : undefined
+  if (isAutomaticContinueNotice(storedMetadata?.system_notice_kind)) {
+    return <BackgroundWakeNotice metadata={storedMetadata} details={content} />
+  }
+  // Native/replayed user messages can carry the request context without the
+  // preparer's attachments metadata. Use the same parser as the chat history.
+  const attachmentPaths = getUserMessageAttachmentPaths(content)
+  const metadata: Record<string, unknown> | undefined = messageAttachmentPaths(storedMetadata).length === 0 && attachmentPaths.length > 0
+    ? { ...storedMetadata, attachments: attachmentPaths }
+    : storedMetadata
   // The server keeps the typed text beside a wrapped prompt (continuity
   // notice), so the user's own message renders instead of the wrapper.
   const displayContent = typeof metadata?.display_content === 'string' ? metadata.display_content.trim() : ''
   const inboxMessage = agentInboxMessage(metadata)
-  if (inboxMessage) return <AgentInboxMessage message={inboxMessage} timestamp={timestamp} artifact={chatArtifactRef(event)} />
+  if (inboxMessage) return <><AgentInboxMessage sessionID={event.session_id} message={inboxMessage} timestamp={timestamp} artifact={chatArtifactRef(event)} queueStatus={<><QueuedInboxStatus sessionId={event.session_id} metadata={metadata} /><QueuedMessageControls sessionId={event.session_id} metadata={metadata} /></>} /><QueuedMessageNotice sessionId={event.session_id} metadata={metadata} /></>
   if (isConversationContinuityNotice(content)) {
     const notice = <ConversationContinuityNotice content={content} timestamp={timestamp} />
     if (!displayContent) return notice
-    return <>{notice}<UserTranscriptMessage content={displayContent} timestamp={timestamp} metadata={metadata} compactBottom={compactUserBottom} onResend={onResendMessage} sessionId={event.session_id} /></>
+    return <>{notice}<UserTranscriptMessage content={displayContent} timestamp={timestamp} metadata={metadata} compactBottom={compactUserBottom} onResend={onResendMessage} sessionId={event.session_id} editEventId={event.id} editSequence={event.sequence} /></>
   }
   // A message another agent sent into this chat (Pulse messaging the Builder
   // chat) shows who sent it, with that agent's icon, on the agent side.
 
-  return <UserTranscriptMessage content={displayContent || content || (messageAttachmentPaths(metadata).length > 0 ? '' : 'Message')} timestamp={timestamp} metadata={metadata} compactBottom={compactUserBottom} onResend={onResendMessage} sessionId={event.session_id} />
+  return <UserTranscriptMessage content={displayContent || content || (messageAttachmentPaths(metadata).length > 0 ? '' : 'Message')} timestamp={timestamp} metadata={metadata} compactBottom={compactUserBottom} onResend={onResendMessage} sessionId={event.session_id} editEventId={event.id} editSequence={event.sequence} />
 }
 
 
@@ -363,7 +402,7 @@ const TranscriptEvent: React.FC<{
 // other file. The paths come with the message, so the same shows after a reload; the path text itself is not shown.
 const UserAttachments: React.FC<{ paths: string[] }> = ({ paths }) => {
   const [open, setOpen] = useState<string | null>(null)
-  const nameOf = (path: string) => path.split('/').pop() || path
+  const nameOf = attachmentDisplayName
   return (
     <div data-testid="user-message-attachments" className="mb-1 flex flex-wrap justify-end gap-2">
       {paths.map(path => isImageAttachmentPath(path) ? (
@@ -394,7 +433,13 @@ function messageAttachmentPaths(metadata?: Record<string, unknown>): string[] {
   return paths.filter(path => path.trim() !== '')
 }
 
-const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; metadata?: Record<string, unknown>; compactBottom?: boolean; onResend?: (text: string) => void; sessionId?: string }> = ({ content, timestamp, metadata, compactBottom = false, onResend, sessionId }) => {
+const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; metadata?: Record<string, unknown>; compactBottom?: boolean; onResend?: (text: string) => void; sessionId?: string; editEventId?: string; editSequence?: number }> = ({ content: rawContent, timestamp, metadata, compactBottom = false, onResend, sessionId, editEventId, editSequence }) => {
+  const content = getDisplaySafeUserMessageContent(rawContent)
+  // Edit and resend (#3134): only a saved row of the person's own message.
+  const canEdit = Boolean(editEventId && typeof editSequence === 'number' && editSequence > 0 && content.trim())
+  const [editing, setEditing] = useState(false)
+  const editButton = canEdit && !editing ? <EditMessageButton onEdit={() => setEditing(true)} /> : null
+  const editor = canEdit && editing ? <EditResendEditor eventId={editEventId!} sequence={editSequence!} text={content} onClose={() => setEditing(false)} /> : null
   // Ask AI blocks collapse to their plain-words request; the builder-only
   // instructions stay one click away behind the usual expansion toggle.
   const askAI = hasAskAIMessage(content)
@@ -414,26 +459,29 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
   const attachments = messageAttachmentPaths(metadata)
   if (!collapsible) {
     return (
-      <div className={`ml-auto mt-2 flex max-w-[90%] flex-col items-end text-right md:max-w-[75%] ${compactBottom ? 'mb-1' : 'mb-2'}`}>
+      <div data-theme-message-role="user" className={`ml-auto mt-2 flex max-w-[90%] flex-col items-end text-right md:max-w-[75%] ${compactBottom ? 'mb-1' : 'mb-2'}`}>
         {attachments.length > 0 && <UserAttachments paths={attachments} />}
-        {shown !== '' && <div data-testid="transcript-user-bubble" className="max-w-full whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground">{shown}</div>}
+        {editor ? <div className="w-full rounded-2xl bg-muted px-4 py-3">{editor}</div> : shown !== '' && <div data-theme-message-body="" data-testid="transcript-user-bubble" className="max-w-full whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3 text-left text-[length:calc(14px*var(--chat-scale,1))] leading-[calc(20px*var(--chat-scale,1))] text-foreground"><ChatFilePathText text={shown} /></div>}
         {showReceipt && (
           <div className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
             <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
-            {(metadata?.source === 'owner_app' || metadata?.source === 'agent_message') && typeof metadata.sender_label === 'string' && <span>{metadata.source === 'agent_message' ? `From ${metadata.sender_label}` : metadata.sender_label}</span>}
+            {(metadata?.source === 'owner_app' || metadata?.source === 'agent_message') && typeof metadata.sender_label === 'string' && <AgentMessageIdentity inboxID={typeof metadata.agent_message_inbox === 'string' ? metadata.agent_message_inbox : undefined} messageID={typeof metadata.message_id === 'string' ? metadata.message_id : undefined} sessionID={sessionId} fallback={metadata.sender_label} />}
             {isVoiceMessage(metadata?.client_message_id) && <Mic aria-label="Sent by voice" className="h-3 w-3" />}
             {timestamp && <span className="tabular-nums">{timestamp}</span>}
-            <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} /></span>
+            <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} sessionId={sessionId} /></span>
+            <QueuedMessageControls sessionId={sessionId} metadata={metadata} />
+            {editButton}
           </div>
         )}
+        <QueuedMessageNotice sessionId={sessionId} metadata={metadata} />
       </div>
     )
   }
 
   return (
-    <article className={`ml-auto mt-4 w-[min(92%,52rem)] rounded-lg border border-border bg-muted/30 px-4 py-3 text-left ${compactBottom ? 'mb-1' : 'mb-4'}`}>
+    <article data-theme-message-role="user" className={`ml-auto mt-4 w-[min(92%,52rem)] rounded-lg border border-border bg-muted/30 px-4 py-3 text-left ${compactBottom ? 'mb-1' : 'mb-4'}`}>
       {attachments.length > 0 && <UserAttachments paths={attachments} />}
-      <div className="whitespace-pre-wrap break-words text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(24px*var(--chat-scale,1))] text-foreground/90">{shown}</div>
+      {editor ?? <div data-theme-message-body="" className="whitespace-pre-wrap break-words text-[length:calc(13px*var(--chat-scale,1))] leading-[calc(24px*var(--chat-scale,1))] text-foreground/90"><ChatFilePathText text={shown} /></div>}
       <div className="mt-1 flex items-center gap-2">
         <button
           type="button"
@@ -444,12 +492,15 @@ const UserTranscriptMessage: React.FC<{ content: string; timestamp: string; meta
         </button>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 text-[10px] leading-4 text-muted-foreground">
           <DeliveryFailedResend metadata={metadata} text={content} onResend={onResend} sessionId={sessionId} />
-          {(metadata?.source === 'owner_app' || metadata?.source === 'agent_message') && typeof metadata.sender_label === 'string' && <span>{metadata.source === 'agent_message' ? `From ${metadata.sender_label}` : metadata.sender_label}</span>}
+          {(metadata?.source === 'owner_app' || metadata?.source === 'agent_message') && typeof metadata.sender_label === 'string' && <AgentMessageIdentity inboxID={typeof metadata.agent_message_inbox === 'string' ? metadata.agent_message_inbox : undefined} messageID={typeof metadata.message_id === 'string' ? metadata.message_id : undefined} sessionID={sessionId} fallback={metadata.sender_label} />}
             {isVoiceMessage(metadata?.client_message_id) && <Mic aria-label="Sent by voice" className="h-3 w-3" />}
           {timestamp && <span className="tabular-nums">{timestamp}</span>}
-          <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} /></span>
+          <span className="inline-flex items-center gap-1"><QueuedProviderLabel metadata={metadata} /><DeliveryTick metadata={metadata} sessionId={sessionId} /></span>
+            <QueuedMessageControls sessionId={sessionId} metadata={metadata} />
+            {editButton}
         </div>
       </div>
+      <QueuedMessageNotice sessionId={sessionId} metadata={metadata} />
     </article>
   )
 }
@@ -483,6 +534,10 @@ const TurnDoneSummary = memo(function TurnDoneSummary({ done }: { done: TurnDone
 // The row already supplies horizontal padding, so a second full padding step
 // made every assistant turn look unnecessarily inset.
 const AGENT_BLOCK_CLASS = 'pl-1 pr-1'
+// #3049: each Markdown root trims its last paragraph margin. Keep ordinary
+// paragraph rhythm between native blocks even when intervening steps are hidden;
+// live and committed carriers use the same spacing, with no repeated turn chrome.
+const NATIVE_PROSE_CLASS = 'pb-2'
 
 const SearchMatchContext = createContext<string | null>(null)
 const DisclosureContext = createContext<Map<string, boolean> | null>(null)
@@ -499,6 +554,36 @@ function useDisclosure(key: string, initial = false) {
     return next
   }), [cache, key])
   return [value, toggle] as const
+}
+
+// Each original message keeps its own expansion and admitted queue controls.
+function CompactMessages({ item, renderEvent }: { item: CompactMessageGroup; renderEvent: (event: PollingEvent) => React.ReactNode }) {
+  const [open, toggle] = useDisclosure(`messages:${item.key}`)
+  return <section className="my-2 text-xs text-muted-foreground" data-testid="compact-message-group">
+    <button type="button" aria-expanded={open} onClick={toggle} className="flex items-center gap-1 py-1 text-left hover:text-foreground">
+      {open ? <ChevronDown className="h-3 w-3" aria-hidden /> : <ChevronRight className="h-3 w-3" aria-hidden />}
+      {item.category === 'interrupted' ? `Interrupted ×${item.events.length}` : <><AgentMessageIdentity inboxID={agentInboxMessage(transcriptEventPayload(item.events[0]).metadata as Record<string, unknown> | undefined)?.inboxID} messageID={agentInboxMessage(transcriptEventPayload(item.events[0]).metadata as Record<string, unknown> | undefined)?.messageID} sessionID={item.events[0].session_id} fallback={agentInboxMessage(transcriptEventPayload(item.events[0]).metadata as Record<string, unknown> | undefined)?.sender} /><span>· {item.events.length} messages</span></>}
+    </button>
+    {open && <div className="border-l border-border pl-3">{item.events.map(event => <div key={event.id} data-transcript-key={event.id}>{renderEvent(event)}</div>)}</div>}
+  </section>
+}
+
+// Shell summaries keep their real command records and linked tool inspection,
+// without nesting a separate "1 step" disclosure around every ended shell.
+function CompactShells({ item }: { item: BackgroundShellGroup }) {
+  const [open, toggle] = useDisclosure(`shells:${item.key}`)
+  const showTools = useChatDisplayStore(state => state.showTools)
+  const single = item.count === 1 ? item.events.map(endedBackgroundShell).find(Boolean) : undefined
+  if (single && !showTools) return <NativeBackgroundTaskLine record={single} />
+  return <section className="my-1 text-xs text-muted-foreground" data-testid="compact-shell-group">
+    <button type="button" aria-expanded={open} onClick={toggle} className="flex items-center gap-1 py-1 text-left hover:text-foreground">
+      {open ? <ChevronDown className="h-3 w-3" aria-hidden /> : <ChevronRight className="h-3 w-3" aria-hidden />}
+      {single ? backgroundTaskLine(single, Date.now()) : `${item.count} commands ran in the background`}
+    </button>
+    {open && <div className="border-l border-border pl-3">{item.rows.map(row => row.kind === 'event'
+      ? <div key={row.key} data-transcript-key={row.key}><NativeBackgroundTaskLine record={endedBackgroundShell(row.event)!} /></div>
+      : row.kind === 'tools' && showTools ? <div key={row.key} data-transcript-key={row.key}>{pairToolCalls(row.events).map(pair => <ToolCallCard key={pair.key} pair={pair} row />)}</div> : null)}</div>}
+  </section>
 }
 
 // Where an item sits in its agent turn. A turn is everything between two user
@@ -520,7 +605,7 @@ function itemTime(item: TranscriptRenderItem | undefined): number {
 }
 
 function isUserItem(item: TranscriptRenderItem | undefined): boolean {
-  return item?.kind === 'event' && item.event.type === 'user_message'
+  return item?.kind === 'message_group' || (item?.kind === 'event' && item.event.type === 'user_message')
 }
 
 function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
@@ -594,10 +679,11 @@ function buildTurnSlots(data: TranscriptRenderItem[]): TurnSlot[] {
 const ASSISTANT_ARTIFACT_KEYS = ['content', 'final_result', 'result'] as const
 
 const AssistantTranscriptMessage: React.FC<{ event: PollingEvent; content: string; timestamp: string; label?: string; icon?: React.ReactNode; framed?: boolean }> = ({ event, content, timestamp, label = 'Agent', icon, framed = true }) => {
-  const artifact = useMemo(() => chatArtifactRef(event), [event])
+  const artifact = useMemo(() => typeof event.reply_remainder === 'string' ? null : chatArtifactRef(event), [event])
+  const nativeBlock = Boolean((transcriptEventPayload(event).metadata as Record<string, unknown> | undefined)?.assistant_block_id)
   const full = useChatArtifactText(artifact, ASSISTANT_ARTIFACT_KEYS)
   return (
-    <article data-testid="terminal-clear-assistant-message" className={framed ? `my-4 ${AGENT_BLOCK_CLASS}` : 'py-1'}>
+    <article data-theme-message-role="assistant" data-testid="terminal-clear-assistant-message" className={framed ? `my-4 ${AGENT_BLOCK_CLASS}` : nativeBlock ? NATIVE_PROSE_CLASS : 'py-1'}>
       {framed && <AssistantTurnHeader event={event} timestamp={timestamp} label={label} icon={icon} />}
       <div className="[&_li]:!text-[length:calc(14px*var(--chat-scale,1))] [&_p]:!text-[length:calc(14px*var(--chat-scale,1))] [&_li]:!leading-[calc(24px*var(--chat-scale,1))] [&_p]:!leading-[calc(24px*var(--chat-scale,1))]">
         <ConversationMarkdownRenderer content={full.text || content} framed={false} maxHeight="none" copyableCode />
@@ -610,7 +696,7 @@ const AssistantTranscriptMessage: React.FC<{ event: PollingEvent; content: strin
 }
 
 
-const TurnFailureMessage: React.FC<{ failure: ReturnType<typeof normalizeProductChatFailure>; timestamp: string; onRetry?: () => void | Promise<void> }> = ({ failure, timestamp, onRetry }) => {
+const TurnFailureMessage: React.FC<{ sessionId: string; eventId: string; failure: ReturnType<typeof normalizeProductChatFailure>; timestamp: string; onRetry?: () => void | Promise<void> }> = ({ failure, timestamp, onRetry, sessionId, eventId }) => {
   const [open, setOpen] = useState(false)
   const [retrying, setRetrying] = useState(false)
   // A cancel is something the person did, not a fault: one quiet line, not a full error card.
@@ -646,6 +732,7 @@ const TurnFailureMessage: React.FC<{ failure: ReturnType<typeof normalizeProduct
             <span className="text-muted-foreground">{failure.message}</span>
             {timestamp && <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground">{timestamp}</span>}
           </div>
+          {failure.code === 'quota_exhausted' && <UsageLimitRecoveryNotice sessionId={sessionId} eventId={eventId} />}
           {(failure.actionUrl || (failure.retryable && onRetry) || failure.technicalDetails) && (
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
               {failure.actionUrl && (
@@ -696,7 +783,7 @@ const TurnFailureMessage: React.FC<{ failure: ReturnType<typeof normalizeProduct
 const InternalActivityEvent: React.FC<{ title: string; content: string; timestamp: string }> = ({ title, content, timestamp }) => {
   const [open, setOpen] = useState(false)
   return (
-    <div data-testid="terminal-clear-system-activity" className="my-3 border-y border-border/60 py-2">
+    <div data-theme-message-role="system" data-testid="terminal-clear-system-activity" className="my-3 border-y border-border/60 py-2">
       <button
         type="button"
         onClick={() => setOpen(value => !value)}
@@ -782,9 +869,19 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair,
   // calls printed absurd second counts.
   const duration =
     pair.durationNs != null && pair.durationNs > 0 ? formatDurationCompact(pair.durationNs) : null
+  // The server says when a command runs on its own and how to stop it (#3131).
+  const liveStop = pair.liveOutput?.done ? undefined : pair.liveOutput?.stopId
+  const sessionId = pair.events.find(event => event.session_id)?.session_id
+  // A Codex helper agent shows as its spawnAgent step; Open shows its own conversation, live (#3132).
+  const helperCallId = pair.name === 'spawnAgent' && sessionId ? pair.callId : undefined
+  const [helperOpen, setHelperOpen] = useState(false)
+  // The line says what the step did in plain words (#3307); the tool's own name stays in its details.
+  const step = useMemo(() => stepOf(pair), [pair])
+  const StepIcon = STEP_ICONS[step.kind]
 
   return (
     <div
+      data-theme-surface="tool" data-theme-tool-state={displayStatus}
       data-testid="terminal-clear-tool-call"
       className={row ? 'border-b border-border/60 last:border-b-0' : `rounded border ${
         displayStatus === 'error'
@@ -792,15 +889,16 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair,
           : 'border-border/70 bg-card'
       }`}
     >
+      <div className="flex items-center">
       <button
         type="button"
         onClick={toggleOpen}
         aria-expanded={open}
         className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-muted/60"
       >
-        {row && displayStatus === 'ok' ? <TerminalIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" /> : <span role={displayStatus==='running' ? 'img' : undefined} aria-label={displayStatus==='running' ? 'Tool running' : undefined} className={`shrink-0 font-mono ${markClass}`}>{mark}</span>}
-        <span className="truncate font-medium text-foreground">{pair.name}</span>
-        {pair.server && !/^api[-_]bridge$/.test(pair.server) && (
+        {displayStatus === 'ok' ? <StepIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" /> : <span role={displayStatus==='running' ? 'img' : undefined} aria-label={displayStatus==='running' ? 'Tool running' : undefined} className={`shrink-0 font-mono ${markClass}`}>{mark}</span>}
+        <span title={pair.name} className={`min-w-0 truncate ${displayStatus === 'error' ? 'text-red-700 dark:text-red-300' : 'text-foreground'}`}>{displayStatus === 'running' ? `${step.live}…` : step.done}</span>
+        {!row && pair.server && !/^api[-_]bridge$/.test(pair.server) && (
           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
             {pair.server}
           </span>
@@ -811,15 +909,26 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair,
             failed
           </span>
         )}
+        {liveStop && (
+          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">still running</span>
+        )}
         {open
           ? <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Hide tool details" />
           : <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Show tool details" />}
       </button>
+      {liveStop && sessionId && <StopCommandButton sessionId={sessionId} stopId={liveStop} />}
+      {helperCallId && <button type="button" onClick={() => setHelperOpen(true)} className="mr-1 shrink-0 rounded px-2 py-1 text-[11px] text-primary hover:bg-muted">Open</button>}
+      </div>
+      {helperOpen && helperCallId && sessionId && <SubagentChatPanel sessionId={sessionId} toolCallId={helperCallId} title="Helper agent" onClose={() => setHelperOpen(false)} />}
 
       {open && (
         <div className="space-y-2 border-t border-border/70 px-2 py-2">
+          <p className="text-[10px] text-muted-foreground">Tool: <span className="font-mono">{pair.name}</span>{pair.server && !/^api[-_]bridge$/.test(pair.server) ? ` · ${pair.server}` : ''}</p>
           {pair.args && <ToolCallField label={row ? 'Input' : 'Arguments'} value={pair.args} />}
           {(fullOutput.text || pair.result) && <ToolCallField label="Output" value={fullOutput.text || pair.result || ''} />}
+          {pair.liveOutput?.text && (
+            <LiveOutputField output={pair.liveOutput} />
+          )}
           {artifact && !fullOutput.text && (
             <ShowFullContentButton ref_={artifact} loading={fullOutput.loading} error={fullOutput.error} onLoad={() => { void fullOutput.load() }} label="Load full output" />
           )}
@@ -831,6 +940,32 @@ const ToolCallCard: React.FC<{ pair: PairedToolCall; row?: boolean }> = ({ pair,
         </div>
       )}
     </div>
+  )
+}
+
+// A command that outlived its reply: its output so far, newest at the end.
+const LiveOutputField: React.FC<{ output: LiveToolOutput }> = ({ output }) => (
+  <div className="min-w-0" data-testid="tool-live-output">
+    <div className="mb-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      {output.done ? 'Last output' : 'Output so far'}
+    </div>
+    {output.dropped && <p className="text-[10px] text-muted-foreground">Earlier output is not shown.</p>}
+    <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded bg-muted/50 p-1.5 font-mono text-[11px] text-foreground">{output.text}</pre>
+  </div>
+)
+
+// Stops one command that runs on its own, through the chat's background-work Stop.
+const StopCommandButton: React.FC<{ sessionId: string; stopId: string }> = ({ sessionId, stopId }) => {
+  const [state, setState] = useState<'ready' | 'stopping' | 'failed'>('ready')
+  const stop = () => {
+    setState('stopping')
+    agentApi.stopSessionBackgroundWork(sessionId, stopId).then(() => setState('ready'), () => setState('failed'))
+  }
+  return (
+    <button type="button" onClick={stop} disabled={state === 'stopping'}
+      className="mr-1 shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-60">
+      {state === 'stopping' ? 'Stopping…' : state === 'failed' ? 'Could not stop. Try again' : 'Stop'}
+    </button>
   )
 }
 
@@ -880,18 +1015,19 @@ const ToolCallField: React.FC<{ label: string; value: string }> = ({ label, valu
   )
 }
 
-// Thinking is a collapsible block like a tool batch, closed by default: the person opens the ones they
-// want (owner 2026-10-27, replacing open-by-default from 2026-09-03). While the agent is still reasoning
-// the label animates (Thinking. .. ...) so it reads as live; the toggle is the person's alone.
-const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking' }>; live: boolean }> = ({ item, live }) => {
+// Bold-headed provider summaries use the existing thinking disclosure. Other
+// supplied thinking keeps its current Show thinking presentation.
+// Execution inspectors retain their recorded-event disclosure.
+const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking' }>; live: boolean; showText?: boolean }> = ({ item, live, showText = false }) => {
   const [expanded, toggle] = useDisclosure(`thinking:${item.key}`, false)
-  const hasText = Boolean(item.text.trim())
+  const summary = item.assistantUpdate ? null : thinkingSummary(item.text)
+  const hasText = Boolean((summary ? summary.body : item.text).trim())
   const [dots, setDots] = React.useState(1)
   React.useEffect(() => {
-    if (!live) return
+    if (!live || showText) return
     const timer = window.setInterval(() => setDots(count => count % 3 + 1), 450)
     return () => window.clearInterval(timer)
-  }, [live])
+  }, [live, showText])
 
   if (item.assistantUpdate) {
     return (
@@ -899,6 +1035,17 @@ const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking'
         <ConversationMarkdownRenderer content={item.text} framed={false} maxHeight="none" copyableCode />
       </div>
     )
+  }
+
+  if (showText && !summary) {
+    return hasText ? (
+      <p
+        data-testid="terminal-clear-thinking-batch-content"
+        className="my-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground"
+      >
+        {item.text}
+      </p>
+    ) : null
   }
 
   return (
@@ -911,17 +1058,18 @@ const ThinkingBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'thinking'
         className="flex items-center gap-1 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
         <span>Thinking{live ? <span aria-hidden="true" className="inline-block w-4 text-left">{'.'.repeat(dots)}</span> : null}</span>
+        {summary && <span className="min-w-0 truncate">· {summary.title}</span>}
         {hasText && (expanded
           ? <ChevronDown className="h-3 w-3 shrink-0" />
           : <ChevronRight className="h-3 w-3 shrink-0" />)}
       </button>
       {hasText && expanded && (
-        <p
+        <div
           data-testid="terminal-clear-thinking-batch-content"
           className="mt-1 whitespace-pre-wrap break-words border-l border-border pl-3 text-xs leading-5 text-muted-foreground"
         >
-          {item.text}
-        </p>
+          {summary ? <ConversationMarkdownRenderer content={summary.body} framed={false} maxHeight="none" /> : item.text}
+        </div>
       )}
     </div>
   )
@@ -941,23 +1089,17 @@ const WorkingGroup: React.FC<{ item: Extract<TranscriptRenderItem, { kind: 'work
   const tools = item.steps.reduce((sum, step) => sum + (step.kind === 'tools' ? step.toolCount : 0), 0)
   const duration = workingDuration(item.steps)
   const completed = pairToolCalls(item.events).every(tool => tool.status !== 'running')
-  const [dots, setDots] = React.useState(1)
-  React.useEffect(() => {
-    if (!live) return
-    const timer = window.setInterval(() => setDots(count => count % 3 + 1), 450)
-    return () => window.clearInterval(timer)
-  }, [live])
   const summary = tools ? `${tools} ${tools === 1 ? 'step' : 'steps'}` : ''
   const label = live ? phase?.text || 'Working' : completed && duration ? `Worked for ${duration}` : 'Activity'
   return (
-    <div data-testid="terminal-working-group" className="my-1">
+    <div data-testid="terminal-working-group" data-theme-turn-live={live ? "true" : "false"} className="my-1">
       <button
         type="button"
         onClick={toggle}
         aria-expanded={expanded}
         className="flex items-center gap-1 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
-        <span>{label}{live && <span aria-hidden="true" className="inline-block w-4 text-left">{'.'.repeat(dots)}</span>}</span>
+        <span>{label}</span>{live && <LoadingIndicator className="h-3 w-3" />}
         {summary && <span>· {summary}</span>}
         {expanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
       </button>
@@ -965,7 +1107,7 @@ const WorkingGroup: React.FC<{ item: Extract<TranscriptRenderItem, { kind: 'work
         <div data-testid="terminal-working-group-steps" className="mt-1 border-l border-border pl-3">
           {item.steps.map((step, index) => step.kind === 'thinking'
             ? <ThinkingBatch key={step.key} item={step} live={live && index === item.steps.length - 1} />
-            : <ToolBatch key={step.key} item={step} toolLayout={toolLayout} />)}
+            : <ToolBatch key={step.key} item={step} toolLayout={toolLayout} live={live} />)}
         </div>
       )}
     </div>
@@ -981,10 +1123,10 @@ type ToolBatchSegment =
   | { kind: 'message'; pair: PairedToolCall }
   | { kind: 'tools'; key: string; pairs: PairedToolCall[] }
 
-function segmentToolBatch(batchKey: string, pairs: PairedToolCall[]): ToolBatchSegment[] {
+function segmentToolBatch(batchKey: string, pairs: PairedToolCall[], showSearch: boolean): ToolBatchSegment[] {
   const segments: ToolBatchSegment[] = []
   for (const pair of pairs) {
-    if (isWebSearchToolCall(pair.name, pair.args)) {
+    if (showSearch && isWebSearchToolCall(pair.name, pair.args)) {
       segments.push({ kind: 'search', pair })
       continue
     }
@@ -1026,19 +1168,16 @@ const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
   const [open, toggleOpen] = useDisclosure(`sent:${pair.key}`)
   const view = useMemo(() => parseAgentMessageSend(pair.name, pair.args, pair.result, pair.status), [pair.name, pair.args, pair.result, pair.status])
   if (!view) return null
-  const state = view.failed ? 'could not send' : view.accepted ? 'sent' : 'sending'
+  const state = view.state
   return (
-    <div data-testid="terminal-clear-message-sent" className="my-3 border-y border-border/60 py-2">
+    <div data-testid="terminal-clear-message-sent" className="my-1 w-[min(100%,52rem)] rounded-lg border border-border/60 px-3 py-2">
       <button
         type="button"
         onClick={toggleOpen}
         aria-expanded={open}
         className="flex w-full items-center gap-2 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
       >
-        <Send className={`h-3.5 w-3.5 shrink-0 ${view.failed ? 'text-red-500' : 'text-primary/70'}`} aria-hidden="true" />
-        <span className="truncate">
-          Message to <span className="font-medium text-foreground/85">{view.targetLabel || view.target || 'this conversation'}</span>
-        </span>
+        <span className="flex min-w-0 items-center font-medium text-foreground/85"><AgentMessageIdentity inboxID={view.inboxID} messageID={view.messageID} sent /></span>
         <span className={`shrink-0 ${view.failed ? 'text-red-400' : ''}`}>{state}</span>
         {open ? <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0" />}
       </button>
@@ -1052,12 +1191,17 @@ const MessageSentCard: React.FC<{ pair: PairedToolCall }> = ({ pair }) => {
   )
 }
 
-const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; toolLayout?: 'grouped' | 'rows' }> = ({ item, toolLayout }) => {
+// turnWorking: the turn is still working. A step that has not ended stays live then even when thinking or reply text
+// came after it: Antigravity hands a long command to the background after ten seconds and keeps thinking and writing
+// while it runs, which left the running step without its "running" line and timer (#3919).
+const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; toolLayout?: 'grouped' | 'rows'; live?: boolean; turnWorking?: boolean }> = ({ item, toolLayout, live: lastLive = false, turnWorking = false }) => {
+  const showTools = useChatDisplayStore(state => state.showTools)
   const pairs = useMemo(() => pairToolCalls(item.events), [item.events])
-  const segments = useMemo(() => segmentToolBatch(item.key, pairs), [item.key, pairs])
-  if (toolLayout === 'rows') return <div data-testid="terminal-clear-tool-rows" className="my-1 border-l border-border pl-3">{pairs.map(pair=><ToolCallCard key={pair.key} pair={pair} row />)}</div>
-  if (segments.length === 1 && segments[0].kind === 'tools') {
-    return <ToolChip chipKey={item.key} pairs={pairs} toolCount={item.toolCount} />
+  const live = lastLive || (turnWorking && pairs.some(pair => pair.status === 'running'))
+  const rows = toolLayout === 'rows' && showTools
+  const segments = useMemo(() => segmentToolBatch(item.key, pairs, rows), [item.key, pairs, rows])
+  if (!rows && segments.length === 1 && segments[0].kind === 'tools') {
+    return showTools ? <ToolCallGroup pairs={pairs} toolCount={item.toolCount} live={live} /> : <WorkSummary pairs={pairs} toolCount={item.toolCount} live={live} />
   }
   return (
     <>
@@ -1065,40 +1209,89 @@ const ToolBatch: React.FC<{ item: Extract<TranscriptItem, { kind: 'tools' }>; to
         ? <WebSearchCard key={segment.pair.key} pair={segment.pair} />
         : segment.kind === 'message'
           ? <MessageSentCard key={segment.pair.key} pair={segment.pair} />
-          : <ToolChip key={segment.key} chipKey={segment.key} pairs={segment.pairs} toolCount={segment.pairs.length} />)}
+          : rows ? <div key={segment.key} data-testid="terminal-clear-tool-rows" className="my-1 border-l border-border pl-3"><StepRows pairs={segment.pairs} /></div>
+          : showTools ? <ToolCallGroup key={segment.key} pairs={segment.pairs} toolCount={segment.pairs.length} live={live} /> : <WorkSummary key={segment.key} pairs={segment.pairs} toolCount={segment.pairs.length} live={live} />)}
     </>
   )
 }
 
-const ToolChip: React.FC<{ chipKey: string; pairs: PairedToolCall[]; toolCount: number }> = ({ chipKey, pairs, toolCount }) => {
-  // A conversation should lead with what the agent said, not implementation
-  // detail. Even failures stay closed initially: the visible failed count is
-  // the signal, and the user chooses when to inspect arguments/results.
-  const [expanded, toggle] = useDisclosure(`batch:${chipKey}`)
+// Enabling Tool calls permits inspection; it never expands the transcript.
+// Unmounted when disabled so turning it back on starts closed again.
+const ToolCallGroup: React.FC<{ pairs: PairedToolCall[]; toolCount: number; live: boolean }> = ({ pairs, live }) => {
+  const [open, setOpen] = React.useState(false)
+  const running = live && pairs.some(pair => pair.status === 'running')
+  return <div className="my-1" data-testid="terminal-tool-call-group" data-theme-tools-running={running ? "true" : "false"}>
+    <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}
+      className="flex min-w-0 max-w-full items-center gap-1 py-1 text-left text-[11px] text-muted-foreground hover:text-foreground">
+      <StepsHeadline pairs={pairs} running={running} />
+      {open ? <ChevronDown aria-hidden="true" className="h-3 w-3" /> : <ChevronRight aria-hidden="true" className="h-3 w-3" />}
+    </button>
+    {open && <div className="border-l border-border pl-3"><StepRows pairs={pairs} /></div>}
+  </div>
+}
 
-  return (
-    <div data-testid="terminal-clear-tool-batch" className="my-1">
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={expanded}
-        data-testid="terminal-clear-tool-batch-toggle"
-        className="flex items-center gap-1 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <span>{toolCount} tool {toolCount === 1 ? 'call' : 'calls'}</span>
-        {expanded
-          ? <ChevronDown className="h-3 w-3 shrink-0" />
-          : <ChevronRight className="h-3 w-3 shrink-0" />}
-      </button>
-      {expanded && (
-        <div data-testid="terminal-clear-tool-batch-content" className="mt-1 space-y-0.5 border-l border-border pl-3">
-          {pairs.map(pair => (
-            <ToolCallCard key={pair.key} pair={pair} />
-          ))}
-        </div>
-      )}
-    </div>
-  )
+// Tool calls off is a status, never a disclosure: old saved expansion state cannot reveal tool payloads.
+// Incoming/outgoing message cards remain independent conversation content.
+const WorkSummary: React.FC<{ pairs: PairedToolCall[]; toolCount: number; live: boolean }> = ({ pairs, live }) => {
+  const running = live && pairs.some(pair => pair.status === 'running')
+  return <div data-testid="terminal-work-summary" data-theme-tools-running={running ? "true" : "false"} className="my-1 flex min-w-0 items-center gap-1 py-1 text-[11px] text-muted-foreground">
+    <StepsHeadline pairs={pairs} running={running} />
+  </div>
+}
+
+const STEP_ICONS: Record<StepKind, React.ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' }>> = {
+  read: FileText, edit: Pencil, create: FilePlus, run: TerminalIcon, search: Search, web: Globe, open: Globe, helper: Bot, plan: ListChecks, wait: Hourglass, other: Wrench,
+}
+
+function stepOf(pair: PairedToolCall): StepDescription {
+  return describeToolStep({ name: pair.name, server: pair.server, args: pair.args, result: pair.result })
+}
+
+// The closed line of a run of steps (#3307): while working, the step running
+// now and for how long; when done, what was read, changed and run.
+const StepsHeadline: React.FC<{ pairs: PairedToolCall[]; running: boolean }> = ({ pairs, running }) => {
+  const current = running ? [...pairs].reverse().find(pair => pair.status === 'running') : undefined
+  const startedAt = current ? Date.parse(current.events[0]?.timestamp || '') : NaN
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!current) return
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [current])
+  if (current) {
+    const elapsed = Number.isFinite(startedAt) && now > startedAt ? ` · ${formatElapsed(now - startedAt)}` : ''
+    return <span className="min-w-0 truncate">{stepOf(current).live}…{elapsed}</span>
+  }
+  // No failure count here (owner, 20 Nov): agents often retry a failed tool, so a red count alarms people
+  // for nothing. A failed step is still marked in the open list.
+  return <span className="min-w-0 truncate">{summarizeSteps(pairs.map(stepOf))}</span>
+}
+
+// Step lines in order; reads in a row fold into one "Read N files" line.
+const StepRows: React.FC<{ pairs: PairedToolCall[] }> = ({ pairs }) => {
+  const runs: PairedToolCall[][] = []
+  for (const pair of pairs) {
+    const last = runs[runs.length - 1]
+    const isRead = stepOf(pair).kind === 'read' && pair.status === 'ok'
+    if (isRead && last && stepOf(last[0]).kind === 'read' && last[0].status === 'ok') last.push(pair)
+    else runs.push([pair])
+  }
+  return <>{runs.map(run => run.length > 1
+    ? <ReadRun key={run[0].key} pairs={run} />
+    : <ToolCallCard key={run[0].key} pair={run[0]} row />)}</>
+}
+
+const ReadRun: React.FC<{ pairs: PairedToolCall[] }> = ({ pairs }) => {
+  const [open, toggleOpen] = useDisclosure(`reads:${pairs[0].key}`)
+  return <div className="border-b border-border/60 last:border-b-0">
+    <button type="button" onClick={toggleOpen} aria-expanded={open}
+      className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-muted/60">
+      <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="min-w-0 truncate text-foreground">Read {pairs.length} files</span>
+      {open ? <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+    </button>
+    {open && <div className="ml-3 border-l border-border pl-2">{pairs.map(pair => <ToolCallCard key={pair.key} pair={pair} row />)}</div>}
+  </div>
 }
 
 interface TerminalEventTranscriptProps {
@@ -1119,6 +1312,7 @@ interface TerminalEventTranscriptProps {
   onRetryLastMessage?: () => void | Promise<void>
   /** Resends a user message whose delivery failed. */
   onResendMessage?: (msg: string) => void
+  onFixVisual?: FixChatVisual
   loading?: boolean
   loadingOlder?: boolean
   hasOlder?: boolean
@@ -1129,6 +1323,7 @@ interface TerminalEventTranscriptProps {
    * individual protocol events, but belongs in the readable live transcript. */
   streamingChatUIMode?: 'progressive' | 'complete'
   streamingText?: string
+  streamingGeneration?: { id: string; sequence: number; nativeBlock?: boolean }
   streamingStatus?: string
   /** Optional product skin for the transcript backdrop. AgentWorks keeps its
    * existing default; product surfaces can use their own visual identity. */
@@ -1147,6 +1342,10 @@ interface TerminalEventTranscriptProps {
   runtimeActivity?: ChatRuntimeActivity
   /** Opt in only on the mounted main chat, never an execution inspector. */
   searchable?: boolean
+  /** Pause, Resume and Clear of the pinned goal bar (main chat only): sends the /goal command the person would type. */
+  onGoalCommand?: (command: string) => void
+  /** Edit and resend on the person's own messages (#3134); only the owner's own chat passes it. */
+  messageEdit?: MessageEditActions
 }
 
 const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { readingState: TranscriptReadingState; readingKey?: string }> = ({
@@ -1154,11 +1353,13 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   terminal,
   siblingTerminals,
   onSendMessage,
+  onGoalCommand,
   onAnswerCodingAgentQuestion,
   closedCodingAgentQuestions,
   dockedCodingAgentQuestion,
   onRetryLastMessage,
   onResendMessage,
+  onFixVisual,
   loading = false,
   loadingOlder = false,
   hasOlder = false,
@@ -1167,6 +1368,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   onRetry,
   streamingChatUIMode = 'complete',
   streamingText = '',
+  streamingGeneration,
   streamingStatus = '',
   surfaceClassName,
   toolLayout,
@@ -1178,6 +1380,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   readingState,
   readingKey,
 }) => {
+  const showThinking = useChatDisplayStore(state => state.showThinking)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [searchMatch, setSearchMatch] = useState<{ key: string; query: string } | null>(null)
   const virtuosoRef = useRef<VirtuosoHandle | null>(null)
@@ -1185,19 +1388,27 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   const keptKinds = productRows?.kinds.join('\u0000') ?? ''
   const keepInteractionKinds = useMemo(() => new Set(keptKinds ? keptKinds.split('\u0000') : []), [keptKinds])
   const renderInteraction = productRows?.render
+  // The main chat pins its goal above the conversation, so the goal card is not repeated inside it.
   const scoped = useMemo(
-    () => selectTerminalEvents(events, terminal, siblingTerminals, keepInteractionKinds),
-    [events, terminal, siblingTerminals, keepInteractionKinds],
+    () => selectTerminalEvents(searchable ? events?.filter(event => event.type !== 'native_goal_updated') : events, terminal, siblingTerminals, keepInteractionKinds),
+    [events, terminal, siblingTerminals, keepInteractionKinds, searchable],
   )
+  const telemetrySessionKey = terminal?.session_id || terminal?.terminal_id || ''
+  const sessionOpenedAtRef = useRef<{ key: string; at: number }>({ key: telemetrySessionKey, at: Date.now() })
+  if (sessionOpenedAtRef.current.key !== telemetrySessionKey) {
+    sessionOpenedAtRef.current = { key: telemetrySessionKey, at: Date.now() }
+  }
   const latestTelemetryEvent = useMemo(
     () => [...scoped].reverse().find(isChatDeliveryTelemetryEvent),
     [scoped],
   )
   useEffect(() => {
     if (!latestTelemetryEvent) return
+    const openedAt = sessionOpenedAtRef.current.at
     const frame = window.requestAnimationFrame(() => {
       const sessionId = latestTelemetryEvent.session_id || terminal?.session_id || ''
-      recordChatDeliveryTelemetry('painted', sessionId, [latestTelemetryEvent], 'react', terminal?.terminal_id)
+      const transport = paintedTelemetryTransport(latestTelemetryEvent.timestamp, openedAt)
+      recordChatDeliveryTelemetry('painted', sessionId, [latestTelemetryEvent], transport, terminal?.terminal_id)
     })
     return () => window.cancelAnimationFrame(frame)
   }, [latestTelemetryEvent, terminal?.session_id, terminal?.terminal_id])
@@ -1205,28 +1416,99 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
   // context_cancelled is the agent library's debug event, emitted once per
   // internal turn (T0, T1): one cancel showed three times beside the turn's own
   // "Response cancelled" (owner, 2026-10-08). The chat keeps only that one.
-  const items = useMemo<TranscriptRenderItem[]>(
-    () => groupWorkingSteps(withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled'))))),
-    [scoped, questions],
+  const rawItems = useMemo<TranscriptRenderItem[]>(
+    () => {
+      const rows = groupWorkingSteps(withToolCallVisibility(collapseTurnFailures(buildTranscriptItems(scoped.filter(event => !questions.hiddenEvents.has(event.id) && event.type !== 'context_cancelled')))), searchable ? showThinking : undefined)
+      return searchable ? groupTranscriptMessages(groupBackgroundShells(rows, readingState.anchor?.key), readingState.anchor?.key) : rows
+    },
+    [scoped, questions, searchable, showThinking, readingState.anchor?.key],
   )
-  const fileChanges = useMemo(() => replyFileChangesByMessage(events ?? [], new Set(items.flatMap(item => item.kind === 'event' && isAgentResponseEvent(item.event) ? [item.event.id] : []))), [events, items])
+  const items = useMemo(() => {
+    const completed = new Map<string, string>()
+    for (const item of rawItems) {
+      if (item.kind === 'event' && item.event.generation_id && typeof item.event.reply_remainder !== 'string' && isAgentResponseEvent(item.event)
+        && transcriptEventPayload(item.event).restored_intermediate_update !== true) completed.set(item.event.generation_id, item.key)
+    }
+    return rawItems.map(item => item.kind === 'event' && item.event.generation_id && completed.get(item.event.generation_id) === item.key
+      ? { ...item, key: `generation:${item.event.generation_id}` } : item)
+  }, [rawItems])
+  const replyAliases = useMemo(() => {
+    const aliases = new Map<string, string[]>()
+    const nativeRows = new Map<string, string>()
+    for (const item of items) {
+      if (item.kind !== 'event' || !isAgentResponseEvent(item.event)) continue
+      aliases.set(item.event.id, [item.event.id])
+      if (item.event.generation_id) nativeRows.set(item.event.generation_id, item.event.id)
+    }
+    // Change reviews and PR links still belong to the canonical completion.
+    // Attach them to its explicit native reply carrier, never match prose.
+    for (const event of scoped) {
+      if (!event.reply_blocks_complete || !event.generation_id || aliases.has(event.id)) continue
+      const row = nativeRows.get(event.generation_id)
+      if (row) aliases.get(row)?.push(event.id)
+    }
+    return aliases
+  }, [items, scoped])
+  const replyIds = useMemo(() => new Set([...replyAliases.values()].flat()), [replyAliases])
+  const fileChanges = useMemo(() => replyFileChangesByMessage(events ?? [], replyIds), [events, replyIds])
+  const linkedPullRequests = useMemo(() => replyPullRequestsByMessage(events ?? [], replyIds), [events, replyIds])
   // Retry belongs to the latest human turn, never an older failed message
   // after the user has continued the conversation.
   const retryItem = useMemo(() => [...items].reverse().find(item =>
     item.kind === 'event' && (item.event.type === 'user_message' || isAgentResponseEvent(item.event) || turnFailureText(item.event)),
   ), [items])
   const [isAtTranscriptEnd, setIsAtTranscriptEnd] = useState(true)
-  const listData = useMemo<TranscriptRenderItem[]>(
-    () => ((streamingText || streamingStatus) && !liveTextAlreadyCommitted(items, streamingText))
+  const listData = useMemo<TranscriptRenderItem[]>(() => {
+    const completed = streamingGeneration ? [...items].reverse().find(item => item.kind === 'event'
+      && item.event.generation_id === streamingGeneration.id && typeof item.event.reply_remainder !== 'string' && isAgentResponseEvent(item.event)
+      && transcriptEventPayload(item.event).restored_intermediate_update !== true) : undefined
+    // A real generation completion replaces its live carrier under the same
+    // row key. Intermediate narration remains separately journalled as before.
+    if (completed) return items
+    const showLive = ((streamingText || streamingStatus) && !liveTextAlreadyCommitted(items, streamingText))
       || (runtimeActivity?.state !== undefined && runtimeActivity.state !== 'ready' && (!items.length || isUserItem(items.at(-1))))
-      ? [...items, { kind: 'live' as const, key: '__live-stream__', text: streamingText, status: streamingStatus }]
-      : items,
-    [items, streamingStatus, streamingText, runtimeActivity?.state],
-  )
+    if (!showLive) return items
+    const live: TranscriptRenderItem = { kind: 'live', key: streamingGeneration ? `generation:${streamingGeneration.id}` : '__live-stream__', text: streamingText, status: streamingStatus }
+    // Without native framing there is no earlier block position to preserve.
+    // Keep the unframed live row after the thinking/steps already received.
+    if (!streamingGeneration?.nativeBlock) return [...items, live]
+    const at = items.findIndex(item => {
+      if (item.kind === 'live') return false
+      const first = item.kind === 'event' ? item.event : item.events[0]
+      if (!first) return false
+      const position = transcriptServerPosition(first)
+      if (position !== undefined) return position > streamingGeneration.sequence
+      return item.kind === 'event' && item.event.type === 'user_message'
+        && transcriptEventPayload(item.event).metadata != null
+        && (transcriptEventPayload(item.event).metadata as Record<string, unknown>).provisional === true
+    })
+    return at < 0 ? [...items, live] : [...items.slice(0, at), live, ...items.slice(at)]
+  }, [items, streamingGeneration, streamingStatus, streamingText, runtimeActivity?.state])
   const searchRows = useCallback(() => listData.map(item => ({ key: item.key, text: item.kind === 'working'
     ? item.steps.map(transcriptSearchText).join('\n')
+    : item.kind === 'shell_group' ? item.rows.map(transcriptSearchText).join('\n')
+    : item.kind === 'message_group' ? item.events.map(event => transcriptSearchText({ kind: 'event', key: event.id, event })).join('\n')
     : item.kind === 'live' ? item.text : transcriptSearchText(item) })), [listData])
-  const turnSlots = useMemo(() => buildTurnSlots(listData), [listData])
+  const turnSlots = useMemo(() => {
+    const slots = buildTurnSlots(listData)
+    const completions = new Map(scoped.filter(event => event.reply_blocks_complete && event.generation_id).map(event => [event.generation_id, event]))
+    // Native blocks replace only the aggregate prose, not its existing done
+    // time/duration. Match the server's row identity, never answer text.
+    const doneRows = new Map(listData.flatMap(item => item.kind === 'event' ? [[item.event.id, item.event] as const] : []))
+    for (const slot of slots) {
+      const row = slot.done ? doneRows.get(slot.done.key) : undefined
+      const end = row?.generation_id ? completions.get(row.generation_id) : undefined
+      const native = row && (transcriptEventPayload(row).metadata as Record<string, unknown> | undefined)?.assistant_block_id
+      // Finishing a text block is not finishing the agent turn. Preserve one
+      // existing done/steps summary only where the canonical end points.
+      if (native && !end) { slot.done = undefined; continue }
+      if (slot.done && end) {
+        const payload = transcriptEventPayload(end)
+        slot.done = { key:end.id, at:end.timestamp || slot.done.at, durationNs: typeof payload.duration === 'number' ? payload.duration : slot.done.durationNs }
+      }
+    }
+    return slots
+  }, [listData, scoped])
   const workingNow = runtimeActivity !== undefined && runtimeActivity.state !== 'ready'
 
   const keys = useMemo(() => listData.map(item => item.key), [listData])
@@ -1243,22 +1525,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
     setSearchMatch(key ? { key, query } : null)
     if (key) scroll.jumpToKey(key)
   }, [scroll.jumpToKey])
-  const latestUserMessageKey = useMemo(() => {
-    for (let index = items.length - 1; index >= 0; index--) {
-      const item = items[index]
-      if (item.kind === 'event' && item.event.type === 'user_message'
-        && !isInternalTranscriptMessage(item.event) && !isExecutionPromptTranscriptMessage(item.event)) return item.key
-    }
-    return undefined
-  }, [items])
-  const previousUserMessageKey = useRef(latestUserMessageKey)
-  useEffect(() => {
-    const previous = previousUserMessageKey.current
-    previousUserMessageKey.current = latestUserMessageKey
-    // Sending another message starts a new turn at the bottom. Hydrating or
-    // prepending history must not reset a restored reading position.
-    if (previous && latestUserMessageKey !== previous && keys.includes(previous)) scroll.jumpToLatest()
-  }, [keys, latestUserMessageKey, scroll.jumpToLatest])
+  // A changed latest row can come from history hydration or an incoming agent,
+  // not only a send. The composer explicitly calls followTranscriptLatest;
+  // cached transcript refreshes must not override a deliberate reading anchor.
   const [initialPosition, setInitialPosition] = useState<{ index: number; align: 'start' | 'end'; offset?: number } | null>(null)
   if (!initialPosition && keys.length > 0) {
     const anchorIndex = readingState.anchor ? keys.indexOf(readingState.anchor.key) : -1
@@ -1313,6 +1582,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
       : 'Its conversation will appear here when the first event arrives.')
     return (
       <div
+        data-theme-surface="empty"
         data-testid="terminal-clear-view-empty"
         className={`flex min-w-0 flex-1 items-center justify-center overflow-y-auto px-5 py-8 ${surfaceClassName ?? 'bg-background dark:bg-[#0b0d0c]'}`}
       >
@@ -1351,10 +1621,12 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
       ref={rootRef}
       data-chat-find-root={searchable ? '' : undefined}
       tabIndex={-1}
+      data-theme-surface="chat"
       data-testid="terminal-clear-view"
       className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${surfaceClassName ?? 'bg-background dark:bg-[#0d100f]'}`}
       onClickCapture={scroll.preserveDisclosure}
     >
+      {searchable && <PinnedGoalBar events={events} onCommand={onGoalCommand} />}
       {searchable && <TranscriptFind rootRef={rootRef} rows={searchRows} onSelect={selectSearchMatch} hasOlder={hasOlder} loadingOlder={loadingOlder} onLoadOlder={onLoadOlder} />}
       {error && (
         <div className="flex shrink-0 items-center border-b border-red-900/60 bg-red-950/25 px-3 py-1.5 text-[11px] text-red-300">
@@ -1381,6 +1653,7 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
         components={transcriptComponents}
         context={historyContext}
         className="custom-scrollbar min-h-0 flex-1"
+        style={scroll.positioned ? undefined : { visibility: 'hidden' }}
         scrollerRef={scroll.scrollerRef}
         atBottomStateChange={setIsAtTranscriptEnd}
         atBottomThreshold={24}
@@ -1391,9 +1664,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
         aria-label="Conversation messages"
         // Render well beyond the viewport so scrolling reveals rows that are
         // already there instead of rows popping in as they mount.
-        increaseViewportBy={{ top: 1200, bottom: 600 }}
+        increaseViewportBy={VIRTUOSO_INCREASE_VIEWPORT_BY}
         initialTopMostItemIndex={initialPosition ?? 0}
-        computeItemKey={(_, item) => item.key}
+        computeItemKey={computeTranscriptItemKey}
         itemContent={(absoluteIndex, item) => {
           const index = absoluteIndex - firstItemIndex
           // Contain message margins inside the measured row. Collapsed margins
@@ -1405,18 +1678,23 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
           const body = questionPrompt
             ? <CodingAgentQuestionCard prompt={questionPrompt} onAnswer={onAnswerCodingAgentQuestion} docked={questionPrompt.promptId === dockedCodingAgentQuestion} />
             : item.kind === 'live'
-            ? <LiveAssistantTranscript chatUIStreamMode={streamingChatUIMode} text={item.text} status={item.status} showWriting={!runtimeActivity} />
+            ? <LiveAssistantTranscript nativeBlock={streamingGeneration?.nativeBlock} chatUIStreamMode={streamingChatUIMode} text={item.text} status={item.status} showWriting={!runtimeActivity} />
+            : item.kind === 'message_group'
+            ? <CompactMessages item={item} renderEvent={event => <TranscriptEvent event={event} onSendMessage={onSendMessage} onResendMessage={onResendMessage} onFixVisual={onFixVisual} renderInteraction={renderInteraction} assistantLabel={assistantLabel} assistantIcon={assistantIcon} />} />
+            : item.kind === 'shell_group'
+            ? <CompactShells item={item} />
             : item.kind === 'working'
             ? <WorkingGroup item={item} live={workingNow && index === items.length - 1 && !streamingText.trim()} phase={turnPhase} toolLayout={toolLayout} />
             : item.kind === 'tools'
-            ? <ToolBatch item={item} toolLayout={toolLayout} />
+            ? <ToolBatch item={item} toolLayout={toolLayout} live={workingNow && index === items.length - 1 && !streamingText.trim()} turnWorking={workingNow} />
             : item.kind === 'thinking'
-              ? <ThinkingBatch item={item} live={index === items.length - 1 && !streamingText.trim()} />
+              ? <ThinkingBatch item={item} live={index === items.length - 1 && !streamingText.trim()} showText={searchable && showThinking} />
               : (
                 <TranscriptEvent
                   event={item.event}
                   onSendMessage={onSendMessage}
                   onResendMessage={onResendMessage}
+                  onFixVisual={onFixVisual}
                   onRetryLastMessage={item === retryItem ? onRetryLastMessage : undefined}
                   compactUserBottom={listData[index + 1]?.kind === 'tools' || listData[index + 1]?.kind === 'working'}
                   inTurn={Boolean(slot?.agent)}
@@ -1427,19 +1705,21 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
                 />
               )
           const match = searchMatch?.key === item.key ? searchMatch.query : null
-          const changeRef = item.kind === 'event' ? fileChanges.get(item.event.id) : undefined
-          const displayedBody = <SearchMatchContext.Provider value={match}>{body}{changeRef && <ReplyFileChanges reference={changeRef} />}</SearchMatchContext.Provider>
+          const origins = item.kind === 'event' ? replyAliases.get(item.event.id) || [item.event.id] : []
+          const changeRef = origins.map(id => fileChanges.get(id)).find(Boolean)
+          const linkedPRs = origins.map(id => linkedPullRequests.get(id)).find(Boolean)
+          const displayedBody = <SearchMatchContext.Provider value={match}>{body}{changeRef && <ReplyFileChanges reference={changeRef} />}{linkedPRs && item.kind === 'event' && <ReplyLinkedPullRequests pullRequests={linkedPRs} sessionId={item.event.session_id || terminal?.session_id || ''} cardGroups={changeRef?.summary?.groups} />}</SearchMatchContext.Provider>
           const matchStyle = match ? 'ring-1 ring-inset ring-yellow-400/70 bg-yellow-400/5' : ''
           if (!slot?.agent) {
-            return <div data-transcript-key={item.key} data-testid={testId} className={`flow-root px-3 py-0.5 ${matchStyle}`}>{displayedBody}</div>
+            return <div data-theme-chat-row="" data-transcript-key={item.key} data-testid={testId} className={`flow-root px-3 py-0.5 ${matchStyle}`}>{displayedBody}</div>
           }
           // One block per agent turn: the header once at the top, then every
           // tool batch, thought and reply of that turn on the same rail.
           return (
-            <div data-transcript-key={item.key} data-testid={testId} className={`flow-root px-2 max-md:px-3 ${matchStyle}`}>
+            <div data-theme-chat-row="" data-transcript-key={item.key} data-testid={testId} className={`flow-root px-2 max-md:px-3 ${matchStyle}`}>
               <div className={`${AGENT_BLOCK_CLASS} ${slot.first ? 'mt-4' : ''} ${slot.last ? 'mb-2' : ''}`}>
                 {slot.first && <AssistantTurnHeader event={slot.header} label={assistantLabel} />}
-                <ChatElementDisclosureContext.Provider value={disclosureValues ? { values: disclosureValues, scope: slot.widgetScope ?? item.key } : null}>
+                <ChatElementDisclosureContext.Provider value={disclosureContextFor(disclosureValues, slot.widgetScope ?? item.key)}>
                   {displayedBody}
                 </ChatElementDisclosureContext.Provider>
                 {/* The server's active turn also owns replies before a queued user bubble. */}
@@ -1462,9 +1742,9 @@ const TerminalEventTranscriptInner: React.FC<TerminalEventTranscriptProps & { re
 
 // Custom product renderers can keep their existing live-text cue until they
 // opt into the shared lifecycle indicator.
-const LiveAssistantTranscript: React.FC<{ text: string; status: string; showWriting: boolean; chatUIStreamMode: 'progressive' | 'complete' }> = ({ text, status, showWriting, chatUIStreamMode }) => (
+const LiveAssistantTranscript: React.FC<{ nativeBlock?: boolean; text: string; status: string; showWriting: boolean; chatUIStreamMode: 'progressive' | 'complete' }> = ({ text, status, showWriting, chatUIStreamMode, nativeBlock }) => (
   text ? (
-    <article data-testid="terminal-clear-live-assistant-message" className="py-1">
+    <article data-theme-message-role="assistant" data-testid="terminal-clear-live-assistant-message" className={nativeBlock ? NATIVE_PROSE_CLASS : 'py-1'}>
       <div className="[&_li]:!text-[length:calc(14px*var(--chat-scale,1))] [&_p]:!text-[length:calc(14px*var(--chat-scale,1))] [&_li]:!leading-[calc(24px*var(--chat-scale,1))] [&_p]:!leading-[calc(24px*var(--chat-scale,1))]">
         <ConversationMarkdownRenderer chatElementStream={chatUIStreamMode === 'progressive' ? 'progressive' : 'pending'} content={text} framed={false} maxHeight="none" copyableCode />
       </div>
@@ -1480,12 +1760,32 @@ const LiveAssistantTranscript: React.FC<{ text: string; status: string; showWrit
   ) : null
 )
 
+const VIRTUOSO_INCREASE_VIEWPORT_BY = { top: 1200, bottom: 600 }
+const computeTranscriptItemKey = (_: number, item: TranscriptRenderItem) => item.key
+const disclosureContextCache = new WeakMap<Map<string, boolean>, Map<string, { values: Map<string, boolean>; scope: string }>>()
+function disclosureContextFor(values: Map<string, boolean> | null | undefined, scope: string) {
+  if (!values) return null
+  let byScope = disclosureContextCache.get(values)
+  if (!byScope) {
+    byScope = new Map()
+    disclosureContextCache.set(values, byScope)
+  }
+  let ctx = byScope.get(scope)
+  if (!ctx) {
+    ctx = { values, scope }
+    byScope.set(scope, ctx)
+  }
+  return ctx
+}
+
 // Memoized: the parent re-renders on every terminal poll, and re-rendering the
 // whole transcript each time would defeat EventDispatcher's own memoization.
 export const TerminalEventTranscript = memo(function TerminalEventTranscript(props: TerminalEventTranscriptProps) {
   const key = props.scrollKey ?? props.terminal?.terminal_id ?? props.events?.find(event => event.session_id)?.session_id
   const readingState = useMemo(() => key ? transcriptReadingState(key) : { following: true, disclosures: new Map<string, boolean>() }, [key])
   return <DisclosureContext.Provider value={readingState.disclosures}>
-    <TerminalEventTranscriptInner key={key ?? 'unscoped'} {...props} readingState={readingState} readingKey={key} />
+    <MessageEditContext.Provider value={props.messageEdit ?? null}>
+      <TerminalEventTranscriptInner key={key ?? 'unscoped'} {...props} readingState={readingState} readingKey={key} />
+    </MessageEditContext.Provider>
   </DisclosureContext.Provider>
 })

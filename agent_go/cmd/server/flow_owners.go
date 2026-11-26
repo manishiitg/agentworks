@@ -242,7 +242,7 @@ func (api *StreamingAPI) setProjectAccessLists(ctx context.Context, claims *User
 		}
 	}
 	if setPeople {
-		if _, err := api.applyRunShare(ctx, claims, dashboardTarget{Kind: projectAccessKind(manifest), ID: manifest.ID, Root: root}, runSharePeople, peopleEmails, false); err != nil {
+		if _, err := api.applyRunShare(ctx, claims, dashboardTarget{Kind: projectAccessKind(manifest), ID: manifest.ID, Root: root, Title: manifest.Label}, runSharePeople, peopleEmails, false); err != nil {
 			return nil, err
 		}
 	}
@@ -277,12 +277,20 @@ func dashboardOwnersAction(action string) bool {
 }
 
 func dashboardOwnersWrite(action string) bool {
-	return action == "owner_add" || action == "owner_remove"
+	return action == "owner_add" || action == "owner_remove" || action == "user_add" || action == "user_remove" || action == "user_files" || action == "team_add" || action == "team_remove"
 }
 
-func (api *StreamingAPI) handleDashboardOwners(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action string, emails []string) {
+func (api *StreamingAPI) handleDashboardOwners(w http.ResponseWriter, r *http.Request, claims *UserClaims, target dashboardTarget, action string, emails []string, lockedPaths []string) {
+	if target.Kind == "crew" {
+		api.handleDashboardCrewOwners(w, r, claims, target, action, emails, lockedPaths)
+		return
+	}
+	if strings.HasPrefix(action, "user_") {
+		externalError(w, http.StatusConflict, "unsupported", crewOwnersServerOnly)
+		return
+	}
 	if target.Kind != "relay" && target.Kind != "workflow" {
-		externalError(w, http.StatusNotFound, "not_found", "Owners are available for Goals and Flows. A Crew's builders are its owner and its Team.")
+		externalError(w, http.StatusNotFound, "not_found", "Owners are available for projects on the server, Goals and Flows.")
 		return
 	}
 	level, manifest := workflowAccessForWorkspacePath(r.Context(), claims, target.Root)
@@ -336,6 +344,6 @@ func (api *StreamingAPI) stopRemovedOwnerSessions(userID, root string) {
 	api.activeSessionsMux.RUnlock()
 	for _, id := range ids {
 		log.Printf("[CREW_OWNERS] crew=%s stopping session=%s of removed co_owner=%s", root, id, person)
-		api.cancelSessionRuntimeWork(id, "no longer an owner of this Crew", runtimePhaseCanceled)
+		api.cancelSessionRuntimeWork(id, "no longer an owner of this project", runtimePhaseCanceled)
 	}
 }

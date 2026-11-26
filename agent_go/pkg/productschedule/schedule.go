@@ -35,6 +35,12 @@ type Schedule struct {
 	// never-run cron schedule would recompute "next" from every scheduler tick
 	// and could therefore never become due.
 	CreatedAt string `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	// CreatedBy and UpdatedBy say who made and who last changed it (see projectactions.Actor).
+	CreatedBy *projectactions.Actor `json:"created_by,omitempty" yaml:"created_by,omitempty"`
+	UpdatedBy *projectactions.Actor `json:"updated_by,omitempty" yaml:"updated_by,omitempty"`
+	// RunAs is the person a Crew chat schedule belongs to: only they see and change it, and it runs as them
+	// with their own vault. Empty means the Crew owner. Workflow schedules always run as the Crew owner.
+	RunAs string `json:"run_as,omitempty" yaml:"run_as,omitempty"`
 
 	// CronExpression is a standard five-field cron line, evaluated in Timezone
 	// (local time when empty).
@@ -63,6 +69,13 @@ type Schedule struct {
 	// a full agent turn and the next waits for the previous reply.
 	Messages []string `json:"messages" yaml:"messages"`
 
+	// A Crew timer can run its saved workflow directly instead of sending
+	// messages. Inputs retain the common schedule invocation contract.
+	WorkflowID      string            `json:"target_workflow_id,omitempty" yaml:"target_workflow_id,omitempty"`
+	InputPreset     string            `json:"input_preset,omitempty" yaml:"input_preset,omitempty"`
+	Inputs          map[string]string `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+	RouteSelections map[string]string `json:"route_selections,omitempty" yaml:"route_selections,omitempty"`
+
 	// Isolated runs this schedule on its own dedicated conversation (session,
 	// coding-CLI process, transcript) instead of the profile or Crew project's
 	// normal conversation. The isolated conversation persists across runs, so
@@ -79,6 +92,12 @@ type Schedule struct {
 	// "<projectId>:chat:<id>" (a Code side chat). Runs go to that chat while it
 	// exists and to the project's main chat otherwise; empty means the main chat.
 	ChatKey string `json:"chat_key,omitempty" yaml:"chat_key,omitempty"`
+
+	// KeepAwake is a workflow timer's keep-this-Mac-awake choice (#3617): "" lets the Mac sleep, "while_running"
+	// keeps it awake while a run is going, "upcoming" also keeps it awake so upcoming runs are not missed. Only
+	// while plugged in unless KeepAwakeOnBattery.
+	KeepAwake          string `json:"keep_awake,omitempty" yaml:"keep_awake,omitempty"`
+	KeepAwakeOnBattery bool   `json:"keep_awake_on_battery,omitempty" yaml:"keep_awake_on_battery,omitempty"`
 }
 
 // Validate checks a definition is runnable.
@@ -123,6 +142,20 @@ func Validate(s Schedule) error {
 	}
 	if s.QuietMinutes < 0 || s.MaxDeferralHours < 0 {
 		return fmt.Errorf("schedule %q: quiet_minutes and max_deferral_hours must not be negative", s.ID)
+	}
+	if s.When != nil {
+		if err := s.When.After.Validate(s.ID); err != nil {
+			return err
+		}
+	}
+	if s.WorkflowID != "" {
+		if len(s.Messages) != 0 || s.Condition != nil {
+			return fmt.Errorf("a workflow timer runs saved work and cannot also send messages or watch events")
+		}
+		return nil
+	}
+	if s.InputPreset != "" || len(s.Inputs) > 0 || len(s.RouteSelections) > 0 {
+		return fmt.Errorf("choose a saved workflow before setting its inputs")
 	}
 	if s.Condition != nil {
 		if len(s.Messages) != 0 {
@@ -169,6 +202,11 @@ func cronSchedule(s Schedule) (cron.Schedule, error) {
 	parsed, err := cronParser.Parse(strings.TrimSpace(s.CronExpression))
 	if err != nil {
 		return nil, fmt.Errorf("invalid cron expression %q: %w", s.CronExpression, err)
+	}
+	// A date that never comes (30 February) parses, but Next returns zero time,
+	// which reads as overdue and would fire on every tick.
+	if parsed.Next(time.Now().In(loc)).IsZero() {
+		return nil, fmt.Errorf("cron expression %q never runs: no date matches it (for example 30 February)", s.CronExpression)
 	}
 	return &tzSchedule{inner: parsed, loc: loc}, nil
 }

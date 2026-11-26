@@ -1,31 +1,110 @@
 ---
 name: crew-laptop
-description: Read for laptop folders and commands, local Computer use (desktop apps, click/type/screenshot), or permission errors. Covers setup and the separate file, terminal and desktop capabilities.
+description: Read when the person asks what you can reach on their computer, asks for folder, full laptop or Mac access, Computer use (desktop apps, click/type/screenshot), or laptop commands, and whenever a command or file read says "Operation not permitted" or is refused. Covers setup and the separate file, terminal and desktop capabilities.
 ---
 
 # Folders and laptop connections
 
+## What a chat on this Mac can already do
+
+Native commands run in a macOS sandbox with the person's own account. Without
+any grant they can already:
+
+- read and write the person's home folder (Desktop, Documents, Downloads,
+  projects), except AgentWorks' own data: other projects' and projects' folders,
+  the app's state (other chats, saved sign-ins) and protected files;
+- run the programs installed there (`git`, `gh`, `docker`, `aws`, other coding
+  CLIs). They act with the person's own logins: use them only when the task
+  needs them, and never read their sign-in files.
+
+Without “Your whole Mac”, commands can start programs, but cannot list or stop
+other programs. With that explicit grant, `ps` and `top` can list programs and
+`kill` can stop programs the person could stop, without extra OS privileges.
+Ask before stopping something the person is using; never restart their app
+without their request.
+Opening or scripting apps (`open`, `osascript`, Shortcuts) and calling the local
+AgentWorks server from the shell stay closed, even with that folder grant.
+
+## Giving more access: pick the smallest switch
+
+When the person asks for more (or "full") access, find out what the work needs
+and turn on only that:
+
+1. One folder (the usual answer). Attach the exact folder, Read or Read &
+   write, as below. Needed for another project's or project's folder, AgentWorks
+   data, or a folder a refusal names. Several folders can be attached one by
+   one; there is always a selective choice.
+2. "Your whole Mac". Attaches the home folder read/write: full access,
+   AgentWorks' own data on this Mac included, on purpose. Offer it only when
+   the person asks for it by name. It also allows listing and signalling processes
+   as the person (`ps`, `top`, `kill`); it does not allow opening or scripting apps.
+3. Computer use. Full control of the desktop and apps, Terminal included, as
+   the person. Use this for opening and scripting desktop apps. Local
+   owner chats only, never scheduled turns or Run people.
+4. "Run terminal commands" on a connected laptop. Only for a project hosted on a
+   server, to run commands in a Read & write laptop folder.
+
 ## Computer use: desktop apps on this computer
 
-Local Crew owners have `computer_use`, a managed `agent-desktop` integration separate from files, terminal and the managed `agent_browser`. Hosted server agents, shared Run users and file-only device connections have no desktop authority. The person's phone/website messages can reach the local agent through the existing paired Crew chat relay; execution stays on their computer.
+Local project owners have `computer_use`, a managed `agent-desktop` integration separate from files, terminal and the managed `agent_browser`. Hosted server agents, shared Run users and file-only device connections have no desktop authority. The person's phone/website messages can reach the local agent through the existing paired project chat relay; execution stays on their computer.
 
-Enabling grants full control of the computer, including Terminal. Clipboard reads may contain passwords or other private content; read it only for the person’s task. Personal MCP connections manage setup only; app actions require the interactive Crew chat, so a saved personal MCP login cannot give a scheduled turn desktop control.
+Enabling grants full control of the computer, including Terminal. Clipboard reads may contain passwords or other private content; read it only for the person’s task. Personal MCP connections manage setup only; app actions require the interactive project chat, so a saved personal MCP login cannot give a scheduled turn desktop control.
 
 Start with `computer_use(action="status")`. When asked to set it up, use `install` (pinned runtime, no global npm change), `permissions` (the OS permission guide) and `enable`. Do not enable again after a person stops it unless they ask. The panel is Integrations → Computer use. On macOS, explain that the app named by the guide and its child processes may inherit the OS permissions; screenshots require Screen Recording too.
 
-Before desktop work, call `guide`, then `guide` with `command="platform"` for the installed version's instructions. Use `guide` with a CLI command name for syntax. `run` takes one `command`, literal `args` and optional `headed`; do not launch the CLI from the sandbox or a script. Prefer semantic accessibility actions. Physical input (`headed=true`) needs the person's request. First inspect, act on that snapshot's qualified ref, then inspect again; use skeleton/compact snapshots and drill into regions to keep responses small. Check delivery/retry in results; never repeat uncertain clicks or typing blindly. A busy response means another desktop command is running; wait or let the person choose Stop. Desktop references and images are private to this chat. Screenshots return a private path for the native image reader; keep them out of shared Crew files, dashboards and uploads. UI content sent to the model goes to the selected provider. Stop turns Computer use off and cancels pending work; an already dispatched action may finish.
+Before desktop work, call `guide`, then `guide` with `command="platform"` for the installed version's instructions. Use `guide` with a CLI command name for syntax. `run` takes one `command`, literal `args` and optional `headed`; do not launch the CLI from the sandbox or a script. Prefer semantic accessibility actions. Physical input (`headed=true`) needs the person's request. First inspect, act on that snapshot's qualified ref, then inspect again; use skeleton/compact snapshots and drill into regions to keep responses small. Check delivery/retry in results; never repeat uncertain clicks or typing blindly. A busy response means another desktop command is running; wait or let the person choose Stop. Desktop references and images are private to this chat. Screenshots return a private path for the native image reader; keep them out of shared project files, dashboards and uploads. UI content sent to the model goes to the selected provider. Stop turns Computer use off and cancels pending work; an already dispatched action may finish.
 
 For website tasks, keep using the existing Browser panel and `agent_browser`; this integration operates native desktop apps.
 
-## Start a local Crew in an existing folder
+## Start a local project in an existing folder
 
-On a local AgentWorks installation, a new Crew or Studio can work directly in a folder already on that computer. In Create, use the optional **Folder** field or **Browse**. Leave it blank for a new AgentWorks folder. Existing files are used in place, without importing, copying or adding a linked folder.
+On a local AgentWorks installation, a new project or Studio can work directly in a folder already on that computer. In Create, use the optional **Folder** field or **Browse**. Leave it blank for a new AgentWorks folder. Existing files are used in place, without importing, copying or adding a linked folder.
 
-Over MCP, discover `workspace action=create kind=crew` and pass the requested existing absolute folder in `spec.root_path`, with the name and the existing creation key. This is a creation choice; do not move an existing Crew or change its root. The server checks that local-folder creation is allowed. Crew resources live in `.agentworks` inside that folder; chats, credentials and generated runtime remain in private AgentWorks storage. Keep existing project instructions intact. Removing the Crew preserves the selected folder and the person's files.
+Over MCP, discover `workspace action=create kind=crew` and pass the requested existing absolute folder in `spec.root_path`, with the name and the existing creation key. This is a creation choice; do not move an existing project or change its root. The server checks that local-folder creation is allowed. Project resources live in `.agentworks` inside that folder; chats, credentials and generated runtime remain in private AgentWorks storage. Keep existing project instructions intact. Removing the project preserves the selected folder and the person's files.
 
 The returned `files_path` is the logical file root; `workspace_path` stays the stable resource/settings namespace. Native commands and the project terminal use the selected folder. For shared-file MCP calls, keep the project's normal namespace and address user files with the returned relative `_files/...` path; never invent a different project root or use an absolute host path in a file API.
 
-## Connect a laptop to a hosted Crew
+## Attach a folder on this Mac
+
+This is separate from connecting a laptop to a hosted Crew. Read `panel-access`'s
+Linked folders procedure, list with `files action=folders`, then use
+`files action=folder_attach` for the folder the person requested. Their request
+is the approval; preserve existing grants and use the least access the work
+needs (Read unless it must write). This is the same list as Integrations →
+Folders on this Mac. Attach the exact folder, never a parent "to be safe";
+“Your whole Mac” (the home folder as `mac`, read/write) only when they ask for
+it. A sign-in folder requires the person to name that exact folder.
+
+The native sandbox picks up the grant on the next turn. Tell the person to send
+one more message; do not claim the current process gained access immediately.
+On a server, allowed-root checks still apply. A refusal grants no workaround.
+
+## When the sandbox refuses a command
+
+On this Mac, native commands run in a sandbox. Read the refusal and pick the
+matching step; never retry the same command or look for a way around it.
+
+- "Operation not permitted" on a path: it is AgentWorks data or a protected
+  file, not an ordinary home folder. Protected files (a workflow's planning/,
+  its raw database, instruction files) stay closed; use their tools. For
+  another project's or project's folder, ask in plain words, for example "That
+  file is in your Sales project's folder. Shall I give this chat access to that
+  folder?" Their yes is the approval; attach that one folder and ask them to
+  send one more message, because the grant applies from the next turn.
+- Listing or stopping programs: only “Your whole Mac” adds this process access;
+  an ordinary folder does not. It applies from the next turn. Do not stop a
+  process unless the task calls for it; shared-server and app-restart rules still apply.
+- Opening or scripting apps, or calling the local AgentWorks server: no folder
+  grant changes these, so do not ask for one. Use
+  platform tools for platform actions and logs on disk for diagnosis: the
+  local server's log folder has a `[MEM]` line every minute and, past a large
+  heap, profiles in `logs/pprof/<time>/` (heap, allocs, goroutines, CPU). If
+  the work truly needs one of these, offer Computer use once and enable it
+  only when they say yes.
+- If none of these covers the need, tell the person exactly which step is blocked
+  and what they can do (one command or one setting), rather than saying it failed.
+
+## Connect a laptop to a hosted project
 
 For a hosted Crew, the agent runs on the server. Every current owner shares its selected laptop, folders and commands switch; each keeps their own chat tabs. People only shared with use the dashboard and do not get laptop tools. A connected laptop adds two separate things. Files: `list_local_files` and `copy_local_file_to_project` for a Read folder, and also `write_local_file` for a Read & write folder. Commands: `execute_local_shell_command` runs a command in a Read & write folder as the person, only when the person has turned on "Run terminal commands" for this Crew. Nothing syncs. They work on every turn of the person's own chat, scheduled and watch turns and their own agents' messages included; never for another person's message or a Run person. Use the laptop only when the work needs that computer; paths are relative to the granted folder. If the computer is offline, say the local step is unavailable and carry on with the server work; never retry an uncertain command blindly.
 
@@ -49,7 +128,7 @@ Everything the Local laptop panel does you can do here with `manage_laptop_acces
 - With the switch on, a command is the person's own terminal: their login shell, their environment, their files, keys and cloud logins, not limited to the shared folders. Say this plainly when you offer it; it is the person's call.
 - A big folder such as Downloads is listed a page at a time: `list_local_files` returns `total` and, when more follow, `truncated` and `next_offset`. To find a file, pass `query` (part of its name) instead of reading every page. If the tool returns an error, tell the person what it says; an error is never an empty folder.
 - `set` saves the whole list: include every folder to keep, or the omitted ones lose access.
-- Do not offer folders that hold sign-ins (`.aws`, `.ssh`, `.config`, keychains, browser profiles) as shared file folders; commands can use the person's tools without that.
+- Do not suggest sharing sign-in folders. If the person explicitly names an exact sign-in folder, use the current folder-attachment tool and its server checks; never broaden that request to a parent folder or expose credential values. Commands can use existing tools without copying login files.
 
 ## When it is refused
 
@@ -62,7 +141,7 @@ Everything the Local laptop panel does you can do here with `manage_laptop_acces
 - Server secrets are never sent to the laptop. What you read there reaches the server and the chat history, so say so before opening anything personal.
 - Change the saved folders only when the person asks.
 
-Connect the computer once in the project's Local laptop panel or in chat (manage_my_vaults operation=laptops lists your computers and setup steps), then choose it in this project. Goals use the same optional connection for Builder chats; their steps and schedules stay on the server. copy_local_file_to_project takes local_path and project_path.
+Connect the computer once in the project's Local laptop panel or in chat (manage_my_vaults operation=laptops lists your computers and setup steps), then choose it in this project. copy_local_file_to_project takes local_path and project_path.
 
 ## Recognize an existing local project
 
@@ -76,20 +155,36 @@ Claude/Codex conversations for this exact folder and shows the original account.
 Use `sessions action=native_preview` with its opaque `native_id` to preview the history.
 Before creating a project, the same `native_list` and `native_preview` actions
 accept `root_path` instead of `crew_id` for the chosen existing Mac folder.
-Previewing makes no changes. Create the Crew with that folder, then use the
-chosen `native_id` with `native_resume` and the new Crew ID. In New project,
+Previewing makes no changes. Create the project with that folder, then use the
+chosen `native_id` with `native_resume` and the new project ID. In New project,
 choose a folder and use Continue a previous chat to do this in one flow.
 When the person asks to continue one, pass that `native_id` to
-`sessions action=native_resume`. It copies the native conversation to a new session ID in a separate private
-chat tab, including its saved history. The original is untouched. The next
-message resumes this independent copy with the Crew's current tools and
+`sessions action=native_resume`. For a supported native journal within the copy budget, it copies the native
+conversation to a new session ID in a separate private chat tab. The displayed
+imported history is a bounded recent window, not the complete transcript. The original is untouched. The next
+message resumes this independent copy with the project's current tools and
 permissions. Both chats still work on the same project files. Never copy native history between accounts, select a different
 folder's conversation or imply that opening a tab ran the agent. Other people's
 or shared-account owners' private chats are not listed.
 
 Cursor CLI chats can also be selected from the exact local folder. They continue
 **the same conversation**, not an independent copy. Explain this and ask the
-person to close that conversation in Cursor before sending in the Crew tab.
+person to close that conversation in Cursor before sending in the project tab.
 The picker shows the saved history without starting a model turn. Cursor CLI and
 tmux must be installed; its SDK store is separate and is not a substitute.
 Claude/Codex still open independent copies with their original history unchanged.
+
+### Recent history and large chats
+
+The Claude/Codex picker and imported display show up to three conversation days,
+200 messages and 512 KiB of prose. Older history stays in the original chat; show
+the returned notice rather than claiming a complete import. Full native copying
+has a separate 64 MiB budget and free-space check. When refused, offer the explicit
+**Import recent messages** action: it starts a new provider chat with recent
+messages, not native continuation, and leaves the original journal untouched.
+Never silently substitute it for a native copy or copy between accounts.
+
+If a result says **Delivery not confirmed**, inspect the saved state before
+retrying; never automatically resend an uncertain message. If the platform says a
+prompt could not be saved in full, report that limitation rather than claiming
+its shortened display preserves the full prompt.

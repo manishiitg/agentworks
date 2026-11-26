@@ -22,7 +22,7 @@ func TestAssignedNativeSessionStreamsOnlyItsJournalAndRefusesForeignPaths(t *tes
 		t.Fatal(err)
 	}
 	cfg := slots.ExecConfig{SlotStateRoot: root, SlotTable: table, NativeOwners: map[string]string{"slot01": "owner", "slot02": "other"}}
-	req := slots.NativeSessionRequest{OwnerID: "owner", RuntimeID: strings.Repeat("1", 64), SessionID: "11111111-1111-4111-8111-111111111111", Operation: "export", Transport: "sdk"}
+	req := slots.NativeSessionRequest{OwnerID: "owner", RuntimeID: strings.Repeat("1", 64), SessionID: "11111111-1111-4111-8111-111111111111", Operation: "export", Transport: "sdk", MaxBytes: sessiontransfer.MaxBytes()}
 	// The private master table is unavailable to the assigned account. The
 	// helper must rely on the root-owned readable config projection instead.
 	if err := os.Remove(table); err != nil {
@@ -55,6 +55,11 @@ func TestAssignedNativeSessionStreamsOnlyItsJournalAndRefusesForeignPaths(t *tes
 		}
 		err := Run(&in, &out, cfg, "slot01")
 		return &out, err
+	}
+	limited := req
+	limited.MaxBytes = 1
+	if refused, err := run(limited, nil); err == nil || !strings.Contains(err.Error(), "too large to copy") || refused.Len() != 0 {
+		t.Fatal("oversized native export was staged or streamed", err)
 	}
 	out, err := run(req, nil)
 	if err != nil {

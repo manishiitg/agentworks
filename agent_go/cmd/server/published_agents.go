@@ -28,7 +28,7 @@ func publicationAgentID(key string) string {
 
 func (api *StreamingAPI) publicationTarget(ctx context.Context, claims *UserClaims, profileID, workspaceID, agentID, projectID, name string) (*publishedProject, error) {
 	if len([]rune(strings.TrimSpace(name))) > productAgentNameMaxRunes {
-		return nil, fmt.Errorf("Give the Crew or agent a name of at most %d characters.", productAgentNameMaxRunes)
+		return nil, fmt.Errorf("Give the project or agent a name of at most %d characters.", productAgentNameMaxRunes)
 	}
 	if err := publicationGate(claims); err != nil {
 		return nil, err
@@ -37,7 +37,7 @@ func (api *StreamingAPI) publicationTarget(ctx context.Context, claims *UserClai
 	if workspaceID != "" {
 		binding, manifest, ok := api.resolveExternalWorkspace(ctx, claims, workspaceID)
 		if !ok || !binding.OwnedByCaller || !publicationOriginTokenAllowed(claims, manifest.Product, manifest.ID) {
-			return nil, fmt.Errorf("Choose a Crew you may build, or publish a new Crew.")
+			return nil, fmt.Errorf("Choose a project you may build, or publish a new project.")
 		}
 
 		root := agentProfileRuntimeWorkspace(binding.OwnerID, binding.Binding.WorkspacePath)
@@ -62,20 +62,6 @@ func (api *StreamingAPI) publicationTarget(ctx context.Context, claims *UserClai
 			}
 			choice.Root, choice.WorkspaceID, choice.OwnerID = root, manifest.ID, binding.OwnerID
 			choice.AgentID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(projectBindingRoot(root)+"\x00"+projectID)).String()
-			// The project agent is new. Its private tab still counts against the ordinary cap.
-			chats, err := defaultProductConversationRegistryStore().projectChats(ctx, claims.UserID, manifest.Product, manifest.ID)
-			if err != nil {
-				return nil, err
-			}
-			n := 0
-			for _, chat := range chats {
-				if isSideChatConversationKey(chat.ConversationKey) {
-					n++
-				}
-			}
-			if n >= externalCrewMaxSideChats {
-				return nil, fmt.Errorf("Close one of this Crew's %d side chats, then add the agent.", externalCrewMaxSideChats)
-			}
 		}
 	} else {
 		var err error
@@ -133,7 +119,7 @@ func (api *StreamingAPI) openPublishedAgent(r *http.Request, p *publishedProject
 	claims := GetUserFromContext(r.Context())
 	binding, _, ok := api.resolveExternalWorkspace(r.Context(), claims, p.ProfileID+":"+p.WorkspaceID)
 	if !ok || !binding.OwnedByCaller || !userAccessForClaims(claims).CanEdit {
-		return ProductConversationRecord{}, fmt.Errorf("Open this agent from a Crew you may build. Shared use continues through the Crew's dashboard and functions.")
+		return ProductConversationRecord{}, fmt.Errorf("Open this agent from a project you may build. Shared use continues through the project's dashboard and functions.")
 	}
 	profile, err := api.agentProfiles.Resolve(p.ProfileID, 0, claims.UserID)
 	if err != nil {
@@ -155,7 +141,7 @@ func (api *StreamingAPI) openPublishedAgent(r *http.Request, p *publishedProject
 func (api *StreamingAPI) externalPublishedAgents(w http.ResponseWriter, r *http.Request, args map[string]any, binding crewProjectBinding, manifest productProjectManifest) {
 	claims := GetUserFromContext(r.Context())
 	if !binding.OwnedByCaller || !userAccessForClaims(claims).CanEdit || !publicationOriginTokenAllowed(claims, manifest.Product, manifest.ID) {
-		externalError(w, 403, "forbidden", "Open an agent from a Crew you may build. You can use shared work through its dashboard and functions.")
+		externalError(w, 403, "forbidden", "Open an agent from a project you may build. You can use shared work through its dashboard and functions.")
 		return
 	}
 	root := agentProfileRuntimeWorkspace(binding.OwnerID, binding.Binding.WorkspacePath)
@@ -209,7 +195,7 @@ func publicationFileContext(ctx context.Context, root, agentID string) (context.
 		return nil, err
 	}
 	if p == nil {
-		return nil, fmt.Errorf("Choose a published agent from workspace get, or omit agent_id for the Crew's own files.")
+		return nil, fmt.Errorf("Choose a published agent from workspace get, or omit agent_id for the project's own files.")
 	}
 	return context.WithValue(ctx, publicationExecutionKey{}, p), nil
 }

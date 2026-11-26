@@ -1,7 +1,8 @@
+import { LoadingIndicator } from '../ui/LoadingIndicator'
 import { Suspense, lazy, useContext, useEffect, useRef, useState } from 'react'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
 import { WorkingTipsContext } from './workingTipsContext'
-import { WORKING_ACCESSIBLE_LABEL, WORKING_GLYPH_FRAMES, WORKING_GLYPH_INTERVAL_MS, WORKING_GLYPH_STATIC, WORKING_WORDS, WORKING_WORD_INTERVAL_MS, formatElapsed, nextWorkingWordIndex, resolveWorkingLabel } from './workingWords'
+import { WORKING_ACCESSIBLE_LABEL, WORKING_WORDS, WORKING_WORD_INTERVAL_MS, formatElapsed, nextWorkingWordIndex, resolveWorkingLabel } from './workingWords'
 
 // Tip selection and catalog loading are needed only while a turn is Working.
 const WorkingTip = lazy(() => import('./WorkingTip'))
@@ -16,18 +17,6 @@ function usePrefersReducedMotion(): boolean {
     return () => query.removeEventListener?.('change', update)
   }, [])
   return reduced
-}
-
-// The twinkling star (text glyphs only; see workingWords). Its own component so the quick frame changes re-render only
-// the glyph. It takes the working accent colour; reduced motion shows a single still star.
-function WorkingGlyph({ reduced }: { reduced: boolean }) {
-  const [frame, setFrame] = useState(0)
-  useEffect(() => {
-    if (reduced) return
-    const timer = window.setInterval(() => setFrame((index) => (index + 1) % WORKING_GLYPH_FRAMES.length), WORKING_GLYPH_INTERVAL_MS)
-    return () => window.clearInterval(timer)
-  }, [reduced])
-  return <span className="inline-block w-[1.1em] text-center [font-variant-emoji:text] [font-family:ui-sans-serif,system-ui,'Segoe_UI_Symbol','DejaVu_Sans',sans-serif]" data-testid="working-glyph">{reduced ? WORKING_GLYPH_STATIC : WORKING_GLYPH_FRAMES[frame]}</span>
 }
 
 // One shared "the agent is working" line. Real server status wins; otherwise a friendly word that changes every few
@@ -69,7 +58,7 @@ export function WorkingStatus({ realStatus, startedAt, lastOutputAt, phase, clas
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{accessibleText}</span>
       <span aria-hidden="true" className="truncate" title={durationTitle}>
         <span className="text-[hsl(var(--working-accent))]">
-          <WorkingGlyph reduced={reduced} />{' '}
+          <LoadingIndicator className="h-[1em] w-[1em]" data-testid="working-glyph" />{' '}
           <span data-testid="working-word">{text}</span>
         </span>
         {elapsed ? <span className="text-muted-foreground">{elapsed}</span> : null}

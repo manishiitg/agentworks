@@ -3,7 +3,6 @@ package workproduct
 import (
 	"embed"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
@@ -17,7 +16,7 @@ var productConfigFiles embed.FS
 func RunPromptTemplate() string {
 	text, err := agentprofiles.LoadChatPrompt(productConfigFiles, mustWorkManifest().Chat["run"].Prompt)
 	if err != nil {
-		panic(fmt.Errorf("read Crew Run prompt: %w", err))
+		panic(fmt.Errorf("read project Run prompt: %w", err))
 	}
 	return text
 }
@@ -36,11 +35,11 @@ func WorkManifest() (ProductManifest, error) {
 	productManifestOnce.Do(func() {
 		manifest, err := agentprofiles.LoadProductManifest(productConfigFiles, "product.yaml")
 		if err != nil {
-			productManifestErr = fmt.Errorf("Crew %w", err)
+			productManifestErr = fmt.Errorf("Project %w", err)
 			return
 		}
 		if manifest.Profile.ID != "work" || manifest.Profile.Scope != agentprofiles.ProfileScopeProject || manifest.UI.Surface != "work" {
-			productManifestErr = fmt.Errorf("invalid Crew product manifest")
+			productManifestErr = fmt.Errorf("invalid project product manifest")
 			return
 		}
 		productManifest = manifest
@@ -61,7 +60,7 @@ func renderProductPrompt() string {
 	manifest := mustWorkManifest()
 	prompt, err := manifest.RenderPrompt(productConfigFiles, manifest.Profile, nil)
 	if err != nil {
-		panic(fmt.Errorf("render Crew prompt: %w", err))
+		panic(fmt.Errorf("render project prompt: %w", err))
 	}
 	return prompt
 }
@@ -76,13 +75,3 @@ func mustWorkManifest() ProductManifest {
 
 const ProfileID = "work"
 const ProjectsRoot = "Crew"
-
-// AgentWorksAgentPrompt is the platform-owned instruction section of the person's AgentWorks Crew (role "agentworks").
-// The person's own details live in that Crew's notes, never here.
-func AgentWorksAgentPrompt() string {
-	text, err := productConfigFiles.ReadFile("prompts/agentworks-agent.md")
-	if err != nil {
-		panic(fmt.Errorf("read AgentWorks prompt: %w", err))
-	}
-	return strings.TrimSpace(string(text))
-}

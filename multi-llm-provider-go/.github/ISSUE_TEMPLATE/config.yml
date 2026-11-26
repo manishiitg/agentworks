@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/manishiitg/llm-provider-mcp/security/advisories/new
+    about: Report command execution, workspace boundary, credential, or installer vulnerabilities privately.
+  - name: Documentation
+    url: https://github.com/manishiitg/llm-provider-mcp/tree/main/docs
+    about: Read installation, provider, security, architecture, and troubleshooting guides.

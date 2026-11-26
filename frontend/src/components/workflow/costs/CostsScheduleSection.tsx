@@ -1,8 +1,8 @@
 import React from 'react'
 import { CalendarClock } from 'lucide-react'
 import type { CostSummary } from '../../../services/api-types'
-import { inputTokens, totalTokens, costAmountLabel } from '../../../utils/costTokens'
-import { formatUSD } from './helpers'
+import { newTokens, totalTokens, costAmountLabel } from '../../../utils/costTokens'
+import { formatCost } from './helpers'
 import { formatTokens } from '../../../utils/formatTokens'
 
 // Spend per project schedule, reminder or trigger (PLAT-702). Rows come from
@@ -10,7 +10,7 @@ import { formatTokens } from '../../../utils/formatTokens'
 const CostsScheduleSection: React.FC<{ scopedCosts: Pick<CostSummary, 'by_source'> | null }> = ({ scopedCosts }) => {
   const rows = Object.entries(scopedCosts?.by_source || {})
     .map(([id, usage]) => ({ id, usage }))
-    .sort((a, b) => b.usage.total_cost_usd - a.usage.total_cost_usd || totalTokens(b.usage) - totalTokens(a.usage))
+    .sort((a, b) => newTokens(b.usage) - newTokens(a.usage) || totalTokens(b.usage) - totalTokens(a.usage))
   if (rows.length === 0) return null
   return (
     <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
@@ -24,9 +24,7 @@ const CostsScheduleSection: React.FC<{ scopedCosts: Pick<CostSummary, 'by_source
             <tr className="border-b border-border text-muted-foreground">
               <th className="pb-2 text-left font-medium">Schedule</th>
               <th className="pb-2 text-right font-medium">Runs</th>
-              <th className="pb-2 text-right font-medium">Recorded AI calls</th>
-              <th className="pb-2 text-right font-medium">Input</th>
-              <th className="pb-2 text-right font-medium">Output</th>
+              <th className="pb-2 text-right font-medium">Tokens</th>
               <th className="pb-2 text-right font-medium">Cost</th>
             </tr>
           </thead>
@@ -35,20 +33,15 @@ const CostsScheduleSection: React.FC<{ scopedCosts: Pick<CostSummary, 'by_source
               <tr key={id}>
                 <td className="max-w-[16rem] truncate py-2 pr-3 font-medium text-foreground">{usage.label || "Scheduled run"}</td>
                 <td className="py-2 text-right font-mono text-muted-foreground">{(usage.run_count || 0).toLocaleString()}</td>
-                <td className="py-2 text-right font-mono text-muted-foreground">{(usage.call_count || 0).toLocaleString()}</td>
-                <td className="py-2 text-right font-mono text-muted-foreground">{formatTokens(inputTokens(usage))}</td>
-                <td className="py-2 text-right font-mono text-muted-foreground">{formatTokens(usage.completion_tokens)}</td>
-                <td className="py-2 text-right font-mono font-medium text-foreground">
-                  {costAmountLabel(usage, formatUSD)}
+                <td className="py-2 text-right font-mono font-medium text-foreground">{formatTokens(newTokens(usage))}</td>
+                <td className="py-2 text-right font-mono text-muted-foreground">
+                  {costAmountLabel(usage, formatCost)}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">
-        A run can make many AI calls. Recorded calls are not the provider’s quota counter; older agent records can group several calls.
-      </p>
     </section>
   )
 }

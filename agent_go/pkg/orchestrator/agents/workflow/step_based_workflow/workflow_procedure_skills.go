@@ -14,7 +14,7 @@ func init() {
 	for _, skill := range []*llmtypes.Skill{
 		{
 			Name: "workflow-database", Description: "Read or update workflow database rows; includes managed-tool and saved-script helper procedures.",
-			Content: "# Workflow database\n\nUse this skill when the task needs durable structured state. The system prompt's effective grant wins. Agents use query_workflow_db/mutate_workflow_db; saved scripts use agentworks_db. Never open SQLite files directly or change schema. Read db/README.md when granted. Open references/managed-read.md for querying, references/managed-write.md for permitted row changes, or references/script-helper.md for saved Python scripts. Schema changes belong to Builder.\n",
+			Content: "# Workflow database\n\nUse this skill when the task needs durable structured state. The system prompt's effective grant wins. Native agents use the admitted database tool: action=query for reads and action=mutate for permitted row changes. Only managed parent workflow Python uses agentworks_db; a helper launched in a native agent shell must use tools or return an artifact to the parent instead. Never open SQLite files directly or change schema. Read db/README.md when granted. Open references/managed-read.md for querying, references/managed-write.md for permitted row changes, or references/script-helper.md for managed parent workflow Python only. Schema changes belong to Builder.\n",
 			SupportingFiles: []llmtypes.SkillFile{
 				{RelPath: "references/managed-read.md", Content: []byte(guidance.StepSystemPromptTemplate("managed-db-read"))},
 				{RelPath: "references/managed-write.md", Content: []byte(guidance.StepSystemPromptTemplate("managed-db-write"))},
@@ -37,7 +37,12 @@ func init() {
 	}
 }
 
-const workflowDBScriptHelper = `# Saved-script database helper
+const workflowDBScriptHelper = `# Managed parent workflow database helper
+
+This module is supplied to managed parent workflow Python, not a native agent
+shell or a helper it launches. Native agents use the admitted database tool
+under their current grant, or return an artifact for parent Python to record.
+Do not try module imports or raw SQLite as a fallback for a missing tool.
 
 Use from agentworks_db import query, query_one, scalar, iter_query, execute,
 insert, execute_many, transaction. Parameters use ? placeholders and rows are

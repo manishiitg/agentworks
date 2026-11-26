@@ -1,0 +1,217 @@
+# Gitleaks Configuration for MCP Agent Library Repository
+# This configuration scans for secrets and sensitive information
+
+title = "MCP Agent Library Open Source Security Scanning"
+version = "8.28.0"
+
+# Enable verbose output for better debugging
+verbose = true
+
+# Scan configuration
+[scan]
+  # Scan all files in the repository
+  path = "."
+  
+  # Use git history for scanning
+  git = true
+  
+  # Include untracked files
+  untracked = true
+  
+  # Scan depth (0 = unlimited)
+  depth = 0
+  
+  # Include binary files
+  binary = false
+  
+  # Include symlinks
+  symlinks = true
+  
+  # Respect .gitignore files
+  ignore_gitignore = true
+
+# Output configuration
+[output]
+  # Output format (json, sarif, csv, or noop)
+  format = "sarif"
+  
+  # Output file path
+  path = "gitleaks-report.sarif"
+  
+  # Include additional metadata
+  verbose = true
+
+# Allowlist configuration - files and patterns to ignore
+[allowlist]
+description = "Files and directories to ignore"
+paths = [
+  '''^cache/''', # Ignore cache files
+  '''^tool_output_folder/''', # Ignore tool output folder
+  '''^go\.sum$''', # Ignore go.sum due to many false positives from module hashes
+  '''^examples/.*/go\.sum$''', # Ignore example go.sum files
+  '''^\.git/index$''', # Ignore git index files (contains file hashes)
+  '''^\.env$''', # Root .env file
+  '''^\.env\..*$''', # All .env variants (but not .env.example files)
+  '''^examples/.*/\.env$''', # Ignore example .env files
+  '''^gitleaks-report\.sarif$''', # Ignore gitleaks SARIF report itself
+  '''^gitleaks-report\.json$''', # Ignore gitleaks JSON report (legacy)
+  '''^gitleaks-current-scan\.json$''', # Ignore current scan report
+  '''^gitleaks-test\.json$''', # Ignore test scan report
+  '''^gitleaks-final-test\.json$''', # Ignore final test scan report
+  '''^examples/.*/mcp_servers\.json$''', # Example configs, no real secrets
+  '''^generated/''', # Ignore generated code
+]
+
+# Rules configuration
+[[rules]]
+  id = "google-cloud-service-account"
+  description = "Google Cloud Service Account Private Key"
+  regex = '''-----BEGIN PRIVATE KEY-----\\n([A-Za-z0-9+/=\\n]{100,})-----END PRIVATE KEY-----\\n'''
+  tags = ["google", "cloud", "service-account", "private-key"]
+  entropy = 4.0
+
+[[rules]]
+  id = "aws-access-key"
+  description = "AWS Access Key ID"
+  regex = '''(AKIA[0-9A-Z]{16})'''
+  tags = ["aws", "key", "access-key"]
+  entropy = 3.5
+  secretGroup = 1
+
+[[rules]]
+  id = "aws-secret-key"
+  description = "AWS Secret Access Key"
+  regex = '''(?:AWS_SECRET_ACCESS_KEY|aws_secret_access_key|secret.*key)[\s=:]+([A-Za-z0-9/+=]{40})'''
+  tags = ["aws", "secret", "access-key"]
+  entropy = 4.0
+  secretGroup = 1
+
+[[rules]]
+  id = "openai-api-key"
+  description = "OpenAI API Key"
+  regex = '''(sk-[A-Za-z0-9]{48})'''
+  tags = ["openai", "api-key"]
+  entropy = 3.5
+  secretGroup = 1
+
+[[rules]]
+  id = "anthropic-api-key"
+  description = "Anthropic API Key"
+  regex = '''(sk-ant-[A-Za-z0-9]{48})'''
+  tags = ["anthropic", "api-key"]
+  entropy = 3.5
+  secretGroup = 1
+
+[[rules]]
+  id = "github-pat"
+  description = "GitHub Personal Access Token"
+  regex = '''(ghp_[A-Za-z0-9]{36})'''
+  tags = ["github", "token"]
+  entropy = 3.5
+  secretGroup = 1
+
+[[rules]]
+  id = "github-app-token"
+  description = "GitHub App Token"
+  regex = '''(gho_[A-Za-z0-9]{36})'''
+  tags = ["github", "token", "app"]
+  entropy = 3.5
+  secretGroup = 1
+
+[[rules]]
+  id = "langfuse-public-key"
+  description = "Langfuse Public Key"
+  regex = '''(pk_[A-Za-z0-9]{32})'''
+  tags = ["langfuse", "public-key"]
+  entropy = 3.5
+  secretGroup = 1
+
+[[rules]]
+  id = "langfuse-secret-key"
+  description = "Langfuse Secret Key"
+  regex = '''(sk_[A-Za-z0-9]{32})'''
+  tags = ["langfuse", "secret-key"]
+  entropy = 3.5
+  secretGroup = 1
+
+[[rules]]
+  id = "generic-api-key"
+  description = "Generic API Key"
+  regex = '''[Aa][Pp][Ii][_-]?[Kk][Ee][Yy][_-]?[=:]\s*['"]?([A-Za-z0-9]{20,})['"]?'''
+  tags = ["api-key", "generic"]
+  entropy = 3.0
+  secretGroup = 1
+
+[[rules]]
+  id = "database-connection"
+  description = "Database Connection String"
+  regex = '''(?:mysql|postgresql|mongodb|redis)://[^:\s]+:([^@\s]+)@[^/\s]+'''
+  tags = ["database", "connection"]
+  entropy = 2.5
+  secretGroup = 1
+
+[[rules]]
+  id = "slack-bot-token"
+  description = "Slack Bot Token"
+  regex = '''(xoxb-[0-9]{11}-[0-9]{11}-[A-Za-z0-9]{24})'''
+  tags = ["slack", "bot", "token"]
+  entropy = 3.5
+  secretGroup = 1
+
+[[rules]]
+  id = "slack-app-token"
+  description = "Slack App Token"
+  regex = '''(xapp-[0-9]{11}-[0-9]{11}-[A-Za-z0-9]{24})'''
+  tags = ["slack", "app", "token"]
+  entropy = 3.5
+  secretGroup = 1
+
+[[rules]]
+  id = "sentry-dsn"
+  description = "Sentry DSN"
+  regex = '''https://([a-f0-9]{32})@[a-z0-9.-]+\.sentry\.io/[0-9]+'''
+  tags = ["sentry", "dsn"]
+  entropy = 3.0
+  secretGroup = 1
+
+[[rules]]
+  id = "grafana-api-key"
+  description = "Grafana API Key"
+  regex = '''eyJrIjoi([A-Za-z0-9]{20,})'''
+  tags = ["grafana", "api-key"]
+  entropy = 3.5
+  secretGroup = 1
+
+# Exclude patterns (files/directories to ignore)
+[[rules.exclude]]
+  # Exclude example files
+  path = '''.*\.example'''
+  
+[[rules.exclude]]
+  # Exclude test files
+  path = '''.*test.*'''
+  
+[[rules.exclude]]
+  # Exclude documentation
+  path = '''.*\.md$'''
+  
+[[rules.exclude]]
+  # Exclude vendor directories
+  path = '''vendor/'''
+  
+[[rules.exclude]]
+  # Exclude build artifacts
+  path = '''dist/'''
+  
+[[rules.exclude]]
+  # Exclude cache directories
+  path = '''cache/'''
+  
+[[rules.exclude]]
+  # Exclude log files
+  path = '''.*\.log$'''
+  
+[[rules.exclude]]
+  # Exclude gitleaks reports
+  path = '''gitleaks-report\.(json|sarif)'''
+

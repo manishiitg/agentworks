@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { randomUUID } from '../../utils/randomUUID'
+import { useEffect, useState } from 'react'
 import { ChevronRight, GitCompareArrows, RefreshCw } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { useChatStore } from '../../stores/useChatStore'
 import { activateTab } from '../../utils/activateTab'
 import { CHAT_FOCUS_COMPOSER_EVENT } from '../../utils/workspacePaneChat'
 import { desktopRequest } from '../../services/desktopConnections'
+import { useLocalSync, type SyncProgress } from './teamLocalSync'
 import { teamError, teamRequest, type TeamClash, type TeamEvent, type TeamTabSync, type TeamTarget } from './teamApi'
-import { takeCrewSync } from './MacSharedAgents'
 
 /** One sync round: one person's files sent (or removed) together, so a first upload is one row, not hundreds (owner,
  * 5 Nov). Events come newest first; a gap of over a minute, another person or another kind starts a new round.
@@ -23,31 +24,7 @@ export function syncRounds(events: TeamEvent[]): SyncRound[] {
   return rounds
 }
 
-/** A sync round in progress, from the sync client itself (Mac status "progress"). */
-export type SyncProgress = { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number }
 const progressPercent = (p: SyncProgress) => p.bytes_total > 0 ? Math.min(100, Math.round(p.bytes_done * 100 / p.bytes_total)) : 0
-
-/** This Mac's copy of a team folder, from its sync client: the round in progress and the server-written line for it
- * (crew_team_desktop.go, worded like the website's). Polled every 2 s while a round runs, else every 10 s. */
-type LocalSync = { line?: string; problem?: boolean; progress?: SyncProgress | null }
-function useLocalSync(target?: TeamTarget, enabled = true): LocalSync | undefined {
-  const [local, setLocal] = useState<LocalSync>()
-  useEffect(() => {
-    setLocal(undefined)
-    if (!target?.connection || !enabled) return
-    let active = true, timer = 0
-    const load = async () => {
-      let next: LocalSync | undefined
-      try { next = await desktopRequest<LocalSync>(`/${encodeURIComponent(target.connection!)}/crew-teams/${encodeURIComponent(target.project)}/local`) } catch (e) { next = { line: `Can't sync: ${teamError(e)}`, problem: true } }
-      if (!active) return
-      setLocal(next)
-      timer = window.setTimeout(() => void load(), next?.progress ? 2000 : 10000)
-    }
-    void load()
-    return () => { active = false; window.clearTimeout(timer) }
-  }, [target?.connection, target?.project, enabled])
-  return local
-}
 
 const verb = (kind: string) => kind === 'clash' ? 'clash saved in history' : kind === 'removed' ? 'removed' : 'sent'
 const clock = (time: string) => new Date(time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -55,9 +32,6 @@ const clock = (time: string) => new Date(time).toLocaleString([], { month: 'shor
 /** The shared folder's sync: in the Mac app this Mac's own copy (from its sync client), elsewhere the server's line for
  * this person (server, from the Team tab reply); then clashes, recent rounds and skipped private files. */
 export function TeamSyncPanel({ target, name, projectId, server }: { target: TeamTarget; name?: string; projectId?: string; server?: TeamTabSync }) {
-  // Opened from the side panel's Shared folder row: scroll here once it is on screen.
-  const root = useRef<HTMLDivElement>(null)
-  useEffect(() => { if (projectId && takeCrewSync(projectId)) window.setTimeout(() => root.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }), 300) }, [projectId])
   const [clashes, setClashes] = useState<TeamClash[]>([])
   const [events, setEvents] = useState<TeamEvent[]>([])
   const [skipped, setSkipped] = useState<string[]>([])
@@ -97,7 +71,7 @@ export function TeamSyncPanel({ target, name, projectId, server }: { target: Tea
   }
   const resolve = async (clash: TeamClash, keep: string) => {
     setBusy(true); setError('')
-    try { await teamRequest(target, '/resolve', 'POST', { path: clash.path, keep, winning_revision: clash.winning_revision, transfer_id: crypto.randomUUID() }); setVersion(v => v + 1) }
+    try { await teamRequest(target, '/resolve', 'POST', { path: clash.path, keep, winning_revision: clash.winning_revision, transfer_id: randomUUID() }); setVersion(v => v + 1) }
     catch (e) { setError(teamError(e)) } finally { setBusy(false) }
   }
   const compare = async (clash: TeamClash) => {
@@ -107,13 +81,13 @@ export function TeamSyncPanel({ target, name, projectId, server }: { target: Tea
     const store = useChatStore.getState()
     const tabs = Object.values(store.chatTabs).filter(t => t.metadata?.agentProfileIsMainChat && !t.metadata?.isViewOnly)
     const tab = tabs.find(t => t.metadata?.agentProfileProjectId === (target.localProject || target.project)) || tabs[0]
-    if (!tab) { setError('Open your own Main chat in this Crew, then ask it to compare these two versions.'); return }
+    if (!tab) { setError('Open your own Main chat in this project, then ask it to compare these two versions.'); return }
     const prompt = `Help resolve the clash in ${name || 'my team'}: ${clash.path}. Compare versions ${clash.losing_revision} and ${clash.winning_revision} of the shared file, explain the differences, and suggest a merged version. Save the agreed version normally, then mark the clash resolved, keeping the current version.`
     const existing = store.getTabConfig(tab.tabId)?.inputText || ''
     store.setTabConfig(tab.tabId, { inputText: existing ? `${existing}\n\n${prompt}` : prompt })
     activateTab(tab.tabId); window.setTimeout(() => window.dispatchEvent(new CustomEvent(CHAT_FOCUS_COMPOSER_EVENT)), 50)
   }
-  return <div ref={root} data-team-sync className="space-y-5 text-sm">
+  return <div data-team-sync className="space-y-5 text-sm">
     <div className="flex items-center justify-between gap-2">{status ? <p role="status" className={`text-xs ${status.problem ? 'text-amber-600' : 'text-muted-foreground'}`}>{status.text}</p> : <span />}<button type="button" aria-label="Refresh Sync" onClick={() => setVersion(v => v + 1)} className="rounded p-1 hover:bg-muted"><RefreshCw className="h-4 w-4" /></button></div>
     {server?.last && <p className="text-xs text-muted-foreground">{server.last}</p>}
     {progress && <section aria-label="Sync in progress" className="space-y-1.5">
@@ -153,3 +127,4 @@ export function TeamSyncPanel({ target, name, projectId, server }: { target: Tea
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
   </div>
 }
+

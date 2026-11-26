@@ -21,7 +21,7 @@ release_manifest = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release_manifest)
 
 TOOLS = ("bash", "python3", "file", "sha256sum", "openssl", "ldd", "node")
-REVS = {"mcp-agent-builder-go": "a1" * 20, "mcpagent": "b2" * 20, "multi-llm-provider-go": "c3" * 20}
+REVS = {"mcp-agent-builder-go": "a1" * 20}
 
 
 @unittest.skipUnless(platform.system() == "Linux" and all(shutil.which(t) for t in TOOLS), "needs Linux with " + ", ".join(TOOLS))
@@ -39,9 +39,9 @@ class PrebuiltActivationTest(unittest.TestCase):
         shutil.copy(REPO / "frontend/scripts/check-release-assets.mjs", builder / "frontend/scripts/")
         (builder / "agent_go/configs").mkdir(parents=True)
         shutil.copy(REPO / "agent_go/configs/mcp_servers_clean.json", builder / "agent_go/configs/")
-        for other in ("mcpagent", "multi-llm-provider-go"):
-            (source / other).mkdir()
-            (source / other / "go.mod").write_text("module x\n")
+        for library in ("mcpagent", "multi-llm-provider-go"):
+            (builder / library).mkdir()
+            (builder / library / "go.mod").write_text("module x\n")
         (self.build / "bin/lib").mkdir(parents=True)
         for name in ("agent", "workspace", "gateway", "browser", "slotctl", "slottmux", "mcpbridge", "video-studio-landlock-runner"):
             shutil.copy("/bin/true", self.build / "bin" / name)  # a real dynamic executable, so the ldd check has something to load
@@ -90,7 +90,7 @@ class PrebuiltActivationTest(unittest.TestCase):
         self.assertEqual(json.loads((release / "downloads/version.json").read_text())["version"], REVS["mcp-agent-builder-go"])
         self.assertTrue((release / "downloads/agentworks-linux-amd64").is_file())
         self.assertEqual((release / "SOURCE_REVISIONS").read_text(), (self.build / "SOURCE_REVISIONS").read_text())
-        self.assertTrue((release / "source/mcpagent/go.mod").is_file())
+        self.assertTrue((release / "source/mcp-agent-builder-go/mcpagent/go.mod").is_file())
         self.assertTrue((release / "static/report-preview.js").is_file())
         self.assertTrue((release / "configs/mcp_servers_example.json").is_file())
         self.assertEqual((release / "frontend/runtime-config.js").read_text(),
@@ -150,8 +150,8 @@ class RtsShipmentTest(unittest.TestCase):
         self.tmp = Path(self._tmp.name)
         self.build = self.tmp / "aaaaaaaa-20261004000000"
         for rel in ("bin/agent", "bin/workspace", "bin/gateway", "bin/browser", "bin/slotctl", "bin/workspace-security.test",
-                    "bin/update-coding-clis", "bin/lib/libfake.so", "source/mcp-agent-builder-go/a.go", "source/mcpagent/b.go",
-                    "source/multi-llm-provider-go/c.go", "downloads/agentworks-linux-amd64", "frontend/index.html"):
+                    "bin/update-coding-clis", "bin/lib/libfake.so", "source/mcp-agent-builder-go/a.go", "source/mcp-agent-builder-go/mcpagent/b.go",
+                    "source/mcp-agent-builder-go/multi-llm-provider-go/c.go", "downloads/agentworks-linux-amd64", "frontend/index.html"):
             path = self.build / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(rel)
@@ -164,7 +164,7 @@ class RtsShipmentTest(unittest.TestCase):
         # exactly the tar command of ship_build_to_rts in deploy/common/build-once.sh
         name = self.build.name
         subprocess.run(
-            f"tar -C '{self.tmp}' --exclude='{name}/source/mcpagent' --exclude='{name}/source/multi-llm-provider-go' "
+            f"tar -C '{self.tmp}' --exclude='{name}/source/mcp-agent-builder-go/mcpagent' --exclude='{name}/source/mcp-agent-builder-go/multi-llm-provider-go' "
             f"--exclude='{name}/downloads' -cf - '{name}' | tar -C '{self.shipped}' -xf -", shell=True, check=True)
         self.copy = self.shipped / name
 
@@ -174,12 +174,12 @@ class RtsShipmentTest(unittest.TestCase):
     def test_trimmed_copy_verifies_only_with_the_documented_skips(self):
         with self.assertRaises(release_manifest.Refused):
             self.verify()
-        self.verify("source/mcpagent/", "source/multi-llm-provider-go/", "downloads/")
+        self.verify("source/mcp-agent-builder-go/mcpagent/", "source/mcp-agent-builder-go/multi-llm-provider-go/", "downloads/")
 
     def test_a_skip_does_not_hide_a_damaged_file(self):
         (self.copy / "bin/slotctl").write_text("bin/slotXXX")
         with self.assertRaises(release_manifest.Refused) as caught:
-            self.verify("source/mcpagent/", "source/multi-llm-provider-go/", "downloads/")
+            self.verify("source/mcp-agent-builder-go/mcpagent/", "source/mcp-agent-builder-go/multi-llm-provider-go/", "downloads/")
         self.assertIn("bin/slotctl", str(caught.exception))
 
     @unittest.skipUnless(shutil.which("bash"), "bash")

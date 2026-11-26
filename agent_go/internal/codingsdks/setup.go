@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/noderuntime"
 )
 
 //go:embed coding-sdks.cjs
@@ -90,6 +92,11 @@ func (m *Manager) prepare(provider string, run *setup) {
 	defer close(run.done)
 	ctx, cancel := context.WithTimeout(m.ctx, 5*time.Minute)
 	defer cancel()
+	if err := noderuntime.EnsureDefault(ctx); err != nil {
+		run.err = err
+		m.report("[CODING SDK] %s: %v", provider, run.err)
+		return
+	}
 	node, err := exec.LookPath("node")
 	if err != nil {
 		run.err = errors.New("Node.js and npm are needed. Install Node.js, then open AgentWorks again.")

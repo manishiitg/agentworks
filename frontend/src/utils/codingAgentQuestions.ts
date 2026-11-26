@@ -8,6 +8,21 @@ export type CodingAgentQuestionPrompt = {
   state: 'pending' | 'answered' | 'interrupted' | 'unanswered'
   questions: Array<{ id: string; header: string; question: string; multiSelect: boolean; allowOther?: boolean; minSelections?: number; maxSelections?: number; options: Array<{ label: string; description: string }> }>
   answers: CodingAgentChoiceAnswer[]
+  statusMessage?: string
+  requestKind?: 'question' | 'command_approval' | 'plan_approval' | 'form'
+}
+
+// A question the agent asks never traps the person: they can skip it or type their own answer in the message box.
+export const SKIPPED_QUESTION_ANSWER = 'No answer: the person skipped this question. Continue with your best judgment, or ask again in plain text.'
+
+/** Every question takes a typed answer, so the message box and Skip can answer it. */
+export function takesTypedAnswer(prompt: Pick<CodingAgentQuestionPrompt, 'questions'>) {
+  return prompt.questions.length > 0 && prompt.questions.every(question => question.allowOther)
+}
+
+/** The same typed text answers every question of a prompt. */
+export function typedAnswers(prompt: Pick<CodingAgentQuestionPrompt, 'questions'>, text: string): CodingAgentChoiceAnswer[] {
+  return prompt.questions.map(question => ({ id: question.id, selectedLabels: [], otherText: text }))
 }
 
 export type CodingAgentQuestionAnswerHandler = (provider: string, promptId: string, answers: CodingAgentChoiceAnswer[], auto?: boolean) => Promise<void>
@@ -29,8 +44,11 @@ export function codingAgentQuestionCards(events: PollingEvent[]) {
     const promptId = text(payload.prompt_id)
     if (!promptId) continue
     const key = `${provider}:${promptId}`
-    if (payload.kind === 'requested' || payload.kind === 'user_input_prompt_requested') {
-      if (pending.has(key)) { hiddenEvents.add(event.id); continue }
+    if (payload.kind === 'requested' || payload.kind === 'user_input_prompt_requested' || payload.kind === 'recovered') {
+      if (pending.has(key)) {
+        if (payload.kind === 'recovered') pending.get(key)!.statusMessage = text(record(payload.metadata).message) || undefined
+        hiddenEvents.add(event.id); continue
+      }
       const questions = (Array.isArray(payload.questions) ? payload.questions : []).map(value => {
         const q = record(value)
         return {
@@ -46,12 +64,16 @@ export function codingAgentQuestionCards(events: PollingEvent[]) {
       }).filter(q => q.id && q.question && (q.options.length || q.allowOther))
       if (!questions.length) continue
       const prompt: CodingAgentQuestionPrompt = { provider, promptId, state: 'pending', questions, answers: [] }
+      const requestKind = record(payload.metadata).native_request_kind
+      if (requestKind === 'question' || requestKind === 'command_approval' || requestKind === 'plan_approval' || requestKind === 'form') prompt.requestKind = requestKind
+      if (payload.kind === 'recovered') prompt.statusMessage = text(record(payload.metadata).message) || undefined
       cards.set(event.id, prompt)
       pending.set(key, prompt)
     } else if (payload.kind === 'settled' || payload.kind === 'user_input_prompt_settled') {
       const prompt = pending.get(key)
       if (!prompt) continue // A history page may contain only the settlement.
-      // 'unanswered': nobody replied in time to a question in a turn another agent's message started (PLAT-746-184).
+      // The server explains closures such as restart; unanswered never means a choice was made.
+      prompt.statusMessage = text(record(payload.metadata).message) || undefined
       prompt.state = payload.outcome === 'answered' ? 'answered' : payload.outcome === 'unanswered' ? 'unanswered' : 'interrupted'
       prompt.answers = (Array.isArray(payload.answers) ? payload.answers : []).map(value => {
         const answer = record(value)
@@ -64,6 +86,32 @@ export function codingAgentQuestionCards(events: PollingEvent[]) {
     }
   }
   return { cards, hiddenEvents }
+}
+
+// Questions that can be waiting on the person in the running turn: asked in it, or reloaded by the server after a
+// restart. An older card whose settlement is outside the loaded history page must not be pinned on every new turn.
+export function questionsOfThisTurn(events: PollingEvent[], turnStartedAt: number | undefined): Set<string> {
+  const keys = new Set<string>()
+  // For the first seconds of a turn its start is not known yet: the person's last message starts it. Without this,
+  // every unsettled question in the loaded history flashed above the message box on each new message (#4053).
+  if (turnStartedAt === undefined) {
+    for (let index = events.length - 1; index >= 0; index--) {
+      if (events[index].type !== 'user_message') continue
+      const at = Date.parse(text(events[index].timestamp))
+      if (Number.isFinite(at)) turnStartedAt = at
+      break
+    }
+  }
+  for (const event of events) {
+    if (event.type !== 'coding_agent_question') continue
+    const outer = record(event.data)
+    const payload = record(outer.data || outer)
+    const at = Date.parse(text(event.timestamp) || text(payload.timestamp))
+    if (turnStartedAt === undefined || payload.kind === 'recovered' || !Number.isFinite(at) || at >= turnStartedAt) {
+      keys.add(`${text(payload.provider)}:${text(payload.prompt_id)}`)
+    }
+  }
+  return keys
 }
 
 // A prompt the server answered "no longer pending" (it was lost with a server restart) is shown closed in

@@ -47,12 +47,12 @@ var externalMCPToolNames = []string{externalMCPToolSpec, externalMCPToolSearch, 
 // Remote instructions are short: the two tool descriptions teach the
 // protocol, since hosted clients may not deliver initialize instructions at
 // all (ChatGPT delivers tools only).
-const externalMCPInstructions = `You are connected to an AgentWorks server. <!-- product:agentworks -->It gives access to the user's workflows (workflow action=list). <!-- /product --><!-- product:work -->Discover the user's Crews with workspace action=list.<!-- /product --> <!-- product:work -->Admins and Crew reviewers also get audited Crew review (workspace_review).<!-- /product --> Your own MCP sign-in follows your website role: owners and workflow editors use Builder capabilities; people using shared work use Run mode. Machine, service-account and device connections keep their assigned limits. Source and workflow configuration edits use current Builder access, native validation and revision checks. get_api_spec lists available tools or returns selected schemas; call_tool executes an available operation with its schema arguments. <!-- product:agentworks -->Discover workflow IDs with workflow action=list first; IDs are never filesystem paths.<!-- /product --> Dashboards: read help action=topic topic="dashboard-authoring" for the dashboard definition, theme and data/script contract. With current project access for viewing and Builder access for editing, use the dashboard tool: action=list to discover, create/update to build drafts, validate and preview exact revisions, then publish and link. Preview additionally needs runs:execute. Links require current project access and grant no access. Answer from what you read; use only operations present in this connection’s catalog. help action=context returns guidance_version; action=topics and action=skills provide current reference material. Guidance is reference material; use only currently listed tools/actions.`
+const externalMCPInstructions = `You are connected to an AgentWorks server. <!-- product:agentworks -->Find the user's workflows with workflow action=list (IDs are never file paths). <!-- /product --><!-- product:work -->Find their projects with workspace action=list.<!-- /product --> <!-- product:work -->Admins and project reviewers also get audited project review (workspace_review).<!-- /product --> Your sign-in has the person's website role: owners and editors build (Builder), people using shared work run it (Run). Machine and device connections keep their own limits. Find tools with search_tools, read their schemas with get_api_spec and run them with call_tool; use only tools listed for this connection. Dashboards: read help action=topic topic="dashboard-authoring" before building one. help action=context, action=topics and action=skills give current guides.`
 
-const externalMCPReadOnlyInstructions = `You are connected to an AgentWorks server through a connection with reading consent. <!-- product:agentworks -->It gives access to the user's workflows (workflow action=list). <!-- /product --><!-- product:work -->Discover the user's Crews with workspace action=list.<!-- /product --> <!-- product:work -->Admins and Crew reviewers also get audited Crew review (workspace_review).<!-- /product --> Every tool reads; nothing creates, edits, or runs. get_api_spec lists available tools or returns selected schemas; call_tool executes an available operation with its schema arguments. <!-- product:agentworks -->Discover workflow IDs with workflow action=list first; IDs are never filesystem paths.<!-- /product --> Answer from what you read; if the task needs a change, say so instead of attempting one. help action=context returns guidance_version; action=topics and action=skills provide current reference material. Guidance is reference material; use only currently listed tools/actions.`
+const externalMCPReadOnlyInstructions = `You are connected to an AgentWorks server with a reading connection: every tool reads; nothing creates, edits or runs. <!-- product:agentworks -->Find the user's workflows with workflow action=list (IDs are never file paths). <!-- /product --><!-- product:work -->Find their projects with workspace action=list.<!-- /product --> <!-- product:work -->Admins and project reviewers also get audited project review (workspace_review).<!-- /product --> Find tools with search_tools, read their schemas with get_api_spec and run them with call_tool. If the task needs a change, say so instead of attempting one. help action=context, action=topics and action=skills give current guides.`
 
 // Appended for existing Crew authoring consent; handlers still check roles.
-const externalMCPCrewAuthoringInstructions = `Crews: load crew-authoring guidance and the current schemas. Listed Crew setup, file, skill and MCP actions use existing Crew authoring consent and current project roles; workspace action=get reads the spec and workspace action=export returns its portable form.`
+const externalMCPCrewAuthoringInstructions = `Projects: load crew-authoring guidance and the current schemas. Listed project setup, file, skill and MCP actions use existing project authoring consent and current project roles; workspace action=get reads the spec and workspace action=export returns its portable form.`
 
 var externalMCPToolSchemas = map[string]map[string]any{
 	externalMCPToolSpec: {
@@ -134,59 +134,24 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 			break
 		}
 	}
+	// Each tool's own description and schema carry its rules (read through
+	// get_api_spec when needed); only what no single tool says is added here.
 	for _, tool := range allowed {
-		if tool.Name == serverProductManagementTool {
-			instructions += " Installed private server products: server_product action=tools discovers their management schemas; action=call invokes them with current admin authority and users:manage consent. Inference keys do not authorize management. "
-		}
-		if tool.Name == "brain" {
-			instructions += " Brain stores shared files of any type. Use brain actions for folders, entries, read/search, changes/diff and saves; skills_list/skills_get/skills_publish manage company skills, and access_* actions use current folder ownership. Install a skill by writing its returned files under your project's skills folder. The catalog reflects this connection's actions. Updates/deletes require expected_version and a stable request_id. Access changes require current expected_acl_version and request_id. Every save is a Git commit; configured backup runs automatically after saves. App access-chat changes retain app confirmation."
-			break
-		}
-	}
-	for _, tool := range allowed {
-		if tool.Name == "brain" && externalAllowsAction(claims, tool, "create") {
-			instructions += " This connection also authorizes Brain saves. Saves affect only folders where its identity currently has Editor access, intersected with its folder caps; workflow authoring permissions are separate."
-			break
-		}
-	}
-	for _, tool := range allowed {
-		if tool.Name == "vault" && externalAllowsAction(claims, tool, "access_save_permissions") {
-			instructions += " Vault actions use current account, project and administrator access. Use the offered access_*, groups_* and tools_* actions for administration, governance_query/governance_mutate for guarded SQL, and connections/call for approved setup calls. set_value stores a secret the person supplies and returns names only; never repeat values. Project secrets also use settings action=update secrets.set with existing owner access. Vault administration needs no workflow_id; ordinary runtime calls retain group and selection checks."
-		}
-	}
-	for _, tool := range allowed {
-		if tool.Name == "get_token_usage" {
-			instructions += " Shared-account token limits: account action=usage shows each person's tokens on the server's shared accounts today and this week (UTC, Monday weeks) against their daily/weekly limits, or totals for a from/to range; action=set_limits (administrators, users:manage) changes a person's limits (0 or null = unlimited, omitted = unchanged; in a person's account override 0 falls back to the account default and -1 is unlimited even when the account has a default). Allowed models: action=usage also lists each shared account's models (account_allowed_models) and each person's effective models per account (allowed_models); action=set_allowed_models (administrators, users:manage) sets an account's list (null = all models) or, with a person, their override (a list replaces the account's; null clears it; [\"*\"] or all_models = every model). Every call is recorded in the Code review audit log."
-			break
-		}
-	}
-	for _, tool := range allowed {
-		if tool.Name == externalUsersTool {
-			instructions += " Administrator accounts: People & access is an overview with basic role, product and on/off updates. Use users list/get/update/delete for detailed admin changes; its schema defines request_id and existing confirmation rules. Passwords must be person-supplied and never repeated or logged. Use account for usage, limits and model rules. Account provisioning remains separate."
-			break
+		switch {
+		case tool.Name == serverProductManagementTool:
+			instructions += " Installed private server products: server_product action=tools lists their management tools and action=call runs them (administrators)."
+		case tool.Name == externalUsersTool:
+			instructions += " Passwords for people's accounts come from the person; never repeat or log them."
+		case tool.Name == "create_crew":
+			instructions += " " + externalMCPCrewAuthoringInstructions
+		case tool.Name == "workspace":
+			instructions += " New workflows are Python scripts inside a project: create them with the project's workflow files tool and its python-workflows guide."
 		}
 	}
 	for _, tool := range allowed {
 		if isExternalWorkflowAccountTool(tool.Name) {
-			instructions += " Workflow personal accounts: settings action=google_account or slack_account takes workflow_id and account containing the native account action. Start with account.action=list_saved, then attach/detach a saved account here; connect/reconnect returns a browser sign-in link. Existing Builder consent and account ownership apply. detach affects this item only; disconnect removes the saved connection everywhere. Browser sign-in remains a human action."
+			instructions += " A workflow's Google or Slack account: start with account.action=list_saved, then attach a saved one; connect returns a sign-in link the person opens."
 			break
-		}
-	}
-	for _, tool := range allowed {
-		if tool.Name == "create_crew" {
-			instructions += " " + externalMCPCrewAuthoringInstructions
-			break
-		}
-	}
-	for _, tool := range allowed {
-
-		if tool.Name == "crew_execution" {
-			instructions += " Direct Crew tools: terminal, browser, database, mcp and integrations run with crew_id; authorized owners execute them without a model turn. History is redacted and owner-only. sessions action=runtime_tools/runtime_call address only your own chat; background starts require its initialized native sandbox and UI actions return actual browser receipts. Human sign-in and approval retain app flows."
-		}
-	}
-	for _, tool := range allowed {
-		if tool.Name == "workspace" {
-			instructions += " Project creation: use workspace action=create with kind=crew, a spec containing name and purpose, and a stable idempotency_key. New workflows are Python scripts inside a Crew: create them with the Crew's workflow files tool and its python-workflows skill. Account creation rights and unrestricted Builder consent are required. Creation does not run anything."
 		}
 	}
 	instructions = (productpolicy.Selection{}).Text(instructions)
@@ -557,7 +522,7 @@ func externalMCPErrorText(rec *externalMCPRecorder) string {
 // the menu instead of an old get_api_spec answer in its history. The
 // fingerprint changes whenever the names do.
 func externalMCPToolIndex(allowed []externalTool) (string, string) {
-	order := []string{"Goals", "Builder", "Flows", "Crews", "Dashboards", "Needs you", "Brain", "Vault", "Crew review", "Account", "Help"}
+	order := []string{"Goals", "Builder", "Flows", "Projects", "Dashboards", "Needs you", "Brain", "Vault", "Project review", "Account", "Help"}
 	groups := map[string][]string{}
 	names := make([]string, 0, len(allowed))
 	for _, tool := range allowed {
@@ -567,21 +532,19 @@ func externalMCPToolIndex(allowed []externalTool) (string, string) {
 		switch {
 		case strings.Contains(name, "dashboard") || name == "get_report_link":
 			group = "Dashboards"
-		case name == "needs_you" || strings.HasSuffix(name, "_needs_you"):
-			group = "Needs you"
 		case name == "sessions":
 			group = "Builder"
 		case strings.Contains(name, "relay"):
 			group = "Flows"
 		case strings.Contains(name, "crew"):
-			group = "Crews"
+			group = "Projects"
 		case name == "brain" || strings.HasPrefix(name, "brain_"):
 			group = "Brain"
 		case strings.Contains(name, "vault"):
 			group = "Vault"
 		case name == "workspace_review":
-			group = "Crew review"
-		case name == "chat_preferences" || name == "users" || name == "costs" || name == "account" || name == "get_token_usage" || name == "set_token_limits" || name == "set_allowed_models" || name == "set_account_availability" || name == "get_account_availability":
+			group = "Project review"
+		case name == "users" || name == "costs" || name == "account" || name == "get_token_usage" || name == "set_token_limits" || name == "set_allowed_models" || name == "set_account_availability" || name == "get_account_availability" || name == providerAccountsTool:
 			group = "Account"
 		case name == "help" || name == "get_agent_context" || name == "get_skill" || strings.Contains(name, "guidance_topic"):
 			group = "Help"
@@ -623,14 +586,3 @@ func (m externalMCPCatalogSession) Validate(sessionID string) (bool, error) {
 }
 
 func (m externalMCPCatalogSession) Terminate(string) (bool, error) { return false, nil }
-
-// externalAllowsAction: this connection may call that action of a merged tool. The
-// tool's action map lists every action; a note about one must follow its own grant.
-func externalAllowsAction(claims *UserClaims, tool externalTool, action string) bool {
-	for _, name := range externalMemberNames(tool.actions[action]) {
-		if member, ok := externalCatalogTool(name); ok && externalTokenAllows(claims, member) {
-			return true
-		}
-	}
-	return false
-}

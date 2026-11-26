@@ -1,149 +1,126 @@
 // @vitest-environment happy-dom
-import React, { act } from 'react'
+import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { createPortal } from 'react-dom'
 import { afterEach, expect, it, vi } from 'vitest'
-const auth = vi.hoisted(() => ({ user: { id: 'member', username: 'Member', can_create: true, is_admin: false, allowed_products: null } as any, isMultiUserMode: true, providers: [{ type: 'oauth' }], logout: vi.fn() }))
-vi.mock('../../stores/useAuthStore', () => ({ useAuthStore: Object.assign((select?: any) => select ? select(auth) : auth, { getState: () => auth }) }))
-vi.mock('../topbar/ChangePasswordDialog', () => ({ default: () => null }))
-vi.mock('../BrowserConnectionsDialog', () => ({ default: ({ open }: { open: boolean }) => open ? createPortal(<div role="dialog" aria-label="Browser connections" />, document.body) : null }))
 import { WorkspaceAccountMenu } from './WorkspaceAccountMenu'
+import { AgentHeaderLine } from '../chat/AgentCard'
 import { useProductNavigationToolbarStore } from '../../stores/useProductNavigationToolbarStore'
-import { TooltipProvider } from '../ui/tooltip'
-import { WORKSPACE_SETTINGS_PATHS } from '../../utils/workspaceSettingsRoutes'
+
+const f = vi.hoisted(() => ({
+  signInNeeded: vi.fn(async () => 0),
+  openLimits: vi.fn(),
+  user: { id: 'owner', username: 'Owner', email: 'owner@example.com', allowed_products: ['work'] } as { id: string; username?: string; email?: string; allowed_products?: string[] } | null,
+}))
+
+vi.mock('../../services/llm-config-api', () => ({ llmConfigService: { getSignInNeeded: f.signInNeeded } }))
+vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
+vi.mock('../../utils/subscriptionLimitsNavigation', () => ({ openSubscriptionLimits: f.openLimits }))
+vi.mock('../../utils/workspaceSettingsNavigation', () => ({ openWorkspaceSettings: vi.fn() }))
+vi.mock('../../utils/productWorkspaceNavigation', () => ({ openProductWorkspace: vi.fn() }))
+vi.mock('../../stores/useAuthStore', async importOriginal => ({
+  ...await importOriginal<typeof import('../../stores/useAuthStore')>(),
+  useAuthStore: Object.assign((select?: (state: unknown) => unknown) => {
+    const state = { user: f.user, isMultiUserMode: false, providers: [], logout: vi.fn() }
+    return select ? select(state) : state
+  }, {
+    getState: () => ({ user: f.user, isMultiUserMode: false, providers: [], logout: vi.fn() }),
+    subscribe: () => () => {},
+  }),
+}))
+vi.mock('../../stores/useConnectedWorkStore', () => ({
+  connectedLocations: () => [],
+  useConnectedWorkPolling: () => {},
+  useConnectedWorkStore: (select: (state: unknown) => unknown) => select({}),
+}))
+vi.mock('../../stores/useWorkspaceConnectionStore', async importOriginal => ({
+  ...await importOriginal<typeof import('../../stores/useWorkspaceConnectionStore')>(),
+  useWorkspaceConnectionStore: Object.assign((select: (state: unknown) => unknown) => select({ activeWorkspaceId: 'local', profiles: [] }), {
+    getState: () => ({ activeWorkspaceId: 'local', profiles: [] }),
+  }),
+}))
+vi.mock('./AppearanceControl', () => ({ default: () => null }))
+vi.mock('./GetApp', () => ({ GetApp: () => null }))
+vi.mock('../topbar/NotificationsControl', () => ({ default: () => null }))
+
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+
 afterEach(() => {
-  useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: null, settingsTarget: null, compactSettingsTarget: null })
-  auth.user = { id: 'member', username: 'Member', can_create: true, is_admin: false, allowed_products: null }
-  auth.isMultiUserMode = true; auth.providers = [{ type: 'oauth' }]
-  window.history.replaceState({}, '', '/')
-  delete window.__APP_RUNTIME_CONFIG__
+  useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: null, compactSettingsTarget: null, settingsTarget: null })
   vi.clearAllMocks()
 })
-async function render(check: (host: HTMLDivElement, destination: HTMLDivElement) => Promise<void>, sidebar = true) {
-  const host = document.createElement('div'), destination = document.createElement('div')
-  document.body.append(host, destination)
-  useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: sidebar ? destination : null })
+
+it('shows the sign-in alert on the sidebar Account & settings trigger and menu item, and opens Accounts and usage', async () => {
+  f.signInNeeded.mockResolvedValue(2)
+  const host = document.createElement('div')
+  const footer = document.createElement('div')
+  document.body.append(host, footer)
+  useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: footer })
   const root = createRoot(host)
   try {
-    await act(async () => root.render(<TooltipProvider><WorkspaceAccountMenu /></TooltipProvider>))
-    await check(host, destination)
-  } finally { await act(async () => root.unmount()); host.remove(); destination.remove() }
-}
-it.each([false, true])('keeps account administration without walkthroughs and with existing admin gates (admin=%s)', async admin => {
-  auth.user.is_admin = admin
-  window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['work', 'mcp-gateway'], gatewayUrl: 'http://127.0.0.1:18136' }
-  await render(async (host, destination) => {
-    expect(host.querySelector('[aria-label^="Account:"]')).toBeNull()
-    await act(async () => destination.querySelector<HTMLButtonElement>('[aria-label="Account & settings"]')!.click())
-    const menu = destination.querySelector<HTMLElement>('[role="menu"]')!
-    expect(menu.hidden).toBe(false)
-    expect(menu.querySelector('[aria-label="Users and access"]') !== null).toBe(admin)
-    expect(menu.querySelector('[aria-label="My vaults"]')).toBeNull()
-    for (const label of ['Workspace', 'Sign out']) expect(menu.textContent).toContain(label)
-    for (const label of ['Getting started', 'Browser connections', 'Notifications & sound', 'Tips while working']) expect(menu.textContent).not.toContain(label)
-    expect(menu.textContent).not.toContain('Change password')
-    expect(menu.querySelector('[aria-label="Dashboards"]')).not.toBeNull()
-    for (const label of ['Audit logs', 'Vault MCP endpoint', 'Search']) expect(menu.textContent).not.toContain(label)
-    expect(menu.textContent).not.toContain('Keyboard shortcuts')
-    expect(menu.textContent).not.toContain('Help & walkthrough')
-    expect(menu.querySelector('[aria-label="Connect AI tools"]')).toBeNull()
-    await act(async () => destination.querySelector<HTMLButtonElement>('[aria-label="AI models & accounts"]')!.click())
-    expect(menu.hidden).toBe(true)
-  })
-})
-it('retains password eligibility and Run restrictions', async () => {
-  auth.providers = [{ type: 'credentials' }]; auth.user.can_create = false
-  await render(async (_host, destination) => {
-    expect(destination.textContent).toContain('Change password')
-    expect(destination.querySelector('[aria-label="My vaults"]')).toBeNull()
-    expect(destination.querySelector('[aria-label="Users and access"]')).toBeNull()
-  })
-})
-it('retains the explicit browser-setup event without a menu entry', async () => {
-  await render(async (_host, destination) => {
-    await act(async () => window.dispatchEvent(new Event('open-browser-connections')))
-    expect(destination.querySelector<HTMLElement>('[role="menu"]')!.hidden).toBe(true)
-    expect(document.querySelector('[role="dialog"][aria-label="Browser connections"]')).not.toBeNull()
-  })
-})
-it.each([false, true])('keeps permitted products and dismissal in the account menu (sidebar=%s)', async sidebar => {
-  window.__APP_RUNTIME_CONFIG__ = { deploymentMode: 'server', enabledProductSurfaces: ['work', 'agentworks', 'relays', 'knowledgebase', 'bullpen', 'mcp-gateway'], gatewayUrl: 'https://example.com' }
-  auth.user.allowed_products = ['work', 'knowledgebase', 'mcp-gateway', 'bullpen']
-  await render(async (host, destination) => {
-    const container = sidebar ? destination : host
-    const trigger = container.querySelector<HTMLButtonElement>('[aria-label="Account & settings"]')!
+    await act(async () => { root.render(<WorkspaceAccountMenu />); await Promise.resolve() })
+    const trigger = footer.querySelector<HTMLButtonElement>('[data-product-settings-trigger]')!
+    expect(trigger.getAttribute('aria-label')).toBe('Account & settings — 2 accounts need sign-in')
+    expect(trigger.querySelector('[data-account-sign-in-dot]')?.textContent).toBe('2')
+
     await act(async () => trigger.click())
-    const menu = container.querySelector<HTMLElement>('[role="menu"]')!
-    expect(menu.hidden).toBe(false)
-    expect([...menu.querySelectorAll('[data-product-option]')].map(item => item.getAttribute('aria-label'))).toEqual(['Crew', 'Vault', 'Brain', 'AgentBridge', 'Dashboards', 'CLI / MCP'])
-    expect(useProductNavigationToolbarStore.getState().sidebarSettingsTarget).toBe(sidebar ? destination : null)
-    await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
-    expect(menu.hidden).toBe(true)
-    expect(document.activeElement).toBe(trigger)
-    await act(async () => trigger.click())
-    await act(async () => menu.querySelector<HTMLButtonElement>('[aria-label="Dashboards"]')!.click())
-    expect(window.location.pathname).toBe('/dashboards')
-    expect(menu.hidden).toBe(true)
-    await act(async () => trigger.click())
-    await act(async () => menu.querySelector<HTMLButtonElement>('[aria-label="CLI / MCP"]')!.click())
-    expect(window.location.pathname).toBe(WORKSPACE_SETTINGS_PATHS.mcp)
-    expect(menu.hidden).toBe(true)
-  }, sidebar)
+    const item = [...footer.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(b => b.textContent?.includes('2 accounts need sign-in'))
+    expect(item).toBeTruthy()
+    await act(async () => item!.click())
+    expect(f.openLimits).toHaveBeenCalledOnce()
+  } finally {
+    await act(async () => root.unmount())
+    host.remove()
+    footer.remove()
+  }
 })
-it('keeps local identity without password and sign-out actions', async () => {
-  auth.isMultiUserMode = false; auth.providers = [{ type: 'credentials' }]
-  await render(async (_host, destination) => {
-    expect(destination.textContent).toContain('Local account')
-    expect(destination.textContent).not.toContain('Change password')
-    expect(destination.textContent).not.toContain('Sign out')
-  })
-})
-it.each([
-  { desktop: true, userAgent: 'Macintosh', platforms: [] },
-  { desktop: false, userAgent: 'Macintosh', platforms: ['Mac'] },
-  { desktop: false, userAgent: 'Windows NT 10.0', platforms: ['Windows'] },
-  { desktop: false, userAgent: 'X11; Linux x86_64', platforms: ['Linux'] },
-  { desktop: false, userAgent: 'unknown', platforms: ['Mac', 'Windows'] },
-])('shows the matching terminal installer without downloading it ($userAgent, desktop=$desktop)', async ({ desktop, userAgent, platforms }) => {
-  // PLAT-746-302: opening installation instructions must not start a download or network request.
-  const fetchRelease = vi.fn(async () => ({ ok: true, json: async () => ({ tag_name: 'v1.2.3', assets: [{ name: 'AgentWorks-1.2.3-arm64.dmg', browser_download_url: 'https://example.invalid/untrusted' }] }) }))
-  vi.stubGlobal('fetch', fetchRelease)
-  const userAgentSpy = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(userAgent)
-  const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
-  if (desktop) window.electronAPI = { getDesktopConnection: () => 'local' } as never
+
+it('shows a dot on the compact Account & settings trigger when collapsed, and hides it when all accounts are signed in', async () => {
+  f.signInNeeded.mockResolvedValue(1)
+  const host = document.createElement('div')
+  const compact = document.createElement('div')
+  document.body.append(host, compact)
+  useProductNavigationToolbarStore.setState({ compactSettingsTarget: compact })
+  const root = createRoot(host)
   try {
-    await render(async host => {
-      const button = host.querySelector<HTMLButtonElement>('[aria-label="Get the app"]')
-      expect(Boolean(button)).toBe(!desktop)
-      if (!button) return
-      expect(fetchRelease).not.toHaveBeenCalled()
-      await act(async () => button.click())
-      expect(fetchRelease).not.toHaveBeenCalled()
-      const panel = host.querySelector('[role="dialog"]')!
-      expect(panel.querySelector('a')).toBeNull()
-      const commands = [...panel.querySelectorAll('code')].map(node => node.textContent!)
-      expect(commands).toHaveLength(platforms.length)
-      for (const [index, platform] of platforms.entries()) {
-        const command = commands[index]
-        if (platform === 'Windows') {
-          expect(command).toContain('$env:AGENTWORKS_SERVER=')
-          expect(command).toContain('/api/downloads/cli/install-agentworks.ps1')
-          expect(command).toMatch(/; irm '.+' \| iex$/)
-          expect(panel.textContent).toContain('not as administrator')
-          expect(panel.textContent).toContain('Protection history')
-        } else if (platform === 'Mac') {
-          expect(command).toBe('curl -fsSL https://raw.githubusercontent.com/manishiitg/agentworks/main/install.sh | bash')
-        } else {
-          expect(command).toContain('/api/downloads/cli/install-agentworks.sh')
-        }
-        await act(async () => panel.querySelector<HTMLButtonElement>(`[aria-label="Copy ${platform} install command"]`)!.click())
-        expect(copy).toHaveBeenLastCalledWith(command)
-        expect(command).not.toMatch(/[\r\n]/) // the wrapped display must copy as one command
-      }
-      await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
-      expect(host.querySelector('[role="dialog"]')).toBeNull()
-      expect(document.activeElement).toBe(button)
-    }, false)
-  } finally { delete window.electronAPI; userAgentSpy.mockRestore(); copy.mockRestore(); vi.unstubAllGlobals() }
+    await act(async () => { root.render(<WorkspaceAccountMenu />); await Promise.resolve() })
+    const trigger = compact.querySelector<HTMLButtonElement>('[data-product-settings-trigger]')!
+    expect(trigger.getAttribute('aria-label')).toBe('Account & settings — 1 account needs sign-in')
+    expect(trigger.querySelector('[data-account-sign-in-dot]')).toBeTruthy()
+  } finally {
+    await act(async () => root.unmount())
+    host.remove()
+    compact.remove()
+  }
+
+  f.signInNeeded.mockResolvedValue(0)
+  const host2 = document.createElement('div')
+  const footer2 = document.createElement('div')
+  document.body.append(host2, footer2)
+  useProductNavigationToolbarStore.setState({ sidebarSettingsTarget: footer2 })
+  const root2 = createRoot(host2)
+  try {
+    await act(async () => { root2.render(<WorkspaceAccountMenu />); await Promise.resolve() })
+    const trigger = footer2.querySelector<HTMLButtonElement>('[data-product-settings-trigger]')!
+    expect(trigger.getAttribute('aria-label')).toBe('Account & settings')
+    expect(trigger.querySelector('[data-account-sign-in-dot]')).toBeNull()
+  } finally {
+    await act(async () => root2.unmount())
+    host2.remove()
+    footer2.remove()
+  }
+})
+
+it('allows longer agent names in the desktop Crew header before truncating', async () => {
+  const host = document.createElement('div')
+  document.body.append(host)
+  const root = createRoot(host)
+  try {
+    await act(async () => root.render(<AgentHeaderLine crewName="ai-work" agent={{ key: 'a', name: 'Skills: add and share across teams', tabId: 't1', main: false }} />))
+    const label = host.querySelector('[data-agent-header] span[title="Skills: add and share across teams"]')!
+    expect(label.className).toContain('md:max-w-[28rem]')
+    expect(label.className).toContain('lg:max-w-[36rem]')
+  } finally {
+    await act(async () => root.unmount())
+    host.remove()
+  }
 })

@@ -155,7 +155,7 @@ export const HumanFeedbackToolCallDisplay: React.FC<HumanFeedbackToolCallDisplay
             onChange={(e) => setResponse(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Type feedback here if needed... (Enter to submit)"
-            className="w-full px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800/80 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+            className="w-full px-2.5 py-1.5 text-xs border border-border rounded bg-card text-foreground placeholder-muted-foreground focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
             rows={5}
             disabled={isSubmitting}
           />
@@ -164,7 +164,7 @@ export const HumanFeedbackToolCallDisplay: React.FC<HumanFeedbackToolCallDisplay
               <button
                 onClick={handleApprove}
                 disabled={isSubmitting}
-                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 bg-success hover:bg-success/90 text-success-foreground text-xs font-medium rounded transition-colors disabled:opacity-50"
               >
                 {isSubmitting ? 'Processing...' : 'Submit'}
               </button>
@@ -173,7 +173,7 @@ export const HumanFeedbackToolCallDisplay: React.FC<HumanFeedbackToolCallDisplay
               <button
                 onClick={handleSubmit}
                 disabled={isSubmitting || !response.trim()}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white text-xs font-medium rounded transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium rounded transition-colors disabled:opacity-50"
               >
                 {isSubmitting ? 'Submitting...' : 'Submit Feedback'}
               </button>

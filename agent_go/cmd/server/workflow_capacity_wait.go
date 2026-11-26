@@ -48,18 +48,9 @@ func (s *SchedulerService) outstandingCapacityWait(ctx context.Context, workspac
 	if workspacePath == "" {
 		return nil, nil
 	}
-	runs, err := ReadScheduleRuns(ctx, workspacePath)
+	newest, err := findScheduleHistoryDetail(ctx, workspacePath, "status=?", scheduleRunStatusWaitingForCapacity)
 	if err != nil {
 		return nil, nil
-	}
-	var newest *ScheduleRunEntry
-	for i := range runs {
-		if runs[i].Status != scheduleRunStatusWaitingForCapacity {
-			continue
-		}
-		if newest == nil || runs[i].StartedAt.After(newest.StartedAt) {
-			newest = &runs[i]
-		}
 	}
 	if newest == nil {
 		return nil, nil

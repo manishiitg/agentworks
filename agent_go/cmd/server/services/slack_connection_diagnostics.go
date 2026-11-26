@@ -34,13 +34,14 @@ func (s *SlackService) DiagnoseConnection(ctx context.Context) SlackConnectionTe
 
 // DiagnoseConnectionFor diagnoses one named registry entry. Root only.
 func (s *SlackService) DiagnoseConnectionFor(ctx context.Context, connID string) SlackConnectionTestResult {
+	curCfg := s.slackConfig()
 	if s.isChildService() {
 		return SlackConnectionTestResult{Message: "Diagnose through the root Slack service"}
 	}
 	if err := s.ReloadConfig(ctx); err != nil {
 		return SlackConnectionTestResult{Message: "Failed to load Slack configuration"}
 	}
-	conn, ok := effectiveSlackConnection(s.config, connID)
+	conn, ok := effectiveSlackConnection(curCfg, connID)
 	if !ok {
 		return SlackConnectionTestResult{Message: "Slack connection is unknown or has no tokens"}
 	}
@@ -149,6 +150,8 @@ func testSlackBotScopes(ctx context.Context, token string) (map[string]bool, err
 	if !strings.HasPrefix(token, "xoxb-") {
 		return nil, fmt.Errorf("Bot token must start with xoxb-")
 	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://slack.com/api/auth.test", nil)
 	if err != nil {
 		return nil, fmt.Errorf("Could not build bot token check")

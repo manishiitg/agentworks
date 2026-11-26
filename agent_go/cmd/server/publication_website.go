@@ -56,7 +56,7 @@ func deletePublicationState(ctx context.Context, root string, target ...string) 
 		// Keep a small tombstone so an old lost-response retry cannot recreate
 		// a project the person deliberately deleted. Remove all saved raw bytes.
 		upload.State = "deleted"
-		upload.Error = "This Crew was deleted. Start a new publication to create another Crew."
+		upload.Error = "This project was deleted. Start a new publication to create another project."
 		if err := savePublicationUpload(&upload); err != nil {
 			return err
 		}
@@ -128,7 +128,7 @@ func (api *StreamingAPI) openPublicationHistory(w http.ResponseWriter, r *http.R
 	}
 	binding, manifest, ok := api.resolveExternalWorkspace(r.Context(), claims, workspaceID)
 	if !ok || !binding.OwnedByCaller || !publicationOriginTokenAllowed(claims, manifest.Product, manifest.ID) {
-		externalError(w, 404, "not_found", "Open the Crew as a Builder to download its imported chat. Shared use is through its dashboard and Ask.")
+		externalError(w, 404, "not_found", "Open the project as a Builder to download its imported chat. Shared use is through its dashboard and Ask.")
 		return nil, "", false
 	}
 	id := agentID
@@ -137,7 +137,7 @@ func (api *StreamingAPI) openPublicationHistory(w http.ResponseWriter, r *http.R
 	}
 	p, err := readPublishedAgent(contextWithoutPublication(r.Context()), agentProfileRuntimeWorkspace(binding.OwnerID, binding.Binding.WorkspacePath), id)
 	if err != nil || p == nil {
-		externalError(w, 404, "not_found", "This agent has no imported chat. Choose one from the Crew's Agents list.")
+		externalError(w, 404, "not_found", "This agent has no imported chat. Choose one from the project's Agents list.")
 		return nil, "", false
 	}
 	name := "raw.jsonl"
@@ -154,7 +154,7 @@ func (api *StreamingAPI) openPublicationHistory(w http.ResponseWriter, r *http.R
 	}
 	file, err := os.Open(filepath.Join(dir, name))
 	if err != nil {
-		externalError(w, 404, "not_found", "The imported chat is unavailable. Check this Crew's publication receipt.")
+		externalError(w, 404, "not_found", "The imported chat is unavailable. Check this project's publication receipt.")
 		return nil, "", false
 	}
 	info, err := file.Stat()

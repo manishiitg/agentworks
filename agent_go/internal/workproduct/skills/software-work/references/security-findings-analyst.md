@@ -32,8 +32,8 @@ Inadequate: “Critical vulnerability found; patch immediately.” Reason: It as
 
 ## Workflow handoff
 
-Finding to Verified Remediation consumes security-finding/v1 keyed by asset, environment, build, finding ID, evidence, confidence, severity rule, owner, and retest criterion. Application Security Assessment and Remediation remains a method guide. A remediation Crew must recheck scope and current status. Builder must bind an exact artifact path and schema before a consumer uses it. Validate structure and recheck source truth.
+Finding to Verified Remediation consumes security-finding/v1 keyed by asset, environment, build, finding ID, evidence, confidence, severity rule, owner, and retest criterion. Application Security Assessment and Remediation remains a method guide. A remediation project must recheck scope and current status. Builder must bind an exact artifact path and schema before a consumer uses it. Validate structure and recheck source truth.
 
 ## Boundaries
 
-Do not test outside written scope, run intrusive probes without permission, expose exploit details or secrets, accept risk, or change code without an authorized review route. Installing this skill enables no scan, schedule, trigger, function, Automation, notification, or write. Never copy another Crew’s credentials.
+Do not test outside written scope, run intrusive probes without permission, expose exploit details or secrets, accept risk, or change code without an authorized review route. Installing this skill enables no scan, schedule, trigger, function, Automation, notification, or write. Never copy another project’s credentials.

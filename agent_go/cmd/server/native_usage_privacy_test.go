@@ -17,7 +17,7 @@ func TestNativeUsageWarningsStayWithAccountOwner(t *testing.T) {
 	defer store.Stop()
 	store.SetSessionOwner("native-private-example", "alice")
 	api := &StreamingAPI{eventStore: store}
-	payload := map[string]interface{}{"events": []interface{}{map[string]interface{}{"type": "status_line", "data": map[string]interface{}{"text": "private quota text", "metadata": map[string]interface{}{"context_used_tokens": 4200, "context_window_tokens": 10000, "rate_limit_windows": []interface{}{map[string]interface{}{"name": "private-window", "used_percent": 95, "resets_at": 12345}}, "status_extras": []interface{}{"ctx 42%", "private-window 95%"}}}}, map[string]interface{}{"type": "tool_call_end", "data": map[string]interface{}{"result": map[string]interface{}{"credits": 3, "plan": "Product plan"}}}}}
+	payload := map[string]interface{}{"events": []interface{}{map[string]interface{}{"type": "status_line", "data": map[string]interface{}{"connection_id": "private-account-id", "text": "private quota text", "metadata": map[string]interface{}{"context_used_tokens": 4200, "context_window_tokens": 10000, "rate_limit_windows": []interface{}{map[string]interface{}{"name": "private-window", "used_percent": 95, "resets_at": 12345}}, "status_extras": []interface{}{"ctx 42%", "private-window 95%"}}}}, map[string]interface{}{"type": "tool_call_end", "data": map[string]interface{}{"result": map[string]interface{}{"credits": 3, "plan": "Product plan"}}}}}
 	// Native Codex token_count and Claude status line shapes, with sample
 	// numbers: private windows/credits never survive shared replay.
 	var codex map[string]interface{}
@@ -33,10 +33,10 @@ func TestNativeUsageWarningsStayWithAccountOwner(t *testing.T) {
 			t.Fatal(err)
 		}
 		s := string(out)
-		if user == "alice" && !strings.Contains(s, "private-window") {
+		if user == "alice" && (!strings.Contains(s, "private-window") || !strings.Contains(s, "private-account-id")) {
 			t.Fatal("owner lost private warning")
 		}
-		if user == "bob" && (strings.Contains(s, "private-window") || strings.Contains(s, "private quota text") || strings.Contains(s, "resets_at") || strings.Contains(s, "private-credit") || strings.Contains(s, "private-limit")) {
+		if user == "bob" && (strings.Contains(s, "private-account-id") || strings.Contains(s, "private-window") || strings.Contains(s, "private quota text") || strings.Contains(s, "resets_at") || strings.Contains(s, "private-credit") || strings.Contains(s, "private-limit")) {
 			t.Fatal("shared response exposed private account limits")
 		}
 		if !strings.Contains(s, "context_used_tokens") || !strings.Contains(s, `"cached_input_tokens":60`) || !strings.Contains(s, "model_context_window") || !strings.Contains(s, "Product plan") || !strings.Contains(s, `"credits":3`) {

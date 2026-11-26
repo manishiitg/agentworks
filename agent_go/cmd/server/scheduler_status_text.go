@@ -9,29 +9,9 @@ import (
 
 // Plain status text for the Schedules list, written for people who are not
 // technical. The server decides it (owner rule: the backend decides) so every
-// screen says the same thing: while the product's timed runs are paused every
+// screen says the same thing: while all timed runs are paused every
 // schedule reads Paused, never Missed, and the raw error text stays in
 // last_error as detail for a tooltip or inspector.
-
-// schedulePauseProduct names the pause group a schedule job belongs to:
-// "agentworks" (Goals workflows), "relays", "work" (Crews) or "code".
-func schedulePauseProduct(job ScheduledJobResponse) string {
-	if profile, _, ok := parseProductScheduleJobID(job.ID); ok {
-		return pauseProductForProfile(profile)
-	}
-	if profile, _, _, ok := parseProjectScheduleJobID(job.ID); ok {
-		return pauseProductForProfile(profile)
-	}
-	if job.pauseProduct != "" {
-		return job.pauseProduct
-	}
-	return "agentworks"
-}
-
-func pauseProductForProfile(profile string) string {
-
-	return "work"
-}
 
 func scheduleStatusWord(job ScheduledJobResponse, paused bool) string {
 	switch {
@@ -136,7 +116,7 @@ func scheduleTimingSummary(job ScheduledJobResponse) string {
 func applyScheduleStatusText(jobs []ScheduledJobResponse, config *SchedulerConfig) {
 	for i := range jobs {
 		jobs[i].TimingSummary = scheduleTimingSummary(jobs[i])
-		paused := config.ProductPaused(schedulePauseProduct(jobs[i]))
+		paused := config != nil && config.GloballyPaused
 		jobs[i].StatusWord = scheduleStatusWord(jobs[i], paused)
 		jobs[i].RunOutcome = scheduleRunOutcome(jobs[i].LastStatus)
 		jobs[i].HasRunIssue = jobs[i].Enabled && (jobs[i].LastStatus == "error" || jobs[i].LastStatus == "partial" || jobs[i].LastStatus == "interrupted")

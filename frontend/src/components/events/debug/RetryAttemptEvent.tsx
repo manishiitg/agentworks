@@ -11,6 +11,9 @@ interface RetryAttemptEventDisplayProps {
 // the current chat design). The reason stays readable (connection_error →
 // "connection error") and the full text is in the tooltip.
 export const RetryAttemptEventDisplay: React.FC<RetryAttemptEventDisplayProps> = ({ event }) => {
+  // Native completion only clears the live phase; it is not another retry notice.
+  if (event.phase === 'native_retry_end') return null
+
   const nextAttempt = (event.attempt_index ?? 0) + 1
   const attempt = event.total_attempts ? Math.min(nextAttempt, event.total_attempts) : nextAttempt
   const attemptText = event.total_attempts ? `attempt ${attempt} of ${event.total_attempts}` : `attempt ${attempt}`

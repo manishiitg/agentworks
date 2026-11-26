@@ -26,6 +26,7 @@ type dashboardQuestionDiscovery struct {
 }
 
 type dashboardQuestionResource struct {
+	Removed   bool   `json:"removed,omitempty"`
 	ID        string `json:"id"`
 	Root      string `json:"root"`
 	ProjectID string `json:"project_id"`
@@ -94,7 +95,9 @@ func registerDashboardQuestionResourcesWithCodes(ctx context.Context, items []da
 	ids := make(map[key]int, len(registry.Resources))
 	taken := make(map[string]bool, len(registry.Resources))
 	for i, resource := range registry.Resources {
-		ids[key{resource.Root, resource.ProjectID, resource.Kind, resource.Dashboard}] = i
+		if !resource.Removed {
+			ids[key{resource.Root, resource.ProjectID, resource.Kind, resource.Dashboard}] = i
+		}
 		if resource.Code != "" {
 			taken[resource.Code] = true
 		}

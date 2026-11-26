@@ -114,10 +114,11 @@ export default function CostsOverview() {
 
   const total = data?.total
   const maxProviderCost = Math.max(...providerRows.map(row => row.usage.total_cost_usd), 0)
+  // API keys and other pay-per-use accounts are real spend; subscription turns are an estimate the plan covers.
+  const billedPerUse = (total?.provider_actual_cost_usd ?? 0) + (total?.token_estimate_cost_usd ?? 0)
   const costSources = [
-    (total?.provider_actual_cost_usd ?? 0) > 0 ? `${overviewCurrency(total?.provider_actual_cost_usd ?? 0)} provider-reported` : '',
-    (total?.subscription_shadow_cost_usd ?? 0) > 0 ? `${overviewCurrency(total?.subscription_shadow_cost_usd ?? 0)} subscription-equivalent estimate` : '',
-    (total?.token_estimate_cost_usd ?? 0) > 0 ? `${overviewCurrency(total?.token_estimate_cost_usd ?? 0)} token estimate` : '',
+    billedPerUse > 0 ? `${overviewCurrency(billedPerUse)} billed per use (API keys)` : '',
+    (total?.subscription_shadow_cost_usd ?? 0) > 0 ? `${overviewCurrency(total?.subscription_shadow_cost_usd ?? 0)} subscription equivalent (covered by plans, not billed)` : '',
   ].filter(Boolean)
 
   return (
@@ -126,7 +127,7 @@ export default function CostsOverview() {
         <div>
           <h2 className="text-xl font-semibold text-gray-950 dark:text-white">Costs</h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-600 dark:text-gray-300">
-            Recorded AI usage by user, workflow, Crew, Code workspace, project, and bot for work you can open{data?.includes_other ? ', plus unattributed activity' : ''}.
+            Recorded AI usage by user, workflow, project, and bot for work you can open{data?.includes_other ? ', plus unattributed activity' : ''}.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -191,7 +192,7 @@ export default function CostsOverview() {
             Cached input is included in input tokens.{' '}
             {costSources.length > 0 ? costSources.join(' · ') : (total?.total_cost_usd ?? 0) > 0 ? 'Recorded cost source unavailable' : 'No priced usage recorded'}.
             {total && ` ${pricingCoverageText(total)}`}
-            {(total?.subscription_shadow_cost_usd ?? 0) > 0 && ' Subscription-equivalent estimates are not your subscription bill.'}
+            {(total?.subscription_shadow_cost_usd ?? 0) > 0 && ' Subscription equivalent is an estimate of plan use, not a bill.'}
           </div>
 
           <CostExplorer data={data} days={days} itemLabel={itemLabel} />

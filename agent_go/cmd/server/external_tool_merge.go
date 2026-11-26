@@ -27,18 +27,17 @@ type externalToolMerge struct {
 }
 
 var externalToolMerges = []externalToolMerge{
-	{"share", "Share a Crew or workflow. get inspects the current audience; set is owner-only and keeps the existing product authoring consent. " + runShareAccessDescription, dashboardMergeActions("share")},
-	{"dashboard", "Live dashboards of workflows and Crews: find them, read and edit drafts, check and publish revisions, and get links.", dashboardMergeActions("dashboard")},
+	{"share", "Share a project or workflow. get inspects the current audience; set is owner-only and keeps the existing product authoring consent. " + runShareAccessDescription + " Co-owners and Users of a project on the server (people who build it, or work in it through chat with your setup and locked files) are not Share: list and change them with crew_owners.", dashboardMergeActions("share")},
+	{"dashboard", "Live dashboards of workflows and projects: find them, read and edit drafts, check and publish revisions, and get links.", dashboardMergeActions("dashboard")},
 	{"settings", "Read or change this product's setup, accounts, linked knowledge and team delivery using its existing access.", platformMergeActions("settings")},
-	{"models", "Read or change project model defaults with existing Builder and account access; other model actions appear only where already available.", platformMergeActions("models")},
+	{"models", "Read or change model choices with existing Builder and account access: a workflow's models (scope=project) or your own project chat's model (scope=tab). A project has no model setting; chats without their own use the owner's last-used model. Other model actions appear only where already available.", platformMergeActions("models")},
 	{"costs", "Read recorded usage and attributed spend for products you can access. Summary, queries and drill-down keep their existing product, root and connection checks.", platformMergeActions("costs")},
-	{"needs_you", "Find and answer the questions waiting on you. Current question, decision and product access still applies.", platformMergeActions("needs_you")},
 	{"account", "Manage company accounts and installed services with the existing administrator permissions.", platformMergeActions("account")},
 	{"help", "Read versioned product and connection guidance.", platformMergeActions("help")},
 	{"workflow", "Find workflows you can use, read one workflow's manifest and access, or its plan.", [][2]string{
 		{"list", "list_workflows"}, {"get", "get_workflow"}, {"outline", "get_script_outline"}, {"save_inputs", "save_script_inputs"},
 	}},
-	{"files", "Read and change allowed project files, links and attachments. Current Builder, sharing, private-path, file-root and revision checks still decide access.", platformMergeActions("files")},
+	{"files", "This project's files: list, read, write and copy them, attach shared folders, make links, and see or undo what a reply changed. In a coding app's chat, read and write files with the app's own file tools.", platformMergeActions("files")},
 	{"database", "Read managed project data and schemas. Offered write, migration and snapshot actions retain the current owner, connection, step and file-grant checks.", platformMergeActions("database")},
 	{"skills", "Find, install and select project skills and reusable commands using existing access.", platformMergeActions("skills")},
 	{"mcp", "Manage the current project's connections and call already selected tools with existing account and connection access.", platformMergeActions("mcp")},
@@ -54,10 +53,9 @@ var externalToolMerges = []externalToolMerge{
 	{"browser", "Use the current project browser or manage your own browser connections.", platformMergeActions("browser")},
 	{"terminal", "Use the existing project terminal, execution history or granted laptop connection.", platformMergeActions("terminal")},
 	{"ui", "Open and inspect the current app's views using its existing browser acknowledgement.", platformMergeActions("ui")},
-	{"media", "Create or show images, documents and other media with the current provider and presentation tools.", platformMergeActions("media")},
-	{"workspace_review", "Audited inspection of Crew projects for administrators and Crew reviewers: projects, costs, files, chats and the audit log.", [][2]string{
+	{"workspace_review", "Audited inspection of project projects for administrators and project reviewers: projects, costs, files and the audit log.", [][2]string{
 		{"workspaces", "list_review_workspaces"}, {"costs", "get_review_costs"}, {"files", "list_review_files"}, {"file", "read_review_file"},
-		{"chats", "list_review_chats"}, {"chat", "read_review_chat"}, {"audit", "get_review_audit"},
+		{"audit", "get_review_audit"},
 	}},
 }
 
@@ -311,7 +309,7 @@ func externalMergedForClaims(claims *UserClaims, tool externalTool) (externalToo
 					line += " Requires " + strings.Join(required, ", ") + "."
 				}
 			} else {
-				line += " Pass workflow_id, or crew_id for a Crew."
+				line += " Pass workflow_id, or crew_id for a project."
 			}
 			lines = append(lines, line)
 		}
@@ -573,10 +571,10 @@ func projectServiceTool(name string) bool {
 	switch name {
 	case "manage_schedules", "manage_triggers", "manage_condition_triggers", "get_dashboard_share", "share_dashboard", "manage_crew_chats",
 		"ask_crew", "list_crews", "get_crew", "get_crew_costs", "create_crew", "update_crew", "export_crew", "import_crew",
-		"list_crew_files", "search_crew_files", "read_crew_file", "write_crew_file", "suggest_crew_change", "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply",
+		"list_crew_files", "search_crew_files", "read_crew_file", "write_crew_file", "list_crew_snapshots", "compare_crew_snapshot", "undo_crew_reply", "crew_file_limit",
 		"crew_git_status", "crew_git_diff", "crew_git_branch_compare", "crew_git_branch_diff",
 		"project_functions_list", "project_functions_call", "project_functions_get_call", "project_functions_reply", "project_functions_calls",
-		"list_review_workspaces", "get_review_costs", "list_review_files", "read_review_file", "list_review_chats", "read_review_chat", "get_review_audit":
+		"list_review_workspaces", "get_review_costs", "list_review_files", "read_review_file", "get_review_audit":
 		return true
 	}
 	return false

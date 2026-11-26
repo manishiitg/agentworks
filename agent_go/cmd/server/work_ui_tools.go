@@ -11,7 +11,7 @@ import (
 var workUIControlContract = uiContract{
 	Version: uiControlContract.Version,
 	Product: "work",
-	Views:   []uiViewCapability{{ID: "report", Label: "Dashboard", Actions: []string{"open", "refresh"}}},
+	Views:   []uiViewCapability{{ID: "report", Label: "Artifacts", Actions: []string{"open", "refresh"}}},
 }
 
 // projectUIControlContract returns the UI contract for a project workspace. Builders and Run people get the same
@@ -40,6 +40,12 @@ func restoredWorkUIScope(userID, session string, active *ActiveSessionInfo) stri
 // one per chat (owner, 5 Nov); never a Slack reply or another person's agent's message.
 func registerWorkUIAllowed(req QueryRequest) bool {
 	return isProjectProfileID(req.AgentProfileID) && strings.TrimSpace(req.BotPlatform) == "" && !req.AgentMessageFromOtherPerson
+}
+
+// skillWithoutItsTools names a guide this chat would get without the tools it explains (#3528): work-ui-control
+// steers the app screen, so a Slack reply or another person's agent's message, which get no ui tools, skip it.
+func skillWithoutItsTools(name string, req QueryRequest) bool {
+	return name == "work-ui-control" && !registerWorkUIAllowed(req)
 }
 
 func (api *StreamingAPI) registerOpenWorkWorkspaceViewTool(registrar definitionToolRegistrar, userID, session, workspace string, builder bool) error {

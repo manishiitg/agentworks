@@ -267,6 +267,8 @@ func TestNewWorkflowManifestDefaultsGlobalSecretsToNone(t *testing.T) {
 }
 
 func TestReadWorkflowManifestMigratesMissingLabelFromWorkspacePath(t *testing.T) {
+	// PLAT-746: the anchored writer needs a real temporary workspace root.
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	const workspacePath = "Workflow/instagram"
 	manifestJSON, err := json.Marshal(map[string]interface{}{
 		"schema_version": 1,
@@ -306,7 +308,31 @@ func TestReadWorkflowManifestMigratesMissingLabelFromWorkspacePath(t *testing.T)
 	}
 }
 
+// Checking whether someone may open a workflow must never write to it: any signed-in person can name any workflow,
+// and the read-time migration used to rewrite its workflow.json before access was decided.
+func TestWorkflowAccessCheckNeverWritesTheManifest(t *testing.T) {
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
+	const workspacePath = "Workflow/instagram"
+	original := `{"schema_version":1,"id":"wf_instagram","version":"1.0.9","capabilities":{},"schedules":[]}`
+	workspace := &mockWorkspaceAPI{files: map[string]string{workspacePath + "/workflow.json": original}}
+	server := httptest.NewServer(workspace)
+	defer server.Close()
+	t.Setenv("WORKSPACE_API_URL", server.URL)
+
+	if _, manifest := workflowAccessForWorkspacePath(context.Background(), &UserClaims{UserID: "teammate"}, workspacePath); manifest == nil {
+		t.Fatal("access check did not read the manifest")
+	}
+	workspace.mu.Lock()
+	after := workspace.files[workspacePath+"/workflow.json"]
+	workspace.mu.Unlock()
+	if after != original {
+		t.Fatalf("access check rewrote workflow.json: %s", after)
+	}
+}
+
 func TestReadWorkflowManifestPrunesRetiredDefaultsAndPreservesCurrentSettings(t *testing.T) {
+	// PLAT-746: the anchored writer needs a real temporary workspace root.
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	const workspacePath = "Workflow/linkedin"
 	manifestJSON, err := json.Marshal(map[string]interface{}{
 		"schema_version": 1,
@@ -396,6 +422,8 @@ func TestReadWorkflowManifestDoesNotRewriteCrewRuntimeManifest(t *testing.T) {
 // 2026-10-15: a workflow whose workflow.json still carried the retired top-level objective and success_criteria was rewritten on
 // EVERY read (about 270 times a minute): the writer kept every key the schema has no field for, so the prune never removed them.
 func TestReadWorkflowManifestPrunesRetiredTopLevelFieldsOnce(t *testing.T) {
+	// PLAT-746: the anchored writer needs a real temporary workspace root.
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	const workspacePath = "Workflow/x-post-drafts"
 	manifestJSON, err := json.Marshal(map[string]interface{}{
 		"schema_version": 1, "id": "wf_x", "version": "1.0.20", "label": "x-post-drafts",

@@ -99,6 +99,8 @@ func (api *StreamingAPI) sessionBackgroundWork(sessionID string) []SessionBackgr
 	}
 	items = append(items, api.nativeCodingBackgroundWork(sessionID)...)
 	items = append(items, claudeTaskBackgroundWork(sessionID)...)
+	items = append(items, codexCommandBackgroundWork(sessionID)...)
+	items = append(items, cursorShellBackgroundWork(sessionID)...)
 	if api.bgAgentRegistry == nil {
 		sort.Slice(items, func(i, j int) bool { return items[i].StartedAt.Before(items[j].StartedAt) })
 		return items
@@ -198,6 +200,15 @@ func (api *StreamingAPI) stopSessionBackgroundWorkItem(sessionID, execID string)
 	if strings.HasPrefix(execID, claudeTaskWorkPrefix) {
 		return stopClaudeTaskBackgroundWork(sessionID, execID)
 	}
+	if strings.HasPrefix(execID, codexCommandWorkPrefix) {
+		return stopCodexCommandBackgroundWork(sessionID, execID)
+	}
+	if strings.HasPrefix(execID, cursorShellWorkPrefix) {
+		return stopCursorShellBackgroundWork(sessionID, execID)
+	}
+	if strings.HasPrefix(execID, codexHelperWorkPrefix) {
+		return stopCodexHelperBackgroundWork(sessionID, execID)
+	}
 	if api == nil || api.bgAgentRegistry == nil {
 		return false
 	}
@@ -212,7 +223,7 @@ func (api *StreamingAPI) stopSessionBackgroundWorkItem(sessionID, execID string)
 		if ws, ok := raw.(*stepworkflow.WorkshopChatSession); ok && ws != nil {
 			if _, err := ws.StopExecution(execID); err == nil {
 				api.completeTrackedExecution(execID, trackedExecutionStatusCanceled, "stopped by user", nil)
-				publishSessionsChanged()
+				api.publishSessionChanged(sessionID)
 				return true
 			}
 		}
@@ -226,6 +237,6 @@ func (api *StreamingAPI) stopSessionBackgroundWorkItem(sessionID, execID string)
 		}
 	}
 	api.observeRuntimeSnapshot(sessionID)
-	publishSessionsChanged()
+	api.publishSessionChanged(sessionID)
 	return true
 }

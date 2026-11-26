@@ -9,7 +9,7 @@
     "family": "dashboard",
     "name": "upload",
     "member": "upload_dashboard_asset",
-    "description": "Upload a Crew attachment to the caller's existing upload area."
+    "description": "Upload a project attachment to the caller's existing upload area."
   },
   {
     "family": "dashboard",
@@ -85,6 +85,12 @@
     "name": "publish",
     "member": "publish_dashboard",
     "description": "Publish the expected draft revision to its live URL."
+  },
+  {
+    "family": "dashboard",
+    "name": "delete",
+    "member": "delete_dashboard",
+    "description": "Delete the dashboard and its public and short links, keeping files, run history and project functions."
   },
   {
     "family": "dashboard",

@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"path"
-	"reflect"
 	"strings"
 	"unicode/utf8"
 
@@ -21,8 +20,8 @@ import (
 // exist. This in-process permit covers only that new script's first JSON file.
 type crewScriptCreationKey struct{}
 
-func initializeCrewScriptSource(ctx context.Context, binding crewExecutableBinding, name string) error {
-	definition := workflow.CrewScriptDefinition{ID: binding.ID, Name: name, Outputs: []string{"result.json"}}
+func initializeCrewScriptSource(ctx context.Context, binding crewExecutableBinding, name, description string) error {
+	definition := workflow.CrewScriptDefinition{ID: binding.ID, Name: name, Description: description, Outputs: []string{"result.json"}}
 	encoded, _ := json.MarshalIndent(definition, "", "  ")
 	sourceRoot := path.Join(binding.Root, "code")
 	if err := writeFileToWorkspace(context.WithValue(ctx, crewScriptCreationKey{}, binding.Root), sourceRoot+"/script.json", string(encoded)); err != nil {
@@ -55,11 +54,11 @@ func crewScriptManifest(ctx context.Context, binding *crewExecutableBinding) (*W
 		return nil, false, err
 	}
 	if definition.ID != binding.ID {
-		return nil, false, fmt.Errorf("script identity does not match its Crew binding")
+		return nil, false, fmt.Errorf("script identity does not match its project binding")
 	}
 	owner, ok := crewProjectOwnerID(binding.CrewRoot)
 	if !ok {
-		return nil, false, fmt.Errorf("owning Crew is unavailable")
+		return nil, false, fmt.Errorf("owning project is unavailable")
 	}
 	manifest := NewWorkflowManifest(definition.Name)
 	manifest.ID = binding.ID
@@ -118,11 +117,16 @@ func (r *crewWorkflowResources) ResolveCrewScriptScope(ctx context.Context, work
 		return result, nil
 	}
 	if err != nil || parent == nil {
-		return result, fmt.Errorf("this workflow has no owning Crew")
+		return result, fmt.Errorf("this workflow has no owning project")
 	}
+	// The run executes as the Crew's owner (decisions log: "a script acts as its Crew"); the person who starts it is only
+	// rechecked for the right to start it: the owner, or a joined member of the Crew's Team.
 	owner, ok := crewProjectOwnerID(parent.CrewRoot)
-	if !ok || owner != r.userID {
-		return result, fmt.Errorf("this Crew's execution owner is unavailable")
+	if !ok || directoryUserIsDisabled(&UserClaims{UserID: owner}) {
+		return result, fmt.Errorf("this project's execution owner is unavailable")
+	}
+	if r.userID != owner && !crewTeamMember(parent.CrewID, r.userID) {
+		return result, fmt.Errorf("this workflow belongs to a project you are not on the Team of; ask its owner to add you")
 	}
 	bindings, err := readCrewExecutables()
 	if err != nil {
@@ -140,22 +144,22 @@ func (r *crewWorkflowResources) ResolveCrewScriptScope(ctx context.Context, work
 			continue
 		}
 		if canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(parent.CrewRoot) {
-			return result, fmt.Errorf("choose a script from this Crew; call another Crew's shared function instead")
+			return result, fmt.Errorf("choose a script from this project; call another project's shared function instead")
 		}
 		sourceRoot := path.Join(binding.Root, "code")
 		result = workflow.CrewScriptConfiguration{Definition: workflow.CrewScriptDefinition{ID: binding.ID}, Root: sourceRoot}
 		// Match the existing account executor's scope, including its established
 		// shared default. Tool admission must neither narrow nor widen its grants.
 		if google := services.GetGmailService(); google != nil {
-			if connection, err := google.ConnectionForScope("", services.GmailUseScope{Workspace: binding.Root, UserID: r.userID}); err == nil && connection.Enabled {
+			if connection, err := google.ConnectionForScope("", services.GmailUseScope{Workspace: binding.Root, UserID: owner}); err == nil && connection.Enabled {
 				result.ToolSelections = []string{"human_tools:integrations.google"}
 			}
 		}
-		log.Printf("[SCRIPT_APP_SCOPE] script=%s workspace=%s owner=%s google_available=%t", binding.ID, binding.Root, r.userID, len(result.ToolSelections) > 0)
+		log.Printf("[SCRIPT_APP_SCOPE] script=%s workspace=%s owner=%s initiator=%s google_available=%t", binding.ID, binding.Root, owner, r.userID, len(result.ToolSelections) > 0)
 
 		return result, nil
 	}
-	return result, fmt.Errorf("saved script is unavailable; choose a script from this Crew")
+	return result, fmt.Errorf("saved script is unavailable; choose a script from this project")
 }
 
 // Fresh launches read editable source only after the server resolves its scope.
@@ -264,16 +268,16 @@ func writeCrewScriptFile(ctx context.Context, binding *crewExecutableBinding, fi
 func (api *StreamingAPI) crewScriptAuthoringBinding(w http.ResponseWriter, r *http.Request) *crewExecutableBinding {
 	binding, err := findCrewExecutable(r.URL.Query().Get("workspace_path"))
 	if err != nil || binding == nil || binding.Kind != "script" {
-		http.Error(w, "Choose a saved Crew script.", 404)
+		http.Error(w, "Choose a saved project script.", 404)
 		return nil
 	}
 	claims := GetUserFromContext(r.Context())
 	if claims == nil || userAccessForClaims(claims).Disabled || !userAccessForClaims(claims).CanEdit || !userAllowedProduct(claims, "work") || !crewProjectOwnedByCaller(claims.UserID, binding.CrewRoot) {
-		http.Error(w, "Only this Crew's Builder can edit its scripts. Run it through chat or a shared function instead.", 403)
+		http.Error(w, "Only this project's Builder can edit its scripts. Run it through chat or a shared function instead.", 403)
 		return nil
 	}
 	if claims.AccessToken != nil && !api.externalCrewReferenceAllowed(r.Context(), claims, binding.CrewRoot, true) {
-		http.Error(w, "This connection cannot edit this Crew's source. Ask in its chat instead.", 403)
+		http.Error(w, "This connection cannot edit this project's source. Ask in its chat instead.", 403)
 		return nil
 	}
 	if r.Method != http.MethodGet && refuseCrewOwnerOnline(w, r, crewProjectIDOfRoot(binding.CrewRoot), claims.UserID) {
@@ -333,7 +337,7 @@ func (api *StreamingAPI) handleCrewScriptGraph(w http.ResponseWriter, r *http.Re
 	}
 	owner, ok := crewProjectOwnerID(binding.CrewRoot)
 	if !ok {
-		http.Error(w, "This Crew is unavailable.", 404)
+		http.Error(w, "This project is unavailable.", 404)
 		return
 	}
 	resource := &crewWorkflowResources{userID: owner}
@@ -353,84 +357,21 @@ func (api *StreamingAPI) handleCrewScriptGraph(w http.ResponseWriter, r *http.Re
 		http.Error(w, err.Error(), 400)
 		return
 	}
+	// The server resolves each agent's model, so the page only prints it.
+	if manifest, _, err := crewScriptManifest(r.Context(), binding); err == nil {
+		if withModels, err := addOutlineModels(graph, manifest.Capabilities.LLMConfig); err == nil {
+			graph = withModels
+		}
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(graph)
 }
 
-type crewScriptUsage struct {
-	Workflow string `json:"workflow"`
-	Step     string `json:"step"`
-}
-
-func crewScriptConsumers(ctx context.Context, script *crewExecutableBinding, next *workflow.CrewScriptDefinition) ([]crewScriptUsage, error) {
-	records, err := readCrewExecutables()
-	if err != nil {
-		return nil, err
-	}
-	var previous *workflow.CrewScriptDefinition
-	if next != nil {
-		previous, err = readCrewScript(ctx, script.Root)
-		if err != nil {
-			return nil, err
-		}
-	}
-	var result []crewScriptUsage
-	var affected []string
-	for _, binding := range records {
-		if binding.Kind != "workflow" || canonicalCrewWorkspaceRoot(binding.CrewRoot) != canonicalCrewWorkspaceRoot(script.CrewRoot) {
-			continue
-		}
-		plan, err := readPlanFromWorkspace(ctx, binding.Root)
-		if err != nil {
-			continue
-		}
-		for _, step := range workflow.CrewScriptReferencingSteps(plan, script.ID) {
-			label := binding.ID
-			if raw, found, _ := readFileFromWorkspace(ctx, binding.Root+"/workflow.json"); found {
-				var header struct {
-					Label string `json:"label"`
-				}
-				if json.Unmarshal([]byte(raw), &header) == nil && header.Label != "" {
-					label = header.Label
-				}
-			}
-			result = append(result, crewScriptUsage{Workflow: label, Step: step.Title})
-			if next == nil {
-				continue
-			}
-			before := map[string]workflow.Variable{}
-			after := map[string]workflow.Variable{}
-			for _, input := range previous.Inputs {
-				before[input.Name] = input
-			}
-			for _, input := range next.Inputs {
-				after[input.Name] = input
-			}
-			broken := false
-			for name := range step.ScriptInputs {
-				input, ok := after[name]
-				old, was := before[name]
-				if !ok || was && (workflow.WorkflowInputType(input) != workflow.WorkflowInputType(old) || !reflect.DeepEqual(input.Schema, old.Schema)) {
-					broken = true
-				}
-			}
-			for _, input := range next.Inputs {
-				if input.Required && input.Value == "" {
-					if _, mapped := step.ScriptInputs[input.Name]; !mapped {
-						broken = true
-					}
-				}
-			}
-			if broken {
-				affected = append(affected, label+" / "+step.Title)
-			}
-		}
-	}
-	if len(affected) > 0 {
-		return result, fmt.Errorf("these input changes affect workflows. Used by: %s. Update their script input mappings first", strings.Join(affected, ", "))
-	}
-	return result, nil
+// crewScriptStepCount is the number of steps the Workflow page's Steps card counts: the outline's nodes that are
+// not containers. The Crew panel prints the same number from here. ok is false when there is no readable outline.
+func crewScriptStepCount(ctx context.Context, binding crewExecutableBinding) (int, bool) {
+	return cachedCrewStepCount(ctx, binding.Root)
 }
 
 // PLAT-746-265: a timer runs saved Python directly, just like a function/webhook.
@@ -441,17 +382,25 @@ func (s *SchedulerService) executeCrewScriptSchedule(ctx context.Context, sctx *
 		return "", "", fmt.Errorf("this script schedule has no assigned run folder")
 	}
 	sessionID := s.newScheduleSessionID(sctx)
-	invocation := &workflow.ScheduleInvocation{RunID: runID, ScheduleID: sctx.Schedule.ID, RunFolder: folder, TriggerSource: sctx.TriggerSource, ScheduledFor: sctx.ScheduledFor, AllowParallel: scheduleAllowsParallel(sctx.Schedule)}
-	s.api.scheduleInvocations.Store(sessionID, invocation)
-	defer s.api.scheduleInvocations.Delete(sessionID)
 	s.updateRuntimeState(scheduleRuntimeKey(sctx), func(state *ScheduleRuntimeState) { state.LastSessionID = sessionID })
 	if err := UpdateScheduleRun(ctx, sctx.WorkspacePath, runID, "running", "", nil, folder, sessionID); err != nil {
 		return sessionID, folder, err
 	}
+	err := s.startCrewScriptInvocation(ctx, sctx, runID, sessionID, folder, nil)
+	sctx.ProducedRunEvidence = err == nil
+	return sessionID, folder, err
+}
+
+// Chat timers and the remaining old timer adapter share this direct saved
+// Python starter. The caller owns admission, chat receipts and the run ledger.
+func (s *SchedulerService) startCrewScriptInvocation(ctx context.Context, sctx *ScheduleContext, runID, sessionID, folder string, costJob *productScheduleJob) error {
+	invocation := &workflow.ScheduleInvocation{RunID: runID, ScheduleID: sctx.Schedule.ID, RunFolder: folder, TriggerSource: sctx.TriggerSource, ScheduledFor: sctx.ScheduledFor, AllowParallel: costJob != nil || scheduleAllowsParallel(sctx.Schedule)}
+	s.api.scheduleInvocations.Store(sessionID, invocation)
+	defer s.api.scheduleInvocations.Delete(sessionID)
 	req := s.buildWorkshopRequest(ctx, sctx, runID)
 	opts, err := configureDirectWebhookRequest(req, sctx, folder)
 	if err != nil {
-		return sessionID, folder, err
+		return err
 	}
 	opts.RunKind = invocation.RunKind()
 	opts.ScheduleRunID = invocation.RunID
@@ -459,8 +408,9 @@ func (s *SchedulerService) executeCrewScriptSchedule(ctx context.Context, sctx *
 	opts.TriggerSource = invocation.TriggerSource
 	opts.ScheduledFor = invocation.ScheduledFor
 	req["query"] = "Script: " + sctx.Schedule.Name
+	if costJob != nil {
+		applyAutomationCostSource(req, *costJob, runID)
+	}
 	s.sessionLogf(sctx, sessionID, "[CREW_SCRIPT] Direct schedule execution run=%s run_as=%s folder=%s", runID, sctx.OwnerUserID, folder)
-	err = s.api.startSessionInternal(context.WithValue(ctx, directWebhookExecutionKey{}, opts), req, sessionID, sctx.OwnerUserID, nil)
-	sctx.ProducedRunEvidence = err == nil
-	return sessionID, folder, err
+	return s.api.startSessionInternal(context.WithValue(ctx, directWebhookExecutionKey{}, opts), req, sessionID, sctx.OwnerUserID, nil)
 }

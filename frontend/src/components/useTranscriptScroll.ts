@@ -17,6 +17,13 @@ export interface TranscriptReadingState {
 // Scroll positions it reports in this window are layout, not reading, unless
 // the reader has already used a scroll gesture.
 export const TRANSCRIPT_SETTLE_MS = 700
+// Longest a freshly mounted transcript stays invisible while it moves to its
+// starting row; after this it shows wherever it is.
+export const TRANSCRIPT_REVEAL_MAX_MS = 600
+// Brief window after blank-transcript recovery (scrollToIndex('LAST')) during
+// which raw scrollTo(bottom) yields so Virtuoso can measure rows without a
+// scrollTo/scrollToIndex ping-pong (#4255).
+export const BLANK_RECOVERY_GRACE_MS = 250
 
 const positions = new Map<string, TranscriptReadingState>()
 // A schedule's tab can be reused for its next run. The new conversation must
@@ -167,6 +174,8 @@ export function useTranscriptScroll(
   // time to build: only then may a scroll position be saved as a reading state.
   const settledRef = useRef(false)
   const deliberateRef = useRef(false)
+  const positionedRef = useRef(false)
+  const recoveringUntilRef = useRef(0)
   const [settled, setSettled] = useState(false)
   const blankCheck = useRef<number | null>(null)
   const [controller] = useState(() => new TranscriptScrollController(
@@ -174,6 +183,11 @@ export function useTranscriptScroll(
     () => {
       const element = scrollerElement.current
       if (!element) return
+      // Let Virtuoso finish initialTopMostItemIndex (or an in-flight blank
+      // recovery) before raw scrollTo(bottom) takes over: jumping to an
+      // unmeasured scrollHeight - clientHeight overrides Virtuoso and can land
+      // in blank space (#4255).
+      if (!positionedRef.current || Date.now() < recoveringUntilRef.current) return
       const bottom = Math.max(0, element.scrollHeight - element.clientHeight)
       // Stop once we reach the physical end. scrollToIndex retries while rows
       // are measured; starting that process on each resize can fight itself.
@@ -181,11 +195,16 @@ export function useTranscriptScroll(
       // Blank-transcript recovery: the bottom is read before the list re-measures a new or
       // replaced row, so the scroller can land where Virtuoso drew no rows. Virtuoso draws
       // rows a frame or two after a scroll, so only act on a blank that persists, once at a
-      // time, and only while still following the latest message.
-      if (blankCheck.current !== null) window.clearTimeout(blankCheck.current)
+      // time, and only while still following the latest message. Do not reset a pending
+      // timer while the viewport is already blank, or streaming updates starve recovery.
+      if (blankCheck.current !== null) {
+        if (transcriptBlank(element)) return
+        window.clearTimeout(blankCheck.current)
+      }
       blankCheck.current = window.setTimeout(() => {
         blankCheck.current = null
         if (!saved.following || !transcriptBlank(element)) return
+        recoveringUntilRef.current = Date.now() + BLANK_RECOVERY_GRACE_MS
         virtuoso.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'auto' })
       }, 350)
     },
@@ -200,23 +219,29 @@ export function useTranscriptScroll(
     deliberateRef.current = true
     saved.deliberate = true
     focusAnchor.current = undefined
+    recoveringUntilRef.current = 0
+    if (blankCheck.current !== null) {
+      window.clearTimeout(blankCheck.current)
+      blankCheck.current = null
+    }
     cancelRestore()
     controller.pause()
   }, [cancelRestore, controller, saved])
   const jumpToKey = useCallback((key: string) => {
-    const index = keys.indexOf(key)
+    const index = currentKeys.current.indexOf(key)
     if (index < 0) return
     pause()
     const anchor = { key, offset: 0 }
     saved.anchor = anchor
     focusAnchor.current = anchor
     virtuoso.current?.scrollToIndex({ index, align: 'start', behavior: 'auto' })
-  }, [keys, pause, saved, virtuoso])
+  }, [pause, saved, virtuoso])
   const jumpToLatest = useCallback(() => {
     deliberateRef.current = false
     saved.deliberate = false
     saved.anchor = undefined
     focusAnchor.current = undefined
+    recoveringUntilRef.current = 0
     cancelRestore()
     controller.resume()
   }, [cancelRestore, controller, saved])
@@ -310,6 +335,14 @@ export function useTranscriptScroll(
       manual = true
       if (delta < 0) pause()
     }
+    let rememberFrame: number | null = null
+    const scheduleRemember = () => {
+      if (rememberFrame !== null) return
+      rememberFrame = requestAnimationFrame(() => {
+        rememberFrame = null
+        remember()
+      })
+    }
     const scroll = () => {
       const top = scroller.scrollTop
       if (manual && top < lastTop - 1) pause()
@@ -318,7 +351,7 @@ export function useTranscriptScroll(
         jumpToLatest()
       }
       lastTop = top
-      remember()
+      scheduleRemember()
     }
     scroller.addEventListener('wheel', wheel, { passive: true })
     scroller.addEventListener('pointerdown', pointer)
@@ -336,7 +369,9 @@ export function useTranscriptScroll(
         const grewBy = lastHeight - height
         lastHeight = height
         if (controller.following) {
-          scroller.scrollTop = Math.max(0, scroller.scrollHeight - height)
+          if (positionedRef.current && Date.now() >= recoveringUntilRef.current) {
+            scroller.scrollTop = Math.max(0, scroller.scrollHeight - height)
+          }
         } else if (grewBy !== 0) {
           // Reading back in the transcript: keep the text under the reader's eye in place.
           scroller.scrollTop = Math.max(0, scroller.scrollTop + grewBy)
@@ -348,6 +383,10 @@ export function useTranscriptScroll(
     if (saved.following) layoutChanged()
     return () => {
       window.clearTimeout(settleTimer)
+      if (rememberFrame !== null) {
+        cancelAnimationFrame(rememberFrame)
+        rememberFrame = null
+      }
       remember()
       mounted.current = false
       if (blankCheck.current !== null) window.clearTimeout(blankCheck.current)
@@ -372,5 +411,54 @@ export function useTranscriptScroll(
     window.addEventListener(FOLLOW_LATEST_EVENT, follow)
     return () => window.removeEventListener(FOLLOW_LATEST_EVENT, follow)
   }, [readingKey, jumpToLatest])
-  return { following, settled, scrollerRef, layoutChanged, jumpToLatest, jumpToKey, pause, preserveDisclosure, preserveReadingPosition }
+  // PLAT-527: opening a chat whose history was not loaded yet, Virtuoso first
+  // drew the list at the top, then moved to the starting row in steps while
+  // rows were measured (0 -> 1,646 -> 5,529 px within 150 ms), which read as
+  // the chat scrolling up and down. Keep a new list invisible (still laid out
+  // and measured) until it rests at its starting position.
+  const [positionedScroller, setPositionedScroller] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    positionedRef.current = false
+    if (!scroller) return
+    let frame = 0
+    let still = 0
+    let last = ''
+    let moved = false
+    const onScroll = () => { moved = true }
+    const stop = () => {
+      cancelAnimationFrame(frame)
+      window.clearTimeout(cap)
+      scroller.removeEventListener('scroll', onScroll)
+    }
+    const show = (timedOut = false) => {
+      stop()
+      positionedRef.current = true
+      setPositionedScroller(scroller)
+      if (timedOut && controller.following && currentKeys.current.length > 0 && transcriptBlank(scroller)) {
+        recoveringUntilRef.current = Date.now() + BLANK_RECOVERY_GRACE_MS
+        virtuoso.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'auto' })
+      } else if (controller.following) {
+        layoutChanged()
+      }
+    }
+    const check = () => {
+      const room = scroller.scrollHeight - scroller.clientHeight
+      const at = `${scroller.scrollTop}:${scroller.scrollHeight}:${scroller.clientHeight}`
+      still = at === last ? still + 1 : 0
+      last = at
+      const inPlace = room <= 1 || (controller.following ? room - scroller.scrollTop <= 1 : moved)
+      // Before Virtuoso measures its first rows the scroller can be the same
+      // height as the viewport for several frames. That's not a short chat
+      // ready to show: revealing it now exposes the subsequent start-up jump.
+      if (inPlace && still >= 2 && (currentKeys.current.length === 0 ||
+        (scroller.querySelector('[data-transcript-key]') && !transcriptBlank(scroller)))) show(false)
+      else frame = requestAnimationFrame(check)
+    }
+    const cap = window.setTimeout(() => show(true), TRANSCRIPT_REVEAL_MAX_MS)
+    scroller.addEventListener('scroll', onScroll, { passive: true })
+    frame = requestAnimationFrame(check)
+    return () => { positionedRef.current = false; stop() }
+  }, [scroller, controller, layoutChanged, virtuoso])
+  const positioned = scroller !== null && positionedScroller === scroller
+  return { following, settled, positioned, scrollerRef, layoutChanged, jumpToLatest, jumpToKey, pause, preserveDisclosure, preserveReadingPosition }
 }

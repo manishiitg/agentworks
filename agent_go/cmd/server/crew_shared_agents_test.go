@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -14,19 +15,24 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // Real workspace HTTP and persisted registry/history, with only the paid model
 // turn replaced. Pin the shared-tab decision across native chat and MCP.
 func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
+	// PLAT-746-820: real workspace preparation exceeded five seconds on the
+	// build host, letting cleanup remove the model stub before delivery reached it.
+	const deliveryTimeout = 30 * time.Second
 	f, _ := newExternalCrewCommandFixture(t)
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["work"]},{"id":"other","username":"other","role":"editor","products":["work"]}]}`)
 	f.api.projectActions = NewProjectActionDispatcher(f.api, f.api.agentProfiles)
 	const callerRoot = "Crew/calling-team"
 	if err := os.MkdirAll(filepath.Join(f.docs, callerRoot), 0700); err != nil {
 		t.Fatal(err)
 	}
-	// PLAT-856-383: platform records and transcripts live outside user files.
-	const callerState = "_system/crew-data/calling"
+	// A Crew's records live in its .agentworks/settings (PLAT-746-924).
+	const callerState = callerRoot + "/.agentworks/settings"
 	f.write(t, callerState+"/product.json", `{"schema_version":1,"product":"work","id":"calling","title":"Calling Team","session_id":"session-calling"}`)
 	f.write(t, callerState+"/workflow.json", `{"id":"calling","label":"Calling Team","created_by":"other"}`)
 	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "calling-team", ProjectID: "calling", OwnerID: "other", Shared: true, Private: true}); err != nil {
@@ -185,13 +191,19 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	}
 	reader.UserID = "other"
 	delivered := make(chan string, 2)
+	publishedSession := ""
 	old := agentMessageTurn
+	// A product Ask is Run mode; a subsequent addressed Bridge message
+	// keeps its separate agent admission. Do not confuse those entry points.
+	expectProductAsk := true
 	agentMessageTurn = func(_ *StreamingAPI, ctx context.Context, req map[string]interface{}, session, user string) (internalSessionTurnResult, error) {
+		// One agent, one chat (#3469): another person's ask runs in the agent's own chat.
 		if session != coach.SessionID || user != "owner" {
-			return internalSessionTurnResult{}, fmt.Errorf("wrong existing tab: %s %s", session, user)
+			return internalSessionTurnResult{}, fmt.Errorf("ask ran outside the agent's own chat: %s %s", session, user)
 		}
-		if restricted, _ := req["crew_ask_read_only"].(bool); restricted {
-			return internalSessionTurnResult{}, fmt.Errorf("selected Builder agent demoted")
+		publishedSession = session
+		if restricted, _ := req["crew_ask_read_only"].(bool); restricted != expectProductAsk {
+			return internalSessionTurnResult{}, fmt.Errorf("wrong product-Ask/Bridge mode: restricted=%t product_ask=%t", restricted, expectProductAsk)
 		}
 		actor := costobserver.AttributionFromContext(ctx).ActorID
 		if actor != "other" {
@@ -209,11 +221,12 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		}
 		select {
 		case <-delivered:
-		case <-time.After(5 * time.Second):
-			t.Fatal("message did not reach existing owner tab")
+		case <-time.After(deliveryTimeout):
+			t.Fatal("message did not reach the agent's own chat")
 		}
 		_ = json.Unmarshal(w.Body.Bytes(), &receipt)
 	}
+	expectProductAsk = false
 	// A different hosted Crew reaches the same agent through the native path.
 	caller, err := crewTriggerLinkCaller(callerRoot)(otherCtx)
 	if err != nil {
@@ -230,11 +243,11 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	}
 	select {
 	case <-delivered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(deliveryTimeout):
 		t.Fatal("hosted Crew did not reach the same existing tab")
 	}
 	var contact agentConversation
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(deliveryTimeout)
 	for time.Now().Before(deadline) {
 		agentMessageMu.Lock()
 		store, err := readAgentMessageStore(ctx)
@@ -252,7 +265,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if len(contact.Messages) == 0 || contact.Endpoints[0].UserID != "other" || contact.Endpoints[1].Session != coach.SessionID {
+	if len(contact.Messages) == 0 || contact.Endpoints[0].UserID != "other" || contact.Endpoints[1].Session != publishedSession {
 		t.Fatalf("wrong attributed contact: %+v", contact)
 	}
 	// Removing the selected agent invalidates old reply addresses and pending delivery.
@@ -286,4 +299,247 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		t.Fatal("sharing changed the original agent context")
 	}
 
+	// PLAT-746-820: network-visible Team agents are reachable from a linked
+	// private Crew chat, with replies bound to that exact originating chat.
+	// Keep the fixture's state root: it holds both registered Crew owners.
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	// From inside a Crew, another Team's agents are reachable only when that Team's Crew is linked (owner, 19 Nov).
+	f.write(t, callerState+"/workflow.json", `{"id":"calling","label":"Calling Team","created_by":"other","workflow_context_paths":["`+externalCommandCrewRoot+`"]}`)
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}}
+	team.Agents = crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {coach.ConversationKey: true, private.ConversationKey: false}})
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	team = mustReadCrewTeam(t, "team")
+	shared, _ := team.registeredAgent("owner", coach.ConversationKey)
+	privateAgent, _ := team.registeredAgent("owner", private.ConversationKey)
+	directoryHas := func(id string) bool {
+		t.Helper()
+		out, err := listAgentDirectory(withDirectoryThisCrew(otherCtx, callerRoot), GetUserFromContext(otherCtx))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range out["agents"].([]map[string]interface{}) {
+			if row["agent_id"] == id {
+				return true
+			}
+		}
+		return false
+	}
+	if !directoryHas(shared.ID) || directoryHas(privateAgent.ID) {
+		t.Fatal("directory visibility differs from Team privacy")
+	}
+	// PLAT-746-1034: the exact agent: address offered in discovery must also
+	// resolve through the CLI/MCP messages target parser, not a UI-only alias.
+	teamAddress := crewTeamAgentAddress("team", shared.ID)
+	target, err := f.api.externalMessageTarget(otherCtx, &UserClaims{UserID: "other", AccessToken: &accesstokens.Token{Scopes: []string{"messages:read", "messages:send"}}}, map[string]any{"target": teamAddress})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.api.resolveTeamAgentTarget(otherCtx, target, privateAgent.ID); err == nil {
+		t.Fatal("private Team agent was admitted")
+	}
+	turns := make(chan string, 4)
+	agentMessageTurn = func(_ *StreamingAPI, _ context.Context, _ map[string]interface{}, session, _ string) (internalSessionTurnResult, error) {
+		turns <- session
+		return internalSessionTurnResult{}, nil
+	}
+	// Addressed peer threads use the current named source registration;
+	// the earlier product Ask entry point above deliberately does not.
+	productCaller := caller
+	sourceAgent, err := f.api.registerHostedBridgeChat(otherCtx, "other", hostedBridgeBinding{Profile: crewProfileID, Project: "calling", Chat: callerTab.ConversationKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin := f.api.agentMessageCallerRole(callerMessageEndpoint("other", caller))
+	caller.BridgeOrigin, caller.BridgeHosted, caller.NamedAgentID = &origin, sourceAgent.Hosted, sourceAgent.ID
+	caller.Stamp, caller.OwnerAuthority = triggerCaller{Type: triggerCallerUser, ID: "other"}, true
+	result, err := f.api.sendAgentMessage(agentTaskSendContext(otherCtx, "", true), "other", caller, target, "Ask across the network", "", "team-cross-crew")
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread := ""
+	select {
+	case session := <-turns:
+		thread = session
+		// One agent, one chat (#3469): the ask runs in the agent's own chat, the one its owner sees.
+		if session != coach.SessionID {
+			t.Fatalf("published agent ran the ask outside its own chat: %s", session)
+		}
+	case <-time.After(deliveryTimeout):
+		t.Fatal("Team delivery did not reach target")
+	}
+	inbox := result["inbox_id"].(string)
+	receiver := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerCrew, ProfileID: crewProfileID, ID: "team"}, Path: externalCommandCrewRoot, Chat: &codeChat{OwnerID: "owner", Key: coach.ConversationKey, SessionID: thread}}
+	// #2881: a turn answering another person's ask replies only in its admitted inbox and never borrows the owner's
+	// reach, even in the owner's own chat (#3469).
+	replyTools := &recordingRegistrar{}
+	resolveReply := func(context.Context) (triggerLinkCaller, error) { return receiver, nil }
+	if err := f.api.registerAgentMessagingTools(replyTools, "owner", thread, QueryRequest{AgentMessageInbox: inbox, AgentMessageFromOtherPerson: true}, resolveReply, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := replyTools.tools["send_message"].exec(ctx, map[string]any{"inbox_id": inbox, "message": "Reply to the private caller", "submission_id": "team-reply"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := replyTools.tools["send_message"].exec(ctx, map[string]any{"target": bridgeChatAddress("owner", "work", "team", private.ConversationKey), "message": "Must not borrow owner reach"}); err == nil || !strings.Contains(err.Error(), "admitted AgentBridge thread") {
+		t.Fatalf("isolated reply borrowed the owner's other private agent: %v", err)
+	}
+	if _, err := replyTools.tools["send_message"].exec(ctx, map[string]any{"target": "Private planning", "message": "Must not reveal private labels"}); err == nil || !strings.Contains(err.Error(), "admitted AgentBridge thread") {
+		t.Fatalf("isolated reply searched the owner's private names: %v", err)
+	}
+
+	// The reply stays in the admitted inbox and arrives as a new message in
+	// the asker's own original chat, without granting the publisher Crew access.
+	got, err := f.api.readAgentMessages(otherCtx, "other", caller, inbox, 0, 30, 0)
+	if err != nil || !strings.Contains(fmt.Sprint(got), "Reply to the private caller") {
+		t.Fatalf("published reply missing from admitted inbox: %v %v", got, err)
+	}
+	select {
+	case session := <-turns:
+		if session != callerTab.SessionID {
+			t.Fatalf("reply did not reach original asker chat: %s", session)
+		}
+	case <-time.After(deliveryTimeout):
+		t.Fatal("reply did not arrive in the asker's original chat")
+	}
+	contact, _, found, err := callerAgentMailboxConversation(otherCtx, inbox, "other", caller)
+	if err != nil || !found {
+		t.Fatalf("admitted published inbox missing: %v", err)
+	}
+	forged := contact
+	forged.Endpoints[1].ReplyInbox = "another-inbox"
+	if recheckAgentConversationContact(ctx, forged) == nil {
+		t.Fatal("published reply escaped its admitted inbox")
+	}
+	forged = contact
+	forged.Endpoints[1].PublishedAsker = "another-person"
+	if recheckAgentConversationContact(ctx, forged) == nil {
+		t.Fatal("published reply changed its asker")
+	}
+	// A member's own chat in the owner's Crew is reachable, so the Crew owner
+	// no longer pins the identity; the chat's real owner must still match.
+	forged = contact
+	forged.Endpoints[1].UserID = "other"
+	if recheckAgentConversationContact(ctx, forged) == nil {
+		t.Fatal("published thread claimed someone else's chat")
+	}
+	forged = contact
+	forged.Endpoints[0].Guest = "another-person"
+	if recheckAgentConversationContact(ctx, forged) == nil {
+		t.Fatal("a runtime owner substituted for the admitted human asker")
+	}
+	wrong := productCaller
+	wrong.Chat = &codeChat{Key: "calling:chat:someone-else", SessionID: "another-session"}
+	if _, err := f.api.readAgentMessages(otherCtx, "other", wrong, inbox, 0, 30, 0); err == nil {
+		t.Fatal("another chat read the private reply inbox")
+	}
+	// Hiding an agent invalidates both existing replies and queued delivery,
+	// even though the caller remains a member of the Team.
+	pair := agentConversation{Endpoints: [2]agentMessageEndpoint{callerMessageEndpoint("other", caller), targetMessageEndpoint("other", target)}}
+	if err := f.api.recheckAgentMessageAdmission(otherCtx, pair, agentMessage{From: 0}); err != nil {
+		t.Fatalf("allowed queued Team message: %v", err)
+	}
+	if err := updateCrewTeamRegisteredAgent("team", "owner", shared.ID, func(a *crewTeamRegisteredAgent) { a.InTeam = false }); err != nil {
+		t.Fatal(err)
+	}
+	if directoryHas(shared.ID) {
+		t.Fatal("hidden Team agent remained listed")
+	}
+	if err := requireLinkedOwnCrew(otherCtx, "other", caller, target); err == nil {
+		t.Fatal("stale target bypassed visibility at link admission")
+	}
+	if err := f.api.recheckAgentMessageAdmission(otherCtx, pair, agentMessage{From: 0}); err == nil {
+		t.Fatal("queued send bypassed agent privacy")
+	}
+	if _, err := f.api.sendAgentMessage(ctx, "owner", receiver, triggerTarget{}, "Hidden reply", inbox, "team-hidden"); err == nil {
+		t.Fatal("existing reply bypassed agent privacy")
+	}
+	if err := updateCrewTeamRegisteredAgent("team", "owner", shared.ID, func(a *crewTeamRegisteredAgent) { a.InTeam = true }); err != nil {
+		t.Fatal(err)
+	}
+	// Membership loss removes discovery and invalidates existing reply contacts.
+	team.People = nil
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if directoryHas(shared.ID) {
+		t.Fatal("non-member directory retained Team agent")
+	}
+	if _, err := f.api.resolveTeamAgentTarget(otherCtx, target, shared.ID); err == nil {
+		t.Fatal("removed member could send")
+	}
+	if _, err := f.api.readAgentMessages(otherCtx, "other", caller, inbox, 0, 30, 0); err == nil {
+		t.Fatal("a leaver read the published reply inbox")
+	}
+	if _, err := f.api.sendAgentMessage(ctx, "owner", receiver, triggerTarget{}, "Late reply", inbox, "team-revoked"); err == nil {
+		t.Fatal("reply bypassed membership revocation")
+	}
+
+	// An offline source is never rerouted.
+	team.Name = "Example"
+	team.People = []crewTeamPerson{{UserID: "other"}}
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "offline-source-pair", PeerProjectID: "source-mac"}); err != nil {
+		t.Fatal(err)
+	}
+	probe := agentConversation{ID: "no-home-probe", Endpoints: [2]agentMessageEndpoint{callerMessageEndpoint("other", caller), targetMessageEndpoint("other", target)}}
+	if _, changed, err := f.api.routePublishedAgentMessage(otherCtx, probe, agentMessage{From: 0}, probe.Endpoints[0], probe.Endpoints[1], "owner_mac"); err != nil || changed {
+		t.Fatalf("an offline ask was rerouted: changed=%t err=%v", changed, err)
+	}
+	// #3194: an agent offline under the grace is only Away; the ask waits for it and is never rerouted.
+	started := crewServerStartedAt
+	t.Cleanup(func() { crewServerStartedAt = started })
+	crewServerStartedAt = time.Now()
+	if away, err := crewTeamAskTarget(otherCtx, "other", target, ""); err != nil || away.CrewID != target.CrewID || away.TeamAgentID != target.TeamAgentID {
+		t.Fatalf("an Away source was rerouted: %+v err=%v", away, err)
+	}
+	// Past the grace nothing is sent until the caller chooses wait; nothing answers for the agent instead.
+	crewServerStartedAt = time.Now().Add(-time.Hour)
+	var choice crewTeamOfflineChoiceNeeded
+	if _, err := crewTeamAskTarget(otherCtx, "other", target, ""); !errors.As(err, &choice) || choice.Readable {
+		t.Fatalf("a long-offline ask was sent without the caller's choice, or offered an unsynced chat: %v", err)
+	}
+	if kept, err := crewTeamAskTarget(otherCtx, "other", target, "wait"); err != nil || kept.CrewID != target.CrewID || kept.TeamAgentID != target.TeamAgentID {
+		t.Fatalf("wait did not keep the real agent: %+v err=%v", kept, err)
+	}
+	if _, err := crewTeamAskTarget(otherCtx, "other", target, "copy"); err == nil {
+		t.Fatal("the removed copy choice was accepted")
+	}
+}
+
+// PLAT-746-1024: an ask to a long-offline agent must not fall through to the maker's native chat.
+func TestTeamOfflineAskWaitsForTheCallersChoice(t *testing.T) {
+	f, _ := newExternalCrewCommandFixture(t)
+	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {"helper": true}})}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
+	}
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local", PairID: "offline-owner-pair", PeerProjectID: "owner-local-team"}); err != nil {
+		t.Fatal(err)
+	}
+	var id string
+	for key, a := range team.Agents {
+		if a.InTeam {
+			id = key
+			break
+		}
+	}
+	ctx := context.WithValue(t.Context(), UserContextKey, &UserClaims{UserID: "other"})
+	target, err := crewTeamBridgeTarget(ctx, "other", crewTeamAgentAddress("team", id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := crewServerStartedAt
+	t.Cleanup(func() { crewServerStartedAt = started })
+	crewServerStartedAt = time.Now().Add(-time.Hour) // offline past the Away grace (#3194)
+	if _, err = crewTeamAskTarget(ctx, "other", target, ""); err == nil {
+		t.Fatalf("a long-offline ASK was sent without the caller's choice: twin=%v target=%+v rows=%+v", crewRelayTwin("team"), target, crewTeamReachableIn(ctx, team, "other"))
+	}
+	// Ordinary direct mail is never redirected.
+	endpoint := targetMessageEndpoint("other", target)
+	if _, changed, err := f.api.routePublishedAgentMessage(ctx, agentConversation{}, agentMessage{}, agentMessageEndpoint{UserID: "other"}, endpoint, "owner_mac"); err != nil || changed {
+		t.Fatal("direct mail redirected", err)
+	}
 }

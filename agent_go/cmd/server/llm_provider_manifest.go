@@ -338,6 +338,7 @@ func claudeCodeCapabilityModels() []string {
 		// months after they stopped being offered).
 		return []string{
 			"claude-code",
+			"claude-fable-5-2",
 			"claude-fable-5-1",
 			"claude-opus-5-5",
 			"claude-sonnet-5-5",
@@ -484,8 +485,8 @@ func (api *StreamingAPI) handleGetProviderModels(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if provider == "cursor-cli" && r.URL.Query().Get("latest") == "true" {
-		api.handleCursorModelPicker(w, r)
+	if _, listed := accountModelListers[provider]; listed && r.URL.Query().Get("latest") == "true" {
+		api.handleAccountModelPicker(w, r, provider)
 		return
 	}
 

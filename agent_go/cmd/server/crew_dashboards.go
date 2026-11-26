@@ -1,41 +1,47 @@
 package server
 
 import (
+	"context"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // Dashboard discovery reads admitted workflow bindings, never tracking tables.
 func (api *StreamingAPI) handleCrewDashboards(w http.ResponseWriter, r *http.Request) {
 	if api.projectActions == nil || api.projectActions.registry == nil {
-		http.Error(w, "Crew services are unavailable", 503)
+		http.Error(w, "Project services are unavailable", 503)
 		return
 	}
 	caller := GetUserIDFromContext(r.Context())
 	claims := GetUserFromContext(r.Context())
 	if caller == "" || claims == nil || userAccessForClaims(claims).Disabled {
-		http.Error(w, "Sign in to open this Crew.", 401)
+		http.Error(w, "Sign in to open this project.", 401)
 		return
 	}
 	profile, err := api.projectActions.registry.Resolve("work", 0, caller)
 	if err != nil {
-		http.Error(w, "Crew is unavailable", 404)
+		http.Error(w, "Project is unavailable", 404)
 		return
 	}
 	project, err := resolveCrewProjectBinding(r.Context(), caller, profile, r.URL.Query().Get("crew_id"), "")
 	if err != nil {
-		http.Error(w, "This Crew is unavailable. Open a Crew shared with you.", 403)
+		http.Error(w, "This project is unavailable. Open a project shared with you.", 403)
 		return
 	}
 	root := project.Binding.WorkspacePath
 	if isExternalCrewDirectCall(r.Context()) && !api.externalCrewReferenceAllowed(r.Context(), claims, root, r.Method != http.MethodGet) {
-		http.Error(w, "This Crew is outside the connection's access.", 403)
+		http.Error(w, "This project is outside the connection's access.", 403)
 		return
 	}
 
 	records, err := readCrewExecutables()
 	if err != nil {
+		log.Printf("[CREW_DASHBOARDS] project=%s list failed: %v", root, err)
 		http.Error(w, "Could not load dashboards.", 500)
 		return
 	}
@@ -44,17 +50,19 @@ func (api *StreamingAPI) handleCrewDashboards(w http.ResponseWriter, r *http.Req
 		Name          string `json:"name"`
 	}
 	dashboards := []dashboard{}
-	_, parentReport, err := readFileFromWorkspace(r.Context(), root+"/db/reports/index.html")
+	parentReport, err := crewPublishedDashboardExists(r.Context(), root)
 	if err != nil {
+		log.Printf("[CREW_DASHBOARDS] project=%s list failed: %v", root, err)
 		http.Error(w, "Could not load dashboards.", 500)
 		return
 	}
 	for _, binding := range records {
-		if binding.CrewRoot != root || (binding.Kind != "workflow" && binding.Kind != "script") {
+		if binding.CrewRoot != root || binding.Kind != "script" {
 			continue
 		}
-		_, exists, err := readFileFromWorkspace(r.Context(), binding.Root+"/db/reports/index.html")
+		exists, err := crewPublishedDashboardExists(r.Context(), binding.Root)
 		if err != nil {
+			log.Printf("[CREW_DASHBOARDS] project=%s list failed: %v", root, err)
 			http.Error(w, "Could not load dashboards.", 500)
 			return
 		}
@@ -63,6 +71,7 @@ func (api *StreamingAPI) handleCrewDashboards(w http.ResponseWriter, r *http.Req
 		}
 		manifest, found, err := ReadWorkflowManifest(r.Context(), binding.Root)
 		if err != nil {
+			log.Printf("[CREW_DASHBOARDS] project=%s list failed: %v", root, err)
 			http.Error(w, "Could not load dashboards.", 500)
 			return
 		}
@@ -81,9 +90,50 @@ func (api *StreamingAPI) handleCrewDashboards(w http.ResponseWriter, r *http.Req
 		}
 		return dashboards[i].Name < dashboards[j].Name
 	})
-	defaultDashboard := root
+	defaultDashboard := ""
+	if parentReport {
+		defaultDashboard = root
+	}
 	if !parentReport && len(dashboards) > 0 {
 		defaultDashboard = dashboards[0].WorkspacePath
 	}
 	writeAIJSON(w, map[string]any{"dashboards": dashboards, "default_dashboard_workspace": defaultDashboard})
+}
+
+// Only current managed publications count as a Crew entry point. Retained HTML
+// and revision files after deletion do not keep a removed dashboard alive.
+func crewPublishedDashboardExists(ctx context.Context, root string) (bool, error) {
+	listed, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "list"})
+	if wf.StatusCode(err) == http.StatusNotFound {
+		// A workflow that has not run yet has no storage folder, so it has no
+		// dashboards. It must not break the whole project's dashboard list.
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, d := range listed.Dashboards {
+		if d.Managed && d.Published != "" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func crewHasPublishedDashboardEntry(ctx context.Context, root string) (bool, error) {
+	if found, err := crewPublishedDashboardExists(ctx, root); err != nil || found {
+		return found, err
+	}
+	records, err := readCrewExecutables()
+	if err != nil {
+		return false, err
+	}
+	for _, binding := range records {
+		if binding.CrewRoot == root && binding.Kind == "script" {
+			if found, err := crewPublishedDashboardExists(ctx, binding.Root); err != nil || found {
+				return found, err
+			}
+		}
+	}
+	return false, nil
 }

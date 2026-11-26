@@ -42,13 +42,14 @@ const (
 )
 
 type codeShellState struct {
-	socket    string
-	viewers   int
-	lastSeen  time.Time
-	ownerID   string
-	projectID string
-	userID    string
-	conns     map[*websocket.Conn]bool
+	socket          string
+	viewers         int
+	lastSeen        time.Time
+	ownerID         string
+	projectID       string
+	userID          string
+	conns           map[*websocket.Conn]bool
+	contextCommands []codeShellContextCommand
 }
 
 var codeShells = struct {
@@ -141,11 +142,11 @@ func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, 
 	claims := GetUserFromContext(r.Context())
 	tab, validTab := codeShellTab(r)
 	if !validTab {
-		return "", "", "", "", "", http.StatusBadRequest, fmt.Sprintf("a Crew has at most %d terminals (tab 1 to %d)", codeShellMaxTabs, codeShellMaxTabs)
+		return "", "", "", "", "", http.StatusBadRequest, fmt.Sprintf("a project has at most %d terminals (tab 1 to %d)", codeShellMaxTabs, codeShellMaxTabs)
 	}
 	projectID = strings.TrimSpace(mux.Vars(r)["project_id"])
 	if claims == nil || strings.TrimSpace(claims.UserID) == "" || projectID == "" || api == nil || api.agentProfiles == nil {
-		return "", "", "", "", "", http.StatusNotFound, "Crew workspace not found"
+		return "", "", "", "", "", http.StatusNotFound, "Project workspace not found"
 	}
 	profileID := strings.TrimSpace(mux.Vars(r)["id"])
 	if profileID == "" {
@@ -156,11 +157,11 @@ func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, 
 	}
 	profile, err := api.agentProfiles.Resolve(profileID, 0, claims.UserID)
 	if err != nil || !userAllowedProduct(claims, profile.Product) {
-		return "", "", "", "", "", http.StatusNotFound, "Crew workspace not found"
+		return "", "", "", "", "", http.StatusNotFound, "Project workspace not found"
 	}
 	project, err := resolveCrewProjectBinding(r.Context(), claims.UserID, profile, projectID, "")
 	if err != nil {
-		return "", "", "", "", "", http.StatusNotFound, "Crew workspace not found"
+		return "", "", "", "", "", http.StatusNotFound, "Project workspace not found"
 	}
 	if !project.OwnedByCaller || !userAccessForClaims(claims).CanEdit {
 		return "", "", "", "", "", http.StatusForbidden, "Only a project Builder can use its terminal"
@@ -171,6 +172,22 @@ func (api *StreamingAPI) codeShellTargetFull(r *http.Request) (userID, shellID, 
 	root = canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(project.OwnerID, project.Binding.WorkspacePath))
 	shellProjectID := crewProfileID + ":" + projectID
 	return claims.UserID, codeShellID(project.OwnerID, shellProjectID, claims.UserID, tab), root, project.OwnerID, projectID, 0, ""
+}
+
+// codeShellWorkDir is where a new terminal starts: the folder the Files pane
+// and the chat's agent work in. A Crew on the person's own folder keeps its
+// records in .agentworks/, which the Crew root resolves to, so the terminal
+// starts in the project folder itself (owner, 20 Nov). A published project
+// starts in its runtime outputs.
+func codeShellWorkDir(ctx context.Context, root string) (string, error) {
+	p, err := readPublishedProject(ctx, root)
+	if err != nil {
+		return "", err
+	}
+	if p != nil {
+		return p.runtimeRoot() + "/outputs", nil
+	}
+	return crewFilesPath(root), nil
 }
 
 // codeShellStart starts (or reuses) the sandboxed shell; the workspace call is
@@ -266,12 +283,10 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 	// Tracked before it starts, so a failed start or upgrade never leaves an
 	// untracked shell: the idle reaper stops it.
 	codeShellTrack(shellID, ownerID, projectID, userID)
-	workDir := root
-	if p, e := readPublishedProject(r.Context(), root); e != nil {
+	workDir, e := codeShellWorkDir(r.Context(), root)
+	if e != nil {
 		http.Error(w, "Publication status unavailable; try again.", 503)
 		return
-	} else if p != nil {
-		workDir = p.runtimeRoot() + "/outputs"
 	}
 	socket, err := codeShellStart(withCodeShellUser(r.Context(), userID), shellID, workDir, api.codeShellFolderGuard(r.Context(), userID, root), cols, rows)
 	if err != nil {
@@ -299,12 +314,14 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 	defer conn.Close()
 	codeShellViewer(shellID, socket, +1)
 	codeShellConn(shellID, conn, true)
-	// An audit trail of who had a terminal open on which Code (the keystrokes themselves are not recorded).
-	log.Printf("[CODE_SHELL] %s opened terminal %s of %s/%s workspace=%q", userID, shellID, ownerID, projectID, workDir)
-	opened := time.Now()
-	defer func() {
-		log.Printf("[CODE_SHELL] %s closed terminal %s of %s/%s after %s", userID, shellID, ownerID, projectID, time.Since(opened).Round(time.Second))
-	}()
+	connection := newCodeShellConnection(r, shellID, projectID, userID)
+	defer connection.closed()
+	// A project terminal used to send nothing while idle. Ping across both the
+	// saved desktop proxy and the browser path, just like native live attach.
+	_ = conn.SetReadDeadline(time.Now().Add(liveAttachPongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(liveAttachPongWait))
+	})
 	defer codeShellViewer(shellID, socket, -1)
 	defer codeShellConn(shellID, conn, false)
 
@@ -313,6 +330,22 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 	// deletion also close it at once, see stopCodeShellsFor).
 	roleCtx, stopRoleCheck := context.WithCancel(context.Background())
 	defer stopRoleCheck()
+	go func() {
+		ping := time.NewTicker(liveAttachPingInterval)
+		defer ping.Stop()
+		for {
+			select {
+			case <-roleCtx.Done():
+				return
+			case <-ping.C:
+				if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second)); err != nil {
+					connection.ended(err, "ping_failed", websocket.CloseAbnormalClosure)
+					_ = conn.Close()
+					return
+				}
+			}
+		}
+	}()
 	go func() {
 		ticker := time.NewTicker(codeShellRoleInterval)
 		defer ticker.Stop()
@@ -323,6 +356,7 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 			case <-ticker.C:
 				if !projectTerminalBuilder(roleCtx, userID, root) {
 					log.Printf("[CODE_SHELL] %s lost access to %s/%s; closing shell %s", userID, ownerID, projectID, shellID)
+					connection.ended(nil, "access_revoked", websocket.ClosePolicyViolation)
 					// Both ends: the in-sandbox attach client exits too.
 					_ = shell.Close()
 					_ = conn.Close()
@@ -332,6 +366,7 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 		}
 	}()
 
+	contextStream := codeShellContextStream{shellID: shellID}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -339,12 +374,18 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 			kind, data, err := shell.ReadMessage()
 			if err != nil || kind != websocket.BinaryMessage {
 				if err != nil {
+					connection.ended(err, "workspace_closed", websocket.CloseAbnormalClosure)
 					return
 				}
 				continue
 			}
-			if conn.WriteMessage(websocket.BinaryMessage, data) != nil {
-				return
+			data = contextStream.feed(data)
+			if len(data) > 0 {
+				if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
+					connection.ended(err, "client_write", websocket.CloseAbnormalClosure)
+					return
+				}
+				connection.activity()
 			}
 		}
 	}()
@@ -355,11 +396,14 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 	for {
 		kind, data, err := conn.ReadMessage()
 		if err != nil {
+			connection.ended(err, "client_read", websocket.CloseAbnormalClosure)
 			return
 		}
+		connection.activity()
 		switch kind {
 		case websocket.BinaryMessage:
-			if shell.WriteMessage(websocket.BinaryMessage, data) != nil {
+			if err := shell.WriteMessage(websocket.BinaryMessage, data); err != nil {
+				connection.ended(err, "workspace_write", websocket.CloseAbnormalClosure)
 				return
 			}
 		case websocket.TextMessage:
@@ -381,8 +425,11 @@ func (api *StreamingAPI) handleCodeShellStream(w http.ResponseWriter, r *http.Re
 			case control.Type == "scroll":
 				forward, _ = json.Marshal(map[string]interface{}{"type": "scroll", "lines": max(-200, min(control.Lines, 200)), "cancel": control.Cancel})
 			}
-			if forward != nil && shell.WriteMessage(websocket.TextMessage, forward) != nil {
-				return
+			if forward != nil {
+				if err := shell.WriteMessage(websocket.TextMessage, forward); err != nil {
+					connection.ended(err, "workspace_write", websocket.CloseAbnormalClosure)
+					return
+				}
 			}
 		}
 	}

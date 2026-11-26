@@ -1,6 +1,8 @@
 package events
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -334,5 +336,104 @@ func TestErroredToolCallIsNotSweptIntoSyntheticSettle(t *testing.T) {
 	}
 	if sawSyntheticSettle {
 		t.Error("an errored call was ALSO settled as if it had never reported -- it reported an error, which is a real outcome, not silence")
+	}
+}
+
+// PLAT-746-891: the reply ended while a native command kept running. A
+// five-second UI cleanup must not manufacture completion of that process.
+func TestNativeCommandOutlivesReplyUntilActualCompletion(t *testing.T) {
+	restore := shortenSettleGrace(t)
+	defer restore()
+	toolResultResolverMu.RLock()
+	previous := toolCompletionAuthority
+	toolResultResolverMu.RUnlock()
+	SetToolCompletionAuthority(func(session, id, name string) bool {
+		return session == "native-late-command" && (id == "exec-native" || id == "exec-failed")
+	})
+	defer SetToolCompletionAuthority(previous)
+	store := NewEventStore(500)
+	const session = "native-late-command"
+	store.AddEvent(session, startEvent(session, "exec-native", "exec_command"))
+	store.AddEvent(session, startEvent(session, "ordinary-call", "read_file"))
+	store.AddEvent(session, turnEndEvent(session))
+	time.Sleep(200 * time.Millisecond)
+	ids := toolEndIDs(t, store, session)
+	if len(ids) != 1 || ids[0] != "ordinary-call" {
+		t.Fatalf("premature native completion: %v", ids)
+	}
+	store.CompleteNativeTool("another-chat", "exec-native", time.Now(), false, "")
+	if len(toolEndIDs(t, store, session)) != 1 {
+		t.Fatal("another chat completed the command")
+	}
+	// The follow-up turn starts only when this reports true, so it must do so
+	// exactly once per command.
+	if !store.CompleteNativeTool(session, "exec-native", time.Now(), false, "VERIFY: PASSED\n") {
+		t.Fatal("native completion did not report closing the command")
+	}
+	if store.CompleteNativeTool(session, "exec-native", time.Now(), false, "") {
+		t.Fatal("a replayed completion would start a second follow-up")
+	}
+	if ids = toolEndIDs(t, store, session); len(ids) != 2 {
+		t.Fatalf("native completion missing or replayed: %v", ids)
+	}
+	// PLAT-746-899: the late completion carries what the command printed.
+	gotOutput := ""
+	for _, e := range store.GetEvents(session, GetEventsOptions{}).Events {
+		if e.Data != nil {
+			if d, ok := e.Data.Data.(*events.ToolCallEndEvent); ok && d.ToolCallID == "exec-native" {
+				gotOutput = d.Result
+			}
+		}
+	}
+	if gotOutput != "VERIFY: PASSED\n" {
+		t.Fatalf("late native completion lost its output: %q", gotOutput)
+	}
+	store.AddEvent(session, startEvent(session, "exec-failed", "exec_command"))
+	// A long build log is cut to its end, not stored whole in the chat event.
+	store.CompleteNativeTool(session, "exec-failed", time.Now(), true, strings.Repeat("x", 1<<20)+"exit 1")
+	foundFailure := false
+	for _, e := range store.GetEvents(session, GetEventsOptions{}).Events {
+		if e.Data != nil {
+			if d, ok := e.Data.Data.(*events.ToolCallErrorEvent); ok && d.ToolCallID == "exec-failed" {
+				foundFailure = true
+				if len(d.Error) > 20*1024 || !strings.HasSuffix(d.Error, "exit 1") {
+					t.Fatalf("long output not cut to its end: %d bytes", len(d.Error))
+				}
+			}
+		}
+	}
+	if !foundFailure {
+		t.Fatal("native failure was presented as success")
+	}
+}
+
+// PLAT-746-891: Stop/provider loss has no command result. The same durable
+// neutral end must survive loss of in-memory telemetry (history reload).
+func TestUnavailableNativeRuntimeSettlesCommandsAfterTelemetryLoss(t *testing.T) {
+	for _, reload := range []bool{false, true} {
+		session := fmt.Sprintf("native-runtime-ended-%t", reload)
+		store := NewEventStore(500)
+		store.AddEvent(session, startEvent(session, "exec-lost", "exec_command"))
+		if reload {
+			toolCallsMu.Lock()
+			delete(openToolCall, session)
+			toolCallsMu.Unlock()
+		}
+		store.EndNativeCommandsWithoutResult(session)
+		store.EndNativeCommandsWithoutResult(session)
+		if ids := toolEndIDs(t, store, session); len(ids) != 1 {
+			t.Fatalf("reload=%t ends=%v", reload, ids)
+		}
+		found := false
+		for _, event := range store.GetEvents(session, GetEventsOptions{}).Events {
+			if event.Data != nil {
+				if end, ok := event.Data.Data.(*events.ToolCallEndEvent); ok && end.ToolCallID == "exec-lost" {
+					found = end.SyntheticSettle && end.Result != ""
+				}
+			}
+		}
+		if !found {
+			t.Fatal("runtime disappearance must remain neutral, not successful")
+		}
 	}
 }

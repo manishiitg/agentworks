@@ -17,15 +17,9 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/schedulerstate"
 )
 
-// Crews, workflows and external connections call a Crew or workflow through
-// one mechanism: its functions (crew_functions.go; `ask` is always there).
-// Underneath, each caller has one internal trigger binding on the target,
-// created on the first call. Project calls use the receiving main chat when
-// the projects share an owner, otherwise a separate continuing conversation.
-//
-// Targets are any Crew on the server (Crews are shared read-write) and
-// workflows the requester owns or can edit; workflow readers and Crew
-// Run-mode readers cannot call.
+// Target resolution and run polling for declared functions. A function runs
+// in its configured tab or a fresh execution; caller ownership does not change
+// that destination. Access and explicit Crew links are checked at call time.
 
 const (
 	triggerTargetDefaultTimeout = 60 * time.Minute
@@ -38,7 +32,9 @@ const (
 var triggerTargetPollInterval = 10 * time.Second
 
 type triggerTarget struct {
-	NamedAgentID string // Message-only address; never used for structured functions.
+	Hosted       *hostedBridgeBinding // Backend-owned named app destination.
+	TeamAgentID  string               // Server-issued Team identity; native chat keys are transport details.
+	NamedAgentID string               // Message-only address; never used for structured functions.
 	// A named agent shared by another account: the grant that allows sending to it.
 	ShareOwnerUserID string
 	ShareID          string
@@ -72,15 +68,21 @@ func (t triggerTarget) describe() map[string]interface{} {
 
 // triggerLinkCaller identifies the calling Crew or workflow.
 type triggerLinkCaller struct {
+	BridgeHosted *hostedBridgeBinding  // Binding proved from the calling app registry.
+	BridgeOrigin *agentMessageEndpoint // Trusted app-turn provenance retained across named identity projection.
+	TeamAgentID  string
 	// ConditionJob is stamped only by the deterministic caller service.
 	ConditionJob string
 	NamedAgentID string // Selected from an authorized account registration, never a display label.
 	// OwnerAuthority is true only for the person's own unrestricted external connection, decided from the validated
 	// token when the message is sent (externalOwnerAuthority); never set from arguments or a label.
 	OwnerAuthority bool
-	Stamp          triggerCaller
-	Label          string
-	Path           string
+	// TeamPanel is true only when the signed-in person answers a Needs-you card in their own Team panel (#2853); set by
+	// that server route, never from arguments. It lets the person reach their own In team agents, as their website does.
+	TeamPanel bool
+	Stamp     triggerCaller
+	Label     string
+	Path      string
 	// Chat is the calling Code chat when it calls a sibling chat; it is set
 	// only from the trusted turn (codeChatsFor).
 	Chat *codeChat
@@ -92,6 +94,7 @@ type triggerLinkCaller struct {
 // restricts the kind. Ambiguous names fail with the candidates listed.
 func resolveTriggerTarget(ctx context.Context, claims *UserClaims, raw string) (triggerTarget, error) {
 	if base, key, ok := strings.Cut(raw, "/agent/"); ok && strings.HasPrefix(base, "workspace:work:") {
+
 		target, err := resolveTriggerTarget(ctx, claims, base)
 		if err != nil {
 			return target, err
@@ -115,7 +118,7 @@ func resolveTriggerTarget(ctx context.Context, claims *UserClaims, raw string) (
 		}
 	}
 	if query == "" {
-		return triggerTarget{}, fmt.Errorf("target is required: pass a Crew or workflow name or its exact workspace_path")
+		return triggerTarget{}, fmt.Errorf("target is required: pass a project or workflow name or its exact workspace_path")
 	}
 	userID := ""
 	if claims != nil {
@@ -177,7 +180,7 @@ func resolveTriggerTarget(ctx context.Context, claims *UserClaims, raw string) (
 	}
 	switch len(found) {
 	case 0:
-		return triggerTarget{}, fmt.Errorf("no Crew or workflow you can use matches %q; call list_agents and pass its id", query)
+		return triggerTarget{}, fmt.Errorf("no project or workflow you can use matches %q; call list_agents and pass its id", query)
 	case 1:
 		return found[0], nil
 	default:
@@ -243,46 +246,6 @@ func crewCallMessage(stored string, sameOwner bool) string {
 		note = "This call runs in your main chat, so the people here see it too."
 	}
 	return strings.Replace(stored, crewCallPrivateConversationNote, note, 1)
-}
-
-// connectTriggerTarget reuses the internal binding on target that names this
-// caller or creates the standard one. It returns the binding's trigger ID and
-// whether it was created. Project ownership selects the conversation at delivery.
-func (api *StreamingAPI) connectTriggerTarget(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget) (string, bool, error) {
-	if caller.isTarget(target) {
-		return "", false, fmt.Errorf("a %s cannot connect to itself", target.Kind)
-	}
-	switch target.Kind {
-	case triggerCallerCrew:
-		if api.projectActions == nil {
-			return "", false, fmt.Errorf("Crew calls are unavailable")
-		}
-
-		triggers, err := api.projectActions.projectWebhookConfigs(ctx, target.ownerOr(userID), target.CrewProfile, target.CrewID)
-		if err != nil {
-			return "", false, err
-		}
-		for _, trigger := range triggers {
-			if trigger.IsInternal() && trigger.Enabled && trigger.Caller.matchesAnyPresented(caller.Stamp) {
-				return trigger.ID, false, nil
-			}
-		}
-		stamp := caller.Stamp
-		response, _, err := api.projectActions.saveProductWebhookConfig(ctx, target.ownerOr(userID), productWebhookRequest{
-			WorkspaceFunction: true,
-			ProfileID:         target.CrewProfile, ProjectID: target.CrewID,
-			Name: "Called by " + caller.Label, Message: crewTargetMessage(caller),
-			Enabled: true, RunDestination: runDestinationIsolated, Kind: triggerKindInternal, Caller: &stamp,
-		}, "")
-		if err != nil {
-			return "", false, err
-		}
-		return response.ID, true, nil
-	case triggerCallerWorkflow:
-		return workflowTriggerBinding(ctx, api, target.Path, target.Manifest, caller.Stamp, "Called by "+caller.Label)
-	default:
-		return "", false, fmt.Errorf("unknown target kind %q", target.Kind)
-	}
 }
 
 // triggerTargetRunState is one poll of a target run.
@@ -433,7 +396,58 @@ func triggerTargetTimeout(value interface{}) (time.Duration, error) {
 // /api/query handling as a person typing into that chat: a live coding CLI
 // takes it as steering input, otherwise it waits in the durable turn queue and
 // runs right after the current turn. Only while the run is still running.
+// A declared function has no caller-specific trigger binding. Only its exact
+// admitted caller/run may use in-flight read authority for an update.
+func (api *StreamingAPI) crewFunctionUpdateAdmission(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, triggerID, runID string) (*crewFunctionCall, error) {
+	crewFunctionCalls.Lock()
+	var admitted *crewFunctionCall
+	for _, call := range crewFunctionCalls.m {
+		call.mu.Lock()
+		sameRun := runID != "" && call.RunID == runID
+		call.mu.Unlock()
+		if sameRun {
+			admitted = call
+			break
+		}
+	}
+	crewFunctionCalls.Unlock()
+	if admitted == nil {
+		return nil, nil
+	}
+	admitted.mu.Lock()
+	stamp := triggerCaller{Type: admitted.CallerKind, ID: admitted.CallerID, ProfileID: admitted.CallerProfileID}
+	allowed := (!admitted.terminalLocked() || admitted.acceptsLateLocked()) && admitted.IsolatedExecution && admitted.UserID == userID && stamp.matchesAnyPresented(caller.Stamp) &&
+		admitted.TargetKind == target.Kind && admitted.TargetID == target.CrewID && admitted.TargetProfileID == target.CrewProfile && admitted.TriggerID == triggerID &&
+		canonicalCrewWorkspaceRoot(admitted.CallerPath) == canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(userID, caller.Path)) &&
+		canonicalCrewWorkspaceRoot(admitted.TargetPath) == canonicalCrewWorkspaceRoot(crewFunctionRoot(ctx, target))
+	admitted.mu.Unlock()
+	if !allowed {
+		return nil, fmt.Errorf("only the admitted caller may update this function run")
+	}
+	claims := GetUserFromContext(ctx)
+	if claims == nil || claims.UserID != userID {
+		return nil, fmt.Errorf("function update requires its authenticated caller")
+	}
+	current, err := resolveFunctionTarget(ctx, claims, caller, admitted.TargetPath)
+	if err != nil || current.Kind != admitted.TargetKind || current.CrewID != admitted.TargetID || current.CrewProfile != admitted.TargetProfileID ||
+		canonicalCrewWorkspaceRoot(crewFunctionRoot(ctx, current)) != canonicalCrewWorkspaceRoot(admitted.TargetPath) {
+		return nil, fmt.Errorf("function call target is unavailable or access denied")
+	}
+	if rec, ok := defaultProjectOwners().Lookup(crewProfileID, strings.TrimPrefix(current.Path, crewSharedRootName+"/")); !ok || rec.OwnerID != admitted.target.CrewOwner {
+		return nil, fmt.Errorf("function call target ownership changed; make a new call")
+	}
+	return admitted, nil
+}
+
 func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string, caller triggerLinkCaller, target triggerTarget, triggerID, runID, message string) (map[string]interface{}, error) {
+	admission, err := api.crewFunctionUpdateAdmission(ctx, userID, caller, target, triggerID, runID)
+	if err != nil {
+		return nil, err
+	}
+	if admission != nil {
+		ctx = context.WithValue(ctx, inFlightCallRunReadKey{}, true)
+	}
+
 	status, err := api.projectActions.getInternalProductTriggerRun(ctx, userID, target.CrewProfile, target.CrewID, triggerID, runID, caller.Stamp)
 	if err != nil {
 		return nil, crewWorkflowRunError(err)
@@ -453,20 +467,11 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 		ownerID = owner
 	}
 	var conversationBinding productConversationBinding
-	functionCallID := ""
-	crewFunctionCalls.Lock()
-	for _, call := range crewFunctionCalls.m {
-		call.mu.Lock()
-		same := call.IsolatedExecution && call.RunID == runID && call.TriggerID == triggerID && call.TargetID == target.CrewID && call.SessionID == status.SessionID
-		call.mu.Unlock()
-		if same {
-			functionCallID = call.ID
-			break
-		}
-	}
-	crewFunctionCalls.Unlock()
-	if functionCallID != "" {
-		conversationBinding, err = resolveIsolatedProjectAutomationBinding(ctx, ownerID, profile, target.CrewID, "function", crewCallIsolatedKey(trigger.ID, functionCallID), manifest.displayTitle()+" · "+trigger.Name)
+	if admission != nil && admission.TabName != "" {
+		key := target.CrewID + codeChatSideMarker + crewFunctionTabPrefix + crewAgentChatID(admission.TabName)
+		conversationBinding, err = resolveProductConversationBinding(ctx, ownerID, profile, key)
+	} else if admission != nil {
+		conversationBinding, err = resolveIsolatedProjectAutomationBinding(ctx, ownerID, profile, target.CrewID, "function", crewCallIsolatedKey(trigger.ID, admission.ID), manifest.displayTitle()+" · "+trigger.Name)
 	} else if strings.EqualFold(caller.Stamp.Type, triggerCallerCrew) {
 		// Same routing as the call itself: the owner's own call is in the
 		// Crew's chat, another person's in their own conversation.
@@ -481,14 +486,14 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 		conversationBinding, err = resolveProductConversationBinding(ctx, ownerID, profile, target.CrewID)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("Crew conversation is unavailable: %w", err)
+		return nil, fmt.Errorf("Project conversation is unavailable: %w", err)
 	}
 	conversation, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, ownerID, profile, conversationBinding, "")
 	if err != nil {
-		return nil, fmt.Errorf("Crew conversation is unavailable: %w", err)
+		return nil, fmt.Errorf("Project conversation is unavailable: %w", err)
 	}
 	if conversation.SessionID != status.SessionID {
-		return nil, fmt.Errorf("the Crew's conversation has moved to a new session since run %s started; make a new call", runID)
+		return nil, fmt.Errorf("the project's conversation has moved to a new session since run %s started; make a new call", runID)
 	}
 	framed := fmt.Sprintf("[Follow-up from %s %q about its task in run %s]\n\n%s", caller.Stamp.Type, caller.Label, runID, strings.TrimSpace(message))
 	req, tabAccount, err := automationProductChatQuery(ctx, ownerID, profile, framed, conversation)
@@ -522,16 +527,20 @@ func (api *StreamingAPI) sendToCrewTriggerRun(ctx context.Context, userID string
 	httpReq.Header.Set("X-User-ID", ownerID)
 	httpReq.Header.Set("Idempotency-Key", "call-followup-"+uuid.NewString())
 	recorder := httptest.NewRecorder()
-	api.handleQuery(recorder, httpReq)
+	if api.internalQueryHandler != nil {
+		api.internalQueryHandler(recorder, httpReq)
+	} else {
+		api.handleQuery(recorder, httpReq)
+	}
 	if recorder.Code >= 400 {
-		return nil, fmt.Errorf("the Crew did not accept the message (%d): %s", recorder.Code, strings.TrimSpace(recorder.Body.String()))
+		return nil, fmt.Errorf("the project did not accept the message (%d): %s", recorder.Code, strings.TrimSpace(recorder.Body.String()))
 	}
 	var response QueryResponse
 	_ = json.Unmarshal(recorder.Body.Bytes(), &response)
 	delivery := firstNonEmptyTrimmed(response.DeliveryStatus, response.Status, "accepted")
 	return map[string]interface{}{
 		"target": target.describe(), "run_id": runID, "delivery_status": delivery,
-		"note": "Delivered into the Crew's running conversation with you. If it was queued, it runs right after the current turn; the call's own result still arrives as usual.",
+		"note": "Delivered into the project's running conversation with you. If it was queued, it runs right after the current turn; the call's own result still arrives as usual.",
 	}, nil
 }
 

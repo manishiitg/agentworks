@@ -1,0 +1,50 @@
+//go:build linux
+
+package cursorcli
+
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+// PLAT-872-55 T6: the actual terminal launcher must create the CLI process
+// as its assigned Linux account. Run only inside the disposable slot harness.
+func TestCursorTmuxLaunchRunsAsAssignedSlotLive(t *testing.T) {
+	dir := os.Getenv("AGENTWORKS_SLOT_PROBE_DIR")
+	expected := os.Getenv("AGENTWORKS_SLOT_PROBE_UID")
+	if dir == "" || expected == "" {
+		t.Skip("requires disposable Linux slot harness")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	session := "mlp-cursorcli-slot-proof"
+	marker := filepath.Join(dir, "cursorcli-uid")
+	version := filepath.Join(dir, "cursorcli-version")
+	args := []string{"/bin/sh", "-c", "/usr/bin/id -u > " + marker + "; codex --version > " + version + "; sleep 20"}
+	err := startCursorTmuxSession(ctx, session, args, []string{"PATH=" + os.Getenv("PATH")}, nil, nil, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer exec.Command("tmux", "kill-session", "-t", session).Run()
+	for {
+		uid, err := os.ReadFile(marker)
+		v, versionErr := os.ReadFile(version)
+		if err == nil && versionErr == nil && strings.TrimSpace(string(v)) != "" {
+			if strings.TrimSpace(string(uid)) != expected {
+				t.Fatalf("pane uid %q expected %s", uid, expected)
+			}
+			t.Logf("CLI exec uid=%s; expected slot uid=%s; service uid=%d; %s", strings.TrimSpace(string(uid)), expected, os.Getuid(), strings.TrimSpace(string(v)))
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}

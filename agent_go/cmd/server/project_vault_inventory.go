@@ -25,10 +25,13 @@ type projectVaultItem struct {
 	App          string `json:"app,omitempty"`
 	Owner        string `json:"owner,omitempty"`
 	// Source says whose it is, in plain words: "you", a Company group's name or "the project's owner".
-	Source    string `json:"source,omitempty"`
+	Source string `json:"source,omitempty"`
+	// SignIn marks an app each person signs in to themselves (it is listed for the Team, never copied).
+	SignIn    bool   `json:"sign_in,omitempty"`
 	Status    string `json:"status"`
 	Selected  bool   `json:"selected"`
 	CanSelect bool   `json:"can_select"`
+	CanReveal bool   `json:"can_reveal,omitempty"`
 	// UsedIn names the person's own projects that use this item (only for Yours), so they know what removing it affects.
 	UsedIn []string `json:"used_in,omitempty"`
 }
@@ -109,7 +112,14 @@ func (api *StreamingAPI) selectProjectVaultItem(ctx context.Context, person, wor
 		if selected {
 			operation = "select"
 		}
-		settings["secrets"] = map[string]any{operation: []any{id}}
+		names := []any{id}
+		// A chosen secret is that name for everyone (actingSecretPicks): unticking drops every pick with the name.
+		for _, picked := range before.Shared {
+			if !selected && picked != id && isVaultSecretName(picked) && vaultSecretShortName(picked) == vaultSecretShortName(id) {
+				names = append(names, picked)
+			}
+		}
+		settings["secrets"] = map[string]any{operation: names}
 	case "mcp":
 		err = api.selectVaultServer(ctx, person, root, id, selected)
 	default:
@@ -197,8 +207,14 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 	for _, row := range lenderAccess.Servers {
 		available[row.ID] = true
 	}
+	// A chosen app is that app for everyone (vaultAppChosen); a chosen secret is that name (actingSecretPicks).
 	serverUsed := func(id string) bool {
-		return slices.Contains(out.Servers, vaultServerName(id)) || available[id] && !chosenOnly
+		return available[id] && !chosenOnly || vaultAppChosen(ctx, out.Servers, id)
+	}
+	secretUsed := func(name string) bool {
+		return slices.ContainsFunc(out.Shared, func(picked string) bool {
+			return picked == name || isVaultSecretName(picked) && vaultSecretShortName(picked) == vaultSecretShortName(name)
+		})
 	}
 	if lenderErr != nil {
 		out.Notices = append(out.Notices, "Project app access could not be checked.")
@@ -213,6 +229,7 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 			Connections []struct {
 				ID, Label, Provider, Status string
 				SignInError                 string `json:"sign_in_error"`
+				SignIn                      bool   `json:"sign_in"`
 			} `json:"connections"`
 			SecretNames []string `json:"secret_names"`
 		} `json:"vaults"`
@@ -238,10 +255,10 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 				if c.Status == "active" && c.SignInError == "" {
 					status = "connected"
 				}
-				group.Items = append(group.Items, projectVaultItem{ID: c.ID, Name: c.Label, Provider: c.Provider, Kind: "mcp", Status: status, Selected: serverUsed(c.ID), CanSelect: available[c.ID] || lender == person || slices.Contains(out.Servers, vaultServerName(c.ID))})
+				group.Items = append(group.Items, projectVaultItem{ID: c.ID, Name: c.Label, Provider: c.Provider, Kind: "mcp", SignIn: c.SignIn, Status: status, Selected: serverUsed(c.ID), CanSelect: available[c.ID] || lender == person || slices.Contains(out.Servers, vaultServerName(c.ID))})
 			}
 			for _, name := range row.SecretNames {
-				group.Items = append(group.Items, projectVaultItem{ID: name, Name: vaultSecretShortName(name), Kind: "shared_secret", Status: "stored", Selected: slices.Contains(out.Shared, name), CanSelect: true})
+				group.Items = append(group.Items, projectVaultItem{ID: name, Name: vaultSecretShortName(name), Kind: "shared_secret", Status: "stored", Selected: secretUsed(name), CanSelect: true})
 			}
 			groups[group.ID] = group
 		}
@@ -271,7 +288,7 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 				if slices.ContainsFunc(group.Items, func(i projectVaultItem) bool { return i.ID == secret.Name }) {
 					continue
 				}
-				group.Items = append(group.Items, projectVaultItem{ID: secret.Name, Name: vaultSecretShortName(secret.Name), Kind: "shared_secret", Status: "stored", Selected: slices.Contains(out.Shared, secret.Name), CanSelect: true})
+				group.Items = append(group.Items, projectVaultItem{ID: secret.Name, Name: vaultSecretShortName(secret.Name), Kind: "shared_secret", Status: "stored", Selected: secretUsed(secret.Name), CanSelect: true})
 			}
 		}
 	} else {
@@ -365,7 +382,8 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 				if a.Connected && a.Problem == "" {
 					status = "connected"
 				}
-				personal.Items = append(personal.Items, projectVaultItem{ID: a.ID, Name: a.Label, Provider: "Slack", Owner: a.Owner, Kind: "slack", Status: status, Selected: a.Selected, CanSelect: a.CanAdd || a.CanDetach})
+				identity := formatSlackIdentity(vaultSlackIdentity{TeamName: a.TeamName, UserName: a.UserName})
+				personal.Items = append(personal.Items, projectVaultItem{ID: a.ID, Name: a.Label, AccountEmail: identity, Provider: "Slack", Owner: a.Owner, Kind: "slack", Status: status, Selected: a.Selected, CanSelect: a.CanAdd || a.CanDetach})
 			}
 		}
 	} else {
@@ -410,6 +428,7 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 		return strings.ToLower(groups[ids[i]].Name) < strings.ToLower(groups[ids[j]].Name)
 	})
 	seen := map[string]bool{}
+	isAdmin := canManageGlobalSecrets(person)
 	for _, id := range ids {
 		group, heading := groups[id], &headings[order[category[id]]]
 		source := group.Name
@@ -422,6 +441,9 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 			if key := item.Kind + ":" + item.ID; !seen[key] {
 				seen[key] = true
 				item.Source = source
+				if item.Kind == "shared_secret" {
+					item.CanReveal = category[id] == "yours" || (isAdmin && category[id] != "project")
+				}
 				heading.Items = append(heading.Items, item)
 			}
 		}
@@ -432,6 +454,24 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 			if item.Kind == "mcp" || item.Kind == "shared_secret" || item.Kind == "computer" {
 				yours.Items[i].UsedIn = used.forItem(item.Kind, item.ID)
 			}
+		}
+	}
+	// Company keys reach everyone on the server (#4148): every one is listed under Company, and an online project uses
+	// them automatically (nothing to tick); its own key wins on the same name.
+	if companyKeysOn() {
+		company, online := &headings[1], serverCrewForPath(root) != ""
+		for _, name := range companyKeyNames() {
+			if !slices.ContainsFunc(company.Items, func(i projectVaultItem) bool { return i.Kind == "shared_secret" && i.ID == name }) {
+				company.Items = append(company.Items, projectVaultItem{ID: name, Name: name, Kind: "shared_secret", Status: "stored", Source: "Everyone", Selected: secretUsed(name), CanSelect: true, CanReveal: isAdmin})
+			}
+		}
+		if online {
+			for i, item := range company.Items {
+				if item.Kind == "shared_secret" && isCompanyKeyName(item.ID) {
+					company.Items[i].Selected, company.Items[i].CanSelect = true, false
+				}
+			}
+			out.Notices = append(out.Notices, "Company keys are used here automatically. If this project has its own key with the same name, the project's key is used.")
 		}
 	}
 	for _, heading := range headings {

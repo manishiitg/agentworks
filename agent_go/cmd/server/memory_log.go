@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools"
+	"github.com/manishiitg/coding-agent-loop/workspace/cpuprofile"
 )
 
 // memoryLogInterval is how often the server logs its memory use. There was
@@ -16,30 +18,50 @@ const memoryLogInterval = time.Minute
 
 // startMemoryLog logs heap, goroutines and the event store's in-memory size
 // every minute, so a memory spike leaves evidence in agent.log.
-func startMemoryLog(store *events.EventStore) {
+func startMemoryLog(store *events.EventStore, api *StreamingAPI) {
+	cpuprofile.Start("agent")
+	profiler := newAutoProfiler()
 	go func() {
 		ticker := time.NewTicker(memoryLogInterval)
 		defer ticker.Stop()
-		for range ticker.C {
-			log.Print(memoryLogLine(store))
+		for now := range ticker.C {
+			log.Print(memoryLogLine(store, api))
+			if profiler != nil {
+				var mem runtime.MemStats
+				runtime.ReadMemStats(&mem)
+				profiler.check(mem.HeapInuse>>20, now)
+			}
 		}
 	}()
 }
 
-func memoryLogLine(store *events.EventStore) string {
+func memoryLogLine(store *events.EventStore, api *StreamingAPI) string {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 	mb := func(bytes uint64) uint64 { return bytes / (1 << 20) }
-	line := fmt.Sprintf("[MEM] heap_inuse=%dMB heap_alloc=%dMB sys=%dMB goroutines=%d gc=%d",
-		mb(mem.HeapInuse), mb(mem.HeapAlloc), mb(mem.Sys), runtime.NumGoroutine(), mem.NumGC)
+	line := fmt.Sprintf("[MEM] heap_inuse=%dMB heap_alloc=%dMB sys=%dMB goroutines=%d gc=%d tool_schema_entries=%d",
+		mb(mem.HeapInuse), mb(mem.HeapAlloc), mb(mem.Sys), runtime.NumGoroutine(), mem.NumGC, platformtools.CompiledSchemaCacheEntries())
+	if api != nil {
+		api.conversationMux.RLock()
+		historySessions := len(api.conversationHistory)
+		historyMsgs := 0
+		for _, msgs := range api.conversationHistory {
+			historyMsgs += len(msgs)
+		}
+		api.conversationMux.RUnlock()
+		api.sessionAgentsMux.RLock()
+		sessionAgents := len(api.sessionAgents)
+		api.sessionAgentsMux.RUnlock()
+		line = fmt.Sprintf("%s history_sessions=%d history_msgs=%d session_agents=%d", line, historySessions, historyMsgs, sessionAgents)
+	}
 	if store == nil {
-		return line
+		return fmt.Sprintf("%s top_routes=[%s]", line, strings.Join(apiRecent.topAndReset(3), " "))
 	}
 	stats := store.Stats(5)
 	largest := make([]string, 0, len(stats.Largest))
 	for _, session := range stats.Largest {
 		largest = append(largest, fmt.Sprintf("%s:%d+%dt/%dKB", session.SessionID, session.Events, session.TerminalEvents, session.Bytes>>10))
 	}
-	return fmt.Sprintf("%s event_sessions=%d events=%d terminal_events=%d event_bytes=%dMB largest=[%s]",
-		line, stats.Sessions, stats.Events, stats.TerminalEvents, stats.Bytes>>20, strings.Join(largest, " "))
+	return fmt.Sprintf("%s event_sessions=%d events=%d terminal_events=%d event_bytes=%dMB largest=[%s] top_routes=[%s]",
+		line, stats.Sessions, stats.Events, stats.TerminalEvents, stats.Bytes>>20, strings.Join(largest, " "), strings.Join(apiRecent.topAndReset(3), " "))
 }

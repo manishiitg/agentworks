@@ -214,13 +214,13 @@ type notifyFocusEntry struct {
 
 var notifyFocus sync.Map // device id -> notifyFocusEntry
 
-func notifyFocused(device, user, session string) bool {
+func notifyFocused(device, user, session string, mac bool) bool {
 	value, ok := notifyFocus.Load(device)
 	if !ok {
 		return false
 	}
 	entry := value.(notifyFocusEntry)
-	return entry.user == user && entry.session == session && time.Since(entry.at) < notifyFocusTTL
+	return entry.user == user && entry.session != "" && (mac || entry.session == session) && time.Since(entry.at) < notifyFocusTTL
 }
 
 // Mac app streams: device id -> listeners.
@@ -431,6 +431,7 @@ func (api *StreamingAPI) handleNotifyFocus(w http.ResponseWriter, r *http.Reques
 	} else {
 		notifyFocus.Store(in.Device, notifyFocusEntry{user: user, session: in.Session, at: time.Now()})
 	}
+	log.Printf("[NOTIFY_FOCUS] user=%s device=%.8s focused=%t session=%s", logUsernameForUserID(user), in.Device, in.Session != "", in.Session)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -462,6 +463,14 @@ func notifyServeStream(w http.ResponseWriter, r *http.Request, device string) {
 	ch, stop := notifyStreamListen(device)
 	defer stop()
 	_ = writeSSEEvent(w, "ready", -1, struct{}{})
+	// The Mac app's own stream also carries whether to keep this Mac awake for workflows (#3617).
+	var awake chan keepAwakeState
+	if device == notifyMacAppDevice {
+		state, changes, stopAwake := desktopKeepAwake.listen()
+		defer stopAwake()
+		awake = changes
+		_ = writeSSEEvent(w, "keep_awake", -1, state)
+	}
 	flusher.Flush()
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
@@ -471,6 +480,11 @@ func notifyServeStream(w http.ResponseWriter, r *http.Request, device string) {
 			return
 		case msg := <-ch:
 			if writeSSEEvent(w, "notify", -1, msg) != nil {
+				return
+			}
+			flusher.Flush()
+		case state := <-awake:
+			if writeSSEEvent(w, "keep_awake", -1, state) != nil {
 				return
 			}
 			flusher.Flush()

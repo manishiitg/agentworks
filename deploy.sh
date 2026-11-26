@@ -29,7 +29,7 @@ Servers (each one's host, domain and settings live in the private deployments re
                         secret admission scan (warnings). Exits 1 on any FAIL. Every deploy of a slot host runs it too.
   build [--force]       build a release of the DEPLOY_BRANCH head (default main) on the build host; deploys nothing
   queue                 which servers are being deployed right now, by whom and since when (a deploy waits for one to the same server)
-  builds                list the builds on the build host (name, age, the three revisions, pinned) and the builds on GitHub
+  builds                list the builds on the build host (name, age, revision, pinned) and the builds on GitHub
   publish [build]       upload a build (default: the newest) to github.com/manishiitg/agentworks-builds from the build host
   verify [name]         build, vet and test the commit you are on (HEAD) on the build host with the Verify-Test / Verify-Vitest /
                         Verify-Frontend-Build lines of its commit message, like scripts/verify-remote.sh but faster; deploys nothing
@@ -37,17 +37,15 @@ Servers (each one's host, domain and settings live in the private deployments re
   prune-builds          remove old builds on the build host now (all but the newest, pinned ones and anything younger than 15 minutes)
 
 Build once, deploy everywhere (PLAT-426): rts, excellence, confida and all-hetzner build the release ONCE on the
-Hetzner box (deploy/common/build-release.sh -> /srv/_builds/<name>, reused when the three revisions are unchanged), then each
+Hetzner box (deploy/common/build-release.sh -> /srv/_builds/<name>, reused when the revision is unchanged), then each
 server only copies and activates it after verifying its manifest (architecture, glibc, every file hash).
-  --build <name|sha>    deploy that existing build instead of the branch head (see `builds`); its three revisions must be
-                        on origin/<DEPLOY_BRANCH> of the three repositories (origin/main for a sibling without that branch),
-                        or older commits of it plus changes already on it
-  DEPLOY_BRANCH=main|dev   what to deploy (default main); dev deploys the head of origin/dev of this repository, with
-                        mcpagent and multi-llm-provider-go at the commits its agent_go/go.mod pins. Example: DEPLOY_BRANCH=dev ./deploy.sh <server>
+  --build <name|sha>    deploy that existing build instead of the branch head (see `builds`); its revision must be
+                        on origin/<DEPLOY_BRANCH>, or an older commit of it plus changes already on it
+  DEPLOY_BRANCH=main|dev   what to deploy (default main); dev deploys the head of origin/dev of this repository
+                        (mcpagent/ and multi-llm-provider-go/ are folders in it). Example: DEPLOY_BRANCH=dev ./deploy.sh <server>
   DEPLOY_BUILD_TRANSPORT=auto|github|stream   how rts gets the build: RTS downloads it from the public builds repo on GitHub
                         (auto: streaming through this machine is the fallback when the release is missing), github (no fallback), stream (old path)
-  DEPLOY_SHA_MCP_AGENT_BUILDER_GO / DEPLOY_SHA_MCPAGENT / DEPLOY_SHA_MULTI_LLM_PROVIDER_GO=<40-hex>   build that commit of the repository instead of the branch head
-                        (without it, mcpagent and multi-llm-provider-go build at the commits agent_go/go.mod pins)
+  DEPLOY_SHA_MCP_AGENT_BUILDER_GO=<40-hex>   build that commit of the repository instead of the branch head
                         (it must be on the deploy branch, or an older commit of it plus changes already on it); for a release that leaves out work still landing
   DEPLOY_REFRESH_TOOLS=1    refresh provider CLIs and agent-browser from vendors; normal deploys reuse healthy unchanged tools
   DEPLOY_SECURITY_CHECKS=full|basic   how thorough the slot self-test at the end of a deploy of a slot host is (default full): basic = a
@@ -77,14 +75,25 @@ esac
 # Build once, deploy everywhere (PLAT-426): helpers for the build host (see deploy/common/build-once.sh).
 # shellcheck disable=SC1091
 # Hosts, ports and addresses are private: the deployments repo's deploy.env (PLAT-719). Environment variables override it.
-DEPLOY_ENV_FILE="${AGENTWORKS_DEPLOYMENTS_DIR:-$(cd "$REPO_ROOT/.." && pwd)/deployments}/deploy.env"
+DEPLOY_SETTINGS_DIR="${AGENTWORKS_DEPLOYMENTS_DIR:-$(cd "$REPO_ROOT/.." && pwd)/deployments}"
+# Agents push the private settings repository from their own worktrees and nobody updates this checkout, so it fell a month
+# behind and deploys read old server settings. Fast-forward it to its remote first; a checkout with local edits, local commits
+# or no network keeps what it has and says so.
+if git -C "$DEPLOY_SETTINGS_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  if git -C "$DEPLOY_SETTINGS_DIR" pull -q --ff-only >/dev/null 2>&1; then
+    :
+  else
+    echo "Note: could not update the deployment settings in $DEPLOY_SETTINGS_DIR to the latest; using them as they are." >&2
+  fi
+fi
+DEPLOY_ENV_FILE="$DEPLOY_SETTINGS_DIR/deploy.env"
 # shellcheck source=/dev/null
 [[ -f "$DEPLOY_ENV_FILE" ]] && source "$DEPLOY_ENV_FILE"
 source "$REPO_ROOT/deploy/common/build-once.sh"
 
 # --- AWS EC2 server (settings in the private deployments repo) -----------
 # Sends only deployment instructions and secrets; the server clones main of
-# all three repositories and builds the release itself.
+# the repository and builds the release itself.
 # The AWS server's profile, stack, CloudFront distribution, public branding and URL are company-specific, so they live in
 # the private deployments repo: products/<name>/aws.env plus runtime-config.js, video-studio-agent.service and brand/ there.
 # This loads aws.env into the shell and sets AWS_OVERLAY_DIR to the folder holding the rest. Its product.env (the server's
@@ -196,11 +205,11 @@ product_config_dir() {
 # One real AgentWorks tool call per configured company provider, over the server's public MCP, in a dedicated smoke
 # Crew. It reports PASS/FAIL per provider and never fails a deploy. The private products/<name>/smoke.env names the
 # saved login on this computer (SMOKE_LOGIN, from `agentworks login --name`) and the Crew (SMOKE_WORKSPACE=work:<id>);
-# without it nothing runs. DEPLOY_SMOKE=0 skips it for one deploy.
+# without it nothing runs. Opt-in (owner, 9 Nov: "yes opt in"): it runs only with DEPLOY_SMOKE=1, for a batch end or a slot/provider change.
 post_deploy_smoke() {
   local product="$1" config
   config="$(deployments_dir)/products/$product/smoke.env"
-  [[ "${DEPLOY_SMOKE:-1}" != 0 ]] || { echo "==> [$product] Smoke check skipped (DEPLOY_SMOKE=0)."; return 0; }
+  [[ "${DEPLOY_SMOKE:-0}" == 1 ]] || { echo "==> [$product] Smoke check skipped (opt-in: DEPLOY_SMOKE=1 runs it)."; return 0; }
   [[ -f "$config" ]] || { echo "==> [$product] Smoke check not set up (no products/$product/smoke.env)."; return 0; }
   (
     # shellcheck disable=SC1090
@@ -224,7 +233,7 @@ live_release_commit() { # product -> short commit of its live release, or nothin
     # shellcheck disable=SC1090
     source "$(product_config_dir "$product")/product.env"
     identity=(-i "${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}")
-    ssh -p "${SSH_PORT:-22}" "${identity[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$product@$HOST_IP" \
+    ssh -p "${SSH_PORT:-22}" "${identity[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o StrictHostKeyChecking=accept-new "$product@$HOST_IP" \
       "readlink /srv/$product/current" 2>/dev/null | sed -nE "s#.*/$product-([0-9a-f]{8})-[0-9]+\$#\\1#p"
   ) || true
 }
@@ -242,7 +251,7 @@ post_deploy_notes() { # product previous-commit
 # Repeatable redeploy for a fixed-workspace product running as its own isolated
 # Linux account on the shared rootless-systemd Hetzner box. Only /srv/$PRODUCT
 # and that product's $PRODUCT-* systemd --user units are touched. Nothing is
-# built locally: the server clones main of all three repositories fresh and
+# built locally: the server clones main of the repository fresh and
 # runs build-and-activate.sh from that checkout. Product settings live in
 # deploy/rootless-linux/products/<product>/product.env (env overrides:
 # HOST_IP, SSH_PORT, SSH_KEY_PATH, DEPLOY_BRANCH).
@@ -252,7 +261,6 @@ PRODUCT="${1:?Usage: ./deploy.sh <product> (a directory under deploy/rootless-li
 
 LOCAL_SCRIPT_DIR="$REPO_ROOT/deploy/rootless-linux"
 LOCAL_REPO_ROOT="$REPO_ROOT"                                  # mcp-agent-builder-go (local checkout)
-LOCAL_WORKSPACE_ROOT="$(cd "$LOCAL_REPO_ROOT/.." && pwd)"    # sibling repos (mcpagent, ...)
 PRODUCT_DIR="$(product_config_dir "$PRODUCT")"
 
 test -f "$PRODUCT_DIR/product.env" || { echo "No such product: $PRODUCT_DIR/product.env not found" >&2; exit 1; }
@@ -264,9 +272,6 @@ DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 REMOTE_APP="/srv/$PRODUCT"
 REMOTE_TOOLS="$REMOTE_APP/tools"
 REMOTE_RUNTIME_PATH="$REMOTE_TOOLS/node/bin:$REMOTE_TOOLS/bin:$REMOTE_APP/home/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-
-git -C "$LOCAL_WORKSPACE_ROOT/mcpagent" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "Expected sibling checkout: $LOCAL_WORKSPACE_ROOT/mcpagent" >&2; exit 1; }
-git -C "$LOCAL_WORKSPACE_ROOT/multi-llm-provider-go" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "Expected sibling checkout: $LOCAL_WORKSPACE_ROOT/multi-llm-provider-go" >&2; exit 1; }
 
 # The triggering machine no longer builds anything, so it no longer needs
 # go/node/npm -- only enough to talk to git remotes and to the server.
@@ -294,13 +299,27 @@ if [[ -n "${HOST_SETUP_SCRIPT:-}" ]]; then
   [[ ! -f "$PRODUCT_DIR/nginx-site.conf" ]] || nginx_site_b64="$(base64 < "$PRODUCT_DIR/nginx-site.conf" | tr -d '\n')"
   ssh "${SSH_OPTS[@]}" "${HOST_SETUP_USER:?HOST_SETUP_SCRIPT needs HOST_SETUP_USER}@$HOST_IP" \
     "sudo -n env NGINX_SITE_B64='$nginx_site_b64' bash -s" < "$([[ -f "$PRODUCT_DIR/$HOST_SETUP_SCRIPT" ]] && echo "$PRODUCT_DIR/$HOST_SETUP_SCRIPT" || echo "$LOCAL_SCRIPT_DIR/$HOST_SETUP_SCRIPT")"
-  # Per-user Linux accounts: every account in the user directory gets its own slot, on every deploy (a new account is covered by
-  # the next deploy). The deploy's final check fails if any account still has none.
-  if [[ "${SLOTS_ENABLED:-false}" == true ]]; then
-    echo "==> [$PRODUCT] Giving every account its own Linux slot"
-    ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} SLOT_COUNT=${SLOT_COUNT:-50} SLOT_CPU_QUOTA=${SLOT_CPU_QUOTA:-200%} SLOT_MEMORY_MAX=${SLOT_MEMORY_MAX:-8G} SLOT_TASKS_MAX=${SLOT_TASKS_MAX:-2048} bash -s -- ensure" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
-  fi
+
 fi
+
+# Account repair is independent of host setup: Team homes may be created by
+# startup after the initial pass. Only the existing operator/root path provisions
+# slots; the app service never gains a root command or another sudo rule.
+ensure_account_slots() {
+  local phase="$1"
+  [[ "${SLOTS_ENABLED:-false}" == true ]] || return 0
+  if [[ -z "${HOST_SETUP_USER:-}" ]]; then
+    echo "[TEAM_SLOT] product=$PRODUCT phase=$phase outcome=operator_required" >&2
+    return 0 # The unchanged final admission check still refuses unassigned accounts.
+  fi
+  echo "[TEAM_SLOT] product=$PRODUCT phase=$phase outcome=started"
+  if ! ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} SLOT_COUNT=${SLOT_COUNT:-50} SLOT_CPU_QUOTA=${SLOT_CPU_QUOTA:-200%} SLOT_MEMORY_MAX=${SLOT_MEMORY_MAX:-8G} SLOT_TASKS_MAX=${SLOT_TASKS_MAX:-2048} bash -s -- ensure" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"; then
+    echo "[TEAM_SLOT] product=$PRODUCT phase=$phase outcome=failed" >&2
+    return 1
+  fi
+  echo "[TEAM_SLOT] product=$PRODUCT phase=$phase outcome=ok"
+}
+ensure_account_slots before_activation
 
 # Every Linux server gets the same user-namespace exception the sandbox needs (owner, 2026-10-14), scoped to this product's own
 # launcher and nothing else, on every deploy: HOST_SETUP_USER (root through sudo) is all it takes, a HOST_SETUP_SCRIPT is optional.
@@ -461,6 +480,30 @@ else
 fi
 
 echo "==> [$PRODUCT] Verifying"
+# Include virtual Team users created during startup before checking all accounts.
+ensure_account_slots after_activation
+# Root-owned copy: never execute a service-writable release from a root timer.
+install_slot_repair_timer() {
+  [[ "${SLOTS_ENABLED:-false}" == true && -n "${HOST_SETUP_USER:-}" ]] || return 0
+  local command
+  command=$(cat <<'ROOT_TIMER'
+set -eu
+[[ "$PRODUCT" =~ ^[a-z][a-z0-9-]*$ ]]
+target="/usr/local/libexec/agentworks-slot-repair-$PRODUCT.sh"
+install -d -o root -g root -m 0755 /usr/local/libexec
+temporary=$(mktemp /usr/local/libexec/.slot-repair.XXXXXX)
+trap 'rm -f "$temporary"' EXIT
+cat > "$temporary"
+chmod 0700 "$temporary"
+chown root:root "$temporary"
+mv -T "$temporary" "$target"
+bash "$target" install-timer
+ROOT_TIMER
+)
+  ssh "${SSH_OPTS[@]}" "$HOST_SETUP_USER@$HOST_IP" "sudo -n env PRODUCT=$PRODUCT SLOT_PREFIX=${SLOT_PREFIX:-slot} SLOT_COUNT=${SLOT_COUNT:-50} bash -c $(printf %q "$command")" < "$LOCAL_SCRIPT_DIR/../common/provision-slots.sh"
+}
+install_slot_repair_timer
+
 "${SSH[@]}" "PRODUCT=$PRODUCT EXPECTED_PUBLIC_URL=${EXPECTED_PUBLIC_URL:-} python3 - running" < "$LOCAL_SCRIPT_DIR/deployment_checks.py"
 if [[ "${PUBLIC_CHECKS:-true}" == false ]]; then
   echo "==> [$PRODUCT] Public checks skipped (PUBLIC_CHECKS=false: no DNS/HTTPS for $DOMAIN yet)."
@@ -504,7 +547,7 @@ if [[ "$SERVER" == builds ]]; then
   reject_extra_arguments "$@"
   build_ssh "python3 - list '$BUILDS_DIR'" < "$REPO_ROOT/deploy/common/release_manifest.py"
   echo
-  echo "On GitHub (github.com/manishiitg/agentworks-builds; a tag is build-<builder8>-<mcpagent8>-<provider8>):"
+  echo "On GitHub (github.com/manishiitg/agentworks-builds; a tag is build-<builder8>):"
   bash "$REPO_ROOT/deploy/common/publish-build.sh" --list || echo "(GitHub could not be read)" >&2
   exit 0
 fi
@@ -597,7 +640,7 @@ if [[ "$SERVER" == slotcheck ]]; then
         # shellcheck disable=SC1090
         source "$(product_config_dir "$product")/product.env"
         identity=(-i "$SSH_KEY_PATH"); [[ -r "$SSH_KEY_PATH" ]] && identity+=(-o IdentitiesOnly=yes)
-        exec ssh -p "$SSH_PORT" "${identity[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new "$product@$HOST_IP" \
+        exec ssh -p "$SSH_PORT" "${identity[@]}" -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -o StrictHostKeyChecking=accept-new "$product@$HOST_IP" \
           "bash /srv/$product/current/slotcheck.sh --app /srv/$product --docs /srv/$product/data/docs --product $product --level $check_level"
       )
       ;;
@@ -625,15 +668,19 @@ fi
 locked_deploy() { # lock-name command...
   local lock="$1" rc=0
   shift
-  deploy_lock_take "$lock"
+  deploy_lock_take "$lock"   # exits 0 here when a newer deploy of this server supersedes this one
+  DEPLOY_LOCK_NAME="$lock"; export DEPLOY_LOCK_NAME
   trap "deploy_lock_release '$lock'; exit 130" INT TERM
   # Not "( ... ) || rc=$?": that turns off set -e inside, and a failed step would not stop the deploy.
   set +e
   ( set -e; "$@" )
   rc=$?
   set -e
-  deploy_lock_release "$lock"
+  deploy_lock_release "$lock" "$rc"
   trap - INT TERM
+  unset DEPLOY_LOCK_NAME
+  # 75: a newer request cancelled this build before activation; that newer deploy runs next.
+  [[ "$rc" != 75 ]] || { echo "[DEPLOY] cancelled_build server=$lock sha=${DEPLOY_REQUESTED_SHA:0:10} (a newer deploy takes over)" >&2; exit 0; }
   return "$rc"
 }
 
@@ -689,7 +736,8 @@ case "$SERVER" in
     if [[ "$SERVER" =~ ^[a-z][a-z0-9-]{0,31}$ && -f "$(deployments_dir)/products/$SERVER/product.env" ]]; then
       reject_extra_arguments "$@"
       previous_release="$(live_release_commit "$SERVER")"
-      locked_deploy "$SERVER" deploy_rootless_product "$SERVER"
+      lock_name="$SERVER"; [[ "$SERVER" != agents ]] || lock_name=excellence  # one lock per server, whichever name was used
+      locked_deploy "$lock_name" deploy_rootless_product "$SERVER"
       post_deploy_notes "$SERVER" "$previous_release"
       prune_builds_remote
       post_deploy_smoke "$SERVER"

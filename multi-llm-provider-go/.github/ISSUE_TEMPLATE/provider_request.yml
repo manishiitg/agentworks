@@ -1,0 +1,45 @@
+name: Provider or host request
+description: Propose a coding CLI, model family, or host integration
+title: "provider: "
+labels:
+  - enhancement
+body:
+  - type: input
+    id: cli
+    attributes:
+      label: CLI or provider
+      description: Product name and official documentation URL.
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: Requested role
+      options:
+        - Delegation target
+        - MCP host registration
+        - Both host and target
+        - Model route through an existing target
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Developer workflow
+      description: Describe the concrete task this enables and why current providers do not cover it.
+    validations:
+      required: true
+  - type: textarea
+    id: automation
+    attributes:
+      label: Automation capabilities
+      description: Document noninteractive launch, authentication status, model selection, permissions, resume, and machine-readable output.
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and testing
+      description: Explain sandbox behavior, unattended approvals, workspace boundaries, and a realistic E2E test.
+    validations:
+      required: true

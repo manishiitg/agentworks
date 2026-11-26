@@ -75,7 +75,7 @@ func (c *conditionService) secretEnvironment(ctx context.Context, job productSch
 	}
 	for _, name := range cfg.Secrets {
 		if env["SECRET_"+vaultSecretShortName(name)] == "" {
-			return nil, fmt.Errorf("The secret %[1]s has no value yet. Add a value for %[1]s in this Crew's Secrets (or ask the owner to), then try again.", vaultSecretShortName(name))
+			return nil, fmt.Errorf("The secret %[1]s has no value yet. Add a value for %[1]s in this project's Secrets (or ask the owner to), then try again.", vaultSecretShortName(name))
 		}
 	}
 	return env, nil
@@ -95,8 +95,8 @@ func (c *conditionService) ensureWakeReceiver(ctx context.Context, job productSc
 	return c.saveWake(ctx, id, conditionWake{Owner: job.UserID, JobID: job.ID()})
 }
 
-// receiveWebhookWake participates in the existing product webhook receiver.
-// false means the UUID is not a Watcher and ordinary product delivery proceeds.
+// receiveWebhookWake runs first in the shared /api/hooks/<id> receiver.
+// false means the UUID is not a Watcher and the workflow webhook receiver proceeds.
 func (c *conditionService) receiveWebhookWake(w http.ResponseWriter, r *http.Request, id string) bool {
 	wake, found, err := c.readWake(r.Context(), id)
 	if !found && err == nil {
@@ -232,7 +232,7 @@ func (c *conditionService) processWake(ctx context.Context, job productScheduleJ
 			return
 		}
 		pause, _ := LoadSchedulerConfig(ctx)
-		if pause.ProductPaused(fresh.Profile.ID) {
+		if pause != nil && pause.GloballyPaused {
 			return
 		}
 		m.Lock()

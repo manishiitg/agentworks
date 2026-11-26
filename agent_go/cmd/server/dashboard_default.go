@@ -122,7 +122,7 @@ func (api *StreamingAPI) defaultDashboardInfoFor(ctx context.Context, claims *Us
 		if !ok {
 			return info, dashboardFailure(404, "project unavailable")
 		}
-		info.Description = manifest.Description
+		info.Description = manifest.purpose()
 		label := target.Title
 		if name, _ := summary["name"].(string); name != "" {
 			label = name
@@ -281,8 +281,8 @@ func (api *StreamingAPI) refreshPublicationDashboard(ctx context.Context, claims
 	if err != nil {
 		return err
 	}
-	if target.Kind == "crew" && len(listed.Dashboards) == 0 {
-		return nil // Publishing functions does not create a dashboard.
+	if len(listed.Dashboards) == 0 {
+		return nil // Publishing or syncing never recreates a deleted dashboard.
 	}
 	for _, dashboard := range listed.Dashboards {
 		if !dashboard.Managed || dashboard.ID != defaultDashboardID {

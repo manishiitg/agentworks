@@ -13,14 +13,15 @@ func TestProtectCodingAgentProjectionWritesCoversWorkspaceAndRelativePaths(t *te
 	SetSessionFolderGuardBlockedWritePaths(session, []string{filepath.Join(root, "existing")})
 	ProtectCodingAgentProjectionWrites(session, root)
 	guard := GetSessionShellConfig(session)
-	for _, path := range []string{filepath.Join(root, "existing"), filepath.Join(root, ".agents", "rules"), ".claude/settings.json", filepath.Join(root, "GEMINI.md"), "GEMINI.md"} {
+	for _, path := range []string{filepath.Join(root, "existing"), filepath.Join(root, ".agents", "rules"), ".claude/settings.json", ".codex/AGENTS.md", filepath.Join(root, ".gemini", "GEMINI.md")} {
 		if !slices.Contains(guard.BlockedWritePaths, path) {
 			t.Fatalf("missing blocked write path %q: %v", path, guard.BlockedWritePaths)
 		}
 	}
 	// A person's own skills are installed under <cli>/skills (npx skills add writes .agents/skills): neither the skills
 	// folders nor the CLI folders around them are blocked, only our policy files in them (server B, 2026-10-06).
-	for _, path := range []string{".agents", ".agents/skills", ".claude", ".claude/skills", ".pi/skills", filepath.Join(root, ".agents", "skills")} {
+	// The root instruction files are the person's own and agents may edit them (owner, 25 Nov).
+	for _, path := range []string{"AGENTS.md", "CLAUDE.md", "GEMINI.md", filepath.Join(root, "AGENTS.md"), filepath.Join(root, "CLAUDE.md"), ".agents", ".agents/skills", ".claude", ".claude/skills", ".pi/skills", filepath.Join(root, ".agents", "skills")} {
 		if slices.Contains(guard.BlockedWritePaths, path) {
 			t.Fatalf("%q must stay writable: %v", path, guard.BlockedWritePaths)
 		}

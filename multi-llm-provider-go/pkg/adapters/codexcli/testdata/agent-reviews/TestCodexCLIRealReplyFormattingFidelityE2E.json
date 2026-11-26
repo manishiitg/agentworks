@@ -1,0 +1,28 @@
+{
+  "test": "TestCodexCLIRealReplyFormattingFidelityE2E",
+  "summary": "Reply-formatting fidelity for codex-cli: does EXTRACTED_FINAL keep the markdown structure the model authored, given RAW_PROVIDER_OUTPUT is hard-wrapped by the terminal?",
+  "review_criteria": [
+    "EXTRACTED_FINAL preserves the paragraph breaks the model authored — a blank line between paragraphs is still a blank line, not collapsed into a single wrapped block",
+    "list items each begin their own line and are not folded into surrounding prose",
+    "no line break appears INSIDE a sentence, word, or inline markdown span (`**bold**`, backticks) where the terminal wrapped it",
+    "the reply reads as markdown a UI could render directly, not as fixed-width terminal output",
+    "content is unchanged — this is about structure only; wording, numbers and punctuation must match what the model wrote"
+  ],
+  "output": {
+    "expected_note": "Live codex turn. The pane capture is expected to be hard-wrapped; the extracted answer must NOT be, because it should have come from the rollout JSONL (readCodexTranscriptFinalAssistantText) rather than from the screen.",
+    "extracted_final": "First paragraph for FMT_32b5e506b2, written as one single long line of at least one hundred and forty characters so that it is certain to be wrapped by a narrow terminal window.\n\nSecond paragraph for FMT_32b5e506b2, also one single long line of at least one hundred and forty characters, again long enough that the terminal will certainly wrap it onto several rows.\n\n- first bullet for FMT_32b5e506b2\n- second bullet for FMT_32b5e506b2\n- third bullet for FMT_32b5e506b2",
+    "provider": "codex-cli",
+    "raw_provider_output": " \n  >_ OpenAI Codex (v0.159.2)\n     loading\n \n  Bring your unfinished thoughts.\n \n \n› Ask Codex to do anything\n \n \n \n  >_ OpenAI Codex (v0.159.2)\n     ~/ai-work/native-tmux-merge/multi-llm-provider-go/pkg/adapters/codexcli\n  permissions: YOLO mode\n \n  Bring your unfinished thoughts.\n \n \n› Ask Codex to do anything\n \n  GPT-6.1-Sol default · ~/ai-work/native-tmux-merge/multi-llm-provider-go/pkg/adapters/codex…  ⚠ 1 warning · f2 to view\n\n\n  >_ OpenAI Codex (v0.159.2)\n     ~/ai-work/native-tmux-merge/multi-llm-provider-go/pkg/adapters/codexcli\n  permissions: YOLO mode\n\n  Bring your unfinished thoughts.\n\n\n› This is a TEXT FORMATTING test. No research, no tools, and no knowledge of any identifier is needed — FMT_32b5e506b2\n  is just a label to copy through verbatim.\n\n  Reproduce the markdown below exactly as written, preserving every blank line and every \"- \" list marker, and output\n  nothing else — no preamble, no explanation, no closing remark.\n\n  First paragraph for FMT_32b5e506b2, written as one single long line of at least one hundred and forty characters so\n  that it is certain to be wrapped by a narrow terminal window.\n\n  Second paragraph for FMT_32b5e506b2, also one single long line of at least one hundred and forty characters, again\n  long enough that the terminal will certainly wrap it onto several rows.\n\n  - first bullet for FMT_32b5e506b2\n  - second bullet for FMT_32b5e506b2\n  - third bullet for FMT_32b5e506b2\n\n\n• First paragraph for FMT_32b5e506b2, written as one single long line of at least one hundred and forty characters so\n  that it is certain to be wrapped by a narrow terminal window.\n\n  Second paragraph for FMT_32b5e506b2, also one single long line of at least one hundred and forty characters, again\n  long enough that the terminal will certainly wrap it onto several rows.\n\n  • first bullet for FMT_32b5e506b2\n  • second bullet for FMT_32b5e506b2\n  • third bullet for FMT_32b5e506b2\n\n  Worked for 11s • 9:05 AM\n \n \n› Ask Codex to do anything\n \n  GPT-6.1-Sol low · ~/ai-work/native-tmux-merge/multi-llm-provider-go/pkg/adapters/codexcli …  ⚠ 1 warning · f2 to view\n",
+    "user_goal": "Return the two long paragraphs and the three-item list with their markdown structure intact.",
+    "want_bullets": 3,
+    "want_paragraphs": 2
+  },
+  "fingerprint": "ef468e4bce64d3ef",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "ef468e4bce64d3ef",
+    "reviewer": "Codex (0.159.2 certification, 2026-09-30)",
+    "issues": [],
+    "notes": "Reviewed the actual Codex CLI 0.159.2 / GPT-6.1-Sol capture. Both long authored paragraphs remain single unwrapped markdown lines separated by a blank line. Each of the three list items retains its own line and original dash marker. The FMT token, wording and punctuation match the requested text. Terminal loading screens, prompts, warnings and the Worked footer are absent from the extracted answer."
+  }
+}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -72,6 +73,18 @@ func (b *localBridge) refreshNativeWakeStreams() {
 					}, func() {
 						delay = time.Second
 						log.Printf("[BRIDGE-WAKE] outcome=connected login=%x", login[:4])
+						// A hint sent while this stream was down is not replayed: wake
+						// offline chats of this login that already have mail waiting.
+						b.mu.Lock()
+						defer b.mu.Unlock()
+						if b.closed || ctx.Err() != nil {
+							return
+						}
+						for _, s := range b.sessions {
+							if s.ParentConfigPath == path && s.Offline && localPending(s) {
+								b.queueNativeWake(s)
+							}
+						}
 					})
 				}
 				if ctx.Err() != nil {
@@ -97,13 +110,25 @@ func (b *localBridge) refreshNativeWakeStreams() {
 	}
 }
 
+// Chats whose app can reopen them on their own: Codex desktop through its app
+// link, and Claude Code through its background resume of the same session.
+func nativeWakeable(s *localSession) bool {
+	switch s.Attachment.Provider {
+	case "codex":
+		return IsCodexDesktopRemote(s.NativeRemote)
+	case "claude":
+		return strings.HasPrefix(s.NativeRemote, "claude+session://")
+	}
+	return false
+}
+
 func (b *localBridge) nativeWakeTarget(s *localSession) (*localSession, string, bool) {
-	if s == nil || s.client == nil || s.ServerClosed || !s.AccountSenders || s.Attachment.Provider != "codex" {
+	if s == nil || s.client == nil || s.ServerClosed || !s.AccountSenders || (s.Attachment.Provider != "codex" && s.Attachment.Provider != "claude") {
 		return nil, "", false
 	}
 	key := localBridgeKey(s.Attachment.Provider, s.Attachment.SessionID)
 	primary := b.sessions[key]
-	if primary == nil || primary.ServerClosed || b.stopped[key] || !primary.AccountSenders || !IsCodexDesktopRemote(primary.NativeRemote) {
+	if primary == nil || primary.ServerClosed || b.stopped[key] || !primary.AccountSenders || !nativeWakeable(primary) {
 		return nil, "", false
 	}
 	sourceKey := key
@@ -116,7 +141,8 @@ func (b *localBridge) nativeWakeTarget(s *localSession) (*localSession, string, 
 	return primary, key, true
 }
 
-// A pending-message hint or a definite rejected native offer is the only caller.
+// Callers: a pending-message hint, a definite rejected native offer, a chat going
+// offline with mail waiting, or the wake stream (re)connecting while mail waits.
 // Opening is outside the helper lock and deduped across a chat's chosen networks.
 func (b *localBridge) queueNativeWake(s *localSession) bool {
 	primary, key, ok := b.nativeWakeTarget(s)
@@ -137,7 +163,7 @@ func (b *localBridge) queueNativeWake(s *localSession) bool {
 		tries = nativeWakeTry{Sequence: s.latestSequence}
 	}
 	if tries.Count >= 3 {
-		s.LastError = "Could not open this chat automatically. Open it once in Codex, or AgentWorks will try again when the next message arrives."
+		s.LastError = "Could not open this chat automatically. Open it once yourself, or AgentWorks will try again when the next message arrives."
 		if !tries.Reported {
 			log.Printf("[BRIDGE-WAKE] outcome=gave_up agent=%s attachment=%s sequence=%d", s.Attachment.AgentName, s.Attachment.ID, s.latestSequence)
 			tries.Reported = true

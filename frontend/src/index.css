@@ -1,6 +1,9 @@
 /* Import VS Code Themes */
 @import './themes/vscode-light.css';
 @import './themes/vscode-dark.css';
+@import './assets/chat-fonts/fonts.css';
+@import './themes/app-tokens.css';
+@import './themes/loading-indicator.css';
 
 @tailwind base;
 @tailwind components;
@@ -19,52 +22,6 @@
 /* Available themes: .light, .dark, .theme-vscode-light, .theme-vscode-dark, .theme-custom */
 
 @layer base {
-  /* ===== DEFAULT THEME (VS Code Light) ===== */
-  :root,
-  .force-light {
-    --runloop-mono: "JetBrains Mono", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-
-    /* VS Code Light Theme Colors */
-    --background: 0 0% 100%;               /* #ffffff - VS Code light background */
-    --foreground: 0 0% 20%;                /* #333333 - VS Code light foreground */
-    --card: 0 0% 98%;                      /* #fafafa - VS Code light panel background */
-    --card-foreground: 0 0% 20%;           /* #333333 - VS Code light foreground */
-    
-    /* Surface Colors - VS Code light hierarchy */
-    --popover: 0 0% 98%;                   /* #fafafa - VS Code light panel */
-    --popover-foreground: 0 0% 20%;        /* #333333 - VS Code light foreground */
-    --primary: 200 100% 40%;               /* #007acc - VS Code blue */
-    --primary-foreground: 0 0% 100%;       /* White text on blue */
-    --secondary: 0 0% 96%;                 /* #f5f5f5 - VS Code light secondary */
-    --secondary-foreground: 0 0% 20%;      /* #333333 - VS Code light foreground */
-    
-    /* Accent Colors - VS Code light palette */
-    --muted: 0 0% 96%;                     /* #f5f5f5 - VS Code light muted */
-    --muted-foreground: 0 0% 45%;          /* #737373 - VS Code light muted text */
-    --accent: 200 100% 40%;                /* #007acc - VS Code blue */
-    --accent-foreground: 0 0% 100%;        /* White text on accent */
-    
-    /* Status Colors - VS Code light colors */
-    --destructive: 0 70% 60%;              /* #f44747 - VS Code red */
-    --destructive-foreground: 0 0% 100%;   /* White text on red */
-    --success: 180 60% 50%;                /* #4ec9b0 - VS Code green */
-    --warning: 20 60% 60%;                 /* #ce9178 - VS Code orange */
-    --info: 200 100% 40%;                  /* #007acc - VS Code blue */
-    
-    /* Border & Input - VS Code light borders */
-    --border: 0 0% 85%;                    /* #d9d9d9 - VS Code light border */
-    --input: 0 0% 96%;                     /* #f5f5f5 - VS Code light input */
-    --ring: 200 100% 40%;                  /* #007acc - VS Code focus ring */
-    
-    /* Chart Colors - VS Code light inspired */
-    --chart-1: 200 100% 40%;              /* VS Code blue */
-    --chart-2: 180 60% 50%;               /* VS Code green */
-    --chart-3: 20 60% 60%;                /* VS Code orange */
-    --chart-4: 280 60% 60%;               /* Purple */
-    --chart-5: 0 70% 60%;                 /* VS Code red */
-    --radius: 0.5rem;
-  }
-  
   /* ===== DARK THEME ===== */
   .force-light { color-scheme: light; }
 
@@ -108,7 +65,7 @@
   /* The working line's star and word (WorkingStatus). One token; to try green instead of orange change the
      --working-accent line below to var(--working-accent-green). */
   :root {
-    --working-accent-orange: 22 88% 44%;
+    --working-accent-orange: 22 88% 37%;
     --working-accent-green: 142 62% 30%;
     --diff-add: 142 62% 30%;
     --diff-del: 8 65% 45%;
@@ -121,79 +78,6 @@
   }
   :root, .dark {
     --working-accent: var(--working-accent-orange);
-  }
-
-  .dark {
-    color-scheme: dark;
-    /* Deep dark app palette */
-    --background: 220 13% 6%;             /* #0d0f12 - app background */
-    --foreground: 220 16% 91%;            /* #e4e7ec - primary text */
-    --card: 220 12% 9%;                   /* #14171b - panel background */
-    --card-foreground: 220 16% 91%;       /* #e4e7ec - panel text */
-    
-    /* Surface Colors */
-    --popover: 220 12% 8%;                /* #121418 - elevated surface */
-    --popover-foreground: 220 16% 91%;    /* #e4e7ec - popover text */
-    --primary: 200 100% 40%;              /* #007acc - VS Code blue */
-    --primary-foreground: 0 0% 100%;      /* White text on blue */
-    --secondary: 220 10% 13%;             /* #1d2025 - secondary surface */
-    --secondary-foreground: 220 16% 91%;  /* #e4e7ec - secondary text */
-    
-    /* Accent Colors */
-    --muted: 220 10% 13%;                 /* #1d2025 - muted surface */
-    --muted-foreground: 220 9% 66%;       /* #a2a7b0 - muted text */
-    --accent: 200 100% 40%;               /* #007acc - VS Code blue */
-    --accent-foreground: 0 0% 100%;       /* White text on accent */
-    
-    /* Status Colors - VS Code colors */
-    --destructive: 0 70% 60%;             /* #f44747 - VS Code red */
-    --destructive-foreground: 0 0% 100%;  /* White text on red */
-    --success: 180 60% 50%;               /* #4ec9b0 - VS Code green */
-    --warning: 20 60% 60%;                /* #ce9178 - VS Code orange */
-    --info: 200 100% 40%;                 /* #007acc - VS Code blue */
-    
-    /* Border & Input */
-    --border: 220 9% 18%;                 /* #2a2d33 - subtle border */
-    --input: 220 10% 12%;                 /* #1b1e23 - input surface */
-    --ring: 200 100% 40%;                 /* #007acc - VS Code focus ring */
-    
-    /* Chart Colors - VS Code inspired */
-    --chart-1: 200 100% 40%;              /* VS Code blue */
-    --chart-2: 180 60% 50%;               /* VS Code green */
-    --chart-3: 20 60% 60%;                /* VS Code orange */
-    --chart-4: 280 60% 60%;               /* Purple */
-    --chart-5: 0 70% 60%;                 /* VS Code red */
-  }
-
-  /* ===== CUSTOM THEME (Example) ===== */
-  .theme-custom {
-    --background: 220 100% 95%;           /* Light blue background */
-    --foreground: 220 100% 20%;           /* Dark blue foreground */
-    --card: 220 100% 98%;                 /* Very light blue card */
-    --card-foreground: 220 100% 20%;      /* Dark blue card text */
-    --popover: 220 100% 98%;              /* Very light blue popover */
-    --popover-foreground: 220 100% 20%;   /* Dark blue popover text */
-    --primary: 220 100% 50%;              /* Medium blue primary */
-    --primary-foreground: 0 0% 100%;      /* White primary text */
-    --secondary: 220 100% 90%;            /* Light blue secondary */
-    --secondary-foreground: 220 100% 20%; /* Dark blue secondary text */
-    --muted: 220 100% 90%;                /* Light blue muted */
-    --muted-foreground: 220 100% 40%;     /* Medium blue muted text */
-    --accent: 220 100% 50%;               /* Medium blue accent */
-    --accent-foreground: 0 0% 100%;       /* White accent text */
-    --destructive: 0 70% 60%;             /* Red destructive */
-    --destructive-foreground: 0 0% 100%;  /* White destructive text */
-    --success: 120 60% 50%;               /* Green success */
-    --warning: 40 60% 60%;                /* Orange warning */
-    --info: 220 100% 50%;                 /* Blue info */
-    --border: 220 100% 80%;               /* Light blue border */
-    --input: 220 100% 90%;                /* Light blue input */
-    --ring: 220 100% 50%;                 /* Medium blue ring */
-    --chart-1: 220 100% 50%;              /* Blue chart */
-    --chart-2: 120 60% 50%;               /* Green chart */
-    --chart-3: 40 60% 60%;                /* Orange chart */
-    --chart-4: 280 60% 60%;               /* Purple chart */
-    --chart-5: 0 70% 60%;                 /* Red chart */
   }
 
   /* ===== REPORT THEMES =====
@@ -347,6 +231,7 @@
   
   body {
     @apply bg-background text-foreground;
+    font-size: var(--app-font-size, 14px);
     margin: 0;
     min-height: 100dvh;
     font-feature-settings: "rlig" 1, "calt" 1;
@@ -357,89 +242,8 @@
   }
 }
 
-/* ===== TOOLTIP STYLING - HIGH CONTRAST ===== */
-
-/* Light mode tooltips - High contrast for visibility */
-.bg-popover {
-  background-color: hsl(0 0% 15%) !important;      /* Dark background for light mode */
-  color: hsl(0 0% 95%) !important;                  /* Light text for contrast */
-  border: 1px solid hsl(0 0% 25%) !important;       /* Dark border */
-}
-
-.text-popover-foreground {
-  color: hsl(0 0% 95%) !important;                  /* Light text for contrast */
-}
-
-/* Dark mode tooltips - Keep existing contrast */
-.dark .bg-popover {
-  background-color: hsl(0 0% 15%) !important;       /* Dark background */
-  color: hsl(0 0% 95%) !important;                  /* Light text */
-  border: 1px solid hsl(0 0% 25%) !important;       /* Dark border */
-}
-
-.dark .text-popover-foreground {
-  color: hsl(0 0% 95%) !important;                  /* Light text */
-}
-
-/* ===== AGENT MODE BUTTONS - VS CODE THEME ===== */
-
-/* Selected state - Light mode */
-.agent-mode-selected {
-  background-color: hsl(200 100% 95%) !important;  /* Very light blue background */
-  color: hsl(200 100% 40%) !important;              /* Blue text */
-  border: 1px solid hsl(200 100% 40%) !important;  /* Blue border */
-  box-shadow: 0 0 0 1px hsl(200 100% 60%) !important; /* Subtle focus ring */
-}
-
-/* Unselected state - Light mode */
-.agent-mode-unselected {
-  background-color: hsl(0 0% 96%) !important;      /* Light gray background */
-  color: hsl(0 0% 20%) !important;                 /* Dark text */
-  border: 1px solid hsl(0 0% 80%) !important;      /* Light gray border */
-}
-
-/* Hover state for unselected - Light mode */
-.agent-mode-unselected:hover {
-  background-color: hsl(0 0% 92%) !important;      /* Slightly darker on hover */
-  border-color: hsl(0 0% 70%) !important;          /* Darker border on hover */
-}
-
-/* Icon colors for selected state - Light mode */
-.agent-mode-selected svg {
-  color: hsl(200 100% 40%) !important;              /* Blue icons when selected */
-}
-
-/* Icon colors for unselected state - Light mode */
-.agent-mode-unselected svg {
-  color: hsl(0 0% 20%) !important;                 /* Dark icons when unselected */
-}
-
-/* Dark mode agent mode buttons */
-.dark .agent-mode-selected {
-  background-color: hsl(0 0% 24%) !important;      /* VS Code border #3c3c3c - subtle background */
-  color: hsl(200 100% 40%) !important;              /* VS Code blue #007acc - for text */
-  border: 1px solid hsl(200 100% 40%) !important;  /* VS Code blue #007acc - for border */
-  box-shadow: 0 0 0 1px hsl(200 100% 20%) !important; /* More subtle focus ring */
-}
-
-.dark .agent-mode-unselected {
-  background-color: hsl(0 0% 20%) !important;      /* VS Code secondary #333333 */
-  color: hsl(0 0% 83%) !important;                 /* VS Code foreground #d4d4d4 */
-  border: 1px solid hsl(0 0% 24%) !important;      /* VS Code border #3c3c3c */
-}
-
-.dark .agent-mode-unselected:hover {
-  background-color: hsl(0 0% 25%) !important;      /* Slightly lighter on hover */
-  border-color: hsl(0 0% 30%) !important;          /* Lighter border on hover */
-}
-
-.dark .agent-mode-selected svg {
-  color: hsl(0 0% 100%) !important;                /* White icons when selected */
-}
-
-.dark .agent-mode-unselected svg {
-  color: hsl(0 0% 83%) !important;                 /* VS Code foreground for icons */
-}
+/* Menus, tooltips and dialogs use the shared appearance tokens. Do not override
+   bg-popover globally: forcing dark here also makes light-mode menus dark. */
 
 /* ===== DARK MODE OVERRIDES - VS CODE DARK THEME ===== */
 
@@ -1893,4 +1697,261 @@
   .reply-toolbar-checkout-inline, .reply-toolbar-line-counts { display: none; }
   .reply-file-toolbar > div:first-child { gap: 0.25rem; }
   .reply-toolbar-checkout-summary { display: inline-flex; }
+}
+
+/* AgentBridge cards are denser than the main answer; the normal chat scale still applies. */
+.agent-inbox-prose .conversation-markdown p,
+.agent-inbox-prose .conversation-markdown li {
+  font-size: calc(13px * var(--chat-scale, 1));
+  line-height: calc(20px * var(--chat-scale, 1));
+}
+.agent-inbox-prose .conversation-markdown p { margin-bottom: 0.5rem; }
+
+/* Local monospace face follows macOS Tahoe Terminal profile metadata, exported at
+   https://gist.github.com/balcsida/d1e6c47c7a94829c78d4ff23b9786791
+   Resolve local macOS fonts only: no Apple font files are shipped/downloaded. */
+@font-face {
+  font-family: "AgentWorks SF Mono Terminal";
+  src: local("SFMonoTerminal-Regular"), local("SF Mono Terminal Regular"), local("SFMono-Regular"), local("SF Mono Regular");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "AgentWorks SF Mono Terminal";
+  src: local("SFMonoTerminal-Bold"), local("SF Mono Terminal Bold"), local("SFMono-Bold"), local("SF Mono Bold");
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+}
+/* App-wide colors inherit into navigation and portaled dialogs. Explicit
+   report/force-light themes still define their own tokens on their boundary. */
+/* Chat scale is layered over the same app-wide typography tokens. */
+html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) {
+  font-family: var(--app-font, system-ui);
+  font-size: calc(var(--app-font-size, 14px) * var(--chat-scale, 1));
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown,
+html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :is(p, li),
+html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) [data-testid="transcript-user-bubble"],
+html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) [data-chat-composer] {
+  font-family: var(--chat-font, -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif) !important;
+  font-size: calc(var(--app-font-size, 14px) * var(--chat-scale, 1)) !important;
+  line-height: calc(var(--app-font-size, 14px) * 1.5714 * var(--chat-scale, 1)) !important;
+  font-weight: 400;
+}
+html:is([data-appearance="dark"], [data-appearance="light"]) [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) [data-testid="terminal-clear-view"] {
+  background: hsl(var(--background));
+}
+
+/* Inline paths/names are code labels, not blue emphasis. Keep real link colors. */
+html.dark[data-appearance="dark"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :not(pre) > code {
+  color: #d4d4d4 !important;
+  background-color: rgb(255 255 255 / 0.07) !important;
+}
+
+/* Default keeps the renderer's original chat colors and native text selection. */
+html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :is(p, li) {
+  color: hsl(var(--foreground));
+}
+html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown strong {
+  color: var(--appearance-bold);
+}
+html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown a {
+  color: var(--appearance-link);
+}
+html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) .conversation-markdown :not(pre) > code {
+  color: var(--appearance-code) !important;
+  background-color: var(--appearance-code-background) !important;
+}
+html.light[data-appearance="light"] [data-chat-find-scope]:not(:where(.force-light, .force-light *, [data-report-theme], [data-report-theme] *)) ::selection {
+  background-color: var(--appearance-selection);
+  color: hsl(var(--foreground));
+}
+
+/* Code in app settings and file panels follows the profile too. Authored
+   report themes/iframes keep their own typography and colors. */
+html:is([data-appearance="dark"], [data-appearance="light"]) :is(code, pre, .font-mono):not(:where(.force-light *, [data-report-theme] *)) {
+  font-family: var(--runloop-mono);
+}
+
+/* Shared semantic panel/composer materials own Light as well as Dark surfaces. */
+
+/* Native transcript status/tool rows used fixed dark neutral colors. Keep
+   explicit dark dashboard boundaries independent of the app's light profile. */
+html.light[data-appearance="light"] :is(.text-neutral-100, .text-neutral-200, .text-neutral-300, .text-neutral-400, .text-stone-300):not(:where(.dark *, [data-report-theme] *)) {
+  color: hsl(var(--foreground));
+}
+html.light[data-appearance="light"] :is(.bg-neutral-900\/45, .bg-neutral-900\/60, .bg-black\/40):not(:where(.dark *, [data-report-theme] *)) {
+  background-color: hsl(var(--muted));
+}
+
+html.light[data-appearance="light"] :is(.text-cyan-400, .text-sky-300):not(:where(.dark *, [data-report-theme] *)) { color: hsl(var(--primary)); }
+html.light[data-appearance="light"] .text-emerald-300:not(:where(.dark *, [data-report-theme] *)) { color: hsl(var(--success)); }
+html.light[data-appearance="light"] .text-amber-200:not(:where(.dark *, [data-report-theme] *)) { color: hsl(var(--warning)); }
+html.light[data-appearance="light"] :is(.border-neutral-800, .border-neutral-800\/80, .border-neutral-700):not(:where(.dark *, [data-report-theme] *)) { border-color: hsl(var(--border)); }
+
+/* Keep code compact without making whole replies look like terminal output. */
+html[data-appearance] .conversation-markdown :is(code, pre):not(:where(.force-light *, [data-report-theme] *)) {
+  font-family: var(--runloop-mono) !important;
+  font-size: calc(var(--app-code-size, 12px) * var(--chat-scale, 1)) !important;
+  line-height: calc(20px * var(--chat-scale, 1));
+}
+html[data-appearance] .agent-inbox-prose .conversation-markdown :is(p, li) {
+  font-size: calc(13px * var(--chat-scale, 1)) !important;
+  line-height: calc(20px * var(--chat-scale, 1)) !important;
+}
+
+/* One app-wide typography boundary. Authored documents retain their own design. */
+html[data-appearance] { --runloop-mono: var(--app-code-font, monospace); }
+html[data-appearance] :is(button, input, select, textarea):not(:where(.force-light *, [data-report-theme] *)) { font-family: inherit; }
+html[data-appearance] :is(code, pre, .font-mono):not(:where(.force-light *, [data-report-theme] *)) { font-family: var(--app-code-font, monospace) !important; }
+html[data-appearance] :is(code, pre):not(:where(.force-light *, [data-report-theme] *)) { font-size: var(--app-code-size, 12px); }
+html[data-appearance] aside[aria-label="Projects"] { background: hsl(var(--appearance-sidebar, var(--muted))); }
+.force-light, [data-report-theme] {
+  font-family: var(--report-font-sans, system-ui);
+  font-size: 14px;
+  --app-font: var(--report-font-sans, system-ui);
+  --chat-font: var(--report-font-sans, system-ui);
+  --app-font-size: 14px;
+  --app-code-font: ui-monospace, monospace;
+  --app-code-size: 12px;
+}
+
+/* Shared markdown and conversation prose styles (defined once instead of injecting a <style> tag per message). */
+.markdown-content ul,
+.markdown-content ol {
+  list-style-position: outside;
+  margin-left: 0;
+  padding-left: 1.5rem;
+}
+.markdown-content ul {
+  list-style-type: disc;
+}
+.markdown-content ol {
+  list-style-type: decimal;
+}
+.markdown-content li {
+  padding-left: 0.25rem;
+}
+.markdown-content ul ul {
+  padding-left: 1.25rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+.markdown-content ul ul ul {
+  padding-left: 1.25rem;
+  margin-top: 0.125rem;
+  margin-bottom: 0.125rem;
+}
+.markdown-content ol ol {
+  padding-left: 1.25rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+.markdown-content ol ol ol {
+  padding-left: 1.25rem;
+  margin-top: 0.125rem;
+  margin-bottom: 0.125rem;
+}
+.markdown-content li > p {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+  display: block;
+}
+.markdown-content li > p:first-child {
+  margin-top: 0;
+}
+.markdown-content li > p:last-child {
+  margin-bottom: 0;
+}
+.markdown-content li ul,
+.markdown-content li ol {
+  padding-left: 1.25rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+/* Conversation answers need prose rhythm rather than the denser
+   operational typography used by reports and tool output. */
+.conversation-markdown p,
+.conversation-markdown li {
+  font-size: 0.9375rem;
+  line-height: 1.75rem;
+}
+.conversation-markdown p {
+  margin-bottom: 0.875rem;
+}
+.conversation-markdown ul,
+.conversation-markdown ol {
+  margin-top: 0.625rem;
+  margin-bottom: 1rem;
+}
+.conversation-markdown li + li {
+  margin-top: 0.375rem;
+}
+.conversation-markdown :not(pre) > code {
+  padding: 0.06rem 0.22rem;
+  font-size: 0.82em;
+  font-weight: 450;
+  line-height: inherit;
+  color: rgb(55 91 124) !important;
+  background-color: rgb(15 23 42 / 0.055) !important;
+  border: 0 !important;
+  border-radius: 0.2rem !important;
+}
+.dark .conversation-markdown :not(pre) > code,
+.dark-plus .conversation-markdown :not(pre) > code {
+  color: rgb(158 190 220) !important;
+  background-color: rgb(255 255 255 / 0.07) !important;
+}
+/* Override prose table styles for dark theme */
+.markdown-content.prose table tbody tr,
+.dark .markdown-content.prose table tbody tr,
+.dark-plus .markdown-content.prose table tbody tr {
+  background-color: transparent !important;
+}
+.markdown-content.prose table tbody tr:hover,
+.markdown-content.prose table tbody tr:focus,
+.markdown-content.prose table tbody tr:active,
+.markdown-content.prose table tbody tr.selected {
+  background-color: rgb(249 250 251) !important;
+}
+.dark .markdown-content.prose table tbody tr:hover,
+.dark-plus .markdown-content.prose table tbody tr:hover,
+.dark .markdown-content.prose table tbody tr:focus,
+.dark .markdown-content.prose table tbody tr:active,
+.dark .markdown-content.prose table tbody tr.selected,
+.dark-plus .markdown-content.prose table tbody tr:focus,
+.dark-plus .markdown-content.prose table tbody tr:active,
+.dark-plus .markdown-content.prose table tbody tr.selected,
+.dark .markdown-content.prose-invert table tbody tr:hover,
+.dark-plus .markdown-content.prose-invert table tbody tr:hover,
+.dark .markdown-content.prose-invert table tbody tr:focus,
+.dark .markdown-content.prose-invert table tbody tr:active,
+.dark .markdown-content.prose-invert table tbody tr.selected,
+.dark-plus .markdown-content.prose-invert table tbody tr:focus,
+.dark-plus .markdown-content.prose-invert table tbody tr:active,
+.dark-plus .markdown-content.prose-invert table tbody tr.selected {
+  background-color: rgb(31 41 55) !important;
+}
+.dark .markdown-content.prose table tbody tr:hover td,
+.dark .markdown-content.prose table tbody tr:focus td,
+.dark .markdown-content.prose table tbody tr:active td,
+.dark .markdown-content.prose table tbody tr.selected td,
+.dark-plus .markdown-content.prose table tbody tr:hover td,
+.dark-plus .markdown-content.prose table tbody tr:focus td,
+.dark-plus .markdown-content.prose table tbody tr:active td,
+.dark-plus .markdown-content.prose table tbody tr.selected td,
+.dark .markdown-content.prose table tbody td,
+.dark-plus .markdown-content.prose table tbody td,
+.dark .markdown-content.prose-invert table tbody td,
+.dark-plus .markdown-content.prose-invert table tbody td {
+  color: rgb(243 244 246) !important;
+}
+.dark .markdown-content.prose table tbody tr::selection,
+.dark-plus .markdown-content.prose table tbody tr::selection {
+  background-color: rgb(59 130 246) !important;
+  color: rgb(255 255 255) !important;
 }

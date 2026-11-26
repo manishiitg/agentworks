@@ -33,6 +33,16 @@ func TestComputerUseLocalOwnerAndPrivateCaptures(t *testing.T) {
 		"bot":                {UserID: "owner", Provider: "bot_owner"},
 		"scoped":             {UserID: "owner", Scope: "report-preview"},
 	} {
+		request := httptest.NewRequest(http.MethodGet, "/api/computer-use/status", nil)
+		request = request.WithContext(context.WithValue(request.Context(), UserContextKey, claims))
+		response := httptest.NewRecorder()
+		f.api.handleComputerUseSetupStatus(response, request)
+		if (response.Code == http.StatusOK) != (name == "owner") {
+			t.Errorf("%s setup read status=%d", name, response.Code)
+		}
+		if name == "owner" && strings.Contains(response.Body.String(), "\"enabled\"") {
+			t.Fatal("global setup invented a Crew enable state")
+		}
 		if got := computerUseAllowed(claims); got != (name == "owner") {
 			t.Errorf("%s allowed=%v", name, got)
 		}

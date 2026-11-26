@@ -6,6 +6,7 @@ import (
 
 	virtualtools "github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/virtual-tools"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/agentworksproduct"
+	"github.com/manishiitg/coding-agent-loop/agent_go/internal/projectfunctions"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/knowledgebase"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/platformtools/catalog"
 
@@ -52,8 +53,8 @@ func ValidateCustomToolSelection(selection string) error {
 		}
 	case virtualtools.GetSubAgentToolCategory():
 		definitions = virtualtools.CreateSubAgentTools()
-	case agentworksproduct.ExecutionFunctionTools().Category:
-		for _, tool := range agentworksproduct.ExecutionFunctionTools().Tools {
+	case projectfunctions.ExecutionTools().Category:
+		for _, tool := range projectfunctions.ExecutionTools().Tools {
 			names[tool] = true
 		}
 	}
@@ -74,7 +75,7 @@ func ValidateCustomToolSelection(selection string) error {
 		}
 	}
 	if name == "notify_user" {
-		return fmt.Errorf("custom tool %q is retired: the run record is the summary and notify() tells the owner in the Crew chat; for named recipients use send_email or send_slack. Remove this named selection before upgrading", selection)
+		return fmt.Errorf("custom tool %q is retired: the run record is the summary and notify() tells the owner in the project chat; for named recipients use send_email or send_slack. Remove this named selection before upgrading", selection)
 	}
 	if name == "files.image" || name == "read_image" {
 		return fmt.Errorf("custom tool %q is retired with no platform replacement: remove this named selection and use the coding agent's native image reader (for example Read or view_image). Review image-dependent instructions before upgrading", selection)

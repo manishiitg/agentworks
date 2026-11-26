@@ -1,47 +1,92 @@
 import { useEffect, useRef, useState } from 'react'
 import api from '../../services/api'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
+import { useAuthStore } from '../../stores/useAuthStore'
+import { githubConnectionChanged } from '../../utils/githubConnectionEvents'
 import type { CloudState, CrewAccessLine, CrewAsk } from './YourComputerPanel'
 
-export type CrewPanelRow = { id: string; label: string; detail?: string; destination?: string; connected?: boolean; attention?: boolean; path?: string; used_in_chat?: boolean; motion?: boolean; artifact?: boolean }
-export type CrewPanelSection = { id: string; title: string; detail?: string; rows: CrewPanelRow[]; busy?: boolean; stale?: boolean; error?: string; access?: { where?: 'mac' | 'web'; place?: CloudState; role?: string; view?: string; summary?: string; tree?: CrewAccessLine[]; asking?: (CrewAsk & { label: string; detail: string })[] } }
-export type CrewPanel = { project: string; workspace: string; busy: boolean; mac_elsewhere: boolean; sections: CrewPanelSection[]; details: Record<string, string> }
+export type CrewPanelRow = { id: string; label: string; detail?: string; destination?: string; connected?: boolean; attention?: boolean; path?: string; group?: string; count?: string; commit_at?: number; commit?: string; fetched_at?: number; github_repo?: string; login?: string; orgs?: string[]; changed?: boolean; changed_files?: number; motion?: boolean; artifact?: boolean; items?: CrewPanelFeedItem[]; steps?: string[]; rules?: string; done_count?: number; tasks?: ProjectTask[]; lead?: string; tasks_mode?: 'auto' | 'ask'; paused?: boolean; needs_you_count?: number; open_count?: number }
+// A Project activity item (#3625): its step on the row, the tasks it became as their threads have them now, and who moved it when.
+export type ProjectTaskRef = { kind: string; title: string; url?: string; by?: string; at: number }
+export type ProjectTask = CrewPanelFeedItem & { assignee?: string; assignee_cli?: string; sources?: ProjectTaskRef[]; links?: ProjectTaskRef[]; activity?: { kind: string; text: string; url?: string; at: number }[]; proposed?: string; held?: boolean; needs_you?: string; choices?: string[]; checklist?: { text: string; done?: boolean; by?: string; at: number }[] }
+export type CrewPanelFeedItem = { id?: string; title: string; sub?: string; url?: string; at: number; step?: string; done?: boolean; tasks?: { agent: string; title: string; state: string; cli?: string }[]; history?: { at: number; by?: string; step?: string; note?: string }[] }
+export type CrewFileLimit = { over: boolean; files: number; limit: number; checkouts: number; folders?: { path: string; files: number }[]; checked_at: string; can_fix: boolean }
+export type CrewPanelAccess = { where?: 'mac' | 'web'; place?: CloudState; role?: string; view?: string; summary?: string; team_detail?: string; co_owners?: boolean; tree?: CrewAccessLine[]; asking?: (CrewAsk & { label: string; detail: string })[] }
+export type CrewPanelSection = { id: string; title: string; detail?: string; changed?: number; file_limit?: CrewFileLimit; rows: CrewPanelRow[]; busy?: boolean; stale?: boolean; error?: string; access?: CrewPanelAccess }
+export type CrewPanel = { project: string; workspace: string; busy: boolean; mac_elsewhere: boolean; sections: CrewPanelSection[]; details: Record<string, string>; refresh_after_ms?: number; refresh_attempt?: number; refresh_note?: string }
+
+// The last answer for each scope and project: the menu is mounted again every time a person comes back to it, and
+// a far-away server needs a few seconds to answer. Show what was last known at once; the new answer replaces it.
+const MAX_LAST_KNOWN = 24
+const lastKnown = new Map<string, CrewPanel>()
+let lastAccountId: string | undefined
+
+function rememberLastKnown(key: string, data: CrewPanel) {
+  lastKnown.delete(key)
+  lastKnown.set(key, data)
+  while (lastKnown.size > MAX_LAST_KNOWN) {
+    const oldest = lastKnown.keys().next().value
+    if (oldest === undefined) break
+    lastKnown.delete(oldest)
+  }
+}
 
 /** One current-account read. The existing tab-wide feed handles reconnect and
  * resync; timers are a fallback only. Settings screens retain their own APIs. */
-export function useCrewPanel(scope: string, project: string, workspace: string, session?: string) {
-  const key = JSON.stringify([scope, project, workspace, session])
+export function useCrewPanel(scope: string, project: string, workspace: string, enabled = true) {
+  const userId = useAuthStore(state => state.user?.id)
+  if (lastAccountId !== userId) {
+    lastKnown.clear()
+    lastAccountId = userId
+  }
+  const key = JSON.stringify([scope, project, workspace])
   const [state, setState] = useState<{ key: string; data?: CrewPanel; error?: string }>()
   const refreshRef = useRef<() => void>(() => {})
   useEffect(() => {
+    if (!enabled) return
     const controller = new AbortController()
     let reading = false
     let again = false
-    async function read() {
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+    async function read(attempt = 0) {
+      clearTimeout(retryTimer)
+      retryTimer = undefined
       if (reading) { again = true; return }
       if (!project || controller.signal.aborted) return
       reading = true
       try {
-        const { data } = await api.get<CrewPanel>(`/api/crews/${encodeURIComponent(project)}/panel`, { params: { session_id: session }, signal: controller.signal, skipSessionContext: true })
-        if (!controller.signal.aborted) setState({ key, data })
+        const { data } = await api.get<CrewPanel>(`/api/crews/${encodeURIComponent(project)}/panel`, { params: { refresh_attempt: attempt || undefined }, signal: controller.signal, skipSessionContext: true })
+        if (!controller.signal.aborted) {
+          rememberLastKnown(key, data)
+          setState({ key, data, error: data.refresh_note })
+          // The server alone chooses the retry time and next attempt. A fresh
+          // answer supplies neither, so this never becomes a polling loop.
+          if (data.refresh_after_ms !== undefined && data.refresh_after_ms > 0) {
+            retryTimer = setTimeout(() => { void read(data.refresh_attempt) }, data.refresh_after_ms)
+          }
+        }
       } catch {
         // Do not retain a previous account's or now-revoked Crew's data after
         // a failed admission. Section-level last-good values live on the server.
-        if (!controller.signal.aborted) setState({ key, error: 'Could not load this Crew’s status. Try again.' })
+        if (!controller.signal.aborted) { lastKnown.delete(key); setState({ key, error: 'Could not load this project’s status. Try again.' }) }
       } finally {
         reading = false
         if (again && !controller.signal.aborted) { again = false; void read() }
       }
     }
     refreshRef.current = () => { void read() }
+    const onGitHubChanged = () => { void read() }
+    window.addEventListener(githubConnectionChanged, onGitHubChanged)
     void read()
-    return () => { controller.abort(); refreshRef.current = () => {} }
-  }, [key, project, session])
-  const data = state?.key === key ? state.data : undefined
+    return () => { controller.abort(); clearTimeout(retryTimer); window.removeEventListener(githubConnectionChanged, onGitHubChanged); refreshRef.current = () => {} }
+  }, [key, project, enabled])
+  const data = state?.key === key ? state.data : lastKnown.get(key)
+  // At most one read per 3s: every running chat sends 'sessions' notices, and at 0.5s several running chats kept
+  // one panel read always in flight (85 reads a minute, 0.6-1s each), slowing every other request (PLAT-746-840).
   useLiveRefetch(() => refreshRef.current(), {
     kinds: ['crew_panel', 'sessions', 'schedules', 'report', 'plan', 'browser'],
-    project, workflow: workspace, scopeKey: scope, enabled: !!project,
-    refreshOnFocus: true, fallbackMs: data?.busy ? 2_000 : 15_000, safetyMs: 0, minIntervalMs: 500,
+    project, workflow: workspace, scopeKey: scope, enabled: enabled && !!project,
+    refreshOnFocus: true, fallbackMs: data?.busy ? 2_000 : 15_000, safetyMs: 0, minIntervalMs: 3_000,
   })
   return { data, error: state?.key === key ? state.error : undefined, refresh: () => refreshRef.current() }
 }

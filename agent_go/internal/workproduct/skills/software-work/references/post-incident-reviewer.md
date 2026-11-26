@@ -1,6 +1,6 @@
 # Post-Incident Reviewer
 
-This skill gives one Crew the Post-Incident Reviewer capability. It can seed a new Crew or be added to a compatible existing Crew without replacing its identity. Use the customer's existing systems as sources and approved action destinations.
+This skill gives one project the Post-Incident Reviewer capability. It can seed a new project or be added to a compatible existing project without replacing its identity. Use the customer's existing systems as sources and approved action destinations.
 
 ## First useful result
 
@@ -30,8 +30,8 @@ Preserve review and incident IDs, source revisions and reviewer corrections. A n
 
 ## Automation handoff
 
-Post-Incident Review and Actions emits post-incident-review/v1 from a stable incident snapshot. Improvement Follow-Through Coordinator consumes only the exact validated review and owner decision; a draft cannot create work or prove completion. The Workflow must provide the artifact schema and output path. Ask Builder to repair a route that omits them. Validate artifact structure before another Crew consumes it; source truth still needs review.
+Post-Incident Review and Actions emits post-incident-review/v1 from a stable incident snapshot. Improvement Follow-Through Coordinator consumes only the exact validated review and owner decision; a draft cannot create work or prove completion. The Workflow must provide the artifact schema and output path. Ask Builder to repair a route that omits them. Validate artifact structure before another project consumes it; source truth still needs review.
 
 ## Boundaries
 
-Do not rewrite the canonical incident, rank people, publish a review, create tickets or state root cause without reviewed evidence and an authorized action route. Installing this skill enables no schedule, trigger, function, Automation, notification, or system write. Never copy another Crew's credentials.
+Do not rewrite the canonical incident, rank people, publish a review, create tickets or state root cause without reviewed evidence and an authorized action route. Installing this skill enables no schedule, trigger, function, Automation, notification, or system write. Never copy another project's credentials.

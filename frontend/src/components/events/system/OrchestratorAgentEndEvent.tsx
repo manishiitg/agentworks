@@ -140,10 +140,10 @@ export const OrchestratorAgentEndEventDisplay: React.FC<OrchestratorAgentEndEven
         };
       case 'slate':
         return {
-          bg: 'bg-slate-900/40 dark:bg-slate-900/40',
-          border: 'border-slate-700 dark:border-slate-700',
-          text: 'text-slate-300 dark:text-slate-300',
-          textSecondary: 'text-slate-400 dark:text-slate-400'
+          bg: 'bg-muted/40',
+          border: 'border-border',
+          text: 'text-muted-foreground',
+          textSecondary: 'text-muted-foreground'
         };
       case 'cyan':
         return {

@@ -1,3 +1,4 @@
+import { Avatar } from '../ui/Avatar'
 import { openWorkspaceSettings } from '../../utils/workspaceSettingsNavigation'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, AlertCircle, Users, Ban, ChevronDown, ChevronRight, Search, Copy, Plug } from 'lucide-react'
@@ -55,7 +56,7 @@ const roleFields = (r: Role): Pick<AdminUserWrite, 'role' | 'admin' | 'can_creat
   can_edit: r !== 'viewer',
 })
 
-const CREATABLE_PRODUCTS = ['agentworks', 'work', 'code']
+const CREATABLE_PRODUCTS = ['agentworks', 'work']
 const productLabel = (id: string) => isProductSurface(id) ? PRODUCT_SURFACE_LABELS[id] : id === 'finance' ? 'Finance' : id
 const limitLabel = (n?: number) => n && n > 0 ? formatTokens(n) : 'Unlimited'
 const overrideLabel = (n?: number) => n && n < 0 ? 'Unlimited' : n ? formatTokens(n) : 'Account default'
@@ -127,12 +128,12 @@ const UsersAdminPanel: React.FC<{ vaultOnly?: boolean }> = ({ vaultOnly = false 
             const role = roleOf(u), isMe = u.id === me?.id, busy = busyId === u.id, open = expanded === u.id && !vaultOnly
             const apps = accessible(u, role)
             const create = role === 'admin' ? products.filter(p => CREATABLE_PRODUCTS.includes(p)) : (u.create_products ?? (role === 'creator' ? apps.filter(p => CREATABLE_PRODUCTS.includes(p)) : [])).filter(p => apps.includes(p))
-            const extras = [u.crew_reviewer && 'Crew reviewer', u.vault_reader && 'Vault audit'].filter(Boolean)
+            const extras = [u.crew_reviewer && 'Project reviewer', u.vault_reader && 'Vault audit'].filter(Boolean)
             return <li key={u.id} className={u.disabled ? 'opacity-60' : ''}>
               <Button type="button" variant="ghost" disabled={vaultOnly} onClick={() => setExpanded(open ? null : u.id)} aria-expanded={open} aria-label={`${open ? 'Close' : 'Details for'} ${u.username}`}
                 className="h-auto w-full justify-start gap-3 rounded-none px-3 py-3 text-left font-normal hover:bg-muted/40 disabled:cursor-default disabled:opacity-100">
                 {!vaultOnly && (open ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />)}
-                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{u.username}{isMe && <span className="ml-1 text-[11px] text-muted-foreground">(you)</span>}</span><span className="block truncate text-xs text-muted-foreground">{u.email || signInLabel(u)}</span></span>
+                <Avatar name={u.username} {...u} className="h-7 w-7 text-xs" /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{u.username}{isMe && <span className="ml-1 text-[11px] text-muted-foreground">(you)</span>}</span><span className="block truncate text-xs text-muted-foreground">{u.email || signInLabel(u)}</span></span>
                 <span className="hidden max-w-[35%] truncate text-xs text-muted-foreground sm:block">{role === 'admin' || role === 'creator' && !u.products.length ? 'All products' : apps.filter(p => products.includes(p)).map(productLabel).join(', ') || 'No additional products'}</span>
                 <Badge variant="secondary">{ROLES.find(r => r.value === role)?.label}</Badge>
                 {u.disabled ? <Badge variant="outline" className="text-destructive"><Ban className="mr-1 h-3 w-3" />Off</Badge> : u.invited ? <span className="hidden text-xs text-muted-foreground sm:inline">Not signed in</span> : null}

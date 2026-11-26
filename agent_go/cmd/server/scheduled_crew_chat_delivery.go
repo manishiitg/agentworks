@@ -15,7 +15,7 @@ func isScheduledCrewChatDelivery(ctx context.Context) bool {
 }
 
 func scheduleUsesCrewChatDelivery(job productScheduleJob) bool {
-	if strings.TrimSpace(job.ProjectID) == "" || job.Schedule.Isolated || job.GuestCallerID != "" || job.PinRunMode {
+	if job.Schedule.WorkflowID != "" || strings.TrimSpace(job.ProjectID) == "" || job.Schedule.Isolated || job.GuestCallerID != "" || job.PinRunMode {
 		return false
 	}
 	if kind := strings.TrimSpace(job.AutomationKind); kind != "" && kind != "schedule" {

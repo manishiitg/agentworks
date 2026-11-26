@@ -22,9 +22,9 @@ func projectCopyDefinition() externalTool {
 	return externalTool{Name: "copy_project_files", Description: "Copy a file or folder from a project you can read into one you own or edit. Private chats, secret stores and symlinks are excluded. Existing files are not replaced. Each file can be up to 2 MiB.", mutates: true, InputSchema: map[string]any{
 		"type": "object", "additionalProperties": false, "required": []any{"source_project", "source_path", "target_project", "target_path"},
 		"properties": map[string]any{
-			"source_project": externalString("Workflow/Flow ID, or work:<Crew ID>, from your accessible project list."),
+			"source_project": externalString("Workflow/Flow ID, or work:<project ID>, from your accessible project list."),
 			"source_path":    externalString("File or folder path relative to the source project."),
-			"target_project": externalString("Destination Workflow/Flow ID, or work:<Crew ID>, that you own or edit."),
+			"target_project": externalString("Destination Workflow/Flow ID, or work:<project ID>, that you own or edit."),
 			"target_path":    externalString("New destination file or folder path relative to the target project."),
 		},
 	}}
@@ -55,16 +55,16 @@ func (api *StreamingAPI) projectCopyRoot(ctx context.Context, project string, wr
 	if strings.HasPrefix(project, crewProfileID+":") {
 		id := strings.TrimPrefix(project, crewProfileID+":")
 		if !externalTokenAllows(c, externalTool{Name: "read_crew_file"}) {
-			return "", fmt.Errorf("This connection cannot read that Crew")
+			return "", fmt.Errorf("This connection cannot read that project")
 		}
 		crew, _, _, ok := api.externalCrewResolve(ctx, c, id)
 		if !ok {
-			return "", fmt.Errorf("Source or destination Crew is unavailable")
+			return "", fmt.Errorf("Source or destination project is unavailable")
 		}
 		if write {
 			status, _ := externalCrewAuthorGate(c)
 			if !crew.OwnedByCaller || status != 0 || c.AccessToken != nil && !c.AccessToken.Allows("crews:write") {
-				return "", fmt.Errorf("Only the Crew owner with current write access can copy into it")
+				return "", fmt.Errorf("Only the project owner with current write access can copy into it")
 			}
 		}
 		return agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath), nil

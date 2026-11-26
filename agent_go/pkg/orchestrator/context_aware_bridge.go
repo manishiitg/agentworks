@@ -42,7 +42,7 @@ type PhaseTokenPersister interface {
 // on, so a bridge-side append lands in the same file cmd/server created at
 // agent start and will mark terminal at agent completion.
 type BackgroundAgentTranscriptWriter interface {
-	AppendBackgroundAgentTranscriptEvent(ctx context.Context, sessionID, agentID string, evt orchevents.BackgroundAgentTranscriptEvent) error
+	AppendBackgroundAgentTranscriptEvents(ctx context.Context, sessionID, agentID string, evts []orchevents.BackgroundAgentTranscriptEvent) error
 }
 
 // AgentSessionIDKey is re-exported from orchestrator/events for convenience.
@@ -196,17 +196,25 @@ type ContextAwareEventBridge struct {
 	// Timing collector — captures tool and LLM timing events for workspace logging
 	timingCaptures  map[string]*timingCaptureState
 	timingCaptureID atomic.Uint64
-	mu              sync.RWMutex
-	logger          loggerv2.Logger
-	tokenPersistWG  sync.WaitGroup
-	tokenPersistMu  sync.Mutex
-	tokenPersistErr []error
+	// promptIncludesCache remembers, per provider, the last per-call
+	// prompt_tokens_include_cache marker. The cumulative token_usage event
+	// does not carry it, and run files store fresh input apart from cache.
+	promptIncludesCache map[string]bool
+	mu                  sync.RWMutex
+	logger              loggerv2.Logger
+	tokenPersistWG      sync.WaitGroup
+	tokenPersistMu      sync.Mutex
+	tokenPersistErr     []error
 
 	// Transcript persistence, mirroring the token-persistence fields above so
 	// a caller can independently drain either one.
 	transcriptPersistWG  sync.WaitGroup
 	transcriptPersistMu  sync.Mutex
 	transcriptPersistErr []error
+	transcriptBatchMu    sync.Mutex
+	transcriptBatches    map[transcriptBatchKey]transcriptBatch
+	transcriptTimer      *time.Timer
+	transcriptBatchTail  chan struct{}
 }
 
 const tokenPersistenceTimeout = 30 * time.Second
@@ -273,6 +281,7 @@ func (c *ContextAwareEventBridge) persistTranscriptAsync(label string, persist f
 // mirroring WaitForTokenPersistence. Independent of it — a caller that only
 // cares about one need not wait on the other.
 func (c *ContextAwareEventBridge) WaitForBackgroundTranscriptPersistence(ctx context.Context) error {
+	c.flushTranscriptBatches()
 	done := make(chan struct{})
 	go func() {
 		c.transcriptPersistWG.Wait()
@@ -918,15 +927,24 @@ func (c *ContextAwareEventBridge) HandleEvent(ctx context.Context, event *events
 			if normalized, ok := orchevents.NormalizeBackgroundTranscriptEvent(event); ok {
 				transcriptEvents = append(transcriptEvents, normalized)
 			}
-			for _, transcriptEvent := range transcriptEvents {
-				sessionID := event.SessionID
-				if owner, ok := ctx.Value(backgroundTranscriptSessionIDKey{}).(string); ok && strings.TrimSpace(owner) != "" {
-					sessionID = strings.TrimSpace(owner)
+			sessionID := event.SessionID
+			if owner, ok := ctx.Value(backgroundTranscriptSessionIDKey{}).(string); ok && strings.TrimSpace(owner) != "" {
+				sessionID = strings.TrimSpace(owner)
+			}
+			c.queueTranscriptEvents(writer, sessionID, executionOwnerID, transcriptEvents)
+		}
+	}
+
+	if event.Type == events.LLMGenerationEnd {
+		if generation, ok := event.Data.(*events.LLMGenerationEndEvent); ok && generation != nil {
+			if includes, ok := generation.Metadata["prompt_tokens_include_cache"].(bool); ok {
+				provider, _ := generation.Metadata["provider"].(string)
+				c.mu.Lock()
+				if c.promptIncludesCache == nil {
+					c.promptIncludesCache = map[string]bool{}
 				}
-				agentID := executionOwnerID
-				c.persistTranscriptAsync("background agent transcript", func(persistCtx context.Context) error {
-					return writer.AppendBackgroundAgentTranscriptEvent(persistCtx, sessionID, agentID, transcriptEvent)
-				})
+				c.promptIncludesCache[strings.ToLower(strings.TrimSpace(provider))] = includes
+				c.mu.Unlock()
 			}
 		}
 	}
@@ -937,6 +955,7 @@ func (c *ContextAwareEventBridge) HandleEvent(ctx context.Context, event *events
 			// Extract cache tokens (separated into read and write for accurate pricing)
 			// Cache reads are discounted, cache writes are premium (1.25x base rate)
 			cacheTokensSeparate := extractCacheTokensSeparate(tokenEvent)
+			freshInput := c.freshPromptTokens(tokenEvent, cacheTokensSeparate.Total)
 
 			// Extract LLM call count from event (cumulative for conversation end, 1 for single calls)
 			llmCallCount := extractLLMCallCount(tokenEvent)
@@ -959,7 +978,7 @@ func (c *ContextAwareEventBridge) HandleEvent(ctx context.Context, event *events
 				modelTokenData = &ModelTokenData{
 					ModelID:          modelIDForBucket,
 					Provider:         tokenEvent.Provider,
-					InputTokens:      tokenEvent.PromptTokens,         // input tokens
+					InputTokens:      freshInput,                      // fresh input, cache apart
 					OutputTokens:     tokenEvent.CompletionTokens,     // output tokens
 					CacheTokens:      cacheTokensSeparate.Total,       // total cache (backward compat)
 					CacheReadTokens:  cacheTokensSeparate.ReadTokens,  // cache reads (discounted)
@@ -978,7 +997,7 @@ func (c *ContextAwareEventBridge) HandleEvent(ctx context.Context, event *events
 				if currentPhase != "" {
 					phaseTokenData = &PhaseTokenData{
 						Phase:            currentPhase,
-						InputTokens:      tokenEvent.PromptTokens,         // input tokens
+						InputTokens:      freshInput,                      // fresh input, cache apart
 						OutputTokens:     tokenEvent.CompletionTokens,     // output tokens
 						CacheTokens:      cacheTokensSeparate.Total,       // total cache (backward compat)
 						CacheReadTokens:  cacheTokensSeparate.ReadTokens,  // cache reads (discounted)
@@ -1034,7 +1053,7 @@ func (c *ContextAwareEventBridge) HandleEvent(ctx context.Context, event *events
 					Phase:            attributedPhase,
 					Step:             currentStep,
 					StepID:           attributedStepID,                // Use step ID instead of index
-					InputTokens:      tokenEvent.PromptTokens,         // input tokens
+					InputTokens:      freshInput,                      // fresh input, cache apart
 					OutputTokens:     tokenEvent.CompletionTokens,     // output tokens
 					CacheTokens:      cacheTokensSeparate.Total,       // total cache (backward compat)
 					CacheReadTokens:  cacheTokensSeparate.ReadTokens,  // cache reads (discounted)

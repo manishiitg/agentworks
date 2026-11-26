@@ -20,7 +20,7 @@ import (
 	workshop "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspacepathpolicy"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 	"github.com/manishiitg/mcpagent/executor"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
@@ -103,11 +103,11 @@ func reportRunSelectionFor(ctx context.Context, workspacePath string) (reportRun
 	return reportRunSelection{servers: caps.RuntimeServers(), tools: caps.SelectedTools, globalSecrets: caps.SelectedGlobalSecretNames, variables: true}, nil
 }
 
-// reportRunScriptPath accepts only a script in the workflow's code/ folder.
+// reportRunScriptPath accepts only a script in the project's code/ folder or a dashboard's own scripts (dashboards/).
 func reportRunScriptPath(relative string) (string, bool) {
 	slashed := strings.ReplaceAll(strings.TrimSpace(relative), "\\", "/")
 	normalized := strings.TrimPrefix(path.Clean("/"+slashed), "/")
-	if strings.Contains(slashed, "..") || !strings.HasPrefix(normalized, "code/") || strings.Contains(normalized, "/.") {
+	if strings.Contains(slashed, "..") || !(strings.HasPrefix(normalized, "code/") || strings.HasPrefix(normalized, dashboards.ScriptsPrefix)) || strings.Contains(normalized, "/.") {
 		return "", false
 	}
 	switch path.Ext(normalized) {
@@ -179,39 +179,20 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 	}
 	clean, valid := cleanWorkspaceReadPath(workspacePath, false)
 	if !valid {
-		http.Error(w, "a Workflow, Flow, Crew or Code project root is required", http.StatusBadRequest)
+		http.Error(w, "a Workflow, Flow, project or project root is required", http.StatusBadRequest)
 		return
 	}
 	crew, isCrew := resolveCrewPath(r.Context(), claims.UserID, clean)
-	ref := workspaceref.MustParse(clean)
-	root, project, projectRoot := ref.ProjectRoot()
-	isCode := projectRoot && root == workspaceref.CodeProjectsRoot && !strings.HasPrefix(project, ".")
-	if (isCrew && crew.Rest != "") || (!isCrew && !isCode && !isReportRunWorkflowRoot(clean)) {
-		http.Error(w, "a Workflow, Flow, Crew or Code project root is required", http.StatusBadRequest)
+	if (isCrew && crew.Rest != "") || (!isCrew && !isReportRunWorkflowRoot(clean)) {
+		http.Error(w, "a Workflow, Flow, project or project root is required", http.StatusBadRequest)
 		return
 	}
 	if isCrew {
 		workspacePath = crew.Root
-	} else if isCode {
-		owner := ref.Owner()
-		if owner == "" {
-			owner = sanitizeUserIDForPath(claims.UserID)
-		}
-		// Code dashboards follow ordinary Code ownership, including for admins.
-		// Read-only administrative inspection never authorizes script execution.
-		if codeRoleFor(r.Context(), claims.UserID, owner, project) != codeRoleOwner {
-			writeWorkflowPermissionDenied(w, "read")
-			return
-		}
-		workspacePath = workspaceref.PhysicalPathOf(owner, ref.Logical())
-		if resolveProjectOwner(r.Context(), workspacePath) != owner {
-			writeWorkflowPermissionDenied(w, "read")
-			return
-		}
 	}
 	script, ok := reportRunScriptPath(body.Path)
 	if !ok {
-		http.Error(w, "path must be a .py, .js or .mjs script under code/", http.StatusBadRequest)
+		http.Error(w, "path must be a .py, .js or .mjs script under code/ or a dashboard's scripts", http.StatusBadRequest)
 		return
 	}
 	// Project capabilities are selected by the owner; live viewer permissions
@@ -221,7 +202,7 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 			writeWorkflowPermissionDenied(w, "read")
 			return
 		}
-	} else if !isCode && !requireWorkflowVisible(w, r, workspacePath) {
+	} else if !requireWorkflowVisible(w, r, workspacePath) {
 		return
 	}
 	if claims.PreviewConnectionID != "" {
@@ -249,35 +230,18 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 	}
 
 	docsRoot := workshop.GetPromptDocsRoot()
-	if isCode {
-		docs, err := os.OpenRoot(docsRoot)
-		if err != nil {
-			http.Error(w, "workspace unavailable", http.StatusNotFound)
-			return
-		}
-		code, err := openProjectDir(docs, productOwnerFromPath(workspacePath), root, project, "code")
-		_ = docs.Close()
-		if err != nil {
-			status := http.StatusBadRequest
-			if os.IsNotExist(err) {
-				status = http.StatusNotFound
-			}
-			http.Error(w, "Code script directory is missing or unsafe", status)
-			return
-		}
-		defer code.Close()
-	}
 	if publication, e := readPublishedProject(r.Context(), workspacePath); e != nil {
 		http.Error(w, "Publication source unavailable; try again.", 503)
 		return
 	} else if publication != nil {
 		r = r.WithContext(context.WithValue(r.Context(), publicationExecutionKey{}, publication))
 	}
-	sourceCode := publishedReadPath(r.Context(), filepath.ToSlash(filepath.Join(workspacePath, "code")))
+	// The script stays inside the folder it was named in: code/ or dashboards/.
+	sourceCode := publishedReadPath(r.Context(), filepath.ToSlash(filepath.Join(workspacePath, strings.SplitN(script, "/", 2)[0])))
 	sourceScript := publishedReadPath(r.Context(), filepath.ToSlash(filepath.Join(workspacePath, script)))
 	codeRoot, err := fsutil.WorkspacePath(docsRoot, sourceCode)
 	if err != nil {
-		http.Error(w, "Crew code folder is unavailable", http.StatusBadRequest)
+		http.Error(w, "Project code folder is unavailable", http.StatusBadRequest)
 		return
 	}
 	absScript, err := fsutil.WorkspacePath(docsRoot, sourceScript)
@@ -285,12 +249,12 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Script path is unavailable", http.StatusBadRequest)
 		return
 	}
-	// A symlink must not lead a report outside its own code/ folder.
+	// A symlink must not lead a report outside its own folder.
 	if resolved, err := filepath.EvalSymlinks(absScript); err != nil {
 		writeReportRunResult(w, http.StatusNotFound, map[string]any{"success": false, "error": fmt.Sprintf("script %s not found", script)})
 		return
 	} else if realCode, err := filepath.EvalSymlinks(codeRoot); err != nil || !strings.HasPrefix(resolved, realCode+string(filepath.Separator)) {
-		http.Error(w, "script must stay inside code/", http.StatusBadRequest)
+		http.Error(w, "script must stay inside its folder", http.StatusBadRequest)
 		return
 	}
 
@@ -386,7 +350,7 @@ func (api *StreamingAPI) runReportScript(ctx context.Context, userID, workspaceP
 	defer cancel()
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(userID))
 	command := reportRunCommand(absScript)
-	if strings.HasPrefix(script, "code/reports/managed/") {
+	if strings.HasPrefix(script, dashboards.ScriptsPrefix) {
 		code, readErr := os.ReadFile(absScript)
 		if readErr != nil {
 			return map[string]any{"success": false, "error": "could not read the dashboard script"}

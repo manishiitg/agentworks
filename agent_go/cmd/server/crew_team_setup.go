@@ -5,21 +5,27 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/projectinstructions"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 // A Team works with one Crew setup (owner, 5 Nov): the Crew's chat instructions and selected skills travel in
 // team-setup.json at the Crew folder's top, and its own skills in skills/. Both are always part of what a Team shares,
-// whatever folders it chose, so every copy has them and edits by anyone sync both ways with the store's history and
+// PROJECT_INSTRUCTIONS.md, MEMORY.md and memory/ stay personal (crewTeamPrivatePath).
+// Whatever folders it chose, every copy has them and edits by anyone sync both ways with the store's history and
 // clash handling. Each copy (the owner's Mac, a member's Mac, a web member's server copy) writes the file when its
 // Crew's setup changes and applies it when someone else's edit arrives, so a web member's edit reaches the owner's Mac.
 // The model, apps and secrets stay as they are (the owner's, lent to the Team).
+// Chat instructions are the owner's (owner, 16 Nov): only the owner changes them in settings, so the owner's own Crew
+// never takes a teammate's edit of chat_instructions from the file once it has its setup; it writes its own back on
+// the next round. Selected skills still sync both ways.
 
 const crewTeamSetupFile = crewroot.TeamSetupFile
 
@@ -30,8 +36,13 @@ type crewTeamSetup struct {
 
 // crewTeamSetupPath: always shared with the Team (crewTeamFolder.holds).
 func crewTeamSetupPath(rel string) bool {
-	return rel == crewTeamSetupFile || rel == "skills" || strings.HasPrefix(rel, "skills/")
+	return rel == crewTeamSetupFile || rel == crewTeamInstructionsFile || rel == "skills" || strings.HasPrefix(rel, "skills/")
 }
+
+// crewTeamInstructionsFile is the Team part of every agent's instructions (#3041): one file at the Crew root, always
+// shared, read live into each agent's prompt in the Team's Crews. Every Team member may change it like any other Team
+// file (owner, 18 Nov); history keeps each version and who saved it.
+const crewTeamInstructionsFile = projectinstructions.TeamFileName
 
 func (s crewTeamSetup) encode() []byte {
 	s.SelectedSkills = slices.Clone(s.SelectedSkills)
@@ -62,7 +73,12 @@ func (api *StreamingAPI) crewSetupOf(ctx context.Context, person, project string
 
 // reconcileCrewTeamSetup brings this Crew and its team-setup.json together. state is where the last applied version
 // is kept; write is false until a copy has received the team folder, so a new copy never replaces the Team's setup.
-func (api *StreamingAPI) reconcileCrewTeamSetup(ctx context.Context, person, project, root, state string, write bool) {
+// ownerCrew is true for the owner's own Crew (on the Mac or the server), which keeps its own chat instructions.
+func (api *StreamingAPI) reconcileCrewTeamSetup(ctx context.Context, person, project, root, state string, write, ownerCrew bool) {
+	api.reconcileCrewTeamSetupMapped(ctx, person, project, root, state, write, ownerCrew, nil)
+}
+
+func (api *StreamingAPI) reconcileCrewTeamSetupMapped(ctx context.Context, person, project, root, state string, write, ownerCrew bool, copy *crewTeamLocal) {
 	if project == "" || root == "" || state == "" {
 		return
 	}
@@ -73,8 +89,17 @@ func (api *StreamingAPI) reconcileCrewTeamSetup(ctx context.Context, person, pro
 	mark := filepath.Join(state, "setup-applied")
 	last, _ := os.ReadFile(mark)
 	path := filepath.Join(root, crewTeamSetupFile)
-	current := setup.encode()
 	file, err := os.ReadFile(path)
+	currentSetup := setup
+	if copy != nil && copy.Mounted {
+		var shared crewTeamSetup
+		if err == nil {
+			_ = json.Unmarshal(file, &shared)
+		}
+		currentSetup.SelectedSkills = copy.exportSelectedSkills(setup.SelectedSkills, shared.SelectedSkills)
+	}
+	current := currentSetup.encode()
+
 	switch {
 	case os.IsNotExist(err):
 		if !write {
@@ -94,14 +119,24 @@ func (api *StreamingAPI) reconcileCrewTeamSetup(ctx context.Context, person, pro
 			return
 		}
 		next := crewTeamSetup{ChatInstructions: in.ChatInstructions, SelectedSkills: in.SelectedSkills}
-		if string(next.encode()) != string(current) {
+		// The owner's Crew takes the Team's chat instructions only the first time (a new copy of its own Crew); after
+		// that a change in the file is a teammate's, and the owner's own instructions stay and go back out.
+		if ownerCrew && len(last) > 0 && next.ChatInstructions != setup.ChatInstructions {
+			log.Printf("[CREW_TEAM] project=%s event=setup_instructions_kept reason=owner_only", project)
+			next.ChatInstructions = setup.ChatInstructions
+		}
+		localSkills := next.SelectedSkills
+		if copy != nil && copy.Mounted {
+			localSkills = copy.importSelectedSkills(in.SelectedSkills, setup.SelectedSkills)
+		}
+		if next.ChatInstructions != setup.ChatInstructions || !slices.Equal(localSkills, setup.SelectedSkills) {
 			if next.ChatInstructions != setup.ChatInstructions {
 				if err = updateCrewChatInstructions(ctx, workspace, next.ChatInstructions); err != nil {
 					log.Printf("[CREW_TEAM] project=%s event=setup_apply_failed reason=%q", project, err)
 					return
 				}
 			}
-			if err = updateProductSelectedSkills(ctx, crewProfileID, workspace, func([]string) []string { return next.SelectedSkills }); err != nil {
+			if err = updateProductSelectedSkills(ctx, crewProfileID, workspace, func([]string) []string { return localSkills }); err != nil {
 				log.Printf("[CREW_TEAM] project=%s event=setup_apply_failed reason=%q", project, err)
 				return
 			}
@@ -124,4 +159,76 @@ func crewTeamLocalCrew(b crewTeamLocal) string {
 		return b.LocalProject
 	}
 	return crewTeamMemberCopy(b.Project)
+}
+
+func (b crewTeamLocal) privateSkill(name string) bool {
+	if filepath.Base(name) != name {
+		return false
+	}
+	if b.remoteRel("skills/"+name) != "" {
+		return false
+	}
+	_, err := os.Lstat(filepath.Join(b.diskRoot("skills/"+name), "skills", name))
+	return err == nil
+}
+
+func (b crewTeamLocal) exportSelectedSkills(local []string, shared ...[]string) []string {
+	common := []string{}
+	if len(shared) > 0 {
+		common = shared[0]
+	}
+	out := []string{}
+	for _, name := range local {
+		if remote := b.remoteRel("skills/" + name); remote != "" {
+			out = append(out, strings.TrimPrefix(remote, "skills/"))
+		} else if slices.Contains(common, name) && !b.privateSkill(name) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func (b crewTeamLocal) importSelectedSkills(team, local []string) []string {
+	out := []string{}
+	for _, name := range local {
+		if b.remoteRel("skills/"+name) == "" {
+			out = append(out, name)
+		}
+	}
+	for _, name := range team {
+		if disk := b.diskRel("skills/" + name); disk != "" {
+			out = append(out, strings.TrimPrefix(disk, "skills/"))
+		} else {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+// committedTeamInstructions reads TEAM_INSTRUCTIONS.md from the Team's own store on this server, the version the
+// commit admitted (only the owner's), never a working folder: web members share a server Crew's folder, so a file
+// written there directly must not reach any prompt (#3041 review). found=false when the Team has none or is off.
+func committedTeamInstructions(project string) (text string, found bool) {
+	team, err := readCrewTeam(project)
+	if err != nil {
+		return "", false
+	}
+	if !team.On {
+		return "", false
+	}
+	root, err := crewTeamFilesRoot(team.ProjectID)
+	if err != nil {
+		return "", false
+	}
+	f, err := openCrewTeamFile(root, crewTeamInstructionsFile)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, 1<<20))
+	if err != nil {
+		return "", false
+	}
+	return string(raw), true
 }

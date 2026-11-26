@@ -18,18 +18,21 @@ import (
 )
 
 type namedAgentAttachment struct {
-	LastStartupDiagnosticID string    `json:"last_startup_diagnostic_id,omitempty"`
-	Repository              string    `json:"repository,omitempty"`
-	Branch                  string    `json:"branch,omitempty"`
-	Activity                string    `json:"activity,omitempty"`
-	ActivityAt              time.Time `json:"activity_at,omitempty"`
-	DeliveryContract        int       `json:"delivery_contract,omitempty"`
-	DeliveryRoute           string    `json:"delivery_route,omitempty"`
-	ID                      string    `json:"attachment_id"`
-	Provider                string    `json:"provider"`
-	SessionID               string    `json:"native_session_id"`
-	ConnectionID            string    `json:"connection_id"`
-	ClientBuild             string    `json:"client_build,omitempty"` // the helper build last reported by this exact connection
+	RuntimeInfo             *agentRuntimeInfo `json:"runtime_info,omitempty"`
+	DeviceID                string            `json:"device_id,omitempty"` // app chat identity, not an access grant
+	LastStartupDiagnosticID string            `json:"last_startup_diagnostic_id,omitempty"`
+	Repository              string            `json:"repository,omitempty"`
+	Branch                  string            `json:"branch,omitempty"`
+	Activity                string            `json:"activity,omitempty"`
+	ActivityAt              time.Time         `json:"activity_at,omitempty"`
+	DeliveryContract        int               `json:"delivery_contract,omitempty"`
+	DeliveryRoute           string            `json:"delivery_route,omitempty"`
+	ID                      string            `json:"attachment_id"`
+	Provider                string            `json:"provider"`
+	SessionID               string            `json:"native_session_id"`
+	ConnectionID            string            `json:"connection_id"`
+	ClientBuild             string            `json:"client_build,omitempty"` // the helper build last reported by this exact connection
+	ClientApp               string            `json:"client_app,omitempty"`   // "desktop" (Claude desktop app) or "terminal", reported by the chat's own hook (#3371)
 }
 
 // A guest-run product keeps the owner's storage namespace but its own actor.
@@ -58,8 +61,20 @@ func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Re
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	var args map[string]any
-	if json.NewDecoder(r.Body).Decode(&args) != nil || !slices.Contains([]string{"attach", "detach", "validate", "connection", "label", "inbox", "inspect", "startup_failure"}, externalArg(args, "action")) {
+	if json.NewDecoder(r.Body).Decode(&args) != nil || !slices.Contains([]string{"attach", "detach", "validate", "connection", "label", "inbox", "inspect", "startup_failure", "team_sync", "crew_join", "crew_leave", "terminal_status", "team_pane", "offline_copy_status"}, externalArg(args, "action")) {
 		externalError(w, 400, "invalid_arguments", "Choose attach or detach for this exact native session.")
+		return
+	}
+	if externalArg(args, "action") == "offline_copy_status" {
+		api.externalOfflineCopyStatus(w, r, args)
+		return
+	}
+	if a := externalArg(args, "action"); a == "terminal_status" || a == "team_pane" {
+		api.externalTerminalStatus(w, r, args)
+		return
+	}
+	if slices.Contains([]string{"crew_join", "crew_leave", "team_sync"}, externalArg(args, "action")) {
+		api.externalTeamTerminalSync(w, r, args)
 		return
 	}
 	if externalArg(args, "action") == "connection" {
@@ -79,6 +94,10 @@ func (api *StreamingAPI) handleAgentAttachment(w http.ResponseWriter, r *http.Re
 		return
 	}
 	api.externalAgentAttachment(w, r, args)
+	if externalArg(args, "action") == "attach" {
+		// A Team joined while no agent was online gets its setup request now (crew_team_join_setup.go).
+		go api.crewTeamJoinSetupPending(context.WithoutCancel(r.Context()), GetUserFromContext(r.Context()))
+	}
 }
 
 // A closed generation wakes all listeners; they recheck the store and current
@@ -106,12 +125,19 @@ func namedAgentPresence(a namedMessageAgent) string {
 		return "Offline; messages wait"
 	case "unknown":
 		return "Connected; delivery unknown"
+	case "on_request":
+		return "Runs when called"
 	default:
 		return "Checks inbox"
 	}
 }
 
 func namedAgentOnline(a namedMessageAgent) bool {
+	// Hosted availability is not live presence. Only the exact owner view
+	// supplies that signal; idle named chats remain callable on request.
+	if a.Hosted != nil {
+		return hostedAgentViewed(a)
+	}
 	agentLiveEvents.Lock()
 	defer agentLiveEvents.Unlock()
 	stream := agentLiveEvents.online[a.ID]
@@ -119,8 +145,13 @@ func namedAgentOnline(a namedMessageAgent) bool {
 }
 
 // Discovery expires; the address, publication and stored messages do not.
-// Hosted product chats are projected separately and do not use this directory.
+// Hosted chats use the same named identity; their current binding is rechecked at delivery.
 func namedAgentDiscoverable(a namedMessageAgent, now time.Time) bool {
+	// A current tab remains discoverable while its Mac is offline; Working/Idle
+	// and socket freshness do not remove the person's existing chat.
+	if appAgentChatOpen(a) {
+		return true
+	}
 	if namedAgentOnline(a) {
 		return true
 	}
@@ -180,7 +211,13 @@ func recordNamedAgentActivity(ctx context.Context, agentID, attachmentID string,
 
 func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	claims := GetUserFromContext(r.Context())
-	if !namedAgentOperationAllowed(claims, true) || claims.AccessToken == nil {
+	connectionID := ""
+	if claims != nil && claims.AccessToken != nil {
+		connectionID = claims.AccessToken.ID
+	} else if externalArg(args, "action") == "ack" {
+		connectionID, _ = appAgentLoginID(claims)
+	}
+	if !namedAgentOperationAllowed(claims, true) || connectionID == "" {
 		externalError(w, 403, "insufficient_scope", "An approved agent connection is required.")
 		return
 	}
@@ -228,7 +265,13 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		return
 	}
 	a := &s.Agents[index]
+	activityChanged := false
+	if claims.AccessToken == nil && (a.Attachment == nil || a.Attachment.DeliveryRoute != appAgentDeliveryRoute) {
+		externalError(w, 403, "attachment_refused", "This login does not own an app attachment.")
+		return
+	}
 	ackDelivery, previousAttachment := "", ""
+	ackKind, ackWoke := "", false
 	receiptUnchanged := false
 	var startupDiagnostic *agentworksclient.StartupDiagnostic
 	switch externalArg(args, "action") {
@@ -254,9 +297,9 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		if a.Attachment != nil {
 			previousAttachment = a.Attachment.ID
 		}
-		a.Attachment = &namedAgentAttachment{DeliveryContract: 2, ID: "attach-" + uuid.NewString(), Provider: provider, SessionID: session, ConnectionID: claims.AccessToken.ID, ClientBuild: cleanClientBuild(externalArg(args, "client_build"))}
+		a.Attachment = &namedAgentAttachment{DeliveryContract: 2, ID: "attach-" + uuid.NewString(), Provider: provider, SessionID: session, ConnectionID: connectionID, ClientBuild: cleanClientBuild(externalArg(args, "client_build"))}
 	case "startup_failure":
-		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != claims.AccessToken.ID {
+		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != connectionID {
 			externalError(w, 409, "attachment_changed", "The exact attachment is no longer current.")
 			return
 		}
@@ -274,7 +317,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			startupDiagnostic = &d
 		}
 	case "label":
-		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != claims.AccessToken.ID {
+		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != connectionID {
 			externalError(w, 409, "attachment_changed", "The exact attachment is no longer current.")
 			return
 		}
@@ -289,6 +332,9 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		}
 		if build := cleanClientBuild(externalArg(args, "client_build")); build != "" {
 			a.Attachment.ClientBuild = build
+		}
+		if app := externalArg(args, "client_app"); app == "desktop" || app == "terminal" {
+			a.Attachment.ClientApp = app
 		}
 		a.Attachment.Repository = cleanAgentLabel(externalArg(args, "repository"))
 		a.Attachment.Branch = cleanAgentLabel(externalArg(args, "branch"))
@@ -306,10 +352,13 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				return
 			}
 		}
-		a.Attachment.Activity, a.Attachment.ActivityAt = activity, at
+		// A slow label refresh must not revive a turn after a newer Stop hook.
+		if !at.Before(a.Attachment.ActivityAt) {
+			activityChanged = a.Attachment.Activity != activity || activity == "busy" && time.Since(a.Attachment.ActivityAt) >= 10*time.Minute
+			a.Attachment.Activity, a.Attachment.ActivityAt = activity, at
+		}
 		if agentBridgeOnlyDeployment() {
-			a.Attachment.Repository, a.Attachment.Branch, a.Attachment.Activity = "", "", ""
-			a.Attachment.ActivityAt = time.Time{}
+			a.Attachment.Repository, a.Attachment.Branch = "", ""
 		}
 		a.Label = cleanAgentLabel(externalArg(args, "label"))
 	case "detach":
@@ -319,16 +368,22 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		}
 		a.Attachment = nil
 	case "ack":
-		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != claims.AccessToken.ID {
+		if a.Attachment == nil || a.Attachment.ID != externalArg(args, "attachment_id") || a.Attachment.ConnectionID != connectionID {
 			externalError(w, 409, "attachment_changed", "The exact attachment is no longer current.")
 			return
 		}
 		delivery, transport := externalArg(args, "delivery"), externalArg(args, "transport")
-		if delivery != "delivered" || !slices.Contains([]string{"codex_queue", "codex_desktop", "claude_channel", "claude_session", "claude_hook", "codex_hook", "cursor_hook", "muse_hook", "agy_hook", "pi_hook", "pi_extension", "mailbox"}, transport) {
+		// "queued": Codex accepted the message into the chat's own queue, but the chat has
+		// not started a turn with it yet; its UserPromptSubmit hook sends "delivered" then.
+		if (delivery != "delivered" && !(transport == appAgentDeliveryRoute && delivery == "failed") && !(transport == "codex_queue" && delivery == agentDeliveryQueued)) || !slices.Contains([]string{"codex_queue", "codex_desktop", "claude_channel", "claude_session", "claude_hook", "codex_hook", "cursor_hook", "muse_hook", "agy_hook", "pi_hook", "pi_extension", "mailbox", appAgentDeliveryRoute}, transport) {
 			externalError(w, 400, "invalid_arguments", "Use delivery=delivered when this chat has received the message.")
 			return
 		}
 
+		if (transport == appAgentDeliveryRoute) != (a.Attachment.DeliveryRoute == appAgentDeliveryRoute) {
+			externalError(w, 400, "invalid_arguments", "Receipt transport does not match the attachment.")
+			return
+		}
 		found := false
 		for ci := range s.Conversations {
 			c := &s.Conversations[ci]
@@ -342,7 +397,7 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				// attached agent. Recheck current authority instead of requiring an
 				// earlier SSE offer, which may belong to its previous lease.
 				if !serverAuthoredKind(m.Kind) {
-					if api.recheckAgentMessageAdmission(r.Context(), *c, *m) != nil || api.externalAuthorizeMessagePeer(r.Context(), claims, c.Endpoints[m.From], false) != nil {
+					if api.recheckAgentMessageAdmission(r.Context(), *c, *m) != nil || api.externalAuthorizeConversationPeer(r.Context(), claims, *c, 1-m.From, false) != nil {
 						externalError(w, 409, "receipt_refused", "Incoming message is no longer authorized.")
 						return
 					}
@@ -358,9 +413,16 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 				}
 				found = true
 				ackDelivery = delivery
-				receiptUnchanged = !m.DeliveredAt.IsZero()
+				ackKind, ackWoke = m.MessageType, m.MessageType == "request" || m.TaskReplyTo != "" && m.ReplyStatus != "in_progress"
+				receiptUnchanged = !m.DeliveredAt.IsZero() || m.Delivery == "failed"
+				if receiptUnchanged {
+					ackDelivery = m.Delivery
+				}
 				if !receiptUnchanged {
 					m.Delivery = delivery
+					if delivery == "failed" {
+						m.Error = "The receiving chat refused this message. Check its access and send again."
+					}
 					stampReceipt(m, delivery, time.Now().UTC())
 					m.LiveAttachment = a.Attachment.ID
 					m.LiveTransport = transport
@@ -379,10 +441,14 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 			return
 		}
 	}
+	if activityChanged {
+		// The worker reads the saved state after this handler releases the mailbox lock.
+		go crewTeamTerminalActivityChanged(context.WithoutCancel(r.Context()), *a)
+	}
 	if d := startupDiagnostic; d != nil {
 		log.Printf("[AGENT-STARTUP] id=%s account=%s attachment=%s at=%s version=%s build=%s os=%s arch=%s cause=%s executable_sha256=%s", d.ID, a.UserID, a.Attachment.ID, d.At.Format(time.RFC3339Nano), d.Version, d.Build, d.OS, d.Arch, d.Cause, d.ExecutableSHA256)
 	}
-	out := map[string]any{"agent_id": a.ID, "agent_name": a.Name, "label": agentLabel(*a), "purpose": a.Purpose, "status": externalArg(args, "action") + "ed"}
+	out := map[string]any{"agent_id": a.ID, "agent_name": a.Name, "label": agentLabel(*a), "purpose": a.Purpose, "examples": a.Examples, "status": externalArg(args, "action") + "ed"}
 	if externalArg(args, "action") == "attach" {
 		log.Printf("[AGENT-ATTACH] agent=%s account=%s previous=%s attachment=%s provider=%s session=%s", a.ID, a.UserID, previousAttachment, a.Attachment.ID, a.Attachment.Provider, a.Attachment.SessionID)
 	}
@@ -393,6 +459,9 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 		out["delivery"] = ackDelivery
 		out["message_id"] = externalArg(args, "message_id")
 		log.Printf("[AGENT-MESSAGE-ACK] message=%s agent=%s attachment=%s delivery=%s transport=%s repeated=%t", externalArg(args, "message_id"), a.Name, a.Attachment.ID, ackDelivery, externalArg(args, "transport"), receiptUnchanged)
+		if ackDelivery == "delivered" && !receiptUnchanged {
+			log.Printf("[AGENT-MESSAGE] action=delivered kind=%s message=%s agent=%s woke=%t", ackKind, externalArg(args, "message_id"), a.ID, ackWoke)
+		}
 	}
 	if a.Attachment != nil {
 		out["attachment_id"] = a.Attachment.ID
@@ -407,6 +476,13 @@ func (api *StreamingAPI) externalAgentAttachment(w http.ResponseWriter, r *http.
 var errAgentLoginUnavailable = errors.New("connection revoked")
 
 func currentAgentAttachment(ctx context.Context, claims *UserClaims, name, id string) (namedMessageAgent, *UserClaims, error) {
+	if connection, err := appAgentLoginID(claims); err == nil {
+		a, err := namedAgentForClaims(ctx, claims, name)
+		if err != nil || a.Attachment == nil || a.Attachment.DeliveryRoute != appAgentDeliveryRoute || a.Attachment.ID != id || a.Attachment.ConnectionID != connection {
+			return namedMessageAgent{}, nil, fmt.Errorf("attachment changed")
+		}
+		return a, claims, nil
+	}
 	if claims == nil || claims.AccessToken == nil {
 		return namedMessageAgent{}, nil, fmt.Errorf("agent connection required")
 	}
@@ -485,9 +561,10 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 	defer heartbeat.Stop()
 	sentPings := map[string]bool{}
 	lastHint := 0
+	lastQueueHint := ""
 	for {
 		changed := agentLiveChanged()
-		_, _, e := currentAgentAttachment(r.Context(), claims, name, id)
+		current, _, e := currentAgentAttachment(r.Context(), claims, name, id)
 		if e != nil {
 			kind := "closed"
 			if errors.Is(e, errAgentLoginUnavailable) {
@@ -496,6 +573,10 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 			_ = write(map[string]any{"type": kind})
 			return
 		}
+		if current.Attachment != nil && a.Attachment != nil && current.Attachment.ActivityAt.After(a.Attachment.ActivityAt) {
+			lastHint = 0
+		}
+		a = current
 		store, e := readAgentMessageSnapshot(r.Context())
 		if e != nil {
 			return
@@ -506,6 +587,7 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 		}
 		pings := []personPing{}
 		latest := 0
+		queueReady := ""
 		now := time.Now().UTC()
 		for _, conversation := range store.Conversations {
 			for _, message := range conversation.Messages {
@@ -520,7 +602,12 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 					}
 					continue
 				}
-				latest = max(latest, message.AgentSequence)
+				if nativeQueueRequestReady(a, store.Conversations, message) {
+					latest = max(latest, message.AgentSequence)
+					if message.QueuedRequest {
+						queueReady = message.ID
+					}
+				}
 			}
 		}
 		// The wake signal contains no peer body or sender details. The inbox
@@ -536,12 +623,16 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 			}
 			sentPings[message.ID] = true
 		}
-		if latest > lastHint {
-			if write(map[string]any{"type": "inbox_changed", "attachment_id": id, "sequence": latest}) != nil {
+		if latest > lastHint || queueReady != "" && queueReady != lastQueueHint {
+			if write(map[string]any{"type": "inbox_changed", "attachment_id": id, "sequence": latest, "queue_ready": queueReady != ""}) != nil {
 				return
 			}
 			lastHint = latest
+			lastQueueHint = queueReady
 			log.Printf("[AGENT-STREAM] inbox_changed agent=%s attachment=%s sequence=%d", a.ID, id, latest)
+		}
+		if queueReady == "" {
+			lastQueueHint = ""
 		}
 		select {
 		case <-r.Context().Done():
@@ -561,6 +652,9 @@ func (api *StreamingAPI) handleAgentEvents(w http.ResponseWriter, r *http.Reques
 func (api *StreamingAPI) validateAgentInboxMessages(w http.ResponseWriter, r *http.Request, args map[string]any) {
 	a, live, err := currentAgentAttachment(r.Context(), GetUserFromContext(r.Context()), externalArg(args, "agent_name"), externalArg(args, "attachment_id"))
 	if err != nil {
+		if transientAgentInboxFailure(w, r.Context(), err) {
+			return
+		}
 		externalError(w, 403, "attachment_refused", "Exact attachment unavailable or access denied.")
 		return
 	}
@@ -592,17 +686,28 @@ func (api *StreamingAPI) validateAgentInboxMessages(w http.ResponseWriter, r *ht
 					reasons[id] = "removed_from_inbox"
 					continue
 				}
-				src := c.Endpoints[m.From]
+				if !nativeQueueRequestReady(a, s.Conversations, m) {
+					reasons[id] = "queue_kind"
+					continue
+				}
 				if serverAuthoredKind(m.Kind) {
 					permitted = append(permitted, id)
 					inboxes[id] = c.ID
 					continue
 				}
-				if !s.shareSenderAllowed(c, m.From, live.UserID, time.Now().UTC()) {
+				if err := s.shareSenderAdmission(r.Context(), c, m.From, live.UserID, time.Now().UTC()); err != nil {
+					if transientAgentInboxFailure(w, r.Context(), err) {
+						return
+					}
+					log.Printf("[AGENT-INBOX] action=refused message=%s rule=share_sender class=%s", m.ID, agentAdmissionErrorClass(err))
 					reasons[id] = "share_check_failed"
 					continue
 				}
-				if api.externalAuthorizeMessagePeer(r.Context(), live, src, false) != nil {
+				if err := api.externalAuthorizeConversationPeer(r.Context(), live, c, 1-m.From, false); err != nil {
+					if transientAgentInboxFailure(w, r.Context(), err) {
+						return
+					}
+					log.Printf("[AGENT-INBOX] action=refused message=%s rule=receiver_peer_authorization class=%s", m.ID, agentAdmissionErrorClass(err))
 					reasons[id] = "sender_authorization_failed"
 					continue
 				}
@@ -610,7 +715,10 @@ func (api *StreamingAPI) validateAgentInboxMessages(w http.ResponseWriter, r *ht
 				// not the sending credential on an older submission. This map
 				// contains no body; a new send rechecks current inbox authority.
 				inboxes[id] = c.ID
-				if api.recheckAgentMessageAdmission(r.Context(), c, m) != nil {
+				if err := api.recheckAgentMessageAdmission(r.Context(), c, m); err != nil {
+					if transientAgentInboxFailure(w, r.Context(), err) {
+						return
+					}
 					reasons[id] = "admission_recheck_failed"
 					continue
 				}
@@ -633,6 +741,9 @@ func (api *StreamingAPI) validateAgentInboxMessages(w http.ResponseWriter, r *ht
 		}
 	}
 	if _, _, err = currentAgentAttachment(r.Context(), live, a.Name, a.Attachment.ID); err != nil {
+		if transientAgentInboxFailure(w, r.Context(), err) {
+			return
+		}
 		externalError(w, 403, "attachment_refused", "Attachment changed.")
 		return
 	}

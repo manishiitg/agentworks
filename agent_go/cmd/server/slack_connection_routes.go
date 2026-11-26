@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/gorilla/mux"
 
@@ -74,7 +73,7 @@ type SlackConnectionRequest struct {
 // SlackConnectionRoutes wires the connection registry API, mirroring the
 // Gmail connections routes.
 func SlackConnectionRoutes(router *mux.Router, api *StreamingAPI) {
-	r := router.PathPrefix("/api/human-feedback/slack/connections").Subrouter()
+	r := router.PathPrefix("/human-feedback/slack/connections").Subrouter()
 	r.HandleFunc("", listSlackConnectionsHandler(api)).Methods("GET")
 	r.HandleFunc("", createSlackConnectionHandler(api)).Methods("POST", "OPTIONS")
 	// Before "/{id}" so "/mine" is not read as a connection ID.
@@ -567,30 +566,14 @@ func updateProductSlackConnectionID(ctx context.Context, profileID, workspacePat
 	if err := validateSlackConnectionSelection(connID); err != nil {
 		return err
 	}
-	raw, manifestPath, err := ensureProjectRuntimeManifest(ctx, profileID, workspacePath)
-	if err != nil {
-		return err
-	}
-	var manifest map[string]interface{}
-	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return fmt.Errorf("decode product manifest: %w", err)
-	}
-	capabilities, _ := manifest["capabilities"].(map[string]interface{})
-	if capabilities == nil {
-		capabilities = map[string]interface{}{}
-	}
-	if connID == "" {
-		delete(capabilities, "slack_connection_id")
-	} else {
-		capabilities["slack_connection_id"] = connID
-	}
-	manifest["capabilities"] = capabilities
-	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
-	encoded, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return err
-	}
-	return writeFileToWorkspace(ctx, manifestPath, string(encoded)+"\n")
+	return mutateProjectRuntimeManifest(ctx, profileID, workspacePath, func(_ map[string]any, capabilities map[string]any) (bool, error) {
+		if connID == "" {
+			delete(capabilities, "slack_connection_id")
+		} else {
+			capabilities["slack_connection_id"] = connID
+		}
+		return true, nil
+	})
 }
 
 // slackConnectionWorkflowReference names a workflow (label preferred) that
@@ -874,7 +857,7 @@ func registerSlackBotConnector(botManager *services.BotConversationManager, svc 
 // saves; the shared-bot and route conditions are handled by the Slack
 // config save and startup as before.
 func registerSlackBotConnectorForOwnedConnections(api *StreamingAPI, svc *services.SlackService) {
-	if api == nil || !slackHasOwnedEnabledConnection(svc) {
+	if api == nil || IsLocalMode() || !slackHasOwnedEnabledConnection(svc) {
 		return
 	}
 	if registerSlackBotConnector(api.botManager, svc) {
@@ -891,6 +874,9 @@ func registerSlackBotConnectorForOwnedConnections(api *StreamingAPI, svc *servic
 // the platform switch, any owner-saved channel route, or any enabled
 // workflow- or crew-owned connection.
 func slackBotConnectorWantedAtStartup(botConfig *chathistory.BotConnectorConfig, svc *services.SlackService) bool {
+	if IsLocalMode() {
+		return false
+	}
 	if botConfig != nil && (botConfig.BotMode || services.SlackBotConfigHasRoutes(botConfig)) {
 		return true
 	}

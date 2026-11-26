@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workflowtypes"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,20 +15,28 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
-func extensionBinding(ctx context.Context) *browserrelay.Binding {
+// extensionBinding finds the project browser this call uses: the one named in the call, else the project's main one.
+// The scope comes from the trusted chat or workflow session, never from the model.
+func extensionBinding(ctx context.Context, name string) (*browserrelay.Binding, string, error) {
 	user := common.SessionUserIDFromContext(ctx)
 	if user == "" {
-		return nil
+		return nil, "", nil
 	}
 	for _, key := range []interface{}{common.ChatSessionIDKey, common.WorkflowSessionIDKey} {
 		id, _ := ctx.Value(key).(string)
 		if scope := common.SandboxBrowserSession(id); scope != "" {
-			if b := browserrelay.Default.Lookup(user, scope); b != nil && (b.Profile() == "code" || b.Profile() == "work" || b.Profile() == "workflow") {
-				return b
+			main := browserrelay.Default.Lookup(user, scope)
+			if main == nil || (main.Profile() != "work" && main.Profile() != "workflow") {
+				continue
 			}
+			if strings.TrimSpace(name) == "" {
+				return main, scope, nil
+			}
+			b, err := browserrelay.Default.LookupNamed(user, scope, name)
+			return b, scope, err
 		}
 	}
-	return nil
+	return nil, "", nil
 }
 
 func browserExecuteOptions(ctx context.Context, agentSessionID, workflowSessionID string, timeout time.Duration) (*ExecuteOptions, *common.SessionShellConfig, error) {
@@ -93,6 +103,31 @@ func browserExecuteOptions(ctx context.Context, agentSessionID, workflowSessionI
 			BlockedWritePaths: browserContextGuardPaths(ctx, common.FolderGuardBlockedWritePathsKey),
 		}
 	}
+	if folderGuard != nil {
+		usable := func(paths []string) []string {
+			out := make([]string, 0, len(paths))
+			for _, path := range paths {
+				if workflowtypes.InternalAttachmentPath(path) {
+					continue
+				}
+				if filepath.IsAbs(path) {
+					if _, err := os.Stat(path); err != nil {
+						continue
+					}
+				}
+				out = append(out, path)
+			}
+			return out
+		}
+		folderGuard.WritePaths = usable(folderGuard.WritePaths)
+		folderGuard.ReadPaths = usable(folderGuard.ReadPaths)
+		if sessionCfg != nil && sessionCfg.BrowserScratchPath != "" {
+			if info, err := os.Stat(sessionCfg.BrowserScratchPath); err == nil && info.IsDir() {
+				folderGuard.WritePaths = append(folderGuard.WritePaths, sessionCfg.BrowserScratchPath)
+				folderGuard.ReadPaths = append(folderGuard.ReadPaths, sessionCfg.BrowserScratchPath)
+			}
+		}
+	}
 	if folderGuard != nil && len(folderGuard.ReadPaths) == 0 && len(folderGuard.WritePaths) == 0 {
 		return nil, nil, fmt.Errorf("ACCESS DENIED: agent_browser has no granted workspace paths")
 	}
@@ -114,12 +149,12 @@ func browserExecuteOptions(ctx context.Context, agentSessionID, workflowSessionI
 	return &ExecuteOptions{UserID: common.SessionUserIDFromContext(ctx), Timeout: timeout, FolderGuard: folderGuard, WorkingDirectory: workingDir}, sessionCfg, nil
 }
 
-func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]interface{}, b *browserrelay.Binding) (string, error) {
+func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]interface{}, b *browserrelay.Binding, scope string) (string, error) {
 	command, _ := args["command"].(string)
 	command = strings.ToLower(strings.TrimSpace(command))
 	if command == "status" {
 		status := b.Status()
-		result := map[string]interface{}{"configured_mode": "extension", "effective_mode": "extension", "connected": status.Connected, "shared_tabs": status.Tabs, "project_shared_tabs": status.Tabs, "instruction": "Chrome extension selected. Create project tabs with open or tab new; manual sharing of existing tabs is optional. Call agent_browser with ordinary commands and no --cdp. tab lists only available shared tabs; each Code chat owns its own tabs and references, while workflow steps and delegates retain their parent browser. project_shared_tabs counts the whole connection and may include another Code chat's tabs. Reads, navigation and tab selection stay in the background; clicks and typing bring their own tab forward (and restore a minimized window) automatically. eval document.visibilityState shows whether the selected tab is visible; if input has no effect while it reads hidden, ask the person to bring Chrome forward. Set active=true only when the person should see a tab. Console/errors are scoped to the selected shared tab. Captures use default_capture_directory when provided; a filename without a folder goes there. Explicit project-relative paths stay in the granted workspace. /tmp is not an output destination. Video recording captures the selected shared tab as-is: record start <workspace-path.webm|.mp4> [url] [--fps 1-60], then record stop publishes that file. Stop before selecting or creating another tab; no microphone or desktop audio is recorded. Files/download transfer and teaching are unavailable. If disconnected, ask the user to reconnect Chrome; do not use another browser."}
+		result := map[string]interface{}{"browsers": browserrelay.Default.CrewBrowsers(common.SessionUserIDFromContext(ctx), scope), "browsers_note": "This project's browsers, the main one first. Each is a separate Chrome or Chrome profile, often signed in to a different account. Pass browser=<name> to use another one; without it the main one is used. connected and shared_tabs below describe the browser this call used.", "configured_mode": "extension", "effective_mode": "extension", "connected": status.Connected, "shared_tabs": status.Tabs, "project_shared_tabs": status.Tabs, "instruction": "Chrome extension selected. Create project tabs with open or tab new; manual sharing of existing tabs is optional. Call agent_browser with ordinary commands and no --cdp. tab lists only available shared tabs; each project chat owns its own tabs and references, while workflow steps and delegates retain their parent browser. project_shared_tabs counts the whole connection and may include another project chat's tabs. Reads, navigation and tab selection stay in the background; clicks and typing bring their own tab forward (and restore a minimized window) automatically. eval document.visibilityState shows whether the selected tab is visible; if input has no effect while it reads hidden, ask the person to bring Chrome forward. Set active=true only when the person should see a tab. Console/errors are scoped to the selected shared tab. Captures use default_capture_directory when provided; a filename without a folder goes there. Explicit project-relative paths stay in the granted workspace. /tmp is not an output destination. Video recording captures the selected shared tab as-is: record start <workspace-path.webm|.mp4> [url] [--fps 1-60], then record stop publishes that file. Stop before selecting or creating another tab; no microphone or desktop audio is recorded. Files/download transfer and teaching are unavailable. If disconnected, ask the user to reconnect Chrome; do not use another browser."}
 		agent, _ := ctx.Value(common.ChatSessionIDKey).(string)
 		workflow, _ := ctx.Value(common.WorkflowSessionIDKey).(string)
 		owner := workflow
@@ -131,6 +166,10 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 		if opts, _, err := browserExecuteOptions(ctx, agent, workflow, time.Second); err == nil && opts.FolderGuard != nil {
 			result["screenshot_write_paths"] = opts.FolderGuard.WritePaths
 			result["working_directory"] = opts.WorkingDirectory
+			result["screenshot_folders_note"] = "Current project and attached work folders only; missing and platform-internal attachments are ignored. The session temporary folder lasts for this turn."
+			if cfg := common.GetSessionShellConfig(agent); cfg != nil {
+				result["session_temporary_folder"] = cfg.BrowserScratchPath
+			}
 			result["default_capture_directory"] = captureDownloadsForOptions(opts)
 		}
 		data, _ := json.Marshal(result)
@@ -226,6 +265,9 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	createdFirstTab := false
 	firstTabLabel := ""
 	if client.Status().Tabs == 0 {
+		if tab != "" {
+			return "", missingExtensionTabReference(tab, nil)
+		}
 		if command == "tab" && (len(values) == 0 || (len(values) == 1 && values[0] == "list")) {
 			return `{"success":true,"data":{"tabs":[]}}`, nil
 		}
@@ -287,6 +329,22 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	tabs, listErr := parseCDPTabs(listed)
 	if listErr != nil {
 		return "", fmt.Errorf("Chrome tab list could not be verified")
+	}
+	requestedTab := tab
+	if command == "tab" && len(values) == 1 && values[0] != "list" && values[0] != "new" && values[0] != "close" {
+		requestedTab = values[0]
+	}
+	if requestedTab != "" {
+		found := false
+		for _, current := range tabs {
+			if current.TabID == requestedTab || current.TargetID == requestedTab || current.Label == requestedTab {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return "", missingExtensionTabReference(requestedTab, tabs)
+		}
 	}
 	var selected cdpTabInfo
 	for _, current := range tabs {
@@ -421,4 +479,16 @@ func extensionCaptureArguments(command string, values []string, downloads string
 		return "", nil, err
 	}
 	return tab, captureArgsWithDefaultDirectory(command, values, downloads), nil
+}
+
+// The list was obtained through this conversation's private relay client, not
+// from all tabs in Chrome. Never recover by URL/title or retry an action on a
+// different tab: missing CLI aliases are not proof that a real tab was closed.
+func missingExtensionTabReference(tab string, tabs []cdpTabInfo) error {
+	available := make([]map[string]string, 0, len(tabs))
+	for _, current := range tabs {
+		available = append(available, map[string]string{"tabId": current.TabID, "targetId": current.TargetID})
+	}
+	data, _ := json.Marshal(available)
+	return fmt.Errorf("CHROME_TAB_REFERENCE_NOT_FOUND: tab reference %q is not available in this chat's current browser connection. This does not prove the Chrome tab was closed. Current tabs for this chat: %s. Run browser tab list, then use an explicitly listed tab reference; do not open a duplicate or select by URL/title", tab, data)
 }

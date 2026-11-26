@@ -54,7 +54,7 @@ func (c *conditionService) productSource(ctx context.Context, owner, profile, pr
 	switch profile {
 	case "work":
 		if c.s.registry == nil {
-			return productScheduleJob{}, errors.New("Crew runtime unavailable")
+			return productScheduleJob{}, errors.New("Project runtime unavailable")
 		}
 		p, err := c.s.registry.Resolve("work", 0, owner)
 		if err != nil {
@@ -90,7 +90,7 @@ func (c *conditionService) productSource(ctx context.Context, owner, profile, pr
 			return productScheduleJob{}, errors.New("watcher source is unavailable")
 		}
 	default:
-		return productScheduleJob{}, errors.New("watchers are available in Code, Crew, workflows and Flows")
+		return productScheduleJob{}, errors.New("watchers are available in projects, workflows and Flows")
 	}
 	return conditionCallerJob(owner, conditionCallerDefinition{Source: source}, productScheduleUserState{}), nil
 }
@@ -204,7 +204,8 @@ func (c *conditionService) callersForProduct(ctx context.Context, source product
 		}
 		for _, job := range jobs {
 			cfg := job.Schedule.Condition
-			if cfg == nil || cfg.Target.Kind == "agent" || !workspacePathsMatchForUser(job.UserID, cfg.Target.Name, source.WatcherSource.Path) {
+			// Agent and feed Watchers are the person's own; only callers of shared entry points are listed.
+			if cfg == nil || cfg.Target.Kind == "agent" || cfg.Target.Kind == "feed" || !workspacePathsMatchForUser(job.UserID, cfg.Target.Name, source.WatcherSource.Path) {
 				continue
 			}
 			entry := map[string]interface{}{"kind": cfg.Target.Kind, "name": cfg.Target.Name, "function": cfg.Target.Function, "trigger_id": cfg.Target.TriggerID, "route_selections": cfg.Target.Routes}
@@ -273,7 +274,7 @@ func (c *conditionService) callerScript(ctx context.Context, job productSchedule
 	if job.WatcherSource != nil {
 		// The server chooses the path: a script cannot replace another
 		// watcher's source or read/write the associated product's files.
-		cfg.Script = path.Join("code/triggers", job.Schedule.ID+".py")
+		cfg.Script = path.Join(conditiontrigger.ScriptFolder, job.Schedule.ID+".py")
 		if content, ok := trigger["script_content"]; ok {
 			text, ok := content.(string)
 			if !ok || strings.TrimSpace(text) == "" || len(text) > conditiontrigger.MaxOutput {
@@ -284,7 +285,7 @@ func (c *conditionService) callerScript(ctx context.Context, job productSchedule
 	}
 	if job.WatcherSource == nil {
 		if _, ok := trigger["script_content"]; ok {
-			return "", errors.New("Code watchers use a saved Python file under code/triggers")
+			return "", errors.New("A project chat's own watchers use a saved Python file under watchers/")
 		}
 	}
 	raw, found, err := c.s.readFile(ctx, path.Join(conditionScriptRoot(job), cfg.Script))

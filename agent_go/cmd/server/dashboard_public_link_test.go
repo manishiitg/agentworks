@@ -43,7 +43,7 @@ func TestDashboardPublicLinkFrozenCopy(t *testing.T) {
 		globalSecrets, managedGlobals = oldGlobals, oldManaged
 		managedGlobalsMu.Unlock()
 	})
-	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["CREW_TOKEN"]}}`)
+	f.write(t, externalCommandCrewSettings+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["CREW_TOKEN"]}}`)
 
 	owner := &UserClaims{UserID: "owner", Username: "owner"}
 	ctx := context.WithValue(context.Background(), UserContextKey, owner)
@@ -67,9 +67,9 @@ func TestDashboardPublicLinkFrozenCopy(t *testing.T) {
 
 	change := func(user, mode string) *httptest.ResponseRecorder {
 		t.Helper()
-		body, _ := json.Marshal(map[string]string{"dashboard_id": "sales", "mode": mode})
+		body, _ := json.Marshal(map[string]string{"dashboard_id": "sales", "action": "public_link", "mode": mode})
 		w := httptest.NewRecorder()
-		f.api.handleCrewTeamDashboardPublicLink(w, adminRequest(http.MethodPost, "/api/crew-teams/team/dashboards/public-link", string(body), &UserClaims{UserID: user, Username: user}, map[string]string{"project": "team"}))
+		f.api.handleCrewTeamDashboardAction(w, adminRequest(http.MethodPost, "/api/crew-teams/team/dashboards/action", string(body), &UserClaims{UserID: user, Username: user}, map[string]string{"project": "team"}))
 		return w
 	}
 	direct := func(user string) *httptest.ResponseRecorder {
@@ -90,7 +90,7 @@ func TestDashboardPublicLinkFrozenCopy(t *testing.T) {
 	}
 
 	// A Team member builds in this Crew, so this refusal is the main-owner rule itself, not missing access.
-	if w := direct("member"); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "Only this Crew's owner") {
+	if w := direct("member"); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "Only this project's owner") {
 		t.Fatalf("Team member: %d %s", w.Code, w.Body.String())
 	}
 	if w := change("member", "on"); w.Code == http.StatusOK {
@@ -111,6 +111,14 @@ func TestDashboardPublicLinkFrozenCopy(t *testing.T) {
 	code := strings.TrimPrefix(link.URL, "https://app.example.com/p/")
 	if len(code) != 22 || !validDashboardPublicCode(code) { // the gateway admits exactly this shape
 		t.Fatalf("code shape: %q", code)
+	}
+	// The Artifacts page names each page by its id (its menu, Copy link and Delete use it) and shows the owner's
+	// public link; the list once came back with every id empty, so one click opened every row's menu.
+	tabW := httptest.NewRecorder()
+	f.api.handleCrewTeamDashboardsTab(tabW, adminRequest(http.MethodGet, "/api/crew-teams/team/dashboards-tab", "", owner, map[string]string{"project": "team"}))
+	var tab crewDashboardsTab
+	if tabW.Code != http.StatusOK || json.Unmarshal(tabW.Body.Bytes(), &tab) != nil || len(tab.Items) != 1 || tab.Items[0].ID != "sales" || tab.Items[0].When == "" || tab.Items[0].PublicLink == nil || !tab.Items[0].PublicLink.On {
+		t.Fatalf("Artifacts page: %d %s", tabW.Code, tabW.Body.String())
 	}
 	page := open("/p/" + code)
 	csp := page.Header().Get("Content-Security-Policy")
@@ -157,14 +165,14 @@ func TestDashboardPublicLinkFrozenCopy(t *testing.T) {
 
 	// Fails closed: secrets that can't be read clear nothing, and the last good copy stays.
 	shown = "total-99"
-	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["CREW_TOKEN","NOT_GRANTED"]}}`)
+	f.write(t, externalCommandCrewSettings+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["CREW_TOKEN","NOT_GRANTED"]}}`)
 	if w := change("owner", "update"); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "secrets_unavailable") {
 		t.Fatalf("unreadable secrets: %d %s", w.Code, w.Body.String())
 	}
 	if body := open("/p/" + code).Body.String(); strings.Contains(body, "total-99") || !strings.Contains(body, "total-84") {
 		t.Fatal("an unchecked page went public")
 	}
-	f.write(t, externalCommandCrewState+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["CREW_TOKEN"]}}`)
+	f.write(t, externalCommandCrewSettings+"/workflow.json", `{"id":"team","label":"Test Team","created_by":"owner","capabilities":{"selected_global_secret_names":["CREW_TOKEN"]}}`)
 
 	if w := change("owner", "off"); w.Code != 200 {
 		t.Fatalf("off: %d %s", w.Code, w.Body.String())

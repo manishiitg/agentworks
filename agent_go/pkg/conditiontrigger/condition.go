@@ -9,12 +9,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/keyedlock"
 )
+
+// ScriptFolder holds Watcher check scripts, in the project's .agentworks/ (#4009).
+const ScriptFolder = "watchers"
 
 const (
 	MaxOutput      = 64 * 1024
@@ -52,6 +59,56 @@ type Target struct {
 	Arguments   map[string]interface{} `json:"arguments,omitempty"`
 	Routes      map[string]string      `json:"route_selections,omitempty"`
 	Groups      []string               `json:"group_names,omitempty"`
+	// Feed targets (#3476): App picks the row's icon in the person's Project
+	// activity; Link is where opening the row goes (the channel, folder or board).
+	App  string `json:"app,omitempty"`
+	Link string `json:"link,omitempty"`
+	// Steps (#3625): the person's own steps an item of this row goes through,
+	// first to last; none means FeedDefaultSteps. Rules says in plain words
+	// who moves an item to which step; agents follow it, the server does not.
+	Steps []string `json:"steps,omitempty"`
+	Rules string   `json:"rules,omitempty"`
+}
+
+// FeedApps are the kinds of Project activity row a feed Watcher can show.
+var FeedApps = []string{"slack", "mail", "drive", "tasks", "other"}
+
+// FeedDefaultSteps are the steps of a feed row whose person wrote none.
+var FeedDefaultSteps = []string{"New", "Working", "Done"}
+
+// FeedSteps are the row's steps, first to last.
+func (t Target) FeedSteps() []string {
+	if len(t.Steps) == 0 {
+		return FeedDefaultSteps
+	}
+	return t.Steps
+}
+
+func validFeedSteps(steps []string, rules string) error {
+	if len(steps) == 0 {
+		if len(rules) > 2000 {
+			return errors.New("feed rules must be at most 2000 characters")
+		}
+		return nil
+	}
+	if len(steps) < 2 || len(steps) > 8 {
+		return errors.New("a feed row needs 2 to 8 steps, first to last")
+	}
+	seen := map[string]bool{}
+	for _, step := range steps {
+		key := strings.ToLower(strings.TrimSpace(step))
+		if key == "" || step != strings.TrimSpace(step) || len([]rune(step)) > 24 {
+			return errors.New("each feed step is one short name of at most 24 characters")
+		}
+		if seen[key] {
+			return fmt.Errorf("feed step %q is listed twice", step)
+		}
+		seen[key] = true
+	}
+	if len(rules) > 2000 {
+		return errors.New("feed rules must be at most 2000 characters")
+	}
+	return nil
 }
 
 // Old selectors must refuse even when explicitly null; omission means defaults.
@@ -75,16 +132,17 @@ func (t *Target) UnmarshalJSON(data []byte) error {
 // Payload becomes named function arguments, or event data for messages/triggers.
 // Target selection and constant arguments are never taken from script output.
 type GitHubPR struct {
-	ChatKey    string   `json:"chat_key,omitempty"`
-	SessionID  string   `json:"session_id,omitempty"`
-	Repository string   `json:"repository"`
-	Number     int      `json:"number"`
-	Mode       string   `json:"mode"` // checks, deployment, autofix
-	Worktree   string   `json:"worktree,omitempty"`
-	Branch     string   `json:"branch,omitempty"`
-	Login      string   `json:"login,omitempty"`       // selected by the server
-	HeadSHA    string   `json:"head_sha,omitempty"`    // fixed for a one-time wait
-	ReviewBots []string `json:"review_bots,omitempty"` // explicitly chosen by the owner
+	ConnectionID string   `json:"connection_id,omitempty"`
+	ChatKey      string   `json:"chat_key,omitempty"`
+	SessionID    string   `json:"session_id,omitempty"`
+	Repository   string   `json:"repository"`
+	Number       int      `json:"number"`
+	Mode         string   `json:"mode"` // checks, deployment, autofix
+	Worktree     string   `json:"worktree,omitempty"`
+	Branch       string   `json:"branch,omitempty"`
+	Login        string   `json:"login,omitempty"`       // selected by the server
+	HeadSHA      string   `json:"head_sha,omitempty"`    // fixed for a one-time wait
+	ReviewBots   []string `json:"review_bots,omitempty"` // explicitly chosen by the owner
 }
 
 type Config struct {
@@ -158,7 +216,7 @@ func (c Config) Validate() error {
 			return errors.New("worktree must be a project-relative folder")
 		}
 		if c.CheckMode != "" && c.CheckMode != "schedule" || c.EmailSource != "" || len(c.Secrets) != 0 || c.Script != "" || c.Once || c.Target.Kind != "agent" || c.Target.ChatID == "" || c.Target.ChatID == "new" {
-			return errors.New("a GitHub watcher checks on a schedule and sends to one existing Crew chat")
+			return errors.New("a GitHub watcher checks on a schedule and sends to one existing project chat")
 		}
 		if len(p.ReviewBots) > 10 {
 			return errors.New("choose at most ten review bots")
@@ -169,8 +227,8 @@ func (c Config) Validate() error {
 			}
 		}
 	} else {
-		if !strings.HasPrefix(c.Script, "code/triggers/") || path.Clean(c.Script) != c.Script || !strings.HasSuffix(c.Script, ".py") || strings.ContainsAny(c.Script, "\\\x00\r\n") {
-			return errors.New("script must be a Python file under code/triggers")
+		if !strings.HasPrefix(c.Script, ScriptFolder+"/") || path.Clean(c.Script) != c.Script || !strings.HasSuffix(c.Script, ".py") || strings.ContainsAny(c.Script, "\\\x00\r\n") {
+			return errors.New("script must be a Python file under " + ScriptFolder + "/")
 		}
 		if b, err := hex.DecodeString(c.SHA256); err != nil || len(b) != sha256.Size {
 			return errors.New("save the script's SHA256 before enabling the watcher")
@@ -206,8 +264,24 @@ func (c Config) Validate() error {
 		if c.Target.Name == "" {
 			return errors.New("route target needs a workflow name")
 		}
+	case "feed":
+		if !slices.Contains(FeedApps, c.Target.App) {
+			return errors.New("feed target app must be slack, mail, drive, tasks or other")
+		}
+		if c.Target.Link != "" {
+			u, err := url.Parse(c.Target.Link)
+			if err != nil || u.Scheme != "https" || u.Host == "" || len(c.Target.Link) > 2048 {
+				return errors.New("feed target link must be an https address")
+			}
+		}
+		if c.Once {
+			return errors.New("a feed Watcher keeps watching; once is not available")
+		}
+		if err := validFeedSteps(c.Target.Steps, c.Target.Rules); err != nil {
+			return err
+		}
 	default:
-		return errors.New("target kind must be agent, function, route or trigger")
+		return errors.New("target kind must be agent, function, route, trigger or feed")
 	}
 	return nil
 }
@@ -261,13 +335,14 @@ type Engine struct {
 	Store    Store
 	Run      Runner
 	Dispatch Dispatcher
-	locks    sync.Map
+	locks    keyedlock.Map
 	workers  sync.Map
 }
 
-func (e *Engine) lock(key string) *sync.Mutex {
-	v, _ := e.locks.LoadOrStore(key, &sync.Mutex{})
-	return v.(*sync.Mutex)
+// lock returns a fresh hold on key's lock (one Lock or TryLock, one Unlock);
+// a Watcher's key is forgotten once nothing holds it.
+func (e *Engine) lock(key string) *keyedlock.Locker {
+	return e.locks.Get(key)
 }
 func pending(s string) bool { return s == "seen" || s == "dispatching" }
 func Pending(l Ledger) int {

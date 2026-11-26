@@ -1,0 +1,48 @@
+name: Security Scan
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC to catch any missed secrets
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual triggering
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  secret-scan:
+    name: Secret Scanning with Gitleaks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        # Fetch full history for comprehensive scanning
+        fetch-depth: 0
+    
+    - name: Run Gitleaks Secret Scan
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        # Use our custom configuration
+        config-path: .gitleaks.toml
+        # Fail the build if secrets are found
+        fail: true
+        # Show verbose output
+        verbose: true
+        # Redact secrets in output
+        redact: true
+        # Report format
+        format: sarif
+        # Output file
+        report-path: gitleaks-report.sarif
+    
+    - name: Upload Secret Scan Results
+      uses: github/codeql-action/upload-sarif@v4
+      if: always() && hashFiles('gitleaks-report.sarif') != ''
+      with:
+        sarif_file: gitleaks-report.sarif
+

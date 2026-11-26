@@ -50,6 +50,7 @@ type Status struct {
 	// ExtensionVersion is what the connected Browser Bridge reports in its
 	// diagnostics; LatestVersion is the one this server ships for download.
 	BrowserID        string              `json:"browser_id,omitempty"`
+	AlsoBrowsers     []CrewBrowser       `json:"also_browsers,omitempty"`
 	Message          string              `json:"message,omitempty"`
 	Browsers         []BrowserConnection `json:"browsers,omitempty"`
 	ExtensionVersion string              `json:"extension_version,omitempty"`
@@ -76,6 +77,8 @@ type Binding struct {
 	newTabRequest                      string
 	newTabResult                       chan envelope
 	recordingInterruptions             uint64
+	// extra: one of the project's other browsers (not its main one); never saved as the project's selection.
+	extra bool
 }
 type Manager struct {
 	accountPairings  map[[32]byte]accountPairingGrant
@@ -90,13 +93,15 @@ type Manager struct {
 	browserRecords   map[string]BrowserConnection
 	accountBrowsers  map[string]*accountBrowser
 	selectedBrowsers map[string]string
-	pairingFailures  map[string]PairingFailure
+	// alsoBrowsers: the other saved browsers a project uses next to its main one (user+scope -> browser IDs).
+	alsoBrowsers    map[string][]string
+	pairingFailures map[string]PairingFailure
 }
 
 var Default = New()
 
 func New() *Manager {
-	return &Manager{pairs: map[string]grant{}, bindings: map[string]*Binding{}, browserRecords: map[string]BrowserConnection{}, accountBrowsers: map[string]*accountBrowser{}, selectedBrowsers: map[string]string{}}
+	return &Manager{pairs: map[string]grant{}, bindings: map[string]*Binding{}, browserRecords: map[string]BrowserConnection{}, accountBrowsers: map[string]*accountBrowser{}, selectedBrowsers: map[string]string{}, alsoBrowsers: map[string][]string{}}
 }
 func key(user, scope string) string { return user + "\x00" + scope }
 func secret() string {
@@ -394,6 +399,7 @@ func (m *Manager) Status(user, scope string) Status {
 	status.LatestVersion = LatestExtensionVersion()
 	status.Browsers = m.browserListLocked(user)
 	status.BrowserID = m.selectedBrowsers[key(user, scope)]
+	status.AlsoBrowsers = m.alsoBrowsersLocked(user, scope)
 	if status.BrowserID != "" && !status.Connected {
 		if r, ok := m.browserRecords[key(user, status.BrowserID)]; ok {
 			status.Message = "Your " + r.Name + " browser is offline. Open it, or choose another browser for this project."
@@ -487,9 +493,13 @@ func (m *Manager) Disconnect(user, scope string) error {
 		return err
 	}
 	delete(m.bindings, key(user, scope))
+	extras := m.dropAlsoBrowsersLocked(user, scope)
 	m.mu.Unlock()
 	if b != nil {
 		b.closeWithReason("Disconnected in browser settings")
+	}
+	for _, extra := range extras {
+		extra.closeWithReason("Disconnected in browser settings")
 	}
 	notifyChange(key(user, scope))
 	return nil
@@ -774,7 +784,7 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 		return
 	}
 	if hello.Scope == "" && hello.BrowserID != "" {
-		m.serveAccountBrowser(conn, hello, authorize, displayName)
+		m.serveAccountBrowser(conn, hello, browserPlatform(r.UserAgent()), authorize, displayName)
 		return
 	}
 	m.mu.Lock()
@@ -806,15 +816,12 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 		m.rejectConnectionCode(conn, hello.Version, "access_denied")
 		return
 	}
-	available := m.availableProjects(hello.Token, authorize)
-	names := newProjectNames(g, displayName)
-	defer names.close()
-	available = names.cached(available)
+	// The account-control connection owns the project directory. A scoped
+	// connection must check only its selected target, not reread every other
+	// project's manifests on connect and on every heartbeat (PLAT-746-962).
 	var name string
-	for _, p := range available {
-		if p.Scope == g.Scope {
-			name = p.Name
-		}
+	if displayName != nil {
+		name = displayName(g.User, g.Label, g.ProfileID)
 	}
 	m.mu.Lock()
 	// Reset may have revoked the code while the workspace access check ran.
@@ -827,7 +834,10 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 	}
 	// An offline browser may have missed the explicit Disconnect close frame.
 	// Resume cannot recreate a selection removed by the authenticated app.
-	if hello.Resume && m.bindings[key(g.User, g.Scope)] == nil {
+	chosen := m.selectedBrowsers[key(g.User, g.Scope)]
+	// One of the project's other browsers connects next to the main one instead of replacing it.
+	extra := hello.BrowserID != "" && chosen != hello.BrowserID && m.alsoUsesLocked(key(g.User, g.Scope), hello.BrowserID)
+	if hello.Resume && m.bindings[key(g.User, g.Scope)] == nil && !extra {
 		m.mu.Unlock()
 		m.rejectPairing(conn, g.User, "browser_disconnected", "Browser connection was disconnected; connect again to enable access.", hello.Version)
 		return
@@ -843,24 +853,27 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 		m.rejectPairing(conn, g.User, "browser_storage_unavailable", "Cannot save your browser selection. Ask your administrator to check server storage, then reconnect.", hello.Version)
 		return
 	}
-	chosen := m.selectedBrowsers[key(g.User, g.Scope)]
-	if chosen != "" && chosen != hello.BrowserID {
+	if chosen != "" && chosen != hello.BrowserID && !extra {
 		m.mu.Unlock()
 		m.rejectPairing(conn, g.User, "different_browser_selected", "This project uses a different browser. Choose this browser in the project's Browser settings first.", hello.Version)
 		return
 	}
 	if hello.BrowserID != "" {
 		a := m.accountBrowsers[key(g.User, hello.BrowserID)]
-		if a == nil || !a.connected() || a.token != hello.Token || chosen != hello.BrowserID {
+		if a == nil || !a.connected() || a.token != hello.Token || chosen != hello.BrowserID && !extra {
 			m.mu.Unlock()
 			m.rejectPairing(conn, g.User, "browser_not_selected", "Connect this browser to your account and choose it in Browser settings first.", hello.Version)
 			return
 		}
 	}
-	old := m.bindings[key(g.User, g.Scope)]
+	bindingKey := key(g.User, g.Scope)
+	if extra {
+		bindingKey = extraKey(g.User, hello.BrowserID, g.Scope)
+	}
+	old := m.bindings[bindingKey]
 	capability := secret()
 	hash := sha256.Sum256([]byte(capability))
-	b := &Binding{key: key(g.User, g.Scope), label: g.Label, profile: g.ProfileID, browserID: hello.BrowserID, browserName: m.browserRecords[key(g.User, hello.BrowserID)].Name, capability: capability, endpoint: m.base + "/cdp/" + capability, session: "session-" + hex.EncodeToString(hash[:8]) + "--browser", expires: time.Now().Add(ConnectionLifetime), extension: conn, gate: make(chan struct{}, 1)}
+	b := &Binding{key: bindingKey, extra: extra, label: g.Label, profile: g.ProfileID, browserID: hello.BrowserID, browserName: m.browserRecords[key(g.User, hello.BrowserID)].Name, capability: capability, endpoint: m.base + "/cdp/" + capability, session: "session-" + hex.EncodeToString(hash[:8]) + "--browser", expires: time.Now().Add(ConnectionLifetime), extension: conn, gate: make(chan struct{}, 1)}
 	for _, feature := range hello.Features {
 		if feature == "chat-clients" {
 			b.chatClients = true
@@ -879,7 +892,7 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 	}
 	notifyChange(b.key)
 	defer b.close()
-	err = conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label, Name: name, Scope: g.Scope, ProfileID: g.ProfileID, Projects: available, Diagnostics: true})
+	err = conn.WriteJSON(envelope{Type: "paired", Workspace: g.Label, Name: name, Scope: g.Scope, ProfileID: g.ProfileID, Diagnostics: true})
 	b.mu.Unlock()
 	if err != nil {
 		return
@@ -900,15 +913,11 @@ func (m *Manager) ServeExtensionAuthorizedWithNames(w http.ResponseWriter, r *ht
 			return
 		}
 
-		var projects []projectGrant
-		if e.Type == "ping" {
-			projects = names.cached(m.availableProjects(hello.Token, authorize))
-		}
 		b.mu.Lock()
 		switch e.Type {
 		case "ping":
 			conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			err = conn.WriteJSON(envelope{Type: "pong", Projects: projects})
+			err = conn.WriteJSON(envelope{Type: "pong"})
 		case "tabs":
 			if e.ClientID != "" {
 				if client := b.clients[e.ClientID]; client != nil && e.Tabs >= 0 && e.Tabs <= 32 {

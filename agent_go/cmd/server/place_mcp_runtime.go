@@ -46,8 +46,8 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 	if sessionID == "" {
 		person = mcpCaller(ctx)
 	}
-	// A Crew's or Goal's Vault MCPs are its owner's for everyone who uses it (scopeAgentMCP); the Vault proxy keeps a lent
-	// personal Slack to its send side for anyone else (lentVaultSlackRefusal).
+	// The acting person's Vault in a Crew; a Goal's creator's, whose lent personal Slack the Vault proxy keeps to its send
+	// side for anyone else (lentVaultSlackRefusal).
 	lender := person
 	if root := api.projectRootForSession(sessionID); root != "" && person != "" {
 		lender = api.turnSecretsOwner(sessionID, person, root)
@@ -67,7 +67,7 @@ func (api *StreamingAPI) resolveMCPServer(ctx context.Context, sessionID, server
 func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, server, tool string) (*executor.ResolvedMCPServer, bool, error) {
 	pin, pinned, err := codeSessionPinFor(sessionID)
 	if err != nil {
-		return nil, true, fmt.Errorf("MCP scope unavailable for this Crew chat")
+		return nil, true, fmt.Errorf("MCP scope unavailable for this project chat")
 	}
 	if !pinned {
 		return nil, false, nil
@@ -75,7 +75,7 @@ func (api *StreamingAPI) resolveCodeMCPServer(ctx context.Context, sessionID, se
 	server = strings.TrimSpace(server)
 	manifest, found, err := ReadWorkflowManifest(ctx, pin.CodeRoot)
 	if err != nil || !found {
-		return nil, true, fmt.Errorf("MCP scope unavailable for this Crew chat")
+		return nil, true, fmt.Errorf("MCP scope unavailable for this project chat")
 	}
 	// A global server the Code selected.
 	catalog, err := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)

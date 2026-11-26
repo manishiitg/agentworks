@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -152,7 +153,7 @@ func (s agentMessageStore) authorizeShare(shareID string, version int, now time.
 
 // errAgentNotPublished is what a sender is told when a conversation's grant has ended (the agent was
 // unpublished, or the retired group it was in is gone).
-var errAgentNotPublished = fmt.Errorf("That agent isn't published any more; ask its owner to publish it again.")
+var errAgentNotPublished = fmt.Errorf("Discovery is off for that agent; ask its owner to turn it on again.")
 
 // conversationShareErr is the fence for every operation on a cross-account
 // conversation: both ends must carry the same live grant, belong to its owner
@@ -188,19 +189,45 @@ func (s agentMessageStore) conversationShareErr(c agentConversation, now time.Ti
 // shareSenderAllowed replaces the same-account sender rule: a sender from
 // another account is accepted only inside a conversation with a live grant.
 func (s agentMessageStore) shareSenderAllowed(c agentConversation, from int, recipientUserID string, now time.Time) bool {
+	return s.shareSenderAdmission(context.Background(), c, from, recipientUserID, now) == nil
+}
+
+// Preserve cancellation and the canonical rule error for bounded inbox reads.
+// A discovery interrupted by the caller is not a revoked sender grant.
+func (s agentMessageStore) shareSenderAdmission(ctx context.Context, c agentConversation, from int, recipientUserID string, now time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	src := c.Endpoints[from]
+	if handled, err := crewTeamConversationAdmission(ctx, c); handled {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if err != nil {
+			return err
+		}
+		if c.Endpoints[1-from].UserID == recipientUserID {
+			return nil
+		}
+		return admissionRefused("Message is not addressed to this recipient")
+	}
 	if src.ShareID == "" {
 		if sameAccountAgentSender(src, recipientUserID) {
-			return true
+			return nil
 		}
-		// Mac Crew agents use their current audience, not a named-agent grant.
-		// A reply still belongs only to the other endpoint of this inbox.
-		return src.Kind == triggerCallerCrew && !src.External && src.Guest == "" &&
+		if src.Kind == triggerCallerCrew && !src.External && src.Guest == "" &&
 			c.Endpoints[1-from].UserID == recipientUserID && !IsLocalMode() &&
 			crewRelayTwin(src.ID) && ownerOfCrewProjectID(src.ID) == src.UserID &&
-			sharedCrewAgentPeer(context.Background(), recipientUserID, src)
+			sharedCrewAgentPeer(ctx, recipientUserID, src) {
+			return nil
+		}
+	} else if src.Guest == "" && src.UserID != recipientUserID && c.Endpoints[1-from].UserID == recipientUserID {
+		return s.conversationShareErr(c, now)
 	}
-	return src.Guest == "" && src.UserID != recipientUserID && c.Endpoints[1-from].UserID == recipientUserID && s.conversationShareErr(c, now) == nil
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return admissionRefused("Sharing with this chat has ended")
 }
 
 const (
@@ -334,7 +361,23 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 		return triggerTarget{}, denied
 	}
 	owner := dir.byUsername(ownerName)
-	if owner == nil || owner.ID == subjectID {
+	if owner == nil {
+		return triggerTarget{}, denied
+	}
+	if strings.HasPrefix(name, crewTeamAgentIDPrefix) {
+		return crewTeamBridgeTarget(ctx, crewTeamViewer(ctx, subjectID), "agent:"+ownerName+"/"+name)
+	}
+	if owner.ID == subjectID {
+		// An owner-qualified Bridge address denotes the same private named
+		// identity as its short address, not an additional sharing grant.
+		if target, e := resolveNamedMessageAgent(ctx, subjectID, name, senderAgentID); e == nil {
+			return target, nil
+		}
+		// A published Mac agent has the same owner-prefixed address in the directory as any shared agent.
+		// Resolve only that explicit publication; private tabs and named-agent shares retain their own rules.
+		if target, ok := macSharedAgentByAddress(owner.ID, name, subjectID); ok {
+			return target, nil
+		}
 		return triggerTarget{}, denied
 	}
 	s, err := readAgentMessageSnapshot(ctx)
@@ -346,6 +389,16 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 		if a.UserID != owner.ID || a.Name != name {
 			continue
 		}
+		if row, _, teamErr := crewTeamAdmitAddress(ctx, crewTeamViewer(ctx, subjectID), "agent:"+ownerName+"/"+a.Name); teamErr == nil {
+			return triggerTarget{TeamAgentID: row.ID, NamedAgentID: a.ID, Kind: triggerCallerUser, Label: a.Name, ShareOwnerUserID: owner.ID}, nil
+		} else if crewTeamReachReason(teamErr) == "binding_changed" {
+			log.Printf("[TEAM_AGENT_REACH] caller=%s agent=%s event=send outcome=refused reason=binding_changed", subjectID, a.ID)
+			return triggerTarget{}, teamErr
+		}
+		if _, _, joined, e := terminalCrewForNamed(a.ID); e != nil || joined {
+			log.Printf("[TEAM_AGENT_REACH] caller=%s agent=%s event=send outcome=refused reason=crew_joined", subjectID, a.ID)
+			return triggerTarget{}, agentAdmissionRefusal{err: crewTeamReachRefusal{reason: "crew_joined"}}
+		}
 		var best *agentShare
 		for i := range s.Shares {
 			sh := &s.Shares[i]
@@ -356,7 +409,7 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 			}
 		}
 		if best != nil {
-			return triggerTarget{NamedAgentID: a.ID, Kind: triggerCallerUser, Label: a.Name, ShareOwnerUserID: owner.ID, ShareID: best.ID, ShareVersion: best.RevocationVersion}, nil
+			return triggerTarget{NamedAgentID: a.ID, Hosted: a.Hosted, Kind: triggerCallerUser, Label: a.Name, ShareOwnerUserID: owner.ID, ShareID: best.ID, ShareVersion: best.RevocationVersion}, nil
 		}
 	}
 	// An agent shared from a Crew on its owner's Mac, for the people in its audience (PLAT-856-509).
@@ -369,6 +422,11 @@ func resolveSharedMessageAgent(ctx context.Context, subjectID, senderAgentID, re
 // sharedAgentItems lists the agents other people shared with this person, each
 // labelled with the owner's server username.
 func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[string]interface{} {
+	joined, membershipErr := terminalCrewMemberships()
+	if membershipErr != nil {
+		return []map[string]interface{}{}
+	}
+
 	items := []map[string]interface{}{}
 	for _, sh := range s.Shares {
 		if !s.shareAllows(sh, userID) {
@@ -378,19 +436,34 @@ func (s agentMessageStore) sharedAgentItems(userID string, now time.Time) []map[
 			continue
 		}
 		for _, a := range s.Agents {
-			if a.ID != sh.AgentID || !namedAgentDiscoverable(a, now) {
+			if a.ID != sh.AgentID || !namedAgentDiscoverable(a, now) || !appAgentListed(a) {
+				continue
+			}
+			if a.Hosted != nil {
+				if _, err := currentHostedBridgeRecord(context.Background(), a.UserID, *a.Hosted); err != nil {
+					continue
+				}
+			}
+			if _, exists := joined[a.ID]; exists {
 				continue
 			}
 			owner := shareOwnerLabel(sh.OwnerUserID)
-			item := map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": "agent:" + owner + "/" + a.Name, "owner": owner, "shared": true, "capability": sh.Capability, "scope": map[bool]string{true: "everyone", false: "person"}[sh.serverScope()], "label": agentLabel(a), "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a)}
+			item := map[string]interface{}{"agent_name": owner + "/" + a.Name, "target": "agent:" + owner + "/" + a.Name, "owner": owner, "shared": true, "capability": sh.Capability, "scope": map[bool]string{true: "everyone", false: "person"}[sh.serverScope()], "label": agentLabel(a), "purpose": a.Purpose, "examples": a.Examples, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "delivery_mode": agentDeliveryMode(a)}
 			addAgentPresence(item, a)
+			item["agent_id"] = a.ID
+			if a.Attachment != nil {
+				projectAgentRuntimeInfo(item, a.Attachment.RuntimeInfo, a.UserID == userID)
+			}
+			if a.Attachment != nil && a.Attachment.Provider != "agentworks" {
+				item["cli"] = providerAccountProductName(a.Attachment.Provider)
+			}
 			if !sh.serverScope() {
 				item["expires_at"] = sh.ExpiresAt
 			}
 			items = append(items, item)
 		}
 	}
-	return items
+	return uniqueHostedDirectoryRows(items, s.Agents)
 }
 
 // incomingShareActivity tells an owner which people's agents messaged their
@@ -442,6 +515,9 @@ func shareOwnerLabeler() func(string) string {
 	return func(userID string) string {
 		if userID == shareScopeServer {
 			return "everyone"
+		}
+		if project, ok := crewTeamMemberProjectID(userID); ok {
+			return "Project: " + crewTeamProjectName(project) // an online project in a Team (#3664)
 		}
 		if err == nil && dir != nil {
 			if rec := dir.byID(userID); rec != nil && rec.Username != "" {

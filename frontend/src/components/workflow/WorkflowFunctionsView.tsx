@@ -101,7 +101,7 @@ export default function WorkflowFunctionsView({ workspacePath, refreshToken = 0,
         </section>}
         {loaded && functions.length === 0 && <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
           <p>{"No typed functions yet. Expose a route with required inputs so callers can't run it without them."}</p>
-          {canWrite && onAsk && <button type="button" className={`${buttonClass} mt-2`} onClick={() => void onAsk('Expose one of this workflow\'s routes as a typed function other Crews can call. List the routes and declared variables, suggest a function name and which inputs should be required, and create it once I confirm.')}>Add a function in chat</button>}
+          {canWrite && onAsk && <button type="button" className={`${buttonClass} mt-2`} onClick={() => void onAsk('Expose one of this workflow\'s routes as a typed function other projects can call. List the routes and declared variables, suggest a function name and which inputs should be required, and create it once I confirm.')}>Add a function in chat</button>}
         </div>}
       </div>
       {callerLinks.length > 0 && <p className="text-[11px] text-muted-foreground">Older per-caller links (kept for existing callers): {callerLinks.map(trigger => trigger.name).join(', ')}</p>}

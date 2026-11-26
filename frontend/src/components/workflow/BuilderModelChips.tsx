@@ -1,10 +1,11 @@
+import { ThinkingDisplayMenuItem, ToolsDisplayMenuItem, MicrophoneDisplayMenuItem } from '../chat/ThinkingDisplayMenuItem'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { Settings2 } from 'lucide-react'
 import { Chip, ChoiceItems, useOpenFromStatusBar, type Choice } from '../../products/work/ComposerModelChips'
 import ChatContextItems, { menuRowClass } from '../../products/work/ChatContextItems'
-import { CursorModelPicker } from '../ui/CursorModelPicker'
+import { AccountModelPicker } from '../ui/AccountModelPicker'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { useWorkflowManifestStore } from '../../stores/useWorkflowManifestStore'
@@ -143,6 +144,9 @@ export default function BuilderModelChips({ workspacePath, sessionId, label, fal
 
   // This tab's Context group (PLAT-872-71), then the way to the full Models page, as in Crew's menu.
   const contextItems = sessionId ? <>
+    <ThinkingDisplayMenuItem className={menuRowClass} />
+    <MicrophoneDisplayMenuItem className={menuRowClass} />
+    <ToolsDisplayMenuItem className={menuRowClass} />
     <ChatContextItems sessionId={sessionId} modelLabel={modelLabel} />
     <Menu.Separator className="my-1 h-px bg-border first:hidden" />
     <Menu.Item className={menuRowClass} onSelect={() => useWorkflowStore.getState().openWorkspaceView('identity', 'llm')}>
@@ -158,7 +162,7 @@ export default function BuilderModelChips({ workspacePath, sessionId, label, fal
     return <Chip label={cursorLabel} ariaLabel={`Model: ${cursorLabel}`} disabled={saving} open={cursorOpen} onOpenChange={setCursorOpen} wide>
       {/* The menu's type-to-jump would take the search box's keys. */}
       <div onKeyDown={event => event.stopPropagation()}>
-        <CursorModelPicker models={cursorChoices} selectedModelId={builder.model_id} onSelect={modelId => {
+        <AccountModelPicker models={cursorChoices} selectedModelId={builder.model_id} onSelect={modelId => {
           setCursorOpen(false)
           if (modelId !== builder.model_id) void save({ provider: 'cursor-cli' as LLMProvider, model_id: modelId })
         }} />

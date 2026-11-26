@@ -83,8 +83,7 @@ func remoteOwnAccounts(r *http.Request, c desktopConnection) ([]providerAccountV
 	if err != nil {
 		return nil, 0, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-	resp, err := desktopHTTPClient().Do(req)
+	resp, err := desktopServerDo(desktopHTTPClient(), GetUserFromContext(r.Context()).UserID, c, req)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -121,8 +120,7 @@ func remoteAccountLogin(r *http.Request, c desktopConnection, id string) (provid
 	if err != nil {
 		return status, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-	resp, err := desktopHTTPClient().Do(req)
+	resp, err := desktopServerDo(desktopHTTPClient(), GetUserFromContext(r.Context()).UserID, c, req)
 	if err != nil {
 		return status, err
 	}
@@ -140,6 +138,8 @@ type desktopServerAccount struct {
 	State       string `json:"state"`
 	MacLogin    string `json:"mac_login,omitempty"`
 	ServerLogin string `json:"server_login,omitempty"`
+	// ServerAccountID is the account on the server, so the Mac app can sign it in in its own window.
+	ServerAccountID string `json:"server_account_id,omitempty"`
 }
 
 // sameLogin compares two logins as the CLIs report them (an email, usually); unknown on either side is not a mismatch.
@@ -195,14 +195,14 @@ func (api *StreamingAPI) handleDesktopProviderAccountStatus(w http.ResponseWrite
 			accounts[id] = desktopServerAccount{State: "missing"}
 			continue
 		case match.Configured != nil && !*match.Configured:
-			accounts[id] = desktopServerAccount{State: "sign_in"}
+			accounts[id] = desktopServerAccount{State: "sign_in", ServerAccountID: match.ID}
 			continue
 		case account.AuthMethod != "cli_login":
 			// A copied key is the same key on both sides.
-			accounts[id] = desktopServerAccount{State: "ready"}
+			accounts[id] = desktopServerAccount{State: "ready", ServerAccountID: match.ID}
 			continue
 		}
-		result := desktopServerAccount{State: "ready"}
+		result := desktopServerAccount{State: "ready", ServerAccountID: match.ID}
 		if remote, err := remoteAccountLogin(r, c, match.ID); err == nil {
 			if remote.State == "signed_out" {
 				result.State = "sign_in"
@@ -217,6 +217,12 @@ func (api *StreamingAPI) handleDesktopProviderAccountStatus(w http.ResponseWrite
 		}
 		accounts[id] = result
 	}
+	// Which server says a copy of this Mac's account needs attention, so "Sign-in needed" can be traced.
+	for id, account := range accounts {
+		if account.State == "sign_in" || account.State == "different_login" {
+			log.Printf("[DESKTOP_ACCOUNT] status connection=%s provider=%s account=%s state=%s", c.ID, provider, id, account.State)
+		}
+	}
 	desktopJSON(w, map[string]any{"accounts": accounts, "signed_in_as": c.User.Email})
 }
 
@@ -226,8 +232,14 @@ func (api *StreamingAPI) handleDesktopProviderAccountCopy(w http.ResponseWriter,
 	if !desktopConnectionGate(w, r) {
 		return
 	}
+	api.copyProviderAccountToServer(w, r, mux.Vars(r)["connection"])
+}
+
+// copyProviderAccountToServer is "Add on server" for the signed-in person: the Mac app's button and the ai_accounts
+// tool (provider_accounts_tool.go) both use it, so they follow the same rules.
+func (api *StreamingAPI) copyProviderAccountToServer(w http.ResponseWriter, r *http.Request, connectionID string) {
 	owner := GetUserFromContext(r.Context()).UserID
-	c, err := desktopConnectionFor(owner, mux.Vars(r)["connection"])
+	c, err := desktopConnectionFor(owner, connectionID)
 	if err != nil {
 		http.Error(w, `{"error":"Connection is unavailable. Connect to the server again."}`, 404)
 		return
@@ -260,9 +272,8 @@ func (api *StreamingAPI) handleDesktopProviderAccountCopy(w http.ResponseWriter,
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("Authorization", "Bearer "+c.Token)
 		req.Header.Set("Content-Type", "application/json")
-		return desktopHTTPClient().Do(req)
+		return desktopServerDo(desktopHTTPClient(), owner, c, req)
 	}
 	// The server's AI accounts page, where a browser-login account is signed in; with the account named, the page
 	// starts its sign-in at once.

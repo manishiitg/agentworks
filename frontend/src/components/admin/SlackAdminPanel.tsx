@@ -142,7 +142,7 @@ function SlackAdminSections() {
 
 const PLATFORM_PRODUCTS: { id: string; label: string }[] = [
   { id: 'workflows', label: 'Workflows' },
-  { id: 'crew', label: 'Crews' },
+  { id: 'crew', label: 'Projects' },
   { id: 'code', label: 'Codes (DMs only)' },
 ]
 
@@ -183,7 +183,7 @@ function PlatformBotProducts({ canManage }: { canManage: boolean }) {
       icon={<Users className="h-4 w-4 text-muted-foreground" />}
       title="Who may use the AgentWorks bot"
       count={targetsOn}
-      description="Owners turn on “Use the AgentWorks bot” in a workflow's, Crew's or Code's Slack tab; people then reach it with @bot <slug> in its channels or by slug in a DM, with their own access."
+      description="Owners turn on “Use the AgentWorks bot” in a workflow's, project's or Code's Slack tab; people then reach it with @bot <slug> in its channels or by slug in a DM, with their own access."
     >
       {PLATFORM_PRODUCTS.map(product => (
         <ToggleRow

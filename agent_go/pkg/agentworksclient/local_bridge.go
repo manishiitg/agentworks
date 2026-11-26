@@ -27,12 +27,18 @@ import (
 // LocalBridgeRequest is the adapter boundary. Attachment/configuration is a
 // person-only CLI or prompt-submit action, never exposed as an MCP tool.
 type LocalBridgeRequest struct {
+	Queue bool `json:"queue,omitempty"`
+	Ask   bool `json:"ask,omitempty"` // explicit question: only offline Team asks redirect
+	// Task carries the request's task fields as typed: status, title, ref, files, decision, why (#2965).
+	Task map[string]any `json:"task,omitempty"`
 	// Automatic connects a verified native chat without overriding an explicit disconnect.
 	Automatic      bool   `json:"automatic,omitempty"`
 	ShutdownReason string `json:"shutdown_reason,omitempty"`
 	WorkspaceDir   string `json:"workspace_dir,omitempty"`
 	Activity       string `json:"activity,omitempty"`
-	OwnAttach      bool   `json:"own_attach,omitempty"`
+	// ClientApp is what the chat's own hook saw: "desktop" (Claude desktop app) or "terminal" (#3371).
+	ClientApp string `json:"client_app,omitempty"`
+	OwnAttach bool   `json:"own_attach,omitempty"`
 	// RefreshRoute says something that can create a native route just happened (a chat starting), so the
 	// next lookup runs at once instead of waiting out the retry interval.
 	RefreshRoute bool `json:"refresh_route,omitempty"`
@@ -45,6 +51,7 @@ type LocalBridgeRequest struct {
 	SwitchConnection bool           `json:"switch_connection,omitempty"`
 	Setup            bool           `json:"setup,omitempty"`
 	Action           string         `json:"action"`
+	SyncTranscript   bool           `json:"sync_transcript,omitempty"`
 	Arguments        map[string]any `json:"arguments,omitempty"`
 	AttachmentID     string         `json:"attachment_id,omitempty"`
 	Provider         string         `json:"provider"`
@@ -54,21 +61,32 @@ type LocalBridgeRequest struct {
 	ConfigPath       string         `json:"config_path,omitempty"`
 	AgentName        string         `json:"agent_name,omitempty"`
 	// LabelName is the literal NAME supplied at attach, before identity reuse.
-	LabelName     string `json:"label_name,omitempty"`
-	Purpose       string `json:"purpose,omitempty"`
-	Query         string `json:"query,omitempty"`
-	MessageID     string `json:"message_id,omitempty"`
-	Delivery      string `json:"delivery,omitempty"`
-	Transport     string `json:"transport,omitempty"`
-	Message       string `json:"message,omitempty"`
-	SubmissionID  string `json:"submission_id,omitempty"`
-	Target        string `json:"target,omitempty"`
-	InboxID       string `json:"inbox_id,omitempty"`
-	Cursor        int    `json:"after,omitempty"`
-	OlderThan     string `json:"older_than,omitempty"`
-	FromAgent     string `json:"from_agent,omitempty"`
-	DeliveredOnly bool   `json:"delivered_only,omitempty"`
-	UnreadOnly    bool   `json:"unread_only,omitempty"`
+	LabelName     string   `json:"label_name,omitempty"`
+	Examples      []string `json:"examples,omitempty"`
+	Purpose       string   `json:"purpose,omitempty"`
+	Query         string   `json:"query,omitempty"`
+	MessageID     string   `json:"message_id,omitempty"`
+	Delivery      string   `json:"delivery,omitempty"`
+	Transport     string   `json:"transport,omitempty"`
+	Message       string   `json:"message,omitempty"`
+	SubmissionID  string   `json:"submission_id,omitempty"`
+	Target        string   `json:"target,omitempty"`
+	InboxID       string   `json:"inbox_id,omitempty"`
+	Cursor        int      `json:"after,omitempty"`
+	Limit         int      `json:"limit,omitempty"` // agent_status: how many recent items (#3532); read: page size
+	WaitSeconds   int      `json:"wait_seconds,omitempty"`
+	OlderThan     string   `json:"older_than,omitempty"`
+	FromAgent     string   `json:"from_agent,omitempty"`
+	DeliveredOnly bool     `json:"delivered_only,omitempty"`
+	UnreadOnly    bool     `json:"unread_only,omitempty"`
+	// Offset pages list_agents (next_offset from the previous reply) and continues a long history line.
+	Offset int `json:"offset,omitempty"`
+	// Line reads one message of an offline Team agent's chat (history).
+	Line int `json:"line,omitempty"`
+	// Offline is the caller's choice for an ask to a long-offline Team agent ("wait").
+	Offline string `json:"offline,omitempty"`
+	// ExpectsReply marks a plain send as a request that needs a reply.
+	ExpectsReply bool `json:"expects_reply,omitempty"`
 	// FileName and FileBase64 send a file with a message (send, reply); FileID asks get_file for one.
 	FileName   string `json:"file_name,omitempty"`
 	FileBase64 string `json:"file_base64,omitempty"`
@@ -91,6 +109,7 @@ type LocalNetworkState struct {
 }
 
 type LocalAgentState struct {
+	Server string `json:"server,omitempty"` // origin of the exact attachment, never its credential
 	AgentAttachment
 	Online       bool `json:"online"`
 	ServerClosed bool `json:"server_closed,omitempty"`
@@ -106,7 +125,8 @@ type LocalAgentState struct {
 
 type LocalAgentDirectory struct {
 	Server string          `json:"server"`
-	Agents json.RawMessage `json:"agents"`
+	Agents json.RawMessage `json:"agents,omitempty"`
+	Error  string          `json:"error,omitempty"` // why this server could not be listed
 }
 
 type LocalBridgeReply struct {
@@ -147,42 +167,48 @@ type LocalBridgeReply struct {
 }
 
 type localSession struct {
-	lastHeldRevision string    // notice fingerprint only; never saved, no message bodies or IDs
-	WorkspaceDir     string    `json:"workspace_dir,omitempty"`
-	Activity         string    `json:"activity,omitempty"`
-	ActivityAt       time.Time `json:"activity_at,omitempty"`
-	LabelName        string    `json:"label_name,omitempty"`
-	HookTransport    string    `json:"hook_transport,omitempty"`
-	lateNotice       string    // set when an attach finished after its command had given up; said once on the next prompt
-	museWatch        *museWatchState
-	OwnCLI           bool `json:"own_cli,omitempty"`
+	NativeHandback    *nativeHandbackPending `json:"native_handback,omitempty"`
+	NativeCopyCursor  NativeCopyCursor       `json:"native_copy_cursor,omitempty"`
+	nativeCopyRunning bool
+	nativeCopyAgain   bool
+	lastHeldRevision  string    // notice fingerprint only; never saved, no message bodies or IDs
+	WorkspaceDir      string    `json:"workspace_dir,omitempty"`
+	ClientApp         string    `json:"client_app,omitempty"`
+	Activity          string    `json:"activity,omitempty"`
+	ActivityAt        time.Time `json:"activity_at,omitempty"`
+	LabelName         string    `json:"label_name,omitempty"`
+	HookTransport     string    `json:"hook_transport,omitempty"`
+	lateNotice        string    // set when an attach finished after its command had given up; said once on the next prompt
+	museWatch         *museWatchState
+	OwnCLI            bool `json:"own_cli,omitempty"`
 	// Also marks an extra network this chat joined next to its own (--also);
 	// Network is that login's name. The chat's own attachment has neither.
-	Also             bool            `json:"also,omitempty"`
-	Network          string          `json:"network,omitempty"`
-	SetupPending     bool            `json:"setup_pending,omitempty"`
-	AccountSenders   bool            `json:"account_senders,omitempty"`
-	ReadPosition     int             `json:"read_position,omitempty"`
-	LastGuidanceAt   time.Time       `json:"last_guidance_at,omitempty"`
-	Offline          bool            `json:"offline,omitempty"`
-	ParentConfigPath string          `json:"parent_config_path,omitempty"`
-	Attachment       AgentAttachment `json:"attachment"`
-	HostKey          string          `json:"host_key,omitempty"`
-	NativeRemote     string          `json:"native_remote,omitempty"`
-	LastError        string          `json:"last_error,omitempty"`
-	ConfigPath       string          `json:"config_path"`
-	client           *Client
-	streamOnline     bool
-	latestSequence   int                  // wake hint only; bodies remain on the server
-	handedOff        map[string]time.Time // transient native handoffs while server receipts save; never persisted
-	reading          bool                 // one bounded server read at a time for this chat
-	cancel           context.CancelFunc
-	deliveryCtx      context.Context
-	nativeStarted    bool
-	nativeCalls      int
-	piNextAt         time.Time // Observed SDK consumer, not persisted authority.
-	ServerClosed     bool      `json:"server_closed,omitempty"` // The server ended this lease (an administrator, or another chat took the name); only the person's attach restores it.
-	routeTriedAt     time.Time // Last native-route discovery for this chat; it can run many process checks.
+	Also                     bool            `json:"also,omitempty"`
+	Network                  string          `json:"network,omitempty"`
+	SetupPending             bool            `json:"setup_pending,omitempty"`
+	AccountSenders           bool            `json:"account_senders,omitempty"`
+	ReadPosition             int             `json:"read_position,omitempty"`
+	LastGuidanceAt           time.Time       `json:"last_guidance_at,omitempty"`
+	Offline                  bool            `json:"offline,omitempty"`
+	ParentConfigPath         string          `json:"parent_config_path,omitempty"`
+	Attachment               AgentAttachment `json:"attachment"`
+	HostKey                  string          `json:"host_key,omitempty"`
+	NativeRemote             string          `json:"native_remote,omitempty"`
+	LastError                string          `json:"last_error,omitempty"`
+	ConfigPath               string          `json:"config_path"`
+	client                   *Client
+	streamOnline             bool
+	queueHint, readQueueHint uint64               // ephemeral wake counters, never message bodies or delivery policy
+	latestSequence           int                  // wake hint only; bodies remain on the server
+	handedOff                map[string]time.Time // transient native handoffs while server receipts save; never persisted
+	reading                  bool                 // one bounded server read at a time for this chat
+	cancel                   context.CancelFunc
+	deliveryCtx              context.Context
+	nativeStarted            bool
+	nativeCalls              int
+	piNextAt                 time.Time // Observed SDK consumer, not persisted authority.
+	ServerClosed             bool      `json:"server_closed,omitempty"` // The server ended this lease (an administrator, or another chat took the name); only the person's attach restores it.
+	routeTriedAt             time.Time // Last native-route discovery for this chat; it can run many process checks.
 }
 
 type localBridge struct {
@@ -223,13 +249,14 @@ type LocalBridgeOptions struct {
 	Reconnect         func(context.Context, []AgentAttachment)
 	HousekeepingEvery time.Duration // zero uses the normal 30-second maintenance interval
 
-	ChatContext func(context.Context, AgentAttachment, string) (string, string)
-	ChatLabel   func(AgentAttachment, string) string
-	UsageNow    func() time.Time
-	UsageRead   func(context.Context, AgentAttachment, string, int64) (agentusage.Native, error)
-	HostAlive   func(provider, hostKey string) bool
-	NativeOffer func(context.Context, string, LocalBridgeReply) error
-	NativeRoute func(provider, session, hostKey, remote string) string
+	ChatContext     func(context.Context, AgentAttachment, string) (string, string)
+	ChatLabel       func(AgentAttachment, string) string
+	UsageNow        func() time.Time
+	UsageRead       func(context.Context, AgentAttachment, string, int64) (agentusage.Native, error)
+	HostAlive       func(provider, hostKey string) bool
+	NativeOffer     func(context.Context, string, LocalBridgeReply) error
+	NativeUserOffer func(context.Context, string, AgentAttachment, string) error
+	NativeRoute     func(provider, session, hostKey, remote string) string
 	// Ping shows a person ping (another agent waiting for this agent's reply) as a desktop notification.
 	Ping func(AgentAttachment, string)
 	// RouteRetry is how long a chat whose native-route lookup failed waits before the bridge looks again
@@ -378,7 +405,7 @@ func CallMessagingBridge(ctx context.Context, root string, request LocalBridgeRe
 		return out, err
 	}
 	switch request.Action {
-	case "message", "peers", "send", "read", "reply", "reply_inbox", "ack", "purpose", "ping_person", "get_file", "count", "delete", "clear":
+	case "message", "peers", "agent_status", "history", "send", "queue", "read", "reply", "reply_inbox", "ack", "purpose", "ping_person", "get_file", "count", "delete", "clear":
 	default:
 		return out, err
 	}
@@ -682,6 +709,9 @@ func (b *localBridge) start(ctx context.Context, s *localSession) {
 					return nil
 				}
 				s.latestSequence = max(s.latestSequence, m.Sequence)
+				if m.QueueReady {
+					s.queueHint++
+				}
 				log.Printf("[BRIDGE-STREAM] inbox_changed network=%s attachment=%s sequence=%d", s.Network, s.Attachment.ID, m.Sequence)
 				b.wake()
 
@@ -869,7 +899,15 @@ func (b *localBridge) startNative(s *localSession) {
 	go func() { defer b.workers.Done(); b.nativeLoop(s.deliveryCtx, s, hostKey) }()
 }
 
-func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeRequest) LocalBridgeReply {
+func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeRequest) (reply LocalBridgeReply) {
+	defer func() {
+		if in.Action == "peers" || in.Action == "directories" {
+			boundBridgeDirectoryReply(&reply)
+		}
+	}()
+	if in.Action == "queue" {
+		in.Action, in.Queue = "send", true
+	}
 	if in.Action == "message" {
 		var err error
 		in, err = messagingRequest(in)
@@ -1004,11 +1042,14 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		// It neither changes the saved process nor authorizes delivery/actions.
 		return LocalBridgeReply{Attached: !s.Offline, Offline: s.Offline, Stopped: s.ServerClosed, Attachment: s.Attachment, HostKey: s.HostKey}
 	}
-	if in.Action == "list" {
+	if in.Action == "list" || in.Action == "attachments" {
 		out := LocalBridgeReply{}
 		for _, session := range b.sessions {
-			state := LocalAgentState{Network: session.Network, AgentAttachment: session.Attachment, Online: !session.Offline, ServerClosed: session.ServerClosed, HostAlive: b.options.HostAlive != nil && hostAliveFrom(probed, session.Attachment.Provider, session.HostKey, b.options.HostAlive), Route: b.deliveryRoute(session), LastError: session.LastError}
+			state := LocalAgentState{Network: session.Network, AgentAttachment: session.Attachment, Online: !session.Offline, ServerClosed: session.ServerClosed, HostAlive: in.Action == "list" && b.options.HostAlive != nil && hostAliveFrom(probed, session.Attachment.Provider, session.HostKey, b.options.HostAlive), Route: b.deliveryRoute(session), LastError: session.LastError}
 
+			if session.client != nil {
+				state.Server = session.client.baseURL
+			}
 			out.AgentStates = append(out.AgentStates, state)
 		}
 		sort.Slice(out.AgentStates, func(i, j int) bool {
@@ -1028,7 +1069,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		var raw json.RawMessage
 		b.unlocked(func() {
-			raw, err = client.Call(callCtx, "messages", map[string]any{"action": "list_agents"})
+			raw, err = client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "query": in.AgentName})
 		})
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
@@ -1058,20 +1099,26 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			client *Client
 			name   string
 		}
+		// One directory per server, through a live chat's connection when there
+		// is one. Several login files for one server must not list it twice.
 		var requests []directoryRequest
-		for _, s := range b.sessions {
-			if seen[s.ParentConfigPath] || s.client == nil {
-				continue
+		for pass := 0; pass < 2; pass++ {
+			for _, s := range b.sessions {
+				if s.client == nil || s.ServerClosed || seen[s.client.baseURL] || (pass == 0 && s.Offline) {
+					continue
+				}
+				seen[s.client.baseURL] = true
+				requests = append(requests, directoryRequest{client: s.client, name: s.Attachment.AgentName})
 			}
-			seen[s.ParentConfigPath] = true
-			requests = append(requests, directoryRequest{client: s.client, name: s.Attachment.AgentName})
 		}
 		b.unlocked(func() {
 			for _, request := range requests {
-				raw, err := request.client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "agent_name": request.name, "query": in.Query})
-				if err == nil {
-					out.Directories = append(out.Directories, LocalAgentDirectory{Server: request.client.baseURL, Agents: directoryWithoutProjectContext(raw)})
+				raw, err := request.client.Call(callCtx, "messages", listAgentsArgs(request.name, in))
+				if err != nil {
+					out.Directories = append(out.Directories, LocalAgentDirectory{Server: request.client.baseURL, Error: err.Error()})
+					continue
 				}
+				out.Directories = append(out.Directories, LocalAgentDirectory{Server: request.client.baseURL, Agents: directoryWithoutProjectContext(raw)})
 			}
 		})
 		sort.Slice(out.Directories, func(i, j int) bool { return out.Directories[i].Server < out.Directories[j].Server })
@@ -1134,7 +1181,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 						return LocalBridgeReply{Error: err.Error()}
 					}
 					b.wake()
-					return LocalBridgeReply{Attached: true, Attachment: s.Attachment, NativeDelivery: s.NativeRemote != "" || piNativeActive(s) || museWatchActive(s), MonitorActive: museWatchActive(s)}
+					return LocalBridgeReply{Attached: true, Attachment: s.Attachment, NativeDelivery: s.NativeRemote != "" || piNativeActive(s) || museWatchActive(s), MonitorActive: museWatchActive(s), OwnServer: s.client.baseURL}
 				}
 			}
 		}
@@ -1156,6 +1203,12 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				previous, connectionPath = candidate, candidate.ConfigPath
 				break
 			}
+		}
+		// A forked chat copies the history, so its agent may attach under the name it read there and take the
+		// original's place (#3357). A name moves to a new chat only once the chat holding it is gone; while that
+		// chat's own process still runs, this chat needs its own name.
+		if previous != nil && previous.Attachment.SessionID != in.SessionID && previous.HostKey != "" && previous.HostKey != in.HostKey && !previous.Offline && !previous.ServerClosed && b.options.HostAlive != nil && b.options.HostAlive(previous.Attachment.Provider, previous.HostKey) {
+			return LocalBridgeReply{Error: "agent:" + in.AgentName + " is in use by another open chat on this computer. Attach this chat under its own name (for example " + in.AgentName + "-2), or close or detach the other chat first."}
 		}
 		if previous != nil && (in.SwitchConnection || previous.Attachment.Provider != in.Provider || previous.Attachment.SessionID != in.SessionID) {
 			connectionPath = "" // an account move or a new chat derives its child from the selected login
@@ -1392,9 +1445,16 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			_ = b.save()
 			log.Printf("[BRIDGE] network=%s attach agent=%s chat=%s (extra network)", next.Network, a.AgentName, boundedMuseHint(in.SessionID))
 		}
+		if next.client != nil && next.client.baseURL == LocalAppServer {
+			log.Printf("[AGENTBRIDGE] event=local_attach agent=%s session=%s attachment=%s result=attached", a.AgentID, a.SessionID, a.ID)
+		}
 		b.start(serverCtx, next)
 		b.wake()
-		return LocalBridgeReply{Attached: true, Attachment: a, NativeDelivery: next.NativeRemote != "", Warning: warning, Networks: b.networkStates(primaryKey)}
+		reply := LocalBridgeReply{Attached: true, Attachment: a, NativeDelivery: next.NativeRemote != "", Warning: warning, Networks: b.networkStates(primaryKey)}
+		if next.client != nil && !in.Also {
+			reply.OwnServer = next.client.baseURL // where this chat's connection now lives
+		}
+		return reply
 	}
 	if s == nil {
 		return LocalBridgeReply{Stopped: b.stopped[key]}
@@ -1404,8 +1464,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		// Sharing the chat's agent with everyone on its server. The person types it
 		// in the chat (_person), or the agent does it for its own exact session when
 		// the person asked in plain language (_own).
-		// Both forms need the exact attached session's process key, so another local
-		// process reaching the bridge socket cannot share an attached chat.
+		// Both forms need the attached session's process key. That key is a routing
+		// fence (the request names this chat's own process); it is not isolation from
+		// other processes of the same OS user, which can read the same key.
 		if s.Offline || in.HostKey == "" || in.HostKey != s.HostKey {
 			return LocalBridgeReply{Error: "This chat is not connected to AgentWorks right now (it was restarted or closed). Connect it first: ask the agent to \"connect this chat to AgentWorks\" (it uses the agentworks tool (action=attach)), or type /agentworks attach, then try again."}
 		}
@@ -1420,18 +1481,28 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		if on.ParentConfigPath == "" {
 			return LocalBridgeReply{Error: "this chat has no saved login to share with; attach it again"}
 		}
-		parent, err := localConfiguredClient(on.ParentConfigPath)
+		parentConfigPath := on.ParentConfigPath
+		att := on.Attachment
+		network := on.Network
+		isExtra := on != s
+		shareAction := strings.SplitN(in.Action, "_", 2)[0]
+		var raw json.RawMessage
+		var err error
+		b.unlocked(func() {
+			var parent *Client
+			parent, err = localConfiguredClient(parentConfigPath)
+			if err != nil {
+				return
+			}
+			raw, err = parent.ShareAgent(callCtx, shareAction, att.AgentName)
+		})
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
 		}
-		raw, err := parent.ShareAgent(callCtx, strings.SplitN(in.Action, "_", 2)[0], on.Attachment.AgentName)
-		if err != nil {
-			return LocalBridgeReply{Error: err.Error()}
+		if isExtra {
+			log.Printf("[BRIDGE] network=%s %s agent=%s", network, in.Action, att.AgentName)
 		}
-		if on != s {
-			log.Printf("[BRIDGE] network=%s %s agent=%s", on.Network, in.Action, on.Attachment.AgentName)
-		}
-		return LocalBridgeReply{Attached: !s.Offline, Attachment: on.Attachment, Result: raw}
+		return LocalBridgeReply{Attached: !s.Offline, Attachment: att, Result: raw}
 	}
 	if in.Action == "detach_own" {
 		if !s.OwnCLI || in.HostKey == "" || in.HostKey != s.HostKey || in.AttachmentID != s.Attachment.ID {
@@ -1469,13 +1540,39 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			s.WorkspaceDir = in.WorkspaceDir
 			changed = true
 		}
-		if (in.Activity == "busy" || in.Activity == "idle" || in.Activity == "unknown") && in.Activity != s.Activity {
+		if (in.ClientApp == "desktop" || in.ClientApp == "terminal") && in.ClientApp != s.ClientApp {
+			s.ClientApp = in.ClientApp
+			changed = true
+		}
+		// Tool hooks keep an active turn fresh, at most once a minute. A lost
+		// Stop is bounded by the server's ten-minute working-state cutoff.
+		refreshBusy := in.Activity == "busy" && time.Since(s.ActivityAt) >= time.Minute
+		if (in.Activity == "busy" || in.Activity == "idle" || in.Activity == "unknown") && (in.Activity != s.Activity || refreshBusy) {
 			s.Activity, s.ActivityAt = in.Activity, time.Now().UTC()
 			changed = true
+			// Publish the hook transition now, not at the next housekeeping tick.
+			// Use the existing authenticated label channel, outside the bridge lock
+			// and the hook's short delivery budget. No text or new polling.
+			targets := []*localSession{s}
+			for _, other := range b.sessions {
+				if other != s && other.Also && other.Attachment.Provider == in.Provider && other.Attachment.SessionID == in.SessionID {
+					targets = append(targets, other)
+				}
+			}
+			b.workers.Add(1)
+			go func() {
+				defer b.workers.Done()
+				for _, target := range targets {
+					b.refreshChatLabel(serverCtx, target)
+				}
+			}()
 		}
 		if changed {
 			_ = b.save()
 		}
+	}
+	if in.SyncTranscript && (in.Provider == "claude" || in.Provider == "codex") && !s.Offline && in.HostKey != "" && in.HostKey == s.HostKey {
+		b.queueNativeCopy(serverCtx, s)
 	}
 	if in.Action == "observe" {
 		return LocalBridgeReply{}
@@ -1517,6 +1614,51 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		out.OwnServer = s.client.baseURL
 	}
 	switch in.Action {
+	case "crew_join", "crew_leave", "team_sync", "terminal_status", "team_pane":
+		if s.Attachment.Provider != "claude" && s.Attachment.Provider != "codex" {
+			return LocalBridgeReply{Error: "Project join requires this attached Claude Code or Codex session."}
+		}
+		// The helper has just checked the current process, lease and offline state.
+		// Never forward caller identity, arbitrary tools, file paths or credentials.
+		args := map[string]any{"action": in.Action, "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "project": in.Arguments["project"], "team_action": in.Arguments["team_action"]}
+		for _, key := range []string{"query", "need", "button", "helper", "agent_key"} {
+			if value, ok := in.Arguments[key]; ok {
+				args[key] = value
+			}
+		}
+		if in.Action == "crew_join" && in.Arguments["automatic"] == true {
+			args["automatic"] = true // the chat started in this Crew's folder (#2820); the server logs it, nothing more
+		}
+		attachment := s.Attachment
+		client := s.client
+		var raw json.RawMessage
+		var err error
+		b.unlocked(func() {
+			raw, err = client.request(callCtx, http.MethodPost, "/api/external/v1/agents/attachment", args, true)
+		})
+		if err != nil {
+			return LocalBridgeReply{Error: err.Error(), OwnServer: out.OwnServer}
+		}
+		if b.closed || b.sessions[key] != s || s.Offline {
+			return LocalBridgeReply{Error: "This session disconnected while changing its project membership; reconnect and check its project listing."}
+		}
+		if in.Action == "crew_join" && s.Attachment.ID == attachment.ID {
+			var joined struct {
+				Outcome string `json:"outcome"`
+				Project string `json:"project"`
+				Agent   string `json:"agent_id"`
+			}
+			if json.Unmarshal(raw, &joined) == nil && joined.Outcome == "join" && joined.Project != "" && joined.Agent != "" {
+				b.queueNativeCopy(serverCtx, s)
+			}
+		}
+		if in.Action == "crew_leave" {
+			s.NativeHandback = nil
+			s.NativeCopyCursor = NativeCopyCursor{} // explicit leave, never a silent rewrite reset
+			_ = b.save()
+		}
+		out.Result = raw
+		return out
 	case "purpose":
 		snap := &localSession{Attachment: s.Attachment, client: s.client}
 		var raw json.RawMessage
@@ -1527,7 +1669,11 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				return
 			}
 			var err error
-			raw, err = snap.client.Call(callCtx, "messages", map[string]any{"action": "update_purpose", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "purpose": in.Purpose})
+			args := map[string]any{"action": "update_purpose", "agent_name": snap.Attachment.AgentName, "attachment_id": snap.Attachment.ID, "purpose": in.Purpose}
+			if in.Examples != nil {
+				args["examples"] = in.Examples
+			}
+			raw, err = snap.client.Call(callCtx, "messages", args)
 			if err != nil {
 				failed = &LocalBridgeReply{Error: err.Error()}
 			}
@@ -1551,7 +1697,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		out.Attachment = s.Attachment
 		out.Result = raw
 		return out
-	case "peers", "send", "read", "reply_inbox", "ping_person", "get_file", "count", "delete", "clear":
+	case "peers", "agent_status", "history", "send", "read", "reply_inbox", "ping_person", "get_file", "count", "delete", "clear":
 		// The plugin exposes only messaging for its attached identity. A full
 		// AgentWorks tool connection must be installed separately by the person.
 		// The server calls run without the bridge lock (a busy server can take many seconds);
@@ -1567,7 +1713,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			}
 			return LocalBridgeReply{Error: "This chat's connection to network " + via.Network + " is offline. Type /agentworks attach --also " + via.Network + " to reconnect it."}
 		}
-		if via.Also && in.Action == "send" {
+		if via.Also && (in.Action == "send" || in.Action == "agent_status" || in.Action == "history") {
 			in.Target = networkTarget(in.Target, via.Network)
 		}
 		extras := []*localSession{}
@@ -1655,7 +1801,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 				extras = nil
 			}
 			for _, x := range extras {
-				raw, err := x.client.Call(callCtx, "messages", map[string]any{"action": "list_agents", "agent_name": x.Attachment.AgentName, "query": in.Query})
+				raw, err := x.client.Call(callCtx, "messages", listAgentsArgs(x.Attachment.AgentName, in))
 				if err == nil {
 					reply.Directories = append(reply.Directories, LocalAgentDirectory{Server: x.Network, Agents: directoryWithoutProjectContext(raw)})
 				}
@@ -1758,6 +1904,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		if s.SetupPending && (in.Action == "next" || s.NativeRemote == "") {
 			out.SetupContext = b.setupContext(callCtx, s)
+			if b.sessions[key] != s {
+				return LocalBridgeReply{}
+			}
 			s.SetupPending = false
 			if err := b.save(); err != nil {
 				return LocalBridgeReply{Error: err.Error()}
@@ -1809,6 +1958,9 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		}
 		if s.SetupPending {
 			out.SetupContext = b.setupContext(callCtx, s)
+			if b.sessions[key] != s {
+				return LocalBridgeReply{}
+			}
 			s.SetupPending = false
 			if err := b.save(); err != nil {
 				return LocalBridgeReply{Error: err.Error()}
@@ -1869,7 +2021,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 		var cancel context.CancelFunc
 		callCtx, cancel = context.WithTimeout(context.WithoutCancel(callCtx), 30*time.Second)
 		defer cancel()
-		if in.Delivery != "delivered" || in.MessageID == "" {
+		if in.MessageID == "" || in.Delivery != "delivered" && !(in.Delivery == "queued" && in.Transport == "codex_queue") {
 			return LocalBridgeReply{Error: "Use a message ID and delivery=delivered once this chat receives it."}
 		}
 		candidates := []*localSession{s}
@@ -1888,7 +2040,7 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 			var raw json.RawMessage
 			var err error
 			b.unlocked(func() {
-				raw, err = client.Call(callCtx, "messages", map[string]any{"action": "ack", "agent_name": attachment.AgentName, "attachment_id": attachment.ID, "message_id": in.MessageID, "delivery": "delivered", "transport": transport})
+				raw, err = client.Call(callCtx, "messages", map[string]any{"action": "ack", "agent_name": attachment.AgentName, "attachment_id": attachment.ID, "message_id": in.MessageID, "delivery": in.Delivery, "transport": transport})
 			})
 			if err != nil {
 				var apiErr *APIError
@@ -1908,21 +2060,28 @@ func (b *localBridge) handle(serverCtx, callCtx context.Context, in LocalBridgeR
 	}
 }
 
-func localPending(s *localSession) bool { return s.latestSequence > s.ReadPosition }
+func localPending(s *localSession) bool {
+	return s.latestSequence > s.ReadPosition || s.queueHint != s.readQueueHint
+}
 
 func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey string) {
 	reason := "context_done"
 	defer func() {
 		b.mu.Lock()
 		s.nativeStarted = false
+		att := s.Attachment
 		b.mu.Unlock()
-		log.Printf("[BRIDGE-NATIVE] stopped agent=%s attachment=%s reason=%s", s.Attachment.AgentName, s.Attachment.ID, reason)
+		log.Printf("[BRIDGE-NATIVE] stopped agent=%s attachment=%s reason=%s", att.AgentName, att.ID, reason)
 	}()
 	backoff := time.Second
 	for ctx.Err() == nil {
-		out := b.handle(ctx, ctx, LocalBridgeRequest{Action: "next", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, HostKey: hostKey, Transport: nativeCodexTransport(s.NativeRemote)})
+		b.mu.Lock()
+		att := s.Attachment
+		remote := s.NativeRemote
+		b.mu.Unlock()
+		out := b.handle(ctx, ctx, LocalBridgeRequest{Action: "next", Provider: att.Provider, SessionID: att.SessionID, AttachmentID: att.ID, HostKey: hostKey, Transport: nativeCodexTransport(remote)})
 		if out.Error != "" {
-			log.Printf("[BRIDGE-NATIVE] pending read paused agent=%s attachment=%s; reconnecting", s.Attachment.AgentName, s.Attachment.ID)
+			log.Printf("[BRIDGE-NATIVE] pending read paused agent=%s attachment=%s; reconnecting", att.AgentName, att.ID)
 			select {
 			case <-ctx.Done():
 				return
@@ -1935,8 +2094,8 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 			reason = "not_attached"
 			return
 		}
-		backoff = time.Second
 		if len(out.Messages) == 0 && out.SetupContext == "" {
+			backoff = time.Second
 			continue
 		}
 		b.mu.Lock()
@@ -1952,10 +2111,10 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 		b.mu.Unlock()
 		err := b.options.NativeOffer(ctx, offeredRemote, out)
 		if errors.Is(err, ErrNativeOfferRejected) && b.options.NativeRoute != nil {
-			refreshed := b.options.NativeRoute(s.Attachment.Provider, s.Attachment.SessionID, hostKey, offeredRemote)
+			refreshed := b.options.NativeRoute(att.Provider, att.SessionID, hostKey, offeredRemote)
 			if refreshed != "" && refreshed != offeredRemote {
 				b.mu.Lock()
-				current := b.sessions[localBridgeKey(s.Attachment.Provider, s.Attachment.SessionID)] == s
+				current := b.sessions[localBridgeKey(att.Provider, att.SessionID)] == s
 				if current {
 					s.NativeRemote = refreshed
 					err = b.save()
@@ -1999,31 +2158,45 @@ func (b *localBridge) nativeLoop(ctx context.Context, s *localSession, hostKey s
 		}
 		if err != nil {
 			if errors.Is(err, ErrNativeOfferUnconfirmed) {
+				backoff = time.Second
 				continue
 			}
 			b.mu.Lock()
-			if out.IncludeGuidance && errors.Is(err, ErrNativeOfferRejected) && s.LastGuidanceAt.Equal(out.guidanceAt) && b.sessions[localBridgeKey(s.Attachment.Provider, s.Attachment.SessionID)] == s {
+			if out.IncludeGuidance && errors.Is(err, ErrNativeOfferRejected) && s.LastGuidanceAt.Equal(out.guidanceAt) && b.sessions[localBridgeKey(att.Provider, att.SessionID)] == s {
 				s.LastGuidanceAt = out.previousGuidanceAt
 			}
 			s.LastError = "Native delivery uncertain; ask the agent to read the mailbox."
 			if errors.Is(err, ErrNativeOfferRejected) {
+				// Nothing reached the native chat; never let the local cursor skip this rejected handoff.
+				s.ReadPosition = 0
 				if _, _, eligible := b.nativeWakeTarget(s); eligible && b.options.NativeWake != nil {
-					// Nothing reached the native chat. Re-read pending server mail after
-					// wake; the local cursor must not skip this rejected handoff.
-					if b.queueNativeWake(s) {
-						s.ReadPosition = 0
-					}
+					b.queueNativeWake(s)
 				}
 				s.LastError = "Message not delivered; ask the agent to read the mailbox."
 			}
 			_ = b.save()
 			b.mu.Unlock()
-			continue // A later hook can read this still-pending message from the server.
+			if errors.Is(err, ErrNativeOfferRejected) {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(backoff):
+				}
+				backoff = min(30*time.Second, backoff*2)
+			}
+			continue // A later hook or retry can read this still-pending message from the server.
+		}
+		backoff = time.Second
+		// codex queue only puts the message in the chat's own queue: record it as
+		// queued; the chat's UserPromptSubmit hook confirms delivery when a turn starts with it.
+		delivery := "delivered"
+		if nativeCodexTransport(offeredRemote) == "codex_queue" {
+			delivery = "queued"
 		}
 		for _, m := range out.Messages {
-			receipt := b.handle(ctx, ctx, LocalBridgeRequest{Action: "ack", Provider: s.Attachment.Provider, SessionID: s.Attachment.SessionID, AttachmentID: s.Attachment.ID, HostKey: hostKey, MessageID: m.MessageID, Delivery: "delivered", Transport: nativeCodexTransport(offeredRemote)})
+			receipt := b.handle(ctx, ctx, LocalBridgeRequest{Action: "ack", Provider: att.Provider, SessionID: att.SessionID, AttachmentID: att.ID, HostKey: hostKey, MessageID: m.MessageID, Delivery: delivery, Transport: nativeCodexTransport(offeredRemote)})
 			if receipt.Error != "" || len(receipt.Result) == 0 {
-				log.Printf("[BRIDGE-NATIVE] outcome=receipt_pending agent=%s attachment=%s message=%s route=%s", s.Attachment.AgentName, s.Attachment.ID, m.MessageID, nativeCodexTransport(offeredRemote))
+				log.Printf("[BRIDGE-NATIVE] outcome=receipt_pending agent=%s attachment=%s message=%s route=%s", att.AgentName, att.ID, m.MessageID, nativeCodexTransport(offeredRemote))
 			}
 		}
 	}
@@ -2067,14 +2240,48 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 			args["unread_only"] = true
 		}
 	case "peers":
-		args["action"], args["query"] = "list_agents", in.Query
+		args = listAgentsArgs(s.Attachment.AgentName, in)
+	case "agent_status":
+		args["action"], args["target"] = "agent_status", in.Target
+		if in.Limit > 0 {
+			args["limit"] = in.Limit
+		}
+	case "history":
+		// An offline Team agent's chat, read as this person (the server checks its chat sharing).
+		args["action"], args["target"] = "history", in.Target
+		if in.Query != "" {
+			args["query"] = in.Query
+		}
+		if in.Line > 0 {
+			args["line"] = in.Line
+		}
+		if in.Offset > 0 {
+			args["offset"] = in.Offset
+		}
 	case "ping_person":
 		args["action"], args["message_id"] = "ping_person", in.MessageID
 	case "send":
 		args["action"], args["target"], args["message"], args["submission_id"] = "send", in.Target, in.Message, in.SubmissionID
-		if in.FileBase64 != "" {
-			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
+		if in.InboxID != "" {
+			args["inbox_id"] = in.InboxID
+			log.Printf("[AGENTBRIDGE] event=explicit_thread_forwarded attachment=%s", s.Attachment.ID)
 		}
+		if in.Ask {
+			args["action"] = "ask"
+		}
+		if in.Queue {
+			args["action"] = "queue"
+		}
+		if in.Offline != "" {
+			args["offline"] = in.Offline
+		}
+		if in.ExpectsReply {
+			args["expects_reply"] = true
+		}
+		if in.FileBase64 != "" {
+			args["attachments"] = []any{map[string]any{"file_name": in.FileName, "file_base64": in.FileBase64}}
+		}
+		addTaskArgs(args, in.Task)
 	case "get_file":
 		args["action"], args["inbox_id"], args["file_id"] = "get_file", in.InboxID, in.FileID
 	case "reply_inbox":
@@ -2082,10 +2289,15 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 		// membership/send checks below, not credentials on historical mail.
 		args["action"], args["inbox_id"], args["message"], args["submission_id"] = "send", in.InboxID, in.Message, in.SubmissionID
 		if in.FileBase64 != "" {
-			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
+			args["attachments"] = []any{map[string]any{"file_name": in.FileName, "file_base64": in.FileBase64}}
 		}
+		addTaskArgs(args, in.Task)
 	case "read":
-		args["action"], args["after"], args["limit"] = "read", in.Cursor, 20
+		args["action"], args["after"], args["limit"] = "read", in.Cursor, readPageLimit(in.Limit)
+		if in.WaitSeconds < 0 || in.WaitSeconds > 25 {
+			return LocalBridgeReply{Error: "wait_seconds must be 0 to 25"}
+		}
+		args["wait_seconds"] = in.WaitSeconds
 		if in.InboxID != "" {
 			args["inbox_id"] = in.InboxID
 		}
@@ -2103,7 +2315,7 @@ func (b *localBridge) mailboxCall(callCtx context.Context, s *localSession, in L
 	}
 	var raw json.RawMessage
 	var err error
-	if in.Action == "peers" || in.Action == "read" || in.Action == "count" {
+	if in.Action == "peers" || in.Action == "agent_status" || in.Action == "history" || in.Action == "read" || in.Action == "count" {
 		// These only read, so the lease check runs beside the read and the answer is dropped
 		// if the check fails: one server round trip less. Sends and replies check first.
 		checked := make(chan error, 1)
@@ -2351,6 +2563,10 @@ func (b *localBridge) housekeeping(ctx context.Context) {
 				if s.cancel != nil {
 					s.cancel()
 				}
+				// Mail that arrived before the chat closed has no later hint to wake it.
+				if localPending(s) {
+					b.queueNativeWake(s)
+				}
 			}
 			if s.streamOnline && !s.ServerClosed {
 				b.startNative(s)
@@ -2463,7 +2679,7 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 	b.mu.Lock()
 	a, explicitName, client := s.Attachment, s.LabelName, s.client
 	configPath := s.ParentConfigPath
-	workspace, activity, activityAt := s.WorkspaceDir, s.Activity, s.ActivityAt
+	workspace, activity, activityAt, clientApp := s.WorkspaceDir, s.Activity, s.ActivityAt, s.ClientApp
 	crossNetwork := s.Also
 	if crossNetwork {
 		if primary := b.sessions[localBridgeKey(a.Provider, a.SessionID)]; primary != nil {
@@ -2487,10 +2703,13 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 	} else if b.options.ChatContext != nil {
 		repository, branch = b.options.ChatContext(ctx, a, workspace)
 	}
-	if a.ClientBuild == b.options.ClientBuild && label == a.Label && route == a.DeliveryRoute && repository == a.Repository && branch == a.Branch && activity == a.Activity && activityAt.Equal(a.ActivityAt) {
+	if clientApp == "" {
+		clientApp = a.ClientApp
+	}
+	if a.ClientBuild == b.options.ClientBuild && label == a.Label && route == a.DeliveryRoute && repository == a.Repository && branch == a.Branch && activity == a.Activity && activityAt.Equal(a.ActivityAt) && clientApp == a.ClientApp {
 		return
 	}
-	a.ClientBuild = b.options.ClientBuild
+	a.ClientBuild, a.ClientApp = b.options.ClientBuild, clientApp
 	a.DeliveryRoute, a.Repository, a.Branch, a.Activity, a.ActivityAt = route, repository, branch, activity, activityAt
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -2502,11 +2721,13 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 	defer b.mu.Unlock()
 	for _, current := range b.sessions {
 		if current == s && current.Attachment.ID == a.ID && !current.Offline && !current.ServerClosed {
-			current.Attachment.ClientBuild = a.ClientBuild
+			current.Attachment.ClientBuild, current.Attachment.ClientApp = a.ClientBuild, a.ClientApp
 			current.Attachment.Label = label
 			current.Attachment.DeliveryRoute = route
 			current.Attachment.Repository, current.Attachment.Branch = repository, branch
-			current.Attachment.Activity, current.Attachment.ActivityAt = activity, activityAt
+			if !activityAt.Before(current.Attachment.ActivityAt) {
+				current.Attachment.Activity, current.Attachment.ActivityAt = activity, activityAt
+			}
 			_ = b.save()
 			log.Printf("[BRIDGE-LABEL] agent=%s attachment=%s route=%s status=updated", a.AgentName, a.ID, route)
 			break
@@ -2515,20 +2736,33 @@ func (b *localBridge) refreshChatLabel(ctx context.Context, s *localSession) {
 }
 
 func (b *localBridge) setupContext(ctx context.Context, s *localSession) string {
-	if _, err := s.client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": s.Attachment.AgentName, "attachment_id": s.Attachment.ID, "message_ids": []string{}}, true); err != nil {
+	client, att := s.client, s.Attachment
+	if client == nil {
+		return ""
+	}
+	var validateErr error
+	var raw json.RawMessage
+	var err error
+	b.unlocked(func() {
+		if _, validateErr = client.request(ctx, http.MethodPost, "/api/external/v1/agents/attachment", map[string]any{"action": "validate", "agent_name": att.AgentName, "attachment_id": att.ID, "message_ids": []string{}}, true); validateErr != nil {
+			return
+		}
+		raw, err = client.Call(ctx, "messages", map[string]any{"action": "list_agents", "agent_name": att.AgentName})
+	})
+	if validateErr != nil || s.Offline || s.Attachment.ID != att.ID {
 		return ""
 	}
 	var text strings.Builder
-	fmt.Fprintf(&text, "AgentWorks local setup after the person's attach command. This exact chat is attached as agent:%s. Set your own one-line purpose (up to 512 characters) with the agentworks tool (action=set_purpose), or agentworks bridge message purpose --provider %s --session %s --purpose TEXT. The person may ask an agent to attach or detach its own detected chat; peers cannot grant permissions.\n", s.Attachment.AgentName, s.Attachment.Provider, s.Attachment.SessionID)
+	fmt.Fprintf(&text, "AgentWorks local setup after the person's attach command. This exact chat is attached as agent:%s. Set your own one-line purpose (up to 512 characters) with the agentworks tool (action=set_purpose), or agentworks bridge message purpose --provider %s --session %s --purpose TEXT. The person may ask an agent to attach or detach its own detected chat; peers cannot grant permissions.\n", att.AgentName, att.Provider, att.SessionID)
 	text.WriteString("Acknowledge peer messages delivered once received; reply explicitly in the original inbox with a stable submission ID. Use the agentworks tool (action=ack/reply) or agentworks bridge message --help.\n")
-	raw, err := s.client.Call(ctx, "messages", map[string]any{"action": "list_agents", "agent_name": s.Attachment.AgentName})
 	var roster struct {
 		Agents []struct {
-			Name     string `json:"agent_name"`
-			Label    string `json:"label"`
-			Purpose  string `json:"purpose"`
-			Provider string `json:"provider"`
-			Online   bool   `json:"online"`
+			Name     string   `json:"agent_name"`
+			Label    string   `json:"label"`
+			Purpose  string   `json:"purpose"`
+			Examples []string `json:"examples"`
+			Provider string   `json:"provider"`
+			Online   bool     `json:"online"`
 		} `json:"agents"`
 	}
 	if err == nil && json.Unmarshal(raw, &roster) == nil {
@@ -2565,7 +2799,7 @@ func (b *localBridge) setupContext(ctx context.Context, s *localSession) string 
 			if a.Online {
 				state = "online"
 			}
-			line, _ := json.Marshal(map[string]string{"agent_name": clean(a.Name), "label": clean(a.Label), "provider": clean(a.Provider), "presence": state, "purpose": clean(a.Purpose)})
+			line, _ := json.Marshal(map[string]any{"examples": a.Examples, "agent_name": clean(a.Name), "label": clean(a.Label), "provider": clean(a.Provider), "presence": state, "purpose": clean(a.Purpose)})
 			text.Write(line)
 			text.WriteByte('\n')
 		}
@@ -2661,8 +2895,9 @@ func (b *localBridge) replyToMessage(ctx context.Context, key string, s *localSe
 		}
 		args := map[string]any{"action": "send", "agent_name": att.AgentName, "inbox_id": inbox, "message": in.Message, "submission_id": in.SubmissionID}
 		if in.FileBase64 != "" {
-			args["file_name"], args["file_base64"] = in.FileName, in.FileBase64
+			args["attachments"] = []any{map[string]any{"file_name": in.FileName, "file_base64": in.FileBase64}}
 		}
+		addTaskArgs(args, in.Task)
 		b.unlocked(func() { out.Result, err = client.Call(ctx, "messages", args) })
 		if err != nil {
 			return LocalBridgeReply{Error: err.Error()}
@@ -2714,6 +2949,7 @@ func (b *localBridge) readPending(ctx context.Context, s *localSession, transpor
 	defer func() { s.reading = false }()
 	client, attachment := s.client, s.Attachment
 	observedLatest := s.latestSequence
+	observedQueueHint := s.queueHint
 	after := s.ReadPosition
 	if boundary {
 		after = 0
@@ -2748,6 +2984,7 @@ func (b *localBridge) readPending(ctx context.Context, s *localSession, transpor
 		next = max(next, observedLatest)
 	}
 	s.ReadPosition = max(s.ReadPosition, next)
+	s.readQueueHint = observedQueueHint
 	if err = b.save(); err != nil {
 		return nil, heldInboxNotice{}, 0, err
 	}
@@ -2802,6 +3039,24 @@ func (b *localBridge) extrasPending(primary string) bool {
 	return false
 }
 
+// listAgentsArgs is one directory page: the server returns up to 20 rows and next_offset for the rest.
+func listAgentsArgs(agentName string, in LocalBridgeRequest) map[string]any {
+	args := map[string]any{"action": "list_agents", "agent_name": agentName, "query": in.Query}
+	if in.Offset > 0 {
+		args["offset"] = in.Offset
+	}
+	return args
+}
+
+// readPageLimit is the caller's read page size: 20 when unset, at most 20
+// (matching filterAttachedMailbox and server attachment validation).
+func readPageLimit(limit int) int {
+	if limit <= 0 {
+		return 20
+	}
+	return min(limit, 20)
+}
+
 // networkFor picks an explicit network or a target written NAME@NETWORK.
 // Unqualified sends and inbox addresses are resolved against the servers.
 func (b *localBridge) networkFor(primary string, s *localSession, in LocalBridgeRequest) *localSession {
@@ -2822,7 +3077,7 @@ func (b *localBridge) networkFor(primary string, s *localSession, in LocalBridge
 	if in.Network != "" {
 		return pick(in.Network)
 	}
-	if in.Action == "send" {
+	if in.Action == "send" || in.Action == "agent_status" || in.Action == "history" {
 		if at := strings.LastIndex(in.Target, "@"); at > 0 {
 			if x := pick(in.Target[at+1:]); x != nil {
 				return x

@@ -8,7 +8,7 @@ import (
 )
 
 // The schedule half of /api/header-summary resolved every schedule's runtime
-// state (reconcile + two schedule-runs.json reads + a durable-run lookup) on
+// state (reconciliation, history queries and a durable-run lookup) on
 // each 5s poll from every open tab. Its answer only changes when a scheduled
 // run starts or finishes, or a manifest changes; those paths bump the
 // generation below. The safety TTL bounds drift from anything unhooked.

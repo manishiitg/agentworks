@@ -145,21 +145,24 @@ export function chatHistoryWorkshopModeLabel(session: ChatHistorySession): strin
   return chatHistoryWorkshopMode(session) === 'run' ? 'Run' : 'Workshop'
 }
 
+const CHAT_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+})
+const MESSAGE_COUNT_FORMATTER = new Intl.NumberFormat()
+
 const formatChatTime = (value?: string): string => {
   if (!value) return 'Unknown time'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'Unknown time'
-  return date.toLocaleString([], {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  return CHAT_TIME_FORMATTER.format(date)
 }
 
 const formatMessageCount = (count?: number): string | undefined => {
   if (typeof count !== 'number') return undefined
-  const formatted = new Intl.NumberFormat().format(count)
+  const formatted = MESSAGE_COUNT_FORMATTER.format(count)
   return `${formatted} ${count === 1 ? 'message' : 'messages'}`
 }
 
@@ -505,18 +508,14 @@ export const PreviousChatHistoryPanel: React.FC<PreviousChatHistoryPanelProps> =
 
   const showRunActivity = activeFilter === 'schedule' || activeFilter === 'webhook'
   useEffect(() => {
-    if (recentOnly && !includeAutomationChats) {
+    if ((recentOnly && !includeAutomationChats) || !workspacePath) {
       setScheduleJobs([])
       setScheduleRunsByJob({})
       setScheduleJobsWorkspacePath('')
       return
     }
-    if (!workspacePath) {
-      setScheduleJobs([])
-      setScheduleRunsByJob({})
-      setScheduleJobsWorkspacePath('')
-      return
-    }
+    // Defer the 1 + N getJobRuns fan-out until the user actually views Schedules or Webhooks.
+    if (!showRunActivity) return
     let cancelled = false
     let inFlight = false
     const refresh = async (initial = false) => {
@@ -545,12 +544,13 @@ export const PreviousChatHistoryPanel: React.FC<PreviousChatHistoryPanelProps> =
       }
     }
     void refresh(true)
-    const timer = showRunActivity ? window.setInterval(() => { if (!document.hidden) void refresh() }, 10000) : undefined
-    return () => { cancelled = true; if (timer !== undefined) window.clearInterval(timer) }
+    const timer = window.setInterval(() => { if (!document.hidden) void refresh() }, 10000)
+    return () => { cancelled = true; window.clearInterval(timer) }
   }, [addToast, includeAutomationChats, recentOnly, runEntityType, workspacePath, showRunActivity, refreshToken, runsRefreshToken])
 
   // Crew automation sessions are ordinary product conversations. Join the
   // durable run indexes by session id so the chat list can name its source.
+  const triggerScopeKey = productTriggerScope ? JSON.stringify(productTriggerScope) : ''
   useEffect(() => {
     if (!recentOnly || !workspacePath || !productTriggerScope) {
       setAutomationSourceBySession({})
@@ -559,23 +559,27 @@ export const PreviousChatHistoryPanel: React.FC<PreviousChatHistoryPanelProps> =
     let cancelled = false
     void (async () => {
       try {
-        const [jobsResponse, triggersResponse] = await Promise.all([
+        const [jobsResult, triggersResult] = await Promise.allSettled([
           schedulerApi.listJobs({ entity_type: 'product', limit: 100 }),
           productWebhooksApi.list(productTriggerScope),
         ])
-        const jobs = (jobsResponse.jobs || []).filter(job => sameWorkspace(job.workspace_path, workspacePath))
-        const triggers = triggersResponse.triggers || []
-        const [jobRuns, triggerRuns] = await Promise.all([
-          Promise.all(jobs.map(async job => ({ job, runs: (await schedulerApi.getJobRuns(job.id, 30)).runs || [] }))),
-          Promise.all(triggers.map(async trigger => ({ trigger, runs: (await productWebhooksApi.runs(productTriggerScope, trigger.id, 30)).runs || [] }))),
+        const jobs = jobsResult.status === 'fulfilled'
+          ? (jobsResult.value.jobs || []).filter(job => sameWorkspace(job.workspace_path, workspacePath))
+          : []
+        const triggers = triggersResult.status === 'fulfilled' ? (triggersResult.value.triggers || []) : []
+        const [jobRunResults, triggerRunResults] = await Promise.all([
+          Promise.allSettled(jobs.map(async job => ({ job, runs: (await schedulerApi.getJobRuns(job.id, 30)).runs || [] }))),
+          Promise.allSettled(triggers.map(async trigger => ({ trigger, runs: (await productWebhooksApi.runs(productTriggerScope, trigger.id, 30)).runs || [] }))),
         ])
         if (cancelled) return
         const sources: Record<string, { kind: 'schedule' | 'trigger'; label: string }> = {}
-        for (const { job, runs } of jobRuns) {
-          for (const run of runs) if (run.session_id) sources[run.session_id] = { kind: 'schedule', label: job.name }
+        for (const result of jobRunResults) {
+          if (result.status !== 'fulfilled') continue
+          for (const run of result.value.runs) if (run.session_id) sources[run.session_id] = { kind: 'schedule', label: result.value.job.name }
         }
-        for (const { trigger, runs } of triggerRuns) {
-          for (const run of runs) if (run.session_id) sources[run.session_id] = { kind: 'trigger', label: trigger.name }
+        for (const result of triggerRunResults) {
+          if (result.status !== 'fulfilled') continue
+          for (const run of result.value.runs) if (run.session_id) sources[run.session_id] = { kind: 'trigger', label: result.value.trigger.name }
         }
         setAutomationSourceBySession(sources)
       } catch {
@@ -583,7 +587,8 @@ export const PreviousChatHistoryPanel: React.FC<PreviousChatHistoryPanelProps> =
       }
     })()
     return () => { cancelled = true }
-  }, [productTriggerScope, recentOnly, workspacePath, refreshToken])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [triggerScopeKey, recentOnly, workspacePath, refreshToken])
 
   const visibleSessions = useMemo(
     () => sessions.filter(session => session.session_id !== activeSessionId),
@@ -653,33 +658,45 @@ export const PreviousChatHistoryPanel: React.FC<PreviousChatHistoryPanelProps> =
   // A flat, cross-schedule feed sorted by actual run recency — not grouped by
   // job. Mirrors the Recent tab's own sort-by-recency-and-paginate shape.
   const flattenedScheduleRuns = useMemo(() => {
-    const items: { job: ScheduledJob; run: ScheduledJobRun }[] = []
+    const items: { job: ScheduledJob; run: ScheduledJobRun; startedAtMs: number }[] = []
     for (const job of scheduleJobs) {
       for (const run of scheduleRunsByJob[job.id] || []) {
-        items.push({ job, run })
+        const parsed = Date.parse(run.started_at || '')
+        items.push({ job, run, startedAtMs: Number.isFinite(parsed) ? parsed : 0 })
       }
     }
-    return items.sort((a, b) => Date.parse(b.run.started_at || '') - Date.parse(a.run.started_at || ''))
+    items.sort((a, b) => b.startedAtMs - a.startedAtMs)
+    return items.map(({ job, run }) => ({ job, run }))
   }, [scheduleJobs, scheduleRunsByJob])
 
   const isRunFilter = activeFilter === 'schedule' || activeFilter === 'webhook'
-  const isWebhookRun = ({ job, run }: { job: ScheduledJob; run: ScheduledJobRun }) =>
-    job.schedule_type === 'webhook' || workflowTriggerLabel({ sessionId: run.session_id, triggeredBy: run.trigger_source }) === 'Webhook'
-  const webhookRuns = flattenedScheduleRuns.filter(isWebhookRun)
-  const scheduledRuns = flattenedScheduleRuns.filter(item => !isWebhookRun(item))
+  const { webhookRuns, scheduledRuns } = useMemo(() => {
+    const isWebhook = ({ job, run }: { job: ScheduledJob; run: ScheduledJobRun }) =>
+      job.schedule_type === 'webhook' || workflowTriggerLabel({ sessionId: run.session_id, triggeredBy: run.trigger_source }) === 'Webhook'
+    const webhooks: typeof flattenedScheduleRuns = []
+    const scheduled: typeof flattenedScheduleRuns = []
+    for (const item of flattenedScheduleRuns) {
+      if (isWebhook(item)) webhooks.push(item)
+      else scheduled.push(item)
+    }
+    return { webhookRuns: webhooks, scheduledRuns: scheduled }
+  }, [flattenedScheduleRuns])
   const filteredRuns = activeFilter === 'webhook' ? webhookRuns : scheduledRuns
   const displayedScheduleRuns = showAll ? filteredRuns : filteredRuns.slice(0, visibleCount)
-  const filteredJobs = scheduleJobs.filter(job => (job.schedule_type === 'webhook') === (activeFilter === 'webhook'))
+  const filteredJobs = useMemo(
+    () => scheduleJobs.filter(job => (job.schedule_type === 'webhook') === (activeFilter === 'webhook')),
+    [scheduleJobs, activeFilter]
+  )
 
-  const oldRunCounts = CHAT_HISTORY_CLEANUP_AGE_OPTIONS.reduce((counts, days) => {
+  const oldRunCounts = useMemo(() => CHAT_HISTORY_CLEANUP_AGE_OPTIONS.reduce((counts, days) => {
     counts[days] = filteredRuns.filter(({ run }) => isTerminalScheduledRun(run) && isRunOlderThanDays(run, days)).length
     return counts
-  }, {} as Record<ChatHistoryCleanupAgeDays, number>)
+  }, {} as Record<ChatHistoryCleanupAgeDays, number>), [filteredRuns])
 
   const displayFilterCounts = {
     ...filterCounts,
-    schedule: scheduleDataMatchesWorkspace && !isLoadingScheduleActivity ? scheduledRuns.length : '…',
-    webhook: scheduleDataMatchesWorkspace && !isLoadingScheduleActivity ? webhookRuns.length : '…',
+    schedule: scheduleDataMatchesWorkspace && !isLoadingScheduleActivity ? scheduledRuns.length : filterCounts.schedule,
+    webhook: scheduleDataMatchesWorkspace && !isLoadingScheduleActivity ? webhookRuns.length : filterCounts.webhook,
   }
 
   const sessionsByID = useMemo(

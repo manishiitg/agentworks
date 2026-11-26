@@ -208,6 +208,18 @@ if os.environ['VAR_PHASE'] == 'labels':
     except ValueError as error: assert str(error) == 'original failure'
     else: raise AssertionError('decorator swallowed the function error')
     raise SystemExit(0)
+if os.environ['VAR_PHASE'] == 'parallel':
+    from agentworks import parallel
+    import time
+    def part(n):
+        time.sleep(0.2)
+        return n * 10
+    assert parallel(lambda: part(3), lambda: part(1), lambda: part(2), names=['Part one', 'Part two', 'Part three']) == [30, 10, 20]
+    def broken(): raise ValueError('branch failed')
+    try: parallel(lambda: part(1), broken, names=['Fine part', 'Broken part'])
+    except ValueError as error: assert str(error) == 'branch failed'
+    else: raise AssertionError('a failed part was swallowed')
+    raise SystemExit(0)
 if os.environ['VAR_PHASE'] == 'limits':
     big = 'large detail ' * 1000
     for i in range(3):
@@ -542,6 +554,36 @@ assert first.log_complete and second.log_complete and passed.log_complete
 	failures, passes = recorder.counts()
 	if failures != beforeFailures+1 || passes != beforePasses+3 {
 		t.Fatalf("ordinary decorated calls were skipped or changed outcome: failures=%d passes=%d", failures, passes)
+	}
+	// #3618: parallel() returns results in call order, and each part's step record carries one shared group with
+	// overlapping times, so the run view can draw them side by side.
+	run(false, false, "parallel")
+	parallelData, err := os.ReadFile(filepath.Join(docs, root, "runs/run-one/run_metadata.json"))
+	var parallelRecord struct {
+		Steps map[string]PythonStepEvidence `json:"python_steps"`
+	}
+	if err != nil || json.Unmarshal(parallelData, &parallelRecord) != nil {
+		t.Fatalf("parallel step records unavailable: %v", err)
+	}
+	parts := map[string]PythonStepEvidence{}
+	for _, item := range parallelRecord.Steps {
+		parts[item.Name] = item
+	}
+	one, two, three := parts["Part one"], parts["Part two"], parts["Part three"]
+	if one.ParallelGroup == "" || one.ParallelGroup != two.ParallelGroup || one.ParallelGroup != three.ParallelGroup {
+		t.Fatalf("parallel parts lost their shared group: %+v %+v %+v", one, two, three)
+	}
+	for _, a := range []PythonStepEvidence{one, two, three} {
+		for _, b := range []PythonStepEvidence{one, two, three} {
+			start, _ := time.Parse(time.RFC3339Nano, a.StartedAt)
+			end, endErr := time.Parse(time.RFC3339Nano, b.CompletedAt)
+			if endErr != nil || !start.Before(end) {
+				t.Fatalf("parallel parts did not overlap: %+v %+v", a, b)
+			}
+		}
+	}
+	if fine, broken := parts["Fine part"], parts["Broken part"]; broken.Status != "failed" || fine.Status != "completed" || fine.ParallelGroup != broken.ParallelGroup || fine.ParallelGroup == one.ParallelGroup {
+		t.Fatalf("a failed part must fail alone in its own group: %+v %+v", fine, broken)
 	}
 	run(false, false, "functions")
 	run(true, false, "functions")

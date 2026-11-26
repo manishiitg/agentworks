@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"golang.org/x/term"
 )
 
@@ -41,6 +42,9 @@ func toolsServerURL(o *options) (url, name string, err error) {
 // It never fails the setup: a missing login or an app command that errors becomes a note.
 func addToolsServer(ctx context.Context, o *options, provider string) (note string) {
 	defer func() { o.setupToolsNote = note }()
+	if cfg, _, e := o.connection(false); e == nil && cfg.Server == agentworksclient.LocalAppServer {
+		return "Local AgentBridge messaging is ready through the Mac app; no server sign-in is needed."
+	}
 	url, serverName, err := toolsServerURL(o)
 	if err != nil {
 		return "The AgentWorks tools were not added because there is no saved sign-in yet. Run agentworks login, then agentworks setup " + provider + " again."

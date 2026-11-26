@@ -108,6 +108,10 @@ func WorkspacePanelToolMap(name string) map[string][]string {
 	return out
 }
 
+// toolGuides names product skills that are not panels but are the guide for a tool: the ui tool's guide is
+// work-ui-control, not the panels that once listed it (#3528).
+var toolGuides = map[string][]string{"work-ui-control": {"list_ui_capabilities", "get_ui_state", "perform_ui_action"}}
+
 // WorkspacePanelToolGuidance names only attached panel procedures for an
 // actually registered tool. It adds a reading hint, never a permission gate.
 func WorkspacePanelToolGuidance(tool, description string, attached []*llmtypes.Skill) string {
@@ -116,7 +120,11 @@ func WorkspacePanelToolGuidance(tool, description string, attached []*llmtypes.S
 		if skill == nil {
 			continue
 		}
+		lists := [][]string{toolGuides[skill.Name]}
 		for _, tools := range workspacePanelTools[skill.Name] {
+			lists = append(lists, tools)
+		}
+		for _, tools := range lists {
 			if slices.ContainsFunc(tools, func(source string) bool { return source == tool || platformtools.PublicName(source) == tool }) && !slices.Contains(names, skill.Name) {
 				names = append(names, skill.Name)
 			}

@@ -2,6 +2,9 @@ import { z } from 'zod'
 import { defineCatalog } from '@json-render/core'
 import { schema } from '@json-render/react/schema'
 
+export type ChatFileChange = { path: string; added?: number; removed?: number; summary?: string; href?: string }
+export type ChatCheck = { name: string; status: 'passed' | 'failed' | 'running' | 'not_run'; detail?: string; href?: string }
+
 export type ChatCard = { title: string; description?: string; image?: string; href?: string }
 export type DiagramNode = { id: string; title: string; description?: string; items?: { title: string; description?: string }[]; emphasis?: boolean }
 export type DiagramEdge = { from: string; to: string; label?: string; bidirectional?: boolean }
@@ -11,6 +14,9 @@ export type DiagramParticipant = { id: string; title: string }
 export type SequenceMessage = { from: string; to: string; label: string; reply?: boolean }
 
 export type ChatElement =
+  | { type: 'file_changes'; title: string; files: ChatFileChange[] }
+  | { type: 'checks'; title: string; checks: ChatCheck[] }
+  | { type: 'image'; src: string; caption?: string }
   | { type: 'table'; title: string; headers: string[]; rows: (string | number)[][] }
   | { type: 'chart'; title: string; style: 'line' | 'bar'; unit?: string; data: { label: string; value: number }[] }
   | { type: 'timeline'; title: string; items: { when: string; title: string; detail?: string }[] }
@@ -20,21 +26,56 @@ export type ChatElement =
   | { type: 'sequence'; title: string; participants: DiagramParticipant[]; messages: SequenceMessage[] }
   | { type: 'diagram'; title: string; direction: 'vertical' | 'horizontal'; nodes: DiagramNode[]; edges: DiagramEdge[] }
 
-const text = (max: number) => z.string().min(1).max(max).refine(value => value.trim().length > 0)
+const text = (max: number) => z.string().min(1).max(max).refine(value => value.trim().length > 0, 'Use non-blank text')
 const webURL = text(2048).refine(value => {
   if (/[\s<>\\\u0000-\u001f\u007f]/.test(value)) return false
   try { return ['http:', 'https:'].includes(new URL(value).protocol) } catch { return false }
 })
 export const workspaceCardImage = (value: string): boolean =>
-  /^(?:Crew|Workflow|Chats|_users|db\/assets|assets)\//.test(value) &&
+  (/^(?:Crew|Workflow|Chats|_users|db\/assets|assets)\//.test(value) || (value.startsWith('/') && !value.startsWith('//'))) &&
   !/[\\\u0000-\u001f\u007f]/.test(value) && !value.split('/').some(part => part === '..' || part === '.')
+
+const developerLink = z.union([webURL, text(2048).refine(workspaceCardImage)])
+const lineCount = z.number().int().min(0).max(1e9)
 
 const nodeID = text(48).regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/)
 const actor = z.strictObject({ id: nodeID, title: text(80) })
-const unique = (items: { id: string }[]) => new Set(items.map(item => item.id)).size === items.length
-const actors = z.array(actor).min(1).max(6).refine(unique)
+function uniqueIDs(items: { id: string }[], ctx: z.RefinementCtx) {
+  const seen = new Set<string>()
+  items.forEach(({ id }, index) => {
+    if (seen.has(id)) ctx.addIssue({ code: 'custom', path: [index, 'id'], message: 'Use a unique ID' })
+    seen.add(id)
+  })
+}
+
+function checkReferences(
+  ctx: z.RefinementCtx,
+  list: string,
+  records: Record<string, string | boolean | undefined>[],
+  fields: string[],
+  targets: { id: string }[],
+  targetList: string,
+) {
+  const ids = new Set(targets.map(item => item.id))
+  records.forEach((record, index) => {
+    for (const field of fields) {
+      if (!ids.has(String(record[field]))) {
+        ctx.addIssue({ code: 'custom', path: [list, index, field], message: `Use an ID from ${targetList}` })
+      }
+    }
+  })
+}
+
+const actors = z.array(actor).min(1).max(6).superRefine(uniqueIDs)
 
 export const chatWidgetSchemas = {
+  file_changes: z.strictObject({ title: text(160), files: z.array(z.strictObject({
+    path: text(2048), added: lineCount.optional(), removed: lineCount.optional(), summary: text(1000).optional(), href: developerLink.optional(),
+  })).min(1).max(30) }),
+  checks: z.strictObject({ title: text(160), checks: z.array(z.strictObject({
+    name: text(160), status: z.enum(['passed', 'failed', 'running', 'not_run']), detail: text(4000).optional(), href: developerLink.optional(),
+  })).min(1).max(30) }),
+  image: z.strictObject({ src: z.union([webURL, text(2048).refine(workspaceCardImage)]), caption: text(1000).optional() }),
   table: z.strictObject({ title: text(160), headers: z.array(text(80)).min(1).max(20),
     rows: z.array(z.array(z.union([z.string().max(2000), z.number().finite()])).max(20)).min(1).max(100),
   }).refine(value => value.rows.every(row => row.length === value.headers.length)),
@@ -49,21 +90,24 @@ export const chatWidgetSchemas = {
   diagram: z.strictObject({ title: text(160), direction: z.enum(['vertical', 'horizontal']).default('vertical'),
     nodes: z.array(z.strictObject({ id: nodeID, title: text(100), description: text(280).optional(), emphasis: z.boolean().optional(),
       items: z.array(z.strictObject({ title: text(80), description: text(160).optional() })).min(1).max(6).optional(),
-    })).min(1).max(16).refine(unique),
+    })).min(1).max(16).superRefine(uniqueIDs),
     edges: z.array(z.strictObject({ from: nodeID, to: nodeID, label: text(80).optional(), bidirectional: z.boolean().optional() })).max(24).default([]),
-  }).refine(value => value.edges.every(edge => value.nodes.some(node => node.id === edge.from) && value.nodes.some(node => node.id === edge.to))),
+  }).superRefine((value, ctx) => checkReferences(ctx, 'edges', value.edges, ['from', 'to'], value.nodes, 'nodes')),
   swimlane: z.strictObject({ title: text(160), lanes: actors,
-    steps: z.array(z.strictObject({ id: nodeID, lane: nodeID, title: text(100), description: text(280).optional() })).min(1).max(16).refine(unique),
-  }).refine(value => value.steps.every(step => value.lanes.some(lane => lane.id === step.lane))),
+    steps: z.array(z.strictObject({ id: nodeID, lane: nodeID, title: text(100), description: text(280).optional() })).min(1).max(16).superRefine(uniqueIDs),
+  }).superRefine((value, ctx) => checkReferences(ctx, 'steps', value.steps, ['lane'], value.lanes, 'lanes')),
   sequence: z.strictObject({ title: text(160), participants: actors,
     messages: z.array(z.strictObject({ from: nodeID, to: nodeID, label: text(120), reply: z.boolean().optional() })).min(1).max(24),
-  }).refine(value => value.messages.every(message => value.participants.some(actor => actor.id === message.from) && value.participants.some(actor => actor.id === message.to))),
+  }).superRefine((value, ctx) => checkReferences(ctx, 'messages', value.messages, ['from', 'to'], value.participants, 'participants')),
 }
 
 // A deliberately compact chat catalog; registered widgets keep their existing
 // presentation. No executable actions, bindings, arbitrary markup or page layouts.
 export const chatVisualCatalog = defineCatalog(schema, {
   components: {
+    file_changes: { props: chatWidgetSchemas.file_changes, slots: [], description: 'Observed changed files, optional measured line counts and existing file or diff links.' },
+    checks: { props: chatWidgetSchemas.checks, slots: [], description: 'Observed checks with explicit passed, failed, running or not_run state and collapsed details.' },
+    image: { props: chatWidgetSchemas.image, slots: [], description: 'An inline image from an authorized workspace file or HTTP(S), with optional caption.' },
     table: { props: chatWidgetSchemas.table, slots: [], description: 'A compact table of saved values with named columns.' },
     chart: { props: chatWidgetSchemas.chart, slots: [], description: 'A compact line or bar chart of observed numbers.' },
     timeline: { props: chatWidgetSchemas.timeline, slots: [], description: 'Saved events in supplied order.' },

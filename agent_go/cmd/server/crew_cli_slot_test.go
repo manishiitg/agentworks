@@ -35,6 +35,7 @@ func TestCrewTurnRunsAsItsOwnersSlot(t *testing.T) {
 		t.Fatal(err)
 	}
 	table := filepath.Join(root, "slots.json")
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENTWORKS_SLOTS", "on")
 	t.Setenv("AGENTWORKS_SLOTS_FILE", table)
 	t.Setenv("AGENTWORKS_SLOTCTL_CONFIG", config)

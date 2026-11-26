@@ -6,8 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"os"
+	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -24,10 +27,13 @@ import (
 // Their tab lists show them, and the relay streams those conversations, read-only, to the others in the Team.
 
 type crewMacTeamTab struct {
+	InitialInTeam *bool
+	crewTeamMessagePreview
 	Person         string // whose Mac it is
 	Tab            string // "main" or the Mac tab id
 	ConversationID string // the Mac conversation, as the relay addresses it
 	Name           string
+	Examples       []string
 	Purpose        string // its one line, from the Mac's tab
 	OnlyMe         bool   // a member's agent they keep to themselves: only they see it
 }
@@ -82,32 +88,22 @@ func callCrewMacPair(ctx context.Context, person, project, pair string, call cre
 // personMacTabs are this person's agents on their Mac that the Team may watch; a member's Only me ones are marked
 // (only they see them: crewMacTabsFor).
 func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab {
-	owner := person == ownerOfCrewProjectID(project)
-	// In team / Only me is the Team record's (crew_team_in_team.go); the owner's Mac lists only its In team agents here.
-	team, _ := readCrewTeam(project)
-	inTeam := map[string]bool{}
-	if owner {
-		for _, agent := range readMacSharedAgents(project) {
-			if crewTeamInTeam(agent) && team.agentInTeam(person, agent.Tab) {
-				inTeam[agent.Tab] = true
-			}
-		}
+	team, err := readCrewTeam(project)
+	if err != nil || !team.member(person) {
+		return nil
 	}
-	keep := func(tabs []crewMacTeamTab) []crewMacTeamTab {
-		if !owner {
-			out := slices.Clone(tabs)
-			for i := range out {
-				out[i].OnlyMe = !team.agentInTeam(person, out[i].Tab)
-			}
-			return out
-		}
-		return slices.DeleteFunc(slices.Clone(tabs), func(t crewMacTeamTab) bool { return !inTeam[t.Tab] })
-	}
-	tabs, ok := readPersonMacTabs(ctx, person, project, !owner || inTeam[macMainTab])
+	tabs, ok := readPersonMacTabs(ctx, person, project, true)
 	if !ok {
 		return nil
 	}
-	return keep(tabs)
+	out := slices.Clone(tabs)
+	for i := range out {
+		out[i].OnlyMe = !team.agentInTeam(person, out[i].Tab)
+		if _, known := team.registeredAgent(person, out[i].Tab); !known && out[i].InitialInTeam != nil {
+			out[i].OnlyMe = !*out[i].InitialInTeam
+		}
+	}
+	return out
 }
 
 // ownerMacTabsAll is every agent on the Crew owner's Mac, Main first, whatever the Team chose: with the Team off the
@@ -129,47 +125,148 @@ func readPersonMacTabs(ctx context.Context, person, project string, withMain boo
 	}
 	key := project + "\x00" + person
 	cached, _ := crewMacTeamTabsCache.Load(key)
-	if v, ok := cached.(crewMacTeamTabsRead); ok && time.Since(v.at) < 15*time.Second {
+	online := crewMacSocketFor(person, project, pair) != nil
+	// A list read before is answered at once; an online Mac is asked again in the background when it is older than
+	// 15 s. Waiting on the Mac here held every Team tab up to 20 s whenever that Mac was busy (owner, 10 Nov).
+	if v, ok := cached.(crewMacTeamTabsRead); ok {
+		if online && time.Since(v.at) >= 15*time.Second {
+			refreshPersonMacTabs(key, person, project, pair, withMain)
+		}
 		return v.tabs, true
 	}
-	if crewMacSocketFor(person, project, pair) == nil {
-		if v, ok := cached.(crewMacTeamTabsRead); ok {
-			return v.tabs, true
+	// After a restart nothing is in memory: the last list read from that Mac, kept on disk, so a message to its
+	// agents still waits for the Mac instead of being refused as not shared.
+	if tabs, ok := readSavedCrewMacTabs(project, person); ok {
+		crewMacTeamTabsCache.Store(key, crewMacTeamTabsRead{tabs: tabs}) // zero time: read the Mac again once it is back
+		if online {
+			refreshPersonMacTabs(key, person, project, pair, withMain)
 		}
-		// After a restart nothing is in memory: the last list read from that Mac, kept on disk, so a message to its
-		// agents still waits for the Mac instead of being refused as not shared.
-		if tabs, ok := readSavedCrewMacTabs(project, person); ok {
-			crewMacTeamTabsCache.Store(key, crewMacTeamTabsRead{tabs: tabs}) // zero time: read the Mac again once it is back
-			return tabs, true
-		}
+		return tabs, true
+	}
+	if !online {
 		return nil, false
 	}
-	tabs := []crewMacTeamTab{}
-	result := callCrewMacPair(ctx, person, project, pair, crewChatCall{Operation: "tabs"}, 10*time.Second)
-	defer func() {
-		if result.Status == http.StatusOK {
-			saveCrewMacTabs(project, person, tabs)
-		}
-	}()
-	var rows []AgentProfileSideChat
-	if result.Status == http.StatusOK && json.Unmarshal(result.Body, &rows) == nil {
-		for _, row := range rows {
-			_, id, ok := strings.Cut(row.ConversationKey, codeChatSideMarker)
-			if ok && crewMacTabID(id) && row.ConversationID != "" {
-				tabs = append(tabs, crewMacTeamTab{Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name), Purpose: strings.TrimSpace(row.Purpose)})
-			}
-		}
-	}
-	if withMain {
-		main := callCrewMacPair(ctx, person, project, pair, crewChatCall{Operation: "resolve"}, 10*time.Second)
-		var out struct {
-			ConversationID string `json:"conversation_id"`
-		}
-		if main.Status == http.StatusOK && json.Unmarshal(main.Body, &out) == nil && out.ConversationID != "" {
-			tabs = append(tabs, crewMacTeamTab{Person: person, Tab: macMainTab, ConversationID: out.ConversationID, Name: "Main"})
-		}
+	// Never read from this Mac: ask it now, briefly.
+	read, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	tabs, ok := readPersonMacTabsNow(read, person, project, pair, withMain)
+	if !ok {
+		return nil, false
 	}
 	crewMacTeamTabsCache.Store(key, crewMacTeamTabsRead{at: time.Now(), tabs: tabs})
+	return tabs, true
+}
+
+// pruneDeletedCrewMacAgents removes a person's Mac agents from the Team record once a fresh answer from that Mac no
+// longer lists them (owner, 20 Nov: agents a teammate deleted on their Mac still showed in the Team menu). Deleting
+// an agent on a Mac only removed its listing from that Mac's own copy, and the Team view puts registered agents
+// back when a Mac read misses them. Only a complete answer from the Mac itself prunes; an offline Mac, a failed read
+// or a kept list never does. Terminal chats, Main and function tabs have their own lifecycle and are left alone.
+func pruneDeletedCrewMacAgents(project, person string, present map[string]bool) {
+	stale := func(a crewTeamRegisteredAgent) bool {
+		return a.OwnerID == person && a.Place == "mac" && a.Kind != "terminal" && a.Tab != "" && a.Tab != macMainTab && !crewFunctionTabKey(a.ChatKey) && !present[a.Tab]
+	}
+	t, err := readCrewTeam(project)
+	if err != nil || !slices.ContainsFunc(slices.Collect(maps.Values(t.Agents)), stale) {
+		return
+	}
+	dir, err := crewTeamDir(project)
+	if err != nil {
+		return
+	}
+	mu := crewTeamRecordMutex(dir)
+	mu.Lock()
+	t, err = readCrewTeam(project)
+	if err != nil {
+		mu.Unlock()
+		return
+	}
+	removed := []string{}
+	for id, a := range t.Agents {
+		if stale(a) {
+			delete(t.Agents, id)
+			removed = append(removed, id)
+		}
+	}
+	if len(removed) == 0 {
+		mu.Unlock()
+		return
+	}
+	t.Revision++
+	err = fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), t, 0600)
+	mu.Unlock()
+	if err != nil {
+		log.Printf("[CREW_TEAM] project=%s person=%s event=deleted_agents_prune_failed count=%d", project, person, len(removed))
+		return
+	}
+	slices.Sort(removed)
+	log.Printf("[CREW_TEAM] project=%s person=%s event=deleted_agents_pruned count=%d agents=%s", project, person, len(removed), strings.Join(removed, ","))
+	go pushCrewTeamRecordChanged(t)
+	publishCrewPanelChanged(project)
+}
+
+var crewMacTabsRefreshing sync.Map // key -> true while one background read of that Mac's list runs
+
+// refreshPersonMacTabs reads a Mac's agent list again in the background, once at a time per Mac; a failed read keeps
+// the list it had (an empty answer from a busy Mac made its agents disappear from the Team tab).
+func refreshPersonMacTabs(key, person, project, pair string, withMain bool) {
+	if _, running := crewMacTabsRefreshing.LoadOrStore(key, true); running {
+		return
+	}
+	go func() {
+		defer crewMacTabsRefreshing.Delete(key)
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		if tabs, ok := readPersonMacTabsNow(ctx, person, project, pair, withMain); ok {
+			previous, _ := crewMacTeamTabsCache.Load(key)
+			crewMacTeamTabsCache.Store(key, crewMacTeamTabsRead{at: time.Now(), tabs: tabs})
+			// Tell the Team tab only when the list changed; a refresh that found the same agents is silent.
+			if v, ok := previous.(crewMacTeamTabsRead); !ok || !reflect.DeepEqual(v.tabs, tabs) {
+				publishCrewPanelChanged(project)
+			}
+		}
+	}()
+}
+
+// readPersonMacTabsNow asks the Mac for its agents (and its Main); ok is false when the Mac did not answer the list.
+func readPersonMacTabsNow(ctx context.Context, person, project, pair string, withMain bool) ([]crewMacTeamTab, bool) {
+	result := callCrewMacPair(ctx, person, project, pair, crewChatCall{Operation: "tabs", Query: map[string][]string{"team_preview": {"1"}}}, 10*time.Second)
+	var rows []AgentProfileSideChat
+	if result.Status != http.StatusOK || json.Unmarshal(result.Body, &rows) != nil {
+		return nil, false
+	}
+	var usageRows []crewMacTabUsage
+	_ = json.Unmarshal(result.Body, &usageRows)
+	usage := crewMacTeamUsage{tokens: map[string][2]int64{}}
+	tabs := []crewMacTeamTab{}
+	present := map[string]bool{}
+	for i, row := range rows {
+		_, id, ok := strings.Cut(row.ConversationKey, codeChatSideMarker)
+		if row.IsMain {
+			id, ok = macMainTab, true
+		}
+		if ok {
+			present[id] = true
+		}
+		if i < len(usageRows) {
+			usage.commits = append(usage.commits, usageRows[i].Commits...)
+			usage.counts = [2]int{max(usage.counts[0], usageRows[i].CommitsDay), max(usage.counts[1], usageRows[i].CommitsWeek)}
+			if ok {
+				usage.tokens[id] = [2]int64{usageRows[i].TokensDay, usageRows[i].TokensWeek}
+			}
+		}
+		if ok && crewMacTabID(id) && row.ConversationID != "" {
+			tabs = append(tabs, crewMacTeamTab{InitialInTeam: row.TeamNewInTeam, crewTeamMessagePreview: row.crewTeamMessagePreview, Person: person, Tab: id, ConversationID: row.ConversationID, Name: crewMacTabName(row.Name), Examples: row.Examples, Purpose: strings.TrimSpace(row.Purpose)})
+		}
+	}
+	crewMacTeamUsageCache.Store(project+"\x00"+person, usage)
+	// The Mac's own complete answer is the truth about which of its agents still exist.
+	pruneDeletedCrewMacAgents(project, person, present)
+	if !withMain {
+		tabs = slices.DeleteFunc(tabs, func(tab crewMacTeamTab) bool { return tab.Tab == macMainTab })
+	}
+
+	saveCrewMacTabs(project, person, tabs)
 	return tabs, true
 }
 
@@ -209,7 +306,7 @@ func saveCrewMacTabs(project, person string, tabs []crewMacTeamTab) {
 	if raw, err := os.ReadFile(p); err == nil {
 		_ = json.Unmarshal(raw, &saved)
 	}
-	if old, ok := saved[person]; ok && slices.Equal(old, tabs) {
+	if old, ok := saved[person]; ok && reflect.DeepEqual(old, tabs) {
 		return
 	}
 	saved[person] = tabs
@@ -309,7 +406,7 @@ func crewMacTeamMember(project, caller string) (string, bool) {
 }
 
 // crewTeamMacMemberTabs are the Mac agents of members on their Mac, for someone else in the Team (the owner's list
-// adds them through crewTeamMemberTabs).
+// adds them directly).
 func crewTeamMacMemberTabs(ctx context.Context, project, viewer string) []AgentProfileSideChat {
 	out := []AgentProfileSideChat{}
 	owner := ownerOfCrewProjectID(project)
@@ -343,8 +440,10 @@ func (api *StreamingAPI) routeCrewMemberMacTabs(w http.ResponseWriter, r *http.R
 	}
 	onMac := crewTeamMemberOnMac(project, caller)
 	out := slices.DeleteFunc(rows, func(row AgentProfileSideChat) bool {
-		// The owner's agents live on the Mac; a member on their Mac has no server agents here.
-		return row.TabOwnerID == owner || onMac && (row.TabOwnerID == caller || row.TabOwnerID == "")
+		// The owner's agents live on the Mac; a member on their Mac has no server agents here. The same for another
+		// member on their Mac: their agents are listed from that Mac below, not from old server rows.
+		return row.TabOwnerID == owner || onMac && (row.TabOwnerID == caller || row.TabOwnerID == "") ||
+			row.TabOwnerID != "" && row.TabOwnerID != caller && crewTeamMemberOnMac(project, row.TabOwnerID)
 	})
 	seen := map[string]bool{}
 	for _, row := range out {
@@ -366,7 +465,7 @@ func (api *StreamingAPI) routeCrewMemberMacTabs(w http.ResponseWriter, r *http.R
 			add(row)
 		}
 	}
-	for _, row := range crewTeamMemberTabs(r.Context(), project, caller) {
+	for _, row := range crewTeamMacMemberTabs(r.Context(), project, caller) {
 		add(row)
 	}
 	writeAgentProfileJSON(w, http.StatusOK, out)
@@ -397,7 +496,7 @@ func crewMacTeamWatchAllowed(r *http.Request, project string) bool {
 		return false
 	}
 	person, tab := crewMacTeamConversation(r.Context(), project, watch.conversation)
-	share := t.agentChatShare(r.Context(), person, tab)
+	share := t.agentChatShareFor(r.Context(), watch.viewer.UserID, person, tab)
 	return person == watch.person && tab == watch.tab && share == watch.share && share != crewChatShareAgent
 }
 
@@ -444,12 +543,15 @@ func crewMemberMacTarget(project, key string) (string, string, bool) {
 
 // crewMemberMacAgentFor is a member's Mac agent the caller may message: the caller is in the Team, not that member,
 // and the agent is not Only me.
-func crewMemberMacAgentFor(ctx context.Context, project, key, caller string) (string, crewMacTeamTab, bool) {
+// own: the message comes from one of the member's own agents of this Crew (crewOwnAgentMessage); it reaches their own
+// agent only while that agent is In team (owner, 12 Nov: an agent and its online copy talk through Team messaging).
+func crewMemberMacAgentFor(ctx context.Context, project, key, caller string, own bool) (string, crewMacTeamTab, bool) {
 	person, tab, ok := crewMemberMacTarget(project, key)
-	if !ok || caller == person {
+	if !ok || caller == person && !own {
 		return "", crewMacTeamTab{}, false
 	}
-	if t, err := readCrewTeam(project); err != nil || !t.member(caller) {
+	t, err := readCrewTeam(project)
+	if err != nil || !crewTeamMemberCurrent(t, caller) || caller == person && !t.agentInTeam(person, tab) {
 		return "", crewMacTeamTab{}, false
 	}
 	for _, t := range crewMacTabsFor(ctx, person, project, caller) {
@@ -466,50 +568,43 @@ const crewMemberMacOffLine = "Their Mac is off and their agent can't answer from
 
 // deliverToMemberMacAgent hands an agent message to a Team member's agent on their Mac, like the owner's Mac agents:
 // it runs there in the sender's own thread, the answer comes back to this inbox. With their Mac off an In team agent
-// that has a standby copy answers from the server AS THE MEMBER (crew_standby_runas.go); otherwise the message waits
+// on their Mac receives the message there; otherwise the message waits
 // for the Mac.
 func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentConversation, m agentMessage, source, dest agentMessageEndpoint) error {
-	person, agent, ok := crewMemberMacAgentFor(ctx, dest.ID, dest.ChatKey, source.UserID)
+	// The asker as the Team knows it: a joined online project's Builder turn asks as the project (#3664).
+	asker := crewTeamAskerOf(source)
+	person, agent, ok := crewMemberMacAgentFor(ctx, dest.ID, dest.ChatKey, asker, (source.ID == dest.ID || source.TeamPanel) && source.UserID != "" && crewOwnAgentMessage(agentMessageEndpoint{UserID: source.UserID, Mode: dest.Mode, Guest: dest.Guest}, source))
 	if !ok {
 		log.Printf("[CREW_TEAM] project=%s event=member_mac_message refused user=%s", dest.ID, logUsernameForUserID(source.UserID))
 		return fmt.Errorf("This agent isn't shared with you.")
 	}
 	pair, _ := crewMacPairFor(person, dest.ID)
-	sender := shareOwnerLabel(source.UserID)
-	// With their Mac off, the agent answers from its standby copy on the server, as the member.
-	standby := api.crewStandbyRoute(ctx, person, dest.ID, agent.Tab, source.UserID, true)
+	sender := crewTeamAskerLabel(asker)
+	// Member agents run on their admitted paired Mac.
 	run := func(call crewChatCall, timeout time.Duration) crewChatResult {
-		if standby {
-			return api.standbyAgentCall(context.Background(), person, dest.ID, call, true)
-		}
 		return callCrewMacPair(context.Background(), person, dest.ID, pair, call, timeout)
 	}
-	teamInbox := ""
-	if !standby {
-		teamInbox = c.ID // a Team message goes into the agent's real chat
-	}
+
 	read := func(after, wait int) (map[string]any, int) {
-		raw, _ := json.Marshal(map[string]any{"sender_id": source.UserID, "after": after, "wait_seconds": wait, "submission": m.ID, "team_inbox": teamInbox})
+		raw, _ := json.Marshal(map[string]any{"sender_id": asker, "after": after, "wait_seconds": wait, "submission": m.ID})
 		result := run(crewChatCall{Operation: "agent_read", Tab: agent.Tab, Caller: sender, Args: raw}, time.Duration(wait+40)*time.Second)
 		var out map[string]any
 		_ = json.Unmarshal(result.Body, &out)
 		return out, result.Status
 	}
 	_, senderAgent, _ := agentMessageSender(ctx, source, source.UserID)
-	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": source.UserID, "sender_agent": senderAgent, "sender_channel": "AgentBridge", "team_inbox": teamInbox}, dest.ID, person, crewMacTabRow(dest.ID, agent).ConversationKey))
+	// The agent's person comes from the Team registry (crewMemberMacAgentFor), never from the message.
+	member := dest
+	member.UserID = person
+	raw, _ := json.Marshal(withAgentRuleArgs(ctx, map[string]any{"sender_id": asker, "sender_agent": senderAgent, "sender_channel": "AgentBridge", "queued_request": m.QueuedRequest, "own_agent_message": crewOwnAgentMessage(member, source)}, dest.ID, person, crewMacTabRow(dest.ID, agent).ConversationKey))
 	ask := crewChatCall{Operation: "agent_ask", Tab: agent.Tab, Message: m.Text, Caller: sender, Args: raw, SubmissionID: m.ID}
 	from := 1 - m.From
 	_, status := read(0, 0)
 	if status == http.StatusOK {
 		status = run(ask, 60*time.Second).Status
 	}
-	// The standby copy was dropped between the route and the call (the agent turned Only me, the person left): the
-	// message is not lost, it waits for the Mac like any other.
-	if standby && (status == http.StatusForbidden || status == http.StatusConflict || status == http.StatusServiceUnavailable) {
-		standby, status = false, http.StatusServiceUnavailable
-	}
-	log.Printf("[CREW_TEAM] project=%s event=member_mac_message of=%s tab=%s user=%s mac_status=%d standby=%t", dest.ID, logUsernameForUserID(person), agent.Tab, logUsernameForUserID(source.UserID), status, standby)
-	if status == http.StatusServiceUnavailable && !standby {
+	log.Printf("[CREW_TEAM] project=%s event=member_mac_message of=%s tab=%s user=%s mac_status=%d", dest.ID, logUsernameForUserID(person), agent.Tab, logUsernameForUserID(source.UserID), status)
+	if status == http.StatusServiceUnavailable {
 		if err := holdForPersonMac(dest.ID, person, "mac_off", ask, c.ID, from); err != nil {
 			if errors.Is(err, errCrewMacHeldFull) {
 				return fmt.Errorf("Too many of your messages are already waiting for this Mac. Try again when it is back.")
@@ -522,10 +617,7 @@ func (api *StreamingAPI) deliverToMemberMacAgent(ctx context.Context, c agentCon
 	if status != http.StatusOK {
 		return fmt.Errorf("the agent could not take this message; try again shortly")
 	}
-	if teamInbox != "" {
-		return nil // async: the agent answers with a message if it wants to
-	}
-	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: agent.Tab, Mac: person, Member: true, Standby: standby, SenderID: source.UserID, Caller: sender})
+	api.startMacAgentAnswer(macAgentAwaiting{Inbox: c.ID, Submission: m.ID, From: from, Project: dest.ID, Tab: agent.Tab, Mac: person, Member: true, SenderID: asker, Caller: sender})
 	return nil
 }
 

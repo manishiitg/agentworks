@@ -1,5 +1,5 @@
 import React from 'react'
-import { X, Play, Loader, Pause, Calendar } from 'lucide-react'
+import { X, Loader, Pause, Calendar } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip'
 import { WorkspaceViewHeader } from '../../workflow/WorkspaceViewHeader'
 import { WorkspaceViewIconButton } from '../../workflow/WorkspaceViewIconButton'
@@ -10,7 +10,7 @@ import { useCanPauseSchedules } from '../../../hooks/useCanPauseSchedules'
 type ScheduleRunsHeaderProps = {
   panel: Pick<ScheduleRunsPanelState,
     | 'panelTitle' | 'isLoading' | 'isWorkflowScoped' | 'workflowScheduleSummary' | 'summary'
-    | 'isSchedulerPaused' | 'isGloballyPaused' | 'pauseProductLabel' | 'isReadOnlyUser' | 'handleToggleGlobalPause' | 'isUpdatingSchedulerPause' | 'loadJobs'
+    | 'isSchedulerPaused' | 'isReadOnlyUser' | 'handleToggleGlobalPause' | 'isUpdatingSchedulerPause' | 'loadJobs'
   >
   onClose: () => void
   /** Embedded workspace views are closed by their parent layout, not here. */
@@ -27,8 +27,6 @@ export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, o
     workflowScheduleSummary,
     summary,
     isSchedulerPaused,
-    isGloballyPaused,
-    pauseProductLabel,
     isReadOnlyUser,
     handleToggleGlobalPause,
     isUpdatingSchedulerPause,
@@ -44,28 +42,22 @@ export const ScheduleRunsHeader: React.FC<ScheduleRunsHeaderProps> = ({ panel, o
       title={compact ? '' : panelTitle}
       context={compact ? <>
         {navigation}
-        <span className="text-xs text-muted-foreground">{summary.total} schedules{isSchedulerPaused ? ` · ${isGloballyPaused ? 'All' : pauseProductLabel} schedules paused` : ''}</span>
+        <span className="text-xs text-muted-foreground">{summary.total} schedules{isSchedulerPaused ? ' · All schedules paused' : ''}</span>
       </> : undefined}
       below={!compact ? statusPills : undefined}
       actions={<>
-        {!isWorkflowScoped && !isReadOnlyUser && canPauseSchedules && (
+        {!isWorkflowScoped && !isReadOnlyUser && canPauseSchedules && !isSchedulerPaused && (
           <button
             onClick={handleToggleGlobalPause}
             disabled={isUpdatingSchedulerPause}
-            className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60 ${
-              isSchedulerPaused
-                ? 'border-border bg-background text-foreground hover:bg-muted'
-                : 'border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground'
-            }`}
+            className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
           >
             {isUpdatingSchedulerPause ? (
               <Loader className="w-3.5 h-3.5 animate-spin" />
-            ) : isSchedulerPaused ? (
-              <Play className="w-3.5 h-3.5" />
             ) : (
               <Pause className="w-3.5 h-3.5" />
             )}
-            {isGloballyPaused ? 'Resume all schedules' : isSchedulerPaused ? `Resume ${pauseProductLabel} schedules` : `Pause ${pauseProductLabel} schedules`}
+            Pause all schedules
           </button>
         )}
         <Tooltip>

@@ -46,7 +46,7 @@ func refreshLaptopConnections(ctx context.Context, o *options, executable, build
 
 func refreshLaptopConnection(ctx context.Context, o *options, executable, dir, statePath string, st shareState) error {
 	if st.ConfigPath == "" || st.OwnerID == "" {
-		return errors.New("this connection predates saved account identity; reconnect the computer once with agentworks stop and agentworks start; saved Crew folders and permissions stay unchanged")
+		return errors.New("this connection predates saved account identity; reconnect the computer once with agentworks stop and agentworks start; saved project folders and permissions stay unchanged")
 	}
 	key := strings.TrimSuffix(filepath.Base(statePath), ".json")
 	if !filepath.IsAbs(st.ConfigPath) || filepath.Clean(filepath.Dir(st.ConfigPath)) != filepath.Clean(filepath.Dir(dir)) || shareKey(st.ConfigPath) != key {

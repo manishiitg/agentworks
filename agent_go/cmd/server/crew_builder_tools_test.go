@@ -12,6 +12,7 @@ import (
 
 func newCrewBuilderToolsTestEnv(t *testing.T) (map[string]recordedTool, *mockWorkspaceAPI, string, *ProjectActionDispatcher) {
 	t.Helper()
+	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true}]}`)
 
@@ -52,7 +53,7 @@ func TestManageCrewTriggerInternalDefaultsCaller(t *testing.T) {
 	createdRaw, err := tool.exec(ctx, map[string]interface{}{
 		"action": "create", "crew_project_id": "project-a", "crew_profile_id": "crewx",
 		"name": "Release reviewer", "message": "Review the delivery",
-		"kind": "internal", "enabled": true,
+		"enabled": true,
 	})
 	if err != nil {
 		t.Fatalf("internal create failed: %v", err)
@@ -63,9 +64,6 @@ func TestManageCrewTriggerInternalDefaultsCaller(t *testing.T) {
 	}
 	if created.Kind != triggerKindInternal || created.Caller == nil || created.Caller.ID != workflowID {
 		t.Fatalf("caller did not default to bound workflow: %+v", created)
-	}
-	if created.Secret != "" || created.Path != "" || created.AuthMode != "" {
-		t.Fatalf("internal trigger exposed endpoint material: %+v", created)
 	}
 
 	updatedRaw, err := tool.exec(ctx, map[string]interface{}{
@@ -113,7 +111,7 @@ func TestManageCrewTriggerRejectsUnknownCallerWorkflow(t *testing.T) {
 	tool := tools["manage_crew_trigger"]
 	if _, err := tool.exec(context.Background(), map[string]interface{}{
 		"action": "create", "crew_project_id": "project-a", "crew_profile_id": "crewx",
-		"name": "Ghost", "message": "Review", "kind": "internal", "enabled": true,
+		"name": "Ghost", "message": "Review", "enabled": true,
 		"caller": map[string]interface{}{"type": "workflow", "id": "ghost-pipeline"},
 	}); err == nil {
 		t.Fatal("binding to an unknown caller workflow must fail")

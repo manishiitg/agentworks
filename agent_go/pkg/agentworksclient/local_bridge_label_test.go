@@ -129,3 +129,68 @@ func TestCrossNetworkDirectoryOmitsProjectContext(t *testing.T) {
 
 // Windows Codex reported only a waiting toast: an empty real hook must still
 // identify its route without contacting the server or admitting a message.
+
+// PLAT-746-1030: short native turns were invisible until housekeeping; hooks
+// must report transitions immediately without waiting for network I/O.
+func TestBridgeHookActivityPublishesExactLeaseWithoutBlocking(t *testing.T) {
+	requests := make(chan map[string]string, 8)
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var args map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&args)
+		requests <- args
+		<-release
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	defer close(release)
+	client, err := New(srv.URL, "fixture-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &localSession{HostKey: "process", client: client, Attachment: AgentAttachment{ID: "lease", AgentName: "worker", Provider: "claude", SessionID: "session"}}
+	b := &localBridge{root: t.TempDir(), sessions: map[string]*localSession{localBridgeKey("claude", "session"): s}, changed: make(chan struct{})}
+	observe := func(host, lease, activity string) {
+		t.Helper()
+		out := b.handle(t.Context(), t.Context(), LocalBridgeRequest{Action: "observe", Provider: "claude", SessionID: "session", HostKey: host, AttachmentID: lease, Activity: activity, Transport: "claude_hook"})
+		if out.Error != "" {
+			t.Fatal(out.Error)
+		}
+	}
+	for _, activity := range []string{"busy", "busy", "idle"} {
+		// The second busy hook represents a tool completing after a minute.
+		b.mu.Lock()
+		if activity == "busy" && s.Activity == "busy" {
+			s.ActivityAt = time.Now().Add(-time.Minute)
+		}
+		b.mu.Unlock()
+		observe("other-process", "lease", activity)
+		observe("process", "replaced-lease", activity)
+		select {
+		case args := <-requests:
+			t.Fatalf("unadmitted hook changed activity: %v", args)
+		default:
+		}
+		observe("process", "lease", activity)
+		select {
+		case args := <-requests:
+			if args["activity"] != activity || args["attachment_id"] != "lease" || args["agent_name"] != "worker" || args["activity_at"] == "" {
+				t.Fatal(args)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("hook transition waited for housekeeping")
+		}
+		// Still no HTTP response: the next hook and bridge lock remain usable.
+		observe("process", "lease", activity)
+	}
+	// Same-state tool hooks do not create another network request.
+	select {
+	case args := <-requests:
+		t.Fatalf("unchanged hook resent activity: %v", args)
+	default:
+	}
+	release <- struct{}{}
+	release <- struct{}{}
+	release <- struct{}{}
+	b.workers.Wait()
+}

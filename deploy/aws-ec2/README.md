@@ -16,7 +16,7 @@ sandboxing or Caddy config, since this deployment shares that code.
 - URL: `https://app.example.com`
 - Region: `us-west-2`
 - Stack: `video-studio-prod`
-- Deploy method: server clones all three `main` branches → native Linux build → user-level systemd restart
+- Deploy method: server clones `main` → native Linux build → user-level systemd restart
 - Infrastructure: CloudFormation
 
 The deployer uses the `RTS` AWS profile and an SSH key. SSH ingress is limited
@@ -51,8 +51,8 @@ directory, and restarts only its user services. It neither runs `sudo` nor
 touches infrastructure, the shared login password, or unrelated services.
 
 The Mac sends only small deployment instructions and secret configuration. The
-server clones `main` from `mcp-agent-builder-go`, `mcpagent`, and
-`multi-llm-provider-go`, and records their exact SHAs in `SOURCE_REVISIONS`.
+server clones `main` of the repository (`mcpagent/` and `multi-llm-provider-go/`
+are folders in it) and records its exact SHA in `SOURCE_REVISIONS`.
 `bootstrap-build.sh` installs Go 1.27.1 with checksum verification when needed.
 Builds run under a deployment lock, with a 6 GB memory ceiling and two CPU cores.
 Failed builds leave the current release active. Once a build and its release gates
@@ -60,7 +60,7 @@ pass, activation is intentionally immediate and breaking: user services restart
 without waiting on the logical active-session count, and clients reconnect to the
 new runtime. Temporary checkouts are removed after the build. The host retains
 Go/npm dependency caches for reuse.
-The three configured GitHub repositories must be readable by the server.
+The GitHub repository must be readable by the server.
 
 ## Per-user accounts (since 2026-09-02)
 

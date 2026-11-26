@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 )
 
 // Personal Slack lives in the person's own vault (owner, 2026-10-21: one store, Vault only). One Slack account per
@@ -22,19 +23,24 @@ import (
 const personalVaultName = "My accounts"
 
 type personalVaultList struct {
-	Vaults []struct {
-		Group struct {
-			ID   string
-			Name string
-		} `json:"group"`
-		Role        string `json:"role"`
-		Connections []struct {
-			ID       string `json:"id"`
-			Label    string `json:"label"`
-			Provider string `json:"provider"`
-			Status   string `json:"status"`
-		} `json:"connections"`
-	} `json:"vaults"`
+	Vaults []personalVault `json:"vaults"`
+}
+
+type personalVault struct {
+	Group struct {
+		ID   string
+		Name string
+		// ProjectRoot is set on a project vault; "crew:<project>" marks a server Crew's vault (crew_vault.go).
+		ProjectRoot string
+	} `json:"group"`
+	Role        string   `json:"role"`
+	SecretNames []string `json:"secret_names"`
+	Connections []struct {
+		ID       string `json:"id"`
+		Label    string `json:"label"`
+		Provider string `json:"provider"`
+		Status   string `json:"status"`
+	} `json:"connections"`
 }
 
 func personalVaults(ctx context.Context, person string) (personalVaultList, error) {
@@ -46,6 +52,9 @@ func personalVaults(ctx context.Context, person string) (personalVaultList, erro
 	if err := json.Unmarshal(data, &list); err != nil {
 		return list, errors.New("Your vaults could not be read.")
 	}
+	// A server Crew's vault belongs to that Crew, not to any one person's accounts: it is shown and used in the Crew
+	// only (crew_vault.go), never in someone's own lists, lookups or sign-in status.
+	list.Vaults = slices.DeleteFunc(list.Vaults, func(v personalVault) bool { return isCrewVaultGroup(v.Group.ProjectRoot) })
 	return list, nil
 }
 
@@ -75,6 +84,7 @@ type personalSlackConnection struct {
 	VaultID string
 	ID      string
 	Status  string
+	Label   string
 }
 
 // ownVaultSlack finds the person's Slack connection in a vault they own, preferring a signed-in one.
@@ -94,7 +104,7 @@ func ownVaultSlack(ctx context.Context, person string) (personalSlackConnection,
 				continue
 			}
 			if !ok || c.Status == "active" && found.Status != "active" {
-				found, ok = personalSlackConnection{VaultID: v.Group.ID, ID: c.ID, Status: c.Status}, true
+				found, ok = personalSlackConnection{VaultID: v.Group.ID, ID: c.ID, Status: c.Status, Label: c.Label}, true
 			}
 		}
 	}
@@ -124,9 +134,44 @@ func projectSelectedServers(ctx context.Context, workspace string) ([]string, er
 }
 
 // projectVaultAppInUse reports whether a project uses one Vault app: all of them when "Use all my apps
-// automatically" is on, else only the chosen ones.
-func projectVaultAppInUse(servers []string, chosenOnly bool, connectionID string) bool {
-	return !chosenOnly || containsExactString(servers, vaultServerName(connectionID))
+// automatically" is on, else only the chosen ones (vaultAppChosen).
+func projectVaultAppInUse(ctx context.Context, servers []string, chosenOnly bool, connectionID string) bool {
+	return !chosenOnly || vaultAppChosen(ctx, servers, connectionID)
+}
+
+// vaultConnectionProviders caches each connection's app (provider): it never changes for a connection ID.
+var vaultConnectionProviders sync.Map
+
+func vaultConnectionProvider(ctx context.Context, id string) string {
+	if v, ok := vaultConnectionProviders.Load(id); ok {
+		return v.(string)
+	}
+	c, err := vaultSavedConnection(ctx, id)
+	if err != nil || strings.TrimSpace(c.Provider) == "" {
+		return ""
+	}
+	provider := strings.ToLower(strings.TrimSpace(c.Provider))
+	vaultConnectionProviders.Store(id, provider)
+	return provider
+}
+
+// vaultAppChosen reports whether a project's chosen Vault apps include this connection. A choice names an app, not one
+// person's account (owner 19 Nov: everyone uses their own vault): a chosen connection also admits the acting person's
+// own connection of the same app (provider).
+func vaultAppChosen(ctx context.Context, servers []string, connectionID string) bool {
+	if containsExactString(servers, vaultServerName(connectionID)) {
+		return true
+	}
+	provider := vaultConnectionProvider(ctx, connectionID)
+	if provider == "" {
+		return false
+	}
+	for _, name := range servers {
+		if id, ok := strings.CutPrefix(vaultSelectionName(name), "vault_"); ok && vaultConnectionProvider(ctx, id) == provider {
+			return true
+		}
+	}
+	return false
 }
 
 // setProjectSelectedServers rewrites the project's saved app list through the same writers the app's panels use;
@@ -199,7 +244,16 @@ func (api *StreamingAPI) selectVaultServer(ctx context.Context, person, workspac
 	if !chosenOnly {
 		picked = available
 	}
-	picked = settingsWithout(picked, []string{name})
+	// A choice names an app (vaultAppChosen): unticking it takes that app off for everyone, whoever chose it.
+	drop := []string{name}
+	if provider := vaultConnectionProvider(ctx, connectionID); !on && provider != "" {
+		for _, n := range picked {
+			if id, ok := strings.CutPrefix(n, "vault_"); ok && vaultConnectionProvider(ctx, id) == provider {
+				drop = append(drop, n)
+			}
+		}
+	}
+	picked = settingsWithout(picked, drop)
 	if on {
 		picked = settingsWith(picked, name)
 	}
@@ -234,7 +288,11 @@ func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string
 		selected := selectedNames[vaultServerName(c.ID)]
 		out := slackAccountRow{personalConnectionPermissions: personalConnectionAccess(r, owner, workspace, selected, "Slack", "your project's Vault panel"),
 			ID: c.ID, Owner: owner, Label: label, Selected: selected, Connected: c.Status == "active", Mine: owner == actor}
-		if c.Status != "active" {
+		if c.Status == "active" {
+			if id := api.vaultSlackIdentityCached(ctx, c.ID, true); !id.empty() {
+				out.TeamName, out.TeamDomain, out.UserName = id.TeamName, id.TeamDomain, id.UserName
+			}
+		} else {
 			if outcome, ok := vaultSignInOutcomes.Load(c.ID); ok {
 				if o := outcome.(vaultSignInOutcome); !o.ok {
 					out.Problem = o.reason
@@ -246,7 +304,11 @@ func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string
 	if own, ok, err := ownVaultSlack(ctx, actor); err != nil {
 		return out, err
 	} else if ok {
-		out.Accounts = append(out.Accounts, row(actor, "Your Slack", own))
+		account := row(actor, "Your Slack", own)
+		if workspace == "" {
+			account.Label = firstNonBlank(own.Label, account.Label)
+		}
+		out.Accounts = append(out.Accounts, account)
 	}
 	// A project's Builder also sees the Slack its owner lent to it.
 	if workspace != "" && buildErr == nil {

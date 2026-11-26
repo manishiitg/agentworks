@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -29,15 +28,20 @@ const pairedMacSessionPrefix = "paired-mac-"
 const crewChatMaxReply = 8 << 20
 
 type crewChatCall struct {
-	SubmissionID   string          `json:"submission_id,omitempty"`
-	ConversationID string          `json:"conversation_id,omitempty"`
-	ID             string          `json:"id"`
-	Operation      string          `json:"operation"`
-	Message        string          `json:"message,omitempty"`
-	DeliveryMode   string          `json:"delivery_mode,omitempty"`
-	Query          url.Values      `json:"query,omitempty"`
-	Answer         json.RawMessage `json:"answer,omitempty"`
-	Path           string          `json:"path,omitempty"`
+	RequestedSkillID   string                  `json:"requested_skill_id,omitempty"`
+	PlanMode           bool                    `json:"plan_mode,omitempty"`
+	PendingAttachments []pendingChatAttachment `json:"pending_attachments,omitempty"`
+	Source             string                  `json:"source,omitempty"` // Fixed diagnostic route label; never caller identity.
+	SubmissionID       string                  `json:"submission_id,omitempty"`
+	ConversationID     string                  `json:"conversation_id,omitempty"`
+	ID                 string                  `json:"id"`
+	ComposerInput      bool                    `json:"composer_input,omitempty"`
+	Operation          string                  `json:"operation"`
+	Message            string                  `json:"message,omitempty"`
+	DeliveryMode       string                  `json:"delivery_mode,omitempty"`
+	Query              url.Values              `json:"query,omitempty"`
+	Answer             json.RawMessage         `json:"answer,omitempty"`
+	Path               string                  `json:"path,omitempty"`
 	// Workspace: the owner's own AI app call (ask, read_chat, reply_input), run on the Mac as its named tab.
 	Action string          `json:"action,omitempty"`
 	Args   json.RawMessage `json:"args,omitempty"`
@@ -78,13 +82,9 @@ func crewChatWebsiteClaims(c *UserClaims) bool {
 }
 
 func (api *StreamingAPI) crewChatPair(r *http.Request, project, pair string) (*crewroot.SyncBinding, error) {
-	return api.crewChatPairState(r, project, pair, false)
-}
-
-func (api *StreamingAPI) crewChatPairState(r *http.Request, project, pair string, completion bool) (*crewroot.SyncBinding, error) {
 	c := GetUserFromContext(r.Context())
 	if !crewChatWebsiteClaims(c) || !crewMacTeamWatchAllowed(r, project) {
-		return nil, fmt.Errorf("Open this Crew using its owner's website sign-in.")
+		return nil, fmt.Errorf("Open this project using its owner's website sign-in.")
 	}
 	// A Team member whose agents work on their Mac reads (only reads) their own Mac's chats here, through their pair.
 	if pair, ok := crewTeamMemberMacRead(r, project, c.UserID); ok {
@@ -93,7 +93,7 @@ func (api *StreamingAPI) crewChatPairState(r *http.Request, project, pair string
 			b = &crewroot.SyncBinding{Mode: "relay", Side: "server", Editing: "local"} // a Crew on the server
 		}
 		if err != nil || b == nil || b.Side != "server" {
-			return nil, fmt.Errorf("This Crew is not currently connected to its Mac conversation. Reopen the Crew.")
+			return nil, fmt.Errorf("This project is not currently connected to its Mac conversation. Reopen the project.")
 		}
 		member := *b
 		member.PairID = pair
@@ -103,8 +103,8 @@ func (api *StreamingAPI) crewChatPairState(r *http.Request, project, pair string
 		return nil, err
 	}
 	b, err := crewroot.ReadSync(project)
-	if err != nil || b == nil || b.Side != "server" || (!completion && b.Editing != "local") || b.PendingAction != "" || (pair != "" && b.PairID != pair) {
-		return nil, fmt.Errorf("This Crew is not currently connected to its Mac conversation. Reopen the Crew.")
+	if err != nil || b == nil || b.Side != "server" || b.Editing != "local" || b.PendingAction != "" || (pair != "" && b.PairID != pair) {
+		return nil, fmt.Errorf("This project is not currently connected to its Mac conversation. Reopen the project.")
 	}
 	return b, nil
 }
@@ -171,35 +171,15 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 	if err != nil || b == nil || b.Side != "server" || b.Editing != "local" {
 		return false
 	}
-	if place, e := crewPublishedAgent(project, crewAgentPublishTab(key)); e != nil {
-		externalError(w, 409, "publish_unavailable", e.Error())
-		return true
-	} else if place != nil {
-		if place.Location == "server" {
-			return false
-		}
-		externalError(w, 409, "publishing", "This agent is being published. Finish the publish from your Mac, then reopen it here.")
-		return true
-	}
-	// A Team member's own tab lives on the server, not on the owner's Mac (owner, 5 Nov): the owner opens it here.
-	if crewTeamMemberTab(r.Context(), project, key) != "" {
-		return false
-	}
-	// A teammate's thread on an agent the server answers for from its standby copy (Always on) runs here until the agent
-	// is handed back to the Mac. The owner's own chat with that agent never does: it waits for the Mac (PLAT-856-509).
-	if crewStandbyServesKey(key) {
-		return false
-	}
 	// A side tab of a Crew that lives on the Mac is the Mac's own tab (PLAT-856-509); the server keeps none. The owner's
 	// Main under its physical key is the Mac's Main.
-	tab := macMainTab
 	if base, side, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker); ok {
 		if base != project || !crewMacTabID(side) {
 			externalError(w, 400, "invalid_tab", "This tab is unavailable.")
 			return true
 		}
-		if crewStandbyTabForKey(project, key) != macMainTab {
-			tab, call.Tab = side, side
+		if crewMacAgentTabForKey(project, key) != macMainTab {
+			call.Tab = side
 			if call.Operation == "resolve" {
 				call.Name = crewMacTabName(call.Name)
 			}
@@ -214,30 +194,19 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 			return false
 		}
 	}
-	// With the Mac off the chat still opens to read what the server holds of it; a send waits for the Mac.
-	if call.Operation == "resolve" && crewMacSocketFor(GetUserIDFromContext(r.Context()), project, b.PairID) == nil {
-		conversation, e := crewMacOffConversation(project, b.PeerProjectID, tab)
-		if e != nil {
-			externalError(w, 409, "publish_unavailable", e.Error())
-			return true
-		}
-		if conversation != "" {
-			writeAgentProfileJSON(w, http.StatusOK, map[string]any{"session_id": crewChatSessionID(project, conversation), "conversation_id": conversation, "conversation_key": key, "tab_owner_id": GetUserIDFromContext(r.Context()), "can_write": true, "is_main_chat": tab == macMainTab, "chat_location": "mac", "mac_off": true})
-			return true
-		}
-	}
 	if call.Operation == "rotate" {
-		externalError(w, 409, "mac_main_chat", "Start a new main chat from your Mac, then reopen this Crew here.")
+		externalError(w, 409, "mac_main_chat", "Start a new main chat from your Mac, then reopen this project here.")
 		return true
 	}
 	if call.Operation == "send" {
 		selectedProject, generation := crewChatSessionParts(r.Header.Get("X-Session-ID"))
 		if selectedProject != project || generation == "" {
-			externalError(w, 409, "reopen_mac_chat", "Reopen this Crew to continue its current Mac conversation.")
+			externalError(w, 409, "reopen_mac_chat", "Reopen this project to continue its current Mac conversation.")
 			return true
 		}
 		call.ConversationID = generation
 		call.SubmissionID = r.Header.Get("Idempotency-Key")
+		call.ComposerInput = isComposerChatRequest(r)
 	}
 	owner := GetUserIDFromContext(r.Context())
 	if call.Operation == "send" {
@@ -273,27 +242,6 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 	return true
 }
 
-// crewMacOffConversation is the owner's chat with an agent of their Mac as this server knows it while the Mac is off:
-// Main's from its publication, else the one in the agent's standby copy; "" when the server holds neither.
-func crewMacOffConversation(project, peer, tab string) (string, error) {
-	if tab == macMainTab {
-		entries, err := readCrewAgentPlacements(project)
-		if err != nil {
-			return "", err
-		}
-		for _, entry := range entries {
-			if entry.MacMainConversationID != "" {
-				return entry.MacMainConversationID, nil
-			}
-		}
-	}
-	rows, err := readCrewStandby(project, ownerOfCrewProjectID(project))
-	if err != nil {
-		return "", nil
-	}
-	return rows[tab].Sessions[macSharedAgentChatKey(peer, tab)].ConversationID, nil
-}
-
 // A virtual session address selects a private pair, not a native session ID.
 // The Mac resolves the canonical local conversation for every operation.
 func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler {
@@ -310,7 +258,7 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 			// Every session route of a chat kept on this server; admins' audited reviews keep their own rule.
 			if !strings.HasPrefix(r.URL.Path, "/api/admin/") {
 				if limit := api.crewSessionChatLimit(r, mux.Vars(r)["session_id"]); limit != nil {
-					api.serveCrewServerChatLimited(w, r, next, limit)
+					limit.refuse(w, GetUserIDFromContext(r.Context()))
 					return
 				}
 			}
@@ -325,17 +273,34 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 		}
 		project, generation := crewChatSessionParts(session)
 		if project == "" || generation == "" {
-			externalError(w, 409, "reopen_mac_chat", "Reopen this Crew to continue its current Mac conversation.")
+			externalError(w, 409, "reopen_mac_chat", "Reopen this project to continue its current Mac conversation.")
 			return
 		}
 		operation := ""
 		suffix := strings.TrimPrefix(r.URL.Path, "/api/sessions/"+session+"/")
+		// A restored tab is not a grant. Reject a former/non-member before
+		// the owner-only sync resolver can misdescribe it as a sync failure.
+		if r.Method == http.MethodGet && (suffix == "events" || suffix == "events/stream" || suffix == "status") {
+			viewer := GetUserIDFromContext(r.Context())
+			// Every paired read already reaches crewChatPair, which requires
+			// these same website/device claims; tokens never had a read bypass.
+			if !crewChatWebsiteClaims(GetUserFromContext(r.Context())) {
+				refuseCrewChatRead(w, r, project, session, "chat_signin_required", "interactive_signin_required")
+				return
+			}
+			if viewer != ownerOfCrewProjectID(project) {
+				team, err := readCrewTeam(project)
+				if err != nil || !team.member(viewer) {
+					refuseCrewChatRead(w, r, project, session, "chat_not_shared", "not_member")
+					return
+				}
+			}
+		}
 		limit := api.crewMacChatLimit(r, project, generation)
-		if limit != nil && (limit.share == crewChatShareAgent || r.Method != "GET" || suffix != "events/stream" && suffix != "events" && suffix != "status") {
+		if limit != nil {
 			limit.refuse(w, GetUserIDFromContext(r.Context()))
 			return
 		}
-		asked := r
 		// A Team member watches the owner's In team Mac agent: reads only, and only that conversation (crew_team_mac_watch.go).
 		if r.Method == "GET" && (suffix == "events/stream" || suffix == "events" || suffix == "status") {
 			if watch, ok := api.crewMacTeamWatchContext(r, project, generation); ok {
@@ -346,11 +311,7 @@ func (api *StreamingAPI) crewChatRelayMiddleware(next http.Handler) http.Handler
 		if read {
 			r = r.WithContext(context.WithValue(r.Context(), crewRelayReadKey{}, true))
 		} else if crewTeamMemberOnMac(project, GetUserIDFromContext(r.Context())) {
-			externalError(w, 409, "mac_chat_action", "This Crew works on your Mac. Open it in the AgentWorks app on your Mac to send, answer or stop.")
-			return
-		}
-		if limit != nil {
-			api.serveCrewMacChatHistory(w, r, asked, project, generation, suffix)
+			externalError(w, 409, "mac_chat_action", "This project works on your Mac. Open it in the AgentWorks app on your Mac to send, answer or stop.")
 			return
 		}
 		switch {
@@ -416,21 +377,7 @@ func (api *StreamingAPI) crewMacOffRead(owner, project, generation, operation st
 			events = append(events, envelope.Events...)
 		}
 	}
-	// Always on: an agent with a copy on this server shows that copy's conversation, so a teammate (or the owner on
-	// the website, to read) sees the chat while the Mac is off, also after this server restarted and its relay cache
-	// is empty.
-	// Only for the Crew's owner (a Team member watching reads as the owner, for the one conversation it may watch);
-	// a member's read of their own Mac never reaches the owner's copies.
 	onMac := true
-	if owner != ownerOfCrewProjectID(project) {
-		// keep the relay cache only
-	} else if served := api.crewStandbyServedEvents(owner, project, generation); len(served) > 0 {
-		events, onMac = served, false // the server answers for the agent now: its own chat has the newest turns
-	} else if len(events) == 0 {
-		if copied := crewStandbyHistoryEvents(project, generation); len(copied) > 0 {
-			events, onMac = copied, false
-		}
-	}
 	if len(events) > 200 {
 		events = events[len(events)-200:]
 	}
@@ -455,7 +402,7 @@ func (api *StreamingAPI) serveCrewMacEvents(w http.ResponseWriter, r *http.Reque
 	owner := GetUserIDFromContext(r.Context())
 	b, err := api.crewChatPair(r, project, "")
 	if err != nil {
-		writeCrewChatResult(w, crewChatResult{Status: 403, Body: json.RawMessage(`{"error":"This Crew is not currently connected to its Mac conversation. Reopen the Crew."}`)})
+		writeCrewChatResult(w, crewChatResult{Status: 403, Body: json.RawMessage(`{"error":"This project is not currently connected to its Mac conversation. Reopen the project."}`)})
 		return
 	}
 	flusher, ok := w.(http.Flusher)
@@ -639,7 +586,7 @@ func callCrewMacFor(ctx context.Context, owner, project string, call crewChatCal
 	}
 	b, err := crewroot.ReadSync(project)
 	if err != nil || b == nil || b.Side != "server" || b.Editing != "local" || b.PendingAction != "" {
-		return failure(409, "This Crew is not on its Mac right now.")
+		return failure(409, "This project is not on its Mac right now.")
 	}
 	sock := crewMacSocketFor(owner, project, b.PairID)
 	if sock == nil {
@@ -656,7 +603,7 @@ func callCrewMacFor(ctx context.Context, owner, project string, call crewChatCal
 }
 
 // routeCrewMacTabs lists a Mac Crew's own side tabs for its owner on the website (PLAT-856-509): the Mac's tab keys with
-// the project part swapped to this server's copy. With the Mac off only published agents and agents with a standby copy
+// the project part swapped to this server's copy. With the Mac off only published agents
 // are here, the latter to read: the owner's chat with them waits for the Mac. Main still shows.
 func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request, project string) bool {
 	if IsLocalMode() || !crewChatWebsiteClaims(GetUserFromContext(r.Context())) {
@@ -668,138 +615,32 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 	}
 	owner := GetUserIDFromContext(r.Context())
 	tabs := []AgentProfileSideChat{}
-	placements, err := readCrewAgentPlacements(project)
-	if err != nil {
-		externalError(w, 409, "publish_unavailable", err.Error())
-		return true
-	}
 	if crewMacSocketFor(owner, project, b.PairID) != nil {
 		result := api.callCrewMac(r, project, crewChatCall{Operation: "tabs"})
 		var rows []AgentProfileSideChat
 		if result.Status != http.StatusOK || json.Unmarshal(result.Body, &rows) != nil {
-			writeCrewChatResult(w, result)
-			return true
+			log.Printf("[CREW_CHAT_RELAY] project=%s event=mac_tabs_unavailable status=%d", project, result.Status)
+			rows = nil
 		}
 		for _, row := range rows {
 			base, id, ok := strings.Cut(row.ConversationKey, codeChatSideMarker)
 			if !ok || base != b.PeerProjectID || !crewMacTabID(id) || row.ConversationID == "" {
 				continue
 			}
-			if _, published := placements[id]; published {
-				continue
+			// A fork's parent is another Mac tab under this server's copy too (#3288); a fork of Main stays on its own.
+			parent := ""
+			if base, parentID, ok := strings.Cut(row.ForkedFrom, codeChatSideMarker); ok && base == b.PeerProjectID && crewMacTabID(parentID) {
+				parent = project + codeChatSideMarker + parentID
 			}
 			tabs = append(tabs, AgentProfileSideChat{TabOwnerID: owner, TabOwnerName: GetUserFromContext(r.Context()).Username, CanWrite: true,
 				ConversationKey: project + codeChatSideMarker + id, ConversationID: row.ConversationID, SessionID: crewChatSessionID(project, row.ConversationID),
-				ChatLocation: "mac", Name: crewMacTabName(row.Name), Position: row.Position, Pinned: row.Pinned})
-		}
-	} else if rows, e := readCrewStandby(project, ownerOfCrewProjectID(project)); e == nil {
-		shared := readMacSharedAgents(project)
-		for tab, row := range rows {
-			session, ok := row.Sessions[macSharedAgentChatKey(b.PeerProjectID, tab)]
-			if _, published := placements[tab]; !ok || published || tab == macMainTab || session.ConversationID == "" {
-				continue
-			}
-			at := slices.IndexFunc(shared, func(agent macSharedAgent) bool { return agent.Tab == tab })
-			if at < 0 {
-				continue
-			}
-			tabs = append(tabs, AgentProfileSideChat{TabOwnerID: owner, TabOwnerName: GetUserFromContext(r.Context()).Username, CanWrite: true,
-				ConversationKey: project + codeChatSideMarker + tab, ConversationID: session.ConversationID, SessionID: crewChatSessionID(project, session.ConversationID),
-				ChatLocation: "mac", Name: crewMacTabName(shared[at].Name), Purpose: shared[at].Purpose, Pinned: true})
-		}
-	}
-	if len(placements) > 0 {
-		doc, e := defaultProductConversationRegistryStore().loadDocument(r.Context(), productConversationRegistryPath(owner))
-		if e != nil {
-			externalError(w, 409, "publish_unavailable", e.Error())
-			return true
-		}
-		for tab, place := range placements {
-			if place.Location != "server" || tab == macMainTab {
-				continue
-			}
-			key := productConversationRegistryEntryKey(crewProfileID, crewAgentPublishKey(project, tab))
-			record, ok := doc.Entries[key]
-			if !ok {
-				continue
-			}
-			identity := doc.Agents[key]
-			tabs = append(tabs, AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, ChatLocation: "server", Name: identity.Name, Purpose: identity.Purpose, Position: identity.Position, Pinned: !identity.Unpinned, TabOwnerID: owner, CanWrite: true})
+				ChatLocation: "mac", Name: crewMacTabName(row.Name), Position: row.Position, Pinned: row.Pinned, ForkedFrom: parent})
 		}
 	}
 	// The Team's members' own agents (owner, 5 Nov: "I need to see the other user's agent"): watch-only for the owner.
-	tabs = append(tabs, crewTeamMemberTabs(r.Context(), project, owner)...)
+	tabs = append(tabs, crewTeamMacMemberTabs(r.Context(), project, owner)...)
 	writeAgentProfileJSON(w, http.StatusOK, tabs)
 	return true
-}
-
-// crewTeamMemberTabs are the joined members' own tabs in this Crew's online copy, for someone else in the Crew to
-// watch: each member's Main (their default chat) and side tabs, never one they set to Only me.
-func crewTeamMemberTabs(ctx context.Context, project, viewer string) []AgentProfileSideChat {
-	t, err := readCrewTeam(project)
-	if err != nil || !t.On {
-		return nil
-	}
-	store := defaultProductConversationRegistryStore()
-	out := []AgentProfileSideChat{}
-	for _, p := range t.People {
-		if p.Invited || p.UserID == viewer || p.UserID == t.OwnerID || !crewTeamAccountActive(p.UserID) {
-			continue
-		}
-		if _, onMac := t.memberMac(p.UserID); onMac {
-			continue // their agents here work on their Mac (crewTeamMacMemberTabs below)
-		}
-		records, err := store.projectChats(ctx, p.UserID, crewProfileID, project)
-		if err != nil {
-			continue
-		}
-		identities, _ := store.agentIdentities(ctx, p.UserID, crewProfileID, project)
-		for _, record := range records {
-			identity := identities[record.ConversationKey]
-			if !t.agentInTeam(p.UserID, record.ConversationKey) || hiddenFromTabStrip(record.ConversationKey) || record.SessionID == "" {
-				continue
-			}
-			main := record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(project, p.UserID)
-			if !main && !isSideChatConversationKey(record.ConversationKey) {
-				continue
-			}
-			name := firstNonEmptyTrimmed(identity.Name, record.Title, "Agent")
-			if main {
-				name = "Main"
-			}
-			out = append(out, AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name,
-				Purpose: identity.Purpose, Pinned: true, TabOwnerID: p.UserID, TabOwnerName: crewOwnerDisplayName(p.UserID), ChatLocation: "server"})
-		}
-	}
-	return append(out, crewTeamMacMemberTabs(ctx, project, viewer)...)
-}
-
-// crewTeamMemberTab is the joined member whose own tab this key is, or "". A tab its member set to Only me is
-// nobody else's to open or message, so it is "" too.
-func crewTeamMemberTab(ctx context.Context, project, key string) string {
-	t, err := readCrewTeam(project)
-	if err != nil || !t.On {
-		return ""
-	}
-	store := defaultProductConversationRegistryStore()
-	for _, p := range t.People {
-		if p.Invited || p.UserID == t.OwnerID {
-			continue
-		}
-		records, err := store.projectChats(ctx, p.UserID, crewProfileID, project)
-		if err != nil {
-			continue
-		}
-		for _, record := range records {
-			if record.ConversationKey == strings.TrimSpace(key) {
-				if !t.agentInTeam(p.UserID, record.ConversationKey) {
-					return ""
-				}
-				return p.UserID
-			}
-		}
-	}
-	return ""
 }
 
 // crewMacTwinForOwner: the owner's website copy of a Crew that lives on the Mac, whose tabs are the Mac's.
@@ -809,4 +650,19 @@ func (api *StreamingAPI) crewMacTwinForOwner(r *http.Request, project string) bo
 	}
 	b, err := api.crewChatPair(r, project, "")
 	return err == nil && b.Mode == "relay"
+}
+
+// crewChatRequestSource logs only fixed labels, never remote content or caller IDs.
+func crewChatRequestSource(source string) string {
+	switch source {
+	case "conversation-route", "team-tabs-refresh":
+		return source
+	default:
+		return "unspecified"
+	}
+}
+
+func refuseCrewChatRead(w http.ResponseWriter, r *http.Request, project, session, code, reason string) {
+	log.Printf("[CHAT_ACCESS] event=refused project=%s session=%s viewer=%s reason=%s", project, session, GetUserIDFromContext(r.Context()), reason)
+	externalError(w, http.StatusForbidden, code, "You no longer have access to this chat.")
 }

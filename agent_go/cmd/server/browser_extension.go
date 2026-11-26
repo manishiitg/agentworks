@@ -34,7 +34,7 @@ func (api *StreamingAPI) projectExtensionAccess(r *http.Request, workspace, prof
 		return api.browserWorkspaceAccess(r, workspace, "workflow", true)
 	}
 	if !(profile == crewProfileID && isCrewProjectPath(workspace)) {
-		return "", fmt.Errorf("Browser extension access requires Code, Crew or a workflow")
+		return "", fmt.Errorf("Browser extension access requires a project or a workflow")
 	}
 	if claims == nil || !userAllowedProduct(claims, profile) {
 		return "", fmt.Errorf("Product access required")
@@ -44,10 +44,46 @@ func (api *StreamingAPI) projectExtensionAccess(r *http.Request, workspace, prof
 	}
 	return api.browserWorkspaceAccess(r, workspace, profile, true)
 }
+func (api *StreamingAPI) browserExtensionStatusForRequest(r *http.Request, workspace, profile string) (browserrelay.Status, string, int, error) {
+	physical, err := api.projectExtensionAccess(r, workspace, profile)
+	if err != nil {
+		return browserrelay.Status{}, "", http.StatusForbidden, err
+	}
+	user := GetUserFromContext(r.Context()).UserID
+	scope := browserSessionForWorkspace(user, workspace)
+	if scope == "" {
+		return browserrelay.Status{}, "", http.StatusBadRequest, fmt.Errorf("Open a project or workflow browser")
+	}
+	settings, err := readWorkspaceBrowserSettings(r.Context(), physical)
+	if err != nil {
+		return browserrelay.Status{}, "", http.StatusBadGateway, fmt.Errorf("Cannot load project browser settings")
+	}
+	status := browserrelay.Default.Status(user, scope)
+	if settings.Mode != "extension" {
+		status.Selected, status.Connected = false, false
+	}
+	return status, settings.Mode, http.StatusOK, nil
+}
+
 func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.Request) {
 	workspace := r.URL.Query().Get("workspace_path")
 	if workspace == "" {
 		api.handleAccountBrowsers(w, r)
+		return
+	}
+	if r.Method == http.MethodGet {
+		status, mode, code, err := api.browserExtensionStatusForRequest(r, workspace, r.URL.Query().Get("profile_id"))
+		if err != nil {
+			http.Error(w, err.Error(), code)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(struct {
+			browserrelay.Status
+			Mode         string   `json:"mode"`
+			AllowedModes []string `json:"allowed_modes"`
+		}{status, mode, browser.VisibleModes()})
 		return
 	}
 	physical, err := api.projectExtensionAccess(r, workspace, r.URL.Query().Get("profile_id"))
@@ -137,6 +173,25 @@ func (api *StreamingAPI) handleBrowserExtension(w http.ResponseWriter, r *http.R
 			}
 		case "disconnect":
 			if err := browserrelay.Default.Disconnect(user, scope); err != nil {
+				http.Error(w, "Cannot save browser selection", 503)
+				return
+			}
+		case "also":
+			// Also use another saved browser here, next to the main one (each keeps its own sign-ins).
+			if strings.TrimSpace(req.BrowserID) == "" {
+				http.Error(w, "Choose a saved browser from Browser connections", 400)
+				return
+			}
+			if _, err := browserrelay.Default.PairForProfile(user, scope, workspace, profile); err != nil {
+				http.Error(w, "Cannot start Chrome bridge", 503)
+				return
+			}
+			if err := browserrelay.Default.AlsoUseBrowser(user, scope, req.BrowserID); err != nil {
+				http.Error(w, err.Error(), 400)
+				return
+			}
+		case "stop_also":
+			if err := browserrelay.Default.StopAlsoBrowser(user, scope, req.BrowserID); err != nil {
 				http.Error(w, "Cannot save browser selection", 503)
 				return
 			}

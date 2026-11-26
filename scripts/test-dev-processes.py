@@ -11,6 +11,17 @@ HELPER = Path(__file__).with_name('dev-processes.sh').resolve()
 
 
 class DevelopmentProcesses(unittest.TestCase):
+    def test_tmux_socket_survives_launcher_pid_and_isolates_checkouts(self):
+        # PLAT-746-859: PID-based socket paths hid every previous Claude CLI.
+        def socket(checkout):
+            return subprocess.check_output(
+                ['/bin/bash', '-c', 'source "$1"; dev_tmux_directory "$2"',
+                 'test', str(HELPER), checkout], text=True).strip()
+        first = socket('/example/app/agent_go')
+        self.assertEqual(first, socket('/example/app/agent_go'))
+        self.assertNotEqual(first, socket('/example/other-app/agent_go'))
+        self.assertLess(len(first + '/tmux-1000/default'), 104)
+
     def test_repeat_waits_for_cleanup_and_preserves_other_instance(self):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)

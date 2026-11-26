@@ -100,7 +100,7 @@ func (api *StreamingAPI) registerAgentProfileWorkflowTools(
 			return err
 		}
 		if binding == nil || binding.Root != root || binding.ID != workflowID {
-			return fmt.Errorf("this Crew's workflow or edit access changed; reopen its chat")
+			return fmt.Errorf("this project's workflow or edit access changed; reopen its chat")
 		}
 		return nil
 	}

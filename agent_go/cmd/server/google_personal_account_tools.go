@@ -110,7 +110,7 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 	}
 	if action == "set_inbox_account" {
 		if IsLocalMode() {
-			return nil, fmt.Errorf("Crew inboxes are available on server deployments")
+			return nil, fmt.Errorf("Project inboxes are available on server deployments")
 		}
 		if !c.Personal || c.OwnerID != actor {
 			log.Printf("[GOOGLE_ACCOUNTS] actor=%q connection=%s account_owner=%q personal=%t claims_present=%t reason=inbox_owner_mismatch", actor, id, c.OwnerID, c.Personal, GetUserFromContext(r.Context()) != nil)
@@ -124,7 +124,7 @@ func (api *StreamingAPI) personalGoogleOperation(r *http.Request, workspace stri
 			return nil, err
 		}
 		log.Printf("[GOOGLE_ACCOUNTS] actor=%s connection=%s reason=select_crew_inbox", actor, id)
-		return map[string]any{"message": "This Gmail account supplies your Crew inboxes. Receiving is on by default on servers; Crews you turned off stay off. Open a Crew’s Inbox to copy its address. Ask Builder to turn receiving off or back on for that Crew. Receiving stores mail; Watchers run only when you enable them."}, nil
+		return map[string]any{"message": "This Gmail account supplies your project inboxes. Receiving is on by default on servers; projects you turned off stay off. Open a project’s Inbox to copy its address. Ask Builder to turn receiving off or back on for that project. Receiving stores mail; Watchers run only when you enable them."}, nil
 	}
 	if action == "disconnect" {
 		if err := svc.DeleteConnection(r.Context(), id); err != nil {
@@ -189,7 +189,7 @@ func (api *StreamingAPI) handlePersonalGoogleAccounts(w http.ResponseWriter, r *
 
 func (api *StreamingAPI) registerPersonalGoogleAccountTool(reg definitionToolRegistrar, workspace string) error {
 	return reg.RegisterCustomTool("manage_google_account",
-		"Manage personal Google accounts saved in your Vault. list_saved shows reusable accounts and whether they are used here. connect saves your account and, when called from an item you build, explicitly adds it here, returning a Google sign-in link. attach/detach adds or removes the saved account here; disconnect removes it everywhere; reconnect signs in again and can update permissions. On the website, accounts are managed in each project's Vault panel. Only the account owner signs in; existing Builder and account-management permissions apply. Personal Google connections use gog. On servers, set_inbox_account selects one of your own connected Gmail accounts with read access for Crew inboxes. Receiving is on by default on servers; selecting the account starts receiving for Crews unless explicitly turned off. The owner uses configure_agent_inbox to turn one Crew off or back on. Personal Gmail Watchers remain explicitly enabled. It does not lend general mailbox access to Crews or start work. Company accounts stay administrator-managed. "+googleAccountSharingNotice,
+		"Manage personal Google accounts saved in your Vault. list_saved shows reusable accounts and whether they are used here. connect saves your account and, when called from an item you build, explicitly adds it here, returning a Google sign-in link. attach/detach adds or removes the saved account here; disconnect removes it everywhere; reconnect signs in again and can update permissions. On the website, accounts are managed in each project's Vault panel. Only the account owner signs in; existing Builder and account-management permissions apply. Personal Google connections use gog. On servers, set_inbox_account selects one of your own connected Gmail accounts with read access for project inboxes. Receiving is on by default on servers; selecting the account starts receiving for projects unless explicitly turned off. The owner uses configure_agent_inbox to turn one project off or back on. Personal Gmail Watchers remain explicitly enabled. It does not lend general mailbox access to projects or start work. Company accounts stay administrator-managed. "+googleAccountSharingNotice,
 		map[string]interface{}{"type": "object", "properties": map[string]interface{}{
 			"action":                   map[string]interface{}{"type": "string", "enum": []string{"list_saved", "connect", "attach", "detach", "disconnect", "reconnect", "set_inbox_account"}},
 			"connection_id":            map[string]interface{}{"type": "string"},

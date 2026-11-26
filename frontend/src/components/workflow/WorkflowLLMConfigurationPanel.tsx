@@ -1009,7 +1009,7 @@ export default function WorkflowLLMConfigurationPanel({
         </div>
       )}
       {accountSelectionError && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{accountSelectionError}</p>}
-      {selectedPrivateAccount && <p className="text-xs text-muted-foreground">New runs use this account. Start a new Builder conversation to switch an existing chat.</p>}
+      {selectedPrivateAccount && <p className="text-xs text-muted-foreground">{scopeNoun === 'chat' ? 'New messages use the selected account.' : 'New runs use this account. Start a new Builder conversation to switch an existing chat.'}</p>}
 
       {/* Every connected program, always listed (owner). */}
       {(

@@ -34,9 +34,15 @@
   },
   {
     "family": "settings",
-    "name": "chat",
-    "member": "chat_preferences",
-    "description": "Read or change your personal chat display."
+    "name": "appearance",
+    "member": "appearance",
+    "description": "Read, apply, save or reset your personal app themes, typography and custom CSS."
+  },
+  {
+    "family": "settings",
+    "name": "profile",
+    "member": "profile_picture",
+    "description": "Read, set or remove your own profile picture: an offered icon or an admitted project image."
   },
   {
     "family": "settings",
@@ -66,7 +72,7 @@
     "family": "models",
     "name": "get",
     "member": "get_llm_config",
-    "description": "Read effective project models and their inheritance.",
+    "description": "Read a workflow's models, or a project's fallback (the owner's last-used model).",
     "aliases": [
       "get_project_models"
     ],
@@ -106,7 +112,7 @@
     "family": "models",
     "name": "set",
     "member": "set_project_models",
-    "description": "Change this project’s saved models.",
+    "description": "Change a workflow’s saved models; project chats choose their own (scope=tab).",
     "aliases": [
       "set_workflow_llm_config"
     ],

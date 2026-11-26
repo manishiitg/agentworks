@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func gitRun(t *testing.T, dir string, args ...string) {
@@ -268,12 +269,44 @@ func TestWorkspaceGitFindsReposTwoFoldersDeepButNotInDependencies(t *testing.T) 
 	if !roots["app"] || !roots["code/service"] || roots["node_modules/pkg"] {
 		t.Fatalf("repos: %v", roots)
 	}
+	// PLAT-746-833: an agent worktree in app/.claude/worktrees was invisible
+	// (dot folders are skipped), and a listed nested checkout also counted as
+	// one untracked folder of its parent.
+	repo := filepath.Join(project, "app")
+	gitRun(t, repo, "worktree", "add", "-q", "-b", "feature", filepath.Join(repo, ".claude", "worktrees", "feature"))
+	_, body = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}})
+	var worktree, parent map[string]any
+	for _, r := range body["repos"].([]any) {
+		switch r.(map[string]any)["root"] {
+		case "app/.claude/worktrees/feature":
+			worktree = r.(map[string]any)
+		case "app":
+			parent = r.(map[string]any)
+		}
+	}
+	if worktree == nil || worktree["worktree"] != true || worktree["repository"] != "app" {
+		t.Fatalf("hidden agent worktree: %v", body["repos"])
+	}
+	for _, f := range parent["files"].([]any) {
+		if path := f.(map[string]any)["path"].(string); strings.HasPrefix(path, ".claude/worktrees/") {
+			t.Fatalf("nested worktree counted in its parent: %s", path)
+		}
+	}
 }
 
 // The platform's private .sandbox-cache folder never shows up as a change, is never walked into (an unreadable folder inside it must not warn), and
 // "stage everything" does not add it.
 func TestWorkspaceGitIgnoresPlatformPrivateFolder(t *testing.T) {
 	_, repo := gitTestEnv(t)
+	// PLAT-746-766: omit untracked dependencies but retain deliberate tracked edits.
+	for _, folder := range []string{"node_modules", "bower_components", "jspm_packages", ".venv", "venv", "__pycache__"} {
+		writeFile(t, filepath.Join(repo, folder, "untracked.txt"), "dependency noise")
+	}
+	tracked := filepath.Join(repo, "node_modules", "tracked.txt")
+	writeFile(t, tracked, "before")
+	gitRun(t, repo, "add", "-f", "node_modules/tracked.txt")
+	gitRun(t, repo, "commit", "-qm", "track dependency fixture")
+	writeFile(t, tracked, "after")
 	private := filepath.Join(repo, ".sandbox-cache", "cli-home", "muse-cli", "tmp", "muse-workspace-probe-abc")
 	if err := os.MkdirAll(private, 0o755); err != nil {
 		t.Fatal(err)
@@ -296,6 +329,12 @@ func TestWorkspaceGitIgnoresPlatformPrivateFolder(t *testing.T) {
 		t.Fatalf("stage everything: %v %q", err, out)
 	}
 	staged, _ := workspaceGitRunWrite(context.Background(), repo, nil, "diff", "--cached", "--name-only")
+	if strings.Contains(staged, "untracked.txt") {
+		t.Fatalf("stage everything added ignored dependencies: %q", staged)
+	}
+	if !strings.Contains(staged, "node_modules/tracked.txt") {
+		t.Fatalf("tracked dependency edit disappeared: %q", staged)
+	}
 	if strings.Contains(staged, ".sandbox-cache") {
 		t.Fatalf("stage everything added the platform folder: %q", staged)
 	}
@@ -384,5 +423,151 @@ func TestWorkspaceGitBranchCompareUsesMergeBaseNotUpstream(t *testing.T) {
 	q.Set("base", "--output=/tmp/x")
 	if code, _ := gitGet(t, "alice", q); code != http.StatusBadRequest {
 		t.Fatalf("option-looking base accepted: %d", code)
+	}
+}
+
+// PLAT-746-319: the imported parent folder's panel skipped real linked
+// worktrees because it recognized only .git directories.
+func TestWorkspaceGitLinkedWorktreeKeepsProjectBoundary(t *testing.T) {
+	docs, repo := gitTestEnv(t)
+	root := filepath.Join(docs, filepath.FromSlash(gitTestProject))
+	linked := filepath.Join(root, "feature")
+	gitRun(t, repo, "worktree", "add", "-q", "-b", "feature", linked)
+	writeFile(t, filepath.Join(linked, "a.txt"), "worktree change\n")
+	code, body := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}})
+	if code != http.StatusOK {
+		t.Fatalf("worktree status: %d %+v", code, body)
+	}
+	found := false
+	for _, value := range body["repos"].([]any) {
+		r := value.(map[string]any)
+		if r["root"] == "feature" {
+			found = r["branch"] == "feature" && len(r["files"].([]any)) == 1
+		}
+	}
+	if !found {
+		t.Fatalf("worktree absent from panel: %+v", body)
+	}
+	code, body = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "repo": {"feature"}, "op": {"diff"}, "file": {"a.txt"}})
+	if code != http.StatusOK || !strings.Contains(body["diff"].(string), "+worktree change") {
+		t.Fatalf("worktree diff: %d %+v", code, body)
+	}
+	code, body = gitPost(t, "alice", map[string]any{"workspace_path": gitTestProject, "repo": "feature", "op": "stage", "files": []string{"a.txt"}})
+	if code != http.StatusOK || gitOut(t, linked, "diff", "--cached", "--name-only") != "a.txt" {
+		t.Fatalf("worktree stage: %d %+v", code, body)
+	}
+	// The shared repository config still supplies the existing filter refusal.
+	gitRun(t, repo, "config", "filter.example.clean", "unused-fixture-command")
+	code, _ = gitPost(t, "alice", map[string]any{"workspace_path": gitTestProject, "repo": "feature", "op": "stage", "files": []string{"a.txt"}})
+	if code != http.StatusConflict {
+		t.Fatalf("worktree bypassed common config refusal: %d", code)
+	}
+	// A real worktree whose common Git directory is outside this project stays refused.
+	external := t.TempDir()
+	gitRun(t, external, "init", "-q", "-b", "main")
+	writeFile(t, filepath.Join(external, "private.txt"), "private")
+	gitRun(t, external, "add", "-A")
+	gitRun(t, external, "commit", "-q", "-m", "fixture")
+	outside := filepath.Join(root, "outside")
+	gitRun(t, external, "worktree", "add", "-q", "-b", "outside", outside)
+	code, _ = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "repo": {"outside"}, "op": {"diff"}, "file": {"private.txt"}})
+	if code != http.StatusNotFound {
+		t.Fatalf("external Git directory admitted: %d", code)
+	}
+}
+
+// One commit for the diff pane: its message and the files it changed against
+// its first parent; a first commit compares with the empty tree, and each
+// file's diff comes from branch_diff with the returned parent and hash.
+func TestWorkspaceGitCommitListsItsFiles(t *testing.T) {
+	_, repo := gitTestEnv(t)
+	gitRun(t, repo, "add", ".")
+	gitRun(t, repo, "commit", "-q", "-m", "second commit", "-m", "Why it changed.")
+	get := func(commit string) (int, map[string]any) {
+		return gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"commit"}, "repo": {"app"}, "commit": {commit}})
+	}
+	_, logBody := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"log"}, "repo": {"app"}})
+	commits := logBody["commits"].([]any)
+	second, first := commits[0].(map[string]any)["hash"].(string), commits[1].(map[string]any)["hash"].(string)
+	code, body := get(second)
+	files, _ := body["files"].([]any)
+	if code != http.StatusOK || body["subject"] != "second commit" || body["body"] != "Why it changed." || body["parent"] != first || len(files) != 3 {
+		t.Fatalf("second: %d %v", code, body)
+	}
+	byPath := map[string]string{}
+	for _, f := range files {
+		byPath[f.(map[string]any)["path"].(string)] = f.(map[string]any)["status"].(string)
+	}
+	if byPath["a.txt"] != "modified" || byPath["new.txt"] != "added" || byPath["loose.txt"] != "added" {
+		t.Fatalf("files: %v", byPath)
+	}
+	code, diff := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"branch_diff"}, "repo": {"app"}, "file": {"a.txt"}, "base_sha": {first}, "head_sha": {second}})
+	if code != http.StatusOK || !strings.Contains(diff["diff"].(string), "+two") {
+		t.Fatalf("file diff: %d %v", code, diff)
+	}
+	code, body = get(first)
+	if code != http.StatusOK || body["parent"] != workspaceGitEmptyTree || len(body["files"].([]any)) != 2 {
+		t.Fatalf("first: %d %v", code, body)
+	}
+	code, diff = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"branch_diff"}, "repo": {"app"}, "file": {"keep.txt"}, "base_sha": {workspaceGitEmptyTree}, "head_sha": {first}})
+	if code != http.StatusOK || !strings.Contains(diff["diff"].(string), "+keep") {
+		t.Fatalf("first commit file diff: %d %v", code, diff)
+	}
+	for _, bad := range []string{"--all", "HEAD", "deadbeefdeadbeef"} {
+		if code, _ := get(bad); code == http.StatusOK {
+			t.Fatalf("%q accepted", bad)
+		}
+	}
+	if code, _ := gitGet(t, "bob", url.Values{"workspace_path": {gitTestProject}, "op": {"commit"}, "repo": {"app"}, "commit": {second}}); code == http.StatusOK {
+		t.Fatal("another person read the commit")
+	}
+}
+
+// #3266: each checkout carries its last commit and when its repository last fetched.
+func TestWorkspaceGitStatusLastCommitAndFetchTime(t *testing.T) {
+	_, repoDir := gitTestEnv(t)
+	code, body := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}})
+	if code != http.StatusOK {
+		t.Fatalf("status: %d %v", code, body)
+	}
+	repo := body["repos"].([]any)[0].(map[string]any)
+	if repo["commit"] != "first commit" || repo["commit_at"] == nil || repo["commit_at"].(float64) <= 0 {
+		t.Fatalf("last commit: %v", repo)
+	}
+	if _, ok := repo["fetched_at"]; ok {
+		t.Fatalf("a repository that never fetched has no fetch time: %v", repo)
+	}
+	fetched := time.Now().Add(-31 * 24 * time.Hour).Truncate(time.Second)
+	head := filepath.Join(repoDir, ".git", "FETCH_HEAD")
+	writeFile(t, head, "")
+	if err := os.Chtimes(head, fetched, fetched); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, repoDir, "commit", "-q", "-m", "second commit")
+	_, body = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}})
+	repo = body["repos"].([]any)[0].(map[string]any)
+	if repo["commit"] != "second commit" || int64(repo["fetched_at"].(float64)) != fetched.Unix() {
+		t.Fatalf("after a commit and a fetch: %v", repo)
+	}
+}
+
+// Chat code links and Ctrl+K find project files from Git's file lists, not a
+// folder walk (a whole-project walk froze a large laptop project). A shortened
+// path still resolves, and new untracked files are found.
+func TestWorkspaceGitFindFilesFromFileLists(t *testing.T) {
+	_, repoDir := gitTestEnv(t)
+	writeFile(t, filepath.Join(repoDir, "cmd", "server", "server.go"), "package main\n")
+	code, body := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"find"}, "mode": {"path"}, "q": {"server/server.go"}})
+	files, _ := body["files"].([]any)
+	if code != http.StatusOK || len(files) != 1 || files[0].(map[string]any)["path"] != "app/cmd/server/server.go" {
+		t.Fatalf("path find: %d %v", code, body)
+	}
+	code, body = gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"find"}, "q": {"KEEP"}})
+	files, _ = body["files"].([]any)
+	if code != http.StatusOK || len(files) != 1 || files[0].(map[string]any)["file"] != "keep.txt" {
+		t.Fatalf("name find: %d %v", code, body)
+	}
+	if code, _ := gitGet(t, "alice", url.Values{"workspace_path": {gitTestProject}, "op": {"find"}, "mode": {"path"}, "q": {"../etc/passwd"}}); code != http.StatusBadRequest {
+		t.Fatalf("escaping path accepted: %d", code)
 	}
 }

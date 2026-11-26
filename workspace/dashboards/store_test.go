@@ -2,7 +2,6 @@ package dashboards
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,40 +9,74 @@ import (
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
-func TestDashboardDiscoveryUsesAuthoredNamesWithinReadGrants(t *testing.T) {
+// PLAT-750-50: unmanaged HTML is a file, not a dashboard definition.
+func TestDashboardDiscoveryExcludesUnmanagedFiles(t *testing.T) {
 	docs := t.TempDir()
 	root := "Crew/example"
 	if err := os.MkdirAll(filepath.Join(docs, root, "db/reports"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	for p, content := range map[string]string{
-		"db/reports/views.json":  `{"views":[{"path":"solar.html","title":"Solar Plan"},{"path":"../private.html","title":"Must not appear"}]}`,
-		"db/reports/solar.html":  `<title>Old Solar Title</title>`,
-		"db/reports/budget.html": `<TITLE>Budget &amp; Forecast</TITLE>`,
-		"db/reports/notes.html":  `<body>No title</body>`,
+	if err := os.WriteFile(filepath.Join(docs, root, "db/reports/index.html"), []byte("<h1>File</h1>"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Execute(context.Background(), docs, Request{Root: root, Action: "list", IncludeDraft: true})
+	if err != nil || len(out.Dashboards) != 0 {
+		t.Fatalf("unmanaged listing: %+v %v", out, err)
+	}
+}
+
+// The workspace service receives authoring admission from the API, and must
+// still enforce it and folder grants before removing the definition.
+func TestDashboardDeleteKeepsFilesAndRefusesRunAccess(t *testing.T) {
+	docs := t.TempDir()
+	root := "Workflow/example"
+	if err := os.MkdirAll(filepath.Join(docs, root), 0755); err != nil {
+		t.Fatal(err)
+	}
+	call := func(req Request) (Result, error) { req.Root = root; return Execute(context.Background(), docs, req) }
+	created, err := call(Request{Action: "create", ID: "overview", Title: "Overview", IncludeDraft: true, Files: map[string]string{"index.html": "<h1>Overview</h1>"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev := created.Dashboard.Revision
+	if _, err = call(Request{Action: "publish", ID: "overview", IncludeDraft: true, ExpectedRevision: rev}); err != nil {
+		t.Fatal(err)
+	}
+	for _, req := range []Request{
+		{Action: "delete", ID: "overview"},
+		{Action: "delete", ID: "overview", IncludeDraft: true, Guard: &wf.FolderGuard{WritePaths: []string{"other"}}},
 	} {
-		if err := os.WriteFile(filepath.Join(docs, root, p), []byte(content), 0644); err != nil {
-			t.Fatal(err)
+		if _, err = call(req); wf.StatusCode(err) != 403 {
+			t.Fatalf("delete admission: %v", err)
 		}
 	}
-	out, err := Execute(context.Background(), docs, Request{Root: root, Action: "list"})
-	if err != nil {
-		t.Fatal(err)
+	deleted, err := call(Request{Action: "delete", ID: "overview", IncludeDraft: true})
+	if err != nil || !deleted.Deleted {
+		t.Fatalf("delete: %+v %v", deleted, err)
 	}
-	names := map[string]string{}
-	for _, d := range out.Dashboards {
-		names[d.DocumentPath] = d.Title
+	if _, err = os.Stat(filepath.Join(docs, root, StatePath("overview"))); !os.IsNotExist(err) {
+		t.Fatalf("record remains: %v", err)
 	}
-	if len(names) != 3 || names["db/reports/solar.html"] != "Solar Plan" || names["db/reports/budget.html"] != "Budget & Forecast" || names["db/reports/notes.html"] != "notes" {
-		t.Fatalf("names: %+v", names)
+	if _, err = os.Stat(filepath.Join(docs, root, Document("overview", rev))); err != nil {
+		t.Fatalf("revision removed: %v", err)
 	}
-	granted, err := Execute(context.Background(), docs, Request{Root: root, Action: "list", Guard: &wf.FolderGuard{ReadPaths: []string{"db/reports/budget.html"}}})
-	if err != nil {
-		t.Fatal(err)
+	listed, err := call(Request{Action: "list", IncludeDraft: true})
+	if err != nil || len(listed.Dashboards) != 0 {
+		t.Fatalf("deleted listed: %+v %v", listed, err)
 	}
-	encoded, _ := json.Marshal(granted)
-	if len(granted.Dashboards) != 1 || granted.Dashboards[0].Title != "Budget & Forecast" {
-		t.Fatalf("granted: %s", encoded)
+	if _, err = call(Request{Action: "resolve", DocumentPath: Document("overview", rev)}); err == nil {
+		t.Fatal("deleted revision still resolves")
+	}
+	// Undo of a delete (the Artifacts page's Undo): the page lists again with its published revision.
+	if _, err = call(Request{Action: "undelete", ID: "overview"}); wf.StatusCode(err) != 403 {
+		t.Fatalf("undelete without edit access: %v", err)
+	}
+	back, err := call(Request{Action: "undelete", ID: "overview", IncludeDraft: true})
+	if err != nil || back.Dashboard == nil || back.Dashboard.Published != rev {
+		t.Fatalf("undelete: %+v %v", back, err)
+	}
+	if listed, err = call(Request{Action: "list"}); err != nil || len(listed.Dashboards) != 1 {
+		t.Fatalf("undeleted page not listed: %+v %v", listed, err)
 	}
 }
 
@@ -125,7 +158,7 @@ func TestDashboardScriptsStayPrivate(t *testing.T) {
 	if err != nil || page.Mode().Perm() != 0600 {
 		t.Fatalf("non-slot page must stay 0600: %v %v", page, err)
 	}
-	script, err := os.Stat(filepath.Join(docs, root, "code/reports/managed/status", out.Dashboard.Revision, "data.py"))
+	script, err := os.Stat(filepath.Join(docs, root, "dashboards/status", out.Dashboard.Revision, "data.py"))
 	if err != nil || script.Mode().Perm() != 0600 {
 		t.Fatalf("script must stay 0600: %v %v", script, err)
 	}
@@ -176,5 +209,27 @@ func TestMotionLabelFollowsPublishedRevision(t *testing.T) {
 	restored := call(Request{Action: "restore", ID: "playback", ExpectedRevision: ordinary.Dashboard.Revision, Revision: rev2, IncludeDraft: true})
 	if !restored.Dashboard.Motion {
 		t.Fatal("restore lost revisioned motion metadata")
+	}
+}
+
+// An Artifact is a finished page with no project data (owner rule): TSX, scripts and data calls are refused; plain HTML saves.
+func TestArtifactIsStaticHTML(t *testing.T) {
+	docs := t.TempDir()
+	root := "Crew/example"
+	if err := os.MkdirAll(filepath.Join(docs, root), 0755); err != nil {
+		t.Fatal(err)
+	}
+	yes := true
+	for name, files := range map[string]map[string]string{
+		"tsx":       {"index.tsx": "export default function Page() { return null }"},
+		"script":    {"index.html": "<p>hi</p>", "scripts/data.py": "print(1)"},
+		"data call": {"index.html": "<script>window.report.query('select 1')</script>"},
+	} {
+		if _, err := Execute(context.Background(), docs, Request{Root: root, Action: "create", ID: "page", Title: "Page", IncludeDraft: true, Artifact: &yes, Files: files}); err == nil {
+			t.Fatalf("%s: artifact with project data must be refused", name)
+		}
+	}
+	if _, err := Execute(context.Background(), docs, Request{Root: root, Action: "create", ID: "page", Title: "Page", IncludeDraft: true, Artifact: &yes, Files: map[string]string{"index.html": "<h1>Plan</h1><style>h1{color:red}</style>"}}); err != nil {
+		t.Fatalf("plain HTML artifact refused: %v", err)
 	}
 }

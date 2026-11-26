@@ -168,14 +168,14 @@ func inboxWatcherOutput(raw []byte, cursor int64) ([]byte, error) {
 // the caller's own selected account every time, including before queued delivery.
 func (c *conditionService) personalGmailSource(ctx context.Context, job productScheduleJob, cfg conditiontrigger.Config) (gmailinbound.Inbox, error) {
 	if job.WatcherSource == nil || job.Profile.ID != crewProfileID || c.s.api == nil {
-		return gmailinbound.Inbox{}, fmt.Errorf("Personal Gmail Watchers are available for your own Crews")
+		return gmailinbound.Inbox{}, fmt.Errorf("Personal Gmail Watchers are available for your own projects")
 	}
 	target, _, err := c.s.api.agentEmailCrew(internalBotRequestContext(ctx, job.UserID), inboxWatcherWorkspace(job))
 	if err != nil {
 		return gmailinbound.Inbox{}, err
 	}
 	if target.OwnerID != job.UserID {
-		return gmailinbound.Inbox{}, fmt.Errorf("Only this Crew's owner can watch their personal Gmail")
+		return gmailinbound.Inbox{}, fmt.Errorf("Only this project's owner can watch their personal Gmail")
 	}
 	client, _, err := userInboxClient(job.UserID)
 	if err != nil {

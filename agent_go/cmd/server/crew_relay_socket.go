@@ -33,6 +33,7 @@ type crewRelayMessage struct {
 	Type         string          `json:"type"`
 	DeviceID     string          `json:"device_id,omitempty"`
 	MacName      string          `json:"mac_name,omitempty"`
+	AppVersion   string          `json:"app_version,omitempty"` // the Mac app's version, in hello
 	Crews        []crewRelayCrew `json:"crews,omitempty"`
 	Project      string          `json:"project,omitempty"`
 	Conversation string          `json:"conversation,omitempty"`
@@ -47,6 +48,7 @@ type crewRelayMessage struct {
 }
 
 type crewMacSocket struct {
+	version             string // the Mac app version it said in hello ("" from older apps)
 	owner, device, name string
 	claims              *UserClaims
 	send                func(crewRelayMessage) error
@@ -89,12 +91,31 @@ func (api *StreamingAPI) crewRelayAdmit(ctx context.Context, claims *UserClaims,
 		}
 	}
 	if _, err := api.crewSyncRoots(ctx, claims, crew.Project); err != nil {
-		return fmt.Errorf("not the owner")
+		// Only a confirmed account mismatch may ask the Mac to re-pair.
+		// Missing settings or a failed workspace read must not create copies
+		// repeatedly under the SAME owner (PLAT-746-972). A lookup that fails
+		// or disagrees, as during a deploy's startup, is "unavailable" (#2916).
+		if owner, confirmed := crewRelayConfirmedOwner(crew.Project); confirmed && owner != claims.UserID {
+			return fmt.Errorf("not the owner")
+		}
+		return fmt.Errorf("Project unavailable: %w", err)
 	}
 	if err != nil || b == nil || b.Side != "server" || b.PairID != crew.Pair {
-		return fmt.Errorf("not this Crew's pair")
+		return fmt.Errorf("not this project's pair")
 	}
 	return nil
+}
+
+// crewRelayConfirmedOwner names a Crew's owner only when the ownership record and the Crew's own folder both read
+// and agree. A refusal built on it tells the Mac to start a new online copy, so a half-read state never counts (#2916).
+func crewRelayConfirmedOwner(project string) (string, bool) {
+	record := ownerOfCrewProjectID(project)
+	roots, found, err := crewStorageRoots(crewProjectRootByID(project))
+	confirmed := record != "" && err == nil && found && roots.ID == project && roots.Owner == record
+	if !confirmed {
+		log.Printf("[CREW_RELAY] project=%s owner_unconfirmed record_owner=%s folder_owner=%s folder_found=%t err=%v", project, record, roots.Owner, found, err)
+	}
+	return record, confirmed
 }
 
 // crewRelayRegister admits a Mac's connection. A second connection from the same
@@ -106,7 +127,7 @@ func (api *StreamingAPI) crewRelayRegister(ctx context.Context, claims *UserClai
 	if hello.Type != "hello" || hello.DeviceID == "" || len(hello.DeviceID) > 128 {
 		return nil, fmt.Errorf("invalid hello")
 	}
-	sock := &crewMacSocket{owner: claims.UserID, device: hello.DeviceID, name: hello.MacName, claims: claims, send: send, close: closeConn, twins: map[string]string{}, pending: map[string]chan crewChatResult{}, dispatched: map[string]chan struct{}{}, lastSeen: time.Now()}
+	sock := &crewMacSocket{owner: claims.UserID, device: hello.DeviceID, name: hello.MacName, version: crewMacAppVersion(hello.AppVersion), claims: claims, send: send, close: closeConn, twins: map[string]string{}, pending: map[string]chan crewChatResult{}, dispatched: map[string]chan struct{}{}, lastSeen: time.Now()}
 	api.crewRelayOffer(ctx, sock, hello.Crews)
 	key := claims.UserID + "/" + hello.DeviceID
 	crewMacSockets.Lock()
@@ -114,9 +135,19 @@ func (api *StreamingAPI) crewRelayRegister(ctx context.Context, claims *UserClai
 	crewMacSockets.byDevice[key] = sock
 	crewMacSockets.Unlock()
 	if old != nil && old.close != nil {
+		// Two computers with one saved connection share its device ID and knock each other off; name both.
+		log.Printf("[CREW_RELAY] replace owner=%s device=%s old_mac=%q new_mac=%q", sanitizeUserIDForPath(claims.UserID), hello.DeviceID, old.name, sock.name)
+		old.mu.Lock()
+		for project := range old.twins {
+			if crewRelayStreams.clearRunning(old.owner, project) {
+				go publishCrewPanelChanged(project)
+				go pushCrewTeamBusy(project)
+			}
+		}
+		old.mu.Unlock()
 		old.close()
 	}
-	log.Printf("[CREW_RELAY] connect owner=%s device=%s crews=%d", sanitizeUserIDForPath(claims.UserID), hello.DeviceID, len(sock.twins))
+	log.Printf("[CREW_RELAY] connect owner=%s device=%s mac=%q crews=%d", sanitizeUserIDForPath(claims.UserID), hello.DeviceID, sock.name, len(sock.twins))
 	sock.mu.Lock()
 	for project := range sock.twins {
 		publishCrewPanelChanged(project)
@@ -133,8 +164,23 @@ func (api *StreamingAPI) crewRelayOffer(ctx context.Context, sock *crewMacSocket
 			log.Printf("[CREW_RELAY] refused owner=%s device=%s project=%s reason=%q", sock.owner, sock.device, crew.Project, err.Error())
 			// The online copy is not this account's (the Mac signed in again as someone else, or it was removed):
 			// tell the Mac, which starts a new online copy for this account. The old one is never touched.
-			if err.Error() == "not the owner" && sock.send != nil {
-				_ = sock.send(crewRelayMessage{Type: "refused", Project: crew.Project, State: "not_owner"})
+			if sock.send != nil {
+				// Any other refusal (settings unreadable, member not on their Mac) is told too: the Mac stops
+				// treating the Crew as served and offers it again on its next ping, so a repaired Crew is
+				// reached without a reconnect.
+				state := "unavailable"
+				if err.Error() == "not the owner" {
+					state = "not_owner"
+				}
+				_ = sock.send(crewRelayMessage{Type: "refused", Project: crew.Project, State: state})
+			}
+			continue
+		}
+		// One Mac serves a Crew: a second computer with a copied setup offers the same pair, and would get its messages.
+		if other := crewMacSocketServing(sock, crew.Project, crew.Pair); other != "" {
+			log.Printf("[CREW_RELAY] refused owner=%s device=%s mac=%q project=%s reason=%q serving_mac=%q", sock.owner, sock.device, sock.name, crew.Project, "served by another Mac", other)
+			if sock.send != nil {
+				_ = sock.send(crewRelayMessage{Type: "refused", Project: crew.Project, State: "other_mac"})
 			}
 			continue
 		}
@@ -151,9 +197,15 @@ func (api *StreamingAPI) crewRelayOffer(ctx context.Context, sock *crewMacSocket
 	for project := range sock.twins {
 		publishCrewPanelChanged(project)
 	}
+	previous := sock.twins
 	sock.twins = twins
 	for project := range twins {
 		publishCrewPanelChanged(project)
+		// A Mac that starts serving a Team's Crew is online for its people, and is told who else is (crew_team_push.go).
+		if _, had := previous[project]; !had {
+			crewTeamBusySent.Delete(crewTeamBusySentKey(project, sock))
+			go pushCrewTeamBusy(project)
+		}
 	}
 	sock.mu.Unlock()
 }
@@ -161,13 +213,20 @@ func (api *StreamingAPI) crewRelayOffer(ctx context.Context, sock *crewMacSocket
 func (sock *crewMacSocket) unregister() {
 	key := sock.owner + "/" + sock.device
 	crewMacSockets.Lock()
-	if crewMacSockets.byDevice[key] == sock {
+	current := crewMacSockets.byDevice[key] == sock
+	if current {
 		delete(crewMacSockets.byDevice, key)
 	}
 	crewMacSockets.Unlock()
 	sock.mu.Lock()
 	for project := range sock.twins {
 		crewMacLastHeard.Store(project, sock.lastSeen)
+		crewMacPersonLastHeard.Store(sock.owner+"/"+project, sock.lastSeen)
+		// A replaced socket's chats were cleared when its replacement arrived, which reports them afresh.
+		if current {
+			crewRelayStreams.clearRunning(sock.owner, project)
+			go pushCrewTeamBusy(project) // this person's Mac is offline for the Team now
+		}
 		publishCrewPanelChanged(project)
 	}
 	for id, result := range sock.pending {
@@ -179,9 +238,45 @@ func (sock *crewMacSocket) unregister() {
 	sock.mu.Unlock()
 }
 
+// crewMacAppVersion keeps a plausible version string only ("1.25.148"), never anything else a Mac might send.
+func crewMacAppVersion(v string) string {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	if len(v) == 0 || len(v) > 32 || strings.Trim(v, "0123456789.") != "" {
+		return ""
+	}
+	return v
+}
+
+// crewMacSocketServing is the name of another live connection of this Mac's owner, from a different computer, that
+// already serves this Crew pair ("" when none).
+func crewMacSocketServing(sock *crewMacSocket, project, pair string) string {
+	if pair == "" {
+		return ""
+	}
+	crewMacSockets.Lock()
+	defer crewMacSockets.Unlock()
+	for _, other := range crewMacSockets.byDevice {
+		if other == sock || other.owner != sock.owner || other.device == sock.device {
+			continue
+		}
+		other.mu.Lock()
+		offered, seen := other.twins[project], other.lastSeen
+		other.mu.Unlock()
+		if offered == pair && time.Since(seen) <= crewRelayDropAfter {
+			return firstNonEmptyTrimmed(other.name, other.device)
+		}
+	}
+	return ""
+}
+
 // crewMacSocketFor routes a twin's commands only to a connection of its owner
-// that offered this pair.
+// that offered this pair. An old link without a pair is never live: without
+// this, an unoffered project ("") matches any live socket of the owner and a
+// leftover copy looks on (owner, 12 Nov).
 func crewMacSocketFor(owner, project, pair string) *crewMacSocket {
+	if pair == "" {
+		return nil
+	}
 	crewMacSockets.Lock()
 	defer crewMacSockets.Unlock()
 	var best *crewMacSocket
@@ -200,9 +295,34 @@ func crewMacSocketFor(owner, project, pair string) *crewMacSocket {
 	return best
 }
 
+// crewMacDisplayIdentity follows the currently admitted physical connection,
+// not a device ID saved before the desktop added its machine identity. This is
+// display metadata only; exact owner/project/pair admission remains unchanged.
+func crewMacDisplayIdentity(owner, project, pair, savedDevice, savedName string) (string, string) {
+	if sock := crewMacSocketFor(owner, project, pair); sock != nil {
+		return sock.device, firstNonEmptyTrimmed(sock.name, savedName)
+	}
+	return savedDevice, savedName
+}
+
 // crewMacLastHeard is when a Crew's Mac was last heard from before its connection closed (the Mac online card's
 // "Last seen"), kept only while this server runs.
 var crewMacLastHeard sync.Map
+
+// crewMacPersonLastHeard is the same per person ("<owner>/<project>"): in a Team each member's Mac goes off on its own.
+var crewMacPersonLastHeard sync.Map
+
+// crewServerStartedAt bounds "offline since" when this server has not heard a Mac since it started (#3194).
+var crewServerStartedAt = time.Now()
+
+// crewPersonMacOffSince is when this person's Mac for this Crew was last heard from, never earlier than server start.
+func crewPersonMacOffSince(owner, project string) time.Time {
+	at, _ := crewMacPersonLastHeard.Load(owner + "/" + project)
+	if seen, _ := at.(time.Time); seen.After(crewServerStartedAt) {
+		return seen
+	}
+	return crewServerStartedAt
+}
 
 // crewMacOffSince is when the Crew's Mac was last heard from while it is offline; zero when unknown.
 func crewMacOffSince(project string) time.Time {
@@ -235,8 +355,6 @@ func (api *StreamingAPI) crewRelayHandle(ctx context.Context, sock *crewMacSocke
 	case "hello":
 		api.crewRelayOffer(ctx, sock, msg.Crews)
 		api.deliverCrewMacWaitingAll(sock)
-		// Always on: agents the server answered for while this Mac was off go back to it (crew_agent_handback.go).
-		offerCrewHandbacks(sock)
 		return
 	case "ack":
 		if msg.Result == nil {
@@ -258,6 +376,11 @@ func (api *StreamingAPI) crewRelayHandle(ctx context.Context, sock *crewMacSocke
 		return
 	}
 	switch msg.Type {
+	case "running":
+		// The Mac's own report that a turn started or ended in one of its chats (desktop_crew_relay_socket.go).
+		if msg.Conversation != "" && (msg.State == "running" || msg.State == "waiting" || msg.State == "idle") {
+			crewRelayStreams.setTurnState(sock.owner, msg.Project, msg.Conversation, msg.State)
+		}
 	case "event":
 		if msg.Conversation != "" && json.Valid(msg.Event) {
 			crewRelayStreams.append(sock.owner, msg.Project, msg.Conversation, crewRelayBatch{Kind: "event", Seq: msg.Seq, Body: msg.Event})
@@ -400,19 +523,27 @@ type crewRelayBatch struct {
 }
 
 type crewRelayStream struct {
-	batches []crewRelayBatch
-	bytes   int
-	last    time.Time
+	batches        []crewRelayBatch
+	bytes          int
+	evictedThrough int
+	last           time.Time
 	// running: a turn is going in this chat (its latest lifecycle event is a start); since is when that event arrived.
 	running bool
+	// waiting: the agent stopped to ask its person something (a question or an approval), from the Mac's report.
+	waiting bool
 	since   time.Time
-	subs    map[chan crewRelayBatch]struct{}
+	// activityAt is the last actual activity report, separate from the start of a wait.
+	activityAt time.Time
+	subs       map[chan crewRelayBatch]struct{}
 }
 
 type crewRelayStreamSet struct {
 	sync.Mutex
 	streams map[string]*crewRelayStream
 }
+
+// Bound replay payloads across all chats, in addition to each chat cap.
+const crewRelayReplayBytes = 64 << 20
 
 var crewRelayStreams = &crewRelayStreamSet{streams: map[string]*crewRelayStream{}}
 
@@ -423,6 +554,38 @@ func (s *crewRelayStreamSet) get(key string) *crewRelayStream {
 		s.streams[key] = stream
 	}
 	return stream
+}
+
+// setTurnState records a Mac's own word on one of its chats (running, waiting or idle), so teammates see the agent
+// working or waiting for its person without anyone having it open (a chat's events reach the server only while
+// someone watches it).
+func (s *crewRelayStreamSet) setTurnState(owner, project, conversation, state string) {
+	s.Lock()
+	defer s.Unlock()
+	stream := s.get(owner + "/" + project + "/" + conversation)
+	stream.last = time.Now()
+	stream.activityAt = stream.last
+	running, waiting := state == "running", state == "waiting"
+	if stream.running != running || stream.waiting != waiting {
+		stream.running, stream.waiting, stream.since = running, waiting, time.Now()
+		log.Printf("[CREW_RELAY] turn owner=%s project=%s conversation=%s state=%s", sanitizeUserIDForPath(owner), project, conversation, state)
+		go publishCrewPanelChanged(project)
+		go pushCrewTeamBusy(project)
+	}
+}
+
+// clearRunning: the Mac that reported these chats is gone, so none of them is working any more (a turn it never
+// reported the end of would otherwise show a teammate's agent working forever).
+func (s *crewRelayStreamSet) clearRunning(owner, project string) bool {
+	s.Lock()
+	defer s.Unlock()
+	prefix, cleared := owner+"/"+project+"/", false
+	for key, stream := range s.streams {
+		if (stream.running || stream.waiting) && strings.HasPrefix(key, prefix) {
+			stream.running, stream.waiting, stream.since, cleared = false, false, time.Now(), true
+		}
+	}
+	return cleared
 }
 
 func (s *crewRelayStreamSet) append(owner, project, conversation string, batch crewRelayBatch) {
@@ -441,21 +604,63 @@ func (s *crewRelayStreamSet) append(owner, project, conversation string, batch c
 	stream.bytes += len(batch.Body)
 	stream.last = time.Now()
 	if batch.Kind == "event" {
-		if now, known := crewRelayBatchRunning(batch.Body); known && now != stream.running {
-			stream.running, stream.since = now, time.Now()
-			// The Team tab reads this state: tell it the moment an agent starts or stops working.
-			go publishCrewPanelChanged(project)
+		if now, known := crewRelayBatchRunning(batch.Body); known {
+			stream.activityAt = stream.last
+			if now != stream.running {
+				stream.running, stream.waiting, stream.since = now, false, stream.last
+				// The Team tab reads this state: tell it the moment an agent starts or stops working.
+				go publishCrewPanelChanged(project)
+			}
 		}
 	}
-	for len(stream.batches) > 1000 || stream.bytes > 8<<20 {
-		stream.bytes -= len(stream.batches[0].Body)
-		stream.batches = stream.batches[1:]
+	dropped := 0
+	for len(stream.batches)-dropped > 1000 || stream.bytes > 8<<20 {
+		stream.bytes -= len(stream.batches[dropped].Body)
+		if b := stream.batches[dropped]; b.Kind == "event" && b.Seq > stream.evictedThrough {
+			stream.evictedThrough = b.Seq
+		}
+		stream.batches[dropped] = crewRelayBatch{}
+		dropped++
 	}
+	if dropped > 0 {
+		// PLAT-746-876: a sliced-off prefix still retains its payloads in
+		// the backing array. Clear it and detach the kept replay window.
+		stream.batches = append([]crewRelayBatch(nil), stream.batches[dropped:]...)
+	}
+	s.trimReplay(crewRelayReplayBytes)
 	for sub := range stream.subs {
 		select {
 		case sub <- batch:
 		default: // a stalled viewer resumes from its last event number
 		}
+	}
+}
+
+// trimReplay drops the least recently updated replay payloads, not the live
+// subscription or turn state. Called with the set lock held.
+func (s *crewRelayStreamSet) trimReplay(limit int) {
+	total := 0
+	for _, stream := range s.streams {
+		total += stream.bytes
+	}
+	for total > limit {
+		var oldest *crewRelayStream
+		for _, stream := range s.streams {
+			if stream.bytes > 0 && (oldest == nil || stream.last.Before(oldest.last)) {
+				oldest = stream
+			}
+		}
+		if oldest == nil {
+			return
+		}
+		for i, batch := range oldest.batches {
+			if batch.Kind == "event" && batch.Seq > oldest.evictedThrough {
+				oldest.evictedThrough = batch.Seq
+			}
+			oldest.batches[i] = crewRelayBatch{}
+		}
+		total -= oldest.bytes
+		oldest.batches, oldest.bytes = nil, 0
 	}
 }
 
@@ -486,7 +691,7 @@ func (s *crewRelayStreamSet) subscribe(owner, project, conversation string, sinc
 	key := owner + "/" + project + "/" + conversation
 	stream := s.get(key)
 	var replay []crewRelayBatch
-	gap := since > 0 && len(stream.batches) > 0
+	gap := since > 0 && (len(stream.batches) > 0 || since < stream.evictedThrough)
 	for _, batch := range stream.batches {
 		if batch.Seq > since || batch.Kind != "event" && batch.Seq >= since {
 			replay = append(replay, batch)

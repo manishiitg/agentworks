@@ -58,15 +58,22 @@ func (c *conditionService) validateTarget(ctx context.Context, job productSchedu
 	if job.Profile.ID == "relays" && !productEnabled("relays") {
 		return conditiontrigger.PermanentError{Err: errFlowsDisabled}
 	}
+	if cfg.Target.Kind == "feed" {
+		// The person's own Project activity in this Crew; nothing else is called.
+		if job.WatcherSource == nil || job.Profile.ID != crewProfileID {
+			return errors.New("feed Watchers are available in projects")
+		}
+		return nil
+	}
 	if job.WatcherSource != nil {
 		switch job.Profile.ID {
 		case "work":
 			if cfg.Target.Kind != "function" && cfg.Target.Kind != "agent" {
-				return errors.New("Crew watchers send to this Crew's chat or call a published function")
+				return errors.New("Project watchers send to this project's chat or call a published function")
 			}
 		case "relays":
 			if cfg.Target.Kind != "function" {
-				return errors.New("Crew and Flow watchers call a published function")
+				return errors.New("Project and Flow watchers call a published function")
 			}
 		case "agentworks":
 			if cfg.Target.Kind != "route" && cfg.Target.Kind != "trigger" {
@@ -76,7 +83,7 @@ func (c *conditionService) validateTarget(ctx context.Context, job productSchedu
 	}
 	if cfg.Target.Kind == "agent" {
 		if cfg.Target.Name != "" {
-			return errors.New("Code agent targets stay in this project; use chat_id for its side chats")
+			return errors.New("Agent targets stay in this project; use chat_id for its side chats")
 		}
 		if id := strings.TrimSpace(cfg.Target.ChatID); id != "" && !conditionChatIDPattern.MatchString(id) {
 			return errors.New("chat_id must be main, new (a new chat for each event) or the id of an existing side chat")

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/manishiitg/coding-agent-loop/workspace/cpuprofile"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/manishiitg/coding-agent-loop/workspace/security"
@@ -34,7 +35,7 @@ The server provides endpoints for:
 
 func init() {
 	serverCmd.Flags().Bool("debug", false, "Enable debug mode")
-	serverCmd.Flags().String("restore-crew-state-backup", "", "Restore a stopped Crew storage conversion and exit")
+	serverCmd.Flags().String("restore-crew-agentworks", "", "Put a stopped instance's Crew files back from a .agentworks move journal and exit")
 	viper.BindPFlag("debug", serverCmd.Flags().Lookup("debug"))
 }
 
@@ -42,6 +43,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	// With per-user accounts, what this service creates must be writable by the user's slot group
 	// (the slot's own files are group-writable for the service in return) and closed to everyone else.
 	slots.ApplyServiceUmask()
+	cpuprofile.Start("workspace")
 	// The workspace service never reads AUTH_SECRET; drop it from the
 	// environment first so agent shells and other children cannot inherit it.
 	os.Unsetenv("AUTH_SECRET")
@@ -65,18 +67,33 @@ func runServer(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	if backup, _ := cmd.Flags().GetString("restore-crew-state-backup"); backup != "" {
-		if err := crewroot.RestorePrivateStateBackup(backup); err != nil {
-			fmt.Printf("[CREW_STATE_MIGRATION] restore failed: %v\n", err)
+	if journal, _ := cmd.Flags().GetString("restore-crew-agentworks"); journal != "" {
+		if err := crewroot.RestoreAgentworksMove(journal); err != nil {
+			fmt.Printf("[CREW_AGENTWORKS_MIGRATION] restore failed: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
-	if count, backup, err := crewroot.MigratePrivateState(docsDir); err != nil {
-		fmt.Printf("[CREW_STATE_MIGRATION] failed: %v; backup=%s\n", err, backup)
+	// One place for a Crew's files (PLAT-746-924): moved once, before any traffic.
+	// A failed move stops the workspace (servers and laptops alike) and says what
+	// failed and how to put the files back.
+	if count, journal, err := crewroot.MigrateToAgentworks(docsDir); err != nil {
+		fmt.Printf("[CREW_AGENTWORKS_MIGRATION] Moving Crew files into each Crew's .agentworks folder failed, so the workspace did not start: %v\n", err)
+		if journal != "" {
+			fmt.Printf("[CREW_AGENTWORKS_MIGRATION] %d moves were done before it failed and are listed in %s. Fix the cause and start again to finish the move, or put those files back by running the workspace once with --restore-crew-agentworks %s\n", count, journal, journal)
+		} else {
+			fmt.Printf("[CREW_AGENTWORKS_MIGRATION] No files were moved. Fix the cause and start again.\n")
+		}
 		os.Exit(1)
-	} else if backup != "" {
-		fmt.Printf("[CREW_STATE_MIGRATION] moved=%d backup=%s\n", count, backup)
+	}
+	// Platform scripts leave code/ for .agentworks/ (#4009): moved once, before any traffic, with a backup first.
+	if _, _, backup, err := crewroot.MigratePlatformScripts(docsDir); err != nil {
+		fmt.Printf("[PLATFORM_SCRIPTS_MIGRATION] Moving dashboard, Watcher and motion scripts out of code/ failed, so the workspace did not start: %v. Everything moved so far was copied first to %s. Fix the cause and start again to finish the move.\n", err, backup)
+		os.Exit(1)
+	}
+	if _, _, backup, err := crewroot.MigrateExecutablePlatformScripts(docsDir); err != nil {
+		fmt.Printf("[PLATFORM_SCRIPTS_MIGRATION] Moving project workflows' dashboard, Watcher and motion scripts out of code/ failed, so the workspace did not start: %v. Everything moved so far was copied first to %s. Fix the cause and start again to finish the move.\n", err, backup)
+		os.Exit(1)
 	}
 
 	// Create default workspace subdirectories.
@@ -214,6 +231,7 @@ func registerAPIRoutes(r *gin.Engine) {
 		api.GET("/browser/live/:session/stream", requireWorkspaceAPIToken(), handlers.BrowserLiveStream)
 		api.POST("/browser/live/:session/recording", requireWorkspaceAPIToken(), handlers.BrowserRecording)
 		api.POST("/browser/live/:session/text", requireWorkspaceAPIToken(), handlers.BrowserViewerText)
+		api.POST("/browser/live/:session/context", requireWorkspaceAPIToken(), handlers.BrowserChatContext)
 		api.POST("/browser/live/:session/restore-tabs", requireWorkspaceAPIToken(), handlers.BrowserRestoreTabs)
 
 		// Skills CLI routes (npx skills — runs inside container)

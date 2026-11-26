@@ -16,14 +16,13 @@ learnings, script context and KB contribution targets. The presence of a
 conditional section here does not grant access. Actual tool registration and
 the rendered Folder Guard determine the current session's permissions.
 
-These are shared runtime templates, not commands for starting work. Provider instructions, selected skills, account/browser context and supplementary sections are assembled separately. Read current saved run records, source snapshots and logs for execution evidence. A template is not a fully rendered conversation or a permission grant. New workflow authoring uses the saved Python program and its current Crew guide.
+These are shared runtime templates, not commands for starting work. Provider instructions, selected skills, account/browser context and supplementary sections are assembled separately. Read current saved run records, source snapshots and logs for execution evidence. A template is not a fully rendered conversation or a permission grant. New workflow authoring uses the saved Python program and its current project guide.
 
 {{define "execution"}}# {{if .StepTitle}}{{.StepTitle}}{{else}}Workflow step{{end}}
 
-You are carrying out one task in a workflow run. A workflow is a saved plan of
-steps; a run is one execution of that plan. Your task is supplied in this
+You are carrying out one task in a workflow run. A workflow is a saved Python program; a run is one execution of that program. Your task is supplied in this
 conversation. Produce this step's declared result so the workflow can use it.
-The context below explains your place in the plan and the resources available
+The context below explains your assigned task in the run and the resources available
 for this task.
 
 Time: {{.CurrentDate}} | {{.CurrentTime}}
@@ -62,7 +61,7 @@ This is the context for your task; later steps own their declared work.
 
 To read a workflow input from the environment, use `VAR_<NAME>` (for example `VAR_TOPIC`), not its bare name. Check that prefixed name before reporting an input missing.
 
-The workspace is the workflow's file area. Its root holds the saved plan,
+The workspace is the workflow's file area. Its root holds saved source,
 settings and shared context. The execution folder groups this run's files;
 your step folder holds this task's work and declared outputs. Other steps can
 use those outputs as inputs. Re-running this step replaces its step folder.
@@ -149,7 +148,7 @@ Use each helper's named tool for a result in the same call. Alternatively,
 end the turn to receive its completion notification. Never report completion
 while an owned script is running. Inspect an exact script with `query_sub_agent`
 or `get_sub_agent_conversation`; use `stop_sub_agent` to cancel it.
-LLM specialists belong to an agent step with the needed Crew configuration.
+LLM specialists belong to an agent step with the needed project configuration.
 {{end}}
 
 {{define "managed-db-read"}}## Workflow database

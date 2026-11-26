@@ -1,0 +1,245 @@
+package server
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"log"
+	"strings"
+	"time"
+
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
+	unifiedevents "github.com/manishiitg/mcpagent/events"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+)
+
+// PLAT-746-764: accepted:true acknowledges the native async call. It does not
+// answer the questions. Keep its card independent of the asking turn's context.
+func (api *StreamingAPI) observeNativeAsyncQuestion(sessionID string, record llmtypes.NativeRecord) error {
+	var input struct {
+		Questions []struct {
+			Title   string   `json:"title"`
+			Options []string `json:"options"`
+		} `json:"questions"`
+	}
+	if err := json.Unmarshal([]byte(record.Text), &input); err != nil {
+		return fmt.Errorf("decode native async question: %w", err)
+	}
+	questions := make([]unifiedevents.CodingAgentQuestionPrompt, 0, len(input.Questions))
+	for i, q := range input.Questions {
+		id, _ := json.Marshal([]any{"request_user_input_async", record.ID, i})
+		prompt := unifiedevents.CodingAgentQuestionPrompt{ID: string(id), Question: q.Title, AllowOther: true}
+		for _, label := range q.Options {
+			prompt.Options = append(prompt.Options, unifiedevents.CodingAgentQuestionOption{Label: label})
+		}
+		questions = append(questions, prompt)
+	}
+	questions, err := parseCodingAgentClarification(map[string]interface{}{"questions": questions})
+	if err != nil {
+		return err
+	}
+	identity := sha256.Sum256([]byte(record.SessionID + "\x00" + record.ID))
+	promptID := clarificationPromptPrefix + fmt.Sprintf("async-%x", identity[:16])
+	api.codingAgentClarificationsMu.Lock()
+	defer api.codingAgentClarificationsMu.Unlock()
+	// Async calls already returned to Codex. Each keeps its own card and
+	// answer identity; an earlier unanswered card cannot block transcript reads.
+	if api.codingAgentClarifications[promptID] != nil {
+		return nil
+	}
+	// Replay must not resurrect an answered/expired card. This is only done on
+	// question records, never on routine activity/status polls.
+	for _, event := range api.eventStore.GetAllEventsRaw(sessionID) {
+		if event.ID == promptID+":requested" || event.ID == promptID+":settled" {
+			return nil
+		}
+	}
+	when := record.Timestamp
+	if when.IsZero() {
+		when = time.Now()
+	}
+	p := &pendingCodingAgentClarification{
+		sessionID: sessionID, provider: "codex-cli", promptID: promptID,
+		questions: questions, answers: make(chan []unifiedevents.CodingAgentQuestionAnswer, 1),
+		ctx: context.Background(), askedAt: when, expiresAt: when.Add(24 * time.Hour), turnID: record.TurnID, nativeAsync: true, requestKind: "question",
+	}
+	if api.codingAgentClarifications == nil {
+		api.codingAgentClarifications = make(map[string]*pendingCodingAgentClarification)
+	}
+	if err := api.emitCodingAgentClarification(p, "requested", "", nil); err != nil {
+		return err
+	}
+	api.codingAgentClarifications[promptID] = p
+	log.Printf("[HUMAN_INPUT] session=%s prompt=%s native_call=%s status=pending transport=native_async", sessionID, promptID, record.ID)
+	// Expiry is explicitly unanswered, never permission or an assumed choice.
+	time.AfterFunc(max(time.Until(when.Add(24*time.Hour)), 0), func() {
+		api.codingAgentClarificationsMu.Lock()
+		defer api.codingAgentClarificationsMu.Unlock()
+		if api.codingAgentClarifications[promptID] != p {
+			return
+		}
+		if err := api.emitCodingAgentClarification(p, "settled", clarificationOutcomeUnanswered, nil); err != nil {
+			log.Printf("[HUMAN_INPUT] session=%s prompt=%s status=expiry_failed", sessionID, promptID)
+			return
+		}
+		delete(api.codingAgentClarifications, promptID)
+	})
+	return nil
+}
+
+// Restart never recreates a provider callback or permission decision. Ordinary
+// questions can become explicit new-message answers under the current owner.
+// The caller has checked the checkpoint against the journal's chat owner.
+// restoreQuestionsOnce reloads a chat's open question cards from its saved
+// history the first time this process needs them: at startup for chats with a
+// saved native session, else when the person answers a card or sends a
+// message. Without it a card whose question this process never loaded stays
+// open on screen and every answer is refused (#4021).
+func (api *StreamingAPI) restoreQuestionsOnce(sessionID string) {
+	if sessionID == "" || api.eventStore == nil {
+		return
+	}
+	if _, done := api.questionsRestored.LoadOrStore(sessionID, true); done {
+		return
+	}
+	if err := api.restoreNativeQuestionsAfterRestart(sessionID); err != nil {
+		log.Printf("[HUMAN_INPUT] session=%s status=restart_restore_failed", sessionID)
+	}
+}
+
+func (api *StreamingAPI) restoreNativeQuestionsAfterRestart(sessionID string) error {
+	started := time.Now()
+	scanned, closed := 0, 0
+	defer func() {
+		log.Printf("[HUMAN_INPUT] session=%s restart_scan_events=%d closed=%d elapsed_ms=%d", sessionID, scanned, closed, time.Since(started).Milliseconds())
+	}()
+	pending := map[string]unifiedevents.CodingAgentQuestionEvent{}
+	settled := map[string]bool{}
+	var after int64
+	for {
+		page, err := api.eventStore.ReadDurableChatPage(sessionID, storeevents.DurableEventPageOptions{Limit: 500, AfterSequence: after, FromStart: true})
+		if err != nil {
+			return err
+		}
+		scanned += len(page.Events)
+		for _, event := range page.Events {
+			if event.Type != "coding_agent_question" || event.Data == nil || event.Data.Data == nil {
+				continue
+			}
+			raw, err := json.Marshal(event.Data.Data)
+			if err != nil {
+				return err
+			}
+			var question unifiedevents.CodingAgentQuestionEvent
+			if err := json.Unmarshal(raw, &question); err != nil {
+				return err
+			}
+			if (question.Provider != "codex-cli" && question.Provider != "claude-code" && question.Provider != "cursor-cli") || !strings.HasPrefix(question.PromptID, clarificationPromptPrefix) {
+				continue
+			}
+			switch question.Kind {
+			case "requested":
+				if !settled[question.PromptID] {
+					pending[question.PromptID] = question
+				}
+			case "settled":
+				settled[question.PromptID] = true
+				delete(pending, question.PromptID)
+			}
+		}
+		if !page.HasNewer {
+			break
+		}
+		if page.LatestSequence <= after {
+			return fmt.Errorf("native question journal cursor did not advance")
+		}
+		after = page.LatestSequence
+	}
+	for promptID, question := range pending {
+		api.codingAgentClarificationsMu.Lock()
+		live := api.codingAgentClarificationLocked(sessionID, promptID) != nil
+		api.codingAgentClarificationsMu.Unlock()
+		if live {
+			continue // Asked by this process and still waiting: not a card from before the restart.
+		}
+		kind, _ := question.Metadata["native_request_kind"].(string)
+		nativeAsync := question.Provider == "codex-cli" && strings.HasPrefix(promptID, clarificationPromptPrefix+"async-")
+		expiresAt, _ := time.Parse(time.RFC3339Nano, fmt.Sprint(question.Metadata["expires_at"]))
+		if nativeAsync && expiresAt.IsZero() && !question.Timestamp.IsZero() {
+			expiresAt = question.Timestamp.Add(24 * time.Hour)
+		}
+		expired := !expiresAt.IsZero() && !expiresAt.After(time.Now())
+		validQuestions, questionErr := parseCodingAgentClarification(map[string]interface{}{"questions": question.Questions})
+		if !expired && (kind == "question" || nativeAsync) && questionErr == nil {
+			api.codingAgentClarificationsMu.Lock()
+			if api.codingAgentClarifications == nil {
+				api.codingAgentClarifications = map[string]*pendingCodingAgentClarification{}
+			}
+			if api.codingAgentClarifications[promptID] == nil {
+				p := &pendingCodingAgentClarification{sessionID: sessionID, provider: question.Provider, promptID: promptID, questions: validQuestions, answers: make(chan []unifiedevents.CodingAgentQuestionAnswer, 1), ctx: context.Background(), askedAt: question.Timestamp, expiresAt: expiresAt, recovered: true, requestKind: "question", nativeAsync: nativeAsync,
+					closureMessage: "The app restarted. Your answer will continue this chat as a new message."}
+				if err := api.emitCodingAgentClarification(p, "recovered", "", nil); err != nil {
+					api.codingAgentClarificationsMu.Unlock()
+					return err
+				}
+				api.codingAgentClarifications[promptID] = p
+				if !expiresAt.IsZero() {
+					api.expireRecoveredQuestion(p)
+				}
+				log.Printf("[HUMAN_INPUT] session=%s prompt=%s status=pending reason=recovered_as_message", sessionID, promptID)
+			}
+			api.codingAgentClarificationsMu.Unlock()
+			continue
+		}
+		turnID, _ := question.Metadata["turn_id"].(string)
+		p := &pendingCodingAgentClarification{sessionID: sessionID, provider: question.Provider, promptID: promptID, turnID: turnID,
+			closureMessage: "The server restarted before this was answered; ask again if you still need it."}
+		if err := api.emitCodingAgentClarification(p, "settled", clarificationOutcomeUnanswered, nil); err != nil {
+			return err
+		}
+		closed++
+		log.Printf("[HUMAN_INPUT] session=%s prompt=%s status=unanswered reason=server_restarted", sessionID, promptID)
+	}
+	return nil
+}
+
+func nativeAsyncQuestionReply(questions []unifiedevents.CodingAgentQuestionPrompt, answers []unifiedevents.CodingAgentQuestionAnswer) string {
+	type reply struct {
+		QuestionItemID string `json:"questionItemId"`
+		Question       string `json:"question"`
+		Answer         string `json:"answer"`
+	}
+	items := make([]reply, 0, len(answers))
+	for i, answer := range answers {
+		parts := append([]string(nil), answer.SelectedLabels...)
+		if answer.OtherText != "" {
+			parts = append(parts, answer.OtherText)
+		}
+		items = append(items, reply{answer.ID, questions[i].Question, strings.Join(parts, ", ")})
+	}
+	data, _ := json.Marshal(items)
+	return "<send_user_message_question_reply>\n" + string(data) + "\n</send_user_message_question_reply>\n\n" + nativeAsyncQuestionContinue
+}
+
+// nativeAsyncQuestionContinue follows the answers. The question ended the agent's turn, so the answer starts a new
+// one; Codex took it as something to acknowledge and ended again ("I'll trace the logs", nothing run) (PLAT-746-899).
+// The chat shows only the answers.
+const nativeAsyncQuestionContinue = "Carry on with the task you asked this for, using the answer above. Do not stop at acknowledging it."
+
+// Preserve the existing unattended/async deadline across restarts. A person's
+// ordinary question with no deadline keeps waiting; expiry never chooses an answer.
+func (api *StreamingAPI) expireRecoveredQuestion(p *pendingCodingAgentClarification) {
+	time.AfterFunc(max(time.Until(p.expiresAt), 0), func() {
+		api.codingAgentClarificationsMu.Lock()
+		defer api.codingAgentClarificationsMu.Unlock()
+		if api.codingAgentClarifications[p.promptID] != p {
+			return
+		}
+		p.closureMessage = "This question expired without an answer."
+		if err := api.emitCodingAgentClarification(p, "settled", clarificationOutcomeUnanswered, nil); err != nil {
+			return
+		}
+		delete(api.codingAgentClarifications, p.promptID)
+	})
+}

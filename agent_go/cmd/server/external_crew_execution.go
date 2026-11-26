@@ -72,14 +72,14 @@ func crewExecutionDefinitions() ([]llmtypes.Tool, error) {
 	tools := append(workspace.GetAdvancedToolDefinitions(), virtualtools.CreateWorkspaceBrowserTools()...)
 	tools = append(tools, virtualtools.CreateWorkflowDBToolRegistry("", "", "").Tools...)
 	tools = append(tools, llmtypes.Tool{Type: "function", Function: &llmtypes.FunctionDefinition{
-		Name: "call_selected_mcp_tool", Description: "Call a tool from this Crew's attached MCP connection, selected governed server or authorized Vault default. Discover attached tools with crew_mcp action=discover and diagnostics. Supply only the returned server and tool names plus the tool's arguments; live connection, selection and Vault checks apply. No other project's or personal unattached connection is reachable.",
+		Name: "call_selected_mcp_tool", Description: "Call a tool from this project's attached MCP connection, selected governed server or authorized Vault default. Discover attached tools with crew_mcp action=discover and diagnostics. Supply only the returned server and tool names plus the tool's arguments; live connection, selection and Vault checks apply. No other project's or personal unattached connection is reachable.",
 		Parameters: llmtypes.NewParameters(map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{"server": externalString("Exact attached or selected server name, including authorized Vault defaults."), "tool": externalString("Exact tool name."), "args": map[string]any{"type": "object"}}, "required": []string{"server", "tool", "args"}}),
 	}})
 	// Capture the current native reference tools without executing a scheduler.
 	native := &StreamingAPI{scheduler: &SchedulerService{}}
 	refs := crewCapabilityRegistrar{}
 	if err := native.registerCrewWorkflowRunTools(refs, "", "", "Crew/catalog"); err != nil {
-		return nil, fmt.Errorf("register native Crew workflow tools: %w", err)
+		return nil, fmt.Errorf("register native project workflow tools: %w", err)
 	}
 	for _, name := range []string{"list_workflow_triggers", "run_workflow_trigger", "get_workflow_trigger_run"} {
 		tool := refs[name]
@@ -122,7 +122,7 @@ func externalCrewExecutionDefinition(add func(string, string, bool, bool, map[st
 	if err != nil {
 		return err
 	}
-	return externalCrewNativeDefinition(add, "crew_integrations", "Run this Crew's shared Slack and Google integration tools directly. action=list returns the enabled native names, descriptions and exact argument schemas; otherwise action is that tool name and arguments matches its schema. Requires current editable Crew ownership, crews:write and unrestricted Crew file consent. Existing bot route, Google read/write grants and account roles apply. Shared Google account grant changes additionally require a current administrator and consent covering all Crews. Human Google authorization and infrastructure review remain in their website flows.", tools)
+	return externalCrewNativeDefinition(add, "crew_integrations", "Run this project's shared Slack and Google integration tools directly. action=list returns the enabled native names, descriptions and exact argument schemas; otherwise action is that tool name and arguments matches its schema. Requires current editable project ownership, crews:write and unrestricted project file consent. Existing bot route, Google read/write grants and account roles apply. Shared Google account grant changes additionally require a current administrator and consent covering all projects. Human Google authorization and infrastructure review remain in their website flows.", tools)
 }
 
 func externalCrewNativeDefinition(add func(string, string, bool, bool, map[string]any, ...string), group, description string, tools []llmtypes.Tool) error {
@@ -136,7 +136,7 @@ func externalCrewNativeDefinition(add func(string, string, bool, bool, map[strin
 		schemas = append(schemas, schema)
 	}
 	add(group, description, false, false, map[string]any{
-		"crew_id":   externalString("Crew ID from crew list."),
+		"crew_id":   externalString("Project ID from crew list."),
 		"action":    map[string]any{"type": "string", "enum": names},
 		"arguments": map[string]any{"anyOf": schemas},
 	}, "crew_id", "action")
@@ -151,16 +151,16 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 		return
 	}
 	if token := claims.AccessToken; token != nil && (!token.Allows("crews:write") || !token.AllowsCrew(id)) {
-		externalError(w, 403, "insufficient_scope", "This connection cannot execute authoring tools in this Crew.")
+		externalError(w, 403, "insufficient_scope", "This connection cannot execute authoring tools in this project.")
 		return
 	}
 	crew, _, _, ok := api.externalCrewResolve(r.Context(), claims, id)
 	if !ok {
-		externalError(w, 404, "not_found", "Crew not found or not allowed.")
+		externalError(w, 404, "not_found", "Project not found or not allowed.")
 		return
 	}
 	if !crew.OwnedByCaller {
-		externalError(w, 403, "forbidden", "Only the Crew owner can execute these tools.")
+		externalError(w, 403, "forbidden", "Only the project owner can execute these tools.")
 		return
 	}
 	if action == "history" {
@@ -225,7 +225,7 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 		return
 	}
 	if selected.Function == nil {
-		externalError(w, 404, "tool_unavailable", "This Crew profile does not enable this tool.")
+		externalError(w, 404, "tool_unavailable", "This project profile does not enable this tool.")
 		return
 	}
 	params, _ := args["arguments"].(map[string]any)
@@ -253,7 +253,7 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 	}
 	guard := externalFileGuard(r.Context(), true)
 	if action != "execute_shell_command" && guard != nil {
-		externalError(w, 403, "insufficient_scope", "Browser, connected MCP, integrations and managed database tools require unrestricted Crew file consent.")
+		externalError(w, 403, "insufficient_scope", "Browser, connected MCP, integrations and managed database tools require unrestricted project file consent.")
 		return
 	}
 	root := agentProfileRuntimeWorkspace(crew.OwnerID, crew.Binding.WorkspacePath)
@@ -288,7 +288,7 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 		}
 		references, refErr := readWorkWorkflowReferences(r.Context(), root)
 		if refErr != nil {
-			externalError(w, 502, "references_unavailable", "Cannot resolve the Crew's current reference policy.")
+			externalError(w, 502, "references_unavailable", "Cannot resolve the project's current reference policy.")
 			return
 		}
 		allowed := []string{}
@@ -351,7 +351,7 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 	} else if action == "agent_browser" {
 		settings, err := readWorkspaceBrowserSettings(ctx, root)
 		if err != nil {
-			externalError(w, 502, "browser_settings_unavailable", "Cannot read this Crew's browser settings.")
+			externalError(w, 502, "browser_settings_unavailable", "Cannot read this project's browser settings.")
 			return
 		}
 		if settings.Mode == "" {
@@ -405,7 +405,7 @@ func (api *StreamingAPI) executeCrewSelectedMCP(ctx context.Context, root string
 		callCtx = context.WithValue(callCtx, placeScopedKey{}, true)
 		manifest, found, err := ReadWorkflowManifest(callCtx, root)
 		if err != nil || !found {
-			return nil, fmt.Errorf("Crew MCP selection is unavailable")
+			return nil, fmt.Errorf("Project MCP selection is unavailable")
 		}
 		catalog, err := mcpclient.LoadMergedConfig(api.mcpConfigPath, api.logger)
 		if err != nil {
@@ -416,7 +416,7 @@ func (api *StreamingAPI) executeCrewSelectedMCP(ctx context.Context, root string
 			return nil, err
 		}
 		if resolved == nil {
-			return nil, fmt.Errorf("MCP server is not available in this Crew")
+			return nil, fmt.Errorf("MCP server is not available in this project")
 		}
 		return resolved, nil
 	})

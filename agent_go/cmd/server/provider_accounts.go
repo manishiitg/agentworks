@@ -128,7 +128,7 @@ func productDisplayName(product string) string {
 	case productWorkflows:
 		return "Workflows"
 	case productCrews:
-		return "Crews"
+		return "Projects"
 	case "relays":
 		return "Flows"
 	}
@@ -567,12 +567,12 @@ func (api *StreamingAPI) describeProviderAccountRun(ctx context.Context, scope p
 // server logged nothing, so the pairing could not be seen. It logs both providers and says what to do.
 func providerAccountMismatch(principal, id, turnProvider, accountProvider string, run providerAccountRun) error {
 	log.Printf("[PROVIDER_ACCOUNT] provider mismatch for %q (%s): account %s belongs to %s, the turn runs on %s", principal, run.Label, id, accountProvider, turnProvider)
-	return fmt.Errorf("this chat is set to a %s account but is running on %s. Pick the account again in this project's Models panel; your next message uses it", providerAccountProductName(accountProvider), providerAccountProductName(turnProvider))
+	return fmt.Errorf("this chat is set to a %s account but is running on %s. Pick the account again in the model menu in the message box; your next message uses it", providerAccountProductName(accountProvider), providerAccountProductName(turnProvider))
 }
 
 // providerAccountUnavailable is the one error a denied account produces.
 func providerAccountUnavailable(run providerAccountRun) error {
-	return fmt.Errorf("the account this chat was set to run on no longer exists (it was removed or replaced) for %s. Pick an account again in this project's Models panel; your next message uses it", run.Label)
+	return fmt.Errorf("the account this chat was set to run on no longer exists (it was removed or replaced) for %s. Pick an account again in the model menu in the message box; your next message uses it", run.Label)
 }
 
 // providerAccountNotShared is the denial for an account that exists but is private to its owner
@@ -591,7 +591,7 @@ func providerAccountNotShared(run providerAccountRun, record storedProviderConne
 	if label != "" {
 		label = strings.ToUpper(label[:1]) + label[1:]
 	}
-	return fmt.Errorf("%s runs on %s's personal %s account, which only they can use. Ask %s to share it with %s (Providers → the account → Who can use it), or pick another account for it in Models", label, owner, providerAccountProductName(record.Provider), owner, run.Label)
+	return fmt.Errorf("%s runs on %s's personal %s account, which only they can use. Ask %s to share it with %s (Providers → the account → Who can use it), or pick another account for it in the model menu in the message box", label, owner, providerAccountProductName(record.Provider), owner, run.Label)
 }
 
 func providerAccountProductName(provider string) string {
@@ -633,7 +633,11 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 		}
 		if !availability.AvailableTo.admits(scope.Principal) {
 			log.Printf("[PROVIDER_ACCOUNT] %s server account denied for %q (%s): available to %s", provider, scope.Principal, run.Product, availability.Text)
-			return nil, fmt.Errorf("This chat's model uses the company %s account, which is available to %s and not to the person this chat runs as. Pick another model or ask an admin to add them", providerAccountProductName(provider), availability.Text)
+			name, audience := providerAccountProductName(provider), "chosen people"
+			if len(availability.AvailableTo.Users) == 0 {
+				audience = "admins"
+			}
+			return nil, fmt.Errorf("The company %s sign-in is only for %s, and you are not one of them. Sign in with your own %s account (Settings → AI accounts → Add your account), or pick another AI program for this chat in Models", name, audience, name)
 		}
 		// Per-user token limits count and cap server accounts only: this
 		// account's own limit, then the overall cap (PLAT-683, PLAT-693).
@@ -683,6 +687,26 @@ func (api *StreamingAPI) admitProviderAccount(ctx context.Context, scope provide
 	// refusal was otherwise silent on the server (server B 2026-10-08).
 	log.Printf("[PROVIDER_ACCOUNT] account %s (%s) not found for %s (%s): removed or never existed", id, provider, principal, run.Label)
 	return nil, providerAccountUnavailable(run)
+}
+
+// providerAccountRemoved reports whether id names a stored account that no longer exists. Server and
+// company accounts are never "removed"; a read error is not treated as removal.
+func providerAccountRemoved(ctx context.Context, id string) bool {
+	if id == "" || strings.HasPrefix(id, "global:") || strings.HasPrefix(id, llmguard.ServerDefaultConnectionPrefix) {
+		return false
+	}
+	providerConnectionsMu.Lock()
+	records, err := loadProviderConnections(ctx)
+	providerConnectionsMu.Unlock()
+	if err != nil {
+		return false
+	}
+	for _, record := range records {
+		if record.ID == id {
+			return false
+		}
+	}
+	return true
 }
 
 // userAccountAdmission returns how a user account is admitted for principal
@@ -748,7 +772,7 @@ type ProviderConnectionSharing struct {
 }
 
 // errProviderSharingAdminOnly refuses a member's workflow or Crew share.
-var errProviderSharingAdminOnly = errors.New("Only an admin can share a provider account with workflows or Crews; you can share it with up to 10 named colleagues.")
+var errProviderSharingAdminOnly = errors.New("Only an admin can share a provider account with workflows or projects; you can share it with up to 10 named colleagues.")
 
 // memberShareUserLimit is how many named people a member's account may be
 // shared with; an admin's account takes up to the general 200 entries.
@@ -845,7 +869,7 @@ func (api *StreamingAPI) normalizeProviderSharing(ctx context.Context, ownerID s
 		result.Users = appendUniqueFold(result.Users, rec.ID)
 	}
 	if len(result.Workflows)+len(result.Crews)+len(result.Users) == 0 {
-		return nil, fmt.Errorf("choose at least one workflow, Crew or person to share with, or keep the account private")
+		return nil, fmt.Errorf("choose at least one workflow, project or person to share with, or keep the account private")
 	}
 	sort.Strings(result.Workflows)
 	sort.Strings(result.Crews)
@@ -899,12 +923,6 @@ func (api *StreamingAPI) queryTurnConnectionForSession(req QueryRequest, session
 // finalQueryTurnConnection returns the current turn's selected account, or its retained request's account.
 func (api *StreamingAPI) finalQueryTurnConnection(_ context.Context, req QueryRequest, sessionID string) (provider, connectionID string) {
 	return api.queryTurnConnectionForSession(req, sessionID)
-}
-
-// delegationProviderAccountScope is a sub-agent's account scope: the
-// principal of the parent turn and the parent's workspace and product.
-func delegationProviderAccountScope(principal string, parentReq QueryRequest) providerAccountScope {
-	return providerAccountScope{Principal: principal, WorkspacePath: parentReq.SelectedFolder, Product: parentReq.AgentProfileID}
 }
 
 // serverDefaultConnectionID is the marker a model naming no account resolves

@@ -326,9 +326,17 @@ func (g *GmailService) AdoptHostAccount(ctx context.Context) (GmailConnection, b
 	if !ok {
 		return GmailConnection{}, false, nil
 	}
-	cfg.Connections = []GmailConnection{conn}
-	cfg.DefaultConnectionID = conn.ID
-	if err := g.SaveConfig(ctx, cfg); err != nil {
+	adopted := false
+	err := g.UpdateConfig(ctx, func(cfg *GmailConfig) (bool, error) {
+		if len(cfg.Connections) > 0 || cfg.HostAccountDismissed {
+			return false, nil
+		}
+		cfg.Connections = []GmailConnection{conn}
+		cfg.DefaultConnectionID = conn.ID
+		adopted = true
+		return true, nil
+	})
+	if err != nil || !adopted {
 		return GmailConnection{}, false, err
 	}
 	return conn, true, nil
@@ -504,41 +512,42 @@ func (g *GmailService) CreateConnection(ctx context.Context, in GmailConnectionI
 		return GmailConnection{}, fmt.Errorf("gmail connection: OAuth client %q not found", clientName)
 	}
 
-	cfg := g.GetConfig()
-	id := nextGmailConnectionID(cfg.Connections)
-
 	configHome := strings.TrimSpace(in.ConfigHome)
 	authBackend := "gog"
 	if configHome != "" || strings.TrimSpace(in.CredentialsFile) != "" {
 		authBackend = "" // explicit legacy gws connection
 	}
 
-	now := time.Now().UTC()
 	enabled := true
 	if in.Enabled != nil {
 		enabled = *in.Enabled
 	}
-	conn := GmailConnection{
-		ID:                    id,
-		AuthBackend:           authBackend,
-		DisplayName:           name,
-		ConfigHome:            configHome,
-		CredentialsFile:       strings.TrimSpace(in.CredentialsFile),
-		ClientName:            clientName,
-		AllowReadAccess:       in.AllowReadAccess != nil && *in.AllowReadAccess,
-		AllowAgentWriteAccess: in.AllowAgentWriteAccess != nil && *in.AllowAgentWriteAccess,
-		Services:              normalizeGoogleServiceGrants(in.Services),
-		Status:                GmailConnectionNeedsReconnect,
-		Enabled:               enabled,
-		ScopeWorkspace:        strings.Trim(strings.TrimSpace(in.ScopeWorkspace), "/"),
-		OwnerID:               strings.TrimSpace(in.OwnerID),
-		Personal:              in.Personal,
-		Workspaces:            append([]string(nil), in.Workspaces...),
-		CreatedAt:             now,
-		UpdatedAt:             now,
-	}
-	cfg.Connections = append(cfg.Connections, conn)
-	if err := g.SaveConfig(ctx, cfg); err != nil {
+	var conn GmailConnection
+	err := g.UpdateConfig(ctx, func(cfg *GmailConfig) (bool, error) {
+		now := time.Now().UTC()
+		conn = GmailConnection{
+			ID:                    nextGmailConnectionID(cfg.Connections),
+			AuthBackend:           authBackend,
+			DisplayName:           name,
+			ConfigHome:            configHome,
+			CredentialsFile:       strings.TrimSpace(in.CredentialsFile),
+			ClientName:            clientName,
+			AllowReadAccess:       in.AllowReadAccess != nil && *in.AllowReadAccess,
+			AllowAgentWriteAccess: in.AllowAgentWriteAccess != nil && *in.AllowAgentWriteAccess,
+			Services:              normalizeGoogleServiceGrants(in.Services),
+			Status:                GmailConnectionNeedsReconnect,
+			Enabled:               enabled,
+			ScopeWorkspace:        strings.Trim(strings.TrimSpace(in.ScopeWorkspace), "/"),
+			OwnerID:               strings.TrimSpace(in.OwnerID),
+			Personal:              in.Personal,
+			Workspaces:            append([]string(nil), in.Workspaces...),
+			CreatedAt:             now,
+			UpdatedAt:             now,
+		}
+		cfg.Connections = append(cfg.Connections, conn)
+		return true, nil
+	})
+	if err != nil {
 		return GmailConnection{}, err
 	}
 	if conn.IsPrivate() {
@@ -559,61 +568,63 @@ func pinsGmailCredentialPaths(in GmailConnectionInput) bool {
 
 // UpdateConnection edits the mutable fields of one connection.
 func (g *GmailService) UpdateConnection(ctx context.Context, id string, in GmailConnectionInput) (GmailConnection, error) {
-	cfg := g.GetConfig()
-	idx := -1
-	for i, c := range cfg.Connections {
-		if c.ID == strings.TrimSpace(id) {
-			idx = i
-			break
+	if v := strings.TrimSpace(in.ClientName); v != "" && !OAuthClientExists(v) {
+		return GmailConnection{}, fmt.Errorf("gmail connection: OAuth client %q not found", v)
+	}
+	var updated GmailConnection
+	err := g.UpdateConfig(ctx, func(cfg *GmailConfig) (bool, error) {
+		idx := -1
+		for i, c := range cfg.Connections {
+			if c.ID == strings.TrimSpace(id) {
+				idx = i
+				break
+			}
 		}
-	}
-	if idx < 0 {
-		return GmailConnection{}, fmt.Errorf("gmail connection %q not found", id)
-	}
-
-	conn := &cfg.Connections[idx]
-	if conn.IsPrivate() && pinsGmailCredentialPaths(in) {
-		return GmailConnection{}, ErrPrivateGmailCredentialPaths
-	}
-	if v := strings.TrimSpace(in.DisplayName); v != "" {
-		conn.DisplayName = v
-	}
-	if v := strings.TrimSpace(in.ConfigHome); v != "" {
-		conn.ConfigHome = v
-	}
-	if v := strings.TrimSpace(in.CredentialsFile); v != "" {
-		conn.CredentialsFile = v
-	}
-	if v := strings.TrimSpace(in.ClientName); v != "" {
-		if !OAuthClientExists(v) {
-			return GmailConnection{}, fmt.Errorf("gmail connection: OAuth client %q not found", v)
+		if idx < 0 {
+			return false, fmt.Errorf("gmail connection %q not found", id)
 		}
-		conn.ClientName = v
-	}
-	if in.Enabled != nil {
-		conn.Enabled = *in.Enabled
-	}
-	// Persisting wider Gmail/Workspace permissions here changes only what the
-	// NEXT reconnect will request from Google — it does not retroactively
-	// widen (or narrow) whatever scope the current token already holds.
-	// Google fixes a token's scope at consent time; there is no API to
-	// change it after the fact. Callers must prompt the operator to
-	// reconnect once this save succeeds, or the stored config and the live
-	// grant drift apart exactly like the legacy connections that motivated
-	// this fix.
-	if in.AllowReadAccess != nil {
-		conn.AllowReadAccess = *in.AllowReadAccess
-	}
-	if in.AllowAgentWriteAccess != nil {
-		conn.AllowAgentWriteAccess = *in.AllowAgentWriteAccess
-	}
-	if in.ServicesSet {
-		conn.Services = normalizeGoogleServiceGrants(in.Services)
-	}
-	conn.UpdatedAt = time.Now().UTC()
 
-	updated := conn.Clone()
-	if err := g.SaveConfig(ctx, cfg); err != nil {
+		conn := &cfg.Connections[idx]
+		if conn.IsPrivate() && pinsGmailCredentialPaths(in) {
+			return false, ErrPrivateGmailCredentialPaths
+		}
+		if v := strings.TrimSpace(in.DisplayName); v != "" {
+			conn.DisplayName = v
+		}
+		if v := strings.TrimSpace(in.ConfigHome); v != "" {
+			conn.ConfigHome = v
+		}
+		if v := strings.TrimSpace(in.CredentialsFile); v != "" {
+			conn.CredentialsFile = v
+		}
+		if v := strings.TrimSpace(in.ClientName); v != "" {
+			conn.ClientName = v
+		}
+		if in.Enabled != nil {
+			conn.Enabled = *in.Enabled
+		}
+		// Persisting wider Gmail/Workspace permissions here changes only what the
+		// NEXT reconnect will request from Google — it does not retroactively
+		// widen (or narrow) whatever scope the current token already holds.
+		// Google fixes a token's scope at consent time; there is no API to
+		// change it after the fact. Callers must prompt the operator to
+		// reconnect once this save succeeds, or the stored config and the live
+		// grant drift apart exactly like the legacy connections that motivated
+		// this fix.
+		if in.AllowReadAccess != nil {
+			conn.AllowReadAccess = *in.AllowReadAccess
+		}
+		if in.AllowAgentWriteAccess != nil {
+			conn.AllowAgentWriteAccess = *in.AllowAgentWriteAccess
+		}
+		if in.ServicesSet {
+			conn.Services = normalizeGoogleServiceGrants(in.Services)
+		}
+		conn.UpdatedAt = time.Now().UTC()
+		updated = conn.Clone()
+		return true, nil
+	})
+	if err != nil {
 		return GmailConnection{}, err
 	}
 	return updated, nil
@@ -621,54 +632,40 @@ func (g *GmailService) UpdateConnection(ctx context.Context, id string, in Gmail
 
 // SetDefaultConnection chooses the connection used when a send names none.
 func (g *GmailService) SetDefaultConnection(ctx context.Context, id string) error {
-	cfg := g.GetConfig()
-	conn, ok := findGmailConnection(cfg, id)
-	if !ok {
-		return fmt.Errorf("gmail connection %q not found", id)
-	}
-	if !conn.Enabled {
-		return fmt.Errorf("gmail connection %q is disabled and cannot be the default", id)
-	}
-	if conn.IsPrivate() {
-		return fmt.Errorf("This Google account is reserved and cannot be the default sender")
-	}
-	cfg.DefaultConnectionID = conn.ID
-	return g.SaveConfig(ctx, cfg)
+	return g.UpdateConfig(ctx, func(cfg *GmailConfig) (bool, error) {
+		conn, ok := findGmailConnection(cfg, id)
+		if !ok {
+			return false, fmt.Errorf("gmail connection %q not found", id)
+		}
+		if !conn.Enabled {
+			return false, fmt.Errorf("gmail connection %q is disabled and cannot be the default", id)
+		}
+		if conn.IsPrivate() {
+			return false, fmt.Errorf("This Google account is reserved and cannot be the default sender")
+		}
+		cfg.DefaultConnectionID = conn.ID
+		return true, nil
+	})
 }
 
 // DeleteConnection removes a connection and, when the registry provisioned it,
 // its config directory and stored credentials.
 func (g *GmailService) DeleteConnection(ctx context.Context, id string) error {
-	cfg := g.GetConfig()
-	conn, ok := findGmailConnection(cfg, id)
+	snapshot := g.GetConfig()
+	conn, ok := findGmailConnection(snapshot, id)
 	if !ok {
 		return fmt.Errorf("gmail connection %q not found", id)
 	}
 
-	kept := make([]GmailConnection, 0, len(cfg.Connections))
-	for _, c := range cfg.Connections {
-		if c.ID != conn.ID {
-			kept = append(kept, c)
-		}
-	}
-	cfg.Connections = kept
-	if cfg.DefaultConnectionID == conn.ID {
-		cfg.DefaultConnectionID = ""
-	}
-	// An adopted host account (empty ConfigHome, see AdoptHostAccount) that
-	// the operator removes must stay removed; otherwise the next listing
-	// would adopt it straight back.
-	if strings.TrimSpace(conn.ConfigHome) == "" && len(kept) == 0 {
-		cfg.HostAccountDismissed = true
-	}
-
 	// Several registry entries may reference one gog account/client pair.
-	// Remove its token only when the last reference is removed.
+	// Remove its token only when the last reference is removed, and run the
+	// subprocess outside writeMu so concurrent config updates are not stalled
+	// or clobbered by a stale snapshot.
 	home := gogHomeForConnection(conn)
 	if conn.AuthBackend == "gog" && conn.Email != "" && !conn.IsPrivate() {
 		shared := false
-		for _, other := range kept {
-			if strings.EqualFold(other.Email, conn.Email) && other.ClientName == conn.ClientName && gogHomeForConnection(other) == home {
+		for _, other := range snapshot.Connections {
+			if other.ID != conn.ID && strings.EqualFold(other.Email, conn.Email) && other.ClientName == conn.ClientName && gogHomeForConnection(other) == home {
 				shared = true
 				break
 			}
@@ -676,7 +673,7 @@ func (g *GmailService) DeleteConnection(ctx context.Context, id string) error {
 		if !shared {
 			cmdCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
-			binary := strings.TrimSpace(cfg.GogPath)
+			binary := strings.TrimSpace(snapshot.GogPath)
 			if binary == "" {
 				binary = "gog"
 			}
@@ -688,7 +685,34 @@ func (g *GmailService) DeleteConnection(ctx context.Context, id string) error {
 			}
 		}
 	}
-	if err := g.SaveConfig(ctx, cfg); err != nil {
+
+	var kept []GmailConnection
+	err := g.UpdateConfig(ctx, func(cfg *GmailConfig) (bool, error) {
+		current, ok := findGmailConnection(cfg, id)
+		if !ok {
+			return false, fmt.Errorf("gmail connection %q not found", id)
+		}
+		conn = current
+		home = gogHomeForConnection(conn)
+		kept = make([]GmailConnection, 0, len(cfg.Connections))
+		for _, c := range cfg.Connections {
+			if c.ID != conn.ID {
+				kept = append(kept, c)
+			}
+		}
+		cfg.Connections = kept
+		if cfg.DefaultConnectionID == conn.ID {
+			cfg.DefaultConnectionID = ""
+		}
+		// An adopted host account (empty ConfigHome, see AdoptHostAccount) that
+		// the operator removes must stay removed; otherwise the next listing
+		// would adopt it straight back.
+		if strings.TrimSpace(conn.ConfigHome) == "" && len(kept) == 0 {
+			cfg.HostAccountDismissed = true
+		}
+		return true, nil
+	})
+	if err != nil {
 		return err
 	}
 
@@ -895,7 +919,7 @@ func (g *GmailService) resolveSendConfig(connectionID string) (*GmailConfig, str
 		// Platform sends (notifications, workflow mail) never use a Code's
 		// private account.
 		if conn.IsPrivate() {
-			return nil, "", fmt.Errorf("gmail connection %q belongs to one Code workspace and cannot send platform mail", conn.ID)
+			return nil, "", fmt.Errorf("gmail connection %q belongs to one project and cannot send platform mail", conn.ID)
 		}
 		return gmailConnectionConfig(conn), conn.ID, nil
 	}
@@ -973,29 +997,32 @@ func (g *GmailService) InvalidateConnectionAuthCache(id string) {
 // Goes through SaveConfig, which reloads the service in-process — that is what
 // makes a newly connected account appear without restarting the server.
 func (g *GmailService) MarkConnectionConnected(ctx context.Context, id, email string) (GmailConnection, error) {
-	cfg := g.GetConfig()
-	idx := -1
-	for i, c := range cfg.Connections {
-		if c.ID == strings.TrimSpace(id) {
-			idx = i
-			break
+	var updated GmailConnection
+	err := g.UpdateConfig(ctx, func(cfg *GmailConfig) (bool, error) {
+		idx := -1
+		for i, c := range cfg.Connections {
+			if c.ID == strings.TrimSpace(id) {
+				idx = i
+				break
+			}
 		}
-	}
-	if idx < 0 {
-		return GmailConnection{}, fmt.Errorf("gmail connection %q not found", id)
-	}
+		if idx < 0 {
+			return false, fmt.Errorf("gmail connection %q not found", id)
+		}
 
-	conn := &cfg.Connections[idx]
-	if e := strings.TrimSpace(email); e != "" {
-		conn.Email = e
-	}
-	conn.Status = GmailConnectionConnected
-	// Reconnecting a disabled connection is a request to use it again.
-	conn.Enabled = true
-	conn.UpdatedAt = time.Now().UTC()
+		conn := &cfg.Connections[idx]
+		if e := strings.TrimSpace(email); e != "" {
+			conn.Email = e
+		}
+		conn.Status = GmailConnectionConnected
+		// Reconnecting a disabled connection is a request to use it again.
+		conn.Enabled = true
+		conn.UpdatedAt = time.Now().UTC()
 
-	updated := conn.Clone()
-	if err := g.SaveConfig(ctx, cfg); err != nil {
+		updated = conn.Clone()
+		return true, nil
+	})
+	if err != nil {
 		return GmailConnection{}, err
 	}
 	return updated, nil
@@ -1018,29 +1045,32 @@ func (g *GmailService) syncConnectionScopes(ctx context.Context, id string, scop
 	if id == "" || len(scopes) == 0 {
 		return
 	}
-	cfg := g.GetConfig()
-	idx := -1
-	for i, c := range cfg.Connections {
-		if c.ID == id {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
-		return
-	}
-
 	fresh := append([]string(nil), scopes...)
 	sort.Strings(fresh)
-	current := append([]string(nil), cfg.Connections[idx].Scopes...)
-	sort.Strings(current)
-	if stringSlicesEqual(fresh, current) {
-		return
-	}
 
-	cfg.Connections[idx].Scopes = fresh
-	cfg.Connections[idx].UpdatedAt = time.Now().UTC()
-	if err := g.SaveConfig(ctx, cfg); err != nil {
+	err := g.UpdateConfig(ctx, func(cfg *GmailConfig) (bool, error) {
+		idx := -1
+		for i, c := range cfg.Connections {
+			if c.ID == id {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return false, nil
+		}
+
+		current := append([]string(nil), cfg.Connections[idx].Scopes...)
+		sort.Strings(current)
+		if stringSlicesEqual(fresh, current) {
+			return false, nil
+		}
+
+		cfg.Connections[idx].Scopes = fresh
+		cfg.Connections[idx].UpdatedAt = time.Now().UTC()
+		return true, nil
+	})
+	if err != nil {
 		log.Printf("[GMAIL] failed to sync scopes for connection %s: %v", id, err)
 	}
 }
@@ -1077,11 +1107,20 @@ func (g *GmailService) EnableIfAuthenticated(ctx context.Context) (bool, error) 
 	if cfg.Enabled || cfg.ManuallyDisabled {
 		return false, nil
 	}
-	if !shouldAutoEnableGmail(cfg, g.EffectiveAuthStatus(ctx)) {
+	st := g.EffectiveAuthStatus(ctx)
+	if !shouldAutoEnableGmail(cfg, st) {
 		return false, nil
 	}
-	cfg.Enabled = true
-	if err := g.SaveConfig(ctx, cfg); err != nil {
+	enabled := false
+	err := g.UpdateConfig(ctx, func(cfg *GmailConfig) (bool, error) {
+		if !shouldAutoEnableGmail(cfg, st) {
+			return false, nil
+		}
+		cfg.Enabled = true
+		enabled = true
+		return true, nil
+	})
+	if err != nil || !enabled {
 		return false, err
 	}
 	if nm := GetNotificationManager(); nm != nil && g.IsEnabled() {
@@ -1117,12 +1156,24 @@ func autoDefaultGmailRecipient(cfg *GmailConfig, st GmailAuthStatus) (string, bo
 // step. Reports whether it did.
 func (g *GmailService) AutoDefaultRecipientIfMissing(ctx context.Context) (bool, error) {
 	cfg := g.GetConfig()
-	email, ok := autoDefaultGmailRecipient(cfg, g.EffectiveAuthStatus(ctx))
-	if !ok {
+	if strings.TrimSpace(cfg.DefaultTo) != "" {
 		return false, nil
 	}
-	cfg.DefaultTo = email
-	if err := g.SaveConfig(ctx, cfg); err != nil {
+	st := g.EffectiveAuthStatus(ctx)
+	if _, ok := autoDefaultGmailRecipient(cfg, st); !ok {
+		return false, nil
+	}
+	updated := false
+	err := g.UpdateConfig(ctx, func(cfg *GmailConfig) (bool, error) {
+		email, ok := autoDefaultGmailRecipient(cfg, st)
+		if !ok {
+			return false, nil
+		}
+		cfg.DefaultTo = email
+		updated = true
+		return true, nil
+	})
+	if err != nil || !updated {
 		return false, err
 	}
 	return true, nil
@@ -1162,25 +1213,27 @@ func (g *GmailService) AgentInboxConnection(owner string) (GmailConnection, erro
 			return c, nil
 		}
 	}
-	return GmailConnection{}, fmt.Errorf("Choose your Gmail inbox account in your project's Vault panel or in chat to give your Crews email addresses")
+	return GmailConnection{}, fmt.Errorf("Choose your Gmail inbox account in your project's Vault panel or in chat to give your projects email addresses")
 }
 
 // SetAgentInboxAccount uses the same encrypted connection store, without a second login.
 func (g *GmailService) SetAgentInboxAccount(ctx context.Context, owner, id string) error {
-	cfg := g.GetConfig()
-	c, ok := findGmailConnection(cfg, id)
-	if !ok || !c.Personal || c.OwnerID != owner {
-		return fmt.Errorf("Choose your own Gmail account in your project's Vault panel or in chat")
-	}
-	if !c.Enabled || !c.AllowReadAccess || c.Email == "" {
-		return fmt.Errorf("Enable Gmail read access and complete sign-in before choosing this inbox account")
-	}
-	for n := range cfg.Connections {
-		if cfg.Connections[n].Personal && cfg.Connections[n].OwnerID == owner {
-			cfg.Connections[n].AgentInbox = cfg.Connections[n].ID == id
+	err := g.UpdateConfig(ctx, func(cfg *GmailConfig) (bool, error) {
+		c, ok := findGmailConnection(cfg, id)
+		if !ok || !c.Personal || c.OwnerID != owner {
+			return false, fmt.Errorf("Choose your own Gmail account in your project's Vault panel or in chat")
 		}
-	}
-	if err := g.SaveConfig(ctx, cfg); err != nil {
+		if !c.Enabled || !c.AllowReadAccess || c.Email == "" {
+			return false, fmt.Errorf("Enable Gmail read access and complete sign-in before choosing this inbox account")
+		}
+		for n := range cfg.Connections {
+			if cfg.Connections[n].Personal && cfg.Connections[n].OwnerID == owner {
+				cfg.Connections[n].AgentInbox = cfg.Connections[n].ID == id
+			}
+		}
+		return true, nil
+	})
+	if err != nil {
 		return err
 	}
 	log.Printf("[AGENT-INBOX] account selected owner=%s connection=%s", owner, id)

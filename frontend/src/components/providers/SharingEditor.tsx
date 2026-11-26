@@ -25,17 +25,17 @@ export function loadShareTargets(): Promise<ProviderShareTargets> {
 /** Test hook: forget the cached share targets. */
 export function resetShareTargetsCache() { targetsPromise = null }
 
-export function useShareTargets(enabled = true) {
+export function useShareTargets(enabled = true, load: () => Promise<ProviderShareTargets> = loadShareTargets) {
   const [targets, setTargets] = useState<ProviderShareTargets>(EMPTY_TARGETS)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
-    loadShareTargets()
+    load()
       .then(value => { if (!cancelled) setTargets(value) })
-      .catch(() => { if (!cancelled) setError('Could not load workflows, Crews and people to share with.') })
+      .catch(() => { if (!cancelled) setError('Could not load workflows, projects and people to share with.') })
     return () => { cancelled = true }
-  }, [enabled])
+  }, [enabled, load])
   return { targets, error }
 }
 
@@ -43,7 +43,7 @@ const plural = (count: number, one: string, many: string) => `${count} ${count =
 
 export function sharingSummary(sharing?: ProviderAccountSharing): string {
   if (!sharing || sharing.mode !== 'shared') return 'Private'
-  return `Shared with ${plural(sharing.workflows?.length ?? 0, 'workflow', 'workflows')}, ${plural(sharing.crews?.length ?? 0, 'Crew', 'Crews')}, ${plural(sharing.users?.length ?? 0, 'person', 'people')}`
+  return `Shared with ${plural(sharing.workflows?.length ?? 0, 'workflow', 'workflows')}, ${plural(sharing.crews?.length ?? 0, 'Project', 'Projects')}, ${plural(sharing.users?.length ?? 0, 'person', 'people')}`
 }
 
 export const SHARING_WARNING = 'Runs by others act as your account and are billed to it. Nobody else sees the key or the login files.'
@@ -96,21 +96,25 @@ const userOptions = (targets: ProviderShareTargets) => targets.users.filter(item
 /** A member may share their own account with this many named colleagues (PLAT-715). */
 export const MEMBER_SHARE_USER_LIMIT = 10
 
-export function SharingFields({ value, onChange, disabled, peopleOnly = false }: {
+export function SharingFields({ value, onChange, disabled, peopleOnly = false, loadTargets, place }: {
   value: ProviderAccountSharing
   onChange: (value: ProviderAccountSharing) => void
   disabled?: boolean
   /** A member's account: named colleagues only, at most 10; workflows and Crews are for admins. */
   peopleOnly?: boolean
+  /** Another place's people, workflows and projects (an account on a connected server, from the Mac app). */
+  loadTargets?: () => Promise<ProviderShareTargets>
+  /** That place's name, said in the label. */
+  place?: string
 }) {
   const shared = value.mode === 'shared'
   const overLimit = peopleOnly && (value.users?.length ?? 0) > MEMBER_SHARE_USER_LIMIT
-  const { targets, error } = useShareTargets(shared)
+  const { targets, error } = useShareTargets(shared, loadTargets)
   return (
     <fieldset className="space-y-3" disabled={disabled}>
-      <legend className="mb-2 text-xs font-medium text-gray-700 dark:text-gray-300">Who can use it</legend>
+      <legend className="mb-2 text-xs font-medium text-foreground">{place ? `Who can use it on ${place}` : 'Who can use it'}</legend>
       <Segmented label="Who can use it" value={shared ? 'shared' : 'private'} disabled={disabled}
-        options={[{ value: 'private', label: 'Only me' }, { value: 'shared', label: peopleOnly ? 'Chosen colleagues' : 'Chosen workflows, Crews and people' }]}
+        options={[{ value: 'private', label: 'Only me' }, { value: 'shared', label: peopleOnly ? 'Chosen colleagues' : 'Chosen workflows, projects and people' }]}
         onChange={next => onChange(next === 'private' ? { mode: 'private' } : peopleOnly ? { mode: 'shared', users: value.users ?? [] } : { mode: 'shared', workflows: value.workflows ?? [], crews: value.crews ?? [], users: value.users ?? [] })} />
       {!shared && <p className="text-xs text-gray-500 dark:text-gray-400">Only your own runs use this account.</p>}
       {shared && <>
@@ -121,11 +125,11 @@ export function SharingFields({ value, onChange, disabled, peopleOnly = false }:
         {peopleOnly ? <>
           <PickList label="People" options={userOptions(targets)} selected={value.users ?? []} onChange={users => onChange({ mode: 'shared', users })} emptyText="No other people." />
           <p className={`text-xs ${overLimit ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}>
-            {overLimit ? `Pick at most ${MEMBER_SHARE_USER_LIMIT} people.` : `Up to ${MEMBER_SHARE_USER_LIMIT} people. Only an admin can share an account with workflows or Crews.`}
+            {overLimit ? `Pick at most ${MEMBER_SHARE_USER_LIMIT} people.` : `Up to ${MEMBER_SHARE_USER_LIMIT} people. Only an admin can share an account with workflows or projects.`}
           </p>
         </> : <div className="grid gap-3 sm:grid-cols-3">
           <PickList label="Workflows" options={workflowOptions(targets)} selected={value.workflows ?? []} onChange={workflows => onChange({ ...value, workflows })} emptyText="No workflows." />
-          <PickList label="Crews" options={crewOptions(targets)} selected={value.crews ?? []} onChange={crews => onChange({ ...value, crews })} emptyText="No Crews." />
+          <PickList label="Projects" options={crewOptions(targets)} selected={value.crews ?? []} onChange={crews => onChange({ ...value, crews })} emptyText="No projects." />
           <PickList label="People" options={userOptions(targets)} selected={value.users ?? []} onChange={users => onChange({ ...value, users })} emptyText="No other people." />
         </div>}
       </>}

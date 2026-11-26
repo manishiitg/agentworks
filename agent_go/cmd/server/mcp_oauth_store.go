@@ -33,7 +33,13 @@ const cliOAuthClientID = "agentworks-cli"
 
 type mcpOAuthStore struct{ db *sql.DB }
 
-var mcpOAuthMigrationMu sync.Mutex
+// #3147: every agent-events poll opened the database, chmod-ed it and re-ran
+// its schema statements. One prepared handle per store path (the path changes
+// with the auth secret) now serves the whole process; Close leaves it open.
+var mcpOAuthHandles = struct {
+	sync.Mutex
+	byPath map[string]*sql.DB
+}{byPath: map[string]*sql.DB{}}
 
 type mcpOAuthClient struct {
 	ID           string   `json:"client_id"`
@@ -108,6 +114,21 @@ func openMCPOAuthStore() (*mcpOAuthStore, error) {
 	if err != nil {
 		return nil, err
 	}
+	mcpOAuthHandles.Lock()
+	defer mcpOAuthHandles.Unlock()
+	if db := mcpOAuthHandles.byPath[path]; db != nil {
+		return &mcpOAuthStore{db: db}, nil
+	}
+	db, err := prepareMCPOAuthDatabase(path)
+	if err != nil {
+		return nil, err
+	}
+	mcpOAuthHandles.byPath[path] = db
+	return &mcpOAuthStore{db: db}, nil
+}
+
+func prepareMCPOAuthDatabase(path string) (*sql.DB, error) {
+	var err error
 	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
@@ -135,7 +156,9 @@ func openMCPOAuthStore() (*mcpOAuthStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
+	// Concurrent requests each used their own connection before the handle was
+	// shared; keep that (no pool limit) so one request never waits on another's
+	// open transaction for a connection. SQLite's busy timeout still orders writers.
 	for _, ddl := range []string{
 		`CREATE TABLE IF NOT EXISTS agent_connections (family_id TEXT PRIMARY KEY, parent_family TEXT NOT NULL, agent_name TEXT NOT NULL, agent_id TEXT NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS clients (id TEXT PRIMARY KEY, name TEXT NOT NULL, redirect_uris TEXT NOT NULL, created_at INTEGER NOT NULL)`,
@@ -152,10 +175,6 @@ func openMCPOAuthStore() (*mcpOAuthStore, error) {
 			return nil, err
 		}
 	}
-	if err = migrateStableMCPOAuthRefresh(db, path); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
 	// Missing bounds preserve historical read/run access; Builder was never issued.
 	for _, table := range []string{"codes", "tokens"} {
 		if _, err = db.Exec("ALTER TABLE " + table + " ADD COLUMN workflow_ids TEXT NOT NULL DEFAULT '[]'"); err != nil && !strings.Contains(err.Error(), "duplicate column") {
@@ -169,62 +188,11 @@ func openMCPOAuthStore() (*mcpOAuthStore, error) {
 			return nil, err
 		}
 	}
-	return &mcpOAuthStore{db: db}, nil
+	return db, nil
 }
 
-// One-off migration; remove after all installations have moved to stable refresh.
-func migrateStableMCPOAuthRefresh(db *sql.DB, path string) error {
-	mcpOAuthMigrationMu.Lock()
-	defer mcpOAuthMigrationMu.Unlock()
-	var rotatingSchema bool
-	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM pragma_table_info('tokens') WHERE name='used_at')`).Scan(&rotatingSchema); err != nil || !rotatingSchema {
-		return err
-	}
-	backup := path + ".before-stable-refresh-" + time.Now().UTC().Format("20060102T150405.000000000Z")
-	file, err := os.OpenFile(backup, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return err
-	}
-	keepBackup := false
-	defer func() {
-		if !keepBackup {
-			_ = os.Remove(backup)
-		}
-	}()
-	if err = file.Close(); err != nil {
-		return err
-	}
-	// VACUUM INTO includes committed WAL data, unlike copying the main file.
-	if _, err = db.Exec(`VACUUM INTO ?`, backup); err != nil {
-		return err
-	}
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	removed, err := tx.Exec(`DELETE FROM tokens WHERE kind='refresh' AND used_at IS NOT NULL`)
-	if err != nil {
-		return err
-	}
-	pruned, err := tx.Exec(`DELETE FROM tokens WHERE kind='access' AND expires_at<=?`, time.Now().Unix())
-	if err != nil {
-		return err
-	}
-	if _, err = tx.Exec(`ALTER TABLE tokens DROP COLUMN used_at`); err != nil {
-		return err
-	}
-	if err = tx.Commit(); err != nil {
-		return err
-	}
-	keepBackup = true
-	consumed, _ := removed.RowsAffected()
-	expired, _ := pruned.RowsAffected()
-	log.Printf("mcp_oauth event=%q consumed_refresh_removed=%d expired_access_removed=%d backup=%q", "stable_refresh_migrated", consumed, expired, filepath.Base(backup))
-	return nil
-}
-
-func (s *mcpOAuthStore) Close() error { return s.db.Close() }
+// Close is kept for callers' defer; the shared handle lives for the process.
+func (s *mcpOAuthStore) Close() error { return nil }
 
 func mcpOAuthRandom(prefix string) (string, error) {
 	b := make([]byte, 32)

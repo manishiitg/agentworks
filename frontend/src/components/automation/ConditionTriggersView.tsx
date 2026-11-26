@@ -15,21 +15,23 @@ const buttonClass = 'rounded-md border border-border px-2 py-1 text-xs hover:bg-
 function messageOf(error: unknown) { return axios.isAxiosError(error) && typeof error.response?.data === 'string' ? error.response.data : error instanceof Error ? error.message : 'Watcher request failed' }
 type SideChat = { id: string; name: string }
 const NEW_CHAT = 'new'
-const MAIN_CHAT = 'main'
-function chatChoice(t: ConditionTrigger['target']) { return !t.chat_id || t.chat_id === MAIN_CHAT ? MAIN_CHAT : t.chat_id }
+// A Watcher names the agent it sends to (any of the project's agents, Main included, by its id) or a new chat for each
+// event; there is no implicit Main (owner, 25 Nov, #4046).
+function chatChoice(t: ConditionTrigger['target']) { return t.chat_id && t.chat_id !== 'main' ? t.chat_id : '' }
 function chatLabel(chatId: string | undefined, sideChats: SideChat[]) {
-  if (!chatId || chatId === MAIN_CHAT) return 'main chat'
+  if (!chatId || chatId === 'main') return 'no agent chosen'
   if (chatId === NEW_CHAT) return 'a new chat for each event'
   return sideChats.find(chat => chat.id === chatId)?.name || `chat ${chatId}`
 }
 function targetLabel(t: ConditionTrigger['target'], sideChats: SideChat[] = []) {
-  if (t.kind === 'agent') return `Crew chat · ${chatLabel(t.chat_id, sideChats)}`
+  if (t.kind === 'agent') return `Project chat · ${chatLabel(t.chat_id, sideChats)}`
+  if (t.kind === 'feed') return 'Your Project activity'
   if (t.kind === 'function') return `${t.name} · ${t.function}`
   if (t.kind === 'route') return `${t.name} · ${Object.values(t.route_selections || {}).join(', ') || 'full workflow'}`
   return `${t.name} · trigger ${t.trigger_id}`
 }
 
-export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, canManage = true, embedded = false }: { embedded?: boolean; scope: ProductTriggerScope; refreshToken?: number; onAsk?: (message: string) => void | Promise<void>; canManage?: boolean }) {
+export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, canManage = true, embedded = false, hideEmpty = false }: { embedded?: boolean; hideEmpty?: boolean; scope: ProductTriggerScope; refreshToken?: number; onAsk?: (message: string) => void | Promise<void>; canManage?: boolean }) {
   const [triggers, setTriggers] = useState<ConditionTrigger[]>([])
   const [history, setHistory] = useState<Record<string, ConditionHistory>>({})
   const [savedChats, setSavedChats] = useState<SideChat[]>([])
@@ -49,19 +51,19 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
     document.addEventListener('visibilitychange', visible)
     return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', visible) }
   }, [refresh])
-  // The Code chats a watcher can send to: the open side chats of this project (the main chat and "a new chat" are always offered).
+  // The agents a watcher can send to: this project's agents ("a new chat for each event" is always offered).
   const chatTabs = useChatStore(state => state.chatTabs)
   const sideChats = useMemo<SideChat[]>(() => {
-    const names = new Map(savedChats.filter(chat => chat.id !== MAIN_CHAT).map(chat => [chat.id, chat]))
+    const names = new Map(savedChats.filter(chat => chat.id !== 'main').map(chat => [chat.id, chat]))
     for (const tab of Object.values(chatTabs).filter(tab => isWorkSideChatTab(tab, scope.projectId))) {
       const id = String(tab.metadata?.agentProfileConversationKey).slice(workSideChatKey(scope.projectId, '').length)
       names.set(id, { id, name: tab.name })
     }
     return [...names.values()]
   }, [chatTabs, savedChats, scope.projectId])
-  const sourceName = scope.profileId === 'work' ? 'Crew' : 'workflow'
-  const targetHint = scope.profileId === 'work' ? 'the creating chat or a published function, defaulting to this Crew' : 'a saved route or internal trigger, defaulting to this workflow'
-  const setupMessage = `Set up a watcher attached to this ${sourceName}. Determine the condition I want to wait for, whether the source can send authenticated events or needs scheduled checks, and select ${targetHint}. Use manage_condition_triggers to list current watchers and discover actual entry points. Choose One time for a specific wait that should disable after the first accepted action, or Keep watching for ongoing monitoring. Default the source to the current product. Pass script_content so the tool saves the detector in my own watcher folder; select only secrets I can use from Vault. For email on a server, use the same check_mode=inbox Watcher and ask which source I mean: email_source=crew_inbox for mail sent to this Crew’s dedicated address, or email_source=personal_gmail for new received mail across my own Gmail, including archived arrivals. The personal source requires that I own the Crew and have selected my inbox account in Integrations → Google apps; it does not require enabling the Crew’s dedicated address. Personal email stays private: Python reads up to20 emails from AGENT_INBOX_FILE in a temporary private snapshot, and only the payload it selects is sent to my Crew chat. The platform maintains the cursor and shares mailbox checks about every60seconds. No webhook secret is needed. Use target kind=agent with message for this Crew’s chat or an actual published function; do not call ask as a function. Otherwise use check_mode=event for immediate webhook wakeups or both for events with scheduled backup. Select an existing secret by name for event authentication, return the event URL, and explain how to connect the source without printing secret values. The Python detector still queries the source; webhook payload is only a wake signal. Preserve cursor and duplicate handling.`
+  const sourceName = scope.profileId === 'work' ? 'Project' : 'workflow'
+  const targetHint = scope.profileId === 'work' ? 'the creating chat or a published function, defaulting to this project' : 'a saved route or internal trigger, defaulting to this workflow'
+  const setupMessage = `Set up a watcher attached to this ${sourceName}. Determine the condition I want to wait for, whether the source can send authenticated events or needs scheduled checks, and select ${targetHint}. Use manage_condition_triggers to list current watchers and discover actual entry points. Choose One time for a specific wait that should disable after the first accepted action, or Keep watching for ongoing monitoring. Default the source to the current product. Pass script_content so the tool saves the detector in my own watcher folder; select only secrets I can use from Vault. For email on a server, use the same check_mode=inbox Watcher and ask which source I mean: email_source=crew_inbox for mail sent to this project’s dedicated address, or email_source=personal_gmail for new received mail across my own Gmail, including archived arrivals. The personal source requires that I own the project and have selected my inbox account in Integrations → Google apps; it does not require enabling the project’s dedicated address. Personal email stays private: Python reads up to20 emails from AGENT_INBOX_FILE in a temporary private snapshot, and only the payload it selects is sent to my project chat. The platform maintains the cursor and shares mailbox checks about every60seconds. No webhook secret is needed. Use target kind=agent with message for this project’s chat or an actual published function; do not call ask as a function. Otherwise use check_mode=event for immediate webhook wakeups or both for events with scheduled backup. Select an existing secret by name for event authentication, return the event URL, and explain how to connect the source without printing secret values. The Python detector still queries the source; webhook payload is only a wake signal. Preserve cursor and duplicate handling.`
   const sendToChat = onAsk ?? ((message: string) => sendWorkspacePaneMessageToChat({ profileId: scope.profileId, conversationKey: scope.projectId, message }).then(() => undefined))
   // A failed hand-off to the chat must show, not vanish: the buttons call this without awaiting.
   const ask = async (message: string) => {
@@ -84,12 +86,13 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
       {loaded ? `${triggers.length} saved · ${triggers.filter(item => item.enabled && !item.completed_at).length} on · ${triggers.filter(item => item.last_status === 'error' || item.once_status === 'failed' || item.once_status === 'needs_reconciliation').length} need attention` : 'Loading watchers…'}
     </AutomationIntro></div>}
     {error && <p role="alert" className="m-3 rounded border border-destructive/30 p-3 text-sm text-destructive">{error}</p>}
-    {loaded && triggers.length === 0 && (embedded ? <p className="px-4 py-6 text-center text-sm text-muted-foreground">No watchers yet. Ask your agent to add one.</p> : <EmptyAutomations>No watchers yet. Add one to start work when something changes.</EmptyAutomations>)}
+    {loaded && triggers.length === 0 && !hideEmpty && (embedded ? <p className="px-4 py-6 text-center text-sm text-muted-foreground">No watchers yet. Ask your agent to add one.</p> : <EmptyAutomations>No watchers yet. Add one to start work when something changes.</EmptyAutomations>)}
     {callers.length > 0 && <details className="mb-4 rounded border border-border p-3 text-xs"><summary className="cursor-pointer">Watchers calling this product</summary><ul className="mt-2 space-y-2">{callers.map(caller => <li key={`${caller.owner_id}:${caller.id}`} className="break-all">{caller.name} · {caller.owner_id} · {targetLabel(caller.target)} · {caller.enabled ? 'Enabled' : 'Paused'}{caller.last_dispatch_at ? ` · Last dispatch ${new Date(caller.last_dispatch_at).toLocaleString()}` : caller.last_status ? ` · ${caller.last_status}` : ''}</li>)}</ul></details>}
     {triggers.length > 0 && <Box>{triggers.map(t => { const attention = t.once_status === 'failed' || t.once_status === 'needs_reconciliation' || t.last_status === 'error'; const body = <>
 
-      <p className="break-all text-xs text-muted-foreground">{t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number} · ${t.github_pr.login}` : t.script} · {t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Your Gmail · new received mail' : 'Crew Inbox · addressed mail') : t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'Events + backup schedule' : 'On a schedule'}{t.cron_expression ? ` · ${t.cron_expression} · ${t.timezone}` : ''}</p>
-      {t.email_source === 'personal_gmail' && <p className="text-xs text-muted-foreground">Your mailbox stays private. Only the content selected by this Watcher is sent to the Crew.</p>}
+      <p className="break-all text-xs text-muted-foreground">{t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number} · ${t.github_pr.login}` : t.script} · {t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Your Gmail · new received mail' : 'Project Inbox · addressed mail') : t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'Events + backup schedule' : 'On a schedule'}{t.cron_expression ? ` · ${t.cron_expression} · ${t.timezone}` : ''}</p>
+      {t.changed_by && <p className="text-xs text-muted-foreground">{t.changed_by}</p>}
+      {t.email_source === 'personal_gmail' && <p className="text-xs text-muted-foreground">Your mailbox stays private. Only the content selected by this Watcher is sent to the project.</p>}
       {t.event_path && <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Event connection</summary>
         <p className="mt-2">Events wake the saved check. It reads the source to find matches.</p>
         <p>{t.event_auth_mode === 'github' ? 'GitHub signature' : 'Authenticated events'} · Secret: {t.event_secret_name}</p>
@@ -108,11 +111,11 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
           className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
           disabled={busy}
           value={chatChoice(t.target)}
-          onChange={event => void manage('update', t.id, { target: { ...t.target, chat_id: event.target.value === MAIN_CHAT ? '' : event.target.value } })}
+          onChange={event => void manage('update', t.id, { target: { ...t.target, chat_id: event.target.value } })}
         >
-          <option value={MAIN_CHAT}>Main chat</option>
+          {!chatChoice(t.target) && <option value="" disabled>Choose an agent</option>}
           {sideChats.map(chat => <option key={chat.id} value={chat.id}>{chat.name}</option>)}
-          {chatChoice(t.target) !== MAIN_CHAT && chatChoice(t.target) !== NEW_CHAT && !sideChats.some(chat => chat.id === t.target.chat_id) && <option value={t.target.chat_id}>{`Chat ${t.target.chat_id}`}</option>}
+          {chatChoice(t.target) !== '' && chatChoice(t.target) !== NEW_CHAT && !sideChats.some(chat => chat.id === t.target.chat_id) && <option value={t.target.chat_id}>{`Chat ${t.target.chat_id}`}</option>}
           <option value={NEW_CHAT}>A new chat for each event</option>
         </select>
       </label>}
@@ -137,13 +140,13 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
         </details>
       </div>}
     </>
-      const how = t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number}` : t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Watches your Gmail' : 'Watches the Crew inbox') : t.check_mode === 'event' ? 'Runs when an event arrives' : t.check_mode === 'both' ? 'Runs on events, with a backup check' : t.cron_expression ? describeCron(t.cron_expression) : 'Checks on a schedule'
+      const how = t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number}` : t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Watches your Gmail' : 'Watches the project inbox') : t.check_mode === 'event' ? 'Runs when an event arrives' : t.check_mode === 'both' ? 'Runs on events, with a backup check' : t.cron_expression ? describeCron(t.cron_expression) : 'Checks on a schedule'
       return embedded
         ? <PageRow key={t.id} testId={`watcher-${t.id}`}
           lead={<Switch aria-label={`${t.enabled ? 'Turn off' : 'Turn on'} ${t.name}`} checked={t.enabled && !t.completed_at} disabled={busy || !canManage || !!t.completed_at} onCheckedChange={enabled => void manage('update', t.id, { enabled })} />}
           title={t.name}
           lines={[`${how} · then ${targetLabel(t.target, sideChats)}`, attention ? (t.last_error || 'Needs attention') : t.completed_at ? 'Done' : t.last_run_at ? `Last check ${relativeTime(t.last_run_at)}` : 'Not checked yet']}
           open={openId === t.id} onToggle={() => setOpenId(openId === t.id ? null : t.id)}>{body}</PageRow>
-        : <AutomationRow key={t.id} icon={Zap} tone="emerald" open={openId === t.id} onToggle={() => setOpenId(openId === t.id ? null : t.id)} title={t.name} summary={`${t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number} · ${t.github_pr.mode}` : t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Your Gmail · new received mail' : 'Crew Inbox · addressed mail') : t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'On events, with a backup check' : t.cron_expression ? describeCron(t.cron_expression) : 'On a schedule'} · starts ${targetLabel(t.target, sideChats)}`} meta={t.last_run_at ? `Checked ${relativeTime(t.last_run_at)}` : 'Not checked yet'} status={t.completed_at ? 'done' : attention ? 'failing' : t.enabled ? 'on' : 'paused'} statusLabel={t.completed_at ? 'Done' : attention ? 'Needs attention' : t.enabled ? 'On' : 'Paused'}>{body}</AutomationRow> })}</Box>}
+        : <AutomationRow key={t.id} icon={Zap} tone="emerald" open={openId === t.id} onToggle={() => setOpenId(openId === t.id ? null : t.id)} title={t.name} summary={`${t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number} · ${t.github_pr.mode}` : t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Your Gmail · new received mail' : 'Project Inbox · addressed mail') : t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'On events, with a backup check' : t.cron_expression ? describeCron(t.cron_expression) : 'On a schedule'} · starts ${targetLabel(t.target, sideChats)}`} meta={t.last_run_at ? `Checked ${relativeTime(t.last_run_at)}` : 'Not checked yet'} status={t.completed_at ? 'done' : attention ? 'failing' : t.enabled ? 'on' : 'paused'} statusLabel={t.completed_at ? 'Done' : attention ? 'Needs attention' : t.enabled ? 'On' : 'Paused'}>{body}</AutomationRow> })}</Box>}
   </div>
 }

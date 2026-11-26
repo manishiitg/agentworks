@@ -9,7 +9,7 @@ import { WORKSPACE_PAGE_GUTTER } from './WorkspacePageContent'
 
 /** Shared AgentWorks toolbar row used above chat/workspace split surfaces. */
 export function WorkspaceTopToolbar({ className = '', children, navigationKind = 'workspace', navigationActive = true, ...props }: HTMLAttributes<HTMLDivElement> & { navigationKind?: 'workspace' | 'page'; navigationActive?: boolean }) {
-  const globalPage = useAppStore(state => state.showWorkflowsOverview || state.showSchedulesOverview || state.adminPage !== null)
+  const globalPage = useAppStore(state => state.showSchedulesOverview || state.adminPage !== null)
   const providers = useLLMStore(state => state.showLLMModal)
   const ownSlot = useRef<HTMLDivElement | null>(null)
   const register = useCallback((node: HTMLDivElement | null) => {

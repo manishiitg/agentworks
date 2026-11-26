@@ -56,7 +56,7 @@ export const ConversationErrorEventDisplay: React.FC<ConversationErrorEventProps
         {event.question && (
           <div className="space-y-2">
             <div className="font-medium">User Message:</div>
-            <div className="text-gray-600 dark:text-gray-400">
+            <div className="text-muted-foreground">
               {event.question.length > 80 ? `${event.question.substring(0, 80)}...` : event.question}
             </div>
           </div>

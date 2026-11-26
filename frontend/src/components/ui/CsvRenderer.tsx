@@ -6,6 +6,7 @@ interface CsvRendererProps {
 }
 
 export function CsvRenderer({ content }: CsvRendererProps) {
+  const [page, setPage] = useState(0)
   const [sortColumn, setSortColumn] = useState<number | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [filter, setFilter] = useState('')
@@ -74,10 +75,11 @@ export function CsvRenderer({ content }: CsvRendererProps) {
           type="text"
           placeholder="Filter rows..."
           value={filter}
-          onChange={e => setFilter(e.target.value)}
+          onChange={e => { setFilter(e.target.value); setPage(0) }}
           className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 w-48"
         />
       </div>
+      <div className="flex items-center gap-3 text-xs"><button disabled={!page} onClick={() => setPage(page - 1)}>Previous</button><span>Page {page + 1} of {Math.max(1, Math.ceil(sortedRows.length / 200))}</span><button disabled={(page + 1) * 200 >= sortedRows.length} onClick={() => setPage(page + 1)}>Next</button></div>
       <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
         <table className="min-w-full text-xs">
           <thead>
@@ -97,7 +99,7 @@ export function CsvRenderer({ content }: CsvRendererProps) {
             </tr>
           </thead>
           <tbody>
-            {sortedRows.map((row, ri) => (
+            {sortedRows.slice(page * 200, (page + 1) * 200).map((row, ri) => (
               <tr
                 key={ri}
                 className={`${

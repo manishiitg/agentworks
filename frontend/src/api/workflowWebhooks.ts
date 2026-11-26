@@ -21,6 +21,8 @@ export interface WorkflowAPITrigger {
   caller?: { type: string; id: string; profile_id?: string }
   function?: WorkflowFunctionSpec
   input_schema?: { properties?: Record<string, { type?: string; default?: unknown }>; required?: string[] }
+  /** One plain line from the server: what this webhook starts ("Runs the workflow · <saved setting>"). */
+  starts?: string
 }
 
 export interface WorkflowFunctionSpec {

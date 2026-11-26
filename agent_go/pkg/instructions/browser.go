@@ -135,7 +135,7 @@ When a website has a file upload input (e.g. file picker, drag-and-drop zone), u
 - Always use **workspace-relative paths** (e.g. "Chats/report.pdf", "Chats/output.csv")
 - Paths are securely staged from the workspace root for the persistent browser daemon — do NOT construct absolute paths yourself
 - Files in "Chats/" are created during the conversation
-- If you need to create a file first, save it to "Chats/" using execute_shell_command, then upload it
+- If you need to create a file first, save it to "Chats/" using a file or shell tool actually available in this session, then upload it
 `
 }
 

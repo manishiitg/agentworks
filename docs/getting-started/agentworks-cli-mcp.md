@@ -100,7 +100,7 @@ The run record is its summary. Business Slack or email delivery is explicit work
 
 ## Messages and AgentBridge
 
-Use `messages action=list_agents` to discover actual reachable agents. Send to the returned target and chat identity, keep the `inbox_id` and message receipt, and read the reply in that conversation. Reuse the same submission ID only after an uncertain delivery of the same message. Stored, delivered and completed work are different states.
+Use `messages action=list_agents` to discover actual reachable agents. To hand off work, use `ask` (needed now) or `queue` (next turn) with the returned target: both create a task the receiver closes with a `done` reply. Use `send` only for a notice that needs no reply. Keep the `inbox_id` and message receipt, and read the reply in that conversation. Reuse the same submission ID only after an uncertain delivery of the same message. Stored, delivered and completed work are different states.
 
 A named external agent can register an address under its existing account and allowed connection. Names are addresses, not devices or grants to other people's chats. Reads and sends still check connection scopes and target access; separate inboxes do not isolate clients that share one account.
 

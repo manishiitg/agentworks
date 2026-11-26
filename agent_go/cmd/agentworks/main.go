@@ -39,6 +39,7 @@ type options struct {
 	setupBatch bool
 	// setupToolsNote carries the existing tools sign-in/result into the batch summary.
 	setupToolsNote string
+	pluginCleanup  []claudePluginCleanup
 	// reconnectNote is set when a bare attach took back an earlier agent of the folder.
 	reconnectNote string
 	// newAgentWhy is set when a bare attach created a new agent although the person may have expected an earlier one back.
@@ -74,9 +75,14 @@ var cliOperationGroups = []struct {
 	{"messages", "Register named agents, discover addresses and manage your inbox", []struct{ command, tool string }{{"register", "messages"}, {"unregister", "messages"}, {"list", "messages"}, {"send", "messages"}, {"read", "messages"}, {"count", "messages"}, {"delete", "messages"}, {"clear", "messages"}}},
 	{"guidance", "Load server-owned external guidance", []struct{ command, tool string }{{"context", "get_agent_context"}, {"topics", "list_guidance_topics"}, {"topic", "get_guidance_topic"}, {"skills", "get_guidance_skills"}}},
 	{"knowledge", "Inspect workflow learnings, notes, and skills", []struct{ command, tool string }{{"list", "list_workflow_knowledge"}, {"read", "read_workflow_knowledge"}}},
-	{"functions", "List, call and manage project functions", []struct{ command, tool string }{{"triggers", "list_crew_attached_triggers"}, {"run-trigger", "run_crew_attached_trigger"}, {"trigger-status", "get_crew_attached_trigger_run"}, {"list", "project_functions_list"}, {"call", "project_functions_call"}, {"call-status", "project_functions_get_call"}, {"call-file", "project_functions_get_call"}, {"suggest", "suggest_workflow_change"}}},
-	{"crews", "Discover, call, create, edit, export, and import Crews", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"search", "search_crew_files"}, {"read", "read_crew_file"}, {"ask", "ask_crew"}, {"suggest", "suggest_crew_change"}, {"create", "create_crew"}, {"update", "update_crew"}, {"put", "write_crew_file"}, {"export", "export_crew"}, {"import", "import_crew"}}},
+	{"functions", "List, call and manage project functions", []struct{ command, tool string }{{"triggers", "list_crew_attached_triggers"}, {"run-trigger", "run_crew_attached_trigger"}, {"trigger-status", "get_crew_attached_trigger_run"}, {"list", "project_functions_list"}, {"call", "project_functions_call"}, {"call-status", "project_functions_get_call"}, {"call-file", "project_functions_get_call"}}},
+	{"crews", "Discover, call, create, edit, export, and import projects", []struct{ command, tool string }{{"list", "list_crews"}, {"get", "get_crew"}, {"files", "list_crew_files"}, {"search", "search_crew_files"}, {"read", "read_crew_file"}, {"ask", "ask_crew"}, {"create", "create_crew"}, {"update", "update_crew"}, {"put", "write_crew_file"}, {"export", "export_crew"}, {"import", "import_crew"}}},
 }
+
+// defaultLoginServer is the address `agentworks login` uses when none is given. Builds set it with
+// -ldflags "-X main.defaultLoginServer=https://..." (the Mac app release reads AGENTWORKS_DEFAULT_SERVER);
+// empty means login asks for the address.
+var defaultLoginServer string
 
 func main() {
 	if handled, code := localShellLauncher(os.Args[1:]); handled {
@@ -164,7 +170,7 @@ func newCommand(o *options) *cobra.Command {
 	}
 	toolsCmd.AddCommand(call)
 	root.AddCommand(toolsCmd)
-	root.AddCommand(publishCommand(o))
+	root.AddCommand(publishCommand(o), resumeCommand(o))
 	root.AddCommand(brainCommand(o))
 	root.AddCommand(secretCommand(o))
 	for _, group := range cliOperationGroups {
@@ -240,6 +246,13 @@ func (o *options) connection(forLogin bool) (agentworksclient.Config, string, er
 	if err != nil {
 		return cfg, path, err
 	}
+	// With no explicit or saved network selection, use this Mac's private
+	// messaging bootstrap. A named/custom login never silently falls back.
+	if !forLogin && cfg.Server == "" && o.configPath == "" && o.getenv("AGENTWORKS_CONFIG") == "" && o.serverURL == "" && o.getenv("AGENTWORKS_SERVER") == "" && o.getenv("AGENTWORKS_TOKEN") == "" {
+		if local, localPath, e := agentworksclient.LoadLocalAppConfig(); e == nil {
+			cfg, path = local, localPath
+		}
+	}
 	requested := o.serverURL
 	if requested == "" {
 		requested = o.getenv("AGENTWORKS_SERVER")
@@ -248,7 +261,10 @@ func (o *options) connection(forLogin bool) (agentworksclient.Config, string, er
 		requested = cfg.Server
 	}
 	if requested == "" && forLogin {
-		requested = "https://network.agentworkshq.com"
+		requested = defaultLoginServer
+	}
+	if requested == "" && forLogin {
+		return cfg, path, errors.New("give your AgentWorks address: agentworks login --server https://your-server (the one you open in your browser)")
 	}
 	if requested == "" {
 		return cfg, path, errors.New("sign in first with agentworks login")
@@ -529,11 +545,11 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 		f.String("workflow", "", "Workflow ID (workflow_id)")
 	}
 	if crewTool && tool != "list_crews" && tool != "project_functions_get_call" && tool != "create_crew" && tool != "import_crew" {
-		f.String("crew", "", "Crew ID from crews list (crew_id)")
+		f.String("crew", "", "Project ID from crews list (crew_id)")
 	}
 	switch tool {
 	case "create_crew":
-		f.String("idempotency-key", "", "One key per intended Crew; reuse it for an unchanged retry")
+		f.String("idempotency-key", "", "One key per intended project; reuse it for an unchanged retry")
 
 	case "project_functions_call":
 		f.String("function", "", "Function name from functions list")
@@ -541,17 +557,9 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 	case "project_functions_get_call":
 		f.String("call", "", "call_id returned by functions call")
 	case "ask_crew":
-		f.String("message", "", "Conversational message for the Crew; replies are optional")
+		f.String("message", "", "Conversational message for the project")
 		f.String("inbox", "", "Reuse the inbox_id returned by a previous send")
 		f.String("submission-id", "", "Unique message submission ID; reuse after uncertain delivery")
-	case "suggest_crew_change", "suggest_workflow_change":
-		f.String("suggestion", "", "The change you would like, in plain words")
-		f.String("reason", "", "Optional short reason or example")
-		if tool == "suggest_crew_change" {
-			f.String("about", "", "Optional function or schedule name it concerns")
-		} else {
-			f.String("step-id", "", "Optional related step ID")
-		}
 	}
 	if tool == "project_functions_get_call" {
 		f.Int("after", -1, "Execution message cursor; start at -1, then use next_after from the previous page")
@@ -653,7 +661,7 @@ func addOperationFlags(cmd *cobra.Command, tool string) {
 		}
 		if cmd.Name() == "send" {
 			f.String("target", "", "Authorized target agent name")
-			f.String("crew", "", "Crew ID")
+			f.String("crew", "", "Project ID")
 			f.String("workflow", "", "Workflow ID")
 			f.String("message", "", "Message to send; no reply is required")
 			f.String("submission-id", "", "Unique message submission ID; reuse after uncertain delivery")
@@ -720,7 +728,7 @@ func operationArguments(cmd *cobra.Command, stdin io.Reader) (map[string]any, er
 			return nil, errors.New("--input must contain exactly one JSON object")
 		}
 	}
-	for flagName, field := range map[string]string{"project": "project", "workflow": "workflow_id", "crew": "crew_id", "function": "function", "call": "call_id", "expected-revision": "expected_revision", "path": "path", "query": "query", "glob": "glob", "run-folder": "run_folder", "session": "session_id", "message": "message", "suggestion": "suggestion", "about": "about", "provider": "provider", "model": "model_id", "step": "existing_step_id", "title": "title", "reason": "reason", "request-id": "request_id", "response": "response", "action": "action", "topic": "topic", "known-version": "known_version", "step-id": "step_id", "execution-id": "execution_id", "schedule-id": "schedule_id", "group": "group_name", "human-input": "human_input", "tier": "tier", "inbox": "inbox_id", "target": "target", "submission-id": "submission_id", "idempotency-key": "idempotency_key", "agent": "agent_name", "workspace": "workspace_path", "name": "name", "preset": "input_preset", "view": "view", "trigger-id": "trigger_id", "run-id": "run_id", "delivery-id": "delivery_id"} {
+	for flagName, field := range map[string]string{"project": "project", "workflow": "workflow_id", "crew": "crew_id", "function": "function", "call": "call_id", "expected-revision": "expected_revision", "path": "path", "query": "query", "glob": "glob", "run-folder": "run_folder", "session": "session_id", "message": "message", "provider": "provider", "model": "model_id", "step": "existing_step_id", "title": "title", "reason": "reason", "request-id": "request_id", "response": "response", "action": "action", "topic": "topic", "known-version": "known_version", "step-id": "step_id", "execution-id": "execution_id", "schedule-id": "schedule_id", "group": "group_name", "human-input": "human_input", "tier": "tier", "inbox": "inbox_id", "target": "target", "submission-id": "submission_id", "idempotency-key": "idempotency_key", "agent": "agent_name", "workspace": "workspace_path", "name": "name", "preset": "input_preset", "view": "view", "trigger-id": "trigger_id", "run-id": "run_id", "delivery-id": "delivery_id"} {
 		if cmd.Flags().Changed(flagName) {
 			value, _ := cmd.Flags().GetString(flagName)
 			arguments[field] = value
@@ -953,8 +961,6 @@ func crewCommandCall(name string, args map[string]any) (string, map[string]any) 
 		family, action = "functions", "call"
 	case "project_functions_get_call":
 		family, action = "functions", "status"
-	case "suggest_crew_change":
-		family, action = "needs_you", "suggest"
 	case "list_workflows":
 		family, action = "workflow", "list"
 	case "get_workflow":

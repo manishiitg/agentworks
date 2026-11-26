@@ -104,3 +104,41 @@ func TestSharedConversationFenceAndSuppression(t *testing.T) {
 		t.Fatalf("suppression changed the wrong receipts: %+v", got)
 	}
 }
+
+// PLAT-856-572: discovery exposes runtime facts, not the owner's internal
+// project/group names. Exercise the real owner and public directory projections.
+func TestAgentRuntimeDirectoryPublicFactsExcludeInternalNames(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("MULTI_USER_MODE", "true")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true},{"id":"other","username":"other","can_create":true}]}`)
+	before := shareAccountActive
+	shareAccountActive = func(string) bool { return true }
+	t.Cleanup(func() { shareAccountActive = before })
+	now := time.Now().UTC()
+	info := &agentRuntimeInfo{CLI: "Codex", Engine: "codex", ModelID: "example-model", ReasoningEffort: "high", CrewID: "private-project", CrewName: "Internal project", OwnerStatus: &agentOwnerStatus{CurrentTask: "private task", LastMessages: []string{"private message"}}}
+	s := agentMessageStore{
+		Agents: []namedMessageAgent{{ID: "agent-one", UserID: "owner", Name: "example", CreatedAt: now, EverAttached: true, Attachment: &namedAgentAttachment{ID: "attachment", Provider: "agentworks", DeliveryRoute: appAgentDeliveryRoute, RuntimeInfo: info}}},
+		Shares: []agentShare{{ID: "share-one", OwnerUserID: "owner", AgentID: "agent-one", SubjectUserID: shareScopeServer, Capability: shareCapabilityChat, CreatedAt: now, ExpiresAt: now.Add(time.Hour), RevocationVersion: 1}},
+	}
+	for _, user := range []string{"owner", "other"} {
+		rows := namedMessageAgentDirectory(t.Context(), user, s, false)["agents"].([]map[string]interface{})
+		if len(rows) != 1 {
+			t.Fatalf("%s did not receive admitted agent: %+v", user, rows)
+		}
+		row := rows[0]
+		if row["cli"] != "Codex" || row["model_id"] != "example-model" || row["reasoning_effort"] != "high" {
+			t.Fatalf("runtime facts missing: %+v", row)
+		}
+		if user == "owner" {
+			if row["crew_name"] != info.CrewName {
+				t.Fatalf("owner lost organization: %+v", row)
+			}
+		} else {
+			for _, field := range []string{"crew_name", "group_names", "crew_id", "runtime_info", "owner_status", "current_task", "last_messages"} {
+				if _, exists := row[field]; exists {
+					t.Fatalf("public agent leaked %s", field)
+				}
+			}
+		}
+	}
+}

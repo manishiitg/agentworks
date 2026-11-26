@@ -24,6 +24,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/skills"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/coding-agent-loop/workspace/chatlog"
 	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"github.com/manishiitg/mcpagent/mcpclient"
 )
@@ -38,12 +39,15 @@ const maxAgentProfileRequestBytes = 2 << 20
 // among a product-curated set of coding-agent runtimes (see ProviderOption's
 // doc comment) — never an arbitrary provider or model.
 type AgentProfileChatRequest struct {
-	DeliveryMode     string                  `json:"delivery_mode,omitempty"`
-	LaptopConnection *laptopConnectionTarget `json:"laptop_connection,omitempty"`
-	ConnectionID     string                  `json:"connection_id,omitempty"`
-	Message          string                  `json:"message"`
-	ConversationKey  string                  `json:"conversation_key,omitempty"`
-	Engine           string                  `json:"engine,omitempty"`
+	RequestedSkillID   string                  `json:"requested_skill_id,omitempty"`
+	PlanMode           bool                    `json:"plan_mode,omitempty"` // the composer's Plan switch (#3699)
+	PendingAttachments []pendingChatAttachment `json:"pending_attachments,omitempty"`
+	DeliveryMode       string                  `json:"delivery_mode,omitempty"`
+	LaptopConnection   *laptopConnectionTarget `json:"laptop_connection,omitempty"`
+	ConnectionID       string                  `json:"connection_id,omitempty"`
+	Message            string                  `json:"message"`
+	ConversationKey    string                  `json:"conversation_key,omitempty"`
+	Engine             string                  `json:"engine,omitempty"`
 	// ModelID picks a model within the engine's provider: one the platform's
 	// model catalog lists for that provider (or, when the engine declares its
 	// own Models list, one of those). Empty keeps the option's own model.
@@ -61,7 +65,12 @@ type AgentProfileChatRequest struct {
 }
 
 type AgentProfileConversationRequest struct {
-	ConversationKey string `json:"conversation_key,omitempty"`
+	// RequestedAgent is an opening hint for a bare Crew, never a message destination.
+	RequestedAgent      string            `json:"requested_agent,omitempty"`
+	PreviewRemoval      bool              `json:"preview_removal,omitempty"`
+	RemovalConfirmation string            `json:"removal_confirmation,omitempty"`
+	RemovalChoices      map[string]string `json:"removal_choices,omitempty"`
+	ConversationKey     string            `json:"conversation_key,omitempty"`
 	// ResourceID lets Work resume with the stable project id plus the saved chat
 	// id. The server derives the tab-specific conversation key; the browser does
 	// not need to understand registry key construction.
@@ -72,6 +81,8 @@ type AgentProfileConversationRequest struct {
 	// Name is required when the key opens a NEW side chat (tab): every agent
 	// in a project has a name (owner, 2026-10-19).
 	Name string `json:"name,omitempty"`
+	// OpenedFrom is the chat a new tab is opened from; the new tab starts on that chat's model.
+	OpenedFrom string `json:"opened_from,omitempty"`
 }
 
 func agentProfileResumeConversationKey(profileID string, input AgentProfileConversationRequest) string {
@@ -86,6 +97,7 @@ func agentProfileResumeConversationKey(profileID string, input AgentProfileConve
 }
 
 type AgentProfileConversationResponse struct {
+	ChooseAgent     bool   `json:"choose_agent,omitempty"`
 	ModelID         string `json:"model_id,omitempty"`
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 	TabOwnerID      string `json:"tab_owner_id,omitempty"`
@@ -104,23 +116,131 @@ type AgentProfileConversationResponse struct {
 type resolvedResumeTargetContextKey struct{}
 
 func resolveProductResumeTarget(userID string, conversation ProductConversationRecord) (*resolvedResumeTarget, bool, error) {
+	return runningServerAPI.resolveProductResumeTarget(userID, conversation)
+}
+
+func (api *StreamingAPI) resolveProductResumeTarget(userID string, conversation ProductConversationRecord) (*resolvedResumeTarget, bool, error) {
+	return api.resolveProductResumeTargetFor(userID, conversation, false)
+}
+
+// recentOnly: the turn runs a coding agent (Claude Code, Codex, ...), which
+// keeps the conversation in its own session, so only the chat's recent window
+// is read; a turn that hands the chat over reads the rest when it needs it.
+func (api *StreamingAPI) resolveProductResumeTargetFor(userID string, conversation ProductConversationRecord, recentOnly bool) (*resolvedResumeTarget, bool, error) {
+	started := time.Now()
 	workspacePath := normalizeConversationWorkspace(conversation.WorkspacePath)
 	// The same folder the turn itself reads the chat's history from: a shared Crew/<id> stays as it is, a Chats/...
 	// path maps into the caller's tree. Prefixing every path with the caller's tree missed every shared Crew, so a
 	// Crew chat that switched coding agent started with no history (PLAT-872-78).
 	lookupWorkspacePath := productConversationRuntimeWorkspace(userID, workspacePath)
-	target, ok, err := readRestoredChatHistoryPersistTargetForSession(userID, conversation.SessionID, lookupWorkspacePath)
+	if cached, ok := api.reusableProductResumeTarget(userID, workspacePath, conversation.SessionID); ok && (recentOnly || cached.Base == 0) && !crewBuilderDiskHiddenFromUser(userID, lookupWorkspacePath) {
+		log.Printf("[CHAT_RESUME_REUSE] session=%s messages=%d", conversation.SessionID, len(cached.History))
+		return cached, true, nil
+	}
+	// Local identity is optional: remote/missing sources retain the ordinary read
+	// path, and are never cached without a verifiable file identity.
+	var source *resumeHistorySource
+	if path, ok, err := FindChatHistoryConversationPathForSession(userID, conversation.SessionID, lookupWorkspacePath); err == nil && ok {
+		source = statResumeHistory(userID, workspacePath, path)
+	}
+	var target *restoredChatHistoryPersistTarget
+	var ok bool
+	var err error
+	base, baseTurns := 0, 0
+	if recentOnly && source != nil && source.log != nil {
+		target, ok, base, baseTurns, err = readRecentChatHistoryPersistTarget(source, conversation.SessionID)
+	} else {
+		target, ok, err = readRestoredChatHistoryPersistTargetForSession(userID, conversation.SessionID, lookupWorkspacePath)
+	}
+	count := 0
+	if target != nil {
+		count = len(target.History)
+	}
+	log.Printf("[CHAT_RESUME_LOAD] session=%s elapsed_ms=%d messages=%d window_base=%d found=%t error=%t", conversation.SessionID, time.Since(started).Milliseconds(), count, base, ok, err != nil)
 	if err != nil || !ok || target == nil {
 		return nil, false, err
 	}
+	if source != nil && (source.path != target.ConversationPath || !source.same(statResumeHistory(userID, workspacePath, target.ConversationPath))) {
+		source = nil
+	}
 	return &resolvedResumeTarget{
+		source:           source,
 		SessionID:        target.SessionID,
 		WorkspacePath:    workspacePath,
 		ConversationPath: target.ConversationPath,
 		History:          target.History,
 		Runtime:          target.Runtime,
 		WorkshopMode:     target.WorkshopMode,
+		Base:             base,
+		BaseTurns:        baseTurns,
 	}, true, nil
+}
+
+// projectChatSessionWorkspace finds a chat's transcript in the project's own
+// conversation folder from file names, and reads only its header for the
+// workspace it ran in (the project, unless its runtime names another).
+func projectChatSessionWorkspace(userID, sessionID, workspacePath string) (string, bool) {
+	path, ok := findWorkflowBuilderConversationPath(userID, sessionID, workspacePath)
+	if !ok {
+		return "", false
+	}
+	workspace := normalizeConversationWorkspace(workspacePath)
+	if raw, err := chatlog.RuntimeMetadata(resolvedChatHistoryPath(chatHistoryStoragePath(path))); err == nil {
+		var metadata struct {
+			Runtime *struct {
+				WorkspacePath string `json:"workspace_path"`
+			} `json:"runtime"`
+		}
+		if json.Unmarshal(raw, &metadata) == nil && metadata.Runtime != nil && strings.TrimSpace(metadata.Runtime.WorkspacePath) != "" {
+			workspace = normalizeConversationWorkspace(metadata.Runtime.WorkspacePath)
+		}
+	}
+	return workspace, true
+}
+
+// A coding agent's recent window: at least this many visible user turns, at most this many messages.
+const (
+	recentResumeTurns    = 20
+	recentResumeMessages = 3000
+)
+
+// readRecentChatHistoryPersistTarget reads only the chat's recent window from
+// its local log; older lines are scanned as raw bytes (for the turn count) and
+// never decoded.
+func readRecentChatHistoryPersistTarget(source *resumeHistorySource, sessionID string) (*restoredChatHistoryPersistTarget, bool, int, int, error) {
+	baseTurns := 0
+	record, base, err := chatlog.LoadRecent(resolvedChatHistoryPath(chatHistoryStoragePath(source.path)), func(lines [][]byte) int {
+		start, turns := len(lines), 0
+		for start > 0 && turns < recentResumeTurns && len(lines)-start < recentResumeMessages {
+			start--
+			if rawVisibleResumeUser(lines[start]) {
+				turns++
+			}
+		}
+		for _, line := range lines[:start] {
+			if rawVisibleResumeUser(line) {
+				baseTurns++
+			}
+		}
+		return start
+	})
+	if err != nil {
+		return nil, false, 0, 0, err
+	}
+	target, ok, err := parseRestoredChatHistoryPersistTarget(record, sessionID, source.path)
+	if base == 0 {
+		baseTurns = 0
+	}
+	return target, ok, base, baseTurns, err
+}
+
+// rawVisibleResumeUser is visibleResumeUser for a saved line, decoding only user rows.
+func rawVisibleResumeUser(line []byte) bool {
+	if !bytes.Contains(line, []byte(`"human"`)) && !bytes.Contains(line, []byte(`"user"`)) {
+		return false
+	}
+	role, text := chatHistoryMessageRoleAndText(line)
+	return (role == "human" || role == "user") && !isClaudeLocalCommandRecord(text) && !isProviderTaskNotification(text)
 }
 
 // hasSelectedServers reports whether the browser named a real MCP server
@@ -140,7 +260,7 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 		return QueryRequest{}, fmt.Errorf("delivery_mode must be steer or queue")
 	}
 	if input.LaptopConnection != nil && (!isProjectProfileID(profile.ID) || !input.LaptopConnection.valid()) {
-		return QueryRequest{}, fmt.Errorf("Laptop connection requires a Crew and a valid device and folder")
+		return QueryRequest{}, fmt.Errorf("Laptop connection requires a project and a valid device and folder")
 	}
 	if input.KnowledgebaseFolderPath != nil && profile.ID != "knowledgebase" {
 		return QueryRequest{}, fmt.Errorf("this profile does not accept Brain context")
@@ -149,8 +269,11 @@ func queryRequestForAgentProfileChat(profile agentprofiles.Profile, input AgentP
 		return QueryRequest{}, fmt.Errorf("product conversation has no runtime binding")
 	}
 	req := QueryRequest{
+		RequestedSkillID:            input.RequestedSkillID,
+		PlanMode:                    input.PlanMode,
 		LaptopConnection:            input.LaptopConnection,
 		Query:                       input.Message,
+		PendingAttachments:          input.PendingAttachments,
 		DeliveryMode:                input.DeliveryMode,
 		ConnectionID:                firstNonEmptyTrimmed(input.ConnectionID, conversation.ConnectionID),
 		SessionTitle:                firstNonEmptyTrimmed(conversation.Title, profile.Name),
@@ -415,6 +538,8 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		return
 	}
 
+	stages := newQueryStages(w)
+	r = r.WithContext(context.WithValue(r.Context(), queryStagesKey{}, stages))
 	decoder := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes))
 	decoder.DisallowUnknownFields()
 	var input AgentProfileChatRequest
@@ -426,7 +551,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		writeAgentProfileError(w, http.StatusBadRequest, "invalid profile chat request: expected one JSON object")
 		return
 	}
-	if strings.TrimSpace(input.Message) == "" {
+	if strings.TrimSpace(input.Message) == "" && len(input.PendingAttachments) == 0 && input.RequestedSkillID == "" {
 		writeAgentProfileError(w, http.StatusBadRequest, "message is required")
 		return
 	}
@@ -449,14 +574,11 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	// due schedule back. Scheduled runs enter through Run, never here, so a
 	// check-in's own turns are not mistaken for family activity.
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
-	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "send", Message: input.Message, DeliveryMode: input.DeliveryMode}) {
+	stages.mark("profile")
+	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "send", Message: input.Message, DeliveryMode: input.DeliveryMode, RequestedSkillID: input.RequestedSkillID, PlanMode: input.PlanMode, PendingAttachments: input.PendingAttachments}) {
 		return
 	}
-	// Always on: while the server answers for this agent from its standby copy, the owner's Mac does not run it.
-	if line := api.crewStandbyMacRefusal(r.Context(), profile.ID, input.ConversationKey, "chat"); line != "" {
-		writeAgentProfileError(w, http.StatusConflict, line)
-		return
-	}
+	stages.mark("route")
 	// A Mac Crew runs on its Mac; published agents have their own server workspace.
 	if crewLivesOnMac(profile.ID, input.ConversationKey, productWorkspaceUserID(r.Context())) {
 		writeAgentProfileError(w, http.StatusConflict, crewOnMacRefusalFor(input.ConversationKey, productWorkspaceUserID(r.Context())))
@@ -468,6 +590,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 		writeAgentProfileQueryError(w, err)
 		return
 	}
+	stages.mark("resolve")
 	if err := crewTabWriteError(r.Context(), productWorkspaceUserID(r.Context()), profile.ID, conversation.ConversationKey, conversation.WorkspacePath); err != nil {
 		externalError(w, http.StatusForbidden, "tab_owner", err.Error())
 		return
@@ -491,6 +614,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 			log.Printf("[CREW_TEAM_SERVER] project=%s member=%s event=turn_sync seconds=%.1f failed=%t", project, logUsernameForUserID(caller), time.Since(started).Seconds(), err != nil)
 		}()
 	}
+	stages.mark("tab")
 	query, err := prepareProductConversationTurn(r.Context(), productWorkspaceUserID(r.Context()), profile, input, conversation)
 	if err != nil {
 		log.Printf("[PRODUCT_CONVERSATION] stage=query-prepare profile=%s key=%q caller=%q cause=%v", profile.ID, input.ConversationKey, productWorkspaceUserID(r.Context()), err)
@@ -545,6 +669,8 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	forwarded.Header = r.Header.Clone()
 	forwarded.Header.Set("Content-Type", "application/json")
 	forwarded.Header.Set("X-Session-ID", conversation.SessionID)
+	stages.mark("prepare")
+	stages.log(conversation.SessionID)
 	api.handleQuery(w, forwarded)
 }
 
@@ -580,14 +706,29 @@ func (api *StreamingAPI) handleResolveAgentProfileConversation(w http.ResponseWr
 	// Opening the product's conversation is what the app does on launch: the
 	// family is here, so a due check-in waits for a quiet moment.
 	productInteractions.Note(r.Context(), GetUserIDFromContext(r.Context()), profile.Product)
-	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "resolve", Name: input.Name}) {
+	if api.routeCrewMainChat(w, r, profile.ID, input.ConversationKey, crewChatCall{Operation: "resolve", Name: input.Name, Source: "conversation-route"}) {
 		return
+	}
+	if profile.ID == crewProfileID && strings.TrimSpace(input.ConversationKey) != "" && !strings.Contains(input.ConversationKey, ":") {
+		key, openErr := api.crewOpeningAgent(r, profile, input.ConversationKey, input.RequestedAgent)
+		if openErr != nil {
+			writeAgentProfileError(w, http.StatusUnprocessableEntity, openErr.Error())
+			return
+		}
+		if key == "" {
+			writeAgentProfileJSON(w, http.StatusOK, AgentProfileConversationResponse{ChooseAgent: true})
+			return
+		}
+		input.ConversationKey = key
 	}
 	conversation, err := api.resolveAgentProfileConversation(r, profile, input.ConversationKey, input.Name)
 	if err != nil {
 		log.Printf("[PRODUCT_CONVERSATION] resolve refused profile=%s key=%q: %v", profile.ID, input.ConversationKey, err)
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 		return
+	}
+	if opener := strings.TrimSpace(input.OpenedFrom); opener != "" && !conversation.IsMainChat {
+		api.startOnOpenerModel(r.Context(), productWorkspaceUserID(r.Context()), profile, productConversationBinding{WorkspacePath: conversation.WorkspacePath, ProjectLLMConfig: conversation.ProjectLLMConfig}, conversation.ConversationKey, opener)
 	}
 	ownerID, ownerName, canWrite := crewConversationTabAccess(r.Context(), productWorkspaceUserID(r.Context()), profile, conversation)
 	writeAgentProfileJSON(w, http.StatusOK, AgentProfileConversationResponse{
@@ -647,6 +788,10 @@ func (api *StreamingAPI) handleRotateAgentProfileConversation(w http.ResponseWri
 		externalError(w, 403, "tab_owner", err.Error())
 		return
 	}
+	if !IsLocalMode() && profile.ID == crewProfileID && crewTeamMemberOnMac(binding.ResourceID, userID) {
+		writeAgentProfileError(w, http.StatusUnprocessableEntity, "Open AgentWorks on your Mac to start this chat.")
+		return
+	}
 	conversation, err := defaultProductConversationRegistryStore().rotate(r.Context(), userID, profile, binding)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
@@ -663,21 +808,20 @@ func (api *StreamingAPI) handleRotateAgentProfileConversation(w http.ResponseWri
 }
 
 func initializeProductConversationWorkspace(ctx context.Context, userID string, profile agentprofiles.Profile, binding productConversationBinding) error {
+	countConversationInit()
+	// Every relayed chat call opens its Crew's chat first, and the Mac's 3 s "who is working" check made that about 5
+	// set-ups a second (owner, 10 Nov, PLAT-746). The set-up only adds what is missing, so once per project every
+	// productConversationInitEvery is enough.
+	initKey := userID + "\x00" + profile.ID + "\x00" + binding.WorkspacePath
+	if at, ok := productConversationInitAt.Load(initKey); ok && time.Since(at.(time.Time)) < productConversationInitEvery {
+		return nil
+	}
 	if profile.ID == caplayerproduct.ProfileID {
 		if err := ensureVaultChatWorkspace(ctx, userID); err != nil {
 			return err
 		}
 	}
 	client := workspace.NewClient(getWorkspaceAPIURL(), workspace.WithUserID(userID))
-	// Work projects have a conventional source-code home. Creating it here is
-	// idempotent and also upgrades projects created before the convention was
-	// introduced. The frontend creates it eagerly so it is visible immediately;
-	// this server-side guard keeps non-UI callers consistent.
-	if isProjectProfileID(profile.ID) {
-		if err := client.CreateFolder(ctx, filepath.ToSlash(filepath.Join(binding.WorkspacePath, "code"))); err != nil {
-			return fmt.Errorf("initialize product code folder: %w", err)
-		}
-	}
 	// Database is a product feature, so its physical managed SQLite location is
 	// part of enabling that feature too. Create the valid empty database through
 	// the trusted server-to-workspace channel when a project is first opened;
@@ -689,6 +833,7 @@ func initializeProductConversationWorkspace(ctx context.Context, userID string, 
 			return fmt.Errorf("initialize product database: %w", err)
 		}
 	}
+	productConversationInitAt.Store(initKey, time.Now())
 	return nil
 }
 
@@ -701,6 +846,7 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 	if err != nil {
 		return ProductConversationRecord{}, err
 	}
+	markQueryStage(r.Context(), "resolve_binding")
 	if owned {
 		if tab, found, tabErr := crewTabForKey(r.Context(), userID, profile.ID, binding.ConversationKey, binding.WorkspacePath); tabErr != nil {
 			return ProductConversationRecord{}, tabErr
@@ -708,9 +854,15 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 			return tab.Record, nil
 		}
 	}
+	if !IsLocalMode() && profile.ID == crewProfileID && crewTeamMemberOnMac(binding.ResourceID, userID) {
+		// #2827: a Mac member has one working copy. A website resolve must
+		// not manufacture an unreachable chat in their server registry.
+		return ProductConversationRecord{}, fmt.Errorf("Open AgentWorks on your Mac to start this chat.")
+	}
 	if binding.ConversationKey == crewOwnerDefaultChatKey(binding.ResourceID, userID) {
 		name = crewOwnerDisplayName(userID) + " · Builder"
 	}
+	markQueryStage(r.Context(), "resolve_tabs")
 	unlock, isNew, capErr := guardNewSideChat(r.Context(), userID, profile.ID, binding.ConversationKey)
 	if capErr != nil {
 		return ProductConversationRecord{}, capErr
@@ -734,22 +886,24 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 	}
 	if agentID := publicationAgentID(requestedKey); agentID != "" {
 		if !owned {
-			return ProductConversationRecord{}, fmt.Errorf("Open this agent from a Crew you may build; shared use is through its dashboard and functions.")
+			return ProductConversationRecord{}, fmt.Errorf("Open this agent from a project you may build; shared use is through its dashboard and functions.")
 		}
 		record, err := readPublishedAgent(r.Context(), agentProfileRuntimeWorkspace(userID, binding.WorkspacePath), agentID)
 		if err != nil {
 			return ProductConversationRecord{}, err
 		}
 		if record == nil {
-			return ProductConversationRecord{}, fmt.Errorf("This agent is unavailable. Choose one from the Crew's Agents list.")
+			return ProductConversationRecord{}, fmt.Errorf("This agent is unavailable. Choose one from the project's Agents list.")
 		}
 	}
 
+	markQueryStage(r.Context(), "resolve_guard")
 	if owned {
 		if err := initializeProductConversationWorkspace(r.Context(), userID, profile, binding); err != nil {
 			return ProductConversationRecord{}, err
 		}
 	}
+	markQueryStage(r.Context(), "resolve_init")
 
 	candidate := strings.TrimSpace(r.Header.Get("X-Session-ID"))
 	continuation := strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Conversation-Continuation")), "true")
@@ -762,14 +916,20 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 		if candidate != "" && api.canUseSessionIDForQuery(r, candidate) {
 			if active, ok := api.getActiveSession(candidate); ok && sessionVisibleTo(active.UserID, GetUserFromContext(r.Context())) {
 				preferredSessionID = candidate
-			} else if _, found, findErr := FindChatHistoryConversationPathForSession(userID, candidate, ""); findErr != nil {
-				return ProductConversationRecord{}, fmt.Errorf("find existing product conversation: %w", findErr)
-			} else if found {
+			}
+			// From file names and the chat's header only. Listing the project's chats (up to 2,000 files read)
+			// took 0.2-15.6 s of every send (#4080).
+			workspaceOfCandidate, inProject := projectChatSessionWorkspace(userID, candidate, binding.WorkspacePath)
+			if preferredSessionID == "" && inProject {
 				preferredSessionID = candidate
+			} else if preferredSessionID == "" {
+				if _, found, findErr := FindChatHistoryConversationPathForSession(userID, candidate, ""); findErr != nil {
+					return ProductConversationRecord{}, fmt.Errorf("find existing product conversation: %w", findErr)
+				} else if found {
+					preferredSessionID = candidate
+				}
 			}
-			if session, found := chatHistorySessionsByID(userID, binding.WorkspacePath)[candidate]; found {
-				preferredSessionVerifiedForWorkspace = chatHistorySessionWorkspace(session) == normalizeConversationWorkspace(binding.WorkspacePath)
-			}
+			preferredSessionVerifiedForWorkspace = inProject && workspaceOfCandidate == normalizeConversationWorkspace(binding.WorkspacePath)
 		}
 	}
 	if preferredSessionID != "" {
@@ -798,11 +958,13 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 	if continuation && candidate == "" {
 		return ProductConversationRecord{}, fmt.Errorf("continuation requires an explicit session ID")
 	}
+	markQueryStage(r.Context(), "resolve_session")
 	store := defaultProductConversationRegistryStore()
 	record, err := store.resolveOrCreate(r.Context(), userID, profile, binding, preferredSessionID)
 	if err != nil {
 		return ProductConversationRecord{}, err
 	}
+	markQueryStage(r.Context(), "resolve_registry")
 	// An open Work tab may survive a browser refresh and many backend
 	// deployments. Its authenticated X-Session-ID is the conversation the user
 	// can actually see. If a tab-specific registry slot drifted to another
@@ -1000,6 +1162,9 @@ func profileWithAvailableProviders(profile agentprofiles.Profile) agentprofiles.
 }
 
 func writeAgentProfileQueryError(w http.ResponseWriter, err error) {
+	if writeWorkspaceAdmissionUnavailable(w, err) {
+		return
+	}
 	if errors.Is(err, errCrewProjectUnavailable) {
 		externalError(w, http.StatusForbidden, "project_unavailable", errCrewProjectUnavailable.Error())
 		return
@@ -1021,32 +1186,23 @@ func writeAgentProfileJSON(w http.ResponseWriter, status int, value interface{})
 // owns history/native restoration and runtime rebinding, so connector turns
 // pick up the same migrations as web turns.
 func prepareProductConversationTurn(ctx context.Context, userID string, profile agentprofiles.Profile, input AgentProfileChatRequest, conversation ProductConversationRecord) (QueryRequest, error) {
+	started := time.Now()
+	defer func() {
+		log.Printf("[CHAT_TURN_PREPARE] session=%s elapsed_ms=%d", conversation.SessionID, time.Since(started).Milliseconds())
+	}()
 	// A chat with its own model (chosen by the person on the Crew's Models page) runs on it for every turn:
 	// typed in the app, or a workflow, function, schedule or another chat reaching it. The browser sends
 	// the Crew's model for every tab, so the server's per-chat choice wins.
 	modelConversation := conversation
-	// Another person's thread with a shared agent runs on the agent's own program and model (its tab's choice), so it
-	// can start from the owner's conversation with it.
 	ask, _ := ctx.Value(crewMacSharedAskKey{}).(*crewMacSharedAsk)
-	identityKey := conversation.ConversationKey
-	if ask != nil && ask.Owner.ConversationKey != "" {
-		identityKey = ask.Owner.ConversationKey
+	if ask == nil && profile.ID == crewProfileID {
+		input.Message = crewOfflineAppHandbackInput(ctx, userID, conversation, input.Message)
 	}
-	own, err := defaultProductConversationRegistryStore().agentIdentity(ctx, userID, profile.ID, identityKey)
+	own, err := defaultProductConversationRegistryStore().agentIdentity(ctx, userID, profile.ID, conversation.ConversationKey)
 	if err != nil {
 		return QueryRequest{}, err
 	}
-	// The same agent (owner, 4 Nov): with no program chosen for the tab, the thread runs what the owner's own chat with
-	// it last ran, so its saved session can be copied and resumed.
-	if ask != nil && own.Engine == "" {
-		engine, model := ask.Owner.Provider, ask.Owner.ModelID
-		if runtime, ok, _ := ReadChatHistoryRuntimeForSession(userID, ask.Owner.SessionID, ask.Owner.WorkspacePath); ok && runtime != nil && runtime.AgentSessionHandle != nil && runtime.AgentSessionHandle.Provider.Provider != "" {
-			engine, model = runtime.AgentSessionHandle.Provider.Provider, firstNonEmptyTrimmed(runtime.AgentSessionHandle.Provider.Model, runtime.ModelID)
-		}
-		if engine != "" {
-			own.Engine, own.ModelID, own.ConnectionID = engine, model, ask.Owner.ConnectionID
-		}
-	}
+	markQueryStage(ctx, "prepare_identity")
 	if own.Engine == "" {
 		useProjectChatDefault(&input, &modelConversation, profile)
 	} else {
@@ -1059,6 +1215,14 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 			input.Engine, input.ModelID, input.ReasoningEffort = own.Engine, own.ModelID, own.ReasoningEffort
 		}
 	}
+	if crewSetupLocked(conversation.WorkspacePath, userID) {
+		// A project User (crew_setup_lock.go) always runs on the project's default model, whatever the
+		// request or a saved per-chat choice says (crew_setup_lock.go). The account is theirs or the company's, never
+		// the project owner's personal one (decisions log, 24 Nov).
+		input.Engine, input.ModelID, input.ReasoningEffort, input.ConnectionID = "", "", "", ""
+		useProjectChatDefault(&input, &modelConversation, profile)
+		input.ConnectionID, modelConversation.ConnectionID = "", ""
+	}
 	query, err := queryRequestForAgentProfileChat(profile, input, modelConversation)
 	if err != nil {
 		return QueryRequest{}, err
@@ -1067,11 +1231,11 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		return QueryRequest{}, err
 	}
 	applyUserViewChat(&query, userID, conversation.ConversationKey, conversation.WorkspacePath)
-	// A message to a shared Mac agent runs as its owner set it up, in that sender's own thread, without secret values
-	// or owner-only tools (owner, 3 Nov, decisions log). Only the Mac's relay op for another person's message sets it.
+	// Another person's message to a shared agent runs as its owner set it up, in the agent's own chat (#3469), with the
+	// owner's secrets (4 Nov) but none of the owner-only tools (owner, 3 Nov, decisions log).
 	if ask != nil && ask.Sender != "" {
 		query.SharedAgentSender = ask.Sender
-		own.ClaudeTerminal = false // a thread with someone else runs in the chat view, never a terminal on the owner's screen
+		own.ClaudeTerminal = false // another person's turn runs in the chat view, never a terminal on the owner's screen
 	}
 	// Claude Code runs as the chat chose: the native terminal or the chat view. A Claude already running on the
 	// other transport (the choice changed from inside a reply) is relaunched by this turn; the conversation resumes.
@@ -1108,29 +1272,18 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 	if accountChanged {
 		log.Printf("[PRODUCT_CHAT] account change for conversation %q: %s -> %s (same chat, CLI restarts on the new account)", conversation.ConversationKey, canonicalProviderConnectionID(conversation.Provider, conversation.ConnectionID), canonicalProviderConnectionID(query.Provider, query.ConnectionID))
 	}
-	// "Fresh chat" waits for a running turn to end: a message queued behind it would resume the old conversation.
-	fresh := conversation.FreshNative && !(runningServerAPI != nil && runningServerAPI.conversationTurnOccupied(conversation.SessionID))
-	target, found, err := resolveProductResumeTarget(userID, conversation)
+	markQueryStage(ctx, "prepare_model")
+	target, found, err := runningServerAPI.resolveProductResumeTargetFor(userID, conversation, isCodingAgentProvider(query.Provider, query.ModelID))
 	if err != nil {
 		return QueryRequest{}, fmt.Errorf("resolve saved conversation: %w", err)
 	}
+	markQueryStage(ctx, "prepare_history")
 	if found {
 		if accountChanged && target != nil {
 			// Keep the visible history; start a fresh CLI session on the new account.
 			target.Runtime = nil
 		}
-		if fresh && target != nil {
-			// "Fresh chat" (PLAT-872-71): same as an account change. The visible history stays and the new
-			// native conversation starts from the continuity notice (recent turns and the archive path).
-			target.Runtime = nil
-			log.Printf("[CHAT_CONTEXT] fresh native conversation for %q session=%s", conversation.ConversationKey, conversation.SessionID)
-		}
 		query.resolvedResumeTarget = target
-	}
-	if fresh {
-		if err := defaultProductConversationRegistryStore().setFreshNative(ctx, userID, profile.ID, conversation.ConversationKey, false); err != nil {
-			return QueryRequest{}, err
-		}
 	}
 	if strings.TrimSpace(query.Provider) != "" {
 		skillFilesDigest := conversation.SkillFilesDigest
@@ -1145,7 +1298,6 @@ func prepareProductConversationTurn(ctx context.Context, userID string, profile 
 		if err != nil {
 			return QueryRequest{}, err
 		}
-		restart = restart || fresh // the retained CLI holds the old conversation
 		// A previous attempt may already have persisted the new selection while
 		// leaving the old durable session alive. Check the actual retained runtime
 		// too, so retrying that selection cannot deliver to the old model.
@@ -1240,26 +1392,18 @@ func guardNewSideChat(ctx context.Context, userID, profileID, key string) (unloc
 	return lock.Unlock, isNew, nil
 }
 
-// checkSideChatCapacity refuses a NEW side chat key once the project already has the most the
-// product allows (externalCrewMaxSideChats). The count is the registry's, not a browser's tabs.
-// isNew reports that key is not open yet.
+// checkSideChatCapacity reports whether key is a NEW side chat (not open yet). A project has no
+// limit on its number of tabs (owner, 20 Nov); err is kept for the registry read only.
 func checkSideChatCapacity(ctx context.Context, store productConversationRegistryStore, userID, profileID, key string) (isNew bool, err error) {
 	project, _, _ := strings.Cut(strings.TrimSpace(key), codeChatSideMarker)
 	records, err := store.projectChats(ctx, userID, profileID, project)
 	if err != nil {
 		return false, nil // an unreadable registry is the resolve step's error to report
 	}
-	sides := 0
 	for _, record := range records {
 		if record.ConversationKey == strings.TrimSpace(key) {
 			return false, nil // already open: not a new chat
 		}
-		if !record.IsMainChat && record.ConversationKey != crewOwnerDefaultChatKey(project, userID) && !hiddenFromTabStrip(record.ConversationKey) {
-			sides++
-		}
-	}
-	if sides >= externalCrewMaxSideChats {
-		return true, fmt.Errorf("this project already has %d side chats; close one first", externalCrewMaxSideChats)
 	}
 	return true, nil
 }
@@ -1272,9 +1416,9 @@ func isSideChatConversationKey(key string) bool {
 }
 
 // handleCloseAgentProfileSideChat forgets a closed side chat (tab): its
-// registry entry goes, so other chats can no longer message it and reminders
-// set from it run in the main chat. Its transcript is kept. Before this a
-// closed tab stayed reachable (PLAT-648, PLAT-653).
+// registry entry and saved transcripts go, so other chats can no longer message
+// it. Hide only changes visibility; this explicit removal deletes its history
+// (PLAT-746). Earlier close behavior retained transcripts (PLAT-648, PLAT-653).
 func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -1287,7 +1431,8 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusBadRequest, "invalid product conversation request: "+err.Error())
 		return
 	}
-	if !isSideChatConversationKey(input.ConversationKey) {
+	// A message schedule's own chat closes like a tab; its next run starts a new chat of its own.
+	if !isSideChatConversationKey(input.ConversationKey) && !isScheduleOwnChatKey(input.ConversationKey) {
 		writeAgentProfileError(w, http.StatusBadRequest, "only a side chat (tab) can be closed")
 		return
 	}
@@ -1310,12 +1455,8 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		externalError(w, 403, "tab_owner", err.Error())
 		return
 	}
-	if binding.ProjectMainChatKey != "" && binding.ConversationKey == binding.ProjectMainChatKey {
-		writeAgentProfileError(w, http.StatusBadRequest, "The main agent cannot be closed.")
-		return
-	}
 	store := defaultProductConversationRegistryStore()
-	current, hasCurrent, _, err := store.history(r.Context(), userID, profile, binding)
+	current, hasCurrent, previous, err := store.history(r.Context(), userID, profile, binding)
 	if err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1323,13 +1464,140 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 	// A stopped pane may remain listed until the watchdog confirms (PLAT-815),
 	// and a finished chat retains an idle coding CLI. Release both here for app
 	// and MCP callers (PLAT-819); refuse a chat with a turn in flight.
-	if hasCurrent && api.sessionStillWorkingAfterIdleRelease(current.SessionID) {
-		writeAgentProfileError(w, http.StatusConflict, "This agent is still working. Stop it before closing.")
+	records := previous
+	if hasCurrent {
+		records = append([]ProductConversationRecord{current}, records...)
+	}
+	previewSessions := make([]string, 0, len(records))
+	for _, record := range records {
+		if record.SessionID != "" {
+			previewSessions = append(previewSessions, record.SessionID)
+		}
+	}
+	plan, err := api.planCrewAgentRemoval(r.Context(), userID, binding, previewSessions)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	if input.PreviewRemoval || input.RemovalConfirmation == "" {
+		writeAgentProfileJSON(w, http.StatusOK, plan.preview)
+		return
+	}
+	sessionIDs := make([]string, 0, len(records))
+	seen := make(map[string]bool, len(records))
+	for _, record := range records {
+		if record.SessionID == "" || seen[record.SessionID] {
+			continue
+		}
+		seen[record.SessionID] = true
+		if api.sessionStillWorkingAfterIdleRelease(record.SessionID) {
+			writeAgentProfileError(w, http.StatusConflict, "This agent is still working. Stop it before removing it.")
+			return
+		}
+		// The slot admits its owner; retain the transcript author check used by
+		// individual history deletion before removing any of its saved sessions.
+		if isCrewProjectPath(binding.WorkspacePath) {
+			if data, e := ReadChatHistoryConversation(userID, record.SessionID, binding.WorkspacePath); e == nil {
+				author, _ := chatHistoryConversationIdentity(data)
+				if author != "" && author != userID {
+					externalError(w, 403, "tab_owner", "Only this tab’s owner can delete it.")
+					return
+				}
+			}
+		}
+		sessionIDs = append(sessionIDs, record.SessionID)
+	}
+	if err := plan.apply(r.Context(), input.RemovalConfirmation, input.RemovalChoices, binding.ResourceID); err != nil {
+		writeAgentProfileError(w, http.StatusConflict, err.Error())
+		return
+	}
+	turns, err := api.readConversationTurnQueue(r.Context(), userID)
+	if err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for _, turn := range turns {
+		if seen[turn.SessionID] {
+			if err := api.removeConversationTurn(r.Context(), turn); err != nil {
+				writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+	}
+	// Keep the registry IDs until cleanup succeeds, so a failed deletion can
+	// be retried rather than leaving an undiscoverable history behind.
+	for _, sessionID := range sessionIDs {
+		if _, err := DeleteChatHistorySession(userID, sessionID, binding.WorkspacePath); err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, "remove agent history: "+err.Error())
+			return
+		}
+	}
+	if err := api.deleteDurableChatSessions(sessionIDs); err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, "remove agent event log: "+err.Error())
+		return
+	}
+	if err := removeCrewSharedAgent(binding.WorkspacePath, binding.ConversationKey); err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := removeCrewAgentListing(binding.ResourceID, userID, binding.ConversationKey); err != nil {
+		writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if _, err := store.removeSlot(r.Context(), userID, profile, binding); err != nil {
 		writeAgentProfileError(w, http.StatusInternalServerError, "close side chat: "+err.Error())
 		return
 	}
+	if binding.ConversationKey == binding.ProjectMainChatKey && binding.ManifestPath != "" {
+		if err := store.writeMainChatPointer(r.Context(), binding.ManifestPath, "", ""); err != nil {
+			writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	publishCrewPanelChanged(binding.ResourceID)
+	log.Printf("[CREW_AGENT_REMOVE] profile=%s sessions=%d history_deleted=true", profile.ID, len(sessionIDs))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// queryStages times the steps before a sent message reaches the turn runner
+// (speed check, 25 Nov: sending waited 1-6 s with no log saying where). One
+// [QUERY_ACCEPT] line when the steps take 300 ms or more; before_ms is the time
+// spent before this handler (other middleware), when known.
+type queryStages struct {
+	start, last time.Time
+	before      time.Duration
+	parts       []string
+}
+
+func newQueryStages(w http.ResponseWriter) *queryStages {
+	now := time.Now()
+	q := &queryStages{start: now, last: now, before: -1}
+	if rec, ok := w.(*statusCapturingResponseWriter); ok && !rec.start.IsZero() {
+		q.before = now.Sub(rec.start)
+	}
+	return q
+}
+
+type queryStagesKey struct{}
+
+// markQueryStage splits a send's stage into its steps (speed check, 26 Nov: the
+// whole "resolve" stage took 0.2-2.3 s on every send, with no step named).
+func markQueryStage(ctx context.Context, name string) {
+	if q, ok := ctx.Value(queryStagesKey{}).(*queryStages); ok {
+		q.mark(name)
+	}
+}
+
+func (q *queryStages) mark(name string) {
+	now := time.Now()
+	q.parts = append(q.parts, fmt.Sprintf("%s_ms=%d", name, now.Sub(q.last).Milliseconds()))
+	q.last = now
+}
+
+func (q *queryStages) log(session string) {
+	total := time.Since(q.start)
+	if total < 300*time.Millisecond && q.before < 300*time.Millisecond {
+		return
+	}
+	log.Printf("[QUERY_ACCEPT] session=%s before_ms=%d %s total_ms=%d", session, q.before.Milliseconds(), strings.Join(q.parts, " "), total.Milliseconds())
 }

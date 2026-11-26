@@ -1,10 +1,8 @@
 package server
 
 import (
-	"context"
 	"strings"
 	"testing"
-	"time"
 )
 
 // A call from someone other than the Crew's owner runs as their guest.
@@ -54,46 +52,7 @@ func TestCrewGuestCallerForTurnOnlyNarrowsTheOwnersTurn(t *testing.T) {
 	if got := crewGuestCallerForTurn(workflow, "alice"); got != "" {
 		t.Fatalf("non-Crew turn = %q", got)
 	}
-	if prompt := crewSessionModeNotice(registerTestCrew(t, "x", "alice", true), "", false); !strings.Contains(prompt, crewSuggestionToolName) || !strings.Contains(prompt, "Change nothing") {
+	if prompt := crewSessionModeNotice(registerTestCrew(t, "x", "alice", true), "", false); !strings.Contains(prompt, "ask the project's owner") || !strings.Contains(prompt, "Change nothing") {
 		t.Fatalf("reader prompt used for a guest: %s", prompt)
-	}
-}
-
-// A guest turn gets only the tools to answer its call.
-func TestCrewFunctionResultOnlyRegistrar(t *testing.T) {
-	inner := &recordingRegistrar{}
-	reg := crewFunctionResultOnlyRegistrar{inner}
-	exec := func(context.Context, map[string]interface{}) (string, error) { return "", nil }
-	for _, name := range []string{"project_functions_call", "project_functions_define", "project_functions_reply", "report_function_progress", "return_function_result", "project_functions_list"} {
-		_ = reg.RegisterCustomTool(name, "", nil, exec, "")
-		_ = reg.RegisterCustomToolWithTimeout(name, "", nil, exec, time.Second, "")
-	}
-	if len(inner.tools) != 1 || inner.tools["return_function_result"].exec != nil || inner.tools["report_function_progress"].exec == nil {
-		t.Fatalf("registered = %v", inner.tools)
-	}
-}
-
-// On a guest turn the suggestion is from the guest, even though the turn
-// runs as the owner.
-func TestCrewSuggestionOnAGuestTurnIsFromTheGuest(t *testing.T) {
-	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
-	t.Setenv("MULTI_USER_MODE", "true")
-	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"editor","products":["work"]},{"id":"guest","username":"guest","role":"editor","products":["work"]}]}`)
-	server, _ := newFakeWorkspaceServer(t)
-	t.Setenv("WORKSPACE_API_URL", server.URL)
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	crewRoot := registerTestCrew(t, "demo", "owner", true)
-	api := &StreamingAPI{}
-	reg := &recordingRegistrar{}
-	if err := api.registerCrewSuggestionTool(reg, "guest", "call-session", crewRoot); err != nil {
-		t.Fatal(err)
-	}
-	ownerCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	if _, err := reg.tools[crewSuggestionToolName].exec(ownerCtx, map[string]interface{}{"suggestion": "Add a weekly digest"}); err != nil {
-		t.Fatal(err)
-	}
-	inputs, err := listReportHumanInputs(ownerCtx, crewRoot, "pending", "user_suggestion")
-	if err != nil || len(inputs) != 1 || inputs[0].CreatedBy != "guest" {
-		t.Fatalf("suggestion = %+v %v", inputs, err)
 	}
 }

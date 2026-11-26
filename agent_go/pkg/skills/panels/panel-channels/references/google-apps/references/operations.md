@@ -8,7 +8,7 @@
 
 - Gmail uses saved Google accounts in **Integrations → Google apps → Connect or manage accounts**,
   selected with **Use here** in this project’s **Integrations → Google apps** (or Recent);
-  it is not an MCP server. Company incoming email is stored in this agent’s dedicated Inbox and optional normal Python Watchers start work. Personal Gmail connects through gog. An explicitly requested personal Gmail Watcher can pass selected new mail to the owner’s Crew chat; it never fills the shared Inbox. Check `integrations action=google_connections`
+  it is not an MCP server. Company incoming email is stored in this agent’s dedicated Inbox and optional normal Python Watchers start work. Personal Gmail connects through gog. An explicitly requested personal Gmail Watcher can pass selected new mail to the owner’s project chat; it never fills the shared Inbox. Check `integrations action=google_connections`
   before searching the MCP catalog or claiming Gmail is unavailable.
 - Before calling `integrations action=google`, use `skills action=list` to check whether the
   upstream `gog` skills are installed. If they are missing, install only the base
@@ -36,4 +36,4 @@
   This is off by default and separate from workflow run summaries; never remove the
   Gmail send guard or treat `gmail.send` alone as agent-write permission.
 - Gmail notifications and agent-authored sends are outbound operations.
-  Gmail accounts are managed in Integrations → Google apps using gog. On servers, choose one account with Use for Crew inboxes to supply your Crew addresses; receiving is on by default per Crew and its owner can turn it off. Read messages action=mail_inbox and use normal Python Watchers for actions.
+  Gmail accounts are managed in Integrations → Google apps using gog. On servers, choose one account with Use for project inboxes to supply your project addresses; receiving is on by default per project and its owner can turn it off. Read messages action=mail_inbox and use normal Python Watchers for actions.

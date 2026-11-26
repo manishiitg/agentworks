@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/gorilla/websocket"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,8 +15,10 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
 func desktopTestRequest(method, path, body, owner string) *http.Request {
@@ -98,6 +101,26 @@ func TestDesktopConnectionProxyOwnerAndCredentialBoundary(t *testing.T) {
 	if strings.Contains(string(raw), "remote-renewed") {
 		t.Fatal("unencrypted token on disk")
 	}
+	// Direct Mac-to-server calls keep the renewal too; the Team chat call used to drop it and sign out after 7 days.
+	direct := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer remote-renewed" {
+			t.Error("saved sign-in not sent")
+		}
+		w.Header().Set("X-Renewed-Token", "renewed-again")
+	}))
+	defer direct.Close()
+	req, _ := http.NewRequest(http.MethodGet, direct.URL+"/api/crew-teams", nil)
+	resp, err := desktopServerDo(http.DefaultClient, "owner", c, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.Header.Get("X-Renewed-Token") != "" {
+		t.Fatal("renewed sign-in handed on to the caller")
+	}
+	if c, err := desktopConnectionFor("owner", "saved"); err != nil || c.Token != "renewed-again" {
+		t.Fatal("direct call's renewal not saved")
+	}
 }
 
 // Exercise the actual code exchange and a real loopback callback. Neither the
@@ -116,7 +139,7 @@ func TestDesktopConnectionBrowserHandoffAndOneUseVerifier(t *testing.T) {
 			remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { api.handleDesktopConnectExchange(w, r) }))
 			defer remote.Close()
 			w := httptest.NewRecorder()
-			api.handleDesktopConnections(w, desktopTestRequest("POST", "/api/desktop-connections", `{"server":"`+remote.URL+`/crew/projects/example?view=context#details"}`, "owner"))
+			api.handleDesktopConnections(w, desktopTestRequest("POST", "/api/desktop-connections", `{"server":"`+remote.URL+`/projects/example?view=context#details"}`, "owner"))
 			if w.Code != 200 {
 				t.Fatalf("begin: %d %s", w.Code, w.Body.String())
 			}
@@ -283,10 +306,10 @@ func TestDesktopConnectionDevelopmentOrigin(t *testing.T) {
 // PLAT-746: pasted page URLs connect to the origin; credentials and insecure remote URLs stay refused.
 func TestDesktopServerURLAcceptsBrowserLinks(t *testing.T) {
 	for _, tc := range []struct{ input, want string }{
-		{" https://example.com/crew/projects/example?view=context#details ", "https://example.com"},
+		{" https://example.com/projects/example?view=context#details ", "https://example.com"},
 		{"https://example.com:8443/path%2Ffile?", "https://example.com:8443"},
 		{"https://example.com/", "https://example.com"},
-		{"http://localhost:18743/crew?view=context", "http://localhost:18743"},
+		{"http://localhost:18743/projects?view=context", "http://localhost:18743"},
 		{"https://person:password@example.com/crew", ""},
 		{"http://example.com/crew", ""},
 		{"javascript:alert(1)", ""},
@@ -306,5 +329,211 @@ func TestDesktopServerURLAcceptsBrowserLinks(t *testing.T) {
 		if got.String() != tc.want {
 			t.Errorf("origin = %q, want %q", got.String(), tc.want)
 		}
+	}
+}
+
+// PLAT-746-865: server Crew links must open the member's active Mac copy,
+// without resolving another person's copy or a different saved connection.
+func TestDesktopMemberCrewResolvesOnlyOwnActiveCopy(t *testing.T) {
+	desktopTestEnvironment(t)
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	t.Setenv("MULTI_USER_MODE", "false")
+	const local, remote, owner = "member-local", "team-online", "member"
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: local, ProjectID: local, OwnerID: owner}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeDesktopConnections(owner, []desktopConnection{{ID: "saved", Server: "https://example.com", User: UserInfo{ID: "remote-member"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCrewTeamState(local, func(s *crewTeamLocalState) { s.MemberOf = remote }); err != nil {
+		t.Fatal(err)
+	}
+	binding := crewroot.SyncBinding{Mode: "relay", PairID: "member-pair", Side: "local", Editing: "local", ConnectionID: "saved", PeerProjectID: remote}
+	if err := crewroot.WriteSync(local, binding); err != nil {
+		t.Fatal(err)
+	}
+	// A real join receives a pair ID from the server. ReadSync rejects missing
+	// pairs, so verify the fixture before exercising route admission.
+	if got, err := crewroot.ReadSync(local); err != nil || got == nil {
+		t.Fatalf("member pairing fixture unreadable: %v", err)
+	}
+	api := &StreamingAPI{}
+	call := func(person, connection, project string, proof bool) *httptest.ResponseRecorder {
+		r := desktopTestRequest("GET", "/api/desktop-connections/"+connection+"/member-crew/"+project, "", person)
+		r = mux.SetURLVars(r, map[string]string{"connection": connection, "project": project})
+		if !proof {
+			r.Header.Del("X-AgentWorks-Desktop")
+		}
+		w := httptest.NewRecorder()
+		api.handleDesktopMemberCrew(w, r)
+		return w
+	}
+	for _, c := range []struct{ person, connection, project, want string }{
+		{owner, "saved", remote, local}, {owner, "local", remote, local},
+		{"outsider", "saved", remote, ""}, {owner, "another", remote, ""}, {owner, "saved", local, ""},
+	} {
+		w := call(c.person, c.connection, c.project, true)
+		var got map[string]string
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || got["project_id"] != c.want {
+			t.Fatalf("resolve %+v: %d %s", c, w.Code, w.Body.String())
+		}
+	}
+	if w := call(owner, "saved", remote, false); w.Code != 403 {
+		t.Fatalf("non-desktop caller admitted: %d", w.Code)
+	}
+
+	binding.Editing = "server"
+	if err := crewroot.ReplaceSync(local, binding); err != nil {
+		t.Fatal(err)
+	}
+	if got := desktopMemberCrew(owner, "saved", remote); got != "" {
+		t.Fatalf("web copy redirected to Mac: %s", got)
+	}
+}
+
+// #2831: the real saved-connection proxy must upgrade and tunnel binary/control
+// frames without forwarding the local JWT, app proof, cookies or identity.
+func TestDesktopProjectTerminalWebSocketKeepsRemoteRouteAndCredentials(t *testing.T) {
+	desktopTestEnvironment(t)
+	t.Setenv("MULTI_USER_MODE", "false")
+	localToken, err := GenerateJWT("owner", "owner", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/agent-profiles/work/projects/project/shell/stream" || r.URL.Query().Has("token") || r.Header.Get("Authorization") != "Bearer remote-session" || r.Header.Get("Cookie") != "" || r.Header.Get("Origin") != "" || r.Header.Get("X-AgentWorks-Desktop") != "" || r.Header.Get("X-User-ID") != "" || r.Header.Get("Sec-Fetch-Site") != "" {
+			t.Error("desktop credential boundary or selected route lost")
+		}
+		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.Close()
+		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		pong := false
+		conn.SetPongHandler(func(string) error { pong = true; return nil })
+		if err := conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(time.Second)); err != nil {
+			t.Error(err)
+			return
+		}
+		kind, data, err := conn.ReadMessage()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		if !pong || kind != websocket.BinaryMessage || string(data) != "terminal input" {
+			t.Error("WebSocket data/control frames did not survive the proxy")
+		}
+		_ = conn.WriteMessage(kind, data)
+	}))
+	defer remote.Close()
+	if err := writeDesktopConnections("owner", []desktopConnection{{ID: "saved", Server: remote.URL, Token: "remote-session"}}); err != nil {
+		t.Fatal(err)
+	}
+	api := &StreamingAPI{}
+	local := httptest.NewServer(AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Only the bound loopback port is substituted in this fixture. JWT
+		// authentication, app proof, source selection and upgrade all run.
+		r.Host = desktopBootstrapHost
+		r = mux.SetURLVars(r, map[string]string{"connection": "saved", "path": strings.TrimPrefix(r.URL.Path, "/api/connections/saved/")})
+		api.handleDesktopConnectionProxy(w, r)
+	})))
+	defer local.Close()
+	target := "ws" + strings.TrimPrefix(local.URL, "http") + "/api/connections/saved/api/agent-profiles/work/projects/project/shell/stream?token=" + url.QueryEscape(localToken)
+	header := make(http.Header)
+	for key, value := range map[string]string{"X-AgentWorks-Desktop": "app-proof", "Origin": "http://" + desktopBootstrapHost, "Cookie": "local-cookie=private", "X-User-ID": "forged", "Sec-Fetch-Site": "same-origin"} {
+		header.Set(key, value)
+	}
+	for _, change := range []func(http.Header){
+		func(h http.Header) { h.Del("X-AgentWorks-Desktop") },
+		func(h http.Header) { h.Set("Origin", "https://example.com") },
+	} {
+		h := header.Clone()
+		change(h)
+		conn, response, err := websocket.DefaultDialer.Dial(target, h)
+		if conn != nil {
+			conn.Close()
+		}
+		if err == nil || response == nil || response.StatusCode != 403 {
+			t.Fatal("socket bypassed the app-frame proof gate")
+		}
+		response.Body.Close()
+	}
+	for _, identity := range []struct {
+		token  string
+		status int
+	}{
+		{"invalid-token", http.StatusUnauthorized},
+	} {
+		badTarget := strings.Replace(target, url.QueryEscape(localToken), url.QueryEscape(identity.token), 1)
+		conn, response, err := websocket.DefaultDialer.Dial(badTarget, header)
+		if conn != nil {
+			conn.Close()
+		}
+		if err == nil || response == nil || response.StatusCode != identity.status {
+			t.Fatal("invalid query credential reached the saved session")
+		}
+		response.Body.Close()
+	}
+	otherToken, err := GenerateJWT("other-owner", "other", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherTarget := strings.Replace(target, url.QueryEscape(localToken), url.QueryEscape(otherToken), 1)
+	other, denied, err := websocket.DefaultDialer.Dial(otherTarget, header)
+	if other != nil {
+		other.Close()
+	}
+	if err == nil || denied == nil || denied.StatusCode != http.StatusNotFound {
+		t.Fatal("another owner reached the saved server")
+	}
+	denied.Body.Close()
+	conn, response, err := websocket.DefaultDialer.Dial(target, header)
+	if err != nil {
+		if response != nil {
+			t.Fatalf("upgrade status %d: %v", response.StatusCode, err)
+		}
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	// Read processes the tunneled ping before writing, so the upstream can
+	// assert it received the browser's automatic pong before the binary frame.
+	conn.SetPingHandler(func(data string) error {
+		if err := conn.WriteControl(websocket.PongMessage, []byte(data), time.Now().Add(time.Second)); err != nil {
+			return err
+		}
+		return conn.WriteMessage(websocket.BinaryMessage, []byte("terminal input"))
+	})
+	kind, data, err := conn.ReadMessage()
+	if err != nil || kind != websocket.BinaryMessage || string(data) != "terminal input" {
+		t.Fatalf("terminal echo: kind=%d err=%v", kind, err)
+	}
+}
+
+// #3383: the relay passes query sign-in only for a server project's Terminal and live browser view streams (and, #3807,
+// an account's sign-in window); any
+// other socket or a plain request to the same path is refused it.
+func TestDesktopRelayAdmitsOnlyProjectStreams(t *testing.T) {
+	for path, want := range map[string]bool{
+		"api/agent-profiles/work/projects/project/shell/stream": true,
+		"api/browser/live/session/stream":                       true,
+		"api/browser/live/session/recording":                    false,
+		"api/provider-setup/sessions/setup/stream":              true, // #3807: an account's sign-in window
+		"api/provider-setup/sessions/setup":                     false,
+		"api/browser/live/a/b/stream":                           false,
+		"api/sessions/session/stream":                           false,
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/api/connections/saved/"+path, nil)
+		r.Header.Set("Connection", "Upgrade")
+		r.Header.Set("Upgrade", "websocket")
+		if got := desktopProjectStreamUpgrade(mux.SetURLVars(r, map[string]string{"path": path})); got != want {
+			t.Errorf("%s: got %v, want %v", path, got, want)
+		}
+	}
+	plain := httptest.NewRequest(http.MethodGet, "/api/connections/saved/api/browser/live/session/stream", nil)
+	if desktopProjectStreamUpgrade(mux.SetURLVars(plain, map[string]string{"path": "api/browser/live/session/stream"})) {
+		t.Error("a plain request was treated as a stream")
 	}
 }

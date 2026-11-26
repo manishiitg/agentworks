@@ -1,0 +1,28 @@
+{
+  "test": "TestMuseCLIRealTmuxReplyFidelity",
+  "summary": "Reply-formatting fidelity for muse-cli: does EXTRACTED_FINAL keep the markdown structure the model authored, given RAW_PROVIDER_OUTPUT is hard-wrapped by the terminal?",
+  "review_criteria": [
+    "EXTRACTED_FINAL preserves the paragraph breaks the model authored — a blank line between paragraphs is still a blank line, not collapsed into a single wrapped block",
+    "list items each begin their own line and are not folded into surrounding prose",
+    "no line break appears INSIDE a sentence, word, or inline markdown span (`**bold**`, backticks) where the terminal wrapped it",
+    "the reply reads as markdown a UI could render directly, not as fixed-width terminal output",
+    "content is unchanged — this is about structure only; wording, numbers and punctuation must match what the model wrote"
+  ],
+  "output": {
+    "expected_note": "Live muse TUI turn. The pane capture is expected to be hard-wrapped; the extracted answer must NOT be, because it comes from the session.jsonl transcript via museLastAssistantText rather than from the screen.",
+    "extracted_final": "The formatting probe FMT_ddf6b3e802 examines how an extremely long single-line markdown paragraph behaves when displayed in a narrow terminal environment constrained to roughly one hundred columns, where soft wrapping must visually break the continuous text across several display rows without introducing logical line breaks, preserving semantic unity for parsers while testing readability and layout stability under constrained width conditions.\n\nThe second evaluation paragraph for FMT_ddf6b3e802 continues testing single-line paragraph handling by providing another continuous stretch of prose exceeding three hundred characters in length, ensuring that narrow terminals must wrap the content repeatedly across multiple visual lines while the underlying markdown source remains exactly one logical line with no embedded breaks for accurate fidelity assessment.\n- FMT_ddf6b3e802 first bullet notes narrow terminal wrapping behavior\n- FMT_ddf6b3e802 second bullet notes single-line paragraph preservation\n- FMT_ddf6b3e802 third bullet notes list rendering after long prose",
+    "provider": "muse-cli",
+    "raw_provider_output": "\n◆ The formatting probe FMT_ddf6b3e802 examines how an extremely long single-line\n  markdown paragraph behaves when displayed in a narrow terminal environment\n  constrained to roughly one hundred columns, where soft wrapping must visually\n  break the continuous text across several display rows without introducing\n  logical line breaks, preserving semantic unity for parsers while testing\n  readability and layout stability under constrained width conditions.\n\n  The second evaluation paragraph for FMT_ddf6b3e802 continues testing\n  single-line paragraph handling by providing another continuous stretch of\n  prose exceeding three hundred characters in length, ensuring that narrow\n  terminals must wrap the content repeatedly across multiple visual lines while\n  the underlying markdown source remains exactly one logical line with no\n  embedded breaks for accurate fidelity assessment.\n  • FMT_ddf6b3e802 first bullet notes narrow terminal wrapping behavior\n  • FMT_ddf6b3e802 second bullet notes single-line paragraph preservation\n  • FMT_ddf6b3e802 third bullet notes list rendering after long prose\n\n── Voice input (⌥ + v to start) ────────────────────────────────────────────────\n❯\n────────────────────────────────────────────────────────────────────────────────\n  muse-spark-1.3-contributor · xhigh · …/001\n\n\n",
+    "user_goal": "Return the two long paragraphs and the three-item list with their markdown structure intact.",
+    "want_bullets": 3,
+    "want_paragraphs": 2
+  },
+  "fingerprint": "1edf010cd2788157",
+  "agent_review": {
+    "verdict": "good",
+    "reviewed_fingerprint": "1edf010cd2788157",
+    "reviewer": "muse-spark-1.3-contributor",
+    "issues": null,
+    "notes": "All five criteria met on a live muse TUI turn at 80 cols. Decisive evidence the answer did NOT come from the screen: pane longest line 80 chars (narrow-pane wrap width) vs extracted longest 448 (authored line, intact). (2 paragraphs with real blank lines; 3 - bullets on own lines; no mid-sentence breaks; content unchanged. Pane renders - as bullet glyphs; extraction keeps the authored markdown.)"
+  }
+}

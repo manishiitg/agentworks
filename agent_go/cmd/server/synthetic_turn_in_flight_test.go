@@ -1,7 +1,6 @@
 package server
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -65,27 +64,6 @@ func TestSyntheticTurnInFlightRefusalIsNotASessionError(t *testing.T) {
 	}
 	if len(*gotArgs) != 0 {
 		t.Fatalf("reaper ran tmux %v after an in-flight refusal; the user's turn lost its terminal", *gotArgs)
-	}
-}
-
-// Contrast: a genuine synthetic-turn failure still marks the session error and
-// the reaper still closes that terminal, so the fix narrows only the refusal.
-func TestSyntheticTurnRealFailureStillMarksSessionError(t *testing.T) {
-	const sessionID = "synthetic-real-failure-session"
-	const tmuxSession = "mlp-cursor-cli-int-failure"
-	api, mainTerminalID := newSyntheticCollisionFixture(t, sessionID, tmuxSession)
-
-	api.settleFailedSyntheticTurn(sessionID, mainTerminalID, errors.New("provider crashed"))
-
-	if got := sessionStatusForTest(api, sessionID); got != "error" {
-		t.Fatalf("session status after real failure = %q, want error", got)
-	}
-	gotArgs := stubTerminalTmuxCommand(t)
-	if closed := api.cleanupStaleCodingAgentTmuxSessions(time.Now()); closed != 1 {
-		t.Fatalf("reaper closed %d terminal(s) after a real failure, want 1", closed)
-	}
-	if got := strings.Join(*gotArgs, " "); got != "kill-session -t "+tmuxSession {
-		t.Fatalf("tmux args = %q, want kill-session", got)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -37,6 +38,29 @@ func (j *SQLiteEventJournal) reader() *sql.DB {
 		return j.read
 	}
 	return j.db
+}
+
+// coldReadConnection keeps restart-time ownership/probe/tail reads off the
+// single writer connection too (PLAT-746). Split pool wait from query/decode
+// time so a slow first chat load can be attributed without logging content.
+func (j *SQLiteEventJournal) coldReadConnection(operation, sessionID string) (*sql.Conn, func(), error) {
+	started := time.Now()
+	conn, err := j.reader().Conn(context.Background())
+	acquired := time.Now()
+	finish := func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+		if elapsed := time.Since(started); elapsed >= 400*time.Millisecond {
+			log.Printf("[CHAT_JOURNAL_READ] operation=%s session=%s wait_ms=%d read_ms=%d total_ms=%d", operation, sessionID,
+				acquired.Sub(started).Milliseconds(), time.Since(acquired).Milliseconds(), elapsed.Milliseconds())
+		}
+	}
+	if err != nil {
+		finish()
+		return nil, nil, err
+	}
+	return conn, finish, nil
 }
 
 type EventJournalStats struct {
@@ -130,6 +154,8 @@ func OpenSQLiteEventJournal(path string) (*SQLiteEventJournal, error) {
 			last_sequence INTEGER NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS structured_chat_event_id ON structured_chat_events(event_id)`,
+		`CREATE INDEX IF NOT EXISTS structured_chat_native_goal ON structured_chat_events(session_id, sequence DESC)
+		 WHERE json_extract(payload,'$.type')='native_goal_updated'`,
 		`CREATE TABLE IF NOT EXISTS structured_chat_migrations (
 			session_id TEXT PRIMARY KEY,
 			migrated_at TEXT NOT NULL
@@ -144,6 +170,10 @@ func OpenSQLiteEventJournal(path string) (*SQLiteEventJournal, error) {
 			db.Close()
 			return nil, fmt.Errorf("initialize structured event journal: %w", err)
 		}
+	}
+	if err := installChatMessageIndexes(&SQLiteEventJournal{db: db}); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("initialize chat message indexes: %w", err)
 	}
 	_ = os.Chmod(path, 0o600)
 	read, err := sql.Open("sqlite", sqlitefile.URI(path)+"?_pragma=busy_timeout(5000)&_pragma=query_only(1)")
@@ -184,8 +214,13 @@ func (j *SQLiteEventJournal) Owner(sessionID string) (string, error) {
 	if j == nil || j.db == nil || sessionID == "" {
 		return "", nil
 	}
+	conn, finish, err := j.coldReadConnection("owner", sessionID)
+	if err != nil {
+		return "", err
+	}
+	defer finish()
 	var ownerID string
-	err := j.db.QueryRow(`SELECT owner_id FROM structured_chat_sessions WHERE session_id = ?`, sessionID).Scan(&ownerID)
+	err = conn.QueryRowContext(context.Background(), `SELECT owner_id FROM structured_chat_sessions WHERE session_id = ?`, sessionID).Scan(&ownerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
@@ -196,9 +231,14 @@ func (j *SQLiteEventJournal) KnownSession(sessionID string) (bool, int64, error)
 	if j == nil || j.db == nil || sessionID == "" {
 		return false, 0, nil
 	}
+	conn, finish, err := j.coldReadConnection("probe", sessionID)
+	if err != nil {
+		return false, 0, err
+	}
+	defer finish()
 	var lastSequence sql.NullInt64
 	var owned int
-	err := j.db.QueryRow(`SELECT
+	err = conn.QueryRowContext(context.Background(), `SELECT
 		(SELECT last_sequence FROM structured_chat_sequences WHERE session_id = ?),
 		EXISTS(SELECT 1 FROM structured_chat_sessions WHERE session_id = ?)`, sessionID, sessionID).Scan(&lastSequence, &owned)
 	if err != nil {
@@ -319,7 +359,12 @@ func (j *SQLiteEventJournal) LoadTail(sessionID string, limit int) ([]Event, err
 	if limit <= 0 {
 		limit = 1500
 	}
-	rows, err := j.db.Query(`SELECT payload FROM structured_chat_events WHERE session_id = ? ORDER BY sequence DESC LIMIT ?`, sessionID, limit)
+	conn, finish, err := j.coldReadConnection("hydrate_tail", sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer finish()
+	rows, err := conn.QueryContext(context.Background(), `SELECT payload FROM structured_chat_events WHERE session_id = ? ORDER BY sequence DESC LIMIT ?`, sessionID, limit)
 	if err != nil {
 		return nil, err
 	}

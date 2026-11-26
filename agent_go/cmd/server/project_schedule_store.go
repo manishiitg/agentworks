@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"path"
+	"reflect"
 	"strings"
 	"time"
 
@@ -25,6 +27,9 @@ type scheduleExecutionInput struct {
 	Condition          *conditiontrigger.Config `json:"condition,omitempty"`
 	TeamAuthorizedBy   string                   `json:"team_authorized_by,omitempty"`
 	TeamPolicyRevision int                      `json:"team_policy_revision,omitempty"`
+	// KeepAwake is a Crew workflow timer's keep-this-Mac-awake choice (#3617).
+	KeepAwake          string `json:"keep_awake,omitempty"`
+	KeepAwakeOnBattery bool   `json:"keep_awake_on_battery,omitempty"`
 }
 
 func readProjectSchedules(ctx context.Context, root string) ([]projectactions.Schedule, error) {
@@ -89,6 +94,7 @@ func workflowScheduleFromAction(record projectactions.Schedule) (WorkflowSchedul
 		CronExpression: record.When.Cron, Timezone: record.When.Timezone,
 		Mode: "workshop", WorkshopMode: "run", CollisionPolicy: "queue_latest",
 		Messages: input.Messages, InputPreset: input.InputPreset, Inputs: input.Inputs, RouteSelections: input.Routes,
+		KeepAwake: input.KeepAwake, KeepAwakeOnBattery: input.KeepAwakeOnBattery,
 		ChatID: record.Action.Tab, TriggerPayload: input.Payload, TeamAuthorizedBy: input.TeamAuthorizedBy,
 		TeamPolicyRevision: input.TeamPolicyRevision, RunAs: record.RunAs}
 	if record.Action.Type == "message" {
@@ -119,6 +125,7 @@ func workflowScheduleFromAction(record projectactions.Schedule) (WorkflowSchedul
 
 func actionFromWorkflowSchedule(project projectactions.Project, caller string, s WorkflowSchedule) (projectactions.Schedule, error) {
 	input := scheduleExecutionInput{Messages: s.Messages, InputPreset: s.InputPreset, Inputs: s.Inputs, Routes: s.RouteSelections,
+		KeepAwake: s.KeepAwake, KeepAwakeOnBattery: s.KeepAwakeOnBattery,
 		Payload: s.TriggerPayload, TeamAuthorizedBy: s.TeamAuthorizedBy, TeamPolicyRevision: s.TeamPolicyRevision}
 	raw, err := json.Marshal(input)
 	if err != nil {
@@ -175,7 +182,7 @@ func loadWorkflowTimerActions(ctx context.Context, root string, manifest *Workfl
 			return fmt.Errorf("schedule project does not match its Goal or Relay")
 		}
 		if manifest.crewExecutable != nil && (workflowExecutionOwnerUserID(manifest) == "" || record.RunAs != workflowExecutionOwnerUserID(manifest)) {
-			return fmt.Errorf("schedule must run as its Crew owner")
+			return fmt.Errorf("schedule must run as its project owner")
 		}
 		owners := manifest.effectiveOwners()
 		if (len(owners) == 0 && (workflowExecutionOwnerUserID(manifest) == "" || record.RunAs != workflowExecutionOwnerUserID(manifest))) ||
@@ -231,7 +238,7 @@ func loadCrewTimerActions(ctx context.Context, root string, manifest *productPro
 	manifest.Schedules = nil
 	for _, record := range records {
 		if record.Project.Kind != "crew" || record.Project.ID != manifest.ID {
-			return fmt.Errorf("schedule project does not match its Crew")
+			return fmt.Errorf("schedule project does not match its project")
 		}
 		// The registry decides who owns a Crew, never its manifest (PLAT-449).
 		owner, registered := crewProjectOwnerID(root)
@@ -241,8 +248,16 @@ func loadCrewTimerActions(ctx context.Context, root string, manifest *productPro
 		if owner == "" && !IsMultiUserMode() {
 			owner = GetDefaultUserID()
 		}
-		if owner == "" || record.RunAs != owner {
-			return fmt.Errorf("schedule caller does not match its Crew owner")
+		if owner == "" {
+			return fmt.Errorf("schedule caller does not match its project owner")
+		}
+		// A chat schedule belongs to the Crew owner or to a Team member of the Crew; a workflow schedule
+		// always runs as the owner. A member who left takes their chat schedules with them.
+		if record.RunAs != owner {
+			if record.Action.Type == "run" || !crewIsCoOwner(root, record.RunAs) {
+				log.Printf("[SCHEDULES] skipping schedule %s of project %s: it belongs to %q, who is not in this project", record.ID, manifest.ID, record.RunAs)
+				continue
+			}
 		}
 		var input scheduleExecutionInput
 		if err := json.Unmarshal(record.Input, &input); err != nil {
@@ -250,9 +265,22 @@ func loadCrewTimerActions(ctx context.Context, root string, manifest *productPro
 		}
 		s := productschedule.Schedule{ID: record.ID, Name: record.Name, Enabled: record.Enabled,
 			CronExpression: record.When.Cron, Timezone: record.When.Timezone, CreatedAt: record.When.Anchor,
+			CreatedBy: record.CreatedBy, UpdatedBy: record.UpdatedBy, RunAs: chatScheduleRunAs(record.RunAs, owner),
 			Messages: input.Messages, Condition: input.Condition, ChatKey: record.Action.Tab,
 			Isolated: record.Action.Conversation == runDestinationIsolated || record.Action.Conversation == runDestinationNew,
 			New:      record.Action.Conversation == runDestinationNew, When: &record.When}
+		if record.Action.Type == "run" {
+			if record.Action.WorkflowID == "" {
+				return fmt.Errorf("choose the project workflow this timer runs")
+			}
+			s.WorkflowID, s.InputPreset, s.Inputs, s.RouteSelections = record.Action.WorkflowID, input.InputPreset, input.Inputs, input.Routes
+			s.KeepAwake, s.KeepAwakeOnBattery = input.KeepAwake, input.KeepAwakeOnBattery
+		} else if record.Action.WorkflowID != "" {
+			return fmt.Errorf("a message timer cannot select a workflow")
+		}
+		if input.Groups != nil {
+			return fmt.Errorf(retiredWorkflowGroupsMessage)
+		}
 		manifest.Schedules = append(manifest.Schedules, s)
 	}
 	return nil
@@ -263,21 +291,58 @@ func saveCrewTimerActions(ctx context.Context, root string, manifest productProj
 	if !registered {
 		owner = manifest.OwnerID
 	}
+	previous, err := readProjectSchedules(ctx, root)
+	if err != nil {
+		return err
+	}
+	byID := make(map[string]projectactions.Schedule, len(previous))
+	for _, record := range previous {
+		byID[record.ID] = record
+	}
 	var records []projectactions.Schedule
 	for _, s := range manifest.Schedules {
-		raw, err := json.Marshal(scheduleExecutionInput{Messages: s.Messages, Condition: s.Condition})
+		input := scheduleExecutionInput{Messages: s.Messages, Condition: s.Condition, InputPreset: s.InputPreset, Inputs: s.Inputs, Routes: s.RouteSelections}
+		if s.WorkflowID != "" {
+			input.KeepAwake, input.KeepAwakeOnBattery = s.KeepAwake, s.KeepAwakeOnBattery
+		}
+		raw, err := json.Marshal(input)
 		if err != nil {
 			return err
 		}
-		record := projectactions.Schedule{ID: s.ID, Name: s.Name, Enabled: s.Enabled, RunAs: owner,
+		runAs := owner
+		if s.WorkflowID == "" && strings.TrimSpace(s.RunAs) != "" {
+			runAs = strings.TrimSpace(s.RunAs)
+		}
+		record := projectactions.Schedule{ID: s.ID, Name: s.Name, Enabled: s.Enabled, RunAs: runAs, CreatedBy: s.CreatedBy, UpdatedBy: s.UpdatedBy,
 			Project: projectactions.Project{Kind: "crew", ID: manifest.ID}, Input: raw,
 			Action: projectactions.Action{Type: "message", Tab: s.ChatKey},
 			When:   projectactions.When{Cron: s.CronExpression, Timezone: scheduleTimezoneOrDefault(s.Timezone), Anchor: s.CreatedAt}}
+		if s.WorkflowID != "" {
+			record.Action.Type, record.Action.WorkflowID = "run", s.WorkflowID
+		}
 		if record.RunAs == "" && !IsMultiUserMode() {
 			record.RunAs = GetDefaultUserID()
 		}
 		if s.Isolated {
 			record.Action.Conversation = scheduleRunDestination(s)
+		}
+		if s.WorkflowID != "" {
+			old, exists := byID[s.ID]
+			var oldInput scheduleExecutionInput
+			if exists {
+				if err := json.Unmarshal(old.Input, &oldInput); err != nil {
+					return err
+				}
+			}
+			// Launch inputs may become stale after a definition edit. Do not
+			// let unchanged timers block pause/delete or unrelated timer edits.
+			// New/changed targets and re-enabling still validate before saving;
+			// execution always validates the current definition again.
+			if !exists || old.Action != record.Action || old.RunAs != record.RunAs || !reflect.DeepEqual(oldInput, input) || (!old.Enabled && s.Enabled) {
+				if _, err := crewTimerWorkflowContext(ctx, root, manifest.ID, owner, s); err != nil {
+					return err
+				}
+			}
 		}
 		if s.When != nil {
 			record.When = *s.When
@@ -307,4 +372,55 @@ func saveCrewTimerActions(ctx context.Context, root string, manifest productProj
 		records = append(records, record)
 	}
 	return writeProjectSchedules(ctx, root, records)
+}
+
+// chatScheduleRunAs keeps a chat schedule's person only when it is not the Crew owner, so the owner's own
+// schedules keep an empty RunAs and follow the Crew owner.
+func chatScheduleRunAs(runAs, owner string) string {
+	if runAs == owner {
+		return ""
+	}
+	return runAs
+}
+
+// pinCrewSchedulesToOwnChat is the one-off move of #4046 (owner, 25 Nov): a Crew schedule (a message or a workflow
+// timer) that names no agent, an empty tab or the bare project key that meant Main, runs in its own chat from now on.
+// The record is backed up first. Watchers (a condition) keep their own agent rule. It runs at every start; a moved
+// record no longer matches, so it changes nothing twice.
+func pinCrewSchedulesToOwnChat(ctx context.Context, root string) {
+	schedules, err := readProjectSchedules(ctx, root)
+	if err != nil {
+		log.Printf("[CREW_SCHEDULES] event=own_chat_move_failed root=%s error=%v", root, err)
+		return
+	}
+	moved := 0
+	for i := range schedules {
+		if crewScheduleNamesNoAgent(schedules[i]) {
+			schedules[i].Action.Tab, schedules[i].Action.Conversation = "", runDestinationIsolated
+			moved++
+		}
+	}
+	if moved == 0 {
+		return
+	}
+	file := path.Join(root, "schedules.json")
+	raw, found, err := readFileFromWorkspace(ctx, file)
+	if err == nil && found {
+		err = backupAutomationFile(file, "", raw)
+	}
+	if err == nil {
+		err = writeProjectSchedules(ctx, root, schedules)
+	}
+	log.Printf("[CREW_SCHEDULES] event=own_chat_move root=%s moved=%d error=%v", root, moved, err)
+}
+
+// crewScheduleNamesNoAgent: a stored Crew schedule with no conversation of its own and no agent: an empty tab or the
+// old "main" nickname. A tab id (a full chat key, or a short one such as Main's own id) names an agent and stays; it
+// is not a project key. A Watcher (a condition) is not a schedule here.
+func crewScheduleNamesNoAgent(s projectactions.Schedule) bool {
+	if tab := strings.TrimSpace(s.Action.Tab); s.Action.Conversation != "" || (tab != "" && !strings.EqualFold(tab, "main")) {
+		return false
+	}
+	var input scheduleExecutionInput
+	return len(s.Input) == 0 || json.Unmarshal(s.Input, &input) != nil || input.Condition == nil
 }

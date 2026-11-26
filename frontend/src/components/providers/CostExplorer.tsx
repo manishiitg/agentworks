@@ -16,7 +16,7 @@ import CostsScheduleSection from '../workflow/costs/CostsScheduleSection'
 import { costAgentLabel } from '../workflow/costs/CostsModelSection'
 import { formatTokens } from '../../utils/formatTokens'
 
-type Group = 'user' | 'workflow' | 'crew' | 'code' | 'product' | 'bot' | 'mcp' | 'other'
+type Group = 'user' | 'workflow' | 'crew' | 'product' | 'bot' | 'mcp' | 'other'
 
 type Row = {
   key: string
@@ -33,16 +33,14 @@ type Row = {
 const TABS: { value: Group; label: string }[] = [
   { value: 'user', label: 'Users' },
   { value: 'workflow', label: 'Workflows' },
-  { value: 'crew', label: 'Crews' },
-  { value: 'code', label: 'Code' },
+  { value: 'crew', label: 'Projects' },
   { value: 'product', label: 'Projects' },
   { value: 'bot', label: 'Bots' },
   { value: 'mcp', label: 'MCP' },
   { value: 'other', label: 'Other' },
 ]
 
-const itemGroup = (item: CostOverviewItem): Group =>
-  item.kind === 'product' && /(?:^|\/)Chats\/Code\/projects\//.test(item.id) ? 'code' : item.kind
+const itemGroup = (item: CostOverviewItem): Group => item.kind
 
 const scopeNames: Record<string, string> = {
   workflow_execution: 'Runs',
@@ -99,9 +97,9 @@ function Breakdown({ title, rows }: {
 
 function PricingDetail({ usage }: { usage: CostOverviewAggregate }) {
   const parts = [
-    { label: 'Provider reported', value: usage.provider_actual_cost_usd ?? 0 },
-    { label: 'Subscription equivalent', value: usage.subscription_shadow_cost_usd ?? 0 },
-    { label: 'Token estimate', value: usage.token_estimate_cost_usd ?? 0 },
+    { label: 'Billed per use, reported by the provider', value: usage.provider_actual_cost_usd ?? 0 },
+    { label: 'Billed per use, estimated from tokens', value: usage.token_estimate_cost_usd ?? 0 },
+    { label: 'Subscription equivalent (not billed)', value: usage.subscription_shadow_cost_usd ?? 0 },
   ].filter(part => part.value > 0)
   return <section className="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm dark:border-gray-700 dark:bg-gray-950/30">
     <h4 className="font-semibold text-gray-900 dark:text-gray-100">Pricing coverage</h4>
@@ -127,7 +125,7 @@ export default function CostExplorer({ data, days, itemLabel }: {
   const workItems = useMemo(() => data.items.filter(item => item.total_cost_usd > 0 || item.call_count > 0), [data.items])
   const workByID = useMemo(() => new Map(workItems.map(item => [item.id, item])), [workItems])
   const rowsByGroup = useMemo(() => {
-    const result: Record<Group, Row[]> = { user: [], workflow: [], crew: [], code: [], product: [], bot: [], mcp: [], other: [] }
+    const result: Record<Group, Row[]> = { user: [], workflow: [], crew: [], product: [], bot: [], mcp: [], other: [] }
     for (const user of orderByCost([...(data.by_user || [])].filter(value => value.total_cost_usd > 0 || value.call_count > 0))) {
       result.user.push({ key: `user:${user.id}`, title: user.name, subtitle: tokenSummary(user), usage: user, user })
     }
@@ -143,7 +141,7 @@ export default function CostExplorer({ data, days, itemLabel }: {
     for (const mcp of [...(data.by_mcp || [])].filter(value => value.calls > 0).sort((a, b) => b.calls - a.calls)) {
       result.mcp.push({ key: `mcp:${mcp.server}`, title: mcp.server, subtitle: `${mcp.calls.toLocaleString()} tool calls`, mcp })
     }
-    for (const kind of ['workflow', 'crew', 'code', 'product', 'other'] as const) {
+    for (const kind of ['workflow', 'crew', 'product', 'other'] as const) {
       result[kind].sort((a, b) => b.usage!.total_cost_usd - a.usage!.total_cost_usd || b.usage!.call_count - a.usage!.call_count)
     }
     return result
@@ -267,7 +265,7 @@ export default function CostExplorer({ data, days, itemLabel }: {
           </section>}
 
           {selected.item && (selected.item.by_user?.length ?? 0) > 0 && <section className="mt-5">
-            <h4 className="mb-2 text-sm font-semibold text-gray-900 dark:text-gray-100">Users in this {selected.item.kind === 'crew' ? 'Crew' : selected.item.kind === 'workflow' ? 'workflow' : itemGroup(selected.item) === 'code' ? 'Code workspace' : 'project'}</h4>
+            <h4 className="mb-2 text-sm font-semibold text-foreground">Users in this {selected.item.kind === 'crew' ? 'Project' : selected.item.kind === 'workflow' ? 'workflow' : 'project'}</h4>
             <div className="space-y-1">
               {selected.item.by_user?.map(actor => <button key={actor.id} type="button" onClick={() => openUser(actor.id)}
                 className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 text-left text-sm hover:border-violet-300 dark:border-gray-700 dark:hover:border-violet-500/40">

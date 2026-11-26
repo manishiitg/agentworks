@@ -1,3 +1,4 @@
+import { randomUUID } from '../utils/randomUUID'
 import { isReportDocumentMessage } from '../components/workflow/reportWidgets/reportDocumentBridge'
 import { DashboardHostBridge, resultData } from './bridge'
 import { withReportBootstrap } from '../components/workflow/reportWidgets/reportHostRuntime'
@@ -12,7 +13,7 @@ let theme: 'dark' | 'light' = 'light'
 let channel = ''
 let chatId: string | undefined
 let after = 0
-let chatSubmission = crypto.randomUUID()
+let chatSubmission = randomUUID()
 let submittedMessage = ''
 let functions: PublishedFunction[] = []
 let frame: HTMLIFrameElement
@@ -32,7 +33,7 @@ function structuredFileURL(source: string) {
 
 function renderDocument() {
   if (!dashboard) return
-  channel = crypto.randomUUID()
+  channel = randomUUID()
   const page = new DOMParser().parseFromString(withReportBootstrap(dashboard.html), 'text/html')
   // Trusted renderer assets travel in the resource; the sandbox never receives
   // an authorization token or fetches the app's authenticated static routes.
@@ -99,7 +100,7 @@ function showFunction(name: string, defaults: Record<string, unknown> = {}) {
   const form = element('form')
   const fields = buildActionFields(info.input_schema, defaults)
   const output = element('pre')
-  const submission = crypto.randomUUID()
+  const submission = randomUUID()
   let submittedArgs = ''
   let currentSubmission = submission
   form.append(element('h2', info.name.replaceAll('_', ' ')), element('p', info.description || ''))
@@ -130,7 +131,7 @@ function showFunction(name: string, defaults: Record<string, unknown> = {}) {
       const input = actionArgs(fields)
       if (!input.ok) throw new Error(input.error)
       const signature = JSON.stringify(input.args)
-      if (submittedArgs && submittedArgs !== signature) currentSubmission = crypto.randomUUID()
+      if (submittedArgs && submittedArgs !== signature) currentSubmission = randomUUID()
       submittedArgs = signature
       const value = await bridge.call('functions', { action: 'call', crew_id: dashboard!.workspace_id, function: name, args: input.args, submission_id: currentSubmission, wait_seconds: 2 })
       callId = String(value.call_id || ''); check.hidden = !callId
@@ -142,7 +143,7 @@ function showFunction(name: string, defaults: Record<string, unknown> = {}) {
 
 function appendMessages(value: Record<string, unknown>) {
   for (const message of (value.messages ?? []) as { role?: string; text?: string }[]) {
-    if (message.text) history.append(element('p', `${message.role === 'you' ? 'You' : 'Crew'}: ${message.text}`))
+    if (message.text) history.append(element('p', `${message.role === 'you' ? 'You' : 'Project'}: ${message.text}`))
   }
   if (typeof value.next_after === 'number') after = value.next_after
   if (typeof value.chat_id === 'string') chatId = value.chat_id
@@ -164,7 +165,7 @@ function mount() {
   chatDialog?.remove()
   chatDialog = element('dialog'); chatDialog.setAttribute('aria-label', 'Ask about this dashboard')
   const form = element('form'); form.append(element('h2', 'Ask about this dashboard'))
-  ask = element('textarea'); ask.setAttribute('aria-label', 'Message to the Crew'); ask.disabled = !dashboard!.capability.can_ask
+  ask = element('textarea'); ask.setAttribute('aria-label', 'Message to the project'); ask.disabled = !dashboard!.capability.can_ask
   const send = element('button', 'Send'); send.type = 'submit'; send.disabled = ask.disabled
   const check = element('button', 'Check reply'); check.type = 'button'
   check.onclick = () => { if (chatId) void bridge.call('workspace', { action: 'read_chat', workspace_id: dashboard!.workspace_id, chat_id: chatId, after, wait_seconds: 2 }).then(appendMessages).catch(error) }
@@ -174,10 +175,10 @@ function mount() {
     event.preventDefault(); if (!ask.value.trim()) return
     send.disabled = true
     try {
-      if (submittedMessage && submittedMessage !== ask.value) chatSubmission = crypto.randomUUID()
+      if (submittedMessage && submittedMessage !== ask.value) chatSubmission = randomUUID()
       submittedMessage = ask.value
       const value = await bridge.call('workspace', { action: 'ask', workspace_id: dashboard!.workspace_id, ...(chatId ? { chat_id: chatId } : {}), message: ask.value, submission_id: chatSubmission, wait_seconds: 2 })
-      appendMessages(value); ask.value = ''; chatSubmission = crypto.randomUUID(); submittedMessage = ''
+      appendMessages(value); ask.value = ''; chatSubmission = randomUUID(); submittedMessage = ''
     } catch (reason) { error(reason) } finally { send.disabled = !dashboard!.capability.can_ask }
   }
   const close = element('button', 'Close'); close.type = 'button'; close.onclick = () => chatDialog.close()
@@ -193,7 +194,7 @@ function receive(value: { _meta?: Record<string, unknown> }) {
   if (!next?.resource_id || typeof next.html !== 'string') return
   const changed = dashboard?.resource_id !== next.resource_id
   dashboard = next
-  if (changed) { chatId = undefined; after = 0; chatSubmission = crypto.randomUUID(); submittedMessage = ''; mount() }
+  if (changed) { chatId = undefined; after = 0; chatSubmission = randomUUID(); submittedMessage = ''; mount() }
   else { renderDocument(); if (dashboard.capability.can_ask) void listFunctions().catch(error) }
 }
 bridge.onResult = receive

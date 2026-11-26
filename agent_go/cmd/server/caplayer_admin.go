@@ -89,21 +89,10 @@ func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Requ
 			writeUsersError(w, http.StatusBadRequest, "select an active product user")
 			return
 		}
-		payload, _ := json.Marshal(map[string]string{"ID": user.ID, "Email": user.Email})
-		syncURL := *target
-		syncURL.Path = strings.TrimRight(target.Path, "/") + "/api/admin/users/sync"
-		req, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, syncURL.String(), bytes.NewReader(payload))
-		req.Header.Set("Authorization", "Bearer "+secret)
-		req.Header.Set("Content-Type", "application/json")
-		client := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-		resp, err := client.Do(req)
-		if err != nil {
+		if err := vaultSyncDirectoryUser(r.Context(), user.ID, user.Email); errors.Is(err, errVaultServiceUnavailable) {
 			writeUsersError(w, http.StatusBadGateway, "Vault service unavailable")
 			return
-		}
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusNoContent {
+		} else if err != nil {
 			writeUsersError(w, http.StatusBadGateway, "could not bind the product identity")
 			return
 		}
@@ -136,6 +125,9 @@ func (api *StreamingAPI) handleCapLayerAdmin(w http.ResponseWriter, r *http.Requ
 		},
 		Transport: capLayerTransport,
 		ModifyResponse: func(resp *http.Response) error {
+			if r.Method != http.MethodGet && r.Method != http.MethodHead && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				invalidateCrewTeamVaultDisplays()
+			}
 			if deletingConnectionID != "" && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				mutex := platformMCPOAuthMutex("vault:" + deletingConnectionID)
 				mutex.Lock()
@@ -287,33 +279,19 @@ func capLayerAgentRequest(ctx context.Context, userID, path string, payload json
 	if level := vaultPersonLevel(userID); level == vaultNone || (level == vaultRead && !vaultReadAgentRequest(path, payload)) {
 		return "", errors.New("Vault management requires an administrator account")
 	}
-	target, secret, err := capLayerServiceConfig()
-	if err != nil {
-		return "", errors.New("Vault service is not configured")
-	}
-	target.Path = strings.TrimRight(target.Path, "/") + path
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target.String(), bytes.NewReader(payload))
-	if err != nil {
+	// A change made by an agent tool refreshes Team cards the way a change from the Vault screen does.
+	status, body, err := vaultServiceCall{Method: http.MethodPost, Path: path, Body: payload, Actor: userID, Timeout: 90 * time.Second, Limit: 2 * 1024 * 1024, ProductGate: true, Changes: !vaultReadAgentRequest(path, payload)}.do(ctx)
+	switch {
+	case errors.Is(err, errVaultServiceNotConfigured), errors.Is(err, errVaultServiceUnavailable):
 		return "", err
+	case err != nil:
+		return "", errVaultResponseTooLarge
 	}
-	req.Header.Set("Authorization", "Bearer "+secret)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-CapLayer-Actor", userID)
-	client := &http.Client{Transport: capLayerTransport, Timeout: 90 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", errors.New("Vault service unavailable")
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024+1))
-	if err != nil || len(body) > 2*1024*1024 {
-		return "", errors.New("Vault response exceeded limit")
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if resp.StatusCode == 401 || resp.StatusCode == 403 {
+	if status < 200 || status >= 300 {
+		if status == 401 || status == 403 {
 			return "", errors.New("Vault service authentication failed")
 		}
-		return "", fmt.Errorf("Vault operation failed (%d): %s", resp.StatusCode, body)
+		return "", fmt.Errorf("Vault operation failed (%d): %s", status, body)
 	}
 	return string(body), nil
 }

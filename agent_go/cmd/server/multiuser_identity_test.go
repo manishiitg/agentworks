@@ -233,7 +233,7 @@ func assertMultiUserAccess(t *testing.T, f *multiUserFixture, layout identityLay
 		for _, name := range crewReaderDeniedTools() {
 			denied[name] = true
 		}
-		for _, name := range []string{"create_project_schedule", "update_project_trigger", "install_mcp_server", "set_work_identity", "diff_patch_workspace_file", "set_workflow_secret"} {
+		for _, name := range []string{"create_project_schedule", "install_mcp_server", "set_work_identity", "diff_patch_workspace_file", "set_workflow_secret"} {
 			if !denied[name] {
 				t.Errorf("%s is not denied to a Crew reader", name)
 			}

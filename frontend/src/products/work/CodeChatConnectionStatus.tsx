@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Laptop } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import api from '../../services/api'
 import { laptopSettingsEndpoint } from '../../components/workspace/laptopAccess'
 import { useChatStore } from '../../stores/useChatStore'
 
 export function CodeChatConnectionStatus({ sessionId }: { sessionId: string }) {
-  const tab = useChatStore(state => Object.values(state.chatTabs).find(item => item.sessionId === sessionId))
-  const project = tab?.metadata?.agentProfileProjectId
-  const profile = tab?.metadata?.agentProfileId
+  const { project, profile } = useChatStore(useShallow(state => {
+    const tab = Object.values(state.chatTabs).find(item => item.sessionId === sessionId)
+    return {
+      project: tab?.metadata?.agentProfileProjectId,
+      profile: tab?.metadata?.agentProfileId,
+    }
+  }))
   const endpoint = laptopSettingsEndpoint(profile, project)
   const [computer, setComputer] = useState('')
   useEffect(() => {

@@ -277,7 +277,30 @@ func LoadTail(path string, n int) ([]byte, error) {
 	return load(path, n)
 }
 
+// LoadRecent returns the record with its history cut to lines[start:], where
+// start is what pick returns for all committed lines, plus start (the number
+// of messages left out). pick sees raw lines and decodes none of them, so a
+// long chat is read without parsing its old messages. A legacy record is
+// returned whole with 0. Never Save the result.
+func LoadRecent(path string, pick func(lines [][]byte) int) ([]byte, int, error) {
+	start := 0
+	record, err := loadPicked(path, func(lines [][]byte) int {
+		start = min(max(pick(lines), 0), len(lines))
+		return start
+	}, true)
+	return record, start, err
+}
+
 func load(path string, tail int) ([]byte, error) {
+	return loadPicked(path, func(lines [][]byte) int {
+		if tail >= 0 && tail < len(lines) {
+			return len(lines) - tail
+		}
+		return 0
+	}, tail >= 0)
+}
+
+func loadPicked(path string, pick func(lines [][]byte) int, marked bool) ([]byte, error) {
 	h, raw, err := readHeader(path)
 	if err != nil {
 		return nil, err
@@ -295,9 +318,7 @@ func load(path string, tail int) ([]byte, error) {
 	if hasSystem && string(system) == "null" {
 		hasSystem = false
 	}
-	if tail >= 0 && tail < len(lines) {
-		lines = lines[len(lines)-tail:]
-	}
+	lines = lines[pick(lines):]
 	var buf bytes.Buffer
 	buf.WriteByte('{')
 	first := true
@@ -331,7 +352,7 @@ func load(path string, tail int) ([]byte, error) {
 		wrote = true
 	}
 	buf.WriteByte(']')
-	if tail >= 0 {
+	if marked {
 		fmt.Fprintf(&buf, `,"%s":%d,"%s":true`, fieldTailTotal, total, fieldTailFlag)
 	}
 	buf.WriteByte('}')
@@ -442,8 +463,22 @@ func hasLinePrefix(rows, prefix [][]byte) bool {
 // e.g. updated_at, revision) to the header. A system message replaces the
 // stored system prompt instead of being logged.
 func Append(path string, messages []json.RawMessage, patch map[string]json.RawMessage) error {
+	return AppendIfVersion(path, messages, patch, nil)
+}
+
+// Check the expected version under the same per-file lock as Save/Append.
+func AppendIfVersion(path string, messages []json.RawMessage, patch map[string]json.RawMessage, expected *Version) error {
 	unlock := lockFor(path)
 	defer unlock()
+	if expected != nil {
+		current, err := CurrentVersion(path)
+		if err != nil {
+			return err
+		}
+		if current != *expected {
+			return ErrSourceChanged
+		}
+	}
 	h, lines, err := committedLines(path)
 	if err != nil {
 		return err

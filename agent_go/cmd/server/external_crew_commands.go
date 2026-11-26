@@ -13,7 +13,7 @@ const externalCrewCommandsTool = "manage_crew_commands"
 // The Crew factory owns both the schema and executor; the external transport
 // adds only the project selector and authenticates its role on each call.
 func externalCrewCommandDefinition(add func(string, string, bool, bool, map[string]any, ...string)) error {
-	tool, err := workproduct.CustomCommandsFactory("", "Crew project")(agentprofiles.ToolRuntimeContext{}, nil)
+	tool, err := workproduct.CustomCommandsFactory("", "project")(agentprofiles.ToolRuntimeContext{}, nil)
 	if err != nil {
 		return err
 	}
@@ -27,8 +27,8 @@ func externalCrewCommandDefinition(add func(string, string, bool, bool, map[stri
 		return err
 	}
 	props := schema["properties"].(map[string]any)
-	props["crew_id"] = externalString("Crew ID returned by crew action=list. Never a filesystem path.")
-	add(externalCrewCommandsTool, tool.Description+" Requires Crew read access to list; only its owner can create, update or delete, with crews:write consent. Runs directly without a Builder model turn.", true, false, props, "crew_id", "action")
+	props["crew_id"] = externalString("Project ID returned by crew action=list. Never a filesystem path.")
+	add(externalCrewCommandsTool, tool.Description+" Requires project read access to list; only its owner can create, update or delete, with crews:write consent. Runs directly without a Builder model turn.", true, false, props, "crew_id", "action")
 	return nil
 }
 
@@ -42,7 +42,7 @@ func (api *StreamingAPI) externalCrewCommandsCall(w http.ResponseWriter, r *http
 			scope = "crews:write"
 		}
 		if !t.Allows(scope) || !t.AllowsCrew(crewID) {
-			externalError(w, http.StatusForbidden, "insufficient_scope", "This connection does not allow "+action+" on this Crew.")
+			externalError(w, http.StatusForbidden, "insufficient_scope", "This connection does not allow "+action+" on this project.")
 			return
 		}
 	}
@@ -54,12 +54,12 @@ func (api *StreamingAPI) externalCrewCommandsCall(w http.ResponseWriter, r *http
 	}
 	crew, _, _, ok := api.externalCrewResolve(r.Context(), claims, crewID)
 	if !ok {
-		externalError(w, http.StatusNotFound, "not_found", "Crew not found or not allowed for this connection.")
+		externalError(w, http.StatusNotFound, "not_found", "Project not found or not allowed for this connection.")
 		return
 	}
 	if write {
 		if !crew.OwnedByCaller {
-			externalError(w, http.StatusForbidden, "forbidden", "Only the Crew's owner can change its custom commands.")
+			externalError(w, http.StatusForbidden, "forbidden", "Only the project's owner can change its custom commands.")
 			return
 		}
 	}
@@ -100,5 +100,5 @@ func (api *StreamingAPI) externalCrewCommandsCall(w http.ResponseWriter, r *http
 		externalJSON(w, map[string]any{"crew_id": crewID, "action": action, "result": value})
 		return
 	}
-	externalError(w, http.StatusNotFound, "tool_unavailable", "This Crew profile does not declare custom commands.")
+	externalError(w, http.StatusNotFound, "tool_unavailable", "This project profile does not declare custom commands.")
 }

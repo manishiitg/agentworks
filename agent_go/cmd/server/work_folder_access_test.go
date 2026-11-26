@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -328,5 +329,112 @@ func TestWorkFolderToolsRefreshLiveGuardAndAliasEnvironment(t *testing.T) {
 	}
 	if _, exists := cfg.Env["WORK_FOLDER_FINANCE"]; exists {
 		t.Fatal("detached folder alias remained in live environment")
+	}
+}
+
+// The background turn outlives its HTTP request. A canceled read must never
+// masquerade as no attached folders (PLAT-746-959).
+func TestWorkFolderTurnRejectsReadFailure(t *testing.T) {
+	root := t.TempDir()
+	withWorkFolderAccessFile(t, workFolderTestDoc(root))
+	claims := &UserClaims{UserID: "u-alice", Username: "alice"}
+	request, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := workFolderGrantsForTurn(request, claims, ""); err == nil {
+		t.Fatal("canceled authority read became an empty grant set")
+	}
+	turn := context.WithoutCancel(request)
+	grants, _, err := workFolderGrantsForTurn(turn, claims, "")
+	if err != nil || len(grants) != 1 || grants[0].Alias != "site" {
+		t.Fatalf("detached turn lost stored grants: count=%d err=%v", len(grants), err)
+	}
+}
+
+func TestWorkFolderTurnKeepsResolvedFoldersWhenTeamUnavailable(t *testing.T) {
+	own := []workflowtypes.WorkflowFolderGrant{{ID: "own", Path: t.TempDir()}}
+	team := []workflowtypes.WorkflowFolderGrant{{ID: "reachable-team", Path: t.TempDir()}}
+	grants, notice, err := workFolderTurnResult(own, team, fmt.Errorf("private internal connection detail"))
+	if err != nil || len(grants) != 2 || notice == "" || strings.Contains(notice, "private") {
+		t.Fatalf("resolved folders lost or internal error exposed: count=%d notice=%q err=%v", len(grants), notice, err)
+	}
+}
+
+// #2825: ignoring a missing grant for tools must not strand its alias in the UI.
+func TestWorkFolderListingRetainsMissingGrantForRemoval(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(root, "gone")
+	doc := workFolderAccessDoc{Assignments: map[string]*workFolderAssignment{"owner": {Roots: []string{root}}}, Grants: map[string][]workflowtypes.WorkflowFolderGrant{"owner": {{ID: "gone", Alias: "work", Path: missing, Access: "read_write"}}}}
+	old := workFolderAccessStore
+	workFolderAccessStore = &workFolderStore{load: func(context.Context) (workFolderAccessDoc, error) { return doc, nil }}
+	defer func() { workFolderAccessStore = old }()
+	grants, _, err := workFolderAccessForClaimsChecked(t.Context(), &UserClaims{UserID: "owner"})
+	if err != nil || len(grants) != 1 {
+		t.Fatalf("missing grant hidden from its owner's listing: %+v %v", grants, err)
+	}
+	admitted, _, err := workFolderTurnResult(grants, nil, nil)
+	if err != nil || len(admitted) != 0 {
+		t.Fatal("missing grant admitted to turn")
+	}
+	if err := applyWorkFolderDelete(&doc, "owner", "gone"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// #3201: chat images from a host path load only from the viewer's own attached
+// folders. A teammate reading the same chat, a path outside every folder and a
+// symlink leading out of the folder are all refused.
+func TestAttachedFolderAssetServesOnlyViewersOwnFolders(t *testing.T) {
+	t.Setenv("MULTI_USER_MODE", "true")
+	folder, elsewhere := t.TempDir(), t.TempDir()
+	canonical, err := workproduct.ValidateGrant(folder, "downloads", workproduct.AccessReadWrite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shot, secret := filepath.Join(folder, "shot.png"), filepath.Join(elsewhere, "secret.txt")
+	for _, f := range []string{shot, secret} {
+		if err := os.WriteFile(f, []byte("data"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(folder, "link.txt")
+	if err := os.Symlink(secret, link); err != nil {
+		t.Fatal(err)
+	}
+	doc := workFolderAccessDoc{
+		Assignments: map[string]*workFolderAssignment{"owner": {Roots: []string{folder}}},
+		Grants: map[string][]workflowtypes.WorkflowFolderGrant{"owner": {
+			{ID: "d", Alias: "downloads", Path: canonical, Access: "read_write"},
+		}},
+	}
+	oldStore := workFolderAccessStore
+	workFolderAccessStore = &workFolderStore{
+		load: func(context.Context) (workFolderAccessDoc, error) { return doc, nil },
+		save: func(context.Context, workFolderAccessDoc) error { return nil },
+	}
+	t.Cleanup(func() { workFolderAccessStore = oldStore })
+
+	owner := &UserClaims{UserID: "owner", Username: "owner"}
+	teammate := &UserClaims{UserID: "teammate", Username: "teammate"}
+	for _, tc := range []struct {
+		name   string
+		claims *UserClaims
+		path   string
+		want   int
+	}{
+		{"owner's attached folder", owner, shot, 200},
+		{"teammate reading the same chat", teammate, shot, 403},
+		{"outside every attached folder", owner, secret, 403},
+		{"symlink out of the folder", owner, link, 403},
+	} {
+		r := httptest.NewRequest("GET", "/api/public/file", nil)
+		r = r.WithContext(context.WithValue(r.Context(), UserContextKey, tc.claims))
+		w := httptest.NewRecorder()
+		serveAttachedFolderAsset(w, r, tc.path, "read")
+		if w.Code != tc.want {
+			t.Fatalf("%s: status %d, want %d (%s)", tc.name, w.Code, tc.want, w.Body.String())
+		}
 	}
 }

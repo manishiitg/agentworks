@@ -67,7 +67,7 @@ export function CLIOAuthConsent() {
             <p>Requested by {consent.client_name}.</p>
             {additionalScopes.length > 0 && <p className="break-words">Permissions: {consent.scopes.filter(scope => scope !== 'devices:connect').join(', ')}.</p>}
             <p>Approve only if you started <code>agentworks start</code> or <code>agentworks login</code>.</p>
-            {connectsComputer && <p>Choose folders and Read or Read &amp; write in Crew Settings → Laptop access. Stopping the CLI disconnects laptop access and pauses messaging.</p>}
+            {connectsComputer && <p>Choose folders and Read or Read &amp; write in project Settings → Laptop access. Stopping the CLI disconnects laptop access and pauses messaging.</p>}
             {messagingOnly && <p>Your chats stay on your own computer. This network does not get access to your files or AI accounts.</p>}
           </div>
         </details>

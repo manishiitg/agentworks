@@ -126,7 +126,7 @@ try {
     await page.screenshot({ path: path.join(output, `simple-sidebar-${active === 'local' ? 'local' : 'remote'}.png`) })
     // Selecting the same project closes global pages even though its URL did not change.
     await page.evaluate(async () => {
-      history.replaceState({}, '', '/crew/projects/example')
+      history.replaceState({}, '', '/projects/example')
       const { useAppStore } = await import('/src/stores/useAppStore.ts')
       useAppStore.getState().setShowSchedulesOverview(true)
     })
@@ -136,7 +136,7 @@ try {
 
     const remote = sidebar.getByRole('region', { name: 'Sandbox projects', exact: true })
     await remote.getByRole('button', { name: 'Example Crew · Crew', exact: true }).click()
-    assert.deepEqual(await page.evaluate(() => window.qaConnections.at(-1)), { id: 'b'.repeat(32), path: '/crew/projects/example' })
+    assert.deepEqual(await page.evaluate(() => window.qaConnections.at(-1)), { id: 'b'.repeat(32), path: '/projects/example' })
     await remote.getByRole('button', { name: 'Sandbox', exact: true }).click()
     assert.equal(await remote.getByRole('button', { name: 'Example Crew · Crew', exact: true }).isVisible(), false)
     assert.equal(await page.getByTestId('work-chat-tab-strip').isVisible(), true)
@@ -151,7 +151,7 @@ try {
       await dialog.getByRole('alert').waitFor()
       assert.equal(await dialog.getByRole('alert').textContent(), "Paste an HTTPS link from the server you want to connect. (HTTP 400)")
       await page.screenshot({ path: path.join(output, 'connect-server-validation.png') })
-      await dialog.getByRole('textbox', { name: 'Server address' }).fill('https://example.com/crew/projects/example?view=context#details')
+      await dialog.getByRole('textbox', { name: 'Server address' }).fill('https://example.com/projects/example?view=context#details')
       await dialog.getByRole('button', { name: 'Sign in with browser', exact: true }).click()
       await dialog.getByRole('status').waitFor()
       assert.deepEqual(await page.evaluate(() => window.qaExternal), ['https://example.com/sign-in'])

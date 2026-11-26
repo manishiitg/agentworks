@@ -61,6 +61,9 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 	if native {
 		opts = append(opts, server.WithExperimental(map[string]any{"claude/channel": map[string]any{}}))
 	}
+	if provider == "codex" {
+		opts = append(opts, server.WithResourceCapabilities(false, false)) // the Team view (plugin_team.go)
+	}
 	s := server.NewMCPServer("AgentWorks local delivery", "1.0.0", opts...)
 	broker := &museMonitorBroker{ctx: ctx, root: root, host: hostKey, current: museSession}
 	call := func(callCtx context.Context, in LocalBridgeRequest, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -130,15 +133,18 @@ func newPluginMCPServer(ctx context.Context, root, provider, hostKey string, nat
 			args[key] = value
 		}
 		action, _ := args["action"].(string)
-		if path, _ := args["file_path"].(string); path != "" && (action == "send" || action == "reply") {
+		if path, _ := args["file_path"].(string); path != "" && (action == "send" || action == "ask" || action == "queue" || action == "reply") {
 			name, data, err := ReadMessageFile(path)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
-			args["file_name"], args["file_base64"] = name, data
+			args["attachments"] = []any{map[string]any{"file_name": name, "file_base64": data}}
 		}
 		return call(ctx, LocalBridgeRequest{Action: "message", Arguments: args}, req)
 	})
+	if provider == "codex" {
+		addTeamPane(s, root, hostKey, func(req mcp.CallToolRequest) (string, error) { return codexMCPThread(req, sessionIDs) })
+	}
 	if provider == "muse" && museSession != nil {
 		AddPluginAction(s, mcp.NewTool("agent_message_monitor", mcp.WithDescription("Get native Muse Monitor arguments for this approved exact session and lease. Start ONE native monitor with the returned arguments if inactive; never use bash or a polling loop. Does not attach, approve or launch the bridge.")), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return call(ctx, LocalBridgeRequest{Action: "monitor"}, req)

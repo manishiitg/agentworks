@@ -106,15 +106,11 @@ func workspaceReadAllowed(ctx context.Context, claims *UserClaims, raw string, l
 		if ref.Owner() == caller {
 			return true
 		}
-		switch root, project, ok := ref.Project(); {
+		switch root, _, ok := ref.Project(); {
 		case !ok:
 		case root == workspaceref.CrewProjectsRoot:
 			crewRef, found := resolveCrewPath(ctx, claims.UserID, clean)
 			return found && crewAccessFor(claims, crewRef) == crewAccessOwner
-		case root == workspaceref.CodeProjectsRoot:
-			// Raw workspace routes expose Builder history and credentials. Run access
-			// uses the mediated shared-file/dashboard services and their privacy filter.
-			return codeRoleFor(ctx, claims.UserID, ref.Owner(), project) == codeRoleOwner
 		}
 		return false
 	}
@@ -191,7 +187,6 @@ func registerWorkflowReadRoutes(apiRouter *mux.Router, api *StreamingAPI) {
 	read := func(route string, handler http.HandlerFunc) {
 		apiRouter.HandleFunc(route, requireWorkflowReadAccess(handler)).Methods("GET", "OPTIONS")
 	}
-	read("/workflow/goal-metrics", api.handleGetGoalMetrics)
 	read("/workspace/state", api.handleLoadWorkspaceState)
 	read("/workflow/run-folders", api.handleGetRunFolders)
 	read("/workflow/variable-groups", api.handleGetVariableGroups)
@@ -202,9 +197,11 @@ func registerWorkflowReadRoutes(apiRouter *mux.Router, api *StreamingAPI) {
 	apiRouter.HandleFunc("/workflow/costs", requireWorkflowReadAccessCallerRelative(api.handleGetCosts)).Methods("GET", "OPTIONS")
 	// Read-only git view of a workspace folder (Files pane).
 	apiRouter.HandleFunc("/workspace-git", requireWorkflowReadAccessCallerRelative(api.handleWorkspaceGit)).Methods("GET", "OPTIONS")
+	apiRouter.HandleFunc("/chat-file-paths", api.handleChatFilePaths).Methods("POST")
 	apiRouter.HandleFunc("/workspace-snapshots", requireWorkflowReadAccessCallerRelative(api.handleCrewFileSnapshots)).Methods("GET", "POST", "OPTIONS")
 	// Local git actions (stage, unstage, discard, commit); write access is checked in the handler.
 	apiRouter.HandleFunc("/workspace-git", api.handleWorkspaceGitAction).Methods("POST")
+	apiRouter.HandleFunc("/workspace-editor", api.handleWorkspaceEditor).Methods("GET", "POST")
 	apiRouter.HandleFunc("/workflow/logs/file", requireLogFileReadAccess(api.handleGetLogFile)).Methods("GET", "OPTIONS")
 	// These check inside the handler: they name a workflow by ID, by session,
 	// by a list of paths, or through a report-preview token.

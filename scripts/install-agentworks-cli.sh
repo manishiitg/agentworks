@@ -11,7 +11,8 @@
 # Browser sign-in grants read and run access without copying a credential.
 set -eu
 
-SERVER="${AGENTWORKS_SERVER:-https://network.agentworkshq.com}"
+# The serving AgentWorks server writes its own address in place of the marker below.
+SERVER="${AGENTWORKS_SERVER:-__AGENTWORKS_SERVER__}"
 INSTALL_DIR="${HOME:-/tmp}/.local/bin"
 
 usage() {

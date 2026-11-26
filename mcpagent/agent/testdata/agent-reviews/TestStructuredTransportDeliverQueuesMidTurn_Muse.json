@@ -1,0 +1,37 @@
+{
+ "test": "TestStructuredTransportDeliverQueuesMidTurn_Muse",
+ "summary": "Muse: on the structured/json transport a mid-turn Deliver QUEUES (does not steer), the turn completes cleanly, and the queued message is provably delivered-or-retained, never lost",
+ "review_criteria": [
+  "no duplicated lines or chunks",
+  "proper formatting \u2014 clean segmentation, no run-on/garbled/merged text, no stray control chars or terminal escape codes",
+  "human-readable \u2014 reads like an assistant working, coherent and natural",
+  "correct text <-> tool interleaving order (narration then the tool it describes)",
+  "tool calls are the real intended tools (not leaked internal/shell noise where MCP tools were expected)",
+  "the final answer is coherent and matches the work performed",
+  "real work actually happened (e.g. the file was written to disk)",
+  "paced for a watching human \u2014 where the record carries first_signal_ms / longest_silence_ms, something shows up promptly and keeps updating; a long opening wait or one long mid-turn silence reads as a hung app even when the final output is perfect",
+  "actually streamed rather than delivered late \u2014 delivered_in_one_block=true, or a clean_content_spread_ms near zero, means the text appeared all at once at the end; that is a single late delivery wearing streaming's clothes, and the chunk COUNT alone cannot tell the difference",
+  "thinking claims match the evidence \u2014 thinking_event_count=0 means the turn surfaced NO reasoning content, so any 'thinking' a product shows for it must be streamed reply text under a Thinking label, not the model's reasoning; say which it is rather than assuming",
+  "tool calls completed \u2014 every started tool has a matching end (tool_calls_started == tool_calls_ended); a started-but-never-ended call leaves a spinning chip in the UI",
+  "usage is renderable \u2014 input and output tokens are non-zero so the product's usage line is not 'Input 0 Output 0'; note when cache_tokens is absent on a provider that normally caches"
+ ],
+ "output": {
+  "conversation_id": "jsonsteer-b49f1ab8",
+  "delivery_mode": "queued",
+  "provider": "Muse",
+  "queued_word": "TEAL_ea28bc12c177",
+  "queued_word_in_answer": true,
+  "queued_word_in_buffer": false,
+  "routing_expectation": "structured is query-only: Deliver must return queued, not steered; the queue drains at the next LLM-call boundary (possibly within this turn)",
+  "transport": "structured/json",
+  "turn_answer": "COMMAND_DONE\nTEAL_ea28bc12c177"
+ },
+ "fingerprint": "3658215baffd2526",
+ "agent_review": {
+  "verdict": "good",
+  "reviewed_fingerprint": "3658215baffd2526",
+  "reviewer": "muse-spark-1.3-contributor",
+  "issues": null,
+  "notes": "Muse structured Deliver QUEUES mid-turn: delivery_mode=queued (never steered into the query-only turn), the sleep-tool turn completed cleanly, and the queued word landed in the same turn answer at the post-tool boundary (COMMAND_DONE plus queued word, no duplication, readable). Helper note: the first-tool-call signal fires on ToolCallEnd as well as Start because the muse exec wire is END-only; start-emitting providers are unaffected."
+ }
+}

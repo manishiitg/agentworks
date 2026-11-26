@@ -219,7 +219,7 @@ func (api *StreamingAPI) bullpenAdminAct(ctx context.Context, adminID, action st
 		if a.ID != agentID {
 			continue
 		}
-		if namedAgentOnline(a) {
+		if a.Hosted != nil || namedAgentOnline(a) {
 			return bullpenAdminResult(http.StatusConflict, "agent_live", "That agent has a live listener. Close its attachment first; only a stale name can be removed.")
 		}
 		s.Agents = append(s.Agents[:i], s.Agents[i+1:]...)
@@ -285,7 +285,7 @@ func (api *StreamingAPI) bullpenAdminRead(ctx context.Context, action string, ar
 			if query != "" && strings.Contains(strings.ToLower(a.Name+" "+a.Label), query) {
 				match = true
 			}
-			item := map[string]interface{}{"agent_id": a.ID, "agent_name": a.Name, "label": agentLabel(a), "purpose": a.Purpose, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "created_at": a.CreatedAt, "attached": a.Attachment != nil, "published": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0}
+			item := map[string]interface{}{"agent_id": a.ID, "agent_name": a.Name, "label": agentLabel(a), "purpose": a.Purpose, "examples": a.Examples, "online": namedAgentOnline(a), "presence": namedAgentPresence(a), "created_at": a.CreatedAt, "attached": a.Attachment != nil, "published": len(s.serverSharesOf(a.ID, time.Now().UTC())) > 0}
 			addAgentPresence(item, a)
 			if a.Attachment != nil {
 				item["provider"] = a.Attachment.Provider
@@ -370,7 +370,7 @@ func (api *StreamingAPI) handleBullpenAdmin(w http.ResponseWriter, r *http.Reque
 }
 
 func externalBullpenAdminDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
-	add(bullpenAdminTool, "AgentBridge administration: action=list pages through every person and their registered agents (name, purpose, provider, connected or not, created time, whether it is published to the network, an opaque attachment_handle; never messages, session ids, host keys or config; pass q to filter and cursor for the next page); action=audit shows recent administrator changes; action=close_attachment (handle, reason) disconnects one agent's attached chat and tells its owner, who alone may attach again; action=remove_agent (agent_id, reason) removes a stale agent name and is refused while it has a live listener; action=unshare_agent (agent_id, reason) takes an agent off the network, making it private again (list shows whether it is published). Changes need a reason of 3 to 200 characters, are recorded with your name, and are limited per administrator. Requires users:manage and an administrator account.", true, false, map[string]any{
+	add(bullpenAdminTool, "AgentBridge administration: action=list pages through every person and their registered agents (name, purpose, provider, connected or not, created time, whether discovery is on, an opaque attachment_handle; never messages, session ids, host keys or config; pass q to filter and cursor for the next page); action=audit shows recent administrator changes; action=close_attachment (handle, reason) disconnects one agent's attached chat and tells its owner, who alone may attach again; action=remove_agent (agent_id, reason) removes a stale agent name and is refused while it has a live listener; action=unshare_agent (agent_id, reason) turns off discovery for an agent, so only its person and their agents can reach it (list shows whether discovery is on). Changes need a reason of 3 to 200 characters, are recorded with your name, and are limited per administrator. Requires users:manage and an administrator account.", true, false, map[string]any{
 		"action":   map[string]any{"type": "string", "enum": []any{"list", "audit", "close_attachment", "remove_agent", "unshare_agent"}},
 		"q":        map[string]any{"type": "string", "maxLength": 64},
 		"cursor":   map[string]any{"type": "string", "maxLength": 12},

@@ -17,10 +17,10 @@ const updateProjectSkillSelectionTool = "update_project_skill_selection"
 func (api *StreamingAPI) registerWorkSkillSelectionTool(registrar definitionToolRegistrar, userID, workspacePath string) error {
 	cleanWorkspace, err := cleanAgentProfileWorkspace(workspacePath, userID)
 	if err != nil || cleanWorkspace != workspacePath || !isActiveWorkProjectWorkspace(userID, cleanWorkspace) {
-		return fmt.Errorf("Crew skill selection requires an active Crew project")
+		return fmt.Errorf("Project skill selection requires an active project project")
 	}
 
-	return registrar.RegisterCustomTool(updateProjectSkillSelectionTool, "Select or deselect one skill installed in the active Crew workspace. Call list_skills first and pass the exact folder name, including skills installed in native provider folders. Selection is durable in workflow.json and causes matching skills to be attached automatically on later Crew turns. This does not install or uninstall a skill.", map[string]interface{}{
+	return registrar.RegisterCustomTool(updateProjectSkillSelectionTool, "Select or deselect one skill installed in the active project workspace. Call list_skills first and pass the exact folder name, including skills installed in native provider folders. Selection is durable in workflow.json and causes matching skills to be attached automatically on later project turns. This does not install or uninstall a skill.", map[string]interface{}{
 		"type":                 "object",
 		"additionalProperties": false,
 		"required":             []string{"action", "skill"},
@@ -66,11 +66,11 @@ func (api *StreamingAPI) registerWorkSkillSelectionTool(registrar definitionTool
 			}
 			return next
 		}); err != nil {
-			return "", fmt.Errorf("update Crew skill selection: %w", err)
+			return "", fmt.Errorf("update project skill selection: %w", err)
 		}
 		selected, err := productSelectedSkills(ctx, "work", workspacePath)
 		if err != nil {
-			return "", fmt.Errorf("read updated Crew skill selection: %w", err)
+			return "", fmt.Errorf("read updated project skill selection: %w", err)
 		}
 		result := map[string]interface{}{
 			"action":          action,
@@ -80,9 +80,9 @@ func (api *StreamingAPI) registerWorkSkillSelectionTool(registrar definitionTool
 			"takes_effect":    "next_user_message",
 		}
 		if action == "select" {
-			result["message"] = fmt.Sprintf("%s is selected for this Crew project and will attach automatically from the next user message.", canonical)
+			result["message"] = fmt.Sprintf("%s is selected for this project project and will attach automatically from the next user message.", canonical)
 		} else {
-			result["message"] = fmt.Sprintf("%s is no longer selected for this Crew project.", canonical)
+			result["message"] = fmt.Sprintf("%s is no longer selected for this project project.", canonical)
 		}
 		encoded, err := json.Marshal(result)
 		if err != nil {

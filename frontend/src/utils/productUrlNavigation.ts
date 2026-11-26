@@ -1,12 +1,11 @@
 import { workspaceSettingsPage } from './workspaceSettingsRoutes'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
-import { useAppStore } from '../stores/useAppStore'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { useWorkflowStore } from '../stores/useWorkflowStore'
 import type { ProductSurface } from '../products/productSurfaceConfig'
 import { currentProductRoute, productRoutePath, type ProductRoute } from './productRoutes'
 
-type ViewReader = () => { id?: string; view?: string; folder?: string }
+type ViewReader = () => { id?: string; view?: string; folder?: string; agent?: string }
 type HistoryChange = 'projection' | 'navigation' | 'redirect'
 const readers = new Map<ProductSurface, Set<ViewReader>>()
 let notify: ((change: HistoryChange) => void) | undefined
@@ -33,16 +32,12 @@ export function readProductNavigation(): ProductRoute {
   const surface = state.productSurface
   let id: string | undefined
   let view: string | undefined
-  let overview: boolean | undefined
   if (surface === 'work') id = state.selectedWorkProjectId ?? undefined
   if (surface === 'agentworks') {
-    overview = useAppStore.getState().showWorkflowsOverview
-    if (!overview) {
-      id = useGlobalPresetStore.getState().activePresetIds.workflow ?? undefined
-      if (id) view = useWorkflowStore.getState().workflowWorkspaceView ?? undefined
-    }
+    id = useGlobalPresetStore.getState().activePresetIds.workflow ?? undefined
+    if (id) view = useWorkflowStore.getState().workflowWorkspaceView ?? undefined
   }
-  return { surface, ...(id ? { id } : {}), ...(view ? { view } : {}), ...(overview && surface === 'agentworks' ? { overview: true } : {}), ...Object.assign({}, ...[...(readers.get(surface) ?? [])].map(reader => Object.fromEntries(Object.entries(reader()).filter(([, value]) => value !== undefined)))) }
+  return { surface, ...(id ? { id } : {}), ...(view ? { view } : {}), ...Object.assign({}, ...[...(readers.get(surface) ?? [])].map(reader => Object.fromEntries(Object.entries(reader()).filter(([, value]) => value !== undefined)))) }
 }
 
 /** Batch synchronous projections from one navigation action into one entry. */
@@ -50,14 +45,26 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
   let lastSelection = productRoutePath(readProductNavigation())
   let timer: ReturnType<typeof setTimeout> | undefined
   let replace = false
+  let traversing = false
+  // PLAT-746-758: popstate changes the URL before React settles the old view.
+  // Cancel its pending write synchronously; pushing that stale selection here
+  // would discard Forward. The route boundary installs a fresh observer only
+  // after the destination has been admitted and activated.
+  const onPop = () => {
+    traversing = true
+    clearTimeout(timer)
+    timer = undefined
+  }
+  window.addEventListener('popstate', onPop)
   const sameDestination = () => {
     const route = currentProductRoute(), selection = readProductNavigation()
-    return route?.surface === selection.surface && route.id === selection.id && Boolean(route.overview) === Boolean(selection.overview)
+    return route?.surface === selection.surface && route.id === selection.id
   }
   const schedule = (change: HistoryChange, explicit = false) => {
-    // Background hydration must not navigate away from the Home page.
-    const scheduledOnHome = window.location.pathname === '/home' || Boolean(workspaceSettingsPage())
-    if (scheduledOnHome && (!explicit || change !== 'navigation')) return
+    if (traversing) return
+    // Background hydration must not navigate away from Projects or Settings.
+    const topLevel = window.location.pathname === '/projects' || Boolean(workspaceSettingsPage())
+    if (topLevel && (!explicit || change !== 'navigation')) return
     // Mounting and asynchronous resource hydration settle the current entry.
     // Keep a pending navigation push, and coalesce subsequent view hydration
     // into the same replacement rather than an extra Back step.
@@ -73,39 +80,40 @@ export function observeProductHistory(onSelection?: (route: ProductRoute) => voi
       replace = false
       // Do not take over shared assets, sign-in or consent routes.
       const fromDashboards = window.location.pathname === '/dashboards'
-      const fromHome = window.location.pathname === '/home'
+      const fromProjects = window.location.pathname === '/projects'
       const fromSettings = Boolean(workspaceSettingsPage())
-      if ((fromHome || fromSettings) && !scheduledOnHome) return
-      if (currentProductRoute() === undefined && !fromDashboards && !fromHome && !fromSettings) return
+      if ((fromProjects || fromSettings) && !topLevel) return
+      if (currentProductRoute() === undefined && !fromDashboards && !fromProjects && !fromSettings) return
       const projected = readProductNavigation()
       // A fresh deep link names its view before the mounted surface has
       // applied it; a projection must not rewrite the link to the default.
       if (replaceEntry && currentProductRoute()?.view && projected.view !== currentProductRoute()?.view) { lastSelection = productRoutePath(projected); return }
+      if (replaceEntry && currentProductRoute()?.agent && projected.agent !== currentProductRoute()?.agent) { lastSelection = productRoutePath(projected); return }
       onSelection?.(projected)
       const path = productRoutePath(projected)
-      if (path === lastSelection && !replaceEntry && !fromDashboards && !fromHome && !fromSettings) return
+      if (path === lastSelection && !replaceEntry && !fromDashboards && !fromProjects && !fromSettings) return
       lastSelection = path
       if (path !== window.location.pathname + window.location.search) {
         if (replaceEntry) window.history.replaceState({}, '', path)
         else window.history.pushState({}, '', path)
-        if (fromDashboards || fromSettings) window.dispatchEvent(new PopStateEvent('popstate'))
-        if (fromHome) window.dispatchEvent(new Event('product-navigation-changed'))
+        // No project selected is the Projects page (/projects), which the route boundary must open itself.
+        if (fromDashboards || fromProjects || fromSettings || path === '/projects') window.dispatchEvent(new PopStateEvent('popstate'))
       }
     }, 0)
   }
   const navigate = (change: HistoryChange) => schedule(change, true)
   notify = navigate
-  const isWorkflow = () => ['agentworks'].includes(useProductSurfaceStore.getState().productSurface) && !useAppStore.getState().showWorkflowsOverview
+  const isWorkflow = () => useProductSurfaceStore.getState().productSurface === 'agentworks'
   const unsubscribers = [
     useProductSurfaceStore.subscribe((state, previous) => {
       if (state.productSurface !== previous.productSurface ||
         (state.productSurface === 'work' && state.selectedWorkProjectId !== previous.selectedWorkProjectId)) schedule(replacingSelection ? 'redirect' : 'navigation')
     }),
-    useAppStore.subscribe((state, previous) => { if (state.showWorkflowsOverview !== previous.showWorkflowsOverview && ['agentworks'].includes(useProductSurfaceStore.getState().productSurface)) schedule('navigation') }),
     useGlobalPresetStore.subscribe((state, previous) => { if (isWorkflow() && state.activePresetIds.workflow !== previous.activePresetIds.workflow) schedule('navigation') }),
     useWorkflowStore.subscribe((state, previous) => { if (isWorkflow() && state.workflowWorkspaceView !== previous.workflowWorkspaceView) schedule('navigation') }),
   ]
   return () => {
+    window.removeEventListener('popstate', onPop)
     clearTimeout(timer)
     if (notify === navigate) notify = undefined
     unsubscribers.forEach(unsubscribe => unsubscribe())

@@ -54,7 +54,7 @@ func TestPublishedFunctionPathsAreIndependentOfCLIWorkingDirectory(t *testing.T)
 		t.Fatal(err)
 	}
 	instructions := structuredFunctionOutputInstructions(call)
-	if !strings.Contains(instructions, "`"+env["FUNCTION_RESULT_FILE"]+"`") || !strings.Contains(instructions, "Crew-relative") {
+	if !strings.Contains(instructions, "`"+env["FUNCTION_RESULT_FILE"]+"`") || !strings.Contains(instructions, "project-relative") {
 		t.Fatal("output guidance omits absolute and bridge paths")
 	}
 	call.ResultSchema = nil

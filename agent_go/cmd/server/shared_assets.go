@@ -11,9 +11,12 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspaceref"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
@@ -171,6 +174,29 @@ func (api *StreamingAPI) servePublicAsset(w http.ResponseWriter, r *http.Request
 		return
 	}
 	full := string(decoded)
+	if filepath.IsAbs(full) {
+		if filepath.Clean(full) != full {
+			externalError(w, 400, "invalid_path", "Use a canonical file path.")
+			return
+		}
+		// Reverse spelling only. The normal Crew/workspace admission below still
+		// decides access; a host path outside the workspace is served only from
+		// the viewer's own attached folders.
+		docs := fsutil.WorkspaceDocsRoot()
+		if mapped, _, bound, err := crewroot.Reverse(docs, full); bound && err == nil {
+			full = mapped
+		} else if crewroot.Within(docs, full) {
+			rel, e := filepath.Rel(docs, full)
+			if e != nil {
+				externalError(w, 403, "forbidden", "This file is outside your workspace.")
+				return
+			}
+			full = filepath.ToSlash(rel)
+		} else {
+			serveAttachedFolderAsset(w, r, full, operation)
+			return
+		}
+	}
 	crewRoot, crewPath, crewRootView, handled, crewOK := api.crewReaderSharedAsset(w, r, full)
 	if handled && !crewOK {
 		return

@@ -3,73 +3,24 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// A Mac Crew lives either on the Mac or online (owner, 3 Nov, the decisions log): where it lives is the binding's
-// Editing side, and "Move online" is a one-way transfer. Nothing syncs in the
-// background, so every pair is a relay pair.
+// A Mac Crew lives on the Mac and is reached from the phone and the web through its empty online copy (a relay
+// twin), or it was moved online earlier and now runs on the server (the binding's Editing side is "server"). Moving
+// a whole Crew to the server is removed (owner, 13 Nov). Nothing syncs in the background, so every pair is a relay pair.
 
-// migrateCrewSyncToRelay turns each older synced pair (continuous, manual or off) into a relay pair once: it stops
-// syncing, keeps the files where they are, and moves an unfinished background upload or download aside (its stage
-// is kept as a .bak next to it). An unfinished move keeps its pending action so the owner can finish it. Each
-// binding file is backed up before it changes. Runs on the Mac and on the server.
-func migrateCrewSyncToRelay() {
-	state, err := crewroot.StateRoot()
-	if err != nil {
-		return
-	}
-	dir := filepath.Join(state, "crew-sync")
-	entries, _ := os.ReadDir(dir)
-	stamp := time.Now().UTC().Format("20060102T150405Z")
-	for _, entry := range entries {
-		id, ok := strings.CutSuffix(entry.Name(), ".json")
-		if entry.IsDir() || !ok || strings.HasSuffix(id, "-files") {
-			continue
-		}
-		b, e := crewroot.ReadSync(id)
-		if e != nil || b == nil || (b.Mode == "relay" && (b.PendingAction == "" || b.PendingAction == "server")) {
-			continue
-		}
-		raw, e := os.ReadFile(filepath.Join(dir, entry.Name()))
-		if e != nil || os.WriteFile(filepath.Join(dir, entry.Name()+"."+stamp+".bak"), raw, 0600) != nil {
-			log.Printf("[CREW_SYNC] project=%s migrate=skipped reason=%q", id, "binding backup failed")
-			continue
-		}
-		old, dropped := b.Mode, ""
-		if b.PendingAction != "" && b.PendingAction != "server" {
-			dropped = b.PendingAction
-			if p, e := crewSyncManifestPath(id); e == nil {
-				if _, e = os.Stat(p + ".pending"); e == nil {
-					_, _ = moveOldCrewTransfer(p+".pending", id)
-				}
-			}
-			b.PendingAction = ""
-		}
-		b.Mode = "relay"
-		if e = crewroot.ReplaceSync(id, *b); e != nil {
-			log.Printf("[CREW_SYNC] project=%s migrate=failed reason=%q", id, e.Error())
-			continue
-		}
-		log.Printf("[CREW_SYNC] project=%s side=%s editing=%s migrate=relay old_mode=%q dropped_pending=%q", id, b.Side, b.Editing, old, dropped)
-	}
-}
-
-const crewOnMacRefusal = "This Crew lives on its owner's Mac, so it can't answer here."
+const crewOnMacRefusal = "This project lives on its owner's Mac, so it can't answer here."
 
 // crewOnYourMacRefusal is what a member whose agents work on their Mac is told on the website.
-const crewOnYourMacRefusal = "This Crew works on your Mac, so your agents here answer there. Open it in the AgentWorks app on your Mac, or choose Use it on the web instead."
+const crewOnYourMacRefusal = "This project works on your Mac, so your agents here answer there. Open it in the AgentWorks app on your Mac, or choose Use it on the web instead."
 
 // crewOnMacRefusalFor is the refusal the caller sees for a server turn of a Crew that lives on a Mac.
 func crewOnMacRefusalFor(conversationKey, caller string) string {
@@ -79,9 +30,7 @@ func crewOnMacRefusalFor(conversationKey, caller string) string {
 	return crewOnMacRefusal
 }
 
-// crewLivesOnMac reports a server turn whose agent still runs on the Mac.
-// Only a completed publication for this agent and the current connection makes
-// its server runtime available; the other agents continue through the Mac relay.
+// crewLivesOnMac reports a server turn whose agent runs on the Mac.
 func crewLivesOnMac(profileID, conversationKey, caller string) bool {
 	project := crewResourceProjectID(conversationKey)
 	if IsLocalMode() || profileID != crewProfileID {
@@ -94,21 +43,12 @@ func crewLivesOnMac(profileID, conversationKey, caller string) bool {
 	// A Team member's own agents run on the server, as them (owner, 5 Nov); only the owner's agents live on the Mac.
 	// After "Add to my Mac" a member's own agents work on their Mac instead (crew_team_where.go).
 	if caller != "" && caller != ownerOfCrewProjectID(project) {
-		// A thread on the member's own agent that the server answers for while their Mac is off runs here, as them.
-		if _, served := crewStandbyServedTabOf(caller, conversationKey); served {
-			return false
-		}
 		if t, err := readCrewTeam(project); err == nil && t.member(caller) {
 			_, onMac := t.memberMac(caller)
 			return onMac
 		}
 	}
-	// A teammate's thread on an In team agent the server answers for from its standby copy (Always on) runs here.
-	if crewStandbyServesKey(conversationKey) {
-		return false
-	}
-	placement, err := crewPublishedAgent(project, crewAgentPublishTab(conversationKey))
-	return err != nil || placement == nil || placement.Location != "server"
+	return true
 }
 
 type crewMacCallerKey struct{}
@@ -121,7 +61,7 @@ func (api *StreamingAPI) desktopCrewWorkspace(ctx context.Context, claims *UserC
 		body, _ := json.Marshal(map[string]any{"error": map[string]string{"code": "crew_on_mac", "message": message}})
 		return crewChatResult{ID: call.ID, Status: code, Body: body}
 	}
-	if call.Action != "ask" && call.Action != "read_chat" && call.Action != "reply_input" {
+	if call.Action != "ask" && call.Action != "read_chat" && call.Action != "reply_input" && call.Action != "open_chat" && call.Action != "chats" {
 		return fail(400, "Ask, read the chat or answer its question.")
 	}
 	var sent map[string]any
@@ -129,19 +69,24 @@ func (api *StreamingAPI) desktopCrewWorkspace(ctx context.Context, claims *UserC
 		return fail(400, "The request could not be read.")
 	}
 	args := map[string]any{}
-	for _, key := range []string{"message", "chat_id", "after", "before_seq", "wait_seconds", "submission_id", "query_id", "request_id", "answers"} {
+	for _, key := range []string{"message", "chat_id", "after", "before_seq", "wait_seconds", "submission_id", "query_id", "request_id", "answers", "session_id", "name", "engine", "model_id", "reasoning_effort", "connection_id"} {
 		if value, ok := sent[key]; ok {
 			args[key] = value
 		}
 	}
 	binding, manifest, ok := api.resolveExternalWorkspace(ctx, claims, project)
 	if !ok {
-		return fail(404, "This Crew is unavailable on your Mac.")
+		return fail(404, "This project is unavailable on your Mac.")
 	}
 	callCtx := context.WithValue(ctx, crewMacCallerKey{}, call.Caller)
 	r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(callCtx)
 	recorder := httptest.NewRecorder()
-	api.externalWorkspaceConversation(recorder, r, call.Action, args, binding, manifest)
+	if call.Action == "open_chat" || call.Action == "chats" {
+		args["action"], args["workspace_id"] = call.Action, project
+		api.externalWorkspaceCall(recorder, r, args)
+	} else {
+		api.externalWorkspaceConversation(recorder, r, call.Action, args, binding, manifest)
+	}
 	log.Printf("[CREW_CHAT_RELAY] local project=%s operation=workspace action=%s caller=%q status=%d", project, call.Action, call.Caller, recorder.Code)
 	return crewChatResult{ID: call.ID, Status: recorder.Code, Body: recorder.Body.Bytes()}
 }
@@ -153,19 +98,17 @@ func crewOnMacChannelReply(platform string) string {
 	if platform == "whatsapp" {
 		name = "WhatsApp"
 	}
-	return "This Crew runs on its owner's Mac. Connect " + name + " in the Crew's Integrations on that Mac."
+	return "This project runs on its owner's Mac. Connect " + name + " in the project's Integrations on that Mac."
 }
 
 // crewPlace is where a Crew lives, as its Access row shows it: on this Mac (or the Mac is off, seen from online),
-// moving online, or online. The pair's editing side decides it; the Mac's live connection decides on or off.
+// or online. The pair's editing side decides it; the Mac's live connection decides on or off.
 func crewPlace(owner, project string, b *crewroot.SyncBinding) string {
 	switch {
 	case b == nil && IsLocalMode():
 		return "offline" // on this Mac, Reach off: not reached from the phone or the web (owner, 3 Nov)
 	case b == nil:
 		return "online"
-	case b.PendingAction == "server":
-		return "moving"
 	case b.Editing == "server":
 		return "online"
 	case IsLocalMode():
@@ -179,8 +122,8 @@ func crewPlace(owner, project string, b *crewroot.SyncBinding) string {
 
 // "Reach it from your phone and the web" (owner, 3 Nov: Off by default). A Mac Crew is reached from the phone and the
 // web through its empty online copy; turning Reach off removes that copy. Only the Crew's owner, from the Mac that
-// holds its pair, can remove it, and only while the Crew lives on the Mac: a copy that holds a moved Crew is never
-// removed this way. The copy is backed up first.
+// holds its pair, can remove it, and only while the Crew lives on the Mac: a Crew that was moved online earlier is
+// never removed this way. The copy is backed up first.
 func (api *StreamingAPI) unpairCrewRelayTwin(w http.ResponseWriter, r *http.Request, project, pair string) {
 	claims := GetUserFromContext(r.Context())
 	roots, err := api.crewSyncRoots(r.Context(), claims, project)
@@ -190,7 +133,7 @@ func (api *StreamingAPI) unpairCrewRelayTwin(w http.ResponseWriter, r *http.Requ
 	}
 	b, err := crewroot.ReadSync(roots.ID)
 	if err != nil || b == nil || b.Mode != "relay" || b.Side != "server" || b.Editing != "local" || pair == "" || b.PairID != pair {
-		externalError(w, 409, "wrong_pair", "Turn this off from the Mac that holds this Crew.")
+		externalError(w, 409, "wrong_pair", "Turn this off from the Mac that holds this project.")
 		return
 	}
 	if crewTeamRecordOn(roots.ID) {
@@ -198,11 +141,7 @@ func (api *StreamingAPI) unpairCrewRelayTwin(w http.ResponseWriter, r *http.Requ
 		externalError(w, 409, "team_on", crewTeamOnOfflineRefused)
 		return
 	}
-	if crewHasPublishedAgents(roots.ID) {
-		externalError(w, 409, "published_agents", "This Crew has published agents on the server. Keep it connected to continue using them; you can close the Mac app and those agents will keep running.")
-		return
-	}
-	backup, err := backupCrewRelayTwin(roots)
+	backup, err := backupCrewFolders(roots)
 	if err != nil {
 		log.Printf("[CREW_RELAY] project=%s reach_off refused: backup failed: %v", roots.ID, err)
 		externalError(w, 409, "backup_failed", "It could not be backed up first, so nothing was removed. Try again.")
@@ -219,33 +158,6 @@ func (api *StreamingAPI) unpairCrewRelayTwin(w http.ResponseWriter, r *http.Requ
 	crewRelayStreams.forget(claims.UserID, roots.ID)
 	log.Printf("[CREW_RELAY] project=%s reach_off owner=%s pair=%s mac_project=%s backup=%s sync_files_removed=%d", roots.ID, logUsernameForUserID(claims.UserID), pair, b.PeerProjectID, backup, removed)
 	externalJSON(w, crewSyncReply{ProjectID: roots.ID})
-}
-
-// backupCrewRelayTwin keeps a copy of the online copy's folders and pair files under <state>/crew-backups.
-func backupCrewRelayTwin(roots crewroot.Roots) (string, error) {
-	state, err := crewroot.StateRoot()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(state, "crew-backups")
-	if err = os.MkdirAll(dir, 0700); err != nil {
-		return "", err
-	}
-	paths := []string{}
-	for _, path := range []string{roots.Files, roots.Resources, roots.Private} {
-		if _, e := os.Stat(path); path != "" && e == nil && !slices.Contains(paths, path) {
-			paths = append(paths, path)
-		}
-	}
-	matches, _ := filepath.Glob(filepath.Join(state, "crew-sync", roots.ID+"*"))
-	paths = append(paths, matches...)
-	target := filepath.Join(dir, roots.ID+"-"+time.Now().UTC().Format("20060102T150405Z")+".tar.gz")
-	// Unreadable caches (a slot's own sandbox files) are skipped; the archive itself must be written.
-	out, err := exec.Command("tar", append([]string{"czf", target, "--ignore-failed-read"}, paths...)...).CombinedOutput()
-	if info, statErr := os.Stat(target); statErr != nil || info.Size() == 0 {
-		return "", fmt.Errorf("tar: %v %s", err, strings.TrimSpace(string(out)))
-	}
-	return target, nil
 }
 
 // removeCrewSyncFiles removes a Crew's pair files: <id>.json, <id>-files.json and what sits next to them.

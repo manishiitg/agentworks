@@ -23,7 +23,7 @@ type WorkflowReferenceAccessProps = {
   extraGroups?: Array<{ label: string; description: string; placeholder: string; references: AdditionalReadOnlyReference[] }>
 }
 
-export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorkspacePath, disabled = false, additionalReferences = [], additionalLabel = 'Crew', showAdditionalGroup = false, extraGroups = [], hideAdd = false }: WorkflowReferenceAccessProps) {
+export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorkspacePath, disabled = false, additionalReferences = [], additionalLabel = 'Project', showAdditionalGroup = false, extraGroups = [], hideAdd = false }: WorkflowReferenceAccessProps) {
   const normalizedSelected = useMemo(
     () => [...new Set(selectedPaths.map(normalizeWorkspacePath).filter(Boolean))],
     [selectedPaths],
@@ -89,8 +89,8 @@ export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorksp
         </div>
       </div>
       <div className="mt-3 grid gap-3">
-        {hideAdd && !normalizedSelected.length && <p className="text-xs text-muted-foreground">No linked Crews. Ask this Crew’s chat to link one.</p>}
-        {showAdditionalGroup && renderGroup(additionalLabel, 'Your other Crews. Link one to let this Crew use it.', crewReferences, availableCrew, `Link a ${additionalLabel}…`)}
+        {hideAdd && !normalizedSelected.length && <p className="text-xs text-muted-foreground">No linked projects. Ask this project’s chat to link one.</p>}
+        {showAdditionalGroup && renderGroup(additionalLabel, 'Your other projects. Link one to let this project use it.', crewReferences, availableCrew, `Link a ${additionalLabel}…`)}
         {extraGroups.map((group, index) => <div key={group.label}>{renderGroup(group.label, group.description, extraReferences[index], extraReferences[index].filter(reference => !normalizedSelected.includes(reference.path)), group.placeholder, true)}</div>)}
         {unknownSelected.length > 0 && <div className="rounded-md border border-border/80 p-3">
           <div className="text-xs font-medium text-foreground">Other linked folders</div>

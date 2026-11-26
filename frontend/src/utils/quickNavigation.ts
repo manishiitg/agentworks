@@ -28,7 +28,7 @@ export type QuickNavigationItem = {
 }
 
 const CREATION_LABELS: Record<ProductCreateSurface, string> = {
-  work: 'Create new Crew',
+  work: 'Create new project',
 }
 
 // Keep this beside the shared creation commands so a product consolidation has
@@ -49,7 +49,7 @@ export function quickNavigationItems(
   const common = { lastAccessedAt: 0, hasLocalActivity: false as const }
   const items: QuickNavigationItem[] = navigationProductSurfaceIDs(user?.allowed_products).map(surface => ({
     ...common, type: 'product', id: `product:${surface}`, label: PRODUCT_SURFACE_LABELS[surface],
-    ...((surface === 'work') ? { searchText: 'Code Crew workspace' } : {}),
+    ...((surface === 'work') ? { searchText: 'Code project workspace' } : {}),
     subtitle: surface === 'knowledgebase' ? 'Product · shared knowledge for your agents' : 'Product · open workspace', isActive: surface === current, surface,
   }))
   const menu = (action: NavigationAction, label: string, description: string) => {
@@ -59,8 +59,8 @@ export function quickNavigationItems(
     items.push({ ...common, type: 'menu', id: `browse:${scope}`, label, subtitle: 'Browse · show the full list', isActive: false, action: scope === 'active' ? 'active' : 'browse', scope })
   }
   browse('active', 'Running work')
-  if (products.includes('agentworks')) { browse('workflows', 'All Goals'); browse('chats', 'All chats') }
-  if (products.includes('work')) browse('crew', 'All Crews')
+  if (products.includes('agentworks')) browse('chats', 'All chats')
+  if (products.includes('work')) browse('crew', 'All projects')
   if (products.length) browse('products', 'All products')
   if (products.includes(current)) browse('panels', 'All panels and tabs')
   const creatableOrigins = products.filter((surface): surface is ProductCreateSurface => surface in CREATION_LABELS)
@@ -73,7 +73,7 @@ export function quickNavigationItems(
       projectDescription: PROJECT_CREATION_DESCRIPTIONS[surface] })
   }
   if (products.some(surface => surface === 'agentworks' || surface === 'work')) {
-    menu('schedules', 'Schedules and triggers', 'Scheduled work and automation triggers')
+    menu('schedules', 'Workflows', 'Workflows, schedules, watchers and webhooks')
   }
   if (products.some(surface => GLOBAL_PAGE_SURFACES.includes(surface))) {
     menu('providers', 'AI models & accounts', 'AI accounts, models and costs')
@@ -102,7 +102,7 @@ export function openQuickNavigation(item: QuickNavigationItem): boolean {
     // Resolve the admitted destination again instead of trusting a stale row.
     const destination = quickNavigationItems(user, current).find(candidate => candidate.id === item.id)?.surface
     if (!destination || !(destination in CREATION_LABELS)) return false
-    openProductWorkspace(destination, { keepHome: true })
+    openProductWorkspace(destination)
     useCommandDialogStore.getState().requestProductCreate(destination as ProductCreateSurface)
     return true
   }
@@ -120,6 +120,6 @@ export function openQuickNavigation(item: QuickNavigationItem): boolean {
   openProductWorkspace(destination)
   const app = useAppStore.getState()
   if (item.action === 'providers' || item.action === 'users' || item.action === 'mcp') openWorkspaceSettings(item.action)
-  else if (item.action === 'schedules') app.setShowSchedulesOverview(true)
+  else if (item.action === 'schedules') { useAppStore.setState({ schedulesSearchQuery: '', schedulesSearchScope: '' }); app.setShowSchedulesOverview(true) }
   return true
 }

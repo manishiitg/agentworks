@@ -2,14 +2,14 @@ package server
 
 import (
 	"net/http"
-	"os"
-	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"time"
 )
 
-// The Share page's Dashboards tab (owner, 6 Nov, approved mockup): everything the Crew publishes (dashboards, artifacts
-// and motion), each with its kind, when it was updated, who can open it and, on a server Crew, its public link. The
+// The Access page's Dashboards tab, next to Share (owner, 6 Nov mockup; its own tab again 9 Nov): everything the Crew
+// publishes (dashboards, artifacts and motion), each with its kind, when it was updated, who can open it and, on a server Crew, its public link. The
 // server writes every line; the card renders them. It reads the same rows and the same Team and Share records as the Team
 // card's Dashboards list (crew_team_dashboards.go), so it adds no access rule: the Crew's owner or a Team member opens
 // it, and only the owner changes who can open an item or its public link.
@@ -25,12 +25,37 @@ type crewDashboardsTabItem struct {
 	Who string `json:"who"`
 	// PublicLink is the owner's, on a Crew that lives on the server only.
 	PublicLink *dashboardPublicView `json:"public_link,omitempty"`
+	// When is "2 h ago" and Group is Today, This week or Older (owner, 25 Nov mockup); items come newest first.
+	When  string `json:"when,omitempty"`
+	Group string `json:"group"`
+	// CanDelete: this person may delete it (the owner); the page then offers Delete with Undo.
+	CanDelete bool `json:"can_delete,omitempty"`
+	// Team sharing (owner, 25 Nov): CanShareTeam offers Share with Team on an Artifact of a project whose Team is on;
+	// TeamShared says its copy is in the Team's folder. FromTeam marks a copy someone shared, opened from that folder.
+	CanShareTeam bool `json:"can_share_team,omitempty"`
+	TeamShared   bool `json:"team_shared,omitempty"`
+	FromTeam     bool `json:"from_team,omitempty"`
+	updated      time.Time
 }
 
 type crewDashboardsTabFilter struct {
 	Key   string `json:"key"`
 	Label string `json:"label"`
 	Count int    `json:"count"`
+	// Hint says in one line what this kind is and how it works (owner, 9 Nov); Ask, for the owner with none yet,
+	// is the draft "Ask the Crew" puts in Main.
+	Hint string `json:"hint,omitempty"`
+	Ask  string `json:"ask,omitempty"`
+}
+
+// The three kinds a Crew publishes, always listed (owner, 9 Nov: "show motion dashboards zero"), each with its hint.
+var crewDashboardsTabKinds = []struct{ key, label, hint, ask string }{
+	{"dashboard", "Dashboards", "Live pages built from this project's results, with Ask and buttons. They stay up to date as the project works.",
+		"Make a dashboard for this project from its results, so people can look at them without changing anything. Show me before you publish it."},
+	{"artifact", "Artifacts", "A finished page made in a chat to show one idea: a proposal, plan or comparison. No live data.",
+		"Make an artifact: one page that sums up this project's latest results. Show me before you publish it."},
+	{"motion", "Motion", "Plays changes over time, or walks through an explanation one step at a time. Same link and sharing as a dashboard.",
+		"Make a motion dashboard that plays this project's results over time. Show me before you publish it."},
 }
 
 type crewDashboardsTabEmpty struct {
@@ -65,7 +90,7 @@ type crewDashboardsTab struct {
 }
 
 const (
-	crewDashboardsMacOwnerNote    = "Buttons on these work on your Mac. To share with other people, or make a public link, put this Crew online."
+	crewDashboardsMacOwnerNote    = "Buttons on these work on your Mac. To share with other people, or make a public link, put this project online."
 	crewDashboardsMacTeammateNote = "Buttons on these work on the owner's Mac for now."
 	crewDashboardsTeammateNote    = "Only the owner changes who can open these."
 )
@@ -129,40 +154,75 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	default:
 		filter = "all"
 	}
-	tab := crewDashboardsTab{Workspace: root, Intro: "Everything published from this Crew.", CanChange: owner && !crewOwnerOnlineOfMacCrew(r, t.ProjectID, GetUserIDFromContext(r.Context())), OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
+	tab := crewDashboardsTab{Workspace: root, Intro: "Everything published from this project.", CanChange: owner && !crewOwnerOnlineOfMacCrew(r, t.ProjectID, GetUserIDFromContext(r.Context())), OnMac: onMac, PutOnline: owner && onMac, Filter: filter, Items: []crewDashboardsTabItem{}}
 	who := api.crewDashboardsTabWho(r, root, owner && !onMac)
-	updatedOnMac := ""
-	if updated, ok := crewMacDashboardsUpdated(t.ProjectID); ok && crewRelayTwin(t.ProjectID) {
-		updatedOnMac = "copy on the server " + roughAgo(time.Since(updated))
-	}
 	counts := map[string]int{}
+	teamItems := 0
 	for _, row := range rows {
 		key, label := crewDashboardKind(row)
 		counts[key]++
 		if filter != "all" && filter != key {
 			continue
 		}
-		when := updatedOnMac
-		if when == "" && root != "" && row.Path != "" {
-			if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(row.Path))); err == nil {
-				when = "updated " + roughAgo(time.Since(info.ModTime()))
-			}
+		var updated time.Time
+		if row.UpdatedAt > 0 {
+			updated = time.Unix(row.UpdatedAt, 0)
 		}
-		line := label
-		if when != "" {
-			line += " · " + when
+		line, when := label, ""
+		if !updated.IsZero() {
+			when = roughAgo(time.Since(updated))
+			line += " · updated " + when
 		}
-		item := crewDashboardsTabItem{ID: row.ID, Title: row.Title, Path: row.Path, Kind: key, Line: line, Who: who}
+		item := crewDashboardsTabItem{ID: row.ID, Title: row.Title, Path: row.Path, Kind: key, Line: line, Who: who, When: when, Group: crewDashboardsGroup(updated, time.Now()), CanDelete: tab.CanChange, updated: updated}
 		if !onMac && owner {
 			item.PublicLink = row.PublicLink
 		}
 		tab.Items = append(tab.Items, item)
 	}
-	tab.Filters = []crewDashboardsTabFilter{{Key: "all", Label: "All", Count: len(rows)}}
-	for _, kind := range []struct{ key, label string }{{"dashboard", "Dashboards"}, {"artifact", "Artifacts"}, {"motion", "Motion"}} {
-		if counts[kind.key] > 0 {
-			tab.Filters = append(tab.Filters, crewDashboardsTabFilter{Key: kind.key, Label: kind.label, Count: counts[kind.key]})
+	sort.SliceStable(tab.Items, func(i, j int) bool { return tab.Items[i].updated.After(tab.Items[j].updated) })
+	// Pages in the Team's shared artifacts/ folder: this project's own copies mark their row; the rest are listed
+	// under From the Team, newest first, after this project's own pages.
+	if roots, found, err := crewStorageRoots(root); err == nil && found {
+		_, teamErr := crewTeamArtifactsDir(roots.ID)
+		shared := crewTeamArtifacts(dashboardTeamRoots{ID: roots.ID, Files: roots.Files})
+		sort.SliceStable(shared, func(i, j int) bool { return shared[i].Updated.After(shared[j].Updated) })
+		for i := range tab.Items {
+			tab.Items[i].CanShareTeam = teamErr == nil && tab.CanChange && tab.Items[i].Kind == "artifact"
 		}
+		for _, a := range shared {
+			if at := slices.IndexFunc(tab.Items, func(item crewDashboardsTabItem) bool { return item.ID == a.ID }); at >= 0 {
+				tab.Items[at].TeamShared = true
+				continue
+			}
+			if at := slices.IndexFunc(rows, func(row crewTeamDashboard) bool { return row.ID == a.ID }); at >= 0 {
+				continue // this project's own page, filtered out of view
+			}
+			counts["artifact"]++
+			teamItems++
+			if filter != "all" && filter != "artifact" {
+				continue
+			}
+			line, when := "Artifact · shared with the Team", ""
+			if !a.Updated.IsZero() {
+				when = roughAgo(time.Since(a.Updated))
+			}
+			if a.By != "" {
+				line = "Artifact · shared by " + a.By
+			}
+			tab.Items = append(tab.Items, crewDashboardsTabItem{ID: a.ID, Title: a.Title, Path: a.Path, Kind: "artifact", Line: line, Who: "Everyone in the Team", When: when, Group: "From the Team", FromTeam: true, CanShareTeam: tab.CanChange, TeamShared: true, updated: a.Updated})
+		}
+	}
+	// Filters only when they help (owner, 25 Nov mockup): one per kind that has items, and none when there is one kind.
+	tab.Filters = []crewDashboardsTabFilter{}
+	for _, kind := range crewDashboardsTabKinds {
+		if counts[kind.key] > 0 {
+			tab.Filters = append(tab.Filters, crewDashboardsTabFilter{Key: kind.key, Label: kind.label, Count: counts[kind.key], Hint: kind.hint})
+		}
+	}
+	if len(tab.Filters) > 1 {
+		tab.Filters = append([]crewDashboardsTabFilter{{Key: "all", Label: "All", Count: len(rows) + teamItems}}, tab.Filters...)
+	} else {
+		tab.Filters = []crewDashboardsTabFilter{}
 	}
 	switch {
 	case !owner && onMac:
@@ -172,19 +232,30 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 	case onMac:
 		tab.Note = crewDashboardsMacOwnerNote
 	}
-	if len(rows) == 0 {
+	if len(rows) == 0 && teamItems == 0 {
 		// Nothing to open: no lines about items that are not there, and one line for a teammate.
 		tab.Intro, tab.Note, tab.PutOnline = "", "", false
-		tab.Empty = &crewDashboardsTabEmpty{Line: crewPersonShortName(t.OwnerID) + " hasn't published anything from this Crew yet."}
+		tab.Empty = &crewDashboardsTabEmpty{Line: crewPersonShortName(t.OwnerID) + " hasn't published anything from this project yet."}
 		if owner {
-			tab.Empty = &crewDashboardsTabEmpty{Title: "No dashboards yet", Line: "Show this Crew's work to people in a form they can open and use. Your agents make these for you.", Kinds: []crewDashboardsTabKind{
-				{Name: "Dashboard", Line: "live numbers and buttons people can use"},
-				{Name: "Artifact", Line: "a document or page to read"},
-				{Name: "Motion", Line: "a short video"},
-			}, Ask: "Help me make a dashboard for this Crew", Example: "make a dashboard of this week's sales"}
+			// The Dashboards tab (owner, 9 Nov mock): one line and "Ask the Crew", which opens Main with this draft.
+			tab.Empty = &crewDashboardsTabEmpty{Title: "No artifacts yet", Line: "Ask the project to make a report, proposal, demo or dashboard.",
+				Ask: "Make an artifact for this project from its results. Show me before you publish it."}
 		}
 	}
 	return tab, true
+}
+
+// crewDashboardsGroup is the heading an item sits under: Today, This week (the last seven days) or Older.
+func crewDashboardsGroup(updated, now time.Time) string {
+	switch {
+	case updated.IsZero():
+		return "Older"
+	case updated.Year() == now.Year() && updated.YearDay() == now.YearDay():
+		return "Today"
+	case now.Sub(updated) < 7*24*time.Hour:
+		return "This week"
+	}
+	return "Older"
 }
 
 // handleCrewTeamDashboardsTab is GET /crew-teams/{project}/dashboards-tab?kind=all|dashboard|artifact|motion.

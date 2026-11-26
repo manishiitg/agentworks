@@ -80,18 +80,21 @@ func nativeClaudeSession(remote, session string) (claudeSessionRecord, string, e
 }
 
 func claudeSessionOffer(ctx context.Context, remote string, out agentworksclient.LocalBridgeReply) (offerErr error) {
+	return claudeSessionUserOffer(ctx, remote, out.Attachment, pluginMessageText(out, "claude_session"))
+}
+
+// Literal user input; caller must separately confirm the journal before durable ACK.
+func claudeSessionUserOffer(ctx context.Context, remote string, a agentworksclient.AgentAttachment, text string) (offerErr error) {
 	mayHaveDelivered := false
 	defer func() {
 		if offerErr != nil && !mayHaveDelivered {
 			offerErr = errors.Join(agentworksclient.ErrNativeOfferRejected, offerErr)
 		}
 	}()
-	a := out.Attachment
 	record, key, err := nativeClaudeSession(remote, a.SessionID)
 	if err != nil {
 		return err
 	}
-	text := pluginMessageText(out, "claude_session")
 	if len(text) > 96<<10 {
 		return errors.New("native message exceeds 96 KiB; explicitly read the inbox to recover, no automatic retry")
 	}

@@ -49,7 +49,7 @@ func (api *StreamingAPI) switchCrewTeam(ctx context.Context, claims *UserClaims,
 		return out, nil // Mac online is off, so the Team already is
 	}
 	if err != nil || binding == nil || binding.Side != "local" {
-		return out, fmt.Errorf("Turn on Use from phone and web for this Crew first.")
+		return out, fmt.Errorf("Turn on Use from phone and web for this project first.")
 	}
 	connection, err := desktopConnectionFor(claims.UserID, binding.ConnectionID)
 	if err != nil {
@@ -86,7 +86,7 @@ func (api *StreamingAPI) turnMacOnlineOnForTeam(ctx context.Context, claims *Use
 			for _, item := range saved {
 				names = append(names, desktopConnectionLabel(item))
 			}
-			return fmt.Errorf("Which network should the team use? %s. Turn on Mac online with that network, then the Team.", strings.Join(names, ", "))
+			return fmt.Errorf("Which network should the team use? %s. Turn on Remote Control with that network, then the Team.", strings.Join(names, ", "))
 		}
 		connection = saved[0].ID
 	}
@@ -97,11 +97,11 @@ func (api *StreamingAPI) turnMacOnlineOnForTeam(ctx context.Context, claims *Use
 	}
 	request = mux.SetURLVars(request, map[string]string{"project": project, "connection": connection})
 	capture := &internalResponseCapture{}
-	api.runDesktopCrewSync(capture, request, false)
+	api.runDesktopCrewSync(capture, request)
 	if capture.status >= 300 {
 		var failure map[string]any
 		_ = json.Unmarshal(capture.body.Bytes(), &failure)
-		return fmt.Errorf("%s", externalErrorMessage(failure, "Mac online could not be turned on. Try again."))
+		return fmt.Errorf("%s", externalErrorMessage(failure, "Phone could not be turned on. Try again."))
 	}
 	return nil
 }
@@ -121,7 +121,7 @@ func (api *StreamingAPI) handleDesktopCrewTeamSwitch(w http.ResponseWriter, r *h
 	claims := GetUserFromContext(r.Context())
 	// With Mac online off, Team on turns it on through this connection; a Crew online elsewhere is refused.
 	if b, e := crewroot.ReadSync(mux.Vars(r)["project"]); e != nil || b != nil && b.ConnectionID != mux.Vars(r)["connection"] {
-		externalError(w, 409, "team_connection_required", "Turn on this Crew's connection to your company first.")
+		externalError(w, 409, "team_connection_required", "Turn on this project's connection to your company first.")
 		return
 	}
 	out, err := api.switchCrewTeam(r.Context(), claims, mux.Vars(r)["project"], input.On, mux.Vars(r)["connection"])

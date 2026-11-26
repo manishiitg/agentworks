@@ -17,18 +17,86 @@ import (
 	"testing"
 	"time"
 
-	"github.com/manishiitg/coding-agent-loop/workspace/chunks"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewsync"
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 )
+
+// PLAT-746-820: idle sync rounds rewrote the full file baseline every five seconds.
+func TestCrewTeamLocalSkipsUnchangedRoundsAndRefreshesHeartbeat(t *testing.T) {
+	dir := t.TempDir()
+	b := crewTeamLocal{Root: t.TempDir(), Status: "up_to_date", LastSynced: time.Now().UTC().Format(time.RFC3339Nano), Files: map[string]crewTeamLocalFile{}}
+	if err := saveCrewTeamLocal(dir, b); err != nil {
+		t.Fatal(err)
+	}
+	filename := filepath.Join(dir, "binding.json")
+	before, err := os.Stat(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.LastSynced = time.Now().Add(time.Second).UTC().Format(time.RFC3339Nano)
+	if _, err := crewTeamScan(t.Context(), &b, crewTeamFolder{ID: "f1", Folders: []string{"team"}}); err != nil {
+		t.Fatal(err)
+	}
+	b.FolderOnPurpose = []string{}
+	if err := saveCrewTeamLocal(dir, b); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(filename)
+	if err != nil || !os.SameFile(before, after) {
+		t.Fatalf("idle round replaced binding: %v", err)
+	}
+	b.Revision++
+	if err := saveCrewTeamLocal(dir, b); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := readCrewTeamLocal(dir)
+	if err != nil || saved.Revision != b.Revision {
+		t.Fatalf("changed revision was not saved: %+v %v", saved, err)
+	}
+	// Seed an old heartbeat while leaving every other field unchanged.
+	b.LastSynced = time.Now().Add(-11 * time.Minute).UTC().Format(time.RFC3339Nano)
+	data, err := json.Marshal(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filename, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	b.LastSynced = time.Now().UTC().Format(time.RFC3339Nano)
+	if err := saveCrewTeamLocal(dir, b); err != nil {
+		t.Fatal(err)
+	}
+	saved, err = readCrewTeamLocal(dir)
+	if err != nil || saved.LastSynced != b.LastSynced {
+		t.Fatalf("old heartbeat was not refreshed: %+v %v", saved, err)
+	}
+	b.Status = "pending"
+	if err := saveCrewTeamLocal(dir, b); err != nil {
+		t.Fatal(err)
+	}
+	saved, err = readCrewTeamLocal(dir)
+	if err != nil || saved.Status != b.Status {
+		t.Fatalf("changed status was not saved: %+v %v", saved, err)
+	}
+	if err := os.WriteFile(filename, []byte("invalid JSON"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveCrewTeamLocal(dir, b); err != nil {
+		t.Fatal(err)
+	}
+	saved, err = readCrewTeamLocal(dir)
+	if err != nil || saved.Status != b.Status || saved.Revision != b.Revision {
+		t.Fatalf("corrupt binding was not replaced: %+v %v", saved, err)
+	}
+}
 
 // PLAT-856-509 (Team sync audit, 5 Nov): one file over the 64 MiB per-file limit made every commit fail with
 // "invalid shared file metadata", so the copy stopped syncing both ways; it is now left out and named. A case-only
 // rename (docs -> Docs) is sent as a removal of the old name before the new name, so no batch holds both spellings.
 func TestCrewTeamScanLeavesOutOversizeFileAndSendsRemovalsFirst(t *testing.T) {
 	root := t.TempDir()
-	for path, content := range map[string]string{"a.md": "small", "Docs/a.md": "renamed folder"} {
+	for path, content := range map[string]string{"team/a.md": "small", "team/Docs/a.md": "renamed folder"} {
 		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, path)), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -36,7 +104,7 @@ func TestCrewTeamScanLeavesOutOversizeFileAndSendsRemovalsFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	big, err := os.Create(filepath.Join(root, "big.bin"))
+	big, err := os.Create(filepath.Join(root, "team/big.bin"))
 	if err == nil {
 		err = big.Truncate(publication.MaxFileBytes + 1)
 		big.Close()
@@ -46,16 +114,47 @@ func TestCrewTeamScanLeavesOutOversizeFileAndSendsRemovalsFirst(t *testing.T) {
 	}
 	// The copy last had docs/a.md, before the folder was renamed to Docs.
 	b := &crewTeamLocal{Root: root, Downloaded: true, Files: map[string]crewTeamLocalFile{
-		"docs/a.md": {Version: chunkedFile{Hash: strings.Repeat("a", 64), Size: 14}}}}
-	scan, err := crewTeamScan(t.Context(), b, crewTeamFolder{ID: "f1", Whole: true})
+		"team/docs/a.md": {Version: chunkedFile{Hash: strings.Repeat("a", 64), Size: 14}}}}
+	scan, err := crewTeamScan(t.Context(), b, crewTeamFolder{ID: "f1", Folders: []string{"team"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slices.ContainsFunc(scan.changes, func(c crewTeamChange) bool { return c.Path == "big.bin" }) || !slices.Equal(b.TooLarge, []string{"big.bin"}) {
+	if slices.ContainsFunc(scan.changes, func(c crewTeamChange) bool { return c.Path == "team/big.bin" }) || !slices.Equal(b.TooLarge, []string{"team/big.bin"}) {
 		t.Fatalf("oversize file: changes %+v too_large %v", scan.changes, b.TooLarge)
 	}
-	if len(scan.changes) != 3 || scan.changes[0].Path != "docs/a.md" || scan.changes[0].After != nil {
+	if len(scan.changes) != 3 || scan.changes[0].Path != "team/docs/a.md" || scan.changes[0].After != nil {
 		t.Fatalf("the old spelling's removal is not sent first: %+v", scan.changes)
+	}
+}
+
+// A folder the copy's account cannot read (made by the owner's own programs, 18 Nov) stopped every round of the
+// owner's copy with "permission denied", retried every 40 seconds. It is now left out: the rest still syncs, and what
+// the team has from inside it is not removed.
+func TestCrewTeamScanSkipsUnreadableFolder(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"team/locked", "team/open"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "team/open/a.md"), []byte("new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(root, "team/locked"), 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(root, "team/locked"), 0o700) })
+	if _, err := os.ReadDir(filepath.Join(root, "team/locked")); err == nil {
+		t.Skip("running as an account that can read any folder")
+	}
+	b := &crewTeamLocal{Root: root, Downloaded: true, Files: map[string]crewTeamLocalFile{
+		"team/locked/keep.md": {Version: chunkedFile{Hash: strings.Repeat("a", 64), Size: 4}}}}
+	scan, err := crewTeamScan(t.Context(), b, crewTeamFolder{ID: "f1", Folders: []string{"team"}})
+	if err != nil {
+		t.Fatalf("one unreadable folder stopped the copy: %v", err)
+	}
+	if len(scan.changes) != 1 || scan.changes[0].Path != "team/open/a.md" {
+		t.Fatalf("want only the readable new file, no removal from the unreadable folder: %+v", scan.changes)
 	}
 }
 
@@ -151,7 +250,7 @@ func TestCrewTeamDownloadPageLargerThanARoundCompletesOverRounds(t *testing.T) {
 func TestCrewTeamTurnSkipsSyncOnlyDuringAFirstDownload(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	if err := writeCrewTeam(crewTeam{ProjectID: "first-download", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true}}); err != nil {
+	if err := writeCrewTeam(crewTeam{ProjectID: "first-download", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}); err != nil {
 		t.Fatal(err)
 	}
 	if crewTeamFirstDownloadPending("member", "first-download") {
@@ -175,59 +274,6 @@ func TestCrewTeamTurnSkipsSyncOnlyDuringAFirstDownload(t *testing.T) {
 	}
 	if crewTeamFirstDownloadPending("member", "first-download") {
 		t.Fatal("a finished copy must sync on a turn")
-	}
-}
-
-// PLAT-856-509 (owner, 6 Nov): a Mac Crew's dashboards reach the server in their own read copy. Only dashboard files and
-// the database copy are taken, the copy is swapped whole, and reads go there, never to the Crew's own db/, which an
-// always-on agent may be writing.
-func TestCrewMacDashboardsReadCopy(t *testing.T) {
-	version := func(store string, content string) chunks.File {
-		t.Helper()
-		v, err := chunks.Split(strings.NewReader(content), int64(len(content)), false, func(id string, data []byte) error { return putChunk(store, id, data) })
-		if err != nil {
-			t.Fatal(err)
-		}
-		return v
-	}
-	store, root := t.TempDir(), t.TempDir()
-	page, data := version(store, "<html>first</html>"), version(store, "database copy")
-	for name, files := range map[string]map[string]chunks.File{
-		"nothing":           {},
-		"a chat":            {"builder/conversation/chat.json": page},
-		"a credential":      {"db/reports/.env": page},
-		"outside":           {"../db/reports/index.html": page},
-		"the Crew settings": {"product.json": page},
-	} {
-		if validateCrewMacDashboards(files) == nil {
-			t.Fatalf("%s was accepted", name)
-		}
-	}
-	first := map[string]chunks.File{"db/reports/index.html": page, crewMacDashboardsDatabase: data}
-	if err := validateCrewMacDashboards(first); err != nil {
-		t.Fatal(err)
-	}
-	if err := swapCrewMacDashboards(root, store, first); err != nil {
-		t.Fatal(err)
-	}
-	// A swap that cannot finish leaves the copy as it was.
-	broken := map[string]chunks.File{"db/reports/index.html": {Hash: page.Hash, Size: 1, Chunks: []chunks.Chunk{{ID: strings.Repeat("d", 64), Len: 1}}}}
-	if swapCrewMacDashboards(root, store, broken) == nil {
-		t.Fatal("a missing chunk was accepted")
-	}
-	got, err := os.ReadFile(filepath.Join(root, crewroot.MacDashboardsFolder, "db", "reports", "index.html"))
-	if err != nil || string(got) != "<html>first</html>" {
-		t.Fatalf("read copy: %q %v", got, err)
-	}
-	if crewroot.SyncContentAllowed("resources/"+crewroot.MacDashboardsFolder+"/db/reports/index.html", false) {
-		t.Fatal("Team sync would carry the read copy")
-	}
-	second := map[string]chunks.File{"db/reports/other.html": version(store, "<html>second</html>")}
-	if err = swapCrewMacDashboards(root, store, second); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = os.Stat(filepath.Join(root, crewroot.MacDashboardsFolder, "db", "reports", "index.html")); !os.IsNotExist(err) {
-		t.Fatalf("a removed dashboard stayed in the copy: %v", err)
 	}
 }
 
@@ -325,7 +371,7 @@ func TestCrewTeamWatchedRoundReadsOnlyChangedFolders(t *testing.T) {
 		write(rel, "first "+rel)
 	}
 	b := &crewTeamLocal{Root: root, Downloaded: true, Files: map[string]crewTeamLocalFile{}}
-	share := crewTeamFolder{ID: "f1", Whole: true}
+	share := crewTeamFolder{ID: "f1", Folders: []string{"a", "b", "c", "quiet"}}
 	full, err := crewTeamScan(t.Context(), b, share)
 	if err != nil || len(full.changes) != 5 {
 		t.Fatalf("first scan: %v %+v", err, full.changes)
@@ -361,7 +407,10 @@ func TestCrewTeamStableStampReusesContentAndDetectsPreservedMtime(t *testing.T) 
 		t.Skip("this OS has no strong identity in FileInfo; content is conservatively rechecked")
 	}
 	root := t.TempDir()
-	p := filepath.Join(root, "edit.md")
+	if err := os.MkdirAll(filepath.Join(root, "team"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(root, "team", "edit.md")
 	old := time.Now().Add(-time.Minute)
 	write := func(path, data string) {
 		t.Helper()
@@ -374,7 +423,7 @@ func TestCrewTeamStableStampReusesContentAndDetectsPreservedMtime(t *testing.T) 
 	}
 	write(p, "first")
 	b := &crewTeamLocal{Root: root, Downloaded: true, Files: map[string]crewTeamLocalFile{}}
-	share := crewTeamFolder{ID: "f1", Whole: true}
+	share := crewTeamFolder{ID: "f1", Folders: []string{"team"}}
 	scan := func() crewTeamScanResult {
 		t.Helper()
 		got, err := crewTeamScan(t.Context(), b, share)
@@ -402,7 +451,7 @@ func TestCrewTeamStableStampReusesContentAndDetectsPreservedMtime(t *testing.T) 
 	}
 	write(p, "other")
 	edited := scan()
-	if edited.readFiles != 1 || len(edited.changes) != 1 || edited.changes[0].After.Hash == b.Files["edit.md"].Version.Hash {
+	if edited.readFiles != 1 || len(edited.changes) != 1 || edited.changes[0].After.Hash == b.Files["team/edit.md"].Version.Hash {
 		t.Fatalf("same-size/mtime edit was lost: %+v", edited)
 	}
 	for rel, entry := range edited.entries {
@@ -423,7 +472,7 @@ func TestCrewTeamStableStampReusesContentAndDetectsPreservedMtime(t *testing.T) 
 func TestCrewTeamStaleDeleteKeepsTheNewerEdit(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	if err := writeCrewTeam(crewTeam{ProjectID: "clash-test", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true}}); err != nil {
+	if err := writeCrewTeam(crewTeam{ProjectID: "clash-test", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}); err != nil {
 		t.Fatal(err)
 	}
 	store, err := crewTeamChunkStore("clash-test")
@@ -439,83 +488,26 @@ func TestCrewTeamStaleDeleteKeepsTheNewerEdit(t *testing.T) {
 		return v
 	}
 	first, edit := put("first"), put("teammate's newer edit")
-	for i, c := range []crewTeamChange{{Path: "notes.md", After: &first}, {Path: "notes.md", Before: first.Hash, After: &edit}} {
+	for i, c := range []crewTeamChange{{Path: "team/notes.md", After: &first}, {Path: "team/notes.md", Before: first.Hash, After: &edit}} {
 		transfer := "owner-" + string(rune('a'+i))
 		if _, err = commitCrewTeamChanges(t.Context(), "clash-test", "owner", transfer, crewTransferDigest(transfer), []crewTeamChange{c}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	receipt, err := commitCrewTeamChanges(t.Context(), "clash-test", "member", "stale-delete", crewTransferDigest("stale-delete"), []crewTeamChange{{Path: "notes.md", Before: first.Hash}})
+	receipt, err := commitCrewTeamChanges(t.Context(), "clash-test", "member", "stale-delete", crewTransferDigest("stale-delete"), []crewTeamChange{{Path: "team/notes.md", Before: first.Hash}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	state, _ := readCrewTeamFileState("clash-test")
-	if v := state.Versions["notes.md"]; v.File == nil || v.File.Hash != edit.Hash || !slices.Contains(receipt.Conflicts, "notes.md") {
+	if v := state.Versions["team/notes.md"]; v.File == nil || v.File.Hash != edit.Hash || !slices.Contains(receipt.Conflicts, "team/notes.md") {
 		t.Fatalf("the stale delete won: %+v conflicts %v", v, receipt.Conflicts)
 	}
 	root, _ := crewTeamFilesRoot("clash-test")
-	if got, _ := os.ReadFile(filepath.Join(root, "notes.md")); string(got) != "teammate's newer edit" {
+	if got, _ := os.ReadFile(filepath.Join(root, "team/notes.md")); string(got) != "teammate's newer edit" {
 		t.Fatalf("the team's file: %q", got)
 	}
-	if paths, _ := crewTeamChangedSince(state, receipt.Revision-1, 100); !slices.Contains(paths, "notes.md") {
+	if paths, _ := crewTeamChangedSince(state, receipt.Revision-1, 100); !slices.Contains(paths, "team/notes.md") {
 		t.Fatal("the kept edit is not sent back to the deleter")
-	}
-}
-
-// PLAT-856-509: the member-copy migration used os.CopyFS, which refuses links, and a crash after the copy left
-// "target_not_empty" for good. Links now copy as links, and a finished copy whose record still points at the old
-// folder is resumed.
-func TestCrewTeamMemberCopyMigrationCopiesLinksAndResumes(t *testing.T) {
-	state := t.TempDir()
-	t.Setenv("AGENTWORKS_STATE_ROOT", state)
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	crewTeamTestDocs(t, "mig-test", "mig-test")
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "mig-test", OwnerID: "owner", ProjectID: "mig-test"}); err != nil {
-		t.Fatal(err)
-	}
-	record := func(member string) (string, string, *crewTeamLocal) {
-		t.Helper()
-		dir := filepath.Join(state, "team-working", "server", member, "copy")
-		old := filepath.Join(dir, "files")
-		if err := os.MkdirAll(old, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(old, "a.md"), []byte("member file"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		b := &crewTeamLocal{Project: "mig-test", RemoteUser: member, Root: old}
-		if err := saveCrewTeamLocal(dir, *b); err != nil {
-			t.Fatal(err)
-		}
-		return dir, old, b
-	}
-	dir, old, b := record("member")
-	if err := os.Symlink("a.md", filepath.Join(old, "link.md")); err != nil {
-		t.Fatal(err)
-	}
-	if result, _ := migrateCrewTeamMemberCopy(dir, old, "stamp", b); result != "moved" {
-		t.Fatalf("a copy with a link: %s", result)
-	}
-	if link, err := os.Readlink(filepath.Join(b.Root, "link.md")); err != nil || link != "a.md" {
-		t.Fatalf("the link was not copied as a link: %q %v", link, err)
-	}
-	// A crash after the finished copy was renamed into place, before the record was saved.
-	dir, old, b = record("member2")
-	target, err := crewTeamMemberCopyRoot("mig-test", "member2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = copyCrewTeamTree(old, target); err == nil {
-		err = os.WriteFile(filepath.Join(target, crewTeamMigratedMarker), nil, 0o600)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result, _ := migrateCrewTeamMemberCopy(dir, old, "stamp", b); result != "moved_resumed" || b.Root != target {
-		t.Fatalf("the interrupted migration did not resume: %s %s", result, b.Root)
-	}
-	if _, err = os.Stat(filepath.Join(target, crewTeamMigratedMarker)); !os.IsNotExist(err) {
-		t.Fatal("the migration marker stayed in the member's copy")
 	}
 }
 
@@ -524,23 +516,45 @@ func TestCrewTeamMemberCopyMigrationCopiesLinksAndResumes(t *testing.T) {
 func TestCrewTeamMemberMacAgentKnownAfterRestartWhileMacOff(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
+	newExternalCrewCommandFixture(t)
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"member","username":"member","products":["work"]}]}`)
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "mac-team", OwnerID: "owner", ProjectID: "mac-team"}); err != nil {
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "team", OwnerID: "owner", ProjectID: "team"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := crewroot.WriteSync("mac-team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Mode: "relay", PairID: "owner-pair", Side: "server", Editing: "local", PeerProjectID: "mac-crew"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeCrewTeam(crewTeam{ProjectID: "mac-team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member", Where: "mac", MacPair: "member-pair"}}}); err != nil {
+	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member", Where: "mac", MacPair: "member-pair"}}, Agents: map[string]crewTeamRegisteredAgent{
+		"team-agent-main":    {ID: "team-agent-main", OwnerID: "member", Tab: macMainTab, ChatKey: "team", Name: "Main", Place: "mac", InTeam: true},
+		"team-agent-private": {ID: "team-agent-private", OwnerID: "member", Tab: "private", ChatKey: "team:chat:private", Name: "Private", Place: "mac", InTeam: false},
+	}}); err != nil {
 		t.Fatal(err)
 	}
 	tab := crewMacTeamTab{Person: "member", Tab: macMainTab, ConversationID: "member-main", Name: "Main"}
-	saveCrewMacTabs("mac-team", "member", []crewMacTeamTab{tab})
-	crewMacTeamTabsCache.Delete("mac-team\x00member") // a restart: nothing in memory
-	key := crewMacTabRow("mac-team", tab).ConversationKey
-	if person, got, ok := crewMemberMacAgentFor(t.Context(), "mac-team", key, "owner"); !ok || person != "member" || got.Tab != macMainTab {
+	saveCrewMacTabs("team", "member", []crewMacTeamTab{tab, {Person: "member", Tab: "private", ConversationID: "private-conversation", Name: "Private", OnlyMe: true}})
+	crewMacTeamTabsCache.Delete("team\x00member") // a restart: nothing in memory
+	key := crewMacTabRow("team", tab).ConversationKey
+	if person, got, ok := crewMemberMacAgentFor(t.Context(), "team", key, "owner", false); !ok || person != "member" || got.Tab != macMainTab {
 		t.Fatalf("the member's agent is unknown while their Mac is off: %q %+v %t", person, got, ok)
 	}
+	// PLAT-746-1024: dropping server shadow tabs must preserve the member-Mac
+	// list used by relay, watch and notifications, without exposing Only-me rows.
+	rows := crewTeamMacMemberTabs(t.Context(), "team", "owner")
+	if len(rows) != 1 || rows[0].ConversationID != "member-main" {
+		t.Fatalf("Mac list lost or exposed a private agent: %+v", rows)
+	}
+	team, err := readCrewTeam("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	team.On = false
+	if err := writeCrewTeam(team); err != nil {
+		t.Fatal(err)
+	}
+	if rows := crewTeamMacMemberTabs(t.Context(), "team", "owner"); len(rows) != 0 {
+		t.Fatalf("Team-off agents still listed: %+v", rows)
+	}
+
 }
 
 // PLAT-856-509: a Mac agent's answer was awaited only in memory, so a restart lost it. The wait is recorded and
@@ -602,83 +616,6 @@ func crewTeamTestDocs(t *testing.T, folder, project string) {
 	}
 }
 
-// Owner, 5 Nov: two people editing different lines of one shared file both keep their edits. A change sent from an
-// older base is merged by lines into a new revision every copy (the sender's included) downloads; the same line
-// edited by both takes the later side and is a clash; a binary file keeps the whole-file rule (later wins).
-func TestCrewTeamLineMergeOfConcurrentEdits(t *testing.T) {
-	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	if err := writeCrewTeam(crewTeam{ProjectID: "merge-test", OwnerID: "owner", On: true, Folder: crewTeamFolder{ID: "f1", Whole: true}}); err != nil {
-		t.Fatal(err)
-	}
-	store, err := crewTeamChunkStore("merge-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	put := func(content string) chunkedFile {
-		t.Helper()
-		v, err := chunkReader(strings.NewReader(content), int64(len(content)), false, func(id string, chunk []byte) error { return putChunk(store, id, chunk) })
-		if err != nil {
-			t.Fatal(err)
-		}
-		return v
-	}
-	for _, tc := range []struct {
-		name, base, ours, theirs, want string
-		hunks                          int // overlapping parts; -1 = not merged (whole-file rule)
-	}{
-		{"different lines", "title\nalpha\nbeta\ngamma\ndelta\nend\n", "title\nALPHA by owner\nbeta\ngamma\ndelta\nend\n",
-			"title\nalpha\nbeta\ngamma\nDELTA by member\nend\nnew last line\n", "title\nALPHA by owner\nbeta\ngamma\nDELTA by member\nend\nnew last line\n", 0},
-		{"same line", "title\nalpha\nbeta\ngamma\ndelta\nend\n", "title\nalpha owner\nbeta\ngamma\ndelta\nend\n",
-			"title\nalpha member\nbeta\ngamma\ndelta\nmember end\n", "title\nalpha member\nbeta\ngamma\ndelta\nmember end\n", 1},
-		{"binary", "title\x00base\nend\n", "title\x00base\nowner end\n", "title\x00member\nend\n", "title\x00member\nend\n", -1},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			path := strings.ReplaceAll(tc.name, " ", "-") + ".txt"
-			first, ours, theirs := put(tc.base), put(tc.ours), put(tc.theirs)
-			for i, c := range []crewTeamChange{{Path: path, After: &first}, {Path: path, Before: first.Hash, After: &ours}} {
-				transfer := path + "-owner-" + string(rune('a'+i))
-				if _, err := commitCrewTeamChanges(t.Context(), "merge-test", "owner", transfer, crewTransferDigest(transfer), []crewTeamChange{c}); err != nil {
-					t.Fatal(err)
-				}
-			}
-			receipt, err := commitCrewTeamChanges(t.Context(), "merge-test", "member", path+"-member", crewTransferDigest(path+"-member"), []crewTeamChange{{Path: path, Before: first.Hash, After: &theirs}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			root, _ := crewTeamFilesRoot("merge-test")
-			if got, _ := os.ReadFile(filepath.Join(root, path)); string(got) != tc.want {
-				t.Fatalf("team file %q, want %q", got, tc.want)
-			}
-			state, _ := readCrewTeamFileState("merge-test")
-			current := state.Versions[path]
-			var stored strings.Builder
-			if err = assembleChunked(store, chunkedFile{Chunks: current.Chunks}, &stored); err != nil || stored.String() != tc.want || current.Author != "member" {
-				t.Fatalf("stored version %q by %s, err %v", stored.String(), current.Author, err)
-			}
-			if clash := slices.Contains(receipt.Conflicts, path); clash != (tc.hunks != 0) {
-				t.Fatalf("conflicts %v for %d overlapping parts", receipt.Conflicts, tc.hunks)
-			}
-			if tc.hunks != 0 {
-				last := state.Clashes[len(state.Clashes)-1]
-				if last.Path != path || last.WinningAuthor != "member" || last.Merged != (tc.hunks > 0) || tc.hunks > 0 && last.Hunks != tc.hunks {
-					t.Fatalf("clash record %+v", last)
-				}
-				if v := state.versionAt(path, last.LosingRevision); v == nil || v.Hash != ours.Hash {
-					t.Fatal("the owner's version is not kept in history")
-				}
-			}
-			// Both copies converge: the new revision goes to every copy, including the member's that sent its own.
-			if paths, _ := crewTeamChangedSince(state, receipt.Revision-1, 100); !slices.Contains(paths, path) {
-				t.Fatalf("the merged revision is not sent out: %v", paths)
-			}
-			if tc.hunks == 0 && (current.File.Hash == theirs.Hash || current.File.Hash == ours.Hash) {
-				t.Fatal("the merge did not produce a new version for both copies to download")
-			}
-		})
-	}
-}
-
 // Owner, 5 Nov: a same-line clash tells both people once, stays on the sync line, and an agent sorts it out: clashes
 // returns both versions and resolve keep=other puts the other person's version back as a new revision.
 func TestCrewTeamClashNotifiesBothAndAgentResolves(t *testing.T) {
@@ -690,7 +627,7 @@ func TestCrewTeamClashNotifiesBothAndAgentResolves(t *testing.T) {
 	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "clash-test", OwnerID: "owner", ProjectID: "clash-test"}); err != nil {
 		t.Fatal(err)
 	}
-	team := crewTeam{ProjectID: "clash-test", Name: "Example", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}, Folder: crewTeamFolder{ID: "f1", Whole: true}}
+	team := crewTeam{ProjectID: "clash-test", Name: "Example", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}, Folder: crewTeamFolder{ID: "f1", Folders: []string{"team"}}}
 	if err := writeCrewTeam(team); err != nil {
 		t.Fatal(err)
 	}
@@ -725,11 +662,11 @@ func TestCrewTeamClashNotifiesBothAndAgentResolves(t *testing.T) {
 	drain()
 	const ownerText, memberText = "title\nalpha owner\nend\n", "title\nalpha member\nend\n"
 	base, ours, theirs := put("title\nalpha\nend\n"), put(ownerText), put(memberText)
-	commit("owner", "a", crewTeamChange{Path: "notes.txt", After: &base})
-	commit("owner", "b", crewTeamChange{Path: "notes.txt", Before: base.Hash, After: &ours})
-	commit("member", "c", crewTeamChange{Path: "notes.txt", Before: base.Hash, After: &theirs})
+	commit("owner", "a", crewTeamChange{Path: "team/notes.txt", After: &base})
+	commit("owner", "b", crewTeamChange{Path: "team/notes.txt", Before: base.Hash, After: &ours})
+	commit("member", "c", crewTeamChange{Path: "team/notes.txt", Before: base.Hash, After: &theirs})
 	other := put("other\n")
-	commit("member", "d", crewTeamChange{Path: "other.txt", After: &other}) // a later round: no second notice
+	commit("member", "d", crewTeamChange{Path: "team/other.txt", After: &other}) // a later round: no second notice
 	jobs := drain()
 	if len(jobs) != 1 || len(jobs[0].direct) != 2 {
 		t.Fatalf("want one notice to both people, got %+v", jobs)
@@ -738,10 +675,10 @@ func TestCrewTeamClashNotifiesBothAndAgentResolves(t *testing.T) {
 	for _, d := range jobs[0].direct {
 		bodies[d.user] = d.msg.Body
 	}
-	if !strings.Contains(bodies["owner"], "You and member both changed notes.txt. member's version is in the file; yours is kept.") || !strings.Contains(bodies["member"], "Your version is in the file; owner's is kept.") {
+	if !strings.Contains(bodies["owner"], "You and member both changed team/notes.txt. member's version is in the file; yours is kept.") || !strings.Contains(bodies["member"], "Your version is in the file; owner's is kept.") {
 		t.Fatalf("notice texts %q", bodies)
 	}
-	if sync := crewTeamTabSyncFor(team, "owner"); sync == nil || !strings.Contains(sync.Line, "1 clash to sort out: notes.txt") {
+	if sync := crewTeamTabSyncFor(team, "owner"); sync == nil || !strings.Contains(sync.Line, "1 clash to sort out: team/notes.txt") {
 		t.Fatalf("sync line %+v", sync)
 	}
 	call := func(user string, args map[string]any) *httptest.ResponseRecorder {
@@ -762,21 +699,64 @@ func TestCrewTeamClashNotifiesBothAndAgentResolves(t *testing.T) {
 	if c.Current == nil || c.Other == nil || c.Current.Text != memberText || c.Other.Text != ownerText || c.Other.Who != "owner" {
 		t.Fatalf("clash versions %+v", c)
 	}
-	if w = call("outsider", map[string]any{"crew_id": "clash-test", "action": "resolve", "path": "notes.txt", "clash_id": c.ID, "keep": "other"}); w.Code != 403 {
+	if w = call("outsider", map[string]any{"crew_id": "clash-test", "action": "resolve", "path": "team/notes.txt", "clash_id": c.ID, "keep": "other"}); w.Code != 403 {
 		t.Fatalf("an outsider resolved a clash: %d", w.Code)
 	}
-	if w = call("member", map[string]any{"crew_id": "clash-test", "action": "resolve", "path": "notes.txt", "clash_id": c.ID, "keep": "other"}); w.Code != 200 {
+	if w = call("member", map[string]any{"crew_id": "clash-test", "action": "resolve", "path": "team/notes.txt", "clash_id": c.ID, "keep": "other"}); w.Code != 200 {
 		t.Fatalf("resolve: %d %s", w.Code, w.Body.String())
 	}
 	state, _ := readCrewTeamFileState("clash-test")
 	root, _ := crewTeamFilesRoot("clash-test")
-	if got, _ := os.ReadFile(filepath.Join(root, "notes.txt")); string(got) != ownerText || state.Versions["notes.txt"].Author != "member" || state.Versions["notes.txt"].Revision != state.Revision {
-		t.Fatalf("keep other wrote %q as %+v", got, state.Versions["notes.txt"])
+	if got, _ := os.ReadFile(filepath.Join(root, "team/notes.txt")); string(got) != ownerText || state.Versions["team/notes.txt"].Author != "member" || state.Versions["team/notes.txt"].Revision != state.Revision {
+		t.Fatalf("keep other wrote %q as %+v", got, state.Versions["team/notes.txt"])
 	}
 	if open := crewTeamOpenClashPaths(state.Clashes); len(open) != 0 {
 		t.Fatalf("clash still open: %v", open)
 	}
 	if sync := crewTeamTabSyncFor(team, "owner"); !strings.Contains(sync.Line, "no clashes") {
 		t.Fatalf("sync line after resolve %q", sync.Line)
+	}
+}
+
+// PLAT-746-958: many individually small copies must not exhaust the Mac's
+// file table together. Rejected copies retain the full-scan fallback.
+func TestCrewTeamWatcherBudgetIsGlobalAndReleased(t *testing.T) {
+	probe := &crewTeamWatch{}
+	first := probe.countedNames(true, map[string]int{"": 3, "folder": 200})
+	for i := 0; i < 10; i++ {
+		if got := probe.countedNames(false, map[string]int{"folder": 200}); got != first {
+			t.Fatal("unchanged entries charged twice")
+		}
+	}
+	before := crewTeamWatchBudget.Load()
+	a, b := &crewTeamWatch{}, &crewTeamWatch{}
+	defer a.close()
+	defer b.close()
+	available := int64(crewTeamWatchNames) - before
+	if available < 2 {
+		t.Fatal("unexpected preexisting watcher budget")
+	}
+	if !a.reserveNames(available - 1) {
+		t.Fatal("first copy refused")
+	}
+	if b.reserveNames(2) {
+		t.Fatal("second copy exceeded global budget")
+	}
+	a.stop()
+	if !a.off || a.w != nil || a.names != 0 {
+		t.Fatal("fallback retained watcher resources")
+	}
+	if !b.reserveNames(2) {
+		t.Fatal("closed copy did not release budget")
+	}
+	b.close()
+	a.root = t.TempDir()
+	a.done("example", "same", crewTeamScanPlan{full: true}, crewTeamScanResult{dirs: []string{""}, dirNames: map[string]int{"": 0}}, nil)
+	if a.off || a.w == nil {
+		t.Fatal("fallback copy did not retry watching after budget freed")
+	}
+	a.close()
+	if crewTeamWatchBudget.Load() != before {
+		t.Fatal("budget leaked after close")
 	}
 }

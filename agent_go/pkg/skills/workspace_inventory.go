@@ -27,7 +27,8 @@ func workspaceSkillOperation(ctx context.Context, workspaceAPIURL, operation, wo
 			return err
 		}
 	}
-	payload, _ := json.Marshal(map[string]string{"workspace_path": workspacePath, "name": name})
+	request := map[string]string{"workspace_path": workspacePath, "name": name}
+	payload, _ := json.Marshal(request)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(workspaceAPIURL, "/")+"/api/skills/workspace/"+operation, bytes.NewReader(payload))
 	if err != nil {
 		return err

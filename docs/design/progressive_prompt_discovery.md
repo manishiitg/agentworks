@@ -187,8 +187,7 @@ those failures were reproduced in separate unchanged baseline worktrees:
 
 - mcpagent: two inactive-provider artifact deletion assertions and
   `TestSessionPublicMethodSurface`'s outdated method list.
-- Workflows: `TestResolveDelegationTierConfigExpandsProviderProfile`,
-  `TestWorkshopPromptShellExamplesUseAbsolutePaths` (rejects the already-shipped
+- Workflows: `TestWorkshopPromptShellExamplesUseAbsolutePaths` (rejects the already-shipped
   linked `cd project` guidance), and `TestValidateStepLLMConfigEnforcesAgyAlphaGate`.
 
 Live OAuth connection onboarding, unavailable-provider qualification, and total

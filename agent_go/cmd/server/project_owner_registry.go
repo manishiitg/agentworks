@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -79,6 +80,18 @@ type projectOwnerRecord struct {
 	SharedAgents []string `json:"shared_agents,omitempty"`
 	// SharedAgentSince is when each selected conversation became shared.
 	SharedAgentSince map[string]string `json:"shared_agent_since,omitempty"`
+	// CoOwners build a server Crew with its main owner (OwnerID, the creator, who never changes and whose server account
+	// every turn runs in). Server-controlled like the rest of the record; only the main owner changes it (crew_owners.go).
+	CoOwners []string `json:"co_owners,omitempty"`
+	// Users work in a server Crew through its chat with the setup the owners made, and cannot change that setup (owner,
+	// 25 Nov: "co-owners can always change everything... we should define a user role for this type of user who have
+	// limited permission"; crew_setup_lock.go). Only the main owner adds or removes them.
+	Users []string `json:"users,omitempty"`
+	// UserLockedPaths are, per user, the extra project paths the owner locked besides the instructions, skills and settings.
+	UserLockedPaths map[string][]string `json:"user_locked_paths,omitempty"`
+	// LegacySetupLocked is the 24 Nov co-owner switch that Users replaced. load turns each entry into a User; remove the
+	// field once every server has written its registry again.
+	LegacySetupLocked map[string][]string `json:"setup_locked,omitempty"`
 }
 
 type projectOwnerFile struct {
@@ -100,10 +113,22 @@ type projectOwnerRegistry struct {
 	// dir is the registry directory; empty means "no state area": lookups find nothing, writes fail loudly.
 	dir string
 
-	mu     sync.Mutex
-	cached map[string]projectOwnerRecord
-	stamp  fileStamp
+	mu        sync.Mutex
+	cached    map[string]projectOwnerRecord
+	stamp     fileStamp
+	checkedAt time.Time // last time the file's stamp was compared
 }
+
+// projectOwnerStatLife is how long a cached registry is trusted without re-checking the file. This process's own
+// writes drop the cache at once (modify); another process's write (the migration command) shows within this time.
+// The per-call Lstat was ~16% of agent CPU on a server CPU profile (#2989). Tests edit the file directly and
+// read it back at once, so they re-check on every read.
+var projectOwnerStatLife = func() time.Duration {
+	if testing.Testing() {
+		return 0
+	}
+	return time.Second
+}()
 
 type fileStamp struct {
 	size  int64
@@ -151,6 +176,13 @@ func (r *projectOwnerRegistry) load() (map[string]projectOwnerRecord, error) {
 	if r == nil || r.dir == "" {
 		return map[string]projectOwnerRecord{}, nil
 	}
+	r.mu.Lock()
+	if r.cached != nil && time.Since(r.checkedAt) < projectOwnerStatLife {
+		cached := r.cached
+		r.mu.Unlock()
+		return cached, nil
+	}
+	r.mu.Unlock()
 	info, err := os.Lstat(r.path())
 	switch {
 	case errors.Is(err, os.ErrNotExist):
@@ -164,6 +196,7 @@ func (r *projectOwnerRegistry) load() (map[string]projectOwnerRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.cached != nil && r.stamp == stamp {
+		r.checkedAt = time.Now()
 		return r.cached, nil
 	}
 	raw, err := os.ReadFile(r.path())
@@ -177,7 +210,12 @@ func (r *projectOwnerRegistry) load() (map[string]projectOwnerRecord, error) {
 	if file.Projects == nil {
 		file.Projects = map[string]projectOwnerRecord{}
 	}
-	r.cached, r.stamp = file.Projects, stamp
+	for key, rec := range file.Projects {
+		if len(rec.LegacySetupLocked) > 0 {
+			file.Projects[key] = migrateSetupLockedToUsers(rec)
+		}
+	}
+	r.cached, r.stamp, r.checkedAt = file.Projects, stamp, time.Now()
 	return file.Projects, nil
 }
 
@@ -190,6 +228,22 @@ func (r *projectOwnerRegistry) Lookup(product, folder string) (projectOwnerRecor
 	}
 	rec, ok := projects[projectOwnerKey(product, folder)]
 	return rec, ok
+}
+
+// FindByProjectID returns the record of a product's project by its stable id, reading the shared cache without
+// copying it. crewOwnerRecord ran per request through All, and the copies were ~35-45% of agent allocations (#2989).
+// The cached map is replaced, never changed in place, so reading it after load returns is safe (as in Lookup).
+func (r *projectOwnerRegistry) FindByProjectID(product, projectID string) (projectOwnerRecord, bool) {
+	projects, err := r.load()
+	if err != nil {
+		return projectOwnerRecord{}, false
+	}
+	for _, record := range projects {
+		if record.Product == product && record.ProjectID == projectID {
+			return record, true
+		}
+	}
+	return projectOwnerRecord{}, false
 }
 
 // All returns a copy of every registered project.
@@ -237,7 +291,7 @@ func (r *projectOwnerRegistry) Register(rec projectOwnerRecord) error {
 		}
 		changed := false
 		if rec.LocalRoot != "" && rec.LocalRoot != current.LocalRoot {
-			return false, fmt.Errorf("a Crew's local folder is chosen only at creation")
+			return false, fmt.Errorf("a project's local folder is chosen only at creation")
 		}
 		if rec.BindingRoot != "" && rec.BindingRoot != current.BindingRoot {
 			return false, fmt.Errorf("private state identity can only be pinned by the storage migration")
@@ -314,6 +368,172 @@ func (r *projectOwnerRegistry) SetRunPeople(product, folder string, people []str
 		projects[key] = current
 		return true, nil
 	})
+}
+
+// AddCoOwner records an account as a co-owner of a registered project; adding the main owner or an existing co-owner
+// changes nothing. A co-owner is no longer one of the Crew's Run people. Returns whether the list changed.
+func (r *projectOwnerRegistry) AddCoOwner(product, folder, userID string) (changed bool, err error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return false, errors.New("a co-owner needs an account id")
+	}
+	err = r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		key := projectOwnerKey(product, folder)
+		current, exists := projects[key]
+		if !exists {
+			return false, fmt.Errorf("%s is not registered", key)
+		}
+		if current.OwnerID == userID || slices.Contains(current.CoOwners, userID) {
+			return false, nil
+		}
+		current.CoOwners = append(slices.Clone(current.CoOwners), userID)
+		current.RunPeople = slices.DeleteFunc(slices.Clone(current.RunPeople), func(id string) bool { return id == userID })
+		current = withoutProjectUser(current, userID)
+		projects[key] = current
+		changed = true
+		return true, nil
+	})
+	return changed, err
+}
+
+// RemoveCoOwner drops a co-owner. The main owner is not in this list and cannot be removed. Returns whether it changed.
+func (r *projectOwnerRegistry) RemoveCoOwner(product, folder, userID string) (changed bool, err error) {
+	userID = strings.TrimSpace(userID)
+	err = r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		key := projectOwnerKey(product, folder)
+		current, exists := projects[key]
+		if !exists {
+			return false, fmt.Errorf("%s is not registered", key)
+		}
+		kept := slices.DeleteFunc(slices.Clone(current.CoOwners), func(id string) bool { return id == userID })
+		if len(kept) == len(current.CoOwners) {
+			return false, nil
+		}
+		current.CoOwners = kept
+		projects[key] = current
+		changed = true
+		return true, nil
+	})
+	return changed, err
+}
+
+// AddUser records an account as a User of a registered project (crew_setup_lock.go). A User is not also a co-owner
+// or one of the Run people. Adding the main owner changes nothing. Returns whether the record changed.
+func (r *projectOwnerRegistry) AddUser(product, folder, userID string) (changed bool, err error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return false, errors.New("a user needs an account id")
+	}
+	err = r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		key := projectOwnerKey(product, folder)
+		current, exists := projects[key]
+		if !exists {
+			return false, fmt.Errorf("%s is not registered", key)
+		}
+		if current.OwnerID == userID || slices.Contains(current.Users, userID) {
+			return false, nil
+		}
+		current.Users = append(slices.Clone(current.Users), userID)
+		current.CoOwners = slices.DeleteFunc(slices.Clone(current.CoOwners), func(id string) bool { return id == userID })
+		current.RunPeople = slices.DeleteFunc(slices.Clone(current.RunPeople), func(id string) bool { return id == userID })
+		projects[key] = current
+		changed = true
+		return true, nil
+	})
+	return changed, err
+}
+
+// RemoveUser drops a User and their locked paths. Returns whether the record changed.
+func (r *projectOwnerRegistry) RemoveUser(product, folder, userID string) (changed bool, err error) {
+	userID = strings.TrimSpace(userID)
+	err = r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		key := projectOwnerKey(product, folder)
+		current, exists := projects[key]
+		if !exists {
+			return false, fmt.Errorf("%s is not registered", key)
+		}
+		if !slices.Contains(current.Users, userID) {
+			return false, nil
+		}
+		projects[key] = withoutProjectUser(current, userID)
+		changed = true
+		return true, nil
+	})
+	return changed, err
+}
+
+// SetUserLockedPaths replaces the extra locked paths of one current User.
+func (r *projectOwnerRegistry) SetUserLockedPaths(product, folder, userID string, paths []string) error {
+	userID = strings.TrimSpace(userID)
+	return r.modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		key := projectOwnerKey(product, folder)
+		current, exists := projects[key]
+		if !exists {
+			return false, fmt.Errorf("%s is not registered", key)
+		}
+		if !slices.Contains(current.Users, userID) {
+			return false, errors.New("that person is not a user of this project")
+		}
+		next := map[string][]string{}
+		for id, p := range current.UserLockedPaths {
+			next[id] = p
+		}
+		if len(paths) > 0 {
+			next[userID] = append([]string{}, paths...)
+		} else {
+			delete(next, userID)
+		}
+		if len(next) == 0 {
+			next = nil
+		}
+		current.UserLockedPaths = next
+		projects[key] = current
+		return true, nil
+	})
+}
+
+func withoutProjectUser(rec projectOwnerRecord, userID string) projectOwnerRecord {
+	rec.Users = slices.DeleteFunc(slices.Clone(rec.Users), func(id string) bool { return id == userID })
+	if len(rec.Users) == 0 {
+		rec.Users = nil
+	}
+	if _, ok := rec.UserLockedPaths[userID]; ok {
+		next := map[string][]string{}
+		for id, p := range rec.UserLockedPaths {
+			if id != userID {
+				next[id] = p
+			}
+		}
+		if len(next) == 0 {
+			next = nil
+		}
+		rec.UserLockedPaths = next
+	}
+	return rec
+}
+
+// migrateSetupLockedToUsers turns each co-owner whose setup was locked (the 24 Nov switch) into a User with the same
+// extra locked paths. It only moves ids between lists of the same record; the next registry write persists it.
+func migrateSetupLockedToUsers(rec projectOwnerRecord) projectOwnerRecord {
+	for id, paths := range rec.LegacySetupLocked {
+		if id == "" || id == rec.OwnerID {
+			continue
+		}
+		rec.CoOwners = slices.DeleteFunc(slices.Clone(rec.CoOwners), func(existing string) bool { return existing == id })
+		if !slices.Contains(rec.Users, id) {
+			rec.Users = append(slices.Clone(rec.Users), id)
+		}
+		if len(paths) > 0 {
+			next := map[string][]string{}
+			for k, v := range rec.UserLockedPaths {
+				next[k] = v
+			}
+			next[id] = append([]string{}, paths...)
+			rec.UserLockedPaths = next
+		}
+	}
+	rec.LegacySetupLocked = nil
+	return rec
 }
 
 // Remove drops a project's entry (the project was deleted).

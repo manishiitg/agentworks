@@ -1,7 +1,7 @@
 // Package costobserver turns agent LLM and MCP activity events into ledger entries.
 //
 // It lives outside cmd/server because more than one launch path spends
-// tokens: the chat/query path and delegate() run inside package server, while
+// tokens: the chat/query path runs inside package server, while
 // workflow steps and background sub-agents are created by the orchestrator.
 // Those orchestrator-created agents previously had no ledger attachment at
 // all, so their spend was invisible. Both sides now construct the same
@@ -424,14 +424,14 @@ func (o *Observer) recordLLMGeneration(event *unifiedevents.AgentEvent, generati
 		totalCostUSD = estimatedCost
 		billingBasis = "token_estimate"
 		pricingSource = "model_registry"
-		if isSubscriptionCodingProvider(provider) {
+		if IsSubscriptionCodingProvider(provider) {
 			billingBasis = "subscription_shadow"
 		}
 	}
 	if totalCostUSD <= 0 {
 		billingBasis = "unpriced"
 		pricingSource = ""
-	} else if isSubscriptionCodingProvider(provider) {
+	} else if IsSubscriptionCodingProvider(provider) {
 		// CLI dollar telemetry is API-equivalent usage even when supplied by
 		// the provider; it is not a charge on a subscription login.
 		billingBasis = "subscription_shadow"
@@ -523,7 +523,7 @@ func (o *Observer) recordLegacyTokenUsage(event *unifiedevents.AgentEvent, tu *u
 		totalCostUSD = estimatedCost
 		billingBasis = "token_estimate"
 		pricingSource = "model_registry"
-		if isSubscriptionCodingProvider(provider) {
+		if IsSubscriptionCodingProvider(provider) {
 			billingBasis = "subscription_shadow"
 		}
 	} else if totalCostUSD <= 0 && tu.TotalCost > 0 {
@@ -532,14 +532,14 @@ func (o *Observer) recordLegacyTokenUsage(event *unifiedevents.AgentEvent, tu *u
 		totalCostUSD = tu.TotalCost
 		billingBasis = "token_estimate"
 		pricingSource = "agent_token_pricing"
-		if isSubscriptionCodingProvider(provider) {
+		if IsSubscriptionCodingProvider(provider) {
 			billingBasis = "subscription_shadow"
 		}
 	}
 	if totalCostUSD <= 0 {
 		billingBasis = "unpriced"
 		pricingSource = ""
-	} else if isSubscriptionCodingProvider(provider) {
+	} else if IsSubscriptionCodingProvider(provider) {
 		billingBasis = "subscription_shadow"
 	}
 	if unidentifiedAgyModel(provider, effectiveModel) {
@@ -613,7 +613,39 @@ func (o *Observer) baseEntry(event *unifiedevents.AgentEvent) costledger.Entry {
 	}
 }
 
+var perUseAccount struct {
+	sync.RWMutex
+	value func(provider, accountID string) bool
+}
+
+// SetPerUseAccount tells the observer which accounts are billed per use (an
+// API key). Their turns are real spend, never a subscription-equivalent
+// estimate, even on a CLI provider.
+func SetPerUseAccount(f func(provider, accountID string) bool) {
+	perUseAccount.Lock()
+	perUseAccount.value = f
+	perUseAccount.Unlock()
+}
+
+func billedPerUse(entry costledger.Entry) costledger.Entry {
+	if entry.BillingBasis != "subscription_shadow" {
+		return entry
+	}
+	perUseAccount.RLock()
+	f := perUseAccount.value
+	perUseAccount.RUnlock()
+	if f == nil || !f(entry.Provider, entry.AccountID) {
+		return entry
+	}
+	entry.BillingBasis = "token_estimate"
+	if entry.PricingSource == "provider" {
+		entry.BillingBasis = "provider_actual"
+	}
+	return entry
+}
+
 func (o *Observer) append(entry costledger.Entry) {
+	entry = billedPerUse(entry)
 	if err := o.ledger.Append(entry); err != nil {
 		log.Printf("[COST_LEDGER] Failed to append entry: %v", err)
 	}
@@ -649,8 +681,8 @@ func (o *Observer) appendToWorkspaceLedger(entry costledger.Entry) {
 	}
 }
 
-// InferScope names the scope for a chat-session agent — the chat/query path
-// and delegate() sub-agents. Anything not otherwise identified is chat.
+// InferScope names the scope for a chat-session agent on the chat/query
+// path. Anything not otherwise identified is chat.
 func InferScope(agentMode, phaseID string) string {
 	mode := strings.ToLower(strings.TrimSpace(agentMode))
 	switch {
@@ -676,7 +708,9 @@ func InferWorkflowScope(agentMode string, hasRunFolder bool, identifiers ...stri
 	return ScopeBuilder
 }
 
-func isSubscriptionCodingProvider(provider string) bool {
+// IsSubscriptionCodingProvider reports a plan login whose dollars are an
+// API-equivalent estimate, not a charge (billing basis subscription_shadow).
+func IsSubscriptionCodingProvider(provider string) bool {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "claude-code", "claude_code", "codex-cli", "codex_cli", "cursor-cli", "cursor_cli":
 		return true

@@ -34,18 +34,6 @@ export function chatUsesStructuredTransport({
   return providerUsesStructuredTransport
 }
 
-// Product surfaces normally keep their compact chat chrome, but Workflow
-// Builder is an inspectable retained tmux session even when it is rendered
-// inside the AgentWorks product shell.
-export function shouldShowLiveTerminalControl(
-  liveTerminalOffered: boolean,
-  isProductSurface: boolean,
-  isInteractiveWorkflowBuilder: boolean,
-  allowProductSurface = false,
-): boolean {
-  return liveTerminalOffered && (!isProductSurface || isInteractiveWorkflowBuilder || allowProductSurface)
-}
-
 // Only an interactive transport can accept terminal-style live delivery.
 // Structured coding-agent turns resume through the ordinary query route; trying
 // /live-input first adds a predictable 404/409 and can race another JSON turn.
@@ -112,16 +100,4 @@ export function shouldAppendOptimisticLiveInputMessage(
       : undefined
     return metadata?.message_id === wanted
   })
-}
-
-// PLAT-872-23: live input support does not imply a terminal. Native protocol
-// sessions use question/tool events; only the server's terminal capability
-// and the actual runtime transport admit the live terminal view.
-// PLAT-872-100: the server's report that this chat runs in tmux decides on its
-// own. The provider capability is the server-wide default, so a Claude chat
-// with the terminal switched on (tmux) on an Agent SDK server lost its toolbar.
-export function chatOffersLiveTerminal(hasSession: boolean, reportedTransport: string, supportsTerminalStream: boolean): boolean {
-  if (!hasSession) return false
-  if (reportedTransport === 'tmux') return true
-  return supportsTerminalStream && !reportedTransport
 }

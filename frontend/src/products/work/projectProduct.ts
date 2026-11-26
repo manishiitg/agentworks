@@ -38,8 +38,8 @@ export const CREW_PRODUCT: ProjectProductConfig = {
   projectsRoot: 'Crew',
   sessionPrefix: 'work:project',
   slugFallback: 'workspace',
-  noun: 'Crew',
-  itemNoun: 'Crew',
+  noun: 'Project',
+  itemNoun: 'Project',
   hasIdentity: true,
   hasTerminal: true,
   listsSharedProjects: true,
@@ -55,14 +55,6 @@ export function isProjectProductId(value: unknown): value is ProjectProductId {
 
 export function projectProductConfig(profileId: ProjectProductId): ProjectProductConfig {
   return CREW_PRODUCT
-}
-
-/** The project product of a workspace path, logical or under _users/<owner>/. */
-export function projectProductForPath(path: string | undefined): ProjectProductConfig | null {
-  const clean = (path || '').replace(/^\/+/, '')
-  // A Crew at the shared root (Crew/<folder>) is a Crew project like one in its owner's tree.
-  if (/^Crew\/[^/.][^/]*(\/|$)/.test(clean)) return CREW_PRODUCT
-  return null
 }
 
 const ProjectProductContext = createContext<ProjectProductConfig>(CREW_PRODUCT)

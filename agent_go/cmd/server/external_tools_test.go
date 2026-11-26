@@ -20,6 +20,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	stepworkflow "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	workspacehandlers "github.com/manishiitg/coding-agent-loop/workspace/handlers"
 	"github.com/spf13/viper"
 )
@@ -43,6 +44,9 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
  {"id":"outsider","username":"outsider","can_create":true,"products":["agentworks"]}
  ]}`)
 	f := &externalToolsFixture{api: &StreamingAPI{}, docs: t.TempDir()}
+	state := t.TempDir()
+	t.Setenv("AGENTWORKS_STATE_ROOT", state)
+	scheduleHistoryTestCleanup(t, state)
 	t.Setenv("WORKSPACE_DOCS_PATH", f.docs)
 	oldDocs := viper.Get("docs-dir")
 	viper.Set("docs-dir", f.docs)
@@ -87,7 +91,14 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 				workspacehandlers.GetRawDocument(c)
 				return
 			}
-			data, err := os.ReadFile(filepath.Join(f.docs, strings.TrimSuffix(rel, "/raw")))
+			physical := filepath.Join(f.docs, strings.TrimSuffix(rel, "/raw"))
+			// A Crew's files resolve like the real workspace's (its database is in .agentworks, PLAT-746-924).
+			if strings.HasPrefix(rel, "Crew/") {
+				if resolved, _, err := crewroot.Resolve(f.docs, strings.TrimSuffix(rel, "/raw")); err == nil {
+					physical = resolved
+				}
+			}
+			data, err := os.ReadFile(physical)
 			if err != nil {
 				c.Status(404)
 				return
@@ -96,6 +107,11 @@ func newExternalToolsFixture(t *testing.T) *externalToolsFixture {
 			return
 		}
 
+		if rel == "Crew/dashboard-team/product.json" || rel == "Crew/dashboard-team/workflow.json" {
+			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
+			workspacehandlers.GetDocument(c)
+			return
+		}
 		if strings.HasPrefix(rel, "_users/") && strings.HasSuffix(rel, "/chat_history/product-conversations.json") {
 			c.Params = append(c.Params, gin.Param{Key: "filepath", Value: "/" + rel})
 			workspacehandlers.GetDocument(c)

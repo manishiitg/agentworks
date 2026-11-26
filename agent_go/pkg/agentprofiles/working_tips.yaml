@@ -1,19 +1,28 @@
 # Shared definitions referenced by id from a product.yaml ui.tips list.
 - id: quick-switcher
-  text: '⌘K / Ctrl+K searches products, projects, chats, panels and tabs. Try typing “slack”.'
+  text: '⌘K / Ctrl+K searches projects, chats, panels and tabs. Try typing “slack”.'
   skip_if_used: quick-switcher
+- id: team-ask-agent
+  text: 'Open a teammate’s agent from the Team panel and ask it directly. Its answer shows right there.'
+- id: team-ask-files
+  text: 'Asking a teammate’s agent? Attach files with the paperclip, just like in your own chat.'
+- id: team-fork-agent
+  text: 'Fork a teammate’s agent to carry its work on in your own chat.'
+- id: team-needs-you
+  text: 'When an agent needs your approval or a decision, it pins a Needs-you card in the Team panel.'
+- id: team-invite
+  text: 'Invite a teammate from the Team panel. Their agents work on the project beside yours.'
+- id: team-connect-cli
+  text: 'Use Claude Code or Codex? Run “agentworks setup claude --hooks” (or codex) to put that chat on your Team.'
+- id: vault-secret-in-chat
+  text: 'Give a key or password in chat. It’s stored in Vault, and agents use it by name only.'
+- id: own-ai-account
+  text: 'Use your own AI account: sign in under Settings → AI accounts.'
+- id: project-workflow
+  text: 'Ask your project for a workflow, e.g. “every Monday, collect the new issues and send me a summary”.'
 - id: reminders
   text: 'Ask for a reminder, e.g. “check the deploy in 15 minutes”.'
-- id: toolbar-hide
-  text: 'The icon at the end of the toolbar hides it; ⌘K still opens any panel.'
-  skip_if_used: toolbar-hide
 - id: project-schedules-create
-  text: 'In a project you own, ask “run this report every weekday at 9am”. Open Automation to review the schedule.'
-- id: project-schedules-manage
-  text: 'In a project you own, open Automation to pause or change a schedule and check its recent runs.'
+  text: 'In a project you own, ask “run this report every weekday at 9am”. Automation shows, pauses or changes it.'
 - id: project-dashboard-create
-  text: 'Ask “build a dashboard from these files” in your own project. Open Dashboard, or find it with Ctrl+K, to view the result.'
-- id: project-dashboard-update
-  text: 'In a project you own, ask “refresh this dashboard with the latest data”. You can also ask to schedule regular updates.'
-- id: dashboards-library
-  text: 'Your published dashboards and the ones shared with you are in Dashboards in the left menu.'
+  text: 'Ask “build a dashboard from these files”. Find it again with ⌘K / Ctrl+K.'

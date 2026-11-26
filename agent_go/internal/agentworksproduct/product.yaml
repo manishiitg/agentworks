@@ -4,13 +4,6 @@ schema_version: 2
 # in Go; registration, guidance and native-session identity use the resolved policy.
 dependencies: {}
 
-# The workflow execution agent's server-owned function-call surface. Go owns
-# schemas, executors and authorization; this declaration owns admission/grouping.
-execution:
-  function_tools:
-    category: crew_function_tools
-    tools: [project_functions_list, project_functions_call, project_functions_get_call, project_functions_reply]
-
 prompt:
   file: prompts/system-prompt.md
   variables: {}
@@ -67,9 +60,10 @@ branding:
 
 ui:
   tips:
-    - id: dashboards-library
     - id: quick-switcher
-    - id: toolbar-hide
+    - id: vault-secret-in-chat
+    - id: own-ai-account
+    - id: project-dashboard-create
   surface: ""
   files_panel: false
   workflow_panel: false
@@ -93,13 +87,12 @@ chat_policy:
       - plan_authoring
       - report_authoring
       - secret_management
-      - workflow_suggestions
       - improvement_proposals
       - workspace_ui
       - bot_management
     # mcp_inspection: list the MCP servers and their connection status (no
     # changes), so a Run chat can tell which of its tools are connected.
-    run: [workspace_ui, bot_management, workflow_suggestions, mcp_inspection]
+    run: [workspace_ui, bot_management, mcp_inspection]
   origins:
     # The owner (or an editor) over MCP is the same Builder as on the website.
     external_builder: *builder_capabilities
@@ -110,7 +103,7 @@ chat_policy:
     child: *builder_capabilities
     bot: *builder_capabilities
     notification: *builder_capabilities
-  read_only: [workspace_ui, bot_management, workflow_suggestions, mcp_inspection]
+  read_only: [workspace_ui, bot_management, mcp_inspection]
 
 # Prompt text stays in Markdown. Includes contain named Go-template definitions;
 # the entry file chooses which definitions to render. Runtime values stay in Go.
@@ -129,7 +122,8 @@ chat:
       - workflow_team
       - manage_project
       - browser_connections
-      - chat_preferences
+      - appearance
+      - profile_picture
       - manage_messaging
       - add_mcp_server
       - agent_browser
@@ -153,7 +147,6 @@ chat:
       - get_slack_bot_credentials
       - get_slack_bot_settings
       - slack
-      - submit_workflow_suggestion
       - get_ui_state
       - get_workflow_command_guidance
       - get_workflow_config
@@ -213,6 +206,9 @@ chat:
       - export_dashboard_static
       - set_dashboard_public_link
       - publish_dashboard
+      - delete_dashboard
+      - undelete_dashboard
+      - share_dashboard_with_team
       - restore_dashboard
       - get_dashboard_link
       # External MCP presents these native aliases as share action=get/set.
@@ -290,7 +286,6 @@ chat:
       - send_message
       - read_agent_messages
       - list_agents
-      - submit_workflow_suggestion
       - get_ui_state
       - get_workflow_command_guidance
       - get_workflow_config
@@ -367,6 +362,9 @@ chat:
       - export_dashboard_static
       - set_dashboard_public_link
       - publish_dashboard
+      - delete_dashboard
+      - undelete_dashboard
+      - share_dashboard_with_team
       - restore_dashboard
       - get_dashboard_link
       # External MCP presents these native aliases as share action=get/set.
@@ -377,7 +375,8 @@ chat:
       - get_settings
       - get_secret_sources
       - browser_connections
-      - chat_preferences
+      - appearance
+      - profile_picture
       - manage_laptop_access
       - manage_my_vaults
       - execute_local_shell_command
@@ -388,9 +387,6 @@ chat:
       - manage_schedules
       - workflow_team
       - manage_triggers
-      - list_needs_you
-      - answer_needs_you
-      - dismiss_needs_you
       - manage_project
       - manage_crew_chats
       - query_database
@@ -425,8 +421,6 @@ chat:
       - project_functions_call
       - project_functions_get_call
       - project_functions_reply
-      # Suggestions for the owner (reviewed in the decisions panel; change nothing).
-      - suggest_workflow_change
       # Crews (crews:read / crews:run, bounded by the token's Crew list).
       - list_crews
       - workspace
@@ -436,6 +430,7 @@ chat:
       - list_crew_snapshots
       - compare_crew_snapshot
       - undo_crew_reply
+      - crew_file_limit
       - crew_git_status
       - crew_git_diff
       - crew_git_branch_compare
@@ -446,7 +441,6 @@ chat:
       - project_functions_define
       - project_functions_delete
       - ask_crew
-      - suggest_crew_change
       # Crew authoring (crews:write; only the owner edits; export is crews:read).
       - create_crew
       - update_crew
@@ -459,11 +453,11 @@ chat:
       - get_review_costs
       - list_review_files
       - read_review_file
-      - list_review_chats
-      - read_review_chat
       - get_review_audit
       # Shared-account token limits and allowed models (get: crews:review or users:manage; set: users:manage, admins; audited).
       - get_token_usage
+      # PLAT-746-990: quota-only accounts; admin users:manage, otherwise crews:read plus account admission.
+      - get_subscription_limits
       - set_token_limits
       - set_allowed_models
       # Company account audiences: admins with users:manage, same handler as the screen.
@@ -479,6 +473,8 @@ chat:
       - costs
       - users
       - sign_in_apps
+      # AI accounts (list, status, sign in/out, remove, add on or move to a server): the screen's handlers as the caller.
+      - ai_accounts
       - agent_inbox
     prompt:
       file: prompts/run.md

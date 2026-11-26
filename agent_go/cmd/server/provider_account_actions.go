@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 )
 
 // Per-account actions (docs/design/provider_accounts.md, "Implementation
@@ -120,7 +120,13 @@ func (api *StreamingAPI) resolveProviderAccountTarget(ctx context.Context, id, p
 		if err != nil {
 			return providerAccountTarget{}, err
 		}
-		return providerAccountTarget{ID: id, Provider: record.Provider, Record: &record, Env: providerConnectionSetupEnvironment(providerConnectionEnvLabel(record.Provider, id), keys), Home: keys.RuntimeEnvironment["HOME"]}, nil
+		env := providerConnectionSetupEnvironment(providerConnectionEnvLabel(record.Provider, id), keys)
+		if record.Provider == "agy-cli" {
+			// Status, model and sign-out checks read the account's file login like its sign-in and chats do,
+			// never the macOS keychain (absent under the account's home, so agy asked to reset it).
+			env = append(env, "SSH_CONNECTION="+agycli.AgyFileLoginSSHConnection, "AGY_ACP_FORCE_FILE_STORAGE=1")
+		}
+		return providerAccountTarget{ID: id, Provider: record.Provider, Record: &record, Env: env, Home: keys.RuntimeEnvironment["HOME"]}, nil
 	}
 	return providerAccountTarget{}, fmt.Errorf("connection unavailable")
 }
@@ -212,6 +218,10 @@ func checkProviderAccountStatus(ctx context.Context, target providerAccountTarge
 		status.State, status.Identity = "signed_in", "company account"
 		return status
 	}
+	// A login the server's proxy holds for its owner: the proxy knows whether it is signed in.
+	if target.Record != nil && target.Record.AuthMethod == providerAuthServerLogin {
+		return serverLoginStatus(*target.Record)
+	}
 	switch target.Provider {
 	case "claude-code":
 		output, err := runProviderAccountCommand(ctx, target, providerStatusCommands["claude-code"], providerStatusTimeout)
@@ -277,6 +287,21 @@ func checkProviderAccountStatus(ctx context.Context, target providerAccountTarge
 		default:
 			status.State = "signed_out"
 			status.Detail = "Sign in again to use Cursor."
+		}
+	case "agy-cli":
+		// agy has no status command; listing models needs a working login and starts no model turn.
+		output, err := runProviderAccountCommand(ctx, target, providerSetupCommand{command: "agy", args: []string{"models"}}, providerStatusTimeout)
+		lower := strings.ToLower(output)
+		switch {
+		case len(parseAgyModelList(output)) > 0:
+			status.State, status.Identity = "signed_in", "Google sign-in"
+			if envValue(target.Env, "GEMINI_API_KEY") != "" {
+				status.Identity = "Gemini key"
+			}
+		case strings.Contains(lower, "not logged") || strings.Contains(lower, "sign in") || strings.Contains(lower, "log in"):
+			status.State, status.Detail = "signed_out", "Sign in again to use Antigravity."
+		default:
+			status.Detail = statusError(err, output)
 		}
 	case "muse-cli":
 		status.State, status.Identity = museAccountStatus(target)
@@ -355,15 +380,7 @@ func museAccountStatus(target providerAccountTarget) (state, identity string) {
 // $HOME/.codex/auth.json): the "email" claim of the saved ID token, read without its signature, for display only.
 // `codex login status` names only the method.
 func codexLoginEmail(target providerAccountTarget) string {
-	codexHome := envValue(target.Env, "CODEX_HOME")
-	if codexHome == "" {
-		home := envValue(target.Env, "HOME")
-		if home == "" {
-			home = target.Home
-		}
-		codexHome = filepath.Join(home, ".codex")
-	}
-	raw, err := os.ReadFile(filepath.Join(codexHome, "auth.json"))
+	raw, err := os.ReadFile(codexLoginFile(target))
 	if err != nil {
 		return ""
 	}
@@ -372,21 +389,10 @@ func codexLoginEmail(target providerAccountTarget) string {
 			IDToken string `json:"id_token"`
 		} `json:"tokens"`
 	}
-	if json.Unmarshal(raw, &parsed) != nil {
-		return ""
-	}
-	parts := strings.Split(parsed.Tokens.IDToken, ".")
-	if len(parts) != 3 {
-		return ""
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
-	if err != nil {
-		return ""
-	}
 	var claims struct {
 		Email string `json:"email"`
 	}
-	if json.Unmarshal(payload, &claims) != nil || !strings.Contains(claims.Email, "@") {
+	if json.Unmarshal(raw, &parsed) != nil || !jwtClaims(parsed.Tokens.IDToken, &claims) || !strings.Contains(claims.Email, "@") {
 		return ""
 	}
 	return claims.Email
@@ -454,6 +460,18 @@ func (api *StreamingAPI) handleProviderAccountSignOut(w http.ResponseWriter, r *
 		} else {
 			http.Error(w, "connection unavailable", http.StatusNotFound)
 		}
+		return
+	}
+	if target.Record != nil && target.Record.AuthMethod == providerAuthServerLogin {
+		closed := api.closeSessionsOnProviderAccount(target.ID)
+		modelProxyFor(target.Record.OwnerUserID).signOut(target.Provider)
+		if err := rotateServerLoginPlaceholder(r.Context(), target.ID); err != nil {
+			log.Printf("[SERVER_LOGIN] account %s: placeholder not rotated on sign-out: %v", target.ID, err)
+		}
+		log.Printf("[SERVER_LOGIN] %s signed out %s's own %s login (account %s, stopped %d session(s))", caller, target.Record.OwnerUserID, target.Provider, target.ID, closed)
+		status := serverLoginStatus(*target.Record)
+		rememberProviderAccountStatus(target.ID, status)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"signed_out": true, "status": status})
 		return
 	}
 	if target.Record != nil && target.Record.AuthMethod != "cli_login" {

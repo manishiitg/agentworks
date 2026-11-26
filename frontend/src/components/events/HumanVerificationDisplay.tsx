@@ -76,7 +76,7 @@ export const HumanVerificationDisplay: React.FC<HumanVerificationDisplayProps> =
           {event.data.todo_list_markdown && (
             <div className="mb-3">
               <h4 className="text-xs font-medium text-indigo-900 dark:text-indigo-100 mb-1">Generated Todo List:</h4>
-              <div className="bg-white dark:bg-gray-800 border border-indigo-200 dark:border-indigo-700 rounded p-2 max-h-120 overflow-y-auto">
+              <div className="bg-card border border-indigo-200 dark:border-indigo-700 rounded p-2 max-h-120 overflow-y-auto">
                 <MarkdownRenderer 
                   content={event.data.todo_list_markdown}
                   className="text-xs"
@@ -91,7 +91,7 @@ export const HumanVerificationDisplay: React.FC<HumanVerificationDisplayProps> =
             <button
               onClick={handleApprove}
               disabled={isApproving}
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-xs font-medium rounded transition-colors"
+              className="px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:bg-primary/50 text-primary-foreground text-xs font-medium rounded transition-colors"
             >
               {isApproving ? '⏳ Processing...' : `✅ ${buttonText}`}
             </button>

@@ -702,17 +702,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) completeAgentItemNotification(_ conte
 	if hcpo == nil || hcpo.workshopExecutionNotifier == nil || !active {
 		return
 	}
-	// Publish completion only after emitted records have reached durable storage.
-	// Observability failure must not change the execution's result.
-	if hcpo.BaseOrchestrator != nil {
-		if bridge, ok := hcpo.GetContextAwareBridge().(*orchestrator.ContextAwareEventBridge); ok {
-			persistCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			if persistErr := bridge.WaitForBackgroundTranscriptPersistence(persistCtx); persistErr != nil {
-				hcpo.GetLogger().Warn(fmt.Sprintf("Agent item %s transcript persistence: %v", execID, persistErr))
-			}
-			cancel()
-		}
-	}
+	hcpo.flushAgentTranscripts()
 	result := strings.TrimSpace(summary)
 	if result == "" && err != nil {
 		result = err.Error()
@@ -1648,12 +1638,12 @@ func buildAgentAccessNote(writeAccess AgentWriteAccess, dbAccess string) string 
 	}
 	var extras []string
 	if writeAccess.DB {
-		extras = append(extras, "database rows via mutate_workflow_db")
+		extras = append(extras, "database rows via database action=mutate")
 	}
 	if writeAccess.Knowledgebase {
 		extras = append(extras, "knowledgebase/notes/")
 	}
-	note := "Database rows go through query_workflow_db/mutate_workflow_db; the raw database file is not readable."
+	note := "Database rows go through the admitted database tool (action=query for reads, action=mutate only within the effective write grant); the raw database file is not readable."
 	if len(extras) > 0 {
 		note += " Besides the Write folders, this item may write: " + strings.Join(extras, ", ") + "."
 	}

@@ -85,7 +85,7 @@ func knowledgeProjectBuilderExecute(ctx context.Context, tool string, args map[s
 	if !ok || executor.SessionIDFromContext(ctx) != authority.Session {
 		chat, _ := ctx.Value(common.ChatSessionIDKey).(string)
 		log.Printf("[KB_PROJECT] refused %s: authority=%v authority_session=%q executor_session=%q chat_session=%q", tool, ok, authority.Session, executor.SessionIDFromContext(ctx), chat)
-		return "", fmt.Errorf("Only the current Crew owner can set the project's Brain access")
+		return "", fmt.Errorf("Only the current project owner can set the project's Brain access")
 	}
 	// A step may invoke a parent's registered HTTP bridge; the actual caller
 	// remains in ChatSessionIDKey and must not acquire root Builder authority.

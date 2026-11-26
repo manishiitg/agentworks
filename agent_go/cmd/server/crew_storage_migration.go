@@ -336,7 +336,7 @@ func (api *StreamingAPI) crewStoragePreview(s *crewStorageSnapshot) {
 	}
 	// Include unregistered roots instead of silently declaring the registry
 	// complete. Never read their private file contents or infer an owner.
-	for _, pattern := range []string{"_users/*/Chats/Code/projects/*", "_users/*/Chats/Work/projects/*", "Crew/*"} {
+	for _, pattern := range []string{"_users/*/Chats/Work/projects/*", "Crew/*"} {
 		matches, _ := filepath.Glob(filepath.Join(docs, filepath.FromSlash(pattern)))
 		for _, full := range matches {
 			rel, _ := filepath.Rel(docs, full)
@@ -662,7 +662,7 @@ func (api *StreamingAPI) externalCrewStorage(w http.ResponseWriter, r *http.Requ
 		}
 		if action == "storage_move" {
 			go api.crewStorageMove(s, selected)
-			externalJSON(w, map[string]any{"operation_id": id, "state": "moving", "message": "Moving ready projects to Crew, using verified backups and keeping old links working."})
+			externalJSON(w, map[string]any{"operation_id": id, "state": "moving", "message": "Moving ready projects to project, using verified backups and keeping old links working."})
 			return
 		}
 		go api.crewStorageBackup(s, selected)
@@ -762,9 +762,5 @@ func crewStorageSourceRoot(rec projectOwnerRecord) string {
 	if rec.Shared {
 		return "Crew/" + rec.Folder
 	}
-	root := "Chats/Work/projects"
-	if rec.Product == "code" {
-		root = "Chats/Code/projects"
-	}
-	return workspaceref.PhysicalPathOf(rec.OwnerID, root, rec.Folder)
+	return workspaceref.PhysicalPathOf(rec.OwnerID, "Chats/Work/projects", rec.Folder)
 }

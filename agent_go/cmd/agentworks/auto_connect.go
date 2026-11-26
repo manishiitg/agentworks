@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -93,17 +96,16 @@ func autoConnectChat(ctx context.Context, root string, o *options, req agentwork
 		}
 		return nil
 	}
-	path, err := o.path()
+	cfg, path, err := o.connection(false)
 	if err != nil {
+		if strings.Contains(err.Error(), "sign in first") {
+			return nil
+		}
 		return err
 	}
-	cfg, err := agentworksclient.LoadConfig(path)
-	if err != nil {
-		return err
-	}
-	if cfg.Server == "" || cfg.Token == "" && cfg.RefreshToken == "" {
+	if cfg.Token == "" && cfg.RefreshToken == "" && cfg.Server != agentworksclient.LocalAppServer {
 		return nil
-	} // sign-in stays a browser choice
+	}
 	name, _, err := proposedAgentIdentity(req.Provider, req.SessionID, cwd)
 	if err != nil {
 		return err
@@ -122,7 +124,81 @@ func autoConnectChat(ctx context.Context, root string, o *options, req agentwork
 	if err == nil && out.Attached && req.Provider == "pi" {
 		return activatePiSession(ctx, root, req.HostKey, req.SessionID, out.Attachment.ID)
 	}
+	if err == nil && out.Attached && !out.Offline && (req.Provider == "claude" || req.Provider == "codex") {
+		autoJoinTeamFolder(ctx, root, req, cfg.Server, cwd)
+	}
 	return err
+}
+
+// autoJoinTeamFolder (#2820): a new Claude Code or Codex chat started inside a Crew's folder on this Mac (a Team's
+// synced copy or a Crew this Mac owns) joins that Crew's Team, as if the person had asked it to. The person already
+// accepted that membership; the server applies the usual join (In team, no rule of its own) and every refusal.
+func autoJoinTeamFolder(ctx context.Context, root string, req agentworksclient.LocalBridgeRequest, server, cwd string) {
+	project := teamProjectForFolder(server, cwd)
+	if project == "" {
+		return
+	}
+	join := agentworksclient.LocalBridgeRequest{Action: "crew_join", Provider: req.Provider, SessionID: req.SessionID, HostKey: req.HostKey, Arguments: map[string]any{"project": project, "automatic": true}}
+	out, err := agentworksclient.CallLocalBridge(ctx, root, join)
+	if err == nil && out.Error != "" {
+		err = errors.New(out.Error)
+	}
+	if err != nil {
+		log.Printf("[TEAM_TERMINAL_AGENT] outcome=auto_join_skipped provider=%s reason=%s", req.Provider, strings.Join(strings.Fields(err.Error()), " "))
+		return
+	}
+	log.Printf("[TEAM_TERMINAL_AGENT] outcome=auto_join provider=%s project=%s", req.Provider, project)
+}
+
+// teamProjectForFolder is the server project a folder belongs to: the deepest Crew folder on this Mac containing cwd,
+// mapped to its Team's project on this attachment's server, or the Crew itself when that server is this Mac's own app.
+func teamProjectForFolder(server, cwd string) string {
+	if cwd == "" || server == "" {
+		return ""
+	}
+	dir, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		return ""
+	}
+	folders, err := localCrewFolders()
+	if err != nil {
+		return ""
+	}
+	server = strings.TrimRight(server, "/")
+	uri, _ := url.Parse(server)
+	loopback := uri != nil && uri.Hostname() == "localhost"
+	if ip := net.ParseIP(uriHost(uri)); ip != nil {
+		loopback = ip.IsLoopback()
+	}
+	best, project := "", ""
+	for _, f := range folders {
+		rootDir, err := filepath.EvalSymlinks(f.Root)
+		if err != nil || len(rootDir) <= len(best) {
+			continue
+		}
+		if rel, err := filepath.Rel(rootDir, dir); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		candidate := ""
+		if f.Binding != nil {
+			if f.Binding.Side == "local" && strings.TrimRight(f.Binding.PeerServer, "/") == server {
+				candidate = f.Binding.PeerProjectID
+			}
+		} else if loopback {
+			candidate = f.ID
+		}
+		if candidate != "" {
+			best, project = rootDir, candidate
+		}
+	}
+	return project
+}
+
+func uriHost(uri *url.URL) string {
+	if uri == nil {
+		return ""
+	}
+	return uri.Hostname()
 }
 
 // A provider restart changes its process key while the native conversation

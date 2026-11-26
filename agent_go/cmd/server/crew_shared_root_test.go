@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -76,16 +79,14 @@ func (f *multiUserFixture) withLegacyCrew() string {
 	return root
 }
 
-// Schedule and webhook discovery find a Crew at the shared root through its registered owner; a manifest that names
+// Schedule discovery finds a Crew at the shared root through its registered owner; a manifest that names
 // someone else changes nothing.
-func TestSharedCrewSchedulesAndWebhooksAreDiscoveredByTheirOwner(t *testing.T) {
+func TestSharedCrewSchedulesAreDiscoveredByTheirOwner(t *testing.T) {
 	f := newMultiUserFixture(t, sharedIdentityLayout())
 	f.WithSharing(true)
 	crewRoot := f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
 	f.put(crewRoot+"/workflow.json", `{"schema_version":1,"id":"`+fixtureCrewID+`","label":"Alpha","capabilities":{}}`)
-	// Timers and webhooks are stored in schedules.json and webhooks.json (PLAT-871).
-	f.put(crewRoot+"/webhooks.json", `{"webhooks":[{"id":"11111111-1111-4111-8111-111111111111","name":"Hook","enabled":true,"path":"/api/hooks/11111111-1111-4111-8111-111111111111",`+
-		`"project":{"kind":"crew","id":"`+fixtureCrewID+`"},"action":{"type":"message"},"input":{"messages":["hi"]},"run_as":"`+fixtureUserA+`","auth":{"mode":"none"}}]}`)
+	// Timers are stored in schedules.json (PLAT-871).
 	f.put(crewRoot+"/schedules.json", `{"schedules":[{"id":"daily","name":"Daily","project":{"kind":"crew","id":"`+fixtureCrewID+`"},`+
 		`"when":{"cron":"0 8 * * *","timezone":"UTC"},"action":{"type":"message"},"input":{"messages":["go"]},"run_as":"`+fixtureUserA+`","enabled":true}]}`)
 	// The manifest claims B owns it: ignored.
@@ -107,10 +108,6 @@ func TestSharedCrewSchedulesAndWebhooksAreDiscoveredByTheirOwner(t *testing.T) {
 	}
 	if jobs, err := svc.projectJobsForUser(f.Ctx(fixtureUserB), fixtureUserB, profile, nil); err != nil || len(jobs) != 0 {
 		t.Fatalf("B (named by the manifest) got schedule jobs: %+v err=%v", jobs, err)
-	}
-	match, err := svc.findProductWebhook(f.Ctx(fixtureUserA), "11111111-1111-4111-8111-111111111111")
-	if err != nil || match.UserID != fixtureUserA || match.Binding.WorkspacePath != crewRoot {
-		t.Fatalf("webhook match = %+v err=%v", match, err)
 	}
 }
 
@@ -195,5 +192,48 @@ func TestCrewAccessReaderNeedsProjectSharing(t *testing.T) {
 	}
 	if crewAccessFor(f.Claims(fixtureUserA), ref) != crewAccessOwner || !newLiveFeedAccess(f.Claims(fixtureUserA)).visible(f.Ctx(fixtureUserA), ref.Root) {
 		t.Fatal("the owner lost access when sharing is off")
+	}
+}
+
+// #2803: a Crew created before its owner had a slot needs normal group access
+// after assignment; repairing it must never follow a symlink into another tree.
+func TestCrewFolderRepairsAccessAfterOwnerSlotAssignment(t *testing.T) {
+	docs := t.TempDir()
+	t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	root := filepath.Join(docs, "Crew", "home-access-repair")
+	if err := os.MkdirAll(filepath.Join(root, "files"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(root, "files", "note.txt")
+	if err := os.WriteFile(file, []byte("test"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "private.txt"), []byte("private"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureSharedCrewFolderAccessForGroup("home-access-repair", os.Getgid()); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{root, filepath.Join(root, "files")} {
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm() != 0770 || info.Mode()&os.ModeSetgid == 0 {
+			t.Fatal("slot cannot traverse its repaired Crew", err)
+		}
+	}
+	if runtime.GOOS == "linux" && !crewFolderHasSlotAccess(root, os.Getgid()) {
+		t.Fatal("repaired Crew has the wrong group or directory mode")
+	}
+	info, err := os.Stat(file)
+	if err != nil || info.Mode().Perm() != 0660 {
+		t.Fatal("slot cannot use its Crew file", err)
+	}
+	info, err = os.Stat(filepath.Join(outside, "private.txt"))
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatal("repair followed a foreign symlink", err)
 	}
 }

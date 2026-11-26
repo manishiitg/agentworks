@@ -1,17 +1,14 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -27,36 +24,30 @@ func vaultConfigured() bool {
 // The host holds encrypted values. Vault owns metadata and live group grants.
 // There is no fallback from a failed permission lookup to server-wide access.
 func vaultSecretAdminRequest(ctx context.Context, actor, method, path string, body any) error {
-	target, token, err := gatewayAdminServiceConfig()
-	if err != nil {
-		return errors.New("Vault service is not configured")
-	}
-	target.Path = strings.TrimRight(target.Path, "/") + path
+	_, err := vaultSecretAdminCall(ctx, actor, method, path, body)
+	return err
+}
+
+// vaultSecretAdminCall is vaultSecretAdminRequest that also returns the response body (up to 1 MiB).
+func vaultSecretAdminCall(ctx context.Context, actor, method, path string, body any) ([]byte, error) {
 	var data []byte
 	if body != nil {
+		var err error
 		data, err = json.Marshal(body)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
-	req, err := http.NewRequestWithContext(ctx, method, target.String(), bytes.NewReader(data))
-	if err != nil {
-		return err
+	status, out, err := vaultServiceCall{Method: method, Path: path, Body: data, Actor: actor, Timeout: 10 * time.Second, Limit: 1 << 20}.do(ctx)
+	switch {
+	case errors.Is(err, errVaultServiceNotConfigured):
+		return nil, err
+	case errors.Is(err, errVaultServiceUnavailable):
+		return nil, errors.New("Vault permissions unavailable")
+	case err != nil || status < 200 || status >= 300:
+		return nil, errors.New("could not persist Vault secret permissions")
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("X-CapLayer-Actor", actor)
-	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Transport: capLayerTransport, Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	resp, err := client.Do(req)
-	if err != nil {
-		return errors.New("Vault permissions unavailable")
-	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return errors.New("could not persist Vault secret permissions")
-	}
-	return nil
+	return out, nil
 }
 
 // Registers names and the managed flag only, never values. Vault grants a
@@ -146,7 +137,7 @@ func permittedGlobalSecrets(ctx context.Context, userID string) ([]globalSecretE
 			rows = append(rows, s)
 		}
 	}
-	return rows, nil
+	return withCompanyKeys(userID, rows, all), nil // company keys reach everyone (#4148)
 }
 
 // vaultPermittedSecretNames are the secret names Vault lets this person use, whether or not a value is stored yet.
@@ -216,17 +207,67 @@ func visibleGlobalSecrets(ctx context.Context, userID string) []globalSecretEntr
 	return rows
 }
 
+// actingSecretPicks turns a project's chosen secrets into the ones this person can use: a chosen secret they can see
+// stays; one in someone else's personal vault becomes the person's own secret with the same name (owner 19 Nov: everyone
+// uses their own vault). Rows are the person's visible secrets (personal and shared vaults); the first match is used.
+func actingSecretPicks(rows []globalSecretEntry, wanted map[string]bool) map[string]bool {
+	visible := map[string]bool{}
+	for _, s := range rows {
+		visible[s.Name] = true
+	}
+	out := map[string]bool{}
+	for name := range wanted {
+		if visible[name] || !isVaultSecretName(name) {
+			out[name] = true
+			continue
+		}
+		short := vaultSecretShortName(name)
+		for _, s := range rows {
+			if isVaultSecretName(s.Name) && vaultSecretShortName(s.Name) == short {
+				out[s.Name] = true
+				break
+			}
+		}
+	}
+	return out
+}
+
+// actingSecretOrigin is the chosen name a mapped secret stands for (same short name), or "".
+func actingSecretOrigin(wanted map[string]bool, mapped string) string {
+	for name := range wanted {
+		if name != mapped && isVaultSecretName(name) && vaultSecretShortName(name) == vaultSecretShortName(mapped) {
+			return name
+		}
+	}
+	return ""
+}
+
 // mergeGlobalSecretsFor resolves the selected Vault secrets userID may use, each under the name its owner gave it.
 func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID string, selection *[]string) []resolvedSecret {
 	var scoped []resolvedSecret
 	if selection == nil || len(*selection) == 0 {
 		return scoped
 	}
-	rows := visibleGlobalSecrets(ctx, userID)
+	ctx = withCrewVaultScopeForNames(ctx, *selection)
+	reader := crewVaultReader(ctx, userID) // a User reads the Crew vault as its main owner; GitHub and Team keys stay their own
+	rows := visibleGlobalSecrets(ctx, reader)
+	if reader != userID {
+		rows = crewVaultRowsOnly(ctx, rows)
+	}
 	wanted := map[string]bool{}
 	for _, n := range *selection {
 		wanted[n] = true
 	}
+	githubSecrets := map[string]bool{}
+	for _, rec := range gitHubConnections(userID) {
+		if wanted[rec.SecretName] {
+			githubSecrets[rec.SecretName] = true
+		}
+	}
+	if len(githubSecrets) > 1 {
+		log.Printf("[SECRETS] multiple GitHub connections selected; none mapped to GITHUB_TOKEN")
+	}
+	wanted = actingSecretPicks(rows, wanted)
 	taken := map[string]string{} // short name -> the full name that has it
 	for _, s := range rows {
 		if !wanted[s.Name] {
@@ -236,6 +277,11 @@ func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID strin
 		// $SECRET_VLT_<vault>__GITHUB_TOKEN; owner 2026-10-20). The first secret with a name wins; the picker refuses a
 		// second one with the same name.
 		name := vaultSecretShortName(s.Name)
+		// A selected saved GitHub connection has a unique encrypted storage name,
+		// but reaches its project's shell under the standard GitHub variable.
+		if len(githubSecrets) == 1 && githubSecrets[s.Name] {
+			name = "GITHUB_TOKEN"
+		}
 		if prior, clash := taken[name]; clash {
 			log.Printf("[SECRETS] Two selected secrets share the name %s; using %s, skipping %s", name, prior, s.Name)
 			continue
@@ -244,48 +290,6 @@ func (api *StreamingAPI) mergeGlobalSecretsFor(ctx context.Context, userID strin
 		scoped = append(scoped, resolvedSecret{Name: name, Value: s.Value})
 	}
 	return scoped
-}
-
-// Removing metadata and grants first ensures a failed value deletion cannot leave usable access.
-func revokeVaultSecret(ctx context.Context, actor, name string) error {
-	if !vaultConfigured() {
-		return nil
-	}
-	return vaultSecretAdminRequest(ctx, actor, http.MethodDelete, "/api/admin/secrets/"+url.PathEscape(name), nil)
-}
-func (api *StreamingAPI) handleVaultSecretAccess(w http.ResponseWriter, r *http.Request) {
-	actor := GetUserIDFromContext(r.Context())
-	if !canManageGlobalSecrets(actor) || !userAllowedProduct(&UserClaims{UserID: actor}, "mcp-gateway") {
-		writeUsersError(w, 403, "Vault management requires an administrator account")
-		return
-	}
-	if r.Method == http.MethodGet {
-		if err := syncVaultSecretMetadata(r.Context(), actor); err != nil {
-			writeUsersError(w, 503, err.Error())
-			return
-		}
-		writeUsersJSON(w, 200, map[string]any{"success": true})
-		return
-	}
-	var in struct {
-		GroupID string `json:"group_id"`
-		Name    string `json:"name"`
-		Allowed bool   `json:"allowed"`
-	}
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&in) != nil || !regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`).MatchString(in.GroupID) {
-		writeUsersError(w, 400, "invalid group")
-		return
-	}
-	if err := syncVaultSecretMetadata(r.Context(), actor); err != nil {
-		writeUsersError(w, 503, err.Error())
-		return
-	}
-	err := vaultSecretAdminRequest(r.Context(), actor, http.MethodPost, "/api/admin/groups/"+url.PathEscape(in.GroupID)+"/secrets", map[string]any{"name": in.Name, "allowed": in.Allowed})
-	if err != nil {
-		writeUsersError(w, 503, err.Error())
-		return
-	}
-	writeUsersJSON(w, 200, map[string]any{"success": true})
 }
 
 // The first admission check, before handleQuery loads the workspace's settings: the selected secrets are checked
@@ -298,13 +302,58 @@ func (api *StreamingAPI) validateQuerySecretSelection(ctx context.Context, userI
 			workspace = resolved
 		}
 	}
-	return validateVaultSecretSelection(ctx, api.projectSecretsOwner(userID, workspace), req.SelectedGlobalSecrets)
+	return validateWorkspaceSecretSelection(ctx, api.projectSecretsOwner(userID, workspace), workspace, req.SelectedGlobalSecrets)
 }
 
 // A requested Vault secret must resolve or the run stops before any execution.
 func validateVaultSecretSelection(ctx context.Context, userID string, selection *[]string) error {
+	missing, err := missingVaultSecrets(ctx, userID, selection)
+	if err != nil {
+		return err
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("This uses the secret %s, which is not in your vault. Add your own %s in Vault (My accounts), or ask someone to put it in a shared vault you are in, then ask again", missing[0], missing[0])
+	}
+	return nil
+}
+
+// validateWorkspaceSecretSelection is the turn admission for a selection. In a Crew everyone uses their own Vault
+// (owner 19 Nov), so a chosen secret the person does not have is skipped, not a refused turn: it never resolves
+// (mergeGlobalSecretsFor injects only the person's visible secrets) and $SECRET_<NAME> stays empty, as for a chosen
+// name with no stored value. Elsewhere a selection must resolve.
+func validateWorkspaceSecretSelection(ctx context.Context, userID, workspacePath string, selection *[]string) error {
+	if _, crew := crewProjectOwnerID(workspacePath); !crew {
+		return validateVaultSecretSelection(ctx, userID, selection)
+	}
+	missing, err := missingVaultSecrets(ctx, userID, selection)
+	if err != nil {
+		return err
+	}
+	if len(missing) > 0 {
+		log.Printf("[VAULT_SECRETS] event=crew_secret_skipped user=%s workspace=%s missing=%s", userID, workspacePath, strings.Join(missing, ","))
+	}
+	return nil
+}
+
+// crewSkippedSecretsNote tells the agent which of a Crew's chosen secrets the person lacks, so it can say so plainly
+// instead of failing later with a confusing error. Empty when nothing is missing or outside a Crew.
+func crewSkippedSecretsNote(ctx context.Context, userID, workspacePath string, selection *[]string) string {
+	if _, crew := crewProjectOwnerID(workspacePath); !crew {
+		return ""
+	}
+	missing, err := missingVaultSecrets(ctx, userID, selection)
+	if err != nil || len(missing) == 0 {
+		return ""
+	}
+	names := strings.Join(missing, ", ")
+	return "\n\n[This project uses the secret(s) " + names + ", which are not in the vault of the person you are working for, so their $SECRET_ variables are empty in this chat. When a task needs one, or something fails for lack of it, tell the person once in plain words: this project uses NAME, which isn't in your vault, so I ran without it; add your own NAME in Vault (My accounts), or ask someone to put it in a shared vault you are in.]"
+}
+
+// missingVaultSecrets lists the short names of selected secrets the person cannot use. A name with no stored value
+// anywhere is not missing (owner decision 2026-10-05).
+func missingVaultSecrets(ctx context.Context, userID string, selection *[]string) ([]string, error) {
 	if selection == nil || len(*selection) == 0 {
-		return nil
+		return nil, nil
 	}
 	wanted := map[string]bool{}
 	for _, name := range *selection {
@@ -323,48 +372,59 @@ func validateVaultSecretSelection(ctx context.Context, userID string, selection 
 		}
 	}
 	if len(wanted) == 0 {
-		return nil
+		return nil, nil
 	}
-	rows, err := permittedGlobalSecrets(ctx, userID)
+	ctx = withCrewVaultScopeForNames(ctx, *selection)
+	reader := crewVaultReader(ctx, userID)
+	rows, err := permittedGlobalSecrets(ctx, reader)
 	if err != nil {
 		log.Printf("[VAULT_SECRETS] permission lookup failed user=%s selected=%d err=%v", userID, len(*selection), err)
-		return errors.New("Vault secret permissions are unavailable; execution was stopped")
+		return nil, errors.New("Vault secret permissions are unavailable; execution was stopped")
 	}
+	if reader != userID {
+		rows = crewVaultRowsOnly(ctx, rows)
+	}
+	visible := map[string]bool{}
 	for _, s := range rows {
-		delete(wanted, s.Name)
+		visible[s.Name] = true
 	}
-	for _, name := range *selection {
-		if wanted[name] {
-			return fmt.Errorf("Your groups do not have access to secret %q. Check Vault > Access", name)
+	for name := range actingSecretPicks(rows, wanted) {
+		if visible[name] {
+			delete(wanted, name)
+			delete(wanted, actingSecretOrigin(wanted, name))
 		}
 	}
-	return nil
+	var missing []string
+	for _, name := range *selection {
+		if wanted[name] {
+			missing = append(missing, vaultSecretShortName(name))
+		}
+	}
+	return missing, nil
 }
 
-// crewSecretsPerson is whose Vault grants admit a turn's selected secrets and apps: the Crew's owner for the owner and
-// its Team's joined members (owner 5 Nov), who build with the project's selected credentials even when
-// their own Vault grants differ. Other callers keep their own admission; project access is checked by the turn.
-func (api *StreamingAPI) crewSecretsPerson(userID, root, surface string) string {
-	if !isCrewProjectPath(root) || !crewProjectOwnedByCaller(userID, root) {
+// projectSecretsOwner is the person whose Vault a project's selected secrets and apps come from. In a Crew it is the
+// person acting (owner 19 Nov: everyone uses their own personal vault plus the shared vaults they are in, the Crew's
+// owner included; this replaces the 20-21 Oct owner-lent rule). A Crew automation acts as the person it runs for.
+// For a Goal it is its registered creator (workflow_owner_registry.go); elsewhere the caller.
+func (api *StreamingAPI) projectSecretsOwner(userID, workspacePath string) string {
+	if _, crew := crewProjectOwnerID(workspacePath); crew {
 		return userID
 	}
-	owner := api.projectSecretsOwner(userID, root)
-	if owner != userID {
-		log.Printf("[CREW_SECRETS] actor=%s owner=%s surface=%s", userID, owner, surface)
-	}
-	return owner
-}
-
-// projectSecretsOwner is the person whose Vault a project's selected secrets come from: the Crew's owner, for everyone
-// who uses it (owner-lent, owner 2026-10-20: "if user is sharing with someone .. a crew.. and he know its personal
-// mcps.. it upto the user"). For a Goal it is its registered creator (workflow_owner_registry.go); elsewhere the caller.
-func (api *StreamingAPI) projectSecretsOwner(userID, workspacePath string) string {
-	if owner, ok := crewProjectOwnerID(workspacePath); ok && strings.TrimSpace(owner) != "" {
-		return owner
+	if binding, err := findCrewExecutable(workspacePath); err == nil && binding != nil {
+		return userID // a Crew's own workflow
 	}
 	// A Goal's owner comes only from the server's own record, never from workflow.json (Builder turns can edit it).
 	if owner := workflowOwner(workspacePath); owner != "" {
 		return owner
 	}
 	return userID
+}
+
+// Removing metadata and grants first ensures a failed value deletion cannot leave usable access.
+func revokeVaultSecret(ctx context.Context, actor, name string) error {
+	if !vaultConfigured() {
+		return nil
+	}
+	return vaultSecretAdminRequest(ctx, actor, http.MethodDelete, "/api/admin/secrets/"+url.PathEscape(name), nil)
 }

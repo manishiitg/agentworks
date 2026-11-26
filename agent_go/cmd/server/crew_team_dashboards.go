@@ -2,9 +2,8 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
-
-	"github.com/manishiitg/coding-agent-loop/workspace/dashboards"
 )
 
 // The Crew's published dashboards, artifacts and motion (owner, 6 Nov): everyone in the Team sees all of them, with
@@ -17,6 +16,8 @@ type crewTeamDashboard struct {
 	Path     string `json:"path"`
 	Artifact bool   `json:"artifact,omitempty"`
 	Motion   bool   `json:"motion,omitempty"`
+	// UpdatedAt is when the page last changed (Unix seconds), from the dashboard list.
+	UpdatedAt int64 `json:"updated_at,omitempty"`
 	// PublicLink is for the Crew's owner only; teammates see the same rows without it.
 	PublicLink *dashboardPublicView `json:"public_link,omitempty"`
 }
@@ -31,15 +32,42 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 	rows := []crewTeamDashboard{}
 	for offset := 0; root != ""; {
 		var page struct {
-			Dashboards []dashboards.Dashboard `json:"dashboards"`
-			HasMore    bool                   `json:"has_more"`
+			// The list sends discovery rows (dashboard_id, document_path), not the store's Dashboard.
+			Dashboards []struct {
+				ID           string `json:"dashboard_id"`
+				Title        string `json:"title"`
+				DocumentPath string `json:"document_path"`
+				Artifact     bool   `json:"artifact"`
+				Motion       bool   `json:"motion"`
+				Managed      bool   `json:"managed"`
+				UpdatedAt    int64  `json:"updated_at"`
+			} `json:"dashboards"`
+			HasMore bool `json:"has_more"`
 		}
-		if err := crewPanelRead(r, api.handleDashboards, http.MethodPost, "/api/dashboards", nil, nil, map[string]any{"workspace": root, "action": "list", "published_only": true, "limit": 100, "offset": offset}, &page); err != nil {
-			externalError(w, http.StatusConflict, "dashboards_unavailable", "This Crew's dashboards can't be read right now.")
+		status, raw := scheduleHandler(r, api.handleDashboards, http.MethodPost, "/api/dashboards", nil, nil, map[string]any{"workspace": root, "action": "list", "published_only": true, "limit": 100, "offset": offset})
+		if status < 200 || status >= 300 {
+			var failure struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			_ = json.Unmarshal(raw, &failure)
+			log.Printf("[CREW_DASHBOARDS] project=%s action=list status=%d code=%q reason=%q", t.ProjectID, status, failure.Error.Code, failure.Error.Message)
+			externalError(w, http.StatusConflict, "dashboards_unavailable", "This project's dashboards can't be read right now.")
 			return nil, false
 		}
+		if err := r.Context().Err(); err != nil {
+			return nil, false
+		}
+		if err := json.Unmarshal(raw, &page); err != nil {
+			log.Printf("[CREW_DASHBOARDS] project=%s action=list status=%d reason=%q", t.ProjectID, status, err)
+			externalError(w, http.StatusConflict, "dashboards_unavailable", "This project's dashboards can't be read right now.")
+			return nil, false
+		}
+
 		for _, d := range page.Dashboards {
-			row := crewTeamDashboard{ID: d.ID, Title: d.Title, Path: d.DocumentPath, Artifact: d.Artifact, Motion: d.Motion}
+			row := crewTeamDashboard{ID: d.ID, Title: d.Title, Path: d.DocumentPath, Artifact: d.Artifact, Motion: d.Motion, UpdatedAt: d.UpdatedAt}
 			if canShare && d.Managed {
 				var record *dashboardPublicRecord
 				if found, ok := links[d.ID]; ok {
@@ -61,24 +89,53 @@ func (api *StreamingAPI) crewTeamDashboardRows(w http.ResponseWriter, r *http.Re
 	return rows, true
 }
 
-// handleCrewTeamDashboardPublicLink is POST /crew-teams/{project}/dashboards/public-link: the card's switch, through the
-// Team's own route so the Mac app reaches a server Crew's. The dashboard tool's public_link action decides everything.
-func (api *StreamingAPI) handleCrewTeamDashboardPublicLink(w http.ResponseWriter, r *http.Request) {
+// handleCrewTeamDashboardAction is POST /crew-teams/{project}/dashboards/action: the Artifacts page's buttons for one
+// page (public_link with mode, link, delete, undelete), through the Team's own route so the Mac app reaches a server
+// Crew's. The dashboard tool decides who may do each, the same as from chat or MCP.
+func (api *StreamingAPI) handleCrewTeamDashboardAction(w http.ResponseWriter, r *http.Request) {
 	t, claims, ok := crewTeamForTab(w, r, false)
 	if !ok || refuseCrewOwnerOnline(w, r, t.ProjectID, claims.UserID) {
 		return
 	}
 	var args struct {
 		DashboardID string `json:"dashboard_id"`
+		Action      string `json:"action"`
 		Mode        string `json:"mode"`
 	}
 	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&args) != nil {
-		externalError(w, 400, "invalid_arguments", "invalid public link request")
+		externalError(w, 400, "invalid_arguments", "invalid dashboard request")
 		return
 	}
-	status, body := scheduleHandler(r, api.handleDashboards, http.MethodPost, "/api/dashboards", nil, nil, map[string]any{"workspace": crewProjectRootByID(t.ProjectID), "action": dashboardPublicAction, "mode": args.Mode, "dashboard_id": args.DashboardID})
+	body := map[string]any{"workspace": crewProjectRootByID(t.ProjectID), "dashboard_id": args.DashboardID}
+	switch args.Action {
+	case dashboardPublicAction:
+		body["action"], body["mode"] = dashboardPublicAction, args.Mode
+	case "link", "delete", "undelete":
+		body["action"] = args.Action
+	case dashboardTeamAction:
+		body["action"], body["mode"] = dashboardTeamAction, args.Mode
+	case "team_open":
+		// A Team copy is a file in the Team's shared folder; anyone who sees this project's Artifacts page may open it.
+		roots, found, err := crewStorageRoots(crewProjectRootByID(t.ProjectID))
+		if err != nil || !found {
+			externalError(w, 409, "project_unavailable", "This project's files can't be reached right now.")
+			return
+		}
+		page, err := crewTeamArtifactPage(r.Context(), dashboardTeamRoots{ID: roots.ID, Files: roots.Files}, args.DashboardID+".html")
+		if err != nil {
+			dashboardError(w, err)
+			return
+		}
+		externalJSON(w, map[string]any{"html": string(page)})
+		return
+	default:
+		externalError(w, 400, "invalid_arguments", "unknown dashboard action")
+		return
+	}
+	status, raw := scheduleHandler(r, api.handleDashboards, http.MethodPost, "/api/dashboards", nil, nil, body)
+	log.Printf("[CREW_DASHBOARDS] project=%s action=%s dashboard=%s status=%d", t.ProjectID, args.Action, args.DashboardID, status)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
-	_, _ = w.Write(body)
+	_, _ = w.Write(raw)
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/manishiitg/mcpagent/llm"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/claudeauth"
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/cursorauth"
@@ -83,9 +84,9 @@ var providerSetupCommands = map[string]map[string]providerSetupCommand{
 		"inspect":      {command: "muse", args: []string{"--disable-shell", "--disable-write"}},
 	},
 	"agy-cli": {
-		// agy has no login subcommand: Google sign-in completes inside the
-		// TUI, so authenticate opens the bare CLI like pi.
-		"authenticate": {command: "agy"},
+		// `agy acp --login` prints a Google link and reads the code the Antigravity page shows, like Codex's
+		// device login: it works from any device, with no browser on this machine.
+		"authenticate": {command: "agy", args: []string{"acp", "--login"}},
 		"inspect":      {command: "agy", args: []string{"--sandbox"}},
 	},
 }
@@ -596,6 +597,7 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 		// A user account: its owner and admins sign it in and inspect it.
 		record, err := api.providerSetupAccount(r.Context(), request, caller, admin)
 		if err != nil {
+			log.Printf("[PROVIDER_SETUP] refused provider=%s account=%s caller=%s reason=%v", request.Provider, request.ConnectionID, caller, err)
 			http.Error(w, "connection unavailable or unauthorized", http.StatusForbidden)
 			return
 		}
@@ -613,6 +615,11 @@ func (api *StreamingAPI) handleStartProviderSetup(w http.ResponseWriter, r *http
 		}
 		accountOwner = record.OwnerUserID
 		environment = providerConnectionSetupEnvironment(providerConnectionEnvLabel(request.Provider, request.ConnectionID), keys)
+		if request.Provider == "agy-cli" {
+			// The account's Google sign-in goes to a file in its own home, never the system keychain that every
+			// account would share (agycli.agyAccountEnv does the same for its turns).
+			environment = append(environment, "SSH_CONNECTION="+agycli.AgyFileLoginSSHConnection, "AGY_ACP_FORCE_FILE_STORAGE=1")
+		}
 	} else if !admin {
 		// The server account: signing it in or inspecting it is admin-only.
 		writeWorkflowPermissionDenied(w, "admin")
@@ -803,15 +810,19 @@ func (api *StreamingAPI) providerSetupAccount(ctx context.Context, request start
 		if record.ID != request.ConnectionID {
 			continue
 		}
-		if record.Provider != request.Provider || !providerEnabled(record.Provider) || personalProviderConnectionsLocked(record.Provider) {
-			return nil, fmt.Errorf("connection unavailable")
-		}
-		if record.OwnerUserID == caller || admin {
+		switch {
+		case record.Provider != request.Provider:
+			return nil, fmt.Errorf("account is for %s", record.Provider)
+		case !providerEnabled(record.Provider):
+			return nil, fmt.Errorf("program not enabled")
+		case personalProviderConnectionsLocked(record.Provider):
+			return nil, fmt.Errorf("personal accounts locked")
+		case record.OwnerUserID == caller || admin:
 			return &record, nil
 		}
-		return nil, fmt.Errorf("connection unavailable")
+		return nil, fmt.Errorf("owned by another person")
 	}
-	return nil, fmt.Errorf("connection unavailable")
+	return nil, fmt.Errorf("no such account")
 }
 
 // serverAccountAvailableToCaller reports whether the server account of

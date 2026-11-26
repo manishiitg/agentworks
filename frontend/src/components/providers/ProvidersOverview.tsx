@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { openOnServerWebsite } from '../../utils/openOnServerWebsite'
 import { Loader2, Plus, Server } from 'lucide-react'
 import { desktopRequest } from '../../services/desktopConnections'
 import type { ProviderManifestEntry } from '../../services/llm-config-api'
@@ -46,7 +47,7 @@ export function ServersOverview({ providers }: { providers: ProviderManifestEntr
     setConfirming(null); setActionError('')
     try {
       await desktopRequest(`/${encodeURIComponent(id)}`, 'DELETE')
-      if (getRawActiveWorkspaceId() === id) void window.electronAPI?.openDesktopConnection?.('local', '/home')
+      if (getRawActiveWorkspaceId() === id) void window.electronAPI?.openDesktopConnection?.('local', '/')
       serversChanged()
     }
     catch (disconnectError) { setActionError(disconnectError instanceof Error ? disconnectError.message : 'Could not disconnect.') }
@@ -54,7 +55,7 @@ export function ServersOverview({ providers }: { providers: ProviderManifestEntr
   return (
     <div>
       <h2 className="text-xl font-semibold text-gray-950 dark:text-white">Servers</h2>
-      <p className="mt-1 mb-5 text-sm text-gray-600 dark:text-gray-300">The company servers this Mac app is connected to.</p>
+      <p className="mt-1 mb-5 text-sm text-muted-foreground">The company servers this Mac app is connected to. Server projects open on their website, or add one to a project's Team to work with it here.</p>
       {(error || actionError) && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-300">{actionError || error}</p>}
       {!overview && loading && <p className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" />Checking your servers…</p>}
       <div className="grid gap-4">
@@ -71,7 +72,7 @@ export function ServersOverview({ providers }: { providers: ProviderManifestEntr
                   <p className="text-xs text-gray-500 dark:text-gray-400">{server.reachable ? <span className="text-emerald-600 dark:text-emerald-400">● Connected</span> : <span className="text-amber-600">● Cannot reach</span>}{server.signed_in_as && <> · signed in as {server.signed_in_as}</>}</p>
                 </div>
                 <div className="ml-auto flex gap-2">
-                  <button type="button" onClick={() => void window.electronAPI?.openDesktopConnection?.(server.id, '/crew')} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs dark:border-gray-600">Open</button>
+                  <button type="button" onClick={() => void openOnServerWebsite(server.id)} className="rounded-lg border border-border px-3 py-1.5 text-xs">Open website</button>
                   {confirming === server.id
                     ? <>
                       <button type="button" onClick={() => void disconnect(server.id)} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500">Disconnect {server.name}</button>
@@ -94,7 +95,7 @@ export function ServersOverview({ providers }: { providers: ProviderManifestEntr
 
 /** Every place that shows servers refreshes after one is connected or disconnected. */
 function serversChanged() {
-  void useConnectedWorkStore.getState().refresh()
+  void useConnectedWorkStore.getState().refresh(true)
   window.dispatchEvent(new Event('provider-connections-changed'))
 }
 

@@ -22,17 +22,17 @@ const errorText = (cause: unknown) => {
 }
 
 /** Personal records stay in their existing stores. Products only select those records. */
-export default function PersonalAccountsPanel({ workspacePath, provider, onChanged }: { workspacePath?: string; provider?: Provider; onChanged?: () => void }) {
+export default function PersonalAccountsPanel({ workspacePath, provider, onChanged, hideHeading = false, heading }: { heading?: string; hideHeading?: boolean; workspacePath?: string; provider?: Provider; onChanged?: () => void }) {
   const actor = useAuthStore(state => state.user?.id)
   const [managementOpen, setManagementOpen] = useState(false)
   return <section aria-label={workspacePath ? 'Saved personal accounts' : 'Your connected accounts'} className="space-y-4">
-    {!workspacePath && <div><h2 className="text-base font-semibold">Your connected accounts</h2><p className="mt-1 text-xs text-muted-foreground">Sign in once. Choose Use here in each product that should use an account. Choose which projects can use each account.</p></div>}
-    {(['google', 'slack'] as Provider[]).filter(item => !provider || item === provider).map(item => <ProviderAccounts key={`${getApiBaseUrl()}:${actor}:${item}:${workspacePath || ''}`} provider={item} workspacePath={workspacePath} onChanged={onChanged} />)}
+    {!workspacePath && !hideHeading && <div><h2 className="text-base font-semibold">Your connected accounts</h2><p className="mt-1 text-xs text-muted-foreground">Sign in once. Choose Use here in each product that should use an account. Choose which projects can use each account.</p></div>}
+    {(['google', 'slack'] as Provider[]).filter(item => !provider || item === provider).map(item => <ProviderAccounts key={`${getApiBaseUrl()}:${actor}:${item}:${workspacePath || ''}`} provider={item} workspacePath={workspacePath} onChanged={onChanged} heading={heading} />)}
     {workspacePath && <div className="space-y-3"><Button variant="outline" size="sm" aria-expanded={managementOpen} onClick={() => setManagementOpen(open => !open)}>Connect or manage {provider === 'google' ? 'Google' : provider === 'slack' ? 'Slack' : 'your'} accounts</Button>{managementOpen && <PersonalAccountsPanel provider={provider} onChanged={onChanged} />}</div>}
   </section>
 }
 
-function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Provider; workspacePath?: string; onChanged?: () => void }) {
+function ProviderAccounts({ provider, workspacePath, onChanged, heading }: { heading?: string; provider: Provider; workspacePath?: string; onChanged?: () => void }) {
   const [data, setData] = useState<Accounts | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -69,9 +69,9 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
     finally { setBusy(false) }
   }
   return <div aria-label={`${label} accounts`} className="space-y-3 rounded-lg border border-border p-4">
-    <div className="flex items-center gap-2"><ConnectionIcon icon={provider} name={label} size="sm" /><h3 className="text-sm font-medium">{label}</h3></div>
+    <div className="flex items-center gap-2"><ConnectionIcon icon={provider} name={label} size="sm" /><h3 className="text-sm font-medium">{heading || label}</h3></div>
     {workspacePath && data?.notice && <p className="text-xs text-muted-foreground">{data.notice}</p>}
-    {central && provider === 'google' && data?.inbox_available && <p className="text-xs text-muted-foreground">Choose one Gmail account for Crew inboxes. Your Crews receive email by default; ask a Crew’s Builder to turn receiving off or back on. Only mail addressed to enabled Crews is received. Gmail read access is required; disconnecting this account stops delivery to all your Crews.</p>}
+    {central && provider === 'google' && data?.inbox_available && <p className="text-xs text-muted-foreground">Choose one Gmail account for project inboxes. Your projects receive email by default; ask a project’s Builder to turn receiving off or back on. Only mail addressed to enabled projects is received. Gmail read access is required; disconnecting this account stops delivery to all your projects.</p>}
     {central && provider === 'slack' && <p className="text-xs text-muted-foreground">Only you can read or search your Slack. People using a product you add it to can send messages as you.</p>}
     {error && <div role="alert" className="text-xs text-destructive">{error} <Button variant="ghost" size="xs" onClick={() => void refresh()}>Retry</Button></div>}
     {message && <p role="status" className="text-xs">{message}</p>}
@@ -84,9 +84,10 @@ function ProviderAccounts({ provider, workspacePath, onChanged }: { provider: Pr
         {!central && account.can_add && !account.selected && <Button size="xs" variant="outline" disabled={busy} onClick={() => void act('attach', account)}>Use here</Button>}
         {!central && account.can_detach && <Button size="xs" variant="outline" disabled={busy} onClick={() => void act('detach', account)}>Remove here</Button>}
         {central && account.can_reconnect && <Button size="xs" variant="outline" disabled={busy} onClick={() => provider === 'google' && account.google ? changeGoogleAccountAccess(account.google, '') : void act('reconnect', account)}>{provider === 'google' ? 'Change access' : 'Reconnect'}</Button>}
-        {central && provider === 'google' && data?.inbox_available && account.mine && account.google?.personal && <Button size="xs" variant="outline" disabled={busy || account.google.agent_inbox} onClick={() => void act('set_inbox_account', account)}>{account.google.agent_inbox ? 'Crew inbox account' : 'Use for Crew inboxes'}</Button>}
+        {central && provider === 'google' && data?.inbox_available && account.mine && account.google?.personal && <Button size="xs" variant="outline" disabled={busy || account.google.agent_inbox} onClick={() => void act('set_inbox_account', account)}>{account.google.agent_inbox ? 'Project inbox account' : 'Use for project inboxes'}</Button>}
         {central && account.can_manage && <Button size="xs" variant="ghost" disabled={busy} onClick={() => void act('disconnect', account)}>Disconnect everywhere</Button>}
       </div>
+
       {account.problem && <p role="alert" className="mt-2 break-words text-xs text-destructive">Not working: {account.problem}</p>}
       {account.google && <><p className="mt-2 text-xs text-muted-foreground">{googleAccessSummary(account.google)}</p><GooglePermissions account={account.google} /></>}
     </div>)}

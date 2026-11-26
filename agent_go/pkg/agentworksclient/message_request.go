@@ -12,11 +12,13 @@ import (
 func messagingRequest(bound LocalBridgeRequest) (LocalBridgeRequest, error) {
 	action, _ := bound.Arguments["action"].(string)
 	switch action {
-	case "peers", "send", "read", "reply", "ack", "count", "delete", "clear", "ping_person", "get_file":
+	case "ask", "queue":
+		action = "send"
+	case "peers", "agent_status", "history", "send", "read", "reply", "ack", "count", "delete", "clear", "ping_person", "get_file":
 	case "set_purpose":
 		action = "purpose"
 	default:
-		return LocalBridgeRequest{}, errors.New("Choose a messaging action: peers, send, read, reply, ack, set_purpose, ping_person, get_file, count, delete or clear. Connect, disconnect and publish use their own chat actions.")
+		return LocalBridgeRequest{}, errors.New("Choose a messaging action: peers, agent_status, history, send, ask, queue, read, reply, ack, set_purpose, ping_person, get_file, count, delete or clear. Connect, disconnect and publish use their own chat actions.")
 	}
 	for key, value := range bound.Arguments {
 		if value == nil {
@@ -24,23 +26,30 @@ func messagingRequest(bound LocalBridgeRequest) (LocalBridgeRequest, error) {
 		}
 	}
 	var args struct {
-		Target        string `json:"target"`
-		Query         string `json:"query"`
-		Message       string `json:"message"`
-		SubmissionID  string `json:"submission_id"`
-		InboxID       string `json:"inbox_id"`
-		MessageID     string `json:"message_id"`
-		Delivery      string `json:"delivery"`
-		Purpose       string `json:"purpose"`
-		Network       string `json:"network"`
-		After         int    `json:"after"`
-		OlderThan     string `json:"older_than"`
-		FromAgent     string `json:"from_agent"`
-		DeliveredOnly bool   `json:"delivered_only"`
-		UnreadOnly    bool   `json:"unread_only"`
-		FileName      string `json:"file_name"`
-		FileBase64    string `json:"file_base64"`
-		FileID        string `json:"file_id"`
+		Target        string   `json:"target"`
+		Query         string   `json:"query"`
+		Message       string   `json:"message"`
+		SubmissionID  string   `json:"submission_id"`
+		InboxID       string   `json:"inbox_id"`
+		MessageID     string   `json:"message_id"`
+		Delivery      string   `json:"delivery"`
+		Examples      []string `json:"examples,omitempty"`
+		Purpose       string   `json:"purpose"`
+		Network       string   `json:"network"`
+		After         int      `json:"after"`
+		Limit         int      `json:"limit"`
+		Offset        int      `json:"offset"`
+		Line          int      `json:"line"`
+		WaitSeconds   int      `json:"wait_seconds"`
+		Offline       string   `json:"offline"`
+		ExpectsReply  bool     `json:"expects_reply"`
+		OlderThan     string   `json:"older_than"`
+		FromAgent     string   `json:"from_agent"`
+		DeliveredOnly bool     `json:"delivered_only"`
+		UnreadOnly    bool     `json:"unread_only"`
+		FileName      string   `json:"file_name"`
+		FileBase64    string   `json:"file_base64"`
+		FileID        string   `json:"file_id"`
 	}
 	raw, err := json.Marshal(bound.Arguments)
 	if err == nil {
@@ -49,12 +58,26 @@ func messagingRequest(bound LocalBridgeRequest) (LocalBridgeRequest, error) {
 	if err != nil {
 		return LocalBridgeRequest{}, fmt.Errorf("Check the message arguments: %w", err)
 	}
+	task := map[string]any{}
+	for _, key := range []string{"status", "title", "ref", "files", "buttons"} {
+		if value, ok := bound.Arguments[key]; ok {
+			task[key] = value
+		}
+	}
 	return LocalBridgeRequest{
-		Action: action, Provider: bound.Provider, SessionID: bound.SessionID, HostKey: bound.HostKey, AttachmentID: bound.AttachmentID,
+		Task: task, Queue: bound.Arguments["action"] == "queue", Ask: bound.Arguments["action"] == "ask", Action: action, Provider: bound.Provider, SessionID: bound.SessionID, HostKey: bound.HostKey, AttachmentID: bound.AttachmentID,
 		Target: args.Target, Message: args.Message, SubmissionID: args.SubmissionID,
 		InboxID: args.InboxID, MessageID: args.MessageID, Delivery: args.Delivery,
-		Purpose: args.Purpose, Query: args.Query, Network: args.Network, Cursor: args.After,
+		Purpose: args.Purpose, Examples: args.Examples, Query: args.Query, Network: args.Network, Cursor: args.After, Limit: args.Limit,
+		Offset: args.Offset, Line: args.Line, WaitSeconds: args.WaitSeconds, Offline: args.Offline, ExpectsReply: args.ExpectsReply,
 		OlderThan: args.OlderThan, FromAgent: args.FromAgent, DeliveredOnly: args.DeliveredOnly, UnreadOnly: args.UnreadOnly,
 		FileName: args.FileName, FileBase64: args.FileBase64, FileID: args.FileID,
 	}, nil
+}
+
+// addTaskArgs forwards the task fields; the server checks them.
+func addTaskArgs(args map[string]any, task map[string]any) {
+	for key, value := range task {
+		args[key] = value
+	}
 }
