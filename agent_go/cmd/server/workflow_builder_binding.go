@@ -31,7 +31,7 @@ func (api *StreamingAPI) workflowBuilderSidebarSessions(ctx context.Context, wor
 	sessions, handled := listWorkflowBuilderHistoryFromDisk(viewer, workspace, 0, "")
 	if !handled {
 		var err error
-		sessions, _, err = listChatHistorySessionsFromWorkspaceIndex(viewer, workspace, 0, 0)
+		sessions, _, err = listChatHistorySessionsFromWorkspaceIndex(viewer, workspace, 0, 0, "")
 		if err != nil {
 			return nil, err
 		}

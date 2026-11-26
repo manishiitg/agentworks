@@ -1320,8 +1320,7 @@ func (api *StreamingAPI) pendingQueuedMessages(ctx context.Context, userID, sess
 	if api == nil || userID == "" || sessionID == "" {
 		return nil
 	}
-	api.clearExpiredFailedQueuedRows(ctx, userID, sessionID)
-	turns, err := api.readConversationTurnQueue(ctx, userID)
+	turns, err := api.clearExpiredFailedQueuedRows(ctx, userID, sessionID)
 	if err != nil {
 		return nil
 	}
@@ -1486,17 +1485,18 @@ func (api *StreamingAPI) expiredFailedQueuedRow(turn queuedConversationTurn, now
 	return ""
 }
 
-// clearExpiredFailedQueuedRows drops the chat owner's stale Not-sent rows before the queue is listed.
-func (api *StreamingAPI) clearExpiredFailedQueuedRows(ctx context.Context, userID, sessionID string) {
+// clearExpiredFailedQueuedRows drops the chat owner's stale Not-sent rows before the queue is listed
+// and returns the remaining queue slice so callers do not read the queue file twice.
+func (api *StreamingAPI) clearExpiredFailedQueuedRows(ctx context.Context, userID, sessionID string) ([]queuedConversationTurn, error) {
 	if api == nil || userID == "" || sessionID == "" {
-		return
+		return nil, nil
 	}
 	lock := productConversationRegistryMutex(conversationTurnQueuePath(userID))
 	lock.Lock()
 	defer lock.Unlock()
 	turns, err := api.readConversationTurnQueue(ctx, userID)
 	if err != nil {
-		return
+		return nil, err
 	}
 	now := time.Now()
 	kept := make([]queuedConversationTurn, 0, len(turns))
@@ -1514,6 +1514,7 @@ func (api *StreamingAPI) clearExpiredFailedQueuedRows(ctx context.Context, userI
 			logTurnQueue("cannot clear expired rows for %s: %v", userID, err)
 		}
 	}
+	return kept, nil
 }
 
 // Busy-lane observation and a future reset are separate waits. An earlier

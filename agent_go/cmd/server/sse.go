@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -329,6 +330,20 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 	// until the tab was reopened (PLAT-746-158).
 	lastIndex := sinceIndex
 	backfilledThrough := sinceIndex
+	var lastRuntimeState RuntimeSnapshot
+	var hasLastRuntimeState bool
+	var lastRuntimeAt time.Time
+	var lastStatusPayload []byte
+	snapshotFor := func(allowCached bool) RuntimeSnapshot {
+		if allowCached && hasLastRuntimeState && time.Since(lastRuntimeAt) < 2*time.Second {
+			return lastRuntimeState
+		}
+		snap, _ := api.authoritativeRuntimeSnapshot(sessionID)
+		lastRuntimeState = snap
+		hasLastRuntimeState = true
+		lastRuntimeAt = time.Now()
+		return snap
+	}
 
 	for {
 		select {
@@ -364,7 +379,10 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 				if workingSetOnly && !events.RetainEventInSessionWorkingSet(sessionID, event) {
 					continue
 				}
-				runtimeState, _ := api.authoritativeRuntimeSnapshot(sessionID)
+				// Pure text-streaming packets do not change runtime phase, waiting state, or
+				// background agents; reuse the recent snapshot to avoid copying 300 events per token.
+				isStreamingToken := event.Type == "streaming_text" || event.Type == "streaming_chunk" || event.Type == "streaming_progress"
+				runtimeState := snapshotFor(isStreamingToken)
 				runtimeStatus := sessionDisplayStatusFromRuntime(runtimeState)
 				// -2 is the client's "no cursor information" sentinel; -1 would
 				// be read as "server lost this session" and trigger a resync.
@@ -413,7 +431,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 				currentStatus = sessionStatus
 			}
 
-			runtimeState, _ := api.authoritativeRuntimeSnapshot(sessionID)
+			runtimeState := snapshotFor(false)
 			runtimeStatus := sessionDisplayStatusFromRuntime(runtimeState)
 			msg := sseEventMessage{
 				Events:                     []events.Event{event},
@@ -442,7 +460,7 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 			} else {
 				sessionStatus = currentStatus // update cached status
 			}
-			runtimeState, _ := api.authoritativeRuntimeSnapshot(sessionID)
+			runtimeState := snapshotFor(false)
 			runtimeStatus := sessionDisplayStatusFromRuntime(runtimeState)
 			msg := sseStatusMessage{
 				SessionStatus:              currentStatus,
@@ -451,6 +469,17 @@ func (api *StreamingAPI) handleSSEStream(w http.ResponseWriter, r *http.Request)
 				IsSyntheticTurn:            api.isSyntheticTurn(sessionID),
 				CanSteer:                   runtimeStatus.CanSteer,
 				RuntimeState:               &runtimeState,
+			}
+			if encoded, err := json.Marshal(msg); err == nil {
+				if bytes.Equal(encoded, lastStatusPayload) {
+					if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
+						streamLog.keepaliveMiss()
+						return
+					}
+					flusher.Flush()
+					continue
+				}
+				lastStatusPayload = encoded
 			}
 			if err := writeSSEEvent(w, "status", -1, msg); err != nil {
 				return

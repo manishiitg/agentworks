@@ -676,7 +676,32 @@ func (api *StreamingAPI) handleClearSession(w http.ResponseWriter, r *http.Reque
 		log.Printf("[SESSION DEBUG] Cleared conversation history for session %s", sessionID)
 	}
 	delete(api.lastWorkshopModeBySession, sessionID)
+	delete(api.lastChatPolicyBySession, sessionID)
+	delete(api.lastChatPolicyRoleBySession, sessionID)
+	delete(api.lastAgentProfileKeyBySession, sessionID)
+	delete(api.lastAgentToolsModeBySession, sessionID)
+	delete(api.lastWorkflowToolsModeBySession, sessionID)
+	delete(api.launchedAgentProfileKeyBySession, sessionID)
 	api.conversationMux.Unlock()
+
+	api.restoredConversationPersistMux.Lock()
+	delete(api.restoredConversationPersistTargets, sessionID)
+	api.restoredConversationPersistMux.Unlock()
+
+	api.sessionAgentsMux.Lock()
+	delete(api.sessionAgents, sessionID)
+	api.sessionAgentsMux.Unlock()
+
+	api.workflowOrchestratorsMux.Lock()
+	delete(api.workflowOrchestrators, sessionID)
+	api.workflowOrchestratorsMux.Unlock()
+
+	api.lastQueryMu.Lock()
+	delete(api.lastQueryRequests, sessionID)
+	api.lastQueryMu.Unlock()
+
+	api.promptParts.Delete(sessionID)
+	retainedLastSidecarFinal.Delete(sessionID)
 
 	// Clear orchestrator state (removed - now stateless)
 

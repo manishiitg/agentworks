@@ -394,10 +394,17 @@ func (api *StreamingAPI) waitForCodingAgentClarification(ctx context.Context, se
 			return "", ctx.Err()
 		}
 		api.codingAgentClarificationsMu.Unlock()
-		answers := <-p.answers
-		log.Printf("[HUMAN_INPUT] prompt=%s session=%s provider=%s waiter=consumed_after_cancel after_ms=%d", p.promptID, sessionID, provider, time.Since(p.askedAt).Milliseconds())
-		result, err := json.Marshal(map[string]interface{}{"status": "answered", "prompt_id": p.promptID, "answers": answers})
-		return string(result), err
+		// p.answers is buffered (size 1). If an answer was delivered before p was
+		// removed from the map, return it; otherwise Stop/teardown evicted p without
+		// answering, so do not block forever.
+		select {
+		case answers := <-p.answers:
+			log.Printf("[HUMAN_INPUT] prompt=%s session=%s provider=%s waiter=consumed_after_cancel after_ms=%d", p.promptID, sessionID, provider, time.Since(p.askedAt).Milliseconds())
+			result, err := json.Marshal(map[string]interface{}{"status": "answered", "prompt_id": p.promptID, "answers": answers})
+			return string(result), err
+		default:
+			return "", ctx.Err()
+		}
 	}
 }
 

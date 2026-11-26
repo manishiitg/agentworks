@@ -1696,10 +1696,10 @@ func listChatHistorySessions(userID string, limit, offset int, workspacePath, ki
 		}
 	}
 
-	if sessions, ok, err := listChatHistorySessionsFromDisk(userID, root, "", limit, offset); ok || err != nil {
+	if sessions, ok, err := listChatHistorySessionsFromDisk(userID, root, "", limit, offset, kind); ok || err != nil {
 		return sessions, err
 	}
-	if sessions, ok, err := listChatHistorySessionsFromWorkspaceIndex(userID, workspacePath, limit, offset); ok || err != nil {
+	if sessions, ok, err := listChatHistorySessionsFromWorkspaceIndex(userID, workspacePath, limit, offset, kind); ok || err != nil {
 		return sessions, err
 	}
 
@@ -1745,15 +1745,7 @@ func listChatHistorySessions(userID string, limit, offset int, workspacePath, ki
 		return sessions[i].UpdatedAt > sessions[j].UpdatedAt
 	})
 
-	// Apply pagination
-	if offset >= len(sessions) {
-		return []ChatHistorySession{}, nil
-	}
-	sessions = sessions[offset:]
-	if limit > 0 && limit < len(sessions) {
-		sessions = sessions[:limit]
-	}
-
+	// Apply kind filter BEFORE pagination so non-matching rows do not starve the page.
 	if kind != "" {
 		filtered := sessions[:0]
 		for _, session := range sessions {
@@ -1763,10 +1755,19 @@ func listChatHistorySessions(userID string, limit, offset int, workspacePath, ki
 		}
 		sessions = filtered
 	}
+
+	// Apply pagination
+	if offset >= len(sessions) {
+		return []ChatHistorySession{}, nil
+	}
+	sessions = sessions[offset:]
+	if limit > 0 && limit < len(sessions) {
+		sessions = sessions[:limit]
+	}
 	return sessions, nil
 }
 
-func listChatHistorySessionsFromWorkspaceIndex(userID, workflowPath string, limit, offset int) ([]ChatHistorySession, bool, error) {
+func listChatHistorySessionsFromWorkspaceIndex(userID, workflowPath string, limit, offset int, kind string) ([]ChatHistorySession, bool, error) {
 	indexPath := pathpkg.Join(chatHistoryRoot(userID), chatHistoryIndexFileName)
 	if workflowPath != "" {
 		indexPath = pathpkg.Join(workflowPath, "builder", "conversation", chatHistoryIndexFileName)
@@ -1783,7 +1784,17 @@ func listChatHistorySessionsFromWorkspaceIndex(userID, workflowPath string, limi
 	if !index.Complete {
 		return nil, false, nil
 	}
-	sessions := paginateChatHistorySessions(chatHistorySessionsFromIndex(index, userID, workflowPath), limit, offset)
+	indexedSessions := chatHistorySessionsFromIndex(index, userID, workflowPath)
+	if kind != "" {
+		filtered := indexedSessions[:0]
+		for _, session := range indexedSessions {
+			if chatHistorySessionMatchesKind(session.SessionID, kind) {
+				filtered = append(filtered, session)
+			}
+		}
+		indexedSessions = filtered
+	}
+	sessions := paginateChatHistorySessions(indexedSessions, limit, offset)
 	for i := range sessions {
 		if !chatHistoryHasLocalCommandPreview(sessions[i]) {
 			continue
@@ -1824,7 +1835,7 @@ type localChatHistoryFile struct {
 // listChatHistorySessionsFromDisk avoids hundreds of workspace-API reads when
 // the agent server and workspace docs are on the same machine. It sorts by the
 // conversation file mtime first, then reads only the requested page.
-func listChatHistorySessionsFromDisk(userID, workspaceRoot, workflowPath string, limit, offset int) ([]ChatHistorySession, bool, error) {
+func listChatHistorySessionsFromDisk(userID, workspaceRoot, workflowPath string, limit, offset int, kind string) ([]ChatHistorySession, bool, error) {
 	baseDir, ok := resolveLocalChatHistoryDir(workspaceRoot)
 	if !ok {
 		return nil, false, nil
@@ -1889,6 +1900,7 @@ func listChatHistorySessionsFromDisk(userID, workspaceRoot, workflowPath string,
 	mutex.Lock()
 	defer mutex.Unlock()
 	index := loadLocalChatHistoryIndex(indexLocalPath)
+	indexDirty := !index.Complete
 
 	sessions := make([]ChatHistorySession, 0, len(files))
 	for _, file := range files {
@@ -1897,15 +1909,20 @@ func listChatHistorySessionsFromDisk(userID, workspaceRoot, workflowPath string,
 			session, ok = readLocalChatHistorySession(userID, workspaceRoot, workflowPath, file)
 			if ok {
 				putLocalChatHistoryIndexEntry(&index, file, session)
+				indexDirty = true
 			}
 		}
 		if ok {
 			preserveChatHistorySessionTitle(&index, &session)
-			sessions = append(sessions, session)
+			if kind == "" || chatHistorySessionMatchesKind(session.SessionID, kind) {
+				sessions = append(sessions, session)
+			}
 		}
 	}
-	index.Complete = true
-	_ = writeLocalChatHistoryIndex(indexLocalPath, &index)
+	if indexDirty {
+		index.Complete = true
+		_ = writeLocalChatHistoryIndex(indexLocalPath, &index)
+	}
 	return paginateChatHistorySessions(sessions, limit, offset), true, nil
 }
 

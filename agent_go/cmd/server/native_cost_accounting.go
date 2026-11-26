@@ -194,7 +194,8 @@ func (a *nativeCostAccountant) startLocked() {
 	}
 	a.running = true
 	a.done = make(chan struct{})
-	go a.run(a.done)
+	done := a.done
+	goSafe("native_cost_accountant", func() { a.run(done) })
 }
 
 // stopLocked ends this chat's counting goroutine. Called with a.mu held.

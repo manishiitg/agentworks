@@ -618,16 +618,10 @@ func workspaceProxyBodyVerdict(r *http.Request, policy workspaceProxyPolicy) (st
 			spooled.close()
 			return http.StatusBadRequest, "request body is not valid multipart", nil
 		}
-		// Forward the same destination the gate authorized. Multipart fields do
-		// not pass through the JSON workspace transport's path translation.
-		rewritten := &workspaceProxySpillWriter{mem: &bytes.Buffer{}, memCap: workspaceProxyBodyMemoryCap, maxCap: workspaceProxyBodyMaxCap}
-		defer rewritten.abort()
-		form := multipart.NewWriter(rewritten)
-		if err := form.SetBoundary(params["boundary"]); err != nil {
-			spooled.close()
-			return http.StatusBadRequest, "request body is not valid multipart", nil
-		}
-		changed := false
+		// Validate every multipart path field in-place without duplicating up to
+		// 256 MB of file payload into a second buffer. Draining non-path parts
+		// guarantees fields appearing after file parts are still enforced before
+		// replaying the original spooled body.
 		partReader := multipart.NewReader(spooled.open(), params["boundary"])
 		for {
 			part, err := partReader.NextPart()
@@ -638,13 +632,9 @@ func workspaceProxyBodyVerdict(r *http.Request, policy workspaceProxyPolicy) (st
 				spooled.close()
 				return http.StatusBadRequest, "request body is not valid multipart", nil
 			}
-			destination, err := form.CreatePart(part.Header)
-			if err != nil {
-				spooled.close()
-				return http.StatusBadRequest, "request body could not be prepared", nil
-			}
 			if part.FileName() == "" && workspaceProxyMultipartPathFields[part.FormName()] {
 				value, err := io.ReadAll(part)
+				_ = part.Close()
 				if err != nil {
 					spooled.close()
 					return http.StatusBadRequest, "request body could not be read", nil
@@ -654,30 +644,15 @@ func workspaceProxyBodyVerdict(r *http.Request, policy workspaceProxyPolicy) (st
 					spooled.close()
 					return http.StatusForbidden, "multipart form path", nil
 				}
-
-				if _, err := destination.Write(value); err != nil {
-					spooled.close()
-					return http.StatusBadRequest, "request body could not be prepared", nil
-				}
 				continue
 			}
-			// Copy file bytes and unrelated fields without interpreting them.
-			if _, err := io.Copy(destination, part); err != nil {
+			// Drain file bytes and unrelated fields without buffering or modifying them.
+			if _, err := io.Copy(io.Discard, part); err != nil {
+				_ = part.Close()
 				spooled.close()
 				return http.StatusBadRequest, "request body could not be read", nil
 			}
-		}
-		if err := form.Close(); err != nil {
-			spooled.close()
-			return http.StatusBadRequest, "request body could not be prepared", nil
-		}
-		if changed {
-			spooled.close()
-			spooled = &workspaceProxySpooledBody{file: rewritten.file, size: rewritten.total}
-			if rewritten.file == nil {
-				spooled.mem = rewritten.mem.Bytes()
-			}
-			rewritten.file = nil // replay now owns the temporary file
+			_ = part.Close()
 		}
 		return replay()
 	}

@@ -82,6 +82,7 @@ func (api *StreamingAPI) probedChatLimits(owner, provider, connectionID string, 
 	// Keep authorization above the cache read; only the probe moves off the request.
 	go func() {
 		defer cancel()
+		defer recoverDetachedGoroutine("chat_usage_probe", key)
 		refreshChatUsageProbe(ctx, key, owner, provider, connectionID, environment)
 	}()
 	return cached.limits
@@ -89,6 +90,11 @@ func (api *StreamingAPI) probedChatLimits(owner, provider, connectionID string, 
 
 func refreshChatUsageProbe(ctx context.Context, key, owner, provider, connectionID string, environment func() []string) {
 	started := time.Now()
+	defer func() {
+		chatUsageProbes.mu.Lock()
+		delete(chatUsageProbes.running, key)
+		chatUsageProbes.mu.Unlock()
+	}()
 	usage, err := readNativeAccountUsage(ctx, provider, nativeUsageEnvironment(provider, environment()))
 	// Keep the complete selected-account snapshot for Limits. The chat chip
 	// below remains a deliberately reduced projection. Failed probes never erase
@@ -176,11 +182,12 @@ func (api *StreamingAPI) chatUsageProbeAccount(ctx context.Context, owner, provi
 				return nil, false
 			}
 		}
-		keys, err := providerConnectionRuntimeKeys(record)
-		if err != nil {
-			return nil, false
-		}
+		recordCopy := record
 		return func() []string {
+			keys, err := providerConnectionRuntimeKeys(recordCopy)
+			if err != nil {
+				return nil
+			}
 			return providerConnectionSetupEnvironment(providerConnectionEnvLabel(provider, connectionID), keys)
 		}, true
 	}
