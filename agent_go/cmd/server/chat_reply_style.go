@@ -152,3 +152,19 @@ func chatRepliesNote(identity ProductAgentIdentity, attended bool) string {
 	}
 	return chatRepliesMarker + " " + strings.Join(parts, " ")
 }
+
+// chatPersonAppTurn is a turn the person typed in the app (#4339): attended, typed by a person (not a schedule,
+// bot or someone else's ask), and not delivered as a message. Another agent's message, a Watcher event (also
+// delivered as an agent message) and the owner's other AI apps are attended for question cards but never get the
+// chat-settings note (#4245, #4211). A batch of queued turns gets it only when the person typed one of them.
+func chatPersonAppTurn(ctx context.Context, req *QueryRequest, sessionID string) bool {
+	if req == nil || strings.TrimSpace(req.AgentMessageInbox) != "" || crewAskInputFromContext(ctx) != nil {
+		return false
+	}
+	if delivery, ok := ctx.Value(deliveredAgentMessageKey{}).(map[string]interface{}); ok && len(delivery) > 0 {
+		if delivery["source"] != "queued_batch" || delivery["combined_person_input"] != true {
+			return false
+		}
+	}
+	return codingAgentTurnAttended(GetUserFromContext(ctx), req, sessionID) && personTypedChatTurn(ctx, *req, sessionID, false)
+}
