@@ -403,12 +403,24 @@ func (api *StreamingAPI) handleLocalProject(w http.ResponseWriter, r *http.Reque
 		api.previewNewProjectChats(w, r)
 		return
 	}
-	crew, roots, ok := api.localProjectAccess(w, r, id, r.URL.Query().Get("availability") == "true" || r.URL.Query().Get("native_id") != "")
-	if !ok {
+	if r.URL.Query().Get("availability") == "true" {
+		// Chats come from the project's own folder; MCP servers come from this Mac's Claude, Codex, Cursor and agy
+		// settings, so a project without a folder can still import them (#4439).
+		claims := GetUserFromContext(r.Context())
+		own := false
+		chats := false
+		if claims != nil && IsLocalMode() && !IsMultiUserMode() && cliPersonalMac() && (claims.AccessToken == nil || claims.AccessToken.Allows("crews:write") && claims.AccessToken.AllowsCrew(id) && claims.AccessToken.FileGuard == nil) {
+			if crew, _, _, ok := api.externalCrewResolve(r.Context(), claims, id); ok && crew.OwnerID == claims.UserID {
+				own = true
+				_, bound, err := localCrewRoots(crew.Binding.WorkspacePath)
+				chats = err == nil && bound
+			}
+		}
+		writeAgentProfileJSON(w, 200, map[string]bool{"can_import_local_chats": chats, "can_import_mcp": own})
 		return
 	}
-	if r.URL.Query().Get("availability") == "true" {
-		writeAgentProfileJSON(w, 200, map[string]bool{"can_import_local_chats": cliPersonalMac()})
+	crew, roots, ok := api.localProjectAccess(w, r, id, r.URL.Query().Get("native_id") != "")
+	if !ok {
 		return
 	}
 	if r.URL.Query().Get("instruction_status") == "true" {
