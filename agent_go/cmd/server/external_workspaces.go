@@ -359,6 +359,10 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 				item["workspace_path"] = canonicalChatHistoryWorkspacePath(claims.UserID, root)
 			}
 			item["location"] = "server"
+			if !IsLocalMode() {
+				// The caller's role, for the Mac app's project list (#4331): owner, co_owner or user.
+				item["role"] = crewRoleOf(binding.Binding.WorkspacePath, claims.UserID)
+			}
 			if IsLocalMode() {
 				if live := crewTeamLocalNavigationLive(r.Context(), claims.UserID, doc.ID, liveReads); live != nil {
 					item["team_live"] = live

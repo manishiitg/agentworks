@@ -1,4 +1,5 @@
 import { useWorkspaceReturnStore } from './useWorkspaceReturnStore'
+import { setRemoteOpenProjectLookup } from '../utils/remoteSessions'
 import { useCommandDialogStore } from './useCommandDialogStore'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
@@ -49,3 +50,4 @@ export const useProductSurfaceStore = create<ProductSurfaceState>()(
 )
 
 // A server project opened in place routes its file reads only while it is the open project (#3383).
+setRemoteOpenProjectLookup(() => useProductSurfaceStore.getState().selectedWorkProjectId)

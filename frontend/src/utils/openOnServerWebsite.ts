@@ -1,8 +1,7 @@
 import { useChatStore } from '../stores/useChatStore'
 import { useConnectedWorkStore } from '../stores/useConnectedWorkStore'
 
-/** The Mac app lists only this Mac's projects (owner, 24 Nov, #3779): a server project, its chats and its Team open on
- * that server's website in the browser. A server project reaches the Mac only as an online project in a Mac Team. */
+/** Opens a page of a connected server on its website in the browser (the Servers page's Open website). */
 export async function openOnServerWebsite(connectionId: string, route = '/') {
   const find = () => useConnectedWorkStore.getState().connections.find(connection => connection.id === connectionId)?.server
   // A notification can arrive before this window has read its connections.
@@ -14,5 +13,3 @@ export async function openOnServerWebsite(connectionId: string, route = '/') {
   else window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-// A notification click for work on a server opens it on that server's website (desktop/lib/connections.js).
-if (typeof window !== 'undefined') window.electronAPI?.onOpenOnServerWebsite?.(({ connection, route }) => void openOnServerWebsite(connection, route))

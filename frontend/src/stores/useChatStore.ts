@@ -1,4 +1,5 @@
 import { getChatAccessNotice } from '../services/chatAccess'
+import { setRemoteSessionProjectLookup } from '../utils/remoteSessions'
 import { randomUUID } from '../utils/randomUUID'
 import { getWorkspaceScopedStorageKey } from './useWorkspaceConnectionStore'
 import { captureChatIdentity, isChatIdentityCurrent, assertChatIdentityCurrent, invalidateChatIdentity, getAccountChatStorageKey, readPersistedChatOwner } from '../utils/chatIdentity'
@@ -3605,6 +3606,7 @@ export const useChatStore = create<ChatState>()(
 )
 
 // A server project opened in place (#3383): its chats' requests and streams follow the project's server.
+setRemoteSessionProjectLookup(sessionId => Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === sessionId)?.metadata?.agentProfileProjectId)
 
 if (chatPersistStorage) {
   const flushDurableChatState = () => chatPersistStorage.flush()

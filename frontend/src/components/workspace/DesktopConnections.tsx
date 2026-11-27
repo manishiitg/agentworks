@@ -10,12 +10,17 @@ import { queueTeammateAgent } from '../../products/work/openTeammateAgent'
 import { ProjectAgentRow } from './SidebarCrewAgentMark'
 import { matchesWorkConversation, workConversationAgent } from '../../utils/workConversationKey'
 import { openAgentTab } from '../../utils/openAgentTab'
-import { agentApi } from '../../services/api'
+import { agentApi, getAuthToken, getDesktopApiBaseUrl, getLocalApiBaseUrl } from '../../services/api'
 import type { AgentProfileSideChat } from '../../services/api-types'
-import { openAppProduct } from '../../utils/appNavigation'
+import { openAppPage, openAppProduct } from '../../utils/appNavigation'
+import { remoteProjectConnection } from '../../utils/remoteSessions'
+import { openProjectInPlace } from '../../utils/openProjectInPlace'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
+import type { ProductRoute } from '../../utils/productRoutes'
+import { productRoutePath } from '../../utils/productRoutes'
 import { useLiveRefetch } from '../../hooks/useLiveRefetch'
+import { openConnectedServers } from './ConnectedServersMenuItem'
 import { useProjectMenuHistoryStore, connectedWorkHistoryScope } from '../../stores/useProjectMenuHistoryStore'
 import { connectedProjectKey } from '../../utils/connectedWorkPresentation'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
@@ -41,7 +46,7 @@ import { isSharedProject, useMenuFilter } from './ProjectFilter'
 import { SidebarThreadsView, readSidebarViewMode, writeSidebarViewMode, type SidebarViewMode } from './SidebarThreadsView'
 
 
-type SidebarProject = { team_live?: TeamLiveView; id: string; name: string; shared_line?: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number } & CrewLocationFields
+type SidebarProject = { team_live?: TeamLiveView; id: string; name: string; shared_line?: string; kind: 'crew' | 'goal'; icon?: string; selected?: boolean; mode?: 'builder' | 'run'; role?: string; owned_by_caller?: boolean; owner_name?: string; shared_agents?: number } & CrewLocationFields
 
 /** Crews you build or work on. Dashboards shared with you are not listed here: they have their own page (owner,
  * 10 Nov). */
@@ -85,6 +90,7 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   useLiveRefetch(() => { void useConnectedWorkStore.getState().refresh() }, { kinds: ['sessions'], fallbackMs: 0, safetyMs: 0, minIntervalMs: 5_000, enabled: desktop && !directory })
   const current = desktop && isChatIdentityCurrent(state.identity)
   const connections: DesktopConnection[] = desktop ? connectedLocations(state) : [{ id: active, name: '', server: '' }]
+  const inventory = current ? state.inventory : {}
   const directoryError = desktop && current ? state.error : ''
   const historyScope = connectedWorkHistoryScope()
   const { pinned, recent, canPin, setPinned, movePinned } = useWorkHistory()
@@ -96,7 +102,27 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   const activeSessions = useChatStore(state => state.activeSessionsCache)
   const [query, setQuery] = useState('')
   const { error: filterError } = useMenuFilter(Boolean(directory))
-  const open = (project: typeof rows[number]) => openSidebarProject(project.kind, project.id)
+  // A server project shows a cloud after its name; hovering says where it runs and the person's role (#4331).
+  const unreachable = (connection: DesktopConnection) => connection.id !== 'local' && connection.id !== active && Boolean(inventory[connection.id]) && inventory[connection.id]?.status !== 'connected'
+  const serverLineFor = (project: SidebarProject, connection: DesktopConnection) => {
+    const server = connection.name || 'the server'
+    if (unreachable(connection)) return inventory[connection.id]?.status === 'sign_in' ? `Runs on ${server} · sign in to it again on the Servers page` : `Runs on ${server} · can't reach it right now`
+    const role = { owner: 'you own it', co_owner: 'you are a co-owner', user: 'you are a User' }[project.role || ''] || (project.owned_by_caller ? 'you own it' : '')
+    return `Runs on ${server}${role ? ` · ${role}` : ''}`
+  }
+  const open = (project: typeof rows[number]) => {
+    if (unreachable(project.connection)) {
+      useChatStore.getState().addToast(`Can't reach ${project.connection.name || 'the server'} right now, so ${project.name} can't open here. Try again in a minute, or open it on its website.`, 'error')
+      return
+    }
+    if (project.connection.id === active) {
+      openSidebarProject(project.kind, project.id)
+      return
+    }
+    if (project.kind === 'crew') { openProjectInPlace(project.connection.id, { surface: 'work', id: project.id }); return }
+    void window.electronAPI?.openDesktopConnection?.(project.connection.id, productRoutePath({ surface: 'work', id: project.id }))
+      .catch(() => useConnectedWorkStore.setState({ error: 'Could not open this server. Try again.' }))
+  }
   // The website has no delete for a Mac copy (owner, 12 Nov): its row offers the existing project delete instead.
   const removeOnlineCopy = (project: typeof rows[number]) => {
     void agentApi.deleteAgentProfileProject('work', project.id)
@@ -108,15 +134,19 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
         useChatStore.getState().addToast('Could not remove the online copy. Try again.', 'error')
       })
   }
-  // This Mac's projects only (owner, 24 Nov, #3779): a server project reaches the Mac app as an online project in a
-  // Team, and otherwise opens on its server's website.
-  const here = connections.find(connection => connection.id === active) ?? { id: active, name: '', server: '' }
-  const rows = projects
+  // The window's own list also carries a server project opened in place; that network's own list has the same ID, so
+  // it is listed there, not here. This Mac's projects are never dropped (a stale in-place note must not hide them).
+  const elsewhere = new Set(connections.filter(connection => connection.id !== active).flatMap(connection => ((inventory[connection.id]?.projects || []) as SidebarProject[]).map(project => project.id)))
+  const rows = connections.flatMap(connection => (connection.id === active ? projects.filter(project => !elsewhere.has(project.id)) : (inventory[connection.id]?.projects || []) as SidebarProject[])
     .filter(project => project.kind === 'crew' && menuListed(project))
-    .map(project => ({ ...project, connection: here }))
-    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+    .map(project => ({ ...project, connection })))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.connection.name.localeCompare(b.connection.name) || a.connection.id.localeCompare(b.connection.id) || a.id.localeCompare(b.id))
   const keyFor = (project: typeof rows[number]) => connectedProjectKey(project.connection.id, project.kind, project.id)
-  const isOpenProject = (project: typeof rows[number]) => Boolean(project.selected)
+  // The open project: this window's selected one, or a project on another connection opened in place (#3383).
+  const selectedWorkProjectId = useProductSurfaceStore(state => state.selectedWorkProjectId)
+  const isOpenProject = (project: typeof rows[number]) => project.connection.id === active
+    ? Boolean(project.selected) && remoteProjectConnection(selectedWorkProjectId) === undefined
+    : project.kind === 'crew' && project.id === selectedWorkProjectId && remoteProjectConnection(project.id) === project.connection.id
   const { pinnedRows, recentRows, openRow } = sidebarProjectShortcuts(rows, keyFor, pinned ?? [], recent ?? [], isOpenProject)
   const pinnedKeys = new Set(pinned ?? [])
   const renderProject = (project: typeof rows[number], pinnedShortcut: boolean) => {
@@ -145,13 +175,13 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
       showIcon={project.kind !== 'crew' || project.mode === 'run'}
       onMoveUp={pinnedShortcut && canPin && pinnedIndex > 0 ? () => move(-1) : undefined} onMoveDown={pinnedShortcut && canPin && pinnedIndex >= 0 && pinnedIndex < pinnedRows.length - 1 ? () => move(1) : undefined}
       selected={isOpenProject(project)}
-      location={desktop ? connection.id === 'local' ? 'On your Mac' : connection.name : undefined} remote={desktop && connection.id !== 'local'} showLocation={desktop}
+      location={desktop && connection.id !== 'local' ? connection.name : undefined} remote={desktop && connection.id !== 'local'} showLocation={desktop} serverLine={desktop && connection.id !== 'local' ? serverLineFor(project, connection) : undefined}
       pinned={pinnedKeys.has(key)} onTogglePin={canPin && crew ? () => setPinned(key, !pinnedKeys.has(key)) : undefined}
       onNewAgent={(currentCrew ? canAddAgent : openForAction) ? fromCrew('new') : undefined}
       onImportLocalChat={(currentCrew ? canImportChat : openForAction && localMode && project.owned_by_caller !== false) ? fromCrew('chat') : undefined}
       onDiscoverSkills={(currentCrew ? canDiscoverSkills : openForAction) ? fromCrew('skills') : undefined}
       onRemoveOnlineCopy={!desktop && crew && where === 'mac' && project.owned_by_caller !== false ? () => removeOnlineCopy(project) : undefined}
-      stateLine={where === 'mac' ? macCrewStateText(crewState) : undefined} offline={where === 'mac' && mac?.online === false} onMac={where === 'mac' ? (mac?.online ? 'on' : 'off') : undefined}
+      stateLine={where === 'mac' ? macCrewStateText(crewState) : undefined} offline={(where === 'mac' && mac?.online === false) || unreachable(connection)} onMac={where === 'mac' ? (mac?.online ? 'on' : 'off') : undefined}
       onOpen={() => {
         // Opening a project shows its agents here too, wherever it lives (owner, 10 Nov).
         expand?.()
@@ -214,7 +244,15 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   // A simple Projects page (owner, 24 Nov: "a simplified ui… something better"): two groups, yours and shared with
   // you, one grey line per row, and no place tabs or ownership chips. Where a project lives shows in its line.
   const normalizedQuery = query.trim().toLocaleLowerCase()
-  const listed = rows
+  // One row per project name among your own (owner, 24 Nov): a Mac project and its online pairs are one project to
+  // you. The row on this Mac wins, so opening it opens your Mac's copy.
+  const ownOrder = (row: typeof rows[number]) => row.connection.id === active ? 0 : 1
+  const ownByName = new Map<string, typeof rows[number]>()
+  for (const row of [...rows].filter(row => !isSharedProject(row)).sort((a, b) => ownOrder(a) - ownOrder(b))) {
+    const name = row.name.toLocaleLowerCase()
+    if (!ownByName.has(name)) ownByName.set(name, row)
+  }
+  const listed = rows.filter(row => isSharedProject(row) || ownByName.get(row.name.toLocaleLowerCase()) === row)
   const recentOrder = new Map((recent ?? []).map((key, index) => [key, index]))
   const byRecent = (a: typeof rows[number], b: typeof rows[number]) =>
     (recentOrder.get(keyFor(a)) ?? Infinity) - (recentOrder.get(keyFor(b)) ?? Infinity) || a.name.localeCompare(b.name)
@@ -222,7 +260,7 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   const placeName = (connection: DesktopConnection) => connection.id === 'local' ? '' : connection.name
   // Recent first (owner, 24 Nov): the last five opened, then everything else as yours or shared with you.
   // Recent is what you worked on here, on this Mac (owner, 24 Nov), not projects opened on other networks.
-  const recentShown = normalizedQuery ? [] : shown.filter(row => recentOrder.has(keyFor(row))).slice(0, 5)
+  const recentShown = normalizedQuery ? [] : shown.filter(row => row.connection.id === active && recentOrder.has(keyFor(row))).slice(0, 5)
   const rest = shown.filter(row => !recentShown.includes(row))
   const groups = [
     { id: 'recent', name: 'Recent', projects: recentShown },
@@ -250,6 +288,8 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
     }
     return project.team_live ? ['Team', network].filter(Boolean).join(' · ') : network
   }
+  const unavailable = connections.filter(connection => connection.id !== active && inventory[connection.id]?.status && inventory[connection.id]?.status !== 'connected')
+  const loadingPlaces = connections.filter(connection => connection.id !== active && !inventory[connection.id]?.status)
   return <div aria-label="Project directory" className="space-y-4">
     <label className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-card px-3 focus-within:ring-2 focus-within:ring-ring">
       <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -280,12 +320,15 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
       </ul>
     </section>)}
     {children}
-    {!shown.length && !children &&
+    {loadingPlaces.length > 0 && <p role="status" className="text-xs text-muted-foreground">Loading {loadingPlaces.map(connection => connection.name).join(', ')}…</p>}
+    {unavailable.map(connection => inventory[connection.id]?.status === 'sign_in'
+      ? <button key={connection.id} type="button" className="block text-xs text-muted-foreground underline" onClick={() => openConnectedServers(connection.server)}>{connection.name} · Sign in again</button>
+      : <button key={connection.id} type="button" className="block text-xs text-muted-foreground underline" onClick={() => void state.refresh(true)}>{connection.name} unavailable · Retry</button>)}
+    {!shown.length && !children && loadingPlaces.length === 0 &&
       <div className="space-y-2 rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
         <p>{normalizedQuery ? 'No matching projects.' : 'No projects yet.'}</p>
         {normalizedQuery && <button type="button" className="underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setQuery('')}>Clear search</button>}
       </div>}
-    {desktop && connections.length > 1 && <p className="px-1 text-xs text-muted-foreground">Projects on a server open on its website. Add one to a project's Team to work with it here.</p>}
     {(directoryError || filterError) && <p role="alert" className="text-sm text-destructive">{directoryError || filterError}</p>}
   </div>
 }
@@ -329,7 +372,15 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     const identity = captureChatIdentity()
     const load = async () => {
       try {
-        const result = await listProjectSideChats('work', projectId, true, reload > 0)
+        const current = connectionId === getRawActiveWorkspaceId()
+        let result: AgentProfileSideChat[]
+        if (current) result = await listProjectSideChats('work', projectId, true, reload > 0)
+        else {
+          const base = connectionId === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${connectionId}`
+          const response = await fetch(`${base}/api/agent-profiles/work/side-chats?project_id=${encodeURIComponent(projectId)}&with_main=1`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` }, signal: AbortSignal.timeout(15000) })
+          if (!response.ok) throw new Error('Chats unavailable')
+          result = await response.json()
+        }
         // A failed Team read leaves the person's own agents listed (owner, 11 Nov: a Team failure hid them all), and
         // keeps the teammates' agents last read, so they do not drop out and come back (owner, 20 Nov).
         const teammates = await teamSideChats('work', projectId, connectionId).catch(() => undefined)
@@ -357,9 +408,10 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     }
     const agent = chat.is_main || chat.can_write === false ? undefined : workConversationAgent(chat.conversation_key)
     const route = { surface: 'work' as const, id: projectId, agent }
+    // A project on another connection opens in place too (#3383): its requests go to its own server.
     const existing = Object.values(useChatStore.getState().chatTabs).find(tab => matchesWorkConversation(tab, 'work', projectId, chat.conversation_key))
     if (existing && useProductSurfaceStore.getState().selectedWorkProjectId === projectId) openAgentTab(existing.tabId)
-    else { openProductWorkspace('work'); openAppProduct(route) }
+    else openProjectInPlace(connectionId, route)
     window.dispatchEvent(new Event('close-app-sidebar'))
   }
   const own = chats.filter(chat => chat.can_write !== false)

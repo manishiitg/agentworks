@@ -12,7 +12,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { ChevronDown, ChevronUp, ClipboardPaste, Copy, Eraser, Loader2, Maximize2, Minimize2, Minus, MoreHorizontal, Palette, Plus, Power, RefreshCw, Search, Terminal as TerminalIcon, MessageSquarePlus, X } from 'lucide-react'
 import { APP_VERSION } from '../../version'
-import api, { getApiBaseUrl, getAuthToken } from '../../services/api'
+import api, { getAuthToken, projectApiBase } from '../../services/api'
 import { useTheme } from '../../hooks/useTheme'
 import { isTerminalPasteShortcut } from '../../utils/interactiveXterm'
 import { RAW_XTERM_FONT_FAMILY, RAW_XTERM_FONT_SIZE, RAW_XTERM_THEMES } from '../../components/TerminalCenter'
@@ -234,7 +234,7 @@ function CodeShellTerminal({ projectId, chatContextTabId, tab, active, tabStrip,
       const version = await desktop?.getAppVersion?.().catch(() => APP_VERSION) ?? APP_VERSION
       if (disposed) return
       const kind = desktop ? (IS_MAC ? 'mac_app' : 'desktop_app') : 'browser'
-      const socket = new WebSocket(shellStreamUrl(projectId, term.cols || 80, term.rows || 24, getApiBaseUrl() || window.location.origin, getAuthToken(), tab, profileId, { kind, version }))
+      const socket = new WebSocket(shellStreamUrl(projectId, term.cols || 80, term.rows || 24, projectApiBase(projectId) || window.location.origin, getAuthToken(), tab, profileId, { kind, version }))
       socket.binaryType = 'arraybuffer'
       socketRef.current = socket
       socket.onopen = () => {

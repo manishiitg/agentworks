@@ -4,7 +4,7 @@ import { BrowserChrome, browserIconButtonClass, browserActionButtonClass, type B
 import { useBrowserClipboard } from './useBrowserClipboard'
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import { ArrowLeft, ChevronRight, CheckCircle2, Circle, Copy, FolderOpen, Info, Loader2, Maximize2, Minimize2, Monitor, MoreHorizontal, RefreshCw, Square, X } from 'lucide-react'
-import api, { getApiBaseUrl, getAuthToken } from '../../services/api'
+import api, { apiUrlForPath, getAuthToken } from '../../services/api'
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { useCanWriteWorkflow } from '../../hooks/useCanWriteWorkflow'
@@ -315,7 +315,7 @@ export default function WorkflowLiveBrowser({ workspacePath, scopeNoun = 'workfl
     if (!viewerVisible || !session || !workspacePath || sourceCompleted) return
     setLastPlaywrightFrame(previous => previous?.workspace === workspacePath && previous.session === session ? previous : null)
     // A server project open in place streams from its own server through this Mac's sign-in (#3383).
-    const url = new URL(`${getApiBaseUrl()}/api/browser/live/${encodeURIComponent(session)}/stream`, window.location.origin)
+    const url = new URL(apiUrlForPath(`/api/browser/live/${encodeURIComponent(session)}/stream`, workspacePath), window.location.origin)
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     url.searchParams.set('workspace_path', workspacePath)
     const token = getAuthToken()

@@ -1,5 +1,5 @@
 import { ForkTeammateAgent } from '../../products/work/ForkTeammateAgent'
-import { openOnServerWebsite } from '../../utils/openOnServerWebsite'
+import { openProjectInPlace } from '../../utils/openProjectInPlace'
 import { TeamMonitorAgentRow } from './TeamMonitorAgentRow'
 import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { useChatStore } from '../../stores/useChatStore'
@@ -61,11 +61,11 @@ export function useTeamCrews(period:'day'|'week'='day'):{sources:MonitorSource[]
  return loaded&&isChatIdentityCurrent(loaded.identity)&&loaded.period===period?{...loaded,loading:false}:{sources:[],notice:'',people:[],summary:'',loading:true}
 }
 
-export function openCrewTeam(connectionId: string, crewId: string) {
-  // A Crew on a server opens on that server's website (#3779): the Mac app shows only this Mac's projects.
-  if (connectionId !== getRawActiveWorkspaceId()) { void openOnServerWebsite(connectionId, `/projects/${encodeURIComponent(crewId)}`); return }
-  openSidebarProject('crew', crewId)
-  openCrewAccess(crewId, '', 'team', 'agents')
+export function openCrewTeam(connectionId: string, crewId: string, section: 'agents' | 'activity' = 'agents') {
+  // A Crew on another server opens in place too (#3383, #4331), with its Team panel.
+  if (connectionId === getRawActiveWorkspaceId()) openSidebarProject('crew', crewId)
+  else openProjectInPlace(connectionId, { surface: 'work', id: crewId })
+  openCrewAccess(crewId, '', 'team', section)
 }
 
 // Open overview: one full page for every Team and person, not a tab in one Team (owner, 25 Nov).

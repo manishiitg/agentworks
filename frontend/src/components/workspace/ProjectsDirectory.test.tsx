@@ -23,7 +23,7 @@ vi.mock('../../hooks/useLiveRefetch', () => ({ useLiveRefetch: () => {} }))
 vi.mock('../../stores/useConnectedWorkStore', async () => {
   const { captureChatIdentity } = await import('../../utils/chatIdentity')
   const connections = [{ id: 'local', name: 'Local' }, { id: 'remote', name: 'Team space' }]
-  const state = () => ({ identity: captureChatIdentity(), activity: {}, connections, inventory: { remote: {
+  const state = () => ({ identity: captureChatIdentity(), activity: {}, inventory: { remote: {
     status: 'connected', projects: [{ id: 'gamma', kind: 'crew', name: 'Gamma' }],
   } } })
   return {
@@ -109,8 +109,8 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
     expect(page().querySelectorAll('[role="tab"]')).toHaveLength(0)
     expect(page().textContent).not.toContain('Mine')
     expect(page().querySelector('section[aria-label="Yours"]')?.textContent).toContain('Beta')
-    // #3779: a project on a connected server is not listed in the Mac app; it opens on its website.
-    expect(page().textContent).not.toContain('Gamma')
+    expect(page().querySelector('section[aria-label="Yours"]')?.textContent).toContain('Gamma')
+    expect(page().querySelector('section[aria-label="Yours"]')?.textContent).toContain('Team space')
     expect(page().querySelector('section[aria-label="Shared with you"]')?.textContent).toContain('Shared project')
     expect(page().querySelector('section[aria-label="Yours"]')?.textContent).not.toContain('Shared project')
     await click('Pin Beta', page())

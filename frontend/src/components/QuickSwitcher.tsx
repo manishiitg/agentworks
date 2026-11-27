@@ -1,4 +1,5 @@
 import { QuickSwitcherResultGroups } from './QuickSwitcherResultGroups'
+import { openProjectInPlace } from '../utils/openProjectInPlace'
 import { quickSwitcherArtifactID, uniqueQuickSwitcherArtifacts, quickSwitcherMatches, quickSwitcherMatchRank as itemSearchMatchRank, quickSwitcherGroups } from '../utils/quickSwitcherResults'
 import { SearchMatch } from './chat/SearchMatch'
 import api, { agentApi } from '../services/api'
@@ -33,6 +34,7 @@ import type { WorkSession } from '../products/work/workSessions'
 import { useProductSurfaceStore } from '../stores/useProductSurfaceStore'
 import { usePanelSwitcherStore } from '../stores/usePanelSwitcherStore'
 import { useAuthStore } from '../stores/useAuthStore'
+import { useConnectedWorkStore } from '../stores/useConnectedWorkStore'
 import { getRawActiveWorkspaceId } from '../utils/desktopConnection'
 import { visibleProductSurfaceIDs } from '../products/productSurfaceConfig'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
@@ -109,6 +111,8 @@ interface CrewChatItem {
   tabId?: string
   /** Crew project to open when there is no tab yet. */
   projectId?: string
+  /** The connected network a Crew lives on, when it is not this one (the left menu's list). */
+  connectionId?: string
   projectLabel?: string
   activeSession?: ActiveSessionInfo
   hasLocalActivity: boolean
@@ -336,6 +340,9 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   // Every Crew the user can use (owned and shared), so the switcher lists them
   // all, not only Crews with an open tab or running work. Loaded per opening.
   const [crewInventory, setCrewInventory] = useState<{ scope: string; rows: WorkSession[] }>({ scope: '', rows: [] })
+  // The left menu's connected networks (owner, 11 Nov: Cmd+K showed only this Mac's Crews).
+  const connections = useConnectedWorkStore(state => state.connections)
+  const inventory = useConnectedWorkStore(state => state.inventory)
   const user = useAuthStore(state => state.user)
   const isMultiUserMode = useAuthStore(state => state.isMultiUserMode)
   const resourceScope = `${workspace}:${user?.id || ''}`
@@ -572,6 +579,25 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         }
       })
 
+    const here = getRawActiveWorkspaceId()
+    const networkCrewItems: CrewChatItem[] = connections
+      .filter(connection => connection.id !== here)
+      .flatMap(connection => (inventory[connection.id]?.projects || [])
+        .filter(project => project.kind === 'crew')
+        .map(project => ({
+          type: 'crew' as const,
+          id: `crew-network:${connection.id}:${project.id}`,
+          label: project.name,
+          subtitle: `Project · ${connection.id === 'local' ? 'on your Mac' : `on ${connection.name}`}${project.shared_line ? ` · ${project.shared_line}` : project.owned_by_caller === false && project.owner_name ? ` · shared by ${project.owner_name}` : ''}`,
+          searchText: `${project.name} ${connection.name}`,
+          isActive: false,
+          lastAccessedAt: 0,
+          projectId: project.id,
+          connectionId: connection.id,
+          hasLocalActivity: false,
+          icon: project.icon,
+        })))
+
     const workflowItems: WorkflowItem[] = workflowPresets
       .filter(preset => preset.selectedFolder?.filepath)
       .map(preset => {
@@ -636,7 +662,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       return a.label.localeCompare(b.label)
     })
 
-    const projectItems = [...activeItems, ...crewItems, ...chatItems, ...workflowItems, ...directoryCrewItems].sort((a, b) => {
+    const projectItems = [...activeItems, ...crewItems, ...chatItems, ...workflowItems, ...directoryCrewItems, ...networkCrewItems].sort((a, b) => {
       const activityOrder = compareItemActivity(a, b)
       if (activityOrder) return activityOrder
       if (a.type !== b.type) return itemTypeRank(a) - itemTypeRank(b)
@@ -651,7 +677,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       }
       return visibleProducts.has('agentworks')
     }), ...(resources.scope === resourceScope ? resources.items : []), ...navigationItems.filter(item => item.scope), ...navigationItems.filter(item => !item.scope), ...panelItems, ...(currentChatFindRoot() ? [chatFindItem] : [])]
-  }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, navigationItems, panelItems, user?.allowed_products, resources, resourceScope])
+  }, [isOpen, isWorkflowMode, isChatMode, productSurface, activePresetId, chatTabs, activeSessions, activeTabId, workflowPresets, recentPresetOrder, recentPresetAccessedAt, crewDirectory, connections, inventory, navigationItems, panelItems, user?.allowed_products, resources, resourceScope])
 
   // Filter and sort
   const matchingItems = useMemo<QuickSwitcherItem[]>(() => {
@@ -812,6 +838,12 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
         title: item.label,
         source: 'quick-switcher',
       })
+      onClose()
+      return
+    }
+
+    if (item.type === 'crew' && item.connectionId && item.projectId) {
+      openProjectInPlace(item.connectionId, { surface: 'work', id: item.projectId })
       onClose()
       return
     }

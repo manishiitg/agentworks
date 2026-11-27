@@ -1,5 +1,7 @@
 import { takeSidebarProjectAction, useSidebarProjectAction } from '../../products/work/sidebarProjectActions'
 import { randomUUID } from '../../utils/randomUUID'
+import { remoteProjectConnection } from '../../utils/remoteSessions'
+import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { TeammateChatIdentity } from '../../products/work/TeammateChatIdentity'
 import { OnlineAgentLine } from '../../products/work/OnlineAgentLine'
 import { PendingAgentForks } from './PendingAgentForks'
@@ -202,7 +204,13 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   // Grouped by person like the left menu (owner, 5 Nov): your own tabs first, then each other person's, by account,
   // under the server's display name.
   // A read-only row that is the viewer's own (a schedule's own chat) sits with their own tabs, not under a person.
-  const me = useAuthStore(state => state.user?.id)
+  // A server project opened in place (#3383): "me" there is this Mac's sign-in to that server.
+  const localMe = useAuthStore(state => state.user?.id)
+  const remoteMe = useConnectedWorkStore(state => {
+    const connection = remoteProjectConnection(placeProject)
+    return connection ? state.connections.find(item => item.id === connection)?.user?.id : undefined
+  })
+  const me = remoteMe ?? localMe
   const tabOwnerId = (tab: ChatTab) => {
     if (canControl(tab)) return ''
     const owner = listedFor(tab)?.tab_owner_id || tab.metadata?.agentProfileTabOwnerID || 'someone'

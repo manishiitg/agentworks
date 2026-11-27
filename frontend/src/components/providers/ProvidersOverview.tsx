@@ -55,7 +55,7 @@ export function ServersOverview({ providers }: { providers: ProviderManifestEntr
   return (
     <div>
       <h2 className="text-xl font-semibold text-gray-950 dark:text-white">Servers</h2>
-      <p className="mt-1 mb-5 text-sm text-muted-foreground">The company servers this Mac app is connected to. Server projects open on their website, or add one to a project's Team to work with it here.</p>
+      <p className="mt-1 mb-5 text-sm text-muted-foreground">The company servers this Mac app is connected to. Their projects show in your project list with a cloud next to the name.</p>
       {(error || actionError) && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-300">{actionError || error}</p>}
       {!overview && loading && <p className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" />Checking your servers…</p>}
       <div className="grid gap-4">

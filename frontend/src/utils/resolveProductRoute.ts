@@ -1,4 +1,5 @@
 import type { AgentProfileSideChat } from '../services/api-types'
+import { remoteProjectConnection } from './remoteSessions'
 import { useChatStore } from '../stores/useChatStore'
 import { activateTab } from './activateTab'
 import api, { agentApi } from '../services/api'
@@ -65,11 +66,13 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
       }
     }
     if (!reused) {
-      const [{ loadProductProjects }, { projectProductConfig }, { loadSharedWorkSessions }] = await Promise.all([
+      const [{ loadProductProjects }, { projectProductConfig }, { loadSharedWorkSessions, loadRemoteWorkSession }] = await Promise.all([
         import('../platform/chat/productProjects'), import('../products/work/projectProduct'), import('../products/work/workSessions'),
       ])
       const product = projectProductConfig(workSurface)
-      const [owned, shared] = await Promise.all([
+      // A project on another of this Mac's connections opens in place, read from its own server (#3383).
+      const remote = remoteProjectConnection(projectId) ? await loadRemoteWorkSession(product, projectId) : undefined
+      const [owned, shared] = remote ? [[remote], []] : await Promise.all([
         loadProductProjects(product.projectsRoot, product.profileId, { includeOwnSharedProjects: product.listsSharedProjects }),
         loadSharedWorkSessions(product),
       ])
