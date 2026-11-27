@@ -96,6 +96,8 @@ type chatContextView struct {
 	// Switch Choice"): each model keeps its own saved copy of a chat, so the new one re-reads all of it once. ""
 	// for a short chat or one that cannot be compacted now: the model then switches at once.
 	SwitchNote string `json:"switch_note,omitempty"`
+	// ModelSwitch is a model change waiting for this chat's reply to finish (chat_model_switch_after_reply.go).
+	ModelSwitch *chatModelSwitchView `json:"model_switch,omitempty"`
 	// Cost is what this chat (and the helper agents it started) has cost so far; absent when the ledger has
 	// nothing for it or cannot be read.
 	Cost *costledger.SessionCost `json:"cost,omitempty"`
@@ -495,6 +497,7 @@ func (api *StreamingAPI) chatContextViewFor(ctx context.Context, owner string, t
 	_, _, refusal := chatCompactRefusal(sessionID)
 	view.CanCompact = refusal == ""
 	view.CanNewChat = productChatTab(tab)
+	view.ModelSwitch = chatModelSwitchViewFor(sessionID)
 	if view.CanCompact && view.UsedTokens >= switchNoteTokens {
 		view.SwitchNote = fmt.Sprintf("This chat is long (%dk). A new model re-reads all of it once before it answers.", view.UsedTokens/1000)
 	}
@@ -662,7 +665,9 @@ type chatContextRequest struct {
 	NextSteps  *bool   `json:"next_steps,omitempty"`
 	// UnrelatedTask: ask, new_tab or here (chat_reply_style.go).
 	UnrelatedTask *string `json:"unrelated_task,omitempty"`
-	Action        string  `json:"action,omitempty"` // "compact"
+	Action        string  `json:"action,omitempty"` // "compact", "switch_after_reply", "cancel_switch"
+	// Switch is the model for action switch_after_reply (chat_model_switch_after_reply.go).
+	Switch *chatModelSwitchRequest `json:"switch,omitempty"`
 	// fromTool marks an agent tool's call (chatContextArgs): it can lower the chat's access, never raise it.
 	fromTool bool
 }
@@ -731,6 +736,17 @@ func (api *StreamingAPI) applyChatContext(ctx context.Context, owner string, inp
 	case "":
 	case "compact":
 		status, message = api.compactChatNow(owner, tab, afterTurn)
+	case "switch_after_reply", "cancel_switch":
+		if input.fromTool {
+			return http.StatusBadRequest, map[string]any{"error": "Choose compact."}
+		}
+		if input.Action == "cancel_switch" {
+			cancelChatModelSwitch(tab.Record.SessionID)
+		} else if input.Switch == nil {
+			return http.StatusBadRequest, map[string]any{"error": "Choose the model to switch to."}
+		} else {
+			status, message = api.switchModelAfterReply(ctx, owner, tab, *input.Switch)
+		}
 	default:
 		return http.StatusBadRequest, map[string]any{"error": "Choose compact."}
 	}

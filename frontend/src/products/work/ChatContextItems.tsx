@@ -68,7 +68,10 @@ export const chatSendMessageEvent = 'agentworks:chat-send-message'
 /** Sent by the chip in the chat box to open that chat's model menu. */
 export const openChatContextMenuEvent = 'agentworks:open-chat-context-menu'
 
-export type ChatContextChange = { idle_compaction?: boolean; compact_early?: boolean; claude_terminal?: boolean; access_mode?: ChatAccessMode; reply_style?: ChatReplyStyle; next_steps?: boolean; unrelated_task?: ChatUnrelatedTask; action?: 'compact' }
+export type ChatContextChange = { idle_compaction?: boolean; compact_early?: boolean; claude_terminal?: boolean; access_mode?: ChatAccessMode; reply_style?: ChatReplyStyle; next_steps?: boolean; unrelated_task?: ChatUnrelatedTask; action?: 'compact' | 'switch_after_reply' | 'cancel_switch'; switch?: ChatModelSwitch }
+
+/** The model a chat switches to once its reply finishes; compact summarizes the chat first. */
+export type ChatModelSwitch = { project_id: string; engine: string; model_id?: string; reasoning_effort?: string; connection_id?: string; label?: string; compact?: boolean }
 
 /**
  * Sends one change to the server and shows its answer everywhere: the menu, the chip and the terminal icon
