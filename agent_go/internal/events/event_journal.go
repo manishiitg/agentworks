@@ -164,6 +164,16 @@ func OpenSQLiteEventJournal(path string) (*SQLiteEventJournal, error) {
 		 WHERE json_extract(payload,'$.type')='native_goal_updated'`,
 		`CREATE INDEX IF NOT EXISTS structured_chat_coding_agent_question ON structured_chat_events(session_id, sequence ASC)
 		 WHERE json_extract(payload,'$.type')='coding_agent_question'`,
+		// ReadChatFileHistory runs on every reply card; without these it
+		// scanned and parsed every event of a long chat four times (#2989).
+		`CREATE INDEX IF NOT EXISTS structured_chat_user_message ON structured_chat_events(session_id, sequence)
+		 WHERE json_extract(payload,'$.type')='user_message'`,
+		`CREATE INDEX IF NOT EXISTS structured_chat_reply_file_changes ON structured_chat_events(session_id, sequence)
+		 WHERE json_extract(payload,'$.type')='reply_file_changes'`,
+		`CREATE INDEX IF NOT EXISTS structured_chat_file_reviewed ON structured_chat_events(session_id, sequence)
+		 WHERE json_extract(payload,'$.type')='file_reviewed'`,
+		`CREATE INDEX IF NOT EXISTS structured_chat_reply_pull_requests ON structured_chat_events(session_id, sequence)
+		 WHERE json_extract(payload,'$.type')='reply_pull_requests'`,
 		`CREATE TABLE IF NOT EXISTS structured_chat_migrations (
 			session_id TEXT PRIMARY KEY,
 			migrated_at TEXT NOT NULL
