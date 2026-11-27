@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode, Ref } from 'react'
+import type { HTMLAttributes, PointerEvent, ReactNode, Ref } from 'react'
 import { PanelLeftOpen } from 'lucide-react'
 import { resolveWorkSurfaceLayout } from '../../products/work/workSurfaceLayoutResolver'
 import { MobileWorkspaceNavigationContext, type MobileWorkspacePane } from './MobileWorkspaceNavigation'
@@ -8,20 +8,22 @@ import { WorkspacePanelVisibilityContext } from './WorkspacePanelToggle'
 /** Complete split workspace used by Crew, Code, Vault and Brain. Product surfaces
  * supply content; pane geometry, tabs row and reopen controls have one owner. */
 export function ProductWorkspaceShell({
-  chatOpen, panelOpen, splitRatio, mobilePreview = false, laptopPreview = false, mobilePaneWidth, mobilePane, onMobilePaneChange, splitRef,
-  onOpenChat, onOpenWorkspace, onCloseWorkspace, tabs, toolbar, chat, workspace, divider,
-  chatProps, workspaceProps, testId, compactContext = false, toolbarWhenPanelClosed = false, showToolbar = true, navigationActive = true, retainChat = false, retainWorkspace = false, showChatReopenControl = true,
+  chatOpen, panelOpen, splitRatio, mobilePreview = false, laptopPreview = false, mobilePaneWidth, sidePaneWidth, mobilePane, onMobilePaneChange, splitRef,
+  onOpenChat, onOpenWorkspace, onCloseWorkspace, onSidePaneResizeStart, onSidePaneResizeReset, tabs, toolbar, chat, workspace, divider,
+  chatProps, workspaceProps, testId, compactContext = false, compactSidePane = false, toolbarWhenPanelClosed = false, showToolbar = true, navigationActive = true, retainChat = false, retainWorkspace = false, showChatReopenControl = true,
 }: {
-  chatOpen: boolean; panelOpen: boolean; splitRatio: number; mobilePreview?: boolean; laptopPreview?: boolean; mobilePaneWidth?: number | null
+  chatOpen: boolean; panelOpen: boolean; splitRatio: number; mobilePreview?: boolean; laptopPreview?: boolean; mobilePaneWidth?: number | null; sidePaneWidth?: number | null
   /** Products with a phone pane switch keep both panes mounted while hiding the inactive one. */
   mobilePane?: MobileWorkspacePane
   onMobilePaneChange?: (pane: MobileWorkspacePane) => void
   splitRef?: Ref<HTMLDivElement>
   onOpenChat: () => void; onOpenWorkspace: () => void
   onCloseWorkspace?: () => void
+  onSidePaneResizeStart?: (event: PointerEvent<HTMLDivElement>) => void
+  onSidePaneResizeReset?: () => void
   tabs: ReactNode; toolbar: ReactNode; chat: ReactNode; workspace: ReactNode; divider: ReactNode
   chatProps?: HTMLAttributes<HTMLElement>; workspaceProps?: HTMLAttributes<HTMLElement>
-  compactContext?: boolean; toolbarWhenPanelClosed?: boolean
+  compactContext?: boolean; compactSidePane?: boolean; toolbarWhenPanelClosed?: boolean
   /** Shared dashboards supply their own header, without the Builder chat tabs. */
   showToolbar?: boolean
   /** Retained hidden workspaces release shared header controls to the visible page. */
@@ -34,7 +36,7 @@ export function ProductWorkspaceShell({
   /** Products with an explicit Assistant action do not need the edge tab. */
   showChatReopenControl?: boolean
 }) {
-  const layout = resolveWorkSurfaceLayout({ chatOpen, panelOpen, splitRatio, mobilePreview, laptopPreview, mobilePaneWidth, mobilePane, compactContext })
+  const layout = resolveWorkSurfaceLayout({ chatOpen, panelOpen, splitRatio, mobilePreview, laptopPreview, mobilePaneWidth, sidePaneWidth, mobilePane, compactContext, compactSidePane })
   const chatClassName = mobilePane === 'workspace' && panelOpen
     ? `hidden md:flex ${layout.chatClassName.replace(/^flex /, '')}` : layout.chatClassName
   const workspaceClassName = mobilePane === 'chat' && chatOpen
@@ -50,7 +52,12 @@ export function ProductWorkspaceShell({
       </WorkspaceTopToolbar>}
       {(layout.showChat || retainChat) && <main {...chatProps} hidden={!layout.showChat} style={{ ...chatProps?.style, ...(!layout.showChat ? { display: 'none' } : {}) }} className={chatClassName}>{chat}</main>}
       {layout.showDivider && divider}
-      {(layout.showPanel || retainWorkspace) && <aside {...workspaceProps} hidden={!layout.showPanel} style={{ ...workspaceProps?.style, ...(!layout.showPanel ? { display: 'none' } : {}) }} className={workspaceClassName}><div className="flex h-full min-h-0 min-w-0 flex-col">{workspace}</div></aside>}
+      {(layout.showPanel || retainWorkspace) && <aside {...workspaceProps} hidden={!layout.showPanel} style={{ ...workspaceProps?.style, ...(!layout.showPanel ? { display: 'none' } : {}) }} className={`relative ${workspaceClassName}`}>
+        {layout.showPanel && chatOpen && onSidePaneResizeStart && <div role="separator" aria-orientation="vertical" aria-label="Resize right panel" title="Drag to resize · double-click to reset"
+          onPointerDown={onSidePaneResizeStart} onDoubleClick={onSidePaneResizeReset}
+          className="absolute inset-y-0 left-0 z-20 hidden w-1.5 cursor-col-resize transition-colors hover:bg-primary/25 active:bg-primary/40 md:block" />}
+        <div className="flex h-full min-h-0 min-w-0 flex-col">{workspace}</div>
+      </aside>}
     </div>
   </div></MobileWorkspaceNavigationContext.Provider></WorkspacePanelVisibilityContext.Provider>
 }
