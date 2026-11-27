@@ -742,6 +742,29 @@ func (api *StreamingAPI) sessionRunsATurn(sessionID string) bool {
 	return api.bgAgentRegistry != nil && api.bgAgentRegistry.HasRunningAgents(sessionID)
 }
 
+// sessionRunsATurnHoldingLane is like sessionRunsATurn for callers that already
+// hold sessionInputLaneFor(sessionID) and must not count their own lane lock.
+func (api *StreamingAPI) sessionRunsATurnHoldingLane(sessionID string) bool {
+	if api == nil || strings.TrimSpace(sessionID) == "" {
+		return false
+	}
+	if api.hasActiveTurnCancel(sessionID) || api.hasRunningTrackedExecutionForSession(sessionID) ||
+		api.conversationTurnDispatchPending(sessionID) || api.storedAgentTurnInProgress(sessionID) ||
+		api.isSessionBusy(sessionID) || api.isSyntheticTurn(sessionID) {
+		return true
+	}
+	if retained, ok := mcpagent.LookupSession(sessionID); ok && retained.ActiveTurnID() != "" {
+		return true
+	}
+	api.retainedMainTurnsMu.Lock()
+	_, retainedRunning := api.retainedMainTurns[sessionID]
+	api.retainedMainTurnsMu.Unlock()
+	if retainedRunning {
+		return true
+	}
+	return api.bgAgentRegistry != nil && api.bgAgentRegistry.HasRunningAgents(sessionID)
+}
+
 // sessionStillWorkingAfterIdleRelease reports whether a session still has active work once an idle one has been let
 // go. A chat keeps its coding CLI pane alive between turns, which counts as active work; with no turn in flight that
 // pane is closed here (what the app's stop does before it closes or deletes) and a pane tmux no longer has is retired.

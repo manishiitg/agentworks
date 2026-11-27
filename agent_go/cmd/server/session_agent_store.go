@@ -19,15 +19,23 @@ func (api *StreamingAPI) storeSessionAgent(sessionID string, next *agentwrapper.
 }
 
 func (api *StreamingAPI) removeSessionAgent(sessionID string) bool {
+	previous, exists := api.detachSessionAgent(sessionID)
+	if previous != nil {
+		_ = previous.Close()
+	}
+	return exists
+}
+
+// detachSessionAgent removes and returns the stored session agent without
+// closing it yet, so callers holding a per-session turn lane can release the
+// lane before running a potentially blocking Close.
+func (api *StreamingAPI) detachSessionAgent(sessionID string) (*agentwrapper.LLMAgentWrapper, bool) {
 	if api == nil || sessionID == "" {
-		return false
+		return nil, false
 	}
 	api.sessionAgentsMux.Lock()
 	previous, exists := api.sessionAgents[sessionID]
 	delete(api.sessionAgents, sessionID)
 	api.sessionAgentsMux.Unlock()
-	if previous != nil {
-		_ = previous.Close()
-	}
-	return exists
+	return previous, exists
 }

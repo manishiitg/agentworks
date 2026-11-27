@@ -10482,34 +10482,49 @@ func (api *StreamingAPI) cleanupInactiveSessionsAt(now time.Time) {
 	// working (#4080). The next turn reloads the recent window from disk.
 	releasedHistorySessions, releasedHistoryMsgs, releasedAgents := 0, 0, 0
 	for _, candidate := range idleMemoryCandidates {
-		if api.sessionRunsATurn(candidate.sessionID) {
+		// Serialize against starting/running turns (handleQuery, triggerSyntheticTurn)
+		// without blocking cleanup if a turn already holds the session lane (#4366).
+		releaseLane, acquired := api.tryLockSessionInputLane(candidate.sessionID, 0)
+		if !acquired {
 			continue
 		}
-		api.pendingMu.RLock()
-		hasPending := len(api.pendingCompletions[candidate.sessionID]) > 0 || api.completionRetryScheduled[candidate.sessionID]
-		api.pendingMu.RUnlock()
-		if hasPending {
-			continue
-		}
-		api.activeSessionsMux.RLock()
-		current := api.activeSessions[candidate.sessionID]
-		stillIdle := current != nil && current.LastActivity.Equal(candidate.lastActivity) && isStoppedSessionStatus(current.Status)
-		api.activeSessionsMux.RUnlock()
-		if !stillIdle {
-			continue
-		}
-		api.conversationMux.Lock()
-		if msgs, exists := api.conversationHistory[candidate.sessionID]; exists {
-			releasedHistorySessions++
-			releasedHistoryMsgs += len(msgs)
-			delete(api.conversationHistory, candidate.sessionID)
-		}
-		delete(api.resumeHistorySources, candidate.sessionID)
-		api.conversationMux.Unlock()
-		if candidate.evictAgent && !nativeWakes.hasPending(candidate.sessionID) {
-			if api.removeSessionAgent(candidate.sessionID) {
-				releasedAgents++
+		var evictedAgent *agent.LLMAgentWrapper
+		var agentEvicted bool
+		func() {
+			defer releaseLane()
+			if api.sessionRunsATurnHoldingLane(candidate.sessionID) {
+				return
 			}
+			api.pendingMu.RLock()
+			hasPending := len(api.pendingCompletions[candidate.sessionID]) > 0 || api.completionRetryScheduled[candidate.sessionID]
+			api.pendingMu.RUnlock()
+			if hasPending {
+				return
+			}
+			api.activeSessionsMux.RLock()
+			current := api.activeSessions[candidate.sessionID]
+			stillIdle := current != nil && current.LastActivity.Equal(candidate.lastActivity) && isStoppedSessionStatus(current.Status)
+			api.activeSessionsMux.RUnlock()
+			if !stillIdle {
+				return
+			}
+			api.conversationMux.Lock()
+			if msgs, exists := api.conversationHistory[candidate.sessionID]; exists {
+				releasedHistorySessions++
+				releasedHistoryMsgs += len(msgs)
+				delete(api.conversationHistory, candidate.sessionID)
+			}
+			delete(api.resumeHistorySources, candidate.sessionID)
+			api.conversationMux.Unlock()
+			if candidate.evictAgent && !nativeWakes.hasPending(candidate.sessionID) {
+				evictedAgent, agentEvicted = api.detachSessionAgent(candidate.sessionID)
+				if agentEvicted {
+					releasedAgents++
+				}
+			}
+		}()
+		if evictedAgent != nil {
+			_ = evictedAgent.Close()
 		}
 	}
 	if releasedHistorySessions > 0 || releasedAgents > 0 {
