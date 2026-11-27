@@ -34,7 +34,7 @@ it('opens old Artifacts links as a standalone page and leaves only Online tabs',
   vi.mocked(api.get).mockResolvedValue({ data: {
     access_here: 'server', access_tabs: [
       { id: 'mac', label: 'Remote Control', group: 'online' },
-      { id: 'agentbridge', label: 'AgentBridge', detail: 'your agents and discovery', group: 'online' },
+      { id: 'agentbridge', label: 'AgentBridge', detail: 'your agents and discovery', group: 'agentbridge' },
       { id: 'dashboards', label: 'Artifacts', group: 'online' },
     ],
   } } as never)
@@ -45,9 +45,11 @@ it('opens old Artifacts links as a standalone page and leaves only Online tabs',
     expect(host.querySelector('[aria-label="Artifacts page"]')?.textContent).toContain('Artifacts for artifacts-test')
     expect(host.querySelector('[role="tablist"]')).toBeNull()
     await act(async () => openCrewAccess('artifacts-test', '', 'mac'))
-    expect([...host.querySelectorAll('[role="tab"]')].map(tab => tab.textContent)).toEqual(['Remote Control', 'AgentBridgeyour agents and discovery'])
+    // Remote Control and AgentBridge are separate pages, each from its own menu row (owner, 27 Nov): no tabs between them.
+    expect(host.querySelector('[role="tablist"]')).toBeNull()
     expect(host.textContent).not.toContain('AgentBridge content')
     await act(async () => openCrewAccess('artifacts-test', '', 'agentbridge'))
+    expect(host.querySelector('[role="tablist"]')).toBeNull()
     expect(host.querySelector('[role="tabpanel"]')?.textContent).toContain('AgentBridge content')
     expect(host.querySelector('section[aria-label="This Mac"]')).toBeNull()
     await act(async () => openCrewAccess('artifacts-test', '', 'mac'))
@@ -77,6 +79,7 @@ it('local mode: no Slack bot, keeps My Slack account and Remote Control', () => 
     expect(items.find(item => item.id === 'mcp:slack-bot')).toBeUndefined()
     // Remote Control (reach a Mac project from your phone) shows only on the Mac; server projects are always on the web.
     expect(items.find(item => item.id === 'mcp:online')?.group).toBe('Share')
+    expect(items.find(item => item.id === 'mcp:agentbridge')?.group).toBe('Share')
     expect(items.find(item => item.id === 'mcp:slack-account')?.group).toBe('Integrations')
   } finally {
     runtimeWindow.__APP_RUNTIME_CONFIG__ = previous
