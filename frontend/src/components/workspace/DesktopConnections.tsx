@@ -101,6 +101,7 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   }
   const activeSessions = useChatStore(state => state.activeSessionsCache)
   const [query, setQuery] = useState('')
+  const [tab, setTab] = useState('all')
   const { error: filterError } = useMenuFilter(Boolean(directory))
   // A server project shows a cloud after its name; hovering says where it runs and the person's role (#4331).
   const unreachable = (connection: DesktopConnection) => connection.id !== 'local' && connection.id !== active && Boolean(inventory[connection.id]) && inventory[connection.id]?.status !== 'connected'
@@ -241,8 +242,9 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
     </div>
   }
 
-  // A simple Projects page (owner, 24 Nov: "a simplified ui… something better"): two groups, yours and shared with
-  // you, one grey line per row, and no place tabs or ownership chips. Where a project lives shows in its line.
+  // A simple Projects page (owner, 24 Nov: "a simplified ui… something better"): yours and shared with you, one grey
+  // line per row, no ownership chips. Tabs for easy navigation (owner, 27 Nov, approved mockup): All, Recent, Yours,
+  // Shared with you, Teams and one tab per server ("☁ <server>"); a tab with nothing in it is not shown.
   const normalizedQuery = query.trim().toLocaleLowerCase()
   // One row per project name among your own (owner, 24 Nov): a Mac project and its online pairs are one project to
   // you. The row on this Mac wins, so opening it opens your Mac's copy.
@@ -262,11 +264,26 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   // Recent is what you worked on here, on this Mac (owner, 24 Nov), not projects opened on other networks.
   const recentShown = normalizedQuery ? [] : shown.filter(row => row.connection.id === active && recentOrder.has(keyFor(row))).slice(0, 5)
   const rest = shown.filter(row => !recentShown.includes(row))
-  const groups = [
+  const allGroups = [
     { id: 'recent', name: 'Recent', projects: recentShown },
     { id: 'yours', name: 'Yours', projects: rest.filter(row => !isSharedProject(row)) },
     { id: 'shared', name: 'Shared with you', projects: rest.filter(row => isSharedProject(row)) },
   ]
+  const matches = (row: typeof rows[number]) => row.name.toLocaleLowerCase().includes(normalizedQuery)
+  const recentRowsAll = listed.filter(row => row.connection.id === active && recentOrder.has(keyFor(row))).sort(byRecent).slice(0, 5)
+  // A Team project: a Mac project in a Team, or a Team's project kept on this Mac.
+  const inTeam = (row: typeof rows[number]) => Boolean(row.team_live) || (isSharedProject(row) && row.connection.id === active)
+  const tabs = [
+    { id: 'all', name: 'All', projects: listed },
+    { id: 'recent', name: 'Recent', projects: recentRowsAll },
+    { id: 'yours', name: 'Yours', projects: listed.filter(row => !isSharedProject(row)) },
+    { id: 'shared', name: 'Shared with you', projects: listed.filter(row => isSharedProject(row)) },
+    { id: 'teams', name: 'Teams', projects: listed.filter(inTeam) },
+    // Each server's own list, its copy of a same-named project included (All shows this Mac's).
+    ...(desktop ? connections.filter(connection => connection.id !== 'local').map(connection => ({ id: `server:${connection.id}`, name: connection.name || 'Server', server: true, projects: rows.filter(row => row.connection.id === connection.id) })) : []),
+  ].filter(item => item.id === 'all' || item.projects.length > 0)
+  const openTab = tabs.find(item => item.id === tab) ?? tabs[0]
+  const groups = openTab.id === 'all' ? allGroups : [{ id: openTab.id, name: '', projects: openTab.projects.filter(matches).sort(openTab.id === 'recent' ? byRecent : (a, b) => a.name.localeCompare(b.name)) }]
   // A network is named as in this Mac's connections ("Example Company"), not by its host name.
   const networkName = (value: string) => {
     const host = value.replace(/^https?:\/\//, '').replace(/\/.*$/, '')
@@ -296,8 +313,14 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
       <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       <input type="search" aria-label="Search projects" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search projects…" className="h-9 min-w-0 flex-1 bg-transparent text-sm outline-none" />
     </label>
-    {groups.filter(group => group.projects.length > 0).map(group => <section key={group.id} aria-label={group.name}>
-      <h2 className="px-1 pb-1.5 text-xs font-medium text-muted-foreground">{group.name} <span>· {group.projects.length}</span></h2>
+    {tabs.length > 2 && <div role="tablist" aria-label="Show projects" className="-mt-1 flex gap-1 overflow-x-auto border-b border-border">
+      {tabs.map(item => <button key={item.id} type="button" role="tab" aria-selected={item.id === openTab.id} onClick={() => setTab(item.id)}
+        className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-t-md border border-b-0 px-2.5 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${item.id === openTab.id ? 'border-border bg-card font-medium text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+        {'server' in item && <Cloud className="h-3.5 w-3.5" aria-hidden="true" />}{item.name}<span className="text-muted-foreground">{item.projects.length}</span>
+      </button>)}
+    </div>}
+    {groups.filter(group => group.projects.length > 0).map(group => <section key={group.id} aria-label={group.name || openTab.name}>
+      {group.name && <h2 className="px-1 pb-1.5 text-xs font-medium text-muted-foreground">{group.name} <span>· {group.projects.length}</span></h2>}
       <ul className="rounded-lg border border-border bg-card text-card-foreground">
         {group.projects.map(project => {
           const key = keyFor(project)
@@ -330,7 +353,7 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
     {unavailable.map(connection => inventory[connection.id]?.status === 'sign_in'
       ? <button key={connection.id} type="button" className="block text-xs text-muted-foreground underline" onClick={() => openConnectedServers(connection.server)}>{connection.name} · Sign in again</button>
       : <button key={connection.id} type="button" className="block text-xs text-muted-foreground underline" onClick={() => void state.refresh(true)}>{connection.name} unavailable · Retry</button>)}
-    {!shown.length && !children && loadingPlaces.length === 0 &&
+    {!groups.some(group => group.projects.length > 0) && !children && loadingPlaces.length === 0 &&
       <div className="space-y-2 rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
         <p>{normalizedQuery ? 'No matching projects.' : 'No projects yet.'}</p>
         {normalizedQuery && <button type="button" className="underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setQuery('')}>Clear search</button>}
