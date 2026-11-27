@@ -65,6 +65,10 @@ func TestCrewTeamOnlineProjectAccess(t *testing.T) {
 	if crewTeamProjectFolder(product) == crewTeamProjectFolder(qa) {
 		t.Fatal("two Teams' copies share one folder in the project")
 	}
+	// A Team named (or renamed) like another, in any case, still gets its own folder.
+	if crewTeamProjectFolder(crewTeam{ProjectID: "mac3", Name: "product"}) == crewTeamProjectFolder(product) {
+		t.Fatal("two Teams with the same name share one folder in the project")
+	}
 	projectFiles := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(projectFiles, filepath.FromSlash(crewTeamProjectFolder(product)), "team"), 0o755); err != nil {
 		t.Fatal(err)
