@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/productpolicy"
+	"log"
 	"sort"
 	"strings"
 	"sync"
@@ -29,6 +30,24 @@ import (
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
+
+// logDroppedCodingAgentEnvironment logs, by name only, every key the server set for a coding agent that
+// llmtypes.IsScopedCodingAgentEnvironmentKey will not pass to the CLI. The drop itself is silent further down, and a
+// dropped key looks exactly like a feature that does nothing ("Compact at 300K" never reached Claude, 5-27 Nov).
+// Blank values are dropped on purpose and are not reported.
+func logDroppedCodingAgentEnvironment(environment map[string]string) map[string]string {
+	var dropped []string
+	for key, value := range environment {
+		if value != "" && !llmtypes.IsScopedCodingAgentEnvironmentKey(key) {
+			dropped = append(dropped, key)
+		}
+	}
+	if len(dropped) > 0 {
+		sort.Strings(dropped)
+		log.Printf("[CODING_ENV] dropped keys=%s reason=not_admitted_by_llmtypes_policy", strings.Join(dropped, ","))
+	}
+	return environment
+}
 
 // LLMAgentWrapper wraps the complex MCP Agent to provide a simple LLM-like interface
 type LLMAgentWrapper struct {
@@ -123,7 +142,7 @@ func runtimeConfigForLLMAgent(config LLMAgentConfig, model llmtypes.Model, trace
 			BridgeRoutingInstructionsOverride: config.BridgeRoutingInstructionsOverride,
 			BridgeBinary:                      cliruntime.MCPBridgeBinary(),
 			CLISecurityPolicy:                 config.CLISecurityPolicy,
-			SecretEnvironment:                 config.CodingAgentSecretEnvironment,
+			SecretEnvironment:                 logDroppedCodingAgentEnvironment(config.CodingAgentSecretEnvironment),
 			CodexNetworkAccess:                config.CodexNetworkAccess,
 			// The same predicate that admits tool registration also decides what
 			// the coding-agent bridge advertises, so its catalog can never offer

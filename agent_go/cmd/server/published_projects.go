@@ -118,6 +118,9 @@ func (p *publishedProject) runtimeRoot() string {
 	return canonicalCrewWorkspaceRoot(p.Root)
 }
 
+// functionRunEnvironmentKeys are the function-run result locations a coding agent receives from its session shell.
+var functionRunEnvironmentKeys = []string{"FUNCTION_CALL_ID", "FUNCTION_OUTPUT_DIR", "FUNCTION_RESULT_FILE"}
+
 // The native CLI and bridge shell receive the same published file locations.
 // These are runtime metadata, not additional filesystem grants.
 func publicationShellEnvironment(p *publishedProject) map[string]string {
