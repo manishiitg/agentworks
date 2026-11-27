@@ -49,7 +49,12 @@ type chatSubmissionStore struct {
 type chatSubmissionContextKey struct{}
 type chatSubmissionContext struct {
 	ID, Owner, Session, Message string
-	ComposerInput               bool
+	// ClientMessageID names the person's message when it differs from ID: a
+	// send retried after 409 turn_running gets a fresh Idempotency-Key but
+	// keeps its first key in X-Client-Message-ID, so its stored row still
+	// matches the bubble the browser showed (#3795).
+	ClientMessageID string
+	ComposerInput   bool
 	// handle lets a dispatch that outlives the HTTP response (live input to a
 	// busy CLI) record its real outcome after the early "accepted" reply.
 	handle *chatSubmissionHandle
@@ -347,7 +352,7 @@ func (api *StreamingAPI) beginChatSubmission(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(status)
 		_, _ = w.Write(capture.body.Bytes())
 	}
-	r = r.WithContext(context.WithValue(r.Context(), chatSubmissionContextKey{}, chatSubmissionContext{ID: id, Owner: owner, Session: session, Message: message, ComposerInput: isComposerChatRequest(r), handle: handle}))
+	r = r.WithContext(context.WithValue(r.Context(), chatSubmissionContextKey{}, chatSubmissionContext{ID: id, ClientMessageID: sanitizeClientMessageID(r.Header.Get(clientMessageIDHeader)), Owner: owner, Session: session, Message: message, ComposerInput: isComposerChatRequest(r), handle: handle}))
 	return capture, r, finish, true
 }
 
