@@ -182,7 +182,7 @@ func TestLocalProjectRecognitionAndResumeHTTP(t *testing.T) {
 		t.Fatalf("list data: %s", w.Body.String())
 	}
 	available := request(http.MethodGet, "?project_id="+project+"&availability=true", "", owner)
-	if available.Code != 200 || !strings.Contains(available.Body.String(), `"can_import_local_chats":true`) {
+	if available.Code != 200 || !strings.Contains(available.Body.String(), `"can_import_local_chats":true`) || !strings.Contains(available.Body.String(), `"can_import_mcp":true`) {
 		t.Fatalf("availability: %d %s", available.Code, available.Body.String())
 	}
 	// The MCP adapter returns the same canonical discovery, and native chat

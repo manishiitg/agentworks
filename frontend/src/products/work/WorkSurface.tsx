@@ -752,7 +752,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   mcpImportRequest?: number
   skillsRequest?: number
   projectActionReady?: boolean
-  onImportAvailabilityChange?: (projectId: string) => void
+  onImportAvailabilityChange?: (availability: { projectId: string; chats: boolean; mcp: boolean } | null) => void
   projectId: string
   projectName: string
   canonicalTabId: string
@@ -770,20 +770,22 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   useEffect(() => { if (importRequest) setImportLocalChat(true) }, [importRequest])
   useEffect(() => { if (skillsRequest && allowSideChats) setDiscoverSkills(true) }, [skillsRequest, allowSideChats])
   const [localImportProject, setLocalImportProject] = useState<string | null>(null)
+  const [mcpImportProject, setMcpImportProject] = useState('')
   useEffect(() => {
     const abort = new AbortController()
+    setMcpImportProject('')
     if (allowSideChats && profileId === 'work') {
       setLocalImportProject(null)
       void api.get('/api/agent-profiles/work/local-project', { params: { project_id: projectId, availability: true }, signal: abort.signal })
-        .then(({ data }) => { if (!abort.signal.aborted) setLocalImportProject(data.can_import_local_chats ? projectId : '') })
+        .then(({ data }) => { if (!abort.signal.aborted) { setLocalImportProject(data.can_import_local_chats ? projectId : ''); setMcpImportProject(data.can_import_mcp ? projectId : '') } })
         .catch(() => { if (!abort.signal.aborted) setLocalImportProject('') })
     } else setLocalImportProject('')
     return () => abort.abort()
   }, [allowSideChats, profileId, projectId])
   useEffect(() => {
-    onImportAvailabilityChange?.(localImportProject || '')
-    return () => onImportAvailabilityChange?.('')
-  }, [localImportProject, onImportAvailabilityChange])
+    onImportAvailabilityChange?.({ projectId, chats: localImportProject === projectId, mcp: mcpImportProject === projectId })
+    return () => onImportAvailabilityChange?.(null)
+  }, [localImportProject, mcpImportProject, projectId, onImportAvailabilityChange])
   const [opening, setOpening] = useState(false)
   const canonicalSessionId = chatTabs[canonicalTabId]?.sessionId
   // Which agents this project has, their names, order and pins come from the server's list (the person's
@@ -1105,7 +1107,7 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   }
   return <><AgentRemovalDialog projectId={projectId} />{header || <ProjectAgentTabs tabs={tabs} listed={listed || []} canonicalTabId={canonicalTabId} projectName={projectName} createRequest={createRequest} mcpImportRequest={mcpImportRequest} projectId={projectId}
     allowSideChats={allowSideChats} opening={opening} surface="work" onOpenIdentity={onOpenIdentity}
-    onImportLocalChat={localImportProject === projectId ? () => setImportLocalChat(true) : undefined} checkingLocalImport={localImportProject === null} projectActionReady={projectActionReady} projectActivity={projectActivity}
+    onImportLocalChat={localImportProject === projectId ? () => setImportLocalChat(true) : undefined} canImportMcp={mcpImportProject === projectId} checkingLocalImport={localImportProject === null} projectActionReady={projectActionReady} projectActivity={projectActivity}
     onDiscoverSkills={allowSideChats ? () => setDiscoverSkills(true) : undefined}
     onSelectTab={selectTab} onCloseTab={closeProjectTab} onRename={renameSideChat} onOpen={openSideChat}
     onReopen={async chat => {
@@ -1237,7 +1239,7 @@ function WorkTopBarControl({
 }
 
 /** A project with no chats yet (#4439): type the first message, no agent name needed; the server names the chat. */
-function FirstChatStart({ canImport, onStart, onImportChat, onImportMcp, onDiscoverSkills }: { canImport: boolean; onStart: (text: string) => void; onImportChat: () => void; onImportMcp: () => void; onDiscoverSkills: () => void }) {
+function FirstChatStart({ canImportChat, canImportMcp, onStart, onImportChat, onImportMcp, onDiscoverSkills }: { canImportChat: boolean; canImportMcp: boolean; onStart: (text: string) => void; onImportChat: () => void; onImportMcp: () => void; onDiscoverSkills: () => void }) {
   const [text, setText] = useState('')
   const send = () => { if (text.trim()) onStart(text.trim()) }
   const importButton = 'rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -1252,9 +1254,9 @@ function FirstChatStart({ canImport, onStart, onImportChat, onImportMcp, onDisco
       </div>
     </form>
     <div className="flex flex-wrap items-center justify-center gap-2 text-sm">
-      <span className="text-muted-foreground">{canImport ? 'Already working in Claude, Codex or Cursor?' : 'Bring your skills:'}</span>
-      {canImport && <button type="button" className={importButton} onClick={onImportChat}>Import a chat…</button>}
-      {canImport && <button type="button" className={importButton} onClick={onImportMcp}>Import MCP servers…</button>}
+      <span className="text-muted-foreground">{canImportChat || canImportMcp ? 'Already working in Claude, Codex or Cursor?' : 'Bring your skills:'}</span>
+      {canImportChat && <button type="button" className={importButton} onClick={onImportChat}>Import a chat…</button>}
+      {canImportMcp && <button type="button" className={importButton} onClick={onImportMcp}>Import MCP servers…</button>}
       <button type="button" className={importButton} onClick={onDiscoverSkills}>Discover &amp; import skills…</button>
     </div>
   </div>
@@ -1267,8 +1269,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const [importAgentRequest, setImportAgentRequest] = useState(0)
   const [mcpImportRequest, setMcpImportRequest] = useState(0)
   const [skillsRequest, setSkillsRequest] = useState(0)
-  const [importAvailableProject, setImportAvailableProject] = useState('')
+  const [importAvailability, setImportAvailability] = useState<{ projectId: string; chats: boolean; mcp: boolean } | null>(null)
   const { tabId, canonicalTabId, projectReady, error: chatError } = useWorkChatTab(product, selected)
+  // A project with no chat yet shows only its first-message page; the side panel comes with the first chat.
+  const firstChatPending = !!selected && projectReady && !tabId && !isWorkSessionRun(selected)
   // An empty project shows its welcome page; a starter there opens Create agent and its request waits for the new chat's message box.
   const welcome = useProjectWelcome(product.profileId === 'work' && !tabId ? selected?.id : undefined)
   const pendingStart = useRef('')
@@ -1976,9 +1980,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               sidePaneWidth={sidePaneWidth}
               onSidePaneResizeStart={!isWorkSessionRun(selected) && isCompactSidePaneView(workspaceView) ? startSidePaneResize : undefined}
               onSidePaneResizeReset={resetSidePaneWidth}
-              toolbarWhenPanelClosed={!isWorkSessionRun(selected) && !panelHidden}
+              toolbarWhenPanelClosed={!isWorkSessionRun(selected) && !panelHidden && !firstChatPending}
               showToolbar={!!terminalConversation || !isShared}
-              chatOpen={!!terminalConversation || panelHidden || (!isShared && chatOpen)} panelOpen={!panelHidden && (isShared || panelOpen)} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
+              chatOpen={!!terminalConversation || panelHidden || firstChatPending || (!isShared && chatOpen)} panelOpen={!panelHidden && !firstChatPending && (isShared || panelOpen)} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}
               retainWorkspace={!chatOnly}
               onCloseWorkspace={isShared || panelHidden ? undefined : () => setPanelOpen(false)}
               showChatReopenControl={!isShared}
@@ -1987,7 +1991,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               laptopPreview={workspaceView === 'dashboard' && reportPreviewPreference === 'desktop'}
               mobilePreview={workspaceView === 'dashboard' && reportPreviewPreference === 'mobile'} mobilePaneWidth={mobilePaneWidth}
               onOpenChat={openChatPane} onOpenWorkspace={() => setPanelOpen(true)}
-              tabs={isShared && terminalConversation ? <TerminalConversationHeader selection={terminalConversation} close={closeTerminalConversation} /> : !isShared && selected ? <WorkChatTabs key={selected.id} projectSession={selected} header={terminalConversation ? <TerminalConversationHeader selection={terminalConversation} close={closeTerminalConversation} /> : undefined} createRequest={createAgentRequest} importRequest={importAgentRequest} mcpImportRequest={mcpImportRequest} skillsRequest={skillsRequest} projectActionReady={projectReady} onImportAvailabilityChange={setImportAvailableProject} projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId || ''} profileId={product.profileId} allowSideChats onOpenIdentity={!chatOnly ? () => { setWorkspaceViewTarget('identity', 'general'); selectWorkspaceView('identity') } : undefined} /> : <div className="min-w-0 flex-1" />}
+              tabs={isShared && terminalConversation ? <TerminalConversationHeader selection={terminalConversation} close={closeTerminalConversation} /> : !isShared && selected ? <WorkChatTabs key={selected.id} projectSession={selected} header={terminalConversation ? <TerminalConversationHeader selection={terminalConversation} close={closeTerminalConversation} /> : undefined} createRequest={createAgentRequest} importRequest={importAgentRequest} mcpImportRequest={mcpImportRequest} skillsRequest={skillsRequest} projectActionReady={projectReady} onImportAvailabilityChange={setImportAvailability} projectId={selected.id} projectName={selected.identity?.name?.trim() || selected.title.trim() || product.noun} canonicalTabId={canonicalTabId || ''} profileId={product.profileId} allowSideChats onOpenIdentity={!chatOnly ? () => { setWorkspaceViewTarget('identity', 'general'); selectWorkspaceView('identity') } : undefined} /> : <div className="min-w-0 flex-1" />}
               toolbar={<><WorkWorkspaceToolbar tabId={tabId ?? undefined} onOpenChat={openChatPane} projectId={selected.id} sessionId={activeSessionId || ''} workspacePath={selected.workspacePath} view={workspaceView} onViewChange={selectWorkspaceView} enabledPanels={workspacePanels} readOnly={isWorkSessionRun(selected)} showShell={showShell} showActivityMonitor={!showProviders && !showSchedulesOverview && !adminPage} /></>}
               chatProps={{ 'data-tour': 'crew-chat' } as React.HTMLAttributes<HTMLElement>}
               workspaceProps={{ 'data-tour': 'crew-workspace', 'data-ui-workspace': selected.workspacePath, 'data-ui-view': workPresentationView(workspaceView) } as React.HTMLAttributes<HTMLElement>}
@@ -2015,7 +2019,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                       </div>
                   ) : (
                     <div className="grid h-full place-items-center p-6 text-center text-sm text-muted-foreground">
-                      {projectReady && welcome ? <div className="w-full self-start"><ProjectWelcome page={welcome} onStart={text => { pendingStart.current = text; setCreateAgentRequest(value => value + 1) }} /><div className="mx-auto max-w-2xl px-6 text-left"><button type="button" className="rounded-md bg-primary px-4 py-2 text-primary-foreground" onClick={() => setCreateAgentRequest(value => value + 1)}>Start a chat</button></div></div> : projectReady ? <FirstChatStart canImport={importAvailableProject === selected?.id} onStart={text => { pendingSend.current = text; setCreateAgentRequest(value => value + 1) }} onImportChat={() => setImportAgentRequest(value => value + 1)} onImportMcp={() => setMcpImportRequest(value => value + 1)} onDiscoverSkills={() => setSkillsRequest(value => value + 1)} /> : <span><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening project…</span>}
+                      {projectReady && welcome ? <div className="w-full self-start"><ProjectWelcome page={welcome} onStart={text => { pendingStart.current = text; setCreateAgentRequest(value => value + 1) }} /><div className="mx-auto max-w-2xl px-6 text-left"><button type="button" className="rounded-md bg-primary px-4 py-2 text-primary-foreground" onClick={() => setCreateAgentRequest(value => value + 1)}>Start a chat</button></div></div> : projectReady ? <FirstChatStart canImportChat={importAvailability?.projectId === selected?.id && importAvailability.chats} canImportMcp={importAvailability?.projectId === selected?.id && importAvailability.mcp} onStart={text => { pendingSend.current = text; setCreateAgentRequest(value => value + 1) }} onImportChat={() => setImportAgentRequest(value => value + 1)} onImportMcp={() => setMcpImportRequest(value => value + 1)} onDiscoverSkills={() => setSkillsRequest(value => value + 1)} /> : <span><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening project…</span>}
                     </div>
                   )}
               </>}

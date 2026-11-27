@@ -49,7 +49,7 @@ function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; works
 
 /** One tab-management view; each product supplies its existing server operations. */
 export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, allowSideChats, opening, surface,
-  onImportLocalChat, checkingLocalImport = false, projectActionReady = true, onDiscoverSkills, onOpenIdentity, onOrder, onForkParent, onSetSidebarHidden, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, createRequest = 0, mcpImportRequest = 0, projectId,
+  onImportLocalChat, canImportMcp = false, checkingLocalImport = false, projectActionReady = true, onDiscoverSkills, onOpenIdentity, onOrder, onForkParent, onSetSidebarHidden, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, createRequest = 0, mcpImportRequest = 0, projectId,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
   /** The person's own Main chat's purpose; undefined when Main is not theirs. */
@@ -66,6 +66,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   /** Opens a listed agent that has no tab here again and switches to it; without it, onOpen by name. */
   onReopen?: (chat: AgentProfileSideChat) => Promise<void>
   onImportLocalChat?: () => void
+  /** This Mac's MCP servers can be imported; needs no project folder, unlike chats. */
+  canImportMcp?: boolean
   checkingLocalImport?: boolean
   projectActionReady?: boolean
   onDiscoverSkills?: () => void
@@ -634,7 +636,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
               {sideChatsHere && <button type="button" disabled={opening} onClick={() => { setMoreOpen(false); beginAddAgent() }}
                 className="mt-1 flex min-h-10 shrink-0 items-center gap-2 border-t border-border px-2.5 text-sm text-primary disabled:opacity-40"><Plus className="h-4 w-4" aria-hidden="true" />New agent</button>}
               {onImportLocalChat && <button type="button" disabled={opening} onClick={() => { setMoreOpen(false); onImportLocalChat() }} className="flex min-h-10 shrink-0 items-center gap-2 px-2.5 text-sm text-muted-foreground hover:text-foreground"><span aria-label="Claude, Codex and Cursor" className="flex shrink-0 -space-x-1">{['claude.ico', 'codex.png', 'cursor.svg'].map(icon => <span key={icon} className="grid h-5 w-5 place-items-center rounded-full bg-popover ring-2 ring-popover"><img alt="" src={`/provider-icons/${icon}`} className="h-4 w-4 object-contain" /></span>)}</span>Import local chat…</button>}
-              {onImportLocalChat && placeProject && <button type="button" data-testid="import-mcp-servers" disabled={opening} onClick={() => { setMoreOpen(false); setImportMcp(true) }} className="flex min-h-10 shrink-0 items-center gap-2 px-2.5 text-sm text-muted-foreground hover:text-foreground">Import MCP servers…</button>}
+              {canImportMcp && placeProject && <button type="button" data-testid="import-mcp-servers" disabled={opening} onClick={() => { setMoreOpen(false); setImportMcp(true) }} className="flex min-h-10 shrink-0 items-center gap-2 px-2.5 text-sm text-muted-foreground hover:text-foreground">Import MCP servers…</button>}
               {onDiscoverSkills && <button type="button" disabled={opening} onClick={() => { setMoreOpen(false); onDiscoverSkills() }} className="flex min-h-10 shrink-0 items-center gap-2 px-2.5 text-sm text-muted-foreground hover:text-foreground">Discover &amp; import skills…</button>}
             </div>, document.body
           )}
@@ -741,7 +743,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
               <button type="button" onClick={() => { setNewTabName(''); setAddMode('new') }} className="w-full rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">New agent with a name…</button>
               <button type="button" onClick={() => setAddMode('fork')} className="w-full rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">Fork existing agent…</button>
               {onImportLocalChat && <button type="button" onClick={() => { setAddMode(null); onImportLocalChat() }} className="w-full rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><span aria-hidden="true" className="mr-2 inline-flex -space-x-1 align-middle">{['claude.ico', 'codex.png', 'cursor.svg'].map(icon => <span key={icon} className="grid h-6 w-6 place-items-center rounded-full bg-popover ring-2 ring-popover"><img alt="" src={`/provider-icons/${icon}`} className="h-4 w-4 object-contain" /></span>)}</span>Import local chat…</button>}
-              {onImportLocalChat && placeProject && <button type="button" onClick={() => { setAddMode(null); setImportMcp(true) }} className="w-full rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">Import MCP servers…</button>}
+              {canImportMcp && placeProject && <button type="button" onClick={() => { setAddMode(null); setImportMcp(true) }} className="w-full rounded-lg px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">Import MCP servers…</button>}
               {onDiscoverSkills && <button type="button" onClick={() => { setAddMode(null); onDiscoverSkills() }} className="w-full rounded-lg border-t border-border px-3 py-3 text-left text-sm hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">Discover &amp; import skills…</button>}
             </div> : <>
               <p className="mb-2 px-2 text-xs text-muted-foreground">Choose an agent to copy its conversation into a separate chat. The original stays unchanged.</p>
