@@ -8,6 +8,7 @@
 
 const { spawn } = require('child_process');
 const detect = require('detect-port');
+const { freePort } = require('./vault');
 
 const DYNAMIC_PORT_RE = /DynamicPort: (\d+)/;
 
@@ -15,11 +16,13 @@ const DYNAMIC_PORT_RE = /DynamicPort: (\d+)/;
 //   name           label used in log lines ("workspace", "agent")
 //   bin, args      args may contain the placeholder PORT_PLACEHOLDER
 //   preferredPort  detect() returns it if free, else the next available
+//   takenPorts     optional ports reserved for sibling servers to skip
 //   cwd, env       passed to spawn
 //   log            a bounded log writer ({ write })
 //   onExit(code, signal)   optional
-function spawnServer({ name, bin, args, preferredPort, cwd, env, log, onExit, bootstrap, echoToConsole = false }) {
-  return detect(preferredPort).then((port) => new Promise((resolve, reject) => {
+function spawnServer({ name, bin, args, preferredPort, takenPorts = [], cwd, env, log, onExit, bootstrap, echoToConsole = false }) {
+  const pickPort = takenPorts.length > 0 ? freePort(preferredPort, takenPorts) : detect(preferredPort);
+  return pickPort.then((port) => new Promise((resolve, reject) => {
     const finalArgs = args.map((a) => (a === spawnServer.PORT_PLACEHOLDER ? String(port) : a));
     // Some per-process settings (notably the local OAuth callback origin)
     // depend on the port detect() actually selected. Accept an env factory so

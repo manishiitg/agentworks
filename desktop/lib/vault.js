@@ -10,18 +10,26 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const net = require('net');
+const { waitForHealth } = require('./health');
 
 const AGENT_PORT = 45678;
+const WORKSPACE_PORT = 45679;
 const VAULT_PORT = 45680;
 
 // localPorts keeps the agent and Vault on the ports they used last time, so the
-// sign-in addresses apps saved in Vault keep matching. A saved port that is busy
-// now is replaced by a free one and saved; moved says a saved one changed.
-async function localPorts(saved = {}) {
-  const agent = await freePort(saved.agent || AGENT_PORT);
-  const vault = await freePort(saved.vault || VAULT_PORT, [agent]);
+// sign-in addresses apps saved in Vault keep matching, and picks a distinct port
+// for workspace in the same pass so parallel startup cannot collide when a default
+// port is busy. A saved agent/Vault port that is busy now is replaced by a free
+// one and saved; moved says a saved one changed.
+async function localPorts(saved = {}, defaults = {}) {
+  const agentDefault = defaults.agent || AGENT_PORT;
+  const workspaceDefault = defaults.workspace || WORKSPACE_PORT;
+  const vaultDefault = defaults.vault || VAULT_PORT;
+  const agent = await freePort(saved.agent || agentDefault);
+  const vault = await freePort(saved.vault || vaultDefault, [agent]);
+  const workspace = await freePort(workspaceDefault, [agent, vault]);
   const moved = Boolean(saved.agent && saved.agent !== agent || saved.vault && saved.vault !== vault);
-  return { agent, vault, moved };
+  return { agent, workspace, vault, moved };
 }
 
 // freePort is the first port from preferred on that can be bound on 127.0.0.1, where both servers listen
@@ -76,35 +84,66 @@ function vaultEnv({ inherited, port, agentPort, stateDir, tokenFile, docsDir }) 
   };
 }
 
-// startVault launches agentworks-vault directly and resolves with the running
-// child once the process spawns. Vault initializes its Platform group and SQL
-// workspace on every normal start before serving /healthz, so a separate
-// GATEWAY_BOOTSTRAP_ONLY pre-run is unnecessary.
-function startVault({ bin, env, log, onExit }) {
+// startVault launches agentworks-vault directly and waits until /healthz answers
+// 200 (so SQLite, the Platform group, and the listener are ready before the
+// agent starts) without a separate GATEWAY_BOOTSTRAP_ONLY pre-run.
+function startVault({ bin, env, log, onExit, readyUrl, readyTimeoutMs = 30000, pollMs = 50 }) {
+  const healthUrl = readyUrl !== undefined
+    ? readyUrl
+    : (env && env.GATEWAY_PORT ? `http://127.0.0.1:${env.GATEWAY_PORT}/healthz` : '');
   return new Promise((resolve, reject) => {
     const child = spawn(bin, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', (d) => log.write(d));
     child.stderr.on('data', (d) => log.write(d));
     let settled = false;
-    child.once('spawn', () => {
+    let ready = false;
+    let exitReason = '';
+    const finish = (err) => {
+      if (settled) return;
       settled = true;
-      resolve(child);
-    });
+      if (err) reject(err);
+      else resolve(child);
+    };
     child.on('error', (err) => {
-      if (!settled) {
-        settled = true;
-        reject(err);
-      }
+      exitReason = err && err.message ? err.message : String(err);
+      finish(err);
     });
     child.on('exit', (code, signal) => {
       log.write(`\n=== vault exited code=${code} signal=${signal} ===\n`);
+      exitReason = `Vault stopped before startup completed (exit ${code}, signal ${signal || 'none'}). Check vault.log for the cause.`;
       if (!settled) {
-        settled = true;
-        reject(new Error(`Vault stopped before startup completed (exit ${code}, signal ${signal || 'none'}). Check vault.log for the cause.`));
+        finish(new Error(exitReason));
+        return;
       }
-      if (onExit) onExit(code, signal);
+      if (ready && onExit) onExit(code, signal);
+    });
+    child.once('spawn', () => {
+      if (!healthUrl) {
+        ready = true;
+        finish(null);
+        return;
+      }
+      waitForHealth({
+        checks: [{ name: 'Vault', url: healthUrl }],
+        timeoutMs: readyTimeoutMs,
+        pollMs,
+        initialDelayMs: 0,
+        isAlive: () => exitReason || null,
+        hint: 'Check vault.log for the cause.',
+      }).then(
+        () => {
+          ready = true;
+          finish(null);
+        },
+        (err) => {
+          if (!exitReason) {
+            try { child.kill('SIGTERM'); } catch (_) {}
+          }
+          finish(err);
+        },
+      );
     });
   });
 }
 
-module.exports = { localPorts, vaultState, vaultEnv, startVault, AGENT_PORT, VAULT_PORT };
+module.exports = { localPorts, freePort, vaultState, vaultEnv, startVault, AGENT_PORT, WORKSPACE_PORT, VAULT_PORT };

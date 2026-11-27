@@ -137,3 +137,26 @@ test('spawnServer can derive process environment from the selected port', async 
   killServer(child);
   await exited;
 });
+
+test('spawnServer skips takenPorts even when they are not yet bound', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awspawn-taken-'));
+  try {
+    const script = path.join(dir, 'fake-server.js');
+    fs.writeFileSync(script, `
+      const port = process.argv[process.argv.indexOf('--port') + 1];
+      console.log('DynamicPort: ' + port);
+      setInterval(() => {}, 1000);
+    `);
+    const log = createBoundedLogWriter(path.join(dir, 'fake.log'));
+    const { child, port } = await spawnServer({
+      name: 'fake-taken', bin: process.execPath, args: [script, '--port', spawnServer.PORT_PLACEHOLDER],
+      preferredPort: 47700, takenPorts: [47700, 47701], cwd: dir, env: process.env, log,
+    });
+    assert.ok(port !== 47700 && port !== 47701 && port >= 47702, `expected port outside takenPorts, got ${port}`);
+    const exited = new Promise((r) => child.on('exit', r));
+    killServer(child);
+    await exited;
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
