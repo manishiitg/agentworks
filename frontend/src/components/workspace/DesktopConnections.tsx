@@ -35,7 +35,7 @@ import { TeamInvites } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
 import { SidebarAgentLayout, SidebarCrewAgents, SidebarHiddenAgents } from './SidebarCrewAgents'
 import { sidebarAgentDisclosureClass, sidebarAgentListClass } from './sidebarAgentLayout'
-import { ArrowLeftRight, ChevronRight, Pin, Search } from 'lucide-react'
+import { ArrowLeftRight, ChevronRight, Cloud, Pin, Search } from 'lucide-react'
 import { agentTeamShareFromRow } from '../chat/AgentInTeamMark'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
@@ -275,7 +275,8 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   }
   const lineFor = (project: typeof rows[number]) => {
     const shareNetwork = project.shared_line?.split(' · ').slice(1).find(part => /\./.test(part)) || ''
-    const network = networkName(project.team_live?.network?.trim() || shareNetwork) || placeName(project.connection)
+    // On the Mac a server project's cloud names its server (#4331), so the grey line does not repeat it.
+    const network = networkName(project.team_live?.network?.trim() || shareNetwork) || (desktop ? '' : placeName(project.connection))
     if (isSharedProject(project)) {
       // A Team copy on this Mac is owned by this Mac's own account ("default"); its share line names the real owner.
       const fromLine = project.shared_line?.startsWith('Shared by ') ? project.shared_line.slice('Shared by '.length).split(' · ')[0]?.trim() : ''
@@ -302,12 +303,17 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
           const key = keyFor(project)
           const pinned = pinnedKeys.has(key)
           const detail = lineFor(project)
+          // The same cloud as the sidebar (#4331): a server project, hover says where it runs and your role.
+          const cloud = desktop && project.connection.id !== 'local' ? serverLineFor(project, project.connection) : ''
           const macStatus = project.where === 'mac'
             ? [project.mac?.name || 'On a Mac', project.mac?.online === false ? 'Mac off' : macCrewStateText(project.state)].filter(Boolean).join(' · ')
             : ''
           return <li key={key} data-theme-row="project" className="group/crew flex min-h-9 items-center gap-1 rounded-md px-1 hover:bg-muted max-md:min-h-11">
             <button type="button" title={project.name} onClick={() => open(project)} className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">{project.name}</span>
+              <span className={`flex min-w-0 flex-1 items-center gap-1.5 text-sm font-medium ${cloud && unreachable(project.connection) ? 'opacity-60' : ''}`}>
+                <span className="truncate">{project.name}</span>
+                {cloud && <span role="img" aria-label={cloud} title={cloud} className="inline-flex shrink-0 text-primary/80"><Cloud className="h-3.5 w-3.5" aria-hidden="true" /></span>}
+              </span>
               {detail && <span title={[detail, macStatus].filter(Boolean).join(' · ')} className="min-w-0 max-w-[55%] shrink truncate text-xs text-muted-foreground">{detail}</span>}
             </button>
             {canPin && <button type="button" onClick={() => setPinned(key, !pinned)} title={pinned ? 'Unpin from sidebar' : 'Pin to sidebar'} aria-pressed={pinned} aria-label={`${pinned ? 'Unpin' : 'Pin'} ${project.name}`}
