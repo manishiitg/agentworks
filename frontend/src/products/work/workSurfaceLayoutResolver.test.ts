@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { CONTEXT_PANE_COLUMN, SIDE_PANE_COLUMN } from '../../components/workflow/workspaceLayoutResolver'
-import { resolveWorkSurfaceLayout } from './workSurfaceLayoutResolver'
+import { isCompactSidePaneView, resolveWorkSurfaceLayout } from './workSurfaceLayoutResolver'
 
 describe('resolveWorkSurfaceLayout', () => {
-  it('uses optimal compact width for Files/Changes/Terminal side panes by default', () => {
+  it('uses compact side pane for all non-Dashboard, non-Workflow, non-Context views', () => {
+    for (const view of ['browser', 'files', 'shell', 'memory', 'database', 'costs', 'schedules', 'history', 'identity', 'mcp']) {
+      expect(isCompactSidePaneView(view)).toBe(true)
+    }
+    for (const view of ['context', 'dashboard', 'workflow']) {
+      expect(isCompactSidePaneView(view)).toBe(false)
+    }
+  })
+
+  it('uses optimal compact width for compact side panes by default', () => {
     const layout = resolveWorkSurfaceLayout({ chatOpen: true, panelOpen: true, splitRatio: 0.5, compactSidePane: true })
     expect((layout.gridStyle as Record<string, string>)['--work-split-columns']).toBe(`minmax(240px, 1fr) ${SIDE_PANE_COLUMN}`)
   })
