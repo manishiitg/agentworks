@@ -1,8 +1,12 @@
 import type { CSSProperties } from 'react'
-import { CONTEXT_PANE_COLUMN, LAPTOP_PREVIEW_COLUMNS, MOBILE_PREVIEW_PANE_COLUMN } from '../../components/workflow/workspaceLayoutResolver'
+import { CONTEXT_PANE_COLUMN, LAPTOP_PREVIEW_COLUMNS, MOBILE_PREVIEW_PANE_COLUMN, SIDE_PANE_COLUMN } from '../../components/workflow/workspaceLayoutResolver'
 
 export interface WorkSurfaceLayoutInput {
   compactContext?: boolean
+  /** Files / Changes / Terminal side pane uses a comfortable ~380-440px default instead of 50% width. */
+  compactSidePane?: boolean
+  /** Custom px width for the compact side pane after dragging its edge; absent uses SIDE_PANE_COLUMN. */
+  sidePaneWidth?: number | null
   /** The menu card shows Access: up to the old side panel's width, only from the room the chat leaves free. */
   chatOpen: boolean
   panelOpen: boolean
@@ -39,7 +43,7 @@ export interface WorkSurfaceLayout {
  * regions to content height, and freeze pane scrolling.
  */
 export function resolveWorkSurfaceLayout(input: WorkSurfaceLayoutInput): WorkSurfaceLayout {
-  const { chatOpen, splitRatio, mobilePreview = false, mobilePaneWidth = null, mobilePane } = input
+  const { chatOpen, splitRatio, mobilePreview = false, mobilePaneWidth = null, sidePaneWidth = null, mobilePane } = input
   const panelOpen = input.panelOpen
   const split = chatOpen && panelOpen
   // With a phone pane switch, below md only the chosen pane shows: one
@@ -52,8 +56,9 @@ export function resolveWorkSurfaceLayout(input: WorkSurfaceLayoutInput): WorkSur
     // squeezing side by side into a ~60 px chat column (390 px live check).
     gridClassName: `grid h-full min-h-0 min-w-0 grid-cols-1 ${split ? `${singlePhonePane ? 'grid-rows-[auto_minmax(0,1fr)]' : 'grid-rows-[auto_minmax(0,1fr)_minmax(0,1fr)]'} md:grid-rows-[auto_minmax(0,1fr)] md:[grid-template-columns:var(--work-split-columns)]` : 'grid-rows-[auto_minmax(0,1fr)]'}`,
     gridStyle: split
-      ? ({ '--work-split-columns': input.compactContext ? `minmax(240px, 1fr) ${CONTEXT_PANE_COLUMN}` : mobilePreview
-        ? `minmax(240px, 1fr) ${mobilePaneWidth ? `${Math.round(mobilePaneWidth)}px` : MOBILE_PREVIEW_PANE_COLUMN}`
+      ? ({ '--work-split-columns': input.compactContext ? `minmax(240px, 1fr) ${CONTEXT_PANE_COLUMN}`
+        : input.compactSidePane ? `minmax(240px, 1fr) ${sidePaneWidth ? `${Math.round(sidePaneWidth)}px` : SIDE_PANE_COLUMN}`
+        : mobilePreview ? `minmax(240px, 1fr) ${mobilePaneWidth ? `${Math.round(mobilePaneWidth)}px` : MOBILE_PREVIEW_PANE_COLUMN}`
         : input.laptopPreview ? LAPTOP_PREVIEW_COLUMNS
         : `minmax(240px, ${splitRatio}fr) minmax(240px, ${1 - splitRatio}fr)` } as CSSProperties)
       : undefined,

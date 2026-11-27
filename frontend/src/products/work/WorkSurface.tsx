@@ -1328,6 +1328,37 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const splitLayoutRef = useRef<HTMLDivElement>(null)
   const [splitRatio, setSplitRatioState] = useState(() => readWorkSplitRatio(selected?.id))
   const splitRatioRef = useRef(splitRatio)
+  const [sidePaneWidth, setSidePaneWidth] = useState<number | null>(() => {
+    try {
+      const raw = window.localStorage.getItem('work_side_pane_width_v1')
+      const n = raw ? Number(raw) : NaN
+      return Number.isFinite(n) && n >= 300 ? n : null
+    } catch { return null }
+  })
+  const startSidePaneResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const container = splitLayoutRef.current
+    if (!container) return
+    event.preventDefault()
+    const rect = container.getBoundingClientRect()
+    const maxWidth = Math.max(320, rect.width - 280)
+    const onMove = (moveEvent: PointerEvent) => {
+      const next = Math.max(300, Math.min(maxWidth, Math.round(rect.right - moveEvent.clientX)))
+      setSidePaneWidth(next)
+      try { window.localStorage.setItem('work_side_pane_width_v1', String(next)) } catch { /* ignore */ }
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+  }, [])
+  const resetSidePaneWidth = useCallback(() => {
+    setSidePaneWidth(null)
+    try { window.localStorage.removeItem('work_side_pane_width_v1') } catch { /* ignore */ }
+  }, [])
   const [mobilePaneWidth, setMobilePaneWidthState] = useState<number | null>(() => readMobilePaneWidth(selected?.id))
   const mobilePaneWidthRef = useRef(mobilePaneWidth)
   useEffect(() => { const next = readMobilePaneWidth(selected?.id); mobilePaneWidthRef.current = next; setMobilePaneWidthState(next) }, [selected?.id])
@@ -1891,6 +1922,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               divider={null}
               splitRef={splitLayoutRef}
               compactContext={!isWorkSessionRun(selected) && workspaceView==='context'}
+              compactSidePane={!isWorkSessionRun(selected) && (workspaceView === 'shell' || workspaceView === 'files')}
+              sidePaneWidth={sidePaneWidth}
+              onSidePaneResizeStart={!isWorkSessionRun(selected) && (workspaceView === 'shell' || workspaceView === 'files') ? startSidePaneResize : undefined}
+              onSidePaneResizeReset={resetSidePaneWidth}
               toolbarWhenPanelClosed={!isWorkSessionRun(selected) && !panelHidden}
               showToolbar={!!terminalConversation || !isShared}
               chatOpen={!!terminalConversation || panelHidden || (!isShared && chatOpen)} panelOpen={!panelHidden && (isShared || panelOpen)} splitRatio={workspaceView === 'dashboard' ? splitRatio : 0.5}

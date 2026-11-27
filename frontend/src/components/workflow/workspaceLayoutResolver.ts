@@ -39,6 +39,7 @@ export interface WorkspaceLayout {
  */
 /** Grid track for the workspace pane in Mobile preview. */
 export const CONTEXT_PANE_COLUMN = 'clamp(240px, 26vw, 316px)'
+export const SIDE_PANE_COLUMN = 'clamp(340px, 32vw, 440px)'
 export const MOBILE_PREVIEW_PANE_COLUMN = 'min(494px, calc(100% - 240px))'
 export const LAPTOP_PREVIEW_COLUMNS = 'min(480px, calc(100% - 240px)) minmax(240px, 1fr)'
 
