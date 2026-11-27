@@ -2,8 +2,11 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
@@ -13,6 +16,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/costobserver"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/llmguard"
+	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/mcpagent/llm"
 	llmproviders "github.com/manishiitg/multi-llm-provider-go"
@@ -170,6 +174,9 @@ func (api *StreamingAPI) autoNameChatOnSend(ctx context.Context, userID string, 
 		written, err := store.applyAutoName(background, userID, profile.ID, conversation.ConversationKey, autoNameWaitingForTitle, title, "")
 		if err == nil && written {
 			_ = RenameChatHistorySession(userID, conversation.SessionID, conversation.WorkspacePath, title)
+			if renameAutoNamedProject(background, conversation.WorkspacePath, first, title) {
+				log.Printf("[CHAT_AUTO_NAME] chat=%s step=project_title written=true", conversation.ConversationKey)
+			}
 		}
 		log.Printf("[CHAT_AUTO_NAME] chat=%s step=ai_title written=%t", conversation.ConversationKey, written)
 	}()
@@ -229,4 +236,83 @@ func (api *StreamingAPI) autoChatAITitle(ctx context.Context, userID string, pro
 		return "", fmt.Errorf("title too long")
 	}
 	return title, nil
+}
+
+// startProjectName names a project started without a name (#4439): an existing folder gives its own name, else the
+// first words of the first message; the project is renamed with the chat's AI title later (renameAutoNamedProject).
+func startProjectName(name, rootPath, firstMessage string) string {
+	if name = strings.TrimSpace(name); name != "" {
+		return name
+	}
+	if root := strings.TrimSpace(rootPath); root != "" {
+		if base := filepath.Base(filepath.Clean(root)); base != "" && base != "." && base != string(filepath.Separator) {
+			return base
+		}
+	}
+	if first := autoChatFirstWordsName(firstMessage); first != "" {
+		return first
+	}
+	return "New project"
+}
+
+// existingProjectInFolder returns the caller's project already made from this folder: one folder is one project, so
+// choosing it again opens that project instead of refusing (#4439).
+func (api *StreamingAPI) existingProjectInFolder(ctx context.Context, claims *UserClaims, profileID, rootPath string) (map[string]any, bool) {
+	root := strings.TrimSpace(rootPath)
+	if root == "" || claims == nil || !IsLocalMode() || !filepath.IsAbs(root) {
+		return nil, false
+	}
+	if real, err := filepath.EvalSymlinks(root); err == nil {
+		root = real
+	}
+	raw, err := os.ReadFile(filepath.Join(root, ".agentworks", crewroot.SettingsFolder, "product.json"))
+	if err != nil {
+		return nil, false
+	}
+	var manifest struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(raw, &manifest) != nil || strings.TrimSpace(manifest.ID) == "" {
+		return nil, false
+	}
+	response, err := api.createdProjectResponse(ctx, claims, profileID, manifest.ID)
+	if err != nil {
+		return nil, false
+	}
+	response["existing"] = true
+	return response, true
+}
+
+// renameAutoNamedProject gives a project named from its first message the chat's AI title too, unless someone has
+// renamed the project since (its name no longer matches those first words).
+func renameAutoNamedProject(ctx context.Context, workspacePath, firstWords, title string) bool {
+	if firstWords == "" || title == "" || firstWords == title {
+		return false
+	}
+	path := strings.TrimSuffix(workspacePath, "/") + "/product.json"
+	raw, exists, err := readFileFromWorkspace(ctx, path)
+	if err != nil || !exists {
+		return false
+	}
+	var manifest map[string]any
+	if json.Unmarshal([]byte(raw), &manifest) != nil {
+		return false
+	}
+	identity, _ := manifest["identity"].(map[string]any)
+	if current, _ := manifest["title"].(string); current != firstWords {
+		return false
+	}
+	if identity != nil {
+		if name, _ := identity["name"].(string); name != "" && name != firstWords {
+			return false
+		}
+		identity["name"] = title
+	}
+	manifest["title"] = title
+	manifest["updated_at"] = time.Now().UTC().Format(time.RFC3339)
+	encoded, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return false
+	}
+	return writeRawFileToWorkspace(ctx, path, string(encoded)+"\n") == nil
 }

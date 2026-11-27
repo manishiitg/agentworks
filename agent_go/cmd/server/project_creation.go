@@ -121,11 +121,21 @@ func (api *StreamingAPI) handleCreateAgentProfileProject(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusNotFound, "Project creation is unavailable")
 		return
 	}
-	var spec crewSpec
-	if err := json.NewDecoder(io.LimitReader(r.Body, 2<<20)).Decode(&spec); err != nil {
+	// first_message is the start page's first message (#4439): with no name, the project is named from it.
+	var input struct {
+		crewSpec
+		FirstMessage string `json:"first_message,omitempty"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 2<<20)).Decode(&input); err != nil {
 		writeAgentProfileError(w, http.StatusBadRequest, "Send a project name and its optional settings.")
 		return
 	}
+	spec := input.crewSpec
+	if existing, ok := api.existingProjectInFolder(r.Context(), claims, profileID, spec.RootPath); ok {
+		writeAgentProfileJSON(w, http.StatusOK, existing)
+		return
+	}
+	spec.Name = startProjectName(spec.Name, spec.RootPath, input.FirstMessage)
 	id, setupErr := api.createWorkspaceFromSpec(r.Context(), claims, profileID, spec, false)
 	if setupErr != nil && id == "" {
 		writeAgentProfileError(w, http.StatusBadRequest, externalCrewCreateError(id, setupErr))
@@ -158,6 +168,11 @@ func (api *StreamingAPI) projectCreationTool(profileID, userID, sessionID string
 		}
 		ctx = context.WithValue(ctx, UserContextKey, claims)
 		spec := crewSpec{Name: externalArg(args, "name"), RootPath: externalArg(args, "root_path")}
+		if existing, ok := api.existingProjectInFolder(ctx, claims, profileID, spec.RootPath); ok {
+			encoded, _ := json.Marshal(existing)
+			return string(encoded), nil
+		}
+		spec.Name = startProjectName(spec.Name, spec.RootPath, "")
 		id, setupErr := api.createWorkspaceFromSpec(ctx, claims, profileID, spec, false)
 		if setupErr != nil && id == "" {
 			return "", fmt.Errorf("%s", externalCrewCreateError(id, setupErr))

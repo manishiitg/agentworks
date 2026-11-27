@@ -80,4 +80,15 @@ func TestUnnamedChatIsNamedFromFirstMessageAndRenameWins(t *testing.T) {
 			t.Fatalf("first words of %q = %q, want %q", message, got, want)
 		}
 	}
+	// A project started from the start page: a typed name wins, then an existing folder's own name, then the message.
+	for _, c := range []struct{ name, root, message, want string }{
+		{"Mine", "/work/shop", "fix it", "Mine"},
+		{"", "/work/shop/", "fix the cart", "shop"},
+		{"", "", "Hi, fix the cart total", "Fix the cart total"},
+		{"", "", "hello", "New project"},
+	} {
+		if got := startProjectName(c.name, c.root, c.message); got != c.want {
+			t.Fatalf("startProjectName(%q, %q, %q) = %q, want %q", c.name, c.root, c.message, got, c.want)
+		}
+	}
 }

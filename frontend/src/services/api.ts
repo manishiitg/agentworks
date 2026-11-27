@@ -1462,7 +1462,7 @@ export const agentApi = {
     return response.data
   },
 
-  createProductProject: async (profileId: string, spec: { name: string; purpose: string; root_path?: string; icon?: string; llm_config?: PresetLLMConfig; templates?: readonly { id: string; version: number }[]; selected_skills?: readonly string[]; files?: Readonly<Record<string, string>> }): Promise<{ id: string; workspace_path: string; files_path: string; product_manifest: Record<string, unknown>; runtime_manifest: Record<string, unknown>; warnings?: string[] }> => {
+  createProductProject: async (profileId: string, spec: { name: string; purpose: string; root_path?: string; first_message?: string; icon?: string; llm_config?: PresetLLMConfig; templates?: readonly { id: string; version: number }[]; selected_skills?: readonly string[]; files?: Readonly<Record<string, string>> }): Promise<{ id: string; workspace_path: string; files_path: string; product_manifest: Record<string, unknown>; runtime_manifest: Record<string, unknown>; warnings?: string[]; existing?: boolean }> => {
     const response = await api.post(`/api/agent-profiles/${encodeURIComponent(profileId)}/projects`, spec, { skipSessionContext: true })
     return response.data
   },

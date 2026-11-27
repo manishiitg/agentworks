@@ -49,13 +49,15 @@ function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; works
 
 /** One tab-management view; each product supplies its existing server operations. */
 export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, allowSideChats, opening, surface,
-  onImportLocalChat, canImportMcp = false, checkingLocalImport = false, projectActionReady = true, onDiscoverSkills, onOpenIdentity, onOrder, onForkParent, onSetSidebarHidden, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, createRequest = 0, mcpImportRequest = 0, projectId,
+  onImportLocalChat, canImportMcp = false, checkingLocalImport = false, projectActionReady = true, onDiscoverSkills, onOpenIdentity, onOrder, onForkParent, onSetSidebarHidden, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, startChat = false, importMcpRequested = false, onRequestHandled, projectId,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
   /** The person's own Main chat's purpose; undefined when Main is not theirs. */
-  createRequest?: number
-  /** Opens Import MCP servers (the empty project page's import row). */
-  mcpImportRequest?: number
+  /** The project's start page asked for a new chat (#4439); handled once, then onRequestHandled. */
+  startChat?: boolean
+  /** The project's start page asked for Import MCP servers. */
+  importMcpRequested?: boolean
+  onRequestHandled?: () => void
   projectId?: string
   allowSideChats: boolean; opening: boolean; surface: ProductSurface
   onOrder: (keys: string[]) => Promise<void>
@@ -92,7 +94,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     catch (cause) { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open a new chat.', 'error') }
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (createRequest) void startBlankChat() }, [createRequest])
+  useEffect(() => { if (startChat) { onRequestHandled?.(); void startBlankChat() } }, [startChat])
   const beginAddAgent = () => {
     if (surface === 'work') setAddMode('choose')
     else setNewTabName('')
@@ -238,7 +240,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const visibleTabs = tabPeople.flatMap(person => tabs.filter(tab => tabOwnerId(tab) === person))
   const [moreOpen, setMoreOpen] = useState(false)
   const [importMcp, setImportMcp] = useState(false)
-  useEffect(() => { if (mcpImportRequest) setImportMcp(true) }, [mcpImportRequest])
+  useEffect(() => { if (importMcpRequested) { onRequestHandled?.(); setImportMcp(true) } }, [importMcpRequested, onRequestHandled])
   // Which agents others can message and who asked them lately (a Crew on this Mac): marks on each tab's avatar.
   const macHere = livesOnMacHere(place) && !livesOnMac
   const asking = useCrewAsking(macHere ? placeProject : undefined)

@@ -100,12 +100,14 @@ type localNativeSource struct {
 }
 
 type localProjectNativeSession struct {
-	ID                             string            `json:"id"`
-	Provider                       string            `json:"provider"`
-	Account                        string            `json:"account"`
-	Title                          string            `json:"title"`
-	UpdatedAt                      string            `json:"updated_at"`
-	InUse                          bool              `json:"in_use,omitempty"`
+	ID        string `json:"id"`
+	Provider  string `json:"provider"`
+	Account   string `json:"account"`
+	Title     string `json:"title"`
+	UpdatedAt string `json:"updated_at"`
+	InUse     bool   `json:"in_use,omitempty"`
+	// Folder is the chat's folder, listed when chats from every folder are shown (the start page's Import a chat).
+	Folder                         string            `json:"folder,omitempty"`
 	NativeID, Path, Model, Project string            `json:"-"`
 	Source                         localNativeSource `json:"-"`
 }
@@ -222,9 +224,10 @@ func localNativeSessionAt(path, project string, source localNativeSource) (local
 		}
 		if id != "" && cwd != "" {
 			canonical, err := filepath.EvalSymlinks(cwd)
-			if err != nil || canonical != project {
+			if err != nil || project != "" && canonical != project {
 				return localProjectNativeSession{}, false
 			}
+			cwd = canonical
 			// Only after the folder matches may a title be extracted.
 			if source.Provider == "codex-cli" && row.Type == "event_msg" && row.Payload.Type == "user_message" && title == "" {
 				title = row.Payload.Message
@@ -267,7 +270,11 @@ func localNativeSessionAt(path, project string, source localNativeSource) (local
 	if len([]rune(title)) > 80 {
 		title = string([]rune(title)[:80]) + "…"
 	}
-	return localProjectNativeSession{ID: localNativeSessionKey(source, id), Provider: source.Provider, Account: source.Label, Title: title, UpdatedAt: localNativeLastMessageAt(path, info).UTC().Format(time.RFC3339), NativeID: id, Path: path, Model: model, Source: source}, true
+	session := localProjectNativeSession{ID: localNativeSessionKey(source, id), Provider: source.Provider, Account: source.Label, Title: title, UpdatedAt: localNativeLastMessageAt(path, info).UTC().Format(time.RFC3339), NativeID: id, Path: path, Model: model, Source: source}
+	if project == "" {
+		session.Folder = cwd
+	}
+	return session, true
 }
 
 func listLocalNativeSessions(ctx context.Context, project string, sources []localNativeSource, excluded map[string]bool) ([]localProjectNativeSession, bool) {
@@ -275,6 +282,9 @@ func listLocalNativeSessions(ctx context.Context, project string, sources []loca
 	partial, visited := false, 0
 	for _, source := range sources {
 		if source.Provider == "cursor-cli" {
+			if project == "" {
+				continue // Cursor keeps chats per folder; it is listed once a folder is chosen.
+			}
 			sessions, incomplete := listLocalCursorSessions(ctx, project, source)
 			out = append(out, sessions...)
 			partial = partial || incomplete
@@ -399,7 +409,7 @@ func (api *StreamingAPI) handleLocalProject(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	id := r.URL.Query().Get("project_id")
-	if id == "" && r.URL.Query().Get("root_path") != "" {
+	if id == "" && (r.URL.Query().Get("root_path") != "" || r.URL.Query().Get("all_folders") == "true") {
 		api.previewNewProjectChats(w, r)
 		return
 	}
@@ -471,10 +481,15 @@ func (api *StreamingAPI) previewNewProjectChats(w http.ResponseWriter, r *http.R
 		externalError(w, 403, "insufficient_scope", "Use a connection with full access to your local conversations.")
 		return
 	}
-	root, err := validateNewLocalCrewRoot(r.URL.Query().Get("root_path"))
-	if err != nil {
-		externalError(w, 400, "invalid_folder", err.Error())
-		return
+	// all_folders lists recent chats from every folder (#4439); each row names its folder, and importing one makes the
+	// project from that folder.
+	root := ""
+	if r.URL.Query().Get("all_folders") != "true" {
+		var err error
+		if root, err = validateNewLocalCrewRoot(r.URL.Query().Get("root_path")); err != nil {
+			externalError(w, 400, "invalid_folder", err.Error())
+			return
+		}
 	}
 	sources, err := api.localNativeSources(r.Context(), claims.UserID, root)
 	if err != nil {

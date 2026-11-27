@@ -4,7 +4,7 @@ import ModalPortal from '../../components/ui/ModalPortal'
 import api from '../../services/api'
 import { LocalMcpImport, useLocalMcpServers } from './LocalMcpImport'
 
-export type LocalChat = { id: string; title: string; provider: string; account: string; updated_at: string; in_use?: boolean; recent_only?: boolean }
+export type LocalChat = { id: string; title: string; provider: string; account: string; updated_at: string; in_use?: boolean; recent_only?: boolean; /** The chat's folder, when chats from every folder are listed. */ folder?: string }
 const localChatPrograms: Record<string, { name: string; icon: string }> = {
   'claude-code': { name: 'Claude', icon: 'claude.ico' },
   'codex-cli': { name: 'Codex', icon: 'codex.png' },
@@ -15,10 +15,12 @@ type Preview = { messages: { role: string; text: string }[]; total_messages: num
 export type ImportedLocalChat = { conversation_key: string; conversation_id: string; session_id: string; name: string; provider: string; connection_id: string; engine: string; model_id: string; next?: string; recent_only?: boolean }
 
 type LocalChatPickerProps = { onClose: () => void } & (
-  { projectId: string; onImported: (chat: ImportedLocalChat) => Promise<void>; folder?: never; onSelected?: never; onStartFresh?: never } |
-  { folder: string; onSelected: (chat: LocalChat) => void; onStartFresh?: () => void; projectId?: never; onImported?: never }
+  { projectId: string; onImported: (chat: ImportedLocalChat) => Promise<void>; folder?: never; allFolders?: never; onSelected?: never; onStartFresh?: never } |
+  { folder: string; onSelected: (chat: LocalChat) => void; onStartFresh?: () => void; projectId?: never; allFolders?: never; onImported?: never } |
+  // The start page (#4439): recent chats from every folder; the chosen chat's folder becomes the project.
+  { allFolders: true; onSelected: (chat: LocalChat) => void; folder?: never; onStartFresh?: never; projectId?: never; onImported?: never }
 )
-export function LocalChatPicker({ projectId, folder, onClose, onImported, onSelected, onStartFresh }: LocalChatPickerProps) {
+export function LocalChatPicker({ projectId, folder, allFolders, onClose, onImported, onSelected, onStartFresh }: LocalChatPickerProps) {
   const [chats, setChats] = useState<LocalChat[]>([])
   const [selected, setSelected] = useState('')
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -34,7 +36,7 @@ export function LocalChatPicker({ projectId, folder, onClose, onImported, onSele
   const mcpOffer = (mcp.servers || []).filter(server => server.importable && !server.in_vault)
   const dialog = useRef<HTMLDivElement>(null)
   const current = chats.find(chat => chat.id === selected)
-  const params = projectId ? { project_id: projectId } : { root_path: folder }
+  const params = projectId ? { project_id: projectId } : allFolders ? { all_folders: true } : { root_path: folder }
   const message = (cause: unknown) => {
     const response = (cause as { response?: { data?: { error?: string | { message?: string } } } })?.response?.data?.error
     return typeof response === 'string' ? response : response?.message || 'Could not read your local chats. Try refreshing.'
@@ -88,7 +90,7 @@ export function LocalChatPicker({ projectId, folder, onClose, onImported, onSele
         }
       }} className="flex max-h-[90dvh] w-full max-w-5xl flex-col rounded-xl border border-border bg-background p-4 shadow-xl sm:p-6">
       <header className="mb-5 flex items-start justify-between gap-3">
-        <div><h2 id="local-chat-title" className="text-xl font-semibold">Continue a local chat</h2><p className="mt-1 text-sm text-muted-foreground">Conversations from this project folder</p></div>
+        <div><h2 id="local-chat-title" className="text-xl font-semibold">Continue a local chat</h2><p className="mt-1 text-sm text-muted-foreground">{allFolders ? 'Recent Claude and Codex conversations on this Mac. The project uses the chat\'s folder.' : 'Conversations from this project folder'}</p></div>
         <div className="flex gap-2"><button type="button" disabled={loading || importing} onClick={() => setRefresh(n => n + 1)} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"><RefreshCw className="h-4 w-4" />Refresh</button><button type="button" aria-label="Close local chats" disabled={importing} onClick={onClose} className="rounded-md p-2 hover:bg-muted"><X className="h-4 w-4" /></button></div>
       </header>
       {error && <p role="alert" className="mb-3 text-sm text-destructive">{error}</p>}
@@ -100,8 +102,8 @@ export function LocalChatPicker({ projectId, folder, onClose, onImported, onSele
       </div> : <><div className="grid min-h-0 flex-1 overflow-auto rounded-lg border border-border sm:grid-cols-[minmax(220px,1fr)_2fr]">
         <div aria-label="Local conversations" className="max-h-48 overflow-y-auto border-b border-border p-2 sm:max-h-[55dvh] sm:border-b-0 sm:border-r">
           {(() => { const programs = [...new Set(chats.map(chat => chat.provider))]; return programs.length > 1 && <div role="group" aria-label="Filter by program" className="mb-2 flex flex-wrap gap-1">{['', ...programs].map(p => <button key={p || 'all'} type="button" aria-pressed={program === p} onClick={() => setProgram(p)} className={`rounded-md border px-2 py-0.5 text-xs ${program === p ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:text-foreground'}`}>{p ? localChatProgram(p).name : 'All'}</button>)}</div> })()}
-          {loading ? <p role="status" className="p-3 text-sm text-muted-foreground">Finding local chats…</p> : chats.length === 0 ? <p className="p-3 text-sm text-muted-foreground">No Claude, Codex or Cursor CLI chats found for this folder.</p> : chats.filter(chat => !program || chat.provider === program).map(chat => <button key={chat.id} type="button" aria-pressed={selected === chat.id} disabled={importing} onClick={() => setSelected(chat.id)} className={`mb-1 flex w-full gap-3 rounded-lg p-3 text-left ${selected === chat.id ? 'bg-muted' : 'hover:bg-muted/50'}`}>
-            <img alt="" src={`/provider-icons/${localChatProgram(chat.provider).icon}`} className="mt-0.5 h-5 w-5 shrink-0 object-contain" /><span className="min-w-0"><span className="block truncate text-sm font-medium">{chat.title}</span><span className="mt-1 block text-xs text-muted-foreground">{localChatProgram(chat.provider).name} · {new Date(chat.updated_at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span></span>
+          {loading ? <p role="status" className="p-3 text-sm text-muted-foreground">Finding local chats…</p> : chats.length === 0 ? <p className="p-3 text-sm text-muted-foreground">{allFolders ? 'No Claude or Codex CLI chats found on this Mac.' : 'No Claude, Codex or Cursor CLI chats found for this folder.'}</p> : chats.filter(chat => !program || chat.provider === program).map(chat => <button key={chat.id} type="button" aria-pressed={selected === chat.id} disabled={importing} onClick={() => setSelected(chat.id)} className={`mb-1 flex w-full gap-3 rounded-lg p-3 text-left ${selected === chat.id ? 'bg-muted' : 'hover:bg-muted/50'}`}>
+            <img alt="" src={`/provider-icons/${localChatProgram(chat.provider).icon}`} className="mt-0.5 h-5 w-5 shrink-0 object-contain" /><span className="min-w-0"><span className="block truncate text-sm font-medium">{chat.title}</span><span className="mt-1 block text-xs text-muted-foreground">{localChatProgram(chat.provider).name}{chat.folder ? ` · ${chat.folder.replace(/\/+$/, '').split('/').pop()}` : ''} · {new Date(chat.updated_at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span></span>
           </button>)}
           {partial && <p className="p-3 text-xs text-muted-foreground">Some chats could not be checked. Refresh to try again.</p>}
         </div>
