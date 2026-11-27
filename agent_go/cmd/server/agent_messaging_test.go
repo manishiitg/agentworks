@@ -426,3 +426,154 @@ func TestAgentSteerUnconfirmedNeverReopensForAutomaticResend(t *testing.T) {
 		})
 	}
 }
+
+// #4357: agentMessageWakeSem must be released once the receiving turn starts
+// (so 3 long-running turns never stall a 4th message), and waiting for a wake
+// slot must not count against agentMessageDeliveryWait.
+func TestAgentMessageWakeSlotsReleaseOnTurnStartAndDontBurnDeliveryTimeout(t *testing.T) {
+	env := newTriggerLinkEnv(t)
+	env.api.eventStore = openClientIdentityTestStore(t, "wake-slot-test")
+	env.api.agentProfiles = env.svc.registry
+	crewOwnerTabsFixture(t, env)
+	ctx := internalBotRequestContext(context.Background(), "owner")
+	baseTarget, err := resolveTriggerTarget(ctx, GetUserFromContext(ctx), "crew:Beta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := env.svc.registry.Resolve("work", 0, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	makeRecipient := func(chatKey, name string) triggerTarget {
+		t.Helper()
+		binding, err := resolveProductConversationBinding(ctx, "owner", profile, chatKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		record, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, "owner", profile, binding, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := defaultProductConversationRegistryStore().setAgentIdentity(ctx, "owner", "work", record.ConversationKey, &name, nil, "owner"); err != nil {
+			t.Fatal(err)
+		}
+		target, err := env.api.resolveAgentChatTarget(ctx, baseTarget, record.ConversationKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return target
+	}
+	waitDelivered := func(inboxID string) agentMessage {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			agentMessageMu.Lock()
+			s, readErr := readAgentMessageStore(ctx)
+			agentMessageMu.Unlock()
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			for _, c := range s.Conversations {
+				if c.ID == inboxID && len(c.Messages) > 0 {
+					m := c.Messages[0]
+					if m.Delivery == "delivered" || m.Delivery == "undeliverable" {
+						return m
+					}
+				}
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("message in %s did not finish delivery", inboxID)
+			}
+			time.Sleep(15 * time.Millisecond)
+		}
+	}
+
+	caller := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerUser, ID: "owner"}, Label: "Coordinator"}
+	oldTurn := agentMessageTurn
+	t.Cleanup(func() { agentMessageTurn = oldTurn })
+
+	// Part 1: 3 running turns must not block a 4th message from starting.
+	startedCh := make(chan string, 8)
+	unblockTurns := make(chan struct{})
+	agentMessageTurn = func(api *StreamingAPI, turnCtx context.Context, request map[string]interface{}, session, _ string) (internalSessionTurnResult, error) {
+		startedCh <- session
+		<-unblockTurns
+		return internalSessionTurnResult{FinalResponse: "ok"}, nil
+	}
+	recipients := []triggerTarget{
+		makeRecipient("beta:chat:wake-1", "Wake 1"),
+		makeRecipient("beta:chat:wake-2", "Wake 2"),
+		makeRecipient("beta:chat:wake-3", "Wake 3"),
+		makeRecipient("beta:chat:wake-4", "Wake 4"),
+	}
+	inboxes := make([]string, 0, len(recipients))
+	for i := 0; i < 3; i++ {
+		receipt, err := env.api.sendAgentMessage(ctx, "owner", caller, recipients[i], "long task", "", "wake-sub-"+string(rune('1'+i)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		inboxes = append(inboxes, receipt["inbox_id"].(string))
+	}
+	for i := 0; i < 3; i++ {
+		select {
+		case <-startedCh:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("only %d of 3 initial turns started", i)
+		}
+	}
+	// All 3 turns are now running and blocked; a 4th message must still start.
+	receipt4, err := env.api.sendAgentMessage(ctx, "owner", caller, recipients[3], "fourth task", "", "wake-sub-4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inboxes = append(inboxes, receipt4["inbox_id"].(string))
+	select {
+	case <-startedCh:
+	case <-time.After(5 * time.Second):
+		close(unblockTurns)
+		t.Fatal("4th agent message stalled while 3 receiving turns were running")
+	}
+	close(unblockTurns)
+	for _, id := range inboxes {
+		if m := waitDelivered(id); m.Delivery != "delivered" {
+			t.Fatalf("inbox %s delivery=%q err=%q, want delivered", id, m.Delivery, m.Error)
+		}
+	}
+
+	// Part 2: waiting on a full wake semaphore must not burn agentMessageDeliveryWait.
+	oldWait := agentMessageDeliveryWait
+	agentMessageDeliveryWait = 120 * time.Millisecond
+	t.Cleanup(func() { agentMessageDeliveryWait = oldWait })
+
+	agentMessageTurn = func(api *StreamingAPI, turnCtx context.Context, request map[string]interface{}, session, _ string) (internalSessionTurnResult, error) {
+		return internalSessionTurnResult{FinalResponse: "ok"}, nil
+	}
+	slots := cap(agentMessageWakeSem)
+	for i := 0; i < slots; i++ {
+		agentMessageWakeSem <- struct{}{}
+	}
+	released := false
+	defer func() {
+		if !released {
+			for i := 0; i < slots; i++ {
+				<-agentMessageWakeSem
+			}
+		}
+	}()
+	recipient5 := makeRecipient("beta:chat:wake-5", "Wake 5")
+	receipt5, err := env.api.sendAgentMessage(ctx, "owner", caller, recipient5, "queued behind full slots", "", "wake-sub-5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inbox5 := receipt5["inbox_id"].(string)
+	// Hold all wake slots longer than agentMessageDeliveryWait.
+	time.Sleep(250 * time.Millisecond)
+	for i := 0; i < slots; i++ {
+		<-agentMessageWakeSem
+	}
+	released = true
+	m5 := waitDelivered(inbox5)
+	if m5.Delivery != "delivered" || m5.DeliveryAttempts != 0 {
+		t.Fatalf("message timed out while waiting for wake slot: delivery=%q attempts=%d err=%q", m5.Delivery, m5.DeliveryAttempts, m5.Error)
+	}
+}
