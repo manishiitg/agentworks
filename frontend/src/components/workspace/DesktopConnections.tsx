@@ -283,17 +283,21 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
     ...(desktop ? connections.filter(connection => connection.id !== 'local').map(connection => ({ id: `server:${connection.id}`, name: connection.name || 'Server', server: true, projects: rows.filter(row => row.connection.id === connection.id) })) : []),
   ].filter(item => item.id === 'all' || item.projects.length > 0)
   const openTab = tabs.find(item => item.id === tab) ?? tabs[0]
-  const groups = openTab.id === 'all' ? allGroups : [{ id: openTab.id, name: '', projects: openTab.projects.filter(matches).sort(openTab.id === 'recent' ? byRecent : (a, b) => a.name.localeCompare(b.name)) }]
+  const tabRows = openTab.projects.filter(matches).sort(openTab.id === 'recent' ? byRecent : (a, b) => a.name.localeCompare(b.name))
   // A network is named as in this Mac's connections ("Example Company"), not by its host name.
   const networkName = (value: string) => {
     const host = value.replace(/^https?:\/\//, '').replace(/\/.*$/, '')
     if (!host) return ''
     return connections.find(connection => connection.id !== 'local' && connection.server && connection.server.includes(host))?.name || value
   }
+  const teamNetworkOf = (project: typeof rows[number]) =>
+    networkName(project.team_live?.network?.trim() || project.shared_line?.split(' · ').slice(1).find(part => /\./.test(part)) || '')
+  // A row's owner (shown as an initial and name) and its grey line, without what the open tab already says (owner,
+  // 27 Nov mockup v2): no "Team member" in Teams, no network in Teams (its heading names it) or a server's tab.
   const lineFor = (project: typeof rows[number]) => {
-    const shareNetwork = project.shared_line?.split(' · ').slice(1).find(part => /\./.test(part)) || ''
+    const teams = openTab.id === 'teams'
     // On the Mac a server project's cloud names its server (#4331), so the grey line does not repeat it.
-    const network = networkName(project.team_live?.network?.trim() || shareNetwork) || (desktop ? '' : placeName(project.connection))
+    const network = teams || openTab.id.startsWith('server:') ? '' : teamNetworkOf(project) || (desktop ? '' : placeName(project.connection))
     if (isSharedProject(project)) {
       // A Team copy on this Mac is owned by this Mac's own account ("default"); its share line names the real owner.
       const fromLine = project.shared_line?.startsWith('Shared by ') ? project.shared_line.slice('Shared by '.length).split(' · ')[0]?.trim() : ''
@@ -301,11 +305,27 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
       const by = fromLine || (owner && owner !== 'default' ? owner : '')
       const theirMac = project.shared_line?.includes('On their Mac') ? 'their Mac' : ''
       // A shared project kept on this Mac is a Team copy: you joined its Team.
-      const member = Boolean(project.team_live) || project.connection.id === active
-      return [by, member ? 'Team member' : '', theirMac, network].filter(Boolean).join(' · ')
+      const member = !teams && (Boolean(project.team_live) || project.connection.id === active)
+      return { by, line: [member ? 'Team member' : '', theirMac, network].filter(Boolean).join(' · ') }
     }
-    return project.team_live ? ['Team', network].filter(Boolean).join(' · ') : network
+    return { by: teams ? 'yours' : '', line: project.team_live && !teams ? ['Team', network].filter(Boolean).join(' · ') : network }
   }
+  // The Teams tab groups projects under their Team: its name, where it runs, how many people and projects.
+  const teamGroups = () => {
+    const byTeam = new Map<string, { id: string; name: string; network: string; people: number; projects: typeof rows }>()
+    for (const project of tabRows) {
+      const network = teamNetworkOf(project)
+      const name = project.team_live?.name?.trim() || (network ? `Teams on ${network}` : 'Your Teams')
+      const id = `team:${name}|${network}`
+      const group = byTeam.get(id) ?? { id, name, network, people: 0, projects: [] }
+      group.people = Math.max(group.people, project.team_live?.people?.length ?? 0)
+      group.projects.push(project)
+      byTeam.set(id, group)
+    }
+    return [...byTeam.values()].map(group => ({ ...group, meta: [group.people ? `${group.people} ${group.people === 1 ? 'person' : 'people'}` : '', `${group.projects.length} ${group.projects.length === 1 ? 'project' : 'projects'}`].filter(Boolean).join(' · ') }))
+  }
+  const groups: Array<{ id: string; name: string; projects: typeof rows; network?: string; meta?: string }> =
+    openTab.id === 'all' ? allGroups : openTab.id === 'teams' ? teamGroups() : [{ id: openTab.id, name: '', projects: tabRows }]
   const unavailable = connections.filter(connection => connection.id !== active && inventory[connection.id]?.status && inventory[connection.id]?.status !== 'connected')
   const loadingPlaces = connections.filter(connection => connection.id !== active && !inventory[connection.id]?.status)
   return <div aria-label="Project directory" className="space-y-4">
@@ -320,12 +340,19 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
       </button>)}
     </div>}
     {groups.filter(group => group.projects.length > 0).map(group => <section key={group.id} aria-label={group.name || openTab.name}>
-      {group.name && <h2 className="px-1 pb-1.5 text-xs font-medium text-muted-foreground">{group.name} <span>· {group.projects.length}</span></h2>}
+      {group.name && (group.meta !== undefined
+        ? <h2 className="flex min-w-0 items-center gap-2 px-1 pb-1.5 pt-1 text-sm font-semibold">
+            <span className="truncate">{group.name}</span>
+            <span className="flex shrink-0 items-center gap-1 text-xs font-normal text-muted-foreground">
+              {group.network && <><Cloud className="h-3.5 w-3.5 text-primary/80" aria-hidden="true" />{group.network} · </>}{group.meta}
+            </span>
+          </h2>
+        : <h2 className="px-1 pb-1.5 text-xs font-medium text-muted-foreground">{group.name} <span>· {group.projects.length}</span></h2>)}
       <ul className="rounded-lg border border-border bg-card text-card-foreground">
         {group.projects.map(project => {
           const key = keyFor(project)
           const pinned = pinnedKeys.has(key)
-          const detail = lineFor(project)
+          const { by, line: detail } = lineFor(project)
           // The same cloud as the sidebar (#4331): a server project, hover says where it runs and your role.
           const cloud = desktop && project.connection.id !== 'local' ? serverLineFor(project, project.connection) : ''
           const macStatus = project.where === 'mac'
@@ -333,11 +360,15 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
             : ''
           return <li key={key} data-theme-row="project" className="group/crew flex min-h-9 items-center gap-1 rounded-md px-1 hover:bg-muted max-md:min-h-11">
             <button type="button" title={project.name} onClick={() => open(project)} className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <span className={`flex min-w-0 flex-1 items-center gap-1.5 text-sm font-medium ${cloud && unreachable(project.connection) ? 'opacity-60' : ''}`}>
+              <span className={`flex min-w-[35%] flex-1 items-center gap-1.5 text-sm font-medium ${cloud && unreachable(project.connection) ? 'opacity-60' : ''}`}>
                 <span className="truncate">{project.name}</span>
                 {cloud && <span role="img" aria-label={cloud} title={cloud} className="inline-flex shrink-0 text-primary/80"><Cloud className="h-3.5 w-3.5" aria-hidden="true" /></span>}
               </span>
-              {detail && <span title={[detail, macStatus].filter(Boolean).join(' · ')} className="min-w-0 max-w-[55%] shrink truncate text-xs text-muted-foreground">{detail}</span>}
+              {detail && <span title={[detail, macStatus].filter(Boolean).join(' · ')} className="min-w-0 max-w-[45%] shrink truncate text-xs text-muted-foreground">{detail}</span>}
+              {by && <span title={by === 'yours' ? 'Yours' : `From ${by}`} className="flex min-w-0 max-w-[40%] shrink items-center gap-1.5 text-xs text-muted-foreground">
+                {by !== 'yours' && <span aria-hidden="true" className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-semibold text-foreground/70">{by.slice(0, 1).toUpperCase()}</span>}
+                <span className="truncate">{by}</span>
+              </span>}
             </button>
             {canPin && <button type="button" onClick={() => setPinned(key, !pinned)} title={pinned ? 'Unpin from sidebar' : 'Pin to sidebar'} aria-pressed={pinned} aria-label={`${pinned ? 'Unpin' : 'Pin'} ${project.name}`}
               className={`grid h-8 w-8 shrink-0 place-items-center rounded-md hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-10 max-md:w-10 ${pinned ? 'text-primary' : 'text-muted-foreground [@media(hover:hover)]:opacity-0 group-hover/crew:opacity-100 group-focus-within/crew:opacity-100'}`}>
