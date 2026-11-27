@@ -20,11 +20,11 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
   const label = sharedDashboard ? 'Shared artifact' : kind === 'crew' ? 'Project' : 'Goal'
   // The laptop badge names whose Mac the Crew lives on: another person's Mac Crew says their Mac (owner, 12 Nov).
   const macHome = owned_by_caller === false ? 'On their Mac' : 'On your Mac'
-  return <div data-theme-row="project" className={`group/crew flex ${subline ? 'min-h-12 py-1' : 'h-8 max-md:h-10'} w-full items-center rounded-lg ${offline ? 'opacity-60' : ''} ${highlight ? 'bg-foreground/[0.06] text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
+  return <div data-theme-row="project" className={`group/crew flex ${subline ? 'min-h-11 py-1' : 'h-6 max-md:h-9'} w-full items-center rounded-md ${offline ? 'opacity-60' : ''} ${highlight ? 'bg-foreground/[0.06] text-foreground' : 'text-muted-foreground/75 hover:bg-muted hover:text-foreground'}`}>
     <button type="button" title={`${label} · ${name}${shared_line ? ` · ${shared_line}` : ''}${location ? ` · ${location}` : ''}`} aria-label={`${name} · ${label}${location ? ` · ${location}` : ''}`} aria-current={selected ? 'page' : undefined} aria-expanded={heading ? agentsExpanded : undefined} onClick={heading ? onToggleAgents : onOpen}
-      className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       {showIcon && <span className="flex h-4 w-4 shrink-0 items-center justify-center"><EntityIdentityIcon icon={icon} label={name} className="h-4 w-4" fallback={sharedDashboard ? <LayoutDashboard className="h-4 w-4" /> : <ProductSurfaceIcon surface={kind === 'crew' ? 'work' : 'agentworks'} className="h-4 w-4" />} /></span>}
-      <span className="min-w-0 flex-1"><span className={`flex min-w-0 items-center gap-1.5 text-xs leading-4 font-semibold tracking-[0.01em]`}><span className="truncate">{name}</span>{serverLine && <span role="img" aria-label={serverLine} title={serverLine} className="inline-flex shrink-0 text-primary/80"><Cloud className="h-3.5 w-3.5" aria-hidden="true" /></span>}{shared_line && !heading && <SharedPeopleIcon sharedLine={shared_line} people={[]} />}</span>{subline && <span className="block truncate text-[11px] leading-4 text-muted-foreground">{subline}</span>}</span>
+      <span className="min-w-0 flex-1"><span className={`flex min-w-0 items-center gap-1.5 text-[11px] leading-4 font-medium tracking-[0.02em]`}><span className="truncate">{name}</span>{serverLine && <span role="img" aria-label={serverLine} title={serverLine} className="inline-flex shrink-0 text-primary/80"><Cloud className="h-3 w-3" aria-hidden="true" /></span>}{shared_line && !heading && <SharedPeopleIcon sharedLine={shared_line} people={[]} />}</span>{subline && <span className="block truncate text-[11px] leading-4 text-muted-foreground">{subline}</span>}</span>
     </button>
     {/* A folded project's own work, as one dot like its agents' (working pulses gently). */}
     {activityLabel === 'Running' ? <span role="img" data-theme-agent-state="running" title={activityTitle || 'Working'} aria-label={activityTitle || 'Working'} className="mr-2 h-2 w-2 shrink-0 rounded-full bg-info motion-safe:animate-pulse" />
@@ -39,11 +39,11 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
     {(onMoveUp || onMoveDown || onNewAgent || onImportLocalChat || onDiscoverSkills || onRemoveOnlineCopy || onTogglePin) && <PinnedCrewOrderMenu name={name} pinned={pinned} onTogglePin={onTogglePin} onMoveUp={onMoveUp} onMoveDown={onMoveDown} onNewAgent={onNewAgent} onImportLocalChat={onImportLocalChat} onDiscoverSkills={onDiscoverSkills} onRemoveOnlineCopy={onRemoveOnlineCopy} />}
     {/* The caret only closes an open project's agents; opening the project opens them (owner, 10 Nov). */}
     {onToggleAgents && <button type="button" aria-label={`${agentsExpanded ? 'Hide' : 'Show'} agents for ${name}`} aria-expanded={agentsExpanded} title={agentsExpanded ? 'Hide agents' : 'Show agents'} onClick={onToggleAgents}
-      className="mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <ChevronRight className={`h-3.5 w-3.5 transition-transform ${agentsExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
+      className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/75 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <ChevronRight className={`h-3 w-3 transition-transform ${agentsExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
     </button>}
     {!showLocation && remote && serverId && <button type="button" aria-label={`Server: ${location || 'Connected server'}`} title={location || 'Connected server'}
-      onClick={() => openConnectedServers('', serverId)} className="mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md hover:bg-foreground/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      onClick={() => openConnectedServers('', serverId)} className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-foreground/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <ServerIdentityIcon connectionId={serverId} hidden className={`h-3 w-3 ${serverColor || 'text-slate-500/75 dark:text-slate-400/75'}`} />
     </button>}
   </div>

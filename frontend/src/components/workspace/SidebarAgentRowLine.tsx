@@ -41,7 +41,7 @@ export function AgentRowLine({ name, title, person, inTeam, setup, place, status
   const ago = shortAgo(lastAt)
   const recent = Date.now() - Date.parse(lastAt || '') < RECENT_AGO_MS
   return <button type="button" role="listitem" title={title || undefined} aria-current={active ? 'page' : undefined} onClick={onClick}
-    className={`${sidebarAgentRowClass} gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-foreground/80 hover:bg-muted hover:text-foreground'}`}>
+    className={`${sidebarAgentRowClass} gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:pr-11 ${active ? 'bg-foreground/[0.06] font-medium text-foreground' : 'text-foreground/90 hover:bg-muted hover:text-foreground'}`}>
     {grip && <GripVertical aria-hidden="true" className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground" />}
     {person && <PersonInitial name={person} />}
     <span className="block min-w-0 truncate">{name}</span>
