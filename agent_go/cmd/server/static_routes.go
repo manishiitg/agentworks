@@ -116,7 +116,7 @@ func (api *StreamingAPI) handleCapabilities(w http.ResponseWriter, r *http.Reque
 		// startup. AgentWorks' own composer gates its mic on `available`;
 		// product composers keep gating on their profile's
 		// runtime.capabilities.voice instead.
-		"voice": voiceManager.Status(),
+		"voice": currentVoiceService().Status(),
 	})
 }
 

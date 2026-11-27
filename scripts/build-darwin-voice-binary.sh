@@ -11,8 +11,8 @@
 # extra rpath baked in here (@executable_path/lib), which is where the desktop
 # apps' extraResources put them (Contents/Resources/lib beside the server).
 #
-# Used by desktop development and CI to
-# build agent-server.
+# Used by desktop development and CI to build the standalone voice-helper
+# binary (and standalone darwin-live agent-server artifacts).
 set -euo pipefail
 
 PKG_DIR="$1"
