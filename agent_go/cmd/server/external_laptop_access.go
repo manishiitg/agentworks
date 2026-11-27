@@ -193,7 +193,7 @@ func laptopSetupSteps(noneConnected bool) map[string]any {
 func (api *StreamingAPI) laptopAccessAction(w http.ResponseWriter, r *http.Request, c *UserClaims, root string, args map[string]any) {
 	switch externalArg(args, "action") {
 	case "devices":
-		devices := api.localDeviceListForProject(r.Context(), c, root)
+		devices := api.localDeviceListForOwner(c)
 		externalJSON(w, map[string]any{"devices": devices, "setup": laptopSetupSteps(len(devices) == 0), "next": "Choose your computer, browse its folders, then save Read or Read & write access. If none is connected, open the project's Local laptop panel for the download and sign-in steps. Install once on that computer, sign in and keep AgentWorks running (agentworks start for CLI users). The same app also connects AgentBridge."})
 	case "get":
 		settings, err := readLaptopSettings(c.UserID, root)

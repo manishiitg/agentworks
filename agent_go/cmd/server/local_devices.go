@@ -306,7 +306,7 @@ func (api *StreamingAPI) localDeviceCallForOwner(ctx context.Context, claims *Us
 	if (request.Operation == "write" || request.Operation == "shell" || request.Operation == "patch") && !userAccessForClaims(current).CanEdit {
 		return localfiles.Response{}, &wf.FileError{Status: 403, Message: "Account is read-only"}
 	}
-	value, ok := api.localDevices.Load(api.laptopDeviceOwner(ctx, claims, request.CrewID, deviceID) + "/" + deviceID)
+	value, ok := api.localDevices.Load(claims.UserID + "/" + deviceID)
 	if !ok {
 		return localfiles.Response{}, &wf.FileError{Status: 404, Message: "Your laptop is not connected. Start AgentWorks on that computer to use laptop tools; server work remains available."}
 	}
@@ -458,7 +458,7 @@ func (api *StreamingAPI) handleLocalDevices(w http.ResponseWriter, r *http.Reque
 			externalError(w, 403, "forbidden", "Only project Builders can view its connected laptop")
 			return
 		}
-		externalJSON(w, map[string]any{"devices": api.localDeviceListForProject(r.Context(), claims, root)})
+		externalJSON(w, map[string]any{"devices": api.localDeviceListForOwner(claims)})
 		return
 	}
 	externalJSON(w, map[string]any{"devices": api.localDeviceList(claims)})
@@ -715,36 +715,4 @@ func (api *StreamingAPI) registerGrantedLaptopTools(registrar definitionToolRegi
 			log.Printf("[LAPTOP_TOOL] session=%s owner=%s operation=copy_in request=%s destination=%q bytes=%d", activity, caller.UserID, id, destination, len(response.Bytes))
 			return recorder.Body.String(), nil
 		}, 180*time.Second, "workspace_advanced")
-}
-
-// Device identity is stored with the project's shared grant; the actor remains the
-// current owner for access checks and audit attribution.
-func (api *StreamingAPI) laptopDeviceOwner(ctx context.Context, caller *UserClaims, root, device string) string {
-	if !laptopProjectAllowed(ctx, caller, root) {
-		return caller.UserID
-	}
-	settings, err := readLaptopSettings(caller.UserID, root)
-	if err == nil && settings.DeviceID == device && settings.DeviceOwnerID != "" {
-		return settings.DeviceOwnerID
-	}
-	return caller.UserID
-}
-
-func (api *StreamingAPI) localDeviceListForProject(ctx context.Context, caller *UserClaims, root string) []localfiles.Hello {
-	devices := api.localDeviceListForOwner(caller)
-	if !laptopProjectAllowed(ctx, caller, root) {
-		return devices
-	}
-	settings, err := readLaptopSettings(caller.UserID, root)
-	if err != nil || settings.DeviceID == "" || settings.DeviceOwnerID == "" || settings.DeviceOwnerID == caller.UserID {
-		return devices
-	}
-	owner := *caller
-	owner.UserID, owner.Username, owner.Email = settings.DeviceOwnerID, "", ""
-	for _, device := range api.localDeviceListForOwner(&owner) {
-		if device.DeviceID == settings.DeviceID {
-			devices = append(devices, device)
-		}
-	}
-	return devices
 }
