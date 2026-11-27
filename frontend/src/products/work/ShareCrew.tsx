@@ -133,7 +133,7 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, defa
   }
   const updated = teamChanged
   const share = (on: boolean) => run('ask', async () => { await teamRequest(where, '/agent-visibility', 'POST', { agent_key: key, in_team: on }); updated() })
-  const rule = (key: string, change: { chat_share?: string; audience?: 'whole_team' | 'chosen'; chosen_people?: string[]; when_others_ask?: string }) => run(key, async () => { await teamRequest(where, '/agent-rule', 'POST', { agent_key: key, ...change }); updated() })
+  const rule = (field: string, change: { chat_share?: string; audience?: 'whole_team' | 'chosen'; chosen_people?: string[]; when_others_ask?: string }) => run(field, async () => { await teamRequest(where, '/agent-rule', 'POST', { agent_key: key, ...change }); updated() })
   const ask = agent.ask
   // The rule editor (When others ask) stays one click away, on the viewer's own agent.
   const row = agent.row || view?.agents.find(item => item.key === agent.key && item.mine)
@@ -205,8 +205,10 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, defa
         {example(chatChoice?.example,chatChoice?.line)}</AgentSetting>
       </div>
     </div>}
-    {ask?.can_edit && row && <button type="button" aria-expanded={rules} className="mt-2 flex w-full items-center justify-between gap-2 text-xs" onClick={() => setRules(!rules)}><span className="text-muted-foreground">Uses</span><span className="min-w-0 truncate">{ask.uses_line || row.uses_note || 'No connections selected'}</span><span className="shrink-0 text-primary">{rules ? 'Done' : 'See all ›'}</span></button>}
-    {ask?.on && rules && row && <div className="mt-2 border-t border-border pt-2"><AgentDetails agent={row} target={{ ...target, project: where.project }} projectId={projectId} showNote={false} /></div>}
+    {ask?.can_edit && row && !((row.place === 'mac' || row.kind === 'terminal') && !row.uses?.length && !row.uses_note && (!ask.uses_line || ask.uses_line === 'No connections selected')) && <>
+      <button type="button" aria-expanded={rules} className="mt-2 flex w-full items-center justify-between gap-2 text-xs" onClick={() => setRules(!rules)}><span className="text-muted-foreground">Uses</span><span className="min-w-0 truncate">{ask.uses_line || row.uses_note || 'No connections selected'}</span><span className="shrink-0 text-primary">{rules ? 'Done' : 'See all ›'}</span></button>
+      {ask.on && rules && <div className="mt-2 border-t border-border pt-2"><AgentDetails agent={row} target={{ ...target, project: where.project }} projectId={projectId} showNote={false} /></div>}
+    </>}
     {status}
   </>
   const failure = error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>
