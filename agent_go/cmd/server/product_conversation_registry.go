@@ -159,7 +159,7 @@ type ProductAgentIdentity struct {
 	// auto_review or full_access (chat_access_mode.go). The person's choice per chat (#3885).
 	AccessMode string `json:"access_mode,omitempty"`
 	// ReplyStyle is how this chat's agent writes its replies: "" (Default), concise, explanatory, learning or
-	// proactive (chat_reply_style.go). NextSteps "off" turns off the summary and next-steps card; "" is on.
+	// proactive (chat_reply_style.go). NextSteps "on" turns on the summary and next-steps card; "" and "off" are off (opt-in, owner 27 Nov).
 	ReplyStyle string `json:"reply_style,omitempty"`
 	NextSteps  string `json:"next_steps,omitempty"`
 	// UnrelatedTask is what the agent does when the person asks for a different piece of work in this chat:

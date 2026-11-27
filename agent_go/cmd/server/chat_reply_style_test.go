@@ -13,7 +13,10 @@ func TestChatRepliesNoteFollowsStyleAndCard(t *testing.T) {
 	if note := chatRepliesNote(ProductAgentIdentity{}, false); note != "" {
 		t.Fatalf("the card is only asked for on the person's own app turns, got %q", note)
 	}
-	note := chatRepliesNote(ProductAgentIdentity{ReplyStyle: "concise"}, true)
+	if note := chatRepliesNote(ProductAgentIdentity{UnrelatedTask: "here"}, true); note != "" {
+		t.Fatalf("the card is opt-in: a chat that never turned it on gets no card note, got %q", note)
+	}
+	note := chatRepliesNote(ProductAgentIdentity{ReplyStyle: "concise", NextSteps: "on"}, true)
 	if !strings.HasPrefix(note, chatRepliesMarker) || !strings.Contains(note, "```next") || strings.Contains(note, "Reply concisely") {
 		t.Fatalf("the message carries only the card note; the style is in the prompt, got %q", note)
 	}
@@ -35,8 +38,11 @@ func TestChatReplyStyleAcceptsOnlyOfferedStyles(t *testing.T) {
 		t.Fatal("an unknown style must be refused")
 	}
 	view := chatRepliesViewFor(ProductAgentIdentity{})
-	if view.Style != "default" || !view.NextSteps {
-		t.Fatalf("a new chat shows Default with the card on, got %+v", view)
+	if view.Style != "default" || view.NextSteps {
+		t.Fatalf("a new chat shows Default with the card off, got %+v", view)
+	}
+	if !chatRepliesViewFor(ProductAgentIdentity{NextSteps: "on"}).NextSteps {
+		t.Fatal("a chat that turned the card on shows it on")
 	}
 }
 
