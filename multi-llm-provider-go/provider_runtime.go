@@ -329,6 +329,10 @@ func (p *ProviderAwareLLM) GenerateContent(ctx context.Context, messages []llmty
 			p.logger.Infof("✅ Valid function call response detected - Content is empty but FuncCall present")
 			p.logger.Infof("   Function Call: Name=%s", firstChoice.FuncCall.Name)
 			// This is a valid response, continue processing
+		} else if _, ok := llmtypes.IdleCompactResultFromResponse(resp); ok {
+			// Compaction-only turn (idle compaction, compact early, Compact now):
+			// it has no answer text by design; the adapter attached its result.
+			p.logger.Infof("✅ Valid compaction-only response - Content is empty but compaction result present (provider=%s)", string(p.provider))
 		} else if handle, ok := llmtypes.ExtractCodingProviderSessionHandle(firstChoice.GenerationInfo); ok && !handle.Empty() {
 			// LaunchOnly response: the adapter successfully started/reacquired the tmux transport
 			// and embedded the session handle in GenerationInfo. Empty Content is intentional here.

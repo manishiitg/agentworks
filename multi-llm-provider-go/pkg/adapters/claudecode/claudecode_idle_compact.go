@@ -2,6 +2,7 @@ package claudecode
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -114,4 +115,34 @@ func emitClaudeIdleCompactEnd(emit func(llmtypes.StreamChunk), id string, starte
 	}
 	emit(llmtypes.ContextCompactionChunk(end))
 	return end
+}
+
+// claudeModelUsageTotals sums a result's modelUsage across models. Claude
+// Code reports a /compact turn's usage as all zeros and puts the summary
+// call's real tokens (cache read of the warm history, cache write, output)
+// only in modelUsage, so compaction cost is read from there.
+type claudeModelUsageTotals struct {
+	input, output, cacheRead, cacheWrite int
+}
+
+func (t *claudeModelUsageTotals) add(models map[string]json.RawMessage) {
+	for _, raw := range models {
+		var u struct {
+			Input      int `json:"inputTokens"`
+			Output     int `json:"outputTokens"`
+			CacheRead  int `json:"cacheReadInputTokens"`
+			CacheWrite int `json:"cacheCreationInputTokens"`
+		}
+		if json.Unmarshal(raw, &u) != nil {
+			continue
+		}
+		t.input += u.Input
+		t.output += u.Output
+		t.cacheRead += u.CacheRead
+		t.cacheWrite += u.CacheWrite
+	}
+}
+
+func (t claudeModelUsageTotals) usage() (llmtypes.Usage, int, int) {
+	return llmtypes.Usage{InputTokens: t.input, OutputTokens: t.output, TotalTokens: t.input + t.output}, t.cacheRead, t.cacheWrite
 }
