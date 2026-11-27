@@ -1561,6 +1561,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	// turns, so killing tmux before the handlers observe cancellation can race
 	// with capture/poll commands and make shutdown hang.
 	fmt.Println("⏹️ Canceling active agent work...")
+	// Marked before cancelling: a cancelled turn kicks its chat's queue, and a queued message started now is killed
+	// at once and saved as failed. Queued messages stay queued for the next startup instead.
+	serverShuttingDown.Store(true)
 	cancelStart := time.Now()
 	api.cancelActiveWorkForShutdown()
 	stopGmailInbound()
