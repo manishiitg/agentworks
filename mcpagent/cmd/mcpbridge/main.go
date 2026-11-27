@@ -76,6 +76,17 @@ type ToolDef struct {
 
 var callToolNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
 
+// maxBridgeResponseBytes bounds how much of an HTTP bridge response body
+// mcpbridge will buffer in memory to prevent an oversized upstream response
+// from OOMing the stdio bridge process.
+const maxBridgeResponseBytes = 32 << 20
+
+// isBridgeVirtualTool reports whether name is a session-scoped virtual tool
+// served at /tools/virtual/{name} with X-Virtual-Scope-ID.
+func isBridgeVirtualTool(name string) bool {
+	return name == "search_tools" || name == "get_api_spec"
+}
+
 // callToolTarget resolves a call_tool request to the tool definition a direct
 // call would use: the same per-tool route, session header and deadline. The
 // server's session registry decides whether that tool exists and may run.
@@ -98,8 +109,11 @@ func callToolTarget(def ToolDef, args map[string]any) (ToolDef, map[string]any, 
 	if server != "" {
 		target.Server = server
 		target.Type = "mcp"
+	} else if isBridgeVirtualTool(name) {
+		target.Type = "virtual"
 	} else if millis, ok := def.CallTimeoutsMillis[name]; ok {
-		target.TimeoutMillis = &millis
+		m := millis
+		target.TimeoutMillis = &m
 	} else if app, _, namespaced := strings.Cut(name, "__"); namespaced && app != "" {
 		// A connected-app tool's name starts with its app: notion__notion-fetch.
 		target.Server = app
@@ -133,6 +147,20 @@ func bridgeToolHTTPTimeout(def ToolDef, defaultTimeout, longRunningTimeout time.
 		return longRunningTimeout
 	}
 	return declared
+}
+
+func readBridgeResponseBody(r io.Reader, limit int64) ([]byte, error) {
+	if limit <= 0 {
+		limit = maxBridgeResponseBytes
+	}
+	body, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > limit {
+		return nil, fmt.Errorf("bridge response exceeded %d bytes", limit)
+	}
+	return body, nil
 }
 
 func truncateBridgeErrorText(s string) string {
@@ -333,7 +361,7 @@ func main() {
 			}
 			defer resp.Body.Close()
 
-			body, err := io.ReadAll(resp.Body)
+			body, err := readBridgeResponseBody(resp.Body, maxBridgeResponseBytes)
 			if err != nil {
 				bridgeLogf("mcpbridge: tool call read error type=%s tool=%s status=%d duration=%s error=%v", def.Type, def.Name, resp.StatusCode, time.Since(started), err)
 				return mcp.NewToolResultText(fmt.Sprintf("ERROR: failed to read response: %v", err)), nil

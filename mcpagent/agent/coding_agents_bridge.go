@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/manishiitg/mcpagent/agent/codeexec"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
@@ -20,6 +21,37 @@ import (
 // DefaultToolOutputFolder is the folder under the agent working directory where the coding-agent
 // bridge saves tool output that is too large to return inline.
 const DefaultToolOutputFolder = "tool_output_folder"
+
+// liveBridgeReadyFiles tracks the active chat-stable MCP_READY_FILE path per
+// sessionID so repeated buildBridgeMCPConfig calls during a running persistent
+// CLI session do not delete a live marker written by an already-running
+// mcpbridge subprocess. CloseSession / CloseHTTPSession clears the entry and
+// removes the marker file so a future cold launch starts clean.
+var liveBridgeReadyFiles sync.Map // sessionID -> readyPath
+
+func prepareChatStableReadyFile(sessionID, readyPath string) {
+	if prev, loaded := liveBridgeReadyFiles.Load(sessionID); loaded {
+		if prevPath, ok := prev.(string); ok && prevPath == readyPath {
+			return
+		}
+		if prevPath, ok := prev.(string); ok && prevPath != "" {
+			_ = os.Remove(prevPath)
+		}
+	}
+	_ = os.Remove(readyPath)
+	liveBridgeReadyFiles.Store(sessionID, readyPath)
+}
+
+func clearBridgeReadyFile(sessionID string) {
+	if strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	if prev, loaded := liveBridgeReadyFiles.LoadAndDelete(sessionID); loaded {
+		if prevPath, ok := prev.(string); ok && prevPath != "" {
+			_ = os.Remove(prevPath)
+		}
+	}
+}
 
 // BridgeToolDef is the serialized tool definition for the MCP bridge binary.
 type BridgeToolDef struct {
@@ -320,7 +352,7 @@ func (a *Agent) buildBridgeMCPConfig() (string, error) {
 	if workingDir != "" && strings.TrimSpace(a.sessionID) != "" {
 		sum := sha256.Sum256([]byte(a.sessionID))
 		readyPath := filepath.Join(workingDir, ".mcpbridge-ready-"+hex.EncodeToString(sum[:16])+".marker")
-		_ = os.Remove(readyPath)
+		prepareChatStableReadyFile(a.sessionID, readyPath)
 		a.bridgeReadyFile = readyPath
 		bridgeEnv["MCP_READY_FILE"] = readyPath
 		logger.Info("[CODING_BRIDGE] readiness configured", loggerv2.String("session", a.sessionID), loggerv2.String("mode", "chat_stable"))

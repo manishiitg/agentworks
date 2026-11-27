@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"runtime"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -116,5 +119,87 @@ func TestLeakGuardDisarmedByClose(t *testing.T) {
 	}
 	if got := LeakedClientCount(); got != before {
 		t.Errorf("closed client wrongly counted as leak: count %d, want %d", got, before)
+	}
+}
+
+func TestClientConcurrentCallAndCloseRaceFree(t *testing.T) {
+	c := New(MCPServerConfig{Description: "race-test"}, loggerv2.NewNoop())
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 25; j++ {
+				_ = c.Ping(context.Background())
+				_, _ = c.ListTools(context.Background())
+				_, _ = c.CallTool(context.Background(), "noop", nil)
+				_ = c.GetServerInfo()
+				_ = c.Close()
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+func TestSSEAndHTTPManagerAbortStartOnCanceledContext(t *testing.T) {
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-block:
+		case <-r.Context().Done():
+		}
+	}))
+	defer func() {
+		close(block)
+		srv.Close()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := NewSSEManager(srv.URL, nil, loggerv2.NewNoop()).Connect(ctx)
+	if err == nil {
+		t.Fatal("expected SSEManager.Connect to fail when ctx times out")
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Fatalf("SSEManager.Connect took too long to abort on ctx cancel: %s", time.Since(start))
+	}
+
+	canceledCtx, cancelNow := context.WithCancel(context.Background())
+	cancelNow()
+	if _, err := NewHTTPManager(srv.URL, nil, loggerv2.NewNoop()).Connect(canceledCtx); err == nil {
+		t.Fatal("expected HTTPManager.Connect to fail when ctx is already canceled")
+	}
+}
+
+func TestDiscoverAllToolsParallelRespectsParentCancel(t *testing.T) {
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-block:
+		case <-r.Context().Done():
+		}
+	}))
+	defer func() {
+		close(block)
+		srv.Close()
+	}()
+
+	cfg := &MCPConfig{
+		MCPServers: map[string]MCPServerConfig{
+			"hanging-sse": {URL: srv.URL, Protocol: ProtocolSSE},
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	results := DiscoverAllToolsParallel(ctx, cfg, loggerv2.NewNoop())
+	if time.Since(start) > 2*time.Second {
+		t.Fatalf("DiscoverAllToolsParallel did not abort promptly on parent cancel: %s", time.Since(start))
+	}
+	if len(results) != 1 || results[0].Error == nil {
+		t.Fatalf("expected error result on canceled discovery, got %+v", results)
 	}
 }

@@ -491,6 +491,9 @@ func (h *ExecutorHandlers) HandleMCPExecute(w http.ResponseWriter, r *http.Reque
 				freshClient, freshErr = mcpcache.GetFreshConnection(ctx, req.Server, h.configPath, h.logger)
 			}
 			if freshErr == nil {
+				if resolved == nil {
+					defer freshClient.Close()
+				}
 				h.logger.Info("🔧 [BROKEN PIPE] Retrying with fresh connection...",
 					loggerv2.String("tool", req.Tool))
 				result, err = freshClient.CallTool(ctx, req.Tool, req.Args)

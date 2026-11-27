@@ -205,9 +205,13 @@ func GetSessionRegistry() *SessionConnectionRegistry {
 // ResolveConnectionSessionID returns the actual registry session key that should be
 // used for the given logical tool session + server combination.
 //
-// MCP subprocess connections are shared globally; logical session IDs still scope
-// pending configuration, stop tracking, and tool-call metadata.
-func (r *SessionConnectionRegistry) ResolveConnectionSessionID(_, _ string) string {
+// Shared MCP subprocess connections use "global"; session-bound Vault scopes
+// ("__scope_") stay under their logical sessionID so CloseSession reclaims them
+// and stopped-session checks apply directly.
+func (r *SessionConnectionRegistry) ResolveConnectionSessionID(sessionID, serverName string) string {
+	if sessionID != "" && strings.Contains(serverName, "__scope_") {
+		return sessionID
+	}
 	return "global"
 }
 
@@ -230,6 +234,13 @@ func (r *SessionConnectionRegistry) getConnLock(key string) *sync.Mutex {
 // exact name so scoped client lifecycle counters match directly.
 func serverConfigPoolKey(serverName string, config MCPServerConfig) string {
 	if strings.Contains(serverName, "__scope_") {
+		return serverName
+	}
+	// A zero config cannot dial a server; it is used when callers look up a
+	// pre-registered connection stored via StoreConnection(session, serverName, c).
+	if config.URL == "" && config.Command == "" && config.WorkingDir == "" &&
+		len(config.Args) == 0 && len(config.Env) == 0 && len(config.Headers) == 0 &&
+		config.OAuth == nil && !config.PublicOnly {
 		return serverName
 	}
 	h := sha256.New()

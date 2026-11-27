@@ -29,6 +29,10 @@ func TestResolveConnectionSessionID(t *testing.T) {
 	if got := registry.ResolveConnectionSessionID("tool-session", "github"); got != "global" {
 		t.Fatalf("MCP servers should use the global connection session, got %q", got)
 	}
+	scoped := "vault_c1__scope_0123456789abcdef0123456789abcdef"
+	if got := registry.ResolveConnectionSessionID("tool-session", scoped); got != "tool-session" {
+		t.Fatalf("session-scoped Vault server should stay under its logical session, got %q", got)
+	}
 }
 
 func TestServerConfigPoolKeyIsolatesUsersAndOverrides(t *testing.T) {
@@ -52,6 +56,10 @@ func TestServerConfigPoolKeyIsolatesUsersAndOverrides(t *testing.T) {
 	scoped := "vault_c1__scope_0123456789abcdef0123456789abcdef"
 	if got := serverConfigPoolKey(scoped, aliceOAuth); got != scoped {
 		t.Fatalf("scoped server key changed: got %q, want %q", got, scoped)
+	}
+	// A zero config resolves to the raw serverName so pre-stored connections match.
+	if got := serverConfigPoolKey("prestored", MCPServerConfig{}); got != "prestored" {
+		t.Fatalf("zero-config pool key = %q, want %q", got, "prestored")
 	}
 
 	// CloseSessionServer must close every config-fingerprinted client for that server.

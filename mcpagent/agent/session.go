@@ -13,6 +13,7 @@ import (
 )
 
 func CloseSession(sessionID string) {
+	clearBridgeReadyFile(sessionID)
 	closeTurnSession(sessionID)
 	registry := mcpclient.GetSessionRegistry()
 	registry.CloseSession(sessionID)
@@ -104,7 +105,11 @@ func ClearSessionsStopped(sessionIDs []string) {
 }
 
 func CloseHTTPSession(httpSessionID string) {
+	clearBridgeReadyFile(httpSessionID)
 	registry := mcpclient.GetSessionRegistry()
+	for _, mcpID := range registry.MCPSessionsForHTTPSession(httpSessionID) {
+		clearBridgeReadyFile(mcpID)
+	}
 	registry.CloseHTTPSession(httpSessionID)
 }
 

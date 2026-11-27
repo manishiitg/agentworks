@@ -13,6 +13,7 @@ import (
 	"github.com/manishiitg/mcpagent/agent/codeexec"
 	"github.com/manishiitg/mcpagent/llm"
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
+	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
@@ -1215,5 +1216,91 @@ func TestStableBridgeSlotRebindsMainWithoutChangingChildScope(t *testing.T) {
 		if err != nil || got != tc.want {
 			t.Fatalf("scoped routing got %q, %v want %q", got, err, tc.want)
 		}
+	}
+}
+
+func TestIsVirtualToolIncludesSearchTools(t *testing.T) {
+	if !isVirtualTool("search_tools") {
+		t.Fatal("expected search_tools to be recognized as a virtual tool")
+	}
+	if !isVirtualTool("get_api_spec") {
+		t.Fatal("expected get_api_spec to be recognized as a virtual tool")
+	}
+	if isVirtualTool("execute_shell_command") {
+		t.Fatal("custom tool must not be classified as virtual")
+	}
+}
+
+func TestBuildBridgeMCPConfigPreservesLiveReadyFileUntilCloseSession(t *testing.T) {
+	t.Setenv("MCP_BRIDGE_BINARY", "/usr/local/bin/mcpbridge")
+	t.Setenv("MCP_API_URL", "http://localhost:8080")
+	t.Setenv("MCP_API_TOKEN", "test-token-123")
+
+	sessionID := "sess-preserve-ready-file"
+	t.Cleanup(func() { CloseSession(sessionID) })
+
+	agent := bridgeTestAgent()
+	agent.sessionID = sessionID
+	agent.codingAgentWorkingDir = t.TempDir()
+
+	// Build 1 creates the path and removes any stale leftover marker.
+	if _, err := agent.buildBridgeMCPConfig(); err != nil {
+		t.Fatalf("first buildBridgeMCPConfig() error: %v", err)
+	}
+	readyPath := agent.bridgeReadyFile
+	if readyPath == "" {
+		t.Fatal("expected non-empty bridgeReadyFile")
+	}
+	// Simulate live mcpbridge writing the marker after tools/list.
+	if err := os.WriteFile(readyPath, []byte("ready\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Build 2 for the same live session must preserve the marker on disk.
+	if _, err := agent.buildBridgeMCPConfig(); err != nil {
+		t.Fatalf("second buildBridgeMCPConfig() error: %v", err)
+	}
+	if _, err := os.Stat(readyPath); err != nil {
+		t.Fatalf("live MCP_READY_FILE was deleted by second buildBridgeMCPConfig: %v", err)
+	}
+	// CloseSession removes the marker and resets tracking so a future cold launch starts fresh.
+	CloseSession(sessionID)
+	if _, err := os.Stat(readyPath); !os.IsNotExist(err) {
+		t.Fatalf("CloseSession should remove the session ready marker, stat err=%v", err)
+	}
+	// Put a stale marker back on disk after CloseSession; next fresh build must clear it.
+	if err := os.WriteFile(readyPath, []byte("stale\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agent.buildBridgeMCPConfig(); err != nil {
+		t.Fatalf("fresh buildBridgeMCPConfig() after CloseSession error: %v", err)
+	}
+	if _, err := os.Stat(readyPath); !os.IsNotExist(err) {
+		t.Fatalf("fresh build after CloseSession should clear stale marker, stat err=%v", err)
+	}
+}
+
+func TestNewAgentConnectionWithSessionRefusesStoppedLogicalSession(t *testing.T) {
+	sessionID := "stopped-logical-session-test"
+	MarkSessionsStopped([]string{sessionID})
+	t.Cleanup(func() { ClearSessionsStopped([]string{sessionID}) })
+
+	cfgPath := filepath.Join(t.TempDir(), "mcp.json")
+	cfg := &mcpclient.MCPConfig{
+		MCPServers: map[string]mcpclient.MCPServerConfig{
+			"dummy": {URL: "http://127.0.0.1:1/mcp", Protocol: mcpclient.ProtocolHTTP},
+		},
+	}
+	if err := mcpclient.SaveConfig(cfgPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	clients, _, _, _, _, connected, _, err := NewAgentConnectionWithSession(
+		context.Background(), nil, "dummy", cfgPath, sessionID, "trace-1", nil, loggerv2.NewNoop(), true, nil, "",
+	)
+	if err != nil {
+		t.Fatalf("unexpected top-level error: %v", err)
+	}
+	if len(clients) != 0 || len(connected) != 0 {
+		t.Fatalf("stopped session must not connect or borrow pooled servers: clients=%v connected=%v", clients, connected)
 	}
 }

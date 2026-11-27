@@ -212,6 +212,21 @@ func (cm *CacheManager) Get(cacheKey string) (*CacheEntry, bool) {
 	return entry, true
 }
 
+// PutMemory stores a cache entry in memory only (without persisting a file to
+// disk). Used for short-lived session-scoped runtime configs (such as Vault
+// delegations) whose keys rotate per session/token and should not accumulate
+// per-session files on disk.
+func (cm *CacheManager) PutMemory(entry *CacheEntry, config mcpclient.MCPServerConfig) {
+	if cm == nil || entry == nil {
+		return
+	}
+	cacheKey := GenerateUnifiedCacheKey(entry.ServerName, config)
+	cm.cache.Store(cacheKey, entry)
+	if cm.logger != nil {
+		cm.logger.Debug("PutMemory: Stored in memory cache", loggerv2.String("server", entry.ServerName))
+	}
+}
+
 // Put stores a cache entry using configuration-aware cache key
 func (cm *CacheManager) Put(entry *CacheEntry, config mcpclient.MCPServerConfig) error {
 	cm.logger.Debug("Put: Storing cache entry", loggerv2.String("server", entry.ServerName))

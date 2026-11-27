@@ -25,7 +25,9 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/mcpagent/executor"
+	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/mcpagent/mcpclient"
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 type vaultRuntimeTool struct {
@@ -791,6 +793,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 				if row.Name != vaultSelectionName(runtimeName) {
 					continue
 				}
+				seedVaultRuntimeToolsCache(api.logger, runtimeName, cfg, row.Tools)
 				for _, tool := range row.Tools {
 					_, short, ok := strings.Cut(tool.Name, "__")
 					if ok {
@@ -805,6 +808,54 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 		selected = []string{mcpclient.NoServers}
 	}
 	return selected, scoped, aliases, nil
+}
+
+// seedVaultRuntimeToolsCache populates mcpcache in memory from the live,
+// actor-scoped Vault inventory returned by scopeAgentMCP so agent startup can
+// lazily defer the HTTP MCP handshake until the first actual tool call instead
+// of re-running initialize + tools/list on every turn. Live tool calls still
+// recheck grants and argument rules at the gateway.
+func seedVaultRuntimeToolsCache(logger loggerv2.Logger, runtimeName string, cfg mcpclient.MCPServerConfig, tools []vaultRuntimeTool) {
+	if runtimeName == "" || len(tools) == 0 {
+		return
+	}
+	mcpTools := make([]mcp.Tool, 0, len(tools))
+	for _, t := range tools {
+		if strings.TrimSpace(t.Name) == "" {
+			continue
+		}
+		var inputSchema mcp.ToolInputSchema
+		if len(t.InputSchema) > 0 {
+			_ = json.Unmarshal(t.InputSchema, &inputSchema)
+		}
+		if inputSchema.Type == "" {
+			inputSchema.Type = "object"
+		}
+		mcpTools = append(mcpTools, mcp.Tool{
+			Name:        t.Name,
+			Description: t.Description,
+			InputSchema: inputSchema,
+		})
+	}
+	if len(mcpTools) == 0 {
+		return
+	}
+	llmTools, err := mcpclient.ToolsAsLLM(mcpTools)
+	if err != nil || len(llmTools) == 0 {
+		return
+	}
+	if logger == nil {
+		logger = loggerv2.NewNoop()
+	}
+	cache := mcpcache.GetCacheManager(logger)
+	cache.PutMemory(&mcpcache.CacheEntry{
+		ServerName: runtimeName,
+		Tools:      llmTools,
+		CreatedAt:  time.Now(),
+		TTLMinutes: cache.GetTTL(),
+		Protocol:   string(cfg.GetProtocol()),
+		IsValid:    true,
+	}, cfg)
 }
 
 // Kept separate from management authorization: ordinary product users consume

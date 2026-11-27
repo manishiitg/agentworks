@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
 // call_tool must reach a discovered tool on exactly the route, deadline and
 // session header a direct call uses, and refuse names that would leave it.
@@ -14,6 +17,13 @@ func TestCallToolTargetUsesDirectRoute(t *testing.T) {
 	target, args, err = callToolTarget(def, map[string]any{"tool_name": "create_issue", "server_name": "github", "arguments": `{"title":"x"}`})
 	if err != nil || target.Type != "mcp" || target.Server != "github" || args["title"] != "x" {
 		t.Fatalf("mcp target = %+v args=%v err=%v", target, args, err)
+	}
+	// Virtual tools route to /tools/virtual/{name} so X-Virtual-Scope-ID is forwarded.
+	for _, vt := range []string{"search_tools", "get_api_spec"} {
+		target, _, err = callToolTarget(def, map[string]any{"tool_name": vt})
+		if err != nil || target.Type != "virtual" || target.Name != vt {
+			t.Fatalf("virtual target(%s) = %+v err=%v", vt, target, err)
+		}
 	}
 	// A connected-app name finds its app without server_name (PLAT-856).
 	target, _, err = callToolTarget(def, map[string]any{"tool_name": "notion__notion-fetch"})
@@ -32,5 +42,15 @@ func TestCallToolTargetUsesDirectRoute(t *testing.T) {
 		if _, _, err := callToolTarget(def, bad); err == nil {
 			t.Fatalf("callToolTarget(%v) accepted", bad)
 		}
+	}
+}
+
+func TestReadBridgeResponseBodyEnforcesLimit(t *testing.T) {
+	body, err := readBridgeResponseBody(bytes.NewReader([]byte("hello")), 5)
+	if err != nil || string(body) != "hello" {
+		t.Fatalf("exact limit failed: body=%q err=%v", string(body), err)
+	}
+	if _, err := readBridgeResponseBody(bytes.NewReader([]byte("hello!")), 5); err == nil {
+		t.Fatal("expected error when bridge response exceeds limit")
 	}
 }
