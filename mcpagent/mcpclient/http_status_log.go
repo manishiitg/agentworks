@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+
+	"github.com/manishiitg/mcpagent/oauth"
 )
 
 // lastRefusals holds the latest error answer of each MCP server URL (host+path), so a failed connect can say what
@@ -79,6 +81,43 @@ func withStatusLogging(client *http.Client) *http.Client {
 		base = http.DefaultTransport
 	}
 	out.Transport = statusLoggingTransport{base: base}
+	return out
+}
+
+// oauthBearerTransport fetches the current OAuth access token (refreshing when
+// expired) on every request so pooled HTTP/SSE clients never stay pinned to a
+// stale initial Bearer header.
+type oauthBearerTransport struct {
+	base    http.RoundTripper
+	manager *oauth.Manager
+}
+
+func (t oauthBearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	token, err := t.manager.GetAccessToken(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	cloned := r.Clone(r.Context())
+	cloned.Header.Set("Authorization", "Bearer "+token)
+	return t.base.RoundTrip(cloned)
+}
+
+// withOAuthBearer returns a copy of client (or a default one) whose transport
+// injects a fresh OAuth Bearer token from mgr on each outgoing request.
+func withOAuthBearer(client *http.Client, mgr *oauth.Manager) *http.Client {
+	if mgr == nil {
+		return client
+	}
+	out := &http.Client{}
+	if client != nil {
+		copied := *client
+		out = &copied
+	}
+	base := out.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	out.Transport = oauthBearerTransport{base: base, manager: mgr}
 	return out
 }
 

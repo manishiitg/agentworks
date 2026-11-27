@@ -341,10 +341,13 @@ func (a *Agent) buildBridgeMCPConfig() (string, error) {
 		}
 		bridgeEnv["MCP_TOOL_OUTPUT_DIR"] = toolOutputDir
 	}
-	// Route mcpbridge stderr to a log file for debugging startup/crash issues.
+	// Route mcpbridge stderr to a user-private log file for debugging startup/crash issues.
 	// Claude Code swallows the subprocess stderr, so without this there is no
 	// record of why the bridge failed (e.g. an unreadable MCP_TOOLS_FILE, parse errors, crashes).
-	bridgeEnv["MCP_BRIDGE_LOG"] = os.TempDir() + "/mcpbridge.log"
+	bridgeLogDir := filepath.Join(os.TempDir(), fmt.Sprintf("agentworks-bridge-%d", os.Getuid()))
+	if err := os.MkdirAll(bridgeLogDir, 0o700); err == nil {
+		bridgeEnv["MCP_BRIDGE_LOG"] = filepath.Join(bridgeLogDir, "mcpbridge.log")
+	}
 	// A marker belongs to one chat, not the most recent chat in a workspace.
 	// Other chats cannot satisfy or delete this chat's readiness signal.
 	a.bridgeReadyFile = ""

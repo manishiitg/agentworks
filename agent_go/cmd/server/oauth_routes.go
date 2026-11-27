@@ -83,20 +83,26 @@ func closePlatformMCPConnection(serverName string) {
 }
 
 func deriveOAuthRedirectURI(r *http.Request) string {
-	if publicURL := os.Getenv("PUBLIC_URL"); publicURL != "" {
-		return fmt.Sprintf("%s/api/oauth/callback", strings.TrimRight(publicURL, "/"))
+	if publicURL := strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_URL")), "/"); publicURL != "" {
+		return fmt.Sprintf("%s/api/oauth/callback", publicURL)
 	}
 
 	scheme := "http"
 	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
-		scheme = strings.TrimSpace(strings.Split(proto, ",")[0])
+		candidate := strings.ToLower(strings.TrimSpace(strings.Split(proto, ",")[0]))
+		if candidate == "http" || candidate == "https" {
+			scheme = candidate
+		}
 	} else if r.TLS != nil {
 		scheme = "https"
 	}
 
-	host := r.Host
+	host := strings.TrimSpace(r.Host)
 	if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
-		host = strings.TrimSpace(strings.Split(forwardedHost, ",")[0])
+		candidate := strings.TrimSpace(strings.Split(forwardedHost, ",")[0])
+		if candidate != "" && !strings.ContainsAny(candidate, " \t\r\n/\\@?#") {
+			host = candidate
+		}
 	}
 
 	return fmt.Sprintf("%s://%s/api/oauth/callback", scheme, host)
@@ -570,7 +576,7 @@ func (api *StreamingAPI) runOAuthFlow(sessionID, redirectURI string, target oaut
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 
-		api.logger.Info(fmt.Sprintf("⏳ Waiting for OAuth callback for %s (state: %s)", serverName, state))
+		api.logger.Info(fmt.Sprintf("⏳ Waiting for OAuth callback for %s", serverName))
 
 		// Wait for authorization code from callback
 		var code string

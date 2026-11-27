@@ -57,13 +57,47 @@ func ReadTokenFile(path string) ([]byte, error) {
 	return data, nil
 }
 
+// writeFileAtomic writes data to path via a 0600 temp file in the same
+// directory and atomically renames it into place so concurrent readers never
+// observe a truncated or partially written credential file.
+func writeFileAtomic(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
+}
+
 // WriteTokenFile writes a credential file (a token, a client registration)
 // owner-only, sealing it when a sealer claims the path.
 func WriteTokenFile(path string, data []byte) error {
 	path = ExpandTokenPath(path)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
 	if sealer := sealerFor(path); sealer != nil {
 		sealed, err := sealer.Seal(path, data)
 		if err != nil {
@@ -71,7 +105,7 @@ func WriteTokenFile(path string, data []byte) error {
 		}
 		data = sealed
 	}
-	return os.WriteFile(path, data, 0o600)
+	return writeFileAtomic(path, data)
 }
 
 // TokenStore manages persistent storage of OAuth tokens
@@ -89,16 +123,10 @@ func NewTokenStore(filePath string) *TokenStore {
 	}
 }
 
-// Save saves a token to the file with secure permissions (0600)
+// Save saves a token to the file atomically with secure permissions (0600)
 func (ts *TokenStore) Save(token *oauth2.Token) error {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-
-	// Ensure directory exists
-	dir := filepath.Dir(ts.filePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("failed to create token directory: %w", err)
-	}
 
 	// Marshal token to JSON
 	data, err := json.MarshalIndent(token, "", "  ") //nolint:gosec // persisting the token to its own 0600 file is this store's purpose
@@ -112,9 +140,8 @@ func (ts *TokenStore) Save(token *oauth2.Token) error {
 		}
 	}
 
-	// Write with secure permissions (owner read/write only)
-	//nolint:gosec // G306: We intentionally set 0600 permissions for security
-	if err := os.WriteFile(ts.filePath, data, 0600); err != nil {
+	// Write atomically with owner-only permissions (0600)
+	if err := writeFileAtomic(ts.filePath, data); err != nil {
 		return fmt.Errorf("failed to write token file: %w", err)
 	}
 

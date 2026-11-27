@@ -98,3 +98,43 @@ func TestLocalCommandConnection(t *testing.T) {
 		}
 	}
 }
+
+func TestPersonalVaultNonOAuthConnectorsScopedPerVault(t *testing.T) {
+	st := store.NewMemoryStore()
+	st.AddWorkspace(store.Workspace{ID: "w"})
+	for _, id := range []string{"alice", "bob"} {
+		st.AddUser(store.User{ID: id, WorkspaceID: "w", Email: id + "@example.com"})
+	}
+	vAlice, _ := st.EnsurePersonalVault("w", "alice", "v-alice")
+	vBob, _ := st.EnsurePersonalVault("w", "bob", "v-bob")
+	a := &Admin{Store: st, WorkspaceID: "w"}
+
+	// Two users can each add a non-OAuth connector with the same provider and empty slug.
+	c1, err := a.addConnectorRowFor(vAlice, "linear", "Linear", "", "https://mcp.example.com/a")
+	if err != nil {
+		t.Fatalf("alice add failed: %v", err)
+	}
+	c2, err := a.addConnectorRowFor(vBob, "linear", "Linear", "", "https://mcp.example.com/b")
+	if err != nil {
+		t.Fatalf("bob add collided with alice's personal vault: %v", err)
+	}
+	if c1.ID == c2.ID || store.ConnectorNamespacePrefix(c1.Provider, c1.InstanceSlug) == store.ConnectorNamespacePrefix(c2.Provider, c2.InstanceSlug) {
+		t.Fatalf("expected distinct namespaces for alice (%+v) and bob (%+v)", c1, c2)
+	}
+
+	// Same user adding a duplicate in the same vault is still rejected.
+	if _, err := a.addConnectorRowFor(vAlice, "linear", "Linear 2", "", "https://mcp.example.com/a2"); err == nil {
+		t.Fatal("expected duplicate connector in same vault to be rejected")
+	}
+
+	// Explicit matching slug in a different vault also disambiguates rather than blocking.
+	if _, err := a.addConnectorRowFor(vAlice, "custom", "Custom", "prod", "https://mcp.example.com/c1"); err != nil {
+		t.Fatalf("alice explicit slug failed: %v", err)
+	}
+	if _, err := a.addConnectorRowFor(vBob, "custom", "Custom", "prod", "https://mcp.example.com/c2"); err != nil {
+		t.Fatalf("bob explicit slug collided with alice's personal vault: %v", err)
+	}
+	if _, err := a.addConnectorRowFor(vAlice, "custom", "Custom 2", "prod", "https://mcp.example.com/c3"); err == nil {
+		t.Fatal("expected duplicate explicit slug in same vault to be rejected")
+	}
+}

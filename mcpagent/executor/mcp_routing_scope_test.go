@@ -117,3 +117,24 @@ func TestMCPSessionCallNeverUsesAnotherAgentsGlobalClient(t *testing.T) {
 		t.Fatalf("a sessionless call ran through another agent's global client: %+v calls=%d", r, other.calls)
 	}
 }
+
+func TestMCPSessionScopeIgnoresOtherSessionsGlobalRegistry(t *testing.T) {
+	logger := loggerv2.NewNoop()
+	other := &routingClient{name: "other-session-server"}
+	codeexec.InitRegistry(map[string]mcpclient.ClientInterface{"other-srv": other}, nil, nil, logger)
+
+	registry := mcpclient.GetSessionRegistry()
+	sessionID := "session-with-own-scope"
+	own := &routingClient{name: "own-session-server"}
+	registry.StoreConnection(sessionID, "own-srv", own)
+	t.Cleanup(func() { registry.CloseSession(sessionID) })
+
+	h := NewExecutorHandlers("missing-config", logger)
+	res := callRoutingTool(t, h, sessionID, "other-srv", "search")
+	if res.Success || !strings.Contains(res.Error, "not available in this session's scope") {
+		t.Fatalf("expected session scope denial for other-srv, got: %+v", res)
+	}
+	if other.calls != 0 {
+		t.Fatalf("other session's global client was invoked: calls=%d", other.calls)
+	}
+}

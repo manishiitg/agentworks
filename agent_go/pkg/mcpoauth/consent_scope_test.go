@@ -95,3 +95,119 @@ func TestChallengeUsesResourceMetadataParameter(t *testing.T) {
 		t.Fatalf("WWW-Authenticate = %q, want %q", got, want)
 	}
 }
+
+func TestRefreshKeepsRefreshTokenStableAcrossRetries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "oauth.sqlite")
+	active := true
+	cfg := Config{
+		PublicURL:     "https://gateway.example",
+		ResourcePath:  "/mcp",
+		Scopes:        []string{"vault:mcp"},
+		AccessPrefix:  "aw_vault_",
+		RefreshPrefix: "aw_vault_refresh_",
+		GrantActive:   func(context.Context, Grant) bool { return active },
+	}
+	cfg.OpenStore = func() (*Store, error) { return OpenStore(path, cfg) }
+
+	st, err := cfg.OpenStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	redirect := "https://client.example/callback"
+	client, err := st.RegisterClient(context.Background(), "client", []string{redirect})
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier := strings.Repeat("b", 43)
+	hash := sha256.Sum256([]byte(verifier))
+	reqID, err := st.SaveRequest(context.Background(), AuthRequest{
+		ClientID: client.ID, RedirectURI: redirect, Resource: "https://gateway.example/mcp",
+		State: "s", Scopes: []string{"vault:mcp"},
+		Challenge: base64.RawURLEncoding.EncodeToString(hash[:]), ExpiresUnix: time.Now().Add(time.Minute).Unix(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, code, err := st.Decide(context.Background(), reqID, User{ID: "u1", Email: "u1@example.com"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grant, _, refresh1, err := st.ExchangeCode(context.Background(), code, client.ID, redirect, "https://gateway.example/mcp", verifier)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Repeated refreshes with the same refresh token must stay valid and keep the refresh token stable.
+	_, access2, refresh2, err := st.Refresh(context.Background(), refresh1, client.ID, "https://gateway.example/mcp")
+	if err != nil || refresh2 != refresh1 || access2 == "" {
+		t.Fatalf("first refresh failed: access=%q refreshMatch=%v err=%v", access2, refresh2 == refresh1, err)
+	}
+	_, access3, refresh3, err := st.Refresh(context.Background(), refresh1, client.ID, "https://gateway.example/mcp")
+	if err != nil || refresh3 != refresh1 || access3 == "" {
+		t.Fatalf("second refresh failed: access=%q refreshMatch=%v err=%v", access3, refresh3 == refresh1, err)
+	}
+	if _, err := st.Authenticate(context.Background(), access3); err != nil {
+		t.Fatalf("refreshed access token failed authenticate: %v", err)
+	}
+
+	// Inactive grant must be refused on refresh.
+	active = false
+	if _, _, _, err := st.Refresh(context.Background(), refresh1, client.ID, "https://gateway.example/mcp"); err == nil {
+		t.Fatal("expected refresh refusal when GrantActive returns false")
+	}
+
+	// Revoking the family still blocks refresh even if GrantActive is true again.
+	active = true
+	if err := st.RevokeFamily(context.Background(), grant.FamilyID, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := st.Refresh(context.Background(), refresh1, client.ID, "https://gateway.example/mcp"); err == nil {
+		t.Fatal("expected refresh refusal after family revocation")
+	}
+}
+
+func TestAuthenticateCLIEnforcesGrantActive(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cli-oauth.sqlite")
+	active := true
+	cfg := Config{
+		PublicURL:        "https://platform.example",
+		ResourcePath:     "/mcp",
+		Scopes:           []string{"vault:mcp"},
+		AccessPrefix:     "aw_vault_",
+		RefreshPrefix:    "aw_vault_refresh_",
+		CLIClientID:      "agentworks-cli",
+		CLIClientName:    "AgentWorks CLI",
+		CLIAccessPrefix:  "aw_cli_",
+		CLIRefreshPrefix: "aw_cli_refresh_",
+		CLIResourcePath:  "/cli",
+		CLIDefaultScopes: []string{"vault:mcp"},
+		GrantActive:      func(context.Context, Grant) bool { return active },
+	}
+	cfg.OpenStore = func() (*Store, error) { return OpenStore(path, cfg) }
+
+	st, err := cfg.OpenStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	deviceCode, verifyCode, err := st.CreateCLIDevice(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DecideCLIDevice(context.Background(), verifyCode, User{ID: "u1", Email: "u1@example.com"}, true); err != nil {
+		t.Fatal(err)
+	}
+	_, access, _, err := st.PollCLIDevice(context.Background(), deviceCode, "https://platform.example/cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := NewServer(cfg)
+	req := httptest.NewRequest(http.MethodGet, "https://platform.example/cli", nil)
+	if _, err := srv.AuthenticateCLI(context.Background(), req, access); err != nil {
+		t.Fatalf("expected active CLI grant to authenticate, got %v", err)
+	}
+	active = false
+	if _, err := srv.AuthenticateCLI(context.Background(), req, access); err == nil {
+		t.Fatal("expected inactive CLI grant to be rejected")
+	}
+}

@@ -460,6 +460,36 @@ func (r *SessionConnectionRegistry) GetServerConfig(sessionID, serverName string
 	return MCPServerConfig{}, false
 }
 
+// GetSessionScopedServers returns the server names explicitly registered
+// (connected or lazy-configured) for sessionID.
+func (r *SessionConnectionRegistry) GetSessionScopedServers(sessionID string) []string {
+	sessionConnsRaw, ok := r.sessions.Load(sessionID)
+	if !ok {
+		return nil
+	}
+	sessionConns := sessionConnsRaw.(*sessionConnections)
+	seen := make(map[string]struct{})
+	add := func(k, _ interface{}) bool {
+		if name, ok := k.(string); ok && name != "" {
+			if idx := strings.IndexByte(name, 0); idx > 0 {
+				name = name[:idx]
+			}
+			seen[name] = struct{}{}
+		}
+		return true
+	}
+	sessionConns.clients.Range(add)
+	sessionConns.pendingConfigs.Range(add)
+	if len(seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	return out
+}
+
 // CloseSession closes all connections for a session and removes it from registry.
 // Should be called when workflow/conversation ends.
 //
