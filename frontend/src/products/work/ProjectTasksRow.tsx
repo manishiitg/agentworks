@@ -150,12 +150,9 @@ export function ProjectTasksSummary({ row, storageKey, onAgent, onOpenTask, onOp
   const open = row.open_count || 0
   return <WorkspaceCompactGroup flush title="Project tasks" icon={ListChecks}
     detail={<>{needs ? <span className="text-amber-600 dark:text-amber-400">{needs} need{needs === 1 ? 's' : ''} you</span> : null}
-      {needs && open > needs ? ' · ' : ''}{open > needs || !needs ? `${open} open` : ''}</>}
-    preview={<button type="button" onClick={onOpenTasks} aria-label="Open Project tasks wide" title="Open wide"
-      className={`flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-background/40 hover:text-foreground ${ring}`}>
-      <Maximize2 aria-hidden="true" className="h-3 w-3"/>
-    </button>}>
-    <ProjectTasksPanel row={row} storageKey={storageKey} onAgent={onAgent} onOpenTask={onOpenTask}/>
+      {needs && open > needs ? ' · ' : ''}{open > needs || !needs ? `${open} open` : ''}</>}>
+    {/* The open-wide icon sits inside the open list, not on the row (owner, 27 Nov). */}
+    <ProjectTasksPanel row={row} storageKey={storageKey} onAgent={onAgent} onOpenTask={onOpenTask} onOpenWide={onOpenTasks}/>
   </WorkspaceCompactGroup>
 }
 
@@ -175,7 +172,7 @@ function useFolded(storageKey: string, groups: ProjectTaskGroup[]) {
 // The full Project tasks panel (#4294): the lead's focus line, Needs you, then
 // the lead's own groups in its order (Other for the rest), each foldable with a
 // done bar; filters by agent and step; the done list; the lead's controls.
-export function ProjectTasksPanel({ row, storageKey, onAgent, onOpenTask, wide = false }: { row: CrewPanelRow; storageKey: string; onAgent?: Draft; onOpenTask: (id: string) => void; wide?: boolean }) {
+export function ProjectTasksPanel({ row, storageKey, onAgent, onOpenTask, onOpenWide, wide = false }: { row: CrewPanelRow; storageKey: string; onAgent?: Draft; onOpenTask: (id: string) => void; onOpenWide?: () => void; wide?: boolean }) {
   const [agent, setAgent] = useState('')
   const [step, setStep] = useState('')
   const [showDone, setShowDone] = useState(false)
@@ -193,7 +190,7 @@ export function ProjectTasksPanel({ row, storageKey, onAgent, onOpenTask, wide =
     .filter(g => g.tasks.length)
   const select = `rounded-md border border-border bg-transparent px-1.5 py-0.5 text-[10.5px] text-foreground ${ring}`
   return <div className="space-y-1.5 px-0.5 pb-2 text-[11.5px]">
-    <Drive row={row} onAgent={onAgent}/>
+    <Drive row={row} onAgent={onAgent} onOpenWide={onOpenWide}/>
     {row.focus ? <p className="rounded-md bg-muted/60 px-2 py-1 text-[11.5px] text-foreground">{row.focus}</p> : null}
     {agents.length > 1 || (row.steps?.length || 0) > 2 ? <div className="flex flex-wrap items-center gap-1.5 px-1">
       {agents.length > 1 && <select aria-label="Filter by agent" value={agent} onChange={e => setAgent(e.target.value)} className={select}><option value="">Everyone</option>{agents.map(a => <option key={a} value={a}>{a}</option>)}</select>}
@@ -235,7 +232,7 @@ const modes = [{ id: 'off', label: 'Off', title: 'A plain list: nobody hands wor
 
 // Organise vs drive (owner, 27 Nov): the list is always there; whether an
 // agent runs it is one switch. The strip under it says what the lead is doing.
-function Drive({ row, onAgent }: { row: CrewPanelRow; onAgent?: Draft }) {
+function Drive({ row, onAgent, onOpenWide }: { row: CrewPanelRow; onAgent?: Draft; onOpenWide?: () => void }) {
   const mode = row.tasks_mode || 'auto'
   const lead = row.lead || 'The lead'
   const strip = 'flex items-center gap-2 rounded-md px-2 py-1 text-[10.5px]'
@@ -248,6 +245,8 @@ function Drive({ row, onAgent }: { row: CrewPanelRow; onAgent?: Draft }) {
           className={`border-border px-2 py-0.5 text-[10.5px] [&:not(:first-child)]:border-l ${mode === m.id ? 'bg-foreground text-background' : 'hover:bg-background/40'} ${ring}`}>{m.label}</button>)}
       </span> : <span className="shrink-0">{modes.find(m => m.id === mode)?.label}</span>}
       {onAgent && <LeadMenu row={row} onAgent={onAgent}/>}
+      {onOpenWide && <button type="button" onClick={onOpenWide} aria-label="Open Project tasks wide" title="Open wide"
+        className={`flex h-4 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-background/40 hover:text-foreground ${ring}`}><Maximize2 aria-hidden="true" className="h-3 w-3"/></button>}
     </div>
     {mode === 'off'
       ? <div className={`${strip} border border-dashed border-border text-muted-foreground`}><span className="min-w-0 flex-1">Not driven: a shared list you and agents keep up to date.</span>
