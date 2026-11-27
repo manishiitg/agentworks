@@ -8,6 +8,7 @@ import { CrewOnlineRow } from './CrewOnlineRow'
 import { YourComputerPanel } from './YourComputerPanel'
 import { openCrewAccess } from './MacSharedAgents'
 import { crewProjectMenuItems } from './crewProjectMenu'
+import { registerRemoteProject, unregisterRemoteProject } from '../../utils/remoteSessions'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 
@@ -81,6 +82,11 @@ it('local mode: no Slack bot, keeps My Slack account and Remote Control', () => 
     expect(items.find(item => item.id === 'mcp:online')?.group).toBe('Share')
     expect(items.find(item => item.id === 'mcp:agentbridge')?.group).toBe('Share')
     expect(items.find(item => item.id === 'mcp:slack-account')?.group).toBe('Integrations')
+    // A server project opened in the Mac app is always on the web: neither row (owner screenshot, 27 Nov).
+    registerRemoteProject('server-project', 'srv')
+    const server = crewProjectMenuItems({ panels, projectId: 'server-project' })
+    expect(server.find(item => item.id === 'mcp:online' || item.id === 'mcp:agentbridge')).toBeUndefined()
+    unregisterRemoteProject('server-project')
   } finally {
     runtimeWindow.__APP_RUNTIME_CONFIG__ = previous
   }

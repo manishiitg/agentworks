@@ -6,6 +6,7 @@ import { isLocalDeployment } from '../productSurfaceConfig'
 import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { PROJECT_MENU_GROUPS } from '../../components/workspace/projectMenuGroups'
 import { hasDesktopConnections } from '../../stores/useConnectedWorkStore'
+import { remoteProjectConnection } from '../../utils/remoteSessions'
 
 export const CREW_MENU_GROUPS = PROJECT_MENU_GROUPS
 export type CrewMenuGroup = typeof CREW_MENU_GROUPS[number]
@@ -15,7 +16,7 @@ export type CrewMenuItem = {
 }
 
 /** One inventory for the Crew menu and panel search. All old feature gates apply. */
-export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, incomingEmail = false }: {
+export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, incomingEmail = false, projectId }: {
   panels: ProductPanel<WorkWorkspaceView>[]; allowedProducts?: string[] | null; enabledPanels?: Set<string>
   incomingEmail?: boolean; canShare?: boolean; projectId?: string
 }): CrewMenuItem[] {
@@ -38,10 +39,12 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     // Online, how everyone else reaches it (Mac online, Online agents); your agents and actions are Team › Agents. Each opens its own page.
     add('mcp', 'Share', 'Team', UsersRound, 'team')
     // Remote Control turns on reaching a Mac project from your phone; a server project is always on the web,
-    // so the row shows only on the Mac (owner, 25 Nov: "on server i see.. phone why").
-    if (isLocalDeployment()) add('mcp', 'Share', 'Remote Control', Globe, 'online')
+    // so the row shows only for a project on this Mac (owner, 25 Nov: "on server i see.. phone why"). A server project
+    // opened in the Mac app shows its panel as on the website, without either row (owner, 27 Nov).
+    const onThisMac = isLocalDeployment() && !remoteProjectConnection(projectId)
+    if (onThisMac) add('mcp', 'Share', 'Remote Control', Globe, 'online')
     // AgentBridge is its own row and page beside Remote Control (owner, 27 Nov), not a tab inside it.
-    if (isLocalDeployment()) add('mcp', 'Share', 'AgentBridge', Cable, 'agentbridge')
+    if (onThisMac) add('mcp', 'Share', 'AgentBridge', Cable, 'agentbridge')
     add('mcp', 'Share', 'Artifacts', LayoutDashboard, 'artifacts')
     // The Slack bot row opens Connections → Slack bot on server projects (owner, 14 Nov).
     // Local Mac projects keep Slack as me only (owner, 25 Nov).
