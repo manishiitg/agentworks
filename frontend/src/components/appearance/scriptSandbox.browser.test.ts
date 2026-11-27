@@ -84,6 +84,6 @@ it.skipIf(!chrome)('keeps actual Worker scripts opaque/offline and kills an infi
   console.log('VERIFY-METRIC: real Chromium opaque/offline Worker, stalled-loop termination, reduced-motion still frame: PASS')
  }finally{
   ws?.close();browser.kill();await new Promise<void>(resolve=>{if(browser.exitCode!==null)resolve();else{browser.once('exit',()=>resolve());setTimeout(resolve,3000)}})
-  await new Promise<void>(resolve=>server.close(()=>resolve()));await rm(dir,{recursive:true,force:true})
+  await new Promise<void>(resolve=>server.close(()=>resolve()));await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:200})
  }
 },30000)
