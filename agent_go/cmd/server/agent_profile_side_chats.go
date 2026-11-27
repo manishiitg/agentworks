@@ -512,6 +512,20 @@ func chatModelDisplayLabel(runtime agentprofiles.RuntimePolicy, engine, modelID 
 	return label + " · " + model
 }
 
+// newProjectChatModel is the model a project made on the New project page starts on (defaultCrewLLMConfig), or nil.
+func newProjectChatModel(profile agentprofiles.Profile) map[string]string {
+	config := defaultCrewLLMConfig(profile)
+	builder, _ := config["builder_llm"].(map[string]interface{})
+	provider, _ := builder["provider"].(string)
+	if provider == "" {
+		return nil
+	}
+	model, _ := builder["model_id"].(string)
+	options, _ := builder["options"].(map[string]interface{})
+	effort, _ := options["reasoning_effort"].(string)
+	return map[string]string{"display_label": chatModelDisplayLabel(profileWithProductDefault(context.Background(), profile).Runtime, provider, model), "reasoning_effort": effort}
+}
+
 // handleAgentProfileChatModels lists (GET ?project_id=) or sets (POST) the model of each chat of one project: the
 // main chat and its tabs. Only the person whose chats they are changes them, by hand (owner, 2026-10-19).
 func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *http.Request) {
@@ -531,6 +545,20 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 			return
 		}
 		projectID, input = strings.TrimSpace(body.ProjectID), body.AgentProfileChatModel
+	}
+	// The New project page, before any project exists: the model a new project starts on (#4472).
+	if r.Method == http.MethodGet && projectID == "" && api.agentProfiles != nil {
+		profile, err := api.agentProfiles.Resolve(strings.TrimSpace(mux.Vars(r)["id"]), 0, productWorkspaceUserID(r.Context()))
+		if err != nil || !userAllowedProduct(GetUserFromContext(r.Context()), profile.Product) {
+			writeAgentProfileError(w, http.StatusNotFound, "agent profile not found")
+			return
+		}
+		response := map[string]any{}
+		if model := newProjectChatModel(profile); model != nil {
+			response["new_chat_model"] = model
+		}
+		writeAgentProfileJSON(w, http.StatusOK, response)
+		return
 	}
 	// Phase timings: a reasoning change on server C took 14 s with no log of where (PLAT-872-76).
 	started := time.Now()
@@ -671,8 +699,12 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 		recordsDone.Sub(saveDone).Round(time.Millisecond), time.Since(recordsDone).Round(time.Millisecond))
 	response := map[string]any{"chat_models": out, "effective_chat_models": effective, "can_open_models": slot.canBuild}
 	// The model a new chat starts on, shown on the project's start page before any chat exists (#4439).
-	if row, err := effectiveProfileChatModel(slot.profile, slot.binding, ProductConversationRecord{ConversationKey: projectID + codeChatSideMarker + "new"}, ProductAgentIdentity{}); err == nil {
+	// The chat does not exist yet: a placeholder session in the project's folder lets the model resolve as for a real one.
+	preview := ProductConversationRecord{ConversationKey: projectID + codeChatSideMarker + "new", SessionID: "new-chat-preview", WorkspacePath: slot.binding.WorkspacePath}
+	if row, err := effectiveProfileChatModel(slot.profile, slot.binding, preview, ProductAgentIdentity{}); err == nil {
 		response["new_chat_model"] = map[string]string{"display_label": chatModelDisplayLabel(slot.profile.Runtime, row.Engine, row.ModelID), "reasoning_effort": row.ReasoningEffort}
+	} else {
+		log.Printf("[CHAT_MODELS] project=%s new chat model unavailable: %v", projectID, err)
 	}
 	writeAgentProfileJSON(w, http.StatusOK, response)
 }

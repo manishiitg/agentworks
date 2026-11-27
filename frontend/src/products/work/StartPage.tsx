@@ -40,11 +40,12 @@ export function StartPage({ mode, place, projectId, projectFolder, canChooseFold
   const under = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   useEffect(() => { input.current?.focus() }, [])
-  // The server says which model the project's first chat starts on.
+  // The server says which CLI and model the first chat starts on.
   useEffect(() => {
-    if (mode !== 'project' || !projectId) return
     let active = true
-    void agentApi.getAgentProfileChatModelState('work', projectId).then(data => { if (active) setModel(data.new_chat_model) }).catch(() => {})
+    if (mode === 'project' && projectId) void agentApi.getAgentProfileChatModelState('work', projectId).then(data => { if (active) setModel(data.new_chat_model) }).catch(() => {})
+    // New project: the model a new project starts on.
+    else if (mode === 'new') void api.get('/api/agent-profiles/work/chat-models').then(({ data }) => { if (active) setModel(data?.new_chat_model) }).catch(() => {})
     return () => { active = false }
   }, [mode, projectId])
   useEffect(() => {
