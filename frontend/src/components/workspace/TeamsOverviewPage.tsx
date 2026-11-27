@@ -57,7 +57,7 @@ function TeamCard({ c, period }: { c: Card; period: 'day' | 'week' }) {
 
 function PersonCard({ p, multi }: { p: TeamOverviewPerson; multi: boolean }) {
   return <div className={card}>
-    <div className="flex min-w-0 items-center gap-2"><Face name={p.person} working={p.working > 0} /><span className="min-w-0 flex-1 truncate text-sm font-semibold">{p.person}{multi && p.network ? <span className="font-normal text-muted-foreground"> · {p.network}</span> : null}</span><Status working={p.working ? `${p.working} working` : undefined} quiet={p.last ? timeAgo(p.last.at) : undefined} /></div>
+    <div className="flex min-w-0 items-center gap-2"><Face name={p.person} working={p.working > 0} /><span className="min-w-0 flex-1 truncate text-sm font-semibold">{p.person}{multi && p.network ? <span className="font-normal text-muted-foreground"> · {p.network}</span> : null}</span><Status working={p.working ? 'working' : undefined} quiet={p.last ? timeAgo(p.last.at) : undefined} /></div>
     {(p.done || p.teams.length > 0) && <p className={`ml-6 ${sub}`}>{[p.done, p.teams.join(', ')].filter(Boolean).join(' · ')}</p>}
     {p.now.map((n, i) => <p key={i} className={`ml-6 ${sub}`}>{`${n.agent}${n.title ? ` — “${n.title}”` : ''}${n.team ? ` · ${n.team}` : ''}`}</p>)}
   </div>

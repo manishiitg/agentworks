@@ -99,7 +99,8 @@ func TestCrewTeamMonitorWorkSummaryIsBoundedAndQuietRecencyIsReal(t *testing.T) 
 	if work.LastWorkedAt != live.lastWorkedAt.Format(time.RFC3339Nano) {
 		t.Fatal("snapshot time replaced real activity and would shuffle active Teams")
 	}
-	if work.Working != 3 || work.Label != "3 working" {
+	// Owner, 27 Nov: the Team menu counts people, not agents; one person with three agents is one person working.
+	if work.Working != 1 || work.Label != "1 person working" {
 		t.Fatalf("not a compact Team summary: %+v", work)
 	}
 	live.Agents = nil
