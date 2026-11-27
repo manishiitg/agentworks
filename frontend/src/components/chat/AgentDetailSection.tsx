@@ -5,7 +5,7 @@ import { useId, useState, type ReactNode } from 'react'
 export function AgentDetailSection({ title, value, summary, defaultOpen = false, children }: { title: string; value?: string; summary?: ReactNode; defaultOpen?: boolean; children: ReactNode }) {
   const id = useId()
   const [open, setOpen] = useState(defaultOpen)
-  return <section className="min-w-0 border-t border-border pt-0.5">
+  return <section className="min-w-0 border-t border-border pt-0.5 first:border-t-0 first:pt-0">
     <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}
       className="flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md px-1 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11">
       <span className="shrink-0 font-medium">{title}</span>
