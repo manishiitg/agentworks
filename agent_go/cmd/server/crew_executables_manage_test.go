@@ -118,8 +118,9 @@ func TestCrewWorkflowRenameAndDeleteStayInsideTheCrew(t *testing.T) {
 
 // Rename and delete need the same edit access as creating a workflow.
 func TestCrewWorkflowRenameAndDeleteNeedEditAccess(t *testing.T) {
-	svc, _, ctx := newCrewCreationTestEnv(t)
+	// Local mode first: the setup saves the mode's default browser, and local mode refuses the server's (#3324).
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	svc, _, ctx := newCrewCreationTestEnv(t)
 	t.Setenv("AGENT_PRODUCTS", "work,agentworks")
 	directory := withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","role":"creator"}]}`)
 	crew, err := svc.CreateCrewProject(ctx, CreateCrewRequest{UserID: "owner", WorkflowPath: "Workflow/build", Title: "Reports", Purpose: "Run reports", IdempotencyKey: "edit-access"})

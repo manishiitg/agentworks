@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -176,6 +177,15 @@ func workCrewTestProfile(providerOptions []agentprofiles.ProviderOption) agentpr
 func newCrewCreationTestEnvWithOptions(t *testing.T, providerOptions []agentprofiles.ProviderOption) (*ProjectActionDispatcher, *mockWorkspaceAPI, context.Context) {
 	t.Helper()
 	ensureProjectStateRoot(t)
+	// Project creation writes real folders; without its own workspace it resolved against the host's default
+	// docs folder and was refused ("path leaves the workspace", #3324).
+	if strings.TrimSpace(os.Getenv("WORKSPACE_DOCS_PATH")) == "" {
+		docs, err := filepath.EvalSymlinks(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("WORKSPACE_DOCS_PATH", docs)
+	}
 	t.Setenv("MULTI_USER_MODE", "true")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true}]}`)
 	registry := agentprofiles.NewRegistry()
