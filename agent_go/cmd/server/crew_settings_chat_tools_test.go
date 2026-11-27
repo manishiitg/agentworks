@@ -55,7 +55,8 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			binding, canBuild, err := resolveConversationBindingForUser(ctx, claims.UserID, profile, "team")
+			// #4238: a project has no implicit Main chat any more (#4046); the caller works in their own named chat.
+			binding, canBuild, err := resolveConversationBindingForUser(ctx, claims.UserID, profile, "team"+codeChatSideMarker+person+"-tab")
 			if err != nil || !canBuild {
 				t.Fatalf("binding: %v %t", err, canBuild)
 			}
