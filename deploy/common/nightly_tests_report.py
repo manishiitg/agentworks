@@ -291,10 +291,11 @@ def _fmt_duration(seconds: int | float) -> str:
 
 
 def format_github_comment(diff: dict[str, Any], include_baseline: bool = False) -> str | None:
-    """Format a GitHub comment for #4340.
+    """Format a public-safe GitHub issue/comment body.
 
-    Returns None when there are no new failures to report (quiet when nothing
-    regressed since the previous run).
+    Never includes build-host filesystem paths or raw test output snippets so
+    host paths, addresses and account names cannot leak to the public repo.
+    Returns None when there are no new failures to report.
     """
     sha = _short_sha(diff.get("sha", ""))
     prev_sha = _short_sha(diff.get("previous_sha", ""))
@@ -303,7 +304,6 @@ def format_github_comment(diff: dict[str, Any], include_baseline: bool = False) 
     skipped = diff.get("skipped_count", 0)
     pkgs = diff.get("packages_tested", 0)
     dur = _fmt_duration(diff.get("duration_seconds", 0))
-    log_path = diff.get("log_path", "")
 
     if diff.get("is_baseline"):
         if not include_baseline:
@@ -322,9 +322,6 @@ def format_github_comment(diff: dict[str, Any], include_baseline: bool = False) 
             lines.append("#### Untracked failures on initial baseline")
             for item in untracked:
                 lines.append(f"- `{item['package']}` · `{item['test']}`")
-                if item.get("snippet"):
-                    first_line = item["snippet"].splitlines()[-1]
-                    lines.append(f"  > `{first_line[:220]}`")
         if tracked:
             by_issue: dict[str, list[str]] = defaultdict(list)
             for item in tracked:
@@ -332,11 +329,8 @@ def format_github_comment(diff: dict[str, Any], include_baseline: bool = False) 
             summary = ", ".join(f"{iss} ({len(tests)})" for iss, tests in sorted(by_issue.items()))
             lines.append("")
             lines.append(f"Tracked failures recorded in baseline: {summary}.")
-        if log_path:
-            lines.append("")
-            lines.append(f"Build-host log: `{log_path}`")
         lines.append("")
-        lines.append("Future nightly runs will comment here only when failures appear that were not failing in the previous run.")
+        lines.append("Future nightly runs will open a new issue only when failures appear that were not failing in the previous run.")
         return "\n".join(lines) + "\n"
 
     new_failures = diff.get("new_failures") or []
@@ -356,21 +350,34 @@ def format_github_comment(diff: dict[str, Any], include_baseline: bool = False) 
     for item in new_failures:
         known = f" *(known: {item['known_issue']})*" if item.get("known_issue") else ""
         lines.append(f"- `{item['package']}` · `{item['test']}`{known}")
-        snippet = (item.get("snippet") or "").strip()
-        if snippet:
-            lines.append("  ```text")
-            for sline in snippet.splitlines():
-                lines.append(f"  {sline}")
-            lines.append("  ```")
     if resolved:
         shown = ", ".join(f"`{k}`" for k in resolved[:10])
         more = f" (+{len(resolved) - 10} more)" if len(resolved) > 10 else ""
         lines.append("")
         lines.append(f"Resolved since previous run ({len(resolved)}): {shown}{more}")
-    if log_path:
-        lines.append("")
-        lines.append(f"Full failing test log on build host: `{log_path}`")
+    lines.append("")
+    lines.append("Reproduce with `./deploy.sh verify` naming the failing test(s) above, or inspect the private nightly failure log.")
     return "\n".join(lines) + "\n"
+
+
+def format_github_issue(diff: dict[str, Any], include_baseline: bool = False) -> dict[str, str] | None:
+    """Format a public-safe GitHub issue payload {title, body} for new failures."""
+    body = format_github_comment(diff, include_baseline=include_baseline)
+    if not body:
+        return None
+    sha = _short_sha(diff.get("sha", ""))
+    if diff.get("is_baseline"):
+        title = f"Nightly server tests: initial baseline on {sha}"
+    else:
+        new_failures = diff.get("new_failures") or []
+        if len(new_failures) == 1:
+            test_name = new_failures[0].get("test") or new_failures[0].get("package") or "test"
+            if len(test_name) > 80:
+                test_name = test_name[:77] + "..."
+            title = f"Nightly server tests: {test_name} failed on {sha}"
+        else:
+            title = f"Nightly server tests: {len(new_failures)} new failures on {sha}"
+    return {"title": title, "body": body}
 
 
 def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -447,6 +454,24 @@ def cmd_format_comment(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_format_issue(args: argparse.Namespace) -> int:
+    raw = sys.stdin.read() if args.report_json == "-" else Path(args.report_json).read_text(encoding="utf-8")
+    raw = raw.strip()
+    if raw.startswith(REPORT_PREFIX):
+        raw = raw[len(REPORT_PREFIX):]
+    diff = json.loads(raw)
+    issue = format_github_issue(diff, include_baseline=args.include_baseline)
+    if not issue:
+        return 0
+    if args.field == "title":
+        sys.stdout.write(issue["title"] + "\n")
+    elif args.field == "body":
+        sys.stdout.write(issue["body"])
+    else:
+        sys.stdout.write(json.dumps(issue, sort_keys=True) + "\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Nightly server test parser and diff reporter")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -467,6 +492,12 @@ def main(argv: list[str] | None = None) -> int:
     p_fmt.add_argument("--report-json", default="-", help="Path to diff JSON or '-' for stdin")
     p_fmt.add_argument("--include-baseline", action="store_true")
     p_fmt.set_defaults(func=cmd_format_comment)
+
+    p_issue = sub.add_parser("format-issue")
+    p_issue.add_argument("--report-json", default="-", help="Path to diff JSON or '-' for stdin")
+    p_issue.add_argument("--include-baseline", action="store_true")
+    p_issue.add_argument("--field", choices=("json", "title", "body"), default="json")
+    p_issue.set_defaults(func=cmd_format_issue)
 
     args = parser.parse_args(argv)
     return args.func(args)

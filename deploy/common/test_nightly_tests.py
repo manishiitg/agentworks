@@ -140,25 +140,35 @@ class NightlyReportUnitTests(unittest.TestCase):
             },
         }
 
-        # Baseline run: quiet unless include_baseline=True.
+        # Baseline run: quiet unless include_baseline=True, and never leaks paths or raw output.
         baseline_diff = report.diff_runs(run1, None)
         self.assertTrue(baseline_diff["is_baseline"])
         self.assertIsNone(report.format_github_comment(baseline_diff, include_baseline=False))
-        baseline_md = report.format_github_comment(baseline_diff, include_baseline=True)
+        self.assertIsNone(report.format_github_issue(baseline_diff, include_baseline=False))
+        baseline_issue = report.format_github_issue(baseline_diff, include_baseline=True)
+        self.assertIsNotNone(baseline_issue)
+        self.assertIn("initial baseline", baseline_issue["title"])
+        baseline_md = baseline_issue["body"]
         self.assertIn("initial baseline recorded", baseline_md)
         self.assertIn("#4238 (1)", baseline_md)
         self.assertIn("TestOldBroken", baseline_md)
+        self.assertNotIn("/srv/", baseline_md)
+        self.assertNotIn("run1.log", baseline_md)
+        self.assertNotIn("old_test.go:10: boom", baseline_md)
 
         # Next night with identical failures: completely quiet (None).
         run2 = dict(run1, sha="2222222222222222222222222222222222222222")
         same_diff = report.diff_runs(run2, run1)
         self.assertEqual(same_diff["new_failures"], [])
         self.assertIsNone(report.format_github_comment(same_diff))
+        self.assertIsNone(report.format_github_issue(same_diff))
 
-        # Night 3: TestOldBroken fixed, TestBrandNew fails -> report ONLY TestBrandNew.
+        # Night 3: TestOldBroken fixed, TestBrandNew fails -> open issue naming ONLY TestBrandNew,
+        # without any build-host path, IP/address, account name, or raw test output snippet.
         run3 = {
             **run2,
             "sha": "3333333333333333333333333333333333333333",
+            "log_path": "/srv/_builds/.nightly-tests/logs/secret-host.log",
             "failures": {
                 "cmd/server::TestCrewSettingsChatToolsStayBoundToCrewAndCaller": run1["failures"][
                     "cmd/server::TestCrewSettingsChatToolsStayBoundToCrewAndCaller"
@@ -167,19 +177,44 @@ class NightlyReportUnitTests(unittest.TestCase):
                     "key": "cmd/server::TestBrandNew",
                     "package": "cmd/server",
                     "test": "TestBrandNew",
-                    "snippet": "brand_new_test.go:99: expected ok",
+                    "snippet": "/srv/_builds/.work/foo/bar_test.go:99: alice@192.0.2.10 expected ok",
                 },
             },
         }
         reg_diff = report.diff_runs(run3, run2)
         self.assertEqual([f["test"] for f in reg_diff["new_failures"]], ["TestBrandNew"])
         self.assertEqual(reg_diff["resolved_failures"], ["cmd/server::TestOldBroken"])
-        md = report.format_github_comment(reg_diff)
-        self.assertIsNotNone(md)
+        issue = report.format_github_issue(reg_diff)
+        self.assertIsNotNone(issue)
+        self.assertEqual(issue["title"], "Nightly server tests: TestBrandNew failed on 3333333333")
+        md = issue["body"]
         self.assertIn("1 new failure(s)", md)
         self.assertIn("TestBrandNew", md)
         self.assertNotIn("TestCrewSettingsChatToolsStayBoundToCrewAndCaller", md)
+        self.assertNotIn("/srv/", md)
+        self.assertNotIn("secret-host.log", md)
+        self.assertNotIn("192.0.2.10", md)
+        self.assertNotIn("alice@", md)
+        self.assertNotIn("expected ok", md)
         self.assertIn("Resolved since previous run (1): `cmd/server::TestOldBroken`", md)
+
+        # Multiple new failures produce a plural count title.
+        run4 = {
+            **run3,
+            "sha": "4444444444444444444444444444444444444444",
+            "failures": {
+                **run3["failures"],
+                "pkg/foo::TestSecondNew": {
+                    "key": "pkg/foo::TestSecondNew",
+                    "package": "pkg/foo",
+                    "test": "TestSecondNew",
+                    "snippet": "raw output should never appear",
+                },
+            },
+        }
+        multi_issue = report.format_github_issue(report.diff_runs(run4, run2))
+        self.assertEqual(multi_issue["title"], "Nightly server tests: 2 new failures on 4444444444")
+        self.assertNotIn("raw output should never appear", multi_issue["body"])
 
 
 class NightlyRunnerShellTests(unittest.TestCase):
@@ -369,6 +404,8 @@ exit 0
         self.assertIn("-p IOSchedulingClass=idle", src)
         self.assertIn("NIGHTLY_CPU_QUOTA:-200%", src)
         self.assertIn("NIGHTLY_MEMORY_MAX:-6G", src)
+        self.assertIn("--open-issue", src)
+        self.assertIn("gh issue create", src)
 
 
 if __name__ == "__main__":
