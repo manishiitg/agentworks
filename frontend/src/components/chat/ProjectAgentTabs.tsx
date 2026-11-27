@@ -49,10 +49,12 @@ function AgentMenuStateWord({ tabId, workspaceActivity }: { tabId: string; works
 
 /** One tab-management view; each product supplies its existing server operations. */
 export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, allowSideChats, opening, surface,
-  onImportLocalChat, canImportMcp = false, checkingLocalImport = false, projectActionReady = true, onDiscoverSkills, onOpenIdentity, onOrder, onForkParent, onSetSidebarHidden, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, startChat = false, importMcpRequested = false, onRequestHandled, projectId,
+  onImportLocalChat, canImportMcp = false, checkingLocalImport = false, projectActionReady = true, onDiscoverSkills, onOpenIdentity, onOrder, onForkParent, onSetSidebarHidden, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, hideAddAgent = false, startChat = false, importMcpRequested = false, onRequestHandled, projectId,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
   /** The person's own Main chat's purpose; undefined when Main is not theirs. */
+  /** A project with no chats shows its start page; its header needs no New agent (#4439). */
+  hideAddAgent?: boolean
   /** The project's start page asked for a new chat (#4439); handled once, then onRequestHandled. */
   startChat?: boolean
   /** The project's start page asked for Import MCP servers. */
@@ -671,7 +673,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
       {surface === 'work' && (openTab?.metadata?.agentProfileOnlineProject ? <OnlineAgentLine tab={openTab} name={sideChatName(openTab)} team={teamState} /> : watchingOther ? <TeammateChatIdentity tabId={openTab?.tabId} /> : <AgentHeaderLine agent={headerAgent} crewName={projectName} onOpenIdentity={onOpenIdentity} />)}
       {/* Viewing someone else's agent: no New agent in its header (owner, 19 Nov). The agents menu keeps it. */}
-      {surface === 'work' && !watchingOther && <>
+      {surface === 'work' && !watchingOther && !hideAddAgent && <>
         <span aria-hidden="true" className="mx-0.5 h-4 w-px shrink-0 bg-border" />
         {addAgentButton}
       </>}
