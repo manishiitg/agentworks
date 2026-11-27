@@ -92,7 +92,8 @@ func (api *StreamingAPI) handleCapLayerOAuthToken(w http.ResponseWriter, r *http
 	defer cancel()
 	token, err := oauth.NewManager(&copied, api.logger).GetAccessToken(ctx)
 	if err != nil || token == "" {
-		writeUsersError(w, http.StatusUnauthorized, "administrator sign-in required")
+		problem := vaultOAuthSignInProblem(in.ConnectionID, false, err)
+		writeUsersError(w, http.StatusUnauthorized, problem)
 		return
 	}
 	writeUsersJSON(w, http.StatusOK, map[string]string{"access_token": token})

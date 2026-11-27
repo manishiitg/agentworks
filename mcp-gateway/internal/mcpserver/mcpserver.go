@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/mcpoauth"
+	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -331,6 +333,55 @@ func (g *Gateway) Resync(ctx context.Context, c store.Connector) error {
 	return g.resyncConnector(ctx, c)
 }
 
+// Close shuts down every active upstream MCP session (HTTP, SSE, and local
+// stdio subprocesses) managed by this gateway.
+func (g *Gateway) Close() error {
+	g.mu.Lock()
+	snapshot := g.upstreams
+	g.upstreams = map[string]*upstream.Client{}
+	g.mu.Unlock()
+	if len(snapshot) == 0 {
+		return nil
+	}
+	var (
+		wg   sync.WaitGroup
+		mu   sync.Mutex
+		errs []error
+	)
+	for _, up := range snapshot {
+		if up == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(c *upstream.Client) {
+			defer wg.Done()
+			if err := c.Close(); err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
+			}
+		}(up)
+	}
+	wg.Wait()
+	return errors.Join(errs...)
+}
+
+// evictUpstreamIfSame drops and closes up only if it is still the active
+// session for connectorID, so a concurrent reconnect is never disrupted.
+func (g *Gateway) evictUpstreamIfSame(connectorID string, up *upstream.Client) {
+	if up == nil {
+		return
+	}
+	g.mu.Lock()
+	if g.upstreams[connectorID] != up {
+		g.mu.Unlock()
+		return
+	}
+	delete(g.upstreams, connectorID)
+	g.mu.Unlock()
+	_ = up.Close()
+}
+
 // ensureConnected retries initialization/discovery, never an actual tool call.
 // The same connector lock serializes this with startup, sync and reauthorization.
 func (g *Gateway) ensureConnected(ctx context.Context, workspaceID, connectorID string) (*upstream.Client, error) {
@@ -340,7 +391,10 @@ func (g *Gateway) ensureConnected(ctx context.Context, workspaceID, connectorID 
 		return nil, policy.ErrConnectorDisabled
 	}
 	if up, ok := g.upstreamFor(connectorID); ok {
-		return up, nil
+		if !up.IsDead() {
+			return up, nil
+		}
+		g.evictUpstreamIfSame(connectorID, up)
 	}
 	if err := g.resyncConnector(ctx, c); err != nil {
 		return nil, err
@@ -364,32 +418,35 @@ func (g *Gateway) resyncConnector(ctx context.Context, c store.Connector) error 
 		delete(g.upstreams, c.ID)
 		g.mu.Unlock()
 		if old != nil {
-			old.Close()
+			_ = old.Close()
+		}
+	} else if existing, ok := g.upstreamFor(c.ID); ok {
+		if existing.IsDead() {
+			g.evictUpstreamIfSame(c.ID, existing)
+		} else if err := g.syncConnector(ctx, c); err == nil {
+			c.Status = store.StatusActive
+			g.store.AddConnector(c)
+			return nil
+		} else if c.UpstreamURL == "" && c.Transport != upstream.CommandTransport {
+			return err
+		} else {
+			// The cached non-OAuth session failed discovery; evict it and dial fresh.
+			g.evictUpstreamIfSame(c.ID, existing)
 		}
 	}
-	dialed := false
-	if _, ok := g.upstreamFor(c.ID); !ok {
-		opts, err := g.connectorOptions(c)
-		if err != nil {
-			return err
-		}
-		up, err := upstream.DialWithOptions(ctx, c.UpstreamURL, opts)
-		if err != nil {
-			return err
-		}
-		g.mu.Lock()
-		g.upstreams[c.ID] = up
-		g.mu.Unlock()
-		dialed = true
+	opts, err := g.connectorOptions(c)
+	if err != nil {
+		return err
 	}
+	up, err := upstream.DialWithOptions(ctx, c.UpstreamURL, opts)
+	if err != nil {
+		return err
+	}
+	g.mu.Lock()
+	g.upstreams[c.ID] = up
+	g.mu.Unlock()
 	if err := g.syncConnector(ctx, c); err != nil {
-		if dialed {
-			g.mu.Lock()
-			up := g.upstreams[c.ID]
-			delete(g.upstreams, c.ID)
-			g.mu.Unlock()
-			up.Close()
-		}
+		g.evictUpstreamIfSame(c.ID, up)
 		return err
 	}
 	c.Status = store.StatusActive
@@ -577,7 +634,7 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 		return deny(policy.ErrToolNotActive)
 	}
 	if err := g.validateArguments(current, args); err != nil {
-		return deny(fmt.Errorf("arguments do not match approved tool schema"))
+		return deny(schemaValidationError(err))
 	}
 	if current.Fingerprint != snap.Fingerprint {
 		return deny(policy.ErrToolNotActive)
@@ -591,15 +648,17 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	defer cancel()
 	up, err := g.ensureConnected(callCtx, id.WorkspaceID, snap.ConnectorID)
 	if err != nil {
+		detail := safeUpstreamErrorDetail(err)
+		log.Printf("gateway: call=%s connector=%s tool=%s connect failed: %s", callID, snap.ConnectorID, snap.PublicName, detail)
 		appendAudit(store.AuditEvent{
 			ID: callID, CallID: callID, Timestamp: start.UTC(),
 			WorkspaceID: id.WorkspaceID, UserID: id.UserID, ClientID: id.ClientID,
 			GroupIDs: groups, ConnectorID: snap.ConnectorID,
 			PublicName: snap.PublicName, UpstreamName: snap.UpstreamName,
 			Decision: store.DecisionAllow, Outcome: store.OutcomeUpstreamError,
-			DurationMs: time.Since(start).Milliseconds(), ErrorText: "upstream connection unavailable",
+			DurationMs: time.Since(start).Milliseconds(), ErrorText: "upstream connection unavailable: " + detail,
 		})
-		return nil, fmt.Errorf("upstream connection unavailable; reconnect the MCP server (call %s)", callID)
+		return nil, fmt.Errorf("upstream connection unavailable: %s (call %s)", detail, callID)
 	}
 	// Discovery may quarantine a changed definition, or access may be revoked
 	// while initialization waits on OAuth. Recheck before any upstream invocation.
@@ -617,6 +676,11 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 	}
 	res, err := up.Call(callCtx, snap.UpstreamName, args)
 	if err != nil {
+		if upstream.IsSessionDead(err) && (ctx.Err() == nil || !errors.Is(err, context.DeadlineExceeded)) {
+			g.evictUpstreamIfSame(snap.ConnectorID, up)
+		}
+		detail := safeUpstreamErrorDetail(err)
+		log.Printf("gateway: call=%s connector=%s tool=%s upstream call failed: %s", callID, snap.ConnectorID, snap.PublicName, detail)
 		appendAudit(store.AuditEvent{
 			ID: callID, CallID: callID, Timestamp: start.UTC(),
 			WorkspaceID: id.WorkspaceID, UserID: id.UserID, ClientID: id.ClientID,
@@ -624,9 +688,9 @@ func (g *Gateway) handleCall(ctx context.Context, snap store.ToolSnapshot, req m
 			ConnectorID: snap.ConnectorID,
 			PublicName:  snap.PublicName, UpstreamName: snap.UpstreamName,
 			Decision: store.DecisionAllow, Outcome: store.OutcomeUpstreamError,
-			DurationMs: time.Since(start).Milliseconds(), ErrorText: "upstream call failed",
+			DurationMs: time.Since(start).Milliseconds(), ErrorText: "upstream call failed: " + detail,
 		})
-		return nil, fmt.Errorf("upstream call failed (call %s)", callID)
+		return nil, fmt.Errorf("upstream call failed: %s (call %s)", detail, callID)
 	}
 	result = res // Snapshot only the returned MCP result, never transport headers or credentials.
 	outcome, auditError := store.OutcomeOK, ""
@@ -774,6 +838,67 @@ func newCallID() string {
 	var b [8]byte
 	_, _ = rand.Read(b[:])
 	return "call_" + hex.EncodeToString(b[:])
+}
+
+// schemaValidationError formats a concise, single-line schema error telling the
+// caller which fields failed without leaking internal schema locations.
+func schemaValidationError(err error) error {
+	if err == nil {
+		return fmt.Errorf("arguments do not match approved tool schema")
+	}
+	var parts []string
+	for _, line := range strings.Split(err.Error(), "\n") {
+		line = strings.TrimSpace(line)
+		line = strings.TrimPrefix(line, "- ")
+		if line == "" || strings.Contains(line, "gateway.invalid/input-schema") {
+			continue
+		}
+		parts = append(parts, line)
+		if len(parts) >= 3 {
+			break
+		}
+	}
+	detail := strings.Join(parts, "; ")
+	if len(detail) > 300 {
+		detail = detail[:300]
+	}
+	if detail == "" {
+		return fmt.Errorf("arguments do not match approved tool schema")
+	}
+	return fmt.Errorf("arguments do not match approved tool schema: %s", detail)
+}
+
+// safeUpstreamErrorDetail summarizes an upstream transport/session error into a
+// bounded single-line message. Upstream errors are already credential-redacted
+// by refusalNote.safeError.
+func safeUpstreamErrorDetail(err error) string {
+	if err == nil {
+		return "unknown error"
+	}
+	switch {
+	case upstream.IsAuthorizationRequired(err):
+		return "upstream rejected credentials (HTTP 401); sign in or reconnect the MCP server"
+	case errors.Is(err, upstream.ErrSharedOAuthExpired):
+		return upstream.ErrSharedOAuthExpired.Error()
+	case errors.Is(err, upstream.ErrSharedOAuthRequired):
+		return upstream.ErrSharedOAuthRequired.Error()
+	case errors.Is(err, upstream.ErrSharedOAuthUnavailable):
+		return upstream.ErrSharedOAuthUnavailable.Error()
+	case errors.Is(err, transport.ErrSessionTerminated):
+		return "upstream MCP session expired; retry to reconnect"
+	case errors.Is(err, transport.ErrTransportClosed):
+		return "upstream MCP connection closed; retry to reconnect"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "upstream request timed out"
+	}
+	detail := strings.Join(strings.Fields(err.Error()), " ")
+	if len(detail) > 240 {
+		detail = detail[:240]
+	}
+	if detail == "" {
+		return "unknown error"
+	}
+	return detail
 }
 
 // schemaBytes returns the normalized input schema for storage and

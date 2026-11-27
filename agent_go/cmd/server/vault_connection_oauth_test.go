@@ -338,3 +338,48 @@ func TestVaultListSaysWhenToolsAreStillLoading(t *testing.T) {
 		t.Fatal("a connection that is not syncing must not be marked:", shown)
 	}
 }
+
+func TestVaultOAuthSignInProblemClassifiesInvalidGrantFromRefresh(t *testing.T) {
+	t.Setenv("AUTH_SECRET", strings.Repeat("k", 32))
+	statusCode := http.StatusBadRequest
+	responseBody := `{"error":"invalid_grant","error_description":"token has been expired or revoked"}`
+	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCode)
+		_, _ = w.Write([]byte(responseBody))
+	}))
+	defer issuer.Close()
+
+	tokenFile := filepath.Join(t.TempDir(), "vault-token.json")
+	if err := oauth.NewTokenStore(tokenFile).Save(&oauth2.Token{
+		AccessToken:  "expired",
+		RefreshToken: "revoked",
+		Expiry:       time.Now().Add(-time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &oauth.OAuthConfig{
+		ClientID:  "client",
+		AuthURL:   issuer.URL + "/authorize",
+		TokenURL:  issuer.URL + "/token",
+		TokenFile: tokenFile,
+	}
+
+	_, err := oauth.NewManager(cfg, loggerv2.NewNoop()).GetAccessToken(context.Background())
+	if err == nil {
+		t.Fatal("expected refresh error")
+	}
+	if msg := vaultOAuthSignInProblem("c-11111111", false, err); !strings.Contains(msg, "expired or was revoked") {
+		t.Fatalf("invalid_grant was not classified as refresh_rejected: %q (err=%v)", msg, err)
+	}
+
+	statusCode = http.StatusServiceUnavailable
+	responseBody = `{"error":"temporarily_unavailable"}`
+	_, err = oauth.NewManager(cfg, loggerv2.NewNoop()).GetAccessToken(context.Background())
+	if err == nil {
+		t.Fatal("expected transient refresh error")
+	}
+	if msg := vaultOAuthSignInProblem("c-11111111", false, err); !strings.Contains(msg, "could not be refreshed") {
+		t.Fatalf("transient 503 misclassified: %q (err=%v)", msg, err)
+	}
+}

@@ -13,6 +13,15 @@ import (
 	"time"
 )
 
+var (
+	// ErrSharedOAuthUnavailable indicates the host OAuth broker could not be reached or failed transiently.
+	ErrSharedOAuthUnavailable = errors.New("shared OAuth service unavailable")
+	// ErrSharedOAuthExpired indicates the saved OAuth refresh token expired or was revoked.
+	ErrSharedOAuthExpired = errors.New("shared OAuth sign-in expired or was revoked; reconnect the server")
+	// ErrSharedOAuthRequired indicates the connection needs sign-in before use.
+	ErrSharedOAuthRequired = errors.New("shared OAuth authorization required; reconnect the server")
+)
+
 // SharedOAuth reuses the host product's credential store/refresh manager.
 // Only this fixed, operator-configured origin receives the service secret.
 func SharedOAuth(origin, secret string) (func(context.Context, string, string, string) (string, error), error) {
@@ -39,11 +48,24 @@ func SharedOAuth(origin, secret string) (func(context.Context, string, string, s
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := client.Do(req)
 		if err != nil {
-			return "", errors.New("shared OAuth service unavailable")
+			return "", ErrSharedOAuthUnavailable
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
-			return "", errors.New("shared OAuth authorization required")
+			if resp.StatusCode >= 500 {
+				return "", ErrSharedOAuthUnavailable
+			}
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+			var refusal struct {
+				Error string `json:"error"`
+			}
+			if json.Unmarshal(body, &refusal) == nil {
+				lower := strings.ToLower(refusal.Error)
+				if strings.Contains(lower, "expired or was revoked") || strings.Contains(lower, "invalid_grant") {
+					return "", ErrSharedOAuthExpired
+				}
+			}
+			return "", ErrSharedOAuthRequired
 		}
 		body, err := io.ReadAll(io.LimitReader(resp.Body, 16385))
 		if err != nil || len(body) > 16384 {

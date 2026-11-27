@@ -170,6 +170,9 @@ func (api *StreamingAPI) ensureCrewVault(ctx context.Context, project string) (s
 	lock, _ := crewVaultLocks.LoadOrStore(project, &sync.Mutex{})
 	lock.(*sync.Mutex).Lock()
 	defer lock.(*sync.Mutex).Unlock()
+	if cached, ok := crewVaultCache.Load(project); ok && cached.(crewVaultCached).Owners == key {
+		return cached.(crewVaultCached).ID, nil
+	}
 	for _, person := range owners {
 		// The Vault service learns a person the first time they ask for something; do that on their behalf.
 		if _, err := vaultPersonRequest(ctx, person, http.MethodGet, "/api/vaults", nil); err != nil {
@@ -193,12 +196,20 @@ func (api *StreamingAPI) ensureCrewVault(ctx context.Context, project string) (s
 	if json.Unmarshal(data, &made) != nil || made.ID == "" {
 		return "", errors.New("The project vault could not be made.")
 	}
+	seeded := true
 	if made.Created || !crewVaultSeeded(project) {
-		api.seedCrewVault(ctx, project, owners[0], made.ID)
-		if ctx.Err() == nil { // a fill cut short by its time limit runs again next time
+		seeded = api.seedCrewVault(ctx, project, owners[0], made.ID) && ctx.Err() == nil
+		if seeded {
 			markCrewVaultSeeded(project)
 		}
 		forgetCrewVaultContents(project)
+	}
+	if !seeded {
+		log.Printf("[CREW_VAULT] project=%s vault=%s seeding incomplete (ctx_err=%v); not caching so next turn/queue retries", project, made.ID, ctx.Err())
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		return made.ID, nil
 	}
 	crewVaultCache.Store(project, crewVaultCached{ID: made.ID, Owners: key})
 	log.Printf("[CREW_VAULT] project=%s vault=%s owners=%d created=%t", project, made.ID, len(owners), made.Created)
@@ -355,12 +366,12 @@ func (api *StreamingAPI) crewVaultFor(ctx context.Context, person, project strin
 // selected key its turns received (values stay inside the server) and the apps in use. An API-key or no-login app is
 // copied with its key; a sign-in app is added for one person to sign in for the Crew. The owner keeps their own copies.
 // Each item that cannot be copied is logged and left for the owners to add.
-func (api *StreamingAPI) seedCrewVault(ctx context.Context, project, owner, crewVault string) {
+func (api *StreamingAPI) seedCrewVault(ctx context.Context, project, owner, crewVault string) bool {
 	root := crewProjectRootByID(project)
 	personal, err := ensurePersonalVault(ctx, owner)
 	if err != nil || root == "" {
 		log.Printf("[CREW_VAULT] project=%s seed skipped: %v", project, err)
-		return
+		return err == nil && ctx.Err() == nil
 	}
 	keys, apps := 0, 0
 	have := map[string]bool{}
@@ -371,22 +382,33 @@ func (api *StreamingAPI) seedCrewVault(ctx context.Context, project, owner, crew
 		for _, app := range current.Apps {
 			have["app:"+strings.ToLower(app.Provider+"\x00"+app.Label)] = true
 		}
+	} else if ctx.Err() != nil {
+		return false
 	}
 	if selection, err := projectSecretSelection(ctx, root); err == nil {
 		// Every key the Crew's turns and runs received before it had a vault, resolved for the owner exactly as a turn
 		// resolved them: personal-vault keys, shared-vault keys and older server keys picked by plain name alike.
 		for _, s := range api.mergeGlobalSecretsFor(ctx, owner, &selection) {
+			if ctx.Err() != nil {
+				return false
+			}
 			if have["secret:"+s.Name] || strings.TrimSpace(s.Value) == "" {
 				continue
 			}
 			if err := api.setVaultSecret(ctx, owner, crewVault, s.Name, s.Value, false); err != nil {
 				log.Printf("[CREW_VAULT] project=%s seed secret=%s not copied: %v", project, s.Name, err)
+				if ctx.Err() != nil {
+					return false
+				}
 				continue
 			}
 			log.Printf("[CREW_VAULT] project=%s seed secret=%s copied", project, s.Name)
 			have["secret:"+s.Name] = true
 			keys++
 		}
+	}
+	if ctx.Err() != nil {
+		return false
 	}
 	selected, chosenOnly, _ := projectAppSelection(ctx, root)
 	if list, err := personalVaults(ctx, owner); err == nil {
@@ -395,6 +417,9 @@ func (api *StreamingAPI) seedCrewVault(ctx context.Context, project, owner, crew
 				continue
 			}
 			for _, c := range v.Connections {
+				if ctx.Err() != nil {
+					return false
+				}
 				if !projectVaultAppInUse(ctx, selected, chosenOnly, c.ID) || have["app:"+strings.ToLower(c.Provider+"\x00"+c.Label)] {
 					continue
 				}
@@ -408,14 +433,20 @@ func (api *StreamingAPI) seedCrewVault(ctx context.Context, project, owner, crew
 				}
 				if err != nil {
 					log.Printf("[CREW_VAULT] project=%s seed app=%s not copied: %v", project, c.ID, err)
+					if ctx.Err() != nil {
+						return false
+					}
 					continue
 				}
 				log.Printf("[CREW_VAULT] project=%s seed app=%s provider=%s copied", project, c.ID, c.Provider)
 				apps++
 			}
 		}
+	} else if ctx.Err() != nil {
+		return false
 	}
 	log.Printf("[CREW_VAULT] project=%s seeded from owner=%s keys=%d apps=%d", project, logUsernameForUserID(owner), keys, apps)
+	return ctx.Err() == nil
 }
 
 // crewVaultScopeKey carries the one Crew vault a request may see. The Vault service leaves every Crew vault out of

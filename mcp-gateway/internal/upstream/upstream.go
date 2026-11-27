@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/netip"
@@ -14,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mark3labs/mcp-go/client"
@@ -26,6 +28,10 @@ type Client struct {
 	c           *client.Client
 	url         string
 	diagnostics *refusalNote
+	dead        atomic.Bool
+	closeOnce   sync.Once
+	closeErr    error
+	onClose     func()
 }
 
 type DialOptions struct {
@@ -240,7 +246,14 @@ func (t boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		var err error
 		token, err = t.accessToken(req.Context())
 		if err != nil || token == "" {
-			return nil, errors.New("shared OAuth authorization required; reconnect the server")
+			switch {
+			case errors.Is(err, ErrSharedOAuthExpired):
+				return nil, ErrSharedOAuthExpired
+			case errors.Is(err, ErrSharedOAuthUnavailable):
+				return nil, ErrSharedOAuthUnavailable
+			default:
+				return nil, ErrSharedOAuthRequired
+			}
 		}
 	}
 	if token != "" {
@@ -287,11 +300,17 @@ func (t boundedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		resp.Body = io.NopCloser(strings.NewReader(string(body)))
 		t.refusal.set(fmt.Sprintf("%s (HTTP %d)", refusalReason(string(body), t.refusal.redact), resp.StatusCode))
 	}
-	if resp.ContentLength > maxResponseBytes {
-		resp.Body.Close()
-		return nil, errors.New("upstream response exceeds size limit")
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	// A GET text/event-stream is a long-lived SSE channel serving many requests;
+	// capping cumulative bytes at maxResponseBytes would kill it mid-session.
+	// Per-event size is enforced by transport.WithMaxMessageBytes(maxResponseBytes).
+	if !(req.Method == http.MethodGet && mediaType == "text/event-stream") {
+		if resp.ContentLength > maxResponseBytes {
+			resp.Body.Close()
+			return nil, errors.New("upstream response exceeds size limit")
+		}
+		resp.Body = &limitedBody{ReadCloser: resp.Body, remaining: maxResponseBytes}
 	}
-	resp.Body = &limitedBody{ReadCloser: resp.Body, remaining: maxResponseBytes}
 	return resp, nil
 }
 
@@ -321,9 +340,16 @@ func safeHTTPClientNoting(opts DialOptions, refusal *refusalNote) *http.Client {
 			return dialer.DialContext(ctx, network, net.JoinHostPort(resolved[0].IP.String(), port))
 		},
 	}
+	// SSE keeps a persistent GET stream open across tool calls, so a whole-client
+	// Timeout would kill the stream after 30s. ResponseHeaderTimeout (15s) plus
+	// per-request contexts and SSE endpoint/response timeouts bound every operation.
+	clientTimeout := 30 * time.Second
+	if opts.Transport == "sse" {
+		clientTimeout = 0
+	}
 	return &http.Client{
 		Transport:     boundedTransport{base: base, bearerToken: opts.BearerToken, authScheme: opts.AuthScheme, accessToken: opts.AccessToken, refusal: refusal},
-		Timeout:       30 * time.Second,
+		Timeout:       clientTimeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 }
@@ -346,14 +372,31 @@ func DialWithOptions(ctx context.Context, url string, opts DialOptions) (_ *Clie
 	var err error
 	httpClient := safeHTTPClientNoting(opts, refusal)
 	if opts.Transport == "sse" {
-		c, err = client.NewSSEMCPClient(url, client.WithHTTPClient(httpClient))
+		c, err = client.NewSSEMCPClient(url, client.WithHTTPClient(httpClient), transport.WithMaxMessageBytes(maxResponseBytes))
 	} else {
 		c, err = client.NewStreamableHttpClient(url, transport.WithHTTPBasicClient(httpClient))
 	}
 	if err != nil {
 		return nil, fmt.Errorf("upstream client: %w", err)
 	}
-	if err := c.Start(ctx); err != nil {
+	u := &Client{c: c, url: url, diagnostics: refusal}
+	c.OnConnectionLost(func(error) { u.dead.Store(true) })
+	if opts.Transport == "sse" {
+		// The SSE GET stream must outlive the request context that triggered Dial,
+		// while still aborting promptly if ctx cancels during the Start handshake.
+		streamCtx, streamCancel := context.WithCancel(context.Background())
+		u.onClose = streamCancel
+		stopAbort := context.AfterFunc(ctx, streamCancel)
+		err = c.Start(streamCtx)
+		if !stopAbort() && err == nil {
+			_ = u.Close()
+			err = ctx.Err()
+		}
+	} else {
+		err = c.Start(ctx)
+	}
+	if err != nil {
+		_ = u.Close()
 		if said := refusal.get(); said != "" && !IsAuthorizationRequired(err) {
 			return nil, fmt.Errorf("upstream refused the connection: %s", said)
 		}
@@ -364,16 +407,73 @@ func DialWithOptions(ctx context.Context, url string, opts DialOptions) (_ *Clie
 	initReq.Params.ClientInfo = mcp.Implementation{Name: "mcp-gateway", Version: "0.1.0"}
 	initReq.Params.Capabilities = mcp.ClientCapabilities{}
 	if _, err := c.Initialize(ctx, initReq); err != nil {
-		c.Close()
+		_ = u.Close()
 		if said := refusal.get(); said != "" && !IsAuthorizationRequired(err) {
 			return nil, fmt.Errorf("upstream refused the connection: %s", said)
 		}
 		return nil, fmt.Errorf("upstream initialize: %w", err)
 	}
-	return &Client{c: c, url: url, diagnostics: refusal}, nil
+	return u, nil
 }
 
-func (u *Client) Close() error { return u.diagnostics.safeError(u.c.Close()) }
+// IsDead reports whether this upstream client has been closed or lost its connection.
+func (u *Client) IsDead() bool {
+	return u == nil || u.dead.Load()
+}
+
+func (u *Client) Close() error {
+	if u == nil {
+		return nil
+	}
+	u.closeOnce.Do(func() {
+		u.dead.Store(true)
+		if u.c != nil {
+			u.closeErr = u.diagnostics.safeError(u.c.Close())
+		}
+		if u.onClose != nil {
+			u.onClose()
+		}
+	})
+	return u.closeErr
+}
+
+// IsSessionDead reports errors indicating the cached upstream MCP session is
+// broken, expired, or unauthorized and should be evicted before the next call.
+func IsSessionDead(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, transport.ErrSessionTerminated) ||
+		errors.Is(err, transport.ErrTransportClosed) ||
+		IsAuthorizationRequired(err) ||
+		errors.Is(err, ErrSharedOAuthRequired) ||
+		errors.Is(err, ErrSharedOAuthExpired) ||
+		errors.Is(err, io.EOF) ||
+		errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, io.ErrClosedPipe) ||
+		errors.Is(err, net.ErrClosed) ||
+		errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	lower := strings.ToLower(err.Error())
+	for _, needle := range []string{
+		"session terminated",
+		"session not found",
+		"transport closed",
+		"broken pipe",
+		"connection reset",
+		"connection refused",
+		"status 401",
+		"status 404",
+		"status 410",
+		"unexpected eof",
+	} {
+		if strings.Contains(lower, needle) {
+			return true
+		}
+	}
+	return false
+}
 
 // IsAuthorizationRequired reports an upstream that answered 401 because it needs a sign-in.
 func IsAuthorizationRequired(err error) bool {

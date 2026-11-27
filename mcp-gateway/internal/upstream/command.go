@@ -168,24 +168,66 @@ func dialCommand(ctx context.Context, opts DialOptions) (*Client, error) {
 	if info, err := os.Stat(lc.Command); err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
 		return nil, fmt.Errorf("program %s is not installed on this computer", filepath.Base(lc.Command))
 	}
-	launch := func(_ context.Context, command string, _ []string, args []string) (*exec.Cmd, error) {
-		cmd := exec.Command(command, args...)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	var (
+		cmdMu      sync.Mutex
+		startedCmd *exec.Cmd
+	)
+	launch := func(cmdCtx context.Context, command string, _ []string, args []string) (*exec.Cmd, error) {
+		cmd := exec.CommandContext(cmdCtx, command, args...)
 		cmd.Env = commandEnvironment(lc)
 		cmd.Dir = lc.Dir
+		configureCommandProcessGroup(cmd)
+		cmdMu.Lock()
+		startedCmd = cmd
+		cmdMu.Unlock()
 		return cmd, nil
 	}
 	stderr := &stderrTail{}
-	c, err := client.NewStdioMCPClientWithOptions(lc.Command, nil, lc.Args, transport.WithCommandFunc(launch), transport.WithCommandStderrWriter(stderr))
-	if err != nil {
+	procCtx, procCancel := context.WithCancel(context.Background())
+	stdioTransport := transport.NewStdioWithOptions(lc.Command, nil, lc.Args, transport.WithCommandFunc(launch), transport.WithCommandStderrWriter(stderr))
+	stopStartAbort := context.AfterFunc(ctx, procCancel)
+	if err := stdioTransport.Start(procCtx); err != nil {
+		stopStartAbort()
+		procCancel()
+		cmdMu.Lock()
+		cmd := startedCmd
+		cmdMu.Unlock()
+		killCommandProcessGroup(cmd)
 		return nil, errors.New(redactCommand(lc, fmt.Sprintf("could not start %s: %v", filepath.Base(lc.Command), err)))
 	}
+	if !stopStartAbort() {
+		_ = stdioTransport.Close()
+		procCancel()
+		cmdMu.Lock()
+		cmd := startedCmd
+		cmdMu.Unlock()
+		killCommandProcessGroup(cmd)
+		return nil, ctx.Err()
+	}
+	c := client.NewClient(stdioTransport)
+	u := &Client{
+		c:           c,
+		url:         "command:" + filepath.Base(lc.Command),
+		diagnostics: &refusalNote{},
+		onClose: func() {
+			procCancel()
+			cmdMu.Lock()
+			cmd := startedCmd
+			cmdMu.Unlock()
+			killCommandProcessGroup(cmd)
+		},
+	}
+	c.OnConnectionLost(func(error) { u.dead.Store(true) })
 	initCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	initReq := mcp.InitializeRequest{}
 	initReq.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
 	initReq.Params.ClientInfo = mcp.Implementation{Name: "mcp-gateway", Version: "0.1.0"}
 	if _, err := c.Initialize(initCtx, initReq); err != nil {
-		c.Close()
+		_ = u.Close()
 		said := strings.Join(strings.Fields(stderr.String()), " ")
 		text := fmt.Sprintf("%s did not start as an MCP server: %v", filepath.Base(lc.Command), err)
 		if said != "" {
@@ -193,5 +235,5 @@ func dialCommand(ctx context.Context, opts DialOptions) (*Client, error) {
 		}
 		return nil, errors.New(redactCommand(lc, text))
 	}
-	return &Client{c: c, url: "command:" + filepath.Base(lc.Command), diagnostics: &refusalNote{}}, nil
+	return u, nil
 }
