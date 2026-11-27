@@ -34,7 +34,7 @@ cd "$PROJECT_ROOT/agent_go"
 if [ "$(uname -s)" = Darwin ]; then
     MACOSX_DEPLOYMENT_TARGET=12.0 CGO_ENABLED=1 go build -tags novoice -o "$SCRIPT_DIR/resources/agent-server" .
     cd "$PROJECT_ROOT"
-    bash scripts/build-darwin-voice-binary.sh agent_go desktop/resources/voice/agent-server "$(uname -m)"
+    bash scripts/build-darwin-voice-binary.sh agent_go/cmd/voice-helper desktop/resources/voice/voice-helper "$(uname -m)"
     VOICE_MINIMUM="$(python3 scripts/desktop-minimum-os.py desktop/resources/voice)"
     node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({minimumSystemVersion: process.argv[2]}))' "$SCRIPT_DIR/resources/voice/minimum-macos.json" "$VOICE_MINIMUM"
 else

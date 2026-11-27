@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/voicestt"
@@ -82,5 +83,39 @@ func TestVoiceUpgraderAdmitsSameOrigin(t *testing.T) {
 	foreign.Header.Set("Origin", "https://evil.example.net")
 	if api.voiceUpgraderFor().CheckOrigin(foreign) {
 		t.Fatal("cross-site upgrade was admitted")
+	}
+}
+
+// Packaged macOS builds compile agent-server with -tags novoice and point
+// AGENTWORKS_VOICE_HELPER_BIN at the standalone voice-helper binary. Even when
+// in-process voicestt.Available is false, the runtime must advertise voice as
+// available and admit the composer once a helper binary is configured.
+func TestVoiceHelperEnvEnablesCapabilitiesAndComposer(t *testing.T) {
+	helperPath := t.TempDir() + "/voice-helper"
+	if err := os.WriteFile(helperPath, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("write dummy helper: %v", err)
+	}
+	t.Setenv("AGENTWORKS_VOICE_HELPER_BIN", helperPath)
+	closeVoiceService()
+	t.Cleanup(closeVoiceService)
+
+	api := &StreamingAPI{}
+	if !api.voicePermitted("", "user-1") {
+		t.Fatal("voicePermitted(\"\") = false with AGENTWORKS_VOICE_HELPER_BIN set, want true")
+	}
+
+	rec := httptest.NewRecorder()
+	api.handleCapabilities(rec, httptest.NewRequest(http.MethodGet, "/api/capabilities", nil))
+	var body struct {
+		Voice *struct {
+			Available bool `json:"available"`
+			Ready     bool `json:"ready"`
+		} `json:"voice"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode capabilities: %v", err)
+	}
+	if body.Voice == nil || !body.Voice.Available {
+		t.Fatalf("capabilities voice = %+v, want available=true", body.Voice)
 	}
 }

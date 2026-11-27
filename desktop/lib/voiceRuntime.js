@@ -2,24 +2,31 @@
 const fs = require('fs');
 const path = require('path');
 
-// Choose before spawning: dyld loads linked speech libraries before main().
-// Both binaries implement the same server; only the compatible one runs.
+// Always run the single novoice agent-server binary so older macOS versions
+// never fail in dyld before main(). When the host macOS meets the speech
+// libraries' minimumSystemVersion, pass the standalone voice-helper binary so
+// agent-server spawns it lazily on demand.
 function selectPackagedAgent(resources, systemVersion) {
-  const basic = path.join(resources, 'agent-server');
-  const voice = path.join(resources, 'voice', 'agent-server');
+  const binary = path.join(resources, 'agent-server');
+  const helper = path.join(resources, 'voice', 'voice-helper');
   try {
     const minimum = JSON.parse(fs.readFileSync(path.join(resources, 'voice', 'minimum-macos.json'), 'utf8')).minimumSystemVersion;
     const parse = value => /^\d+(\.\d+){0,2}$/.test(value) ? value.split('.').map(Number) : null;
     const current = parse(systemVersion), required = parse(minimum);
     if (!current || !required) throw new Error('Could not read the voice runtime macOS requirement');
     for (let i = 0; i < 3; i++) {
-      if ((current[i] || 0) < (required[i] || 0)) return { binary: basic, voiceUnavailableReason: `Voice needs macOS ${minimum} or later on this Mac.` };
-      if ((current[i] || 0) > (required[i] || 0)) return { binary: voice, voiceUnavailableReason: '' };
+      if ((current[i] || 0) < (required[i] || 0)) {
+        return { binary, voiceHelperBinary: '', voiceUnavailableReason: `Voice needs macOS ${minimum} or later on this Mac.` };
+      }
+      if ((current[i] || 0) > (required[i] || 0)) {
+        return { binary, voiceHelperBinary: helper, voiceUnavailableReason: '' };
+      }
     }
-    return { binary: voice, voiceUnavailableReason: '' };
+    return { binary, voiceHelperBinary: helper, voiceUnavailableReason: '' };
   } catch {
-    console.warn('[VOICE] Could not determine voice compatibility; using the server without voice');
-    return { binary: basic, voiceUnavailableReason: 'Voice is unavailable on this Mac' };
+    console.warn('[VOICE] Could not determine voice compatibility; disabling standalone voice helper');
+    return { binary, voiceHelperBinary: '', voiceUnavailableReason: 'Voice is unavailable on this Mac' };
   }
 }
+
 module.exports = { selectPackagedAgent };

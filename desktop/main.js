@@ -1162,7 +1162,7 @@ function spawnAgent(userDataPath) {
   return new Promise((resolve, reject) => {
     const selected = process.platform === 'darwin' && (app.isPackaged || fs.existsSync(path.join(getResourcesDir(), 'voice', 'minimum-macos.json')))
       ? require('./lib/voiceRuntime').selectPackagedAgent(getResourcesDir(), process.getSystemVersion())
-      : { binary: getBinaryPath('agent-server'), voiceUnavailableReason: '' };
+      : { binary: getBinaryPath('agent-server'), voiceHelperBinary: '', voiceUnavailableReason: '' };
     const bin = selected.binary;
     if (!fs.existsSync(bin)) {
       return reject(new Error(`Agent server binary not found at ${bin}. Place agent-server in desktop/resources/ for development.`));
@@ -1273,6 +1273,9 @@ function spawnAgent(userDataPath) {
       // The Mac app's version, for the Team page: which version each teammate's Mac runs.
       AGENTWORKS_APP_VERSION: app.getVersion(),
       AGENTWORKS_VOICE_UNAVAILABLE_REASON: selected.voiceUnavailableReason,
+      ...(selected.voiceHelperBinary && fs.existsSync(selected.voiceHelperBinary)
+        ? { AGENTWORKS_VOICE_HELPER_BIN: selected.voiceHelperBinary }
+        : {}),
       WORKSPACE_DOCS_PATH: docsDir,
       DOCS_DIR: docsDir,
       LOG_FILE: logFile,

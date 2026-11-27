@@ -61,16 +61,30 @@ if otool -L "$RESOURCES/agent-server" | grep -E 'sherpa|onnxruntime'; then
   echo 'Basic server unexpectedly links optional voice libraries' >&2
   exit 1
 fi
+if [ -e "$RESOURCES/voice/agent-server" ]; then
+  echo 'Packaged app unexpectedly ships a duplicate voice/agent-server binary' >&2
+  exit 1
+fi
+[ -x "$RESOURCES/voice/voice-helper" ] || { echo 'The packaged app has no voice/voice-helper binary' >&2; exit 1; }
+printf 'Voice helper: %s bytes\n' "$(stat -f %z "$RESOURCES/voice/voice-helper")"
 "$RESOURCES/agent-server" --help
 node - "$ROOT" "$RESOURCES" "$(sw_vers -productVersion)" <<'JS'
+const path = require('node:path');
 const { selectPackagedAgent } = require(process.argv[2] + '/desktop/lib/voiceRuntime');
 const { spawnSync } = require('node:child_process');
 const selected = selectPackagedAgent(process.argv[3], process.argv[4]);
 const metadata = require(process.argv[3] + '/voice/minimum-macos.json');
 console.log('Optional voice requires macOS ' + metadata.minimumSystemVersion);
 console.log('Host server selection: ' + selected.binary);
+if (selected.binary !== path.join(process.argv[3], 'agent-server')) {
+  console.error('Expected single agent-server binary, got ' + selected.binary);
+  process.exit(1);
+}
 if (selected.voiceUnavailableReason) console.log(selected.voiceUnavailableReason);
-const result = spawnSync(selected.binary, ['--help'], { stdio: 'inherit' });
-if (result.error || result.status !== 0) process.exit(1);
+if (selected.voiceHelperBinary) {
+  console.log('Host voice helper selection: ' + selected.voiceHelperBinary);
+  const helperResult = spawnSync(selected.voiceHelperBinary, ['--help'], { stdio: 'inherit' });
+  if (helperResult.error || helperResult.status !== 0) process.exit(1);
+}
 JS
 printf 'Verified %s packaged app and isolated DMG installation\n' "$ARCH"

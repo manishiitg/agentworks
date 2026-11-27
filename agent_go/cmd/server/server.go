@@ -2842,8 +2842,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	// machine that never used voice is not made to download 690MB just
 	// because the server started; the composer offers that as an explicit
 	// first-time step (/voice/warm above).
-	if voiceManager.Status().Installed {
-		voiceManager.Warm()
+	if svc := currentVoiceService(); svc.Status().Installed {
+		svc.Warm()
 	}
 
 	// LLM Guidance API routes
@@ -2996,14 +2996,15 @@ func runServer(cmd *cobra.Command, args []string) {
 		// take minutes): a not-yet-installed model asks the parent to set
 		// it up instead of blocking the message handler on a download.
 		api.whatsappManager.SetVoiceTranscriber(func(ctx context.Context, path string) (string, error) {
-			if !voiceManager.Status().Installed {
+			svc := currentVoiceService()
+			if !svc.Status().Installed {
 				return "", services.ErrVoiceNotInstalled
 			}
 			samples, err := voicestt.DecodeFile(ctx, path)
 			if err != nil {
 				return "", fmt.Errorf("decode voice note: %w", err)
 			}
-			return voiceManager.Transcribe(ctx, samples)
+			return svc.Transcribe(ctx, samples)
 		})
 	}
 	// Set activity callback for event store to update session LastActivity when events are added
@@ -3315,6 +3316,7 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	// An internet share tunnel must not outlive the server it exposes.
 	StopShareTunnel()
+	closeVoiceService()
 
 	// Stop background discovery
 	fmt.Println("⏹️ Stopping background tool discovery...")

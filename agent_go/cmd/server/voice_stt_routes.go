@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
+	"strings"
+	"sync"
 
 	"github.com/gorilla/websocket"
 
@@ -11,14 +14,50 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/voicestt"
 )
 
-// The shared streaming STT engine (pkg/voicestt), one Manager per process.
+// The shared streaming STT engine (pkg/voicestt), one Service per process.
 // AgentWorks' composer and every product that declares
 // agentprofiles.RuntimeCapabilities.Voice run this same engine and model;
 // this file only decides who may reach it.
 //
+// Packaged macOS builds pass AGENTWORKS_VOICE_HELPER_BIN so a single
+// novoice agent-server binary can delegate speech recognition to a small
+// standalone voice-helper binary (avoiding shipping two full agent-server
+// binaries for macOS compatibility). Linux and direct cgo builds leave the
+// env var unset and use an in-process *voicestt.Manager.
+//
 // Loaded lazily (or by the startup warm in server.go) so a deployment that
 // never uses voice never pays the download or the resident memory.
-var voiceManager = voicestt.NewManager(voicestt.DefaultModelDir())
+var (
+	voiceServiceMu sync.Mutex
+	voiceService   voicestt.Service
+)
+
+func currentVoiceService() voicestt.Service {
+	voiceServiceMu.Lock()
+	defer voiceServiceMu.Unlock()
+	if voiceService != nil {
+		return voiceService
+	}
+	if bin := strings.TrimSpace(os.Getenv("AGENTWORKS_VOICE_HELPER_BIN")); bin != "" {
+		if info, err := os.Stat(bin); err == nil && !info.IsDir() {
+			voiceService = voicestt.NewHelperClient(bin, voicestt.DefaultModelDir())
+			return voiceService
+		}
+		log.Printf("[VOICE] AGENTWORKS_VOICE_HELPER_BIN=%q is unavailable; falling back to in-process voice", bin)
+	}
+	voiceService = voicestt.NewManager(voicestt.DefaultModelDir())
+	return voiceService
+}
+
+func closeVoiceService() {
+	voiceServiceMu.Lock()
+	svc := voiceService
+	voiceService = nil
+	voiceServiceMu.Unlock()
+	if svc != nil {
+		_ = svc.Close()
+	}
+}
 
 // voicePermitted reports whether a caller may use the shared voice engine.
 //
@@ -29,14 +68,14 @@ var voiceManager = voicestt.NewManager(voicestt.DefaultModelDir())
 //
 // Without a profile id the caller is AgentWorks' own composer, which is the
 // platform shell rather than a product and has no product.yaml to declare
-// anything in. It gets dictation whenever this build carries the engine
-// (voicestt.Available), the same fact /api/capabilities advertises so the
-// frontend only mounts the mic where it can work. This is not a privilege
-// boundary: the endpoint is already behind AuthMiddleware and only ever
-// transcribes the authenticated caller's own audio back to them.
+// anything in. It gets dictation whenever this runtime carries the engine
+// (in-process or via voice-helper), the same fact /api/capabilities advertises
+// so the frontend only mounts the mic where it can work. This is not a
+// privilege boundary: the endpoint is already behind AuthMiddleware and only
+// ever transcribes the authenticated caller's own audio back to them.
 func (api *StreamingAPI) voicePermitted(profileID, userID string) bool {
 	if profileID == "" {
-		return voicestt.Available
+		return currentVoiceService().Available()
 	}
 	if api.agentProfiles == nil {
 		return false
@@ -89,7 +128,8 @@ func (api *StreamingAPI) voiceUpgraderFor() *websocket.Upgrader {
 func (api *StreamingAPI) handleVoiceStream(w http.ResponseWriter, r *http.Request) {
 	currentUserID := GetUserIDFromContext(r.Context())
 	profileID := r.URL.Query().Get("profile_id")
-	st := voiceManager.Status()
+	svc := currentVoiceService()
+	st := svc.Status()
 	log.Printf("[VOICE] stream requested: user=%s profile=%q origin=%q host=%s engine(available=%v installed=%v ready=%v downloading=%v)",
 		currentUserID, profileID, r.Header.Get("Origin"), r.Host, st.Available, st.Installed, st.Ready, st.Downloading)
 	if !api.voicePermitted(profileID, currentUserID) {
@@ -97,17 +137,17 @@ func (api *StreamingAPI) handleVoiceStream(w http.ResponseWriter, r *http.Reques
 		http.Error(w, `{"error":"voice capability not enabled for this profile"}`, http.StatusForbidden)
 		return
 	}
-	if !voicestt.Available {
-		log.Printf("[VOICE] stream refused: this build has no native speech runtime (CGO_ENABLED=0)")
+	if !svc.Available() {
+		log.Printf("[VOICE] stream refused: this runtime has no native speech engine or helper")
 	}
-	voicestt.ServeStream(voiceManager, api.voiceUpgraderFor(), w, r)
+	svc.ServeStream(api.voiceUpgraderFor(), w, r)
 }
 
 // handleVoiceStatus is GET /api/voice/status — the engine's live state
 // (voicestt.Status): installed, downloading with byte progress, loading,
 // ready. The composer polls it while a first-time download runs.
 func (api *StreamingAPI) handleVoiceStatus(w http.ResponseWriter, r *http.Request) {
-	st := voiceManager.Status()
+	st := currentVoiceService().Status()
 	// Only while something is in flight: a ready engine is polled at most
 	// once per mic click, a download once per second, and the latter is the
 	// one worth a trail.
@@ -129,9 +169,10 @@ func (api *StreamingAPI) handleVoiceWarm(w http.ResponseWriter, r *http.Request)
 		writeVoiceJSON(w, http.StatusForbidden, map[string]string{"error": "voice capability not enabled for this profile"})
 		return
 	}
-	before := voiceManager.Status()
-	voiceManager.Warm()
-	after := voiceManager.Status()
+	svc := currentVoiceService()
+	before := svc.Status()
+	svc.Warm()
+	after := svc.Status()
 	log.Printf("[VOICE] warm requested: user=%s profile=%q installed=%v ready=%v -> downloading=%v loading=%v", userID, profileID, before.Installed, before.Ready, after.Downloading, after.Loading)
 	writeVoiceJSON(w, http.StatusAccepted, after)
 }
@@ -148,9 +189,10 @@ func (api *StreamingAPI) handleVoiceUnload(w http.ResponseWriter, r *http.Reques
 		writeVoiceJSON(w, http.StatusForbidden, map[string]string{"error": "voice capability not enabled for this profile"})
 		return
 	}
-	released := voiceManager.Unload()
+	svc := currentVoiceService()
+	released := svc.Unload()
 	log.Printf("[VOICE] unload requested: user=%s profile=%q released=%v", userID, profileID, released)
-	writeVoiceJSON(w, http.StatusOK, voiceManager.Status())
+	writeVoiceJSON(w, http.StatusOK, svc.Status())
 }
 
 func writeVoiceJSON(w http.ResponseWriter, status int, v any) {
