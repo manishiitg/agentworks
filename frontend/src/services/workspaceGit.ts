@@ -21,6 +21,8 @@ export interface GitRepo {
   repository?: string
   /** A linked worktree of that repository. */
   worktree?: boolean
+  /** owner/name of the GitHub repository its origin points at, when it has one. */
+  github_repo?: string
   detached?: boolean
   upstream?: string
   ahead: number

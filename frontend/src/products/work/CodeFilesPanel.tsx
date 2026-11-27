@@ -7,6 +7,8 @@ import api, { getApiBaseUrl } from '../../services/api'
 import { laptopSettingsEndpoint, laptopFoldersEndpoint } from '../../components/workspace/laptopAccess'
 import { useChatStore } from '../../stores/useChatStore'
 import { cliUpdateNeeded, localFileError, useLatestCliVersion, useLocalFileDevices, type LocalFileDevice } from './codeLocalFiles'
+import { desktopRequest } from '../../services/desktopConnections'
+import { workspaceGitApi } from '../../services/workspaceGit'
 import { computerOS, unixCliInstallCommand, windowsDefenderNote, windowsInstallCommand } from '../../utils/computerInstall'
 
 function shellQuote(value: string) { return `'${value.replace(/'/g, "'\\''")}'` }
@@ -85,7 +87,10 @@ interface LaptopSettings { device_id: string; folders: LaptopFolder[]; commands:
 interface LaptopDirectory { path: string; parent: string; folders: string[] }
 
 /** The backend owns grants. No project manifest or browser preference grants laptop access. */
-export function CodeLocalFilesSettings({ sessionId }: { sessionId?: string; workspaceName?: string }) {
+/** thisMac: the saved server connection of a server project opened in the Mac app. The panel then uses this Mac as
+ * the computer (the app connects itself, no setup), picks folders in Finder and offers a copy of the project's repo
+ * found on this Mac (owner, 27 Nov). */
+export function CodeLocalFilesSettings({ sessionId, thisMac }: { sessionId?: string; workspaceName?: string; thisMac?: string }) {
   const tab = useChatStore(state => Object.values(state.chatTabs).find(item => item.sessionId === sessionId))
   const project = tab?.metadata?.agentProfileProjectId
   const profile = tab?.metadata?.agentProfileId
@@ -102,6 +107,31 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId?: string; work
   const [checkNote, setCheckNote] = useState<string>()
   const { devices, error: deviceError, refreshing, refresh } = useLocalFileDevices(Boolean(endpoint), tab?.metadata?.agentProfileWorkspace)
   const latest = useLatestCliVersion(Boolean(endpoint))
+  const workspace = tab?.metadata?.agentProfileWorkspace
+  const [mac, setMac] = useState<{ device_id: string; status: string }>()
+  const [repoCopies, setRepoCopies] = useState<string[]>([])
+  useEffect(() => {
+    setMac(undefined)
+    if (!thisMac) return
+    let active = true
+    const load = (method: 'GET' | 'POST') => void desktopRequest<{ device_id: string; status: string }>(`/${encodeURIComponent(thisMac)}/this-mac`, method)
+      .then(result => { if (active) setMac(result) }).catch(cause => { if (active) setError(localFileError(cause)) })
+    load('POST')
+    const timer = window.setInterval(() => load('GET'), 5000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [thisMac])
+  useEffect(() => {
+    setRepoCopies([])
+    if (!thisMac || !workspace) return
+    let active = true
+    void workspaceGitApi.status(workspace).then(async repos => {
+      const names = [...new Set(repos.map(repo => repo.github_repo).filter((name): name is string => Boolean(name)))]
+      const found: string[] = []
+      for (const name of names) found.push(...(await desktopRequest<{ paths: string[] }>(`/${encodeURIComponent(thisMac)}/checkout?repo=${encodeURIComponent(name)}`)).paths)
+      if (active) setRepoCopies(found)
+    }).catch(() => undefined)
+    return () => { active = false }
+  }, [thisMac, workspace])
   useEffect(() => {
     let active = true
     setLoaded(false); setDirectory(undefined); setSettings({ device_id: '', folders: [], commands: false }); setError(undefined)
@@ -115,6 +145,16 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId?: string; work
     try { const result = await api.put<LaptopSettings>(endpoint, next, { skipSessionContext: true }); setSettings(result.data); window.dispatchEvent(new Event('crew-laptop-settings-changed')); return true }
     catch (cause) { setError(localFileError(cause)); return false }
     finally { setBusy(false) }
+  }
+  const macOnline = Boolean(mac && devices.some(item => item.device_id === mac.device_id))
+  // A server project you open on this Mac starts on this Mac: nothing to choose when you have no computer yet.
+  useEffect(() => {
+    if (thisMac && loaded && mac && macOnline && !settings.device_id && !busy) void save({ device_id: mac.device_id, folders: [], commands: false })
+  }, [thisMac, loaded, mac?.device_id, macOnline, settings.device_id])
+  const addFolder = async (path?: string, access: LaptopFolder['access'] = 'read') => {
+    const chosen = path ?? await window.electronAPI?.pickWorkflowFolder?.()
+    if (!chosen || settings.folders.some(folder => folder.path === chosen)) return
+    await save({ ...settings, folders: [...settings.folders, { id: '', path: chosen, access }] })
   }
   const browse = async (next: string) => {
     setBusy(true); setError(undefined)
@@ -130,15 +170,30 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId?: string; work
   const join = (root: string, child: string) => `${root.replace(/[\\/]$/, '')}${root.includes('\\') ? '\\' : '/'}${child}`
   return <SettingsCard unboxed icon={<Laptop className="h-4 w-4 text-primary" />} title="Laptop access" description="Choose your computer and the folders this project can use.">
     <div className="space-y-4">
-      <p className="text-xs leading-5 text-muted-foreground">This project runs on the server. These are your own computer and folders for it: only your chats here use them, while AgentWorks is connected on that computer. Co-owners choose their own. Schedules use the main owner's own; people using the shared dashboard stay on the server. AgentBridge uses the same connection.</p>
-      <details className="rounded-lg border border-border p-3" onToggle={event => setComputerSetupOpen(event.currentTarget.open)}><summary className="cursor-pointer text-sm font-medium">Connect a computer</summary>{computerSetupOpen && <div className="mt-3"><LaptopAccountsPanel /></div>}</details>
-      <label htmlFor="crew-laptop-device" className="block text-xs font-medium">Your computer</label>
-      <select id="crew-laptop-device" value={settings.device_id} disabled={busy || !loaded} className="w-full rounded-md border border-border bg-background p-2 text-sm" onChange={event => { setDirectory(undefined); void save({ device_id: event.target.value, folders: [], commands: false }) }}>
-        <option value="">No laptop access</option>
-        {settings.device_id && !device && <option value={settings.device_id}>{settings.device_id} — Offline</option>}
-        {devices.map(item => <option key={item.device_id} value={item.device_id}>{item.device_id}</option>)}
-      </select>
-      {settings.device_id && !device && <p role="status" className="text-xs text-muted-foreground">This computer is offline. Run <code>agentworks start</code> there. Server work continues.</p>}
+      <p className="text-xs leading-5 text-muted-foreground">{thisMac
+        ? "This project runs on the server. These are your own folders on this Mac for it: only your chats here use them. Co-owners link their own. Schedules and Watchers use the main owner's own folders, while that Mac is online."
+        : "This project runs on the server. These are your own computer and folders for it: only your chats here use them, while AgentWorks is connected on that computer. Co-owners choose their own. Schedules use the main owner's own; people using the shared dashboard stay on the server. AgentBridge uses the same connection."}</p>
+      {thisMac ? <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span role="status" className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 ${macOnline ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
+          <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${macOnline ? 'bg-emerald-500' : 'bg-muted-foreground'}`} />{macOnline ? 'This Mac is online' : mac?.status === 'not_connected' ? 'This Mac is not connected' : 'Connecting this Mac…'}
+        </span>
+        {settings.device_id && mac && settings.device_id !== mac.device_id && <><span className="text-muted-foreground">Uses your computer {settings.device_id}.</span>
+          <Button size="sm" variant="outline" disabled={busy || !macOnline} onClick={() => { setDirectory(undefined); void save({ device_id: mac.device_id, folders: [], commands: false }) }}>Use this Mac instead</Button></>}
+      </div> : <>
+        <details className="rounded-lg border border-border p-3" onToggle={event => setComputerSetupOpen(event.currentTarget.open)}><summary className="cursor-pointer text-sm font-medium">Connect a computer</summary>{computerSetupOpen && <div className="mt-3"><LaptopAccountsPanel /></div>}</details>
+        <label htmlFor="crew-laptop-device" className="block text-xs font-medium">Your computer</label>
+        <select id="crew-laptop-device" value={settings.device_id} disabled={busy || !loaded} className="w-full rounded-md border border-border bg-background p-2 text-sm" onChange={event => { setDirectory(undefined); void save({ device_id: event.target.value, folders: [], commands: false }) }}>
+          <option value="">No laptop access</option>
+          {settings.device_id && !device && <option value={settings.device_id}>{settings.device_id} — Offline</option>}
+          {devices.map(item => <option key={item.device_id} value={item.device_id}>{item.device_id}</option>)}
+        </select>
+        {settings.device_id && !device && <p role="status" className="text-xs text-muted-foreground">This computer is offline. Run <code>agentworks start</code> there. Server work continues.</p>}
+      </>}
+      {thisMac && mac && macOnline && settings.device_id === mac.device_id && repoCopies.filter(path => !settings.folders.some(folder => folder.path === path)).map(path => <div key={path} className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+        <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 text-xs"><span className="block break-all font-medium">{path}</span><span className="text-muted-foreground">Same repo as this project, found on this Mac</span></span>
+        <Button size="sm" disabled={busy} onClick={() => void addFolder(path, 'write')}>Link, Read &amp; write</Button>
+      </div>)}
       {cliUpdateNeeded(device, latest) && <p role="status" className="text-xs">Update once: <code>agentworks update</code>, then <code>agentworks stop</code> and <code>agentworks start</code>. Choose folders here.</p>}
       {settings.folders.map(folder => <div key={folder.id} className="flex items-center gap-2 rounded-md border border-border p-3">
         <Folder className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 break-all text-xs">{folder.path}</span>
@@ -147,7 +202,7 @@ export function CodeLocalFilesSettings({ sessionId }: { sessionId?: string; work
         </select>
         <Button size="icon" variant="ghost" aria-label={`Remove ${folder.path}`} disabled={busy} onClick={() => void save({ ...settings, folders: settings.folders.filter(item => item.id !== folder.id) })}><X className="h-4 w-4" /></Button>
       </div>)}
-      {device && <Button size="sm" variant="outline" disabled={busy || !device.settings_managed} onClick={() => void browse('')}>Add folder</Button>}
+      {device && <Button size="sm" variant="outline" disabled={busy || !device.settings_managed} onClick={() => void (thisMac && window.electronAPI?.pickWorkflowFolder ? addFolder() : browse(''))}>{thisMac ? 'Add folder…' : 'Add folder'}</Button>}
       {directory && <div className="space-y-2 rounded-md border border-border p-3">
         <form className="flex gap-2" onSubmit={event => { event.preventDefault(); void browse(path) }}><input aria-label="Folder path" value={path} onChange={event => setPath(event.target.value)} className="min-w-0 flex-1 rounded border border-border bg-background p-2 text-xs" /><Button size="sm" variant="outline" disabled={busy}>Open</Button></form>
         <Button size="sm" variant="ghost" disabled={busy || directory.parent === directory.path} onClick={() => void browse(directory.parent)}><ArrowUp className="h-3 w-3" />Parent folder</Button>

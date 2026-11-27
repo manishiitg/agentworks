@@ -4,6 +4,8 @@ import { useShallow } from 'zustand/react/shallow'
 import api from '../../services/api'
 import { laptopSettingsEndpoint } from '../../components/workspace/laptopAccess'
 import { useChatStore } from '../../stores/useChatStore'
+import { desktopRequest } from '../../services/desktopConnections'
+import { remoteProjectConnection } from '../../utils/remoteSessions'
 
 export function CodeChatConnectionStatus({ sessionId }: { sessionId: string }) {
   const { project, profile } = useChatStore(useShallow(state => {
@@ -15,12 +17,22 @@ export function CodeChatConnectionStatus({ sessionId }: { sessionId: string }) {
   }))
   const endpoint = laptopSettingsEndpoint(profile, project)
   const [computer, setComputer] = useState('')
+  const [folder, setFolder] = useState('')
+  const [thisMac, setThisMac] = useState('')
+  // A server project opened in the Mac app: say "on this Mac" when the chat uses this Mac (owner, 27 Nov).
+  const connection = remoteProjectConnection(project)
+  useEffect(() => {
+    let active = true
+    setThisMac('')
+    if (connection) void desktopRequest<{ device_id: string }>(`/${encodeURIComponent(connection)}/this-mac`).then(result => { if (active) setThisMac(result.device_id) }).catch(() => undefined)
+    return () => { active = false }
+  }, [connection])
   useEffect(() => {
     let active = true
     setComputer('')
     const load = () => {
-      if (endpoint) void api.get<{ device_id: string; folders: unknown[] }>(endpoint, { skipSessionContext: true })
-        .then(result => { if (active) setComputer(result.data.folders?.length ? result.data.device_id : '') }).catch(() => { if (active) setComputer('') })
+      if (endpoint) void api.get<{ device_id: string; folders: { path: string }[] }>(endpoint, { skipSessionContext: true })
+        .then(result => { if (active) { setComputer(result.data.folders?.length ? result.data.device_id : ''); setFolder(result.data.folders?.[0]?.path || '') } }).catch(() => { if (active) setComputer('') })
     }
     load()
     window.addEventListener('crew-laptop-settings-changed', load)
@@ -28,6 +40,9 @@ export function CodeChatConnectionStatus({ sessionId }: { sessionId: string }) {
   }, [endpoint])
   if (!computer) return null
   // Opens the Crew's Local laptop panel, the way the model name opens Models.
-  return <button type="button" title={`${computer}. Open the Local laptop settings.`} onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-chat-laptop', { detail: { projectId: project } }))}
-    className="inline-flex h-7 min-w-0 max-w-48 items-center gap-1.5 rounded px-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"><Laptop className="h-3.5 w-3.5 shrink-0" /><span className="truncate max-md:sr-only">Laptop · {computer}</span></button>
+  const where = computer === thisMac ? 'this Mac' : computer
+  const short = folder.replace(/^\/Users\/[^/]+/, '~')
+  const label = folder ? `Using ${short} on ${where}` : `Laptop · ${where}`
+  return <button type="button" title={`${label}. Open the laptop settings.`} onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-chat-laptop', { detail: { projectId: project } }))}
+    className="inline-flex h-7 min-w-0 max-w-64 items-center gap-1.5 rounded px-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"><Laptop className="h-3.5 w-3.5 shrink-0" /><span className="truncate max-md:sr-only">{label}</span></button>
 }
