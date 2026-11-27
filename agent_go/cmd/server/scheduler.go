@@ -190,8 +190,20 @@ type registeredJob struct {
 }
 
 type dueRegisteredJob struct {
+	key          string
 	job          *registeredJob
 	scheduledFor time.Time
+}
+
+// advanceCursorLocked moves a fired slot's cursor forward on the job that was selected and on the job registered under
+// its key now. A reload (LoadSchedule) may have replaced the registration between selection and this call; leaving the
+// new job's cursor behind fired the same slot again on the next tick (#4373). Callers hold s.mu.
+func (s *SchedulerService) advanceCursorLocked(due dueRegisteredJob) {
+	for _, job := range []*registeredJob{due.job, s.jobs[due.key]} {
+		if job != nil && job.lastFired.Before(due.scheduledFor) {
+			job.lastFired = due.scheduledFor
+		}
+	}
 }
 
 // SchedulerService manages cron job execution using wall-clock polling.
@@ -433,18 +445,18 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 					occurrences := dueCronOccurrences(job.cronSched, job.lastFired, t)
 					skipped, fire := splitOnTimeOccurrences(occurrences, t)
 					for _, occurrence := range skipped {
-						missed = append(missed, dueRegisteredJob{job: job, scheduledFor: occurrence})
+						missed = append(missed, dueRegisteredJob{key: sid, job: job, scheduledFor: occurrence})
 					}
 					if len(skipped) > 0 && fire == nil && job.lastFired.Before(skipped[len(skipped)-1]) {
 						job.lastFired = skipped[len(skipped)-1]
 					}
 					if fire != nil {
-						toFire = append(toFire, dueRegisteredJob{job: job, scheduledFor: *fire})
+						toFire = append(toFire, dueRegisteredJob{key: sid, job: job, scheduledFor: *fire})
 					}
 					parts = append(parts, fmt.Sprintf("%s next=%s", sid, job.cronSched.Next(t).UTC().Format(time.RFC3339)))
 				} else if job.runAt != nil {
 					if !job.runAt.After(t) && job.lastFired.Before(*job.runAt) {
-						toFire = append(toFire, dueRegisteredJob{job: job, scheduledFor: job.runAt.UTC()})
+						toFire = append(toFire, dueRegisteredJob{key: sid, job: job, scheduledFor: job.runAt.UTC()})
 					}
 					parts = append(parts, fmt.Sprintf("%s at=%s", sid, job.runAt.UTC().Format(time.RFC3339)))
 				}
@@ -475,9 +487,7 @@ func (s *SchedulerService) tickLoop(ctx context.Context) {
 					continue
 				}
 				s.mu.Lock()
-				if due.job.lastFired.Before(due.scheduledFor) {
-					due.job.lastFired = due.scheduledFor
-				}
+				s.advanceCursorLocked(due)
 				s.mu.Unlock()
 				goRecover("schedule start", func() { s.triggerSchedule(due.job.sctx, due.scheduledFor) })
 			}
@@ -723,7 +733,11 @@ func (s *SchedulerService) LoadSchedule(sctx *ScheduleContext) error {
 		s.scheduleFingerprints = make(map[string]string)
 	}
 
-	// Remove existing registration if any.
+	// Remove existing registration if any. The cursor read above was taken before the lock; the clock may have fired
+	// the old registration since, so keep its later cursor (moving it forward never replays a slot, #4373).
+	if previous := s.jobs[runtimeKey]; previous != nil && previous.cronSched != nil && previous.lastFired.After(lastFired) && cronSched != nil {
+		lastFired = previous.lastFired
+	}
 	delete(s.jobs, runtimeKey)
 	calendarPrefix := runtimeKey + "__cal__"
 	for key := range s.jobs {

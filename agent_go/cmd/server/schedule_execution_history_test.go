@@ -26,3 +26,20 @@ func TestMissedStatusStopsForADateThatNeverComes(t *testing.T) {
 		t.Fatal("saving a schedule that never runs was accepted")
 	}
 }
+
+// #4373: a reload replaced the registration after the clock selected a slot but before it advanced the cursor; the new
+// job kept the older cursor and fired the same slot again on the next tick.
+func TestFiredSlotAdvancesTheReloadedRegistration(t *testing.T) {
+	slot := time.Date(2026, 11, 27, 10, 1, 0, 0, time.UTC)
+	selected := &registeredJob{lastFired: slot.Add(-time.Minute)}
+	reloaded := &registeredJob{lastFired: slot.Add(-time.Minute)}
+	s := &SchedulerService{jobs: map[string]*registeredJob{"crew/report": reloaded}}
+
+	s.advanceCursorLocked(dueRegisteredJob{key: "crew/report", job: selected, scheduledFor: slot})
+
+	for name, job := range map[string]*registeredJob{"selected": selected, "reloaded": reloaded} {
+		if !job.lastFired.Equal(slot) {
+			t.Errorf("%s job cursor = %s, want the fired slot %s", name, job.lastFired, slot)
+		}
+	}
+}
