@@ -718,6 +718,9 @@ func (r *ToolRegistry) siblingScopeForTool(httpSessionID, self, toolName string)
 // against the calling session before that resolution: the parent chat's
 // per-turn ToolPolicy governs the parent's agent, not a step script.
 func CallCustomToolWithSession(ctx context.Context, sessionID string, toolName string, args map[string]interface{}) (string, error) {
+	if strings.HasSuffix(sessionID, "#secret-read") {
+		return "", fmt.Errorf("secret-read token cannot call custom tools")
+	}
 	if guarded := toolguard.Check(ctx, toolguard.Call{SessionID: sessionID, Kind: toolguard.KindCustom, Tool: toolName, Args: args}); guarded.Stub {
 		return guardedResult(guarded)
 	}

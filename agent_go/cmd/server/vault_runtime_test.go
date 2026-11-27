@@ -18,6 +18,7 @@ import (
 	events "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/mcpagent/mcpclient"
+	"github.com/manishiitg/mcpagent/oauth"
 )
 
 func personContext(person string) context.Context {
@@ -435,5 +436,139 @@ func TestSameNameVaultRowsLabelledOnlyForTheirOwner(t *testing.T) {
 		if _, labelled := row["detail"]; labelled {
 			t.Fatalf("teammate learned where a row comes from: %v", teammate)
 		}
+	}
+}
+
+// Bridge MCP calls must stamp the chat session onto Vault delegations so
+// /internal/vault/mcp enforces session ownership, live project selection, and
+// lentVaultSlackRefusal (blocking read-side Slack tools on lent Goal apps),
+// and scope ConnectionSessionID to the session for cleanup.
+func TestBridgeResolveMCPServerBindsVaultSessionAndEnforcesLentSlack(t *testing.T) {
+	withMCPConnectionsRoot(t)
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("MULTI_USER_MODE", "false")
+	secret := strings.Repeat("s", 32)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN", secret)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+	var gatewayMCPCalls atomic.Int32
+	var failInventory atomic.Bool
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/admin/runtime/servers":
+			if failInventory.Load() {
+				http.Error(w, "vault busy", http.StatusServiceUnavailable)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"servers": []map[string]any{{
+					"id": "c-slack-1", "label": "Owner Slack", "provider": "slack",
+					"tools": []map[string]any{
+						{"name": "slack__slack_read_channel"},
+						{"name": "slack__slack_send_message"},
+					},
+				}},
+			})
+		case "/api/admin/runtime/mcp":
+			gatewayMCPCalls.Add(1)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[]}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer gateway.Close()
+	t.Setenv("CAPLAYER_SERVICE_URL", gateway.URL)
+
+	const goalRoot = "Workflow/goal-lent-slack"
+	registerWorkflowOwner(goalRoot, "alice")
+	ws := &mockWorkspaceAPI{files: map[string]string{
+		goalRoot + "/workflow.json": `{"schema_version":1,"id":"goal-lent-slack","label":"Goal","created_by":"alice","access":{"owners":["alice"],"shared_with":["bob"]},"capabilities":{"selected_servers":["vault_c-slack-1"],"chosen_vault_apps_only":true}}`,
+	}}
+	wsSrv := httptest.NewServer(ws)
+	defer wsSrv.Close()
+	t.Setenv("WORKSPACE_API_URL", wsSrv.URL)
+
+	api := &StreamingAPI{
+		eventStore:              events.NewEventStore(10),
+		sessionWorkspaceFolders: map[string]string{"goal-bob-chat": goalRoot},
+	}
+	api.eventStore.SetSessionOwner("goal-bob-chat", "bob")
+	t.Cleanup(func() {
+		api.sessionWorkspaceMu.Lock()
+		delete(api.sessionWorkspaceFolders, "goal-bob-chat")
+		api.sessionWorkspaceMu.Unlock()
+	})
+
+	resolved, err := api.resolveMCPServer(personContext("bob"), "goal-bob-chat", "vault_c-slack-1", "slack__slack_read_channel")
+	if err != nil {
+		t.Fatalf("resolveMCPServer failed: %v", err)
+	}
+	if resolved.ConnectionSessionID != "goal-bob-chat" {
+		t.Fatalf("ConnectionSessionID = %q, want goal-bob-chat", resolved.ConnectionSessionID)
+	}
+	rawToken := strings.TrimPrefix(resolved.Config.Headers["Authorization"], "Bearer ")
+	del, err := verifyVaultDelegation(secret, rawToken)
+	if err != nil || del.Session != "goal-bob-chat" || del.Person != "alice" || del.Connector != "c-slack-1" {
+		t.Fatalf("bridge delegation missing session binding: %+v err=%v", del, err)
+	}
+
+	callProxy := func(toolName string) *httptest.ResponseRecorder {
+		body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"` + toolName + `","arguments":{}}}`
+		req := httptest.NewRequest(http.MethodPost, "/internal/vault/mcp", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+rawToken)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		api.handleVaultRuntimeMCP(rec, req)
+		return rec
+	}
+
+	// Read-side Slack tool on lent connection must be refused.
+	if w := callProxy("slack__slack_read_channel"); w.Code != http.StatusForbidden || gatewayMCPCalls.Load() != 0 {
+		t.Fatalf("lent personal Slack read was allowed through bridge: code=%d calls=%d body=%s", w.Code, gatewayMCPCalls.Load(), w.Body.String())
+	}
+	// Inventory error on lent connection must also fail closed for read-side Slack tools.
+	failInventory.Store(true)
+	if w := callProxy("slack__slack_read_channel"); w.Code != http.StatusForbidden || gatewayMCPCalls.Load() != 0 {
+		t.Fatalf("lentVaultSlackRefusal failed open on inventory error: code=%d calls=%d", w.Code, gatewayMCPCalls.Load())
+	}
+	failInventory.Store(false)
+	// Send-side Slack tool remains allowed.
+	if w := callProxy("slack__slack_send_message"); w.Code != http.StatusOK || gatewayMCPCalls.Load() != 1 {
+		t.Fatalf("lent personal Slack send was blocked: code=%d calls=%d body=%s", w.Code, gatewayMCPCalls.Load(), w.Body.String())
+	}
+}
+
+func TestVaultSavedOAuthConfigPreservesPublicOnly(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("AUTH_SECRET", strings.Repeat("a", 32))
+	const id = "c-11223344"
+	raw, err := json.Marshal(&oauth.OAuthConfig{
+		AuthURL:  "https://auth.example.com/authorize",
+		TokenURL: "https://auth.example.com/token",
+		Resource: "https://mcp.example.com/mcp",
+		ClientID: "cid-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := oauth.WriteTokenFile(vaultCredentialConfigPath(id), raw); err != nil {
+		t.Fatal(err)
+	}
+	base := mcpclient.MCPServerConfig{
+		URL: "https://mcp.example.com/mcp",
+		OAuth: &oauth.OAuthConfig{
+			AuthURL:    "https://auth.example.com/authorize",
+			TokenURL:   "https://auth.example.com/token",
+			Resource:   "https://mcp.example.com/mcp",
+			TokenFile:  getUserTokenFilePath(platformMCPTokenUserID, vaultCredentialName(id)),
+			PublicOnly: true,
+		},
+	}
+	saved, err := vaultSavedOAuthConfig(id, base)
+	if err != nil {
+		t.Fatalf("vaultSavedOAuthConfig failed: %v", err)
+	}
+	if !saved.OAuth.PublicOnly {
+		t.Fatal("vaultSavedOAuthConfig dropped PublicOnly=true from custom Vault OAuth config")
 	}
 }

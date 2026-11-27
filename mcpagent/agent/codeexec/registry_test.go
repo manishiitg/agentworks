@@ -323,6 +323,25 @@ func TestCallCustomToolWithSessionKeepsLegacyFallbackWithoutSessionRegistry(t *t
 	}
 }
 
+func TestCallCustomToolWithSessionRefusesSecretReadSuffix(t *testing.T) {
+	resetRegistryForTest(t)
+
+	calls := 0
+	InitRegistry(nil, map[string]func(context.Context, map[string]interface{}) (string, error){
+		"execute_shell_command": func(context.Context, map[string]interface{}) (string, error) {
+			calls++
+			return "escaped", nil
+		},
+	}, nil, nil)
+
+	if _, err := CallCustomToolWithSession(context.Background(), "chat-alice#secret-read", "execute_shell_command", nil); err == nil {
+		t.Fatal("secret-read session suffix must be refused from calling custom tools")
+	}
+	if calls != 0 {
+		t.Fatalf("global executor ran %d times for secret-read suffix, want 0", calls)
+	}
+}
+
 // The session tool allow list is how a per-turn ToolPolicy reaches the HTTP
 // bridge. Direct tool calls are gated in-process by isToolAllowedForContext,
 // but a code-executing agent can also reach a tool over HTTP, and that path is

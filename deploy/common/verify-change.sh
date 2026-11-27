@@ -458,10 +458,29 @@ run_go_checks() {
   run "go build ./..." go build ./...
   pkgs="$(sed -n 's#^agent_go/\(.*\)/[^/]*\.go$#./\1#p' "$WORK/changed.txt" | sort -u)"
   existing=""
-  for pkg in $pkgs; do [[ -d "$pkg" ]] && existing="$existing $pkg"; done
+  nested_mods=""
+  for pkg in $pkgs; do
+    [[ -d "$pkg" ]] || continue
+    # Skip packages inside a nested go.mod (e.g. agent_go/pkg/mcpoauth) from the parent module vet
+    # and vet them in their own module directory instead.
+    dir="$pkg"
+    nested=""
+    while [[ "$dir" != "." && "$dir" != "/" ]]; do
+      if [[ -f "$dir/go.mod" ]]; then nested="$dir"; break; fi
+      dir="$(dirname "$dir")"
+    done
+    if [[ -n "$nested" ]]; then
+      nested_mods="$nested_mods $nested"
+    else
+      existing="$existing $pkg"
+    fi
+  done
   [[ -z "$existing" ]] || run "go vet$existing" go vet $existing
+  for mod in $(printf '%s\n' $nested_mods | sort -u); do
+    run "go vet (agent_go/${mod#./})" env VERIFY_DIR="$WORK/repo/agent_go/${mod#./}" bash -c 'cd "$VERIFY_DIR" && go vet ./...'
+  done
   # The engine libraries are their own modules (agent_go/go.mod replaces them with these folders): vet their changed packages there.
-  for module in mcpagent multi-llm-provider-go; do
+  for module in mcpagent multi-llm-provider-go mcp-gateway; do
     pkgs="$(sed -n "s#^$module/\(.*\)/[^/]*\.go\$#./\1#p; s#^$module/[^/]*\.go\$#.#p" "$WORK/changed.txt" | sort -u)"
     existing=""
     for pkg in $pkgs; do [[ -d "$WORK/repo/$module/$pkg" ]] && existing="$existing $pkg"; done
@@ -484,7 +503,7 @@ run_go_checks() {
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
     case "$line" in
-      'workspace '*|'mcp-gateway '*|'mcpagent '*|'multi-llm-provider-go '*)
+      'workspace '*|'mcp-gateway '*|'mcpagent '*|'multi-llm-provider-go '*|'agent_go/pkg/mcpoauth '*)
         module="${line%% *}"; args="${line#* }"
         # The line goes in through the environment, not the -c string, so its own quotes survive (same eval as the GitHub workflow).
         run "go test ($module) $args" env VERIFY_DIR="$WORK/repo/$module" VERIFY_ARGS="$args" bash -c 'cd "$VERIFY_DIR" && eval "go test $VERIFY_ARGS -count=1"' ;;

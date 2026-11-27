@@ -917,46 +917,45 @@ func (c *Client) setupOAuthAuth(ctx context.Context) error {
 
 // discoverOAuthEndpoints auto-discovers OAuth endpoints from 401 response
 func (c *Client) discoverOAuthEndpoints(ctx context.Context) error {
-	// Make a test request to trigger 401 response
-	resp, err := c.discoveryClient().Get(c.config.URL)
+	endpoints, err := c.DiscoverOAuthEndpoints(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to reach server for discovery: %w", err)
+		return err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusUnauthorized {
-		endpoints, err := oauth.DiscoverFromResponse(resp)
-		if err != nil {
-			return fmt.Errorf("failed to discover endpoints: %w", err)
-		}
-
-		// Update OAuth manager with discovered endpoints
-		c.oauthManager.UpdateEndpoints(endpoints.AuthURL, endpoints.TokenURL)
-
-		c.logger.Info("Auto-discovered OAuth endpoints",
-			loggerv2.String("auth_url", endpoints.AuthURL),
-			loggerv2.String("token_url", endpoints.TokenURL))
-
-		return nil
-	}
-
-	return fmt.Errorf("server did not return 401 for discovery (got %d)", resp.StatusCode)
+	c.oauthManager.UpdateEndpoints(endpoints.AuthURL, endpoints.TokenURL)
+	return nil
 }
 
 // DiscoverOAuthEndpoints discovers OAuth endpoints from the server and returns them
 // This is the public wrapper for external use (e.g., UI)
 func (c *Client) DiscoverOAuthEndpoints(ctx context.Context) (*oauth.OAuthEndpoints, error) {
-	// Make a test request to trigger 401 response
-	resp, err := c.discoveryClient().Get(c.config.URL)
+	if err := c.checkPublicOnly(); err != nil {
+		return nil, err
+	}
+	httpClient := c.discoveryClient()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.config.URL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build discovery request: %w", err)
+	}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reach server for discovery: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		endpoints, err := oauth.DiscoverFromResponse(resp)
+		endpoints, err := (oauth.Discoverer{Client: httpClient}).DiscoverFromResponse(resp)
 		if err != nil {
 			return nil, fmt.Errorf("failed to discover endpoints: %w", err)
+		}
+		if c.config.PublicOnly {
+			for _, u := range []string{endpoints.AuthURL, endpoints.TokenURL, endpoints.RegistrationEndpoint} {
+				if u == "" {
+					continue
+				}
+				if err := netguard.CheckURL(u, true); err != nil {
+					return nil, fmt.Errorf("discovered OAuth endpoint refused: %w", err)
+				}
+			}
 		}
 
 		c.logger.Info("Auto-discovered OAuth endpoints",

@@ -67,10 +67,42 @@ func matchingRules(s *store.MemoryStore, id auth.Identity, t store.ToolSnapshot)
 	return rules, true, nil
 }
 
+// Evaluator amortizes the SQLite PersistenceError check once per request for
+// multi-tool listing/inventory loops while preserving live grant checks.
+type Evaluator struct {
+	store *store.MemoryStore
+}
+
+// NewEvaluator verifies store persistence once and returns an Evaluator for
+// repeated policy checks within the same request.
+func NewEvaluator(s *store.MemoryStore) (*Evaluator, error) {
+	if err := s.PersistenceError(); err != nil {
+		return nil, err
+	}
+	return &Evaluator{store: s}, nil
+}
+
+func (e *Evaluator) Authorize(id auth.Identity, publicName string) (store.ToolSnapshot, error) {
+	return authorize(e.store, id, publicName, false)
+}
+
+func (e *Evaluator) AuthorizeSetup(id auth.Identity, publicName string) (store.ToolSnapshot, error) {
+	return authorizeSetup(e.store, id, publicName, false)
+}
+
+func (e *Evaluator) Visible(id auth.Identity, publicName string) bool {
+	_, err := authorize(e.store, id, publicName, false)
+	return err == nil
+}
+
 // Authorize resolves the registered tool and checks the caller's grant.
 // It returns the snapshot on allow.
 func Authorize(s *store.MemoryStore, id auth.Identity, publicName string) (store.ToolSnapshot, error) {
-	t, err := authorizeActiveTool(s, id, publicName)
+	return authorize(s, id, publicName, true)
+}
+
+func authorize(s *store.MemoryStore, id auth.Identity, publicName string, checkPersistence bool) (store.ToolSnapshot, error) {
+	t, _, err := authorizeActiveTool(s, id, publicName, checkPersistence)
 	if err != nil {
 		return store.ToolSnapshot{}, err
 	}
@@ -106,40 +138,53 @@ func Authorize(s *store.MemoryStore, id auth.Identity, publicName string) (store
 }
 
 // Operational checks apply to both ordinary calls and administrator setup.
-func authorizeActiveTool(s *store.MemoryStore, id auth.Identity, publicName string) (store.ToolSnapshot, error) {
-	if err := s.PersistenceError(); err != nil {
-		return store.ToolSnapshot{}, err
+func authorizeActiveTool(s *store.MemoryStore, id auth.Identity, publicName string, checkPersistence bool) (store.ToolSnapshot, store.Connector, error) {
+	if checkPersistence {
+		if err := s.PersistenceError(); err != nil {
+			return store.ToolSnapshot{}, store.Connector{}, err
+		}
+	} else if err := s.FastPersistenceError(); err != nil {
+		return store.ToolSnapshot{}, store.Connector{}, err
 	}
 	t, ok := s.GetTool(publicName)
 	if !ok || t.WorkspaceID != id.WorkspaceID {
-		return store.ToolSnapshot{}, ErrUnknownTool
+		return store.ToolSnapshot{}, store.Connector{}, ErrUnknownTool
 	}
 	if t.Status != store.StatusActive {
-		return store.ToolSnapshot{}, ErrToolNotActive
+		return store.ToolSnapshot{}, store.Connector{}, ErrToolNotActive
 	}
 	c, ok := s.GetConnector(t.ConnectorID)
 	if !ok || c.Status != store.StatusActive {
-		return store.ToolSnapshot{}, ErrConnectorDisabled
+		return store.ToolSnapshot{}, store.Connector{}, ErrConnectorDisabled
 	}
 	if c.WorkspaceID != id.WorkspaceID {
-		return store.ToolSnapshot{}, ErrConnectorDisabled
+		return store.ToolSnapshot{}, store.Connector{}, ErrConnectorDisabled
 	}
 	if t.Fingerprint == "" || t.ApprovedFingerprint != t.Fingerprint {
-		return store.ToolSnapshot{}, ErrToolNotActive
+		return store.ToolSnapshot{}, store.Connector{}, ErrToolNotActive
 	}
-	return t, nil
+	return t, c, nil
 }
 
 // AuthorizeSetup is used only by the service-authorized Vault builder handler.
 // Other transports call Authorize, which also checks group and user grants.
+// Private vault connectors (personal or Crew vaults not owned by the caller)
+// stay out of builder setup authority.
 func AuthorizeSetup(s *store.MemoryStore, id auth.Identity, publicName string) (store.ToolSnapshot, error) {
-	t, err := authorizeActiveTool(s, id, publicName)
+	return authorizeSetup(s, id, publicName, true)
+}
+
+func authorizeSetup(s *store.MemoryStore, id auth.Identity, publicName string, checkPersistence bool) (store.ToolSnapshot, error) {
+	t, c, err := authorizeActiveTool(s, id, publicName, checkPersistence)
 	if err != nil {
 		return store.ToolSnapshot{}, err
 	}
 	user, ok := s.GetUser(id.UserID)
 	if !ok || user.WorkspaceID != id.WorkspaceID {
 		return store.ToolSnapshot{}, ErrUnknownUser
+	}
+	if c.VaultID != "" && !s.VaultOwnedBy(id.UserID, c.VaultID) {
+		return store.ToolSnapshot{}, ErrNoGrant
 	}
 	return t, nil
 }

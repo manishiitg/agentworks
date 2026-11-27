@@ -301,21 +301,20 @@ func (h *ExecutorHandlers) HandleMCPExecute(w http.ResponseWriter, r *http.Reque
 			loggerv2.Any("available_servers", connServers),
 			loggerv2.String("requested_server", req.Server))
 
-		if existingClient, exists := sessionConns[req.Server]; exists {
-			h.logger.Info("✅ Using session registry connection (session-aware)",
-				loggerv2.String("session_id", req.SessionID),
-				loggerv2.String("server", req.Server))
-			client = existingClient
-		} else if serverConfig, hasConfig := registry.GetServerConfig(req.SessionID, req.Server); hasConfig {
-			// Lazy connect: first actual tool call to this server — connect now
-			h.logger.Info("⚡ [LAZY] First tool call to "+req.Server+" — connecting now",
-				loggerv2.String("session_id", req.SessionID))
+		if serverConfig, hasConfig := registry.GetServerConfig(req.SessionID, req.Server); hasConfig {
+			// Resolve through the session's exact config fingerprint (never borrow
+			// another user/workflow's pooled connection for the same server name).
 			lazyClient, _, lazyErr := registry.GetOrCreateConnection(ctx, connSessionID, req.Server, serverConfig, h.logger)
 			if lazyErr != nil {
 				h.logger.Error("Lazy connect failed for server "+req.Server, lazyErr)
 			} else {
 				client = lazyClient
 			}
+		} else if existingClient, exists := sessionConns[req.Server]; exists {
+			h.logger.Info("✅ Using session registry connection (session-aware)",
+				loggerv2.String("session_id", req.SessionID),
+				loggerv2.String("server", req.Server))
+			client = existingClient
 		} else if connSessionID != req.SessionID {
 			// Fallback: config may be stored under the resolved shared connection ID.
 			if serverConfig, hasConfig := registry.GetServerConfig(connSessionID, req.Server); hasConfig {

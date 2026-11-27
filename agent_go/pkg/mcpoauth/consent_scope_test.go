@@ -79,3 +79,19 @@ func TestConsentIssuesOnlyScopesAllowedForTheHuman(t *testing.T) {
 		t.Fatalf("issued grant contains unauthorized scope: %+v, %v", grant.Scopes, err)
 	}
 }
+
+func TestChallengeUsesResourceMetadataParameter(t *testing.T) {
+	srv := NewServer(Config{
+		PublicURL:             "https://platform.example",
+		ResourcePath:          "/api/vault/mcp",
+		ProtectedResourcePath: "/.well-known/oauth-protected-resource/api/vault/mcp",
+		Scopes:                []string{"vault:mcp"},
+	})
+	rec := httptest.NewRecorder()
+	srv.Challenge(rec)
+	got := rec.Header().Get("WWW-Authenticate")
+	want := `Bearer resource_metadata="https://platform.example/.well-known/oauth-protected-resource/api/vault/mcp", scope="vault:mcp"`
+	if got != want {
+		t.Fatalf("WWW-Authenticate = %q, want %q", got, want)
+	}
+}

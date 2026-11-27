@@ -592,6 +592,9 @@ func (a *Admin) setGroupServerLevel(groupID, connectorID string, attach bool, re
 	if !ok || c.WorkspaceID != a.WorkspaceID {
 		return errors.New("unknown connector")
 	}
+	if c.VaultID != "" && c.VaultID != groupID {
+		return errors.New("vault connections belong only to their own vault")
+	}
 	if attach {
 		a.Store.AddGroupServerGrantWithLevel(groupID, connectorID, readOnly)
 	} else {

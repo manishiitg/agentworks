@@ -171,9 +171,13 @@ func (a *Admin) groupPermissions(groupID string) []groupPermission {
 			}
 		}
 	}
+	eval, evalErr := policy.NewEvaluator(a.Store)
 	for _, tool := range a.Store.ListTools(a.WorkspaceID) {
 		_, governed := a.Store.PolicyForTool(a.WorkspaceID, tool.PublicName)
-		_, err := policy.Authorize(a.Store, auth.Identity{WorkspaceID: a.WorkspaceID, ViaGroup: groupID}, tool.PublicName)
+		err := evalErr
+		if err == nil {
+			_, err = eval.Authorize(auth.Identity{WorkspaceID: a.WorkspaceID, ViaGroup: groupID}, tool.PublicName)
+		}
 		source := ""
 		if governed {
 			source = "policy"
@@ -211,10 +215,14 @@ func (a *Admin) userAccess(userID string) (map[string]any, error) {
 	for _, name := range direct {
 		directSet[name] = true
 	}
+	eval, evalErr := policy.NewEvaluator(a.Store)
 	tools := []userToolAccess{}
 	allowedCount := 0
 	for _, tool := range a.Store.ListTools(a.WorkspaceID) {
-		_, err := policy.Authorize(a.Store, auth.Identity{WorkspaceID: a.WorkspaceID, UserID: userID}, tool.PublicName)
+		err := evalErr
+		if err == nil {
+			_, err = eval.Authorize(auth.Identity{WorkspaceID: a.WorkspaceID, UserID: userID}, tool.PublicName)
+		}
 		_, governed := a.Store.PolicyForTool(a.WorkspaceID, tool.PublicName)
 		via := []string{}
 		for _, group := range groups {

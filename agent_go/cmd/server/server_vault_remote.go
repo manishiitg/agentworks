@@ -507,7 +507,12 @@ func (api *StreamingAPI) handleServerVaultMCP(w http.ResponseWriter, r *http.Req
 				return
 			}
 			_, rows, err := serverVaultRows(r.Context(), in.Person, name)
-			if row, ok := serverVaultRowFor(rows, name); err == nil && ok && strings.EqualFold(row.Provider, "slack") {
+			if err != nil {
+				if refusal := lentSlackCallRefusal(r, in, owner, root); refusal != "" {
+					http.Error(w, refusal, http.StatusForbidden)
+					return
+				}
+			} else if row, ok := serverVaultRowFor(rows, name); ok && strings.EqualFold(row.Provider, "slack") {
 				if refusal := lentSlackCallRefusal(r, in, owner, root); refusal != "" {
 					http.Error(w, refusal, http.StatusForbidden)
 					return
