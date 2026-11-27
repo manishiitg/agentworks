@@ -607,19 +607,21 @@ type envelope struct {
 	Scheme          string   `json:"scheme,omitempty"`
 	TabStatus       string   `json:"tab_status,omitempty"`
 	TabFlags        string   `json:"tab_flags,omitempty"`
+	Outcome         string   `json:"outcome,omitempty"`
 	Chrome          string   `json:"chrome,omitempty"`
 	Online          *bool    `json:"online,omitempty"`
 	ExtIDs          []string `json:"ext_ids,omitempty"`
 }
 
 var (
-	diagnosticEvents = map[string]bool{"connection_paired": true, "connection_stopped": true, "debugger_attached": true, "debugger_detached": true, "session_detach_requested": true, "tab_unshared": true, "command_failed": true, "command_started": true, "command_succeeded": true, "child_attached": true, "child_detached": true, "tab_created": true, "tab_grouping_started": true, "tab_grouped": true, "tab_grouping_failed": true, "setup_waiting_for_page": true, "target_attach_failed": true, "target_setup_failed": true, "target_recovery_started": true, "target_recovered": true, "target_recovery_failed": true, "tab_shown_for_input": true, "window_restored_for_input": true,
+	diagnosticEvents = map[string]bool{"connection_paired": true, "connection_stopped": true, "debugger_attached": true, "debugger_detached": true, "session_detach_requested": true, "tab_unshared": true, "command_failed": true, "command_started": true, "command_succeeded": true, "child_attached": true, "child_detached": true, "tab_created": true, "tab_grouping_started": true, "tab_grouped": true, "tab_group": true, "tab_grouping_failed": true, "setup_waiting_for_page": true, "target_attach_failed": true, "target_setup_failed": true, "target_recovery_started": true, "target_recovered": true, "target_recovery_failed": true, "tab_shown_for_input": true, "window_restored_for_input": true,
 		"recovery_attempt": true, "tab_snapshot": true, "frame_attached": true, "frame_navigated": true, "connect_failed": true, "connection_closed": true, "reconnect_scheduled": true}
 	diagnosticReasons     = map[string]bool{"": true, "target_closed": true, "canceled_by_user": true, "replaced_with_devtools": true, "requested_unshare": true, "target_close": true, "debugger_detached": true, "tab_closed": true, "unsupported_url": true, "detached": true, "not_shared": true, "foreign_frame": true, "another_debugger": true, "cannot_attach": true, "no_tab": true, "not_allowed_url": true, "timeout": true, "ws_error": true, "ws_closed": true, "other": true}
 	diagnosticTargetTypes = map[string]bool{"": true, "iframe": true, "page": true, "worker": true, "service_worker": true, "shared_worker": true, "background_page": true, "other": true}
 	diagnosticSchemes     = map[string]bool{"": true, "https": true, "http": true, "chrome-extension": true, "about": true, "blob": true, "data": true, "chrome": true, "chrome-untrusted": true, "devtools": true, "file": true, "other": true}
 	diagnosticTabStatus   = map[string]bool{"": true, "loading": true, "complete": true, "unloaded": true}
 	diagnosticTabFlags    = map[string]bool{"active": true, "discarded": true, "incognito": true, "grouped": true, "audible": true, "pinned": true, "frozen": true}
+	diagnosticOutcomes    = map[string]bool{"": true, "reused": true, "created": true, "waiting_for_name": true}
 )
 
 const maxDiagnosticMS = 7 * 24 * 60 * 60 * 1000
@@ -647,7 +649,7 @@ func diagnosticDetail(e envelope) (string, bool) {
 	if e.Attempt < 0 || e.Attempt > 64 || e.WSCode < 0 || e.WSCode > 4999 || len(e.ExtIDs) > 8 {
 		return "", false
 	}
-	if !diagnosticTargetTypes[e.TargetType] || !diagnosticSchemes[e.Scheme] || !diagnosticTabStatus[e.TabStatus] {
+	if !diagnosticTargetTypes[e.TargetType] || !diagnosticSchemes[e.Scheme] || !diagnosticTabStatus[e.TabStatus] || !diagnosticOutcomes[e.Outcome] {
 		return "", false
 	}
 	if len(e.Chrome) > 4 {
@@ -704,6 +706,9 @@ func diagnosticDetail(e envelope) (string, bool) {
 	}
 	if e.TabFlags != "" {
 		add("tab_flags", e.TabFlags)
+	}
+	if e.Outcome != "" {
+		add("outcome", e.Outcome)
 	}
 	if e.Chrome != "" {
 		add("chrome", e.Chrome)

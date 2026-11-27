@@ -175,11 +175,11 @@ async function connectAccount(raw, manual=false) {
   ws.onmessage=({data})=>{
    if(accountSocket!==ws)return;let event;try{event=JSON.parse(data);}catch{return;}
    if(event.type==='account-paired'){
-    clearTimeout(timer);accountOnline=true;accountResume=true;accountError='';availableProjects=event.projects||[];heartbeat=setInterval(()=>{if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ping'}));},25000);void saveRemembered();updateBadge();resolve(state());
+    clearTimeout(timer);accountOnline=true;accountResume=true;accountError='';availableProjects=event.projects||[];for(const c of connections.values())void c.refreshName?.();heartbeat=setInterval(()=>{if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'ping'}));},25000);void saveRemembered();updateBadge();resolve(state());
    }else if(event.type==='connect-project'){
     const attach=async()=>{if(accountSocket!==ws||!accountOnline)return;const previousScope=selectedScope;if(!connections.get(event.scope)?.state().connected)await connectProject(JSON.stringify({...accountPairing,scope:event.scope,resume:savedPairings.has(event.scope)}));if(connections.get(previousScope)?.state().connected)selectedScope=previousScope;await saveRemembered();};popupQueue=popupQueue.then(attach,attach);
    }else if(event.type==='project-error'){accountError=event.workspace || 'Could not use this browser for that project.';}
-   else if(event.type==='pong'){if(Array.isArray(event.projects))availableProjects=event.projects;}
+   else if(event.type==='pong'){if(Array.isArray(event.projects)){availableProjects=event.projects;for(const c of connections.values())void c.refreshName?.();}}
    else if(event.type==='account-disconnected'||event.type==='error'){
     accountError=event.workspace||'This browser was disconnected. Connect again to enable it.';accountPairing=null;accountResume=false;accountOnline=false;savedPairings.clear();savedTabs.clear();savedChatTabs.clear();void saveRemembered();void Promise.allSettled([...connections.values()].map(c=>c.stop()));connections.clear();ws.close();reject(new Error(accountError));
    }
@@ -307,29 +307,44 @@ async function announce(tab) {
 }
 // Groups organize only tabs already authorized for this live connection.
 async function groupSharedTab(tabId, connection = socket) {
-  if (!connection || socket !== connection || !workspace || !shared.has(tabId)) throw new Error('Connection stopped');
-  const tab = await chrome.tabs.get(tabId);
-  if (socket !== connection || !workspace || !shared.has(tabId)) throw new Error('Connection stopped');
-  const title = displayName(projectName);
-  if (!title) { diagnostic('tab_group', tabId, '', '', lastMethod, 0, {outcome:'waiting_for_name'}); return; }
-  diagnostic('tab_grouping_started', tabId);
-  let groupId;
-  let reused = groups.has(tab.windowId);
-  if (!reused) {
-    const existing = await chrome.tabGroups.query({windowId: tab.windowId, title});
+  const run = async () => {
+    if (!connection || socket !== connection || !workspace || !shared.has(tabId)) throw new Error('Connection stopped');
+    const tab = await chrome.tabs.get(tabId);
     if (socket !== connection || !workspace || !shared.has(tabId)) throw new Error('Connection stopped');
-    const match = existing.find(group => group.title === title);
-    if (match) { groups.set(tab.windowId, match.id); reused = true; }
-  }
-  try { groupId = await chrome.tabs.group({ ...(groups.has(tab.windowId) ? { groupId: groups.get(tab.windowId) } : { createProperties: { windowId: tab.windowId } }), tabIds: [tabId] }); }
-  catch { if (socket !== connection || !shared.has(tabId)) throw new Error('Connection stopped'); reused = false; groupId = await chrome.tabs.group({ createProperties: { windowId: tab.windowId }, tabIds: [tabId] }); }
-  if (socket !== connection || !workspace || !shared.has(tabId)) {
-    try { if ((await chrome.tabs.get(tabId)).groupId === groupId) await chrome.tabs.ungroup(tabId); } catch {}
-    throw new Error('Connection stopped');
-  }
-  groups.set(tab.windowId, groupId);
-  await chrome.tabGroups.update(groupId, { title, color: 'blue' });
-  diagnostic('tab_group', tabId, '', '', lastMethod, 0, {outcome:reused ? 'reused' : 'created'});
+    const title = displayName(projectName);
+    if (!title) { diagnostic('tab_group', tabId, '', '', lastMethod, 0, {outcome:'waiting_for_name'}); return; }
+    diagnostic('tab_grouping_started', tabId);
+    const findExisting = async () => {
+      const existing = await chrome.tabGroups.query({windowId: tab.windowId, title});
+      if (socket !== connection || !workspace || !shared.has(tabId)) throw new Error('Connection stopped');
+      return existing.find(group => group.title === title)?.id;
+    };
+    let groupId = groups.get(tab.windowId);
+    let reused = groupId !== undefined;
+    if (!reused) {
+      groupId = await findExisting();
+      reused = groupId !== undefined;
+    }
+    try { groupId = await chrome.tabs.group({ ...(groupId !== undefined ? { groupId } : { createProperties: { windowId: tab.windowId } }), tabIds: [tabId] }); }
+    catch {
+      if (socket !== connection || !workspace || !shared.has(tabId)) throw new Error('Connection stopped');
+      const failedId = groupId;
+      groups.delete(tab.windowId);
+      const fallback = await findExisting();
+      reused = fallback !== undefined && fallback !== failedId;
+      groupId = await chrome.tabs.group({ ...(reused ? { groupId: fallback } : { createProperties: { windowId: tab.windowId } }), tabIds: [tabId] });
+    }
+    if (socket !== connection || !workspace || !shared.has(tabId)) {
+      try { if ((await chrome.tabs.get(tabId)).groupId === groupId) await chrome.tabs.ungroup(tabId); } catch {}
+      throw new Error('Connection stopped');
+    }
+    groups.set(tab.windowId, groupId);
+    await chrome.tabGroups.update(groupId, { title, color: 'blue' });
+    diagnostic('tab_group', tabId, '', '', lastMethod, 0, {outcome:reused ? 'reused' : 'created'});
+  };
+  const pending = (groupSharedTab.queue || Promise.resolve()).then(run, run);
+  groupSharedTab.queue = pending.catch(() => {});
+  return pending;
 }
 async function share(tabId) {
   if (socket?.readyState !== WebSocket.OPEN || !workspace) throw new Error('Connect to a workspace first');
@@ -479,7 +494,7 @@ async function connect(raw) {
       if (socket !== ws) return;
       let e; try { e = JSON.parse(data); } catch { void stop('Invalid server response'); return; }
       if (e.type === 'paired') {
-        clearTimeout(timer); workspace = e.workspace; api.scope = e.scope; api.profile = e.profile_id; if(Array.isArray(e.projects))availableProjects=e.projects; projectName = displayName(e.name); error = '';
+        clearTimeout(timer); workspace = e.workspace; api.scope = e.scope; api.profile = e.profile_id; if(Array.isArray(e.projects))availableProjects=e.projects; projectName = displayName(e.name) || displayName(availableProjects.find(p => p.scope === e.scope)?.name); error = '';
         serverDiagnostics = e.diagnostics === true;
         heartbeat = setInterval(() => send({ type: 'ping' }), 25000);
         diagnostic('connection_paired', 0, '', '', '', 0, { chrome: chromeMajor() });
@@ -659,6 +674,7 @@ async function handleCDP(message, connection, active, clientId) {
     },
     async newtab() { const result = await command({ method:'Target.createTarget', params:{url:'about:blank'} }); const tab = await tabForTarget(result.targetId); await chrome.tabs.update(tab.id,{active:true}); },
     async group() { for (const id of [...shared.keys()]) await groupSharedTab(id); },
+    async refreshName() { const project = availableProjects.find(p => p.scope === api.scope); if (project) await updateGroupNames(project.name); },
     onDetach(tabId, reason) {
       const now = Date.now();
       diagnostic('debugger_detached', tabId, ['target_closed','canceled_by_user','replaced_with_devtools'].includes(reason) ? reason : 'other', '', lastMethod, 0, {

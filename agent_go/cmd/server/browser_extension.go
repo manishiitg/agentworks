@@ -239,14 +239,20 @@ func (api *StreamingAPI) handleBrowserExtensionConnect(w http.ResponseWriter, r 
 		return nil
 	}, func(user, workspace, profile string) string {
 		ctx := context.WithValue(r.Context(), UserContextKey, &UserClaims{UserID: user})
-		ctx, cancel := context.WithTimeout(ctx, time.Second)
+		ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		defer cancel()
 		filename := "product.json"
 		if profile == "workflow" {
 			filename = "workflow.json"
 		}
+		raw, found, err := readFileFromWorkspace(ctx, workspace+"/"+filename)
+		if err != nil {
+			// On a transient startup/read failure, let the extension wait for
+			// the real display name rather than grouping tabs under the folder slug.
+			return ""
+		}
 		name := path.Base(workspace)
-		if raw, found, err := readFileFromWorkspace(ctx, workspace+"/"+filename); err == nil && found {
+		if found {
 			var manifest struct {
 				Title, Label string
 				Identity     struct{ Name string }
