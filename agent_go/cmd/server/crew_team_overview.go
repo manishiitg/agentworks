@@ -99,8 +99,8 @@ type crewTeamOverviewPerson struct {
 	UserID  string                 `json:"user_id"`
 	Person  string                 `json:"person"`
 	Network string                 `json:"network,omitempty"`
-	Working int                    `json:"working"`
-	Now     []crewTeamOverviewNow  `json:"now"`
+	Working int                    `json:"working"` // 1 when the person is working now, else 0
+	Now     []crewTeamOverviewNow  `json:"now"`     // what they are on: their first working agent
 	Teams   []string               `json:"teams"`
 	Counts  crewTeamOverviewCounts `json:"counts"`
 	Done    string                 `json:"done,omitempty"`
@@ -150,7 +150,7 @@ func crewTeamOverviewOf(ctx context.Context, t crewTeam, live crewTeamLiveView, 
 	key := strings.Join([]string{t.ProjectID, viewer, period, fmt.Sprint(detail)}, "\x00")
 	now := time.Now()
 	out := crewTeamOverview{Period: period, Label: label, Now: []crewTeamOverviewNow{}, People: []crewTeamOverviewPerson{}}
-	for _, row := range live.Agents {
+	for _, row := range crewTeamWorkingPeople(live) {
 		out.Now = append(out.Now, crewTeamOverviewNow{Agent: row.Name, Person: crewTeamOverviewWho(row), UserID: row.OwnerID, Title: row.Title})
 	}
 	if v, ok := crewTeamOverviewCache.Load(key); ok && now.Sub(v.(crewTeamOverviewCached).at) < crewTeamOverviewFor {
@@ -218,9 +218,9 @@ func crewTeamOverviewOf(ctx context.Context, t crewTeam, live crewTeamLiveView, 
 	for _, user := range append([]string{t.OwnerID}, crewTeamPeopleIDs(t)...) {
 		person(user)
 	}
-	for _, row := range live.Agents {
+	for _, row := range crewTeamWorkingPeople(live) {
 		p := person(row.OwnerID)
-		p.Working++
+		p.Working = 1
 		p.Now = append(p.Now, crewTeamOverviewNow{Agent: row.Name, Person: p.Person, UserID: row.OwnerID, Title: row.Title, Team: live.Name})
 	}
 	personItems := map[string][]crewTeamOverviewItem{}
@@ -259,7 +259,7 @@ func crewTeamOverviewOf(ctx context.Context, t crewTeam, live crewTeamLiveView, 
 // crewTeamOverviewFinish applies the parts that must be current on every read: who is working now.
 func crewTeamOverviewFinish(out crewTeamOverview, live crewTeamLiveView, detail bool) crewTeamOverview {
 	working := map[string][]crewTeamOverviewNow{}
-	for _, row := range live.Agents {
+	for _, row := range crewTeamWorkingPeople(live) {
 		working[row.OwnerID] = append(working[row.OwnerID], crewTeamOverviewNow{Agent: row.Name, Person: crewTeamOverviewWho(row), UserID: row.OwnerID, Title: row.Title, Team: live.Name})
 	}
 	people := slices.Clone(out.People)
@@ -276,6 +276,27 @@ func crewTeamOverviewFinish(out crewTeamOverview, live crewTeamLiveView, detail 
 	out.Done = crewTeamOverviewDoneLine(out.Counts)
 	out.Quiet = len(live.Agents) == 0 && out.Done == ""
 	return out
+}
+
+// crewTeamWorkingPeople is the people working now, each once with their first working agent: the Team menu counts
+// and lists people, not agents (owner, 27 Nov).
+func crewTeamWorkingPeople(live crewTeamLiveView) []crewTeamLiveAgent {
+	seen := map[string]bool{}
+	out := []crewTeamLiveAgent{}
+	for _, row := range live.Agents {
+		if !seen[row.OwnerID] {
+			seen[row.OwnerID] = true
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+func crewTeamPeopleWorkingLabel(n int) string {
+	if n == 1 {
+		return "1 person working"
+	}
+	return fmt.Sprintf("%d people working", n)
 }
 
 // The viewer's own agents are "You", whichever Mac they run on; the device name belongs on the agent rows, not here.

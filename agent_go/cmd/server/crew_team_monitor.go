@@ -33,7 +33,7 @@ type crewTeamMonitorReply struct {
 	People []crewTeamOverviewPerson `json:"people"`
 	// Tokens is the tokens used in the last 24 hours across all the listed Teams.
 	Tokens int64 `json:"tokens"`
-	// Summary is the menu's top line: "3 working now · 4 Teams active today · 2.4M tokens".
+	// Summary is the menu's top line: "3 people working now · 4 Teams active today · 2.4M tokens".
 	Summary string `json:"summary,omitempty"`
 }
 
@@ -314,9 +314,9 @@ type crewTeamMonitorWork struct {
 }
 
 func crewTeamMonitorWorkFor(live crewTeamLiveView, now time.Time) *crewTeamMonitorWork {
-	out := &crewTeamMonitorWork{Working: len(live.Agents)}
+	out := &crewTeamMonitorWork{Working: len(crewTeamWorkingPeople(live))}
 	if out.Working > 0 {
-		out.Label = fmt.Sprintf("%d working", out.Working)
+		out.Label = crewTeamPeopleWorkingLabel(out.Working)
 	}
 	at := live.lastWorkedAt
 	// Preserve observed activity for stable recency ordering. Current work is
@@ -370,8 +370,11 @@ func crewTeamMonitorPeople(connections []crewTeamMonitorConnection) ([]crewTeamO
 					merged[key] = m
 					order = append(order, key)
 				}
-				m.Working += p.Working
-				m.Now = append(m.Now, p.Now...)
+				// A person working in two Teams is one person working, shown with one line.
+				if p.Working > 0 && m.Working == 0 {
+					m.Working = 1
+					m.Now = append(m.Now, p.Now...)
+				}
 				if p.Working > 0 || p.Counts != (crewTeamOverviewCounts{}) {
 					m.Teams = append(m.Teams, team.Name)
 				}
@@ -403,18 +406,20 @@ func crewTeamMonitorSummary(connections []crewTeamMonitorConnection, tokens int6
 	if period == "week" {
 		label = "this week"
 	}
-	working, active := 0, 0
+	people, active := map[string]bool{}, 0
 	for _, source := range connections {
 		for _, team := range source.Teams {
-			working += len(team.Agents)
+			for _, row := range team.Agents {
+				people[source.Connection+"\x00"+row.OwnerID] = true
+			}
 			if team.Overview != nil && !team.Overview.Quiet {
 				active++
 			}
 		}
 	}
 	parts := []string{}
-	if working > 0 {
-		parts = append(parts, fmt.Sprintf("%d working now", working))
+	if len(people) > 0 {
+		parts = append(parts, crewTeamPeopleWorkingLabel(len(people))+" now")
 	}
 	switch {
 	case active == 1:

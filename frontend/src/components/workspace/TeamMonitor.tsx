@@ -107,6 +107,8 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
   return [...found.values()].sort((a,b)=>Number((b.work?.working||0)>0)-Number((a.work?.working||0)>0)||newestTime(b)-newestTime(a)||a.name.localeCompare(b.name))
  },[sources,revision])
  const rows=teams.flatMap(team=>team.rows),workingRows=rows.filter(workingRow)
+ // People, not agents (owner, 27 Nov): someone running four agents is one person working.
+ const workingPeople=new Set(workingRows.map(row=>row.personKey.slice(0,row.personKey.lastIndexOf(':')))).size
  const faces=[...new Map(teams.flatMap(team=>team.faces).map(face=>[face.key,face])).values()]
  const selected=faces.find(face=>face.key===only)
  const needs=teams.flatMap(team=>team.needs.map(need=>({team,need})))
@@ -163,9 +165,9 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
   </div>})
  const personView=(p:TeamOverviewPerson)=>{const team=teams.find(team=>team.network===(p.network||'')&&team.members.has(p.user_id))
   return <div key={`${p.network||''}:${p.user_id}`} className="min-w-0 rounded-md px-2 py-1.5 hover:bg-muted/50">
-   <div className="flex min-w-0 items-center gap-2">{who(team,p.user_id,p.person,p.working>0)}<span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{p.person}</span>{status(p.working?`${p.working} working`:undefined,p.last?timeAgo(p.last.at):undefined)}</div>
+   <div className="flex min-w-0 items-center gap-2">{who(team,p.user_id,p.person,p.working>0)}<span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{p.person}</span>{status(p.working?'working':undefined,p.last?timeAgo(p.last.at):undefined)}</div>
    {(p.done||p.teams.length>0)&&<p className="ml-6 truncate text-[10px] text-muted-foreground">{[p.done&&`Today: ${p.done}`,p.teams.join(', ')].filter(Boolean).join(' · ')}</p>}
-   {p.now.slice(0,2).map((n,i)=><p key={i} title={nowLine(n,false)} className="ml-6 truncate text-[11px] text-muted-foreground">{`${n.agent}${n.title?` — ${n.title}`:''}${n.team?` · ${n.team}`:''}`}</p>)}
+   {p.now.slice(0,1).map((n,i)=><p key={i} title={nowLine(n,false)} className="ml-6 truncate text-[11px] text-muted-foreground">{`${n.agent}${n.title?` — ${n.title}`:''}${n.team?` · ${n.team}`:''}`}</p>)}
   </div>}
 // A live reload can keep a Team list fetched before others existed; skip it instead of crashing the app.
  const adminView=sources.filter(source=>source.others?.length).map(source=><div key={`others:${source.connectionId}`} className="min-w-0">
@@ -183,7 +185,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
  if(!notice&&!teams.length&&!adminView.length)return own?<div ref={rootRef} className="flex items-center gap-1.5">{own}</div>:null
  return <div ref={rootRef} className="relative flex items-center gap-1.5" data-theme-team-working={workingRows.length>0?'true':'false'} data-theme-team-waiting={needsInput>0?'true':'false'}>
   {own}
-  <button type="button" onClick={()=>setOpen(v=>!v)} aria-expanded={open} aria-label="Open Team monitor" className="flex h-8 items-center gap-1.5 rounded-full border border-border px-2 text-xs text-muted-foreground hover:bg-muted">Team · <span>{workingRows.length} working</span>{needsInput>0&&<span className="text-warning">· {needsInput} needs you</span>}</button>
+  <button type="button" onClick={()=>setOpen(v=>!v)} aria-expanded={open} aria-label="Open Team monitor" className="flex h-8 items-center gap-1.5 rounded-full border border-border px-2 text-xs text-muted-foreground hover:bg-muted">Team · <span>{workingPeople} working</span>{needsInput>0&&<span className="text-warning">· {needsInput} needs you</span>}</button>
   {open&&createPortal(<div ref={panelRef} role="dialog" aria-label="Team monitor" style={position} className="fixed z-50 flex max-h-[75vh] w-[25rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-y-auto rounded-xl border border-border bg-popover p-2 shadow-xl">
    {selected?<><div className="flex items-center gap-2 border-b border-border px-1 pb-1">{avatar(selected)}<b className="text-xs">{selected.name}</b><span className="text-[10px] text-muted-foreground">{listed.length} agents</span><button type="button" aria-label="Back to all Teams" className="ml-auto text-xs" onClick={()=>setOnly('')}>×</button></div>{listed.map(rowView)}{!listed.length&&<p className="p-2 text-xs text-muted-foreground">{selected.name} hasn't added an agent to this Team yet.</p>}{listed.length>0&&<button type="button" onClick={askPerson} className="px-2 py-1 text-left text-xs text-primary">✦ Ask my agent to ask {selected.name}’s agents…</button>}</>:<>
     {needs.length>0&&<section aria-label="Needs you"><h3 className={section}>Needs you</h3><ol>{needs.map(({team,need})=><NeedCard key={`${team.key}:${need.id}`} need={need} onAnswer={answer(team)} openFile={(need,file)=>teamRequest<TaskFileContent>(team.target,`/activity?task=${encodeURIComponent(need)}&file=${encodeURIComponent(file.id)}`)}/>)}</ol></section>}
