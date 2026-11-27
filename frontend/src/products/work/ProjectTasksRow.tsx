@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
 import { ChevronRight, ExternalLink, ListChecks, Maximize2, MoreHorizontal, Pin } from 'lucide-react'
-import type { CrewPanelRow, ProjectTask, ProjectTaskGroup, ProjectTaskRef } from './useCrewPanel'
+import type { CrewPanelRow, ProjectTask, ProjectTaskGroup, ProjectTaskMove, ProjectTaskRef } from './useCrewPanel'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 import { formatRelativeSeconds } from '../../utils/relativeTime'
 
@@ -21,8 +21,8 @@ export function projectTaskMessage(kind: TaskMessage, task: ProjectTask): string
   const what = `Project task ${task.id} "${task.title}"`
   if (kind === 'approve') return `Approve handing ${what} to ${task.proposed}: set them as assignee, send them the ask and link it to the task.`
   if (kind === 'reassign') return `Reassign ${what}${task.assignee ? ` (now with ${task.assignee})` : ''}. Suggest the best-fitting agent by purpose and ask me which one, then hand it over, link the new ask and tell the old agent.`
-  if (kind === 'hold') return `Put ${what} on hold (task_update held=true) and tell whoever has it to stop for now.`
-  if (kind === 'unhold') return `Take ${what} off hold (task_update held=false) and let whoever has it carry on.`
+  if (kind === 'hold') return `Don't chase ${what} (task_update held=true): it stays on the list, and the lead stops handing it out, nudging or reassigning it.`
+  if (kind === 'unhold') return `Let the lead chase ${what} again (task_update held=false).`
   if (kind === 'move') return `Move ${what} (now at ${task.step}) to the step I name, with a short note: `
   return `About ${what}${task.needs_you ? ` ("${task.needs_you}")` : ''}: `
 }
@@ -36,11 +36,12 @@ export function projectTaskTick(task: ProjectTask, index: number, done: boolean)
   return `On Project task ${task.id} "${task.title}", ${done ? 'tick' : 'untick'} checklist item ${index + 1} "${item?.text || ''}" (task_update ${done ? 'checklist_done' : 'checklist_open'}=${index + 1}).`
 }
 
-export function projectLeadMessage(kind: 'pause' | 'resume' | 'auto' | 'ask', lead = 'the lead'): string {
+export function projectLeadMessage(kind: 'pause' | 'resume' | 'auto' | 'ask' | 'off', lead = 'the lead'): string {
+  if (kind === 'off') return `Switch Project tasks to off: task_settings mode=off. Keep it a plain list: ${lead} still adds and tidies tasks, but doesn't hand work out, nudge or reassign.`
   if (kind === 'pause') return `Pause the Project tasks lead (${lead}): task_settings paused=true. New events wait until I resume it.`
   if (kind === 'resume') return `Resume the Project tasks lead (${lead}): task_settings paused=false.`
-  if (kind === 'ask') return `Switch Project tasks to ask me first: task_settings mode=ask. ${lead} should propose an agent for each new task and wait for my approval.`
-  return `Switch Project tasks to auto: task_settings mode=auto. ${lead} hands new tasks out by itself.`
+  if (kind === 'ask') return `Switch Project tasks to ask me first: task_settings mode=ask. ${lead} should propose an agent for each new task and wait for my approval, and ask me before reassigning stuck work.`
+  return `Switch Project tasks to auto: task_settings mode=auto. ${lead} hands new tasks out by itself and chases them until they're done.`
 }
 
 export const projectActivityChangeMessage = 'I want to change Project activity for this project. Show me what it watches now, the lead agent, and the steps and rules of the Project tasks list, then ask what to add, change or remove.'
@@ -60,7 +61,7 @@ const ring = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring
 const button = `rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-background/40 ${ring}`
 
 function who(task: ProjectTask): string {
-  if (task.held) return 'on hold'
+  if (task.held) return 'not chased'
   if (task.proposed) return `suggest ${task.proposed}`
   if (!task.assignee) return 'not handed out yet'
   const last = task.tasks?.[task.tasks.length - 1]
@@ -98,6 +99,8 @@ function TaskLine({ task, onOpen, onAgent, answers = false }: { task: ProjectTas
         {task.done ? <span className="text-emerald-600 dark:text-emerald-400">✓ {task.step}</span>
           : task.needs_you ? <span className="min-w-0 font-medium text-amber-600 dark:text-amber-400">{task.needs_you}</span>
           : <span className="inline-flex min-w-0 items-center gap-1 text-muted-foreground">{task.step} ·{task.assignee && !task.held && !task.proposed ? <CodingCliIcon provider={task.assignee_cli} className="inline-flex h-3 w-3 shrink-0 items-center"/> : null}<span className={task.assignee && !task.held ? 'text-sky-600 dark:text-sky-400' : ''}>{who(task)}</span></span>}
+        {!task.done && !task.needs_you && task.chase ? <span className={task.chase === 'stuck' ? 'font-medium text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}>{task.chase === 'stuck' ? 'Stuck' : '⏰ Nudged'}{task.chase_at ? ` ${formatRelativeSeconds(task.chase_at)}` : ''}</span>
+          : !task.done && !task.needs_you && task.from ? <span className="text-muted-foreground">↻ from {task.from}</span> : null}
         {task.due && !task.done ? <span className={`rounded px-1 text-[10px] ${task.overdue ? 'bg-amber-500/15 font-medium text-amber-700 dark:text-amber-300' : 'bg-muted text-muted-foreground'}`} title={`Due ${task.due}`}>{task.overdue ? 'overdue · ' : 'due '}{dueLabel(task.due)}</span> : null}
         {checks.length ? <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground" title="Checklist done">☑ {ticked}/{checks.length}<span className="h-1 w-6 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-emerald-500" style={{ width: `${Math.round(ticked / checks.length * 100)}%` }}/></span></span> : null}
         {task.links?.length ? <span className="text-muted-foreground">{task.links.length} linked</span> : null}
@@ -123,14 +126,9 @@ function LeadMenu({ row, onAgent }: { row: CrewPanelRow; onAgent: Draft }) {
     document.addEventListener('keydown', key)
     return () => { document.removeEventListener('mousedown', down); document.removeEventListener('keydown', key) }
   }, [open])
-  const lead = row.lead || 'the lead'
-  const ask = row.tasks_mode === 'ask'
+  // How the list is run and Pause sit in the switch and strip above (owner, 27 Nov).
   const items = [
-    ...(row.lead ? [
-      { label: row.paused ? `Resume ${lead}` : `Pause ${lead}`, detail: row.paused ? 'Waiting work comes in again' : 'New work waits until you resume', message: projectLeadMessage(row.paused ? 'resume' : 'pause', row.lead) },
-      { label: ask ? 'Let it hand work out by itself' : 'Ask me before handing work out', detail: ask ? `Now: ${lead} asks you first` : `Now: ${lead} hands work out by itself`, message: projectLeadMessage(ask ? 'auto' : 'ask', row.lead) },
-    ] : []),
-    { label: 'Change setup', detail: 'What it watches, steps and rules', message: projectActivityChangeMessage },
+    { label: 'Change setup', detail: 'What it watches, the lead, steps and rules', message: projectActivityChangeMessage },
   ]
   return <div ref={ref} className="relative shrink-0">
     <button type="button" aria-label="Project tasks options" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(value => !value)}
@@ -195,11 +193,7 @@ export function ProjectTasksPanel({ row, storageKey, onAgent, onOpenTask, wide =
     .filter(g => g.tasks.length)
   const select = `rounded-md border border-border bg-transparent px-1.5 py-0.5 text-[10.5px] text-foreground ${ring}`
   return <div className="space-y-1.5 px-0.5 pb-2 text-[11.5px]">
-    <div className="flex items-center gap-2 px-1 text-[10.5px] text-muted-foreground">
-      {row.lead ? <><span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${row.paused ? 'bg-amber-500' : 'bg-emerald-500'}`}/>
-        <span className="min-w-0 flex-1 truncate">{row.paused ? `${row.lead} is paused` : `${row.lead} sorts and arranges new work`}</span></> : <span className="flex-1"/>}
-      {onAgent && <LeadMenu row={row} onAgent={onAgent}/>}
-    </div>
+    <Drive row={row} onAgent={onAgent}/>
     {row.focus ? <p className="rounded-md bg-muted/60 px-2 py-1 text-[11.5px] text-foreground">{row.focus}</p> : null}
     {agents.length > 1 || (row.steps?.length || 0) > 2 ? <div className="flex flex-wrap items-center gap-1.5 px-1">
       {agents.length > 1 && <select aria-label="Filter by agent" value={agent} onChange={e => setAgent(e.target.value)} className={select}><option value="">Everyone</option>{agents.map(a => <option key={a} value={a}>{a}</option>)}</select>}
@@ -233,7 +227,55 @@ export function ProjectTasksPanel({ row, storageKey, onAgent, onOpenTask, wide =
       <button type="button" aria-expanded={showDone} onClick={() => setShowDone(value => !value)} className="px-1 text-[10.5px] text-muted-foreground hover:text-foreground">✓ {row.done_count} done {showDone ? '▾' : '▸'}</button>
       {showDone && done.map(task => line(task))}
     </div> : null}
+    {row.tasks_mode !== 'off' && row.task_moves?.length ? <LeadMoves row={row} shown={wide ? 8 : 3}/> : null}
   </div>
+}
+
+const modes = [{ id: 'off', label: 'Off', title: 'A plain list: nobody hands work out or chases it' }, { id: 'ask', label: 'Ask me', title: 'The lead suggests who does what; you approve' }, { id: 'auto', label: 'Auto', title: 'The lead hands work out and chases it until done' }] as const
+
+// Organise vs drive (owner, 27 Nov): the list is always there; whether an
+// agent runs it is one switch. The strip under it says what the lead is doing.
+function Drive({ row, onAgent }: { row: CrewPanelRow; onAgent?: Draft }) {
+  const mode = row.tasks_mode || 'auto'
+  const lead = row.lead || 'The lead'
+  const strip = 'flex items-center gap-2 rounded-md px-2 py-1 text-[10.5px]'
+  const link = 'shrink-0 text-[10.5px] text-primary hover:underline'
+  return <>
+    <div className="flex items-center gap-2 px-1 text-[10.5px] text-muted-foreground">
+      <span className="min-w-0 flex-1 truncate">Run by an agent</span>
+      {onAgent ? <span role="radiogroup" aria-label="How the list is run" className="inline-flex shrink-0 overflow-hidden rounded-md border border-border">
+        {modes.map(m => <button key={m.id} type="button" role="radio" aria-checked={mode === m.id} title={m.title} onClick={() => mode !== m.id && onAgent(projectLeadMessage(m.id, row.lead))}
+          className={`border-border px-2 py-0.5 text-[10.5px] [&:not(:first-child)]:border-l ${mode === m.id ? 'bg-foreground text-background' : 'hover:bg-background/40'} ${ring}`}>{m.label}</button>)}
+      </span> : <span className="shrink-0">{modes.find(m => m.id === mode)?.label}</span>}
+      {onAgent && <LeadMenu row={row} onAgent={onAgent}/>}
+    </div>
+    {mode === 'off'
+      ? <div className={`${strip} border border-dashed border-border text-muted-foreground`}><span className="min-w-0 flex-1">Not driven: a shared list you and agents keep up to date.</span>
+        {onAgent && <button type="button" onClick={() => onAgent(row.lead ? projectLeadMessage('ask', row.lead) : projectActivityChangeMessage)} className={link}>Let an agent run it</button>}</div>
+      : row.paused
+        ? <div className={`${strip} border border-border bg-muted/60`}><span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground"/><span className="min-w-0 flex-1 text-foreground">{lead} is paused. Nothing is handed out or chased.</span>
+          {onAgent && <button type="button" onClick={() => onAgent(projectLeadMessage('resume', row.lead))} className={link}>Resume</button>}</div>
+        : <div className={`${strip} border border-sky-500/35 bg-sky-500/5`}><span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-sky-500"/>
+          <span className="min-w-0 flex-1 text-foreground">{row.lead ? <b className="font-semibold">{row.lead}</b> : 'No lead yet;'} {mode === 'ask' ? 'suggests who does what; you approve' : 'hands out work and chases it'}</span>
+          {onAgent && row.lead && <button type="button" onClick={() => onAgent(projectLeadMessage('pause', row.lead))} className={link}>Pause</button>}</div>}
+  </>
+}
+
+const moveMark: Record<string, string> = { gave: '→', moved: '↻', nudged: '⏰', stuck: '!', suggested: '?', asked: '?', closed: '✓', step: '▸' }
+
+// "What the lead did": the server records each hand-out, nudge, move, question and close.
+function LeadMoves({ row, shown }: { row: CrewPanelRow; shown: number }) {
+  const [all, setAll] = useState(false)
+  const moves: ProjectTaskMove[] = row.task_moves || []
+  return <section aria-label="What the lead did" className="border-t border-border pt-1">
+    <p className="px-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">What the lead did</p>
+    <ul className="space-y-0.5">{(all ? moves : moves.slice(0, shown)).map((m, i) => <li key={i} className="flex items-baseline gap-1.5 px-1 text-[11px]">
+      <span aria-hidden="true" className={`w-3 shrink-0 text-center ${m.kind === 'stuck' ? 'text-red-600 dark:text-red-400' : m.kind === 'closed' ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>{moveMark[m.kind] || '•'}</span>
+      <span className="min-w-0 flex-1 text-foreground">{m.text}{m.by && m.by !== row.lead ? <span className="text-muted-foreground"> · {m.by}</span> : null}</span>
+      <span className="shrink-0 text-[10px] text-muted-foreground">{formatRelativeSeconds(m.at)}</span>
+    </li>)}</ul>
+    {!all && moves.length > shown ? <button type="button" onClick={() => setAll(true)} className="px-1 text-[10.5px] text-muted-foreground hover:text-foreground">{moves.length - shown} more</button> : null}
+  </section>
 }
 
 function Ref({ item }: { item: ProjectTaskRef }) {
@@ -256,7 +298,9 @@ export function ProjectTaskPage({ row, task, onAgent }: { row: CrewPanelRow; tas
     <p className="flex flex-wrap items-center gap-1 text-[10.5px] text-muted-foreground">
       {source && <><Kind kind={source.kind}/><span>From {kindName[source.kind] || source.kind}</span><span>·</span></>}
       <span>{task.done ? 'finished' : task.assignee ? `with ${task.assignee}` : task.proposed ? `suggested: ${task.proposed}` : 'not handed out yet'}</span><span>·</span><span>{formatRelativeSeconds(task.at, { style: 'long' })}</span>
-      {task.held && <span className="rounded bg-amber-500/15 px-1 text-amber-700 dark:text-amber-300">on hold</span>}
+      {task.held && <span className="rounded bg-muted px-1 text-muted-foreground">not chased</span>}
+      {!task.done && task.chase && <span className={`rounded px-1 ${task.chase === 'stuck' ? 'bg-red-500/15 text-red-700 dark:text-red-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`}>{task.chase === 'stuck' ? 'stuck' : 'nudged'}{task.chase_at ? ` ${formatRelativeSeconds(task.chase_at)}` : ''}</span>}
+      {task.from && <span>· moved from {task.from}</span>}
     </p>
     <ol aria-label="Steps" className="flex flex-wrap gap-1 pt-1.5 text-[10.5px]">
       {steps.map((step, index) => <li key={step} aria-current={index === at ? 'step' : undefined}
@@ -307,7 +351,7 @@ export function ProjectTaskPage({ row, task, onAgent }: { row: CrewPanelRow; tas
     </> : null}
     {onAgent && !task.done && <div className="flex flex-wrap gap-1.5 pt-3">
       <button type="button" onClick={() => onAgent(projectTaskMessage('reassign', task))} className={button}>Reassign</button>
-      <button type="button" onClick={() => onAgent(projectTaskMessage(task.held ? 'unhold' : 'hold', task))} className={button}>{task.held ? 'Take off hold' : 'Hold'}</button>
+      <button type="button" onClick={() => onAgent(projectTaskMessage(task.held ? 'unhold' : 'hold', task))} className={button} title={task.held ? 'The lead hands out, nudges and reassigns it again' : 'Stays on the list; the lead leaves it alone'}>{task.held ? 'Let the lead chase it' : "Don't chase"}</button>
       <button type="button" onClick={() => onAgent(projectTaskMessage('move', task))} className={button}>Move…</button>
     </div>}
   </div>

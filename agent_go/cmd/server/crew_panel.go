@@ -68,6 +68,7 @@ type crewPanelProjectTasksRow struct {
 	Paused        bool                   `json:"paused,omitempty"`
 	TaskGroups    []projectTaskGroup     `json:"task_groups,omitempty"`     // the lead's groups, in order
 	Focus         string                 `json:"focus,omitempty"`           // the lead's one line on what matters now
+	TaskMoves     []projectTaskMove      `json:"task_moves,omitempty"`      // "What the lead did", newest first
 	NeedsYouCount int                    `json:"needs_you_count,omitempty"` // Project tasks: shown on the closed row
 	OpenCount     int                    `json:"open_count,omitempty"`
 }
