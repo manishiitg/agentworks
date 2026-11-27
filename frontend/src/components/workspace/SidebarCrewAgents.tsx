@@ -91,13 +91,6 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const [picking, setPicking] = useState('')
   const [groupMenu, setGroupMenu] = useState('')
   const [failed, setFailed] = useState('')
-  // #3504 / #4152: the last hierarchy move (moving a fork out or nesting a chat under another), with an undo action, and any move error.
-  const [moved, setMoved] = useState<{ key: string; name: string; previousParentKey: string; previousParentName?: string; text: string; undoLabel: string } | null>(null)
-  useEffect(() => {
-    if (!moved) return
-    const timer = window.setTimeout(() => setMoved(null), 6000)
-    return () => window.clearTimeout(timer)
-  }, [moved])
   const [forkFailed, setForkFailed] = useState<{ message: string; retry: () => void } | null>(null)
   // The Team tab's one server reading: each agent's availability and every person, by account, with their name.
   const team = useTeamTab(projectId).view
@@ -165,10 +158,6 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     setForkFailed(null)
     try {
       await save('')
-      setMoved({
-        key: agent.key, name: agent.name, previousParentKey: parent.key, previousParentName: parent.name,
-        text: `${agent.name} is now its own agent.`, undoLabel: `Put back under ${parent.name}`,
-      })
       return true
     } catch (cause) {
       setForkFailed({ message: forkError(cause, `Couldn’t move ${agent.name} out. It’s still under ${parent.name}.`), retry: () => { void moveOut(agent, parent) } })
@@ -193,31 +182,14 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
       if (check.reason) setForkFailed({ message: `${agent.name} can’t go under ${target.name} — it’s one of its own sub-chats.`, retry: () => { setForkFailed(null) } })
       return false
     }
-    const previousParent = nestedParent(agent.key)
     setForkFailed(null)
     try {
       await save(target.key)
       unfold(`agent:${target.key}`)
-      setMoved({
-        key: agent.key, name: agent.name,
-        previousParentKey: previousParent?.key || '', previousParentName: previousParent?.name,
-        text: `${agent.name} is now under ${target.name}.`,
-        undoLabel: previousParent ? `Put back under ${previousParent.name}` : 'Undo',
-      })
       return true
     } catch (cause) {
       setForkFailed({ message: forkError(cause, `Couldn’t move ${agent.name} under ${target.name}.`), retry: () => { void nestUnder(agent, target) } })
       return false
-    }
-  }
-  const undoMove = async (note: NonNullable<typeof moved>) => {
-    const save = byKey.get(note.key)?.actions?.forkParent
-    if (!save) { setMoved(null); return }
-    setForkFailed(null)
-    try { await save(note.previousParentKey); setMoved(null) }
-    catch (cause) {
-      const fallback = note.previousParentName ? `Couldn’t put ${note.name} back under ${note.previousParentName}.` : `Couldn’t undo moving ${note.name}.`
-      setForkFailed({ message: forkError(cause, fallback), retry: () => { void undoMove(note) } })
     }
   }
   // A fork dragged out of its agent's list moves out first, then lands where it was dropped.
@@ -412,11 +384,6 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     {draggedParent && <div className={`mx-1 my-1 rounded-md border border-dashed px-2 py-2 text-center text-[11px] text-muted-foreground ${dropOn === 'fork-out' ? 'border-primary bg-primary/10' : 'border-border'}`}
       {...dropZone('fork-out', key => { void dropOut(key, () => undefined) })}>Drop here to move it out of {draggedParent.name}</div>}
     {failed && !naming && <p role="alert" className="px-2 py-1 text-[11px] text-destructive">{failed}</p>}
-    {moved && byKey.has(moved.key) && <div role="status" className="mx-1 my-1 flex items-center gap-2 rounded-md border border-border px-2 py-1.5 text-[11px] text-muted-foreground">
-      <span className="min-w-0 flex-1">{moved.text}</span>
-      <button type="button" className="shrink-0 font-medium text-foreground underline" onClick={() => { void undoMove(moved) }}>{moved.undoLabel}</button>
-      <button type="button" aria-label="Dismiss" onClick={() => setMoved(null)} className="grid h-5 w-5 shrink-0 place-items-center rounded hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3 w-3" /></button>
-    </div>}
     {forkFailed && <p role="alert" className="px-2 py-1 text-[11px] text-destructive">{forkFailed.message}{' '}
       <button type="button" className="font-medium underline" onClick={forkFailed.retry}>Try again</button></p>}
     {/* An online project keeps other people's ungrouped chats behind a toggle (owner, 26 Nov),
