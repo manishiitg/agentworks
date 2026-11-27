@@ -36,6 +36,9 @@ it('opens activity, shows lookup failure with retry, and separates People, Agent
   const tab = (name: string) => [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.startsWith(name))!
   try {
     await act(async () => root.render(<TeamTab projectId="one" />))
+    // The Team panel opens on People (owner, 25 Nov, 85109e61c5); Activity is one click away.
+    expect(tab('People').getAttribute('aria-selected')).toBe('true')
+    await act(async () => tab('Activity').click())
     expect(tab('Activity').getAttribute('aria-selected')).toBe('true')
     expect(host.querySelector('[role="alert"]')).not.toBeNull()
     expect(host.querySelector('section[aria-label="People"]')).toBeNull()
@@ -66,6 +69,7 @@ it('opens activity, shows lookup failure with retry, and separates People, Agent
 // #2817: line-only readers get no thread request or native-chat navigation.
 it('opens a bridge thread only when the feed admits an endpoint owner',async()=>{
  const host=document.createElement('div'),root=createRoot(host)
+ vi.mocked(teamRequest).mockReset()
  const data=(can_open:boolean)=>({feed:[{id:'message:one',kind:'message',at:new Date().toISOString(),person:'Colleague',title:'Reviewer → Builder',verb:'',line:'A shared preview',bridge:{thread_id:'inbox-shared',can_open}}]})
  vi.mocked(teamRequest).mockImplementation(async(_target,suffix,method)=>method==='POST'?{seen:true}:suffix?.includes('thread=')?{messages:[{id:'one',at:new Date().toISOString(),agent:'Reviewer',text:'Owned bridge thread text'}]}:data(true))
  try {

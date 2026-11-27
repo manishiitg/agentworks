@@ -5,18 +5,28 @@ import { spawn, spawnSync } from 'node:child_process'
 import { createServer } from 'node:http'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import ts from 'typescript'
 import { expect, it } from 'vitest'
 const chrome=process.env.APPEARANCE_TEST_CHROME || ['google-chrome','google-chrome-stable','chromium','chromium-browser'].map(name=>spawnSync('which',[name],{encoding:'utf8'}).stdout?.trim()).find(Boolean)
 it.skipIf(!chrome)('keeps actual Worker scripts opaque/offline and kills an infinite render loop',async()=>{
- const source=await readFile('src/components/appearance/scriptSandbox.ts','utf8')
- const js=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText
+ // Bundle the sandbox and its relative imports (e.g. randomUUID) into one page script.
+ const modules=new Map<string,string>()
+ const load=async(file:string)=>{
+  if(modules.has(file))return
+  const out=ts.transpileModule(await readFile(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText
+  const deps:string[]=[]
+  modules.set(file,out.replace(/require\("(\.[^"]+)"\)/g,(_m,spec:string)=>{const dep=relative('.',join(dirname(file),spec))+'.ts';deps.push(dep);return `require(${JSON.stringify(dep)})`}))
+  for(const dep of deps)await load(dep)
+ }
+ const entry='src/components/appearance/scriptSandbox.ts'
+ await load(entry)
+ const js=`(()=>{const defs={${[...modules].map(([file,code])=>`${JSON.stringify(file)}:function(exports,require){${code}\n}`).join(',')}};const cache={};const require=name=>{if(!cache[name]){cache[name]={};defs[name](cache[name],require)}return cache[name]};globalThis.mount=require(${JSON.stringify(entry)}).mountScriptSandbox})();`
  let leaks=0
  const server=createServer((req,res)=>{
   if(req.url?.startsWith('/leak'))leaks++
   if(req.url==='/runtime.js'){
-   res.setHeader('Content-Type','application/javascript');res.end(`const exports={};${js}\nglobalThis.mount=exports.mountScriptSandbox;`);return
+   res.setHeader('Content-Type','application/javascript');res.end(js);return
   }
   res.setHeader('Content-Type','text/html')
   res.end(`<div id="host"></div><script>globalThis.statuses=[];localStorage.setItem('private-marker','not-for-theme');</script><script src="/runtime.js"></script>`)
