@@ -11,6 +11,10 @@ import (
 // id and a retried delivery lands on the same journal row.
 const clientMessageEventIDPrefix = "user:"
 
+// clientMessageIDHeader carries the message's first Idempotency-Key on a
+// retry that had to rotate the key (409 turn_running).
+const clientMessageIDHeader = "X-Client-Message-ID"
+
 func clientMessageIDFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
@@ -18,6 +22,9 @@ func clientMessageIDFromContext(ctx context.Context) string {
 	submission, ok := ctx.Value(chatSubmissionContextKey{}).(chatSubmissionContext)
 	if !ok {
 		return ""
+	}
+	if submission.ClientMessageID != "" {
+		return submission.ClientMessageID
 	}
 	return sanitizeClientMessageID(submission.ID)
 }

@@ -34,15 +34,19 @@ function defaultSleep(ms: number): Promise<void> {
   })
 }
 
+// The message keeps its first key in X-Client-Message-ID, so the server stores
+// the retried send under the id of the bubble already on screen (#3795).
 function rotateIdempotencyKey(headers: unknown): void {
-  const holder = headers as { set?: (name: string, value: string) => void; [name: string]: unknown } | undefined
+  const holder = headers as { get?: (name: string) => unknown; set?: (name: string, value: string) => void; [name: string]: unknown } | undefined
   if (!holder) return
-  const fresh = randomUUID()
-  if (typeof holder.set === 'function') {
-    holder.set('Idempotency-Key', fresh)
-    return
+  const read = (name: string): unknown => typeof holder.get === 'function' ? holder.get(name) : holder[name]
+  const write = (name: string, value: string) => {
+    if (typeof holder.set === 'function') holder.set(name, value)
+    else holder[name] = value
   }
-  holder['Idempotency-Key'] = fresh
+  const first = read('Idempotency-Key')
+  if (!read('X-Client-Message-ID') && typeof first === 'string' && first) write('X-Client-Message-ID', first)
+  write('Idempotency-Key', randomUUID())
 }
 
 export async function retryTurnRunningSubmission(

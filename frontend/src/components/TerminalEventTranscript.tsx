@@ -64,7 +64,7 @@ import { formatToolCallArguments, formatToolCallResult } from '../utils/toolCall
 import type { PollingEvent, TerminalSnapshot } from '../services/api-types'
 import { parseProductInteraction, type ProductInteraction } from '../../shared/session/interactions'
 import { ConversationContinuityNotice, isConversationContinuityNotice } from './ConversationContinuityNotice'
-import { DeliveryFailedResend, DeliveryTick } from './events/system/DeliveryTick'
+import { ChatCompactingContext, DeliveryFailedResend, DeliveryTick } from './events/system/DeliveryTick'
 import { QueuedInboxStatus, QueuedMessageControls, QueuedMessageNotice } from './chat/QueuedMessageControls'
 import { deliveryTickState } from './events/system/deliveryTickState'
 import { UsageLimitRecoveryNotice } from './chat/UsageLimitRecoveryNotice'
@@ -1792,9 +1792,11 @@ function disclosureContextFor(values: Map<string, boolean> | null | undefined, s
 export const TerminalEventTranscript = memo(function TerminalEventTranscript(props: TerminalEventTranscriptProps) {
   const key = props.scrollKey ?? props.terminal?.terminal_id ?? props.events?.find(event => event.session_id)?.session_id
   const readingState = useMemo(() => key ? transcriptReadingState(key) : { following: true, disclosures: new Map<string, boolean>() }, [key])
-  return <DisclosureContext.Provider value={readingState.disclosures}>
+  const turnPhase = useMemo(() => currentTurnPhase(props.events), [props.events])
+  const compacting = turnPhase?.phase === 'compacting' ? (turnPhase.text || 'Compacting this chat') : ''
+  return <ChatCompactingContext.Provider value={compacting}><DisclosureContext.Provider value={readingState.disclosures}>
     <MessageEditContext.Provider value={props.messageEdit ?? null}>
       <TerminalEventTranscriptInner key={key ?? 'unscoped'} {...props} readingState={readingState} readingKey={key} />
     </MessageEditContext.Provider>
-  </DisclosureContext.Provider>
+  </DisclosureContext.Provider></ChatCompactingContext.Provider>
 })

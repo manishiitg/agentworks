@@ -2269,12 +2269,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// This request starts a new turn: its user_message comes from the agent
-	// library, so tell the event store which client id that echo carries.
-	if clientMessageID := clientMessageIDFromContext(r.Context()); clientMessageID != "" && api.eventStore != nil {
-		api.eventStore.ExpectClientUserMessage(sessionID, clientMessageID, req.Query)
-	}
-
 	// Only genuinely new turns use the backend lane. Taking this before the
 	// retained-live-input check made normal follow-ups wait behind slow CLI
 	// startup and caused later messages/notifications to arrive in bursts.
@@ -2372,6 +2366,15 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+
+	// This request starts a new turn: its user_message comes from the agent
+	// library, so tell the event store which client id that echo carries.
+	// Only once this request holds the input lane: two sends held by one
+	// compaction used to register here together, the later overwrote the
+	// earlier, and the loser's bubble never cleared (#3795).
+	if clientMessageID := clientMessageIDFromContext(r.Context()); clientMessageID != "" && api.eventStore != nil {
+		api.eventStore.ExpectClientUserMessage(sessionID, clientMessageID, req.Query)
 	}
 
 	// Chat sessions are in-memory only — tracked via activeSessions map

@@ -1,6 +1,6 @@
 import { useQueuedMessageControlsStore } from '../../../stores/useQueuedMessageControlsStore'
 import { queuedMessageReason } from '../../chat/QueuedMessageControls'
-import React, { useEffect, useState } from 'react'
+import React, { createContext, useContext, useEffect, useState } from 'react'
 import { Check, CheckCheck, CircleAlert, Clock, Loader2 } from 'lucide-react'
 import { deliveryTickLabel, deliveryTickState, deliveryTickTitle } from './deliveryTickState'
 import { recordChatSubmissionTelemetry } from '../../../utils/chatDeliveryTelemetry'
@@ -14,6 +14,11 @@ const TICK_ICON = {
   fast: Check,
 } as const
 
+// The server's text while it compacts this chat (its turn_phase "compacting"),
+// or ''. A send arriving then is held until the compaction ends, so a pending
+// bubble says why instead of a bare "Sending…" (#3795).
+export const ChatCompactingContext = createContext('')
+
 // Plain delivery receipt for a live-input user row. Shared by the terminal
 // transcript and the event-card view; renders nothing without delivery
 // metadata so plain query rows are untouched. Receipts stay visible.
@@ -21,9 +26,13 @@ export const DeliveryTick: React.FC<{ metadata: Record<string, unknown> | undefi
   const state = deliveryTickState(metadata)
   const clientId = typeof metadata?.client_message_id === 'string' ? metadata.client_message_id : ''
   const queued = useQueuedMessageControlsStore(store => sessionId && clientId ? store.bySession[sessionId]?.messages[clientId] : undefined)
+  const compacting = useContext(ChatCompactingContext)
   if (!state) return null
   const Icon = TICK_ICON[state]
-  const title = state === 'queued' && queued ? queuedMessageReason(queued) : deliveryTickTitle(metadata, state)
+  const held = state === 'sending' && compacting !== ''
+  const title = held
+    ? `${compacting}. Your message sends when it's done.`
+    : state === 'queued' && queued ? queuedMessageReason(queued) : deliveryTickTitle(metadata, state)
   // Debug-level visibility: near-invisible grays. Failed keeps only a
   // faint red whisper.
   const tone = state === 'confirmed'
@@ -36,9 +45,9 @@ export const DeliveryTick: React.FC<{ metadata: Record<string, unknown> | undefi
         ? 'text-red-300/70 dark:text-red-400/50'
         : 'text-muted-foreground'
   return (
-    <span data-testid="delivery-tick" data-state={state} title={title} className={`inline-flex shrink-0 select-none items-center gap-1 leading-none ${tone}`} aria-label={title}>
+    <span data-testid="delivery-tick" data-state={state} data-held={held ? 'compacting' : undefined} title={title} className={`inline-flex shrink-0 select-none items-center gap-1 leading-none ${tone}`} aria-label={title}>
       <Icon className={`h-3 w-3 ${state === 'sending' ? 'animate-spin' : ''}`} aria-hidden="true" />
-      <span className="text-muted-foreground">{deliveryTickLabel(state)}</span>
+      <span className="text-muted-foreground">{held ? 'Waiting for compaction…' : deliveryTickLabel(state)}</span>
     </span>
   )
 }
