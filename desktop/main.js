@@ -15,7 +15,7 @@ const {
   installSignalShutdown,
   spawnServer,
 } = require('./lib');
-const { localPorts, vaultState, vaultEnv, startVault } = require('./lib/vault');
+const { localPorts, vaultState, vaultEnv, startVault, AGENT_PORT, WORKSPACE_PORT } = require('./lib/vault');
 
 // Keep the historical data path while presenting the AgentWorks name to macOS.
 // Changing userData would make existing installs appear empty after the rename.
@@ -561,8 +561,7 @@ function restartServers() {
     startAgentPromptLogPruning(userDataPath);
     const started = process.env.AGENTWORKS_DEV_AGENT_BINARY
       ? spawnDevelopmentAgent()
-      : Promise.all([spawnWorkspace(userDataPath), spawnVault(userDataPath)])
-        .then(() => spawnAgent(userDataPath))
+      : startLocalServers(userDataPath)
         .then(() => {
           const agentHealthUrl = `http://127.0.0.1:${dynamicAgentPort}/api/health`;
           const workspaceHealthUrl = `http://127.0.0.1:${dynamicWorkspacePort}/health`;
@@ -1050,7 +1049,7 @@ function createTray() {
 // isPortInUse function is no longer needed with dynamic ports
 // but we keep it if we ever need to check specific ports
 
-function spawnWorkspace(userDataPath) {
+function spawnWorkspace(userDataPath, ports) {
   return new Promise((resolve, reject) => {
     try {
       migrateTeamPathIdentities({ stateDir: process.env.AGENTWORKS_STATE_ROOT || path.join(userDataPath, 'state'), docsDir: process.env.RUNLOOP_DOCS_DIR || path.join(userDataPath, 'workspace-docs') });
@@ -1090,11 +1089,13 @@ function spawnWorkspace(userDataPath) {
     };
 
     // Prefer fixed port 45679 so frontend localStorage stays stable across launches;
-    // spawnServer (lib/servers.js) falls forward to the next free port.
+    // takenPorts excludes agent and Vault so parallel startup never clashes.
+    const preferredPort = ports?.workspace || WORKSPACE_PORT;
+    const takenPorts = [ports?.agent, ports?.vault].filter(Boolean);
     let started = null;
     spawnServer({
       name: 'workspace', bin, args: ['server', '--port', spawnServer.PORT_PLACEHOLDER, '--docs-dir', docsDir],
-      preferredPort: 45679, env: withoutDesktopBootstrap(env), log: logStream, echoToConsole: true,
+      preferredPort, takenPorts, env: withoutDesktopBootstrap(env), log: logStream, echoToConsole: true,
       onExit: (code, signal) => handleLocalServerExit('workspace', started, code, signal),
     }).then(({ child, port }) => {
       started = child;
@@ -1106,15 +1107,11 @@ function spawnWorkspace(userDataPath) {
   });
 }
 
-// Every Mac runs its own Vault (owner, 5 Nov). The agent and Vault keep the
-// ports they used last time; when one is busy a free one is saved instead and
-// the person is told that an app signed in through Vault may need signing in again.
-async function spawnVault(userDataPath) {
-  // The Windows app does not ship Vault yet (Windows comes later): it runs without one, as before.
-  if (process.platform === 'win32') return;
-  const bin = getBinaryPath('agentworks-vault');
-  if (!fs.existsSync(bin)) {
-    throw new Error(`Vault binary not found at ${bin}. Run desktop/dev-setup.sh to build it.`);
+// Reserve distinct agent, workspace, and Vault ports up front before spawning
+// Workspace and Vault in parallel so a busy default port cannot cause a clash.
+async function planLocalPorts() {
+  if (process.platform === 'win32') {
+    return { agent: AGENT_PORT, workspace: WORKSPACE_PORT, vault: 0, moved: false };
   }
   const settings = loadSettings();
   const ports = await localPorts(settings.localPorts);
@@ -1128,9 +1125,32 @@ async function spawnVault(userDataPath) {
     }
   }
   plannedAgentPort = ports.agent;
+  return ports;
+}
+
+async function startLocalServers(userDataPath) {
+  const ports = await planLocalPorts();
+  await Promise.all([
+    spawnWorkspace(userDataPath, ports),
+    spawnVault(userDataPath, ports),
+  ]);
+  await spawnAgent(userDataPath, ports);
+}
+
+// Every Mac runs its own Vault (owner, 5 Nov). The agent and Vault keep the
+// ports they used last time; when one is busy a free one is saved instead and
+// the person is told that an app signed in through Vault may need signing in again.
+async function spawnVault(userDataPath, ports) {
+  // The Windows app does not ship Vault yet (Windows comes later): it runs without one, as before.
+  if (process.platform === 'win32') return;
+  const bin = getBinaryPath('agentworks-vault');
+  if (!fs.existsSync(bin)) {
+    throw new Error(`Vault binary not found at ${bin}. Run desktop/dev-setup.sh to build it.`);
+  }
+  const resolvedPorts = ports || await planLocalPorts();
   const state = vaultState(process.env.AGENTWORKS_STATE_ROOT || path.join(userDataPath, 'state'));
   const env = vaultEnv({
-    inherited: process.env, port: ports.vault, agentPort: ports.agent, stateDir: state.dir, tokenFile: state.tokenFile,
+    inherited: process.env, port: resolvedPorts.vault, agentPort: resolvedPorts.agent, stateDir: state.dir, tokenFile: state.tokenFile,
     docsDir: process.env.RUNLOOP_DOCS_DIR || path.join(userDataPath, 'workspace-docs'),
   });
   let started = null;
@@ -1138,10 +1158,14 @@ async function spawnVault(userDataPath) {
     bin, env, log: createBoundedLogWriter(path.join(userDataPath, 'logs', 'vault.log')),
     onExit: (code, signal) => handleLocalServerExit('vault', started, code, signal),
   });
+  if (appQuitting) {
+    try { started.kill('SIGTERM'); } catch (_) {}
+    return;
+  }
   vaultProcess = started;
-  dynamicVaultPort = ports.vault;
+  dynamicVaultPort = resolvedPorts.vault;
   vaultTokenFile = state.tokenFile;
-  console.log(`[main] Vault started on port: ${dynamicVaultPort}`);
+  console.log(`[main] Vault ready on port: ${dynamicVaultPort}`);
 }
 
 async function spawnDevelopmentAgent() {
@@ -1158,7 +1182,7 @@ async function spawnDevelopmentAgent() {
   desktopAgentReady = true;
 }
 
-function spawnAgent(userDataPath) {
+function spawnAgent(userDataPath, ports) {
   return new Promise((resolve, reject) => {
     const selected = process.platform === 'darwin' && (app.isPackaged || fs.existsSync(path.join(getResourcesDir(), 'voice', 'minimum-macos.json')))
       ? require('./lib/voiceRuntime').selectPackagedAgent(getResourcesDir(), process.getSystemVersion())
@@ -1303,9 +1327,10 @@ function spawnAgent(userDataPath) {
       delete env.LOG_AGENT_PROMPTS;
     }
 
+    const takenPorts = [dynamicWorkspacePort, dynamicVaultPort].filter(Boolean);
     let started = null;
     spawnServer({
-      name: 'agent', bin, args, preferredPort: plannedAgentPort || 45678, cwd,
+      name: 'agent', bin, args, preferredPort: ports?.agent || plannedAgentPort || AGENT_PORT, takenPorts, cwd,
       bootstrap: port => ({ secret: desktopConnectionSecret, host: `127.0.0.1:${port}`, auth_secret: env.AUTH_SECRET, notify_secret: notifySecret }),
       env: (port) => ({
         ...withoutDesktopBootstrap(env),
@@ -1990,8 +2015,7 @@ app.whenReady().then(async () => {
     unifyAgentLogsDir(userDataPath);
     startAgentPromptLogPruning(userDataPath);
     console.log('[main] Spawning local servers...');
-    await Promise.all([spawnWorkspace(userDataPath), spawnVault(userDataPath)]);
-    await spawnAgent(userDataPath);
+    await startLocalServers(userDataPath);
   } catch (err) {
     showErrorAndExit(err.message || String(err));
     return;
