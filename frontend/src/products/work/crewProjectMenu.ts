@@ -40,6 +40,8 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     // Remote Control turns on reaching a Mac project from your phone; a server project is always on the web,
     // so the row shows only on the Mac (owner, 25 Nov: "on server i see.. phone why").
     if (isLocalDeployment()) add('mcp', 'Share', 'Remote Control', Globe, 'online')
+    // AgentBridge is its own row and page beside Remote Control (owner, 27 Nov), not a tab inside it.
+    if (isLocalDeployment()) add('mcp', 'Share', 'AgentBridge', Cable, 'agentbridge')
     add('mcp', 'Share', 'Artifacts', LayoutDashboard, 'artifacts')
     // The Slack bot row opens Connections → Slack bot on server projects (owner, 14 Nov).
     // Local Mac projects keep Slack as me only (owner, 25 Nov).
@@ -77,7 +79,7 @@ export function crewFullMenuGroups(inventory: CrewMenuItem[]) {
     ['mcp:artifacts', 'dashboard', 'files', 'database', 'shell'],
     ['workflow', 'schedules'],
     ['browser', 'mcp:connected', 'mcp:cli', 'mcp:gmail', 'mcp:github', 'mcp:slack-account', 'mcp:slack-bot', 'mcp:whatsapp', 'mcp:folders', 'mcp:mac-folders', 'mcp:computer-use', 'mcp:secrets', 'memory:skills'],
-    ['mcp:team', 'mcp:online'],
+    ['mcp:team', 'mcp:online', 'mcp:agentbridge'],
     ['identity:general', 'identity:models', 'memory:memory', 'history', 'costs'],
   ]
   const hasSharedArtifacts = inventory.some(item => item.id === 'mcp:artifacts')

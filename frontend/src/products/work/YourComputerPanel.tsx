@@ -26,7 +26,7 @@ type Binding = { connection_id?: string; peer_server?: string; peer_project_id: 
 // always-online copy or a team's shared folder; empty while everything stays on this Mac.
 /** The Access page's shape, written by the server (crew_access_page.go): which tabs, whether this app holds the Mac's
  * controls ("mac") or shows the Mac-only rows as text, those rows' text, and the extra sections. */
-type AccessTab = { id: CrewAccessSection; label: string; detail?: string; group?: 'team' | 'online' }
+type AccessTab = { id: CrewAccessSection; label: string; detail?: string; group?: 'team' | 'online' | 'agentbridge' }
 // The Mac online tab's This Mac card, worded by the server (crew_access_page.go crewAccessMacCard).
 type MacCard = { online: boolean; status: string; line: string; kept?: string; reach?: { who: string; how: string }[] }
 type SyncStatus = { place?: CloudState; message?: string; binding: Binding | null; shared_agents?: number
@@ -258,7 +258,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
   // Two pages from one reply (owner, 11 Nov: Share split into Team and Online): the server puts each tab in a group; the
   // Team page shows the team tab, the Online page the rest. A tab the server does not list for this person falls back
   // to its page's first one.
-  const page = section === 'team' ? 'team' : 'online'
+  const page = section === 'team' ? 'team' : section === 'agentbridge' ? 'agentbridge' : 'online'
   const allTabs = (status?.access_tabs || []).filter(item => item.id !== 'dashboards' && item.id !== 'artifacts').map(item => ({ ...item, tone }))
   const pageTabs = allTabs.filter(item => (item.group || 'online') === page)
   const tabs = pageTabs.length ? pageTabs : allTabs
@@ -281,7 +281,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
     {/* A server project's Team page is its Access panel (no ShareCrew), so the back arrow stays here. */}
     {(tabs.length > 1 || shown !== 'team' || !!(status.access_co_owners && workspacePath)) && <div className="flex items-stretch gap-2">
     {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:w-10"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
-    {tabs.length > 1 && <div role="tablist" aria-label={page === 'team' ? 'Team' : 'Online'} className={`grid min-w-0 flex-1 ${tabs.length === 2 ? 'grid-cols-2' : tabs.length === 3 ? 'grid-cols-3' : 'grid-cols-4'} gap-1 rounded-xl border border-border bg-muted/30 p-1`}>
+    {tabs.length > 1 && <div role="tablist" aria-label={page === 'team' ? 'Team' : page === 'agentbridge' ? 'AgentBridge' : 'Online'} className={`grid min-w-0 flex-1 ${tabs.length === 2 ? 'grid-cols-2' : tabs.length === 3 ? 'grid-cols-3' : 'grid-cols-4'} gap-1 rounded-xl border border-border bg-muted/30 p-1`}>
       {tabs.map((item, index) => <button key={item.id} type="button" role="tab" id={`crew-access-${projectId}-${item.id}`} aria-controls={`crew-access-panel-${projectId}-${item.id}`} aria-selected={shown === item.id} tabIndex={shown === item.id ? 0 : -1}
         onClick={() => setSection(item.id)} onKeyDown={event => {
           const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1
