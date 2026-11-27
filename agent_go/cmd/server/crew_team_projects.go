@@ -96,8 +96,9 @@ func crewTeamDisplayName(t crewTeam) string {
 }
 
 // crewTeamProjectFolder is where one Team's shared folders and instructions live inside an online project: a folder of
-// its own under teams/, named after the Team, so several Teams can use one project without their files meeting (owner,
-// 26 Nov: an online project such as devops or qa may be used by many Teams).
+// its own under teams/, so several Teams can use one project without their files meeting (owner, 26 Nov). The name is
+// the Team's name for people plus part of its ID, which no other Team has: two Teams whose names read the same (or a
+// Team renamed to another's name) still get separate folders.
 func crewTeamProjectFolder(t crewTeam) string {
 	var b strings.Builder
 	dash := false
@@ -111,13 +112,17 @@ func crewTeamProjectFolder(t crewTeam) string {
 		}
 	}
 	slug := strings.Trim(b.String(), "-")
-	if len(slug) > 48 {
-		slug = strings.Trim(slug[:48], "-")
+	if len(slug) > 40 {
+		slug = strings.Trim(slug[:40], "-")
+	}
+	id := strings.ToLower(strings.ReplaceAll(t.ProjectID, "-", ""))
+	if len(id) > 12 {
+		id = id[:12]
 	}
 	if slug == "" {
-		slug = "team-" + strings.SplitN(t.ProjectID, "-", 2)[0]
+		return "teams/team-" + id
 	}
-	return "teams/" + slug
+	return "teams/" + slug + "-" + id
 }
 
 // crewTeamProjectCopyRoot is the folder in the online project that holds this Team's copy.
