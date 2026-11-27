@@ -110,7 +110,9 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
     expect(page().textContent).not.toContain('Mine')
     expect(page().querySelector('section[aria-label="Yours"]')?.textContent).toContain('Beta')
     expect(page().querySelector('section[aria-label="Yours"]')?.textContent).toContain('Gamma')
-    expect(page().querySelector('section[aria-label="Yours"]')?.textContent).toContain('Team space')
+    // A server project shows a cloud naming its server (#4331), not grey text; this Mac's own rows have none.
+    expect(page().querySelector('section[aria-label="Yours"] [role="img"]')?.getAttribute('aria-label')).toBe('Runs on Team space')
+    expect(page().querySelectorAll('section[aria-label="Yours"] [role="img"]')).toHaveLength(1)
     expect(page().querySelector('section[aria-label="Shared with you"]')?.textContent).toContain('Shared project')
     expect(page().querySelector('section[aria-label="Yours"]')?.textContent).not.toContain('Shared project')
     await click('Pin Beta', page())
