@@ -669,7 +669,12 @@ func (api *StreamingAPI) handleAgentProfileChatModels(w http.ResponseWriter, r *
 	log.Printf("[CHAT_MODELS] %s switch=%q project=%s tabs=%d slot=%s save=%s records=%s rows=%s", r.Method, clientSwitchID(r), projectID, len(allTabs),
 		slotDone.Sub(started).Round(time.Millisecond), saveDone.Sub(slotDone).Round(time.Millisecond),
 		recordsDone.Sub(saveDone).Round(time.Millisecond), time.Since(recordsDone).Round(time.Millisecond))
-	writeAgentProfileJSON(w, http.StatusOK, map[string]any{"chat_models": out, "effective_chat_models": effective, "can_open_models": slot.canBuild})
+	response := map[string]any{"chat_models": out, "effective_chat_models": effective, "can_open_models": slot.canBuild}
+	// The model a new chat starts on, shown on the project's start page before any chat exists (#4439).
+	if row, err := effectiveProfileChatModel(slot.profile, slot.binding, ProductConversationRecord{ConversationKey: projectID + codeChatSideMarker + "new"}, ProductAgentIdentity{}); err == nil {
+		response["new_chat_model"] = map[string]string{"display_label": chatModelDisplayLabel(slot.profile.Runtime, row.Engine, row.ModelID), "reasoning_effort": row.ReasoningEffort}
+	}
+	writeAgentProfileJSON(w, http.StatusOK, response)
 }
 
 // chatModelChoiceRefusal is the one check a chat's model choice passes, for a model change and for a tab opened with

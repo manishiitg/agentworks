@@ -419,14 +419,18 @@ func (api *StreamingAPI) handleLocalProject(w http.ResponseWriter, r *http.Reque
 		claims := GetUserFromContext(r.Context())
 		own := false
 		chats := false
+		folder := ""
 		if claims != nil && IsLocalMode() && !IsMultiUserMode() && cliPersonalMac() && (claims.AccessToken == nil || claims.AccessToken.Allows("crews:write") && claims.AccessToken.AllowsCrew(id) && claims.AccessToken.FileGuard == nil) {
 			if crew, _, _, ok := api.externalCrewResolve(r.Context(), claims, id); ok && crew.OwnerID == claims.UserID {
 				own = true
-				_, bound, err := localCrewRoots(crew.Binding.WorkspacePath)
+				roots, bound, err := localCrewRoots(crew.Binding.WorkspacePath)
 				chats = err == nil && bound
+				if chats {
+					folder = filepath.Base(roots.Owner)
+				}
 			}
 		}
-		writeAgentProfileJSON(w, 200, map[string]bool{"can_import_local_chats": chats, "can_import_mcp": own})
+		writeAgentProfileJSON(w, 200, map[string]any{"can_import_local_chats": chats, "can_import_mcp": own, "folder": folder})
 		return
 	}
 	crew, roots, ok := api.localProjectAccess(w, r, id, r.URL.Query().Get("native_id") != "")
