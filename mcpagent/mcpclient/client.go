@@ -51,7 +51,7 @@ type Client struct {
 	logger          loggerv2.Logger
 	contextCancel   context.CancelFunc // Store context cancel function for SSE connections
 	context         context.Context    // Store context for SSE connections
-	mu              sync.RWMutex       // Protect access to contextCancel, context, and leakGuard
+	mu              sync.RWMutex       // Protect access to mcpClient, serverInfo, contextCancel, context, and leakGuard
 	oauthManager    *oauth.Manager     // OAuth manager for authentication
 	reconnectMu     sync.Mutex         // Serializes mid-session reconnects (resilience.go)
 	connGen         atomic.Int64       // Connection generation; bumped on each successful connect
@@ -133,11 +133,22 @@ func (c *Client) Connect(ctx context.Context) error {
 // connectOnce performs a single connection attempt
 func (c *Client) connectOnce(ctx context.Context) error {
 	c.connectAttempts.Add(1)
-	// Close existing client before reconnect to prevent subprocess leaks
-	if c.mcpClient != nil {
+	// Close existing client before reconnect to prevent subprocess leaks.
+	c.mu.Lock()
+	oldClient := c.mcpClient
+	oldCancel := c.contextCancel
+	c.mcpClient = nil
+	c.serverInfo = nil
+	c.context = nil
+	c.contextCancel = nil
+	c.disarmLeakGuardLocked()
+	c.mu.Unlock()
+	if oldCancel != nil {
+		oldCancel()
+	}
+	if oldClient != nil {
 		c.logger.Debug("Closing existing mcpClient before reconnect")
-		_ = c.mcpClient.Close()
-		c.mcpClient = nil
+		_ = oldClient.Close()
 	}
 
 	// Prepare environment variables
@@ -186,6 +197,7 @@ func (c *Client) connectOnce(ctx context.Context) error {
 	}
 
 	var mcpClient *client.Client
+	var streamCancel context.CancelFunc
 	var err error
 
 	// Create MCP client based on protocol type (use smart detection)
@@ -197,7 +209,7 @@ func (c *Client) connectOnce(ctx context.Context) error {
 		if guarded != nil {
 			sseManager.WithHTTPClient(guarded)
 		}
-		mcpClient, err = sseManager.Connect(ctx)
+		mcpClient, streamCancel, err = sseManager.connectWithCancel(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to create SSE MCP client: %w", err)
 		}
@@ -208,7 +220,7 @@ func (c *Client) connectOnce(ctx context.Context) error {
 		if guarded != nil {
 			httpManager.WithHTTPClient(guarded)
 		}
-		mcpClient, err = httpManager.Connect(ctx)
+		mcpClient, streamCancel, err = httpManager.connectWithCancel(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to create HTTP MCP client: %w", err)
 		}
@@ -224,13 +236,11 @@ func (c *Client) connectOnce(ctx context.Context) error {
 		}
 	}
 
-	c.mcpClient = mcpClient
-
-	// For stdio clients, initialization is handled by the transport manager
-	// For other protocols, we need to initialize here
+	// Initialize before publishing mcpClient so concurrent callers never observe
+	// an uninitialized or closed client on Initialize failure.
+	var serverInfo *mcp.Implementation
 	if protocol != ProtocolStdio {
-		// Initialize connection
-		initResult, err := c.mcpClient.Initialize(ctx, mcp.InitializeRequest{
+		initResult, err := mcpClient.Initialize(ctx, mcp.InitializeRequest{
 			Params: mcp.InitializeParams{
 				ProtocolVersion: "2024-11-05",
 				Capabilities:    mcp.ClientCapabilities{},
@@ -241,22 +251,29 @@ func (c *Client) connectOnce(ctx context.Context) error {
 			},
 		})
 		if err != nil {
-			_ = c.mcpClient.Close() // Ignore errors during cleanup
+			if streamCancel != nil {
+				streamCancel()
+			}
+			_ = mcpClient.Close() // Ignore errors during cleanup
 			return fmt.Errorf("failed to initialize MCP connection: %w", err)
 		}
 
-		c.serverInfo = &initResult.ServerInfo
+		info := initResult.ServerInfo
+		serverInfo = &info
 	} else {
 		// For stdio, we need to get server info separately since initialization was already done
 		// We'll get this from the first tool listing or other operation
-		c.serverInfo = &mcp.Implementation{
+		serverInfo = &mcp.Implementation{
 			Name:    "stdio-server",
 			Version: "1.0.0",
 		}
 	}
 
-	c.connGen.Add(1)
 	c.mu.Lock()
+	c.mcpClient = mcpClient
+	c.serverInfo = serverInfo
+	c.contextCancel = streamCancel
+	c.connGen.Add(1)
 	c.armLeakGuardLocked()
 	c.mu.Unlock()
 
@@ -349,45 +366,72 @@ func (c *Client) getServerName() string {
 	return fmt.Sprintf("%s %v", c.config.Command, c.config.Args)
 }
 
+// currentMCPClient returns the active underlying MCP client safely.
+func (c *Client) currentMCPClient() *client.Client {
+	c.mu.RLock()
+	mc := c.mcpClient
+	c.mu.RUnlock()
+	return mc
+}
+
+// currentMCPClientAndGen returns the active underlying MCP client together with
+// its connection generation under the same lock so callers can observe a
+// consistent (client, gen) pair.
+func (c *Client) currentMCPClientAndGen() (*client.Client, int64) {
+	c.mu.RLock()
+	mc := c.mcpClient
+	gen := c.connGen.Load()
+	c.mu.RUnlock()
+	return mc, gen
+}
+
 // Close closes the connection to the MCP server
 func (c *Client) Close() error {
-	// For SSE connections, cancel the stored context first
-	if c.contextCancel != nil {
-		c.logger.Debug("Canceling SSE context before closing client")
-		c.contextCancel()
-	}
-
-	// Clear the stored context and cancel function; explicit Close means no leak.
 	c.mu.Lock()
+	cancel := c.contextCancel
+	mc := c.mcpClient
 	c.context = nil
 	c.contextCancel = nil
+	c.mcpClient = nil
+	c.serverInfo = nil
 	c.disarmLeakGuardLocked()
 	c.mu.Unlock()
 
-	if c.mcpClient != nil {
-		return c.mcpClient.Close()
+	// For SSE/HTTP connections, cancel the stored stream context first.
+	if cancel != nil {
+		c.logger.Debug("Canceling stream context before closing client")
+		cancel()
+	}
+
+	if mc != nil {
+		return mc.Close()
 	}
 	return nil
 }
 
 // Ping checks if the connection is still alive by sending a ping to the MCP server.
 func (c *Client) Ping(ctx context.Context) error {
-	if c.mcpClient == nil {
+	mc := c.currentMCPClient()
+	if mc == nil {
 		return fmt.Errorf("client not connected")
 	}
-	return c.mcpClient.Ping(ctx)
+	return mc.Ping(ctx)
 }
 
 // GetServerInfo returns information about the connected server
 func (c *Client) GetServerInfo() *mcp.Implementation {
-	return c.serverInfo
+	c.mu.RLock()
+	info := c.serverInfo
+	c.mu.RUnlock()
+	return info
 }
 
 // ListTools returns all available tools from the server
 func (c *Client) ListTools(ctx context.Context) ([]mcp.Tool, error) {
 	c.logger.Debug("Starting ListTools call")
 
-	if c.mcpClient == nil {
+	mc := c.currentMCPClient()
+	if mc == nil {
 		c.logger.Debug("Client not connected")
 		return nil, fmt.Errorf("client not connected")
 	}
@@ -405,7 +449,7 @@ func (c *Client) ListTools(ctx context.Context) ([]mcp.Tool, error) {
 	c.logger.Debug("About to make the actual ListTools call")
 
 	c.logger.Debug("Making ListTools call without an added timeout")
-	tools, err := listAllTools(ctx, c.mcpClient.ListTools)
+	tools, err := listAllTools(ctx, mc.ListTools)
 
 	listDuration := time.Since(listStartTime)
 	c.logger.Debug("ListTools call completed",
@@ -450,7 +494,8 @@ func listAllTools(ctx context.Context, list func(context.Context, mcp.ListToolsR
 // mid-session (server crash, dropped stream), it reconnects once and retries
 // the call — see resilience.go.
 func (c *Client) CallTool(ctx context.Context, name string, arguments map[string]interface{}) (*mcp.CallToolResult, error) {
-	if c.mcpClient == nil {
+	mc, observedGen := c.currentMCPClientAndGen()
+	if mc == nil {
 		return nil, fmt.Errorf("client not connected")
 	}
 
@@ -461,8 +506,7 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments map[string
 		},
 	}
 
-	observedGen := c.connGeneration()
-	result, err := c.mcpClient.CallTool(ctx, request)
+	result, err := mc.CallTool(ctx, request)
 	if err == nil {
 		return result, nil
 	}
@@ -474,10 +518,15 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments map[string
 		return nil, fmt.Errorf("failed to call tool %s: %w (reconnect also failed: %w)", name, err, reconnectErr)
 	}
 
+	mc = c.currentMCPClient()
+	if mc == nil {
+		return nil, fmt.Errorf("failed to call tool %s after reconnect: client not connected", name)
+	}
+
 	c.logger.Warn("Retrying tool call after mid-session reconnect",
 		loggerv2.String("server", c.getServerName()),
 		loggerv2.String("tool", name))
-	result, err = c.mcpClient.CallTool(ctx, request)
+	result, err = mc.CallTool(ctx, request)
 	if err != nil {
 		return nil, fmt.Errorf("failed to call tool %s after reconnect: %w", name, err)
 	}
@@ -599,25 +648,16 @@ func DiscoverAllToolsParallel(ctx context.Context, cfg *MCPConfig, logger logger
 			}
 
 			client := New(srvCfg, logger)
-			var cancel context.CancelFunc
-			var connCtx context.Context
-
-			if srvCfg.Protocol == ProtocolSSE {
-				// For SSE, create a new background context with timeout to avoid parent cancellation
-				// IMPORTANT: Do NOT defer cancel() here - we need the context to remain valid for the entire client lifecycle
-				connCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), 15*time.Minute)
-				logger.Debug("Using SSE protocol with isolated context",
-					loggerv2.String("server", name),
-					loggerv2.String("timeout", "15m"))
-			} else {
-				// For stdio and other protocols, also use isolated context with longer timeout
-				connCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), 15*time.Minute)
-				defer cancel() // Safe to cancel immediately for non-SSE protocols
-				logger.Debug("Using protocol with isolated context",
-					loggerv2.String("protocol", string(srvCfg.Protocol)),
-					loggerv2.String("server", name),
-					loggerv2.String("timeout", "15m"))
-			}
+			// Derive from ctx so parent cancellation aborts hanging dials and
+			// discovery calls promptly instead of leaking goroutines for 15m.
+			// Persistent SSE streams detach inside SSEManager after Start()
+			// succeeds and store their own cancel func on Client.
+			connCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+			defer cancel()
+			logger.Debug("Using discovery context with timeout",
+				loggerv2.String("protocol", string(srvCfg.Protocol)),
+				loggerv2.String("server", name),
+				loggerv2.String("timeout", "15m"))
 
 			logger.Info("Connecting to MCP server", loggerv2.String("server", name))
 			connectStartTime := time.Now()
@@ -688,19 +728,10 @@ func DiscoverAllToolsParallel(ctx context.Context, cfg *MCPConfig, logger logger
 				loggerv2.String("duration", listDuration.String()),
 				loggerv2.Error(err))
 
-			// Don't close the client here - we need to reuse it for agent creation
-			// _ = client.Close()
-
-			// For SSE connections, store the context and cancel function for later cleanup
-			// Don't cancel the context here - it needs to remain valid for the client lifecycle
-			if srvCfg.Protocol == ProtocolSSE {
-				// Store the context and cancel function in the client for later cleanup
-				// We'll cancel it when the client is actually closed
-				client.SetContextCancel(cancel)
-				client.SetContext(connCtx) // Store the context as well
-				logger.Debug("Stored SSE context and cancel function for later cleanup",
-					loggerv2.String("server", name))
-			}
+			// Don't close the client here - we need to reuse it for agent creation.
+			// SSEManager/HTTPManager already attached their own stream cancel func
+			// to client inside connectOnce, so do not overwrite it with discovery's
+			// short-lived cancel func.
 
 			if err != nil {
 				logger.Error("Tool listing failed", err, loggerv2.String("server", name))

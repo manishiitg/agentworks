@@ -55,23 +55,35 @@ func (h *HTTPManager) CreateClient() (*client.Client, error) {
 	return client.NewClient(httpTransport), nil
 }
 
-// Connect creates and starts an HTTP client
+// Connect creates and starts an HTTP client.
 func (h *HTTPManager) Connect(ctx context.Context) (*client.Client, error) {
-	client, err := h.CreateClient()
+	c, _, err := h.connectWithCancel(ctx)
+	return c, err
+}
+
+// connectWithCancel creates and starts an HTTP client, honoring ctx cancellation
+// during Start() while detaching long-lived transport state once Start() succeeds.
+func (h *HTTPManager) connectWithCancel(ctx context.Context) (*client.Client, context.CancelFunc, error) {
+	c, err := h.CreateClient()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	// For HTTP connections, use background context for Start() to prevent connection cancellation
-	// The provided context will be used for actual MCP calls (ListTools, etc.)
-	// This prevents the HTTP connection from being canceled when the caller's context is done
-	startCtx := context.Background()
-	h.logger.Debug("Using background context for HTTP Start() to prevent connection cancellation")
+	streamCtx, streamCancel := context.WithCancel(context.Background())
+	stopAbort := context.AfterFunc(ctx, streamCancel)
+	h.logger.Debug("Starting HTTP client with dial-abortable stream context")
 
-	// Start the client with background context
-	if err := client.Start(startCtx); err != nil {
-		return nil, fmt.Errorf("failed to start HTTP client: %w", err)
+	if err := c.Start(streamCtx); err != nil {
+		stopAbort()
+		streamCancel()
+		_ = c.Close()
+		return nil, nil, fmt.Errorf("failed to start HTTP client: %w", err)
+	}
+	if !stopAbort() {
+		streamCancel()
+		_ = c.Close()
+		return nil, nil, fmt.Errorf("failed to start HTTP client: %w", ctx.Err())
 	}
 
-	return client, nil
+	return c, streamCancel, nil
 }

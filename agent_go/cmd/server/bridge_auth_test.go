@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -214,5 +215,45 @@ func TestExecuteRoutesRequireTheCallersOwnSession(t *testing.T) {
 		if rec.Code != want || reached != (want == http.StatusOK) {
 			t.Fatalf("custom execute %s: got %d reached=%v, want %d", body, rec.Code, reached, want)
 		}
+	}
+}
+
+func TestBridgeToolsActivityKeepaliveUpdatesLastActivity(t *testing.T) {
+	common.SetBridgeTokenSecret("server-secret")
+	t.Cleanup(func() { common.SetBridgeTokenSecret("") })
+
+	stale := time.Now().Add(-30 * time.Minute)
+	api := &StreamingAPI{
+		activeSessions: map[string]*ActiveSessionInfo{
+			"chat-agy": {SessionID: "chat-agy", Status: "running", LastActivity: stale},
+		},
+	}
+
+	router := mux.NewRouter()
+	tools := router.PathPrefix("/tools").Subrouter()
+	tools.Use(bridgeAuthMiddleware("server-secret"))
+	tools.Use(api.bridgeActivityKeepaliveMiddleware())
+	tools.HandleFunc("/custom/{tool}", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}).Methods(http.MethodPost, http.MethodOptions)
+
+	// OPTIONS must not touch activity.
+	optReq := httptest.NewRequest(http.MethodOptions, "/tools/custom/execute_shell_command", nil)
+	optRec := httptest.NewRecorder()
+	router.ServeHTTP(optRec, optReq)
+	if optRec.Code != http.StatusOK {
+		t.Fatalf("OPTIONS status = %d, want 200", optRec.Code)
+	}
+	if !api.activeSessions["chat-agy"].LastActivity.Equal(stale) {
+		t.Fatalf("OPTIONS should not update LastActivity")
+	}
+
+	// POST through /tools/... with session Bearer token must bump LastActivity.
+	tok := common.BridgeTokenForSession("chat-agy")
+	if code := bridgeCall(router, "/tools/custom/execute_shell_command", tok, ""); code != http.StatusOK {
+		t.Fatalf("POST /tools/custom status = %d, want 200", code)
+	}
+	if !api.activeSessions["chat-agy"].LastActivity.After(stale) {
+		t.Fatalf("POST /tools/... did not update session LastActivity")
 	}
 }

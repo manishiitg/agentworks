@@ -189,6 +189,7 @@ func isVirtualTool(toolName string) bool {
 	// Check hardcoded virtual tools (includes all possible virtual tools)
 	virtualTools := []string{
 		"get_api_spec", // Code execution mode tool
+		"search_tools", // Code execution mode discovery tool
 	}
 	for _, vt := range virtualTools {
 		if vt == toolName {

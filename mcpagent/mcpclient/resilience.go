@@ -111,12 +111,12 @@ func (c *Client) reconnectIfStale(ctx context.Context, observedGen int64) error 
 // never was), reconnecting once when the ping fails. Useful before a batch of
 // tool calls on a long-lived client.
 func (c *Client) EnsureConnected(ctx context.Context) error {
-	if c.mcpClient == nil {
+	mc, gen := c.currentMCPClientAndGen()
+	if mc == nil {
 		return c.Connect(ctx)
 	}
-	gen := c.connGeneration()
 	pingCtx, cancel := context.WithTimeout(ctx, healthPingTimeout)
-	err := c.Ping(pingCtx)
+	err := mc.Ping(pingCtx)
 	cancel()
 	if err == nil {
 		return nil

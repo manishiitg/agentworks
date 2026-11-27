@@ -312,6 +312,10 @@ func (api *StreamingAPI) newServerRouter() (*mux.Router, *mux.Router) {
 	router.HandleFunc("/bridge/secret-read", api.handleSessionSecretRead).Methods("POST")
 	toolsRouter := router.PathPrefix("/tools").Subrouter()
 	toolsRouter.Use(bridgeAuthMiddleware(api.apiToken))
+	// Non-streaming CLIs (AGY) call /tools/... through mcpbridge with X-Session-ID
+	// (verified and set by bridgeAuthMiddleware above). Mirror sessionToolsRouter
+	// so long bridge tool runs keep the turn-inactivity timer alive.
+	toolsRouter.Use(api.bridgeActivityKeepaliveMiddleware())
 	toolsRouter.HandleFunc("/mcp/{server}/{tool}", func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		routeMCPRequest(w, r, vars["server"], vars["tool"])
@@ -347,16 +351,7 @@ func (api *StreamingAPI) newServerRouter() (*mux.Router, *mux.Router) {
 	// bridge calls it makes. Count each one, at start and at end, as session
 	// progress so the turn-inactivity wait does not cancel a turn that is
 	// busy running tools (a bot turn cancelled after 10 min, PLAT-861-206).
-	sessionToolsRouter.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			sid := mux.Vars(r)["session_id"]
-			if r.Method == http.MethodPost && sid != "" {
-				api.updateSessionActivity(sid)
-				defer api.updateSessionActivity(sid)
-			}
-			next.ServeHTTP(w, r)
-		})
-	})
+	sessionToolsRouter.Use(api.bridgeActivityKeepaliveMiddleware())
 	sessionToolsRouter.HandleFunc("/browser/packages/{package}", api.handlePlaywrightPackage).Methods("GET")
 	sessionToolsRouter.HandleFunc("/browser/live", api.handlePlaywrightPublisher).Methods("GET")
 	sessionToolsRouter.HandleFunc("/mcp/{server}/{tool}", func(w http.ResponseWriter, r *http.Request) {
@@ -742,4 +737,22 @@ func (api *StreamingAPI) registerPublicRoutes(router *mux.Router, actualPort int
 	// app navigation to the launcher's current frontend instead of old assets.
 	log.Printf("[FRONTEND] Bundled static directory: %s", staticFrontendDir())
 	router.PathPrefix("/").Handler(spaStaticFileHandler(staticFrontendDir()))
+}
+
+// bridgeActivityKeepaliveMiddleware marks the session active at the start and
+// end of every POST bridge tool call on both /tools/* and /s/{session_id}/tools/*.
+func (api *StreamingAPI) bridgeActivityKeepaliveMiddleware() mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sid := strings.TrimSpace(mux.Vars(r)["session_id"])
+			if sid == "" {
+				sid = strings.TrimSpace(r.Header.Get("X-Session-ID"))
+			}
+			if r.Method == http.MethodPost && sid != "" {
+				api.updateSessionActivity(sid)
+				defer api.updateSessionActivity(sid)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

@@ -62,23 +62,38 @@ func (s *SSEManager) CreateClient() (*client.Client, error) {
 	return client.NewClient(sseTransport), nil
 }
 
-// Connect creates and starts an SSE client
+// Connect creates and starts an SSE client.
 func (s *SSEManager) Connect(ctx context.Context) (*client.Client, error) {
-	client, err := s.CreateClient()
+	c, _, err := s.connectWithCancel(ctx)
+	return c, err
+}
+
+// connectWithCancel creates and starts an SSE client, canceling the stream if
+// ctx cancels during Start(), while detaching the live stream once Start()
+// succeeds so short-lived dial contexts do not tear down persistent SSE
+// connections. Callers should retain the returned cancel function and invoke it
+// on Close().
+func (s *SSEManager) connectWithCancel(ctx context.Context) (*client.Client, context.CancelFunc, error) {
+	c, err := s.CreateClient()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	// For SSE connections, use background context for Start() to prevent stream cancellation
-	// The provided context will be used for actual MCP calls (ListTools, etc.)
-	// This prevents the SSE stream from being canceled when the caller's context is done
-	startCtx := context.Background()
-	s.logger.Debug("Using background context for SSE Start() to prevent stream cancellation")
+	streamCtx, streamCancel := context.WithCancel(context.Background())
+	stopAbort := context.AfterFunc(ctx, streamCancel)
+	s.logger.Debug("Starting SSE client with dial-abortable persistent stream context")
 
-	// Start the client with background context
-	if err := client.Start(startCtx); err != nil {
-		return nil, fmt.Errorf("failed to start SSE client: %w", err)
+	if err := c.Start(streamCtx); err != nil {
+		stopAbort()
+		streamCancel()
+		_ = c.Close()
+		return nil, nil, fmt.Errorf("failed to start SSE client: %w", err)
+	}
+	if !stopAbort() {
+		streamCancel()
+		_ = c.Close()
+		return nil, nil, fmt.Errorf("failed to start SSE client: %w", ctx.Err())
 	}
 
-	return client, nil
+	return c, streamCancel, nil
 }

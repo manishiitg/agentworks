@@ -243,7 +243,19 @@ func newAgentConnectionWithConfig(
 				}
 			}
 
-			// MCP subprocesses use the shared global connection pool.
+			// Refuse to open or borrow connections for an intentionally stopped logical
+			// session even when connSessionID resolves to the shared "global" pool.
+			if sessionID != "" && registry.IsSessionStopped(sessionID) {
+				err := fmt.Errorf("session %s was stopped — refusing to connect to %s", sessionID, srvName)
+				logger.Info("🛑 [ZOMBIE PREVENTION] Refusing connection for stopped logical session",
+					loggerv2.String("session_id", sessionID),
+					loggerv2.String("server", srvName))
+				result.err = err
+				return
+			}
+
+			// MCP subprocesses use the shared global connection pool; session-bound
+			// Vault scopes stay under their logical sessionID.
 			connSessionID := registry.ResolveConnectionSessionID(sessionID, srvName)
 			// Persist this session's resolved serverConfig so HTTP bridge calls
 			// resolve the matching config-fingerprinted connection in the pool.
@@ -318,6 +330,28 @@ func newAgentConnectionWithConfig(
 						}
 						result.tools = append(result.tools, llmTool)
 						result.toolNames = append(result.toolNames, llmTool.Function.Name)
+					}
+					// Populate mcpcache on miss so subsequent turns/agents can hit
+					// the lazy cache instead of re-connecting and re-listing tools.
+					// Session-scoped Vault names stay in memory so rotating token
+					// scopes do not accumulate per-session cache files on disk.
+					if !disableCache && len(result.tools) > 0 {
+						cacheManager := mcpcache.GetCacheManager(logger)
+						entry := &mcpcache.CacheEntry{
+							ServerName: srvName,
+							Tools:      append([]llmtypes.Tool(nil), result.tools...),
+							CreatedAt:  time.Now(),
+							TTLMinutes: cacheManager.GetTTL(),
+							Protocol:   string(serverConfig.GetProtocol()),
+							IsValid:    true,
+						}
+						if strings.Contains(srvName, "__scope_") {
+							cacheManager.PutMemory(entry, serverConfig)
+						} else if putErr := cacheManager.Put(entry, serverConfig); putErr != nil {
+							logger.Debug("Failed to persist discovered tools to mcpcache",
+								loggerv2.String("server", srvName),
+								loggerv2.Error(putErr))
+						}
 					}
 				}
 			}
@@ -476,6 +510,9 @@ func runtimeOverrideForServer(overrides mcpclient.RuntimeOverrides, canonicalNam
 func (a *Agent) resolveOnDemandMCPClient(ctx context.Context, serverName string, logger loggerv2.Logger) (mcpclient.ClientInterface, error) {
 	if a.sessionID != "" {
 		registry := mcpclient.GetSessionRegistry()
+		if registry.IsSessionStopped(a.sessionID) {
+			return nil, fmt.Errorf("session %s was stopped — refusing on-demand connection to %s", a.sessionID, serverName)
+		}
 		if serverConfig, hasConfig := registry.GetServerConfig(a.sessionID, serverName); hasConfig {
 			logger.Info(fmt.Sprintf("⚡ [ON-DEMAND] Using session registry lazy connect for server '%s' (session=%s)", serverName, a.sessionID))
 			connSessionID := registry.ResolveConnectionSessionID(a.sessionID, serverName)

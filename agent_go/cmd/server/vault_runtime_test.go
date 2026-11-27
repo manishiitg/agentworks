@@ -17,6 +17,7 @@ import (
 
 	events "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	"github.com/manishiitg/mcpagent/mcpcache"
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/oauth"
 )
@@ -570,5 +571,55 @@ func TestVaultSavedOAuthConfigPreservesPublicOnly(t *testing.T) {
 	}
 	if !saved.OAuth.PublicOnly {
 		t.Fatal("vaultSavedOAuthConfig dropped PublicOnly=true from custom Vault OAuth config")
+	}
+}
+
+func TestScopeAgentMCPSeedsMemoryCacheForVaultServers(t *testing.T) {
+	withMCPConnectionsRoot(t)
+	t.Setenv("MULTI_USER_MODE", "false")
+	secret := strings.Repeat("s", 32)
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"servers": []any{
+				map[string]any{
+					"id":       "c-cache1",
+					"label":    "Notion",
+					"provider": "notion",
+					"tools": []any{
+						map[string]any{
+							"name":        "notion__fetch",
+							"description": "Fetch a page",
+							"input_schema": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"id": map[string]any{"type": "string"},
+								},
+								"required": []string{"id"},
+							},
+						},
+					},
+				},
+			},
+		})
+	}))
+	defer up.Close()
+	t.Setenv("CAPLAYER_SERVICE_URL", up.URL)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN", secret)
+	t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+
+	api := &StreamingAPI{logger: loggerv2.NewNoop()}
+	names, overrides, _, err := api.scopeAgentMCP(personContext("alice"), "chat-cache-seed", []string{"vault_c-cache1"}, nil)
+	if err != nil || len(names) != 1 || overrides[names[0]].Server == nil {
+		t.Fatalf("scopeAgentMCP failed: names=%v err=%v", names, err)
+	}
+	runtimeName := names[0]
+	cfg := *overrides[runtimeName].Server
+	cacheKey := mcpcache.GenerateUnifiedCacheKey(runtimeName, cfg)
+	entry, ok := mcpcache.GetCacheManager(loggerv2.NewNoop()).Get(cacheKey)
+	if !ok || entry == nil || len(entry.Tools) != 1 {
+		t.Fatalf("expected mcpcache hit for seeded Vault server %s, got ok=%v entry=%+v", runtimeName, ok, entry)
+	}
+	if entry.Tools[0].Function == nil || entry.Tools[0].Function.Name != "notion__fetch" {
+		t.Fatalf("unexpected cached tool: %+v", entry.Tools[0].Function)
 	}
 }
