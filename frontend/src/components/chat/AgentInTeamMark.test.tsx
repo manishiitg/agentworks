@@ -84,12 +84,14 @@ describe('AgentHeaderLine sharing pill', () => {
       main: false,
       info: { name: 'Scratchpad', sharing: { projectId: 'crew', agentKey: 'scratch' } },
     }
+    const forkTo = vi.fn()
     const sharedRow: CrewAgentRow = {
       tabId: 't2',
       name: 'Design',
       main: false,
       inTeam: true,
       teamShare: { inTeam: true, audience: 'whole_team', chatShare: 'agent' },
+      actions: { forkTo },
       info: {
         name: 'Design',
         sharing: { projectId: 'crew', agentKey: 'design' },
@@ -124,6 +126,7 @@ describe('AgentHeaderLine sharing pill', () => {
       expect(sharedDetails).not.toBeNull()
       expect(sharedDetails?.querySelector('[data-testid="header-sharing"]')).toBeNull()
       expect(sharedDetails?.textContent).not.toContain('Share…')
+      expect(sharedDetails?.textContent).not.toContain('Send a copy to a teammate…')
 
       const pill = host.querySelector<HTMLButtonElement>('button[aria-label*="Chat hidden"]')
       expect(pill).not.toBeNull()
@@ -137,6 +140,10 @@ describe('AgentHeaderLine sharing pill', () => {
       expect(sharing?.getAttribute('data-agent-key')).toBe('design')
       expect(sharing?.getAttribute('data-default-open')).toBe('true')
       expect(sharing?.getAttribute('data-bare')).toBe('true')
+      const forkButton = [...(dialog?.querySelectorAll('button') || [])].find(b => b.textContent?.includes('Send a copy to a teammate…'))
+      expect(forkButton).toBeTruthy()
+      await act(async () => forkButton!.click())
+      expect(forkTo).toHaveBeenCalledOnce()
     } finally {
       await act(async () => root.unmount())
     }
