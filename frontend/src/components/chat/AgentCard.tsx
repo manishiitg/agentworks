@@ -59,7 +59,7 @@ export const useOpenAgentStore = create<{ tabId: string | null; info: AgentCardI
 /** What the person may do with one agent, from the tab strip's own handlers; a missing one is not theirs to do. */
 export interface CrewAgentActions {
   forkTo?: () => void
-  fork?: () => void | Promise<void>
+  fork?: () => unknown
   terminal?: () => void | Promise<void>
   /** The saved order's key, for dragging rows. */
   orderKey?: string

@@ -476,10 +476,10 @@ func isUserViewConversationKey(key string) bool {
 	return ok && strings.HasPrefix(chatID, userViewChatPrefix)
 }
 
-// hiddenFromTabStrip: chats that belong to a page, never a tab of the owner's strip.
+// hiddenFromTabStrip: chats that belong to a page or a /btw side question, never a tab of the owner's strip.
 func hiddenFromTabStrip(key string) bool {
 	_, chatID, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker)
-	return ok && strings.HasPrefix(chatID, userViewChatPrefix)
+	return ok && (strings.HasPrefix(chatID, userViewChatPrefix) || strings.HasPrefix(chatID, btwChatPrefix))
 }
 
 // applyUserViewChat makes a turn in the owner's user-view chat a Run-mode ask: read-only, the owner's published

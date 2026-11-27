@@ -5,6 +5,7 @@ import { contextAttachmentRemoval } from '../utils/chatContextAttachment'
 import { applyNextPromptKey } from '../utils/nextPrompt'
 import { useNextPrompt } from './chat/useNextPrompt'
 import { NextStepsCard, NextStepsSlot, useNextSteps } from './chat/NextStepsCard'
+import { BtwPanel } from './chat/BtwPanel'
 import { TerminalResumeNotice, useChatTerminalOut } from './chat/TerminalResume'
 import { supportsNativeGoal } from '../utils/nativeGoalCapability'
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
@@ -3070,6 +3071,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           padding small so the last message and the composer read as one column. */}
       <ChatComposerArea product={isProductSurface} className={inputPadX}>
         <ChatComposerForm product={isProductSurface} onSubmit={handleSubmit} aboveCard={<>
+          {activeTabId && <BtwPanel tabId={activeTabId} onAddToChat={text => { void routeSubmit(text, 'queue') }} />}
           {nextSteps.steps && activeTabId && <NextStepsSlot tabId={activeTabId}><NextStepsCard steps={nextSteps.steps} shortcut={composerIdle} onDismiss={nextSteps.dismiss} onPick={text => { nextSteps.dismiss(); void routeSubmit(text) }} onTurnOff={tabSessionId ? () => { void changeChatContext(tabSessionId, { next_steps: false }) } : undefined} onTurnOn={tabSessionId ? () => { void changeChatContext(tabSessionId, { next_steps: true }) } : undefined} /></NextStepsSlot>}
           <div ref={setMicBannerHost} className="empty:hidden" />
           {onlineAgentTab && <p role="note" data-testid="online-agent-files-note" className="mx-3 my-1 text-xs text-muted-foreground">{ONLINE_AGENT_FILES_LINE}</p>}

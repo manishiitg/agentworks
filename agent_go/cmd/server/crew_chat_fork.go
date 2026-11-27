@@ -32,11 +32,19 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 		Name            string `json:"name"`
 		// Task: the fork's first task, which the forking chat sends right after; shown on the parent's divider line.
 		Task string `json:"task"`
+		// SideQuestion makes a /btw side question: a hidden copy that answers it in one read-only turn while the
+		// source chat keeps working (chat_btw.go).
+		SideQuestion string `json:"side_question"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(r.Body, maxAgentProfileRequestBytes))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&input); err != nil || strings.TrimSpace(input.ConversationKey) == "" {
 		externalError(w, 400, "invalid_request", "Choose a chat to fork.")
+		return
+	}
+	sideQuestion := strings.TrimSpace(input.SideQuestion)
+	if len([]rune(sideQuestion)) > btwQuestionMaxRunes {
+		externalError(w, 400, "invalid_request", "Keep a side question under 4,000 characters.")
 		return
 	}
 	requestedName := strings.TrimSpace(input.Name)
@@ -104,6 +112,10 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 	}
 	project := crewResourceProjectID(source.Record.ConversationKey)
 	key := project + codeChatSideMarker + "fork-" + uuid.NewString()
+	if sideQuestion != "" {
+		key = project + codeChatSideMarker + btwChatPrefix + uuid.NewString()
+		requestedName = btwChatName(sideQuestion)
+	}
 	baseName := []rune(firstNonEmptyTrimmed(source.Identity.Name, source.Record.Title, "Chat"))
 	if len(baseName) > productAgentNameMaxRunes-7 {
 		baseName = baseName[:productAgentNameMaxRunes-7]
@@ -126,8 +138,15 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 	// The fork remembers its parent, so the left menu draws it under that agent (#3288).
 	parent := source.Record.ConversationKey
 	parentName := firstNonEmptyTrimmed(source.Identity.Name, source.Record.Title, "Chat")
+	// A kept side question ("Open as tab") is a fork of its hidden copy; it belongs under the chat it was asked in.
+	if isBtwConversationKey(parent) && strings.TrimSpace(source.Identity.ForkedFrom) != "" {
+		parent = strings.TrimSpace(source.Identity.ForkedFrom)
+	}
 	// A fork is its own agent unless an agent made it as its helper (the fork tool then replaces this note).
 	forkNote := forkFirstTurnNote(parentName, name, source.Identity.Purpose, true)
+	if sideQuestion != "" {
+		forkNote = btwFirstTurnNote(parentName)
+	}
 	change := chatContextChange{ForkedFrom: &parent, ForkNote: &forkNote}
 	if source.Identity.ClaudeTerminal && query.Provider == "claude-code" {
 		terminal := true
@@ -183,6 +202,16 @@ func (api *StreamingAPI) handleForkCrewChat(w http.ResponseWriter, r *http.Reque
 	}
 
 	forkCompleted = true
+	if sideQuestion != "" {
+		// No divider in the source chat: the side question stays out of it. The answer turn starts now.
+		if err := api.startBtwTurn(r, slot.profile.ID, key, sideQuestion); err != nil {
+			externalError(w, 502, "side_question_failed", err.Error())
+			return
+		}
+		log.Printf("[CHAT_BTW] project=%s source=%s session=%s native=%t", project, source.Record.SessionID, destination.SessionID, runtime != nil)
+		writeAgentProfileJSON(w, 200, map[string]any{"chat_id": strings.TrimPrefix(key, project+codeChatSideMarker), "conversation_key": key, "conversation_id": destination.ConversationID, "session_id": destination.SessionID, "name": name, "engine": choice.Engine, "provider": query.Provider, "model_id": query.ModelID, "connection_id": query.ConnectionID, "reasoning_effort": choice.ReasoningEffort, "native_resume": runtime != nil, "forked_from": parent, "side_question": true})
+		return
+	}
 	api.noteForkCreated(user, source.Record, key, name, strings.TrimSpace(input.Task))
 	log.Printf("[CHAT_FORK_PHASE] phase=save_history source=%s session=%s elapsed_ms=%d success=true", source.Record.SessionID, destination.SessionID, time.Since(phaseStarted).Milliseconds())
 	log.Printf("[CHAT_FORK] project=%s source=%s session=%s native=%t messages=%d", project, source.Record.SessionID, destination.SessionID, runtime != nil, len(saved.History))
