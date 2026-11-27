@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { DetailLine, PageRow, RowButton } from '../../automation/AutomationKit'
+import { DetailLine, MadeBy, PageRow, RowButton } from '../../automation/AutomationKit'
 import { Clock } from 'lucide-react'
 import { Switch } from '../../ui/Switch'
 import { WebhookEndpoint } from './WebhookEndpoint'
@@ -99,7 +99,7 @@ export const ScheduleListView: React.FC<ScheduleListViewProps> = ({ panel, overv
         } else {
           const last = job.last_result
             ?? `${job.last_run_at ? `Last ran: ${formatLastRunLabel(job.last_run_at)}` : 'Not run yet'}${job.last_duration_ms != null ? ` · ${formatDuration(job.last_duration_ms)}` : ''}`
-          lines = [firstLine, <span key="h" className={job.last_status === 'error' ? 'text-destructive' : undefined} title={job.last_error || formatExactDateTime(job.last_run_at)}>{last} · {runs}</span>]
+          lines = [firstLine, <span key="h" className={job.last_status === 'error' ? 'text-destructive' : undefined} title={job.last_error || formatExactDateTime(job.last_run_at)}><MadeBy name={job.made_by} />{last} · {runs}</span>]
         }
 
         // One action on the right, chosen by state.

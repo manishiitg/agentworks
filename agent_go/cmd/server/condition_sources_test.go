@@ -80,6 +80,10 @@ func TestConditionProductCallerOwnsDetectorAndCallsOwnCrew(t *testing.T) {
 	if err != nil || len(pendingList.(map[string]interface{})["triggers"].([]interface{})) != 1 {
 		t.Fatal("undelivered one-time wait disappeared", pendingList, err)
 	}
+	// A list where every Watcher is the reader's own leaves "made by" out: every row would say "You".
+	if _, named := pendingList.(map[string]interface{})["triggers"].([]interface{})[0].(map[string]interface{})["made_by"]; named {
+		t.Fatal("the owner's own list names its maker", pendingList)
+	}
 	// PLAT-856-542: the menu reads the same active state without loading
 	// other projects' jobs, caller attribution or private chat choices.
 	summaryList, err := c.manage(ctx, "owner", "work", "mail-checks", map[string]interface{}{"action": "list", "summary": true})

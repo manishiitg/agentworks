@@ -1,6 +1,14 @@
 import type { ReactNode } from 'react'
 import { ArrowLeft, ChevronRight, Loader2, RefreshCw, Sparkles, type LucideIcon } from 'lucide-react'
 
+/** Who made an automation, at the start of its row's last line: an initial and the name, or "You" (owner, 27 Nov). */
+export function MadeBy({ name }: { name?: string }) {
+  if (!name) return null
+  return <><span className="inline-flex items-center gap-1 align-middle" title={name === 'You' ? 'You made this' : `Made by ${name}`}>
+    <span aria-hidden="true" className={`inline-grid h-4 w-4 place-items-center rounded-full text-[9px] font-semibold ${name === 'You' ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground/70'}`}>{name.charAt(0).toUpperCase()}</span>{name}
+  </span>{' · '}</>
+}
+
 /** One colour per kind of automation, so a person can tell them apart at a glance (owner, 2026-10-20). */
 export type AutomationTone = 'violet' | 'amber' | 'emerald' | 'sky' | 'rose'
 
