@@ -101,6 +101,9 @@ func removeCrewWorkflowFiles(binding crewExecutableBinding) error {
 			return fmt.Errorf("refusing to remove a folder that is not this workflow's own")
 		}
 	}
+	if err := keepProjectDatabase(binding, layout, folders); err != nil {
+		return err
+	}
 	forgetAutomationRecordsUnder(context.Background(), layout.Settings)
 	var failures []error
 	for _, folder := range folders {
@@ -109,6 +112,77 @@ func removeCrewWorkflowFiles(binding crewExecutableBinding) error {
 		}
 	}
 	return errors.Join(failures...)
+}
+
+// crewWorkflowDeleteRefusal is a delete the person must sort out first; its text is shown as is.
+type crewWorkflowDeleteRefusal struct{ reason string }
+
+func (e crewWorkflowDeleteRefusal) Error() string { return e.reason }
+
+// keepProjectDatabase protects a project whose registration still keeps its database (and managed dashboards)
+// inside this workflow's folders, as the old workflow-to-project conversion left it (database_root). Before the
+// folders go, the database moves to the project's own db/ and the pointer is cleared, so deleting the workflow
+// never deletes the project's data (#4137). If the project already has a separate db/ with files, the delete
+// is refused instead of choosing between two databases.
+func keepProjectDatabase(binding crewExecutableBinding, layout crewroot.ExecutableLayout, folders []string) error {
+	if layout.Crew.DatabaseRoot == "" {
+		return nil
+	}
+	held := filepath.Join(layout.Crew.Automation, filepath.FromSlash(layout.Crew.DatabaseRoot))
+	inside := false
+	for _, folder := range folders {
+		if folder != "" && crewroot.Within(folder, held) {
+			inside = true
+		}
+	}
+	if !inside {
+		return nil
+	}
+	identity, ok := projectIdentityOf(binding.CrewRoot)
+	if !ok {
+		return fmt.Errorf("this workflow's project is unavailable")
+	}
+	target := filepath.Join(layout.Crew.Automation, "db")
+	moved := false
+	if _, err := os.Lstat(held); err == nil {
+		entries, readErr := os.ReadDir(target)
+		switch {
+		case readErr == nil && len(entries) > 0:
+			return crewWorkflowDeleteRefusal{"This project's database and dashboards are still kept inside this workflow, and the project also has its own db folder with files. Move or remove one of them first (ask the Builder), then delete the workflow."}
+		case readErr == nil:
+			if err := os.Remove(target); err != nil {
+				return err
+			}
+		case !os.IsNotExist(readErr):
+			return readErr
+		}
+		if err := os.Rename(held, target); err != nil {
+			return fmt.Errorf("could not move the project's database out of this workflow: %w", err)
+		}
+		moved = true
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	err := defaultProjectOwners().modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		key := projectOwnerKey(identity.Product, identity.Folder)
+		record, found := projects[key]
+		if !found || record.DatabaseRoot == "" {
+			return false, nil
+		}
+		record.DatabaseRoot = ""
+		projects[key] = record
+		return true, nil
+	})
+	if err != nil {
+		if moved {
+			if undoErr := os.Rename(target, held); undoErr != nil {
+				log.Printf("[CREW_WORKFLOW_DELETE] workflow=%s database moved to %s but its pointer stayed: %v", binding.ID, target, undoErr)
+			}
+		}
+		return fmt.Errorf("could not update where the project's database lives: %w", err)
+	}
+	log.Printf("[CREW_WORKFLOW_DELETE] crew=%s workflow=%s project database kept (moved=%t)", binding.CrewID, binding.ID, moved)
+	return nil
 }
 
 // deleteCrewWorkflow removes the workflow, its files and its run history. The Crew then has no workflow, so a new
@@ -131,6 +205,11 @@ func (api *StreamingAPI) deleteCrewWorkflow(w http.ResponseWriter, r *http.Reque
 	}
 	if err := removeCrewWorkflowFiles(*binding); err != nil {
 		log.Printf("[CREW_WORKFLOW_DELETE] crew=%s workflow=%s files_failed: %v", crewID, binding.ID, err)
+		var refusal crewWorkflowDeleteRefusal
+		if errors.As(err, &refusal) {
+			http.Error(w, refusal.reason, http.StatusConflict)
+			return
+		}
 		http.Error(w, "Could not remove all of this workflow's files. Try again.", http.StatusInternalServerError)
 		return
 	}
