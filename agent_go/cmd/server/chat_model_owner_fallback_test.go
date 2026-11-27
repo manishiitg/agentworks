@@ -101,6 +101,17 @@ func TestOwnerChatModelPickBecomesProjectFallback(t *testing.T) {
 	if got := c.fallback(); got == nil || got.Provider != "codex-cli" {
 		t.Fatalf("returning a chat to the fallback cleared it: %+v", got)
 	}
+	// The empty project's start page shows the model its first chat will use; it was missing because the
+	// not-yet-existing chat had no session or folder (#4472).
+	req := mux.SetURLVars(sharedSecretsRequest(http.MethodGet, "/api/agent-profiles/work/chat-models?project_id=team", "owner", nil), map[string]string{"id": "work"})
+	w := httptest.NewRecorder()
+	c.f.api.handleAgentProfileChatModels(w, req)
+	var state struct {
+		NewChatModel map[string]string `json:"new_chat_model"`
+	}
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &state) != nil || state.NewChatModel["display_label"] == "" {
+		t.Fatalf("start page has no model for the first chat: %d %s", w.Code, w.Body.String())
+	}
 }
 
 // A new agent starts on the model of the chat it was opened from, pinned as its own model.
