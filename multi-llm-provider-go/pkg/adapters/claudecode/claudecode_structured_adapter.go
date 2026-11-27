@@ -679,6 +679,8 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 	var assistantUsageFallback llmtypes.Usage
 	var totalCacheReadTokens, totalCacheWriteTokens int
 	var fallbackCacheReadTokens, fallbackCacheWriteTokens int
+	// A /compact result's usage is all zeros; its real cost is only in modelUsage.
+	var compactModelUsage claudeModelUsageTotals
 	sawResult := false
 	resultIsError := false
 	terminalReason := ""
@@ -987,6 +989,9 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 					}
 				}
 				previousResultContinues = ev.SDKContinues
+				if idleCompact {
+					compactModelUsage.add(ev.ModelUsage)
+				}
 				if ev.Usage != nil {
 					accumulateClaudeUsage(&totalUsage, ev.Usage)
 					totalCacheReadTokens += ev.Usage.CacheReadInputTokens
@@ -1102,6 +1107,9 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 		totalCacheWriteTokens = fallbackCacheWriteTokens
 	}
 	if idleCompact {
+		if totalUsage.TotalTokens == 0 && totalCacheReadTokens == 0 && totalCacheWriteTokens == 0 {
+			totalUsage, totalCacheReadTokens, totalCacheWriteTokens = compactModelUsage.usage()
+		}
 		return claudeIdleCompactResponse(sessionID, workingDir, c.modelID, c.sdkTransport, idle, totalUsage, totalCacheReadTokens, totalCacheWriteTokens), nil
 	}
 
