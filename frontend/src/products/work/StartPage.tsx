@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUp, ChevronDown, Folder, Laptop, Loader2, MessageSquare, Plug, Sparkles } from 'lucide-react'
 import api, { agentApi } from '../../services/api'
+import { ChatComposerSendButton } from '../../components/chat/ChatComposer'
 
 /** Where a new project goes: a new folder (undefined) or an existing folder on this Mac. */
 export type StartFolder = string | undefined
@@ -90,8 +91,8 @@ export function StartPage({ mode, place, projectId, projectFolder, canChooseFold
           onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); send() } }}
           placeholder="Describe a task or ask a question" aria-label="Your first message" data-testid="work-first-chat-input"
           className="max-h-60 min-h-8 flex-1 resize-none bg-transparent py-1.5 text-[15px] text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground" />
-        <button type="submit" aria-label="Send" disabled={!text.trim() || submitting}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:bg-muted disabled:text-muted-foreground">{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}</button>
+        <ChatComposerSendButton type="submit" aria-label="Send" disabled={!text.trim() || submitting}
+          className="h-8 w-8 shrink-0 rounded-full">{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}</ChatComposerSendButton>
       </form>
       <div ref={under} className="relative mt-1.5 flex flex-wrap items-center gap-1">
         <span className={pill} title={place === 'This Mac' ? 'Runs on this Mac while it is on and awake' : `Runs on ${place}`}><Laptop className="h-3.5 w-3.5" />{place}</span>
