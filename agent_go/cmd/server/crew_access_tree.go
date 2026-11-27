@@ -296,14 +296,22 @@ func crewAccessAgo(at time.Time) string {
 }
 
 // crewAccessRemoteCache keeps the Mac's last reads of the online copy for a short while (the Access row polls often).
-var crewAccessRemoteCache sync.Map
+var (
+	crewAccessRemoteCache      sync.Map
+	crewAccessRemoteRefreshing sync.Map
+
+	crewAccessRemoteFreshTTL = 20 * time.Second
+	crewAccessRemoteFailTTL  = 10 * time.Second
+	crewAccessRemoteTimeout  = 6 * time.Second
+)
 
 type crewAccessRemote struct {
-	at      time.Time
-	team    *crewTeam
-	people  []crewTeamAgentsPerson
-	clashes []crewTeamClash
-	last    time.Time
+	at          time.Time
+	failedUntil time.Time
+	team        *crewTeam
+	people      []crewTeamAgentsPerson
+	clashes     []crewTeamClash
+	last        time.Time
 	// peopleRead: people came from a good /agents read (this one or an earlier one); without it the count is unknown.
 	peopleRead bool
 	liveRead   bool // current /agents attempt succeeded (not just kept labels)
@@ -383,15 +391,33 @@ func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClai
 
 func (api *StreamingAPI) crewAccessRemoteRead(ctx context.Context, owner string, c desktopConnection, project, peer string) crewAccessRemote {
 	key := project + "\x00" + peer
-	if v, ok := crewAccessRemoteCache.Load(key); ok && time.Since(v.(crewAccessRemote).at) < 20*time.Second {
-		return v.(crewAccessRemote)
-	}
-	round, done := context.WithTimeout(ctx, 6*time.Second)
-	defer done()
 	var prev crewAccessRemote
 	if v, ok := crewAccessRemoteCache.Load(key); ok {
 		prev = v.(crewAccessRemote)
+		now := time.Now()
+		if !prev.failedUntil.IsZero() && now.Before(prev.failedUntil) {
+			return prev
+		}
+		if !prev.at.IsZero() && now.Sub(prev.at) < crewAccessRemoteFreshTTL {
+			return prev
+		}
+		if !prev.at.IsZero() {
+			if _, loaded := crewAccessRemoteRefreshing.LoadOrStore(key, struct{}{}); !loaded {
+				go func(prevSnapshot crewAccessRemote) {
+					defer crewAccessRemoteRefreshing.Delete(key)
+					defer recoverDetachedGoroutine("crew_access_remote", key)
+					api.fetchCrewAccessRemote(context.Background(), key, owner, c, project, peer, prevSnapshot)
+				}(prev)
+			}
+			return prev
+		}
 	}
+	return api.fetchCrewAccessRemote(ctx, key, owner, c, project, peer, prev)
+}
+
+func (api *StreamingAPI) fetchCrewAccessRemote(ctx context.Context, key, owner string, c desktopConnection, project, peer string, prev crewAccessRemote) crewAccessRemote {
+	round, done := context.WithTimeout(ctx, crewAccessRemoteTimeout)
+	defer done()
 	started := time.Now()
 	// One server read; a failed one is logged and its last good result kept, so a slow server never turns the Team
 	// line into "0 other people" (owner, 11 Nov screenshot) or hides clashes that are still open.
@@ -413,6 +439,8 @@ func (api *StreamingAPI) crewAccessRemoteRead(ctx context.Context, owner string,
 	}
 	if !read("team", route, &t) {
 		prev.liveRead = false
+		prev.failedUntil = time.Now().Add(crewAccessRemoteFailTTL)
+		crewAccessRemoteCache.Store(key, prev)
 		return prev
 	}
 	out.team = &t

@@ -658,6 +658,39 @@ func (api *StreamingAPI) handleDesktopMemberCrew(w http.ResponseWriter, r *http.
 	desktopJSON(w, map[string]string{"project_id": local})
 }
 
+var (
+	desktopInventoryFreshTTL = 30 * time.Second
+	desktopInventoryStaleTTL = 5 * time.Minute
+	desktopInventoryTimeout  = 5 * time.Second
+
+	desktopInventoryCacheMu    sync.Mutex
+	desktopInventoryCache      = map[string]desktopInventoryCacheEntry{}
+	desktopInventoryRefreshing = map[string]bool{}
+)
+
+type desktopInventoryCacheEntry struct {
+	projects   []desktopProject
+	status     string
+	freshUntil time.Time
+	staleUntil time.Time
+}
+
+func cloneDesktopProjects(projects []desktopProject) []desktopProject {
+	if projects == nil {
+		return []desktopProject{}
+	}
+	out := make([]desktopProject, len(projects))
+	copy(out, projects)
+	return out
+}
+
+func desktopInventoryHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout:       desktopInventoryTimeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}
+
 func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter, r *http.Request) {
 	if !desktopConnectionGate(w, r) {
 		return
@@ -667,10 +700,11 @@ func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter,
 
 func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["connection"]
+	user := GetUserFromContext(r.Context()).UserID
 	var selfConnection desktopConnection
 	base, token := "http://"+desktopBootstrapHost, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if id != "local" {
-		c, err := desktopConnectionFor(GetUserFromContext(r.Context()).UserID, id)
+		c, err := desktopConnectionFor(user, id)
 		if err != nil {
 			http.Error(w, `{"error":"Connection is unavailable."}`, 404)
 			return
@@ -678,6 +712,78 @@ func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r
 		base, token = c.Server, c.Token
 		selfConnection = c
 	}
+	if id != "local" {
+		cacheKey := user + "\x00" + id + "\x00" + base
+		forceRefresh := r.URL.Query().Get("refresh") == "true"
+		now := time.Now()
+		if !forceRefresh {
+			desktopInventoryCacheMu.Lock()
+			entry, ok := desktopInventoryCache[cacheKey]
+			if ok && now.Before(entry.staleUntil) {
+				projects := cloneDesktopProjects(entry.projects)
+				status := entry.status
+				needRefresh := !now.Before(entry.freshUntil) && !desktopInventoryRefreshing[cacheKey] && !desktopProxyInCooldown(id)
+				if needRefresh {
+					desktopInventoryRefreshing[cacheKey] = true
+				}
+				desktopInventoryCacheMu.Unlock()
+				if needRefresh {
+					go func() {
+						defer func() {
+							desktopInventoryCacheMu.Lock()
+							delete(desktopInventoryRefreshing, cacheKey)
+							desktopInventoryCacheMu.Unlock()
+						}()
+						defer recoverDetachedGoroutine("desktop_inventory_refresh", cacheKey)
+						refreshCtx, cancel := context.WithTimeout(context.Background(), desktopInventoryTimeout)
+						defer cancel()
+						refreshedProjects, refreshedStatus := api.fetchDesktopConnectionInventory(refreshCtx, id, user, base, token, selfConnection, "")
+						api.storeDesktopInventoryCache(cacheKey, id, refreshedProjects, refreshedStatus)
+					}()
+				}
+				desktopJSON(w, map[string]any{"projects": projects, "status": status})
+				return
+			}
+			desktopInventoryCacheMu.Unlock()
+		}
+		if desktopProxyInCooldown(id) {
+			desktopJSON(w, map[string]any{"projects": []desktopProject{}, "status": "unavailable"})
+			return
+		}
+		fetchCtx, cancel := context.WithTimeout(r.Context(), desktopInventoryTimeout)
+		defer cancel()
+		projects, status := api.fetchDesktopConnectionInventory(fetchCtx, id, user, base, token, selfConnection, clientSwitchID(r))
+		api.storeDesktopInventoryCache(cacheKey, id, projects, status)
+		desktopJSON(w, map[string]any{"projects": projects, "status": status})
+		return
+	}
+	projects, status := api.fetchDesktopConnectionInventory(r.Context(), id, user, base, token, selfConnection, clientSwitchID(r))
+	desktopJSON(w, map[string]any{"projects": projects, "status": status})
+}
+
+func (api *StreamingAPI) storeDesktopInventoryCache(cacheKey, connID string, projects []desktopProject, status string) {
+	now := time.Now()
+	switch status {
+	case "connected":
+		clearDesktopProxyUnreachable(connID)
+		desktopInventoryCacheMu.Lock()
+		desktopInventoryCache[cacheKey] = desktopInventoryCacheEntry{
+			projects:   cloneDesktopProjects(projects),
+			status:     status,
+			freshUntil: now.Add(desktopInventoryFreshTTL),
+			staleUntil: now.Add(desktopInventoryStaleTTL),
+		}
+		desktopInventoryCacheMu.Unlock()
+	case "sign_in":
+		desktopInventoryCacheMu.Lock()
+		delete(desktopInventoryCache, cacheKey)
+		desktopInventoryCacheMu.Unlock()
+	case "unavailable":
+		markDesktopProxyUnreachable(connID)
+	}
+}
+
+func (api *StreamingAPI) fetchDesktopConnectionInventory(ctx context.Context, id, user, base, token string, selfConnection desktopConnection, switchID string) ([]desktopProject, string) {
 	type result struct {
 		projects []desktopProject
 		status   int
@@ -686,12 +792,16 @@ func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r
 	failed := func(kind string, status int) {
 		log.Printf("[DESKTOP_INVENTORY] connection=%s list=%s status=%d", id, kind, status)
 	}
+	client := desktopHTTPClient()
+	if id != "local" {
+		client = desktopInventoryHTTPClient()
+	}
 	for _, kind := range []string{"crew", "goal"} {
 		go func(kind string) {
 			started := time.Now()
 			defer func() {
-				if id := clientSwitchID(r); id != "" {
-					log.Printf("[SWITCH_INVENTORY] switch=%q kind=%s duration=%s", id, kind, time.Since(started).Round(time.Millisecond))
+				if switchID != "" {
+					log.Printf("[SWITCH_INVENTORY] switch=%q kind=%s duration=%s", switchID, kind, time.Since(started).Round(time.Millisecond))
 				}
 			}()
 			path, method, body := "/api/workflows/manifests", "GET", ""
@@ -701,7 +811,7 @@ func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r
 					body = `{"action":"list"}`
 				}
 			}
-			req, err := http.NewRequestWithContext(r.Context(), method, base+path, strings.NewReader(body))
+			req, err := http.NewRequestWithContext(ctx, method, base+path, strings.NewReader(body))
 			if err != nil {
 				failed(kind, 502)
 				results <- result{status: 502}
@@ -709,7 +819,7 @@ func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r
 			}
 			req.Header.Set("Authorization", "Bearer "+token)
 			req.Header.Set("Content-Type", "application/json")
-			resp, err := desktopHTTPClient().Do(req)
+			resp, err := client.Do(req)
 			if err != nil {
 				failed(kind, 502)
 				results <- result{status: 502}
@@ -747,7 +857,6 @@ func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r
 				return
 			}
 			projects := []desktopProject{}
-			user := GetUserFromContext(r.Context()).UserID
 			for _, p := range inventory.Workspaces {
 				if id != "local" && desktopMemberCrew(user, id, p.ID) != "" {
 					continue
@@ -784,5 +893,5 @@ func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r
 			status = "unavailable"
 		}
 	}
-	desktopJSON(w, map[string]any{"projects": projects, "status": status})
+	return projects, status
 }
