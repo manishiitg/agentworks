@@ -134,6 +134,78 @@ verify_change_remote() {
   return $rc
 }
 
+# Runs the full server test suite on the build host at idle CPU/IO priority (#4340) and reports only failures new since
+# the previous run. Never deploys and never takes a verify slot lock.
+nightly_tests_remote() {
+  local disk_override
+  disk_override="$(build_disk_override_arg)" || return $?
+  local branch="main" sha="" packages="./..." timeout="30m" report_issue="" include_baseline=0 no_save_state=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --branch) branch="$2"; shift 2 ;;
+      --sha) sha="$2"; shift 2 ;;
+      --packages) packages="$2"; shift 2 ;;
+      --timeout) timeout="$2"; shift 2 ;;
+      --report-issue) report_issue="$2"; shift 2 ;;
+      --include-baseline) include_baseline=1; shift ;;
+      --no-save-state) no_save_state=1; shift ;;
+      *) echo "Unknown nightly-tests argument: $1" >&2; return 2 ;;
+    esac
+  done
+  [[ -z "$sha" || "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "--sha must be a full 40-hex commit" >&2; return 2; }
+  [[ -z "$report_issue" || "$report_issue" =~ ^[0-9]+$ ]] || { echo "--report-issue must be a GitHub issue number" >&2; return 2; }
+  local url
+  url="$(to_https_url "$(git -C "$REPO_ROOT" remote get-url origin)")" || return 1
+
+  # Atomic replace so an in-flight run is never overwritten in place.
+  build_ssh "install -d -m 0755 '$BUILDS_DIR' && t=\$(mktemp '$BUILDS_DIR/.nightly-tests.XXXXXX') && cat > \"\$t\" && chmod 0755 \"\$t\" && mv -f \"\$t\" '$BUILDS_DIR/.nightly-tests.sh'" < "$REPO_ROOT/deploy/common/nightly-tests.sh" \
+    || { echo "Cannot reach the build host" >&2; return 1; }
+  build_ssh "t=\$(mktemp '$BUILDS_DIR/.nightly_tests_report.XXXXXX') && cat > \"\$t\" && chmod 0644 \"\$t\" && mv -f \"\$t\" '$BUILDS_DIR/.nightly_tests_report.py'" < "$REPO_ROOT/deploy/common/nightly_tests_report.py" \
+    || { echo "Cannot upload nightly report helper to the build host" >&2; return 1; }
+
+  local args=(--url "$url" --branch "$branch" --builds-dir "$BUILDS_DIR" --packages "$packages" --timeout "$timeout" --report-script "$BUILDS_DIR/.nightly_tests_report.py")
+  [[ -z "$sha" ]] || args+=(--sha "$sha")
+  [[ "$no_save_state" != 1 ]] || args+=(--no-save-state)
+  local quoted="" arg
+  for arg in "${args[@]}"; do quoted+=" $(printf '%q' "$arg")"; done
+
+  local unit="agentworks-nightly-tests-$(date +%s)-$$"
+  local out rc=0
+  out="$(build_ssh "systemd-run --unit='$unit' --quiet --wait --pipe --collect --setenv=HOME=/root$disk_override --setenv=BUILDS_DIR='$BUILDS_DIR' -p CPUQuota=${NIGHTLY_CPU_QUOTA:-200%} -p MemoryMax=${NIGHTLY_MEMORY_MAX:-6G} -p Nice=19 -p IOSchedulingClass=idle bash '$BUILDS_DIR/.nightly-tests.sh'$quoted")" || rc=$?
+  if [[ "$rc" == 75 ]]; then
+    echo "Nightly server tests already running on the build host; skipped." >&2
+    return 0
+  fi
+  if [[ "$rc" != 0 ]]; then
+    printf '%s\n' "$out" >&2
+    return "$rc"
+  fi
+
+  local report_line
+  report_line="$(printf '%s\n' "$out" | grep '^NIGHTLY_REPORT_JSON=' | tail -n 1 || true)"
+  [[ -n "$report_line" ]] || { echo "Nightly test runner did not emit NIGHTLY_REPORT_JSON" >&2; return 1; }
+  printf '%s\n' "$report_line"
+
+  local fmt_args=(format-comment --report-json -)
+  [[ "$include_baseline" != 1 ]] || fmt_args+=(--include-baseline)
+  local comment
+  comment="$(printf '%s\n' "$report_line" | python3 "$REPO_ROOT/deploy/common/nightly_tests_report.py" "${fmt_args[@]}")"
+
+  if [[ -z "$comment" ]]; then
+    echo "No new failures since previous run." >&2
+    return 0
+  fi
+
+  if [[ -n "$report_issue" ]]; then
+    local repo_slug
+    repo_slug="${url#https://github.com/}"
+    printf '%s\n' "$comment" | gh issue comment "$report_issue" -R "$repo_slug" --body-file - >&2
+  else
+    printf '\n%s\n' "$comment" >&2
+  fi
+  return 0
+}
+
 # Removes old builds on the build host: all but the newest BUILD_KEEP (default 1), never a pinned one or one younger than 15 minutes. Run after every
 # successful deploy; a pruning problem never fails a deploy.
 prune_builds_remote() {

@@ -35,6 +35,8 @@ EOF
   publish [build]       upload a build (default: the newest) to github.com/manishiitg/agentworks-builds from the build host
   verify [name]         build, vet and test the commit you are on (HEAD) on the build host with the Verify-Test / Verify-Vitest /
                         Verify-Frontend-Build lines of its commit message, like scripts/verify-remote.sh but faster; deploys nothing
+  nightly-tests [opts]  run the full Go server test suite on the build host at idle CPU/IO priority (never takes verify slots,
+                        never deploys) and report only failures new since the previous run (--report-issue <N>)
   pin|unpin <build>     keep a known-good build from being pruned (old builds are removed after every deploy; only the newest is kept otherwise)
   prune-builds          remove old builds on the build host now (all but the newest, pinned ones and anything younger than 15 minutes)
 
@@ -566,6 +568,10 @@ fi
 if [[ "$SERVER" == verify ]]; then
   [[ $# -le 1 ]] || { echo "Usage: ./deploy.sh verify [name]" >&2; exit 2; }
   verify_change_remote "$@"
+  exit $?
+fi
+if [[ "$SERVER" == nightly-tests ]]; then
+  nightly_tests_remote "$@"
   exit $?
 fi
 if [[ "$SERVER" == publish ]]; then
