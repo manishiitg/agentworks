@@ -91,15 +91,22 @@ export async function askBtw(tabId: string, question: string): Promise<void> {
   }
 }
 
-/** The copy's reply to the side question: the assistant text after its last user message. */
-export function btwAnswerFromEvents(events: PollingEvent[]): { answer: string; error: string } {
+/** The copy's reply to the side question: the assistant text after the message that asked it. The copy also holds
+ * the chat's earlier conversation, so the answer is anchored on the question itself (a plain user message, or the
+ * continuity prompt that carries it when the copy starts a new native session). Until that message is in the events,
+ * there is no answer yet. */
+export function btwAnswerFromEvents(events: PollingEvent[], question: string): { answer: string; error: string; asked: boolean } {
   const items = buildCleanConversationItems(events)
-  let lastUser = -1
-  items.forEach((item, index) => { if (item.role === 'user') lastUser = index })
-  const after = items.slice(lastUser + 1)
+  const wanted = question.trim()
+  let anchor = -1
+  items.forEach((item, index) => {
+    if ((item.role === 'user' || item.role === 'continuity') && wanted && item.content.includes(wanted)) anchor = index
+  })
+  if (anchor < 0) return { answer: '', error: '', asked: false }
+  const after = items.slice(anchor + 1)
   const answer = after.filter(item => item.role === 'assistant').map(item => item.content.trim()).filter(Boolean).join('\n\n')
   const error = after.filter(item => item.role === 'error').map(item => item.content.trim()).filter(Boolean).at(-1) ?? ''
-  return { answer, error }
+  return { answer, error, asked: true }
 }
 
 const RUNNING = new Set(['active', 'running'])
@@ -108,7 +115,8 @@ const RUNNING = new Set(['active', 'running'])
 export async function pollBtwItem(tabId: string, item: BtwItem): Promise<boolean> {
   if (!item.sessionId || item.status !== 'answering') return false
   const response = await agentApi.getRecentSessionEvents(item.sessionId)
-  const { answer, error } = btwAnswerFromEvents(response.events ?? [])
+  const { answer, error, asked } = btwAnswerFromEvents(response.events ?? [], item.question)
+  if (!asked) return true
   const running = RUNNING.has(String(response.session_status ?? ''))
   if (!running && (answer || error)) {
     updateItem(tabId, item.id, answer ? { status: 'done', answer } : { status: 'failed', error })

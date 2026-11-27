@@ -15,8 +15,16 @@ describe('/btw side questions', () => {
       event('3', 'user_message', { content: 'is the retry safe?' }),
       event('4', 'unified_completion', { content: 'Yes: it only repeats calls that never reached the server.' }),
     ]
-    expect(btwAnswerFromEvents(events)).toEqual({ answer: 'Yes: it only repeats calls that never reached the server.', error: '' })
-    expect(btwAnswerFromEvents(events.slice(0, 3)).answer).toBe('')
+    expect(btwAnswerFromEvents(events, 'is the retry safe?')).toEqual({ answer: 'Yes: it only repeats calls that never reached the server.', error: '', asked: true })
+    expect(btwAnswerFromEvents(events.slice(0, 3), 'is the retry safe?').answer).toBe('')
+  })
+
+  it('never takes the chat\'s earlier answer before the side question is in the copy', () => {
+    const copied = [
+      event('1', 'user_message', { content: 'how does PR detection work?' }),
+      event('2', 'unified_completion', { content: 'PR detection is tied to the files changed in that reply.' }),
+    ]
+    expect(btwAnswerFromEvents(copied, 'testing btw')).toEqual({ answer: '', error: '', asked: false })
   })
 
   it('adds the question and answer to the chat as quoted text', () => {
