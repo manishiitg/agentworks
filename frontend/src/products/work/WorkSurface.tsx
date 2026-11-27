@@ -1925,7 +1925,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         reduced
         activityMonitorInWorkspace={Boolean(selected) && !showProviders && !showSchedulesOverview && !adminPage}
       />
-      {createOpen && pickingStartChat && <LocalChatPicker allFolders onClose={() => setPickingStartChat(false)} onSelected={chat => { if (chat.folder) void createProject('', '', undefined, undefined, undefined, chat.folder, chat) }} />}
+      {pickingStartChat && <LocalChatPicker allFolders onClose={() => setPickingStartChat(false)} onSelected={chat => { if (chat.folder) void createProject('', '', undefined, undefined, undefined, chat.folder, chat) }} />}
       <ConfirmationDialog
         isOpen={deleteCandidate !== null}
         onClose={() => { if (!deletingProjectId) setDeleteCandidate(null) }}
@@ -2017,7 +2017,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                     <div className={projectReady && !welcome ? 'h-full' : 'grid h-full place-items-center p-6 text-center text-sm text-muted-foreground'}>
                       {projectReady && welcome ? <div className="w-full self-start"><ProjectWelcome page={welcome} onStart={text => { pendingStart.current = text; requestFor('start') }} /><div className="mx-auto max-w-2xl px-6 text-left"><button type="button" className="rounded-md bg-primary px-4 py-2 text-primary-foreground" onClick={() => requestFor('start')}>Start a chat</button></div></div> : projectReady ? <StartPage mode="project" place={startPlace} projectId={selected?.id} projectFolder={importAvailability?.projectId === selected?.id ? importAvailability.folder : undefined} canChooseFolder={false}
                         onSend={text => { pendingSend.current = text; requestFor('start') }}
-                        onImportChat={importAvailability?.projectId === selected?.id && importAvailability.chats ? () => requestFor('importChat') : undefined}
+                        onImportChat={importAvailability?.projectId === selected?.id && importAvailability.chats ? () => requestFor('importChat') : startCanChooseFolder ? () => setPickingStartChat(true) : undefined}
                         onImportMcp={importAvailability?.projectId === selected?.id && importAvailability.mcp ? () => requestFor('importMcp') : undefined}
                         onDiscoverSkills={() => requestFor('skills')} /> : <span><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening project…</span>}
                     </div>
