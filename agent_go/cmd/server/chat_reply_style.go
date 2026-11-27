@@ -13,7 +13,7 @@ import (
 // end of the person's message (chatRepliesNote), only on turns sent from the app; the screen hides it from the
 // person's bubble (chatMessageContent.ts, the "⚙️ Chat settings:" marker).
 //   - ReplyStyle: "" (Default) or one of chatReplyStyles.
-//   - NextSteps: on unless "off". On a turn the person sends from the app, the agent may end its reply with a short
+//   - NextSteps: off unless "on" (owner, 27 Nov: opt-in; was on by default). On a turn the person sends from the app, the agent may end its reply with a short
 //     summary, one question and two or three answers as a ```next block; the screen shows it as a card with one-click
 //     answers instead of as text.
 //   - UnrelatedTask (owner, 26 Nov, like Claude Desktop's "When you ask for an unrelated task"): what the agent does
@@ -84,7 +84,7 @@ func chatRepliesViewFor(identity ProductAgentIdentity) *chatRepliesView {
 	if unrelated == "" {
 		unrelated = "ask"
 	}
-	return &chatRepliesView{Style: style, Styles: chatReplyStyles, NextSteps: identity.NextSteps != "off", UnrelatedTask: unrelated, UnrelatedTasks: chatUnrelatedTaskChoices}
+	return &chatRepliesView{Style: style, Styles: chatReplyStyles, NextSteps: chatNextStepsOn(identity), UnrelatedTask: unrelated, UnrelatedTasks: chatUnrelatedTaskChoices}
 }
 
 func setChatReplies(ctx context.Context, owner string, tab chatContextTab, style *string, nextSteps *bool, unrelated *string) (chatContextTab, error) {
@@ -97,9 +97,9 @@ func setChatReplies(ctx context.Context, owner string, tab chatContextTab, style
 		change.ReplyStyle = &normalized
 	}
 	if nextSteps != nil {
-		value := ""
-		if !*nextSteps {
-			value = "off"
+		value := "off"
+		if *nextSteps {
+			value = "on"
 		}
 		change.NextSteps = &value
 	}
@@ -144,7 +144,7 @@ func chatRepliesNote(identity ProductAgentIdentity, attended bool) string {
 	if unrelated, _ := normalizeChatUnrelatedTask(identity.UnrelatedTask); unrelated == "" {
 		parts = append(parts, chatUnrelatedAskNote)
 	}
-	if identity.NextSteps != "off" {
+	if chatNextStepsOn(identity) {
 		parts = append(parts, chatNextStepsNote)
 	}
 	if len(parts) == 0 {
@@ -167,4 +167,10 @@ func chatPersonAppTurn(ctx context.Context, req *QueryRequest, sessionID string)
 		}
 	}
 	return codingAgentTurnAttended(GetUserFromContext(ctx), req, sessionID) && personTypedChatTurn(ctx, *req, sessionID, false)
+}
+
+// chatNextStepsOn: the card is opt-in per chat (owner, 27 Nov). Chats that never chose ("") and chats turned off
+// ("off") get no card note.
+func chatNextStepsOn(identity ProductAgentIdentity) bool {
+	return identity.NextSteps == "on"
 }
