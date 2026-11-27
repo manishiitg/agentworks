@@ -7,6 +7,7 @@ import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { useChatStore } from '../../stores/useChatStore'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
+import { folderConnection } from '../../utils/remoteSessions'
 import { OnlineOnlyNote } from '../../products/work/useMacCrew'
 import { WorkspaceContextRow as Row } from '../workspace/WorkspaceContextCard'
 import { PublicLinkControl, type PublicLink } from './PublicLinkControl'
@@ -95,7 +96,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     if (!expanded || !state?.can_share) return
     const identity = captureChatIdentity()
     let disposed = false
-    void api.get<{ users?: DirectoryUser[] }>('/api/users/directory')
+    void api.get<{ users?: DirectoryUser[] }>('/api/users/directory', { connection: folderConnection(workspacePath) })
       .then(({ data }) => { if (!disposed && isChatIdentityCurrent(identity)) setDirectory({ scope, users: data.users || [] }) })
       .catch(() => { if (!disposed && isChatIdentityCurrent(identity)) setDirectory({ scope, users: [] }) })
     return () => { disposed = true }
@@ -241,7 +242,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
           <span className="min-w-0 flex-1"><span className="block truncate">{team.name} <span className="text-xs text-muted-foreground">Team</span></span><span className="block truncate text-xs text-muted-foreground">{team.owner}'s Team · everyone in it · {team.people} {team.people === 1 ? 'person' : 'people'}</span></span>
           {team.can_remove && <button type="button" aria-label={`Remove ${team.name}`} disabled={busy} onClick={() => void run(() => changeUsers('team_remove', team.team_id))} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>}
         </div>
-        <ProjectTeamAgents teamId={team.team_id} projectId={team.project_id} newAgents={team.new_agents} agents={team.agents || []} members={team.members || []} busy={busy} run={run} changed={() => setAttempt(n => n + 1)} />
+        <ProjectTeamAgents teamId={team.team_id} projectId={team.project_id} connection={folderConnection(workspacePath)} newAgents={team.new_agents} agents={team.agents || []} members={team.members || []} busy={busy} run={run} changed={() => setAttempt(n => n + 1)} />
         </li>)}
       </ul>}
       {owners.can_manage && personPicker(taken, value => { void run(() => changeUsers('user_add', value)) }, 'Add a user')}

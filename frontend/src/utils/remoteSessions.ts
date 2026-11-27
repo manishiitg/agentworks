@@ -118,5 +118,5 @@ export function remoteRequestConnection(request: { url?: string; params?: unknow
     || (conversation ? remoteProjectConnection(conversation.split(':')[0]) : undefined)
     || (workspace?.startsWith('work:') ? remoteProjectConnection(workspace.slice(5)) : undefined)
     || (document ? folderConnection(decoded(document)) : undefined)
-    || folderConnection(read('folder')) || folderConnection(read('folder_path')) || folderConnection(read('path')) || folderConnection(read('filepath')) || folderConnection(read('workspace_path'))
+    || folderConnection(read('folder')) || folderConnection(read('workspace')) || folderConnection(read('folder_path')) || folderConnection(read('path')) || folderConnection(read('filepath')) || folderConnection(read('workspace_path'))
 }

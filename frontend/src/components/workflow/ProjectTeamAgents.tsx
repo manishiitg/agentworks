@@ -17,8 +17,10 @@ const words = { only_me: 'Only me', whole_team: 'Whole Team', chosen: 'Chosen pe
  * person who made an agent changes its sharing here, through the Team's agent rule route; the server decides. They can
  * also share all of theirs at once and choose how their new ones start (online-agents route, owner 26 Nov).
  */
-export function ProjectTeamAgents({ teamId, projectId, newAgents, agents, members, busy, run, changed }: {
-  teamId: string; projectId?: string; newAgents?: 'only_me' | 'whole_team'; agents: ProjectTeamAgent[]; members: TeamPerson[]; busy: boolean
+export function ProjectTeamAgents({ teamId, projectId, connection, newAgents, agents, members, busy, run, changed }: {
+  teamId: string; projectId?: string
+  /** The server the project lives on when it is opened in place from a Mac (else this window's own). */
+  connection?: string; newAgents?: 'only_me' | 'whole_team'; agents: ProjectTeamAgent[]; members: TeamPerson[]; busy: boolean
   run: (work: () => Promise<void>, fallback?: string) => Promise<void>; changed: () => void
 }) {
   const [picking, setPicking] = useState<string>()
@@ -26,7 +28,7 @@ export function ProjectTeamAgents({ teamId, projectId, newAgents, agents, member
   // A refusal shows here, beside the list, not at the bottom of a long page.
   const post = (route: string, body: Record<string, unknown>) => run(async () => {
     setFailure('')
-    try { await api.post(`/api/crew-teams/${encodeURIComponent(teamId)}/${route}`, body); changed() }
+    try { await api.post(`/api/crew-teams/${encodeURIComponent(teamId)}/${route}`, body, { connection }); changed() }
     catch (cause) { setFailure(errorText(cause, 'It was not saved. Try again.')) }
   })
   const save = (agent: ProjectTeamAgent, body: Record<string, unknown>) => post('agent-rule', { agent_key: agent.id, ...body })

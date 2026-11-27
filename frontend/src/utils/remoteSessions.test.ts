@@ -32,6 +32,8 @@ it('routes only requests that name a server project, its chats or its open folde
   const upload = new FormData(); upload.append('folder_path', 'Files/shared-name/inbox')
   expect(route({ url: '/api/upload', data: upload })).toBe('srv')
   expect(remoteSessionConnection('remote-chat')).toBe('srv')
+  // Its Access page (co-owners, Users, Teams) names it by folder: it loaded from this Mac and failed.
+  expect(route({ url: '/api/dashboards', data: JSON.stringify({ workspace: 'Crew/shared-name', action: 'share_status' }) })).toBe('srv')
 
   // This Mac's own work and app-wide reads stay here.
   expect(route({ url: '/api/agent-profiles/work/side-chats', params: { project_id: 'mac-crew' } })).toBeUndefined()
