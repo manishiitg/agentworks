@@ -271,7 +271,8 @@ func WithCodingAgentSecretEnvironment(environment map[string]string) CallOption 
 //	SECRET_*  selected secret values
 //	VAR_*     workflow variables, VAR_WORKSPACE_PATH, VAR_GROUP_NAME
 //	MCP_*     the session-bound API routes, closed set below
-//	CLAUDE_CODE_DISABLE_AUTO_MEMORY  disables Claude's private provider memory
+//	AgentWorks control keys  CLI settings and run locations the server sets
+//	         on purpose, closed set in isScopedAgentWorksControlKey
 //	workflow paths and access flags use the same child scope as the bridge
 //
 // VAR_* is not optional. mcpagent's prompt builder documents $VAR_<NAME> to
@@ -288,10 +289,7 @@ func IsScopedCodingAgentEnvironmentKey(key string) bool {
 	if strings.HasPrefix(key, "SECRET_") || strings.HasPrefix(key, "VAR_") {
 		return true
 	}
-	if key == "CLAUDE_CODE_DISABLE_AUTO_MEMORY" {
-		return true
-	}
-	return isScopedCodingAgentMCPEnvironmentKey(key) || isScopedWorkflowEnvironmentKey(key) || isScopedGitHubCLIKey(key)
+	return isScopedAgentWorksControlKey(key) || isScopedCodingAgentMCPEnvironmentKey(key) || isScopedWorkflowEnvironmentKey(key) || isScopedGitHubCLIKey(key)
 }
 
 // IsScopedCodingAgentEnvironmentEntry reports whether (key, value) is admitted
@@ -308,6 +306,21 @@ func IsScopedCodingAgentEnvironmentEntry(key, value string) bool {
 	}
 	if suffix, ok := strings.CutPrefix(key, "GIT_CONFIG_VALUE_"); ok {
 		return isDecimalDigits(suffix)
+	}
+	return false
+}
+
+// isScopedAgentWorksControlKey names the CLI settings and run locations AgentWorks sets for a coding agent on
+// purpose. Every key the server writes into the coding-agent environment that is not a secret, variable, route,
+// workflow path or GitHub key belongs here. CLAUDE_CODE_AUTO_COMPACT_WINDOW ("Compact at 300K"), DISABLE_AUTOUPDATER,
+// the FUNCTION_* result locations and the published-runtime paths were set by the server and silently dropped
+// here until 27 Nov; the server now logs any key this list drops.
+func isScopedAgentWorksControlKey(key string) bool {
+	switch key {
+	case "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_AUTO_COMPACT_WINDOW", "DISABLE_AUTOUPDATER",
+		"FUNCTION_CALL_ID", "FUNCTION_OUTPUT_DIR", "FUNCTION_RESULT_FILE",
+		"AGENTWORKS_PUBLICATION_SOURCE", "AGENTWORKS_PUBLICATION_RUNTIME":
+		return true
 	}
 	return false
 }

@@ -3843,7 +3843,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			defer common.DiscardPendingProcessBridgeCredential(sessionID, pendingToken)
 		}
 		codingAgentSecretEnvironment := make(map[string]string)
-		for _, name := range []string{"FUNCTION_CALL_ID", "FUNCTION_OUTPUT_DIR", "FUNCTION_RESULT_FILE"} {
+		for _, name := range functionRunEnvironmentKeys {
 			if value := common.GetSessionShellEnv(sessionID)[name]; value != "" {
 				codingAgentSecretEnvironment[name] = value
 			}

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -112,6 +113,7 @@ func TestPolicyOwnerAgreesAcrossBothBoundaries(t *testing.T) {
 		"MCP_CUSTOM":                      true,
 		"MCP_AUTH":                        true,
 		"CLAUDE_CODE_DISABLE_AUTO_MEMORY": true,
+		"CLAUDE_CODE_AUTO_COMPACT_WINDOW": true,
 		"PATH":                            false,
 		"MCP_ANYTHING":                    false,
 		"SECRETX":                         false,
@@ -124,6 +126,32 @@ func TestPolicyOwnerAgreesAcrossBothBoundaries(t *testing.T) {
 		merged := mergedChildEnvironment(t, map[string]string{key: "v"})
 		if _, present := merged[key]; present != admitted {
 			t.Errorf("%q: policy says admitted=%v but the merged child environment disagrees", key, admitted)
+		}
+	}
+}
+
+// Every key the server itself sets for a coding agent must reach the CLI. "Compact at 300K" set
+// CLAUDE_CODE_AUTO_COMPACT_WINDOW from 5 Nov, and DISABLE_AUTOUPDATER, the function-run result locations and the
+// published-runtime paths were set too, but none was admitted, so the CLI never saw them and nothing errored
+// (27 Nov: chats ran at 340-385K with "Compact at 300K" on). The keys come from the real setters, not a copy.
+func TestServerSetKeysReachTheChildProcess(t *testing.T) {
+	cfg := &agent.LLMAgentConfig{Provider: "claude-code"}
+	applySharedLLMAgentTuning(cfg, nil, nil)
+	environment := map[string]string{claudeAutoCompactWindowEnv: "330000"}
+	for key, value := range cfg.CodingAgentSecretEnvironment {
+		environment[key] = value
+	}
+	for _, key := range functionRunEnvironmentKeys {
+		environment[key] = "v"
+	}
+	for key := range publicationShellEnvironment(&publishedProject{Root: "crews/example"}) {
+		environment[key] = "/workspace/example" // blank values are dropped on purpose; this checks the key
+	}
+
+	merged := mergedChildEnvironment(t, environment)
+	for key := range environment {
+		if _, present := merged[key]; !present {
+			t.Errorf("%q is set by the server but dropped before the CLI; admit it in llmtypes.IsScopedCodingAgentEnvironmentKey", key)
 		}
 	}
 }

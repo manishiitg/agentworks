@@ -620,6 +620,11 @@ func (api *StreamingAPI) compactEarlyAfterTurn(sessionID, personUser string) {
 		return "", time.Time{}
 	}
 	provider, person := followed()
+	if provider == "" {
+		// The idle tracker is empty after an app restart; a blank provider read the chat as 0 tokens and skipped a
+		// 360K chat (27 Nov, compact_early_below_mark tokens=0). The chat's saved runtime knows its provider.
+		provider, _, _, _ = chatContextRuntime(owner, tab)
+	}
 	tokens, _, _ := api.chatContextUsage(sessionID, provider, "", false)
 	if tokens < compactEarlyTokens {
 		log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d action=skip reason=compact_early_below_mark", sessionID, provider, owner, tokens)
@@ -879,6 +884,9 @@ func (api *StreamingAPI) hideMainTerminals(sessionID string) {
 // messages queued back to back never had one: it grew to 678K (5 Nov, 0 automatic compactions in 300-678K).
 const compactEarlyClaudeWindow = 330_000
 
+// claudeAutoCompactWindowEnv is the Claude Code variable that carries compactEarlyClaudeWindow.
+const claudeAutoCompactWindowEnv = "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
+
 // applyCompactEarlyToClaude starts Claude Code with that window when the chat's owner has "Compact at 300K" on. The
 // setting takes effect when Claude next starts for this chat.
 func (api *StreamingAPI) applyCompactEarlyToClaude(cfg *agent.LLMAgentConfig, sessionID, personUser string) {
@@ -892,7 +900,7 @@ func (api *StreamingAPI) applyCompactEarlyToClaude(cfg *agent.LLMAgentConfig, se
 	if cfg.CodingAgentSecretEnvironment == nil {
 		cfg.CodingAgentSecretEnvironment = map[string]string{}
 	}
-	cfg.CodingAgentSecretEnvironment["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = strconv.Itoa(compactEarlyClaudeWindow)
+	cfg.CodingAgentSecretEnvironment[claudeAutoCompactWindowEnv] = strconv.Itoa(compactEarlyClaudeWindow)
 	log.Printf("[IDLE_COMPACT] session=%s owner=%s action=claude_auto_compact_window window=%d", sessionID, owner, compactEarlyClaudeWindow)
 }
 
