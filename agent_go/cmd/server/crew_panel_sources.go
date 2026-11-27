@@ -442,7 +442,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			}
 			return crewPanelSection{Rows: []crewPanelRow{row}, Detail: row.Detail}, nil
 		}},
-		{id: "access", title: "Online", allowed: true, read: func(ctx context.Context) (crewPanelSection, error) {
+		{id: "access", title: "Online", allowed: true, refreshFor: 15 * time.Second, background: true, read: func(ctx context.Context) (crewPanelSection, error) {
 			var data crewSyncReply
 			err := read(ctx, api.handleCrewSync, "/api/crew-sync/"+url.PathEscape(project), nil, &data)
 			access := &crewPanelAccess{Where: data.Where, Place: data.Place, Role: data.Role, View: data.AccessView, Summary: data.AccessSummary, Tree: data.AccessTree, Asking: []crewPanelAsk{}, CoOwners: data.AccessCoOwners}

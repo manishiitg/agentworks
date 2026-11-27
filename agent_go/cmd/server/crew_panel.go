@@ -326,8 +326,10 @@ func (c *crewPanelCache) refreshInBackground(base context.Context, key crewPanel
 			err = ctx.Err()
 		}
 		if err == nil && section.Error == "" {
-			if marked, ok := crewPanelChangesDirty.Load(key.project); ok && marked.(time.Time).After(started) {
-				return
+			if source.id == "changes" {
+				if marked, ok := crewPanelChangesDirty.Load(key.project); ok && marked.(time.Time).After(started) {
+					return
+				}
 			}
 			section.ID, section.Title = source.id, source.title
 			c.putAt(key, section, started)
@@ -404,8 +406,10 @@ func (c *crewPanelCache) collect(ctx context.Context, key crewPanelCacheKey, sou
 			}
 		}
 		if !source.noCache && source.refreshFor > 0 {
-			if marked, ok := crewPanelChangesDirty.Load(key.project); ok && source.background {
-				c.dropBefore(k, marked.(time.Time))
+			if source.id == "changes" {
+				if marked, ok := crewPanelChangesDirty.Load(key.project); ok && source.background {
+					c.dropBefore(k, marked.(time.Time))
+				}
 			}
 			if previous, found := c.previous(k, source.refreshFor); found {
 				if source.background {

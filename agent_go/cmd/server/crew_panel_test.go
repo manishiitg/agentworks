@@ -719,3 +719,84 @@ func TestCrewPanelBackgroundSectionDoesNotEmitTrailingRefresh(t *testing.T) {
 		t.Fatalf("cached background section emitted trailing refresh timer: %+v", reply)
 	}
 }
+
+// #4479: the access section serves stale cached snapshots immediately while
+// refreshing in the background, and file-change dirty marks do not evict it.
+func TestCrewPanelAccessSectionServesStaleWhileRevalidating(t *testing.T) {
+	cache := &crewPanelCache{}
+	key := crewPanelCacheKey{caller: "owner", project: "access-swr", authority: "v1"}
+	defer crewPanelChangesDirty.Delete(key.project)
+
+	var calls int
+	block := make(chan struct{})
+	refreshStarted := make(chan struct{}, 2)
+
+	source := crewPanelSource{
+		id:         "access",
+		title:      "Online",
+		allowed:    true,
+		refreshFor: 15 * time.Second,
+		background: true,
+		read: func(ctx context.Context) (crewPanelSection, error) {
+			calls++
+			if calls == 1 {
+				return crewPanelSection{Detail: "On this Mac · v1"}, nil
+			}
+			select {
+			case refreshStarted <- struct{}{}:
+			default:
+			}
+			select {
+			case <-block:
+			case <-ctx.Done():
+				return crewPanelSection{}, ctx.Err()
+			}
+			return crewPanelSection{Detail: "On this Mac · v2"}, nil
+		},
+	}
+
+	// 1. Cold read populates cache synchronously.
+	first := cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second)
+	if len(first) != 1 || first[0].Detail != "On this Mac · v1" {
+		t.Fatalf("cold read = %+v", first)
+	}
+
+	// 2. A file-change dirty mark must not evict the access section.
+	crewPanelChangesDirty.Store(key.project, time.Now().Add(time.Minute))
+	warm := cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second)
+	if len(warm) != 1 || warm[0].Detail != "On this Mac · v1" || calls != 1 {
+		t.Fatalf("dirty mark evicted access section: sections=%+v calls=%d", warm, calls)
+	}
+
+	// 3. Age the entry past refreshFor: collect must return the stale snapshot
+	// immediately and refresh in the background without blocking.
+	secKey := key
+	secKey.section = "access"
+	cache.mu.Lock()
+	entry := cache.entries[secKey]
+	entry.at = time.Now().Add(-30 * time.Second)
+	cache.entries[secKey] = entry
+	cache.mu.Unlock()
+
+	start := time.Now()
+	stale := cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second)
+	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+		t.Fatalf("stale access section blocked for %v", elapsed)
+	}
+	if len(stale) != 1 || stale[0].Detail != "On this Mac · v1" {
+		t.Fatalf("stale read = %+v", stale)
+	}
+
+	<-refreshStarted
+	close(block)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		got := cache.collect(t.Context(), key, []crewPanelSource{source}, time.Second)
+		if len(got) == 1 && got[0].Detail == "On this Mac · v2" {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("background refresh did not update access section in time")
+}
