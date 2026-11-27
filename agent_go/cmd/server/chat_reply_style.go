@@ -17,8 +17,9 @@ import (
 //     summary, one question and two or three answers as a ```next block; the screen shows it as a card with one-click
 //     answers instead of as text.
 //   - UnrelatedTask (owner, 26 Nov, like Claude Desktop's "When you ask for an unrelated task"): what the agent does
-//     when the person asks in this chat for a different piece of work. "" asks them (new tab or here), a note on the
-//     person's app turns; new_tab is a standing rule in the prompt; here adds nothing (the coding app's usual way).
+//     when the person asks in this chat for a different piece of work. "" (here, the default since owner 27 Nov: opt-in)
+//     adds nothing (the coding app's usual way); ask asks them (new tab or here), a note on the person's app turns;
+//     new_tab is a standing rule in the prompt.
 
 var chatReplyStyles = []string{"default", "concise", "explanatory", "learning", "proactive"}
 
@@ -44,9 +45,9 @@ const chatUnrelatedNewTabPrompt = "\n\nWhen the person asks in this chat for a p
 func normalizeChatUnrelatedTask(value string) (string, error) {
 	choice := strings.ToLower(strings.TrimSpace(value))
 	switch choice {
-	case "", "ask":
+	case "", "here":
 		return "", nil
-	case "new_tab", "here":
+	case "ask", "new_tab":
 		return choice, nil
 	}
 	return "", fmt.Errorf("unrelated_task must be one of %s", strings.Join(chatUnrelatedTaskChoices, ", "))
@@ -82,7 +83,7 @@ func chatRepliesViewFor(identity ProductAgentIdentity) *chatRepliesView {
 	}
 	unrelated, _ := normalizeChatUnrelatedTask(identity.UnrelatedTask)
 	if unrelated == "" {
-		unrelated = "ask"
+		unrelated = "here"
 	}
 	return &chatRepliesView{Style: style, Styles: chatReplyStyles, NextSteps: chatNextStepsOn(identity), UnrelatedTask: unrelated, UnrelatedTasks: chatUnrelatedTaskChoices}
 }
@@ -141,7 +142,7 @@ func chatRepliesNote(identity ProductAgentIdentity, attended bool) string {
 		return ""
 	}
 	parts := []string{}
-	if unrelated, _ := normalizeChatUnrelatedTask(identity.UnrelatedTask); unrelated == "" {
+	if unrelated, _ := normalizeChatUnrelatedTask(identity.UnrelatedTask); unrelated == "ask" {
 		parts = append(parts, chatUnrelatedAskNote)
 	}
 	if chatNextStepsOn(identity) {

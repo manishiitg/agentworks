@@ -46,10 +46,13 @@ func TestChatReplyStyleAcceptsOnlyOfferedStyles(t *testing.T) {
 	}
 }
 
-func TestChatUnrelatedTaskAsksByDefault(t *testing.T) {
-	note := chatRepliesNote(ProductAgentIdentity{NextSteps: "off"}, true)
+func TestChatUnrelatedTaskAskIsOptIn(t *testing.T) {
+	if note := chatRepliesNote(ProductAgentIdentity{}, true); note != "" {
+		t.Fatalf("a new chat gets no note: asking about unrelated work is opt-in, got %q", note)
+	}
+	note := chatRepliesNote(ProductAgentIdentity{UnrelatedTask: "ask", NextSteps: "off"}, true)
 	if !strings.HasPrefix(note, chatRepliesMarker) || !strings.Contains(note, "new tab") || strings.Contains(note, "```next") {
-		t.Fatalf("a new chat asks about unrelated work, even with the card off, got %q", note)
+		t.Fatalf("a chat set to Ask me asks about unrelated work, even with the card off, got %q", note)
 	}
 	if note := chatRepliesNote(ProductAgentIdentity{UnrelatedTask: "new_tab"}, true); strings.Contains(note, "unrelated") {
 		t.Fatalf("new_tab is a prompt rule, not a message note, got %q", note)
@@ -64,8 +67,8 @@ func TestChatUnrelatedTaskAsksByDefault(t *testing.T) {
 		t.Fatal("an unknown choice must be refused")
 	}
 	view := chatRepliesViewFor(ProductAgentIdentity{})
-	if view.UnrelatedTask != "ask" || len(view.UnrelatedTasks) != 3 {
-		t.Fatalf("a new chat shows Ask me, got %+v", view)
+	if view.UnrelatedTask != "here" || len(view.UnrelatedTasks) != 3 {
+		t.Fatalf("a new chat shows Do it here, got %+v", view)
 	}
 }
 
