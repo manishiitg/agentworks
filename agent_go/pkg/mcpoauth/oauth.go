@@ -124,7 +124,8 @@ type Config struct {
 }
 
 var (
-	// ErrReuse signals refresh-token replay; the family is revoked.
+	// ErrReuse is retained for compatibility; refresh credentials remain stable
+	// across concurrent retries so valid sessions are not revoked by races.
 	ErrReuse = errors.New("refresh token reuse detected")
 	// ErrPending, ErrDenied, ErrSlowDown drive device-flow polling codes.
 	ErrPending  = errors.New("authorization_pending")

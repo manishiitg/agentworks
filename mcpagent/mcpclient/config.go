@@ -528,7 +528,7 @@ func SaveConfig(configPath string, config *MCPConfig) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Chmod(tmpPath, 0644); err != nil { //nolint:gosec // 0644 permissions are intentional for user-accessible config files
+	if err := os.Chmod(tmpPath, 0600); err != nil {
 		return err
 	}
 	return os.Rename(tmpPath, configPath)

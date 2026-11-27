@@ -1,6 +1,8 @@
 package server
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -106,5 +108,59 @@ func TestPlatformTokensAreSealedOnDisk(t *testing.T) {
 	registrationRecord, err := os.ReadFile(registrationFailuresPath())
 	if err != nil || strings.HasPrefix(strings.TrimSpace(string(registrationRecord)), "{") || !registrationFailed("https://example.com/register", "https://example.com/callback") {
 		t.Fatal("provider registration record must be sealed and readable")
+	}
+}
+
+func TestPlatformClientSealerSealsPendingOAuthTokenFiles(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	withMCPConnectionsRoot(t)
+	pendingPath := getUserTokenFilePath(platformMCPTokenUserID, "Linear") + ".pending-test123"
+	store := oauth.NewTokenStore(pendingPath)
+	if err := store.Save(&oauth2.Token{
+		AccessToken:  "pending-access-secret",
+		RefreshToken: "pending-refresh-secret",
+		TokenType:    "Bearer",
+		Expiry:       time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	onDisk, err := os.ReadFile(pendingPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(onDisk), "pending-access-secret") || strings.HasPrefix(strings.TrimSpace(string(onDisk)), "{") {
+		t.Fatalf("pending OAuth token file stored unsealed: %s", onDisk)
+	}
+	loaded, err := store.Load()
+	if err != nil || loaded.AccessToken != "pending-access-secret" {
+		t.Fatalf("failed to load sealed pending token: %+v err=%v", loaded, err)
+	}
+}
+
+func TestDeriveOAuthRedirectURIPrefersPublicURLAndValidatesForwardedHeaders(t *testing.T) {
+	t.Setenv("PUBLIC_URL", "https://configured.example.com/")
+	req := httptest.NewRequest(http.MethodGet, "http://internal.local/api/oauth/login", nil)
+	req.Host = "internal.local"
+	req.Header.Set("X-Forwarded-Proto", "http")
+	req.Header.Set("X-Forwarded-Host", "spoofed.example.com")
+	if got := deriveOAuthRedirectURI(req); got != "https://configured.example.com/api/oauth/callback" {
+		t.Fatalf("with PUBLIC_URL = %q", got)
+	}
+
+	t.Setenv("PUBLIC_URL", "")
+	req2 := httptest.NewRequest(http.MethodGet, "http://localhost:8000/api/oauth/login", nil)
+	req2.Host = "localhost:8000"
+	req2.Header.Set("X-Forwarded-Proto", "https")
+	req2.Header.Set("X-Forwarded-Host", "proxy.example.com")
+	if got := deriveOAuthRedirectURI(req2); got != "https://proxy.example.com/api/oauth/callback" {
+		t.Fatalf("with valid forwarded headers = %q", got)
+	}
+
+	req3 := httptest.NewRequest(http.MethodGet, "http://localhost:8000/api/oauth/login", nil)
+	req3.Host = "localhost:8000"
+	req3.Header.Set("X-Forwarded-Proto", "javascript")
+	req3.Header.Set("X-Forwarded-Host", "evil.example.com/inject")
+	if got := deriveOAuthRedirectURI(req3); got != "http://localhost:8000/api/oauth/callback" {
+		t.Fatalf("with malformed forwarded headers = %q", got)
 	}
 }

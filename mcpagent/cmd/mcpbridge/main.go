@@ -218,10 +218,17 @@ func main() {
 	// If MCP_BRIDGE_LOG is set, tee all log output to that file in addition to stderr.
 	// This lets the Go server capture mcpbridge startup/crash messages for debugging.
 	if logPath := os.Getenv("MCP_BRIDGE_LOG"); logPath != "" {
-		//nolint:gosec // MCP_BRIDGE_LOG is set by the parent process to a trusted log file path.
-		f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		if err == nil {
-			log.SetOutput(io.MultiWriter(os.Stderr, f))
+		if info, statErr := os.Lstat(logPath); statErr == nil && info.Mode()&os.ModeSymlink != 0 {
+			log.Printf("[mcpbridge] refusing symlink MCP_BRIDGE_LOG path")
+		} else {
+			if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err == nil {
+				//nolint:gosec // MCP_BRIDGE_LOG is set by the parent process to a trusted log file path.
+				f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+				if err == nil {
+					_ = f.Chmod(0o600)
+					log.SetOutput(io.MultiWriter(os.Stderr, f))
+				}
+			}
 		}
 	}
 

@@ -151,49 +151,44 @@ func (c *Client) connectOnce(ctx context.Context) error {
 		_ = oldClient.Close()
 	}
 
-	// Prepare environment variables
-	// Start with the current process environment, then override with config env vars
-	env := os.Environ()
-
-	// Create a map of existing env vars for quick lookup
-	envMap := make(map[string]string)
-	for _, e := range env {
-		if idx := strings.IndexByte(e, '='); idx > 0 {
-			key := e[:idx]
-			value := e[idx+1:]
-			envMap[key] = value
-		}
-	}
-
-	// Override with config env vars
-	for key, value := range c.config.Env {
-		envMap[key] = value
-	}
+	// Prepare environment variables: inherit the host environment minus
+	// internal runtime/bridge secrets, then apply explicit config overrides.
+	envMap := buildStdioEnv(os.Environ(), c.config.Env)
 
 	// Convert back to []string format
-	env = make([]string, 0, len(envMap))
+	env := make([]string, 0, len(envMap))
 	for key, value := range envMap {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
 
 	// A user-supplied server is remote-only with a public https URL, and
 	// every request goes through the public-only client.
-	var guarded *http.Client
+	var httpClient *http.Client
 	if c.config.PublicOnly {
 		if err := c.checkPublicOnly(); err != nil {
 			return err
 		}
-		guarded = netguard.Client(0)
+		httpClient = netguard.Client(0)
 		if c.config.OAuth != nil {
 			c.config.OAuth.PublicOnly = true
 		}
 	}
 
-	// Handle OAuth authentication if configured
+	// Copy configured headers so per-connect auth handling never mutates the
+	// shared MCPServerConfig map.
+	headers := make(map[string]string, len(c.config.Headers))
+	for k, v := range c.config.Headers {
+		headers[k] = v
+	}
+
+	// Handle OAuth authentication if configured. Attach a dynamic Bearer
+	// transport so pooled HTTP/SSE clients automatically use refreshed tokens.
 	if c.config.OAuth != nil {
 		if err := c.setupOAuthAuth(ctx); err != nil {
 			return fmt.Errorf("OAuth authentication failed: %w", err)
 		}
+		delete(headers, "Authorization")
+		httpClient = withOAuthBearer(httpClient, c.oauthManager)
 	}
 
 	var mcpClient *client.Client
@@ -205,9 +200,9 @@ func (c *Client) connectOnce(ctx context.Context) error {
 	switch protocol {
 	case ProtocolSSE:
 		// Use SSE transport
-		sseManager := NewSSEManager(c.config.URL, c.config.Headers, c.logger)
-		if guarded != nil {
-			sseManager.WithHTTPClient(guarded)
+		sseManager := NewSSEManager(c.config.URL, headers, c.logger)
+		if httpClient != nil {
+			sseManager.WithHTTPClient(httpClient)
 		}
 		mcpClient, streamCancel, err = sseManager.connectWithCancel(ctx)
 		if err != nil {
@@ -216,9 +211,9 @@ func (c *Client) connectOnce(ctx context.Context) error {
 
 	case ProtocolHTTP:
 		// Use HTTP transport
-		httpManager := NewHTTPManager(c.config.URL, c.config.Headers, c.logger)
-		if guarded != nil {
-			httpManager.WithHTTPClient(guarded)
+		httpManager := NewHTTPManager(c.config.URL, headers, c.logger)
+		if httpClient != nil {
+			httpManager.WithHTTPClient(httpClient)
 		}
 		mcpClient, streamCancel, err = httpManager.connectWithCancel(ctx)
 		if err != nil {
@@ -928,22 +923,59 @@ func (c *Client) setupOAuthAuth(ctx context.Context) error {
 		}
 	}
 
-	// Try to get access token
-	token, err := c.oauthManager.GetAccessToken(ctx)
-	if err != nil {
+	// Verify a usable access token exists before opening the transport; actual
+	// requests inject the current token dynamically via oauthBearerTransport.
+	if _, err := c.oauthManager.GetAccessToken(ctx); err != nil {
 		// Token not available - need interactive auth
 		c.logger.Info("OAuth token not available, authentication required")
 		return fmt.Errorf("%w\nRun authentication flow to obtain token", err)
 	}
 
-	// Inject Bearer token into headers
-	if c.config.Headers == nil {
-		c.config.Headers = make(map[string]string)
-	}
-	c.config.Headers["Authorization"] = fmt.Sprintf("Bearer %s", token)
-
-	c.logger.Debug("OAuth token injected into request headers")
+	c.logger.Debug("OAuth token verified for dynamic request injection")
 	return nil
+}
+
+// scrubInheritedStdioEnv reports whether an inherited host environment variable
+// holds internal platform/bridge credentials that should not be exposed to
+// stdio MCP subprocesses unless explicitly configured in server Env.
+func scrubInheritedStdioEnv(key string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(key))
+	for _, prefix := range []string{
+		"SECRET_",
+		"MCP_API_",
+		"MCP_BRIDGE_",
+		"AGENTWORKS_",
+		"VAULT_SERVICE_",
+		"CAPLAYER_",
+	} {
+		if strings.HasPrefix(upper, prefix) {
+			return true
+		}
+	}
+	switch upper {
+	case "JWT_SECRET", "AUTH_SECRET", "ENCRYPTION_KEY", "SESSION_SECRET",
+		"DATABASE_URL", "POSTGRES_PASSWORD", "REDIS_PASSWORD",
+		"INTERNAL_API_SECRET", "MCP_SECRET", "MCP_TOKEN":
+		return true
+	}
+	return false
+}
+
+func buildStdioEnv(hostEnv []string, overrides map[string]string) map[string]string {
+	envMap := make(map[string]string, len(hostEnv)+len(overrides))
+	for _, e := range hostEnv {
+		if idx := strings.IndexByte(e, '='); idx > 0 {
+			key := e[:idx]
+			if scrubInheritedStdioEnv(key) {
+				continue
+			}
+			envMap[key] = e[idx+1:]
+		}
+	}
+	for key, value := range overrides {
+		envMap[key] = value
+	}
+	return envMap
 }
 
 // discoverOAuthEndpoints auto-discovers OAuth endpoints from 401 response

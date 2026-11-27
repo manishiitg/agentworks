@@ -13,21 +13,62 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
 
 // Store is the sqlite-backed OAuth state: clients, pending requests, codes,
-// token families, and CLI device approvals. One Store per OpenStore call;
-// hosts open, use, and close per request.
+// token families, and CLI device approvals. One prepared sqlite handle per
+// store path serves the process; Close leaves the shared handle open.
 type Store struct {
 	db  *sql.DB
 	cfg Config
 }
 
-// OpenStore creates the sqlite file (0600, no symlinks) and schema.
+type cachedStoreHandle struct {
+	db        *sql.DB
+	seededCLI map[string]bool
+}
+
+var storeHandles = struct {
+	sync.Mutex
+	byPath map[string]*cachedStoreHandle
+}{byPath: map[string]*cachedStoreHandle{}}
+
+func seedCLIClient(db *sql.DB, cfg Config) error {
+	if cfg.CLIClientID == "" {
+		return nil
+	}
+	name := cfg.CLIClientName
+	if name == "" {
+		name = "CLI"
+	}
+	_, err := db.Exec(`INSERT OR IGNORE INTO clients (id,name,redirect_uris,created_at) VALUES (?,?,'[]',0)`, cfg.CLIClientID, name)
+	return err
+}
+
+// OpenStore creates or reuses the sqlite handle (0600, no symlinks) and schema.
 func OpenStore(path string, cfg Config) (*Store, error) {
+	path = filepath.Clean(path)
+	storeHandles.Lock()
+	defer storeHandles.Unlock()
+
+	if entry := storeHandles.byPath[path]; entry != nil {
+		if _, err := os.Stat(path); err == nil {
+			if cfg.CLIClientID != "" && !entry.seededCLI[cfg.CLIClientID] {
+				if err := seedCLIClient(entry.db, cfg); err != nil {
+					return nil, err
+				}
+				entry.seededCLI[cfg.CLIClientID] = true
+			}
+			return &Store{db: entry.db, cfg: cfg}, nil
+		}
+		_ = entry.db.Close()
+		delete(storeHandles.byPath, path)
+	}
+
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
 	}
@@ -48,19 +89,19 @@ func OpenStore(path string, cfg Config) (*Store, error) {
 	if err = os.Chmod(path, 0600); err != nil {
 		return nil, err
 	}
-	// WAL + busy_timeout in the DSN so concurrent connections agree; a
-	// one-time PRAGMA would not apply to later pooled connections.
+	// WAL + busy_timeout + immediate write locking in the DSN so concurrent
+	// connections agree and read-then-write transactions reserve the writer lock
+	// up front instead of failing mid-transaction on WAL snapshot upgrades.
 	// file:///C:/... on Windows: "file:C:%5C..." is refused by SQLite (PLAT-874).
 	uriPath := filepath.ToSlash(path)
 	if !strings.HasPrefix(uriPath, "/") {
 		uriPath = "/" + uriPath
 	}
-	dsn := (&url.URL{Scheme: "file", Path: uriPath}).String() + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
+	dsn := (&url.URL{Scheme: "file", Path: uriPath}).String() + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_txlock=immediate"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
 	ddl := []string{
 		`CREATE TABLE IF NOT EXISTS clients (id TEXT PRIMARY KEY, name TEXT NOT NULL, redirect_uris TEXT NOT NULL, created_at INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS requests (hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, redirect_uri TEXT NOT NULL, resource TEXT NOT NULL, state TEXT NOT NULL, scopes TEXT NOT NULL, challenge TEXT NOT NULL, expires_at INTEGER NOT NULL)`,
@@ -69,24 +110,26 @@ func OpenStore(path string, cfg Config) (*Store, error) {
 		`CREATE INDEX IF NOT EXISTS tokens_family ON tokens(family_id)`,
 		`CREATE TABLE IF NOT EXISTS cli_devices (hash TEXT PRIMARY KEY, verification_hash TEXT UNIQUE NOT NULL, scopes TEXT NOT NULL, status TEXT NOT NULL, expires_at INTEGER NOT NULL, polled_at INTEGER, user_id TEXT NOT NULL DEFAULT '', username TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', provider TEXT NOT NULL DEFAULT '')`,
 	}
-	if cfg.CLIClientID != "" {
-		name := cfg.CLIClientName
-		if name == "" {
-			name = "CLI"
-		}
-		ddl = append(ddl, `INSERT OR IGNORE INTO clients (id,name,redirect_uris,created_at) VALUES ('`+cfg.CLIClientID+`','`+name+`','[]',0)`)
-	}
 	for _, stmt := range ddl {
 		if _, err = db.Exec(stmt); err != nil {
 			_ = db.Close()
 			return nil, err
 		}
 	}
+	seededCLI := map[string]bool{}
+	if cfg.CLIClientID != "" {
+		if err = seedCLIClient(db, cfg); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+		seededCLI[cfg.CLIClientID] = true
+	}
+	storeHandles.byPath[path] = &cachedStoreHandle{db: db, seededCLI: seededCLI}
 	return &Store{db: db, cfg: cfg}, nil
 }
 
-// Close releases the store.
-func (s *Store) Close() error { return s.db.Close() }
+// Close is a no-op because OpenStore shares one prepared handle per store path.
+func (s *Store) Close() error { return nil }
 
 func (s *Store) maxClients() int {
 	if s.cfg.MaxClients > 0 {
@@ -326,7 +369,29 @@ func (s *Store) ActiveFamily(ctx context.Context, family string) (Grant, error) 
 	return scanGrant(s.db.QueryRowContext(ctx, `SELECT `+grantColumns+` FROM tokens WHERE family_id=? AND kind='access' AND revoked_at IS NULL AND expires_at>? ORDER BY expires_at DESC LIMIT 1`, family, time.Now().Unix()))
 }
 
-// Refresh rotates a refresh token, revoking the whole family on reuse.
+func (s *Store) issueAccess(ctx context.Context, tx *sql.Tx, grant *Grant) (string, error) {
+	if s.cfg.GrantActive != nil && !s.cfg.GrantActive(ctx, *grant) {
+		return "", errors.New("account access revoked")
+	}
+	accessPrefix := s.cfg.AccessPrefix
+	if s.isCLI(grant.ClientID) {
+		accessPrefix = s.cfg.CLIAccessPrefix
+	}
+	access, err := randomToken(accessPrefix)
+	if err != nil {
+		return "", err
+	}
+	scopes, _ := json.Marshal(grant.Scopes)
+	grant.Expires = time.Now().Add(time.Hour).Unix()
+	_, err = tx.ExecContext(ctx, `INSERT INTO tokens (hash,kind,family_id,client_id,resource,scopes,user_id,username,email,provider,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, hashToken(access), "access", grant.FamilyID, grant.ClientID, grant.Resource, string(scopes), grant.UserID, grant.Username, grant.Email, grant.Provider, grant.Expires)
+	if err != nil {
+		return "", err
+	}
+	return access, nil
+}
+
+// Refresh issues a fresh access token while keeping the refresh credential and
+// its expiry stable so concurrent clients and retries do not revoke the family.
 func (s *Store) Refresh(ctx context.Context, raw, clientID, resource string) (Grant, string, string, error) {
 	var grant Grant
 	if !hasAnyPrefix(raw, s.refreshPrefixes()) {
@@ -339,19 +404,10 @@ func (s *Store) Refresh(ctx context.Context, raw, clientID, resource string) (Gr
 	defer tx.Rollback()
 	var scopes string
 	var expiry int64
-	var used, revoked sql.NullInt64
-	err = tx.QueryRowContext(ctx, `SELECT family_id,client_id,resource,scopes,user_id,username,email,provider,expires_at,used_at,revoked_at FROM tokens WHERE hash=? AND kind='refresh'`, hashToken(raw)).Scan(&grant.FamilyID, &grant.ClientID, &grant.Resource, &scopes, &grant.UserID, &grant.Username, &grant.Email, &grant.Provider, &expiry, &used, &revoked)
+	var revoked sql.NullInt64
+	err = tx.QueryRowContext(ctx, `SELECT family_id,client_id,resource,scopes,user_id,username,email,provider,expires_at,revoked_at FROM tokens WHERE hash=? AND kind='refresh'`, hashToken(raw)).Scan(&grant.FamilyID, &grant.ClientID, &grant.Resource, &scopes, &grant.UserID, &grant.Username, &grant.Email, &grant.Provider, &expiry, &revoked)
 	if err != nil {
 		return grant, "", "", err
-	}
-	if used.Valid {
-		if _, err := tx.ExecContext(ctx, `UPDATE tokens SET revoked_at=COALESCE(revoked_at,?) WHERE family_id=?`, time.Now().Unix(), grant.FamilyID); err != nil {
-			return grant, "", "", err
-		}
-		if err := tx.Commit(); err != nil {
-			return grant, "", "", err
-		}
-		return grant, "", "", ErrReuse
 	}
 	cli := s.isCLI(grant.ClientID)
 	if revoked.Valid || expiry <= time.Now().Unix() || grant.ClientID != clientID || grant.Resource != resource || cli != (s.cfg.CLIClientID != "" && strings.HasPrefix(raw, s.cfg.CLIRefreshPrefix)) {
@@ -360,19 +416,14 @@ func (s *Store) Refresh(ctx context.Context, raw, clientID, resource string) (Gr
 	if err = json.Unmarshal([]byte(scopes), &grant.Scopes); err != nil {
 		return grant, "", "", err
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE tokens SET used_at=? WHERE hash=? AND used_at IS NULL AND revoked_at IS NULL`, time.Now().Unix(), hashToken(raw))
+	if _, err = tx.ExecContext(ctx, `DELETE FROM tokens WHERE kind='access' AND family_id=? AND expires_at<=?`, grant.FamilyID, time.Now().Unix()); err != nil {
+		return grant, "", "", err
+	}
+	access, err := s.issueAccess(ctx, tx, &grant)
 	if err != nil {
 		return grant, "", "", err
 	}
-	n, _ := result.RowsAffected()
-	if n != 1 {
-		return grant, "", "", sql.ErrNoRows
-	}
-	access, refresh, err := s.issuePair(ctx, tx, &grant)
-	if err != nil {
-		return grant, "", "", err
-	}
-	return grant, access, refresh, tx.Commit()
+	return grant, access, raw, tx.Commit()
 }
 
 // Connections lists a user's revocable grant families (never tokens).

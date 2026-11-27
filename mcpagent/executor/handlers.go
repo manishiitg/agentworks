@@ -351,21 +351,35 @@ func (h *ExecutorHandlers) HandleMCPExecute(w http.ResponseWriter, r *http.Reque
 		// shared-config cache below, never another user's connection
 		// (AgentWorks PLAT-362 D3).
 
-		// 🔒 SCOPE ENFORCEMENT: If the session registry is active (has MCP clients) but
-		// the requested server is not in scope, deny the request instead of spawning a
-		// new process. This prevents agents from reaching MCP servers that are not
-		// configured for the current workflow.
-		if client == nil && req.SessionID != "" && !codeexec.IsServerInScope(req.Server) {
-			availableServers := codeexec.ScopedServerNames()
-			h.logger.Warn("🔒 [SCOPE DENIED] Server not in session scope, refusing mcpcache fallback",
-				loggerv2.String("server", req.Server),
-				loggerv2.String("session_id", req.SessionID),
-				loggerv2.Any("available_servers", availableServers))
-			_ = json.NewEncoder(w).Encode(MCPExecuteResponse{ //nolint:gosec
-				Success: false,
-				Error:   fmt.Sprintf("Server '%s' is not available in this session's scope. The workflow does not have access to this MCP server. Available servers: %v", req.Server, availableServers),
-			})
-			return
+		// 🔒 SCOPE ENFORCEMENT: When a session has its own registered servers in
+		// SessionConnectionRegistry, enforce that session's own scope directly so
+		// another session's codeexec globalRegistry entries cannot broaden it.
+		// Otherwise fall back to codeexec.IsServerInScope when active.
+		if client == nil && req.SessionID != "" {
+			sessionScoped := mcpclient.GetSessionRegistry().GetSessionScopedServers(req.SessionID)
+			if len(sessionScoped) > 0 {
+				h.logger.Warn("🔒 [SCOPE DENIED] Server not in session's registered scope, refusing mcpcache fallback",
+					loggerv2.String("server", req.Server),
+					loggerv2.String("session_id", req.SessionID),
+					loggerv2.Any("available_servers", sessionScoped))
+				_ = json.NewEncoder(w).Encode(MCPExecuteResponse{ //nolint:gosec
+					Success: false,
+					Error:   fmt.Sprintf("Server '%s' is not available in this session's scope. The workflow does not have access to this MCP server. Available servers: %v", req.Server, sessionScoped),
+				})
+				return
+			}
+			if !codeexec.IsServerInScope(req.Server) {
+				availableServers := codeexec.ScopedServerNames()
+				h.logger.Warn("🔒 [SCOPE DENIED] Server not in session scope, refusing mcpcache fallback",
+					loggerv2.String("server", req.Server),
+					loggerv2.String("session_id", req.SessionID),
+					loggerv2.Any("available_servers", availableServers))
+				_ = json.NewEncoder(w).Encode(MCPExecuteResponse{ //nolint:gosec
+					Success: false,
+					Error:   fmt.Sprintf("Server '%s' is not available in this session's scope. The workflow does not have access to this MCP server. Available servers: %v", req.Server, availableServers),
+				})
+				return
+			}
 		}
 	}
 

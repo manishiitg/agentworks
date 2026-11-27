@@ -26,7 +26,8 @@ type platformClientSealer struct{}
 
 func (platformClientSealer) Handles(path string) bool {
 	rel, err := filepath.Rel(mcpagentTokensRoot(), filepath.Clean(path))
-	return err == nil && rel != "." && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel) && strings.HasSuffix(rel, ".json")
+	return err == nil && rel != "." && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel) &&
+		(strings.HasSuffix(rel, ".json") || strings.Contains(rel, ".json.pending-"))
 }
 
 func platformClientAAD(path string) []byte {

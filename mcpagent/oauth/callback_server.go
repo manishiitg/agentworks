@@ -3,6 +3,7 @@ package oauth
 import (
 	"context"
 	"fmt"
+	"html"
 	"net/http"
 	"time"
 )
@@ -44,7 +45,7 @@ func (cs *CallbackServer) WaitForCallback(ctx context.Context) (string, error) {
 	// Start server in background
 	go func() {
 		if err := cs.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			cs.errChan <- fmt.Errorf("callback server error: %w", err)
+			cs.sendErr(fmt.Errorf("callback server error: %w", err))
 		}
 	}()
 
@@ -68,10 +69,27 @@ func (cs *CallbackServer) WaitForCallback(ctx context.Context) (string, error) {
 	}
 }
 
+// sendCode delivers the authorization code without blocking duplicate requests.
+func (cs *CallbackServer) sendCode(code string) {
+	select {
+	case cs.codeChan <- code:
+	default:
+	}
+}
+
+// sendErr delivers a callback error without blocking duplicate requests.
+func (cs *CallbackServer) sendErr(err error) {
+	select {
+	case cs.errChan <- err:
+	default:
+	}
+}
+
 // handleCallback processes the OAuth callback request
 func (cs *CallbackServer) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// Parse query parameters
 	query := r.URL.Query()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	// Check for error from OAuth provider
 	if errCode := query.Get("error"); errCode != "" {
@@ -82,7 +100,6 @@ func (cs *CallbackServer) handleCallback(w http.ResponseWriter, r *http.Request)
 
 		// Send error page to browser
 		w.WriteHeader(http.StatusBadRequest)
-		//nolint:gosec // static success/failure page; the only variables are server-generated status strings
 		fmt.Fprintf(w, `
 <!DOCTYPE html>
 <html>
@@ -92,12 +109,12 @@ func (cs *CallbackServer) handleCallback(w http.ResponseWriter, r *http.Request)
 	<p>%s</p>
 	<p>You can close this window.</p>
 </body>
-</html>`, errDesc)
+</html>`, html.EscapeString(errDesc))
 
 		if errCode == "access_denied" {
-			cs.errChan <- ErrAuthDenied
+			cs.sendErr(ErrAuthDenied)
 		} else {
-			cs.errChan <- fmt.Errorf("OAuth error: %s - %s", errCode, errDesc)
+			cs.sendErr(fmt.Errorf("OAuth error: %s - %s", errCode, errDesc))
 		}
 		return
 	}
@@ -117,7 +134,7 @@ func (cs *CallbackServer) handleCallback(w http.ResponseWriter, r *http.Request)
 </body>
 </html>`)
 
-		cs.errChan <- ErrInvalidState
+		cs.sendErr(ErrInvalidState)
 		return
 	}
 
@@ -136,7 +153,7 @@ func (cs *CallbackServer) handleCallback(w http.ResponseWriter, r *http.Request)
 </body>
 </html>`)
 
-		cs.errChan <- fmt.Errorf("no authorization code in callback")
+		cs.sendErr(fmt.Errorf("no authorization code in callback"))
 		return
 	}
 
@@ -159,8 +176,8 @@ func (cs *CallbackServer) handleCallback(w http.ResponseWriter, r *http.Request)
 </body>
 </html>`)
 
-	// Send code to waiting channel
-	cs.codeChan <- code
+	// Send code to waiting channel without blocking duplicate hits
+	cs.sendCode(code)
 }
 
 // GetCallbackURL returns the full callback URL for this server

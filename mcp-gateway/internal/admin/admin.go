@@ -253,6 +253,38 @@ func (a *Admin) addConnectorRowFor(vaultID, provider, label, slug, upstreamURL s
 				break
 			}
 		}
+	} else if vaultID != "" {
+		// Personal and Crew vaults share the workspace tool namespace; keep
+		// duplicate checks scoped to the same vault and disambiguate slug
+		// collisions against connectors belonging to other vaults.
+		want := store.ConnectorNamespacePrefix(provider, c.InstanceSlug)
+		sameVaultConflict := false
+		otherVaultConflict := false
+		for _, existing := range a.Store.ListConnectors(a.WorkspaceID) {
+			if existing.Provider == provider && existing.InstanceSlug == c.InstanceSlug && existing.VaultID == vaultID {
+				sameVaultConflict = true
+				break
+			}
+			if store.ConnectorNamespacePrefix(existing.Provider, existing.InstanceSlug) == want {
+				if existing.VaultID == vaultID {
+					sameVaultConflict = true
+					break
+				}
+				otherVaultConflict = true
+			}
+		}
+		if !sameVaultConflict && otherVaultConflict {
+			if c.InstanceSlug == "" {
+				c.InstanceSlug = c.ID
+			} else {
+				suffix := "_" + c.ID
+				base := c.InstanceSlug
+				if len(base)+len(suffix) > 100 {
+					base = base[:100-len(suffix)]
+				}
+				c.InstanceSlug = base + suffix
+			}
+		}
 	}
 	if len(oauthServer) > 0 {
 		c.OAuthServer = oauthServer[0]

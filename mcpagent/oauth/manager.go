@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -17,6 +18,15 @@ import (
 	loggerv2 "github.com/manishiitg/mcpagent/logger/v2"
 	"github.com/manishiitg/mcpagent/netguard"
 )
+
+// tokenRefreshLocks serializes concurrent OAuth refreshes sharing the same
+// token file path (even across separate Manager instances).
+var tokenRefreshLocks sync.Map
+
+func tokenRefreshLockFor(path string) *sync.Mutex {
+	mu, _ := tokenRefreshLocks.LoadOrStore(path, &sync.Mutex{})
+	return mu.(*sync.Mutex)
+}
 
 // Manager orchestrates the OAuth 2.1 authentication flow
 type Manager struct {
@@ -176,11 +186,10 @@ func (m *Manager) ExchangeCodeForToken(ctx context.Context, code string) (*oauth
 		m.logger.Warn("Failed to save token to disk",
 			loggerv2.Error(err),
 			loggerv2.String("file_path", m.tokenStore.GetFilePath()))
-		// Don't fail the whole flow if we can't save - token is still valid
-	} else {
-		m.logger.Info("Token saved to disk successfully",
-			loggerv2.String("file_path", m.tokenStore.GetFilePath()))
+		return nil, fmt.Errorf("failed to persist OAuth token: %w", err)
 	}
+	m.logger.Info("Token saved to disk successfully",
+		loggerv2.String("file_path", m.tokenStore.GetFilePath()))
 
 	return token, nil
 }
@@ -212,8 +221,24 @@ func (m *Manager) GetAccessToken(ctx context.Context) (string, error) {
 		loggerv2.String("expiry", token.Expiry.String()),
 		loggerv2.String("has_refresh_token", hasRefreshToken))
 
-	// Token expired or not found - try to refresh
+	// Token expired or not found - serialize refresh per token file so
+	// concurrent callers do not race with rotating refresh tokens.
 	if token.RefreshToken != "" {
+		mu := tokenRefreshLockFor(m.tokenStore.GetFilePath())
+		mu.Lock()
+		defer mu.Unlock()
+
+		// Re-check disk under the lock in case another caller just refreshed.
+		if latest, loadErr := m.tokenStore.Load(); loadErr == nil {
+			if latest.Valid() {
+				m.logger.Info("Using refreshed OAuth token from concurrent refresh")
+				return latest.AccessToken, nil
+			}
+			if latest.RefreshToken != "" {
+				token = latest
+			}
+		}
+
 		m.logger.Info("OAuth token expired, attempting refresh...",
 			loggerv2.String("token_url", m.oauth2Config.Endpoint.TokenURL))
 		newToken, err := m.refreshToken(ctx, token)
@@ -329,10 +354,10 @@ func (m *Manager) StartAuthFlow(ctx context.Context) (*oauth2.Token, error) {
 	// Save token to cache
 	if err := m.tokenStore.Save(token); err != nil {
 		m.logger.Warn("Failed to cache token", loggerv2.Error(err))
-	} else {
-		m.logger.Debug("Token cached",
-			loggerv2.String("file", m.tokenStore.GetFilePath()))
+		return nil, fmt.Errorf("failed to persist OAuth token: %w", err)
 	}
+	m.logger.Debug("Token cached",
+		loggerv2.String("file", m.tokenStore.GetFilePath()))
 
 	return token, nil
 }
@@ -348,10 +373,14 @@ func (m *Manager) refreshToken(ctx context.Context, token *oauth2.Token) (*oauth
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrTokenExpired, err)
 	}
+	if newToken.RefreshToken == "" && token.RefreshToken != "" {
+		newToken.RefreshToken = token.RefreshToken
+	}
 
 	// Save refreshed token
 	if err := m.tokenStore.Save(newToken); err != nil {
 		m.logger.Warn("Failed to save refreshed token", loggerv2.Error(err))
+		return nil, fmt.Errorf("failed to persist refreshed OAuth token: %w", err)
 	}
 
 	return newToken, nil

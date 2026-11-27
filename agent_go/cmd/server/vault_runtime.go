@@ -144,8 +144,13 @@ func (api *StreamingAPI) vaultBridgeToolName(ctx context.Context, session, serve
 	person := api.mcpSessionPerson(session)
 	// The acting person's Vault in a Crew; a Goal's creator's (projectSecretsOwner).
 	lender := person
-	if root := api.projectRootForSession(session); root != "" && person != "" {
+	root := api.projectRootForSession(session)
+	if root != "" && person != "" {
 		lender = api.turnSecretsOwner(session, person, root)
+	}
+	project := serverCrewForPath(root)
+	if project != "" {
+		ctx = withCrewVaultScope(ctx, crewVaultID(project))
 	}
 	if strings.HasPrefix(server, serverVaultPrefix) {
 		name, err := serverVaultBridgeToolName(ctx, lender, server, tool)
@@ -163,15 +168,27 @@ func (api *StreamingAPI) vaultBridgeToolName(ctx context.Context, session, serve
 		}
 		server = resolved.Name
 	}
-	rows, err := vaultServersFor(ctx, lender)
+	reader := crewVaultReader(ctx, lender)
+	rows, err := vaultServersFor(ctx, reader)
 	if err != nil {
 		if vaultPath || legacyReportPath {
 			return ctx, server, "", err
 		}
 		return ctx, server, tool, nil // Not a Vault name; the resolver decides as usual.
 	}
-	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{person: lender, servers: rows})
-	realServer, realTool, err := vaultBridgeMatch(rows, server, tool)
+	if reader != lender && project != "" {
+		rows = crewVaultAppRowsOnly(rows, api.crewVaultServers(ctx, project, nil))
+	}
+	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{person: reader, servers: rows})
+	matchRows := rows
+	if project != "" {
+		names := make([]string, 0, len(rows))
+		for _, row := range rows {
+			names = append(names, vaultServerName(row.ID))
+		}
+		ctx, matchRows, _ = addOwnChatApps(ctx, session, reader, rows, names)
+	}
+	realServer, realTool, err := vaultBridgeMatch(matchRows, server, tool)
 	if err != nil {
 		return ctx, server, "", err
 	}
@@ -950,10 +967,22 @@ func (api *StreamingAPI) discoverResolvedServerTools(ctx context.Context, resolv
 		return nil, err
 	}
 	name := file.Name()
-	file.Close()
 	defer os.Remove(name)
 	cfg := &mcpclient.MCPConfig{MCPServers: map[string]mcpclient.MCPServerConfig{resolved.Name: resolved.Config}}
-	if err := mcpclient.SaveConfig(name, cfg); err != nil {
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	if err := file.Chmod(0o600); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	if err := file.Close(); err != nil {
 		return nil, err
 	}
 	result, err := mcpcache.GetCachedOrFreshConnection(ctx, nil, resolved.Name, name, nil, api.logger, true, nil)

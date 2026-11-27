@@ -213,7 +213,7 @@ func (s *Server) AuthenticateCLI(ctx context.Context, r *http.Request, raw strin
 	}
 	defer store.Close()
 	grant, err := store.Authenticate(ctx, raw)
-	if err != nil || grant.Resource != resource || grant.ClientID != s.cfg.CLIClientID || len(grant.Scopes) == 0 {
+	if err != nil || grant.Resource != resource || grant.ClientID != s.cfg.CLIClientID || len(grant.Scopes) == 0 || (s.cfg.GrantActive != nil && !s.cfg.GrantActive(ctx, grant)) {
 		return Grant{}, errors.New("invalid token")
 	}
 	return grant, nil
