@@ -638,9 +638,9 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 				req.Query = line + "\n\n" + req.Query
 			}
 		}
-		// The summary and next-steps card (chat_reply_style.go): only on turns the person sends from the app.
-		if replyTabFound {
-			if note := chatRepliesNote(replyTab.Identity, codingAgentTurnAttended(GetUserFromContext(ctx), req, sessionID)); note != "" {
+		// The summary and next-steps card (chat_reply_style.go): only on turns the person typed in the app, and once.
+		if replyTabFound && !strings.Contains(req.Query, chatRepliesMarker) {
+			if note := chatRepliesNote(replyTab.Identity, chatPersonAppTurn(ctx, req, sessionID)); note != "" {
 				req.Query = strings.TrimRight(req.Query, "\n") + "\n\n" + note
 			}
 		}

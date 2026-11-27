@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -59,5 +60,33 @@ func TestChatUnrelatedTaskAsksByDefault(t *testing.T) {
 	view := chatRepliesViewFor(ProductAgentIdentity{})
 	if view.UnrelatedTask != "ask" || len(view.UnrelatedTasks) != 3 {
 		t.Fatalf("a new chat shows Ask me, got %+v", view)
+	}
+}
+
+// #4339: the chat-settings note is only on turns the person typed in the app; another agent's message and a
+// Watcher event (delivered as an agent message) never get it, and a batch only when the person typed in it.
+func TestChatPersonAppTurnOnlyForThePersonsOwnMessages(t *testing.T) {
+	ctx := context.Background()
+	if !chatPersonAppTurn(ctx, &QueryRequest{Query: "hi"}, "chat-1") {
+		t.Fatal("the person's own typed turn lost the note")
+	}
+	if chatPersonAppTurn(ctx, &QueryRequest{Query: "event", AgentMessageInbox: "inbox-1"}, "chat-1") {
+		t.Fatal("an agent message or Watcher event got the note")
+	}
+	delivered := context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "agent_message"})
+	if chatPersonAppTurn(delivered, &QueryRequest{Query: "event"}, "chat-1") {
+		t.Fatal("a delivered agent message without an inbox got the note")
+	}
+	if chatPersonAppTurn(context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "owner_app"}), &QueryRequest{Query: "x"}, "chat-1") {
+		t.Fatal("the owner's other AI app got the note")
+	}
+	if chatPersonAppTurn(context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "queued_batch"}), &QueryRequest{Query: "x"}, "chat-1") {
+		t.Fatal("a batch of agent messages got the note")
+	}
+	if !chatPersonAppTurn(context.WithValue(ctx, deliveredAgentMessageKey{}, map[string]interface{}{"source": "queued_batch", "combined_person_input": true}), &QueryRequest{Query: "x"}, "chat-1") {
+		t.Fatal("a batch the person typed in lost the note")
+	}
+	if chatPersonAppTurn(ctx, &QueryRequest{Query: "x", TriggeredBy: "schedule"}, "chat-1") || chatPersonAppTurn(ctx, &QueryRequest{Query: "x", IsAutoNotification: true}, "chat-1") {
+		t.Fatal("a schedule or automatic notification got the note")
 	}
 }
