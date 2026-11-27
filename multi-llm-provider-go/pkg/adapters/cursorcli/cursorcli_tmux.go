@@ -63,6 +63,7 @@ type cursorInteractiveSession struct {
 	// LAUNCHED with, so a later turn's changed scope replaces it rather than
 	// silently reusing the old environment.
 	scopeFingerprint string
+	readyMarker      codingready.ColdLaunchMarker
 	mu               sync.Mutex
 }
 
@@ -183,7 +184,9 @@ func (c *CursorCLIAdapter) generateContentTmux(ctx context.Context, messages []l
 	// the bridge reports tools/list answered (marker file). No-op on reused
 	// sessions / when unconfigured; bounded, best-effort. See pkg/codingready.
 	if created && opts.Metadata != nil {
-		if rf := codingready.MCPReadyFileFromMetadata(opts.Metadata.Custom); rf != "" {
+		if session.readyMarker.Path != "" {
+			codingready.WaitForMCPReadyFileAfter(callCtx, session.readyMarker, codingready.MCPReadyWait())
+		} else if rf := codingready.MCPReadyFileFromMetadata(opts.Metadata.Custom); rf != "" {
 			codingready.WaitForMCPReadyFile(callCtx, rf, codingready.MCPReadyWait())
 		}
 	}
@@ -615,6 +618,9 @@ func (c *CursorCLIAdapter) acquireCursorInteractiveSession(ctx context.Context, 
 		args = append(args, "--resume", nativeID)
 	}
 	session.setRetainedStore(nativeID)
+	if opts != nil && opts.Metadata != nil {
+		session.readyMarker = codingready.PrepareColdLaunch(codingready.MCPReadyFileFromMetadata(opts.Metadata.Custom))
+	}
 	args, cleanupSandbox, err := cursorLandlockArgs(opts, args, workingDir)
 	if err != nil {
 		session.initErr = fmt.Errorf("confine Cursor: %w", err)

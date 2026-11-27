@@ -30,6 +30,7 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/sessionlease"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/sessionregistry"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/tmuxlaunch"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/codingready"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/codingtimeout"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/pathidentity"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/projectfile"
@@ -110,6 +111,7 @@ type claudeInteractivePersistentSession struct {
 	toolConfigFingerprint string
 	workingDir            string
 	tempFiles             []string
+	readyMarker           codingready.ColdLaunchMarker
 	idleLease             sessionlease.Lease
 	initErr               error
 	createdAt             time.Time
@@ -477,6 +479,7 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentTmuxBody(ctx context.Conte
 		}
 	}()
 
+	var readyMarker codingready.ColdLaunchMarker
 	if persistentInteractive {
 		var err error
 		persistentSession, createdSession, err = c.acquirePersistentInteractiveSession(callCtx, interactiveSessionID, nativeSessionID, opts, systemPrompt, workingDir)
@@ -485,6 +488,7 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentTmuxBody(ctx context.Conte
 		}
 		releasePersistentSession = true
 		sessionName = persistentSession.tmuxSessionName
+		readyMarker = persistentSession.readyMarker
 		adoptClaudeModSession(persistentSession, c.logger)
 		nativeSessionID = persistentSession.nativeSessionID
 	} else {
@@ -496,6 +500,9 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentTmuxBody(ctx context.Conte
 		}
 		defer removeFiles(tempFiles)
 
+		if opts != nil && opts.Metadata != nil {
+			readyMarker = codingready.PrepareColdLaunch(codingready.MCPReadyFileFromMetadata(opts.Metadata.Custom))
+		}
 		if err := c.startSession(callCtx, sessionName, args, workingDir, opts); err != nil {
 			removeClaudeModSessionDir(sessionName)
 			return nil, err
@@ -525,7 +532,11 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentTmuxBody(ctx context.Conte
 		// appears. Bounded + best-effort: on timeout we proceed anyway rather
 		// than block the turn. Only cold (createdSession) sessions pay this;
 		// reused persistent sessions are already connected.
-		waitForMCPReadyFile(callCtx, opts, sessionName, c.logger)
+		if readyMarker.Path != "" {
+			waitForMCPReadyMarker(callCtx, readyMarker, sessionName, c.logger)
+		} else {
+			waitForMCPReadyFile(callCtx, opts, sessionName, c.logger)
+		}
 		if err := waitForClaudeModReady(callCtx, sessionName); err != nil {
 			discardPersistentSession(err)
 			return nil, err
@@ -1527,41 +1538,27 @@ func waitForMCPReadyFile(ctx context.Context, opts *llmtypes.CallOptions, sessio
 		return
 	}
 	readyFile, _ := opts.Metadata.Custom[MetadataKeyMCPReadyFile].(string)
-	readyFile = strings.TrimSpace(readyFile)
+	waitForMCPReadyMarker(ctx, codingready.ColdLaunchMarker{Path: readyFile}, sessionName, logger)
+}
+
+func waitForMCPReadyMarker(ctx context.Context, marker codingready.ColdLaunchMarker, sessionName string, logger interfaces.Logger) {
+	readyFile := strings.TrimSpace(marker.Path)
 	if readyFile == "" {
 		return
 	}
-	// The handshake may already have completed between session launch and here.
-	if _, err := os.Stat(readyFile); err == nil {
-		return
-	}
-
 	maxWait := 30 * time.Second
 	if parsed, ok := claudePositiveDurationFromEnv(EnvClaudeMCPReadyWaitSeconds); ok {
 		maxWait = parsed
 	}
 	start := time.Now()
-	deadline := start.Add(maxWait)
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		if _, err := os.Stat(readyFile); err == nil {
-			if logger != nil {
-				logger.Debugf("Claude Code MCP tools connected after %s (session %s)", time.Since(start).Round(time.Millisecond), sessionName)
-			}
-			return
+	if codingready.WaitForMCPReadyFileAfter(ctx, marker, maxWait) {
+		if logger != nil && time.Since(start) >= 50*time.Millisecond {
+			logger.Debugf("Claude Code MCP tools connected after %s (session %s)", time.Since(start).Round(time.Millisecond), sessionName)
 		}
-		if time.Now().After(deadline) {
-			if logger != nil {
-				logger.Errorf("Claude Code MCP readiness file %q not present after %s; sending first prompt without the tools-connected guarantee (session %s)", readyFile, maxWait, sessionName)
-			}
-			return
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
+		return
+	}
+	if ctx.Err() == nil && logger != nil {
+		logger.Errorf("Claude Code MCP readiness file %q not present after %s; sending first prompt without the tools-connected guarantee (session %s)", readyFile, maxWait, sessionName)
 	}
 }
 
@@ -2793,6 +2790,9 @@ func (c *ClaudeCodeInteractiveAdapter) acquirePersistentInteractiveSession(ctx c
 		return nil, false, err
 	}
 	session.tempFiles = tempFiles
+	if opts != nil && opts.Metadata != nil {
+		session.readyMarker = codingready.PrepareColdLaunch(codingready.MCPReadyFileFromMetadata(opts.Metadata.Custom))
+	}
 
 	if err := c.startSession(ctx, session.tmuxSessionName, args, workingDir, opts); err != nil {
 		removeClaudeModSessionDir(session.tmuxSessionName)

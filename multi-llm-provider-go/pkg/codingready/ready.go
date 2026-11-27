@@ -50,6 +50,37 @@ func MCPReadyWait() time.Duration {
 	return DefaultMCPReadyWait
 }
 
+// ColdLaunchMarker captures the pre-launch state of an MCP readiness marker
+// for a fresh CLI process. Call PrepareColdLaunch right before spawning a cold
+// CLI process (never on reused warm sessions), then pass the returned value to
+// WaitForMCPReadyFileAfter once the CLI prompt is ready.
+type ColdLaunchMarker struct {
+	Path         string
+	HadPrior     bool
+	PriorModTime time.Time
+}
+
+// PrepareColdLaunch removes any leftover readiness marker from an earlier
+// dead/evicted CLI process before a fresh launch starts. If the marker could
+// not be unlinked (for example, directory permissions), it records the prior
+// mtime so WaitForMCPReadyFileAfter still waits for the new mcpbridge process
+// to rewrite it.
+func PrepareColdLaunch(readyFile string) ColdLaunchMarker {
+	readyFile = strings.TrimSpace(readyFile)
+	if readyFile == "" {
+		return ColdLaunchMarker{}
+	}
+	_ = os.Remove(readyFile)
+	if info, err := os.Stat(readyFile); err == nil {
+		return ColdLaunchMarker{
+			Path:         readyFile,
+			HadPrior:     true,
+			PriorModTime: info.ModTime(),
+		}
+	}
+	return ColdLaunchMarker{Path: readyFile}
+}
+
 // WaitForMCPReadyFile blocks until readyFile exists, maxWait elapses, or ctx is
 // canceled. Strictly best-effort: a no-op that returns true immediately when
 // readyFile is empty or already present, and it NEVER errors — callers proceed
@@ -59,8 +90,16 @@ func MCPReadyWait() time.Duration {
 // created (cold) session: the marker path is per-launch, so waiting on a reused
 // persistent session would block for a file that launch will never write.
 func WaitForMCPReadyFile(ctx context.Context, readyFile string, maxWait time.Duration) bool {
-	readyFile = strings.TrimSpace(readyFile)
-	if readyFile == "" || fileExists(readyFile) {
+	return WaitForMCPReadyFileAfter(ctx, ColdLaunchMarker{Path: readyFile}, maxWait)
+}
+
+// WaitForMCPReadyFileAfter waits until marker's readiness file is present — and
+// if a stale marker could not be unlinked before launch, until its modification
+// time advances past PriorModTime. Strictly best-effort, matching
+// WaitForMCPReadyFile.
+func WaitForMCPReadyFileAfter(ctx context.Context, marker ColdLaunchMarker, maxWait time.Duration) bool {
+	readyFile := strings.TrimSpace(marker.Path)
+	if readyFile == "" || markerReady(readyFile, marker.HadPrior, marker.PriorModTime) {
 		return true
 	}
 	if maxWait <= 0 {
@@ -70,7 +109,7 @@ func WaitForMCPReadyFile(ctx context.Context, readyFile string, maxWait time.Dur
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		if fileExists(readyFile) {
+		if markerReady(readyFile, marker.HadPrior, marker.PriorModTime) {
 			return true
 		}
 		if time.Now().After(deadline) {
@@ -84,7 +123,13 @@ func WaitForMCPReadyFile(ctx context.Context, readyFile string, maxWait time.Dur
 	}
 }
 
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
+func markerReady(path string, hadPrior bool, priorModTime time.Time) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	if !hadPrior {
+		return true
+	}
+	return info.ModTime().After(priorModTime)
 }

@@ -219,7 +219,9 @@ func (c *CodexCLIAdapter) generateContentInteractive(ctx context.Context, messag
 	// tools/list answered (marker file). No-op on reused sessions / when
 	// unconfigured; bounded, best-effort. See pkg/codingready.
 	if created && opts.Metadata != nil {
-		if rf := codingready.MCPReadyFileFromMetadata(opts.Metadata.Custom); rf != "" {
+		if session.readyMarker.Path != "" {
+			codingready.WaitForMCPReadyFileAfter(callCtx, session.readyMarker, codingready.MCPReadyWait())
+		} else if rf := codingready.MCPReadyFileFromMetadata(opts.Metadata.Custom); rf != "" {
 			codingready.WaitForMCPReadyFile(callCtx, rf, codingready.MCPReadyWait())
 		}
 	}
@@ -666,6 +668,9 @@ func (c *CodexCLIAdapter) acquireCodexInteractiveSession(ctx context.Context, ow
 	scopedScrub := launchscrub.Scoped(nil, scopedEnv, opts)
 	if err := c.seedTmuxAccountLogin(opts, workingDir); err != nil {
 		c.logger.Errorf("codex interactive could not save the API key login owner=%s: %v", ownerSessionID, err)
+	}
+	if opts != nil && opts.Metadata != nil {
+		session.readyMarker = codingready.PrepareColdLaunch(codingready.MCPReadyFileFromMetadata(opts.Metadata.Custom))
 	}
 	launchCleanup, err := startCodexTmuxSession(ctx, session.tmuxSessionName, args, workingDir, opts.CLISecurity, runtimeReadPaths, scopedEnv, unsetEnv, scopedScrub)
 	if err != nil {
