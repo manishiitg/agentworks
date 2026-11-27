@@ -319,9 +319,13 @@ func TestCrewTimerLedgerRecordsTerminalOutcomesWithoutSecondScopeLease(t *testin
 			done := make(chan error, 1)
 			go func() { _, err := env.svc.Run(ctx, job, triggerSource, occurrence); done <- err }()
 			if outcome != "setup_failed" && outcome != "ledger_unavailable" {
+				// An upper bound only: on a busy build host the setup took over 3 s (#3324). A run that ends
+				// without starting reports its own error instead of a timeout.
 				select {
 				case <-started:
-				case <-time.After(3 * time.Second):
+				case err := <-done:
+					t.Fatalf("timer ended before reaching the provider boundary: %v", err)
+				case <-time.After(15 * time.Second):
 					t.Fatal("timer did not reach provider boundary")
 				}
 				when := projectactions.When{Timezone: "UTC", After: &projectactions.After{Schedules: []string{"first"}}}
@@ -345,7 +349,7 @@ func TestCrewTimerLedgerRecordsTerminalOutcomesWithoutSecondScopeLease(t *testin
 				if (err == nil) != (outcome == "completed") {
 					t.Fatalf("outcome %s returned %v", outcome, err)
 				}
-			case <-time.After(3 * time.Second):
+			case <-time.After(15 * time.Second):
 				t.Fatal("timer did not settle")
 			}
 			decisions, err := store.ListFireDecisions(ctx, "crew", "beta", "first", 10)
@@ -518,10 +522,10 @@ func TestPausedCalendarQueueRetainsOccurrenceUntilResume(t *testing.T) {
 	env.svc.resumeQueuedRuns()
 	select {
 	case <-called:
-	case <-time.After(3 * time.Second):
+	case <-time.After(15 * time.Second): // an upper bound for a busy build host (#3324)
 		t.Fatal("resume did not execute the retained occurrence")
 	}
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	for {
 		if _, running := env.svc.Running(job.UserID, job.ID()); !running {
 			break

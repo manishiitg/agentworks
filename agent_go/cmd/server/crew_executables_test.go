@@ -18,7 +18,8 @@ import (
 )
 
 // PLAT-746-265: an editable executable cannot choose its owner or gain another
-// Crew's grants; revoking Team membership affects the very next access check.
+// Crew's grants; removing a co-owner affects the very next access check. A server Crew grants build access through
+// its co-owners (owner, 25 Nov), not the Mac Team file (#3324).
 func TestCrewExecutableUsesTrustedParentAndLiveAccess(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("MULTI_USER_MODE", "true")
@@ -29,14 +30,17 @@ func TestCrewExecutableUsesTrustedParentAndLiveAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	if err := writeCrewTeam(crewTeam{ProjectID: "crew-lab", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "builder"}}}); err != nil {
+	if _, err := registry.AddCoOwner("work", "lab", "builder"); err != nil {
 		t.Fatal(err)
 	}
 	binding := crewExecutableBinding{ID: "executable", CrewID: "crew-lab", CrewRoot: "Crew/lab", Root: "Workflow/executable", Kind: "script"}
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
 	}
-	files := &mockWorkspaceAPI{files: map[string]string{"Workflow/executable/workflow.json": `{"id":"executable","label":"Example","created_by":"stranger","access":{"owners":["stranger"],"allowed_kb_writers":["consumer"]},"team":{"leader_id":"stranger"}}`}}
+	// A saved script's manifest comes from code/script.json, which cannot name an owner, Team or audience; the
+	// owner always comes from the trusted Crew registration (#3324: the old workflow.json fixture was retired).
+	const scriptFile = "Workflow/executable/code/script.json"
+	files := &mockWorkspaceAPI{files: map[string]string{scriptFile: `{"id":"executable","name":"Example"}`}}
 	host := httptest.NewServer(files)
 	defer host.Close()
 	t.Setenv("WORKSPACE_API_URL", host.URL)
@@ -58,30 +62,13 @@ func TestCrewExecutableUsesTrustedParentAndLiveAccess(t *testing.T) {
 	if resolved, err := findCrewExecutable(filepath.Join(docs, binding.Root)); err != nil || resolved == nil {
 		t.Fatalf("absolute binding: %v", err)
 	}
+	materializeWorkspaceFixtureFile(t, files, docs, scriptFile)
 	manifest, found, err := ReadWorkflowManifest(context.Background(), binding.Root)
 	if err != nil || !found {
 		t.Fatalf("read: %v", err)
 	}
 	if workflowOwner(binding.Root) != "owner" || manifest.CreatedBy != "owner" || manifest.Team != nil || workflowExecutionOwnerUserID(manifest) != "owner" {
 		t.Fatal("manifest overrode execution owner")
-	}
-	// Inheriting the parent audience must not erase a source owner's
-	// separate KB writer opt-in during an unrelated read/edit/save cycle.
-	// The spoofed team above tests read authority. Exercise the independent
-	// writer-grant save with a normal Crew child (which has no child team).
-	var saved map[string]interface{}
-	_ = json.Unmarshal([]byte(files.files[manifestPath(binding.Root)]), &saved)
-	delete(saved, "team")
-	baseline, _ := json.Marshal(saved)
-	files.files[manifestPath(binding.Root)] = string(baseline)
-	manifest.Label = "Renamed"
-	ownerCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
-	if err := WriteWorkflowManifest(ownerCtx, binding.Root, manifest); err != nil {
-		t.Fatal(err)
-	}
-	manifest, found, err = ReadWorkflowManifest(context.Background(), binding.Root)
-	if err != nil || !found || len(manifest.Access.AllowedKBWriters) != 1 || manifest.Access.AllowedKBWriters[0] != "consumer" {
-		t.Fatalf("KB writer lost after save: %+v %v", manifest, err)
 	}
 	listed := filterWorkflowManifestsForUser(&UserClaims{UserID: "owner", Username: "owner"}, []DiscoveredWorkflow{{WorkspacePath: binding.Root, Manifest: manifest}})
 	if len(listed) != 1 || listed[0].CrewID != binding.CrewID {
@@ -143,27 +130,21 @@ func TestCrewExecutableUsesTrustedParentAndLiveAccess(t *testing.T) {
 			t.Fatalf("%s access=%s, want %s", user, got, want)
 		}
 	}
-	if err := writeCrewTeam(crewTeam{ProjectID: "crew-lab", OwnerID: "owner", On: false}); err != nil {
+	if _, err := registry.RemoveCoOwner("work", "lab", "builder"); err != nil {
 		t.Fatal(err)
 	}
-
 	if got := workflowAccessForManifest(&UserClaims{UserID: "builder", Username: "builder"}, manifest); got != WorkflowAccessNone {
-		t.Fatal("revoked Team member retained access", got)
+		t.Fatal("removed co-owner retained access", got)
 	}
-	// PLAT-746-265: the new Team roster must flow through the same live
-	// workflow admission, without changing the saved automation's owner.
-	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	for _, state := range []struct{ on, invited, allowed bool }{{true, true, false}, {true, false, true}, {false, false, false}} {
-		if err := writeCrewTeam(crewTeam{ProjectID: binding.CrewID, OwnerID: "owner", On: state.on, People: []crewTeamPerson{{UserID: "builder", Invited: state.invited}}}); err != nil {
-			t.Fatal(err)
-		}
-		got := workflowAccessForManifest(&UserClaims{UserID: "builder", Username: "builder"}, manifest)
-		if (got == WorkflowAccessOwner) != state.allowed {
-			t.Fatalf("Team on=%v invited=%v workflow access=%s", state.on, state.invited, got)
-		}
-		if got := buildScheduleContext(binding.Root, manifest, WorkflowSchedule{RunAs: "builder"}).OwnerUserID; got != "owner" {
-			t.Fatalf("Team membership changed automation identity to %q", got)
-		}
+	// Adding the co-owner back flows through the same live admission, without changing the automation's owner.
+	if _, err := registry.AddCoOwner("work", "lab", "builder"); err != nil {
+		t.Fatal(err)
+	}
+	if got := workflowAccessForManifest(&UserClaims{UserID: "builder", Username: "builder"}, manifest); got != WorkflowAccessOwner {
+		t.Fatalf("co-owner workflow access=%s, want owner", got)
+	}
+	if got := buildScheduleContext(binding.Root, manifest, WorkflowSchedule{RunAs: "builder"}).OwnerUserID; got != "owner" {
+		t.Fatalf("co-owner changed automation identity to %q", got)
 	}
 	file, _ := crewExecutableFile(binding.Root)
 	if err := os.WriteFile(file, []byte("{"), 0600); err != nil {
@@ -186,8 +167,9 @@ func TestCrewExecutableUsesTrustedParentAndLiveAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	files.mu.Lock()
-	files.files["Workflow/executable/workflow.json"] = `{"id":"other","label":"Spoof"}`
+	files.files[scriptFile] = `{"id":"other","name":"Spoof"}`
 	files.mu.Unlock()
+	materializeWorkspaceFixtureFile(t, files, docs, scriptFile)
 	if _, _, err := ReadWorkflowManifest(context.Background(), binding.Root); err == nil {
 		t.Fatal("accepted changed executable identity")
 	}
