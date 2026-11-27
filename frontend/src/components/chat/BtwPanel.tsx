@@ -42,7 +42,7 @@ export const BtwPanel: React.FC<{ tabId: string; onAddToChat: (text: string) => 
   if (!view) return null
   if (view.kind === 'history') {
     return (
-      <div data-testid="btw-history" className="mx-3 mb-2 overflow-hidden rounded-xl border border-blue-200 bg-blue-50/60 text-sm dark:border-blue-900 dark:bg-blue-950/30">
+      <div data-testid="btw-history" className="mx-3 mb-2 max-h-[45vh] overflow-y-auto rounded-xl border border-blue-200 bg-blue-50/60 text-sm dark:border-blue-900 dark:bg-blue-950/30">
         <div className="flex items-center gap-2 px-3 pb-1 pt-2 text-xs text-blue-700 dark:text-blue-300">
           <span className="font-semibold">Side questions in this chat</span>
           <button type="button" aria-label="Close" className="ml-auto rounded p-0.5 text-muted-foreground hover:bg-muted" onClick={() => openBtwItem(tabId, null)}><X className="h-3.5 w-3.5" /></button>
@@ -63,14 +63,14 @@ const BtwAnswer: React.FC<{ tabId: string; item: BtwItem; onAddToChat: (text: st
   const [keeping, setKeeping] = useState(false)
   const done = item.status === 'done'
   return (
-    <div data-testid="btw-panel" data-status={item.status} className="mx-3 mb-2 rounded-xl border border-blue-200 bg-blue-50/60 shadow-sm dark:border-blue-900 dark:bg-blue-950/30">
-      <div className="flex items-center gap-2 px-3 pb-1 pt-2 text-xs text-blue-700 dark:text-blue-300">
+    <div data-testid="btw-panel" data-status={item.status} className="mx-3 mb-2 flex max-h-[45vh] flex-col rounded-xl border border-blue-200 bg-blue-50/60 shadow-sm dark:border-blue-900 dark:bg-blue-950/30">
+      <div className="flex shrink-0 items-center gap-2 px-3 pb-1 pt-2 text-xs text-blue-700 dark:text-blue-300">
         <span className="font-semibold">By the way</span>
         <span className="text-muted-foreground">· side question · doesn&apos;t interrupt the chat</span>
         <button type="button" aria-label="Dismiss side question" title="Dismiss (Esc)" className="ml-auto rounded p-0.5 text-muted-foreground hover:bg-muted" onClick={() => dismissBtw(tabId, item.id)}><X className="h-3.5 w-3.5" /></button>
       </div>
-      <div className="px-3 text-[12.5px] text-muted-foreground">{item.question}</div>
-      <div className="max-h-56 overflow-auto px-3 pb-2 pt-1.5 text-[13.5px]">
+      <div className="shrink-0 px-3 text-[12.5px] text-muted-foreground">{item.question}</div>
+      <div data-testid="btw-answer" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-2 pt-1.5 text-[13.5px]">
         {item.status === 'failed'
           ? <span className="text-red-600 dark:text-red-400">{item.error || 'The side question did not get an answer.'}</span>
           : item.answer
@@ -78,7 +78,7 @@ const BtwAnswer: React.FC<{ tabId: string; item: BtwItem; onAddToChat: (text: st
             : <span className="inline-flex items-center gap-1.5 text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />{item.status === 'starting' ? 'Copying this chat…' : 'Answering from this chat’s context…'}</span>}
       </div>
       {(done || item.status === 'failed') && (
-        <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2.5">
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-blue-100 px-3 pb-2.5 pt-2 dark:border-blue-900">
           <button type="button" className="rounded-md border border-border bg-background px-2.5 py-0.5 text-xs hover:bg-muted" onClick={() => dismissBtw(tabId, item.id)}>Dismiss</button>
           {done && item.conversationKey && <button type="button" disabled={keeping} aria-busy={keeping} className="rounded-md border border-blue-200 bg-background px-2.5 py-0.5 text-xs text-blue-700 hover:bg-muted disabled:opacity-60 dark:border-blue-900 dark:text-blue-300"
             onClick={async () => { setKeeping(true); try { await keepBtwAsTab(tabId, item.id) } finally { setKeeping(false) } }}>{keeping ? 'Opening…' : 'Open as tab'}</button>}
