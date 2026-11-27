@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -442,6 +443,85 @@ func (api *StreamingAPI) handleDesktopSignInStatus(w http.ResponseWriter, r *htt
 	desktopJSON(w, map[string]string{"connection_id": p.ConnectionID, "error": p.Error})
 }
 
+var (
+	desktopProxyDialTimeout           = 5 * time.Second
+	desktopProxyResponseHeaderTimeout = 12 * time.Second
+	desktopProxyCooldown              = 10 * time.Second
+
+	desktopProxyTransportMu sync.Mutex
+	desktopProxyTransport   *http.Transport
+	desktopProxyStreamTrans *http.Transport
+
+	desktopProxyCooldownMu sync.Mutex
+	desktopProxyUnreach    = map[string]time.Time{}
+)
+
+func desktopProxyTransports() (normal, stream *http.Transport) {
+	desktopProxyTransportMu.Lock()
+	defer desktopProxyTransportMu.Unlock()
+	if desktopProxyTransport != nil && desktopProxyStreamTrans != nil &&
+		desktopProxyTransport.ResponseHeaderTimeout == desktopProxyResponseHeaderTimeout {
+		return desktopProxyTransport, desktopProxyStreamTrans
+	}
+	base, ok := http.DefaultTransport.(*http.Transport)
+	if !ok || base == nil {
+		base = &http.Transport{}
+	}
+	dialer := &net.Dialer{Timeout: desktopProxyDialTimeout, KeepAlive: 30 * time.Second}
+
+	t := base.Clone()
+	t.DialContext = dialer.DialContext
+	t.TLSHandshakeTimeout = desktopProxyDialTimeout
+	t.ResponseHeaderTimeout = desktopProxyResponseHeaderTimeout
+	desktopProxyTransport = t
+
+	s := base.Clone()
+	s.DialContext = dialer.DialContext
+	s.TLSHandshakeTimeout = desktopProxyDialTimeout
+	s.ResponseHeaderTimeout = 0
+	desktopProxyStreamTrans = s
+	return desktopProxyTransport, desktopProxyStreamTrans
+}
+
+func isDesktopProxyStreamingRequest(r *http.Request, path string, streamUpgrade bool) bool {
+	if streamUpgrade {
+		return true
+	}
+	if strings.Contains(strings.ToLower(r.Header.Get("Accept")), "text/event-stream") {
+		return true
+	}
+	return strings.HasSuffix(path, "/events") || strings.HasSuffix(path, "/stream")
+}
+
+func desktopProxyInCooldown(connID string) bool {
+	desktopProxyCooldownMu.Lock()
+	defer desktopProxyCooldownMu.Unlock()
+	until, ok := desktopProxyUnreach[connID]
+	if !ok {
+		return false
+	}
+	if time.Now().After(until) {
+		delete(desktopProxyUnreach, connID)
+		return false
+	}
+	return true
+}
+
+func markDesktopProxyUnreachable(connID string) {
+	if desktopProxyCooldown <= 0 {
+		return
+	}
+	desktopProxyCooldownMu.Lock()
+	desktopProxyUnreach[connID] = time.Now().Add(desktopProxyCooldown)
+	desktopProxyCooldownMu.Unlock()
+}
+
+func clearDesktopProxyUnreachable(connID string) {
+	desktopProxyCooldownMu.Lock()
+	delete(desktopProxyUnreach, connID)
+	desktopProxyCooldownMu.Unlock()
+}
+
 func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *http.Request) {
 	if !desktopConnectionGate(w, r) {
 		return
@@ -470,8 +550,19 @@ func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *
 		http.Error(w, "Invalid server path", 400)
 		return
 	}
+	isStream := isDesktopProxyStreamingRequest(r, path, streamUpgrade)
+	if !isStream && desktopProxyInCooldown(c.ID) {
+		http.Error(w, `{"error":"Cannot reach this server. Your other connections are still available."}`, 502)
+		return
+	}
+	normalTransport, streamTransport := desktopProxyTransports()
+	transport := normalTransport
+	if isStream {
+		transport = streamTransport
+	}
 	target, _ := url.Parse(c.Server)
 	proxy := &httputil.ReverseProxy{
+		Transport:     transport,
 		FlushInterval: -1,
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(target)
@@ -506,6 +597,7 @@ func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *
 			}
 		},
 		ModifyResponse: func(resp *http.Response) error {
+			clearDesktopProxyUnreachable(c.ID)
 			if e := saveRenewedDesktopToken(owner, c, resp.Header.Get("X-Renewed-Token")); e != nil {
 				return e
 			}
@@ -518,7 +610,10 @@ func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *
 			}
 			return nil
 		},
-		ErrorHandler: func(out http.ResponseWriter, _ *http.Request, _ error) {
+		ErrorHandler: func(out http.ResponseWriter, req *http.Request, proxyErr error) {
+			if !isStream && proxyErr != nil && req.Context().Err() == nil && !errors.Is(proxyErr, context.Canceled) {
+				markDesktopProxyUnreachable(c.ID)
+			}
 			http.Error(out, `{"error":"Cannot reach this server. Your other connections are still available."}`, 502)
 		},
 	}
