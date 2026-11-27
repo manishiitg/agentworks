@@ -11,8 +11,8 @@ import { crewSharePage, teamRequest } from './teamApi'
 vi.mock('../../utils/agentPurposeDraft',()=>({fillMainDraft:vi.fn(),fillOwnTabDraft:vi.fn(()=>true)}))
 vi.mock('./AgentSharingRow',()=>({teamAgentChatTab:()=>({tabId:'exact-own-agent'})}))
 const fixture = vi.hoisted(() => ({ row: { key: 'agent-1', mine: true, audience: 'whole_team', chosen_people: [], when_others_ask: 'Answer theme questions.', uses: [{ name: 'Project files', kind: 'files' }], can_edit_rule: true } }))
-vi.mock('./teamApi', () => ({ useTeamTab: () => ({ target: { project: 'crew' }, view: { team:{on:true}, agents: [fixture.row], people: [] } }), teamRequest: vi.fn(async () => ({})), teamFailure: (e: Error) => ({ message: e.message }), crewSharePage: vi.fn() }))
-vi.mock('./TeamTab', () => ({ Saving: ({ children }: any) => children, AgentDetails: () => <div>Project files</div>, TeamTab: ({agents}:any) => <div>{agents}</div>, LeaveTeam: () => null }))
+vi.mock('./teamApi', () => ({ useTeamTab: () => ({ target: { project: 'crew' }, view: { team:{on:true}, agents: [fixture.row], people: [] } }), teamRequest: vi.fn(async () => ({})), teamChanged: vi.fn(), teamFailure: (e: Error) => ({ message: e.message }), crewSharePage: vi.fn() }))
+vi.mock('./TeamTab', () => ({ Saving: ({ children }: any) => children, AgentDetails: () => <div>Project files</div>, TeamTab: ({agents}:any) => <div>{agents}</div>, LeaveTeam: () => null, teamSettlingServer: () => '' }))
 vi.mock('./TeamAgentAsk', () => ({ AgentAskThread: () => <div>Online conversation</div> }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 afterEach(() => vi.clearAllMocks())
@@ -62,6 +62,11 @@ it('uses the same admitted agent-rule payloads in the header and right panel', a
   await act(async () => openSharing().click())
   await act(async () => host.querySelector<HTMLButtonElement>('section[aria-label="Asking audience"] button[aria-expanded]')!.click())
   for(const button of host.querySelectorAll<HTMLButtonElement>('[role="radio"]')) expect(button.disabled).toBe(true)
+
+  // Mac agents keep their connections locally: hide the misleading empty Uses row.
+  await act(async () => root.render(<ShareAgentCard key="mac-empty" agent={{...agent,row:{...fixture.row,place:'mac',uses:[],uses_note:''},ask:{...agent.ask,uses_line:'No connections selected'}}} target={{project:'crew'}} projectId="crew" compact bare />))
+  expect(host.textContent).not.toContain('No connections selected')
+  expect(host.textContent).not.toContain('See all')
  } finally { await act(async () => root.unmount());host.remove() }
 })
 
