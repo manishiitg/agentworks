@@ -36,7 +36,7 @@ EOF
   verify [name]         build, vet and test the commit you are on (HEAD) on the build host with the Verify-Test / Verify-Vitest /
                         Verify-Frontend-Build lines of its commit message, like scripts/verify-remote.sh but faster; deploys nothing
   nightly-tests [opts]  run the full Go server test suite on the build host at idle CPU/IO priority (never takes verify slots,
-                        never deploys) and report only failures new since the previous run (--report-issue <N>)
+                        never deploys) and open a new GitHub issue only for failures new since the previous run (--open-issue)
   pin|unpin <build>     keep a known-good build from being pruned (old builds are removed after every deploy; only the newest is kept otherwise)
   prune-builds          remove old builds on the build host now (all but the newest, pinned ones and anything younger than 15 minutes)
 

@@ -139,13 +139,14 @@ verify_change_remote() {
 nightly_tests_remote() {
   local disk_override
   disk_override="$(build_disk_override_arg)" || return $?
-  local branch="main" sha="" packages="./..." timeout="30m" report_issue="" include_baseline=0 no_save_state=0
+  local branch="main" sha="" packages="./..." timeout="30m" report_issue="" open_issue=0 include_baseline=0 no_save_state=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --branch) branch="$2"; shift 2 ;;
       --sha) sha="$2"; shift 2 ;;
       --packages) packages="$2"; shift 2 ;;
       --timeout) timeout="$2"; shift 2 ;;
+      --open-issue) open_issue=1; shift ;;
       --report-issue) report_issue="$2"; shift 2 ;;
       --include-baseline) include_baseline=1; shift ;;
       --no-save-state) no_save_state=1; shift ;;
@@ -186,22 +187,25 @@ nightly_tests_remote() {
   [[ -n "$report_line" ]] || { echo "Nightly test runner did not emit NIGHTLY_REPORT_JSON" >&2; return 1; }
   printf '%s\n' "$report_line"
 
-  local fmt_args=(format-comment --report-json -)
+  local fmt_args=(format-issue --report-json -)
   [[ "$include_baseline" != 1 ]] || fmt_args+=(--include-baseline)
-  local comment
-  comment="$(printf '%s\n' "$report_line" | python3 "$REPO_ROOT/deploy/common/nightly_tests_report.py" "${fmt_args[@]}")"
+  local title body
+  title="$(printf '%s\n' "$report_line" | python3 "$REPO_ROOT/deploy/common/nightly_tests_report.py" "${fmt_args[@]}" --field title)"
+  body="$(printf '%s\n' "$report_line" | python3 "$REPO_ROOT/deploy/common/nightly_tests_report.py" "${fmt_args[@]}" --field body)"
 
-  if [[ -z "$comment" ]]; then
+  if [[ -z "$body" ]]; then
     echo "No new failures since previous run." >&2
     return 0
   fi
 
-  if [[ -n "$report_issue" ]]; then
-    local repo_slug
-    repo_slug="${url#https://github.com/}"
-    printf '%s\n' "$comment" | gh issue comment "$report_issue" -R "$repo_slug" --body-file - >&2
+  local repo_slug
+  repo_slug="${url#https://github.com/}"
+  if [[ "$open_issue" == 1 ]]; then
+    printf '%s\n' "$body" | gh issue create -R "$repo_slug" --title "$title" --body-file - >&2
+  elif [[ -n "$report_issue" ]]; then
+    printf '%s\n' "$body" | gh issue comment "$report_issue" -R "$repo_slug" --body-file - >&2
   else
-    printf '\n%s\n' "$comment" >&2
+    printf '\n%s\n\n%s\n' "$title" "$body" >&2
   fi
   return 0
 }
