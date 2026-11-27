@@ -14,6 +14,8 @@ import { admissionWindowHeaders } from '../utils/chatDeliveryTelemetry'
 import { isDiffFilePath, looksLikeDiffContent } from '../utils/diff'
 import { isValidJSON } from '../utils/event-helpers'
 
+class SharedFileAuthError extends Error { constructor() { super('Sign in to open this file.') } }
+
 interface SharedFileProps {
   encodedPath: string
   uid?: string
@@ -91,7 +93,7 @@ export function SharedFile({ encodedPath, uid, onBack, previewWorkspace }: Share
   }, [encodedPath, uid, previewWorkspace])
   const fetchSharedRange = useCallback(async (offset: number, signal?: AbortSignal) => {
     const resp = await requestFile({ Range: `bytes=${offset}-${offset + PREVIEW_PAGE_BYTES - 1}` }, signal)
-    if (resp.status === 401) throw new Error('Sign in to open this file.')
+    if (resp.status === 401) throw new SharedFileAuthError()
     if (resp.status === 403) throw new Error('You do not have access to this file.')
     if (resp.status !== 206 && resp.status !== 416) { await resp.body?.cancel(); throw new Error('Could not read this file preview.') }
     console.info(`[FILE_PREVIEW] id=${randomUUID()} source=shared offset=${offset}`)
@@ -174,6 +176,8 @@ export function SharedFile({ encodedPath, uid, onBack, previewWorkspace }: Share
         }
       } catch (err) {
         if (controller.signal.aborted) return
+        // An expired session on a paged preview shows the same sign-in screen as a whole-file read.
+        if (err instanceof SharedFileAuthError) { setNeedsAuth(true); return }
         console.error('Failed to load shared file:', err)
         setError(err instanceof Error ? err.message : 'Failed to load file')
       } finally {

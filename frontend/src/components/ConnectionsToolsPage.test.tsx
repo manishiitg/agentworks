@@ -5,8 +5,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 import ConnectionsToolsPage from './ConnectionsToolsPage'
 const state = vi.hoisted(() => ({ account: 'first', network: 'one', get: vi.fn(), personal: vi.fn(), canManage: true, admin: false }))
 vi.mock('../stores/useAuthStore', () => ({ useAuthStore: (select: (s: unknown) => unknown) => select({ user: { id: state.account, is_admin: state.admin } }) }))
-vi.mock('../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (s: unknown) => unknown) => select({ activeWorkspaceId: state.network }) }))
-vi.mock('../services/api', () => ({ default: { get: state.get } }))
+vi.mock('../stores/useWorkspaceConnectionStore', async importOriginal => ({ ...await importOriginal<typeof import('../stores/useWorkspaceConnectionStore')>(), useWorkspaceConnectionStore: (select: (s: unknown) => unknown) => select({ activeWorkspaceId: state.network }) }))
+vi.mock('../services/api', async importOriginal => ({ ...await importOriginal<typeof import('../services/api')>(), default: { get: state.get } }))
 vi.mock('./workspace/WorkspacePageHeader', () => ({ WorkspacePageHeader: () => null }))
 vi.mock('./integrations/OpenVaultButton', () => ({ OpenVaultButton: () => null, useCanManageVault: () => state.canManage }))
 vi.mock('./integrations/PersonalAccountsPanel', () => ({ default: (props: unknown) => { state.personal(props); return <div>Personal accounts</div> } }))
@@ -82,13 +82,13 @@ it('opens AI accounts in the same settings content area', async () => {
 })
 
 // PLAT-746: Appearance is the same Settings page, not another project editor.
-it('opens the copyable appearance prompt in Settings', async () => {
+// 8d7c02f133: a personal theme picker and an agent draft replaced the copyable prompt form.
+it('opens the personal appearance picker in Settings', async () => {
   await act(async () => root.render(<ConnectionsToolsPage />))
   await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Appearance')!.click())
   expect(host.querySelector('[aria-label="Import theme file"]')).toBeNull()
-  expect(host.querySelector('#appearance-prompt')).toBeTruthy()
-  expect(host.textContent).toContain('Copy prompt')
-  expect(host.textContent).toContain('Reset to default')
+  expect(host.querySelector('#appearance-prompt')).toBeNull()
+  expect(host.textContent).toContain('Choose a look, or ask an agent to make it yours.')
 })
 
 it('opens the Appearance section directly from the account menu route', async () => {
@@ -96,7 +96,7 @@ it('opens the Appearance section directly from the account menu route', async ()
   window.history.replaceState({},'', '/settings/connections?section=appearance')
   try {
     await act(async()=>root.render(<ConnectionsToolsPage/>))
-    expect(host.querySelector('textarea#appearance-prompt')).toBeTruthy()
+    expect(host.textContent).toContain('Choose a look, or ask an agent to make it yours.')
     expect(host.querySelector('nav button[aria-current="page"]')?.textContent).toBe('Appearance')
   } finally {window.history.replaceState({},'',previous)}
 })

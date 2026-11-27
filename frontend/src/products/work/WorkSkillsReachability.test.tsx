@@ -151,7 +151,9 @@ it('keeps the active agent name clickable in both sidebar states even after anot
   const header=host.querySelector('[data-agent-header]')!
   expect(header.textContent).toContain('Example')
   const add = host.querySelector<HTMLButtonElement>('button[aria-label="New agent"]')
-  expect(add).toBe(header.nextElementSibling)
+  // #4334: a hairline divider sits between the agent name and + New agent.
+  expect(header.nextElementSibling?.getAttribute('aria-hidden')).toBe('true')
+  expect(add).toBe(header.nextElementSibling?.nextElementSibling)
   expect(host.querySelector('[data-testid="work-chat-tab-strip"]')).toBeNull()
   expect(host.querySelector('[data-testid="work-more-tabs"]')).toBeNull()
   const details=header.querySelector<HTMLButtonElement>('button[aria-label="About Helper"]')
@@ -271,8 +273,9 @@ it('remembers the Team one-line view per person and Team while keeping the curre
  expect(host.querySelector('[aria-label="Team pane"]')).not.toBeNull()
 })
 
-// #3092: hiding is a sidebar preference for owned side agents, not a change to the tab or its saved order.
-it('projects sidebar hiding only for owned side agents and keeps the selected tab in order', async()=>{
+// #3092: hiding is a sidebar preference for owned agents, not a change to the tab or its saved order.
+// #4046 (owner, 25 Nov): Main hides like any agent; a teammate's agent never does.
+it('projects sidebar hiding only for owned agents and keeps the selected tab in order', async()=>{
  const names=['main','visible','hidden-first','hidden-second','teammate']
  const tabs=names.map(name=>({tabId:name,name,metadata:{agentProfileId:'work',agentProfileProjectId:'example',agentProfileConversationKey:name,agentProfileTabCanWrite:name!=='teammate',...(name==='teammate'?{agentProfileTabOwnerID:'peer',agentProfileTabOwnerName:'Teammate'}:{})}}))
  const listed=tabs.map(({tabId,name})=>({conversation_key:tabId,name,can_write:tabId!=='teammate',is_main:tabId==='main',pinned:tabId==='visible'}))
@@ -283,8 +286,8 @@ it('projects sidebar hiding only for owned side agents and keeps the selected ta
   await act(async()=>root.render(page()))
   const rows=useCrewAgentsStore.getState().agents
   expect(rows.map(row=>row.tabId)).toEqual(names)
-  expect(rows.filter(row=>row.sidebarHidden).map(row=>row.tabId)).toEqual(['hidden-first','hidden-second'])
-  expect(rows.find(row=>row.tabId==='main')?.actions?.setSidebarHidden).toBeUndefined()
+  expect(rows.filter(row=>row.sidebarHidden).map(row=>row.tabId)).toEqual(['main','hidden-first','hidden-second'])
+  expect(rows.find(row=>row.tabId==='main')?.actions?.setSidebarHidden).toBeTypeOf('function')
   expect(rows.find(row=>row.tabId==='teammate')?.actions?.setSidebarHidden).toBeUndefined()
   expect(host.querySelector('[data-testid="work-chat-tab-strip"]')).toBeNull()
   expect(host.querySelector('[data-testid="work-more-tabs"]')).toBeNull()

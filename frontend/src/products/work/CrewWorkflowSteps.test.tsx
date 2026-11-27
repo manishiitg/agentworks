@@ -18,6 +18,8 @@ it('shows the decorated step failure and checks after collapsing its agent row',
       { execution_id: 'failed', id: 'failed', name: 'Review', source_call: 'main.py:review@main.py:6', status: 'failed', started_at: '2026-01-01T00:00:00Z', detail: 'Receipt failure evidence' },
       { execution_id: 'other', id: 'other', name: 'Review', source_call: 'main.py:review@main.py:12', status: 'completed', started_at: '2026-01-01T00:00:00Z', detail: 'Other receipt' },
     ]} latestEvidence={[{ id: 'check-failed', at: '2026-01-01T00:00:00Z', kind: 'check', step_execution_id: 'failed', ok: false, detail: 'Failed check' }]} />))
+    // Flow is the default view (6e9fb3d256); step checks are listed in the List view.
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'List')!.click())
     expect(host.textContent).toContain('Receipt failure evidence')
     expect(host.textContent).toContain('1 of 1 check failed')
     expect(host.textContent).not.toContain('Other receipt')
