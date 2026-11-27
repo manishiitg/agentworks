@@ -6,19 +6,25 @@ import (
 	"testing"
 )
 
-func TestChatRepliesNoteFollowsStyleAndCard(t *testing.T) {
-	if note := chatRepliesNote(ProductAgentIdentity{NextSteps: "off", UnrelatedTask: "here"}, true); note != "" {
-		t.Fatalf("with the card off and unrelated work done here the message gets nothing, got %q", note)
+// Owner, 27 Nov: the rules live in the chat's prompt; the person's message carries nothing unless a reminder is due.
+func TestChatRulesLiveInThePromptNotTheMessage(t *testing.T) {
+	on := ProductAgentIdentity{ReplyStyle: "concise", NextSteps: "on", UnrelatedTask: "ask"}
+	prompt := chatReplyStylePrompt(on)
+	if !strings.Contains(prompt, "```next") || !strings.Contains(prompt, "Reply concisely") || !strings.Contains(prompt, "new tab") || !strings.Contains(prompt, "never an agent message") {
+		t.Fatalf("card, style and unrelated question are prompt rules for the person's own turns, got %q", prompt)
 	}
-	if note := chatRepliesNote(ProductAgentIdentity{}, false); note != "" {
-		t.Fatalf("the card is only asked for on the person's own app turns, got %q", note)
+	if note := chatRulesTurnNote(on, true, false); note != "" {
+		t.Fatalf("the person's message stays what they typed, got %q", note)
 	}
-	if note := chatRepliesNote(ProductAgentIdentity{UnrelatedTask: "here"}, true); note != "" {
-		t.Fatalf("the card is opt-in: a chat that never turned it on gets no card note, got %q", note)
+	note := chatRulesTurnNote(on, true, true)
+	if !strings.HasPrefix(note, chatRepliesMarker) || !strings.Contains(note, "Reminder") || len(note) > 220 {
+		t.Fatalf("a due reminder is one short marked line, got %q", note)
 	}
-	note := chatRepliesNote(ProductAgentIdentity{ReplyStyle: "concise", NextSteps: "on"}, true)
-	if !strings.HasPrefix(note, chatRepliesMarker) || !strings.Contains(note, "```next") || strings.Contains(note, "Reply concisely") {
-		t.Fatalf("the message carries only the card note; the style is in the prompt, got %q", note)
+	if note := chatRulesTurnNote(on, false, false); !strings.Contains(note, "not from the person") {
+		t.Fatalf("an agent/schedule/Slack turn is told the rules don't apply, got %q", note)
+	}
+	if note := chatRulesTurnNote(ProductAgentIdentity{ReplyStyle: "concise"}, false, true); note != "" {
+		t.Fatalf("with no card or question on, nothing is ever added, got %q", note)
 	}
 	if line := chatReplyStylePrompt(ProductAgentIdentity{ReplyStyle: "Learning"}); !strings.Contains(line, "Teach as you go") {
 		t.Fatalf("the style is a prompt line, got %q", line)
@@ -47,15 +53,11 @@ func TestChatReplyStyleAcceptsOnlyOfferedStyles(t *testing.T) {
 }
 
 func TestChatUnrelatedTaskAskIsOptIn(t *testing.T) {
-	if note := chatRepliesNote(ProductAgentIdentity{}, true); note != "" {
-		t.Fatalf("a new chat gets no note: asking about unrelated work is opt-in, got %q", note)
+	if line := chatReplyStylePrompt(ProductAgentIdentity{}); strings.Contains(line, "unrelated") {
+		t.Fatalf("a new chat has no unrelated-work rule: asking is opt-in, got %q", line)
 	}
-	note := chatRepliesNote(ProductAgentIdentity{UnrelatedTask: "ask", NextSteps: "off"}, true)
-	if !strings.HasPrefix(note, chatRepliesMarker) || !strings.Contains(note, "new tab") || strings.Contains(note, "```next") {
-		t.Fatalf("a chat set to Ask me asks about unrelated work, even with the card off, got %q", note)
-	}
-	if note := chatRepliesNote(ProductAgentIdentity{UnrelatedTask: "new_tab"}, true); strings.Contains(note, "unrelated") {
-		t.Fatalf("new_tab is a prompt rule, not a message note, got %q", note)
+	if line := chatReplyStylePrompt(ProductAgentIdentity{UnrelatedTask: "ask"}); !strings.Contains(line, "ask whether to open a new tab") {
+		t.Fatalf("Ask me is a prompt rule, got %q", line)
 	}
 	if line := chatReplyStylePrompt(ProductAgentIdentity{UnrelatedTask: "new_tab"}); !strings.Contains(line, "open a new tab") || !strings.Contains(line, "`sessions` action=open") {
 		t.Fatalf("new_tab is a prompt line naming how to open the tab, got %q", line)

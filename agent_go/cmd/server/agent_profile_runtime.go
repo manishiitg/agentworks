@@ -638,10 +638,17 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 				req.Query = line + "\n\n" + req.Query
 			}
 		}
-		// The summary and next-steps card (chat_reply_style.go): only on turns the person typed in the app, and once.
+		// The chat's rules are in its prompt (chat_reply_style.go); the message gets at most one short line: a due
+		// reminder on the person's own app turn (chat_rules_reminder.go), or, on any other turn, that the rules don't apply.
 		if replyTabFound && !strings.Contains(req.Query, chatRepliesMarker) {
-			if note := chatRepliesNote(replyTab.Identity, chatPersonAppTurn(ctx, req, sessionID)); note != "" {
+			attended := chatPersonAppTurn(ctx, req, sessionID)
+			reason := ""
+			if attended && (chatNextStepsOn(replyTab.Identity) || normalizedUnrelatedAsk(replyTab.Identity)) && api.eventStore != nil {
+				reason = chatRulesReminderReason(sessionID, req.Query, time.Now(), chatNextStepsOn(replyTab.Identity), api.eventStore.LastEventsRaw(sessionID, 200))
+			}
+			if note := chatRulesTurnNote(replyTab.Identity, attended, reason != ""); note != "" {
 				req.Query = strings.TrimRight(req.Query, "\n") + "\n\n" + note
+				log.Printf("[CHAT_REPLIES] session=%s action=note attended=%t reminder=%q", sessionID, attended, reason)
 			}
 		}
 	}

@@ -9,9 +9,11 @@ import (
 
 // A chat's replies (owner, 26 Nov, like Claude Desktop's Output style and Summary and next steps): picked per chat
 // from the mode menu in the message box, for every coding app (owner, 26 Nov: style at prompt level, card at message
-// level). The style is a line of the chat's prompt (chatReplyStylePrompt). The card's request is a short note at the
-// end of the person's message (chatRepliesNote), only on turns sent from the app; the screen hides it from the
-// person's bubble (chatMessageContent.ts, the "⚙️ Chat settings:" marker).
+// level). Owner, 27 Nov: every rule lives in the chat's prompt (chatReplyStylePrompt), so the person's messages stay
+// what they typed; a change mid-chat reaches the running app as the one-time "instructions changed" note. A short
+// reminder goes on the person's message only when the rules may be fading (chat_rules_reminder.go): after a
+// compaction, when the card stopped being followed, after a long break, or every 20 messages. The screen hides it
+// (chatMessageContent.ts, the "⚙️ Chat settings" marker).
 //   - ReplyStyle: "" (Default) or one of chatReplyStyles.
 //   - NextSteps: off unless "on" (owner, 27 Nov: opt-in; was on by default). On a turn the person sends from the app, the agent may end its reply with a short
 //     summary, one question and two or three answers as a ```next block; the screen shows it as a card with one-click
@@ -37,8 +39,6 @@ var chatUnrelatedTaskChoices = []string{"ask", "new_tab", "here"}
 
 // chatNewTabHow is how the agent opens the new tab; the sessions tool is in every project chat's tools.
 const chatNewTabHow = "a new tab is `sessions` action=open with place=beside and the request, in full, as its task"
-
-const chatUnrelatedAskNote = "If this message asks for a piece of work unrelated to this chat's task, don't start it yet: ask whether to open a new tab for it or do it here, then follow the answer (" + chatNewTabHow + ")."
 
 const chatUnrelatedNewTabPrompt = "\n\nWhen the person asks in this chat for a piece of work unrelated to this chat's task, don't do it here: open a new tab for it (" + chatNewTabHow + ") and tell them in one line where it went (the person's choice for this chat)."
 
@@ -128,30 +128,53 @@ func chatReplyStylePrompt(identity ProductAgentIdentity) string {
 	if style, _ := normalizeChatReplyStyle(identity.ReplyStyle); style != "" {
 		out += "\n\nReply style for this chat (the person's choice): " + chatReplyStyleNotes[style]
 	}
-	if unrelated, _ := normalizeChatUnrelatedTask(identity.UnrelatedTask); unrelated == "new_tab" {
+	unrelated, _ := normalizeChatUnrelatedTask(identity.UnrelatedTask)
+	switch unrelated {
+	case "new_tab":
 		out += chatUnrelatedNewTabPrompt
+	case "ask":
+		out += chatUnrelatedAskPrompt
+	}
+	if chatNextStepsOn(identity) {
+		out += chatNextStepsPrompt
 	}
 	return out
 }
 
-// chatRepliesNote is the note added to this turn's message, or "" when nothing applies: the card's request and, when
-// the chat asks about unrelated work, that question. Both need the person to answer, so only the server, which knows
-// where a turn came from, adds them, and only on turns the person sent from the app (attended).
-func chatRepliesNote(identity ProductAgentIdentity, attended bool) string {
+// chatRulesOnlyPersonTurns limits the card and the unrelated-work question to the person's own messages.
+const chatRulesOnlyPersonTurns = " Only when answering a message the person typed in the app, never an agent message, a schedule, a Slack message or an automated event."
+
+const chatUnrelatedAskPrompt = "\n\nUnrelated work (the person's choice for this chat): if the person asks for a piece of work unrelated to this chat's task, don't start it yet: ask whether to open a new tab for it or do it here, then follow the answer (" + chatNewTabHow + ")." + chatRulesOnlyPersonTurns
+
+const chatNextStepsPrompt = "\n\nSummary and next steps card (the person's choice for this chat): " + chatNextStepsNote + chatRulesOnlyPersonTurns
+
+// chatRulesTurnNote is the note for this turn's message, or "": on the person's own app turn only a due reminder
+// (reminderDue); on any other turn, while a rule is on, a line saying the rules don't apply to it.
+func chatRulesTurnNote(identity ProductAgentIdentity, attended, reminderDue bool) string {
+	ask := normalizedUnrelatedAsk(identity)
+	card := chatNextStepsOn(identity)
+	if !ask && !card {
+		return ""
+	}
 	if !attended {
+		return chatRepliesMarker + " This message is not from the person in the app: no next card and no unrelated-work question."
+	}
+	if !reminderDue {
 		return ""
 	}
 	parts := []string{}
-	if unrelated, _ := normalizeChatUnrelatedTask(identity.UnrelatedTask); unrelated == "ask" {
-		parts = append(parts, chatUnrelatedAskNote)
+	if card {
+		parts = append(parts, "end a reply that waits on the person with the ```next card")
 	}
-	if chatNextStepsOn(identity) {
-		parts = append(parts, chatNextStepsNote)
+	if ask {
+		parts = append(parts, "ask before starting work unrelated to this chat")
 	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return chatRepliesMarker + " " + strings.Join(parts, " ")
+	return chatRepliesMarker + " Reminder: " + strings.Join(parts, "; ") + " (details in your instructions)."
+}
+
+func normalizedUnrelatedAsk(identity ProductAgentIdentity) bool {
+	unrelated, _ := normalizeChatUnrelatedTask(identity.UnrelatedTask)
+	return unrelated == "ask"
 }
 
 // chatPersonAppTurn is a turn the person typed in the app (#4339): attended, typed by a person (not a schedule,
