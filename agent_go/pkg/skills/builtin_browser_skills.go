@@ -271,4 +271,17 @@ unverified fallbacks as candidates; one successful run cannot prove permanence.
 ## Auth Checks
 
 For authenticated sites, verify by page content, not just URL load. For X/Twitter, ` + "`https://x.com/home`" + ` loading is not enough; confirm the authenticated home feed or account UI is visible. A sign-in page means connected but not authenticated.
+
+## Typing Saved Secrets
+
+To enter a saved Vault key into a form without putting its value in tool arguments, pass ` + "`$SECRET_<NAME>`" + ` (or ` + "`${SECRET_<NAME>}`" + `) in ` + "`fill`" + ` or ` + "`type`" + ` — across extension, headless, and CDP modes:
+
+` + "```python" + `
+agent_browser("fill", ["@e3", "$SECRET_SITE_PASSWORD"])
+# or: agent_browser("type", ["@e3", "$SECRET_SITE_PASSWORD"])
+` + "```" + `
+
+The server substitutes the value from this turn's own selected keys under the same Vault access rules, and keeps the value out of tool arguments, results, errors, and server logs. Unknown or unselected key names fail with a plain error. Substitution applies only to ` + "`fill`" + ` and ` + "`type`" + `.
+
+Known limit: a later page snapshot or ` + "`eval`" + ` that reads the input field back can still expose what is on the page, so avoid reading entered credentials back.
 `

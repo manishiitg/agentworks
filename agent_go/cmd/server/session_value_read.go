@@ -150,6 +150,47 @@ func secretsTurnDisabled(profile *resolvedAgentProfile) bool {
 	return profile != nil && profile.Definition.Runtime.Capabilities.Secrets == agentprofiles.CapabilityDisabled
 }
 
+// turnSelectedSecretEnv returns this turn's SECRET_* environment map under the
+// same selection and access rules used for shell execution (empty on Run/Ask
+// turns or when the profile disables secrets).
+func (api *StreamingAPI) turnSelectedSecretEnv(
+	ctx context.Context,
+	sessionID, currentUserID string,
+	req QueryRequest,
+	resolvedProfile *resolvedAgentProfile,
+	crewAskOnly bool,
+	serverVaultRound context.Context,
+) map[string]string {
+	if crewAskOnly || secretsTurnDisabled(resolvedProfile) {
+		return map[string]string{}
+	}
+	selection := req.SelectedGlobalSecrets
+	if selection == nil && resolvedProfile == nil {
+		folder := strings.TrimSpace(req.SelectedFolder)
+		if folder == "" {
+			if active, _ := api.getActiveSession(sessionID); active != nil {
+				folder = strings.TrimSpace(active.WorkspacePath)
+			}
+		}
+		if strings.HasPrefix(folder, "Workflow/") {
+			if caps, found, err := LoadManifestForExecution(ctx, folder); err == nil && found && caps.SelectedGlobalSecretNames != nil {
+				selection = caps.SelectedGlobalSecretNames
+			}
+		}
+	}
+	if serverVaultRound == nil {
+		serverVaultRound = withServerVaultSecretRound(context.Background())
+	}
+	secrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), selection)
+	secrets = api.withOwnChatKeys(context.Background(), currentUserID, req.SelectedFolder, personTypedChatTurn(ctx, req, sessionID, crewAskOnly), secrets)
+	secrets = api.addServerVaultSecrets(serverVaultRound, currentUserID, req.SelectedFolder, secrets, selection)
+	out := make(map[string]string, len(secrets))
+	for _, s := range secrets {
+		out["SECRET_"+s.Name] = s.Value
+	}
+	return out
+}
+
 // secretReadFile is where a chat's CLI shell finds what `mcpbridge secret NAME` needs: <its private HOME>/.agentworks/
 // secret-read. The private home is per chat session (cliruntime digest of user, project, session, provider), and a
 // session runs one turn at a time, so the file is that chat's alone. Rewritten at every turn start: the token rotates

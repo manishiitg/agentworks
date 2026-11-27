@@ -65,13 +65,16 @@ func (c *Client) CheckCDP(ctx context.Context, port int) (bool, string, error) {
 
 // ExecuteOptions contains optional configuration for command execution
 type ExecuteOptions struct {
-	Timeout          time.Duration
-	UserID           string // Trusted caller identity for workspace account-slot checks.
-	FolderGuard      *FolderGuardConfig
-	WorkingDirectory string // Working directory for command execution (relative to workspace root)
-	ArtifactTransfer *ArtifactTransfer
-	StreamRecording  *StreamRecording
-	UploadTransfers  []UploadTransfer
+	Timeout            time.Duration
+	UserID             string // Trusted caller identity for workspace account-slot checks.
+	FolderGuard        *FolderGuardConfig
+	WorkingDirectory   string // Working directory for command execution (relative to workspace root)
+	ExtraEnv           map[string]string
+	ShellExpandEnvVars map[string]bool
+	RedactValues       []string
+	ArtifactTransfer   *ArtifactTransfer
+	StreamRecording    *StreamRecording
+	UploadTransfers    []UploadTransfer
 }
 
 // ExecuteCommand executes an agent-browser command via the workspace API
@@ -88,10 +91,17 @@ func (c *Client) executeCommandOnce(ctx context.Context, args []string, opts *Ex
 		timeout = opts.Timeout
 	}
 
-	// Build the shell command: agent-browser [args...] with proper quoting
+	// Build the shell command: agent-browser [args...] with proper quoting.
+	// Authorized secret placeholders stay double-quoted so POSIX sh expands
+	// them from ExtraEnv into a single argv element without putting the
+	// secret value into the command string, process registry, or logs.
 	quotedArgs := make([]string, len(args))
 	for i, arg := range args {
-		quotedArgs[i] = quoteShellArg(arg)
+		if envName, ok := secretShellEnvRef(arg, opts); ok {
+			quotedArgs[i] = `"$` + envName + `"`
+		} else {
+			quotedArgs[i] = quoteShellArg(arg)
+		}
 	}
 	fullCommand := "agent-browser " + strings.Join(quotedArgs, " ")
 
@@ -126,6 +136,12 @@ func (c *Client) executeWorkspaceCommand(ctx context.Context, fullCommand string
 
 	if opts != nil && opts.FolderGuard != nil {
 		reqBody.FolderGuard = opts.FolderGuard
+	}
+	if opts != nil && len(opts.ExtraEnv) > 0 {
+		reqBody.ExtraEnv = make(map[string]string, len(opts.ExtraEnv))
+		for k, v := range opts.ExtraEnv {
+			reqBody.ExtraEnv[k] = v
+		}
 	}
 	if opts != nil && opts.ArtifactTransfer != nil {
 		reqBody.ArtifactTransfer = opts.ArtifactTransfer
@@ -171,10 +187,15 @@ func (c *Client) executeWorkspaceCommand(ctx context.Context, fullCommand string
 		return "", fmt.Errorf("failed to read response: %w", err)
 	}
 
+	var redactValues []string
+	if opts != nil {
+		redactValues = opts.RedactValues
+	}
+
 	// Parse response
 	var apiResp APIResponse
 	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w (body: %s)", err, string(body))
+		return "", fmt.Errorf("failed to parse response: %w (body: %s)", err, redactBrowserText(string(body), redactValues))
 	}
 
 	// Check for errors
@@ -191,7 +212,7 @@ func (c *Client) executeWorkspaceCommand(ctx context.Context, fullCommand string
 		if stderr != "" {
 			errMsg += "\nStderr: " + stderr
 		}
-		return "", fmt.Errorf("command failed: %s", errMsg)
+		return "", fmt.Errorf("command failed: %s", redactBrowserText(errMsg, redactValues))
 	}
 
 	// Check exit code
@@ -207,11 +228,11 @@ func (c *Client) executeWorkspaceCommand(ctx context.Context, fullCommand string
 		} else if stderr != "" {
 			output += "\nStderr: " + stderr
 		}
-		return "", fmt.Errorf("command exited with code %d: %s", apiResp.Data.ExitCode, strings.TrimSpace(output))
+		return "", fmt.Errorf("command exited with code %d: %s", apiResp.Data.ExitCode, redactBrowserText(strings.TrimSpace(output), redactValues))
 	}
 
 	// Return stdout (which contains JSON output from agent-browser)
-	return apiResp.Data.Stdout, nil
+	return redactBrowserText(apiResp.Data.Stdout, redactValues), nil
 }
 
 // RecordStream uses the workspace encoder without starting a second browser

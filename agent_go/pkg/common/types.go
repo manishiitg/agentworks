@@ -675,6 +675,16 @@ func ReplaceSessionShellEnvPrefix(sessionID, prefix string, env map[string]strin
 	log.Printf("[SHELL] Replaced %s shell env namespace with %d var(s) for session %s", prefix, len(env), sessionID)
 }
 
+// DeleteSessionShellEnvKey removes one key from a session's shell environment.
+func DeleteSessionShellEnvKey(sessionID, key string) {
+	if strings.TrimSpace(sessionID) == "" || strings.TrimSpace(key) == "" {
+		return
+	}
+	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
+		delete(cfg.Env, key)
+	})
+}
+
 // GetSessionShellEnv returns a copy of the session's shell env vars (nil if none),
 // safe to read without holding the config lock.
 func GetSessionShellEnv(sessionID string) map[string]string {

@@ -25,6 +25,7 @@ type ShellExecuteRequest struct {
 	Args             []string           `json:"args,omitempty"`
 	Timeout          int                `json:"timeout,omitempty"`
 	FolderGuard      *FolderGuardConfig `json:"folder_guard,omitempty"`
+	ExtraEnv         map[string]string  `json:"extra_env,omitempty"`
 	ArtifactTransfer *ArtifactTransfer  `json:"artifact_transfer,omitempty"`
 	StreamRecording  *StreamRecording   `json:"stream_recording,omitempty"`
 	UploadTransfers  []UploadTransfer   `json:"upload_transfers,omitempty"`

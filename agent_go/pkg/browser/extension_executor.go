@@ -260,7 +260,7 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 	if command == "record" && len(values) == 1 && values[0] == "stop" {
 		// Stopping belongs to the recording lease, not the current page. A closed
 		// target must still let the encoder finish and release its state.
-		return e.executeExtensionCommand(ctx, b, client, opts, owner, endpoint, command, values, "")
+		return e.executeExtensionCommand(ctx, b, client, opts, owner, endpoint, command, values, "", nil)
 	}
 	createdFirstTab := false
 	firstTabLabel := ""
@@ -392,16 +392,25 @@ func (e *Executor) handleExtensionBrowser(ctx context.Context, args map[string]i
 		output, err := json.Marshal(map[string]interface{}{"success": true, "data": data})
 		return string(output), err
 	}
-	return e.executeExtensionCommand(ctx, b, client, opts, owner, endpoint, command, values, selected.TargetID)
+	return e.executeExtensionCommand(ctx, b, client, opts, owner, endpoint, command, values, selected.TargetID, sessionSecretsForBrowser(agent, workflow))
 }
 
-func (e *Executor) executeExtensionCommand(ctx context.Context, b *browserrelay.Binding, client *browserrelay.Client, opts *ExecuteOptions, owner, endpoint, command string, values []string, targetID string) (string, error) {
+func (e *Executor) executeExtensionCommand(ctx context.Context, b *browserrelay.Binding, client *browserrelay.Client, opts *ExecuteOptions, owner, endpoint, command string, values []string, targetID string, secrets map[string]string) (string, error) {
 	values = normalizeAgentBrowserCommandArgs(command, values)
-	if (command == "screenshot" || command == "record") && (opts.FolderGuard == nil || !opts.FolderGuard.Enabled) {
+	secretPlan, secretErr := prepareBrowserSecretArgs(command, values, secrets)
+	if secretErr != nil {
+		return "", secretErr
+	}
+	commandOpts := opts
+	if secretPlan != nil {
+		values = secretPlan.RewrittenArgs
+		commandOpts = applyBrowserSecretPlan(opts, secretPlan)
+	}
+	if (command == "screenshot" || command == "record") && (commandOpts.FolderGuard == nil || !commandOpts.FolderGuard.Enabled) {
 		return "", fmt.Errorf("Screenshot and recording files require a workspace folder guard")
 	}
 	var artifactPlan *browserArtifactPlan
-	if opts.FolderGuard != nil && opts.FolderGuard.Enabled {
+	if commandOpts.FolderGuard != nil && commandOpts.FolderGuard.Enabled {
 		plan, err := prepareBrowserArtifact(command, values, owner, client.Session(), client.Session())
 		if err != nil {
 			return "", err
@@ -415,13 +424,13 @@ func (e *Executor) executeExtensionCommand(ctx context.Context, b *browserrelay.
 				defer os.Remove(plan.StagedPath)
 			}
 			values = plan.RewrittenArgs
-			opts.ArtifactTransfer = plan.Transfer
+			commandOpts.ArtifactTransfer = plan.Transfer
 			if command == "record" && plan.FinalizeOnCall {
 				// Finish the encoder first; interrupted takes must never be
 				// published just because the CLI reports a graceful stop.
 				transfer := *plan.Transfer
 				transfer.Finalize = false
-				opts.ArtifactTransfer = &transfer
+				commandOpts.ArtifactTransfer = &transfer
 			}
 		}
 	}
@@ -433,13 +442,19 @@ func (e *Executor) executeExtensionCommand(ctx context.Context, b *browserrelay.
 	var err error
 	var streamEnabledByRecording bool
 	if command == "record" {
-		output, streamEnabledByRecording, err = e.executeExtensionRecording(ctx, client, opts, artifactPlan, values, endpoint, owner, targetID)
+		output, streamEnabledByRecording, err = e.executeExtensionRecording(ctx, client, commandOpts, artifactPlan, values, endpoint, owner, targetID)
 	} else {
-		output, err = e.Client.ExecuteCommand(ctx, cli, opts)
+		output, err = e.Client.ExecuteCommand(ctx, cli, commandOpts)
 	}
 	// Never expose the private relay capability through CLI diagnostics.
 	output = strings.ReplaceAll(rewriteBrowserArtifactOutput(output, artifactPlan), endpoint, "[private Chrome connection]")
+	if secretPlan != nil {
+		output = redactBrowserText(output, secretPlan.RedactValues)
+	}
 	if err != nil {
+		if secretPlan != nil {
+			err = redactBrowserError(err, secretPlan.RedactValues)
+		}
 		if artifactPlan != nil && artifactPlan.DeleteLeaseOnSuccess && strings.Contains(err.Error(), "command exited with code") {
 			// The CLI completed stop and cleared its state even when a take failed.
 			// Do not publish failed footage or block later automation on that lease.
@@ -462,7 +477,7 @@ func (e *Executor) executeExtensionCommand(ctx context.Context, b *browserrelay.
 				_ = os.Remove(artifactPlan.StagedPath)
 				return "", fmt.Errorf("RECORDING_INTERRUPTED: the shared tab lost its debugger; the take was stopped and not published. Start a fresh recording")
 			}
-			if err := e.Client.FinalizeArtifact(ctx, artifactPlan.Transfer, opts); err != nil {
+			if err := e.Client.FinalizeArtifact(ctx, artifactPlan.Transfer, commandOpts); err != nil {
 				return "", err
 			}
 			deleteBrowserArtifactLease(artifactPlan.LeaseKey)
