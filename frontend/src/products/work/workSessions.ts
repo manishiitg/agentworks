@@ -43,7 +43,7 @@ export async function loadWorkSessions(product: ProjectProductConfig = CREW_PROD
   return sessions
 }
 
-export async function createWorkSession(title: string, description: string, icon?: string, product: ProjectProductConfig = CREW_PRODUCT, runsOn?: WorkLLMSelection, rootPath?: string): Promise<WorkSession> {
+export async function createWorkSession(title: string, description: string, icon?: string, product: ProjectProductConfig = CREW_PRODUCT, runsOn?: WorkLLMSelection, rootPath?: string, firstMessage?: string): Promise<WorkSession> {
   const options = await loadAgentProfileProviderOptions(product.profileId)
   // The product default, unless this person cannot use it here (Claude Code and Codex are admins-only on some servers):
   // then the first coding agent they may run, so a new project does not start on a refused account (server B
@@ -67,6 +67,7 @@ export async function createWorkSession(title: string, description: string, icon
   const project = await createProductProject({
     root: product.projectsRoot,
     rootPath,
+    firstMessage,
     product: product.profileId,
     title,
     // Optional identity details can be added after name-only creation.
@@ -77,7 +78,7 @@ export async function createWorkSession(title: string, description: string, icon
     ...(product.hasIdentity ? {
       identity: {
         name: title.trim(),
-        icon: icon?.trim() || Array.from(title.trim())[0]?.toLocaleUpperCase() || 'C',
+        icon: icon?.trim() || Array.from(title.trim() || firstMessage?.trim() || '')[0]?.toLocaleUpperCase() || 'C',
       },
     } : {}),
     llmConfig,

@@ -31,6 +31,8 @@ export type ProductProject<P extends string = string> = {
   /** Set by the server only: "agentworks" marks the person's own AgentWorks Crew. */
   role?: 'agentworks'
   creationWarnings?: string[]
+  /** The folder already had this project (one folder, one project); it was opened, not created. */
+  existing?: boolean
   selectionConfigInitialized: boolean
   runtimeConfigInitialized: boolean
   /**
@@ -238,6 +240,8 @@ export async function loadProductProjects<P extends string>(root: string, produc
 export async function createProductProject<P extends string>(options: {
   root: string
   rootPath?: string
+  /** The start page's first message: with no title, the server names the project from it (#4439). */
+  firstMessage?: string
   product: P
   title: string
   description: string
@@ -254,13 +258,13 @@ export async function createProductProject<P extends string>(options: {
   const description = options.description.trim()
   if (options.product === 'work') {
     const created = await agentApi.createProductProject(options.product, {
-      name: title, purpose: description, root_path: options.rootPath, icon: options.identity?.icon,
+      name: title, purpose: description, root_path: options.rootPath, first_message: options.firstMessage, icon: options.identity?.icon,
       llm_config: options.llmConfig,
       selected_skills: options.selectedSkills, files: options.initialFiles,
     })
     const project = parseProductProjectManifest(JSON.stringify(created.product_manifest), created.workspace_path, options.product)
     if (!project || project.id !== created.id) throw new Error('The new project could not be opened. Reload your projects to find it.')
-    return { ...applyRuntimeManifest(project, JSON.stringify(created.runtime_manifest)), filesPath: created.files_path, creationWarnings: created.warnings }
+    return { ...applyRuntimeManifest(project, JSON.stringify(created.runtime_manifest)), filesPath: created.files_path, creationWarnings: created.warnings, existing: created.existing }
   }
   // Personal products retain their existing creation path. Projects
   // have already returned through server-owned creation above.
