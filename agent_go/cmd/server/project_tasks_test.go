@@ -51,6 +51,11 @@ func TestProjectTasksNeedsYou(t *testing.T) {
 			t.Errorf("case %d: needs you = %v, want %v", i, got, c.want)
 		}
 	}
+	// Off (owner, 27 Nov): nobody drives the list, so unassigned work and chasing aren't flagged.
+	off := projectTaskList{Steps: list.Steps, Mode: "off"}
+	if v := projectTaskView(off, projectTask{Chase: "stuck", Assignee: "Docs agent"}, nil); v.Chase != "" || projectTaskView(off, projectTask{}, nil).NeedsYou != "" {
+		t.Errorf("off mode: chase %q, unassigned flagged %v", v.Chase, projectTaskView(off, projectTask{}, nil).NeedsYou)
+	}
 	// The person's answer buttons come only with an open question.
 	if v := projectTaskView(list, projectTask{Waiting: "Fix now or later?", Choices: []string{"Fix now", "Later"}}, nil); len(v.Choices) != 2 {
 		t.Errorf("choices = %v", v.Choices)

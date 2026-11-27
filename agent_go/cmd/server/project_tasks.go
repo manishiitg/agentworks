@@ -30,6 +30,8 @@ const (
 	projectTasksDoneKept  = 100
 	projectTaskRefsMax    = 20
 	projectTaskEventsMax  = 30
+	projectTaskMovesMax   = 40
+	projectTaskMovesShown = 8
 	projectTasksSortedMax = 100
 	projectTaskChecksMax  = 20
 )
@@ -74,17 +76,22 @@ type projectTaskGroup struct {
 }
 
 type projectTask struct {
-	ID       string              `json:"id"`
-	Title    string              `json:"title"`
-	Group    string              `json:"group,omitempty"`  // one of the list's groups; "" or an unknown name shows under Other
-	Pinned   bool                `json:"pinned,omitempty"` // first in its group
-	Due      string              `json:"due,omitempty"`    // YYYY-MM-DD
-	Step     string              `json:"step,omitempty"`
-	Assignee string              `json:"assignee,omitempty"` // the agent or person who has it; "" = not handed out yet
-	Proposed string              `json:"proposed,omitempty"` // "Ask me first": the agent the lead suggests, until the person approves
-	Waiting  string              `json:"waiting,omitempty"`  // what the lead needs the person to decide
-	Choices  []string            `json:"choices,omitempty"`  // short answers for Waiting, shown as buttons
-	Held     bool                `json:"held,omitempty"`     // the person put it on hold; the lead leaves it alone
+	ID       string   `json:"id"`
+	Title    string   `json:"title"`
+	Group    string   `json:"group,omitempty"`  // one of the list's groups; "" or an unknown name shows under Other
+	Pinned   bool     `json:"pinned,omitempty"` // first in its group
+	Due      string   `json:"due,omitempty"`    // YYYY-MM-DD
+	Step     string   `json:"step,omitempty"`
+	Assignee string   `json:"assignee,omitempty"` // the agent or person who has it; "" = not handed out yet
+	Proposed string   `json:"proposed,omitempty"` // "Ask me first": the agent the lead suggests, until the person approves
+	Waiting  string   `json:"waiting,omitempty"`  // what the lead needs the person to decide
+	Choices  []string `json:"choices,omitempty"`  // short answers for Waiting, shown as buttons
+	Held     bool     `json:"held,omitempty"`     // the person put it on hold; the lead leaves it alone
+	// Chase (owner, 27 Nov): where the lead's chasing stands, "nudged" or "stuck";
+	// handing the task to someone clears it. From is who had it before a move.
+	Chase    string              `json:"chase,omitempty"`
+	ChaseAt  int64               `json:"chase_at,omitempty"`
+	From     string              `json:"from,omitempty"`
 	Tasks    []projectTaskLink   `json:"tasks,omitempty"`
 	Checks   []projectTaskCheck  `json:"checklist,omitempty"`
 	Sources  []projectTaskRef    `json:"sources,omitempty"`
@@ -105,6 +112,16 @@ type projectTaskSorted struct {
 	By     string `json:"by,omitempty"`
 }
 
+// projectTaskMove is one line of "What the lead did": a hand-out, nudge, move,
+// question or close, recorded by the server when a task changes that way.
+type projectTaskMove struct {
+	At     int64  `json:"at"`
+	By     string `json:"by,omitempty"`
+	Kind   string `json:"kind"` // gave, moved, nudged, stuck, suggested, asked, closed, step, held
+	Text   string `json:"text"`
+	TaskID string `json:"task_id,omitempty"`
+}
+
 type projectTaskList struct {
 	Steps []string `json:"steps,omitempty"`
 	Rules string   `json:"rules,omitempty"`
@@ -119,6 +136,7 @@ type projectTaskList struct {
 	Next     int                 `json:"next"`
 	Tasks    []projectTask       `json:"tasks"`
 	Sorted   []projectTaskSorted `json:"sorted,omitempty"`
+	Moves    []projectTaskMove   `json:"moves,omitempty"`
 }
 
 func (l projectTaskList) steps() []string {
@@ -264,6 +282,9 @@ func projectTasksTrim(list projectTaskList) projectTaskList {
 		kept = append([]projectTask{list.Tasks[i]}, kept...)
 	}
 	list.Tasks = kept
+	if len(list.Moves) > projectTaskMovesMax {
+		list.Moves = list.Moves[len(list.Moves)-projectTaskMovesMax:]
+	}
 	if len(list.Sorted) > projectTasksSortedMax {
 		list.Sorted = list.Sorted[len(list.Sorted)-projectTasksSortedMax:]
 	}
@@ -315,6 +336,9 @@ type crewPanelProjectTask struct {
 	Checks      []projectTaskCheck `json:"checklist,omitempty"`
 	Proposed    string             `json:"proposed,omitempty"`
 	Held        bool               `json:"held,omitempty"`
+	Chase       string             `json:"chase,omitempty"`
+	ChaseAt     int64              `json:"chase_at,omitempty"`
+	From        string             `json:"from,omitempty"`
 	Choices     []string           `json:"choices,omitempty"`
 	Group       string             `json:"group,omitempty"`
 	Pinned      bool               `json:"pinned,omitempty"`
@@ -326,11 +350,19 @@ type crewPanelProjectTask struct {
 	NeedsYou string `json:"needs_you,omitempty"`
 }
 
+// mode is how the list is run (owner, 27 Nov): off keeps it a plain list
+// nobody drives; ask has the lead propose and the person approve; auto (the
+// default) has the lead hand work out and chase it.
 func (l projectTaskList) mode() string {
-	if l.Mode == "ask" {
-		return "ask"
+	if l.Mode == "ask" || l.Mode == "off" {
+		return l.Mode
 	}
 	return "auto"
+}
+
+// move records one line of "What the lead did".
+func (l *projectTaskList) move(by, kind, text, taskID string, at int64) {
+	l.Moves = append(l.Moves, projectTaskMove{At: at, By: by, Kind: kind, Text: feedText(text, 200), TaskID: taskID})
 }
 
 func projectTaskView(list projectTaskList, t projectTask, tasks *conditionFeedTasks) crewPanelProjectTask {
@@ -354,6 +386,10 @@ func projectTaskView(list projectTaskList, t projectTask, tasks *conditionFeedTa
 		}
 	}
 	view.Proposed, view.Held, view.Checks = t.Proposed, t.Held, t.Checks
+	view.From = t.From
+	if !view.Done && !t.Held && list.mode() != "off" {
+		view.Chase, view.ChaseAt = t.Chase, t.ChaseAt
+	}
 	view.Group, view.Pinned, view.Due = list.groupOf(t), t.Pinned, t.Due
 	view.Overdue = t.Due != "" && !view.Done && t.Due < time.Now().Format("2006-01-02")
 	if !view.Done && !t.Held {
@@ -367,7 +403,7 @@ func projectTaskView(list projectTaskList, t projectTask, tasks *conditionFeedTa
 			view.NeedsYou, view.Choices = t.Waiting, t.Choices
 		case t.Proposed != "":
 			view.NeedsYou = "Approve handing it to " + t.Proposed
-		case t.Assignee == "" && view.NeedsYou == "" && step == list.steps()[0]:
+		case t.Assignee == "" && view.NeedsYou == "" && step == list.steps()[0] && list.mode() != "off":
 			// Only work not handed out yet; a task already past the first step needs nobody.
 			view.NeedsYou = "No agent fits yet"
 		}
@@ -457,6 +493,9 @@ func (c *conditionService) projectTasksRow(ctx context.Context, viewer, project 
 	// What the lead sorted stays in the tasks read for agents; the panel doesn't list it (owner, 24 Nov).
 	row.Lead, row.TasksMode, row.Paused = list.Lead, list.mode(), list.Paused
 	row.TaskGroups, row.Focus = list.Groups, list.Focus
+	for i := len(list.Moves) - 1; i >= 0 && len(row.TaskMoves) < projectTaskMovesShown; i-- {
+		row.TaskMoves = append(row.TaskMoves, list.Moves[i])
+	}
 	// Pinned tasks lead their group; the rest keep newest first.
 	sort.SliceStable(row.Tasks, func(i, j int) bool { return row.Tasks[i].Pinned && !row.Tasks[j].Pinned })
 	return row, true, nil
@@ -565,8 +604,8 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 			list.LeadChat = strings.TrimSpace(v)
 		}
 		if v, ok := args["mode"].(string); ok {
-			if v != "auto" && v != "ask" {
-				return nil, errors.New("mode is auto (the lead hands work out) or ask (the lead proposes, the person approves)")
+			if v != "auto" && v != "ask" && v != "off" {
+				return nil, errors.New("mode is auto (the lead hands work out and chases it), ask (the lead proposes, the person approves) or off (a plain list nobody drives)")
 			}
 			list.Mode = v
 		}
@@ -637,6 +676,9 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 		}
 		t.History = []conditionFeedMove{{At: now, By: by, Step: step, Note: firstNonEmptyTrimmed(note, "Created")}}
 		list.Tasks = append(list.Tasks, t)
+		if t.Assignee != "" {
+			list.move(by, "gave", "Gave #"+t.ID+" to "+t.Assignee, t.ID, now)
+		}
 		sortedText := title
 		if source != nil {
 			sortedText = source.Title
@@ -670,11 +712,45 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 		t.Title, changed = title, true
 	}
 	if v, ok := args["assignee"].(string); ok {
-		// Handing it out settles a proposal.
-		t.Assignee, t.Proposed, changed = feedText(v, 60), "", true
+		// Handing it out settles a proposal and ends any chasing.
+		v = feedText(v, 60)
+		if v != t.Assignee {
+			if t.Assignee != "" && v != "" {
+				t.From = t.Assignee
+				list.move(by, "moved", "Moved #"+t.ID+" from "+t.Assignee+" to "+v, t.ID, now)
+			} else if v != "" {
+				list.move(by, "gave", "Gave #"+t.ID+" to "+v, t.ID, now)
+			}
+			t.Chase, t.ChaseAt = "", 0
+		}
+		t.Assignee, t.Proposed, changed = v, "", true
+	}
+	if v, ok := args["chase"].(string); ok {
+		if v != "" && v != "nudged" && v != "stuck" {
+			return nil, errors.New("chase is nudged (you reminded the agent), stuck (still no progress after a nudge) or \"\" (moving again)")
+		}
+		if v != t.Chase {
+			t.Chase, t.ChaseAt, changed = v, now, true
+			who := firstNonEmptyTrimmed(t.Assignee, "the agent")
+			switch v {
+			case "nudged":
+				list.move(by, "nudged", "Nudged "+who+" on #"+t.ID, t.ID, now)
+			case "stuck":
+				list.move(by, "stuck", "#"+t.ID+" is stuck with "+who, t.ID, now)
+			}
+			if v == "" {
+				t.ChaseAt = 0
+			}
+		}
 	}
 	if v, ok := args["proposed"].(string); ok {
-		t.Proposed, changed = feedText(v, 60), true
+		if v = feedText(v, 60); v != "" && v != t.Proposed {
+			list.move(by, "suggested", "Suggested "+v+" for #"+t.ID, t.ID, now)
+		}
+		t.Proposed, changed = v, true
+	}
+	if v, ok := args["waiting"].(string); ok && feedText(v, 200) != "" && feedText(v, 200) != t.Waiting {
+		list.move(by, "asked", "Asked you about #"+t.ID+": "+feedText(v, 120), t.ID, now)
 	}
 	if v, ok := args["waiting"].(string); ok {
 		// A new question replaces the old answers; clearing it clears them.
@@ -743,6 +819,14 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 	if step != "" {
 		t.Step = step
 	}
+	if step != "" && step != before {
+		if list.done(*t) {
+			list.move(by, "closed", "Closed #"+t.ID, t.ID, now)
+			t.Chase, t.ChaseAt = "", 0
+		} else {
+			list.move(by, "step", "Moved #"+t.ID+" to "+step, t.ID, now)
+		}
+	}
 	if step != "" && step != before || note != "" {
 		t.History = append(t.History, conditionFeedMove{At: now, By: by, Step: step, Note: note})
 		if len(t.History) > conditionFeedMovesMax {
@@ -751,7 +835,7 @@ func (c *conditionService) projectTasksAction(ctx context.Context, actor, profil
 		changed = true
 	}
 	if !changed {
-		return nil, errors.New("task_update needs something to change: step, title, assignee, proposed, waiting, choices, held, group, pinned, due, task, source, link, activity, checklist_add, checklist_done, checklist_open, checklist_remove or note")
+		return nil, errors.New("task_update needs something to change: step, title, assignee, chase, proposed, waiting, choices, held, group, pinned, due, task, source, link, activity, checklist_add, checklist_done, checklist_open, checklist_remove or note")
 	}
 	t.Updated = now
 	saved := *t

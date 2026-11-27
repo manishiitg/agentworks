@@ -3,7 +3,7 @@ name: panel-automations
 description: Set a schedule, webhook or Watcher that calls existing work. Inspect
   timing and the saved result.
 metadata:
-  version: 2.7.0
+  version: 2.8.0
   panel-tools:
     work: [automations]
     agentworks: [automations]

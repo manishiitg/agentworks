@@ -9,7 +9,17 @@ A project can have one shared, curated task list (Project tasks, under Git in th
 
 All actions go through `automations` with `scope=watcher`: `tasks` (read), `task_add`, `task_update`, `task_sorted` (the lead only) and `task_settings` (setup and the person's controls). To set the list up, read `references/project-activity/SKILL.md`.
 
-Read `tasks` before you add or change anything. It returns the steps, the person's rules, the mode (auto or ask), whether the lead is paused, and each open task with its number, assignee, checklist, linked asks and `needs_you`.
+Read `tasks` before you add or change anything. It returns the steps, the person's rules, the mode (auto, ask or off), whether the lead is paused, and each open task with its number, assignee, checklist, linked asks and `needs_you`.
+
+## How the list is run
+
+The list itself (tasks, groups, pins, due dates, focus) always works. The mode says whether the lead drives it:
+
+- **off:** a plain list. Keep adding and tidying tasks, but don't hand work out, nudge or reassign, and skip review runs' chasing.
+- **ask:** suggest (`proposed`) and ask the person (`waiting`) before handing out or reassigning.
+- **auto:** hand work out and chase it until done.
+
+`held` (the panel calls it Don't chase) keeps a task on the list but out of the lead's hands. The server records hand-outs, moves, nudges, questions and closes in "What the lead did"; set `chase` so the person sees where chasing stands.
 
 ## If you are working a task
 
@@ -44,11 +54,11 @@ Watchers and schedules send you what they find (a schedule run means: look where
 
 ### Review runs: keep every task moving
 
-Your review schedule wakes you a few times a day. Each time, read `tasks` and go through every open task that isn't held:
+Your review schedule wakes you a few times a day. In mode off, only keep the list tidy (arrange, done). Otherwise read `tasks` and go through every open task that isn't held; when a chased task moves again, clear it with `chase: ""` (handing it out clears it too):
 
 - **Unassigned:** hand it out as above, or make sure `needs_you` says why it can't be.
-- **Quiet:** assigned, but not updated for longer than the person's rules say (default 24 hours). Nudge once: reply on its linked ask (`messages`, same thread) asking for a one-line update and to update the task, and add a `note` "Asked (agent) for an update". Check the ask's status first; a reply you haven't acted on isn't quiet.
-- **Still quiet after a nudge** (no update by your next review a day later): mode auto: hand it to the next best-fit agent yourself, tell the old one on its ask, and `note` why; if no other agent fits, set `waiting` "No update from (agent) in 2 days" with `choices: ["Reassign", "Keep waiting"]`. Mode ask: set that `waiting` straight away.
+- **Quiet:** assigned, but not updated for longer than the person's rules say (default 24 hours). Nudge once: reply on its linked ask (`messages`, same thread) asking for a one-line update and to update the task, then `task_update {task_id, chase: "nudged"}`. Check the ask's status first; a reply you haven't acted on isn't quiet.
+- **Still quiet after a nudge** (no update by your next review a day later): set `chase: "stuck"`. Mode auto: hand it to the next best-fit agent yourself, tell the old one on its ask, and `note` why; if no other agent fits, set `waiting` "No update from (agent) in 2 days" with `choices: ["Reassign", "Keep waiting"]`. Mode ask: set that `waiting` straight away.
 - **Blocked on another agent:** chase that agent on its ask; only if it can't help, set `waiting` for the person.
 - **Finished a step:** when the work is done but the task sits in the wrong step, move it with a `note`; when the rules hand the next step to someone else (for example review), send them the ask.
 - **Overdue:** chase it like a quiet task, and tell the person only if the date can't be met.
@@ -78,12 +88,12 @@ Act, don't report: a review run changes tasks and sends asks; it doesn't post a 
 
 ## Controls in the panel
 
-The side panel shows a Project tasks row with the counts and the tasks that need the person, with their answer buttons. Clicking it opens the full Project tasks panel: the lead with ⋯ (Pause, auto or ask first, Change setup), the focus line, filters by agent and step, Needs you, the lead's groups (foldable, each with a done bar), Other and the done list. Clicking a task opens its page: what you need to do with its answer buttons, the checklist, who is working on it, linked items, what's happening and history, with Approve, Reassign, Hold and Move. Each button, answer and checklist tick drafts a message in the project chat; the agent who gets it makes the change:
+The side panel shows a Project tasks row with the counts; it expands in place, and a small icon opens it wide. The list starts with "Run by an agent" (Off, Ask me, Auto), a strip saying what the lead is doing (with Pause or Resume) and ⋯ (Change setup); then the focus line, filters by agent and step, Needs you, the lead's groups (foldable, each with a done bar), Other, the done list and What the lead did. Clicking a task opens its page: what you need to do with its answer buttons, the checklist, who is working on it, linked items, what's happening and history, with Approve, Reassign, Don't chase and Move. Each button, answer and checklist tick drafts a message in the project chat; the agent who gets it makes the change:
 
 - Pause or resume: `task_settings {paused: true|false}`. While paused, Watchers sending to the lead's chat keep their events and deliver them on resume, and the lead's schedules skip their timed runs.
-- Auto or ask first: `task_settings {mode}`.
+- Off, Ask me or Auto: `task_settings {mode: off|ask|auto}`.
 - Approve or reassign: `task_update {task_id, assignee}`, then send the agent the ask (or tell the lead to) and link it with `task`. On a reassign, tell the old agent with a short note on its ask.
-- Hold: `task_update {task_id, held: true|false}`.
+- Don't chase: `task_update {task_id, held: true|false}`. Don't tell the agent to stop; just leave the task alone.
 - An answer or reply: pass it to whoever asked (the agent on the task), then clear `waiting`.
 - A checklist tick: `task_update {task_id, checklist_done | checklist_open: N}`.
 - Move: `task_update {task_id, step}` with a short `note`.
