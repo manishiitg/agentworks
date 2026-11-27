@@ -3,7 +3,7 @@ import { CONTEXT_PANE_COLUMN, LAPTOP_PREVIEW_COLUMNS, MOBILE_PREVIEW_PANE_COLUMN
 
 export interface WorkSurfaceLayoutInput {
   compactContext?: boolean
-  /** Files / Changes / Terminal side pane uses a comfortable ~380-440px default instead of 50% width. */
+  /** Non-Dashboard/Workflow side panes (Browser, Files, Terminal, Settings, etc.) use a comfortable ~340-440px default instead of 50% width. */
   compactSidePane?: boolean
   /** Custom px width for the compact side pane after dragging its edge; absent uses SIDE_PANE_COLUMN. */
   sidePaneWidth?: number | null
@@ -69,6 +69,11 @@ export function resolveWorkSurfaceLayout(input: WorkSurfaceLayoutInput): WorkSur
     showPanel: panelOpen,
     panelClassName: `min-h-0 min-w-0 overflow-hidden bg-background ${chatOpen ? `${singlePhonePane ? 'row-start-2' : 'row-start-3'} md:row-start-2 md:col-start-2` : 'row-start-2 col-start-1'}`,
   }
+}
+
+/** Right-side workspace views that fit best in the compact resizable column rather than a 50/50 split. */
+export function isCompactSidePaneView(view: string): boolean {
+  return view !== 'context' && view !== 'dashboard' && view !== 'workflow'
 }
 
 /** Keep both panes usable while honoring the resize rail's 15–85% bounds. */

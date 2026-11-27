@@ -74,7 +74,7 @@ import { openChatContextPanelEvent } from '../../components/workspace/ChatContex
 import { localFileError } from './codeLocalFiles'
 import { useProductCreateRequest } from '../../hooks/useProductCreateRequest'
 import { DashboardLayoutControls, DashboardLayoutProvider } from '../../components/workflow/DashboardLayoutControls'
-import { clampWorkSplitRatio } from './workSurfaceLayoutResolver'
+import { clampWorkSplitRatio, isCompactSidePaneView } from './workSurfaceLayoutResolver'
 import { ProductWorkspaceShell } from '../../components/workspace/ProductWorkspaceShell'
 import { loadAgentProfileInteractionKinds, loadAgentProfileUIPanels } from '../../utils/agentProfileCapabilities'
 import { parseProductInteraction } from '../../../shared/session/interactions'
@@ -1922,9 +1922,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               divider={null}
               splitRef={splitLayoutRef}
               compactContext={!isWorkSessionRun(selected) && workspaceView==='context'}
-              compactSidePane={!isWorkSessionRun(selected) && (workspaceView === 'shell' || workspaceView === 'files')}
+              compactSidePane={!isWorkSessionRun(selected) && isCompactSidePaneView(workspaceView)}
               sidePaneWidth={sidePaneWidth}
-              onSidePaneResizeStart={!isWorkSessionRun(selected) && (workspaceView === 'shell' || workspaceView === 'files') ? startSidePaneResize : undefined}
+              onSidePaneResizeStart={!isWorkSessionRun(selected) && isCompactSidePaneView(workspaceView) ? startSidePaneResize : undefined}
               onSidePaneResizeReset={resetSidePaneWidth}
               toolbarWhenPanelClosed={!isWorkSessionRun(selected) && !panelHidden}
               showToolbar={!!terminalConversation || !isShared}
