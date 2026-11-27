@@ -2355,8 +2355,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // A message the app sends for the person in this chat (the terminal's starter message), through the same send path.
   useEffect(() => {
     const send = (event: Event) => {
-      const detail = (event as CustomEvent<{ sessionId?: string; text?: string }>).detail
-      if (detail?.sessionId && detail.sessionId === tabSessionId && detail.text) void routeSubmit(detail.text)
+      const detail = (event as CustomEvent<{ sessionId?: string; text?: string; handled?: boolean }>).detail
+      if (!detail?.handled && detail?.sessionId && detail.sessionId === tabSessionId && detail.text) { detail.handled = true; void routeSubmit(detail.text) }
     }
     window.addEventListener(chatSendMessageEvent, send)
     return () => window.removeEventListener(chatSendMessageEvent, send)

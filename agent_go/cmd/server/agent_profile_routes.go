@@ -78,8 +78,8 @@ type AgentProfileConversationRequest struct {
 	// SessionID names an earlier conversation of the slot to make live again
 	// (POST …/conversation/switch); the other conversation routes ignore it.
 	SessionID string `json:"session_id,omitempty"`
-	// Name is required when the key opens a NEW side chat (tab): every agent
-	// in a project has a name (owner, 2026-10-19).
+	// Name is the new side chat's (tab's) name. Left empty, the server names the
+	// chat from its first message (#4439).
 	Name string `json:"name,omitempty"`
 	// OpenedFrom is the chat a new tab is opened from; the new tab starts on that chat's model.
 	OpenedFrom string `json:"opened_from,omitempty"`
@@ -671,6 +671,7 @@ func (api *StreamingAPI) handleAgentProfileChatQuery(w http.ResponseWriter, r *h
 	forwarded.Header.Set("X-Session-ID", conversation.SessionID)
 	stages.mark("prepare")
 	stages.log(conversation.SessionID)
+	api.autoNameChatOnSend(r.Context(), productWorkspaceUserID(r.Context()), profile, conversation, input.Message, query)
 	api.handleQuery(w, forwarded)
 }
 
@@ -874,6 +875,11 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 		project := binding.ResourceID
 		defer func() { go api.refreshMacSharedPurposes(context.WithoutCancel(r.Context()), project) }()
 	}
+	autoName := false
+	if isNew && strings.TrimSpace(name) == "" && isProjectProfileID(profile.ID) && isSideChatConversationKey(binding.ConversationKey) {
+		// A chat opened without a name (#4439): the server names it from the first message, then from a short AI title.
+		name, autoName = autoChatPlaceholderName, true
+	}
 	if isNew {
 		if strings.TrimSpace(name) == "" {
 			return ProductConversationRecord{}, fmt.Errorf("Give the new tab a name, a few words saying what this agent is for.")
@@ -988,6 +994,11 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 			return ProductConversationRecord{}, err
 		}
 		_ = RenameChatHistorySession(userID, record.SessionID, binding.WorkspacePath, name)
+		if autoName {
+			if err := defaultProductConversationRegistryStore().markAutoName(r.Context(), userID, profile.ID, record.ConversationKey, autoNameWaitingForMessage); err != nil {
+				return ProductConversationRecord{}, err
+			}
+		}
 	}
 	if owned && (record.IsMainChat || binding.ConversationKey == crewOwnerDefaultChatKey(binding.ResourceID, userID)) {
 		if identity, e := store.agentIdentity(r.Context(), userID, profile.ID, record.ConversationKey); e == nil && identity.Name == "" {

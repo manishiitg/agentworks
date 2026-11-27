@@ -132,10 +132,13 @@ type productConversationRegistryDocument struct {
 // ProductAgentIdentity is the name and one-line purpose of an agent in a project, with who last changed it.
 type ProductAgentIdentity struct {
 	// Import labels are not person-chosen agent names. Renaming clears this bit.
-	GeneratedName bool     `json:"generated_name,omitempty"`
-	Name          string   `json:"name,omitempty"`
-	Purpose       string   `json:"purpose,omitempty"`
-	Examples      []string `json:"examples,omitempty"`
+	GeneratedName bool `json:"generated_name,omitempty"`
+	// AutoName is set while the server still names a chat opened without a name (#4439): "new" until the first
+	// message, then "first_words" until the AI title arrives. Any rename by a person clears it.
+	AutoName string   `json:"auto_name,omitempty"`
+	Name     string   `json:"name,omitempty"`
+	Purpose  string   `json:"purpose,omitempty"`
+	Examples []string `json:"examples,omitempty"`
 	// Instructions are this agent's own standing instructions, written by its person (or saved by the agent when its
 	// person asks). They are added to this agent's prompt only, after its name and purpose (#3041).
 	Instructions string `json:"instructions,omitempty"`
@@ -231,6 +234,7 @@ func (store productConversationRegistryStore) setAgentIdentity(ctx context.Conte
 	if cleanName != nil {
 		identity.Name = *cleanName
 		identity.GeneratedName = false
+		identity.AutoName = ""
 	}
 	if cleanPurpose != nil {
 		identity.Purpose = *cleanPurpose
@@ -536,6 +540,7 @@ func (store productConversationRegistryStore) renameCurrentSideChat(ctx context.
 		identity := document.Agents[key]
 		identity.Name, identity.UpdatedBy, identity.UpdatedAt = name, userID, time.Now().UTC().Format(time.RFC3339)
 		identity.GeneratedName = false
+		identity.AutoName = ""
 		document.Agents[key] = identity
 		return store.writeDocument(ctx, path, document)
 	}

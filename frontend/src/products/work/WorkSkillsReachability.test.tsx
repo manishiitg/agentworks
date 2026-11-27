@@ -153,7 +153,7 @@ it('keeps the active agent name clickable in both sidebar states even after anot
   const add = host.querySelector<HTMLButtonElement>('button[aria-label="New agent"]')
   // #4334: a hairline divider sits between the agent name and + New agent.
   expect(header.nextElementSibling?.getAttribute('aria-hidden')).toBe('true')
-  expect(add).toBe(header.nextElementSibling?.nextElementSibling)
+  expect(add && header.nextElementSibling?.nextElementSibling?.contains(add)).toBe(true)
   expect(host.querySelector('[data-testid="work-chat-tab-strip"]')).toBeNull()
   expect(host.querySelector('[data-testid="work-more-tabs"]')).toBeNull()
   const details=header.querySelector<HTMLButtonElement>('button[aria-label="About Helper"]')
@@ -164,9 +164,12 @@ it('keeps the active agent name clickable in both sidebar states even after anot
   await act(async()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
   expect(document.querySelector('[role="dialog"]')).toBeNull()
  }
+ // #4439: + New agent opens an unnamed chat at once; the server names it from the first message.
  await act(async()=>host.querySelector<HTMLButtonElement>('button[aria-label="New agent"]')!.click())
+ expect(f.opened).toHaveBeenCalledWith('')
+ expect(document.querySelector('[role="dialog"]')).toBeNull()
+ await act(async()=>host.querySelector<HTMLButtonElement>('[data-testid="work-add-agent-menu"]')!.click())
  expect(document.querySelector('[role="dialog"][aria-label="Add agent"]')).not.toBeNull()
- expect(f.opened).not.toHaveBeenCalled()
 })
 
 it('opens only enabled automations from the current agent’s header clock',async()=>{
@@ -218,20 +221,20 @@ it('bounds and centers the agent creation shell across its modes without changin
  }
  expect(host.querySelector('[data-testid="work-chat-tab-strip"]')).toBeNull()
  expect(host.querySelector('[data-testid="work-more-tabs"]')).toBeNull()
- await act(async()=>host.querySelector<HTMLButtonElement>('[data-testid="work-new-chat-tab"]')!.click())
+ await act(async()=>host.querySelector<HTMLButtonElement>('[data-testid="work-add-agent-menu"]')!.click())
  bounded('Add agent')
  await click('Fork existing agent…')
  bounded('Fork existing agent')
  await act(async()=>document.querySelector<HTMLButtonElement>('[role="dialog"] [aria-label="Close"]')!.click())
  await act(async()=>window.dispatchEvent(new CustomEvent('crew-new-agent',{detail:{projectId:'example'}})))
  bounded('Add agent')
- await click('New agent')
+ await click('New agent with a name…')
  bounded('New agent')
  await click('Cancel')
  expect(document.querySelector('[role="dialog"]')).toBeNull()
  expect(f.opened).not.toHaveBeenCalled()
  await act(async()=>window.dispatchEvent(new CustomEvent('crew-new-agent',{detail:{projectId:'example'}})))
- await click('New agent')
+ await click('New agent with a name…')
  const input=bounded('New agent').querySelector<HTMLInputElement>('[aria-label="Agent name"]')!
  await act(async()=>{
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,'Research')

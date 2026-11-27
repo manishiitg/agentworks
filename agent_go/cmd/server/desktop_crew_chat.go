@@ -223,9 +223,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		}
 		creating := key == "" && call.Operation == "resolve" && call.Tab != ""
 		if creating {
-			if name = crewMacTabName(call.Name); name == "" {
-				return fail(400, "Give the new agent a name.")
-			}
+			name = crewMacTabName(call.Name) // empty: the chat is named from its first message (#4439)
 			key = project + codeChatSideMarker + call.Tab
 		}
 		if key == "" {
