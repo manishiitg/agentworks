@@ -1,9 +1,11 @@
 package browserrelay
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -251,6 +253,7 @@ func TestExtensionDiagnosticsDetailUsesFixedVocabularies(t *testing.T) {
 		"an unknown reason":                 {Event: "recovery_attempt", Reason: "Cannot access https://private.example"},
 		"too many extension ids":            {Event: "frame_navigated", ExtIDs: []string{foreign, foreign, foreign, foreign, foreign, foreign, foreign, foreign, foreign}},
 		"a negative age":                    {Event: "connect_failed", AgeMS: -1},
+		"an unknown tab_group outcome":      {Event: "tab_group", Outcome: "private-title"},
 	} {
 		output.Reset()
 		logExtensionDiagnostic("project-one", "ext-connection", bad)
@@ -262,6 +265,46 @@ func TestExtensionDiagnosticsDetailUsesFixedVocabularies(t *testing.T) {
 	logExtensionDiagnostic("project-one", "ext-connection", envelope{Event: "reconnect_scheduled", Reason: "ws_closed", WSCode: 1006, DelayMS: 4000, Attempt: 3})
 	if !strings.Contains(output.String(), "ws_code=1006") || !strings.Contains(output.String(), "delay_ms=4000") {
 		t.Fatalf("offline event not logged: %s", output.String())
+	}
+	output.Reset()
+	logExtensionDiagnostic("project-one", "ext-connection", envelope{Event: "tab_group", TabID: 9, Outcome: "reused", Version: "0.6.2"})
+	if !strings.Contains(output.String(), "event=tab_group") || !strings.Contains(output.String(), "outcome=reused") {
+		t.Fatalf("tab_group outcome not logged: %s", output.String())
+	}
+}
+
+// #4464: keep embedded extension.zip in sync with extensions/agentworks-chrome so
+// downloads and LatestExtensionVersion never drift behind extension source fixes.
+func TestExtensionZipMatchesSource(t *testing.T) {
+	sourceDir := filepath.Join("..", "..", "..", "extensions", "agentworks-chrome")
+	if _, err := os.Stat(filepath.Join(sourceDir, "manifest.json")); err != nil {
+		t.Fatalf("extension source missing at %s: %v", sourceDir, err)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(ExtensionZip), int64(len(ExtensionZip)))
+	if err != nil {
+		t.Fatalf("invalid embedded extension.zip: %v", err)
+	}
+	bundled := map[string][]byte{}
+	for _, f := range archive.File {
+		r, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := io.ReadAll(r)
+		r.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		bundled[f.Name] = raw
+	}
+	for _, name := range []string{"manifest.json", "background.js"} {
+		want, err := os.ReadFile(filepath.Join(sourceDir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(bundled[name], want) {
+			t.Fatalf("embedded extension.zip %s differs from extensions/agentworks-chrome/%s (run scripts/package-chrome-extension.py)", name, name)
+		}
 	}
 }
 

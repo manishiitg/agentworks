@@ -241,3 +241,66 @@ func TestChromeExtensionWorkflowAccessAndRevocation(t *testing.T) {
 		t.Fatal("Relay manifest admitted as a workflow")
 	}
 }
+
+// #4464: on a transient workspace read failure during startup/reconnect, return
+// an empty display name so the extension waits for the real name instead of
+// creating a second tab group named after the folder slug.
+func TestChromeExtensionDisplayNameWaitsOnTransientReadError(t *testing.T) {
+	f := newMultiUserFixture(t, sharedIdentityLayout())
+	previous := browserrelay.Default
+	browserrelay.Default = browserrelay.New()
+	defer func() { browserrelay.Default.Close(); browserrelay.Default = previous }()
+
+	var status int
+	var body string
+	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/product.json") {
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(body))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer wsServer.Close()
+	t.Setenv("WORKSPACE_API_URL", wsServer.URL)
+
+	workspace := f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder)
+	scope := browserSessionForWorkspace(fixtureUserA, workspace)
+	token, err := browserrelay.Default.PairForProfile(fixtureUserA, scope, workspace, crewProfileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relayServer := httptest.NewServer(http.HandlerFunc(f.API.handleBrowserExtensionConnect))
+	defer relayServer.Close()
+
+	pairName := func(respStatus int, respBody string) string {
+		t.Helper()
+		invalidateHotDocuments(workspace+"/product.json", false)
+		status, body = respStatus, respBody
+		socket, _, err := websocket.DefaultDialer.Dial(strings.Replace(relayServer.URL, "http", "ws", 1), http.Header{"Origin": []string{"chrome-extension://test"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer socket.Close()
+		socket.SetReadDeadline(time.Now().Add(3 * time.Second))
+		if err := socket.WriteJSON(map[string]string{"type": "pair", "token": token, "scope": scope}); err != nil {
+			t.Fatal(err)
+		}
+		var reply map[string]any
+		if err := socket.ReadJSON(&reply); err != nil || reply["type"] != "paired" {
+			t.Fatalf("unexpected pair reply: %v %v", reply, err)
+		}
+		name, _ := reply["name"].(string)
+		return name
+	}
+
+	if got := pairName(http.StatusServiceUnavailable, `{"error":"starting"}`); got != "" {
+		t.Fatalf("transient read failure should return empty name, got %q", got)
+	}
+	if got := pairName(http.StatusNotFound, `{}`); got != fixtureCrewFolder {
+		t.Fatalf("missing manifest should fall back to workspace basename, got %q", got)
+	}
+	if got := pairName(http.StatusOK, `{"success":true,"data":{"content":"{\"identity\":{\"name\":\"My Project\"}}"}}`); got != "My Project" {
+		t.Fatalf("manifest display name mismatch: got %q", got)
+	}
+}
