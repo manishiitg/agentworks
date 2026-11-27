@@ -421,6 +421,32 @@ class VerifyChangeTest(unittest.TestCase):
         self.assertIn("TS2322", res_both.stderr)
         self.assertIn("VERIFY: FAILED at: Go and frontend checks", res_both.stderr)
 
+    def test_auto_layer1_mcp_e2e_guardrail_triggers_only_on_mcp_paths(self):
+        # 1. Unrelated Go change must NOT trigger auto Layer 1 MCP E2E.
+        (self.logs / "go.log").write_text("")
+        sha_other = self.make_commit({"agent_go/cmd/server/main.go": "package main\nfunc main() { _ = 99 }\n"})
+        res_other = self.run_verify(sha_other)
+        self.assertEqual(res_other.returncode, 0, res_other.stdout + res_other.stderr)
+        self.assertNotIn("Auto Layer 1 MCP E2E guardrail triggered", res_other.stdout)
+        self.assertNotIn("TestMCPFullChainE2E", (self.logs / "go.log").read_text())
+
+        # 2. MCP/bridge/slotfs change with ZERO Verify-Test lines must auto-run all Layer 1 MCP E2E suites.
+        (self.logs / "go.log").write_text("")
+        sha_mcp = self.make_commit({
+            "mcpagent/agent/coding_agents_bridge.go": "package mcpagent\n",
+            "multi-llm-provider-go/internal/clisandbox/landlock.go": "package clisandbox\n",
+            "mcp-gateway/e2e/e2e_test.go": "package e2e\n",
+            "agent_go/pkg/mcpoauth/store.go": "package mcpoauth\n",
+        })
+        res_mcp = self.run_verify(sha_mcp)
+        self.assertEqual(res_mcp.returncode, 0, res_mcp.stdout + res_mcp.stderr)
+        self.assertIn("Auto Layer 1 MCP E2E guardrail triggered", res_mcp.stdout)
+        go_log = (self.logs / "go.log").read_text()
+        self.assertIn("TestMCPFullChainE2E", go_log)
+        self.assertIn("TestMCPBridgeSlotLifecycleE2E", go_log)
+        self.assertIn("TestMCPGatewayE2EUpstreamSessionRecovery", go_log)
+        self.assertIn("go test ./... -count=1", go_log)
+
 
 if __name__ == "__main__":
     unittest.main()
