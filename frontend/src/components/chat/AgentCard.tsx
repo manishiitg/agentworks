@@ -238,32 +238,38 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           {automationsOpen && <AgentAutomationList items={info.setup?.automations ?? []} empty="No automations yet." />}
           {addAutomation}
         </div>)}
-      {((!shareShortcut && actions?.forkTo) || actions?.terminal || onRename || (clickToOpen && (actions?.fork || actions?.rename || actions?.setSidebarHidden || info.onRemove)) || (shareShortcut && !shareInfo && info.sharing) || (!info.sharing && info.onSharing)) && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 max-md:[&>button]:min-h-10">
+      {((!shareShortcut && actions?.forkTo) || actions?.terminal || onRename || (clickToOpen && (actions?.fork || actions?.rename || actions?.setSidebarHidden || info.onRemove)) || (shareShortcut && !shareInfo && info.sharing) || (!info.sharing && info.onSharing)) && (() => {
+        const menuRow = 'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground/90 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-70 max-md:min-h-10 max-md:text-sm'
+        const hasUpperAction = Boolean((!shareShortcut && actions?.forkTo) || (clickToOpen && actions?.fork) || actions?.terminal || onRename || (clickToOpen && actions?.rename) || (clickToOpen && actions?.setSidebarHidden) || (shareShortcut && !shareInfo && info.sharing) || (!info.sharing && info.onSharing))
+        return <div className={clickToOpen ? 'mt-1 flex flex-col gap-0.5 border-t border-border pt-1.5' : 'flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 max-md:[&>button]:min-h-10'}>
         {renameDraft !== null ? <input autoFocus aria-label={`New name for ${info.name}`} value={renameDraft} onChange={event => setRenameDraft(event.target.value)}
           onKeyDown={event => {
             if (event.key === 'Escape') { event.stopPropagation(); setRenameDraft(null) }
             if (event.key === 'Enter' && renameDraft.trim()) { void actions?.rename?.(renameDraft.trim()); dismiss() }
           }}
           onBlur={() => setRenameDraft(null)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs max-md:text-base" /> : <>
-          {!shareShortcut && actions?.forkTo && <button type="button" onClick={() => finish(actions.forkTo!)} className="inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><GitFork aria-hidden className="h-3.5 w-3.5" />Send a copy to a teammate…</button>}
+          {!shareShortcut && actions?.forkTo && <button type="button" onClick={() => finish(actions.forkTo!)} className={clickToOpen ? menuRow : 'inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'}><GitFork aria-hidden className={`h-3.5 w-3.5 shrink-0 ${clickToOpen ? 'text-muted-foreground' : ''}`} />Send a copy to a teammate…</button>}
           {clickToOpen && actions?.fork && <button type="button" disabled={forking} aria-busy={forking} onClick={async () => {
             if (forking) return
             setForking(true)
             try { await actions.fork!() } finally { setForking(false); dismiss() }
-          }} className="inline-flex items-center gap-1 rounded-md py-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-70">
-            {forking ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <GitFork aria-hidden="true" className="h-3.5 w-3.5" />}{forking ? 'Forking chat…' : 'Fork chat'}
+          }} className={menuRow}>
+            {forking ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" /> : <GitFork aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}{forking ? 'Forking chat…' : 'Fork chat'}
           </button>}
           {/* Resume this agent's chat in your own Claude Code: in the agent's top menu (owner, 20 Nov), not the left menu. */}
-          {actions?.terminal && <button type="button" onClick={() => finish(actions.terminal!)} className="inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><SquareTerminal aria-hidden className="h-3.5 w-3.5" />Continue in my terminal</button>}
-          {(onRename || (clickToOpen && actions?.rename)) && <button type="button" onClick={() => onRename ? finish(onRename) : setRenameDraft(actions?.renameDraft || info.name)} className="inline-flex items-center gap-1 rounded-md py-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Pencil aria-hidden="true" className="h-3.5 w-3.5" />Rename</button>}
-          {clickToOpen && actions?.setSidebarHidden && <button type="button" onClick={() => finish(() => actions.setSidebarHidden!(!sidebarHidden))} className="inline-flex items-center gap-1 rounded-md py-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            {sidebarHidden ? <><Eye aria-hidden="true" className="h-3.5 w-3.5" />Show in sidebar</> : <><EyeOff aria-hidden="true" className="h-3.5 w-3.5" />Hide from sidebar</>}
+          {actions?.terminal && <button type="button" onClick={() => finish(actions.terminal!)} className={clickToOpen ? menuRow : 'inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'}><SquareTerminal aria-hidden className={`h-3.5 w-3.5 shrink-0 ${clickToOpen ? 'text-muted-foreground' : ''}`} />Continue in my terminal</button>}
+          {(onRename || (clickToOpen && actions?.rename)) && <button type="button" onClick={() => onRename ? finish(onRename) : setRenameDraft(actions?.renameDraft || info.name)} className={clickToOpen ? menuRow : 'inline-flex items-center gap-1 rounded-md py-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'}><Pencil aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${clickToOpen ? 'text-muted-foreground' : ''}`} />Rename</button>}
+          {clickToOpen && actions?.setSidebarHidden && <button type="button" onClick={() => finish(() => actions.setSidebarHidden!(!sidebarHidden))} className={menuRow}>
+            {sidebarHidden ? <><Eye aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />Show in sidebar</> : <><EyeOff aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />Hide from sidebar</>}
           </button>}
-          {shareShortcut && !shareInfo && info.sharing && <button type="button" onClick={() => open('sharing')} className="text-primary hover:underline">Share…</button>}
-          {!info.sharing && info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
-          {clickToOpen && info.onRemove && <button type="button" onClick={() => finish(info.onRemove!)} className="inline-flex items-center gap-1 rounded-md py-1 text-destructive hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remove agent…</button>}
+          {shareShortcut && !shareInfo && info.sharing && <button type="button" onClick={() => open('sharing')} className={clickToOpen ? menuRow : 'text-primary hover:underline'}>Share…</button>}
+          {!info.sharing && info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className={clickToOpen ? menuRow : 'text-primary hover:underline'}>{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
+          {clickToOpen && info.onRemove && <>
+            {hasUpperAction && <div className="my-1 border-t border-border" />}
+            <button type="button" onClick={() => finish(info.onRemove!)} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10 max-md:text-sm"><Trash2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />Remove agent…</button>
+          </>}
         </>}
-      </div>}
+      </div>})()}
       </>}
     </div></>, document.body)}
   </>
@@ -279,6 +285,16 @@ export function AgentHeaderLine({ agent: row, crewName, onOpenIdentity, onReturn
   // must use this pane's own row and actions, not whichever projection ran last.
   const info = row?.info
   const name = row?.name
+  const canRename = Boolean(row?.actions?.rename && name)
+  const [headerRename, setHeaderRename] = useState<string | null>(null)
+  const skipRenameBlur = useRef(false)
+  useEffect(() => { setHeaderRename(null) }, [row?.tabId])
+  const commitHeaderRename = (draft: string) => {
+    const next = draft.trim()
+    const current = (row?.actions?.renameDraft || name || '').trim()
+    setHeaderRename(null)
+    if (next && next !== current) void row?.actions?.rename?.(next)
+  }
   return <div className="mr-0.5 flex h-10 min-w-0 shrink items-center gap-1.5 px-1 text-sm md:h-8" data-agent-header>
     {onOpenIdentity ? <button type="button" data-project-title onClick={onOpenIdentity} title="Identity & instructions"
       aria-label={`Identity & instructions for ${crewName}`} className="min-w-0 max-w-28 truncate rounded-sm px-1 font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:max-w-40">{crewName}</button>
@@ -290,7 +306,28 @@ export function AgentHeaderLine({ agent: row, crewName, onOpenIdentity, onReturn
       {onReturn ? <button type="button" onClick={onReturn} title={`Back to your ${name}`} aria-label={`Back to your ${name}`}
         className="block min-w-0 max-w-48 sm:max-w-xs md:max-w-[28rem] lg:max-w-[36rem] truncate rounded-sm font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{name}</button>
       : info ? <AgentHoverCard info={info} clickToOpen automationShortcut shareShortcut shortcut={row?.shortcut} actions={row?.actions} sidebarHidden={row?.sidebarHidden}>
-        {open => <button type="button" aria-label={`About ${name}`} title={name} aria-expanded={open} aria-haspopup="dialog"
+        {open => canRename ? <span className="inline-flex min-w-0 items-center gap-0.5">
+          {headerRename !== null ? <input autoFocus aria-label={`Rename ${name}`} value={headerRename} onClick={event => event.stopPropagation()}
+            onChange={event => setHeaderRename(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Escape') { event.stopPropagation(); skipRenameBlur.current = true; setHeaderRename(null) }
+              if (event.key === 'Enter') {
+                event.preventDefault(); event.stopPropagation(); skipRenameBlur.current = true
+                const next = headerRename.trim()
+                setHeaderRename(null)
+                if (next) void row?.actions?.rename?.(next)
+              }
+            }}
+            onBlur={() => { if (skipRenameBlur.current) { skipRenameBlur.current = false; return } commitHeaderRename(headerRename) }}
+            className="w-40 min-w-0 max-w-[20rem] rounded-md border border-border bg-background px-1.5 py-0.5 text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:text-base" />
+          : <button type="button" aria-label={`Rename ${name}`} title="Click to rename"
+              onClick={event => { event.stopPropagation(); skipRenameBlur.current = false; setHeaderRename(row?.actions?.renameDraft || name) }}
+              className="min-w-0 max-w-48 sm:max-w-xs md:max-w-[28rem] lg:max-w-[36rem] truncate rounded-md px-1.5 py-1 font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10">{name}</button>}
+          <button type="button" aria-label={`About ${name}`} title={`Options for ${name}`} aria-expanded={open} aria-haspopup="dialog"
+            className="inline-flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-10 max-md:w-9">
+            <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+          </button>
+        </span> : <button type="button" aria-label={`About ${name}`} title={name} aria-expanded={open} aria-haspopup="dialog"
           className="inline-flex min-w-0 max-w-48 sm:max-w-xs md:max-w-[28rem] lg:max-w-[36rem] items-center gap-1 rounded-md px-1.5 py-1 font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10">
           <span className="min-w-0 truncate">{name}</span><ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         </button>}
