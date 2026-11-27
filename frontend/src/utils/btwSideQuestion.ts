@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { create } from 'zustand'
 import api, { agentApi } from '../services/api'
 import { useChatStore } from '../stores/useChatStore'
@@ -44,8 +45,11 @@ export function btwView(tab: BtwTab | undefined): BtwView {
   const item = tab.items.find(entry => entry.id === tab.open)
   return item ? { kind: 'item', item } : null
 }
+// Select the tab's stored state (a stable reference) and derive the view from it. Building the view inside the
+// selector returned a new object on every read, which re-rendered the composer forever.
 export function useBtwView(tabId: string | null): BtwView {
-  return useBtwStore(state => tabId ? btwView(state.byTab[tabId]) : null)
+  const tab = useBtwStore(state => tabId ? state.byTab[tabId] : undefined)
+  return useMemo(() => btwView(tab), [tab])
 }
 
 export function openBtwItem(tabId: string, id: string | null) { updateTab(tabId, tab => ({ ...tab, open: id })) }
