@@ -163,6 +163,11 @@ func NewSQLiteLedger(dbPath string) (*Ledger, error) {
 		db.Close()
 		return nil, fmt.Errorf("costledger: index billing_user_id: %w", err)
 	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_cost_events_session_id ON cost_events(session_id, occurred_at);
+		CREATE INDEX IF NOT EXISTS idx_cost_events_parent_session_id ON cost_events(parent_session_id)`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("costledger: index session_id: %w", err)
+	}
 	return &Ledger{db: &sqliteLedger{db: db}}, nil
 }
 

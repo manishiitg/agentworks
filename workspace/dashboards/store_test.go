@@ -233,3 +233,52 @@ func TestArtifactIsStaticHTML(t *testing.T) {
 		t.Fatalf("plain HTML artifact refused: %v", err)
 	}
 }
+
+func TestHasPublishedAndListUsesStateMetadataWithoutReadingSnapshot(t *testing.T) {
+	docs := t.TempDir()
+	root := "Crew/example"
+	if err := os.MkdirAll(filepath.Join(docs, root), 0755); err != nil {
+		t.Fatal(err)
+	}
+	has, err := Execute(context.Background(), docs, Request{Root: root, Action: "has_published"})
+	if err != nil || has.HasPublished {
+		t.Fatalf("empty project has_published = (%v, %v), want (false, nil)", has.HasPublished, err)
+	}
+	created, err := Execute(context.Background(), docs, Request{
+		Root:         root,
+		Action:       "create",
+		ID:           "sales",
+		Title:        "Sales Overview",
+		IncludeDraft: true,
+		Files:        map[string]string{"index.html": "<h1>Sales</h1>"},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	has, err = Execute(context.Background(), docs, Request{Root: root, Action: "has_published"})
+	if err != nil || has.HasPublished {
+		t.Fatalf("draft-only has_published = (%v, %v), want (false, nil)", has.HasPublished, err)
+	}
+	if _, err := Execute(context.Background(), docs, Request{
+		Root:             root,
+		Action:           "publish",
+		ID:               "sales",
+		ExpectedRevision: created.Dashboard.Revision,
+		IncludeDraft:     true,
+	}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	// Remove the snapshot blob to prove both has_published and list succeed from
+	// state.json metadata without opening or unmarshaling the full bundle file.
+	if err := os.Remove(filepath.Join(docs, root, snapshotPath("sales", created.Dashboard.Revision))); err != nil {
+		t.Fatalf("remove snapshot: %v", err)
+	}
+	has, err = Execute(context.Background(), docs, Request{Root: root, Action: "has_published"})
+	if err != nil || !has.HasPublished {
+		t.Fatalf("published has_published = (%v, %v), want (true, nil)", has.HasPublished, err)
+	}
+	listed, err := Execute(context.Background(), docs, Request{Root: root, Action: "list"})
+	if err != nil || len(listed.Dashboards) != 1 || listed.Dashboards[0].Title != "Sales Overview" {
+		t.Fatalf("list from state metadata = (%+v, %v), want 1 dashboard 'Sales Overview'", listed.Dashboards, err)
+	}
+}

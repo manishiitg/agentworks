@@ -445,34 +445,73 @@ func (api *StreamingAPI) fetchCrewAccessRemote(ctx context.Context, key, owner s
 	}
 	out.team = &t
 	out.people, out.peopleRead, out.clashes, out.last = prev.people, prev.peopleRead, prev.clashes, prev.last
+	// Fan out the independent follow-up reads in parallel so a cold refresh pays
+	// 2 remote RTTs (team, then follow-ups) instead of 5 sequential RTTs.
+	var (
+		wg            sync.WaitGroup
+		agentsPeople  []crewTeamAgentsPerson
+		agentsOK      bool
+		posts         crewTeamActivityPosts
+		postsOK       bool
+		clashesList   []crewTeamClash
+		clashesOK     bool
+		lastEventTime time.Time
+		lastEventOK   bool
+	)
 	if t.On {
-		var agents struct {
-			People []crewTeamAgentsPerson `json:"people"`
-		}
-		if read("agents", route+"/agents", &agents) {
-			out.people, out.peopleRead, out.liveRead = agents.People, true, true
-		}
-	}
-	if t.On {
-		var posts crewTeamActivityPosts
-		if read("activity", route+"/activity-posts", &posts) {
-			out.posts = posts
-		}
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			var agents struct {
+				People []crewTeamAgentsPerson `json:"people"`
+			}
+			if read("agents", route+"/agents", &agents) {
+				agentsPeople, agentsOK = agents.People, true
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			var p crewTeamActivityPosts
+			if read("activity", route+"/activity-posts", &p) {
+				posts, postsOK = p, true
+			}
+		}()
 	}
 	if t.FolderAccess && t.Folder.ID != "" {
 		folder := "?folder_id=" + url.QueryEscape(t.Folder.ID)
-		var clashes struct {
-			Clashes []crewTeamClash `json:"clashes"`
-		}
-		if read("clashes", route+"/clashes"+folder, &clashes) {
-			out.clashes = clashes.Clashes
-		}
-		var events struct {
-			Events []crewTeamEvent `json:"events"`
-		}
-		if read("events", route+"/events"+folder, &events) && len(events.Events) > 0 {
-			out.last, _ = time.Parse(time.RFC3339Nano, events.Events[0].At)
-		}
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			var clashes struct {
+				Clashes []crewTeamClash `json:"clashes"`
+			}
+			if read("clashes", route+"/clashes"+folder, &clashes) {
+				clashesList, clashesOK = clashes.Clashes, true
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			var events struct {
+				Events []crewTeamEvent `json:"events"`
+			}
+			if read("events", route+"/events"+folder, &events) && len(events.Events) > 0 {
+				lastEventTime, _ = time.Parse(time.RFC3339Nano, events.Events[0].At)
+				lastEventOK = true
+			}
+		}()
+	}
+	wg.Wait()
+	if agentsOK {
+		out.people, out.peopleRead, out.liveRead = agentsPeople, true, true
+	}
+	if postsOK {
+		out.posts = posts
+	}
+	if clashesOK {
+		out.clashes = clashesList
+	}
+	if lastEventOK {
+		out.last = lastEventTime
 	}
 	out.at = time.Now()
 	crewAccessRemoteCache.Store(key, out)
@@ -482,5 +521,23 @@ func (api *StreamingAPI) fetchCrewAccessRemote(ctx context.Context, key, owner s
 // dropCrewAccessCache makes the next Access read fresh after a Team change on this Mac.
 func dropCrewAccessCache(project, peer string) {
 	crewAccessRemoteCache.Delete(project + "\x00" + peer)
+	crewTeamRefusals.Delete(peer)
+}
+
+// markCrewAccessCacheStale invalidates freshness on remote push events (team.busy / team.changed)
+// without discarding the last-good snapshot, so the next read serves stale immediately and
+// refreshes in the background instead of blocking on a cold miss.
+func markCrewAccessCacheStale(project, peer string) {
+	key := project + "\x00" + peer
+	if v, ok := crewAccessRemoteCache.Load(key); ok {
+		entry := v.(crewAccessRemote)
+		if !entry.at.IsZero() {
+			entry.at = time.Unix(1, 0)
+			entry.failedUntil = time.Time{}
+			crewAccessRemoteCache.Store(key, entry)
+		} else {
+			crewAccessRemoteCache.Delete(key)
+		}
+	}
 	crewTeamRefusals.Delete(peer)
 }
