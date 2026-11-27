@@ -1194,12 +1194,15 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 			if msg.QueuedRequest {
 				log.Printf("[QUERY->LIVE] session=%s message=%s action=dequeued reason=queue_kind", dest.Session, msg.ID)
 			}
-			deliveryStart := time.Now()
-			var turnStarted atomic.Bool
-			deliveryCtx, cancel := context.WithTimeout(context.WithValue(internalBotRequestContext(ctx, dest.UserID), agentMessageTurnStartedKey{}, &turnStarted), agentMessageDeliveryWait)
+			var tracker agentMessageTurnTracker
+			var deliveryStart time.Time
+			var deliveryCtx context.Context
+			var cancel context.CancelFunc
 			var session string
 			var deliveryErr error
 			if steer {
+				deliveryStart = time.Now()
+				deliveryCtx, cancel = context.WithTimeout(context.WithValue(internalBotRequestContext(ctx, dest.UserID), agentMessageTurnStartedKey{}, &tracker), agentMessageDeliveryWait)
 				var steered bool
 				if steered, deliveryErr = api.steerAgentMessageReply(deliveryCtx, conv, msg); !steered && deliveryErr == nil {
 					// The turn ended or cannot take input right now: put the message back and let it wait as before.
@@ -1212,21 +1215,30 @@ func (api *StreamingAPI) kickAgentMessages(id string) {
 				}
 				session = dest.Session
 			} else {
-				// Cap concurrent waking agent-message turns so a broadcast to many
-				// sleeping tabs does not launch 10+ coding CLIs simultaneously (#4309).
-				select {
-				case agentMessageWakeSem <- struct{}{}:
-					session, deliveryErr = api.deliverAgentMessage(deliveryCtx, conv, msg)
-					<-agentMessageWakeSem
-				case <-deliveryCtx.Done():
-					deliveryErr = agentDeliveryTransient(deliveryCtx.Err())
+				// Cap concurrent waking agent-message setups so a broadcast to many
+				// sleeping tabs does not launch 10+ coding CLIs simultaneously (#4309),
+				// but wait before starting the delivery timeout and release the slot as
+				// soon as the receiving turn has started (#4357).
+				agentMessageWakeSem <- struct{}{}
+				var releaseOnce sync.Once
+				releaseWakeSlot := func() {
+					releaseOnce.Do(func() {
+						<-agentMessageWakeSem
+					})
 				}
+				tracker.onStarted = releaseWakeSlot
+				deliveryStart = time.Now()
+				deliveryCtx, cancel = context.WithTimeout(context.WithValue(internalBotRequestContext(ctx, dest.UserID), agentMessageTurnStartedKey{}, &tracker), agentMessageDeliveryWait)
+				func() {
+					defer releaseWakeSlot()
+					session, deliveryErr = api.deliverAgentMessage(deliveryCtx, conv, msg)
+				}()
 			}
 			// Only count a deadline as delivered when the receiving turn actually started;
 			// a timeout during pre-turn preparation or routing falls through to retry/undeliverable.
-			stillRunning := agentDeliveryTimedOutRunning(steer, turnStarted.Load(), deliveryErr, deliveryCtx.Err())
+			stillRunning := agentDeliveryTimedOutRunning(steer, tracker.started.Load(), deliveryErr, deliveryCtx.Err())
 			cancel()
-			log.Printf("[AGENT-MESSAGE] kind=%s delivery call for %s returned after %dms (session=%s started=%t err=%v)", msg.MessageType, msg.ID, time.Since(deliveryStart).Milliseconds(), session, turnStarted.Load(), deliveryErr)
+			log.Printf("[AGENT-MESSAGE] kind=%s delivery call for %s returned after %dms (session=%s started=%t err=%v)", msg.MessageType, msg.ID, time.Since(deliveryStart).Milliseconds(), session, tracker.started.Load(), deliveryErr)
 			if stillRunning {
 				log.Printf("[AGENT-MESSAGE] delivery %s in %s: the receiving turn is still queued or running after %s; counted as delivered", msg.ID, conv.ID, agentMessageDeliveryWait)
 				deliveryErr = nil
@@ -1312,9 +1324,17 @@ const (
 
 type agentMessageTurnStartedKey struct{}
 
+type agentMessageTurnTracker struct {
+	started   atomic.Bool
+	onStarted func()
+}
+
 func markAgentMessageTurnStarted(ctx context.Context) {
-	if started, ok := ctx.Value(agentMessageTurnStartedKey{}).(*atomic.Bool); ok && started != nil {
-		started.Store(true)
+	if tracker, ok := ctx.Value(agentMessageTurnStartedKey{}).(*agentMessageTurnTracker); ok && tracker != nil {
+		tracker.started.Store(true)
+		if tracker.onStarted != nil {
+			tracker.onStarted()
+		}
 	}
 }
 
