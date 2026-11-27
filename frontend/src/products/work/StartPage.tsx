@@ -86,7 +86,7 @@ export function StartPage({ mode, place, projectId, projectFolder, canChooseFold
       </div>}
     </div>
     <div className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-4">
-      <form onSubmit={event => { event.preventDefault(); send() }} className="flex items-end gap-2 rounded-2xl border border-border bg-background py-2 pl-4 pr-2 shadow-sm focus-within:ring-2 focus-within:ring-ring">
+      <form data-chat-composer-card="" onSubmit={event => { event.preventDefault(); send() }} className="flex items-end gap-2 rounded-2xl border border-border bg-background py-2 pl-4 pr-2 shadow-sm">
         <textarea ref={input} value={text} onChange={event => setText(event.target.value)} rows={1} disabled={submitting}
           onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); send() } }}
           placeholder="Describe a task or ask a question" aria-label="Your first message" data-testid="work-first-chat-input"
