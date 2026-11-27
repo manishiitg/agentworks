@@ -7,6 +7,7 @@ import { ConversationImageRoot } from './ConversationImageRoot'
 
 vi.mock('../../services/api', () => ({
   getApiBaseUrl: () => 'http://localhost:18743', getAuthToken: () => 'app-session',
+  apiUrlForPath: (route: string) => `http://localhost:18743${route}`,
   workspaceApi: {}, agentApi: {},
 }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
