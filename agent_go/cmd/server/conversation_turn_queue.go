@@ -591,6 +591,12 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 	if api == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
+	// While the server stops, queued messages stay queued: one started now is killed at once and saved as failed
+	// ("Not sent"). Startup dispatches them.
+	if serverShuttingDown.Load() {
+		logTurnQueue("session %s: server stopping, queued messages wait for startup", sessionID)
+		return
+	}
 	// Startup recovery never kicks a chat it deferred, so any kick of one is new
 	// activity (a person's message): it starts now, not behind the recovery batch.
 	api.admitDeferredStartupResume(sessionID)

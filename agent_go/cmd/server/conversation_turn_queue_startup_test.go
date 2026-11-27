@@ -215,3 +215,32 @@ func TestQueuedTurnPanicLeavesTheChatUsable(t *testing.T) {
 	}
 	send("second")
 }
+
+// A restart while a turn ran failed the message queued behind it: the cancelled turn kicked the queue, the queued
+// message started during shutdown, was killed at once and saved as "Not sent". It now stays queued for startup.
+func TestQueuedMessageStaysQueuedWhileTheServerStops(t *testing.T) {
+	withMemoryUserDirectory(t, `{"users":[]}`)
+	owner := GetDefaultUserID()
+	api := newConversationTurnQueueTestAPI(map[string]string{})
+	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: owner})
+	ran := make(chan string, 2)
+	api.queuedTurnRunner = func(turn queuedConversationTurn) { ran <- turn.Request.Query }
+	if _, _, err := api.enqueueConversationTurn(ctx, owner, "chat-a", QueryRequest{AgentMode: "multi-agent", Query: "queued"}); err != nil {
+		t.Fatal(err)
+	}
+	serverShuttingDown.Store(true)
+	defer serverShuttingDown.Store(false)
+	api.kickConversationTurnQueue("chat-a")
+	select {
+	case got := <-ran:
+		t.Fatalf("queued message %q started while the server was stopping", got)
+	case <-time.After(300 * time.Millisecond):
+	}
+	stored, err := api.readConversationTurnQueue(context.Background(), owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 || stored[0].StartedAt != nil || stored[0].DeliveryFailedAt != nil {
+		t.Fatalf("the queued message must stay queued, not started or failed: %+v", stored)
+	}
+}
