@@ -412,7 +412,7 @@ func (api *StreamingAPI) desktopCrewRelaySession(ctx context.Context, connection
 			// this Mac's open Team tab for it reads again. Only that Team syncs.
 			crewTeamWakeFor(msg.Project, true)
 			if local := crewLocalCopyOf(msg.Project); local != "" {
-				dropCrewAccessCache(local, msg.Project)
+				markCrewAccessCacheStale(local, msg.Project)
 				publishCrewPanelChanged(local)
 			}
 		case "team.busy":

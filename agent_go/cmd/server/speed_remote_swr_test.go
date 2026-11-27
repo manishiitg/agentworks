@@ -225,3 +225,114 @@ func TestCrewAccessRemoteReadSWRAndFailBackoff(t *testing.T) {
 		t.Fatalf("second call after cold failure blocked for %v (expected fail backoff)", elapsed)
 	}
 }
+
+func TestCrewAccessRemoteParallelFollowUpsAndMarkStale(t *testing.T) {
+	origFresh := crewAccessRemoteFreshTTL
+	origTimeout := crewAccessRemoteTimeout
+	crewAccessRemoteFreshTTL = time.Minute
+	crewAccessRemoteTimeout = 2 * time.Second
+	t.Cleanup(func() {
+		crewAccessRemoteFreshTTL = origFresh
+		crewAccessRemoteTimeout = origTimeout
+		dropCrewAccessCache("proj-par", "peer-par")
+	})
+
+	var followUpCalls atomic.Int32
+	var inFlight atomic.Int32
+	var maxInFlight atomic.Int32
+	const perCallDelay = 90 * time.Millisecond
+
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/peer-par"):
+			_, _ = io.WriteString(w, `{"on":true,"owner_id":"owner","folder_access":true,"folder":{"id":"f1"}}`)
+		case strings.HasSuffix(r.URL.Path, "/agents"):
+			followUpCalls.Add(1)
+			cur := inFlight.Add(1)
+			for prev := maxInFlight.Load(); cur > prev; prev = maxInFlight.Load() {
+				if maxInFlight.CompareAndSwap(prev, cur) {
+					break
+				}
+			}
+			time.Sleep(perCallDelay)
+			inFlight.Add(-1)
+			_, _ = io.WriteString(w, `{"people":[{"user_id":"u1","name":"Alice"}]}`)
+		case strings.HasSuffix(r.URL.Path, "/activity-posts"):
+			followUpCalls.Add(1)
+			cur := inFlight.Add(1)
+			for prev := maxInFlight.Load(); cur > prev; prev = maxInFlight.Load() {
+				if maxInFlight.CompareAndSwap(prev, cur) {
+					break
+				}
+			}
+			time.Sleep(perCallDelay)
+			inFlight.Add(-1)
+			_, _ = io.WriteString(w, `{}`)
+		case strings.HasSuffix(r.URL.Path, "/clashes"):
+			followUpCalls.Add(1)
+			cur := inFlight.Add(1)
+			for prev := maxInFlight.Load(); cur > prev; prev = maxInFlight.Load() {
+				if maxInFlight.CompareAndSwap(prev, cur) {
+					break
+				}
+			}
+			time.Sleep(perCallDelay)
+			inFlight.Add(-1)
+			_, _ = io.WriteString(w, `{"clashes":[]}`)
+		case strings.HasSuffix(r.URL.Path, "/events"):
+			followUpCalls.Add(1)
+			cur := inFlight.Add(1)
+			for prev := maxInFlight.Load(); cur > prev; prev = maxInFlight.Load() {
+				if maxInFlight.CompareAndSwap(prev, cur) {
+					break
+				}
+			}
+			time.Sleep(perCallDelay)
+			inFlight.Add(-1)
+			_, _ = io.WriteString(w, `{"events":[{"time":"2026-11-28T01:00:00Z"}]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer remote.Close()
+
+	api := &StreamingAPI{}
+	conn := desktopConnection{ID: "c-par", Server: remote.URL, Token: "tok"}
+
+	start := time.Now()
+	got := api.crewAccessRemoteRead(context.Background(), "owner", conn, "proj-par", "peer-par")
+	elapsed := time.Since(start)
+	if !got.peopleRead || len(got.people) != 1 || got.people[0].Name != "Alice" {
+		t.Fatalf("unexpected remote result: %+v", got)
+	}
+	if got.last.IsZero() {
+		t.Fatalf("expected events timestamp to be populated")
+	}
+	if maxInFlight.Load() < 2 {
+		t.Fatalf("follow-up remote reads ran serially (maxInFlight=%d, elapsed=%v); expected parallel fan-out", maxInFlight.Load(), elapsed)
+	}
+	if elapsed >= 3*perCallDelay {
+		t.Fatalf("parallel follow-up reads took %v, expected < %v", elapsed, 3*perCallDelay)
+	}
+
+	// markCrewAccessCacheStale preserves last-good data and triggers an immediate
+	// background refresh without blocking the caller.
+	beforeCalls := followUpCalls.Load()
+	markCrewAccessCacheStale("proj-par", "peer-par")
+	start = time.Now()
+	stale := api.crewAccessRemoteRead(context.Background(), "owner", conn, "proj-par", "peer-par")
+	if d := time.Since(start); d > 50*time.Millisecond {
+		t.Fatalf("read after markCrewAccessCacheStale blocked for %v", d)
+	}
+	if !stale.peopleRead || len(stale.people) != 1 || stale.people[0].Name != "Alice" {
+		t.Fatalf("markCrewAccessCacheStale lost last-good people: %+v", stale)
+	}
+	deadline := time.Now().Add(time.Second)
+	for followUpCalls.Load() <= beforeCalls && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if followUpCalls.Load() <= beforeCalls {
+		t.Fatalf("expected background refresh after markCrewAccessCacheStale")
+	}
+}

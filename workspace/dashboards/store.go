@@ -68,16 +68,24 @@ type Dashboard struct {
 }
 type Result struct {
 	Deleted      bool        `json:"deleted,omitempty"`
+	HasPublished bool        `json:"has_published,omitempty"`
 	Dashboards   []Dashboard `json:"dashboards,omitempty"`
 	Dashboard    *Dashboard  `json:"dashboard,omitempty"`
 	Snapshot     *Snapshot   `json:"snapshot,omitempty"`
 	ResolvedPath string      `json:"resolved_path,omitempty"`
 }
+type snapshotMeta struct {
+	Title    string `json:"title"`
+	Motion   bool   `json:"motion,omitempty"`
+	Artifact bool   `json:"artifact,omitempty"`
+}
 type state struct {
-	ID        string   `json:"id"`
-	Draft     string   `json:"draft"`
-	Published string   `json:"published"`
-	History   []string `json:"history"`
+	ID            string        `json:"id"`
+	Draft         string        `json:"draft"`
+	Published     string        `json:"published"`
+	History       []string      `json:"history"`
+	DraftMeta     *snapshotMeta `json:"draft_meta,omitempty"`
+	PublishedMeta *snapshotMeta `json:"published_meta,omitempty"`
 }
 
 func fail(status int, message string) error { return &wf.FileError{Status: status, Message: message} }
@@ -232,11 +240,14 @@ func atomicWrite(root *projectRoot, p string, data []byte) error {
 	return root.Rename(tmp, p)
 }
 func summary(s state, snap Snapshot, draft bool) Dashboard {
+	return summaryMeta(s, snapshotMeta{Title: snap.Title, Motion: snap.Motion, Artifact: snap.Artifact}, draft)
+}
+func summaryMeta(s state, meta snapshotMeta, draft bool) Dashboard {
 	rev := s.Published
 	if draft {
 		rev = s.Draft
 	}
-	d := Dashboard{ID: s.ID, Title: snap.Title, Motion: snap.Motion, Artifact: snap.Artifact, Revision: rev, Published: s.Published, DocumentPath: Document(s.ID, ""), Managed: true}
+	d := Dashboard{ID: s.ID, Title: meta.Title, Motion: meta.Motion, Artifact: meta.Artifact, Revision: rev, Published: s.Published, DocumentPath: Document(s.ID, ""), Managed: true}
 	if draft {
 		d.History = s.History
 	}
@@ -254,6 +265,14 @@ func loadSnapshot(root *projectRoot, id, rev string) (Snapshot, error) {
 	}
 	err := readJSON(root, snapshotPath(id, rev), &s)
 	return s, err
+}
+func loadSnapshotMeta(root *projectRoot, id, rev string) (snapshotMeta, error) {
+	var m snapshotMeta
+	if !revisionID.MatchString(rev) {
+		return m, fail(404, "dashboard revision not found")
+	}
+	err := readJSON(root, snapshotPath(id, rev), &m)
+	return m, err
 }
 func revisionReadable(s state, rev string, draft bool) bool {
 	if draft {
@@ -295,6 +314,36 @@ func executeLocked(ctx context.Context, docs string, req Request) (Result, error
 		return out, err
 	}
 	defer root.Close()
+	if req.Action == "has_published" {
+		dir, e := root.Open("db/reports/.dashboard-state")
+		if e == nil {
+			entries, e := dir.ReadDir(-1)
+			dir.Close()
+			if e != nil && !errors.Is(e, io.EOF) {
+				return out, e
+			}
+			for _, entry := range entries {
+				if !entry.IsDir() || !identifier.MatchString(entry.Name()) {
+					continue
+				}
+				s, e := loadState(root, entry.Name())
+				if os.IsNotExist(e) {
+					continue
+				}
+				if e != nil {
+					return out, e
+				}
+				if s.Published != "" && (req.Guard == nil || req.Guard.Allows(Document(s.ID, s.Published), false)) {
+					out.HasPublished = true
+					return out, nil
+				}
+			}
+		}
+		if e != nil && !os.IsNotExist(e) {
+			return out, e
+		}
+		return out, nil
+	}
 	if req.Action == "list" {
 		dir, e := root.Open("db/reports/.dashboard-state")
 		if e == nil {
@@ -315,18 +364,25 @@ func executeLocked(ctx context.Context, docs string, req Request) (Result, error
 					return out, e
 				}
 				rev := s.Published
+				cachedMeta := s.PublishedMeta
 				if req.IncludeDraft {
 					rev = s.Draft
+					cachedMeta = s.DraftMeta
 				}
 				if rev == "" {
 					continue
 				}
-				snap, e := loadSnapshot(root, s.ID, rev)
-				if e != nil {
-					return out, e
+				var meta snapshotMeta
+				if cachedMeta != nil && cachedMeta.Title != "" {
+					meta = *cachedMeta
+				} else {
+					meta, e = loadSnapshotMeta(root, s.ID, rev)
+					if e != nil {
+						return out, e
+					}
 				}
 				if req.Guard == nil || req.Guard.Allows(Document(s.ID, rev), false) {
-					d := summary(s, snap, req.IncludeDraft)
+					d := summaryMeta(s, meta, req.IncludeDraft)
 					if info, e := root.Stat(StatePath(s.ID)); e == nil {
 						d.UpdatedAt = info.ModTime().Unix()
 					}
@@ -494,9 +550,12 @@ func executeLocked(ctx context.Context, docs string, req Request) (Result, error
 				return out, fail(403, "publication outside connection write grants")
 			}
 		}
+		meta := &snapshotMeta{Title: snap.Title, Motion: snap.Motion, Artifact: snap.Artifact}
 		s.Published = rev
+		s.PublishedMeta = meta
 		if req.Action == "restore" {
 			s.Draft = rev
+			s.DraftMeta = meta
 		}
 		if !contains(s.History, rev) {
 			s.History = append(s.History, rev)
@@ -600,6 +659,7 @@ func executeLocked(ctx context.Context, docs string, req Request) (Result, error
 		return out, err
 	}
 	s.Draft = rev
+	s.DraftMeta = &snapshotMeta{Title: snap.Title, Motion: snap.Motion, Artifact: snap.Artifact}
 	encoded, err := json.Marshal(s)
 	if err != nil {
 		return out, err

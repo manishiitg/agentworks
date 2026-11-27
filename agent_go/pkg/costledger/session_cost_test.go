@@ -93,3 +93,60 @@ func TestSessionCostSplitsAtTheLastAppSwitch(t *testing.T) {
 		t.Fatalf("current tokens = %#v, want 50 new input, 60 from cache, 7 output", tokens)
 	}
 }
+
+func TestSessionCostQueriesUseSessionIndexes(t *testing.T) {
+	ledger, err := NewSQLiteLedger(filepath.Join(t.TempDir(), "costs.sqlite"))
+	if err != nil {
+		t.Fatalf("NewSQLiteLedger() error = %v", err)
+	}
+	defer ledger.Close()
+	store := ledger.db.(*sqliteLedger)
+	queries := []struct {
+		name string
+		sql  string
+		args []any
+	}{
+		{
+			name: "session_id lookup",
+			sql:  `EXPLAIN QUERY PLAN SELECT occurred_at FROM cost_events WHERE session_id = ?`,
+			args: []any{"chat-1"},
+		},
+		{
+			name: "session_id or parent_session_id lookup",
+			sql:  `EXPLAIN QUERY PLAN SELECT total_cost_usd FROM cost_events WHERE session_id = ? OR parent_session_id = ?`,
+			args: []any{"chat-1", "chat-1"},
+		},
+	}
+	for _, tc := range queries {
+		rows, err := store.db.Query(tc.sql, tc.args...)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		var plan string
+		for rows.Next() {
+			var id, parent, notused int
+			var detail string
+			if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+				rows.Close()
+				t.Fatalf("%s scan: %v", tc.name, err)
+			}
+			plan += detail + "\n"
+		}
+		rows.Close()
+		if !containsPlanIndex(plan, "idx_cost_events_session_id") {
+			t.Fatalf("%s did not use idx_cost_events_session_id:\n%s", tc.name, plan)
+		}
+		if tc.name == "session_id or parent_session_id lookup" && !containsPlanIndex(plan, "idx_cost_events_parent_session_id") {
+			t.Fatalf("%s did not use idx_cost_events_parent_session_id:\n%s", tc.name, plan)
+		}
+	}
+}
+
+func containsPlanIndex(plan, idx string) bool {
+	for i := 0; i+len(idx) <= len(plan); i++ {
+		if plan[i:i+len(idx)] == idx {
+			return true
+		}
+	}
+	return false
+}

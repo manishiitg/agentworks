@@ -334,16 +334,11 @@ func (api *StreamingAPI) applyRunShareChange(ctx context.Context, claims *UserCl
 }
 
 func hasPublishedDashboard(ctx context.Context, root string) bool {
-	listed, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "list"})
+	res, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "has_published"})
 	if err != nil {
 		return false
 	}
-	for _, d := range listed.Dashboards {
-		if d.Managed && d.Published != "" {
-			return true
-		}
-	}
-	return false
+	return res.HasPublished
 }
 
 func unknownSuffix(unknown []string) string {
