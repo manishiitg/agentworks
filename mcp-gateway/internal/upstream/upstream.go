@@ -70,9 +70,16 @@ func ValidateURL(raw string, opts DialOptions) (*url.URL, error) {
 }
 
 func credentialQueryName(name string) bool {
-	n := strings.ToLower(strings.NewReplacer("-", "", "_", "").Replace(name))
-	for _, part := range []string{"key", "token", "secret", "password", "passwd", "auth", "signature", "credential"} {
+	n := strings.ToLower(strings.NewReplacer("-", "", "_", "", ".", "").Replace(name))
+	for _, part := range []string{"key", "token", "secret", "password", "passwd", "auth", "signature", "credential", "bearer", "jwt", "session", "cookie"} {
 		if strings.Contains(n, part) {
+			return true
+		}
+	}
+	// Short names count only as a whole word (a "pat", not "path"; a "sig", not "design").
+	for _, word := range strings.FieldsFunc(strings.ToLower(name), func(r rune) bool { return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9') }) {
+		switch word {
+		case "pat", "sig", "sas", "pwd", "pw", "otp", "sid", "code", "ticket":
 			return true
 		}
 	}

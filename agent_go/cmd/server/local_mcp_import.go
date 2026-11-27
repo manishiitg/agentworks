@@ -68,11 +68,14 @@ type localMCPEntry struct {
 
 var localMCPVar = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^}]*))?\}`)
 
-// expandLocalMCPVars resolves ${VAR} and ${VAR:-default} as Claude Code does, from this process's environment.
-func expandLocalMCPVars(value string, missing map[string]bool) string {
+// expandLocalMCPVars resolves ${VAR} and ${VAR:-default} from the file itself only: the entry's own env values and
+// the default written in the placeholder. Never from this process's environment, which is AgentWorks' and holds its
+// keys, so a config file (a cloned repository's .mcp.json too) can't send them to a host it names. A placeholder
+// with nothing in the file is imported empty and named on the row for the person to fill in.
+func expandLocalMCPVars(value string, own map[string]string, missing map[string]bool) string {
 	return localMCPVar.ReplaceAllStringFunc(value, func(match string) string {
 		parts := localMCPVar.FindStringSubmatch(match)
-		if v, ok := os.LookupEnv(parts[1]); ok {
+		if v, ok := own[parts[1]]; ok && !localMCPVar.MatchString(v) {
 			return v
 		}
 		if parts[2] != "" {
@@ -162,13 +165,13 @@ func localMCPCandidateFrom(source, scope, name string, entry localMCPEntry, fold
 	c := localMCPCandidate{Name: name, Sources: []string{source}, Scope: scope}
 	if raw := localMCPEntryURL(entry); raw != "" || entry.Type == "http" || entry.Type == "sse" {
 		c.Kind = "url"
-		c.url = expandLocalMCPVars(raw, missing)
+		c.url = expandLocalMCPVars(raw, entry.Env, missing)
 		if entry.Type == "sse" {
 			c.transport = "sse"
 		}
 		c.headers = map[string]string{}
 		for k, v := range entry.Headers {
-			c.headers[k] = expandLocalMCPVars(v, missing)
+			c.headers[k] = expandLocalMCPVars(v, entry.Env, missing)
 			c.Keys = append(c.Keys, k)
 		}
 		if u, err := url.Parse(c.url); err == nil && u.Host != "" {
@@ -180,20 +183,20 @@ func localMCPCandidateFrom(source, scope, name string, entry localMCPEntry, fold
 		}
 	} else {
 		c.Kind = "command"
-		c.command = resolveLocalMCPProgram(expandLocalMCPVars(entry.Command, missing), searchPath)
+		c.command = resolveLocalMCPProgram(expandLocalMCPVars(entry.Command, entry.Env, missing), searchPath)
 		c.Program = filepath.Base(entry.Command)
 		for _, arg := range entry.Args {
-			c.args = append(c.args, expandLocalMCPVars(arg, missing))
+			c.args = append(c.args, expandLocalMCPVars(arg, entry.Env, missing))
 		}
 		c.env = map[string]string{}
 		for k, v := range entry.Env {
-			c.env[k] = expandLocalMCPVars(v, missing)
+			c.env[k] = expandLocalMCPVars(v, entry.Env, missing)
 			c.Keys = append(c.Keys, k)
 		}
 		if _, ok := c.env["PATH"]; !ok {
 			c.env["PATH"] = searchPath
 		}
-		c.dir = expandLocalMCPVars(entry.Cwd, missing)
+		c.dir = expandLocalMCPVars(entry.Cwd, entry.Env, missing)
 		if c.dir == "" {
 			c.dir = folder
 		}
@@ -212,7 +215,7 @@ func localMCPCandidateFrom(source, scope, name string, entry localMCPEntry, fold
 			names = append(names, n)
 		}
 		sort.Strings(names)
-		note := "Needs " + strings.Join(names, ", ") + ", which is not set here; it is imported empty."
+		note := "Needs " + strings.Join(names, ", ") + ", which the file does not set; it is imported empty, so add it in Vault."
 		c.Note = strings.TrimSpace(c.Note + " " + note)
 	}
 	sum := sha256.Sum256([]byte(c.Kind + "\x00" + name + "\x00" + c.url + "\x00" + entry.Command + "\x00" + strings.Join(entry.Args, "\x00")))

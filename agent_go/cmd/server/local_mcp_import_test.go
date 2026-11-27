@@ -34,7 +34,7 @@ func TestLocalMCPCandidatesReadEveryApp(t *testing.T) {
 	claude, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{"agentworks": map[string]any{"type": "http", "url": "http://127.0.0.1:1/mcp"}},
 		"projects": map[string]any{folder: map[string]any{"mcpServers": map[string]any{
-			"posthog": map[string]any{"type": "http", "url": "https://mcp.example.com/mcp", "headers": map[string]string{"Authorization": "Bearer ${LOCAL_MCP_TEST_TOKEN}"}},
+			"posthog": map[string]any{"type": "http", "url": "https://mcp.example.com/mcp", "headers": map[string]string{"Authorization": "Bearer ${LOCAL_MCP_TEST_TOKEN}", "X-Mode": "${MODE:-read}"}},
 		}}},
 	})
 	write(filepath.Join(home, ".claude.json"), string(claude))
@@ -49,7 +49,7 @@ command = "fake-mcp"
 enabled = false
 `)
 	write(filepath.Join(home, ".cursor", "mcp.json"), `{"mcpServers":{"agentworks-messages":{"command":"agentworks"},"notes":{"command":"fake-mcp","args":["--secret-arg-value"]}}}`)
-	write(filepath.Join(home, ".gemini", "config", "mcp_config.json"), `{"mcpServers":{"missing":{"command":"not-installed-anywhere","env":{"API_KEY":"${NOT_SET_ANYWHERE}"}}}}`)
+	write(filepath.Join(home, ".gemini", "config", "mcp_config.json"), `{"mcpServers":{"missing":{"command":"not-installed-anywhere","env":{"API_KEY":"${NOT_SET_ANYWHERE}","REGION":"eu","URL":"https://${REGION}.example.com"}}}}`)
 
 	got := (&StreamingAPI{}).localMCPCandidates(folder)
 	byName := map[string]localMCPCandidate{}
@@ -60,11 +60,13 @@ enabled = false
 		t.Fatalf("candidates = %+v, want posthog, notes, missing", got)
 	}
 	posthog := byName["posthog"]
-	if posthog.Kind != "url" || posthog.Scope != "project" || posthog.headers["Authorization"] != "Bearer token-value-from-env" || !posthog.Importable {
+	// Placeholders come from the file only, never from the app's own environment: a config file can't send
+	// AgentWorks' keys to a host it names. A default in the placeholder is used; anything else is left empty.
+	if posthog.Kind != "url" || posthog.Scope != "project" || posthog.headers["Authorization"] != "Bearer " || posthog.headers["X-Mode"] != "read" || !posthog.Importable || !strings.Contains(posthog.Note, "LOCAL_MCP_TEST_TOKEN") {
 		t.Fatalf("posthog = %+v", posthog)
 	}
 	notes := byName["notes"]
-	if notes.Kind != "command" || notes.command != program || strings.Join(notes.Sources, ",") != "Codex,Cursor" || notes.env["LOCAL_MCP_TEST_TOKEN"] != "token-value-from-env" || notes.env["PATH"] == "" || notes.dir != folder {
+	if notes.Kind != "command" || notes.command != program || strings.Join(notes.Sources, ",") != "Codex,Cursor" || notes.env["LOCAL_MCP_TEST_TOKEN"] != "" || notes.env["PATH"] == "" || notes.dir != folder {
 		t.Fatalf("notes = %+v (sources %v)", notes, notes.Sources)
 	}
 	launch, _ := notes.launch()
@@ -72,7 +74,7 @@ enabled = false
 		t.Fatalf("launch = %s", launch)
 	}
 	missing := byName["missing"]
-	if missing.Importable || !strings.Contains(missing.Note, "not installed") || !strings.Contains(missing.Note, "NOT_SET_ANYWHERE") {
+	if missing.Importable || !strings.Contains(missing.Note, "not installed") || !strings.Contains(missing.Note, "NOT_SET_ANYWHERE") || missing.env["URL"] != "https://eu.example.com" {
 		t.Fatalf("missing = %+v", missing)
 	}
 	screen, _ := json.Marshal(got)
