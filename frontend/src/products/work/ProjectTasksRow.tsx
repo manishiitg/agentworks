@@ -171,32 +171,23 @@ function useFolded(storageKey: string, groups: ProjectTaskGroup[]) {
 
 // The full Project tasks panel (#4294): the lead's focus line, Needs you, then
 // the lead's own groups in its order (Other for the rest), each foldable with a
-// done bar; filters by agent and step; the done list; the lead's controls.
+// done bar; the done list; the lead's controls.
 export function ProjectTasksPanel({ row, storageKey, onAgent, onOpenTask, onOpenWide, wide = false }: { row: CrewPanelRow; storageKey: string; onAgent?: Draft; onOpenTask: (id: string) => void; onOpenWide?: () => void; wide?: boolean }) {
-  const [agent, setAgent] = useState('')
-  const [step, setStep] = useState('')
   const [showDone, setShowDone] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const groups = row.task_groups || []
   const [isFolded, toggle] = useFolded(storageKey, groups)
   const all = row.tasks || []
-  const agents = [...new Set(all.filter(t => !t.done && t.assignee).map(t => t.assignee!))].sort()
-  const match = (t: ProjectTask) => (!agent || t.assignee === agent) && (!step || t.step === step)
-  const open = all.filter(t => !t.done && match(t)), done = all.filter(t => t.done && match(t))
+  // No agent or step filters (owner, 27 Nov): who does what is the lead's job.
+  const open = all.filter(t => !t.done), done = all.filter(t => t.done)
   const needsYou = open.filter(t => t.needs_you), rest = open.filter(t => !t.needs_you)
   const line = (task: ProjectTask, answers = false) => <TaskLine key={task.id} task={task} onAgent={onAgent} answers={answers} onOpen={() => task.id && onOpenTask(task.id)}/>
   const sections = [...groups.map(g => ({ name: g.name, note: g.note })), { name: 'Other', note: '' }]
-    .map(g => ({ ...g, tasks: rest.filter(t => (t.group || 'Other') === g.name), all: all.filter(t => (t.group || 'Other') === g.name && match(t)) }))
+    .map(g => ({ ...g, tasks: rest.filter(t => (t.group || 'Other') === g.name), all: all.filter(t => (t.group || 'Other') === g.name) }))
     .filter(g => g.tasks.length)
-  const select = `rounded-md border border-border bg-transparent px-1.5 py-0.5 text-[10.5px] text-foreground ${ring}`
   return <div className="space-y-1.5 px-0.5 pb-2 text-[11.5px]">
     <Drive row={row} onAgent={onAgent} onOpenWide={onOpenWide}/>
     {row.focus ? <p className="rounded-md bg-muted/60 px-2 py-1 text-[11.5px] text-foreground">{row.focus}</p> : null}
-    {agents.length > 1 || (row.steps?.length || 0) > 2 ? <div className="flex flex-wrap items-center gap-1.5 px-1">
-      {agents.length > 1 && <select aria-label="Filter by agent" value={agent} onChange={e => setAgent(e.target.value)} className={select}><option value="">Everyone</option>{agents.map(a => <option key={a} value={a}>{a}</option>)}</select>}
-      <select aria-label="Filter by step" value={step} onChange={e => setStep(e.target.value)} className={select}><option value="">All steps</option>{(row.steps || []).map(s => <option key={s} value={s}>{s}</option>)}</select>
-      {agent || step ? <button type="button" onClick={() => { setAgent(''); setStep('') }} className="text-[10.5px] text-muted-foreground hover:text-foreground">Clear</button> : null}
-    </div> : null}
     {needsYou.length ? <section aria-label="Needs you" className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-1">
       <p className="px-1.5 pb-0.5 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">Needs you <span className="font-normal">{needsYou.length}</span></p>
       {needsYou.map(task => line(task, true))}
@@ -219,7 +210,7 @@ export function ProjectTasksPanel({ row, storageKey, onAgent, onOpenTask, onOpen
       </section>
     })}
     </div>
-    {!open.length && <p className="px-1 py-0.5 text-[11px] text-muted-foreground">{agent || step ? 'Nothing open matches.' : `Nothing open. New work shows here once ${row.lead || 'the lead'} sorts it.`}</p>}
+    {!open.length && <p className="px-1 py-0.5 text-[11px] text-muted-foreground">{`Nothing open. New work shows here once ${row.lead || 'the lead'} sorts it.`}</p>}
     {row.done_count ? <div className="border-t border-dashed border-border pt-1">
       <button type="button" aria-expanded={showDone} onClick={() => setShowDone(value => !value)} className="px-1 text-[10.5px] text-muted-foreground hover:text-foreground">✓ {row.done_count} done {showDone ? '▾' : '▸'}</button>
       {showDone && done.map(task => line(task))}
