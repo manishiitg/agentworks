@@ -107,7 +107,7 @@ function SlackAdminSections() {
       <SettingsCard
         icon={<Users className="h-4 w-4 text-muted-foreground" />}
         title="Shared bot"
-        description="One Slack app for many workflows. Each workflow or crew project picks the channels it answers in from its own Slack tab. Workflows with their own bot don't use it."
+        description="One Slack app for many workflows. Each workflow or project picks the channels it answers in from its own Slack tab. Workflows with their own bot don't use it."
       >
         <ToggleRow
           label="Shared bot enabled"

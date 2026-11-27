@@ -44,7 +44,7 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 				target.Label = target.Label + " · " + target.Chat.Name
 				return target, nil
 			}
-			return target, fmt.Errorf("Choose a chat_id from list_agents for this Crew")
+			return target, fmt.Errorf("Choose a chat_id from list_agents for this project")
 		}
 		// Run sharing does not share an owner's Builder history. These
 		// callers keep the existing caller-bound ask conversation.

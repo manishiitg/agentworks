@@ -18,7 +18,7 @@ func (api *StreamingAPI) registerWorkGlobalSecretSelectionTool(registrar definit
 		return fmt.Errorf("Project global secret selection requires an active project project")
 	}
 
-	return registrar.RegisterCustomTool(updateProjectGlobalSecretSelectionTool, "Select or deselect one existing global secret for the active Crew project. Call list_secrets first and use an exact name from its global.names list. This changes only the project's explicit allowlist in workflow.json; it never returns or modifies the secret value. The selection is available to Crew tools from the next user message.", map[string]interface{}{
+	return registrar.RegisterCustomTool(updateProjectGlobalSecretSelectionTool, "Select or deselect one existing global secret for the active project. Call list_secrets first and use an exact name from its global.names list. This changes only the project's explicit allowlist in workflow.json; it never returns or modifies the secret value. The selection is available to Crew tools from the next user message.", map[string]interface{}{
 		"type":                 "object",
 		"additionalProperties": false,
 		"required":             []string{"action", "name"},

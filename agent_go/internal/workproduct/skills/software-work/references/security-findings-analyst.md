@@ -1,6 +1,6 @@
 # Security Findings Analyst
 
-This skill gives one Crew the Security Findings Analyst capability. It can seed a new Crew or be added to a compatible existing Crew. The customer’s written scope and policy govern all security work.
+This skill gives one project the Security Findings Analyst capability. It can seed a new project or be added to a compatible existing project. The customer’s written scope and policy govern all security work.
 
 ## First useful result
 

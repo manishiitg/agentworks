@@ -62,7 +62,7 @@ func TestTeamMailboxRegistryReadAndFailureReceipts(t *testing.T) {
 	if _, _, found, err := callerAgentMailboxConversation(t.Context(), "inbox-stale-session", "other", caller); err != nil || found {
 		t.Fatalf("revoked registry identity fell back to matching session: %v %v", found, err)
 	}
-	for _, reason := range []string{"message Crew is unavailable or ownership changed", "internal path /private/fixture-sensitive"} {
+	for _, reason := range []string{"message project is unavailable or ownership changed", "internal path /private/fixture-sensitive"} {
 		state, line := receiptState(agentMessage{Delivery: "undeliverable", Error: reason}, nil, false)
 		if state != "not_delivered" || !strings.Contains(line, "Not delivered") || strings.Contains(line, "fixture-sensitive") {
 			t.Fatalf("failed delivery receipt: %s %s", state, line)

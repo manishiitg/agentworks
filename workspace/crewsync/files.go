@@ -75,7 +75,7 @@ func rootFor(roots crewroot.Roots, key string) (string, string, error) {
 	if area == "knowledge" {
 		physical, err := crewroot.ResolveContained(roots.Automation, rel)
 		if err != nil || !crewroot.Within(filepath.Join(roots.Automation, "knowledgebase"), physical) {
-			return "", "", fmt.Errorf("knowledge path leaves its Crew knowledge folder")
+			return "", "", fmt.Errorf("knowledge path leaves its project knowledge folder")
 		}
 		return roots.Automation, rel, nil
 	}
@@ -182,7 +182,7 @@ type BusyFileError struct{ Key string }
 
 func (e *BusyFileError) Error() string {
 	_, name, _ := strings.Cut(e.Key, "/")
-	return name + " keeps changing, so this Crew can't be sent yet. Stop the agent writing to it, then try again."
+	return name + " keeps changing, so this project can't be sent yet. Stop the agent writing to it, then try again."
 }
 
 // readCaptureFile uses the same cache reader with a private-copy sink; a test

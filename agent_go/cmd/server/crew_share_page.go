@@ -578,7 +578,7 @@ func crewSharePeopleWords(t crewTeam, everyone bool, named []string) string {
 	if len(parts) == 0 {
 		return "only you so far"
 	}
-	return strings.Join(parts, ", ") + ", in the app, Slack, their own AI apps and other Crews"
+	return strings.Join(parts, ", ") + ", in the app, Slack, their own AI apps and other projects"
 }
 
 func (api *StreamingAPI) crewSharePageFor(r *http.Request, t crewTeam, viewer string) crewSharePage {

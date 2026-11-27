@@ -70,7 +70,7 @@ func records() (map[string]Record, error) {
 // parent must still be the original directory, never a replacement symlink.
 // ErrCrewFolderMissing: a registered Crew whose folder no longer exists. It wraps fs.ErrNotExist so readers
 // answer "file does not exist" instead of a server error.
-var ErrCrewFolderMissing = fmt.Errorf("the Crew folder no longer exists: %w", fs.ErrNotExist)
+var ErrCrewFolderMissing = fmt.Errorf("the project folder no longer exists: %w", fs.ErrNotExist)
 
 func unchangedDirectory(dir string, allowMissing bool) error {
 	for current := dir; ; current = filepath.Dir(current) {
@@ -78,7 +78,7 @@ func unchangedDirectory(dir string, allowMissing bool) error {
 		if err == nil {
 			real, evalErr := filepath.EvalSymlinks(current)
 			if evalErr != nil || real != current || !info.IsDir() {
-				return fmt.Errorf("the Crew folder is unavailable or has changed; restore its original folder")
+				return fmt.Errorf("the project folder is unavailable or has changed; restore its original folder")
 			}
 			return nil
 		}
@@ -87,7 +87,7 @@ func unchangedDirectory(dir string, allowMissing bool) error {
 			return ErrCrewFolderMissing
 		}
 		if !allowMissing || !os.IsNotExist(err) || filepath.Dir(current) == current {
-			return fmt.Errorf("the Crew folder is unavailable or has changed; restore its original folder")
+			return fmt.Errorf("the project folder is unavailable or has changed; restore its original folder")
 		}
 	}
 }
@@ -95,14 +95,14 @@ func unchangedDirectory(dir string, allowMissing bool) error {
 // PrivateRoot is selected only from a server-owned registry record.
 func PrivateRoot(docs, id string) (string, error) {
 	if id == "" || id == "." || id == ".." || strings.ContainsAny(id, "/\\") {
-		return "", fmt.Errorf("invalid Crew identity")
+		return "", fmt.Errorf("invalid project identity")
 	}
 	return filepath.Join(docs, filepath.FromSlash(PrivateDirectory), id), nil
 }
 
 func rootsForOperation(docs string, r Record, allowMissing bool) (Roots, error) {
 	if r.Product != "work" || r.Owner == "" || r.Folder == "" || strings.ContainsAny(r.Folder, "/\\") || strings.HasPrefix(r.Folder, ".") {
-		return Roots{}, fmt.Errorf("invalid Crew binding")
+		return Roots{}, fmt.Errorf("invalid project binding")
 	}
 	realDocs, err := filepath.EvalSymlinks(docs)
 	if err != nil {
@@ -116,7 +116,7 @@ func rootsForOperation(docs string, r Record, allowMissing bool) (Roots, error) 
 	resources := files
 	if r.LocalRoot != "" {
 		if !strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_DEPLOYMENT_MODE")), "local") || !filepath.IsAbs(r.LocalRoot) {
-			return Roots{}, fmt.Errorf("local Crew binding is unavailable on this server")
+			return Roots{}, fmt.Errorf("local project binding is unavailable on this server")
 		}
 		files = filepath.Clean(r.LocalRoot)
 		resources = filepath.Join(files, ".agentworks")
@@ -244,7 +244,7 @@ func (q *Resolver) Lookup(virtual string) (Roots, bool, error) {
 		return Roots{}, false, nil
 	}
 	if parts[0] != "Crew" || parts[1] != r.Folder {
-		return Roots{}, true, fmt.Errorf("use the issued Crew path with its original capitalization")
+		return Roots{}, true, fmt.Errorf("use the issued project path with its original capitalization")
 	}
 	out, err := q.root(r)
 	return out, true, err
@@ -282,16 +282,16 @@ func Within(root, target string) bool {
 // The unresolved suffix is kept for creates. The issued root itself must exist.
 func ResolveContained(root, rel string) (string, error) {
 	if filepath.IsAbs(rel) {
-		return "", fmt.Errorf("use a path relative to this Crew")
+		return "", fmt.Errorf("use a path relative to this project")
 	}
 	for _, p := range strings.Split(filepath.ToSlash(rel), "/") {
 		if p == ".." {
-			return "", fmt.Errorf("path leaves the Crew folder")
+			return "", fmt.Errorf("path leaves the project folder")
 		}
 	}
 	target := filepath.Join(root, filepath.FromSlash(rel))
 	if !Within(root, target) {
-		return "", fmt.Errorf("path leaves the Crew folder")
+		return "", fmt.Errorf("path leaves the project folder")
 	}
 	realRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {
@@ -302,14 +302,14 @@ func ResolveContained(root, rel string) (string, error) {
 		if _, err := os.Lstat(current); err == nil {
 			real, err := filepath.EvalSymlinks(current)
 			if err != nil || !Within(realRoot, real) {
-				return "", fmt.Errorf("path links outside the Crew folder")
+				return "", fmt.Errorf("path links outside the project folder")
 			}
 			return target, nil
 		} else if !os.IsNotExist(err) {
 			return "", err
 		}
 		if current == root {
-			return "", fmt.Errorf("Crew folder is unavailable")
+			return "", fmt.Errorf("project folder is unavailable")
 		}
 		current = filepath.Dir(current)
 	}
@@ -334,7 +334,7 @@ func (q *Resolver) Resolve(virtual string) (string, bool, error) {
 	}
 	for _, part := range strings.Split(filepath.ToSlash(virtual), "/") {
 		if part == ".." {
-			return "", false, fmt.Errorf("path leaves the Crew folder")
+			return "", false, fmt.Errorf("path leaves the project folder")
 		}
 	}
 	if p, found, err := q.resolveExecutable(virtual); found || err != nil {
@@ -353,7 +353,7 @@ func (q *Resolver) Resolve(virtual string) (string, bool, error) {
 		root = r.Files
 		rel = strings.TrimPrefix(strings.TrimPrefix(rel, FilesSegment), "/")
 		if first := strings.SplitN(strings.ToLower(rel), "/", 2)[0]; first == ".agentworks" {
-			return "", true, fmt.Errorf("use the Crew resource paths for .agentworks files")
+			return "", true, fmt.Errorf("use the project resource paths for .agentworks files")
 		}
 	} else if r.settingsAlias(rel) {
 		return "", true, fmt.Errorf("change schedules, webhooks and functions with their tools")
@@ -375,7 +375,7 @@ func (q *Resolver) Resolve(virtual string) (string, bool, error) {
 					return "", true, evalErr
 				}
 				if Within(r.Resources, real) {
-					return "", true, fmt.Errorf("use the Crew resource paths for .agentworks files")
+					return "", true, fmt.Errorf("use the project resource paths for .agentworks files")
 				}
 				break
 			} else if !os.IsNotExist(statErr) {
@@ -469,7 +469,7 @@ func CheckRootMutation(docs, physical string) error {
 		}
 		for _, root := range roots {
 			if Within(strings.ToLower(physical), strings.ToLower(root)) {
-				return fmt.Errorf("remove this Crew from its settings to keep your project folder and files")
+				return fmt.Errorf("remove this project from its settings to keep your folder and files")
 			}
 		}
 	}
@@ -516,7 +516,7 @@ func ScopeRoot(docs, virtual, rel string) (string, bool, error) {
 		return r.Files, true, nil
 	}
 	if virtual != r.Virtual {
-		return "", true, fmt.Errorf("use the issued Crew root")
+		return "", true, fmt.Errorf("use the issued project root")
 	}
 	return r.ResourcePathRoot(rel), true, nil
 }

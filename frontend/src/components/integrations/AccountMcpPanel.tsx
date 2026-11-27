@@ -139,7 +139,7 @@ function McpAccountForm({ target, busy, error, close, submit }: {
   return <ModalPortal><div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
     <section role="dialog" aria-modal="true" aria-labelledby="mcp-account-title" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-background p-6 shadow-xl">
       <div className="flex items-center justify-between"><h2 id="mcp-account-title" className="text-lg font-semibold">{target.server ? 'Edit MCP connection' : 'Connect MCP server'}</h2><Button variant="ghost" size="icon" aria-label="Close connection form" disabled={busy} onClick={close}><X className="h-4 w-4" /></Button></div>
-      <p className="mt-2 text-sm text-muted-foreground">Connect and discover its tools. Choose which Crews use it separately.</p>
+      <p className="mt-2 text-sm text-muted-foreground">Connect and discover its tools. Choose which projects use it separately.</p>
       <form className="mt-5 space-y-4" onSubmit={event => { event.preventDefault(); const fields: Record<string, string> = { label: label.trim() }
         if (target.server) fields.connection_id = target.server.id
         else if (target.provider) fields.provider = target.provider

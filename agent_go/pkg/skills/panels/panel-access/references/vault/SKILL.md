@@ -2,7 +2,7 @@
 
 Use familiar product menu entries: MCPs, Secrets, Google apps, Slack account,
 Slack bot and Local laptop. Each opens its native panel directly in the current
-Crew. Vault remains
+project. Vault remains
 the backend account/secret store, not a destination people need to learn.
 There is no separate personal Vault page, tab or menu entry.
 

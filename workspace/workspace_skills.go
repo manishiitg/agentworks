@@ -103,7 +103,7 @@ func skillWorkspaceRoots(docs, workspace string) (skillWorkspace, error) {
 			return skillWorkspace{}, err
 		}
 		if workspace != roots.Virtual {
-			return skillWorkspace{}, fmt.Errorf("skills require the Crew's root workspace")
+			return skillWorkspace{}, fmt.Errorf("skills require the project's root workspace")
 		}
 		w := skillWorkspace{dir: roots.Resources, config: roots.Private, crew: &roots}
 		if roots.Local {

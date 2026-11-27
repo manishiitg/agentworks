@@ -6,7 +6,7 @@ from . import AutomationError, _call
 
 def result_text(reply):
     if not reply.ok:
-        raise AutomationError(reply.error or "The app request failed. Check its connection in this Crew.")
+        raise AutomationError(reply.error or "The app request failed. Check its connection in this project.")
     return reply.text
 
 

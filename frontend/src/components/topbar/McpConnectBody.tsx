@@ -32,7 +32,7 @@ export default function McpConnectBody({ codeReview, onNavigate }: { codeReview:
       )}
       <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
         <p className="font-medium text-foreground">Project authoring access</p>
-        <p className="mt-1">Existing connections with permission to edit your Crews can also run sandboxed commands,
+        <p className="mt-1">Existing connections with permission to edit your projects can also run sandboxed commands,
           control their browser, change their database and use their connected tools. Your current role, project ownership
           and connection limits apply. Calls appear in the owner-only project execution history. Revoke a connection here
           if you no longer want it to have that access.</p>

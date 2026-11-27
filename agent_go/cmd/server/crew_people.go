@@ -106,7 +106,7 @@ func crewPeopleKind(project string) string {
 func crewPeopleLevels(kind string) []crewPeopleLevel {
 	levels := []crewPeopleLevel{
 		{Key: crewPeopleWorks, Label: "Works with me", Line: "Their own copy of the shared files, their agents, your shared agents and the dashboards. Edits sync both ways.", Available: kind != crewKindMacNever},
-		{Key: crewPeopleDashboards, Label: "Dashboards only", Line: "Opens all this Crew's dashboards and can ask this Crew. Sees no files or agents' chats.", Available: kind == crewKindServer},
+		{Key: crewPeopleDashboards, Label: "Dashboards only", Line: "Opens all this project's dashboards and can ask this project. Sees no files or agents' chats.", Available: kind == crewKindServer},
 	}
 	switch kind {
 	case crewKindMacNever:
@@ -352,7 +352,7 @@ func (api *StreamingAPI) changeCrewPerson(w http.ResponseWriter, r *http.Request
 	from := crewPeopleLevelOf(t, named, person)
 	name := crewPersonShortName(person)
 	if from == level || everyone && level == crewPeopleDashboards && from == crewPeopleNone {
-		externalJSON(w, map[string]any{"changed": false, "note": map[bool]string{true: "This Crew is open to everyone on this server, so they can already open its dashboards.", false: name + " is already there."}[everyone && level == crewPeopleDashboards], "view": api.crewPeopleViewFor(claims, t)})
+		externalJSON(w, map[string]any{"changed": false, "note": map[bool]string{true: "This project is open to everyone on this server, so they can already open its dashboards.", false: name + " is already there."}[everyone && level == crewPeopleDashboards], "view": api.crewPeopleViewFor(claims, t)})
 		return
 	}
 	// Dashboards only is the Share, the owner's act; so is moving someone between the levels (the same check as before).

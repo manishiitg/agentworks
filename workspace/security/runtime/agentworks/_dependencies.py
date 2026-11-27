@@ -54,7 +54,7 @@ def prepare():
             raise RuntimeError("Put the package pins directly in requirements.txt; included files, constraints and installer option lines are not supported.")
     digest = hashlib.sha256(raw).hexdigest()
     if target.name != digest:
-        raise RuntimeError("The saved package requirements changed after launch. Start a new run from the Crew chat.")
+        raise RuntimeError("The saved package requirements changed after launch. Start a new run from the project chat.")
     target.parent.mkdir(parents=True, exist_ok=True)
     with entry_lock(target.with_suffix(".lock")):
         if target.is_dir():

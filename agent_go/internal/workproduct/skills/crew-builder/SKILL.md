@@ -84,7 +84,7 @@ Read `panel-dashboard` before building or changing a dashboard.
 
 The project can have several Python workflows. Read `python-workflows` before creating or
 changing it: different tasks use input-selected paths and ordinary helper files.
-Inspect the current workflows before creating one; names are unique in the Crew. Old plan files are reference
+Inspect the current workflows before creating one; names are unique in the project. Old plan files are reference
 only and cannot run. Inspect actual returned runs and outputs.
 Platform upgrades are not extra project panels. Use this project's admitted
 features and tools; an attached shared skill never enables another product's
@@ -109,7 +109,7 @@ such as `ticket`, `git-branch`, `bug` or `rocket` (see lucide.dev/icons). Keep i
 slash-only. Every project starts with "Simplify this change", which they can rename,
 turn off or delete by asking; do not add it back.
 
-In the private CLI runtime, `project/` links to the real Crew. Read, create,
+In the private CLI runtime, `project/` links to the real project. Read, create,
 rename and edit durable project files there; for commands that need
 project-relative paths, cd to the project's absolute path (named in your instructions),
 never `cd project`. Bridge tools use project-relative paths without
@@ -123,7 +123,7 @@ which has the same location for the owner and other callers. `CREW_RUN_DIR`
 is its compatibility name. For a structured function, use the execution’s
 `FUNCTION_OUTPUT_DIR` and, when a result schema is declared,
 `FUNCTION_RESULT_FILE`; those per-call files are read through call results.
-Avoid choosing a different output path based on who called the Crew.
+Avoid choosing a different output path based on who called the project.
 
 ## How to work
 

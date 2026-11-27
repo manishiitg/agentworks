@@ -23,6 +23,6 @@ Make it fit one screen so the starters show without scrolling: a title, one or t
 
 Use `crew_owners` (list; add and remove for co-owners; user_add, user_remove and user_files for users) or the Access panel's Users and Co-owners sections, where the owner picks the person from the server's accounts. Only the main owner adds or removes people; anyone with a seat can list them. Over the tool, give the person's account email or user id; someone who has never signed in cannot be added yet. `user_files` sets a User's extra `locked_paths` (relative to the project); the instructions, skills and settings are always locked. Adding a User who is a co-owner moves them to Users, and the other way round.
 
-Read the list before changing it and read it back afterward. Neither is Share: Share (Only me / Chosen people / Everyone) is who can open and ask the Crew in Run mode. An account administrator is not automatically the owner of someone else's private Crew.
+Read the list before changing it and read it back afterward. Neither is Share: Share (Only me / Chosen people / Everyone) is who can open and ask the project in Run mode. An account administrator is not automatically the owner of someone else's private project.
 
-A workflow is a Python script inside its Crew. Manage the Crew's access through the current tools; do not create a separate workflow owner list or conversation.
+A workflow is a Python script inside its project. Manage the project's access through the current tools; do not create a separate workflow owner list or conversation.

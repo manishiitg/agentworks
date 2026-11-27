@@ -267,7 +267,7 @@ func (api *StreamingAPI) registerAccessibleWorkflowListTool(registrar definition
 	return register("list_accessible_workflows", "Search AgentWorks workflows the current user may read and every project project on the server (each project lists its owner). Each result includes its project name and display identity (identity name and icon). In project, pass an exact returned workspace_path to attach_workflow_reference for durable access. An empty query lists everything accessible.", map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
-			"query": map[string]interface{}{"type": "string", "description": "Optional case-insensitive workflow/Crew project name, identity, id, icon, or path search."},
+			"query": map[string]interface{}{"type": "string", "description": "Optional case-insensitive workflow or project name, identity, id, icon, or path search."},
 		},
 	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
 		ctx = withClaims(ctx)

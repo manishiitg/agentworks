@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const runtimeRootInitialization = "this automation was saved before it had its own storage and cannot run; create it again from its Crew's chat"
+const runtimeRootInitialization = "this automation was saved before it had its own storage and cannot run; create it again from its project's chat"
 
 // ExecutableBinding is private routing state, never read from project files.
 // Workflow/<id> is the execution identity; its authored files live with its Crew.
@@ -64,7 +64,7 @@ func (q *Resolver) executable(virtual string) (ExecutableLayout, bool, error) {
 		return ExecutableLayout{}, true, err
 	}
 	if !found || r.ID != b.CrewID || r.Virtual != b.CrewRoot {
-		return ExecutableLayout{}, true, fmt.Errorf("executable's owning Crew is unavailable")
+		return ExecutableLayout{}, true, fmt.Errorf("executable's owning project is unavailable")
 	}
 	if b.RuntimeRoot == "" {
 		return ExecutableLayout{}, true, fmt.Errorf("%s", runtimeRootInitialization)

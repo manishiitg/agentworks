@@ -60,7 +60,7 @@ func (api *StreamingAPI) crewAccessChatAction(ctx context.Context, project, acti
 		for _, row := range rows {
 			names = append(names, row.Name)
 		}
-		return "", fmt.Errorf("No agent named %q. This Crew's agents: %s", name, strings.Join(names, ", "))
+		return "", fmt.Errorf("No agent named %q. This project's agents: %s", name, strings.Join(names, ", "))
 	}
 	tab := rows[at].Tab
 	next := slices.DeleteFunc(slices.Clone(shared), func(agent macSharedAgent) bool { return agent.Tab == tab })

@@ -106,7 +106,7 @@ export function ProjectAgentBridgePanel({ target, tabId, onAsk, onSend, view }: 
     {error && <p role="alert" className="text-xs text-destructive">{error} <button type="button" className="underline" onClick={() => setAttempt(n => n + 1)}>Try again</button></p>}
     {!agents && !error && <p role="status" className="text-xs text-muted-foreground">Loading…</p>}
     {agents && view === 'others' && <section aria-label="Message other agents" className="space-y-3">
-      <p className="text-xs text-muted-foreground">Your own agents, discoverable agents, and Crews shared with you.</p>
+      <p className="text-xs text-muted-foreground">Your own agents, discoverable agents, and projects shared with you.</p>
       {/* Coding chats on this Mac (Claude Code, Codex, Cursor) come first, with their program label; they had their own
           page until the owner removed it (4 Nov). */}
       {local.map(agent => row(agent, true))}

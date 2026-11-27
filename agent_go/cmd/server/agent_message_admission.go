@@ -226,7 +226,7 @@ func (api *StreamingAPI) recheckAgentMessageAdmission(ctx context.Context, c age
 			check = "crew_binding"
 			binding, err := resolveCrewProjectBinding(ctx, actor, profile, e.ID, "")
 			if err != nil || (binding.OwnerID != e.UserID && !(binding.OwnedByCaller && isSideChatConversationKey(e.ChatKey) && crewIsCoOwner(binding.Binding.WorkspacePath, e.UserID))) || canonicalCrewWorkspaceRoot(agentProfileRuntimeWorkspace(binding.OwnerID, binding.Binding.WorkspacePath)) != canonicalCrewWorkspaceRoot(e.Path) {
-				return fmt.Errorf("message Crew is unavailable or ownership changed")
+				return fmt.Errorf("message project is unavailable or ownership changed")
 			}
 		}
 	}
