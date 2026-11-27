@@ -10,6 +10,14 @@ usage() {
   cat <<'EOF'
 Usage:
   scripts/desktop-release.sh [--dry-run] [--from <commit>] v1.25.81
+  scripts/desktop-release.sh [--dry-run] [--from <commit>] --nightly
+
+A nightly build (--nightly) is a GitHub pre-release tagged
+nightly-X.Y.Z-nightly.<UTC time>, where X.Y.Z is one past the latest release.
+Only apps with "Get Nightly Builds" ticked are offered it; the installer and
+older apps never see it. It pushes only the tag (no version bump, no release
+branch) and keeps the newest 7 nightly builds. A proper release is the normal
+tagged vX.Y.Z run, e.g. --from the commit of a nightly that worked.
 
 What it does:
   - uses the stored manishiitg token without switching the active gh account
@@ -35,24 +43,28 @@ require_cmd() {
 }
 
 dry_run=false
+nightly=false
 from_ref=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) dry_run=true; shift ;;
+    --nightly) nightly=true; shift ;;
     --from) [[ $# -ge 2 ]] || die "--from needs a commit"; from_ref="$2"; shift 2 ;;
     *) break ;;
   esac
 done
 
 version_arg="${1:-}"
-if [[ -z "$version_arg" || "$version_arg" == "-h" || "$version_arg" == "--help" ]]; then
+if $nightly; then
+  [[ $# -eq 0 ]] || die "--nightly takes no version; it is computed from the latest release"
+elif [[ -z "$version_arg" || "$version_arg" == "-h" || "$version_arg" == "--help" ]]; then
   usage
   exit 0
-fi
-[[ $# -eq 1 ]] || die "expected exactly one version argument"
-
-if [[ ! "$version_arg" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-  die "version must look like v1.25.81"
+else
+  [[ $# -eq 1 ]] || die "expected exactly one version argument"
+  if [[ ! "$version_arg" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+    die "version must look like v1.25.81"
+  fi
 fi
 
 require_cmd git
@@ -98,14 +110,33 @@ cleanup() {
 }
 trap cleanup EXIT
 
-tag="$version_arg"
-version="${tag#v}"
-
 echo "==> Using GitHub credentials for: $GH_USER"
 github_token="$(gh auth token -h github.com -u "$GH_USER")" || die "no stored GitHub token for $GH_USER"
 export GH_TOKEN="$github_token"
 active_user="$(gh api user --jq .login)"
 [[ "$active_user" == "$GH_USER" ]] || die "active gh user is $active_user, expected $GH_USER"
+
+# Namespaced releases from other applications may remain in the repository.
+# The previous AgentWorks release is the highest published plain vX.Y.Z tag,
+# the same filter the desktop updater uses. Nightly pre-releases never count.
+previous_tag=""
+while IFS= read -r candidate; do
+  [[ "$candidate" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || continue
+  if [[ -z "$previous_tag" ]] || semver_gt "$candidate" "$previous_tag"; then
+    previous_tag="$candidate"
+  fi
+done < <(gh release list --repo "$REPO" --limit 200 --json tagName,isDraft,isPrerelease --jq '.[] | select((.isDraft | not) and (.isPrerelease | not)) | .tagName' 2>/dev/null)
+
+if $nightly; then
+  [[ -n "$previous_tag" ]] || die "a nightly build needs at least one published release"
+  IFS=. read -r base_major base_minor base_patch <<<"${previous_tag#v}"
+  version="$base_major.$base_minor.$((base_patch + 1))-nightly.$(date -u +%Y%m%d%H%M)"
+  tag="nightly-$version"
+  echo "==> Nightly build $tag"
+else
+  tag="$version_arg"
+  version="${tag#v}"
+fi
 
 auth_headers="$(gh api -i user 2>/dev/null || true)"
 if ! grep -Eiq '^X-Oauth-Scopes:.*workflow' <<<"$auth_headers"; then
@@ -156,19 +187,9 @@ if gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
   die "GitHub release already exists: $tag"
 fi
 
-# Namespaced releases from other applications may remain in the repository.
-# The previous AgentWorks release is the highest published plain vX.Y.Z tag,
-# the same filter the desktop updater uses.
-previous_tag=""
-while IFS= read -r candidate; do
-  [[ "$candidate" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || continue
-  if [[ -z "$previous_tag" ]] || semver_gt "$candidate" "$previous_tag"; then
-    previous_tag="$candidate"
-  fi
-done < <(gh release list --repo "$REPO" --limit 200 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName' 2>/dev/null)
 if [[ -n "$previous_tag" ]]; then
   echo "==> Previous AgentWorks release: $previous_tag"
-  semver_gt "$tag" "$previous_tag" || die "$tag must be greater than the previous AgentWorks release $previous_tag"
+  $nightly || semver_gt "$tag" "$previous_tag" || die "$tag must be greater than the previous AgentWorks release $previous_tag"
 else
   echo "==> No published AgentWorks release exists; validating this as the first release"
 fi
@@ -194,6 +215,12 @@ notes_file="$(mktemp)"
     fi
   fi
   echo
+  if $nightly; then
+    echo "Nightly build $tag, built from main $remote_head. Nightly builds may be unstable."
+    echo
+    echo "To get nightly builds, tick **Get Nightly Builds** in the AgentWorks menu. Untick it to go back to releases with the next release."
+    echo
+  else
   echo "Desktop alpha release $tag, built from main $remote_head (alpha: main is not frozen; P0/P1 and security findings block a release, P2 findings do not)."
   echo
   cat <<INSTALL
@@ -216,6 +243,7 @@ This build is unsigned and not notarized by Apple. The installer checks the down
 Already installed? Use **Check for Updates** in AgentWorks, or quit the installed app and run \`npx --yes @manishiitg/agentworks update --version $tag\`.
 
 INSTALL
+  fi
   if [[ -n "$previous_tag" ]]; then
     echo "## All changes since $previous_tag"
     echo
@@ -245,24 +273,25 @@ package_version="$(node -p "require('./desktop/package.json').version")"
 lock_version="$(node -p "require('./desktop/package-lock.json').version")"
 echo "==> Desktop metadata: package=$package_version lock=$lock_version target=$version"
 
-for metadata_version in "$package_version" "$lock_version"; do
+$nightly || for metadata_version in "$package_version" "$lock_version"; do
   if [[ ! "$metadata_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
     die "desktop version metadata is not plain semver: $metadata_version"
   fi
 done
-if semver_gt "$package_version" "$version" || semver_gt "$lock_version" "$version"; then
+if ! $nightly && { semver_gt "$package_version" "$version" || semver_gt "$lock_version" "$version"; }; then
   die "$tag would downgrade desktop version metadata (package=$package_version lock=$lock_version)"
 fi
 
 if $dry_run; then
-  if [[ "$package_version" != "$version" || "$lock_version" != "$version" ]]; then
+  if ! $nightly && [[ "$package_version" != "$version" || "$lock_version" != "$version" ]]; then
     echo "==> Dry run: would update and commit desktop version metadata to $version"
   fi
   echo "==> Dry run complete; no commit, push, tag, workflow, or release was created"
   exit 0
 fi
 
-if [[ "$package_version" != "$version" || "$lock_version" != "$version" ]]; then
+# A nightly is tagged on the main commit itself; the workflow stamps the version.
+if ! $nightly && [[ "$package_version" != "$version" || "$lock_version" != "$version" ]]; then
   echo "==> Updating desktop version metadata to $version"
   (
     cd desktop
@@ -289,9 +318,14 @@ fi
 echo "==> Creating tag $tag"
 git tag -a "$tag" -m "Release $tag"
 created_tag="$tag"
-release_branch="release/$tag"
-echo "==> Atomically pushing $release_branch and $tag (main is not touched)"
-git push --atomic origin "HEAD:refs/heads/$release_branch" "refs/tags/$tag"
+if $nightly; then
+  echo "==> Pushing $tag (main is not touched)"
+  git push origin "refs/tags/$tag"
+else
+  release_branch="release/$tag"
+  echo "==> Atomically pushing $release_branch and $tag (main is not touched)"
+  git push --atomic origin "HEAD:refs/heads/$release_branch" "refs/tags/$tag"
+fi
 push_succeeded=true
 
 head_sha="$(git rev-parse HEAD)"
@@ -324,7 +358,16 @@ release_rows="$(
 published_id="$(awk '$2 == "false" { print $1; exit }' <<<"$release_rows")"
 draft_id="$(awk '$2 == "true" { print $1; exit }' <<<"$release_rows")"
 
-if [[ -n "$published_id" ]]; then
+if $nightly; then
+  release_id="${published_id:-$draft_id}"
+  [[ -n "$release_id" ]] || die "workflow completed, but no GitHub release/draft was found for $tag"
+  gh api -X PATCH "repos/$REPO/releases/$release_id" \
+    -f name="$version nightly" \
+    -f body="$(cat "$notes_file")" \
+    -F draft=false \
+    -F prerelease=true \
+    -f make_latest=false >/dev/null
+elif [[ -n "$published_id" ]]; then
   gh release edit "$tag" --repo "$REPO" --title "$version alpha" --notes-file "$notes_file" --latest
 elif [[ -n "$draft_id" ]]; then
   gh api -X PATCH "repos/$REPO/releases/$draft_id" \
@@ -346,7 +389,8 @@ gh api "repos/$REPO/releases?per_page=100" \
   done
 
 echo "==> Verifying assets"
-expected_assets=("Runloop-$version-arm64.dmg")
+expected_assets=()
+$nightly || expected_assets+=("Runloop-$version-arm64.dmg")
 for arch in arm64 x64; do
   for extension in dmg zip; do
     expected_assets+=("AgentWorks-$version-$arch.$extension" "AgentWorks-$version-$arch.$extension.sha256")
@@ -360,6 +404,20 @@ done
 
 release_url="$(gh release view "$tag" --repo "$REPO" --json url --jq .url)"
 echo "==> Published: $release_url"
+
+if $nightly; then
+  echo "==> Keeping the newest 7 nightly builds"
+  nightly_tags="$(gh release list --repo "$REPO" --limit 200 --json tagName,isPrerelease --jq '.[] | select(.isPrerelease) | .tagName' |
+    grep -E '^nightly-[0-9]+\.[0-9]+\.[0-9]+-nightly\.[0-9]+$' | sort -V || true)"
+  nightly_count="$(grep -c . <<<"$nightly_tags" || true)"
+  if (( nightly_count > 7 )); then
+    head -n "$((nightly_count - 7))" <<<"$nightly_tags" |
+      while read -r old_tag; do
+        gh release delete "$old_tag" --repo "$REPO" --cleanup-tag --yes || echo "warning: could not remove $old_tag"
+      done
+  fi
+  exit 0
+fi
 
 # Keep main's desktop metadata at the latest release: the release branch is the
 # source main commit plus at most the version bump.
