@@ -18,10 +18,11 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/localfiles"
 )
 
+// crewLaptopSettings is one person's computer and folders for one project (owner, 27 Nov): each owner and co-owner keeps
+// their own, a turn uses only its own person's, and nobody's chat reaches another person's computer.
 type crewLaptopSettings struct {
-	DeviceOwnerID string                       `json:"device_owner_id,omitempty"`
-	DeviceID      string                       `json:"device_id"`
-	Folders       []localfiles.FolderSelection `json:"folders"`
+	DeviceID string                       `json:"device_id"`
+	Folders  []localfiles.FolderSelection `json:"folders"`
 	// Commands lets the agent run terminal commands on the computer. It is separate from the folders' Read or
 	// Read & write, which cover files only; a command also needs a Read & write folder.
 	Commands bool `json:"commands"`
@@ -30,9 +31,6 @@ type crewLaptopSettings struct {
 var laptopSettingsMu sync.Mutex
 
 func laptopSettingsPath(owner, root string) (string, error) {
-	if projectOwner, ok := crewProjectOwnerID(root); ok && crewProjectOwnedByCaller(owner, root) {
-		owner = projectOwner
-	}
 	state, err := workflowCLIStateRoot()
 	if err != nil {
 		return "", err
@@ -114,14 +112,6 @@ func (api *StreamingAPI) serveCrewLaptopSettings(w http.ResponseWriter, r *http.
 	if err != nil {
 		externalError(w, 500, "settings_unavailable", "Laptop settings could not be read.")
 		return
-	}
-	if settings.DeviceID != "" {
-		settings.DeviceOwnerID = claims.UserID
-		if settings.DeviceID == previous.DeviceID {
-			settings.DeviceOwnerID = previous.DeviceOwnerID
-		}
-	} else {
-		settings.DeviceOwnerID = ""
 	}
 	needsLaptop := false
 	for _, folder := range settings.Folders {

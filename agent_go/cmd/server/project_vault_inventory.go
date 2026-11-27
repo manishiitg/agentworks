@@ -393,10 +393,8 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 		if out.Computer, err = readLaptopSettings(person, root); err != nil {
 			out.Notices = append(out.Notices, "Computer selection could not be checked.")
 		}
-		for _, device := range api.localDeviceListForProject(ctx, caller, root) {
-			if out.Computer.DeviceID != device.DeviceID || out.Computer.DeviceOwnerID == "" || out.Computer.DeviceOwnerID == person {
-				rememberVaultComputer(person, device.DeviceID)
-			}
+		for _, device := range api.localDeviceListForOwner(caller) {
+			rememberVaultComputer(person, device.DeviceID)
 			personal.Items = append(personal.Items, projectVaultItem{ID: device.DeviceID, Name: device.DeviceID, Kind: "computer", Status: "online", Selected: out.Computer.DeviceID == device.DeviceID, CanSelect: true})
 		}
 		for _, id := range knownVaultComputers(person) {

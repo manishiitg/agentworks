@@ -72,11 +72,12 @@ func TestMCPLaptopSettingsUseOwnerGrantsWithoutCommandAccess(t *testing.T) {
 		t.Fatalf("other owner got access: %d", w.Code)
 	}
 	joinCrewTeam(t, "dashboard-team", "other")
-	if w := call(&other, "get", nil); w.Code != 200 || !strings.Contains(w.Body.String(), "offline-laptop") {
-		t.Fatalf("co-owner shared settings: %d %s", w.Code, w.Body.String())
+	// Laptop access is each person's own (owner, 27 Nov): a co-owner neither sees nor uses the owner's computer.
+	if w := call(&other, "get", nil); w.Code != 200 || strings.Contains(w.Body.String(), "offline-laptop") {
+		t.Fatalf("co-owner sees the owner's computer: %d %s", w.Code, w.Body.String())
 	}
-	if coPath, err := laptopSettingsPath("other", root); err != nil || coPath != file {
-		t.Fatal("co-owner has a separate settings file")
+	if coPath, err := laptopSettingsPath("other", root); err != nil || coPath == file {
+		t.Fatal("co-owner shares the owner's settings file")
 	}
 	if w := call(&other, "set", map[string]any{"device_id": "offline-laptop", "folders": folders}); w.Code != 400 {
 		t.Fatalf("co-owner expanded an offline grant: %d", w.Code)
@@ -234,11 +235,12 @@ func TestMCPLaptopCommandAndBinaryCopyUseSavedFolderAccess(t *testing.T) {
 		coArgs[key] = value
 	}
 	f.api.externalLaptopToolCall(coResult, coRequest, "write_local_file", coArgs)
-	if coResult.Code != 200 {
-		t.Fatalf("co-owner laptop: %d %s", coResult.Code, coResult.Body.String())
+	// The owner's computer is the owner's alone: a co-owner's call cannot write to it (owner, 27 Nov).
+	if coResult.Code == 200 {
+		t.Fatalf("co-owner reached the owner's laptop: %s", coResult.Body.String())
 	}
-	if written, err := os.ReadFile(filepath.Join(folder, "notes/co-owner.txt")); err != nil || string(written) != "shared project" {
-		t.Fatalf("co-owner laptop write: %q %v", written, err)
+	if _, err := os.Stat(filepath.Join(folder, "notes/co-owner.txt")); err == nil {
+		t.Fatal("co-owner wrote to the owner's laptop")
 	}
 	joinCrewTeam(t, "dashboard-team")
 	denied := httptest.NewRecorder()
