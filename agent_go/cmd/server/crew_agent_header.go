@@ -33,11 +33,34 @@ func crewAgentHeaderStatus(t crewTeam, row crewTeamRegisteredAgent) *crewAgentWh
 		return &crewAgentWhenOffline{Line: "Teammates' asks wait for you · chat not on the server yet"}
 	}
 	if h.Offset != h.SourceSize {
-		return &crewAgentWhenOffline{Line: fmt.Sprintf("Teammates' agents can read this chat · copying %d%%", h.Offset*100/max(h.SourceSize, 1))}
+		if h.SourceSize > 0 {
+			return &crewAgentWhenOffline{Line: fmt.Sprintf("Teammates' agents can read this chat · copying %d%% of %s", h.Offset*100/h.SourceSize, formatCrewSyncBytes(h.SourceSize))}
+		}
+		return &crewAgentWhenOffline{Line: "Teammates' agents can read this chat · copying 0%"}
 	}
 	line := "Teammates' agents can read this chat"
+	size := h.SourceSize
 	if info, err := os.Stat(filepath.Join(dir, "history.json")); err == nil {
+		if size <= 0 {
+			size = info.Size()
+		}
+		if size > 0 {
+			line += " · " + formatCrewSyncBytes(size)
+		}
 		line += fmt.Sprintf(" · synced %dm ago", int(time.Since(info.ModTime()).Minutes()))
+	} else if size > 0 {
+		line += " · " + formatCrewSyncBytes(size)
 	}
 	return &crewAgentWhenOffline{Line: line}
+}
+
+func formatCrewSyncBytes(n int64) string {
+	switch {
+	case n < 1024:
+		return fmt.Sprintf("%d B", n)
+	case n < 1024*1024:
+		return fmt.Sprintf("%.1f KB", float64(n)/1024)
+	default:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1024*1024))
+	}
 }
