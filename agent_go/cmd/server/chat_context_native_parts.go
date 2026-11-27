@@ -28,10 +28,12 @@ type claudeTranscriptBreakdownEntry struct {
 // claudeTranscriptBreakdownCache caches parsed Claude Code transcript breakdowns
 // keyed by resolved transcript path and validated against (size, modTime).
 type claudeTranscriptBreakdownCache struct {
-	mu         sync.Mutex
-	entries    map[string]claudeTranscriptBreakdownEntry
-	maxEntries int
-	parse      func(nativeID, workingDir, accountHome string) (claudecode.ContextBreakdown, bool)
+	mu                   sync.Mutex
+	entries              map[string]claudeTranscriptBreakdownEntry
+	refreshing           map[string]bool
+	maxEntries           int
+	staleWhileRevalidate bool
+	parse                func(nativeID, workingDir, accountHome string) (claudecode.ContextBreakdown, bool)
 }
 
 func parseClaudeTranscriptBreakdown(nativeID, workingDir, accountHome string) (claudecode.ContextBreakdown, bool) {
@@ -39,37 +41,13 @@ func parseClaudeTranscriptBreakdown(nativeID, workingDir, accountHome string) (c
 }
 
 var defaultClaudeTranscriptBreakdownCache = &claudeTranscriptBreakdownCache{
-	maxEntries: claudeTranscriptBreakdownCacheMaxEntries,
-	parse:      parseClaudeTranscriptBreakdown,
+	maxEntries:           claudeTranscriptBreakdownCacheMaxEntries,
+	staleWhileRevalidate: true,
+	parse:                parseClaudeTranscriptBreakdown,
 }
 
-func (c *claudeTranscriptBreakdownCache) getOrParse(nativeID, workingDir, accountHome string) (claudecode.ContextBreakdown, bool) {
-	parse := c.parse
-	if parse == nil {
-		parse = parseClaudeTranscriptBreakdown
-	}
-	transcriptPath, err := resolveClaudeNativeTranscriptPath(workingDir, nativeID, accountHome)
-	if err != nil || transcriptPath == "" {
-		return parse(nativeID, workingDir, accountHome)
-	}
-	info, err := os.Stat(transcriptPath)
-	if err != nil || info.IsDir() {
-		return parse(nativeID, workingDir, accountHome)
-	}
-	size, modTimeNano := info.Size(), info.ModTime().UnixNano()
+func (c *claudeTranscriptBreakdownCache) store(transcriptPath string, size, modTimeNano int64, breakdown claudecode.ContextBreakdown, ok bool) {
 	now := time.Now()
-
-	c.mu.Lock()
-	if entry, found := c.entries[transcriptPath]; found && entry.size == size && entry.modTimeNano == modTimeNano {
-		entry.lastUsed = now
-		c.entries[transcriptPath] = entry
-		c.mu.Unlock()
-		return entry.breakdown, entry.ok
-	}
-	c.mu.Unlock()
-
-	breakdown, ok := parse(nativeID, workingDir, accountHome)
-
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.entries == nil {
@@ -102,6 +80,57 @@ func (c *claudeTranscriptBreakdownCache) getOrParse(nativeID, workingDir, accoun
 		ok:          ok,
 		lastUsed:    now,
 	}
+}
+
+func (c *claudeTranscriptBreakdownCache) getOrParse(nativeID, workingDir, accountHome string) (claudecode.ContextBreakdown, bool) {
+	parse := c.parse
+	if parse == nil {
+		parse = parseClaudeTranscriptBreakdown
+	}
+	transcriptPath, err := resolveClaudeNativeTranscriptPath(workingDir, nativeID, accountHome)
+	if err != nil || transcriptPath == "" {
+		return parse(nativeID, workingDir, accountHome)
+	}
+	info, err := os.Stat(transcriptPath)
+	if err != nil || info.IsDir() {
+		return parse(nativeID, workingDir, accountHome)
+	}
+	size, modTimeNano := info.Size(), info.ModTime().UnixNano()
+	now := time.Now()
+
+	c.mu.Lock()
+	if entry, found := c.entries[transcriptPath]; found {
+		entry.lastUsed = now
+		c.entries[transcriptPath] = entry
+		if entry.size == size && entry.modTimeNano == modTimeNano {
+			c.mu.Unlock()
+			return entry.breakdown, entry.ok
+		}
+		if c.staleWhileRevalidate {
+			if c.refreshing == nil {
+				c.refreshing = map[string]bool{}
+			}
+			if !c.refreshing[transcriptPath] {
+				c.refreshing[transcriptPath] = true
+				go func(path string, sz, mtime int64) {
+					defer func() {
+						c.mu.Lock()
+						delete(c.refreshing, path)
+						c.mu.Unlock()
+					}()
+					defer recoverDetachedGoroutine("claude_transcript_breakdown", path)
+					b, ok := parse(nativeID, workingDir, accountHome)
+					c.store(path, sz, mtime, b, ok)
+				}(transcriptPath, size, modTimeNano)
+			}
+			c.mu.Unlock()
+			return entry.breakdown, entry.ok
+		}
+	}
+	c.mu.Unlock()
+
+	breakdown, ok := parse(nativeID, workingDir, accountHome)
+	c.store(transcriptPath, size, modTimeNano, breakdown, ok)
 	return breakdown, ok
 }
 

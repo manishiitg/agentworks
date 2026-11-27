@@ -30,7 +30,7 @@ type RepoWatch interface {
 // Only the oldest few are redone per capture: checkouts first read together
 // would otherwise all be redone by one reply (#3878 proof run).
 const (
-	repoReuseFor       = 3 * time.Minute
+	repoReuseFor       = 30 * time.Minute
 	repoRedoPerCapture = 2
 )
 
