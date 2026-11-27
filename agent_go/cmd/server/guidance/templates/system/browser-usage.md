@@ -166,6 +166,8 @@ browser("screenshot", ["page.png"])
 `download`, `eval`, `network`, `console`, `errors`, `record`, `trace`,
 `profiler`, `close`, `back`, `forward`, `reload`, `reset`.
 
+**Typing saved keys:** In `fill` and `type` (extension, headless, and CDP modes), pass `$SECRET_<NAME>` (or `${SECRET_<NAME>}`) as the text argument, for example `browser("fill", ["@e3", "$SECRET_SITE_PASSWORD"])`. The server substitutes the value from this turn's selected Vault keys and keeps it out of tool arguments, results, errors, and logs; unknown or unselected names fail with a plain error. Known limit: a later snapshot or `eval` that reads the field back can still show what is on the page.
+
 For exhaustive command docs call `browser("skills", ["get", "core", "--full"])`.
 
 ### CDP-specific rules

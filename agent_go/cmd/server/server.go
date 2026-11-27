@@ -2241,6 +2241,13 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if retainedWorkflowCompatible {
 		// The turn this input starts is paid by the chat's owner; its usage rows name who sent it.
 		costobserver.SetRetainedInputSource(sessionID, req.TriggeredBy, req.TriggeredByLabel)
+		if !otherRoleTurn {
+			// Refresh this turn's selected SECRET_* keys so retained coding CLIs
+			// see newly selected/saved keys (and Run/Ask turns see none) in
+			// shell and browser secret typing without a relaunch.
+			turnSecrets := api.turnSelectedSecretEnv(r.Context(), sessionID, currentUserID, req, resolvedProfile, crewAskOnly, nil)
+			virtualtools.ReplaceSessionShellSecrets(sessionID, turnSecrets)
+		}
 	}
 	r = r.WithContext(context.WithValue(r.Context(), retainedQueueInputKey{}, retainedQueueInput{Request: req}))
 	var recoveredInput []string
@@ -2785,6 +2792,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		for _, s := range allSecrets {
 			secretEnvVars["SECRET_"+s.Name] = s.Value
 		}
+		virtualtools.ReplaceSessionShellSecrets(sessionID, secretEnvVars)
 		sessionAwareExecutors, workspaceEnv := virtualtools.CreateWorkspaceAdvancedToolExecutorsWithSessionAndEnv(currentUserID, sessionID, secretEnvVars)
 		virtualtools.SetGenerateTextWorkflowTierConfig(sessionAwareExecutors, getWorkspaceAPIURL(), generateTextWorkflowTiers(presetLLMConfig), workflowKeys)
 		if mode := validatedWorkflowExecutionMode(req.ExecutionOptions); mode != "" {
@@ -4252,17 +4260,8 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			// (workflow_phase), so it picks up secrets selected in earlier turns;
 			// multi-agent chat without a selection yields an empty map (no-op).
 			endSpeedSpan6306 := events.TurnSpeedSpan(sessionID, "secrets")
-			chatAgentSecrets := api.mergeGlobalSecretsFor(context.Background(), api.turnSecretsOwner(sessionID, currentUserID, req.SelectedFolder), req.SelectedGlobalSecrets)
-			chatAgentSecrets = api.withOwnChatKeys(context.Background(), currentUserID, req.SelectedFolder, personTypedChatTurn(r.Context(), req, sessionID, crewAskOnly), chatAgentSecrets)
-			chatAgentSecrets = api.addServerCompanyKeys(context.Background(), currentUserID, req.SelectedFolder, chatAgentSecrets) // company keys on a Mac
+			chatAgentSecretEnv := api.turnSelectedSecretEnv(r.Context(), sessionID, currentUserID, req, resolvedProfile, crewAskOnly, serverVaultRound)
 			endSpeedSpan6306()
-			chatAgentSecretEnv := make(map[string]string, len(chatAgentSecrets))
-			for _, s := range chatAgentSecrets {
-				chatAgentSecretEnv["SECRET_"+s.Name] = s.Value
-			}
-			if crewAskOnly {
-				chatAgentSecretEnv = map[string]string{}
-			}
 			workspaceRegistry := virtualtools.CreateWorkspaceToolRegistry(virtualtools.WorkspaceToolRegistryConfig{
 				WorkspaceAPIURL:      getWorkspaceAPIURL(),
 				UserID:               currentUserID,

@@ -725,7 +725,17 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 		}
 	}
 
-	for _, argStr := range commandArgs {
+	secretPlan, secretErr := prepareBrowserSecretArgs(command, commandArgs, sessionSecretsForBrowser(agentSessionID, workflowSessionID))
+	if secretErr != nil {
+		return "", secretErr
+	}
+	execCommandArgs := commandArgs
+	if secretPlan != nil {
+		execCommandArgs = secretPlan.RewrittenArgs
+		commandOpts = applyBrowserSecretPlan(commandOpts, secretPlan)
+	}
+
+	for _, argStr := range execCommandArgs {
 		cmdArgs = append(cmdArgs, argStr)
 	}
 	if isCdpMode {
@@ -1087,6 +1097,9 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 	}
 
 	if err != nil {
+		if secretPlan != nil {
+			err = redactBrowserError(err, secretPlan.RedactValues)
+		}
 		if artifactPlan != nil && artifactPlan.CleanupOnError && artifactPlan.StagedPath != "" {
 			_ = os.Remove(artifactPlan.StagedPath)
 		}
@@ -1242,6 +1255,9 @@ func (e *Executor) HandleAgentBrowser(ctx context.Context, args map[string]inter
 	}
 	if sessionTabNote != "" {
 		output = strings.TrimSpace(output) + "\n\n" + sessionTabNote
+	}
+	if secretPlan != nil {
+		output = redactBrowserText(output, secretPlan.RedactValues)
 	}
 
 	return output, nil

@@ -136,6 +136,7 @@ func registerSessionShellClient(sessionID string, client *workspace.Client) {
 // turn instead of from the next message on.
 func SetSessionShellEnv(sessionID, key, value string) int {
 	if sessionID != "" && strings.HasPrefix(key, "SECRET_") {
+		common.SetSessionShellEnv(sessionID, map[string]string{key: value})
 		sessionShellSecretNames.mu.Lock()
 		if sessionShellSecretNames.m[sessionID] == nil {
 			sessionShellSecretNames.m[sessionID] = map[string]struct{}{}
@@ -155,6 +156,7 @@ func SetSessionShellEnv(sessionID, key, value string) int {
 // DeleteSessionShellEnv removes one env var from every live shell client of a session.
 func DeleteSessionShellEnv(sessionID, key string) int {
 	if sessionID != "" && strings.HasPrefix(key, "SECRET_") {
+		common.DeleteSessionShellEnvKey(sessionID, key)
 		sessionShellSecretNames.mu.Lock()
 		delete(sessionShellSecretNames.m[sessionID], key)
 		sessionShellSecretNames.mu.Unlock()
@@ -175,6 +177,7 @@ func ReplaceSessionShellSecrets(sessionID string, values map[string]string) int 
 	if sessionID == "" {
 		return 0
 	}
+	common.ReplaceSessionShellEnvPrefix(sessionID, "SECRET_", values)
 	sessionShellSecretNames.mu.Lock()
 	previous := sessionShellSecretNames.m[sessionID]
 	next := make(map[string]struct{}, len(values))
