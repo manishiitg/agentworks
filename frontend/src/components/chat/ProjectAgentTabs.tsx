@@ -628,7 +628,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       type="button"
       onClick={beginAddAgent}
       disabled={opening}
-      className={`${surface === 'work' ? 'px-2 max-md:h-10 max-md:min-w-10' : 'ml-0.5 max-md:hidden'} inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs text-primary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${surface === 'work' ? '' : sideChats.length === 0 ? 'px-2' : 'w-7'}`}
+      className={`${surface === 'work' ? 'px-2 text-muted-foreground hover:bg-muted hover:text-foreground max-md:h-10 max-md:min-w-10' : 'ml-0.5 text-primary hover:bg-primary/10 hover:text-primary max-md:hidden'} inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 ${surface === 'work' ? '' : sideChats.length === 0 ? 'px-2' : 'w-7'}`}
       aria-label="New agent"
       title="Add agent (⌥⇧T on Mac, Alt+Shift+T on Windows)"
       data-testid="work-new-chat-tab"
@@ -647,7 +647,10 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
       {surface === 'work' && (openTab?.metadata?.agentProfileOnlineProject ? <OnlineAgentLine tab={openTab} name={sideChatName(openTab)} team={teamState} /> : watchingOther ? <TeammateChatIdentity tabId={openTab?.tabId} /> : <AgentHeaderLine agent={headerAgent} crewName={projectName} onOpenIdentity={onOpenIdentity} />)}
       {/* Viewing someone else's agent: no New agent in its header (owner, 19 Nov). The agents menu keeps it. */}
-      {surface === 'work' && !watchingOther && addAgentButton}
+      {surface === 'work' && !watchingOther && <>
+        <span aria-hidden="true" className="mx-0.5 h-4 w-px shrink-0 bg-border" />
+        {addAgentButton}
+      </>}
       {/* Agent copies waiting for you sit at the header's right end (owner, 20 Nov); the Team menu shows them too. */}
       <div className="ml-auto shrink-0"><PendingAgentForks state={teamState} /></div>
       {surface !== 'work' && <div ref={stripRef} className="hidden md:flex min-w-[84px] items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0" data-testid="work-chat-tab-strip" aria-label="Chat tabs">

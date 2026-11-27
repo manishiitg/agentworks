@@ -127,7 +127,8 @@ describe('AgentHeaderLine sharing pill', () => {
 
       const pill = host.querySelector<HTMLButtonElement>('button[aria-label*="Chat hidden"]')
       expect(pill).not.toBeNull()
-      expect(pill?.textContent).toContain('Team · Chat hidden')
+      expect(pill?.textContent).toBe('')
+      expect(pill?.getAttribute('title')).toContain('Chat hidden')
 
       await act(async () => pill!.click())
       const dialog = document.body.querySelector('[role="dialog"][aria-label="Sharing for Design"]')

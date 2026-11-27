@@ -94,8 +94,6 @@ function AgentOnlineCopyStatus({ setup }: { setup?: TeamTabSetup }) {
  return <div className="flex justify-between gap-3 border-t border-border py-2"><span className="text-muted-foreground">When Mac sleeps</span><span>{line}</span></div>
 }
 
-const HEADER_SHARE_TONE = 'bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground'
-
 let agentHoverCooldownUntil = 0
 
 export function AgentHoverCard({ info, children, side = 'below', clickToOpen = false, actions, shortcut, onRename, automationShortcut = false, shareShortcut = false }: { info?: AgentCardInfo; children: ReactNode | ((detailsOpen: boolean) => ReactNode); side?: 'below' | 'right'; clickToOpen?: boolean; actions?: CrewAgentActions; shortcut?: number; onRename?: () => void; automationShortcut?: boolean; shareShortcut?: boolean }) {
@@ -174,7 +172,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
       {content}
       {shareInfo && <button type="button" aria-label={shareInfo.tooltip} aria-expanded={at?.view === 'sharing'} aria-haspopup="dialog"
         title={`${shareInfo.tooltip} — click to edit`}
-        className={`inline-flex h-6 max-w-48 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-9 max-md:px-2.5 max-md:text-xs ${HEADER_SHARE_TONE}`}
+        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:h-10 max-md:w-10"
         onClick={event => {
           event.stopPropagation()
           trigger.current = event.currentTarget
@@ -183,7 +181,6 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           else info.onSharing?.()
         }}>
         <AgentShareIcon info={shareInfo} className="h-3.5 w-3.5 shrink-0" />
-        <span className="truncate">{shareInfo.headerLabel}</span>
       </button>}
       {automationShortcut && enabled.length > 0 && <button type="button" aria-label={`${enabled.length} enabled automation${enabled.length === 1 ? '' : 's'}`} aria-expanded={at?.view === 'automations'} aria-haspopup="dialog"
         title={enabled.map(item => `${item.kind}: ${item.name} · ${item.line}`).join('\n')}
@@ -258,7 +255,7 @@ export function AgentHeaderLine({ agent: row, crewName, onOpenIdentity, onReturn
   // must use this pane's own row and actions, not whichever projection ran last.
   const info = row?.info
   const name = row?.name
-  return <div className="mr-2 flex h-10 min-w-0 shrink items-center gap-1.5 px-1 text-sm md:h-8" data-agent-header>
+  return <div className="mr-0.5 flex h-10 min-w-0 shrink items-center gap-1.5 px-1 text-sm md:h-8" data-agent-header>
     {onOpenIdentity ? <button type="button" data-project-title onClick={onOpenIdentity} title="Identity & instructions"
       aria-label={`Identity & instructions for ${crewName}`} className="min-w-0 max-w-28 truncate rounded-sm px-1 font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:max-w-40">{crewName}</button>
       : <span data-project-title title={crewName} className="min-w-0 max-w-28 truncate px-1 md:max-w-40 font-semibold text-muted-foreground">{crewName}</span>}
