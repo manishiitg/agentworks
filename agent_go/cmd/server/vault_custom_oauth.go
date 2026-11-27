@@ -59,7 +59,7 @@ func customVaultOAuthTemplate(ctx context.Context, id, upstreamURL string) (mcpc
 		discovered = oauth.OAuthConfig{
 			AuthURL: probe.Endpoints.AuthURL, TokenURL: probe.Endpoints.TokenURL,
 			RegistrationEndpoint: probe.Endpoints.RegistrationEndpoint, Resource: resource,
-			Scopes: probe.Endpoints.ScopesSupported, UsePKCE: true,
+			Scopes: probe.Endpoints.ScopesSupported, UsePKCE: true, PublicOnly: true,
 		}
 		customVaultOAuthEndpoints.Store(key, discovered)
 	}

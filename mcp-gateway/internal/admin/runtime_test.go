@@ -221,3 +221,63 @@ func TestBuilderInventoryAllConnectionsAndSecretMetadataIsServiceOnly(t *testing
 		}
 	}
 }
+
+func TestBuilderInventoryExcludesOtherUsersPrivateVaultsAndBlocksGroupAttach(t *testing.T) {
+	st := store.NewMemoryStore()
+	st.AddWorkspace(store.Workspace{ID: "w"})
+	st.AddUser(store.User{ID: "admin", WorkspaceID: "w"})
+	st.AddUser(store.User{ID: "bob", WorkspaceID: "w"})
+	st.AddGroup(store.Group{ID: "eng", WorkspaceID: "w", Name: "Engineering"})
+	adminVault, err := st.EnsurePersonalVault("w", "admin", "v-admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobVault, err := st.EnsurePersonalVault("w", "bob", "v-bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.AddConnector(store.Connector{ID: "company", WorkspaceID: "w", Label: "Company App", Provider: "linear", Status: store.StatusActive})
+	st.AddConnector(store.Connector{ID: "admin-app", WorkspaceID: "w", VaultID: adminVault, Label: "Admin Own", Provider: "notion", Status: store.StatusActive})
+	st.AddConnector(store.Connector{ID: "bob-slack", WorkspaceID: "w", VaultID: bobVault, Label: "Bob Private Slack", Provider: "slack", Status: store.StatusActive})
+	st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "company", PublicName: "linear__list", Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`)})
+	st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "admin-app", PublicName: "notion__read", Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`)})
+	st.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "bob-slack", PublicName: "slack__read_dm", Fingerprint: "f", InputSchema: []byte(`{"type":"object"}`)})
+	if err := st.RegisterSecrets("w", []store.SecretResource{{Name: "COMPANY_KEY"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.VaultAddSecret("admin", adminVault, "VLT_ADMIN__KEY"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.VaultAddSecret("bob", bobVault, "VLT_BOB__SECRET"); err != nil {
+		t.Fatal(err)
+	}
+
+	a := &Admin{Store: st, WorkspaceID: "w", HumanToken: "service"}
+	mux := http.NewServeMux()
+	a.runtimeRoutes(mux)
+
+	req := httptest.NewRequest("GET", "/api/admin/runtime/builder/servers", nil)
+	req.Header.Set("Authorization", "Bearer service")
+	req.Header.Set("X-CapLayer-Actor", "admin")
+	req.Header.Set("X-Vault-Builder", "1")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	body := w.Body.String()
+	if w.Code != 200 {
+		t.Fatalf("builder inventory status=%d body=%s", w.Code, body)
+	}
+	for _, want := range []string{"linear__list", "notion__read", "COMPANY_KEY", "VLT_ADMIN__KEY", "Engineering"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("builder inventory missing %q: %s", want, body)
+		}
+	}
+	for _, deny := range []string{"bob-slack", "slack__read_dm", "Bob Private Slack", "v-bob", "VLT_BOB__SECRET"} {
+		if strings.Contains(body, deny) {
+			t.Fatalf("builder inventory leaked another user's private vault (%q): %s", deny, body)
+		}
+	}
+
+	if err := a.SetGroupServer("eng", "bob-slack", true); err == nil {
+		t.Fatal("SetGroupServer attached another user's private vault connector to a company group")
+	}
+}

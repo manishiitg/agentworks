@@ -17,6 +17,7 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/livefeed"
 	"github.com/manishiitg/mcpagent/mcpclient"
+	"github.com/manishiitg/mcpagent/netguard"
 	"github.com/manishiitg/mcpagent/oauth"
 )
 
@@ -145,6 +146,7 @@ func vaultSavedOAuthConfig(id string, cfg mcpclient.MCPServerConfig) (mcpclient.
 	// Ignore saved paths: the live connector ID owns all file locations.
 	saved.TokenFile = cfg.OAuth.TokenFile
 	saved.ClientSecretFile = ""
+	saved.PublicOnly = cfg.OAuth.PublicOnly
 	cfg.OAuth = &saved
 	return cfg, nil
 }
@@ -248,8 +250,12 @@ func (api *StreamingAPI) beginVaultConnectionOAuth(ctx context.Context, userID, 
 	generation := currentVaultOAuthGeneration(id)
 	started := noteVaultSignInStarted(id)
 	notificationID := "vault-oauth:" + id + ":" + newSteerMessageID()
+	discoverer := oauth.Discoverer{Client: &http.Client{Timeout: 15 * time.Second}}
+	if cfg.OAuth.PublicOnly {
+		discoverer = oauth.Discoverer{Client: netguard.Client(15 * time.Second)}
+	}
 	start, discovery, flowErr := api.runOAuthFlow(sessionID, redirect, oauthFlowTarget{
-		Person: userID, Name: name, Config: cfg, ClientFile: getUserClientFilePath(platformMCPTokenUserID, vaultCredentialName(id)), ConnectionID: id, LockKey: "vault:" + id,
+		Person: userID, Name: name, Config: cfg, ClientFile: getUserClientFilePath(platformMCPTokenUserID, vaultCredentialName(id)), ConnectionID: id, LockKey: "vault:" + id, Discoverer: discoverer,
 		// BeforeExchange saved the rejected client as this connection's setup; drop it so the next connect registers again.
 		ForgetClient: func() { _ = os.Remove(vaultCredentialConfigPath(id)) },
 		BeforeExchange: func(flow *OAuthFlowState) error {

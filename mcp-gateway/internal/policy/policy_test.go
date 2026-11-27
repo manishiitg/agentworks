@@ -2,6 +2,7 @@ package policy
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/access"
@@ -136,5 +137,74 @@ func TestEveryoneGrantDoesNotExpandAnUnrelatedGroupKey(t *testing.T) {
 	s.RevokeGroupGrant(store.PlatformGroupID("w"), "c__read")
 	if _, err := Authorize(s, id, "c__read"); !errors.Is(err, ErrNoGrant) {
 		t.Fatal("revocation ignored", err)
+	}
+}
+
+func TestAuthorizeSetupExcludesOtherUsersPrivateVaults(t *testing.T) {
+	s := store.NewMemoryStore()
+	s.AddWorkspace(store.Workspace{ID: "w"})
+	s.AddUser(store.User{ID: "admin", WorkspaceID: "w"})
+	s.AddUser(store.User{ID: "bob", WorkspaceID: "w"})
+	adminVault, err := s.EnsurePersonalVault("w", "admin", "v-admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobVault, err := s.EnsurePersonalVault("w", "bob", "v-bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.EnsureCrewVault("w", "v-crew-bob", store.CrewVaultRootPrefix+"p1", "Bob's Crew", []string{"bob"}); err != nil {
+		t.Fatal(err)
+	}
+	s.AddConnector(store.Connector{ID: "company", WorkspaceID: "w", Status: store.StatusActive})
+	s.AddConnector(store.Connector{ID: "admin-own", WorkspaceID: "w", VaultID: adminVault, Status: store.StatusActive})
+	s.AddConnector(store.Connector{ID: "bob-slack", WorkspaceID: "w", VaultID: bobVault, Status: store.StatusActive})
+	s.AddConnector(store.Connector{ID: "crew-app", WorkspaceID: "w", VaultID: "v-crew-bob", Status: store.StatusActive})
+	for _, tc := range [][2]string{
+		{"company", "company__read"},
+		{"admin-own", "admin__read"},
+		{"bob-slack", "slack__read_dm"},
+		{"crew-app", "crew__read"},
+	} {
+		s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: tc[0], PublicName: tc[1], Fingerprint: "f"})
+	}
+
+	adminID := auth.Identity{UserID: "admin", WorkspaceID: "w"}
+	if _, err := AuthorizeSetup(s, adminID, "company__read"); err != nil {
+		t.Fatalf("company connector denied in setup: %v", err)
+	}
+	if _, err := AuthorizeSetup(s, adminID, "admin__read"); err != nil {
+		t.Fatalf("admin's own personal vault denied in setup: %v", err)
+	}
+	if _, err := AuthorizeSetup(s, adminID, "slack__read_dm"); !errors.Is(err, ErrNoGrant) {
+		t.Fatalf("another user's personal vault allowed in setup: %v", err)
+	}
+	if _, err := AuthorizeSetup(s, adminID, "crew__read"); !errors.Is(err, ErrNoGrant) {
+		t.Fatalf("unowned crew vault allowed in setup: %v", err)
+	}
+}
+
+func TestEvaluatorChecksSQLitePersistenceOnceAndServesBatchChecks(t *testing.T) {
+	s, err := store.NewSQLiteStore(filepath.Join(t.TempDir(), "vault.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	s.AddWorkspace(store.Workspace{ID: "w"})
+	s.AddUser(store.User{ID: "alice", WorkspaceID: "w"})
+	s.AddConnector(store.Connector{ID: "c", WorkspaceID: "w", Status: store.StatusActive})
+	s.UpsertToolSnapshot(store.ToolSnapshot{WorkspaceID: "w", ConnectorID: "c", PublicName: "p__read", Fingerprint: "f"})
+	s.AddGrant(store.Grant{UserID: "alice", PublicName: "p__read"})
+
+	eval, err := NewEvaluator(s)
+	if err != nil {
+		t.Fatalf("NewEvaluator failed on healthy SQLite store: %v", err)
+	}
+	id := auth.Identity{UserID: "alice", WorkspaceID: "w"}
+	if !eval.Visible(id, "p__read") {
+		t.Fatal("Evaluator.Visible denied granted tool")
+	}
+	if _, err := eval.AuthorizeSetup(id, "p__read"); err != nil {
+		t.Fatalf("Evaluator.AuthorizeSetup denied company tool: %v", err)
 	}
 }

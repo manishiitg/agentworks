@@ -10,6 +10,7 @@ import (
 
 	"context"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 	"strings"
 
 	internalevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
@@ -85,6 +86,23 @@ func TestBridgeAuthRefusesTheGlobalToken(t *testing.T) {
 	router, _, _ = bridgeAuthRouter(t)
 	if code := bridgeCall(router, "/tools/custom/search_platform", "server-secret", "chat-bob"); code != http.StatusOK {
 		t.Fatalf("the rollback switch must re-admit the global token, got %d", code)
+	}
+}
+
+// Secret-read tokens (<session>#secret-read) are valid only for /bridge/secret-read
+// and must never be accepted by tool routes.
+func TestBridgeAuthRefusesSecretReadToken(t *testing.T) {
+	router, seen, _ := bridgeAuthRouter(t)
+	secretRead := common.BridgeTokenForSession("chat-alice" + mcpagent.SecretReadTokenSuffix)
+	for _, path := range []string{
+		"/tools/custom/execute_shell_command",
+		"/s/chat-alice/tools/custom/execute_shell_command",
+		"/s/chat-alice" + mcpagent.SecretReadTokenSuffix + "/tools/custom/execute_shell_command",
+	} {
+		*seen = ""
+		if code := bridgeCall(router, path, secretRead, ""); code != http.StatusUnauthorized || *seen != "" {
+			t.Errorf("secret-read token on %s: got code=%d seen=%q, want 401 and handler not reached", path, code, *seen)
+		}
 	}
 }
 

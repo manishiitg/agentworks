@@ -173,6 +173,27 @@ func TestVaultBuilderCallsUngroupedToolsButRetainsOperationalChecksAndAudit(t *t
 	if len(st.GroupsOf("admin")) != 0 {
 		t.Fatal("builder added itself to a group")
 	}
+
+	// Builder setup authority must never list or call another user's personal vault connector.
+	st.AddUser(store.User{ID: "bob", WorkspaceID: "w"})
+	bobVault, err := st.EnsurePersonalVault("w", "bob", "v-bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.AddConnector(store.Connector{ID: "bob-private", WorkspaceID: "w", VaultID: bobVault, Provider: "bobprivate", Status: store.StatusActive})
+	g.upstreams["bob-private"] = up
+	if err := g.SyncTools(context.Background(), "w"); err != nil {
+		t.Fatal(err)
+	}
+	bobBuilder := g.BuilderProductHandler(func(r *http.Request) (auth.Identity, string, bool) {
+		return auth.Identity{UserID: "admin", WorkspaceID: "w", ClientID: "agentworks-vault-builder"}, "bob-private", r.Header.Get("Authorization") == "Bearer service"
+	})
+	if w := request(bobBuilder, path, "tools/list", `{}`); strings.Contains(w.Body.String(), "bobprivate__fetch") {
+		t.Fatalf("builder listed another user's private vault tool: %s", w.Body.String())
+	}
+	if w := request(bobBuilder, path, "tools/call", `{"name":"bobprivate__fetch","arguments":{"id":"1"}}`); !strings.Contains(w.Body.String(), "denied") || calls.Load() != 1 {
+		t.Fatalf("builder called another user's private vault tool: %s calls=%d", w.Body.String(), calls.Load())
+	}
 }
 
 func TestRestoredToolsRecoverAfterOAuthStartupFailure(t *testing.T) {

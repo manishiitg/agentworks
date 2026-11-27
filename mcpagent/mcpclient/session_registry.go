@@ -2,9 +2,12 @@ package mcpclient
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -220,6 +223,77 @@ func (r *SessionConnectionRegistry) getConnLock(key string) *sync.Mutex {
 	return mu
 }
 
+// serverConfigPoolKey distinguishes pooled connections that share a serverName
+// (e.g. under "global") whenever their principal or runtime configuration differs
+// (per-user OAuth TokenFile, Headers, WorkingDir, Env, Args, URL, Command).
+// Vault servers already embed a credential hash via "__scope_" and keep their
+// exact name so scoped client lifecycle counters match directly.
+func serverConfigPoolKey(serverName string, config MCPServerConfig) string {
+	if strings.Contains(serverName, "__scope_") {
+		return serverName
+	}
+	h := sha256.New()
+	write := func(label, val string) {
+		_, _ = h.Write([]byte(label))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(val))
+		_, _ = h.Write([]byte{0})
+	}
+	write("protocol", string(config.GetProtocol()))
+	write("url", config.URL)
+	write("command", config.Command)
+	write("workdir", config.WorkingDir)
+	if config.PublicOnly {
+		write("public_only", "1")
+	}
+	for _, arg := range config.Args {
+		write("arg", arg)
+	}
+	if len(config.Env) > 0 {
+		keys := make([]string, 0, len(config.Env))
+		for k := range config.Env {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			write("env:"+k, config.Env[k])
+		}
+	}
+	if len(config.Headers) > 0 {
+		keys := make([]string, 0, len(config.Headers))
+		for k := range config.Headers {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			write("hdr:"+k, config.Headers[k])
+		}
+	}
+	if config.OAuth != nil {
+		write("oauth.token_file", config.OAuth.TokenFile)
+		write("oauth.client_id", config.OAuth.ClientID)
+		write("oauth.client_secret_file", config.OAuth.ClientSecretFile)
+		write("oauth.auth_url", config.OAuth.AuthURL)
+		write("oauth.token_url", config.OAuth.TokenURL)
+		write("oauth.resource", config.OAuth.Resource)
+		if config.OAuth.PublicOnly {
+			write("oauth.public_only", "1")
+		}
+		if config.OAuth.AutoDiscover {
+			write("oauth.auto_discover", "1")
+		}
+		if len(config.OAuth.Scopes) > 0 {
+			scopes := append([]string(nil), config.OAuth.Scopes...)
+			sort.Strings(scopes)
+			for _, sc := range scopes {
+				write("oauth.scope", sc)
+			}
+		}
+	}
+	sum := hex.EncodeToString(h.Sum(nil))
+	return serverName + "\x00" + sum[:16]
+}
+
 // GetOrCreateConnection returns existing connection or creates new one.
 // Uses per-key mutex to ensure only one goroutine connects per (session, server) pair;
 // concurrent callers block until the first connection attempt completes.
@@ -262,9 +336,10 @@ func (r *SessionConnectionRegistry) GetOrCreateConnection(
 		createdAt: time.Now(),
 	})
 	sessionConns := sessionConnsRaw.(*sessionConnections)
+	poolKey := serverConfigPoolKey(serverName, config)
 
 	// Fast path (lock-free): connection already exists — verify it's alive
-	if existing, ok := sessionConns.clients.Load(serverName); ok {
+	if existing, ok := sessionConns.clients.Load(poolKey); ok {
 		client := existing.(ClientInterface)
 		pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
 		pingErr := client.Ping(pingCtx)
@@ -277,18 +352,18 @@ func (r *SessionConnectionRegistry) GetOrCreateConnection(
 		logger.Warn(fmt.Sprintf("Connection dead for session=%s server=%s, will recreate", sessionID, serverName),
 			loggerv2.Error(pingErr))
 		_ = client.Close()
-		sessionConns.clients.Delete(serverName)
+		sessionConns.clients.CompareAndDelete(poolKey, existing)
 	}
 
-	// Serialize connection creation per (session, server) key.
+	// Serialize connection creation per (session, poolKey) pair.
 	// Only one goroutine will proceed to connect; others wait here and get the result.
-	lockKey := sessionID + "|" + serverName
+	lockKey := sessionID + "|" + poolKey
 	mu := r.getConnLock(lockKey)
 	mu.Lock()
 	defer mu.Unlock()
 
 	// Double-check after acquiring lock: another goroutine may have connected while we waited
-	if existing, ok := sessionConns.clients.Load(serverName); ok {
+	if existing, ok := sessionConns.clients.Load(poolKey); ok {
 		client := existing.(ClientInterface)
 		pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
 		pingErr := client.Ping(pingCtx)
@@ -301,7 +376,7 @@ func (r *SessionConnectionRegistry) GetOrCreateConnection(
 		logger.Warn(fmt.Sprintf("Connection dead (post-lock) for session=%s server=%s, will recreate", sessionID, serverName),
 			loggerv2.Error(pingErr))
 		_ = client.Close()
-		sessionConns.clients.Delete(serverName)
+		sessionConns.clients.CompareAndDelete(poolKey, existing)
 	}
 
 	// Create new connection — only one goroutine reaches here per key
@@ -311,7 +386,7 @@ func (r *SessionConnectionRegistry) GetOrCreateConnection(
 		return nil, false, fmt.Errorf("failed to connect to %s: %w", serverName, err)
 	}
 
-	sessionConns.clients.Store(serverName, client)
+	sessionConns.clients.Store(poolKey, client)
 	logger.Info(fmt.Sprintf("New connection established for session=%s server=%s", sessionID, serverName))
 	return client, true, nil
 }
@@ -410,6 +485,18 @@ func (r *SessionConnectionRegistry) CloseSessionServer(sessionID, serverName str
 			_ = client.Close()
 		}
 	}
+	prefix := serverName + "\x00"
+	sessionConns.clients.Range(func(key, _ interface{}) bool {
+		k := key.(string)
+		if strings.HasPrefix(k, prefix) {
+			if clientRaw, ok := sessionConns.clients.LoadAndDelete(k); ok {
+				if client, ok := clientRaw.(ClientInterface); ok {
+					_ = client.Close()
+				}
+			}
+		}
+		return true
+	})
 }
 
 // ListSessions returns all active session IDs (for debugging)

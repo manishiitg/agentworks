@@ -71,8 +71,9 @@ func TestVaultOAuthIndividualIdentityRefreshAndRevocation(t *testing.T) {
 		return out
 	}
 	challenge := request("POST", vaultMCPPath, `{}`, "")
-	if challenge.Code != 401 || !strings.Contains(challenge.Header().Get("WWW-Authenticate"), vaultResourceMetadataPath) {
-		t.Fatal("missing Vault OAuth challenge")
+	wantChallenge := `Bearer resource_metadata="https://platform.example` + vaultResourceMetadataPath + `"`
+	if challenge.Code != 401 || !strings.HasPrefix(challenge.Header().Get("WWW-Authenticate"), wantChallenge) {
+		t.Fatalf("invalid Vault OAuth challenge: code=%d header=%q", challenge.Code, challenge.Header().Get("WWW-Authenticate"))
 	}
 	metadata := decode(request("GET", vaultResourceMetadataPath, "", ""), 200)
 	if metadata["resource"] != "https://platform.example"+vaultMCPPath || metadata["authorization_servers"].([]any)[0] != "https://platform.example/vault" {

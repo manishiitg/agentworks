@@ -31,7 +31,7 @@ func (s *Server) URLs() (origin, resource string, ok bool) {
 func (s *Server) Challenge(w http.ResponseWriter) {
 	origin, _, ok := s.URLs()
 	if ok {
-		w.Header().Set("WWW-Authenticate", `Bearer [REDACTED]"`+origin+s.cfg.ProtectedResourcePath+`", scope="`+strings.Join(s.cfg.Scopes, " ")+`"`)
+		w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="`+origin+s.cfg.ProtectedResourcePath+`", scope="`+strings.Join(s.cfg.Scopes, " ")+`"`)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 }

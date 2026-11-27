@@ -264,17 +264,48 @@ func (s *MemoryStore) persistUnlock() {
 		return
 	}
 }
-func (s *MemoryStore) PersistenceError() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	p := s.persistence
-	if p == nil {
+// FastPersistenceError returns any latched persistence error without querying SQLite.
+// Callers that have already run PersistenceError() once for the current request use
+// this inside per-tool loops so inventory/listing does not hit SQLite O(C*T) times.
+func (s *MemoryStore) FastPersistenceError() error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.persistence == nil {
 		return nil
 	}
-	if p.err == nil && p.sqlWorkspace != "" {
-		var revision int64
-		if err := p.db.QueryRow("SELECT revision FROM gateway_revision WHERE id=1").Scan(&revision); err != nil {
-			p.err = err
+	return s.persistence.err
+}
+
+func (s *MemoryStore) PersistenceError() error {
+	s.mu.RLock()
+	p := s.persistence
+	if p == nil {
+		s.mu.RUnlock()
+		return nil
+	}
+	if p.err != nil || p.sqlWorkspace == "" {
+		err := p.err
+		s.mu.RUnlock()
+		return err
+	}
+	var revision int64
+	queryErr := p.db.QueryRow("SELECT revision FROM gateway_revision WHERE id=1").Scan(&revision)
+	expected := p.revision
+	s.mu.RUnlock()
+	if queryErr == nil && revision == expected {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.persistence != p {
+		if s.persistence == nil {
+			return nil
+		}
+		return s.persistence.err
+	}
+	if p.err == nil {
+		if queryErr != nil {
+			p.err = queryErr
 		} else if revision != p.revision {
 			p.err = errors.New("configuration changed outside gateway storage owner; restart required")
 		}

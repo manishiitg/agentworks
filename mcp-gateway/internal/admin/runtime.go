@@ -88,7 +88,8 @@ func (a *Admin) runtimeRoutes(mux *http.ServeMux) {
 				Servers     []row                  `json:"servers"`
 				Secrets     []store.SecretResource `json:"secrets"`
 			}
-			if a.Store.PersistenceError() != nil {
+			eval, err := policy.NewEvaluator(a.Store)
+			if err != nil {
 				http.Error(w, "permissions unavailable", 503)
 				return
 			}
@@ -99,8 +100,11 @@ func (a *Admin) runtimeRoutes(mux *http.ServeMux) {
 			}
 			if builder {
 				memberships = nil
-				for _, group := range a.Store.ListGroups(a.WorkspaceID) {
-					memberships = append(memberships, group.ID)
+				for _, g := range a.Store.ListGroups(a.WorkspaceID) {
+					if g.IsVault() && !g.HasOwner(actor) {
+						continue
+					}
+					memberships = append(memberships, g.ID)
 				}
 			}
 			hidden := a.crewVaultHidden(r, builder)
@@ -111,19 +115,27 @@ func (a *Admin) runtimeRoutes(mux *http.ServeMux) {
 				}
 			}
 			rows := []row{}
-			tools := a.Store.ListTools(a.WorkspaceID)
+			toolsByConnector := map[string][]store.ToolSnapshot{}
+			for _, t := range a.Store.ListTools(a.WorkspaceID) {
+				toolsByConnector[t.ConnectorID] = append(toolsByConnector[t.ConnectorID], t)
+			}
 			for _, c := range a.Store.ListConnectors(a.WorkspaceID) {
 				if c.Status != store.StatusActive || hidden(c.VaultID) {
 					continue
 				}
+				if builder && c.VaultID != "" && !a.Store.VaultOwnedBy(actor, c.VaultID) {
+					continue
+				}
 				item := row{ID: c.ID, Label: c.Label, Provider: c.Provider, Tools: []tool{}}
-				for _, t := range tools {
-					visible := policy.Visible(a.Store, id, t.PublicName)
+				for _, t := range toolsByConnector[c.ID] {
+					visible := false
 					if builder {
-						_, err := policy.AuthorizeSetup(a.Store, id, t.PublicName)
+						_, err := eval.AuthorizeSetup(id, t.PublicName)
 						visible = err == nil
+					} else {
+						visible = eval.Visible(id, t.PublicName)
 					}
-					if t.ConnectorID == c.ID && visible {
+					if visible {
 						item.Tools = append(item.Tools, tool{t.PublicName, t.Description, t.InputSchema})
 					}
 				}
@@ -134,7 +146,7 @@ func (a *Admin) runtimeRoutes(mux *http.ServeMux) {
 						groupIdentity := id
 						groupIdentity.ViaGroup = groups[i].ID
 						for _, t := range item.Tools {
-							if policy.Visible(a.Store, groupIdentity, t.Name) {
+							if eval.Visible(groupIdentity, t.Name) {
 								groupItem.Tools = append(groupItem.Tools, t)
 							}
 						}
@@ -154,7 +166,7 @@ func (a *Admin) runtimeRoutes(mux *http.ServeMux) {
 
 // crewVaultHidden leaves a server Crew's vault out of a runtime list unless the request names it in X-Vault-Crew-Vault
 // (decisions log, 22 Nov): the Crew's own runtime names its vault; personal projects, "use all apps" and pickers never
-// do, so the keys copied in from the owner never spread past the Crew. The Vault builder sees everything.
+// do, so the keys copied in from the owner never spread past the Crew. The Vault builder still only sees vaults it owns.
 func (a *Admin) crewVaultHidden(r *http.Request, builder bool) func(string) bool {
 	allowed := r.Header.Get("X-Vault-Crew-Vault")
 	return func(vaultID string) bool {
@@ -167,7 +179,14 @@ func (a *Admin) crewVaultHidden(r *http.Request, builder bool) func(string) bool
 func (a *Admin) runtimeSecrets(r *http.Request, actor string, builder bool) []store.SecretResource {
 	rows := visibleSecrets(a.Store.ListSecrets(a.WorkspaceID, actor, "", builder), a.crewVaultHidden(r, builder))
 	if builder {
-		return rows
+		owned := make([]store.SecretResource, 0, len(rows))
+		for _, row := range rows {
+			if row.VaultID != "" && !a.Store.VaultOwnedBy(actor, row.VaultID) {
+				continue
+			}
+			owned = append(owned, row)
+		}
+		return owned
 	}
 	seen := map[string]bool{}
 	for _, row := range rows {

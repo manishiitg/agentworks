@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
+	mcpagent "github.com/manishiitg/mcpagent/agent"
 )
 
 // virtualScopeSession is the session a virtual-tool scope ID belongs to
@@ -123,6 +124,11 @@ func bridgeAuthMiddleware(globalToken string) func(http.Handler) http.Handler {
 			provided := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 
 			if sessionID, ok := common.VerifyBridgeToken(provided); ok {
+				if strings.HasSuffix(sessionID, mcpagent.SecretReadTokenSuffix) {
+					log.Printf("[BRIDGE_AUTH] refused: secret-read token used on tool route (%s)", r.URL.Path)
+					http.Error(w, `{"success":false,"error":"this token is for secret reads only and cannot call tools"}`, http.StatusUnauthorized)
+					return
+				}
 				pathSession := strings.TrimSpace(mux.Vars(r)["session_id"])
 				headerSession := strings.TrimSpace(r.Header.Get("X-Session-ID"))
 				if (pathSession != "" && pathSession != sessionID) || (headerSession != "" && headerSession != sessionID) {

@@ -616,6 +616,58 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 	return &executor.ResolvedMCPServer{Name: name, Config: cfg, ConnectionSessionID: name}, nil
 }
 
+// bindResolvedVaultSession stamps sessionID onto a bridge-resolved Vault or
+// server-Vault delegation so /internal/vault/mcp and /internal/server-vault/mcp
+// enforce live project selection, session ownership, and lent-Slack rules, and
+// scopes the pooled connection to sessionID so CloseSession reclaims it.
+func (api *StreamingAPI) bindResolvedVaultSession(resolved *executor.ResolvedMCPServer, sessionID string) error {
+	if resolved == nil || sessionID == "" {
+		return nil
+	}
+	baseName := vaultSelectionName(resolved.Name)
+	switch {
+	case strings.HasPrefix(baseName, "vault_"):
+		_, secret, err := gatewayAdminServiceConfig()
+		if err != nil {
+			return err
+		}
+		rawToken := strings.TrimPrefix(resolved.Config.Headers["Authorization"], "Bearer ")
+		in, err := verifyVaultDelegation(secret, rawToken)
+		if err != nil {
+			return err
+		}
+		if in.Purpose != "vault-builder" && in.Session == "" {
+			in.Session = sessionID
+			headers := make(map[string]string, len(resolved.Config.Headers))
+			for k, v := range resolved.Config.Headers {
+				headers[k] = v
+			}
+			headers["Authorization"] = "Bearer " + signVaultDelegation(secret, in)
+			resolved.Config.Headers = headers
+			resolved.Name = vaultRuntimeName(baseName, resolved.Config)
+		}
+		resolved.ConnectionSessionID = sessionID
+	case strings.HasPrefix(baseName, serverVaultPrefix):
+		rawToken := strings.TrimPrefix(resolved.Config.Headers["Authorization"], "Bearer ")
+		in, err := verifyVaultDelegation(serverVaultKey, rawToken)
+		if err != nil {
+			return err
+		}
+		if in.Session == "" {
+			in.Session = sessionID
+			headers := make(map[string]string, len(resolved.Config.Headers))
+			for k, v := range resolved.Config.Headers {
+				headers[k] = v
+			}
+			headers["Authorization"] = "Bearer " + signVaultDelegation(serverVaultKey, in)
+			resolved.Config.Headers = headers
+			resolved.Name = vaultRuntimeName(baseName, resolved.Config)
+		}
+		resolved.ConnectionSessionID = sessionID
+	}
+	return nil
+}
+
 // actingVaultPicks turns a project's chosen Vault connections into the acting person's own: a chosen connection they
 // can use stays; one in someone else's personal vault becomes their connection of the same app (vaultAppChosen), or
 // stays as chosen so the turn logs why it is missing.
@@ -899,7 +951,9 @@ func (api *StreamingAPI) discoverResolvedServerTools(ctx context.Context, resolv
 func (api *StreamingAPI) lentVaultSlackRefusal(r *http.Request, in vaultDelegation, caller, root string) string {
 	rows, err := vaultServersFor(r.Context(), in.Person)
 	if err != nil {
-		return ""
+		// Fail closed on a lent call when the provider cannot be verified: never
+		// let a transient inventory error expose a lent personal Slack's reads.
+		return lentSlackCallRefusal(r, in, caller, root)
 	}
 	slack := false
 	for _, row := range rows {

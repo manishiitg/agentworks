@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // DiscoverFromResponse extracts OAuth endpoints from a 401 Unauthorized response.
@@ -224,11 +225,13 @@ type Discoverer struct {
 // maxDiscoveryBody bounds a metadata or registration response.
 const maxDiscoveryBody = 1 << 20
 
+var defaultDiscoveryHTTPClient = &http.Client{Timeout: 15 * time.Second}
+
 func (d Discoverer) client() *http.Client {
 	if d.Client != nil {
 		return d.Client
 	}
-	return http.DefaultClient
+	return defaultDiscoveryHTTPClient
 }
 
 func (d Discoverer) get(u string) (*http.Response, error) { return d.client().Get(u) }

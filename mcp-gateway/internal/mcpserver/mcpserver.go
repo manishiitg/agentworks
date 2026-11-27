@@ -142,16 +142,29 @@ func New(st *store.MemoryStore, a auth.Authenticator, ups map[string]*upstream.C
 			result.Tools = nil
 			return
 		}
+		eval, err := policy.NewEvaluator(st)
+		if err != nil {
+			result.Tools = nil
+			return
+		}
+		connector, scoped := ctx.Value(connectorKey{}).(string)
+		isBuilder := ctx.Value(builderKey{}) == true
 		out := make([]mcp.Tool, 0, len(result.Tools))
 		for _, t := range result.Tools {
-			snap, found := st.GetTool(t.Name)
-			connector, scoped := ctx.Value(connectorKey{}).(string)
-			visible := policy.Visible(st, id, t.Name)
-			if ctx.Value(builderKey{}) == true {
-				_, err := policy.AuthorizeSetup(st, id, t.Name)
-				visible = err == nil
+			if scoped {
+				snap, found := st.GetTool(t.Name)
+				if !found || snap.ConnectorID != connector {
+					continue
+				}
 			}
-			if visible && (!scoped || (found && snap.ConnectorID == connector)) {
+			visible := false
+			if isBuilder {
+				_, err := eval.AuthorizeSetup(id, t.Name)
+				visible = err == nil
+			} else {
+				visible = eval.Visible(id, t.Name)
+			}
+			if visible {
 				out = append(out, t)
 			}
 		}

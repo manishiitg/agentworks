@@ -245,6 +245,9 @@ func newAgentConnectionWithConfig(
 
 			// MCP subprocesses use the shared global connection pool.
 			connSessionID := registry.ResolveConnectionSessionID(sessionID, srvName)
+			// Persist this session's resolved serverConfig so HTTP bridge calls
+			// resolve the matching config-fingerprinted connection in the pool.
+			registry.StoreServerConfig(sessionID, srvName, serverConfig)
 
 			// Get or create connection via registry
 			client, wasCreated, err := registry.GetOrCreateConnection(ctx, connSessionID, srvName, serverConfig, logger)
