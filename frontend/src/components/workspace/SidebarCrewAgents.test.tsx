@@ -296,9 +296,6 @@ it('moves a fork out of its agent from the menu or by dragging, and puts it back
   await click('More for Parent (fork)')
   await click('Move out of Parent')
   expect(forkParent).toHaveBeenLastCalledWith('')
-  expect(host.querySelector('[role="status"]')?.textContent).toContain('Parent (fork) is now its own agent.')
-  await click('Put back under Parent')
-  expect(forkParent).toHaveBeenLastCalledWith('crew:chat:parent')
   expect(host.querySelector('[role="status"]')).toBeNull()
 
   forkParent.mockRejectedValueOnce(new Error('offline'))
@@ -307,7 +304,7 @@ it('moves a fork out of its agent from the menu or by dragging, and puts it back
   expect(host.querySelector('[role="alert"]')?.textContent).toContain('Couldn’t move Parent (fork) out. It’s still under Parent.')
   await click('Try again')
   expect(forkParent).toHaveBeenLastCalledWith('')
-  await click('Dismiss')
+  expect(host.querySelector('[role="status"]')).toBeNull()
 
   forkParent.mockClear()
   const forkRow = [...host.querySelectorAll('[draggable="true"]')].find(row => row.textContent?.includes('Parent (fork)'))!
@@ -355,16 +352,14 @@ it('nests a chat under another chat by dragging or via Move under…, while top-
   const subRow = rowByKey('crew:chat:sub')
   rect(parentRow); rect(mainRow); rect(subRow)
 
-  // Drag Topic onto middle of Parent -> nest under Parent, with Undo.
+  // Drag Topic onto middle of Parent -> nest under Parent without an inline undo banner.
   await act(async () => drag('dragstart', topicRow))
   await act(async () => drag('dragover', parentRow, 118))
   expect(parentRow.textContent).toContain('Make sub-chat')
   await act(async () => drag('drop', parentRow, 118))
   expect(childForkParent).toHaveBeenLastCalledWith('crew:chat:parent')
   expect(targetDropHere).not.toHaveBeenCalled()
-  expect(host.querySelector('[role="status"]')?.textContent).toContain('Topic is now under Parent.')
-  await click('Undo')
-  expect(childForkParent).toHaveBeenLastCalledWith('')
+  expect(host.querySelector('[role="status"]')).toBeNull()
 
   // Drag Topic onto top edge of Parent -> reorder instead of nesting.
   childForkParent.mockClear()
@@ -398,14 +393,6 @@ it('nests a chat under another chat by dragging or via Move under…, while top-
   expect(menuText).not.toContain('Topic')
   await click('Parent', '[role="menuitem"]')
   expect(childForkParent).toHaveBeenLastCalledWith('crew:chat:parent')
-
-  // The Undo status notice dismisses itself after a short delay.
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-  await act(async () => drag('dragstart', topicRow))
-  await act(async () => drag('dragover', mainRow, 115))
-  await act(async () => drag('drop', mainRow, 115))
-  expect(host.querySelector('[role="status"]')?.textContent).toContain('Topic is now under Main.')
-  await act(async () => { vi.advanceTimersByTime(6000) })
   expect(host.querySelector('[role="status"]')).toBeNull()
- } finally { vi.useRealTimers(); f.extra = []; window.localStorage.clear(); await act(async () => root.unmount()) }
+ } finally { f.extra = []; window.localStorage.clear(); await act(async () => root.unmount()) }
 })
