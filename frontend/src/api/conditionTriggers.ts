@@ -2,7 +2,7 @@ import axios from 'axios'
 import { getApiBaseUrl, getAuthToken } from '../services/api'
 
 export interface ConditionTrigger {
-  github_pr?: { session_id?: string; repository: string; number: number; mode: 'checks' | 'deployment' | 'autofix' | 'merge'; worktree?: string; branch?: string; login?: string }
+  github_pr?: { session_id?: string; repository: string; number: number; mode: 'checks' | 'deployment' | 'autofix' | 'ready'; worktree?: string; branch?: string; login?: string }
   id: string
   name: string
   enabled: boolean
@@ -41,9 +41,9 @@ export const conditionTriggersApi = {
   list: (projectId: string, profileId = 'work', includeCompleted = false) => axios.get<{ triggers: ConditionTrigger[]; callers?: WatcherCaller[]; chats?: { id: string; name: string }[] }>('/api/condition-triggers', { ...config(), params: { project_id: projectId, profile_id: profileId, ...(includeCompleted ? { include_completed: true } : {}) } }).then(r => r.data),
   manage: (projectId: string, action: string, id: string, trigger?: Record<string, unknown>, expectedRevision?: string, profileId = 'work') => axios.post('/api/condition-triggers', { project_id: projectId, profile_id: profileId, action, id, ...(trigger ? { trigger } : {}), ...(expectedRevision ? { expected_revision: expectedRevision } : {}) }, config()).then(r => r.data),
   /** Start a PR watch from a chat's PR line; the server binds it to that chat (X-Session-ID) and the saved GitHub account. */
-  watchPR: (projectId: string, sessionId: string, pr: { repository: string; number: number; worktree?: string }, mode: 'merge' | 'autofix') => {
+  watchPR: (projectId: string, sessionId: string, pr: { repository: string; number: number; worktree?: string }, mode: 'ready' | 'autofix' = 'ready') => {
     const base = config()
-    return axios.post('/api/condition-triggers', { project_id: projectId, profile_id: 'work', action: 'create', request_id: `pr-${mode}-${pr.repository}-${pr.number}-${Date.now()}`, trigger: { name: `${mode === 'merge' ? 'Watch & merge' : 'Watch & fix'} PR #${pr.number}`, github_pr: { repository: pr.repository, number: pr.number, mode, ...(pr.worktree ? { worktree: pr.worktree } : {}) }, target: { kind: 'agent' } } }, { ...base, headers: { ...base.headers, 'X-Session-ID': sessionId } }).then(r => r.data)
+    return axios.post('/api/condition-triggers', { project_id: projectId, profile_id: 'work', action: 'create', request_id: `pr-${mode}-${pr.repository}-${pr.number}-${Date.now()}`, trigger: { name: `${mode === 'ready' ? 'Watch & fix until ready' : 'Watch & fix'} PR #${pr.number}`, github_pr: { repository: pr.repository, number: pr.number, mode, ...(pr.worktree ? { worktree: pr.worktree } : {}) }, target: { kind: 'agent' } } }, { ...base, headers: { ...base.headers, 'X-Session-ID': sessionId } }).then(r => r.data)
   },
   history: (projectId: string, id: string, profileId = 'work') => axios.get<ConditionHistory>(`/api/condition-triggers/${encodeURIComponent(id)}/history`, { ...config(), params: { project_id: projectId, profile_id: profileId } }).then(r => r.data),
 }

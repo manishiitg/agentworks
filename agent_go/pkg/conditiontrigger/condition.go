@@ -137,7 +137,7 @@ type GitHubPR struct {
 	SessionID    string   `json:"session_id,omitempty"`
 	Repository   string   `json:"repository"`
 	Number       int      `json:"number"`
-	Mode         string   `json:"mode"` // checks, deployment, autofix, merge (autofix, then the server merges when green)
+	Mode         string   `json:"mode"` // checks, deployment, autofix, ready (autofix until the PR is merge-ready; never merges)
 	Worktree     string   `json:"worktree,omitempty"`
 	Branch       string   `json:"branch,omitempty"`
 	Login        string   `json:"login,omitempty"`       // selected by the server
@@ -145,8 +145,8 @@ type GitHubPR struct {
 	ReviewBots   []string `json:"review_bots,omitempty"` // explicitly chosen by the owner
 }
 
-// FollowsHead: autofix and merge watches keep going across new pushes until the PR closes.
-func (p *GitHubPR) FollowsHead() bool { return p != nil && (p.Mode == "autofix" || p.Mode == "merge") }
+// FollowsHead: autofix and ready watches keep going across new pushes until the PR closes.
+func (p *GitHubPR) FollowsHead() bool { return p != nil && (p.Mode == "autofix" || p.Mode == "ready") }
 
 type Config struct {
 	GitHubPR       *GitHubPR `json:"github_pr,omitempty"`
@@ -206,8 +206,8 @@ func (c Config) Validate() error {
 		if !regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`).MatchString(p.Repository) || strings.Contains(p.Repository, "..") || p.Number < 1 {
 			return errors.New("choose a GitHub repository and pull request number")
 		}
-		if p.Mode != "checks" && p.Mode != "deployment" && p.Mode != "autofix" && p.Mode != "merge" {
-			return errors.New("GitHub watcher mode must be checks, deployment, autofix or merge")
+		if p.Mode != "checks" && p.Mode != "deployment" && p.Mode != "autofix" && p.Mode != "ready" {
+			return errors.New("GitHub watcher mode must be checks, deployment, autofix or ready")
 		}
 		if p.Login == "" || p.Branch == "" || p.HeadSHA == "" {
 			return errors.New("save the GitHub account and PR head before enabling this watcher")

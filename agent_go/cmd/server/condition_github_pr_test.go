@@ -222,32 +222,24 @@ func TestPRWatcherManagementPinsOwnerAccountAndChat(t *testing.T) {
 	}
 }
 
-// Watch & merge (#4323): the server merges only once checks pass on a head pushed after the last finding,
-// reports a refused merge once, and stops after repeated failing checks.
-func TestPRWatcherMergeWhenGreen(t *testing.T) {
-	head, check, mergeStatus := "a", "failure", http.StatusOK
-	merges := []string{}
+// Watch & fix until ready (#4323): the server never merges. It reports merge-ready only once checks pass on a
+// head pushed after the last finding and GitHub's branch rules are met; an out-of-date branch is a finding,
+// a required review is waiting on people, and repeated failing checks stop the watch.
+func TestPRWatcherReadyNeverMerges(t *testing.T) {
+	head, check, mergeState := "a", "failure", "clean"
+	writes := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodGet {
+			writes++
+		}
 		switch {
-		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/pulls/7/merge"):
-			var body map[string]string
-			_ = json.NewDecoder(r.Body).Decode(&body)
-			merges = append(merges, body["sha"]+":"+body["merge_method"])
-			w.WriteHeader(mergeStatus)
-			if mergeStatus == http.StatusOK {
-				fmt.Fprint(w, `{"merged":true,"sha":"m1"}`)
-			} else {
-				fmt.Fprint(w, `{"message":"At least 1 approving review is required"}`)
-			}
 		case strings.HasSuffix(r.URL.Path, "/pulls/7"):
-			fmt.Fprintf(w, `{"number":7,"state":"open","mergeable":true,"mergeable_state":"clean","head":{"sha":%q,"ref":"feature"}}`, head)
+			fmt.Fprintf(w, `{"number":7,"state":"open","mergeable":true,"mergeable_state":%q,"head":{"sha":%q,"ref":"feature"}}`, mergeState, head)
 		case strings.HasSuffix(r.URL.Path, "/check-runs"):
 			fmt.Fprintf(w, `{"total_count":1,"check_runs":[{"id":1,"name":"tests","status":"completed","conclusion":%q}]}`, check)
 		case strings.HasSuffix(r.URL.Path, "/status"):
 			fmt.Fprint(w, `{"total_count":0,"statuses":[]}`)
-		case strings.HasSuffix(r.URL.Path, "/repos/example/project"):
-			fmt.Fprint(w, `{"allow_rebase_merge":false,"allow_squash_merge":true,"allow_merge_commit":true}`)
 		default:
 			fmt.Fprint(w, `[]`)
 		}
@@ -256,7 +248,7 @@ func TestPRWatcherMergeWhenGreen(t *testing.T) {
 	old := githubAPIURL
 	githubAPIURL = srv.URL
 	defer func() { githubAPIURL = old }()
-	cfg := conditiontrigger.Config{GitHubPR: &conditiontrigger.GitHubPR{Repository: "example/project", Number: 7, Mode: "merge", HeadSHA: head, Branch: "feature", Login: "developer"}, Target: conditiontrigger.Target{Kind: "agent", ChatID: "main", Message: "fix"}}
+	cfg := conditiontrigger.Config{GitHubPR: &conditiontrigger.GitHubPR{Repository: "example/project", Number: 7, Mode: "ready", HeadSHA: head, Branch: "feature", Login: "developer"}, Target: conditiontrigger.Target{Kind: "agent", ChatID: "main", Message: "fix"}}
 	var state json.RawMessage
 	poll := func() conditiontrigger.Output {
 		t.Helper()
@@ -271,23 +263,36 @@ func TestPRWatcherMergeWhenGreen(t *testing.T) {
 		state = out.State
 		return out
 	}
-	if out := poll(); out.Done || len(out.Events) != 1 || len(merges) != 0 {
-		t.Fatal("failing checks did not wake a fix", out, merges)
+	kind := func(out conditiontrigger.Output) interface{} {
+		if len(out.Events) != 1 {
+			return nil
+		}
+		return out.Events[0].Payload["kind"]
+	}
+	if out := poll(); out.Done || kind(out) != "checks_completed" {
+		t.Fatal("failing checks did not wake a fix", out)
 	}
 	check = "success" // a rerun passing on the same head is not a fix
-	if out := poll(); out.Done || len(merges) != 0 {
-		t.Fatal("merged a head that was never fixed", out, merges)
+	if out := poll(); out.Done || len(out.Events) != 0 {
+		t.Fatal("reported a head that was never fixed", out)
 	}
-	head = "b"
-	if out := poll(); !out.Done || len(out.Events) != 1 || out.Events[0].Payload["kind"] != "merged" || len(merges) != 1 || merges[0] != "b:squash" {
-		t.Fatal("green fixed head was not merged with the allowed method", out, merges)
+	head, mergeState = "b", "behind"
+	if out := poll(); out.Done || kind(out) != "branch_behind" {
+		t.Fatal("out-of-date branch was not a finding", out)
 	}
-	state, head, mergeStatus = nil, "c", http.StatusMethodNotAllowed
-	if out := poll(); out.Done || len(out.Events) != 1 || out.Events[0].Payload["kind"] != "merge_refused" {
-		t.Fatal("refused merge not reported", out)
+	head, mergeState = "c", "blocked"
+	if out := poll(); out.Done || kind(out) != "waiting_on_people" {
+		t.Fatal("required review not reported as waiting on people", out)
 	}
-	if out := poll(); len(out.Events) != 0 || len(merges) != 2 {
-		t.Fatal("refused merge retried on the same head", out, merges)
+	if out := poll(); out.Done || len(out.Events) != 0 {
+		t.Fatal("waiting reported twice on the same head", out)
+	}
+	mergeState = "clean"
+	if out := poll(); !out.Done || kind(out) != "merge_ready" {
+		t.Fatal("green, approved head was not reported merge-ready", out)
+	}
+	if writes != 0 {
+		t.Fatal("ready watch wrote to GitHub", writes)
 	}
 	state, check = nil, "failure"
 	for i, sha := range []string{"x", "y", "z"} {

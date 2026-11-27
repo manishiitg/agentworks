@@ -6,9 +6,9 @@ import { useChatStore } from '../../stores/useChatStore'
 import type { ReplyFileGroup } from '../../utils/replyFileChanges'
 import { sendWorkspacePaneMessageToChat } from '../../utils/workspacePaneChat'
 
-// Watch & merge (#4323, approved mockup): one click starts the server's PR Watcher for this chat. It wakes the
-// chat to fix failing checks, conflicts and review comments, and the server merges once checks pass on a fixed
-// head. The menu offers fix only (you merge) and talking it through first (the agent sets up custom watches).
+// Watch & fix (#4323): one click starts the server's PR Watcher for this chat. It wakes the chat to fix failing
+// checks, conflicts, an out-of-date branch and review comments until the PR is merge-ready; it never merges
+// (the person or their team does). The menu also offers talking it through first (custom watches).
 export function PRWatcherControls({ group, sessionId }: { compact?: boolean; group: Pick<ReplyFileGroup, 'root' | 'github_repo' | 'pr'>; sessionId: string }) {
   const [watchers, setWatchers] = useState<ConditionTrigger[]>([])
   const [busy, setBusy] = useState(false)
@@ -53,27 +53,26 @@ export function PRWatcherControls({ group, sessionId }: { compact?: boolean; gro
     try { await conditionTriggersApi.manage(projectId!, 'update', watcher.id, { enabled: false }, watcher.revision, 'work'); setWatchers(await load()); setError('') }
     catch (e) { showError(e) } finally { setBusy(false) }
   }
-  const start = async (mode: 'merge' | 'autofix') => {
+  const start = async () => {
     setBusy(true); setError(''); setMenu(false)
-    try { await conditionTriggersApi.watchPR(projectId!, sessionId, { repository: group.github_repo!, number: group.pr!.number!, worktree: group.root || undefined }, mode); setWatchers(await load()) }
+    try { await conditionTriggersApi.watchPR(projectId!, sessionId, { repository: group.github_repo!, number: group.pr!.number!, worktree: group.root || undefined }, 'ready'); setWatchers(await load()) }
     catch (e) { showError(e) } finally { setBusy(false) }
   }
   const active = watchers.filter(item => item.enabled)
-  const mergeWatch = active.some(item => item.github_pr?.mode === 'merge')
+  const readyWatch = active.some(item => item.github_pr?.mode === 'ready')
   const iconBtn = 'inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap px-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   return <span className="relative inline-flex items-center gap-2">
     {active.length === 0
       ? <span className="inline-flex items-center rounded-md border border-border">
-        <button type="button" disabled={busy} data-testid="pr-watch-merge" title="Fix failing checks and review comments as they come in, then merge when everything is green" className={`${iconBtn} rounded-l-md`} onClick={() => void start('merge')}><Eye className="h-3.5 w-3.5" aria-hidden="true" />Watch &amp; merge</button>
+        <button type="button" disabled={busy} data-testid="pr-watch-fix" title="Fix failing checks, conflicts and review comments until the PR is ready to merge. It never merges: you or your team do." className={`${iconBtn} rounded-l-md`} onClick={() => void start()}><Eye className="h-3.5 w-3.5" aria-hidden="true" />Watch &amp; fix</button>
         <button type="button" disabled={busy} aria-label="More watch options" aria-expanded={menu} className={`${iconBtn} rounded-r-md border-l border-border px-1`} onClick={() => setMenu(value => !value)}><ChevronDown className="h-3 w-3" aria-hidden="true" /></button>
       </span>
       : <span className="inline-flex items-center gap-1 text-xs">
-        <span data-testid="pr-watch-status" className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-primary"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" aria-hidden="true" />{mergeWatch ? 'Watching · merges when green' : 'Watching · fix only'}</span>
+        <span data-testid="pr-watch-status" className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-primary"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" aria-hidden="true" />{readyWatch ? 'Watching · until merge-ready' : 'Watching · fixing'}</span>
         <button type="button" disabled={busy} className="rounded px-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={() => void Promise.all(active.map(stop))}>Stop</button>
       </span>}
     {menu && <span className="absolute left-0 top-full z-50 mt-1 flex w-72 flex-col rounded-lg border border-border bg-background p-1 text-left text-xs shadow-lg" role="menu">
-      <button type="button" role="menuitem" className="rounded-md px-2 py-1.5 text-left hover:bg-muted" onClick={() => void start('merge')}><span className="block text-sm text-foreground">Watch &amp; merge</span><span className="text-muted-foreground">Fix checks and review comments, then merge when green.</span></button>
-      <button type="button" role="menuitem" className="rounded-md px-2 py-1.5 text-left hover:bg-muted" onClick={() => void start('autofix')}><span className="block text-sm text-foreground">Watch &amp; fix only</span><span className="text-muted-foreground">Fix as things come in; you merge.</span></button>
+      <button type="button" role="menuitem" className="rounded-md px-2 py-1.5 text-left hover:bg-muted" onClick={() => void start()}><span className="block text-sm text-foreground">Watch &amp; fix until merge-ready</span><span className="text-muted-foreground">Fix checks, conflicts and review comments; tells you when it's ready. You merge.</span></button>
       <span className="my-1 border-t border-border" />
       <button type="button" role="menuitem" className="rounded-md px-2 py-1.5 text-left hover:bg-muted" onClick={() => { setMenu(false); void ask() }}><span className="block text-sm text-foreground">Talk it through first…</span><span className="text-muted-foreground">Ask the agent what to watch.</span></button>
     </span>}
