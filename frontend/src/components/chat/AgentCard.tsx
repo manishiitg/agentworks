@@ -96,8 +96,10 @@ function AgentOnlineCopyStatus({ setup }: { setup?: TeamTabSetup }) {
 
 let agentHoverCooldownUntil = 0
 
-export function AgentHoverCard({ info, children, side = 'below', clickToOpen = false, actions, shortcut, onRename, automationShortcut = false, shareShortcut = false }: { info?: AgentCardInfo; children: ReactNode | ((detailsOpen: boolean) => ReactNode); side?: 'below' | 'right'; clickToOpen?: boolean; actions?: CrewAgentActions; shortcut?: number; onRename?: () => void; automationShortcut?: boolean; shareShortcut?: boolean }) {
+export function AgentHoverCard({ info, children, side = 'below', clickToOpen = false, actions, sidebarHidden, shortcut, onRename, automationShortcut = false, shareShortcut = false }: { info?: AgentCardInfo; children: ReactNode | ((detailsOpen: boolean) => ReactNode); side?: 'below' | 'right'; clickToOpen?: boolean; actions?: CrewAgentActions; sidebarHidden?: boolean; shortcut?: number; onRename?: () => void; automationShortcut?: boolean; shareShortcut?: boolean }) {
   const [automationsOpen, setAutomationsOpen] = useState(false)
+  const [renameDraft, setRenameDraft] = useState<string | null>(null)
+  const [forking, setForking] = useState(false)
   const anchor = useRef<HTMLSpanElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState<{ top: number; left: number; view: 'details' | 'automations' | 'sharing' } | null>(null)
@@ -107,6 +109,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   const dismiss = useCallback(() => {
     window.clearTimeout(timer.current)
     agentHoverCooldownUntil = Date.now() + 3000
+    setRenameDraft(null)
     setAt(null)
   }, [])
   useEffect(() => { dismiss() }, [activeTabId, dismiss])
@@ -206,7 +209,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         <AgentAutomationList items={enabled} empty="No enabled automations." />
       </> : at.view === 'sharing' && info.sharing ? <>
         <div className="mb-1 flex items-center justify-between gap-2">
-          <p className="min-w-0 flex-1 truncate text-sm font-semibold">Sharing · {info.name}</p>
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold">Sharing</p>
           {close('Close sharing')}
         </div>
         <HeaderAgentSharing {...info.sharing} defaultOpen bare status={!info.owner ? <AgentOnlineCopyStatus setup={info.setup} /> : undefined} />
@@ -214,7 +217,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           <button type="button" onClick={() => finish(actions.forkTo!)} className="inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><GitFork aria-hidden className="h-3.5 w-3.5" />Send a copy to a teammate…</button>
         </div>}
       </> : <>
-      <div className="flex items-center gap-2 text-sm font-semibold"><p className="min-w-0 flex-1 truncate">{info.name}</p>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}{clickToOpen && close('Close agent details')}</div>
+      {(!clickToOpen || sheet) && <div className="flex items-center gap-2 text-sm font-semibold"><p className="min-w-0 flex-1 truncate">{info.name}</p>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}{clickToOpen && close('Close agent details')}</div>}
       {!clickToOpen && <AgentModelRow tabId={info.tabId} />}
       {clickToOpen ? <AgentDetailSection title="Setup" value={info.purpose || 'Add a purpose'}>{setupDetails}</AgentDetailSection> : setupDetails}
       {!shareShortcut && info.sharing && <HeaderAgentSharing {...info.sharing} status={!info.owner ? <AgentOnlineCopyStatus setup={info.setup} /> : undefined} />}
@@ -235,13 +238,31 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           {automationsOpen && <AgentAutomationList items={info.setup?.automations ?? []} empty="No automations yet." />}
           {addAutomation}
         </div>)}
-      {((!shareShortcut && actions?.forkTo) || actions?.terminal || onRename || (shareShortcut && !shareInfo && info.sharing) || (!info.sharing && info.onSharing)) && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 max-md:[&>button]:min-h-10">
-        {!shareShortcut && actions?.forkTo && <button type="button" onClick={() => finish(actions.forkTo!)} className="inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><GitFork aria-hidden className="h-3.5 w-3.5" />Send a copy to a teammate…</button>}
-        {/* Resume this agent's chat in your own Claude Code: in the agent's top menu (owner, 20 Nov), not the left menu. */}
-        {actions?.terminal && <button type="button" onClick={() => finish(actions.terminal!)} className="inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><SquareTerminal aria-hidden className="h-3.5 w-3.5" />Continue in my terminal</button>}
-        {onRename && <button type="button" onClick={() => finish(onRename)} className="inline-flex items-center gap-1 text-primary hover:underline"><Pencil aria-hidden="true" className="h-3 w-3" />Rename</button>}
-        {shareShortcut && !shareInfo && info.sharing && <button type="button" onClick={() => open('sharing')} className="text-primary hover:underline">Share…</button>}
-        {!info.sharing && info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
+      {((!shareShortcut && actions?.forkTo) || actions?.terminal || onRename || (clickToOpen && (actions?.fork || actions?.rename || actions?.setSidebarHidden || info.onRemove)) || (shareShortcut && !shareInfo && info.sharing) || (!info.sharing && info.onSharing)) && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 max-md:[&>button]:min-h-10">
+        {renameDraft !== null ? <input autoFocus aria-label={`New name for ${info.name}`} value={renameDraft} onChange={event => setRenameDraft(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === 'Escape') { event.stopPropagation(); setRenameDraft(null) }
+            if (event.key === 'Enter' && renameDraft.trim()) { void actions?.rename?.(renameDraft.trim()); dismiss() }
+          }}
+          onBlur={() => setRenameDraft(null)} className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs max-md:text-base" /> : <>
+          {!shareShortcut && actions?.forkTo && <button type="button" onClick={() => finish(actions.forkTo!)} className="inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><GitFork aria-hidden className="h-3.5 w-3.5" />Send a copy to a teammate…</button>}
+          {clickToOpen && actions?.fork && <button type="button" disabled={forking} aria-busy={forking} onClick={async () => {
+            if (forking) return
+            setForking(true)
+            try { await actions.fork!() } finally { setForking(false); dismiss() }
+          }} className="inline-flex items-center gap-1 rounded-md py-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-70">
+            {forking ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <GitFork aria-hidden="true" className="h-3.5 w-3.5" />}{forking ? 'Forking chat…' : 'Fork chat'}
+          </button>}
+          {/* Resume this agent's chat in your own Claude Code: in the agent's top menu (owner, 20 Nov), not the left menu. */}
+          {actions?.terminal && <button type="button" onClick={() => finish(actions.terminal!)} className="inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><SquareTerminal aria-hidden className="h-3.5 w-3.5" />Continue in my terminal</button>}
+          {(onRename || (clickToOpen && actions?.rename)) && <button type="button" onClick={() => onRename ? finish(onRename) : setRenameDraft(actions?.renameDraft || info.name)} className="inline-flex items-center gap-1 rounded-md py-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Pencil aria-hidden="true" className="h-3.5 w-3.5" />Rename</button>}
+          {clickToOpen && actions?.setSidebarHidden && <button type="button" onClick={() => finish(() => actions.setSidebarHidden!(!sidebarHidden))} className="inline-flex items-center gap-1 rounded-md py-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {sidebarHidden ? <><Eye aria-hidden="true" className="h-3.5 w-3.5" />Show in sidebar</> : <><EyeOff aria-hidden="true" className="h-3.5 w-3.5" />Hide from sidebar</>}
+          </button>}
+          {shareShortcut && !shareInfo && info.sharing && <button type="button" onClick={() => open('sharing')} className="text-primary hover:underline">Share…</button>}
+          {!info.sharing && info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className="text-primary hover:underline">{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
+          {clickToOpen && info.onRemove && <button type="button" onClick={() => finish(info.onRemove!)} className="inline-flex items-center gap-1 rounded-md py-1 text-destructive hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remove agent…</button>}
+        </>}
       </div>}
       </>}
     </div></>, document.body)}
@@ -268,7 +289,7 @@ export function AgentHeaderLine({ agent: row, crewName, onOpenIdentity, onReturn
       {/* Watching a teammate's agent: your own agent's name takes you back to it. */}
       {onReturn ? <button type="button" onClick={onReturn} title={`Back to your ${name}`} aria-label={`Back to your ${name}`}
         className="block min-w-0 max-w-48 sm:max-w-xs md:max-w-[28rem] lg:max-w-[36rem] truncate rounded-sm font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{name}</button>
-      : info ? <AgentHoverCard info={info} clickToOpen automationShortcut shareShortcut shortcut={row?.shortcut} actions={row?.actions}>
+      : info ? <AgentHoverCard info={info} clickToOpen automationShortcut shareShortcut shortcut={row?.shortcut} actions={row?.actions} sidebarHidden={row?.sidebarHidden}>
         {open => <button type="button" aria-label={`About ${name}`} title={name} aria-expanded={open} aria-haspopup="dialog"
           className="inline-flex min-w-0 max-w-48 sm:max-w-xs md:max-w-[28rem] lg:max-w-[36rem] items-center gap-1 rounded-md px-1.5 py-1 font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-10">
           <span className="min-w-0 truncate">{name}</span><ChevronDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />

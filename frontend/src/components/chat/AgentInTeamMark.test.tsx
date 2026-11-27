@@ -85,17 +85,22 @@ describe('AgentHeaderLine sharing pill', () => {
       info: { name: 'Scratchpad', sharing: { projectId: 'crew', agentKey: 'scratch' } },
     }
     const forkTo = vi.fn()
+    const fork = vi.fn(async () => {})
+    const rename = vi.fn(async () => {})
+    const setSidebarHidden = vi.fn()
+    const onRemove = vi.fn()
     const sharedRow: CrewAgentRow = {
       tabId: 't2',
       name: 'Design',
       main: false,
       inTeam: true,
       teamShare: { inTeam: true, audience: 'whole_team', chatShare: 'agent' },
-      actions: { forkTo },
+      actions: { forkTo, fork, rename, setSidebarHidden },
       info: {
         name: 'Design',
         sharing: { projectId: 'crew', agentKey: 'design' },
         teamShare: { inTeam: true, audience: 'whole_team', chatShare: 'agent' },
+        onRemove,
       },
     }
     try {
@@ -109,6 +114,7 @@ describe('AgentHeaderLine sharing pill', () => {
       await act(async () => privateTrigger!.click())
       const privateDetails = document.body.querySelector('[role="dialog"][aria-label="Scratchpad"]')
       expect(privateDetails).not.toBeNull()
+      expect(privateDetails?.textContent).not.toContain('Scratchpad')
       expect(privateDetails?.querySelector('[data-testid="header-sharing"]')).toBeNull()
       const shareLink = [...(privateDetails?.querySelectorAll('button') || [])].find(b => b.textContent === 'Share…')
       expect(shareLink).toBeTruthy()
@@ -127,6 +133,36 @@ describe('AgentHeaderLine sharing pill', () => {
       expect(sharedDetails?.querySelector('[data-testid="header-sharing"]')).toBeNull()
       expect(sharedDetails?.textContent).not.toContain('Share…')
       expect(sharedDetails?.textContent).not.toContain('Send a copy to a teammate…')
+      const forkSelfButton = [...(sharedDetails?.querySelectorAll('button') || [])].find(b => b.textContent?.includes('Fork chat'))
+      expect(forkSelfButton).toBeTruthy()
+      await act(async () => forkSelfButton!.click())
+      expect(fork).toHaveBeenCalledOnce()
+
+      await act(async () => sharedTrigger!.click())
+      const reopenedForHide = document.body.querySelector('[role="dialog"][aria-label="Design"]')
+      const hideButton = [...(reopenedForHide?.querySelectorAll('button') || [])].find(b => b.textContent?.includes('Hide from sidebar'))
+      expect(hideButton).toBeTruthy()
+      await act(async () => hideButton!.click())
+      expect(setSidebarHidden).toHaveBeenCalledWith(true)
+
+      await act(async () => sharedTrigger!.click())
+      const reopened = document.body.querySelector('[role="dialog"][aria-label="Design"]')
+      const removeButton = [...(reopened?.querySelectorAll('button') || [])].find(b => b.textContent?.includes('Remove agent…'))
+      expect(removeButton).toBeTruthy()
+      await act(async () => removeButton!.click())
+      expect(onRemove).toHaveBeenCalledOnce()
+
+      await act(async () => sharedTrigger!.click())
+      const reopenedForRename = document.body.querySelector('[role="dialog"][aria-label="Design"]')
+      const renameButton = [...(reopenedForRename?.querySelectorAll('button') || [])].find(b => b.textContent?.includes('Rename'))
+      expect(renameButton).toBeTruthy()
+      await act(async () => renameButton!.click())
+      const renameInput = document.body.querySelector<HTMLInputElement>('input[aria-label="New name for Design"]')
+      expect(renameInput).not.toBeNull()
+      await act(async () => {
+        renameInput!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      })
+      expect(rename).toHaveBeenCalledWith('Design')
 
       const pill = host.querySelector<HTMLButtonElement>('button[aria-label*="Chat hidden"]')
       expect(pill).not.toBeNull()
