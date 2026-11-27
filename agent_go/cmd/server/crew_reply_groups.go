@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/internal/filesnapshots"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/commands"
@@ -25,9 +28,12 @@ const (
 	replyGroupCacheMaxEntries = 128
 )
 
+var replyGroupChangesFn = filesnapshots.GroupChanges
+
 var replyGroupCache = struct {
 	sync.Mutex
 	entries map[string]replyGroupCacheEntry
+	group   singleflight.Group
 }{entries: make(map[string]replyGroupCacheEntry)}
 
 type replyGroupCacheEntry struct {
@@ -59,39 +65,99 @@ func cloneFileSnapshotGroups(groups []filesnapshots.Group) []filesnapshots.Group
 	return out
 }
 
-func cachedReplyGroupChanges(ctx context.Context, roots crewroot.Roots, comparison filesnapshots.Comparison, allow func(string) bool) []filesnapshots.Group {
-	// Only cache when the comparison has a durable record ID and no custom per-path filter.
-	if comparison.Record.ID == "" || allow != nil {
-		return filesnapshots.GroupChanges(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
+func replyGroupCacheKey(person, filesRoot string, comparison filesnapshots.Comparison) string {
+	h := sha256.New()
+	writePart := func(s string) {
+		_, _ = h.Write([]byte(s))
+		_, _ = h.Write([]byte{0})
 	}
-	key := roots.Files + "\x00" + comparison.Record.ID + "\x00" + strconv.Itoa(len(comparison.Changes))
+	writePart(person)
+	writePart(filesRoot)
+	writePart(comparison.Record.ID)
+	writePart(strconv.Itoa(len(comparison.NewRepos)))
+	for _, repo := range comparison.NewRepos {
+		writePart(repo)
+	}
+	writePart(strconv.Itoa(len(comparison.Changes)))
+	for _, c := range comparison.Changes {
+		writePart(c.Path)
+		writePart(c.Status)
+		if c.Checkout != nil {
+			writePart(c.Checkout.ID)
+			writePart(c.Checkout.Branch)
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func replyGroupsAllowed(groups []filesnapshots.Group, allow func(string) bool) bool {
+	if allow == nil {
+		return true
+	}
+	for _, g := range groups {
+		for _, f := range g.Files {
+			if !allow(f.Path) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func cachedReplyGroupChanges(ctx context.Context, roots crewroot.Roots, comparison filesnapshots.Comparison, allow func(string) bool) []filesnapshots.Group {
+	if comparison.Record.ID == "" {
+		return replyGroupChangesFn(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
+	}
+	key := replyGroupCacheKey(GetUserIDFromContext(ctx), roots.Files, comparison)
 	now := time.Now()
 	replyGroupCache.Lock()
 	if entry, ok := replyGroupCache.entries[key]; ok && now.Before(entry.expires) {
+		cached := cloneFileSnapshotGroups(entry.groups)
 		replyGroupCache.Unlock()
-		return cloneFileSnapshotGroups(entry.groups)
+		if replyGroupsAllowed(cached, allow) {
+			return cached
+		}
+		return replyGroupChangesFn(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
 	}
 	replyGroupCache.Unlock()
 
-	groups := filesnapshots.GroupChanges(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
-	storeNow := time.Now()
-	replyGroupCache.Lock()
-	for k, cached := range replyGroupCache.entries {
-		if storeNow.After(cached.expires) {
-			delete(replyGroupCache.entries, k)
+	value, _, _ := replyGroupCache.group.Do(key, func() (any, error) {
+		now := time.Now()
+		replyGroupCache.Lock()
+		if entry, ok := replyGroupCache.entries[key]; ok && now.Before(entry.expires) {
+			cached := cloneFileSnapshotGroups(entry.groups)
+			replyGroupCache.Unlock()
+			return cached, nil
 		}
-	}
-	if len(replyGroupCache.entries) >= replyGroupCacheMaxEntries {
-		for k := range replyGroupCache.entries {
-			delete(replyGroupCache.entries, k)
-			break
+		replyGroupCache.Unlock()
+
+		groups := replyGroupChangesFn(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
+		if ctx.Err() == nil {
+			storeNow := time.Now()
+			replyGroupCache.Lock()
+			for k, cached := range replyGroupCache.entries {
+				if storeNow.After(cached.expires) {
+					delete(replyGroupCache.entries, k)
+				}
+			}
+			if len(replyGroupCache.entries) >= replyGroupCacheMaxEntries {
+				for k := range replyGroupCache.entries {
+					delete(replyGroupCache.entries, k)
+					break
+				}
+			}
+			replyGroupCache.entries[key] = replyGroupCacheEntry{
+				groups:  cloneFileSnapshotGroups(groups),
+				expires: storeNow.Add(replyGroupCacheTTL),
+			}
+			replyGroupCache.Unlock()
 		}
+		return groups, nil
+	})
+	groups := cloneFileSnapshotGroups(value.([]filesnapshots.Group))
+	if !replyGroupsAllowed(groups, allow) {
+		return replyGroupChangesFn(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
 	}
-	replyGroupCache.entries[key] = replyGroupCacheEntry{
-		groups:  cloneFileSnapshotGroups(groups),
-		expires: storeNow.Add(replyGroupCacheTTL),
-	}
-	replyGroupCache.Unlock()
 	return groups
 }
 
