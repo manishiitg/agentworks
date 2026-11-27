@@ -177,7 +177,22 @@ func (c *conditionService) manage(ctx context.Context, owner, profile, project s
 					}
 				}
 				v["last_status"], v["last_error"], v["last_run_at"] = j.State.LastStatus, j.State.LastError, j.State.LastRunAt
+				v["made_by"] = automationMadeBy(j.Schedule.CreatedBy, actor)
+				if j.Schedule.Condition.PersonalGmail() && j.UserID != actor {
+					// A personal-Gmail Watcher reads the mailbox of the account it is saved under (the Crew owner), not the reader's.
+					v["gmail_of"] = firstNonEmptyTrimmed(crewPersonShortName(j.UserID), j.UserID)
+				}
 				out = append(out, v)
+			}
+		}
+		madeBy := make([]string, 0, len(out))
+		for _, item := range out {
+			name, _ := item.(map[string]interface{})["made_by"].(string)
+			madeBy = append(madeBy, name)
+		}
+		if onlyYoursMadeBy(madeBy) {
+			for _, item := range out {
+				delete(item.(map[string]interface{}), "made_by")
 			}
 		}
 		result := map[string]interface{}{"triggers": out}

@@ -3,7 +3,7 @@ import axios from 'axios'
 import { WebhookEndpoint } from '../scheduler/scheduleRuns/WebhookEndpoint'
 import { describeCron } from '../scheduler/scheduleRuns/cron'
 import { Zap } from 'lucide-react'
-import { AutomationIntro, AutomationListBox, AutomationRow, EmptyAutomations, PageRow, relativeTime } from './AutomationKit'
+import { AutomationIntro, AutomationListBox, AutomationRow, EmptyAutomations, MadeBy, PageRow, relativeTime } from './AutomationKit'
 import { Switch } from '../ui/Switch'
 import { conditionTriggersApi, type ConditionTrigger, type ConditionHistory, type WatcherCaller } from '../../api/conditionTriggers'
 import type { ProductTriggerScope } from '../../api/productWebhooks'
@@ -90,7 +90,7 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
     {callers.length > 0 && <details className="mb-4 rounded border border-border p-3 text-xs"><summary className="cursor-pointer">Watchers calling this product</summary><ul className="mt-2 space-y-2">{callers.map(caller => <li key={`${caller.owner_id}:${caller.id}`} className="break-all">{caller.name} · {caller.owner_id} · {targetLabel(caller.target)} · {caller.enabled ? 'Enabled' : 'Paused'}{caller.last_dispatch_at ? ` · Last dispatch ${new Date(caller.last_dispatch_at).toLocaleString()}` : caller.last_status ? ` · ${caller.last_status}` : ''}</li>)}</ul></details>}
     {triggers.length > 0 && <Box>{triggers.map(t => { const attention = t.once_status === 'failed' || t.once_status === 'needs_reconciliation' || t.last_status === 'error'; const body = <>
 
-      <p className="break-all text-xs text-muted-foreground">{t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number} · ${t.github_pr.login}` : t.script} · {t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Your Gmail · new received mail' : 'Project Inbox · addressed mail') : t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'Events + backup schedule' : 'On a schedule'}{t.cron_expression ? ` · ${t.cron_expression} · ${t.timezone}` : ''}</p>
+      <p className="break-all text-xs text-muted-foreground">{t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number} · ${t.github_pr.login}` : t.script} · {t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? `${t.gmail_of ? `${t.gmail_of}'s` : 'Your'} Gmail · new received mail` : 'Project Inbox · addressed mail') : t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'Events + backup schedule' : 'On a schedule'}{t.cron_expression ? ` · ${t.cron_expression} · ${t.timezone}` : ''}</p>
       {t.changed_by && <p className="text-xs text-muted-foreground">{t.changed_by}</p>}
       {t.email_source === 'personal_gmail' && <p className="text-xs text-muted-foreground">Your mailbox stays private. Only the content selected by this Watcher is sent to the project.</p>}
       {t.event_path && <details className="text-xs text-muted-foreground"><summary className="cursor-pointer">Event connection</summary>
@@ -140,13 +140,13 @@ export default function ConditionTriggersView({ scope, refreshToken = 0, onAsk, 
         </details>
       </div>}
     </>
-      const how = t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number}` : t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Watches your Gmail' : 'Watches the project inbox') : t.check_mode === 'event' ? 'Runs when an event arrives' : t.check_mode === 'both' ? 'Runs on events, with a backup check' : t.cron_expression ? describeCron(t.cron_expression) : 'Checks on a schedule'
+      const how = t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number}` : t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? (t.gmail_of ? `Watches ${t.gmail_of}'s Gmail` : 'Watches your Gmail') : 'Watches the project inbox') : t.check_mode === 'event' ? 'Runs when an event arrives' : t.check_mode === 'both' ? 'Runs on events, with a backup check' : t.cron_expression ? describeCron(t.cron_expression) : 'Checks on a schedule'
       return embedded
         ? <PageRow key={t.id} testId={`watcher-${t.id}`}
           lead={<Switch aria-label={`${t.enabled ? 'Turn off' : 'Turn on'} ${t.name}`} checked={t.enabled && !t.completed_at} disabled={busy || !canManage || !!t.completed_at} onCheckedChange={enabled => void manage('update', t.id, { enabled })} />}
           title={t.name}
-          lines={[`${how} · then ${targetLabel(t.target, sideChats)}`, attention ? (t.last_error || 'Needs attention') : t.completed_at ? 'Done' : t.last_run_at ? `Last check ${relativeTime(t.last_run_at)}` : 'Not checked yet']}
+          lines={[`${how} · then ${targetLabel(t.target, sideChats)}`, <><MadeBy name={t.made_by} />{attention ? (t.last_error || 'Needs attention') : t.completed_at ? 'Done' : t.last_run_at ? `Last check ${relativeTime(t.last_run_at)}` : 'Not checked yet'}</>]}
           open={openId === t.id} onToggle={() => setOpenId(openId === t.id ? null : t.id)}>{body}</PageRow>
-        : <AutomationRow key={t.id} icon={Zap} tone="emerald" open={openId === t.id} onToggle={() => setOpenId(openId === t.id ? null : t.id)} title={t.name} summary={`${t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number} · ${t.github_pr.mode}` : t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Your Gmail · new received mail' : 'Project Inbox · addressed mail') : t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'On events, with a backup check' : t.cron_expression ? describeCron(t.cron_expression) : 'On a schedule'} · starts ${targetLabel(t.target, sideChats)}`} meta={t.last_run_at ? `Checked ${relativeTime(t.last_run_at)}` : 'Not checked yet'} status={t.completed_at ? 'done' : attention ? 'failing' : t.enabled ? 'on' : 'paused'} statusLabel={t.completed_at ? 'Done' : attention ? 'Needs attention' : t.enabled ? 'On' : 'Paused'}>{body}</AutomationRow> })}</Box>}
+        : <AutomationRow key={t.id} icon={Zap} tone="emerald" open={openId === t.id} onToggle={() => setOpenId(openId === t.id ? null : t.id)} title={t.name} summary={`${t.github_pr ? `${t.github_pr.repository} #${t.github_pr.number} · ${t.github_pr.mode}` : t.check_mode === 'inbox' ? (t.email_source === 'personal_gmail' ? 'Your Gmail · new received mail' : 'Project Inbox · addressed mail') : t.check_mode === 'event' ? 'When an event arrives' : t.check_mode === 'both' ? 'On events, with a backup check' : t.cron_expression ? describeCron(t.cron_expression) : 'On a schedule'} · starts ${targetLabel(t.target, sideChats)}`} meta={`${t.made_by ? `By ${t.made_by === 'You' ? 'you' : t.made_by} · ` : ''}${t.last_run_at ? `Checked ${relativeTime(t.last_run_at)}` : 'Not checked yet'}`} status={t.completed_at ? 'done' : attention ? 'failing' : t.enabled ? 'on' : 'paused'} statusLabel={t.completed_at ? 'Done' : attention ? 'Needs attention' : t.enabled ? 'On' : 'Paused'}>{body}</AutomationRow> })}</Box>}
   </div>
 }

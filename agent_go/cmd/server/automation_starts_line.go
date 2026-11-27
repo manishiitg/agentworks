@@ -117,21 +117,52 @@ func automationActor(ctx context.Context) *projectactions.Actor {
 	return &projectactions.Actor{ID: id, Name: firstNonEmptyTrimmed(crewPersonShortName(id), id), At: time.Now().UTC().Format(time.RFC3339)}
 }
 
-// automationChangedByLine is the "Changed by <name>" line an automation's detail shows: who last changed it, else who
-// made it ("" when the record has no one, as before this was recorded).
+// automationChangedByLine is the history line an automation's detail shows: "Made by <name>, <date>", plus
+// " · changed by <name>, <date>" when someone changed it after ("" when the record has no one).
 func automationChangedByLine(created, updated *projectactions.Actor) string {
-	who := updated
-	if who == nil {
-		who = created
+	part := func(verb string, who *projectactions.Actor) string {
+		line := verb + " " + who.Name
+		if at, err := time.Parse(time.RFC3339, who.At); err == nil {
+			line += ", " + at.UTC().Format("2 Jan 2006")
+		}
+		return line
 	}
-	if who == nil || who.Name == "" {
+	var parts []string
+	if created != nil && created.Name != "" {
+		parts = append(parts, part("Made by", created))
+	}
+	if updated != nil && updated.Name != "" && (created == nil || updated.ID != created.ID || updated.At != created.At) {
+		verb := "changed by"
+		if len(parts) == 0 {
+			verb = "Changed by"
+		}
+		parts = append(parts, part(verb, updated))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// automationMadeBy names who made an automation for the person reading the list: "You" for their own, else the
+// maker's current name ("" when the record has no maker). Co-owners see every automation in a project, so each row
+// says whose it is (owner, 27 Nov).
+func automationMadeBy(created *projectactions.Actor, viewer string) string {
+	if created == nil || strings.TrimSpace(created.ID) == "" {
 		return ""
 	}
-	line := "Changed by " + who.Name
-	if at, err := time.Parse(time.RFC3339, who.At); err == nil {
-		line += ", " + at.UTC().Format("2 Jan 2006")
+	if created.ID == viewer {
+		return "You"
 	}
-	return line
+	return firstNonEmptyTrimmed(crewPersonShortName(created.ID), created.Name)
+}
+
+// onlyYoursMadeBy reports whether every automation in a list was made by the reader: then the lists leave the
+// "made by" out, since every row would say "You".
+func onlyYoursMadeBy(names []string) bool {
+	for _, name := range names {
+		if name != "You" && name != "" {
+			return false
+		}
+	}
+	return true
 }
 
 type automationActorKey struct{}

@@ -107,6 +107,8 @@ type ScheduledJobResponse struct {
 	Starts string `json:"starts,omitempty"`
 	// ChangedBy is "Changed by <name>, <date>" for a Crew automation: the person who last changed it, else who made it.
 	ChangedBy string `json:"changed_by,omitempty"`
+	// MadeBy is who made it, for the reader: "You" or the maker's name; left out when every listed one is the reader's.
+	MadeBy string `json:"made_by,omitempty"`
 
 	CreatedAt      string `json:"created_at,omitempty"`
 	UpdatedAt      string `json:"updated_at,omitempty"`
@@ -1473,7 +1475,18 @@ func productScheduleJobResponses(r *http.Request, svc *SchedulerService, enabled
 			}
 		}
 		runsWorkspace, _ := ps.RunsWorkspace(r.Context(), job)
-		out = append(out, ps.jobResponse(job, runsWorkspace))
+		resp := ps.jobResponse(job, runsWorkspace)
+		resp.MadeBy = automationMadeBy(job.Schedule.CreatedBy, userID)
+		out = append(out, resp)
+	}
+	madeBy := make([]string, 0, len(out))
+	for _, resp := range out {
+		madeBy = append(madeBy, resp.MadeBy)
+	}
+	if onlyYoursMadeBy(madeBy) {
+		for i := range out {
+			out[i].MadeBy = ""
+		}
 	}
 	return out, nil
 }

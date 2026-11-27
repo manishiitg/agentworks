@@ -24,8 +24,12 @@ export interface ConditionTrigger {
   last_status?: string
   last_error?: string
   last_run_at?: string
-  /** The server's "Changed by <name>, <date>": who last changed this Watcher, else who made it. */
+  /** The server's "Made by <name>, <date> · changed by <name>, <date>". */
   changed_by?: string
+  /** Who made it, for the reader ("You" or a name); left out when every Watcher in the list is the reader's. */
+  made_by?: string
+  /** A personal-Gmail Watcher on someone else's mailbox: whose it is (absent when it is the reader's own). */
+  gmail_of?: string
 }
 export type WatcherCaller = { owner_id: string; id: string; name: string; target: ConditionTrigger['target']; enabled: boolean; last_status?: string; last_run_at?: string; last_dispatch_at?: string }
 export interface ConditionHistory {
