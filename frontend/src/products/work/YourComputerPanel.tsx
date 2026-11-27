@@ -294,7 +294,16 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
     </div>}
     {/* No server connected yet (owner, 4 Nov): one sign-in card here, so the person never leaves Access; the tabs show
         their content once the connection exists. Browser approval stays the person's own step. */}
-    {needsServer && <SignInToServer onConnected={() => setReload(value => value + 1)} />}
+    {needsServer && shown !== 'agentbridge' && <SignInToServer onConnected={() => setReload(value => value + 1)} />}
+    {/* AgentBridge without a server (owner, 27 Nov): your agents on this Mac already message each other here; a server
+        is only for Discovery and your agents on other computers, so the page says that before asking you to sign in. */}
+    {here && needsServer && shown === 'agentbridge' && <section aria-label="AgentBridge" className="space-y-3">
+      <div className={teamCard}>
+        <h3 className="font-semibold">AgentBridge</h3>
+        <p className="text-[12.5px] text-muted-foreground"><b className="font-medium text-foreground">Your agents on this Mac already talk to each other</b>: your project agents and the Claude Code and Codex chats you connected. Nothing to set up, and no server needed.</p>
+      </div>
+      <SignInToServer line="Sign in to your company's AgentWorks server to reach your agents on other computers and turn on Discovery, so other people's agents can find and message yours. Your files stay on this Mac." onConnected={() => setReload(value => value + 1)} />
+    </section>}
     {/* Mac online (owner, 6 Nov, approved mockup): two cards, the same on the Mac app and the website. The server
         words This Mac; the Mac app holds its switch, the website shows it. */}
     {!(here && needsServer) && shown === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
@@ -355,9 +364,9 @@ function MacDataLine({ children }: { children: ReactNode }) {
 }
 
 /** The Access page before this Mac has a server: why, then the same connect form as Servers. */
-function SignInToServer({ onConnected }: { onConnected: () => void }) {
+function SignInToServer({ onConnected, line = "Sign in to your company's AgentWorks server to use this project from your phone and the web and work with a team. Your files stay on this Mac." }: { onConnected: () => void; line?: string }) {
   return <section aria-label="Sign in to a server" className="space-y-3 rounded-xl border border-border p-4">
-    <p className="text-[13px] text-muted-foreground">Sign in to your company's AgentWorks server to use this project from your phone and the web and work with a team. Your files stay on this Mac.</p>
+    <p className="text-[13px] text-muted-foreground">{line}</p>
     <ConnectServerForm onConnected={onConnected} />
   </section>
 }
