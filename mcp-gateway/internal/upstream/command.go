@@ -84,12 +84,29 @@ func hiddenCommandEnv(name string) bool {
 	return strings.HasPrefix(upper, "GATEWAY_") || strings.HasPrefix(upper, "VAULT_") || strings.HasPrefix(upper, "CAPLAYER_")
 }
 
-// commandEnvironment is this process's environment without Vault's own settings, plus the connection's variables.
+// commandEnvPassed is the part of this process's environment a program Vault starts may see: what finding programs,
+// files, the locale, proxies and certificates needs. Everything else (AgentWorks' and Vault's own settings and keys,
+// provider keys, tokens) stays out; the connection's own variables are added on top.
+func commandEnvPassed(name string) bool {
+	upper := strings.ToUpper(name)
+	switch upper {
+	case "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP", "LANG", "LANGUAGE", "TZ", "TERM",
+		"NODE_PATH", "NODE_EXTRA_CA_CERTS", "NVM_DIR", "NVM_BIN", "PNPM_HOME", "BUN_INSTALL", "VOLTA_HOME",
+		"VIRTUAL_ENV", "PYENV_ROOT", "CONDA_PREFIX", "CARGO_HOME", "RUSTUP_HOME", "GOPATH", "GOROOT", "JAVA_HOME",
+		"HOMEBREW_PREFIX", "HOMEBREW_CELLAR", "HOMEBREW_REPOSITORY", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE",
+		"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "__CF_USER_TEXT_ENCODING", "SYSTEMROOT", "COMSPEC", "PATHEXT",
+		"APPDATA", "LOCALAPPDATA", "USERPROFILE", "PROGRAMFILES", "WINDIR":
+		return true
+	}
+	return strings.HasPrefix(upper, "LC_") || strings.HasPrefix(upper, "XDG_")
+}
+
+// commandEnvironment is the allowed part of this process's environment plus the connection's variables.
 func commandEnvironment(lc LocalCommand) []string {
 	env := make([]string, 0, len(lc.Env)+32)
 	for _, entry := range os.Environ() {
 		name, _, _ := strings.Cut(entry, "=")
-		if _, override := lc.Env[name]; override || hiddenCommandEnv(name) {
+		if _, override := lc.Env[name]; override || !commandEnvPassed(name) {
 			continue
 		}
 		env = append(env, entry)

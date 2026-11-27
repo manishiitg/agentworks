@@ -16,6 +16,7 @@ func TestValidateURLAndPrivateEgress(t *testing.T) {
 		"http://127.0.0.1:8080/mcp", "http://127.0.0.1.evil.example/mcp",
 		"https://user:pass@example.com/mcp", "file:///etc/passwd", "https://example.com/mcp#fragment",
 		"https://example.com/mcp?api_key=secret", "https://example.com/mcp?access_token=x", "https://example.com/mcp?x-api-key=x",
+		"https://example.com/mcp?pat=x", "https://example.com/mcp?sig=x", "https://example.com/mcp?jwt=x", "https://example.com/mcp?code=x",
 	} {
 		if _, err := ValidateURL(raw, DialOptions{}); err == nil {
 			t.Fatalf("accepted %s", raw)
@@ -25,7 +26,7 @@ func TestValidateURLAndPrivateEgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Hosted servers take plain settings in the query (a project, read-only mode); only credentials are refused.
-	for _, raw := range []string{"https://example.com/mcp", "https://example.com/mcp?project_ref=abc&read_only=true"} {
+	for _, raw := range []string{"https://example.com/mcp", "https://example.com/mcp?project_ref=abc&read_only=true", "https://example.com/mcp?path=a&design=b"} {
 		if _, err := ValidateURL(raw, DialOptions{}); err != nil {
 			t.Fatal(raw, err)
 		}
@@ -138,5 +139,24 @@ func TestVaultCredentialHeadersStayOnTheValidatedUpstream(t *testing.T) {
 	response.Body.Close()
 	if !seen {
 		t.Fatal("saved headers not applied")
+	}
+}
+
+// A program Vault starts sees only what it needs to run, never the app's or Vault's settings and keys.
+func TestCommandEnvironmentPassesOnlyRunEssentials(t *testing.T) {
+	t.Setenv("AGENTWORKS_TEST_SECRET", "x")
+	t.Setenv("ANTHROPIC_API_KEY", "x")
+	t.Setenv("GATEWAY_TEST", "x")
+	t.Setenv("LC_ALL", "en_US.UTF-8")
+	env := strings.Join(commandEnvironment(LocalCommand{Env: map[string]string{"OWN": "1"}}), "\n")
+	for _, hidden := range []string{"AGENTWORKS_TEST_SECRET=", "ANTHROPIC_API_KEY=", "GATEWAY_TEST="} {
+		if strings.Contains(env, hidden) {
+			t.Fatalf("passed %s to the program", hidden)
+		}
+	}
+	for _, kept := range []string{"PATH=", "LC_ALL=", "OWN=1"} {
+		if !strings.Contains(env, kept) {
+			t.Fatalf("missing %s", kept)
+		}
 	}
 }
