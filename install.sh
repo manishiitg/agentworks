@@ -54,7 +54,8 @@ case "$(uname -m)" in
     if [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || true)" = 1 ]; then ARCH=arm64; else ARCH=x64; fi ;;
   *) die "This installer supports Intel and Apple silicon Macs." ;;
 esac
-case "$VERSION" in '') ;; *) [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Version must be vX.Y.Z" ;; esac
+# A release tag is vX.Y.Z; a nightly build (pre-release) is nightly-X.Y.Z-nightly.N.
+case "$VERSION" in '') ;; *) [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ || "$VERSION" =~ ^nightly-[0-9]+\.[0-9]+\.[0-9]+-nightly\.[0-9]+$ ]] || die "Version must be vX.Y.Z" ;; esac
 mkdir -p "$APP_DIR" "$BIN_DIR" || die "Choose writable --app-dir and --bin-dir locations; no sudo is needed."
 APP_DIR="$(cd "$APP_DIR" && pwd -P)"
 BIN_DIR="$(cd "$BIN_DIR" && pwd -P)"
@@ -118,7 +119,8 @@ function run(args) {
 JXA
 )"
   fi
-  ASSET="AgentWorks-${VERSION#v}-${ARCH}.dmg"
+  ASSET_VERSION="${VERSION#nightly-}"
+  ASSET="AgentWorks-${ASSET_VERSION#v}-${ARCH}.dmg"
   BASE="https://github.com/$REPO/releases/download/$VERSION"
   DMG="$STAGE/$ASSET"
   log "Downloading AgentWorks $VERSION"
@@ -128,7 +130,8 @@ fi
 if [ -z "$CHECKSUM" ]; then
   [ -n "$VERSION" ] || die "Local DMGs require --sha256-file."
   CHECKSUM="$STAGE/app.sha256"
-  curl -fsSL "https://github.com/$REPO/releases/download/$VERSION/AgentWorks-${VERSION#v}-${ARCH}.dmg.sha256" -o "$CHECKSUM"
+  ASSET_VERSION="${VERSION#nightly-}"
+  curl -fsSL "https://github.com/$REPO/releases/download/$VERSION/AgentWorks-${ASSET_VERSION#v}-${ARCH}.dmg.sha256" -o "$CHECKSUM"
 fi
 [ -f "$CHECKSUM" ] || die "Checksum file not found: $CHECKSUM"
 EXPECTED="$(awk 'NR == 1 {print $1}' "$CHECKSUM")"

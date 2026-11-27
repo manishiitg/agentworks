@@ -6,6 +6,10 @@ on:
   push:
     tags:
       - 'v*'
+      # Nightly builds: GitHub pre-releases that only apps with
+      # "Get Nightly Builds" ticked are offered. The tag deliberately does not
+      # start with v<digit>, so older apps and the installer never see them.
+      - 'nightly-*'
   workflow_dispatch:
 
 permissions:
@@ -81,7 +85,10 @@ jobs:
         env:
           AGENTWORKS_DEFAULT_SERVER: ${{ vars.AGENTWORKS_DEFAULT_SERVER }}
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export AGENTWORKS_APP_VERSION="${GITHUB_REF#refs/tags/v}"; fi
+          case "$GITHUB_REF" in
+            refs/tags/v*) export AGENTWORKS_APP_VERSION="${GITHUB_REF#refs/tags/v}" ;;
+            refs/tags/nightly-*) export AGENTWORKS_APP_VERSION="${GITHUB_REF#refs/tags/nightly-}" ;;
+          esac
           bash scripts/build-desktop-helpers.sh
       - name: Test combined installer and updater
         run: node --test packages/app/test/installer.test.mjs desktop/lib/updateInstaller.test.js desktop/lib/voiceRuntime.test.js desktop/lib/vault.test.js desktop/lib/loginEnv.test.js desktop/lib/afterPack.test.js
@@ -90,10 +97,10 @@ jobs:
           MAC_MINIMUM="$(python3 scripts/desktop-minimum-os.py desktop/resources)"
           cd desktop
           npm ci
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/v}"
-            npm pkg set version="$VERSION"
-          fi
+          case "$GITHUB_REF" in
+            refs/tags/v*) npm pkg set version="${GITHUB_REF#refs/tags/v}" ;;
+            refs/tags/nightly-*) npm pkg set version="${GITHUB_REF#refs/tags/nightly-}" ;;
+          esac
           npx electron-builder --mac --${{ matrix.arch }} --publish never -c.mac.minimumSystemVersion="$MAC_MINIMUM"
           cd dist
           for asset in *.dmg *.zip; do shasum -a 256 "$asset" > "$asset.sha256"; done
@@ -114,6 +121,7 @@ jobs:
   # build artifact only. It is not published to the release until the Windows
   # app passes its acceptance test, so Mac releases are unaffected.
   windows:
+    if: ${{ !startsWith(github.ref, 'refs/tags/nightly-') }}
     runs-on: windows-latest
     env:
       GOWORK: 'off'
@@ -182,7 +190,7 @@ jobs:
   # Publish only after BOTH architectures passed. A stable release must never
   # become visible to the installer with only one architecture uploaded.
   publish:
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/nightly-') }}
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -198,12 +206,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
-          if ! gh release view "v$VERSION" >/dev/null 2>&1; then
-            gh release create "v$VERSION" --draft --title "AgentWorks $VERSION" --notes "Release notes are added by scripts/desktop-release.sh."
+          TAG="${GITHUB_REF#refs/tags/}"
+          case "$TAG" in
+            nightly-*) VERSION="${TAG#nightly-}"; KIND=(--prerelease) ;;
+            *) VERSION="${TAG#v}"; KIND=() ;;
+          esac
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft "${KIND[@]}" --title "AgentWorks $VERSION" --notes "Release notes are added by scripts/desktop-release.sh."
           fi
-          gh release upload "v$VERSION" dist/*.dmg dist/*.zip dist/*.sha256 --clobber
+          gh release upload "$TAG" dist/*.dmg dist/*.zip dist/*.sha256 --clobber
+          if [[ "$TAG" == nightly-* ]]; then
+            # A nightly never becomes the Latest release.
+            gh release edit "$TAG" --draft=false --prerelease --latest=false
+            exit 0
+          fi
           # Old Apple silicon installations use the former product name.
           cp "dist/AgentWorks-$VERSION-arm64.dmg" "dist/Runloop-$VERSION-arm64.dmg"
-          gh release upload "v$VERSION" "dist/Runloop-$VERSION-arm64.dmg" --clobber
-          gh release edit "v$VERSION" --draft=false --latest
+          gh release upload "$TAG" "dist/Runloop-$VERSION-arm64.dmg" --clobber
+          gh release edit "$TAG" --draft=false --latest

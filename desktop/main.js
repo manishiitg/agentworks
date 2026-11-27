@@ -500,7 +500,9 @@ ipcMain.handle('pick-workflow-folder', async () => {
 });
 
 ipcMain.on('save-settings', (event, settings) => {
-  saveSettings(settings);
+  // The settings window sends only its own fields; keep the rest (cache
+  // version, nightly builds choice).
+  saveSettings({ ...loadSettings(), ...settings });
   if (settings.docsDir) process.env.RUNLOOP_DOCS_DIR = settings.docsDir;
   if (settings.authSecret !== undefined) process.env.AUTH_SECRET = settings.authSecret;
   if (settingsWindow) settingsWindow.close();
@@ -594,6 +596,15 @@ function createMenu() {
         { role: 'about' },
         { type: 'separator' },
         { label: 'Check for Updates…', click: () => checkForUpdates(true) },
+        {
+          label: 'Get Nightly Builds',
+          type: 'checkbox',
+          checked: loadSettings().nightlyUpdates === true,
+          click: (item) => {
+            saveSettings({ ...loadSettings(), nightlyUpdates: item.checked });
+            if (item.checked) checkForUpdates(true);
+          },
+        },
         { type: 'separator' },
         { label: 'Settings...', click: openSettingsWindow },
         { type: 'separator' },
@@ -1395,28 +1406,22 @@ function checkForUpdates(manual = false) {
     return;
   }
 
-  // Filter to plain v<digit> tags. The repository may retain namespaced
-  // releases from other applications; /releases/latest could select one of
-  // those and hide the current application's updates.
-  fetchJsonWithRedirects('https://api.github.com/repos/manishiitg/coding-agent-loop/releases?per_page=30')
+  // Only vX.Y.Z releases, plus nightly-* pre-releases when the person ticked
+  // "Get Nightly Builds". The repository may retain namespaced releases from
+  // other applications; /releases/latest could select one of those.
+  const nightly = loadSettings().nightlyUpdates === true;
+  fetchJsonWithRedirects('https://api.github.com/repos/manishiitg/coding-agent-loop/releases?per_page=50')
     .then(async (releases) => {
-      const release = Array.isArray(releases)
-        ? releases.find((r) => r && !r.draft && /^v\d/.test(r.tag_name || ''))
-        : null;
-      if (!release) {
-        if (manual) {
-          dialog.showMessageBox({ type: 'info', title: 'Updates', message: 'No AgentWorks releases found.', buttons: ['OK'] });
-        }
-        return;
-      }
-      const latestVersion = (release.tag_name || '').replace(/^v/, '');
       const currentVersion = app.getVersion();
-      if (!latestVersion || !isNewerVersion(latestVersion, currentVersion)) {
+      const picked = require('./lib/updateInstaller').pickDesktopUpdate(releases, currentVersion, nightly);
+      const release = picked && picked.release;
+      const latestVersion = picked && picked.version;
+      if (!picked) {
         if (manual) {
           dialog.showMessageBox({
             type: 'info',
             title: "You're up to date",
-            message: `AgentWorks ${currentVersion} is the latest version.`,
+            message: `AgentWorks ${currentVersion} is the latest ${nightly ? 'build' : 'version'}.`,
             buttons: ['OK'],
           });
         }
@@ -1435,7 +1440,9 @@ function checkForUpdates(manual = false) {
       const choice = await dialog.showMessageBox({
         type: 'info',
         title: 'Update Available',
-        message: `AgentWorks ${latestVersion} is available.`,
+        message: latestVersion.includes('-nightly.')
+          ? `Nightly build ${latestVersion} is available.`
+          : `AgentWorks ${latestVersion} is available.`,
         detail:
           `You're on ${currentVersion}.\n\n` +
           (notes ? `What's new in ${latestVersion}:\n${notes}\n\n` : '') +
@@ -1458,19 +1465,6 @@ function checkForUpdates(manual = false) {
     });
 }
 
-// Compare semver-ish strings (e.g. "1.25.10" vs "1.25.9"). Numeric per dotted
-// segment; missing segments treated as 0. Returns true if a > b.
-function isNewerVersion(a, b) {
-  const pa = a.split('.').map((n) => parseInt(n, 10) || 0);
-  const pb = b.split('.').map((n) => parseInt(n, 10) || 0);
-  const len = Math.max(pa.length, pb.length);
-  for (let i = 0; i < len; i++) {
-    const x = pa[i] || 0, y = pb[i] || 0;
-    if (x > y) return true;
-    if (x < y) return false;
-  }
-  return false;
-}
 
 // The update dialog shows only the release body's "## What's new" section,
 // which scripts/desktop-release.sh writes as at most five short bullets plus an
@@ -1561,9 +1555,9 @@ async function downloadAndPrepareUpdate(targetVersion) {
   updateState.version = versionNoV;
   updateState.dmgPath = null;
 
-  const { desktopUpdateAsset } = require('./lib/updateInstaller');
+  const { desktopUpdateAsset, releaseTag } = require('./lib/updateInstaller');
   const dmgName = desktopUpdateAsset(versionNoV, process.arch);
-  const url = `https://github.com/manishiitg/coding-agent-loop/releases/download/v${versionNoV}/${dmgName}`;
+  const url = `https://github.com/manishiitg/coding-agent-loop/releases/download/${releaseTag(versionNoV)}/${dmgName}`;
   const dir = updateCacheDir();
   try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
   cleanUpdateCache();
