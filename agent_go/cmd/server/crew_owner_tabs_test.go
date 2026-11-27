@@ -117,20 +117,18 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 	sessions := map[string]ProductConversationRecord{}
 	for _, person := range []string{"owner", "other"} {
 		ctx := internalBotRequestContext(t.Context(), person)
-		if err := ensureCrewOwnerDefaultTab(ctx, person, profile, "beta"); err != nil {
-			t.Fatalf("default %s: %v", person, err)
+		// #3410: a project has no implicit Main chat any more (#4046), so each person opens a named chat.
+		record, err := ensureCrewOwnerNamedTab(ctx, person, profile, "beta")
+		if err != nil {
+			t.Fatalf("named tab %s: %v", person, err)
 		}
 		binding, _, err := resolveConversationBindingForUser(ctx, person, profile, "beta")
 		if err != nil {
 			t.Fatal(err)
 		}
-		record, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, person, profile, binding, "")
-		if err != nil {
-			t.Fatal(err)
-		}
 		if person == "owner" {
 			// PLAT-746-355: migrated Builder is Main under its original imported ID.
-			// The next owner's default must still resolve to their own physical tab.
+			// The other person's tab must still be their own physical tab.
 			store := defaultProductConversationRegistryStore()
 			doc, err := store.loadDocument(ctx, productConversationRegistryPath(person))
 			if err != nil {
@@ -199,12 +197,19 @@ func TestCrewOwnerTabsShareViewsKeepControlAndDeliverMessages(t *testing.T) {
 		env.api.handleListAgentProfileSideChats(rec, req)
 		var listed []AgentProfileSideChat
 		_ = json.Unmarshal(rec.Body.Bytes(), &listed)
-		if rec.Code != 200 || len(listed) != 1 || listed[0].TabOwnerID != peer || listed[0].CanWrite {
+		// The peer's named chat is listed and not writable. One's own chat is listed too unless it is Main,
+		// which its owner sees as the main tab (#4046).
+		rows := map[string]AgentProfileSideChat{}
+		for _, row := range listed {
+			rows[row.TabOwnerID] = row
+		}
+		own, ownListed := rows[person]
+		if rec.Code != 200 || len(rows) != len(listed) || rows[peer].ConversationKey != sessions[peer].ConversationKey || rows[peer].CanWrite || (ownListed && !own.CanWrite) || ownListed != (person != "owner") {
 			t.Fatalf("%s views: %d %s", person, rec.Code, rec.Body.String())
 		}
-		// Owner, 5 Nov: another person's default chat is their Main, never its key ("Chat owner-…").
-		if listed[0].Name != "Main" {
-			t.Fatalf("%s sees %s's default chat as %q", person, peer, listed[0].Name)
+		// Owner, 5 Nov: another person's chat is shown by its name, never its key ("Chat owner-…").
+		if name := rows[peer].Name; name == "" || strings.HasPrefix(name, "Chat ") || strings.Contains(name, strings.TrimPrefix(sessions[peer].ConversationKey, "beta:chat:")) {
+			t.Fatalf("%s sees %s's chat as %q", person, peer, name)
 		}
 		currentView, foundView, _, viewErr := defaultProductConversationRegistryStore().history(viewContext, "owner", profile, viewBinding)
 		if viewErr != nil || !foundView || currentView.SessionID != userView.SessionID {
@@ -470,22 +475,20 @@ func workspaceOwnerTabRequest(t *testing.T, env triggerLinkEnv, claims *UserClai
 	return rec.Code, out
 }
 
-// ensureCrewOwnerDefaultTab makes a person's own default Builder tab in a Crew and names it, as their first message does
-// (resolveAgentProfileConversation), so a test can start from each person having one.
-func ensureCrewOwnerDefaultTab(ctx context.Context, user string, profile agentprofiles.Profile, project string) error {
-	binding, owned, err := resolveConversationBindingForUser(ctx, user, profile, project)
+// ensureCrewOwnerNamedTab opens a person's own named Builder tab in a project and names it, as opening a new agent
+// does, so a test can start from each person having one. Projects have no implicit Main chat (#4046).
+func ensureCrewOwnerNamedTab(ctx context.Context, user string, profile agentprofiles.Profile, project string) (ProductConversationRecord, error) {
+	binding, owned, err := resolveConversationBindingForUser(ctx, user, profile, project+codeChatSideMarker+user+"-builder")
 	if err != nil {
-		return err
+		return ProductConversationRecord{}, err
 	}
 	if !owned {
-		return fmt.Errorf("Crew owner is unavailable")
+		return ProductConversationRecord{}, fmt.Errorf("Crew owner is unavailable")
 	}
-	record, err := defaultProductConversationRegistryStore().resolveOrCreate(ctx, user, profile, binding, "")
+	store := defaultProductConversationRegistryStore()
+	record, err := store.resolveOrCreate(ctx, user, profile, binding, "")
 	if err != nil {
-		return err
+		return ProductConversationRecord{}, err
 	}
-	if identity, e := defaultProductConversationRegistryStore().agentIdentity(ctx, user, profile.ID, record.ConversationKey); e == nil && identity.Name != "" {
-		return nil
-	}
-	return setCodeTabName(ctx, user, record.ConversationKey, crewOwnerDisplayName(user)+" · Builder", profile.ID)
+	return record, setCodeTabName(ctx, user, record.ConversationKey, crewOwnerDisplayName(user)+" · Builder", profile.ID)
 }
