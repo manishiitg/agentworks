@@ -85,9 +85,9 @@ try {
   await app.getByRole('dialog').getByText('"quantity": 3', { exact: false }).waitFor()
   assert.equal((await mutations())[0].arguments.arguments.args.quantity, 3)
   await app.getByRole('button', { name: 'Close', exact: true }).click()
-  assert.equal(await app.getByLabel('Message to the Crew').isVisible(), false, 'authored page has no second outer chat')
+  assert.equal(await app.getByLabel('Message to the project').isVisible(), false, 'authored page has no second outer chat')
   await dashboardFrame.getByRole('button', { name: 'Ask about this dashboard' }).click()
-  await app.getByLabel('Message to the Crew').fill('Hello')
+  await app.getByLabel('Message to the project').fill('Hello')
   await app.getByRole('button', { name: 'Send', exact: true }).click()
   await app.getByText('Crew: Hello from this Crew', { exact: true }).waitFor()
   await app.getByRole('button', { name: 'Close', exact: true }).click()
@@ -101,7 +101,7 @@ try {
   assert(parseFloat(await dashboardFrame.locator('.dashboard-stat').evaluate(element => getComputedStyle(element).paddingLeft)) >= 16, 'shared component stylesheet missing in MCP App')
   assert.equal((await mutations()).length, 0, 'JSON rendering reads data without starting work')
   await dashboardFrame.getByRole('button', { name: 'Ask TSX dashboard' }).click()
-  await app.getByLabel('Message to the Crew').waitFor({ state: 'visible' })
+  await app.getByLabel('Message to the project').waitFor({ state: 'visible' })
   await app.getByRole('button', { name: 'Close', exact: true }).click()
   // Even a hostile embedding page that omits iframe sandbox flags cannot
   // turn the public bootstrap into same-origin script execution.

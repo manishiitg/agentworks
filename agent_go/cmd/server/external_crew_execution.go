@@ -115,7 +115,7 @@ func externalCrewExecutionDefinition(add func(string, string, bool, bool, map[st
 	if err != nil {
 		return err
 	}
-	if err := externalCrewNativeDefinition(add, "crew_execution", "Execute a shared Crew shell, browser or selected MCP tool directly, without a model turn. action=history returns the last 100 owner-only audit records. action=list returns the enabled tools' descriptions and exact argument schemas; otherwise action is that tool name and arguments matches its schema. Requires crews:write, current editable account and Crew ownership. Uses this Crew's sandbox and connection file limits; never borrows a chat's authority. Shell timeout defaults to 25 seconds. Browser and connected MCP operations require unrestricted Crew file consent; credentials remain in Integrations. Managed database operations use the offered database actions.", tools); err != nil {
+	if err := externalCrewNativeDefinition(add, "crew_execution", "Execute a shared project shell, browser or selected MCP tool directly, without a model turn. action=history returns the last 100 owner-only audit records. action=list returns the enabled tools' descriptions and exact argument schemas; otherwise action is that tool name and arguments matches its schema. Requires crews:write, current editable account and Crew ownership. Uses this Crew's sandbox and connection file limits; never borrows a chat's authority. Shell timeout defaults to 25 seconds. Browser and connected MCP operations require unrestricted Crew file consent; credentials remain in Integrations. Managed database operations use the offered database actions.", tools); err != nil {
 		return err
 	}
 	tools, err = crewIntegrationDefinitions()

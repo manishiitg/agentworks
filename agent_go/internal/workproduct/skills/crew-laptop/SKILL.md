@@ -66,7 +66,7 @@ The returned `files_path` is the logical file root; `workspace_path` stays the s
 
 ## Attach a folder on this Mac
 
-This is separate from connecting a laptop to a hosted Crew. Read `panel-access`'s
+This is separate from connecting a laptop to a hosted project. Read `panel-access`'s
 Linked folders procedure, list with `files action=folders`, then use
 `files action=folder_attach` for the folder the person requested. Their request
 is the approval; preserve existing grants and use the least access the work
@@ -106,13 +106,13 @@ matching step; never retry the same command or look for a way around it.
 
 ## Connect a laptop to a hosted project
 
-For a hosted Crew, the agent runs on the server. Every current owner shares its selected laptop, folders and commands switch; each keeps their own chat tabs. People only shared with use the dashboard and do not get laptop tools. A connected laptop adds two separate things. Files: `list_local_files` and `copy_local_file_to_project` for a Read folder, and also `write_local_file` for a Read & write folder. Commands: `execute_local_shell_command` runs a command in a Read & write folder as the person, only when the person has turned on "Run terminal commands" for this Crew. Nothing syncs. They work on every turn of the person's own chat, scheduled and watch turns and their own agents' messages included; never for another person's message or a Run person. Use the laptop only when the work needs that computer; paths are relative to the granted folder. If the computer is offline, say the local step is unavailable and carry on with the server work; never retry an uncertain command blindly.
+For a hosted project, the agent runs on the server. Every current owner shares its selected laptop, folders and commands switch; each keeps their own chat tabs. People only shared with use the dashboard and do not get laptop tools. A connected laptop adds two separate things. Files: `list_local_files` and `copy_local_file_to_project` for a Read folder, and also `write_local_file` for a Read & write folder. Commands: `execute_local_shell_command` runs a command in a Read & write folder as the person, only when the person has turned on "Run terminal commands" for this project. Nothing syncs. They work on every turn of the person's own chat, scheduled and watch turns and their own agents' messages included; never for another person's message or a Run person. Use the laptop only when the work needs that computer; paths are relative to the granted folder. If the computer is offline, say the local step is unavailable and carry on with the server work; never retry an uncertain command blindly.
 
 ## Check first (read-only)
 
 Everything the Local laptop panel does you can do here with `manage_laptop_access`; the person never has to open the panel.
 
-1. `manage_laptop_access` with `devices` lists the person's computers plus the computer already selected for this Crew. `get` shows the computer, folders and whether commands are on for this Crew.
+1. `manage_laptop_access` with `devices` lists the person's computers plus the computer already selected for this project. `get` shows the computer, folders and whether commands are on for this project.
 2. Tell the person plainly what you found: connected or not, which folder, Read or Read & write, and whether terminal commands are on.
 3. To set up or change: `browse` to find the folder, then `set` with the complete choice (device, every folder to keep with Read or Read & write, and `commands`). It takes effect from the next message. `list_local_files` with no folder shows the folders you can use now.
 
@@ -132,7 +132,7 @@ Everything the Local laptop panel does you can do here with `manage_laptop_acces
 
 ## When it is refused
 
-- "Operation not permitted" on a folder outside the shared one comes from the computer's own privacy rules, not the Crew. Say so once. On a local Mac, attach the folder yourself when the person asks: `files action=folder_attach` (Integrations → Folders on this Mac shows the same list), then tell them to send one more message, because it applies from the next turn. On a hosted Crew, the person adds the folder in the Crew's laptop settings. If it still fails, the AgentWorks app or terminal needs access in the computer's privacy settings. Do not retry in a loop or look for a way around it.
+- "Operation not permitted" on a folder outside the shared one comes from the computer's own privacy rules, not the project. Say so once. On a local Mac, attach the folder yourself when the person asks: `files action=folder_attach` (Integrations → Folders on this Mac shows the same list), then tell them to send one more message, because it applies from the next turn. On a hosted project, the person adds the folder in the project's laptop settings. If it still fails, the AgentWorks app or terminal needs access in the computer's privacy settings. Do not retry in a loop or look for a way around it.
 - For cloud CLIs (AWS and similar) on the laptop: with the commands switch on, run them as the person would, for example `aws sts get-caller-identity`. If the person's login has expired, ask them to sign in themselves (`aws sso login`). Do not print, copy or send their key or config files.
 - A command that timed out or lost the connection may have run. Look at the result before trying again.
 

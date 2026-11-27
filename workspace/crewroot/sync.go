@@ -37,7 +37,7 @@ var syncSettingsMu sync.Mutex
 
 func syncPath(id string) (string, error) {
 	if id == "" || id == "." || id == ".." || strings.ContainsAny(id, "/\\") {
-		return "", fmt.Errorf("invalid Crew identity")
+		return "", fmt.Errorf("invalid project identity")
 	}
 	state, err := StateRoot()
 	return filepath.Join(state, "crew-sync", id+".json"), err
@@ -58,7 +58,7 @@ func ReadSync(id string) (*SyncBinding, error) {
 	var binding SyncBinding
 	if json.Unmarshal(b, &binding) != nil || binding.PairID == "" || binding.PeerProjectID == "" ||
 		(binding.Side != "local" && binding.Side != "server") || (binding.Editing != "local" && binding.Editing != "server") {
-		return nil, fmt.Errorf("this Crew's sync settings are unavailable")
+		return nil, fmt.Errorf("this project's sync settings are unavailable")
 	}
 	return &binding, nil
 }
@@ -124,7 +124,7 @@ func CheckSyncWrite(docs, physical string) error {
 	if Within(roots.Private, physical) || roots.syncRuntimePath(physical) || roots.teamCopyPath(physical) {
 		return nil
 	}
-	return fmt.Errorf("this Crew is moving online; open its online copy when the move finishes")
+	return fmt.Errorf("this project is moving online; open its online copy when the move finishes")
 }
 
 // SyncWriteGrants also handles physical aliases used by native CLIs. Dropping

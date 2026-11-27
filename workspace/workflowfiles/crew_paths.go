@@ -63,11 +63,11 @@ func BoundCrewFileRequest(docs, root, p, destination string, guard *FolderGuard)
 		return root, p, destination, guard, "", err
 	}
 	if root != roots.Virtual {
-		return "", "", "", nil, "", fmt.Errorf("use the issued Crew root")
+		return "", "", "", nil, "", fmt.Errorf("use the issued project root")
 	}
 	if !roots.Local {
 		if destination != "" && roots.ResourcePathRoot(p) != roots.ResourcePathRoot(destination) {
-			return "", "", "", nil, "", fmt.Errorf("move files within the same Crew folder")
+			return "", "", "", nil, "", fmt.Errorf("move files within the same project folder")
 		}
 		return root, p, destination, guard, "", nil
 	}
@@ -82,13 +82,13 @@ func BoundCrewFileRequest(docs, root, p, destination string, guard *FolderGuard)
 		return s == crewroot.FilesSegment || strings.HasPrefix(s, crewroot.FilesSegment+"/")
 	}
 	if destination != "" && (isFiles(p) != isFiles(destination) || (!isFiles(p) && roots.ResourcePathRoot(p) != roots.ResourcePathRoot(destination))) {
-		return "", "", "", nil, "", fmt.Errorf("move files within the same Crew folder")
+		return "", "", "", nil, "", fmt.Errorf("move files within the same project folder")
 	}
 	prefix := ""
 	if root == roots.Virtual && (p == crewroot.FilesSegment || strings.HasPrefix(p, crewroot.FilesSegment+"/")) {
 		prefix = crewroot.FilesSegment
 		if destination != "" && !strings.HasPrefix(destination, prefix+"/") {
-			return "", "", "", nil, "", fmt.Errorf("move files within the same Crew folder")
+			return "", "", "", nil, "", fmt.Errorf("move files within the same project folder")
 		}
 		guard = guard.Subtree(prefix)
 		p = strings.TrimPrefix(strings.TrimPrefix(p, prefix), "/")

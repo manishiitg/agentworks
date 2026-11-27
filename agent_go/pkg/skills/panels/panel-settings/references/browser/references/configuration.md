@@ -2,7 +2,7 @@
 
 Browser mode and CDP settings live in the project's **Browser** view. In project
 chat, `browser` lists the person's saved Chrome and Edge browsers,
-returns their setup link, and selects or disconnects one for this Crew. It never
+returns their setup link, and selects or disconnects one for this project. It never
 disconnects the person's other projects.
 
 A project can use several browsers at the same time: one main browser and others

@@ -84,8 +84,8 @@ export function WorkflowReferenceAccess({ selectedPaths, onChange, excludeWorksp
       <div className="flex items-start gap-2">
         <Link2 className="mt-0.5 h-4 w-4 text-muted-foreground" />
         <div>
-          <h3 className="text-sm font-medium text-foreground">Crews linked here</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Agents here can message and call these Crews, and work in their files. Crews you haven’t linked stay out of reach. {normalizedSelected.length} linked.</p>
+          <h3 className="text-sm font-medium text-foreground">Projects linked here</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Agents here can message and call these projects, and work in their files. Projects you haven’t linked stay out of reach. {normalizedSelected.length} linked.</p>
         </div>
       </div>
       <div className="mt-3 grid gap-3">

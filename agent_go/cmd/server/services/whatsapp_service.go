@@ -2564,7 +2564,7 @@ func (w *WhatsAppService) RouteActivated(ctx context.Context, msg *whatsappbot.M
 // RouteDeactivated implements whatsappbot.RouteObserver ("@slug deactivate").
 func (w *WhatsAppService) RouteDeactivated(ctx context.Context, msg *whatsappbot.Message, key string) {
 	msg.React("👀")
-	if _, err := w.SendThreadMessage(ctx, ThreadID{Platform: "whatsapp", ChannelID: msg.Chat.String()}, fmt.Sprintf("Deactivated @%s. Send another @slug to choose a workflow or Crew; use @list to see the options.", key)); err != nil {
+	if _, err := w.SendThreadMessage(ctx, ThreadID{Platform: "whatsapp", ChannelID: msg.Chat.String()}, fmt.Sprintf("Deactivated @%s. Send another @slug to choose a workflow or project; use @list to see the options.", key)); err != nil {
 		log.Printf("[WHATSAPP] Failed to send deactivate acknowledgement for @%s: %v", key, err)
 	}
 }

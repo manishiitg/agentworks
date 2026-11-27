@@ -274,7 +274,7 @@ func agentRolePrompt(ctx context.Context, userID, profileID, conversationKey, wo
 		defaultName = "Chat"
 	}
 	name = firstNonEmptyTrimmed(name, record.Title, defaultName)
-	role := fmt.Sprintf("\n\n## Your role in this Crew\n\nYou are the %q agent in this Crew.\n", name)
+	role := fmt.Sprintf("\n\n## Your role in this project\n\nYou are the %q agent in this project.\n", name)
 	if purpose := strings.TrimSpace(identity.Purpose); purpose != "" {
 		role += "Your job: " + purpose + "\n"
 	}

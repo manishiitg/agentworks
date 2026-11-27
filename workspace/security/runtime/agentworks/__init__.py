@@ -95,7 +95,7 @@ _order = 0
 _order_lock = threading.Lock()
 _run_dir = os.environ.get("WORKFLOW_RUN_DIR", "")
 if not _run_dir:
-    raise AutomationError("Run this Python from a Crew automation to use AgentWorks helpers.")
+    raise AutomationError("Run this Python from a project automation to use AgentWorks helpers.")
 run_folder: Path = Path(_run_dir)
 
 # Decode a fresh object: nested JSON values cannot alias the parent's inputs.
@@ -118,7 +118,7 @@ def secret(name: str) -> str:
     key = name.split("__", 1)[1] if name.startswith("VLT_") and "__" in name else name
     value = os.environ.get("SECRET_" + key, "")
     if not value:
-        raise AutomationError(f"Select or add {name} in Vault for this workflow. Ask this Crew's chat to help.")
+        raise AutomationError(f"Select or add {name} in Vault for this workflow. Ask this project's chat to help.")
     return value
 
 
@@ -127,7 +127,7 @@ def _call(action: str, arguments: dict[str, Any], key: str | None, redo: bool) -
     base = os.environ.get("MCP_CUSTOM", "").rstrip("/")
     header, separator, credential = os.environ.get("MCP_AUTH", "").partition(":")
     if not base or not separator or not credential.strip():
-        raise AutomationError("Run this Python from a Crew automation to use AgentWorks helpers.")
+        raise AutomationError("Run this Python from a project automation to use AgentWorks helpers.")
     with _order_lock:
         _order += 1
         order = _order
@@ -367,7 +367,7 @@ def ask_agent(crew: str, message: str, *, chat_id: str | None = None,
     """
     import math
     if not isinstance(crew, str) or not crew.strip() or not isinstance(message, str) or not message.strip():
-        raise ValueError("ask_agent needs a Crew and a non-empty message")
+        raise ValueError("ask_agent needs a project and a non-empty message")
     if isinstance(wait_seconds, bool) or not isinstance(wait_seconds, (int, float)) or not math.isfinite(wait_seconds) or wait_seconds < 0:
         raise ValueError("wait_seconds must be a finite non-negative number")
     try:

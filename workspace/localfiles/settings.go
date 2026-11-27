@@ -64,7 +64,7 @@ func (e *Executor) allowedPath(input string, grant bool) (string, error) {
 
 func (e *Executor) selectionGrants(r Request) ([]Grant, error) {
 	if r.CrewID == "" || len(r.CrewID) > 256 || len(r.Folders) == 0 || len(r.Folders) > 32 {
-		return nil, fmt.Errorf("choose a Crew and between 1 and 32 folders in Settings")
+		return nil, fmt.Errorf("choose a project and between 1 and 32 folders in Settings")
 	}
 	seen := map[string]bool{}
 	var grants []Grant
@@ -140,7 +140,7 @@ func (e *Executor) executeSettings(ctx context.Context, r Request) Response {
 	if r.Operation == "shell" {
 		for _, grant := range grants {
 			if grant.ID == r.ResourceID && !grant.Writable {
-				return fail(fmt.Errorf("Read access does not allow commands; choose Read & write in Crew Settings"))
+				return fail(fmt.Errorf("Read access does not allow commands; choose Read & write in project Settings"))
 			}
 		}
 	}

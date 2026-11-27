@@ -305,7 +305,7 @@ func StartInteractiveShell(c *gin.Context) {
 	// A bound Crew's generated shell home stays private. Grant only that home,
 	// not the rest of its managed settings, and retain it for later attaches.
 	if _, roots, bound, err := crewroot.Reverse(docsDir, workingDir); err != nil {
-		shellError(c, http.StatusBadRequest, "Crew folder is unavailable")
+		shellError(c, http.StatusBadRequest, "project folder is unavailable")
 		return
 	} else if bound {
 		home, err := ensureCrewShellHome(roots.Private)

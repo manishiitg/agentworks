@@ -24,7 +24,7 @@ The project menu has two rows (the old Share row split in two):
   with you**; do not change their settings.
 - **Leave this Team:** a member leaves with the button at the end of Team,
   which asks "Leave this Team?" first. In chat, leave only when the person asks
-  to leave this Team; the owner cannot leave their own Crew.
+  to leave this Team; the owner cannot leave their own project.
 
 Slack has its own **Slack** tab under Online (shown only where Slack bots are
 allowed): the project's saved bot, its name, channels and direct-message settings,
@@ -36,7 +36,7 @@ diagnostics. Personal **Use Slack as me** stays in Connections.
 Dashboards have their own **Dashboards** tab under Online: everything the
 Project publishes in three kinds (Dashboards, Artifacts, Motion, each shown even at
 0 with a one-line hint and, for the owner, Ask the project), who can open each one,
-or "No dashboard yet" with Ask the Crew.
+or "No dashboard yet" with Ask the project.
 Share an existing publication, or ask whether to create a standard dashboard
 when one is required. Set `create_dashboard=true` only after agreement. Listing
 or publishing an Action does not create a dashboard. The project menu's Online

@@ -33,7 +33,7 @@ For a tagged project:
   page's queries need the same tables in this project's database.
 - Other files: `files action=copy`.
 - For schedules, current enablement and latest runs, send the project an explicit message and request its `automations action=list` result where offered. Your own `automations action=list` is
-  bound to this project, not the tagged Crew.
+  bound to this project, not the tagged one.
 - Edit only when the user requests it and the runtime grants write access.
   A referenced project's whole `db/` subtree is read-only, including Dashboard
   HTML and database sidecars. Its `builder/` subtree (chat history and chat

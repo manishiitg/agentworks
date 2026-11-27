@@ -1,6 +1,6 @@
 ---
 name: python-workflows
-description: Read before creating or changing a workflow in a Crew. New workflows are Python scripts (script.json plus main.py with the agentworks helpers); covers task paths, helper files, typed inputs, saved settings, agents, checks, the database and durable files.
+description: Read before creating or changing a workflow in a project. New workflows are Python scripts (script.json plus main.py with the agentworks helpers); covers task paths, helper files, typed inputs, saved settings, agents, checks, the database and durable files.
 ---
 
 # Write a workflow as a Python script
@@ -47,7 +47,7 @@ bound to this project's workflow. A different task uses a declared input and sav
 setting in that same workflow. Inputs override
 the preset and defaults; unknown names and wrong types are refused before a
 run starts. Stop it through the chat's background work control. For different
-behavior or instructions, edit the saved Python/Crew configuration first.
+behavior or instructions, edit the saved Python/project configuration first.
 
 Start with `runs action=start` (`workflow_id`, optional `input_preset`, typed
 `inputs`) and poll `runs action=status` with its `session_id`, or use the existing
@@ -164,8 +164,8 @@ api_key = secret("API_KEY")  # Pass to the service's client; never print or save
 - **Branches are Python.** Use `if`/`elif` where an old workflow used routes.
 - **Repair once.** When an agent's output fails a check, send the error once to the same agent (`conversation_id=reply.conversation_id`), check again, and fail plainly if it still fails.
 - **Python and agent shells.** The parent workflow and platform-run scripts can import `agentworks` and `agentworks_db`. Native shells inside `agent()` do not have that helper environment. Agents use the registered `database` tool (`action="query"` or `"mutate"`), or write artifacts for the parent to check and persist. Do not ask an agent to run a helper that imports either module.
-- **Fresh Crew files.** Parent Python can use `from agentworks import files` and `files.read("notes/owner-handled.md")` for current text from this Crew. Every call reads again; do not derive a live knowledge path from the frozen `WORKFLOW_CODE_ROOT` or copy a note into the run as its source of truth. Paths are relative to this Crew's Files, text is capped at 256 KiB, and private files, other Crews and symlinks are refused. Credential paths and retired local knowledge folders stay refused. This is not a general Brain reader and adds no shell grant; native agents keep their file tools.
-- **One database per Crew.** In parent Python or platform-run scripts, use `agentworks_db` (`query`, `execute`, `transaction`). Create tables with `CREATE TABLE IF NOT EXISTS` and indexes with `CREATE INDEX IF NOT EXISTS`; ALTER and DROP are refused.
+- **Fresh project files.** Parent Python can use `from agentworks import files` and `files.read("notes/owner-handled.md")` for current text from this project. Every call reads again; do not derive a live knowledge path from the frozen `WORKFLOW_CODE_ROOT` or copy a note into the run as its source of truth. Paths are relative to this project's Files, text is capped at 256 KiB, and private files, other projects and symlinks are refused. Credential paths and retired local knowledge folders stay refused. This is not a general Brain reader and adds no shell grant; native agents keep their file tools.
+- **One database per project.** In parent Python or platform-run scripts, use `agentworks_db` (`query`, `execute`, `transaction`). Create tables with `CREATE TABLE IF NOT EXISTS` and indexes with `CREATE INDEX IF NOT EXISTS`; ALTER and DROP are refused.
 - **Durable files** that later runs need go under `WORKFLOW_DATA_ROOT`; everything else stays in `run_folder`.
 - **Check command output.** For a Docker command that must return output, require both exit code zero and nonempty output. Empty output is a failed check, not evidence that a database has no rows. Record the return code and stdout/stderr byte counts without secret values.
 - **Collect answers before starting.** Ask for needed answers in project chat. A workflow runs without waiting for someone to answer; a missing required value fails with a clear reason.

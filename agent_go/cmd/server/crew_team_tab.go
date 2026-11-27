@@ -255,7 +255,7 @@ func crewTeamHelp(r crewTeamTabReply) ([]crewTeamHelpLine, string) {
 		title := "Your team"
 		if r.Team.On && len(others) > 0 {
 			title = fmt.Sprintf("Your team (%d people)", len(others)+1)
-			team = "You (owner) and " + strings.Join(others, ", ") + ". A team is the people you work with on this Crew. Add or remove people in Share, then Team."
+			team = "You (owner) and " + strings.Join(others, ", ") + ". A team is the people you work with on this project. Add or remove people in Share, then Team."
 		}
 		lines = append(lines, crewTeamHelpLine{Title: title, Text: team})
 		if len(others) > 0 {
