@@ -3,6 +3,7 @@ package server
 import (
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -71,4 +72,85 @@ func TestClaudeTranscriptBreakdownCacheHitsInvalidatesAndBounds(t *testing.T) {
 	if gotLen != 2 {
 		t.Fatalf("expected bounded cache size 2, got %d", gotLen)
 	}
+}
+
+// #4423: when staleWhileRevalidate is enabled, a transcript change returns the
+// previous cached breakdown immediately and refreshes in a single background
+// goroutine so GET /api/chat-context never stalls on large transcripts.
+func TestClaudeTranscriptBreakdownCacheServesStaleWhileRevalidating(t *testing.T) {
+	home := t.TempDir()
+	workDir := filepath.Join(home, "work")
+	slug := claudeNativeTranscriptProjectSlug(workDir)
+	projectDir := filepath.Join(home, ".claude", "projects", slug)
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p1 := filepath.Join(projectDir, "sess-swr.jsonl")
+	if err := os.WriteFile(p1, []byte("{\"turn\":1}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var parses atomic.Int32
+	blockRefresh := make(chan struct{})
+	refreshStarted := make(chan struct{}, 2)
+
+	cache := &claudeTranscriptBreakdownCache{
+		maxEntries:           8,
+		staleWhileRevalidate: true,
+		parse: func(nativeID, workingDir, accountHome string) (claudecode.ContextBreakdown, bool) {
+			n := int(parses.Add(1))
+			if n >= 2 {
+				select {
+				case refreshStarted <- struct{}{}:
+				default:
+				}
+				<-blockRefresh
+			}
+			return claudecode.ContextBreakdown{Total: n * 100, Setup: 20}, true
+		},
+	}
+
+	// Cold read parses synchronously.
+	b1, ok := cache.getOrParse("sess-swr", workDir, home)
+	if !ok || b1.Total != 100 || parses.Load() != 1 {
+		t.Fatalf("cold read: b=%+v ok=%v parses=%d", b1, ok, parses.Load())
+	}
+
+	// Appending to the transcript triggers a background refresh while returning
+	// the stale breakdown immediately without blocking.
+	if err := os.WriteFile(p1, []byte("{\"turn\":1}\n{\"turn\":2}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(2 * time.Second)
+	_ = os.Chtimes(p1, future, future)
+
+	start := time.Now()
+	b2, ok := cache.getOrParse("sess-swr", workDir, home)
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("stale read blocked for %v", elapsed)
+	}
+	if !ok || b2.Total != 100 {
+		t.Fatalf("stale read: b=%+v ok=%v, want Total=100", b2, ok)
+	}
+	// A second concurrent poll while refresh is in flight must deduplicate.
+	b3, ok := cache.getOrParse("sess-swr", workDir, home)
+	if !ok || b3.Total != 100 {
+		t.Fatalf("second stale read: b=%+v ok=%v", b3, ok)
+	}
+
+	<-refreshStarted
+	close(blockRefresh)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		b4, ok := cache.getOrParse("sess-swr", workDir, home)
+		if ok && b4.Total == 200 {
+			if got := parses.Load(); got != 2 {
+				t.Fatalf("parses = %d, want 2 (deduplicated)", got)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("background refresh did not update cache in time (parses=%d)", parses.Load())
 }
