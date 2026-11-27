@@ -138,8 +138,12 @@ export function WorkContextAccessFooter({
 
   // Team and Online (owner, 11 Nov: the Share row split in two): Team says Off or how many people, Online where the
   // Crew lives (its state icon); the server words both.
+  // Remote Control and AgentBridge share one line (owner, 27 Nov), each still opening its own page.
+  const bridgeItem = accessItems.find(item => item.id === 'mcp:agentbridge')
   const renderAccessRow = (item: CrewMenuItem) => item.id === 'mcp:online'
-    ? <CrewOnlineRow key={item.id} state={computerState} theirs={theirs} onOpen={() => onOpen(item)} />
+    ? bridgeItem
+      ? <div key={item.id} className="grid grid-cols-2 gap-1"><CrewOnlineRow state={computerState} theirs={theirs} onOpen={() => onOpen(item)} /><Row icon={bridgeItem.icon} onClick={() => onOpen(bridgeItem)}>{bridgeItem.label}</Row></div>
+      : <CrewOnlineRow key={item.id} state={computerState} theirs={theirs} onOpen={() => onOpen(item)} />
     : item.id === 'mcp:team' && teamState.view?.team.on ? <div key={item.id}><TeamPanelHeader onName={() => openCrewAccess(projectId, '', 'team')} view={teamState.view} connection={teamState.target?.connection} selectedPerson={selectedPerson} onPersonSelect={onSelectPerson} expanded={showTeam} onToggle={onToggleTeamCollapsed} needsCount={needsCount} /><PendingAgentForks state={teamState} place="menu" /></div>
     : noTeamYet && item.id === 'mcp:team' ? (teamHidden ? null : <div key={item.id}>
       {/* No Team yet (owner, 18 Nov; ⓘ card and Hide into Connections, #3780). */}
@@ -151,7 +155,7 @@ export function WorkContextAccessFooter({
 
   const teamTree = (teamLines.length > 0 || teamState.view?.team.on || !!teamState.error) && <div role="list" aria-label="Team details" className={showTeam ? 'pb-1' : undefined}><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} collapsed={!showTeam} selectedPerson={selectedPerson} onPersonSelect={onSelectPerson} onPanelView={onOpenTeamPane} askAgent={askAgent} />{!teamState.view?.team.on && renderTreeLines(teamLines)}</div>
 
-  const visibleItems = accessItems.filter(item => item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0))
+  const visibleItems = accessItems.filter(item => (item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)) && item.id !== 'mcp:agentbridge')
 
   return <div className="space-y-0.5">
     {visibleItems.map(item => <div key={item.id}>
