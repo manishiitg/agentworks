@@ -138,11 +138,12 @@ export function WorkContextAccessFooter({
 
   // Team and Online (owner, 11 Nov: the Share row split in two): Team says Off or how many people, Online where the
   // Crew lives (its state icon); the server words both.
-  // Remote Control and AgentBridge share one line (owner, 27 Nov), each still opening its own page.
+  // Remote Control and AgentBridge share one line (owner, 27 Nov), each still opening its own page;
+  // AgentBridge keeps its natural width so Remote Control gets the rest (a 50/50 split was too cramped).
   const bridgeItem = accessItems.find(item => item.id === 'mcp:agentbridge')
   const renderAccessRow = (item: CrewMenuItem) => item.id === 'mcp:online'
     ? bridgeItem
-      ? <div key={item.id} className="grid grid-cols-2 gap-1"><CrewOnlineRow state={computerState} theirs={theirs} onOpen={() => onOpen(item)} /><Row icon={bridgeItem.icon} onClick={() => onOpen(bridgeItem)}>{bridgeItem.label}</Row></div>
+      ? <div key={item.id} className="flex items-center gap-1"><div className="min-w-0 flex-1"><CrewOnlineRow state={computerState} theirs={theirs} onOpen={() => onOpen(item)} /></div><span aria-hidden className="h-4 w-px shrink-0 bg-border" /><div className="shrink-0"><Row icon={bridgeItem.icon} onClick={() => onOpen(bridgeItem)}>{bridgeItem.label}</Row></div></div>
       : <CrewOnlineRow key={item.id} state={computerState} theirs={theirs} onOpen={() => onOpen(item)} />
     : item.id === 'mcp:team' && teamState.view?.team.on ? <div key={item.id}><TeamPanelHeader onName={() => openCrewAccess(projectId, '', 'team')} view={teamState.view} connection={teamState.target?.connection} selectedPerson={selectedPerson} onPersonSelect={onSelectPerson} expanded={showTeam} onToggle={onToggleTeamCollapsed} needsCount={needsCount} /><PendingAgentForks state={teamState} place="menu" /></div>
     : noTeamYet && item.id === 'mcp:team' ? (teamHidden ? null : <div key={item.id}>
