@@ -126,3 +126,47 @@ func TestMemoryLogLineReportsCachedHistoryAndSessionAgents(t *testing.T) {
 		t.Fatalf("memoryLogLine = %q, want substring %q", line, want)
 	}
 }
+
+// #4366: a starting normal or synthetic turn acquires the session input lane
+// before marking activeSessions[sessionID].Status = "running". Cleanup must
+// skip the session whenever its input lane is held so it never closes the
+// agent or drops history out from under a starting turn.
+func TestCleanupSkipsSessionAgentWhileInputLaneHeld(t *testing.T) {
+	now := time.Now()
+	msg := llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "hello")
+	api := &StreamingAPI{
+		activeSessions: map[string]*ActiveSessionInfo{
+			"starting-turn": {SessionID: "starting-turn", Status: "completed", LastActivity: now.Add(-20 * time.Minute)},
+		},
+		conversationHistory: map[string][]llmtypes.MessageContent{
+			"starting-turn": {msg},
+		},
+		resumeHistorySources: map[string]*resumeHistorySource{
+			"starting-turn": {},
+		},
+		sessionAgents: map[string]*agent.LLMAgentWrapper{
+			"starting-turn": nil,
+		},
+	}
+
+	releaseLane := api.lockSessionInputLane("starting-turn")
+	api.cleanupInactiveSessionsAt(now)
+	if _, ok := api.conversationHistory["starting-turn"]; !ok {
+		releaseLane()
+		t.Fatal("conversationHistory was evicted while a starting turn held the session input lane")
+	}
+	if _, ok := api.sessionAgents["starting-turn"]; !ok {
+		releaseLane()
+		t.Fatal("sessionAgents was evicted while a starting turn held the session input lane")
+	}
+	releaseLane()
+
+	// Once the lane is released and the session is still idle, cleanup evicts it.
+	api.cleanupInactiveSessionsAt(now)
+	if _, ok := api.conversationHistory["starting-turn"]; ok {
+		t.Fatal("conversationHistory was not evicted after the session input lane was released")
+	}
+	if _, ok := api.sessionAgents["starting-turn"]; ok {
+		t.Fatal("sessionAgents was not evicted after the session input lane was released")
+	}
+}
