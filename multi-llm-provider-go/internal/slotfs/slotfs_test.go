@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -203,5 +205,69 @@ func TestMissingWriteGrantIsNotCreated(t *testing.T) {
 	}
 	if _, err := os.Lstat(missing); !os.IsNotExist(err) {
 		t.Fatalf("missing grant %s was created (stat err %v)", missing, err)
+	}
+}
+
+// A 0600 file or 0700 dir created by the slot account itself (such as an MCP
+// readiness marker written by mcpbridge running as the slot) has no group bits
+// for groupCovers to match, and setfacl from the platform account fails with
+// Operation not permitted. grantLocked and traverse must skip paths already
+// owned by the slot.
+func TestGrantLockedSkipsPathsOwnedBySlot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix ownership semantics only")
+	}
+
+	// Install a trap setfacl binary on PATH that always fails like an unowned file.
+	fakeBin := t.TempDir()
+	fakeSetfacl := filepath.Join(fakeBin, "setfacl")
+	if err := os.WriteFile(fakeSetfacl, []byte("#!/bin/sh\necho 'setfacl: Operation not permitted' >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(root, ".mcpbridge-ready-test.marker")
+	if err := os.WriteFile(marker, []byte("ready\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	privateDir := filepath.Join(root, "slot-private")
+	if err := os.Mkdir(privateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	nestedMarker := filepath.Join(privateDir, ".mcpbridge-ready-nested.marker")
+	if err := os.WriteFile(nestedMarker, []byte("ready\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	prior := lookupSlotUID
+	t.Cleanup(func() { lookupSlotUID = prior })
+
+	// Owned by the slot itself: neither grantLocked nor traverse may invoke setfacl.
+	lookupSlotUID = func(string) (string, error) { return strconv.Itoa(os.Getuid()), nil }
+	for _, tc := range []struct {
+		name  string
+		path  string
+		write bool
+	}{
+		{name: "read_0600_marker", path: marker, write: false},
+		{name: "write_0600_marker", path: marker, write: true},
+		{name: "nested_in_0700_slot_dir", path: nestedMarker, write: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := grantLocked("slot01", tc.path, tc.write); err != nil {
+				t.Fatalf("grantLocked(%q, write=%v) failed on slot-owned path: %v", tc.path, tc.write, err)
+			}
+		})
+	}
+
+	// Negative control: when owned by another UID, grantLocked must still invoke setfacl.
+	lookupSlotUID = func(string) (string, error) { return "999999", nil }
+	err := grantLocked("slot01", marker, false)
+	if err == nil || !strings.Contains(err.Error(), "Operation not permitted") {
+		t.Fatalf("expected trap setfacl error for non-slot-owned 0600 file, got: %v", err)
 	}
 }

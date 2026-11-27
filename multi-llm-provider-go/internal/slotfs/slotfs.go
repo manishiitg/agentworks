@@ -450,7 +450,11 @@ func traverse(slot, path string) error {
 		dirs = append([]string{dir}, dirs...)
 	}
 	for _, dir := range dirs {
-		if info, err := os.Stat(dir); err == nil && info.Mode().Perm()&0o001 != 0 {
+		info, err := os.Stat(dir)
+		if err == nil && info.Mode().Perm()&0o001 != 0 {
+			continue
+		}
+		if err == nil && slotOwns(slot, info) && info.Mode().Perm()&0o100 != 0 {
 			continue
 		}
 		if groupOwns(slot, dir) {
@@ -465,6 +469,19 @@ func traverse(slot, path string) error {
 		}
 	}
 	return nil
+}
+
+// slotOwns reports whether info is owned by slot's own account. Only the file's
+// owner or root may change its ACLs, so calling setfacl as the platform account
+// on a path the slot itself created (e.g. a 0600 MCP readiness marker written by
+// mcpbridge) always fails with Operation not permitted.
+func slotOwns(slot string, info os.FileInfo) bool {
+	uid, ok := fileUID(info)
+	if !ok {
+		return false
+	}
+	slotUID, err := lookupSlotUID(slot)
+	return err == nil && slotUID != "" && strconv.Itoa(uid) == slotUID
 }
 
 // groupOwns reports whether dir belongs to the slot's own group with group search access.
@@ -584,6 +601,12 @@ func grantLocked(slot, path string, write bool) error {
 	}
 	if err := traverse(slot, clean); err != nil {
 		return err
+	}
+	// A file or folder the slot account itself created (such as a 0600 MCP
+	// readiness marker written by mcpbridge running as the slot) is already
+	// owned by the slot, and only its owner or root may run setfacl on it.
+	if slotOwns(slot, info) {
+		return nil
 	}
 	// Something already the slot's through its group (its own CLI home, made group slot by ShareTree) needs no
 	// entry: a named-user entry outranks the group's, so a read grant there left the slot unable to write its own

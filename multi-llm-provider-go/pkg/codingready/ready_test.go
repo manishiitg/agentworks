@@ -73,3 +73,53 @@ func TestMCPReadyFileFromMetadata(t *testing.T) {
 		t.Fatalf("got %q, want trimmed /tmp/x", got)
 	}
 }
+
+func TestPrepareColdLaunchRemovesStaleMarker(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ready.marker")
+	if err := os.WriteFile(path, []byte("stale\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	marker := PrepareColdLaunch(path)
+	if marker.Path != path || marker.HadPrior {
+		t.Fatalf("PrepareColdLaunch = %+v, want Path=%q HadPrior=false", marker, path)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected stale marker removed, stat err=%v", err)
+	}
+	if WaitForMCPReadyFileAfter(context.Background(), marker, 250*time.Millisecond) {
+		t.Fatal("WaitForMCPReadyFileAfter must not return true before new bridge creates marker")
+	}
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		_ = os.WriteFile(path, []byte("ready\n"), 0o600)
+	}()
+	if !WaitForMCPReadyFileAfter(context.Background(), marker, 2*time.Second) {
+		t.Fatal("WaitForMCPReadyFileAfter should return true once new bridge writes marker")
+	}
+}
+
+func TestWaitForMCPReadyFileAfter_UnremovableStaleMarkerRequiresNewerModTime(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ready.marker")
+	if err := os.WriteFile(path, []byte("stale\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldTime := time.Now().Add(-10 * time.Second).Truncate(time.Second)
+	if err := os.Chtimes(path, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+	marker := ColdLaunchMarker{
+		Path:         path,
+		HadPrior:     true,
+		PriorModTime: oldTime,
+	}
+	if WaitForMCPReadyFileAfter(context.Background(), marker, 250*time.Millisecond) {
+		t.Fatal("stale marker with unchanged mtime must not satisfy WaitForMCPReadyFileAfter")
+	}
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		_ = os.WriteFile(path, []byte("ready\n"), 0o600)
+	}()
+	if !WaitForMCPReadyFileAfter(context.Background(), marker, 2*time.Second) {
+		t.Fatal("rewritten marker with newer mtime should satisfy WaitForMCPReadyFileAfter")
+	}
+}

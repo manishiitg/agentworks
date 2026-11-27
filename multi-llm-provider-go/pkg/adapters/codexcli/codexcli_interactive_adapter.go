@@ -96,6 +96,7 @@ type codexInteractiveSession struct {
 	// argument and Codex can record it well before the turn's promptSentAt.
 	bindSince              time.Time
 	cliSecurityFingerprint string
+	readyMarker            codingready.ColdLaunchMarker
 	idleLease              sessionlease.Lease
 	initErr                error
 	createdAt              time.Time

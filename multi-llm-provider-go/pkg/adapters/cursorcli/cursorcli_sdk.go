@@ -26,6 +26,7 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmerrors"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/procshutdown"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/codingready"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
@@ -432,6 +433,10 @@ func (c *CursorCLIAdapter) launchSDK(ctx context.Context, opts *llmtypes.CallOpt
 			return nil, "", false, configErr
 		}
 		cmd.Env = append(cmd.Env, "CURSOR_CONFIG_DIR="+configDir)
+	}
+	// Clear any stale readiness marker before building Landlock reads and launching a fresh SDK bridge.
+	if opts != nil && opts.Metadata != nil {
+		_ = codingready.PrepareColdLaunch(codingready.MCPReadyFileFromMetadata(opts.Metadata.Custom))
 	}
 	// The agent loop runs in node itself, so node is the confined process (no spawned CLI child).
 	sdkPackages := cursorSDKReadRoot(entry)

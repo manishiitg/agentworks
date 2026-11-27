@@ -430,6 +430,7 @@ func museAcquirePersistentSession(ctx context.Context, owner, workdir, provider,
 		}
 		return nil, false, err
 	}
+	readyMarker := codingready.PrepareColdLaunch(readyFile)
 	// A dead entry relaunches here (reuse returned early above), so a
 	// caller-supplied native id resumes the conversation instead of
 	// starting cold — this is the continuity-after-loss path.
@@ -466,8 +467,8 @@ func museAcquirePersistentSession(ctx context.Context, owner, workdir, provider,
 		_ = museClosePersistentTmux(tmuxName)
 		return nil, false, err
 	}
-	if readyFile != "" {
-		codingready.WaitForMCPReadyFile(ctx, readyFile, codingready.MCPReadyWait())
+	if readyMarker.Path != "" {
+		codingready.WaitForMCPReadyFileAfter(ctx, readyMarker, codingready.MCPReadyWait())
 	}
 	musePersistentPool.Lock()
 	musePersistentPool.m[key] = entry
