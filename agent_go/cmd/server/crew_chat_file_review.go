@@ -324,9 +324,22 @@ func (api *StreamingAPI) serveChatFileReview(w http.ResponseWriter, r *http.Requ
 		}
 		checkoutID := r.URL.Query().Get("checkout_id")
 		person := GetUserIDFromContext(r.Context())
-		return compareSavedOnce(ctx, sessionID, []string{person, root, prefix, strconv.FormatBool(outsideGit), checkoutID, file, key, strings.Join(ids, ",")}, func() (filesnapshots.Comparison, error) {
+		fresh := func() (filesnapshots.Comparison, error) {
 			return store.CompareSaved(ctx, ids, file, key, compareAllow, checkoutID)
-		})
+		}
+		cached, err := compareSavedOnce(ctx, sessionID, []string{person, root, prefix, strconv.FormatBool(outsideGit), checkoutID, file, key, strings.Join(ids, ",")}, fresh)
+		if err != nil {
+			return cached, err
+		}
+		// The cache key cannot hold the person's current path grants: a
+		// cached result is reused only while every file in it is still
+		// readable, so a revoked path is refused at once.
+		for _, change := range cached.Changes {
+			if !compareAllow(change.Path) {
+				return fresh()
+			}
+		}
+		return cached, nil
 	}
 	comparison, err := compare(first, last, side, file, r.URL.Query().Get("change_key"))
 	if err != nil {
