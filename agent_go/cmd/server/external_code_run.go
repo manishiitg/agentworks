@@ -299,10 +299,8 @@ func (api *StreamingAPI) externalCodeRunOpenTab(r *http.Request, claims *UserCla
 	if len(profileIDs) > 0 {
 		profileID = profileIDs[0]
 	}
-	if strings.TrimSpace(chatName) == "" {
-		return "", http.StatusBadRequest, "Give the new tab a name, a few words saying what this agent is for."
-	}
-	if codeChatNameTaken(chats, chatName, "") {
+	// An empty name opens an unnamed chat: the server names it from its first message (#4439).
+	if strings.TrimSpace(chatName) != "" && codeChatNameTaken(chats, chatName, "") {
 		return "", http.StatusConflict, "A tab named " + chatName + " already exists in this project; use it, or pick another name."
 	}
 	raw := make([]byte, 4)
