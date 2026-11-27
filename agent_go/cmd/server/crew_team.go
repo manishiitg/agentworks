@@ -299,6 +299,10 @@ func updateCrewTeam(project string, mutate func(*crewTeam) (bool, error)) (crewT
 	return t, err
 }
 
+// writeCrewTeamWithAgents saves a full Team record. Callers that mutate
+// non-Agents fields must hold wf.LockWorkspace(dir) across their
+// read-modify-write; crewTeamRecordMutex(dir) serializes against Agents-only
+// writers and reloads latest.Agents before advancing Revision.
 func writeCrewTeamWithAgents(t crewTeam, choices func(map[string]crewTeamRegisteredAgent)) error {
 	t.RegistryVersion = 1
 	// Every Team write comes here, so a path that skips the Team handler still cannot share the AgentWorks project.
@@ -680,6 +684,7 @@ func (api *StreamingAPI) handleCrewTeam(w http.ResponseWriter, r *http.Request) 
 	}
 	input.Agents = previous.Agents
 	input.Projects = previous.Projects
+	input.AgentDefaults = previous.AgentDefaults
 	// Team on (owner, 4-5 Nov) starts, with nothing shared yet, with the Crew's team/ folder. The server decides it for
 	// every caller (website, Mac app, chat, MCP); the owner's Mac makes the folder there when it applies the record
 	// (crew_team_apply.go).

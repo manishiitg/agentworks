@@ -1,13 +1,20 @@
 package server
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/gorilla/mux"
 )
 
 func TestWriteCrewTeamMonotonicRevision(t *testing.T) {
@@ -222,5 +229,64 @@ func TestWriteMacSharedAgentsConcurrentAtomic(t *testing.T) {
 		if strings.HasSuffix(e.Name(), ".tmp") {
 			t.Fatalf("leftover temp file %q after concurrent writes", e.Name())
 		}
+	}
+}
+
+func TestHandleCrewTeamPreservesAgentDefaults(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
+	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","products":["work"]},{"id":"ann","username":"ann","products":["work"]}]}`)
+
+	registry := newTestRegistry(t)
+	prevRegistry := defaultProjectOwnersOverride
+	defaultProjectOwnersOverride = registry
+	clearOwners := func() { crewOwners.mu.Lock(); crewOwners.entries = map[string]crewOwnerEntry{}; crewOwners.mu.Unlock() }
+	t.Cleanup(func() { defaultProjectOwnersOverride = prevRegistry; clearOwners() })
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "team-defaults", ProjectID: "team-defaults", OwnerID: "owner"}); err != nil {
+		t.Fatal(err)
+	}
+	clearOwners()
+
+	key := crewTeamProjectMakerID("online-proj", "owner")
+	initial := crewTeam{
+		ProjectID:     "team-defaults",
+		OwnerID:       "owner",
+		Name:          "Alpha",
+		On:            true,
+		Revision:      2,
+		Folder:        crewTeamFolder{ID: "f1", Folders: []string{"team"}},
+		AgentDefaults: map[string]string{key: crewTeamAudienceWholeTeam},
+	}
+	if err := writeCrewTeam(initial); err != nil {
+		t.Fatal(err)
+	}
+
+	body, err := json.Marshal(crewTeam{
+		Name:   "Alpha Renamed",
+		On:     true,
+		People: []crewTeamPerson{{UserID: "ann"}},
+		Folder: crewTeamFolder{Folders: []string{"team"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/api/crew-teams/team-defaults", bytes.NewReader(body))
+	req = mux.SetURLVars(req, map[string]string{"project": "team-defaults"})
+	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "owner"}))
+	rec := httptest.NewRecorder()
+	(&StreamingAPI{}).handleCrewTeam(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT crew-teams status = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	got, err := readCrewTeam("team-defaults")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Alpha Renamed" {
+		t.Fatalf("name = %q, want Alpha Renamed", got.Name)
+	}
+	if got.AgentDefaults[key] != crewTeamAudienceWholeTeam {
+		t.Fatalf("AgentDefaults[%q] = %q after PUT crew-teams, want %q", key, got.AgentDefaults[key], crewTeamAudienceWholeTeam)
 	}
 }
