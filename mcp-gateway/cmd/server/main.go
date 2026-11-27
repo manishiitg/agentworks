@@ -232,6 +232,7 @@ func run() (runErr error) {
 
 	gw := mcpserver.New(st, auth.OAuth{Server: oauthSrv, WorkspaceID: "w1", Keys: st},
 		map[string]*upstream.Client{}, oauthSrv, upstream.DialOptions{AllowPrivate: allowPrivateUpstreams, AllowLocalCommands: allowLocalCommands})
+	defer func() { _ = gw.Close() }()
 	gw.RestoreTools("w1")
 
 	if productURL := strings.TrimSpace(os.Getenv("GATEWAY_PRODUCT_URL")); productURL != "" {

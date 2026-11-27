@@ -19,6 +19,7 @@ import (
 	"github.com/manishiitg/mcpagent/mcpclient"
 	"github.com/manishiitg/mcpagent/netguard"
 	"github.com/manishiitg/mcpagent/oauth"
+	"golang.org/x/oauth2"
 )
 
 // These records contain provider registration metadata, not group permissions.
@@ -154,15 +155,32 @@ func vaultSavedOAuthConfig(id string, cfg mcpclient.MCPServerConfig) (mcpclient.
 // Status exposes a plain category, never a provider response containing credentials.
 func vaultOAuthSignInProblem(id string, setup bool, err error) string {
 	code, detail := "refresh_unavailable", "the saved account could not be refreshed. Try again or reconnect it in Vault."
+	oauthCode, httpStatus := "", 0
+	var retrieveErr *oauth2.RetrieveError
+	if err != nil && errors.As(err, &retrieveErr) {
+		oauthCode = strings.ToLower(strings.TrimSpace(retrieveErr.ErrorCode))
+		if retrieveErr.Response != nil {
+			httpStatus = retrieveErr.Response.StatusCode
+		}
+	}
 	if setup {
 		code, detail = "saved_setup_unavailable", "the saved sign-in setup is unavailable. Connect the account in Vault."
 		if err != nil && strings.Contains(err.Error(), "configuration changed") {
 			code, detail = "configuration_changed", "the saved sign-in setup no longer matches this connection. Reconnect the account in Vault."
 		}
-	} else if err != nil && strings.Contains(strings.ToLower(err.Error()), "invalid_grant") {
-		code, detail = "refresh_rejected", "the saved sign-in expired or was revoked. Reconnect the account in Vault."
+	} else if err != nil {
+		lower := strings.ToLower(err.Error())
+		if oauthCode == "invalid_grant" || oauthCode == "invalid_client" || oauthCode == "unauthorized_client" ||
+			strings.Contains(lower, "invalid_grant") ||
+			strings.Contains(lower, "did not issue a refresh token") {
+			code, detail = "refresh_rejected", "the saved sign-in expired or was revoked. Reconnect the account in Vault."
+		}
 	}
-	log.Printf("[VAULT_OAUTH_STATUS] connection=%s authenticated=false reason=%s", id, code)
+	if oauthCode != "" || httpStatus != 0 {
+		log.Printf("[VAULT_OAUTH_STATUS] connection=%s authenticated=false reason=%s oauth_error=%s http_status=%d", id, code, oauthCode, httpStatus)
+	} else {
+		log.Printf("[VAULT_OAUTH_STATUS] connection=%s authenticated=false reason=%s", id, code)
+	}
 	return "Sign-in needed: " + detail
 }
 func vaultAdminActive(userID string) bool {

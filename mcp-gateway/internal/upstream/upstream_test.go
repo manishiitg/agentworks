@@ -2,6 +2,7 @@ package upstream
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -9,6 +10,10 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
 
 func TestValidateURLAndPrivateEgress(t *testing.T) {
@@ -158,5 +163,83 @@ func TestCommandEnvironmentPassesOnlyRunEssentials(t *testing.T) {
 		if !strings.Contains(env, kept) {
 			t.Fatalf("missing %s", kept)
 		}
+	}
+}
+
+func TestSSEClientSurvivesDialContextCancelAndExceedsCumulative2MiB(t *testing.T) {
+	if got := safeHTTPClient(DialOptions{Transport: "sse"}).Timeout; got != 0 {
+		t.Fatalf("SSE http.Client.Timeout = %v, want 0", got)
+	}
+	if got := safeHTTPClient(DialOptions{}).Timeout; got != 30*time.Second {
+		t.Fatalf("Streamable HTTP http.Client.Timeout = %v, want 30s", got)
+	}
+
+	payload := strings.Repeat("a", 600*1024)
+	mcpSrv := server.NewMCPServer("sse-upstream", "1")
+	mcpSrv.AddTool(mcp.NewTool("blob"), func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return mcp.NewToolResultText(payload), nil
+	})
+	var sseHandler http.Handler
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sseHandler.ServeHTTP(w, r)
+	}))
+	sseHandler = server.NewSSEServer(mcpSrv, server.WithBaseURL(ts.URL))
+	defer ts.Close()
+
+	dialCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	up, err := DialWithOptions(dialCtx, ts.URL+"/sse", DialOptions{AllowPrivate: true, Transport: "sse"})
+	// Cancelling the dial context right after Dial must not terminate the SSE stream.
+	cancel()
+	if err != nil {
+		t.Fatalf("SSE DialWithOptions: %v", err)
+	}
+	defer up.Close()
+
+	// 5 x 600 KiB = ~3 MiB cumulative over the single SSE stream (> 2 MiB maxResponseBytes).
+	for i := 0; i < 5; i++ {
+		callCtx, callCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		res, err := up.Call(callCtx, "blob", nil)
+		callCancel()
+		if err != nil {
+			t.Fatalf("SSE call %d failed: %v", i+1, err)
+		}
+		if len(res.Content) == 0 || len(res.Content[0].(mcp.TextContent).Text) != len(payload) {
+			t.Fatalf("SSE call %d returned truncated payload", i+1)
+		}
+	}
+}
+
+func TestSharedOAuthClassifiesExpiredAndUnavailableErrors(t *testing.T) {
+	var status atomic.Int32
+	var body atomic.Value
+	secret := strings.Repeat("s", 32)
+	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(int(status.Load()))
+		_, _ = w.Write([]byte(body.Load().(string)))
+	}))
+	defer broker.Close()
+
+	resolve, err := SharedOAuth(broker.URL, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	status.Store(http.StatusUnauthorized)
+	body.Store(`{"error":"Sign-in needed: the saved sign-in expired or was revoked. Reconnect the account in Vault."}`)
+	if _, err := resolve(context.Background(), "Test", "https://example.com/mcp", "c-11111111"); !errors.Is(err, ErrSharedOAuthExpired) {
+		t.Fatalf("expired token error = %v, want ErrSharedOAuthExpired", err)
+	}
+
+	status.Store(http.StatusServiceUnavailable)
+	body.Store(`{"error":"temporary"}`)
+	if _, err := resolve(context.Background(), "Test", "https://example.com/mcp", "c-11111111"); !errors.Is(err, ErrSharedOAuthUnavailable) {
+		t.Fatalf("503 error = %v, want ErrSharedOAuthUnavailable", err)
+	}
+
+	status.Store(http.StatusUnauthorized)
+	body.Store(`{"error":"administrator sign-in required"}`)
+	if _, err := resolve(context.Background(), "Test", "https://example.com/mcp", "c-11111111"); !errors.Is(err, ErrSharedOAuthRequired) {
+		t.Fatalf("generic 401 error = %v, want ErrSharedOAuthRequired", err)
 	}
 }

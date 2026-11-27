@@ -222,10 +222,14 @@ func (m *Manager) GetAccessToken(ctx context.Context) (string, error) {
 			return newToken.AccessToken, nil
 		}
 		m.logger.Warn("Token refresh failed", loggerv2.Error(err))
+		// Wrap ErrNoValidToken together with the refresh error so callers that
+		// check errors.Is(err, ErrNoValidToken) still match while diagnostics
+		// can distinguish invalid_grant from transient refresh failures.
+		return "", fmt.Errorf("%w: %w", ErrNoValidToken, err)
 	}
 
-	// No valid token available
-	return "", ErrNoValidToken
+	// Token expired and provider did not issue a refresh token.
+	return "", fmt.Errorf("%w: access token expired and provider did not issue a refresh token", ErrNoValidToken)
 }
 
 // StartAuthFlow initiates the interactive OAuth authorization flow

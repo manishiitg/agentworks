@@ -2,7 +2,9 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/access"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/auth"
 	"github.com/manishiitg/coding-agent-loop/mcp-gateway/internal/store"
@@ -287,5 +289,111 @@ func TestRestoredToolsRecoverAfterOAuthStartupFailure(t *testing.T) {
 				t.Fatal("recovery changed membership or skipped audit")
 			}
 		})
+	}
+}
+
+func TestGatewayEvictsDeadUpstreamReconnectsAndSurfacesErrors(t *testing.T) {
+	var failNextCall atomic.Bool
+	var listCount atomic.Int32
+	var calls atomic.Int32
+
+	srv := server.NewMCPServer("stateful-upstream", "1")
+	srv.AddTool(mcp.NewTool("fetch", mcp.WithString("id", mcp.Required())), func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		calls.Add(1)
+		return mcp.NewToolResultText("ok"), nil
+	})
+	streamable := server.NewStreamableHTTPServer(srv, server.WithEndpointPath("/mcp"))
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bodyBytes, _ := io.ReadAll(r.Body)
+		r.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
+		var rpc struct {
+			Method string `json:"method"`
+		}
+		_ = json.Unmarshal(bodyBytes, &rpc)
+		if rpc.Method == "tools/list" {
+			listCount.Add(1)
+		} else if rpc.Method == "tools/call" && failNextCall.CompareAndSwap(true, false) {
+			http.Error(w, "session not found", http.StatusNotFound)
+			return
+		}
+		streamable.ServeHTTP(w, r)
+	}))
+	defer remote.Close()
+
+	st := store.NewMemoryStore()
+	st.AddWorkspace(store.Workspace{ID: "w"})
+	st.AddUser(store.User{ID: "alice", WorkspaceID: "w"})
+	st.AddGroup(store.Group{ID: "g", WorkspaceID: "w"})
+	st.AddMember("g", "alice")
+	c := store.Connector{ID: "one", WorkspaceID: "w", Provider: "one", Status: store.StatusActive, UpstreamURL: remote.URL + "/mcp"}
+	st.AddConnector(c)
+	st.AddGroupServerGrant("g", "one")
+
+	g := New(st, nil, map[string]*upstream.Client{}, nil, upstream.DialOptions{AllowPrivate: true})
+	defer g.Close()
+	if err := g.Resync(context.Background(), c); err != nil {
+		t.Fatalf("initial resync: %v", err)
+	}
+	if listCount.Load() != 1 {
+		t.Fatalf("initial listCount = %d, want 1", listCount.Load())
+	}
+
+	handler := g.ProductHandler(func(r *http.Request) (auth.Identity, string, bool) {
+		return auth.Identity{UserID: "alice", WorkspaceID: "w", ClientID: "test"}, "one", true
+	})
+	call := func(params string) string {
+		req := httptest.NewRequest("POST", "/api/admin/runtime/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":`+params+`}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		return w.Body.String()
+	}
+
+	// 1. Schema validation failure surfaces actionable field detail.
+	if got := call(`{"name":"one__fetch","arguments":{"id":42}}`); !strings.Contains(got, "arguments do not match approved tool schema:") || !strings.Contains(got, "id") {
+		t.Fatalf("schema error hid field details: %s", got)
+	}
+
+	// 2. Normal call succeeds.
+	if got := call(`{"name":"one__fetch","arguments":{"id":"a"}}`); !strings.Contains(got, "ok") || calls.Load() != 1 {
+		t.Fatalf("initial call failed: %s", got)
+	}
+
+	// 3. Expire the upstream session (404): call fails with actionable detail and evicts the dead client,
+	//    then the very next call transparently reconnects (listCount=2) and succeeds.
+	failNextCall.Store(true)
+	if got := call(`{"name":"one__fetch","arguments":{"id":"b"}}`); !strings.Contains(got, "upstream call failed:") || (!strings.Contains(got, "404") && !strings.Contains(got, "expired") && !strings.Contains(got, "session not found")) {
+		t.Fatalf("dead-session error hid cause: %s", got)
+	}
+	if _, stillCached := g.upstreamFor("one"); stillCached {
+		t.Fatal("dead upstream session was not evicted after 404")
+	}
+	if got := call(`{"name":"one__fetch","arguments":{"id":"b"}}`); !strings.Contains(got, "ok") || calls.Load() != 2 || listCount.Load() != 2 {
+		t.Fatalf("next call did not reconnect after eviction: got=%s calls=%d lists=%d", got, calls.Load(), listCount.Load())
+	}
+
+	// 4. Non-OAuth Resync also evicts and redials when the cached session dies.
+	upBefore, ok := g.upstreamFor("one")
+	if !ok {
+		t.Fatal("expected connected upstream before resync test")
+	}
+	_ = upBefore.Close()
+	if err := g.Resync(context.Background(), c); err != nil {
+		t.Fatalf("non-OAuth Resync failed to redial after dead session: %v", err)
+	}
+	if got := call(`{"name":"one__fetch","arguments":{"id":"c"}}`); !strings.Contains(got, "ok") || calls.Load() != 3 {
+		t.Fatalf("call after Resync redial failed: %s", got)
+	}
+
+	// 5. Gateway.Close shuts down all active upstreams and is idempotent.
+	if err := g.Close(); err != nil {
+		t.Fatalf("Gateway.Close: %v", err)
+	}
+	if _, ok := g.upstreamFor("one"); ok {
+		t.Fatal("Gateway.Close left upstream registered")
+	}
+	if err := g.Close(); err != nil {
+		t.Fatalf("second Gateway.Close: %v", err)
 	}
 }
