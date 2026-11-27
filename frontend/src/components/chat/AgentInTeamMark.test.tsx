@@ -109,6 +109,7 @@ describe('AgentHeaderLine sharing pill', () => {
       await act(async () => privateTrigger!.click())
       const privateDetails = document.body.querySelector('[role="dialog"][aria-label="Scratchpad"]')
       expect(privateDetails).not.toBeNull()
+      expect(privateDetails?.textContent).not.toContain('Scratchpad')
       expect(privateDetails?.querySelector('[data-testid="header-sharing"]')).toBeNull()
       const shareLink = [...(privateDetails?.querySelectorAll('button') || [])].find(b => b.textContent === 'Share…')
       expect(shareLink).toBeTruthy()

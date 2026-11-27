@@ -206,7 +206,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         <AgentAutomationList items={enabled} empty="No enabled automations." />
       </> : at.view === 'sharing' && info.sharing ? <>
         <div className="mb-1 flex items-center justify-between gap-2">
-          <p className="min-w-0 flex-1 truncate text-sm font-semibold">Sharing · {info.name}</p>
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold">Sharing</p>
           {close('Close sharing')}
         </div>
         <HeaderAgentSharing {...info.sharing} defaultOpen bare status={!info.owner ? <AgentOnlineCopyStatus setup={info.setup} /> : undefined} />
@@ -214,7 +214,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           <button type="button" onClick={() => finish(actions.forkTo!)} className="inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><GitFork aria-hidden className="h-3.5 w-3.5" />Send a copy to a teammate…</button>
         </div>}
       </> : <>
-      <div className="flex items-center gap-2 text-sm font-semibold"><p className="min-w-0 flex-1 truncate">{info.name}</p>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}{clickToOpen && close('Close agent details')}</div>
+      {(!clickToOpen || sheet) && <div className="flex items-center gap-2 text-sm font-semibold"><p className="min-w-0 flex-1 truncate">{info.name}</p>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}{clickToOpen && close('Close agent details')}</div>}
       {!clickToOpen && <AgentModelRow tabId={info.tabId} />}
       {clickToOpen ? <AgentDetailSection title="Setup" value={info.purpose || 'Add a purpose'}>{setupDetails}</AgentDetailSection> : setupDetails}
       {!shareShortcut && info.sharing && <HeaderAgentSharing {...info.sharing} status={!info.owner ? <AgentOnlineCopyStatus setup={info.setup} /> : undefined} />}
