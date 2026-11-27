@@ -24,6 +24,8 @@ export function appearanceControlCSS(theme: AppearanceTheme, profile: Appearance
   if (icon?.style) iconStyle.push(`stroke-linecap:${icon.style === 'round' ? 'round' : 'square'}`, `stroke-linejoin:${icon.style === 'round' ? 'round' : 'miter'}`)
   if (colors.icon) iconStyle.push(`color:${colors.icon}`)
   if (iconStyle.length) rules.push(`${scope('svg.lucide')}{${iconStyle.join(';')}}`)
+  // An icon on a filled button (send, primary, destructive) keeps the button's own text colour, so it stays readable.
+  if (colors.icon) rules.push(`${scope(':is([data-theme-action="send"],.bg-primary,.bg-destructive) svg.lucide')}{color:currentColor}`)
 
   for (const [surface, target] of Object.entries(borderTargets) as [AppearanceBorderSurface, string][]) {
     const border: AppearanceBorder = surface === 'card'
