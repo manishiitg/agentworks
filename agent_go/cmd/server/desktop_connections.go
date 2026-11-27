@@ -525,6 +525,19 @@ func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *
 	proxy.ServeHTTP(w, r)
 }
 
+type desktopProject struct {
+	TeamLive      *crewTeamLiveView `json:"team_live,omitempty"`
+	OwnedByCaller *bool             `json:"owned_by_caller,omitempty"`
+	OwnerName     string            `json:"owner_name,omitempty"`
+	SharedLine    string            `json:"shared_line,omitempty"`
+	Icon          string            `json:"icon,omitempty"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name"`
+	Kind          string            `json:"kind"`
+	Mode          string            `json:"mode,omitempty"`
+	Role          string            `json:"role,omitempty"`
+}
+
 // desktopMemberCrew resolves only this person's active member copy on the named
 // connection. The Team lookup remains the single source of the local Crew ID.
 func desktopMemberCrew(owner, connection, project string) string {
@@ -548,4 +561,133 @@ func (api *StreamingAPI) handleDesktopMemberCrew(w http.ResponseWriter, r *http.
 	}
 	local := desktopMemberCrew(GetUserFromContext(r.Context()).UserID, mux.Vars(r)["connection"], mux.Vars(r)["project"])
 	desktopJSON(w, map[string]string{"project_id": local})
+}
+
+func (api *StreamingAPI) handleDesktopConnectionInventory(w http.ResponseWriter, r *http.Request) {
+	if !desktopConnectionGate(w, r) {
+		return
+	}
+	writeSharedRead(w, r, "inventory\x00"+GetUserFromContext(r.Context()).UserID+"\x00"+mux.Vars(r)["connection"], api.readDesktopConnectionInventory)
+}
+
+func (api *StreamingAPI) readDesktopConnectionInventory(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["connection"]
+	var selfConnection desktopConnection
+	base, token := "http://"+desktopBootstrapHost, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if id != "local" {
+		c, err := desktopConnectionFor(GetUserFromContext(r.Context()).UserID, id)
+		if err != nil {
+			http.Error(w, `{"error":"Connection is unavailable."}`, 404)
+			return
+		}
+		base, token = c.Server, c.Token
+		selfConnection = c
+	}
+	type result struct {
+		projects []desktopProject
+		status   int
+	}
+	results := make(chan result, 2)
+	failed := func(kind string, status int) {
+		log.Printf("[DESKTOP_INVENTORY] connection=%s list=%s status=%d", id, kind, status)
+	}
+	for _, kind := range []string{"crew", "goal"} {
+		go func(kind string) {
+			started := time.Now()
+			defer func() {
+				if id := clientSwitchID(r); id != "" {
+					log.Printf("[SWITCH_INVENTORY] switch=%q kind=%s duration=%s", id, kind, time.Since(started).Round(time.Millisecond))
+				}
+			}()
+			path, method, body := "/api/workflows/manifests", "GET", ""
+			if kind == "crew" {
+				path, method, body = "/api/workspaces", "POST", `{"action":"list","detail":"navigation"}`
+				if id != "local" {
+					body = `{"action":"list"}`
+				}
+			}
+			req, err := http.NewRequestWithContext(r.Context(), method, base+path, strings.NewReader(body))
+			if err != nil {
+				failed(kind, 502)
+				results <- result{status: 502}
+				return
+			}
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := desktopHTTPClient().Do(req)
+			if err != nil {
+				failed(kind, 502)
+				results <- result{status: 502}
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != 200 {
+				failed(kind, resp.StatusCode)
+				results <- result{status: resp.StatusCode}
+				return
+			}
+			var inventory struct {
+				Workspaces []struct {
+					TeamLive      *crewTeamLiveView `json:"team_live"`
+					OwnedByCaller *bool             `json:"owned_by_caller"`
+					OwnerName     string            `json:"owner_name"`
+					SharedLine    string            `json:"shared_line"`
+					ID            string            `json:"id"`
+					Name          string            `json:"name"`
+					Mode          string            `json:"mode"`
+					Role          string            `json:"role"`
+				} `json:"workspaces"`
+				Workflows []struct {
+					Manifest struct {
+						ID    string `json:"id"`
+						Label string `json:"label"`
+						Icon  string `json:"icon"`
+						Kind  string `json:"kind"`
+					} `json:"manifest"`
+				} `json:"workflows"`
+			}
+			if json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&inventory) != nil {
+				failed(kind, 502)
+				results <- result{status: 502}
+				return
+			}
+			projects := []desktopProject{}
+			user := GetUserFromContext(r.Context()).UserID
+			for _, p := range inventory.Workspaces {
+				if id != "local" && desktopMemberCrew(user, id, p.ID) != "" {
+					continue
+				}
+				// One row per Crew: skip the online copy of one of this person's own Mac Crews paired with this connection.
+				if id != "local" {
+					if local := crewLocalCopyOf(p.ID); local != "" && ownerOfCrewProjectID(local) == user {
+						if b, err := crewroot.ReadSync(local); err == nil && b != nil && b.Side == "local" && b.ConnectionID == id {
+							continue
+						}
+					}
+				}
+				if id != "local" {
+					crewTeamLiveLocalSelf(p.TeamLive, selfConnection)
+				}
+				projects = append(projects, desktopProject{TeamLive: p.TeamLive, ID: p.ID, Name: p.Name, Kind: "crew", Mode: p.Mode, Role: p.Role, OwnedByCaller: p.OwnedByCaller, OwnerName: p.OwnerName, SharedLine: p.SharedLine})
+			}
+			for _, p := range inventory.Workflows {
+				if p.Manifest.Kind != "relay" {
+					projects = append(projects, desktopProject{ID: p.Manifest.ID, Name: p.Manifest.Label, Kind: "goal", Icon: p.Manifest.Icon})
+				}
+			}
+			results <- result{projects: projects, status: 200}
+		}(kind)
+	}
+	projects := []desktopProject{}
+	status := "connected"
+	for range 2 {
+		result := <-results
+		projects = append(projects, result.projects...)
+		if result.status == 401 {
+			status = "sign_in"
+		} else if result.status != 200 && status != "sign_in" {
+			status = "unavailable"
+		}
+	}
+	desktopJSON(w, map[string]any{"projects": projects, "status": status})
 }
