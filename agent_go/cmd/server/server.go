@@ -1489,6 +1489,8 @@ func runServer(cmd *cobra.Command, args []string) {
 	defer stopAgentBridge()
 	stopDesktopCrewChats := api.startDesktopCrewChats()
 	defer stopDesktopCrewChats()
+	stopThisMacConnections := api.startThisMacConnections()
+	defer stopThisMacConnections()
 	stopMacWaiting := api.startCrewMacWaiting()
 	defer stopMacWaiting()
 	SetShareTunnelServerPort(actualPort)

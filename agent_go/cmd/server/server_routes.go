@@ -113,6 +113,8 @@ func (api *StreamingAPI) newServerRouter() (*mux.Router, *mux.Router) {
 	apiRouter.HandleFunc("/desktop-connections", api.handleDesktopConnections).Methods("GET", "POST")
 	apiRouter.HandleFunc("/desktop-connections/sign-in/{state}", api.handleDesktopSignInStatus).Methods("GET")
 	apiRouter.HandleFunc("/desktop-connections/{connection}/inventory", api.handleDesktopConnectionInventory).Methods("GET")
+	apiRouter.HandleFunc("/desktop-connections/{connection}/this-mac", api.handleThisMac).Methods("GET", "POST")
+	apiRouter.HandleFunc("/desktop-connections/{connection}/checkout", api.handleThisMacCheckout).Methods("GET")
 	apiRouter.HandleFunc("/desktop-connections/{connection}/member-crew/{project}", api.handleDesktopMemberCrew).Methods("GET")
 	apiRouter.HandleFunc("/desktop-connections/{connection}/provider-accounts", api.handleDesktopProviderAccountCopy).Methods("POST")
 	apiRouter.HandleFunc("/desktop-connections/{connection}/provider-accounts", api.handleDesktopProviderAccountStatus).Methods("GET")

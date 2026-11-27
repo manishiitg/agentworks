@@ -80,6 +80,8 @@ type desktopConnection struct {
 	Server string   `json:"server"`
 	User   UserInfo `json:"user"`
 	Token  string   `json:"token,omitempty"` // Only in the encrypted file, never in a response.
+	// DeviceToken connects this Mac to the server as the person's computer (desktop_this_mac.go). Encrypted file only.
+	DeviceToken string `json:"device_token,omitempty"`
 }
 
 var desktopConnectionsMu sync.Mutex
@@ -283,11 +285,12 @@ func (api *StreamingAPI) handleDesktopConnections(w http.ResponseWriter, r *http
 			http.Error(w, `{"error":"Cannot remove connection."}`, 500)
 			return
 		}
+		stopThisMac(id)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	for i := range records {
-		records[i].Token = ""
+		records[i].Token, records[i].DeviceToken = "", ""
 		// Every screen names a server the same way, as the Servers page does (owner, 10 Nov: the menu showed two
 		// servers as "Agentworkshq" from their web address).
 		records[i].Name = friendlyServerName(records[i].Name, records[i].Server)

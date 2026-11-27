@@ -1585,13 +1585,21 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   useEffect(() => {
     const open = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId?: string }>).detail
-      if (detail?.projectId !== selected?.id || isShared || !isWorkWorkspaceViewEnabled('identity', workspacePanels)) return
+      if (detail?.projectId !== selected?.id || isShared) return
+      // A server project opened in the Mac app keeps its folders on this Mac in Integrations (owner, 27 Nov).
+      if (isLocalDeployment() && remoteProjectConnection(selected?.id) && isWorkWorkspaceViewEnabled('mcp', workspacePanels)) {
+        setPanelOpen(true)
+        setWorkspaceViewTarget('mcp', 'mac-folders')
+        selectWorkspaceView('mcp')
+        return
+      }
+      if (!isWorkWorkspaceViewEnabled('identity', workspacePanels)) return
       setWorkspaceViewTarget('identity', 'location')
       selectWorkspaceView('identity')
     }
     window.addEventListener('agentworks:open-chat-laptop', open)
     return () => window.removeEventListener('agentworks:open-chat-laptop', open)
-  }, [selected?.id, isShared, workspacePanels, selectWorkspaceView])
+  }, [selected?.id, isShared, workspacePanels, selectWorkspaceView, setPanelOpen])
   useEffect(() => {
     const open = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId?: string }>).detail

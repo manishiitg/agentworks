@@ -20,6 +20,7 @@ import { isWorkIntegrationTabEnabled } from './workViewGating'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { integrationProductAvailable } from '../../components/integrations/integrationSections'
 import { isLocalDeployment } from '../productSurfaceConfig'
+import { remoteProjectConnection } from '../../utils/remoteSessions'
 import { ComputerUsePanel } from './ComputerUsePanel'
 
 export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'mac-folders' | 'slack-bot' | 'slack' | 'whatsapp' | 'cli' | 'access' | 'computer-use' | 'message-agents'
@@ -81,8 +82,11 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
         {tab === 'folders' && <WorkFoldersSection part={isLocalDeployment() ? 'linked' : 'all'} onOpenComputer={canEdit ? () => setTab('access') : undefined} workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />}
         {/* In the Mac app this is the folders attached on this Mac (Downloads, your whole Mac, picked folders); on a server it
-            is the person's laptop as seen from the server (owner, 4 Nov). */}
-        {tab === 'mac-folders' && (isLocalDeployment()
+            is the person's laptop as seen from the server (owner, 4 Nov). A server project opened in the Mac app uses this
+            Mac through its server, with your own folders for it (owner, 27 Nov). */}
+        {tab === 'mac-folders' && (isLocalDeployment() && remoteProjectConnection(projectId)
+          ? <CodeLocalFilesSettings sessionId={sessionId} thisMac={remoteProjectConnection(projectId)} />
+          : isLocalDeployment()
           ? <WorkFoldersSection part="attached" workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />
           : <CodeLocalFilesSettings sessionId={sessionId} />)}
         {tab === 'message-agents' && <ProjectAgentBridgePanel target={`workspace:${product.profileId}:${projectId}`} tabId={tabId} onAsk={draft} view="others" />}

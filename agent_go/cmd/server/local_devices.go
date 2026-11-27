@@ -308,7 +308,7 @@ func (api *StreamingAPI) localDeviceCallForOwner(ctx context.Context, claims *Us
 	}
 	value, ok := api.localDevices.Load(claims.UserID + "/" + deviceID)
 	if !ok {
-		return localfiles.Response{}, &wf.FileError{Status: 404, Message: "Your laptop is not connected. Start AgentWorks on that computer to use laptop tools; server work remains available."}
+		return localfiles.Response{}, &wf.FileError{Status: 404, Message: "Your computer is offline, so its folders cannot be reached right now. Open the AgentWorks app on it (or run agentworks start); work on the project's server files continues."}
 	}
 	device := value.(*localDeviceConnection)
 	// The acknowledgment must precede every request on the wire. A device may

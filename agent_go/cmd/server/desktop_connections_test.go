@@ -101,6 +101,18 @@ func TestDesktopConnectionProxyOwnerAndCredentialBoundary(t *testing.T) {
 	if strings.Contains(string(raw), "remote-renewed") {
 		t.Fatal("unencrypted token on disk")
 	}
+	// This Mac's computer connection (desktop_this_mac.go) is a credential too: encrypted on disk, never listed.
+	if err := writeDesktopConnections("owner", []desktopConnection{{ID: "saved", Server: remote.URL, Token: "remote-renewed", DeviceToken: "device-secret"}}); err != nil {
+		t.Fatal(err)
+	}
+	listed := httptest.NewRecorder()
+	api.handleDesktopConnections(listed, desktopTestRequest("GET", "/api/desktop-connections", "", "owner"))
+	if listed.Code != 200 || strings.Contains(listed.Body.String(), "device-secret") || strings.Contains(listed.Body.String(), "remote-renewed") {
+		t.Fatalf("connections list leaked a credential: %d %s", listed.Code, listed.Body.String())
+	}
+	if raw, _ := os.ReadFile(path); strings.Contains(string(raw), "device-secret") {
+		t.Fatal("unencrypted computer connection on disk")
+	}
 	// Direct Mac-to-server calls keep the renewal too; the Team chat call used to drop it and sign out after 7 days.
 	direct := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer remote-renewed" {
