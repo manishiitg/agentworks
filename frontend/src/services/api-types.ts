@@ -258,6 +258,8 @@ export interface ChatContextView {
   compact_early?: { on: boolean }
   /** Set for a long chat: picking another model first offers to compact (the server's words). */
   switch_note?: string
+  /** A model change waiting for this chat's reply to finish (switch after this reply); failed says why it did not happen. */
+  model_switch?: { label: string; compact?: boolean; stage: 'waiting' | 'compacting' | 'failed'; error?: string }
   compact_early_hint?: string
   /** A Claude chat only: on runs Claude Code as the native terminal (the AgentWorks mod drives it), off as the chat view. */
   claude_terminal?: { on: boolean }

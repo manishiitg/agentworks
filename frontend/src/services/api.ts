@@ -1351,7 +1351,7 @@ export const agentApi = {
   },
 
   /** Changes this chat's context switches or runs compact/fresh; answers with the new view and a message to show. */
-  setChatContext: async (body: { session_id: string; idle_compaction?: boolean; compact_early?: boolean; claude_terminal?: boolean; access_mode?: ChatAccessMode; action?: 'compact' }): Promise<{ context: ChatContextView; message?: string; starter_message?: string }> => {
+  setChatContext: async (body: { session_id: string; idle_compaction?: boolean; compact_early?: boolean; claude_terminal?: boolean; access_mode?: ChatAccessMode; action?: 'compact' | 'switch_after_reply' | 'cancel_switch'; switch?: { project_id: string; engine: string; model_id?: string; reasoning_effort?: string; connection_id?: string; label?: string; compact?: boolean } }): Promise<{ context: ChatContextView; message?: string; starter_message?: string }> => {
     const response = await api.post('/api/chat-context', body)
     return response.data
   },

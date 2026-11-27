@@ -17,9 +17,9 @@ import { AccountModelPicker } from '../../components/ui/AccountModelPicker'
 import { SharedTokenUsageItems } from '../../components/providers/SharedTokenUsageNotice'
 import { sharedAccountProvider } from '../../utils/tokenLimits'
 import { ACCOUNT_LISTED_PROVIDERS, ownDefaultConnectionId, useWorkModelChoices, useWorkModelSources } from './useWorkModelChoices'
-import { fetchChatContextShared } from './useChatContextView'
+import { fetchChatContextShared, useChatContextView } from './useChatContextView'
 
-import { changeChatContext, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
+import { changeChatContext, chatContextChangedEvent, menuLabelClass, menuRowClass, openChatContextMenuEvent } from './ChatContextItems'
 import { openChatContextPanelEvent } from '../../components/workspace/ChatContextSection'
 
 const chipClass = 'inline-flex max-w-40 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 data-[state=open]:bg-muted'
@@ -104,6 +104,24 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     fetchChatContextShared(sessionId).then(view => { if (active) { setSwitchNote(view?.switch_note || ''); setContextTokens(view?.used_tokens || 0) } }).catch(() => undefined)
     return () => { active = false }
   }, [menuOpen, sessionId])
+  // A switch waiting for this chat's reply (the server's): shown beside the chip with Cancel until it is done.
+  const contextView = useChatContextView(sessionId, busy, Boolean(sessionId))
+  const queuedSwitch = contextView?.model_switch
+  useEffect(() => {
+    if (!queuedSwitch || !sessionId) return
+    if (queuedSwitch.stage === 'failed') {
+      useChatStore.getState().addToast(queuedSwitch.error || 'The model was not changed.', 'error')
+      void changeChatContext(sessionId, { action: 'cancel_switch' })
+      return
+    }
+    const timer = window.setInterval(() => {
+      void fetchChatContextShared(sessionId, true).then(view => {
+        window.dispatchEvent(new CustomEvent(chatContextChangedEvent, { detail: view }))
+        if (!view.model_switch) void queryClient.invalidateQueries({ queryKey: workChatModelsQueryKey(profileId, projectId) })
+      }).catch(() => undefined)
+    }, 3000)
+    return () => window.clearInterval(timer)
+  }, [queuedSwitch?.stage, queuedSwitch?.label, sessionId])
   const confirmSwitchRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (pendingSwitch) confirmSwitchRef.current?.focus()
@@ -217,9 +235,29 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const finishSwitch = async (compactFirst: boolean) => {
     const pending = pendingSwitch
     if (!pending) return
+    const label = pendingModelLabel
     setPendingSwitch(null)
     setMenuOpen(false)
-    if (compactFirst && !(await changeChatContext(sessionId, { action: 'compact' }))) return
+    if (compactFirst || busy) {
+      // The server carries it out (switch after this reply): it waits for a running reply, summarizes first
+      // when asked and waits for that, then switches, so the summary always runs on the old model.
+      let model: string
+      let effort: string | undefined
+      let account: string | undefined
+      if (pending.option.id !== selectedOption.id) {
+        model = pending.modelId || destination.defaultForOption(pending.option, destinationConnection).modelId
+        if (!destination.selectableModels.some(item => item.model_id === model) || destination.accountSelectionDisabled) return
+        effort = destination.effortForPick(model, pending.effort, pending.option)
+        account = destinationConnection
+      } else {
+        const defaults = defaultForOption(pending.option, pending.connectionId || switchAccountFor(pending.option))
+        model = pending.modelId || defaults.modelId
+        effort = effortForPick(model, defaults.reasoningEffort, pending.option)
+        account = pending.connectionId || connectionId
+      }
+      await changeChatContext(sessionId, { action: 'switch_after_reply', switch: { project_id: projectId, engine: pending.option.id, model_id: model, reasoning_effort: effort, connection_id: account, label, compact: compactFirst } })
+      return
+    }
     if (pending.option.id !== selectedOption.id) {
       const model = pending.modelId || destination.defaultForOption(pending.option, destinationConnection).modelId
       if (!destination.selectableModels.some(item => item.model_id === model) || destination.accountSelectionDisabled) return
@@ -315,7 +353,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
       <Menu.Item disabled={changesCLI && (!destinationReady || destination.accountModelsLoading)} ref={confirmSwitchRef} className={`${switchActionClass} mb-2 border-foreground/80 bg-foreground text-background data-[highlighted]:opacity-90`}
         onSelect={() => void finishSwitch(!changesCLI)}>{changesCLI ? `Switch to ${pendingCLI}` : 'Summarize & switch'}</Menu.Item>
       {!changesCLI && <Menu.Item className={`${switchActionClass} border-border data-[highlighted]:bg-muted`} onSelect={() => void finishSwitch(false)}>Keep full history & switch</Menu.Item>}
-      <p className="mt-2 text-[11px] text-muted-foreground">{changesCLI ? 'Your chat stays here. No automatic summary.' : 'A summary keeps the key context, not every detail.'}</p>
+      <p className="mt-2 text-[11px] text-muted-foreground">{changesCLI ? 'Your chat stays here. No automatic summary.' : 'A summary keeps the key context, not every detail.'}{busy ? ' It happens when the current reply finishes.' : ''}</p>
       <Menu.Item className="ml-auto mt-3 w-fit cursor-pointer rounded px-1 py-0.5 text-xs text-muted-foreground outline-none data-[highlighted]:bg-muted data-[highlighted]:text-foreground" onSelect={event => { event.preventDefault(); setPendingSwitch(null) }}>Cancel</Menu.Item>
     </div> : <div className="min-w-0">
     {sourceText && <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-[11px] text-muted-foreground">
@@ -396,7 +434,10 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
     {!sessionId && <Menu.Item className={rowClass} onSelect={openUsage}><BarChart3 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Usage history</Menu.Item>}
     <Menu.Item className={rowClass} onSelect={openModels}><Settings2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />Models & accounts</Menu.Item>
     </div>}
-  </Chip>{effortChip}</>
+  </Chip>{effortChip}{queuedSwitch && queuedSwitch.stage !== 'failed' && <span data-testid="model-switch-queued" className="inline-flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground" title={queuedSwitch.compact ? 'The chat is summarized first, then the model changes.' : 'The model changes when the current reply finishes.'}>
+    <span className="truncate">{queuedSwitch.stage === 'compacting' ? `Summarizing → ${queuedSwitch.label}` : `→ ${queuedSwitch.label} after this reply`}</span>
+    {queuedSwitch.stage === 'waiting' && <button type="button" className="rounded px-1 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => void changeChatContext(sessionId, { action: 'cancel_switch' })}>Cancel</button>}
+  </span>}</>
 }
 
 /** "Gemini 4 Neon (High)" and "Gemini 4 Neon (Low)" go in one "Gemini 4 Neon" group, so a long account list
