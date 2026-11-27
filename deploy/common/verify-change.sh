@@ -510,6 +510,27 @@ run_go_checks() {
       *) run "go test $line" env VERIFY_ARGS="$line" bash -c 'eval "go test $VERIFY_ARGS -count=1"' ;;
     esac
   done < <(grep -E '^Verify-Test:' "$WORK/message.txt" | sed 's/^Verify-Test:[[:space:]]*//' || true)
+
+  # Layer 1 MCP E2E guardrail: when any MCP/bridge/OAuth/Vault/sandbox/slotfs/codingready
+  # file changes, automatically run the fast cross-module MCP E2E suite so cross-layer
+  # regressions (such as bridge config <-> slotfs ACLs or gateway upstream recovery)
+  # are caught even when a commit omits an explicit Verify-Test line.
+  local mcp_e2e_regex='^(agent_go/cmd/server/(.*(mcp|oauth|vault|bridge).*|server_routes\.go)|agent_go/pkg/mcpoauth/|mcp-gateway/|mcpagent/(agent/(coding_agents_bridge|connection_session|conversation|session|tool_discovery).*|cmd/mcpbridge/|executor/|mcpcache/|mcpclient/|oauth/)|multi-llm-provider-go/(internal/(clisandbox|slotfs)/|pkg/codingready/))'
+  if [[ "${VERIFY_SKIP_AUTO_MCP_E2E:-0}" != "1" ]] && grep -qE "$mcp_e2e_regex" "$WORK/changed.txt"; then
+    step "Auto Layer 1 MCP E2E guardrail triggered"
+    if [[ -d "$WORK/repo/agent_go/cmd/server" ]]; then
+      run "go test (auto MCP E2E: server)" env VERIFY_DIR="$WORK/repo/agent_go" bash -c 'cd "$VERIFY_DIR" && go test ./cmd/server -run "^TestMCPFullChainE2E" -count=1'
+    fi
+    if [[ -d "$WORK/repo/multi-llm-provider-go/internal/clisandbox" ]]; then
+      run "go test (auto MCP E2E: slotfs/sandbox/ready)" env VERIFY_DIR="$WORK/repo/multi-llm-provider-go" bash -c 'cd "$VERIFY_DIR" && go test ./internal/clisandbox ./internal/slotfs ./pkg/codingready -run "^(TestMCPBridgeSlotLifecycleE2E|TestGrantLockedSkipsPathsOwnedBySlot|TestPrepareColdLaunch|TestWaitForMCPReadyFileAfter)" -count=1'
+    fi
+    if [[ -d "$WORK/repo/mcp-gateway/e2e" ]]; then
+      run "go test (auto MCP E2E: mcp-gateway)" env VERIFY_DIR="$WORK/repo/mcp-gateway" bash -c 'cd "$VERIFY_DIR" && go test ./e2e -run "^(TestM0GovernedCallPath|TestMCPGatewayE2EUpstreamSessionRecovery)" -count=1'
+    fi
+    if [[ -d "$WORK/repo/agent_go/pkg/mcpoauth" ]]; then
+      run "go test (auto MCP E2E: mcpoauth)" env VERIFY_DIR="$WORK/repo/agent_go/pkg/mcpoauth" bash -c 'cd "$VERIFY_DIR" && go test ./... -count=1'
+    fi
+  fi
 }
 
 run_frontend_checks() {

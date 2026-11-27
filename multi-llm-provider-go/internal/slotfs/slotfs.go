@@ -355,6 +355,14 @@ var lookupSlotUID = func(name string) (string, error) {
 	return u.Uid, nil
 }
 
+// SetLookupSlotUIDForTest overrides lookupSlotUID for cross-package tests and
+// returns a restore function.
+func SetLookupSlotUIDForTest(fn func(string) (string, error)) func() {
+	prior := lookupSlotUID
+	lookupSlotUID = fn
+	return func() { lookupSlotUID = prior }
+}
+
 // WithSlotDocker returns env with DOCKER_HOST set to the slot's own Docker socket when this host gives every slot
 // one (config slot_docker); otherwise env is unchanged. The platform's own DOCKER_HOST (its account's socket, in a
 // folder only that account can open) is replaced, never passed through.
