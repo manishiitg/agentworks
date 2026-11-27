@@ -105,8 +105,13 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
     expect(chats).not.toHaveBeenCalled()
 
     expect(page().querySelector('select')).toBeNull()
-    // A simple page (owner, 24 Nov): Yours and Shared with you, no place tabs or ownership chips.
-    expect(page().querySelectorAll('[role="tab"]')).toHaveLength(0)
+    // Tabs for easy navigation (owner, 27 Nov): a server's tab lists only that server's projects; All is the full page.
+    const tab = (name: string) => [...page().querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(item => item.textContent?.startsWith(name))!
+    await act(async () => tab('Team space').click())
+    expect(page().textContent).toContain('Gamma')
+    expect(page().textContent).not.toContain('Beta')
+    await act(async () => tab('All').click())
+    expect(tab('All').getAttribute('aria-selected')).toBe('true')
     expect(page().textContent).not.toContain('Mine')
     expect(page().querySelector('section[aria-label="Yours"]')?.textContent).toContain('Beta')
     expect(page().querySelector('section[aria-label="Yours"]')?.textContent).toContain('Gamma')
