@@ -301,9 +301,12 @@ func (api *StreamingAPI) handleGetTools(w http.ResponseWriter, r *http.Request) 
 		cfg = api.baseMCPConfig()
 	}
 
+	// Resolve connected Vault servers once (stale-while-revalidate) instead of
+	// repeating remote Vault lookups per configured MCP server (#4394).
+	connectedVault := vaultServerSetFor(withServerVaultAllowStale(r.Context()), userID)
 	allResults := make([]ToolStatus, 0, len(cfg.MCPServers))
 	for name, config := range cfg.MCPServers {
-		status := api.mcpToolStatusForUser(name, userID, config)
+		status := mcpToolStatusFromSet(name, connectedVault)
 		status.Description = config.Description
 		status.RequiresOAuth = config.OAuth != nil
 		allResults = append(allResults, status)

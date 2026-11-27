@@ -138,7 +138,9 @@ func (api *StreamingAPI) handleProviderConnections(w http.ResponseWriter, r *htt
 	case http.MethodGet:
 		// Matching company accounts with remote servers asks each server; run it in the background on normal
 		// loads so the accounts list returns immediately from local state, and only wait inline on refresh=true.
+		listCtx := r.Context()
 		if r.URL.Query().Get("refresh") == "true" {
+			listCtx = withProviderAccountConfiguredWait(listCtx)
 			synced := make(chan struct{})
 			go func() { api.syncCompanyAccounts(context.Background(), userID); close(synced) }()
 			select {
@@ -148,7 +150,7 @@ func (api *StreamingAPI) handleProviderConnections(w http.ResponseWriter, r *htt
 		} else {
 			go api.syncCompanyAccounts(context.Background(), userID)
 		}
-		connections, err := api.listProviderAccountViews(r.Context(), userID, currentUserIsAdmin(r), providerAccountScope{Principal: userID, WorkspacePath: r.URL.Query().Get("workspace_path"), Product: r.URL.Query().Get("product")})
+		connections, err := api.listProviderAccountViews(listCtx, userID, currentUserIsAdmin(r), providerAccountScope{Principal: userID, WorkspacePath: r.URL.Query().Get("workspace_path"), Product: r.URL.Query().Get("product")})
 		if err != nil {
 			http.Error(w, "cannot load provider connections", http.StatusInternalServerError)
 			return

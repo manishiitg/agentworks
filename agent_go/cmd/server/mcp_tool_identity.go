@@ -48,14 +48,25 @@ func (api *StreamingAPI) mcpToolUserID(ctx context.Context) (string, error) {
 }
 
 // Connection status comes from the current Vault inventory, never a private store.
-func (api *StreamingAPI) mcpToolStatusForUser(name, person string, _ mcpclient.MCPServerConfig) ToolStatus {
-	rows, err := vaultServersFor(context.Background(), person)
-	if err == nil {
-		for _, row := range rows {
-			if vaultServerName(row.ID) == name {
-				return ToolStatus{Name: name, Server: name, Status: "not_loaded", Connection: connectionConnected}
-			}
-		}
+func vaultServerSetFor(ctx context.Context, person string) map[string]struct{} {
+	rows, err := vaultServersFor(ctx, person)
+	if err != nil || len(rows) == 0 {
+		return nil
+	}
+	connected := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		connected[vaultServerName(row.ID)] = struct{}{}
+	}
+	return connected
+}
+
+func mcpToolStatusFromSet(name string, connected map[string]struct{}) ToolStatus {
+	if _, ok := connected[name]; ok {
+		return ToolStatus{Name: name, Server: name, Status: "not_loaded", Connection: connectionConnected}
 	}
 	return ToolStatus{Name: name, Server: name, Status: "not_connected", Connection: connectionAvailable}
+}
+
+func (api *StreamingAPI) mcpToolStatusForUser(name, person string, _ mcpclient.MCPServerConfig) ToolStatus {
+	return mcpToolStatusFromSet(name, vaultServerSetFor(context.Background(), person))
 }

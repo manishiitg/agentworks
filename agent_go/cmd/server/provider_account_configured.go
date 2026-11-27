@@ -13,16 +13,36 @@ import (
 // account's Status button; results are cached briefly so listing accounts
 // does not start a CLI every time. Unknown never blocks: it reports nil.
 
-const providerAccountConfiguredTTL = 2 * time.Minute
+const (
+	providerAccountConfiguredTTL      = 2 * time.Minute
+	providerAccountConfiguredStaleTTL = 30 * time.Minute
+	providerAccountConfiguredErrorTTL = 60 * time.Second
+)
 
-// providerAccountConfiguredWait bounds how long one list request waits for
-// uncached checks; slower ones still land in the cache for the next list.
+// providerAccountConfiguredWait bounds how long an explicit ?refresh=true list
+// request waits for uncached checks; normal loads return immediately and warm
+// the cache in the background (#4394).
 var providerAccountConfiguredWait = 6 * time.Second
+
+type providerAccountConfiguredWaitKey struct{}
+
+func withProviderAccountConfiguredWait(ctx context.Context) context.Context {
+	return context.WithValue(ctx, providerAccountConfiguredWaitKey{}, true)
+}
+
+func providerAccountConfiguredShouldWait(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	wait, _ := ctx.Value(providerAccountConfiguredWaitKey{}).(bool)
+	return wait
+}
 
 type providerAccountConfiguredEntry struct {
 	configured *bool
 	identity   string
 	at         time.Time
+	ttl        time.Duration
 }
 
 var providerAccountConfiguredCache = struct {
@@ -44,7 +64,29 @@ func rememberProviderAccountStatus(id string, status providerAccountStatus) {
 		configured = &no
 	}
 	providerAccountConfiguredCache.Lock()
-	providerAccountConfiguredCache.entries[id] = providerAccountConfiguredEntry{configured: configured, identity: status.Identity, at: time.Now()}
+	providerAccountConfiguredCache.entries[id] = providerAccountConfiguredEntry{
+		configured: configured,
+		identity:   status.Identity,
+		at:         time.Now(),
+		ttl:        providerAccountConfiguredTTL,
+	}
+	providerAccountConfiguredCache.Unlock()
+}
+
+func rememberProviderAccountProbeFailure(id string) {
+	providerAccountConfiguredCache.Lock()
+	// Keep any existing non-expired stale value if present; otherwise cache a
+	// short unknown entry so a broken/slow CLI does not re-probe every request.
+	if prev, ok := providerAccountConfiguredCache.entries[id]; ok && time.Since(prev.at) <= providerAccountConfiguredStaleTTL {
+		prev.at = time.Now()
+		prev.ttl = providerAccountConfiguredErrorTTL
+		providerAccountConfiguredCache.entries[id] = prev
+	} else {
+		providerAccountConfiguredCache.entries[id] = providerAccountConfiguredEntry{
+			at:  time.Now(),
+			ttl: providerAccountConfiguredErrorTTL,
+		}
+	}
 	providerAccountConfiguredCache.Unlock()
 }
 
@@ -54,13 +96,32 @@ func cachedProviderAccountConfigured(id string) (*bool, bool) {
 }
 
 func cachedProviderAccountEntry(id string) (providerAccountConfiguredEntry, bool) {
-	providerAccountConfiguredCache.Lock()
-	defer providerAccountConfiguredCache.Unlock()
-	entry, ok := providerAccountConfiguredCache.entries[id]
-	if !ok || time.Since(entry.at) > providerAccountConfiguredTTL {
+	entry, fresh, _ := lookupProviderAccountEntry(id)
+	if !fresh {
 		return providerAccountConfiguredEntry{}, false
 	}
 	return entry, true
+}
+
+func lookupProviderAccountEntry(id string) (entry providerAccountConfiguredEntry, fresh, stale bool) {
+	providerAccountConfiguredCache.Lock()
+	defer providerAccountConfiguredCache.Unlock()
+	entry, ok := providerAccountConfiguredCache.entries[id]
+	if !ok {
+		return providerAccountConfiguredEntry{}, false, false
+	}
+	ttl := entry.ttl
+	if ttl <= 0 {
+		ttl = providerAccountConfiguredTTL
+	}
+	age := time.Since(entry.at)
+	if age <= ttl {
+		return entry, true, false
+	}
+	if age <= providerAccountConfiguredStaleTTL {
+		return entry, false, true
+	}
+	return providerAccountConfiguredEntry{}, false, false
 }
 
 // providerAccountStatusProbe runs one account's status check; swappable in
@@ -90,9 +151,12 @@ func (api *StreamingAPI) fillProviderAccountConfigured(ctx context.Context, view
 			// Whose login it is, from the same status check as the
 			// Status button (a key has no identity to show).
 			if configured {
-				if entry, ok := cachedProviderAccountEntry(view.ID); ok {
+				if entry, fresh, stale := lookupProviderAccountEntry(view.ID); fresh {
 					view.Identity = entry.identity
 				} else {
+					if stale {
+						view.Identity = entry.identity
+					}
 					pending[i] = view.ID
 				}
 			}
@@ -113,9 +177,11 @@ func (api *StreamingAPI) fillProviderAccountConfigured(ctx context.Context, view
 			view.Configured = &configured
 			continue
 		}
-		if entry, ok := cachedProviderAccountEntry(view.ID); ok {
+		if entry, fresh, stale := lookupProviderAccountEntry(view.ID); fresh {
 			view.Configured, view.Identity = entry.configured, entry.identity
 			continue
+		} else if stale {
+			view.Configured, view.Identity = entry.configured, entry.identity
 		}
 		pending[i] = view.ID
 	}
@@ -142,8 +208,13 @@ func (api *StreamingAPI) fillProviderAccountConfigured(ctx context.Context, view
 			defer cancel()
 			if status, ok := providerAccountStatusProbe(probeCtx, api, id); ok {
 				rememberProviderAccountStatus(id, status)
+			} else {
+				rememberProviderAccountProbeFailure(id)
 			}
 		}(id)
+	}
+	if !providerAccountConfiguredShouldWait(ctx) {
+		return
 	}
 	done := make(chan struct{})
 	go func() { wg.Wait(); close(done) }()
