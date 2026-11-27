@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -179,8 +180,10 @@ func TestRemoveCrewExecutableBindingRemovesOnlyThatWorkflow(t *testing.T) {
 	}
 }
 
-// Delete removes the workflow's code, runs, saved settings and definition, and nothing of its neighbours.
-func TestRemoveCrewWorkflowFilesRemovesOnlyThatWorkflow(t *testing.T) {
+// crewWorkflowFilesFixture registers project Crew/example with one script workflow "report" on disk and returns
+// the project's .agentworks folder. databaseRoot is the registration's database_root (empty for none).
+func crewWorkflowFilesFixture(t *testing.T, databaseRoot string) (string, crewExecutableBinding) {
+	t.Helper()
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -195,7 +198,7 @@ func TestRemoveCrewWorkflowFilesRemovesOnlyThatWorkflow(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", state)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "local")
 	t.Setenv("WORKSPACE_DOCS_PATH", docs)
-	records, _ := json.Marshal(map[string]any{"projects": map[string]crewroot.Record{"work/example": {Product: "work", Folder: "example", ID: "crew", Owner: "owner"}}})
+	records, _ := json.Marshal(map[string]any{"projects": map[string]crewroot.Record{"work/example": {Product: "work", Folder: "example", ID: "crew", Owner: "owner", DatabaseRoot: databaseRoot}}})
 	if err := os.WriteFile(filepath.Join(state, "ownership", "projects.json"), records, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +207,24 @@ func TestRemoveCrewWorkflowFilesRemovesOnlyThatWorkflow(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(state, "ownership", "crew-executables", fmt.Sprintf("%x.json", sha256.Sum256([]byte(binding.Root)))), raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	automation := filepath.Join(project, ".agentworks")
+	return filepath.Join(project, ".agentworks"), binding
+}
+
+func writeTestFiles(t *testing.T, files ...string) {
+	t.Helper()
+	for _, file := range files {
+		if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// Delete removes the workflow's code, runs, saved settings and definition, and nothing of its neighbours.
+func TestRemoveCrewWorkflowFilesRemovesOnlyThatWorkflow(t *testing.T) {
+	automation, binding := crewWorkflowFilesFixture(t, "")
 	mine := []string{
 		filepath.Join(automation, "code", "report", "main.py"),
 		filepath.Join(automation, "automations", "report", "runs", "run-1", "result.json"),
@@ -216,14 +236,7 @@ func TestRemoveCrewWorkflowFilesRemovesOnlyThatWorkflow(t *testing.T) {
 		filepath.Join(automation, "automations", "neighbour", "runs", "run-1", "result.json"),
 		filepath.Join(automation, "db", "db.sqlite"),
 	}
-	for _, file := range append(append([]string{}, mine...), kept...) {
-		if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
+	writeTestFiles(t, append(append([]string{}, mine...), kept...)...)
 
 	if err := removeCrewWorkflowFiles(binding); err != nil {
 		t.Fatal(err)
@@ -247,6 +260,45 @@ func TestRemoveCrewWorkflowFilesRemovesOnlyThatWorkflow(t *testing.T) {
 	if err := removeCrewWorkflowFiles(binding); err != nil {
 		t.Fatalf("removing twice: %v", err)
 	}
+}
+
+// #4137: a project converted from a workflow kept its database (and managed dashboards) inside that workflow's
+// folder (database_root). Deleting the workflow deleted the project's data; now the database moves to the
+// project's own db/ first, or the delete is refused when the project already has a db/ with files.
+func TestRemoveCrewWorkflowFilesKeepsTheProjectDatabase(t *testing.T) {
+	t.Run("moves it to the project's db", func(t *testing.T) {
+		automation, binding := crewWorkflowFilesFixture(t, "automations/report/db")
+		writeTestFiles(t, filepath.Join(automation, "automations", "report", "db", "db.sqlite"), filepath.Join(automation, "automations", "report", "db", "reports", "managed", "sales", "index.html"))
+		if err := removeCrewWorkflowFiles(binding); err != nil {
+			t.Fatal(err)
+		}
+		for _, file := range []string{"db/db.sqlite", "db/reports/managed/sales/index.html"} {
+			if _, err := os.Stat(filepath.Join(automation, filepath.FromSlash(file))); err != nil {
+				t.Errorf("project data %s must survive the delete: %v", file, err)
+			}
+		}
+		if _, err := os.Stat(filepath.Join(automation, "automations", "report")); !os.IsNotExist(err) {
+			t.Errorf("the workflow's folder must still be removed, stat error %v", err)
+		}
+		if record, _ := defaultProjectOwners().Lookup("work", "example"); record.DatabaseRoot != "" {
+			t.Errorf("database_root must be cleared, got %q", record.DatabaseRoot)
+		}
+	})
+	t.Run("refuses when the project has its own db already", func(t *testing.T) {
+		automation, binding := crewWorkflowFilesFixture(t, "automations/report/db")
+		held := filepath.Join(automation, "automations", "report", "db", "db.sqlite")
+		writeTestFiles(t, held, filepath.Join(automation, "db", "db.sqlite"))
+		var refusal crewWorkflowDeleteRefusal
+		if err := removeCrewWorkflowFiles(binding); !errors.As(err, &refusal) {
+			t.Fatalf("want a refusal, got %v", err)
+		}
+		if _, err := os.Stat(held); err != nil {
+			t.Errorf("a refused delete must keep the database: %v", err)
+		}
+		if record, _ := defaultProjectOwners().Lookup("work", "example"); record.DatabaseRoot == "" {
+			t.Error("a refused delete must keep database_root")
+		}
+	})
 }
 
 // A Crew can hold several workflows, and no two of them share a name (ignoring case and extra spaces).
