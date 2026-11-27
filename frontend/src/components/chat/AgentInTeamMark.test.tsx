@@ -125,6 +125,20 @@ describe('AgentHeaderLine sharing pill', () => {
 
       // Shared agent name opens details without sharing; the header Team pill opens bare sharing directly.
       await act(async () => root.render(<AgentHeaderLine crewName="ai-work" agent={sharedRow} />))
+      // Clicking a renameable agent's name in the header starts inline rename without opening the menu.
+      const headerNameButton = host.querySelector<HTMLButtonElement>('button[aria-label="Rename Design"]')
+      expect(headerNameButton).not.toBeNull()
+      await act(async () => headerNameButton!.click())
+      expect(document.body.querySelector('[role="dialog"][aria-label="Design"]')).toBeNull()
+      const headerRenameInput = host.querySelector<HTMLInputElement>('input[aria-label="Rename Design"]')
+      expect(headerRenameInput).not.toBeNull()
+      await act(async () => {
+        headerRenameInput!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      })
+      expect(rename).toHaveBeenCalledWith('Design')
+      rename.mockClear()
+
+      // Clicking the header caret opens the details menu with stacked action rows.
       const sharedTrigger = host.querySelector<HTMLButtonElement>('button[aria-label="About Design"]')
       expect(sharedTrigger).not.toBeNull()
       await act(async () => sharedTrigger!.click())
