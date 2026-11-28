@@ -101,7 +101,7 @@ function TerminalCommandPopup({ command, onClose }: { command: string; onClose: 
         </div>
         <p className="text-muted-foreground">Paste this in your terminal. It opens this chat in Claude Code with its full history.</p>
         <code className="block max-h-32 overflow-y-auto break-all rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs">{command}</code>
-        <p className="text-xs text-muted-foreground">To bring it back, run <code className="font-mono">/agentworks attach</code> in that Claude chat. Says “unknown command”? Run <code className="font-mono">agentworks update</code> first.</p>
+        <p className="text-xs text-muted-foreground">To bring it back, run <code className="font-mono">/agentworks attach</code> in that Claude chat. Says “unknown command”? Your <code className="font-mono">agentworks</code> command is older than this app: update the AgentWorks Mac app.</p>
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-md px-3 py-1.5 text-muted-foreground hover:bg-muted">Close</button>
           <button type="button" onClick={copy} className="rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground hover:opacity-90">{copied ? 'Copied' : 'Copy command'}</button>
