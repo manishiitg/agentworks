@@ -2,7 +2,7 @@ import { ChevronDown } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
 
 /** A collapsed section of the agent card; summaries stay visible when it is closed. */
-export function AgentDetailSection({ title, value, summary, defaultOpen = false, children }: { title: string; value?: string; summary?: ReactNode; defaultOpen?: boolean; children: ReactNode }) {
+export function AgentDetailSection({ title, value, aside, summary, defaultOpen = false, children }: { title: string; value?: string; /** Shown before the chevron, e.g. icons. */ aside?: ReactNode; summary?: ReactNode; defaultOpen?: boolean; children: ReactNode }) {
   const id = useId()
   const [open, setOpen] = useState(defaultOpen)
   return <section className="min-w-0 border-t border-border pt-0.5 first:border-t-0 first:pt-0">
@@ -10,6 +10,7 @@ export function AgentDetailSection({ title, value, summary, defaultOpen = false,
       className="flex min-h-9 w-full min-w-0 items-center gap-2 rounded-md px-1 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11">
       <span className="shrink-0 font-medium">{title}</span>
       <span title={value} className="min-w-0 flex-1 truncate text-right text-muted-foreground">{value}</span>
+      {aside}
       <ChevronDown aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 text-muted-foreground ${open ? '' : '-rotate-90'}`} />
     </button>
     {summary}
