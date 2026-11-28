@@ -2549,6 +2549,12 @@ func (api *StreamingAPI) steerBackgroundAgentCompletion(sessionID, agentID strin
 	continuationExecutionID := "synthetic-turn:" + messageID
 	api.trackSyntheticConversationTurnStart(continuationExecutionID, sessionID, snap.ParentExecutionID, msg)
 	api.markRetainedMainCodingTurnRunning(sessionID, continuationExecutionID)
+	if !api.retainedMainTurnTracked(sessionID) {
+		// No live terminal took it (Claude SDK and other native transports): the result joined the running reply,
+		// so no completion of its own will come. Settle it when that reply ends; left open, it kept the chat
+		// "running" until Stop (Air-2 28 Nov: five workflow results steered at 09:30-09:34, spinner until 10:29).
+		go api.settleJoinedBackgroundResult(sessionID, continuationExecutionID)
+	}
 
 	// Commit the dedup only after a confirmed SentToCLI hand-off and after its
 	// continuation is present in the execution tree.
@@ -2558,6 +2564,17 @@ func (api *StreamingAPI) steerBackgroundAgentCompletion(sessionID, agentID strin
 	api.emitAutoNotificationSteered(sessionID, snap.ID, snap.Name, string(snap.Status), provider)
 	log.Printf("[BG AGENT] Steered completion for agent %s into busy session %s (provider=%s status=%s)", agentID, sessionID, provider, deliveryStatus)
 	return true
+}
+
+// settleJoinedBackgroundResult completes a steered background result that joined the running reply once that reply
+// has ended.
+func (api *StreamingAPI) settleJoinedBackgroundResult(sessionID, executionID string) {
+	deadline := time.Now().Add(12 * time.Hour)
+	for (api.isSessionBusy(sessionID) || api.hasActiveTurnCancel(sessionID)) && time.Now().Before(deadline) {
+		time.Sleep(3 * time.Second)
+	}
+	api.completeTrackedExecution(executionID, trackedExecutionStatusCompleted, "", map[string]string{"settled_reason": "answered_in_running_turn"})
+	log.Printf("[BG AGENT] Settled steered background result session=%s execution=%s reason=answered_in_running_turn", sessionID, executionID)
 }
 
 func (api *StreamingAPI) isFinalBotAutoNotification(sessionID string) bool {
