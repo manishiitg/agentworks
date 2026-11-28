@@ -13,7 +13,7 @@ Project combines private project and coding work with reusable agents. Start wit
 To delete a project when the person asks, discover `manage_project action=delete`; pass its `crew_id` and required `confirm` value using the current schema.
 New projects start **Only me**. Share changes the same hosted project's audience;
 Use the current action families returned by discovery. Project and chat identities stay stable.
-A project has a name and no description (each agent, Main included, has its own purpose). It can have standing instructions (`chat_instructions`), skills, typed **functions**,
+A project has a name and no description (each agent has its own purpose). It can have standing instructions (`chat_instructions`), skills, typed **functions**,
 schedules, a dashboard and project files. Memory is optional; existing projects
 keep their setting. A project runs where it is installed. Local workflows stay on the laptop; connecting or syncing a project does not move its workflows or schedules to another server.
 A project has one main owner. A project on the server has co-owners (`crew_owners`, only
@@ -26,8 +26,11 @@ Files, conversations, accounts and secrets keep their current server checks;
 sharing never exposes secret values or unrelated private chats.
 
 Read `panel-access` and its Sharing and Team references before changing access.
-Share separates working with a Team, sharing agents, Slack and dashboards. People
-have the current **Works with me** or **Dashboards only** level. Agent Ask,
+On the server, sharing is three things: People who work in the project (`crew_owners`),
+bots, its agents others use without joining with the functions the maker ticks (`bots`),
+and the dashboard, shared by its link (`share_dashboard`). On a Mac, Share separates the
+Team, sharing agents, Slack and dashboards; people have the **Works with me** or
+**Dashboards only** level. Agent Ask,
 change permission and chat visibility are separate settings; Actions form one
 Project-wide list. Discover the current tools, inspect saved state, preserve omitted
 people/settings and read back the result. An invitation is not an accepted Team
@@ -108,9 +111,10 @@ A function is a typed entry point: `name` (snake_case), `description` (for calle
 type, properties, required, items, enum).
 
 - By default, a function runs in its own named tab, keeps earlier calls' conversation and queues
-  calls to take turns. It never runs in the project's main chat. Set `agent` to share a named tab
+  calls to take turns. It never runs in one of the project's agent chats unless `agent` names one. Set `agent` to share a named tab
   between functions. Set `execution: "new"` for a new chat for every call, especially when inputs
   are private or untrusted: earlier input in a shared tab can influence later answers.
+- Called through a bot, a function runs as that bot's agent in a fresh chat for each call.
 - Inputs are checked before anything starts. Each call has its own output folder
   (`.calls/<call_id>/`). A function runs with the OWNER's authority for every caller,
   so write instructions that are safe for whoever may call it. Fresh calls may run in parallel;
@@ -301,7 +305,7 @@ selected agents and each agent's chat visibility before promising transcript
 access. Discover agents through `workspace action=chats` or
 `messages action=list_agents`; use the exact returned target/chat_id to read or
 send an attributed request. Live and Hidden have different chat
-visibility. Published Main and last-shared-agent restrictions are server-owned;
+visibility. Last-shared-agent restrictions are server-owned;
 do not bypass a refused switch. Only the tab's owner controls its steering,
 Stop, reset, model and owner confirmations. Acceptance is not a completed answer.
 

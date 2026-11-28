@@ -15,6 +15,7 @@ metadata:
     - manage_laptop_access
     - manage_crew_sync
     - crew_owners
+    - bots
     - list_secrets
     - set_workflow_secret
     - delete_workflow_secret
@@ -62,6 +63,7 @@ metadata:
   - share
   - workspace
   - relay_owners
+  - bots
   - settings
   - integrations
   - terminal
@@ -78,6 +80,7 @@ Share a product, select accounts, secrets and connections, contact agents, or wo
 Start with the person's request and the current product. Read only the relevant procedure below: in product chat use `read_skill` with this skill name as `skill_name` and the listed `path` (chat has no `help action=topic`); only an MCP client uses `help action=topic` with this name as `topic` and the listed `path`. Use the actions offered by the current tool catalog. A guide does not grant access.
 
 - Sharing: read `references/sharing/SKILL.md` when needed.
+- Bots (an agent of a project on the server that others use without joining it; make one, choose who uses it and which functions it offers, or use and add someone else's): read `references/bots/SKILL.md`; the tool is `bots`.
 - Who builds or works in a project on the server (co-owners, Users who work through chat with your setup, a User's locked files, the project's welcome page `WELCOME.md`): read `references/owners/SKILL.md`; the tool is `crew_owners`.
 - A project on this Mac (reach, links, who can message its agents, what keeps running while the Mac is off): read `references/crew-on-mac/SKILL.md` when needed.
 - Team (the Team kit, asks and Needs-you cards, offline agents, people, shared folders): read `references/team/SKILL.md` when needed.
