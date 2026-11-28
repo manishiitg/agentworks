@@ -6,11 +6,10 @@ import { DesktopConnections } from './DesktopConnections'
 import { SidebarActions } from './SidebarActions'
 import { WorkspaceProjectsProvider } from './WorkspaceProjectsProvider'
 import ProjectsDirectory from './ProjectsDirectory'
-import { useProjectsPage } from '../../utils/appNavigation'
+import { openAppPage, openAppProduct, useProjectsPage } from '../../utils/appNavigation'
 import { connectedProjectKey } from '../../utils/connectedWorkPresentation'
 import { connectedWorkHistoryScope, useProjectMenuHistoryStore } from '../../stores/useProjectMenuHistoryStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
-import { openAppProduct } from '../../utils/appNavigation'
 import { agentApi } from '../../services/api'
 import { useSidebarProjectAction } from '../../products/work/sidebarProjectActions'
 
@@ -92,10 +91,11 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
   const click = async (name: string, parent?: ParentNode) => act(async () => button(name, parent).click())
   try {
     await act(async () => root.render(<WorkspaceProjectsProvider><Screen /></WorkspaceProjectsProvider>))
-    // The sidebar's Projects button is the one way to the Projects page; no second "Browse projects" link.
+    // Projects link is removed from the left menu now that More projects covers browsing directly.
     expect(side().textContent).not.toContain('Browse projects')
+    expect(button('Projects', side())).toBeUndefined()
     expect(side().textContent).not.toContain('Beta')
-    await click('Projects', side())
+    await act(async () => openAppPage('/projects'))
     expect(window.location.pathname).toBe('/projects')
     const page = () => host.querySelector('main')!
     expect(page().querySelector('h1')?.textContent).toBe('Projects')
@@ -153,7 +153,7 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
     await act(async () => moreToggle.click())
     expect(side().textContent).not.toContain('Beta')
 
-    await click('Projects', side())
+    await act(async () => openAppPage('/projects'))
     const query = page().querySelector('input')!
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(query, 'beta'); query.dispatchEvent(new Event('input', { bubbles: true })) })
     expect(page().textContent).not.toContain('Alpha')
