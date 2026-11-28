@@ -37,7 +37,6 @@ func (api *StreamingAPI) newServerRouter() (*mux.Router, *mux.Router) {
 	apiRouter.Use(agentBridgeAPIMiddleware)
 	apiRouter.Use(api.crewChatRelayMiddleware)
 	apiRouter.HandleFunc("/crews/{project}/panel", api.handleCrewPanel).Methods("GET")
-	apiRouter.HandleFunc(strings.TrimPrefix(dashboardAppFramePath, "/api"), api.dashboardAppFrame).Methods("GET")
 	apiRouter.HandleFunc("/bullpen/agents", api.handleBullpenAgents).Methods("GET")
 	apiRouter.HandleFunc("/agent-directory", api.handleAgentDirectory).Methods("GET")
 	apiRouter.HandleFunc("/agent-message-identity", api.handleAgentMessageIdentity).Methods("GET")

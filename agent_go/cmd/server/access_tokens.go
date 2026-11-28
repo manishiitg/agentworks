@@ -437,9 +437,6 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		// still enforces its own rule. A read-only token keeps its smaller tool list.
 		return externalWorkspaceAllowed(c) || projectCreationAvailable(c) || c != nil && c.AccessToken != nil && c.AccessToken.BuilderAccess() && tool.actions != nil && externalMergedAllows(c, tool)
 	}
-	if tool.Name == "open_dashboard" {
-		return userAllowedProduct(c, crewProfileID) && dashboardScopeAllowed(c, "get")
-	}
 	if tool.Name == "browser_connections" {
 		return externalBrowserConnectionsAllowed(c)
 	}

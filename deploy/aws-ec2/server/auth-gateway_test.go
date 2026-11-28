@@ -983,40 +983,6 @@ func TestDashboardPublicLinkReachesAgentWithoutIdentity(t *testing.T) {
 	}
 }
 
-func TestMCPAppsFrameBypassesOnlyExactAnonymousGET(t *testing.T) {
-	for _, disabled := range []bool{false, true} {
-		calls := 0
-		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			calls++
-			if r.Header.Get("Authorization") != "" || r.Header.Get("X-User-ID") != "" {
-				t.Error("bootstrap received an injected identity")
-			}
-			w.Header().Set("Content-Security-Policy", "sandbox allow-scripts; default-src 'none'")
-			_, _ = w.Write([]byte("inert frame"))
-		}))
-		g := &gateway{secret: []byte("0123456789abcdef0123456789abcdef"), ssoOnly: !disabled, agent: proxyFor(upstream.URL)}
-		for _, item := range []struct {
-			method, path string
-			want         int
-		}{
-			{http.MethodGet, "/api/mcp-apps/frame", http.StatusOK},
-			{http.MethodPost, "/api/mcp-apps/frame", http.StatusUnauthorized},
-			{http.MethodHead, "/api/mcp-apps/frame", http.StatusUnauthorized},
-			{http.MethodGet, "/api/mcp-apps/frame/x", http.StatusUnauthorized},
-		} {
-			before := calls
-			res := httptest.NewRecorder()
-			req := httptest.NewRequest(item.method, item.path, nil)
-			req.Header.Set("X-User-ID", "spoofed")
-			g.ServeHTTP(res, req)
-			if res.Code != item.want || (calls > before) != (item.want == http.StatusOK) {
-				t.Fatalf("disabled=%t %s %s: status=%d forwarded=%t", disabled, item.method, item.path, res.Code, calls > before)
-			}
-		}
-		upstream.Close()
-	}
-}
-
 // A deploy restarts the agent for about a minute; requests then got an immediate 502 (connection refused). The gateway
 // now holds a request until the agent listens again, body included.
 func TestUpstreamTransportHoldsRequestWhileAgentRestarts(t *testing.T) {

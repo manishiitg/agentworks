@@ -824,12 +824,6 @@ func isChromeExtensionBrowserRequest(r *http.Request) bool {
 	return r.Method == http.MethodPost && (r.URL.Path == "/api/browser/extension/pairing/peek" || r.URL.Path == "/api/browser/extension/pairing/redeem")
 }
 
-// The MCP Apps child loads without cookies or a bearer. It serves only an
-// inert bootstrap; the agent response enforces an opaque sandbox origin.
-func isMCPAppsFrameRequest(r *http.Request) bool {
-	return r.Method == http.MethodGet && r.URL.Path == "/api/mcp-apps/frame"
-}
-
 // A dashboard's public link opens with no sign-in: its random code is the only key and the agent serves one frozen page
 // or its runtime for it. Send no identity along, so nothing about the viewer reaches it.
 func isDashboardPublicRequest(r *http.Request) bool {
@@ -861,7 +855,7 @@ func (g *gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Use an Authorization header for event streams", http.StatusBadRequest)
 		return
 	}
-	if isWebhookRequest(r) || isGmailSetupBrowserRequest(r) || isChromeExtensionBrowserRequest(r) || isMCPAppsFrameRequest(r) {
+	if isWebhookRequest(r) || isGmailSetupBrowserRequest(r) || isChromeExtensionBrowserRequest(r) {
 		r.Header.Del("X-User-ID")
 		g.agent.ServeHTTP(w, r)
 		return
