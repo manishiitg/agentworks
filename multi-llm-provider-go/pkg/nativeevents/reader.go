@@ -49,19 +49,23 @@ type Cursor struct {
 	TurnID        string                  `json:"turn_id,omitempty"`
 	// EndedTurn is the last turn that ended with no turn started since: the
 	// parent is idle (Codex helper finishes, #3132).
-	EndedTurn   string             `json:"ended_turn,omitempty"`
-	Origin      string             `json:"origin,omitempty"`
-	TaskID      string             `json:"task_id,omitempty"`
-	LastID      string             `json:"last_id,omitempty"`
-	PrefixHash  string             `json:"prefix_hash,omitempty"`
-	PrefixBytes int                `json:"prefix_bytes,omitempty"`
-	Tools       map[string]string  `json:"tools,omitempty"`
-	Tasks       map[string]string  `json:"tasks,omitempty"`
-	Rejected    bool               `json:"rejected,omitempty"`
-	FileID      string             `json:"file_id,omitempty"`
-	TailOffset  int64              `json:"tail_offset,omitempty"`
-	TailHash    string             `json:"tail_hash,omitempty"`
-	Lineage     map[string]Lineage `json:"lineage,omitempty"`
+	EndedTurn   string            `json:"ended_turn,omitempty"`
+	Origin      string            `json:"origin,omitempty"`
+	TaskID      string            `json:"task_id,omitempty"`
+	LastID      string            `json:"last_id,omitempty"`
+	PrefixHash  string            `json:"prefix_hash,omitempty"`
+	PrefixBytes int               `json:"prefix_bytes,omitempty"`
+	Tools       map[string]string `json:"tools,omitempty"`
+	Tasks       map[string]string `json:"tasks,omitempty"`
+	Rejected    bool              `json:"rejected,omitempty"`
+	// MessageID and MessageBlocks count the blocks of the Claude message
+	// spread over several transcript lines, across reads.
+	MessageID     string             `json:"message_id,omitempty"`
+	MessageBlocks int                `json:"message_blocks,omitempty"`
+	FileID        string             `json:"file_id,omitempty"`
+	TailOffset    int64              `json:"tail_offset,omitempty"`
+	TailHash      string             `json:"tail_hash,omitempty"`
+	Lineage       map[string]Lineage `json:"lineage,omitempty"`
 }
 
 type Lineage struct {

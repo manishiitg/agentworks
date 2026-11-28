@@ -173,6 +173,15 @@ func decodeClaude(b *Batch, session string, row map[string]any) {
 		}
 		msg := object(row["message"])
 		blocks, _ := msg["content"].([]any)
+		// Claude writes each content block of one message on its own line
+		// (thinking, then text). Number blocks across those lines, as the live
+		// stream does, so a reply keeps the live block identity.
+		messageID := text(msg, "id")
+		if messageID != b.Next.MessageID {
+			b.Next.MessageID, b.Next.MessageBlocks = messageID, 0
+		}
+		first := b.Next.MessageBlocks
+		b.Next.MessageBlocks += len(blocks)
 		for i, v := range blocks {
 			block := object(v)
 			out := r
@@ -184,8 +193,8 @@ func decodeClaude(b *Batch, session string, row map[string]any) {
 			switch text(block, "type") {
 			case "text":
 				out.Kind, out.State, out.Text = "reply", "committed", text(block, "text")
-				if messageID := text(msg, "id"); messageID != "" {
-					out.AssistantBlockID = "claude:" + messageID + ":" + strconv.Itoa(i)
+				if messageID != "" {
+					out.AssistantBlockID = "claude:" + messageID + ":" + strconv.Itoa(first+i)
 				}
 				emit(b, out)
 			case "tool_use":
