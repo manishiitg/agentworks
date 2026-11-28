@@ -109,7 +109,7 @@ export function TerminalConversationHeader({ selection, close }: { selection: Te
     <button type="button" aria-label="Back to app chat" onClick={close} className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted"><ArrowLeft className="h-4 w-4" /></button>
     <span className="min-w-0 shrink truncate font-semibold" title={line}>{name}</span>
     <span className="min-w-0 truncate text-xs text-muted-foreground">{place}{state && <> · <span className={state === 'Working' ? 'text-emerald-600 dark:text-emerald-400' : undefined}>{state}</span></>}{hidden && <> · <Lock aria-label="Chat hidden" className="inline h-3 w-3" /> Chat hidden</>}</span>
-    {!selection.owner && <ForkTeammateAgent compact target={selection.target} agent={selection.agent.id} name={name} />}
+    {!selection.owner && agent?.can_fork && <ForkTeammateAgent compact target={selection.target} agent={selection.agent.id} name={name} />}
   </div>
 }
 

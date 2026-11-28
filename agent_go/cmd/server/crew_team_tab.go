@@ -58,6 +58,8 @@ type crewTeamTabAgent struct {
 	// CanChange: the viewer chooses In team / Only me for it here. Otherwise Fixed is shown instead of the choice.
 	CanChange bool   `json:"can_change"`
 	Fixed     string `json:"fixed,omitempty"`
+	// CanFork: the viewer may fork this teammate's agent now (its chat is Live); the server's fork check decides.
+	CanFork bool `json:"can_fork,omitempty"`
 	// Address is the send_message target for "Ask from my agent".
 	Address string `json:"address,omitempty"`
 	// Whose agent it is, by account, with the server's display name: screens group people by OwnerID, never by a name.
@@ -481,6 +483,9 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			} else {
 				if row.ChatShare == crewChatShareAgent {
 					row.ChatPrivateLine = crewChatPrivateLine(p.UserID)
+				}
+				if registered, ok := t.Agents[a.ID]; ok {
+					row.CanFork = crewAgentSelfForkAdmit(t, viewer, registered) == nil
 				}
 				if p.Owner && onMac && a.Tab == macMainTab {
 					row.WatchKey = crewMacTabRow(t.ProjectID, crewMacTeamTab{Person: p.UserID, Tab: macMainTab}).ConversationKey

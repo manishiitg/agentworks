@@ -107,7 +107,7 @@ export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string;
   // Teammates see (crew_team_chat_private.go): chat_share_label and chat_share_options are the choice on the viewer's own
   // agent; on someone else's, chat_private_line replaces the chat. watch_key is its
   // tab's key where that differs.
-  chat_share: string; chat_share_label?: string; chat_share_options?: { value: string; label: string }[]; chat_private_line?: string; watch_key?: string
+  chat_share: string; chat_share_label?: string; chat_share_options?: { value: string; label: string }[]; chat_private_line?: string; can_fork?: boolean; watch_key?: string
   // The rule editor's Ask message (the viewer's own agent).
   permissions_prompt?: string
   // The sharing list (crew_team_tab.go): its purpose, whether the viewer edits it (POST agent-rule {purpose}), and its Public on

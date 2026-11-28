@@ -23,9 +23,11 @@ type crewTeamLiveAgent struct {
 	Device   string   `json:"device,omitempty"`
 	MacName  string   `json:"mac_name,omitempty"`
 	userAvatarFields
-	CLI      string `json:"cli,omitempty"`
-	Engine   string `json:"engine,omitempty"`
-	Private  bool   `json:"private,omitempty"`
+	CLI     string `json:"cli,omitempty"`
+	Engine  string `json:"engine,omitempty"`
+	Private bool   `json:"private,omitempty"`
+	// CanFork: the viewer may fork this teammate's agent now (its chat is Live); the server's fork check decides.
+	CanFork  bool   `json:"can_fork,omitempty"`
 	ID       string `json:"id"`
 	OwnerID  string `json:"owner_id"`
 	Tab      string `json:"tab"`
@@ -153,6 +155,9 @@ func crewTeamLiveFrom(ctx context.Context, t crewTeam, people []crewTeamAgentsPe
 			row := crewTeamLiveAgent{Purpose: agent.Purpose, Examples: agent.Examples, You: own, Device: face.Device, MacName: face.MacName, CLI: labels[agent.ID].CLI, Engine: labels[agent.ID].Engine, userAvatarFields: avatarFieldsFor(person.UserID, project), Private: post.Private, ID: agent.ID, OwnerID: person.UserID, Tab: agent.Tab, ChatKey: agent.ChatKey, Name: agent.Name, Person: face.Name, Activity: agent.Activity}
 			if row.ID == "" {
 				row.ID = row.ChatKey
+			}
+			if registered, ok := t.Agents[agent.ID]; ok && !own {
+				row.CanFork = crewAgentSelfForkAdmit(t, viewer, registered) == nil
 			}
 			row.Label = row.Person + " · " + row.Name
 			row.crewTeamMessagePreview = preview(person.UserID, agent)
