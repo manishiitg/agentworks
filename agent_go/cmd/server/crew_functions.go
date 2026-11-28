@@ -511,8 +511,9 @@ type crewFunctionCall struct {
 	TargetChatSession string `json:"target_chat_session,omitempty"`
 	// TabName is the Crew function tab this call runs in; empty for a fresh chat per call.
 	TabName string `json:"tab_name,omitempty"`
-	// BotAgent is the bot a call made through a bot runs as (#4545): a fresh chat per call that takes that agent's
-	// setup (adoptCrewBotIdentity).
+	// BotAgent is the bot a call was made through (#4545). An agent function then runs as that bot's agent, in a fresh
+	// chat per call that takes its setup (adoptCrewBotIdentity); a workflow function's caller reads the result through
+	// the bot while it still admits them (crewBotWorkflowCallReadable).
 	BotAgent string `json:"bot_agent,omitempty"`
 
 	// argsKey identifies the exact arguments, for joining identical calls.
@@ -1039,10 +1040,11 @@ func (api *StreamingAPI) startCrewFunctionCall(ctx context.Context, userID strin
 	}
 	if target.Kind == triggerCallerCrew {
 		call.TabName = fn.tabName()
-		// Called through a bot, the bot's agent does the work, in a fresh chat for each call (owner, 28 Nov).
-		if bot, ok := ctx.Value(crewBotCallKey{}).(string); ok && bot != "" {
-			call.BotAgent, call.TabName = bot, ""
-		}
+	}
+	// Called through a bot: an agent function is done by the bot's agent, in a fresh chat for each call; a workflow
+	// function runs the workflow, and its caller reads the result through the bot (owner, 28 Nov).
+	if bot, ok := ctx.Value(crewBotCallKey{}).(string); ok && bot != "" {
+		call.BotAgent, call.TabName = bot, ""
 	}
 	call.ExecutionScope, _ = ctx.Value(structuredFunctionExecutionScopeKey{}).(string)
 	call.Publication = fn.publication

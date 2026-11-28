@@ -34,6 +34,11 @@ func TestCrewBotAdmitsOnlyItsAudience(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("chosen people", map[string]bool{"ann": true, "bob": false, "nowork": false})
+	// A workflow call made through the bot is read by its caller only while the bot admits them.
+	workflowCall := &crewFunctionCall{BotAgent: key, TargetKind: triggerCallerWorkflow}
+	if !crewBotWorkflowCallReadable(&UserClaims{UserID: "ann"}, workflowCall) || crewBotWorkflowCallReadable(&UserClaims{UserID: "bob"}, workflowCall) {
+		t.Fatal("a workflow call made through the bot was readable by someone the bot does not admit, or not by its audience")
+	}
 
 	if err := writeCrewBot(root, key, &crewBot{Maker: "owner", Everyone: true}); err != nil {
 		t.Fatal(err)

@@ -119,6 +119,7 @@ function DirectoryCard({ bot, targets }: { bot: Bot; targets: BotProject[] }) {
       <ul className="mt-1 space-y-1.5">
         {buttons.map(fn => <li key={fn.name} className="min-w-0">
           <code className="rounded-full bg-muted px-2 py-0.5 text-[11px]">{fn.name}</code>
+          {fn.workflow && <span className="ml-1 text-[10px] text-muted-foreground">Workflow · {fn.workflow}</span>}
           {fn.description && <p className="mt-0.5 line-clamp-2 px-1 text-[11px] text-muted-foreground" title={fn.description}>{fn.description}</p>}
         </li>)}
       </ul>
