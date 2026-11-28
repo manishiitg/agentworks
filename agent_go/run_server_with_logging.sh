@@ -808,9 +808,9 @@ EOF
         if [ "$FRONTEND_BUILD_MODE" = true ]; then
             dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run preview -- --host \"$FRONTEND_BIND_HOST\" --port \"$FRONTEND_PORT\" --strictPort" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         elif [ -n "$FRONTEND_HOST" ]; then
-            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --host \"$FRONTEND_HOST\" --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && CHOKIDAR_USEPOLLING=1 CHOKIDAR_INTERVAL=1000 exec npm run dev -- --host \"$FRONTEND_HOST\" --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         else
-            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && CHOKIDAR_USEPOLLING=1 CHOKIDAR_INTERVAL=1000 exec npm run dev -- --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         fi
     else
         (
@@ -818,9 +818,9 @@ EOF
             if [ "$FRONTEND_BUILD_MODE" = true ]; then
                 exec npm run preview -- --host "$FRONTEND_BIND_HOST" --port "$FRONTEND_PORT" --strictPort
             elif [ -n "$FRONTEND_HOST" ]; then
-                exec npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" --strictPort --force
+                CHOKIDAR_USEPOLLING=1 CHOKIDAR_INTERVAL=1000 exec npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" --strictPort --force
             else
-                exec npm run dev -- --port "$FRONTEND_PORT" --strictPort --force
+                CHOKIDAR_USEPOLLING=1 CHOKIDAR_INTERVAL=1000 exec npm run dev -- --port "$FRONTEND_PORT" --strictPort --force
             fi
         ) >> "$FRONTEND_LOG_PATH" 2>&1 &
     fi
@@ -2137,9 +2137,9 @@ start_frontend_dev() {
         if [ "$FRONTEND_BUILD_MODE" = true ]; then
             dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run preview -- --host \"$FRONTEND_BIND_HOST\" --port \"$FRONTEND_PORT\" --strictPort" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         elif [ -n "$FRONTEND_HOST" ]; then
-            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --host \"$FRONTEND_HOST\" --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && CHOKIDAR_USEPOLLING=1 CHOKIDAR_INTERVAL=1000 exec npm run dev -- --host \"$FRONTEND_HOST\" --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         else
-            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && exec npm run dev -- --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
+            dev_detached_exec bash -lc "cd \"$FRONTEND_DIR\" && CHOKIDAR_USEPOLLING=1 CHOKIDAR_INTERVAL=1000 exec npm run dev -- --port \"$FRONTEND_PORT\" --strictPort --force" >> "$FRONTEND_LOG_PATH" 2>&1 < /dev/null &
         fi
     else
         (
@@ -2147,9 +2147,9 @@ start_frontend_dev() {
             if [ "$FRONTEND_BUILD_MODE" = true ]; then
                 exec npm run preview -- --host "$FRONTEND_BIND_HOST" --port "$FRONTEND_PORT" --strictPort
             elif [ -n "$FRONTEND_HOST" ]; then
-                exec npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" --strictPort --force
+                CHOKIDAR_USEPOLLING=1 CHOKIDAR_INTERVAL=1000 exec npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" --strictPort --force
             else
-                exec npm run dev -- --port "$FRONTEND_PORT" --strictPort --force
+                CHOKIDAR_USEPOLLING=1 CHOKIDAR_INTERVAL=1000 exec npm run dev -- --port "$FRONTEND_PORT" --strictPort --force
             fi
         ) >> "$FRONTEND_LOG_PATH" 2>&1 &
     fi
