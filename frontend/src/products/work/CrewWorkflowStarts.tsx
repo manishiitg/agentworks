@@ -102,9 +102,8 @@ export function CrewWorkflowStarts({ workspacePath, workflowName, onAsk, onOpenR
     <PageCard title="Webhooks" testId="workflow-starts-webhooks"
       hint={onMac ? 'An address another app calls to start this workflow.' : loading ? 'Loading…' : (hooks ?? []).length ? `${(hooks ?? []).length} · another app calls the address to start this workflow` : 'No webhook yet. Another app (a shop, a form) can call one to start this workflow.'}
       action={!onMac && canWrite ? <RowButton onClick={ask('Add a webhook that starts this workflow. Ask me which task it should start and what will call it, then set it up.')}>Add webhook</RowButton> : undefined}>
-      {(onMac || (hooks ?? []).length > 0 || copied) ? <>{onMac ? <div className="flex items-center gap-3 px-4 py-3">
-        <p className="min-w-0 flex-1 text-xs text-muted-foreground">Webhooks work once this workflow is online on the Team, because other apps need an address they can reach.</p>
-        <RowButton onClick={ask('Move this workflow online to the Team, with its schedules, so it can have webhooks.')}>Move it online</RowButton>
+      {(onMac || (hooks ?? []).length > 0 || copied) ? <>{onMac ? <div className="px-4 py-3">
+        <p className="text-xs text-muted-foreground">Webhooks need an address other apps can reach, so they work in a project on the server. To start a workflow from another app, build it in a server project.</p>
       </div> : (hooks ?? []).map(hook => {
         const last = lastCall(hook.id)
         const list = calls[hook.id]

@@ -244,7 +244,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     {activitySection}
     {macElsewhere ? <div role="note" className="space-y-1.5 px-1 py-1 text-xs text-muted-foreground">
       <p>This project lives on your Mac. Its changes, connections and automations are set on your Mac.</p>
-      <p>Artifacts work once this project is online. Move it online from your Mac.</p>
+      <p>Artifacts work in projects on the server.</p>
     </div> : <>
       {changes}
       {/* Project activity sits right under Git (owner, 21 Nov, #3476). */}
