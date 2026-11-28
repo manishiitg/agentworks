@@ -53,7 +53,25 @@ while True:
 FAKE_GO = """#!/usr/bin/env bash
 set -euo pipefail
 log="${FAKE_LOG_DIR:?}/go.log"
-echo "go $* (GOCACHE=${GOCACHE:-})" >> "$log"
+echo "go $* (cwd=$PWD GOOS=${GOOS:-} GOARCH=${GOARCH:-} GOCACHE=${GOCACHE:-})" >> "$log"
+if [[ "$1" == "list" && -n "${FAKE_CLI_DEP_RELS:-}" ]]; then
+  repo_root="$(cd "$PWD/.." && pwd)"
+  for rel in $FAKE_CLI_DEP_RELS; do
+    echo "$repo_root/$rel"
+  done
+  exit 0
+fi
+if [[ -n "${FAKE_DARWIN_BARRIER_DIR:-}" && "$1" == "build" && "${GOOS:-}" == "darwin" ]]; then
+  arch="${GOARCH:-}"
+  touch "$FAKE_DARWIN_BARRIER_DIR/$arch.ready"
+  other="amd64"
+  [[ "$arch" == "amd64" ]] && other="arm64"
+  for _ in $(seq 1 100); do
+    [[ -f "$FAKE_DARWIN_BARRIER_DIR/$other.ready" ]] && break
+    sleep 0.05
+  done
+  [[ -f "$FAKE_DARWIN_BARRIER_DIR/$other.ready" ]] || { echo "darwin $arch did not overlap with $other" >&2; exit 1; }
+fi
 if [[ -n "${FAKE_BARRIER_DIR:-}" && "$1" == "build" && "${2:-}" == "./..." ]]; then
   touch "$FAKE_BARRIER_DIR/go.ready"
   for _ in $(seq 1 100); do
@@ -446,6 +464,49 @@ class VerifyChangeTest(unittest.TestCase):
         self.assertIn("TestMCPBridgeSlotLifecycleE2E", go_log)
         self.assertIn("TestMCPGatewayE2EUpstreamSessionRecovery", go_log)
         self.assertIn("go test ./... -count=1", go_log)
+
+    def test_macos_cli_dependency_gating_parallel_and_isolated_darwin_gocache(self):
+        dep_rels = "agent_go/cmd/agentworks agent_go/pkg/agentworksclient workspace/crewroot"
+
+        # 1. Change outside ./cmd/agentworks dependency closure -> macOS CLI skipped.
+        (self.logs / "go.log").write_text("")
+        sha_browser = self.make_commit({"agent_go/pkg/browser/typing.go": "package browser\n"})
+        res_skip = self.run_verify(sha_browser, {"FAKE_CLI_DEP_RELS": dep_rels})
+        self.assertEqual(res_skip.returncode, 0, res_skip.stdout + res_skip.stderr)
+        self.assertIn("macOS CLI skipped:", res_skip.stdout)
+        go_log_skip = (self.logs / "go.log").read_text()
+        self.assertNotIn("GOOS=darwin GOARCH=amd64", go_log_skip)
+        self.assertNotIn("go build -o /dev/null ./cmd/agentworks", go_log_skip)
+
+        # 2. Change inside an imported package (including nested embed subdir) -> runs arm64 + amd64 in parallel with isolated darwin GOCACHE.
+        (self.logs / "go.log").write_text("")
+        barrier = self.root / "darwin-barrier"
+        barrier.mkdir()
+        sha_cli_dep = self.make_commit({"workspace/crewroot/embedded/helper.txt": "hello\n"})
+        res_run = self.run_verify(sha_cli_dep, {
+            "FAKE_CLI_DEP_RELS": dep_rels,
+            "FAKE_DARWIN_BARRIER_DIR": str(barrier),
+        })
+        self.assertEqual(res_run.returncode, 0, res_run.stdout + res_run.stderr)
+        self.assertIn("macOS CLI build and vet (arm64 + amd64 in parallel)", res_run.stdout)
+        self.assertTrue((barrier / "arm64.ready").is_file())
+        self.assertTrue((barrier / "amd64.ready").is_file())
+        go_log_run = (self.logs / "go.log").read_text()
+        self.assertIn("GOOS=darwin GOARCH=arm64 GOCACHE=", go_log_run)
+        self.assertIn("GOOS=darwin GOARCH=amd64 GOCACHE=", go_log_run)
+        self.assertIn("go-build-darwin-1", go_log_run)
+        # Linux build stays in go-build-1, never darwin cache.
+        self.assertIn("go build ./... (cwd=", go_log_run)
+        self.assertIn("go-build-1)", go_log_run)
+
+    def test_mcp_gateway_only_builds_gateway_and_skips_agent_go_build(self):
+        (self.logs / "go.log").write_text("")
+        sha_gw = self.make_commit({"mcp-gateway/internal/store/vault.go": "package store\n"})
+        res_gw = self.run_verify(sha_gw, {"VERIFY_SKIP_AUTO_MCP_E2E": "1"})
+        self.assertEqual(res_gw.returncode, 0, res_gw.stdout + res_gw.stderr)
+        self.assertIn("go build (mcp-gateway) ./...", res_gw.stdout)
+        self.assertNotIn("==> [" + sha_gw[:8] + "] go build ./... (", res_gw.stdout)
+        self.assertIn("macOS CLI skipped:", res_gw.stdout)
 
 
 if __name__ == "__main__":
