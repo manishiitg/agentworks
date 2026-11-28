@@ -27,10 +27,10 @@ export function useChatShareLines(tabId?: string | null) {
  * No buttons, pictures or examples unless the project has a welcome page (WELCOME.md); the first message replaces it. */
 export function ChatEmptyState({ tabId }: { tabId?: string | null }) {
   const tab = useChatStore(state => (tabId ? state.chatTabs[tabId] : undefined))
-  const main = tab?.metadata?.agentProfileIsDefaultAgent !== false
+  const isDefault = tab?.metadata?.agentProfileIsDefaultAgent !== false
   const own = tab?.metadata?.agentProfileTabCanWrite !== false
   const team = useTeamTab(tab?.metadata?.agentProfileProjectId)
-  const agent = own ? teamAgentForTab(team, tab?.metadata?.agentProfileConversationKey, main, own) : undefined
+  const agent = own ? teamAgentForTab(team, tab?.metadata?.agentProfileConversationKey, isDefault, own) : undefined
   const shared = Boolean(team.view?.team.on && agent?.in_team)
   // The project's welcome page, when it has one, replaces the line in your own new chats (owner, 25 Nov).
   const welcome = useProjectWelcome(own ? tab?.metadata?.agentProfileProjectId : undefined)
@@ -39,7 +39,7 @@ export function ChatEmptyState({ tabId }: { tabId?: string | null }) {
     {shared && <p className="pb-4 text-center text-xs text-muted-foreground">Shared with team · people in this project's Team can watch this agent</p>}
   </div>
   return <div data-theme-surface="empty" className="flex flex-1 flex-col items-center justify-center gap-1 p-6 text-center text-sm text-muted-foreground">
-    {!main && tab?.name && <p className="font-medium text-foreground/70">{tab.name}</p>}
+    {!isDefault && tab?.name && <p className="font-medium text-foreground/70">{tab.name}</p>}
     <p>Send a message to start.</p>
     {shared && <p className="text-xs">Shared with team · people in this project's Team can watch this agent</p>}
   </div>

@@ -167,12 +167,12 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
       return false
     }
   }
-  // #4152: check whether a dragged or selected chat can be nested under target (same project, owned, non-Main, no loop).
+  // #4152: check whether a dragged or selected chat can be nested under target (same project, owned, not the default agent, no loop).
   const canNestUnder = (fromKey: string, target: CrewAgentRow): { ok: boolean; reason?: string } => {
     const from = byKey.get(fromKey)
     if (!from || !target.key || from.key === target.key) return { ok: false }
     if (from.ownerId || target.ownerId) return { ok: false }
-    if (from.main || !from.actions?.forkParent) return { ok: false }
+    if (from.isDefault || !from.actions?.forkParent) return { ok: false }
     if (nestedParent(from.key)?.key === target.key) return { ok: false }
     if (below(from).some(descendant => descendant.key === target.key)) return { ok: false, reason: 'Own sub-chat' }
     return { ok: true }
@@ -263,7 +263,7 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     } } }
   }
   const row = (agent: CrewAgentRow, isRoot: boolean) => {
-    const nestTargets = !agent.ownerId && !agent.main && agent.key && agent.actions?.forkParent
+    const nestTargets = !agent.ownerId && !agent.isDefault && agent.key && agent.actions?.forkParent
       ? shown.filter(candidate => canNestUnder(agent.key!, candidate).ok)
       : undefined
     return <AgentRow key={agent.tabId} agent={dropTarget(agent)} status={status(agent)} active={agent.tabId === activeTabId}
@@ -457,7 +457,7 @@ function AgentRow({ agent, status, active, dragging, onDrag, popup, reordering, 
   const actions = agent.actions
   // A teammate's grouped agent drags by its key too, so it can leave or change groups (#3288).
   const dragKey = actions?.orderKey || (person ? agent.key : undefined)
-  // Main has agent.key without orderKey, so other chats can still drop onto Main to nest under it (#4152).
+  // The default agent has agent.key without orderKey, so other chats can still drop onto it to nest under it (#4152).
   const targetKey = agent.key || dragKey
   const nestCheck = dragging && targetKey && dragging !== targetKey && canNest ? canNest(dragging) : { ok: false }
   const canDrop = Boolean(dragging && targetKey && dragging !== targetKey && (actions?.dropHere || nestCheck.ok || nestCheck.reason))

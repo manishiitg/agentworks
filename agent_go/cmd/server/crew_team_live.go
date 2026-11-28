@@ -73,7 +73,7 @@ type crewTeamLiveView struct {
 }
 
 // Input has already passed current Team membership/In-team admission and the
-// one live wait cutoff in teamAgentsByPersonWithMain. Both open and unopened
+// one live wait cutoff in teamAgentsByPersonWithDefault. Both open and unopened
 // Crews use this projection; a screen never computes a teammate's state.
 func crewTeamLiveFor(ctx context.Context, t crewTeam, people []crewTeamAgentsPerson, viewer string) crewTeamLiveView {
 	return crewTeamLiveFrom(ctx, t, people, viewer, nil)

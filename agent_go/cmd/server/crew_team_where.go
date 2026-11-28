@@ -170,7 +170,7 @@ func crewLocalCrewPairedWith(project string, keep func(string) bool) string {
 }
 
 // addCrewTeamToMac makes this Mac the member's working copy of the Team's Crew: a Crew of theirs on this Mac in the
-// team's folder (only their Main to start; the Crew's own setup reaches it through the team folder), paired to the
+// team's folder (only their default agent to start; the Crew's own setup reaches it through the team folder), paired to the
 // online copy as the member, and the server records that their agents here work on this Mac.
 func (api *StreamingAPI) addCrewTeamToMac(ctx context.Context, claims *UserClaims, c desktopConnection, project string, team crewTeam, folder string) (string, error) {
 	local := crewTeamMemberCopy(project)

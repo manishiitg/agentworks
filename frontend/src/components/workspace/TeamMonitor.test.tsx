@@ -13,7 +13,7 @@ vi.mock('../../utils/chatIdentity',()=>({captureChatIdentity:()=>1,isChatIdentit
 vi.mock('../../stores/useChatStore',()=>({useChatStore:{getState:()=>({addToast:vi.fn()})}}))
 vi.mock('../../stores/useWorkspaceConnectionStore',()=>({getRawActiveWorkspaceId:()=> 'local',getWorkspaceScopedStorageKey:(key:string)=>key,useWorkspaceConnectionStore:(select:(s:unknown)=>unknown)=>select({activeWorkspaceId:'local'})}))
 vi.mock('../../utils/desktopConnection',()=>({getRawActiveWorkspaceId:()=> 'local'}))
-vi.mock('../../utils/agentPurposeDraft',()=>({fillMainDraft:f.draft}))
+vi.mock('../../utils/agentPurposeDraft',()=>({fillLastAgentDraft:f.draft}))
 vi.mock('../GlobalActivityMonitor',()=>({GlobalActivityMonitor:()=>null}))
 vi.mock('./SidebarServerGroup',()=>({openSidebarProject:f.openProject}))
 // bbf072fb13: another server's project opens in place; this test opens local projects only.

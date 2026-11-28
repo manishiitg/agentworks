@@ -71,21 +71,12 @@ export function sendToTab(tabId: string, prompt: string): boolean {
   return true
 }
 
-/** "Answer from its chat" (#3577): the person's own agent they used last here opens and runs the prompt, so their
- * own agent answers from a teammate agent's chat backup without messaging it. */
-export function sendToOwnMain(projectId: string, prompt: string): boolean {
-  const main = lastUsedTab(ownWritableTabs(projectId))
-  if (main && sendToTab(main.tabId, prompt)) return true
-  useChatStore.getState().addToast('Open one of your own agents in this project, then try again.', 'error')
-  return false
-}
-
 /** The viewer's own agent they used last here opens with the words in its chat box, not sent (the Share tree's Ask,
  * written by the server). False when none of their agents is open here. */
-export function fillMainDraft(projectId: string, prompt: string): boolean {
-  const main = lastUsedTab(ownWritableTabs(projectId))
-  if (!main) return false
-  fillDraft(main.tabId, prompt)
+export function fillLastAgentDraft(projectId: string, prompt: string): boolean {
+  const agent = lastUsedTab(ownWritableTabs(projectId))
+  if (!agent) return false
+  fillDraft(agent.tabId, prompt)
   return true
 }
 

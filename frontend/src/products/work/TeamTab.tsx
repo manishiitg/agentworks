@@ -52,7 +52,7 @@ const UNPAIRED_ASKS: Record<string, string> = {
 }
 
 /** The small Ask pill on every Access/Team card (owner, 6 Nov): sends the server's message for the card (or the
- * prompt given) to the viewer's own Main, which looks first and changes only when the person says so. */
+ * prompt given) to the viewer's own agent, which looks first and changes only when the person says so. */
 export function AskButton({ projectId, card, prompt, label = 'Ask' }: { projectId: string; card?: string; prompt?: string; label?: string }) {
   const { view } = useTeamTab(projectId)
   const text = prompt || (card ? view?.asks?.[card] || UNPAIRED_ASKS[card] : '') || ''

@@ -14,7 +14,7 @@ vi.mock('../../stores/useCapabilitiesStore', () => ({ useCapabilitiesStore: (sel
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (value: unknown) => unknown) => select({ activeWorkspaceId: 'server' }) }))
 vi.mock('./TeamTab', () => ({ teamCard: 'card' }))
 vi.mock('../../components/workflow/reportDocuments', () => ({ selectReportDocument: vi.fn() }))
-vi.mock('../../utils/agentPurposeDraft', () => ({ fillMainDraft: vi.fn() }))
+vi.mock('../../utils/agentPurposeDraft', () => ({ fillLastAgentDraft: vi.fn() }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast: vi.fn() }) } }))
 import { CrewDashboardsTab } from './CrewDashboardsTab'
 

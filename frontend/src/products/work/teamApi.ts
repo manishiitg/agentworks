@@ -129,7 +129,7 @@ export type TeamTabView = {
   // The Crew has no Team yet and the viewer owns it: open the first-time wizard (crew_team_wizard.go).
   new_team?: boolean
   // The agent menu's "How this works" card, worded by the server for the states that exist in this Crew; help_ask is the
-  // draft its button opens in Main (absent when the viewer changes nothing here, then there is no button).
+  // draft its button opens in the viewer's own agent (absent when the viewer changes nothing here, then there is no button).
   help?: { title: string; text: string }[]; help_ask?: string
 }
 /** unbound: the Mac app's own Crew before Mac online pairs it, so there is no Team on a server yet (Team is off). */
@@ -304,18 +304,18 @@ export function teamAgentFor(agents: TeamTabAgent[] | undefined, chatKey?: strin
 }
 
 /** Setup is available on an unpaired Mac too; it never supplies sharing controls. */
-export function agentSetupForTab(state: TeamTabState, key: string | undefined, main: boolean, own: boolean) {
-  if (state.unbound) return own && key ? state.localSetups?.[main ? 'main' : key.split(':chat:')[1]] : undefined
-  return teamAgentForTab(state, key, main, own)?.setup
+export function agentSetupForTab(state: TeamTabState, key: string | undefined, isDefault: boolean, own: boolean) {
+  if (state.unbound) return own && key ? state.localSetups?.[isDefault ? 'main' : key.split(':chat:')[1]] : undefined
+  return teamAgentForTab(state, key, isDefault, own)?.setup
 }
 
 /** The Team tab's row for one chat tab here: someone else's by its key; one of the person's own by its key on the
- * website, by its Mac tab ("main" or the tab id) in the Mac app, whose own tabs use this Mac's keys. */
-export function teamAgentForTab(state: TeamTabState, key: string | undefined, main: boolean, own: boolean) {
+ * website, by its Mac tab ("main" for the default agent, else the tab id) in the Mac app, whose own tabs use this Mac's keys. */
+export function teamAgentForTab(state: TeamTabState, key: string | undefined, isDefault: boolean, own: boolean) {
   const agents = state.view?.agents
   if (!agents || !key) return undefined
   if (!own || !state.target?.localProject) return teamAgentFor(agents, key)
-  const tab = main ? 'main' : key.split(':chat:')[1]
+  const tab = isDefault ? 'main' : key.split(':chat:')[1]
   return agents.find(agent => agent.can_set_purpose && agent.tab === tab)
 }
 
@@ -385,7 +385,7 @@ export function teammateAgentsListed(workspace = getRawActiveWorkspaceId()): boo
 
 /** The person's own agents in the online projects the Team uses (owner, 26 Nov, #4121): real tabs of this Mac project
  * that run on the server, read and written through this Mac's sign-in (utils/remoteSessions.ts). Only projects the
- * person owns; Main there is just one of its agents, never this project's Main. Empty outside the Mac app's own Crew. */
+ * person owns; its default agent there is just one of its agents, never this project's. Empty outside the Mac app's own Crew. */
 const onlineProjectsSeen = new Map<string, { at: number; projects: TeamOnlineProject[] }>()
 export async function onlineAgentSideChats(profileId: string, projectId: string, workspace = getRawActiveWorkspaceId()): Promise<AgentProfileSideChat[]> {
   if (!teammateAgentsListed(workspace)) return []
@@ -486,7 +486,7 @@ export type TeamWizardView = {
   new_team: boolean; default_level: CrewPeopleLevelKey; levels: CrewPeopleLevel[]
   people: { user_id: string; name: string; email?: string }[]
   folders: { default: string; folders: string[]; offline?: string }
-  agents: { key: string; name: string; main?: boolean; in_team:boolean }[]
+  agents: { key: string; name: string; is_default?: boolean; in_team:boolean }[]
 }
 export type TeamWizardChoice = { people: { user_id: string; level: CrewPeopleLevelKey }[]; folder: string; agents: string[]; create_dashboard?: boolean }
 /** The setup's options. */

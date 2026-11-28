@@ -60,10 +60,10 @@ func crewTeamDefaultInTeam(choice *bool) bool {
 func crewTeamDefaultRule() crewTeamAgentRule { return crewTeamAgentRule{ChatShare: crewChatShareLive} }
 
 func assignCrewTeamAgentIDs(t crewTeam, people []crewTeamAgentsPerson) error {
-	return assignCrewTeamAgentIDsWithMain(t, people, crewOwnerMainChatKey(t.ProjectID))
+	return assignCrewTeamAgentIDsWithDefault(t, people, crewOwnerDefaultAgentKey(t.ProjectID))
 }
 
-func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, ownerMainKey string) error {
+func assignCrewTeamAgentIDsWithDefault(t crewTeam, people []crewTeamAgentsPerson, ownerDefaultKey string) error {
 	dir, err := crewTeamDir(t.ProjectID)
 	if err != nil {
 		return err
@@ -120,7 +120,7 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 		accepted := make([]crewTeamAgent, 0, len(people[i].Agents))
 		for _, discovered := range people[i].Agents {
 			a := &discovered
-			// An agent without a chat yet (a Mac Main that is not ready) has no stable
+			// An agent without a chat yet (a Mac default agent that is not ready) has no stable
 			// identity to bind. Saving it would leave a row the check above refuses,
 			// which made the whole Team registry unavailable until fixed by hand.
 			if a.ChatKey == "" {
@@ -131,19 +131,19 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 				continue
 			}
 			tab := a.Tab
-			if crewTeamMainAgentWithKey(current, people[i].UserID, a.ChatKey, ownerMainKey) || tab == macMainTab {
-				tab = macMainTab
+			if crewTeamDefaultAgentWithKey(current, people[i].UserID, a.ChatKey, ownerDefaultKey) || tab == macDefaultTab {
+				tab = macDefaultTab
 			}
 			source := people[i].UserID + "/" + tab
 			chat := people[i].UserID + "/" + a.ChatKey
 			id := bySource[source]
 			if existing := byChat[chat]; existing != "" {
-				if id != "" && id != existing && people[i].UserID == current.OwnerID && tab == macMainTab && a.ChatKey == ownerMainKey {
-					// Main moved onto an existing chat. Identity and privacy stay
+				if id != "" && id != existing && people[i].UserID == current.OwnerID && tab == macDefaultTab && a.ChatKey == ownerDefaultKey {
+					// The default agent moved onto an existing chat. Identity and privacy stay
 					// with each chat; only their role/tab changes.
 					previous := current.Agents[id]
 					physical, ok := strings.CutPrefix(previous.ChatKey, t.ProjectID+codeChatSideMarker)
-					if ok && physical != "" && physical != macMainTab && bySource[previous.OwnerID+"/"+physical] == "" {
+					if ok && physical != "" && physical != macDefaultTab && bySource[previous.OwnerID+"/"+physical] == "" {
 						previous.Tab = physical
 						current.Agents[id] = previous
 						delete(bySource, source)
@@ -166,8 +166,8 @@ func assignCrewTeamAgentIDsWithMain(t crewTeam, people []crewTeamAgentsPerson, o
 				created = append(created, record)
 				bySource[source] = id
 			}
-			if record.Tab != tab && (record.Tab == macMainTab || tab == macMainTab) {
-				log.Printf("[CREW_TEAM] project=%s event=agent_main_role_changed agent=%s main=%v in_team=%v", t.ProjectID, id, tab == macMainTab, record.InTeam)
+			if record.Tab != tab && (record.Tab == macDefaultTab || tab == macDefaultTab) {
+				log.Printf("[CREW_TEAM] project=%s event=agent_default_role_changed agent=%s default=%v in_team=%v", t.ProjectID, id, tab == macDefaultTab, record.InTeam)
 			}
 			delete(bySource, record.OwnerID+"/"+record.Tab)
 			record.Tab = tab
@@ -210,7 +210,7 @@ func (t crewTeam) registeredAgent(person, key string) (crewTeamRegisteredAgent, 
 		return a, a.OwnerID == person
 	}
 	// Exact chat identity wins before role aliases, including while discovery
-	// is catching up with a changed Main pointer.
+	// is catching up with a changed default agent pointer.
 	for _, a := range t.Agents {
 		if a.OwnerID == person && a.ChatKey == key {
 			return a, true
@@ -221,11 +221,11 @@ func (t crewTeam) registeredAgent(person, key string) (crewTeamRegisteredAgent, 
 			return a, true
 		}
 	}
-	// Only an unresolved owner binding can need the Main role alias. Ordinary
+	// Only an unresolved owner binding can need the default agent role alias. Ordinary
 	// registry IDs, exact chats and physical tabs above require no manifest read.
 	if person == t.OwnerID {
 		for _, a := range t.Agents {
-			if a.OwnerID == person && a.Tab == macMainTab && crewTeamMainAgent(t, person, key) {
+			if a.OwnerID == person && a.Tab == macDefaultTab && crewTeamDefaultAgent(t, person, key) {
 				return a, true
 			}
 		}
@@ -322,13 +322,13 @@ func crewTeamSendingAgent(ctx context.Context, project, person, chatKey string) 
 	if err != nil || !crewTeamAgentsVisible(t, person) {
 		return crewTeamAgent{}, fmt.Errorf("This project's Team is not available to you")
 	}
-	mainKey := crewOwnerMainChatKey(project)
-	for _, p := range teamAgentsByPersonWithMain(ctx, t, person, mainKey) {
+	defaultKey := crewOwnerDefaultAgentKey(project)
+	for _, p := range teamAgentsByPersonWithDefault(ctx, t, person, defaultKey) {
 		if p.UserID != person {
 			continue
 		}
 		for _, a := range p.Agents {
-			if a.InTeam && (a.ChatKey == chatKey || crewTeamNativeChatKey(project, person, a) == chatKey || crewTeamMainAgentWithKey(t, person, chatKey, mainKey) && crewTeamMainAgentWithKey(t, person, a.ChatKey, mainKey)) {
+			if a.InTeam && (a.ChatKey == chatKey || crewTeamNativeChatKey(project, person, a) == chatKey || crewTeamDefaultAgentWithKey(t, person, chatKey, defaultKey) && crewTeamDefaultAgentWithKey(t, person, a.ChatKey, defaultKey)) {
 				return a, nil
 			}
 		}

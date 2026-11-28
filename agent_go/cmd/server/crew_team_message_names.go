@@ -32,7 +32,7 @@ func crewTeamMessageAgent(ctx context.Context, project, caller, requested string
 				continue
 			}
 			person := firstNonEmptyTrimmed(labels[p.UserID], p.Name)
-			label := person + "'s " + firstNonEmptyTrimmed(a.Name, "Main")
+			label := person + "'s " + firstNonEmptyTrimmed(a.Name, "Agent")
 			c := choice{agent: a, owner: p.UserID, label: label, distance: crewTeamNameDistance(normalized(requested), normalized(label))}
 			if strings.HasPrefix(requested, crewTeamAgentIDPrefix) {
 				c.distance = crewTeamNameDistance(requested, a.ID)

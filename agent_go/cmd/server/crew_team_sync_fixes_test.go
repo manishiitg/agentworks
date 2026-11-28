@@ -525,16 +525,16 @@ func TestCrewTeamMemberMacAgentKnownAfterRestartWhileMacOff(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member", Where: "mac", MacPair: "member-pair"}}, Agents: map[string]crewTeamRegisteredAgent{
-		"team-agent-main":    {ID: "team-agent-main", OwnerID: "member", Tab: macMainTab, ChatKey: "team", Name: "Main", Place: "mac", InTeam: true},
+		"team-agent-main":    {ID: "team-agent-main", OwnerID: "member", Tab: macDefaultTab, ChatKey: "team", Name: "Main", Place: "mac", InTeam: true},
 		"team-agent-private": {ID: "team-agent-private", OwnerID: "member", Tab: "private", ChatKey: "team:chat:private", Name: "Private", Place: "mac", InTeam: false},
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	tab := crewMacTeamTab{Person: "member", Tab: macMainTab, ConversationID: "member-main", Name: "Main"}
+	tab := crewMacTeamTab{Person: "member", Tab: macDefaultTab, ConversationID: "member-main", Name: "Main"}
 	saveCrewMacTabs("team", "member", []crewMacTeamTab{tab, {Person: "member", Tab: "private", ConversationID: "private-conversation", Name: "Private", OnlyMe: true}})
 	crewMacTeamTabsCache.Delete("team\x00member") // a restart: nothing in memory
 	key := crewMacTabRow("team", tab).ConversationKey
-	if person, got, ok := crewMemberMacAgentFor(t.Context(), "team", key, "owner", false); !ok || person != "member" || got.Tab != macMainTab {
+	if person, got, ok := crewMemberMacAgentFor(t.Context(), "team", key, "owner", false); !ok || person != "member" || got.Tab != macDefaultTab {
 		t.Fatalf("the member's agent is unknown while their Mac is off: %q %+v %t", person, got, ok)
 	}
 	// PLAT-746-1024: dropping server shadow tabs must preserve the member-Mac
@@ -576,7 +576,7 @@ func TestMacAgentAnswerWaitResumesAfterRestart(t *testing.T) {
 	}
 	// What the previous process recorded before it stopped.
 	if err := updateMacAgentAwaiting(func([]macAgentAwaiting) []macAgentAwaiting {
-		return []macAgentAwaiting{{Inbox: "inbox-1", Submission: "ask-1", From: 1, Project: "team", Tab: macMainTab, Mac: "owner", SenderID: "other", Started: time.Now().Add(-time.Minute)}}
+		return []macAgentAwaiting{{Inbox: "inbox-1", Submission: "ask-1", From: 1, Project: "team", Tab: macDefaultTab, Mac: "owner", SenderID: "other", Started: time.Now().Add(-time.Minute)}}
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -81,7 +81,7 @@ type crewTeamTabAgent struct {
 	Activity string `json:"activity,omitempty"`
 	// NotSharedLine is the one muted line of the viewer's own agent that is not shared (owner, 6 Nov mockup).
 	NotSharedLine string `json:"not_shared_line,omitempty"`
-	// Tab is the agent's tab in its person's copy ("main" for a Mac's Main), so the Mac app finds its own tabs' rows.
+	// Tab is the agent's tab in its person's copy ("main" for a Mac's default agent), so the Mac app finds its own tabs' rows.
 	Tab string `json:"tab"`
 	// When others ask (crew_when_others_ask.go), the row's details: what it uses (names only; the owner's own sign-ins
 	// only to the owner, marked personal), its person's rule, whether the viewer may edit them (the agent's own person), and the line the screen shows.
@@ -97,9 +97,9 @@ type crewTeamTabAgent struct {
 	// Who it is shared with, on the viewer's own agent only: whole_team or chosen, and the chosen current members.
 	Audience string                   `json:"audience,omitempty"`
 	People   []crewTeamAudiencePerson `json:"chosen_people,omitempty"`
-	// WatchKey is the key of its tab for someone else, where that differs from Key: the Crew owner's Mac Main.
+	// WatchKey is the key of its tab for someone else, where that differs from Key: the Crew owner's Mac default agent.
 	WatchKey string `json:"watch_key,omitempty"`
-	// PermissionsPrompt is what its rule editor's "Ask AI to set this up" sends to the viewer's Main (their own agent).
+	// PermissionsPrompt is what its rule editor's "Ask AI to set this up" sends to the viewer's own agent.
 	PermissionsPrompt string `json:"permissions_prompt,omitempty"`
 	// The agent sharing list (owner, 6 Nov, approved mockup): its one-line purpose and whether the viewer edits it in
 	// the row (their own agent; POST agent-rule {purpose}).
@@ -156,14 +156,14 @@ type crewTeamTabReply struct {
 	// CanRemoveFolder: the owner stops sharing a folder; never the last one (Folders shares at least one, 6 Nov).
 	CanAddFolder    bool `json:"can_add_folder"`
 	CanRemoveFolder bool `json:"can_remove_folder"`
-	// Asks are the cards' Ask messages, sent to the viewer's own Main (crewTeamAskPrompts).
+	// Asks are the cards' Ask messages, sent to the viewer's own agent (crewTeamAskPrompts).
 	Asks map[string]string `json:"asks"`
 	// NewTeam: this Crew has no Team yet and the viewer is its owner, so the page opens the first-time wizard
 	// (crew_team_wizard.go) instead of the empty Team screen.
 	NewTeam bool `json:"new_team,omitempty"`
 	// Help is the agent menu's "How this works" card (owner, 9 Nov): one line for each state that exists in this Crew,
 	// worded here; the page only prints it. HelpAsk is the draft the card's "Ask the Crew to change this" opens in the
-	// viewer's Main; empty for a viewer who changes nothing here, and then the page shows no button.
+	// viewer's own agent; empty for a viewer who changes nothing here, and then the page shows no button.
 	Help    []crewTeamHelpLine `json:"help"`
 	HelpAsk string             `json:"help_ask,omitempty"`
 }
@@ -323,7 +323,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		}
 	}()
 	labels := crewTeamPersonLabels(t)
-	mainKey := crewOwnerMainChatKey(t.ProjectID)
+	defaultKey := crewOwnerDefaultAgentKey(t.ProjectID)
 	view := t.view(viewer)
 	twin := crewRelayTwin(t.ProjectID)
 	out := crewTeamTabReply{Live: crewTeamLiveView{Agents: []crewTeamLiveAgent{}, Idle: []crewTeamLiveAgent{}}, Team: view, People: []crewTeamTabPerson{}, Agents: []crewTeamTabAgent{}, Asks: crewTeamAskPrompts, CanSwitch: view.CanManage && viewer == t.OwnerID,
@@ -336,7 +336,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 		out.Intro = "People work with you here. The shared folder is kept on the server. Your Mac agents run only while your Mac is on."
 	}
 	setups := crewTabSetupSourceFor(ctx, t, twin)
-	setups.mainKey = mainKey
+	setups.defaultKey = defaultKey
 	lap("setups")
 	if viewer == t.OwnerID && twin {
 		out.AgentsLine = "Your agents work on your Mac. Add an agent to the Team to let teammates ask it."
@@ -345,11 +345,11 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 	if !t.On {
 		// Team off: the owner's own agents, all Only you.
 		if viewer == t.OwnerID {
-			out.Agents = crewTeamSoloAgents(ctx, t, setups, mainKey)
+			out.Agents = crewTeamSoloAgents(ctx, t, setups, defaultKey)
 		}
 		return out
 	}
-	byPerson := teamAgentsByPersonWithMain(ctx, t, viewer, mainKey)
+	byPerson := teamAgentsByPersonWithDefault(ctx, t, viewer, defaultKey)
 	lap("agents")
 	// One reach answer per request for the header and the panel (#2965 speed).
 	reachRows := crewTeamReachableFrom(ctx, t, viewer, byPerson)
@@ -435,7 +435,7 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			if mine && !a.InTeam {
 				row.NotSharedLine = crewTeamNotSharedLine(a.Place == "mac")
 			}
-			// Shared is per person (owner, 5-6 Nov): each person switches their own agents, Main too; someone else's
+			// Shared is per person (owner, 5-6 Nov): each person switches their own agents, the default agent too; someone else's
 			// agent just reads Shared.
 			if mine {
 				row.CanChange = true
@@ -460,8 +460,8 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 				if registered, ok := t.Agents[a.ID]; ok {
 					row.CanFork = crewAgentSelfForkAdmit(t, viewer, registered) == nil
 				}
-				if p.Owner && onMac && a.Tab == macMainTab {
-					row.WatchKey = crewMacTabRow(t.ProjectID, crewMacTeamTab{Person: p.UserID, Tab: macMainTab}).ConversationKey
+				if p.Owner && onMac && a.Tab == macDefaultTab {
+					row.WatchKey = crewMacTabRow(t.ProjectID, crewMacTeamTab{Person: p.UserID, Tab: macDefaultTab}).ConversationKey
 				}
 			}
 			row.Purpose, row.CanSetPurpose = a.Purpose, mine
@@ -545,8 +545,8 @@ func crewTeamNotSharedLine(onMac bool) string {
 
 // crewTeamSoloAgents are the owner's own agents while the Team is off: a Mac Crew's from the owner's Mac, a Crew on
 // the server's from its tabs here.
-func crewTeamSoloAgents(ctx context.Context, t crewTeam, setups crewTabSetupSource, mainKey string) []crewTeamTabAgent {
-	setups.mainKey = mainKey
+func crewTeamSoloAgents(ctx context.Context, t crewTeam, setups crewTabSetupSource, defaultKey string) []crewTeamTabAgent {
+	setups.defaultKey = defaultKey
 	agents := []crewTeamAgent{}
 	if crewRelayTwin(t.ProjectID) {
 		shared := map[string]macSharedAgent{}
@@ -555,16 +555,16 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, setups crewTabSetupSour
 		}
 		for _, tab := range ownerMacTabsAll(ctx, t.ProjectID) {
 			a := crewTeamAgent{Tab: tab.Tab, Name: firstNonEmptyTrimmed(tab.Name, "Agent"), Purpose: firstNonEmptyTrimmed(tab.Purpose, shared[tab.Tab].Purpose), Examples: tab.Examples, Place: "mac", ChatKey: macSharedAgentChatKey(t.ProjectID, tab.Tab)}
-			if tab.Tab == macMainTab {
-				a.Name, a.ChatKey = defaultAgentName(tab.Name, false), mainKey
+			if tab.Tab == macDefaultTab {
+				a.Name, a.ChatKey = defaultAgentName(tab.Name, false), defaultKey
 			}
 			agents = append(agents, a)
 		}
 	} else {
-		agents = memberTeamAgentsWithMain(ctx, t, t.OwnerID, t.OwnerID, mainKey)
+		agents = memberTeamAgentsWithDefault(ctx, t, t.OwnerID, t.OwnerID, defaultKey)
 	}
 	people := []crewTeamAgentsPerson{{UserID: t.OwnerID, Agents: agents}}
-	if err := assignCrewTeamAgentIDsWithMain(t, people, mainKey); err != nil {
+	if err := assignCrewTeamAgentIDsWithDefault(t, people, defaultKey); err != nil {
 		return nil
 	}
 	agents = people[0].Agents

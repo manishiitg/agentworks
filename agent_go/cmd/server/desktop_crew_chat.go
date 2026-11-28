@@ -23,9 +23,9 @@ func (api *StreamingAPI) macCrewTabs(ctx context.Context, claims *UserClaims, pr
 	return tabs, err
 }
 
-// macCrewAgents is the owner's side tabs and their Main chat, each with its purpose.
+// macCrewAgents is the owner's side tabs and their default agent chat, each with its purpose.
 func (api *StreamingAPI) macCrewAgents(ctx context.Context, claims *UserClaims, project string) ([]AgentProfileSideChat, AgentProfileSideChat, error) {
-	r, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/api/agent-profiles/work/side-chats?with_main=1&project_id="+url.QueryEscape(project), nil)
+	r, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost/api/agent-profiles/work/side-chats?with_default=1&project_id="+url.QueryEscape(project), nil)
 	r = mux.SetURLVars(r, map[string]string{"id": "work"})
 	capture := &internalResponseCapture{}
 	api.handleListAgentProfileSideChats(capture, r)
@@ -33,7 +33,7 @@ func (api *StreamingAPI) macCrewAgents(ctx context.Context, claims *UserClaims, 
 	if capture.status >= 300 || json.Unmarshal(capture.body.Bytes(), &all) != nil {
 		return nil, AgentProfileSideChat{}, fmt.Errorf("this project's tabs could not be read on your Mac")
 	}
-	main := AgentProfileSideChat{Name: "Main"}
+	main := AgentProfileSideChat{}
 	own := all[:0]
 	for _, tab := range all {
 		if tab.IsDefaultAgent {
@@ -189,14 +189,14 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	}
 	var conversation ProductConversationRecord
 	var mainErr error
-	// Main is optional. Explicit tabs and non-chat operations never require it.
+	// The default agent is optional. Explicit tabs and non-chat operations never require it.
 	if call.Tab == "" {
 		conversation, mainErr = api.resolveAgentProfileConversation(r, profile, project, "")
 		if mainErr != nil && call.Operation == "resolve" {
 			return fail(409, mainErr.Error())
 		}
 	}
-	// A tab, or a session address that is not Main's: the conversation must be one of this Crew's own tabs. Only a
+	// A tab, or a session address that is not default agent's: the conversation must be one of this Crew's own tabs. Only a
 	// resolve with a new tab id opens a new tab, as + New agent does on the Mac.
 	if call.Tab != "" || (call.Operation != "resolve" && (mainErr != nil || call.ConversationID != conversation.ConversationID)) {
 		tabs, err := api.macCrewTabs(ctx, claims, project)
@@ -294,14 +294,14 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	return crewChatResult{ID: call.ID, Status: status, Body: data}
 }
 
-// desktopCrewOwnTab is one of the owner's own tabs in a local Crew: Main or a side tab on the strip.
+// desktopCrewOwnTab is one of the owner's own tabs in a local Crew: the default agent or a side tab on the strip.
 type desktopCrewOwnTab struct {
-	Record ProductConversationRecord
-	Main   bool
+	Record    ProductConversationRecord
+	IsDefault bool
 }
 
 // desktopCrewOwnTabs lists the owner's existing, currently admitted tabs of a local Crew; a failure is
-// returned as its HTTP status. PLAT-746-876: it never initializes Main or another conversation.
+// returned as its HTTP status. PLAT-746-876: it never initializes the default agent or another conversation.
 func desktopCrewOwnTabs(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, project string) ([]desktopCrewOwnTab, int) {
 	admitted, err := readCrewProjectBinding(ctx, claims.UserID, profile, project, "")
 	if err != nil {
@@ -322,7 +322,7 @@ func desktopCrewOwnTabs(ctx context.Context, claims *UserClaims, profile agentpr
 		if !main && (!isSide || !crewMacTabID(side)) {
 			continue
 		}
-		out = append(out, desktopCrewOwnTab{Record: record, Main: main})
+		out = append(out, desktopCrewOwnTab{Record: record, IsDefault: main})
 	}
 	return out, 0
 }
@@ -353,7 +353,7 @@ func (api *StreamingAPI) desktopCrewChatSessions(ctx context.Context, project, p
 }
 
 // desktopCrewExistingChatStatus reads only existing, currently admitted local tabs.
-// PLAT-746-876: a polling read must not initialize Main or another conversation.
+// PLAT-746-876: a polling read must not initialize the default agent or another conversation.
 func (api *StreamingAPI) desktopCrewExistingChatStatus(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, project string, call crewChatCall) crewChatResult {
 	fail := func(code int) crewChatResult {
 		return crewChatResult{ID: call.ID, Status: code, Body: json.RawMessage(`{"error":"This chat is unavailable on your Mac."}`)}
@@ -375,7 +375,7 @@ func (api *StreamingAPI) desktopCrewExistingChatStatus(ctx context.Context, clai
 			if record.ConversationID != call.ConversationID {
 				continue
 			}
-		} else if !tab.Main {
+		} else if !tab.IsDefault {
 			continue
 		}
 		if call.ConversationID != "" && record.ConversationID != call.ConversationID {
@@ -571,7 +571,7 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	key := macSharedAgentChatKey(project, call.Tab)
 
 	// The shared tab must still exist on this Mac.
-	if tabKey := macSharedAgentChatKey(project, call.Tab); call.Tab != macMainTab {
+	if tabKey := macSharedAgentChatKey(project, call.Tab); call.Tab != macDefaultTab {
 		tabs, err := api.macCrewTabs(ctx, claims, project)
 		if err != nil || !slices.ContainsFunc(tabs, func(tab AgentProfileSideChat) bool { return tab.ConversationKey == tabKey }) {
 			return refuse("no_tab")
@@ -653,7 +653,7 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 		if strings.TrimSpace(args.SenderAgent) != "" {
 			sender += "'s agent"
 		}
-		noteMacAsk(project, macAskActivity{Tab: call.Tab, Agent: firstNonEmptyTrimmed(agent.Name, "Main"), Sender: sender, Channel: firstNonEmptyTrimmed(args.SenderChannel, "website"), Key: key, Session: conversation.SessionID, Started: time.Now().UTC()})
+		noteMacAsk(project, macAskActivity{Tab: call.Tab, Agent: firstNonEmptyTrimmed(agent.Name, "Agent"), Sender: sender, Channel: firstNonEmptyTrimmed(args.SenderChannel, "website"), Key: key, Session: conversation.SessionID, Started: time.Now().UTC()})
 		var receipt map[string]any
 		_ = json.Unmarshal(capture.body.Bytes(), &receipt)
 		return reply(200, map[string]any{"status": "accepted", "query_id": receipt["query_id"]})

@@ -42,7 +42,7 @@ export function TeammateChatIdentity({tabId}:{tabId?:string|null}) {
    && (!m.agentProfileTabOwnerID || m.agentProfileTabOwnerID===viewer)
  })
  const previous=own.filter(tab=>!!tab.lastAccessedAt).sort((a,b)=>(b.lastAccessedAt||0)-(a.lastAccessedAt||0))[0]
- // The last agent you used, else your first agent here (owner, 25 Nov, #4046: Main is not special).
+ // The last agent you used, else your first agent here (owner, 25 Nov, #4046: the default agent is not special).
  const back=previous||own.find(tab=>tab.metadata?.agentProfileProjectId===project)
  if(!identity)return null
  return <div className="flex min-w-0 flex-1 items-center gap-1">

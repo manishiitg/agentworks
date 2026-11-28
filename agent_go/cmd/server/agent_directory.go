@@ -448,13 +448,13 @@ func agentDirectoryHowToCall(rows any) string {
 	return strings.Join(parts, ". ") + "."
 }
 
-// crewDirectoryChatName is a chat's name as the header shows it: a person's Main is "Main", never its saved title
-// "<person> · Builder".
+// crewDirectoryChatName is a chat's name as the header shows it: a person's default agent by its own name, never its
+// saved title "<person> · Builder".
 func crewDirectoryChatName(tab crewOwnerChat) string {
 	if tab.Record.IsDefaultAgent {
-		return "Main"
+		return defaultAgentName(tab.Identity.Name, tab.Identity.GeneratedName)
 	}
-	return firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Main")
+	return firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Agent")
 }
 
 // Only the viewing person's saved preferences are supplied here. Do not copy
@@ -507,7 +507,7 @@ func annotateDirectoryAgentGroups(rows []map[string]interface{}, preferences pro
 			return strings.TrimSpace(identity.Name)
 		}
 		if !strings.Contains(parent, codeChatSideMarker) {
-			return "Main"
+			return "Agent"
 		}
 		return parent[strings.LastIndex(parent, codeChatSideMarker)+len(codeChatSideMarker):]
 	}

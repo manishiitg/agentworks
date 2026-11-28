@@ -107,7 +107,7 @@ func crewTeamRowAudience(t crewTeam, a crewTeamRegisteredAgent) string {
 // crewTeamSourceRowAdmits is the one admission for a person's own source agent (nonrecursive):
 // the row's own person whatever the Team or audience (Team off and only_me included) while they are the primary owner
 // or a saved person on the Team; anyone else exactly as crewTeamReachRow. viewer is always the server-derived caller, never a request field. Access comes from this row
-// only, never from another home's Main.
+// only, never from another home's default agent.
 func crewTeamSourceRowAdmits(t crewTeam, viewer string, row crewTeamRegisteredAgent) bool {
 	// Team off keeps people saved; removing the maker from the Team ends their own row's copy.
 	saved := viewer == t.OwnerID || slices.ContainsFunc(t.People, func(p crewTeamPerson) bool { return p.UserID == viewer && !p.Invited })
@@ -146,7 +146,7 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 		return out // every caller gets the gate, not only crewTeamReachableAgents
 	}
 	if people == nil {
-		people = teamAgentsByPersonWithMain(ctx, t, viewer, crewOwnerMainChatKey(t.ProjectID))
+		people = teamAgentsByPersonWithDefault(ctx, t, viewer, crewOwnerDefaultAgentKey(t.ProjectID))
 	}
 	for _, p := range people {
 		if p.UserID == viewer || !crewTeamMemberCurrent(t, p.UserID) {
@@ -190,7 +190,7 @@ func crewTeamReachableFrom(ctx context.Context, t crewTeam, viewer string, peopl
 // crewTeamOwnSourceRows are the viewer's own source agents in one Team, admitted by crewTeamSourceRowAdmits (Only me
 // and Team off included, while the viewer is a saved maker). They are never part of discovery (a person's own agents
 // are listed as their own elsewhere); admission uses them so the maker's own source address
-// reaches its own copy. No Home or Main access comes from these rows.
+// reaches its own copy. No Home or default agent access comes from these rows.
 func crewTeamOwnSourceRows(ctx context.Context, t crewTeam, viewer string) []crewTeamReachableAgent {
 	if viewer == "" || !crewTeamAccountActive(viewer) {
 		return nil
@@ -206,7 +206,7 @@ func crewTeamOwnSourceRows(ctx context.Context, t crewTeam, viewer string) []cre
 	}
 	slices.Sort(ids)
 	listed, macOn := map[string]crewTeamAgent{}, false
-	for _, p := range teamAgentsByPersonWithMain(ctx, t, viewer, crewOwnerMainChatKey(t.ProjectID)) {
+	for _, p := range teamAgentsByPersonWithDefault(ctx, t, viewer, crewOwnerDefaultAgentKey(t.ProjectID)) {
 		if p.UserID == viewer {
 			macOn = p.MacOn
 			for _, a := range p.Agents {

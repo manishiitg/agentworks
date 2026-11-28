@@ -104,12 +104,12 @@ type crewTeamAgentsPerson struct {
 	Agents      []crewTeamAgent `json:"agents"`
 }
 
-// defaultAgentName is a person's default agent (Main) as the Team names it, like any agent (owner, 25 Nov, #4046): the
-// name its person gave it, else "Main"; never an import label or the automatic chat title "<person> · Builder".
+// defaultAgentName is a person's default agent as the Team names it, like any agent (owner, 25 Nov, #4046): the
+// name its person gave it, else "Agent"; never an import label or the automatic chat title "<person> · Builder".
 func defaultAgentName(name string, generated bool) string {
 	name = strings.TrimSpace(name)
 	if name == "" || generated || name == "Builder" || strings.HasSuffix(name, " · Builder") {
-		return "Main"
+		return "Agent"
 	}
 	return name
 }
@@ -117,21 +117,21 @@ func defaultAgentName(name string, generated bool) string {
 // teamAgentsByPerson lists the team's in-team agents, the owner first: the owner's from this Crew's Mac, each member's
 // from their own tabs in the server copy (they run on the server; Only me ones are left out for everyone else).
 func teamAgentsByPerson(ctx context.Context, t crewTeam, caller string) []crewTeamAgentsPerson {
-	return teamAgentsByPersonWithMain(ctx, t, caller, crewOwnerMainChatKey(t.ProjectID))
+	return teamAgentsByPersonWithDefault(ctx, t, caller, crewOwnerDefaultAgentKey(t.ProjectID))
 }
 
-func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey string) []crewTeamAgentsPerson {
+func teamAgentsByPersonWithDefault(ctx context.Context, t crewTeam, caller, defaultKey string) []crewTeamAgentsPerson {
 	labels := crewTeamPersonLabels(t)
 	owner := crewTeamAgentsPerson{UserID: t.OwnerID, Name: labels[t.OwnerID], Owner: true, You: t.OwnerID == caller, Agents: []crewTeamAgent{}}
 	onMac := crewRelayTwin(t.ProjectID)
-	// Website tabs use the Main conversation's physical key, while AgentBridge
+	// Website tabs use the default agent's physical key, while AgentBridge
 	// addresses it by project. Return the actual tab identity to the browser.
 	if b, err := crewroot.ReadSync(t.ProjectID); err == nil && b != nil && b.Mode == "relay" && b.Side == "server" {
 		owner.MacOn, owner.AppVersion = crewMacSocketOnline(t.OwnerID, t.ProjectID, b.PairID)
 	}
 	if !onMac {
 		// A Crew that lives on the server (owner, 5 Nov): its owner's agents are server tabs, In team unless Only me.
-		owner.Agents = memberTeamAgentsWithMain(ctx, t, t.OwnerID, caller, mainKey)
+		owner.Agents = memberTeamAgentsWithDefault(ctx, t, t.OwnerID, caller, defaultKey)
 	}
 	// The Mac conversations of the owner's agents, by tab, for what is running in them.
 	ownerConversations := map[string]string{}
@@ -149,12 +149,12 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 		place := "mac"
 		// Named like the left menu: its own name, never an email or a saved chat title.
 		name := firstNonEmptyTrimmed(agent.Name, "Agent")
-		if agent.Tab == macMainTab {
+		if agent.Tab == macDefaultTab {
 			name = defaultAgentName(agent.Name, false)
 		}
 		row := crewTeamAgent{lastMessage: ownerPreviews[agent.Tab], Tab: agent.Tab, Name: name, Purpose: agent.Purpose, Examples: agent.Examples, Place: place, ChatKey: macSharedAgentChatKey(t.ProjectID, agent.Tab), InTeam: t.agentInTeam(t.OwnerID, agent.Tab)}
-		if agent.Tab == macMainTab {
-			row.ChatKey = mainKey
+		if agent.Tab == macDefaultTab {
+			row.ChatKey = defaultKey
 		}
 		if place == "mac" {
 			// A Mac agent is available only while its Mac is connected.
@@ -189,7 +189,7 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 			person.Agents = []crewTeamAgent{}
 			for _, tab := range crewMacTabsFor(ctx, p.UserID, t.ProjectID, caller) {
 				name := firstNonEmptyTrimmed(tab.Name, "Agent")
-				if tab.Tab == macMainTab {
+				if tab.Tab == macDefaultTab {
 					name = defaultAgentName(tab.Name, false)
 				}
 				row := crewTeamAgent{initialInTeam: tab.InitialInTeam, lastMessage: tab.crewTeamMessagePreview, Tab: tab.Tab, Name: name, Place: "mac", ChatKey: crewMacTabRow(t.ProjectID, tab).ConversationKey, InTeam: !tab.OnlyMe}
@@ -208,13 +208,13 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 				person.Agents = append(person.Agents, row)
 			}
 		} else {
-			person.Agents = memberTeamAgentsWithMain(ctx, t, p.UserID, caller, mainKey)
+			person.Agents = memberTeamAgentsWithDefault(ctx, t, p.UserID, caller, defaultKey)
 		}
 		person.Active, person.ActiveLabel = teamActive(p.UserID, person.MacOn)
 		out = append(out, person)
 	}
 	out = append(out, crewTeamProjectPeople(ctx, t, caller)...) // online projects in the Team (#3664)
-	if err := assignCrewTeamAgentIDsWithMain(t, out, mainKey); err != nil {
+	if err := assignCrewTeamAgentIDsWithDefault(t, out, defaultKey); err != nil {
 		log.Printf("[CREW_TEAM] project=%s event=agent_registry_unavailable reason=%q", t.ProjectID, err)
 		return nil
 	}
@@ -310,14 +310,14 @@ func teamAgentsByPersonWithMain(ctx context.Context, t crewTeam, caller, mainKey
 
 // memberTeamAgents are one person's own tabs in this Crew's server copy that the caller may see.
 func memberTeamAgents(ctx context.Context, t crewTeam, member, caller string) []crewTeamAgent {
-	return memberTeamAgentsWithMain(ctx, t, member, caller, crewOwnerMainChatKey(t.ProjectID))
+	return memberTeamAgentsWithDefault(ctx, t, member, caller, crewOwnerDefaultAgentKey(t.ProjectID))
 }
 
-func memberTeamAgentsWithMain(ctx context.Context, t crewTeam, member, caller, ownerMainKey string) []crewTeamAgent {
+func memberTeamAgentsWithDefault(ctx context.Context, t crewTeam, member, caller, ownerDefaultKey string) []crewTeamAgent {
 	project := t.ProjectID
 	out := []crewTeamAgent{}
 	// A single registry snapshot supplies both chat bindings and display identities.
-	// Main was already validated by the request; no per-chat manifest/action loads.
+	// The default agent was already validated by the request; no per-chat manifest/action loads.
 	store := defaultProductConversationRegistryStore()
 	path := productConversationRegistryPath(member)
 	mu := productConversationRegistryMutex(path)
@@ -327,9 +327,9 @@ func memberTeamAgentsWithMain(ctx context.Context, t crewTeam, member, caller, o
 	if err != nil {
 		return out
 	}
-	mainKey := crewOwnerDefaultChatKey(project, member)
+	defaultKey := crewOwnerDefaultChatKey(project, member)
 	if member == t.OwnerID {
-		mainKey = ownerMainKey
+		defaultKey = ownerDefaultKey
 	}
 	// Read the existing authoritative queue once for these registered chats;
 	// never transfer the question text or options into Team activity.
@@ -350,13 +350,13 @@ func memberTeamAgentsWithMain(ctx context.Context, t crewTeam, member, caller, o
 		}
 		_, tab, side := strings.Cut(record.ConversationKey, codeChatSideMarker)
 		if !side {
-			continue // the Crew's own Main record and Builder chats are not this member's agents
+			continue // the Crew's own default agent record and Builder chats are not this member's agents
 		}
-		// Named like the left menu (sideChatsFor): every agent by its own name, their default one "Main" until renamed;
+		// Named like the left menu (sideChatsFor): every agent by its own name, their default one "Agent" until renamed;
 		// never a raw chat title or an email.
 		name := firstNonEmptyTrimmed(identity.Name, "Agent")
-		if record.ConversationKey == mainKey {
-			name, tab = defaultAgentName(identity.Name, identity.GeneratedName), macMainTab
+		if record.ConversationKey == defaultKey {
+			name, tab = defaultAgentName(identity.Name, identity.GeneratedName), macDefaultTab
 		}
 		activity := ""
 		if crewServerChatRunning(record.SessionID) {

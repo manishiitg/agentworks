@@ -32,8 +32,8 @@ func crewChecklistTargets(ctx context.Context, claims *UserClaims, project strin
 			continue
 		}
 		info := a.Attachment.RuntimeInfo
-		main := info != nil && info.TeamProject == project && info.TeamTab == macMainTab // the person's Main agent in this Team's project
-		targets = append(targets, map[string]any{"id": a.ID, "name": agentLabel(a), "online": namedAgentOnline(a), "main": main})
+		main := info != nil && info.TeamProject == project && info.TeamTab == macDefaultTab // the person's default agent in this Team's project
+		targets = append(targets, map[string]any{"id": a.ID, "name": agentLabel(a), "online": namedAgentOnline(a), "is_default": main})
 	}
 	sort.Slice(targets, func(i, j int) bool { return targets[i]["name"].(string) < targets[j]["name"].(string) })
 	return targets, nil

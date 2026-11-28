@@ -46,7 +46,7 @@ type crewChatCall struct {
 	Action string          `json:"action,omitempty"`
 	Args   json.RawMessage `json:"args,omitempty"`
 	Caller string          `json:"caller,omitempty"`
-	// Tab: one of the Mac Crew's own side tabs (the <id> of "<project>:chat:<id>"); empty is Main. Name names a new one.
+	// Tab: one of the Mac Crew's own side tabs (the <id> of "<project>:chat:<id>"); empty is the default agent. Name names a new one.
 	Tab  string `json:"tab,omitempty"`
 	Name string `json:"name,omitempty"`
 }
@@ -172,13 +172,13 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 		return false
 	}
 	// A side tab of a Crew that lives on the Mac is the Mac's own tab (PLAT-856-509); the server keeps none. The owner's
-	// Main under its physical key is the Mac's Main.
+	// The default agent under its physical key is the Mac's default agent.
 	if base, side, ok := strings.Cut(strings.TrimSpace(key), codeChatSideMarker); ok {
 		if base != project || !crewMacTabID(side) {
 			externalError(w, 400, "invalid_tab", "This tab is unavailable.")
 			return true
 		}
-		if crewMacAgentTabForKey(project, key) != macMainTab {
+		if crewMacAgentTabForKey(project, key) != macDefaultTab {
 			call.Tab = side
 			if call.Operation == "resolve" {
 				call.Name = crewMacTabName(call.Name)
@@ -604,7 +604,7 @@ func callCrewMacFor(ctx context.Context, owner, project string, call crewChatCal
 
 // routeCrewMacTabs lists a Mac Crew's own side tabs for its owner on the website (PLAT-856-509): the Mac's tab keys with
 // the project part swapped to this server's copy. With the Mac off only published agents
-// are here, the latter to read: the owner's chat with them waits for the Mac. Main still shows.
+// are here, the latter to read: the owner's chat with them waits for the Mac. The default agent still shows.
 func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request, project string) bool {
 	if IsLocalMode() || !crewChatWebsiteClaims(GetUserFromContext(r.Context())) {
 		return false
@@ -627,7 +627,7 @@ func (api *StreamingAPI) routeCrewMacTabs(w http.ResponseWriter, r *http.Request
 			if !ok || base != b.PeerProjectID || !crewMacTabID(id) || row.ConversationID == "" {
 				continue
 			}
-			// A fork's parent is another Mac tab under this server's copy too (#3288); a fork of Main stays on its own.
+			// A fork's parent is another Mac tab under this server's copy too (#3288); a fork of the default agent stays on its own.
 			parent := ""
 			if base, parentID, ok := strings.Cut(row.ForkedFrom, codeChatSideMarker); ok && base == b.PeerProjectID && crewMacTabID(parentID) {
 				parent = project + codeChatSideMarker + parentID

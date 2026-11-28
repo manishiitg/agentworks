@@ -6,7 +6,7 @@ import { HtmlRenderer } from '../../components/ui/HtmlRenderer'
 import { Button } from '../../components/ui/Button'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
 import { teamCard } from './TeamTab'
-import { fillMainDraft } from '../../utils/agentPurposeDraft'
+import { fillLastAgentDraft } from '../../utils/agentPurposeDraft'
 import { useChatStore } from '../../stores/useChatStore'
 import { crewDashboardsTab, teamArtifactPage, teamDashboardAction, teamFailure, teamShareArtifact, useTeamTab, type CrewDashboardsTab as DashboardsTab, type TeamTarget } from './teamApi'
 
@@ -136,7 +136,7 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
       {tab && !items.length && <div className="rounded-lg bg-muted/40 px-3 py-3 text-sm">
         <p>{tab.empty?.title || 'No artifacts yet'}</p>
         <p className="text-muted-foreground">{tab.empty?.line}</p>
-        {tab.empty?.ask && <Button size="sm" onClick={() => { if (!fillMainDraft(projectId, tab.empty?.ask || '')) useChatStore.getState().addToast('Open one of your agents in this project, then ask from there.', 'error') }}>Ask the project</Button>}
+        {tab.empty?.ask && <Button size="sm" onClick={() => { if (!fillLastAgentDraft(projectId, tab.empty?.ask || '')) useChatStore.getState().addToast('Open one of your agents in this project, then ask from there.', 'error') }}>Ask the project</Button>}
       </div>}
       {items.length > 0 && !shown.length && <p className="py-4 text-center text-xs text-muted-foreground">Nothing matches “{query}”.</p>}
       <div>

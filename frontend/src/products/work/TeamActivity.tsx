@@ -6,7 +6,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 import { captureChatIdentity,isChatIdentityCurrent } from '../../utils/chatIdentity'
-import { fillMainDraft } from '../../utils/agentPurposeDraft'
+import { fillLastAgentDraft } from '../../utils/agentPurposeDraft'
 import { teamFailure, teamRequest, type TeamTarget } from './teamApi'
 import { openCrewAccess } from './MacSharedAgents'
 import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
@@ -153,6 +153,6 @@ function TeamActivityThread({target,projectId,thread}:{target:TeamTarget;project
  const current=state?.key===key?state:shown?{key,messages:shown}:undefined
  return <section aria-label="AgentBridge thread" className="mt-2 space-y-2 rounded border border-border p-2 text-xs">
   {current?.error?<p role="alert">{current.error}</p>:current?.messages?current.messages.map(message=><p key={message.id} className="whitespace-pre-wrap break-words"><b>{message.agent}</b> · {clock(message.at)}<br/>{message.text}</p>):<p>Loading thread…</p>}
-  {current?.messages&&<button type="button" onClick={()=>{if(!fillMainDraft(projectId,`Ask my agent about this Team AgentBridge thread: ${thread}. Read it only through my admitted inbox tools; ask me what to follow up on.`))useChatStore.getState().addToast('Open your own agent in this project first.','info')}} className="text-primary">✦ Ask my agent about this</button>}
+  {current?.messages&&<button type="button" onClick={()=>{if(!fillLastAgentDraft(projectId,`Ask my agent about this Team AgentBridge thread: ${thread}. Read it only through my admitted inbox tools; ask me what to follow up on.`))useChatStore.getState().addToast('Open your own agent in this project first.','info')}} className="text-primary">✦ Ask my agent about this</button>}
  </section>
 }

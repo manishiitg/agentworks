@@ -81,7 +81,7 @@ export function TeamSyncPanel({ target, name, projectId, server }: { target: Tea
     const store = useChatStore.getState()
     const tabs = Object.values(store.chatTabs).filter(t => t.metadata?.agentProfileIsDefaultAgent && !t.metadata?.isViewOnly)
     const tab = tabs.find(t => t.metadata?.agentProfileProjectId === (target.localProject || target.project)) || tabs[0]
-    if (!tab) { setError('Open your own Main chat in this project, then ask it to compare these two versions.'); return }
+    if (!tab) { setError('Open one of your own agents in this project, then ask it to compare these two versions.'); return }
     const prompt = `Help resolve the clash in ${name || 'my team'}: ${clash.path}. Compare versions ${clash.losing_revision} and ${clash.winning_revision} of the shared file, explain the differences, and suggest a merged version. Save the agreed version normally, then mark the clash resolved, keeping the current version.`
     const existing = store.getTabConfig(tab.tabId)?.inputText || ''
     store.setTabConfig(tab.tabId, { inputText: existing ? `${existing}\n\n${prompt}` : prompt })

@@ -1,7 +1,7 @@
 import { ForkTeammateAgent } from '../../products/work/ForkTeammateAgent'
 import { openProjectInPlace } from '../../utils/openProjectInPlace'
 import { TeamMonitorAgentRow } from './TeamMonitorAgentRow'
-import { fillMainDraft } from '../../utils/agentPurposeDraft'
+import { fillLastAgentDraft } from '../../utils/agentPurposeDraft'
 import { useChatStore } from '../../stores/useChatStore'
 import { Avatar, type AvatarFields } from '../ui/Avatar'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -130,7 +130,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
  },[open,only,byPerson,needs.length,rows.length])
  const avatar=(face:Face)=><button key={face.key} type="button" title={`${face.name} · ${face.line}`} aria-label={`Show ${face.name}'s agents`} onClick={()=>setOnly(face.key)} className="relative inline-flex h-5 w-5 shrink-0 rounded-full"><Avatar {...face} name={face.name} connection={face.connection} className="h-5 w-5 shrink-0 rounded-full text-[9px]"/>{face.online&&<span aria-label="Mac online" className="absolute -bottom-px -right-px h-1.5 w-1.5 rounded-full border border-background bg-emerald-500"/>}</button>
  const rowView=(row:Row)=>{const face=faces.find(face=>face.key===row.personKey);return <div key={row.key} className="flex min-w-0 items-center"><TeamMonitorAgentRow name={row.agent} purpose={row.purpose} examples={row.examples} cli={row.cli||row.engine} activity={row.activity} line={row.last_message||row.doing||row.waiting} team={row.crew} server={multi?row.network:undefined} onOpen={()=>{setOpen(false);row.open()}}/>{row.can_fork&&row.id&&row.target&&<ForkTeammateAgent target={row.target} agent={row.id} name={row.agent} compact/>}{!selected&&face&&avatar(face)}</div>}
- const askPerson=()=>{if(!selected)return;if(fillMainDraft('',`Ask ${selected.name}’s agents in their Teams: `))setOpen(false);else useChatStore.getState().addToast('Open one of your own agents first.','info')}
+ const askPerson=()=>{if(!selected)return;if(fillLastAgentDraft('',`Ask ${selected.name}’s agents in their Teams: `))setOpen(false);else useChatStore.getState().addToast('Open one of your own agents first.','info')}
  const answer=(team:MonitorTeam)=>async(need:string,button:string,helper?:string,comment?:string)=>{
   const identity=captureChatIdentity()
   const out=await teamRequest<TeamNeedAnswer>(team.target,'/work','POST',{op:'work_answer',need,button,...(helper?{helper}:{}),...(comment?{comment}:{})})

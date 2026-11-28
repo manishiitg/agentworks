@@ -24,7 +24,7 @@ import (
 // message while the Mac is on, each with its own audience. The Mac keeps its choice and pushes the same list to its
 // online copy; the server decides who is in the audience, the Mac decides which of its tabs are shared. A message
 // runs on the Mac in that tab, in Run mode, framed as someone else's words, and its sender reads back only their own
-// exchange. The owner decides which tabs, Main included; unshared tabs are never reached.
+// exchange. The owner decides which tabs, the default agent included; unshared tabs are never reached.
 
 type macSharedAgent struct {
 	Tab      string   `json:"tab"`
@@ -229,41 +229,41 @@ func macSharedAudience(agents []macSharedAgent, tab, caller, owner string, membe
 	return macSharedAgent{}, "not_shared"
 }
 
-// macMainTab is how the shared list names a Crew's Main chat (owner, 3 Nov: Main can be shared too).
-const macMainTab = "main"
+// macDefaultTab is how the shared list names a Crew's default agent (owner, 3 Nov: the default agent can be shared too).
+const macDefaultTab = "main"
 
-// macSharedAgentChatKey is the conversation key of a shared tab: the project itself for Main.
+// macSharedAgentChatKey is the conversation key of a shared tab: the project itself for the default agent.
 func macSharedAgentChatKey(project, tab string) string {
-	if tab == macMainTab {
+	if tab == macDefaultTab {
 		return project
 	}
 	return project + codeChatSideMarker + tab
 }
 
-// macCrewAddressTab is the agent a message to the Crew itself reaches: Main while it is In team, else the owner's first shared agent (owner, 6 Nov: Main can be off).
+// macCrewAddressTab is the agent a message to the Crew itself reaches: the default agent while it is In team, else the owner's first shared agent (owner, 6 Nov: the default agent can be off).
 func macCrewAddressTab(project string) string {
 	if IsLocalMode() {
-		return macMainTab
+		return macDefaultTab
 	}
 	t, err := liveCrewTeam(project)
 	if err != nil || !t.On {
-		return macMainTab
+		return macDefaultTab
 	}
 	first := ""
 	for _, agent := range readMacSharedAgents(project) {
 		inTeam := t.agentInTeam(t.OwnerID, agent.Tab)
-		if agent.Tab == macMainTab && inTeam {
-			return macMainTab
+		if agent.Tab == macDefaultTab && inTeam {
+			return macDefaultTab
 		}
 		if inTeam && first == "" {
 			first = agent.Tab
 		}
 	}
-	return firstNonEmptyTrimmed(first, macMainTab)
+	return firstNonEmptyTrimmed(first, macDefaultTab)
 }
 
 // macSharedAgentTab reads the tab id from a chat_id: "<project>:chat:<id>", the bare id, or the project (the Crew
-// itself, macCrewAddressTab). A key that names Main itself stays Main, so an unshared Main is refused as such.
+// itself, macCrewAddressTab). A key that names the default agent stays the default agent, so an unshared default agent is refused as such.
 func macSharedAgentTab(project, chatID string) string {
 	chatID = strings.TrimSpace(chatID)
 	if chatID == project {
@@ -278,16 +278,16 @@ func macSharedAgentTab(project, chatID string) string {
 	if !crewMacTabID(chatID) {
 		return ""
 	}
-	// Main follows the saved role pointer, including a migrated Builder chat.
-	if project+codeChatSideMarker+chatID == crewOwnerMainChatKey(project) {
-		return macMainTab
+	// The default agent follows the saved role pointer, including a migrated Builder chat.
+	if project+codeChatSideMarker+chatID == crewOwnerDefaultAgentKey(project) {
+		return macDefaultTab
 	}
 	return chatID
 }
 
-// crewOwnerMainChatKey returns only the manifest's Main backed by the owner's own registry.
-// A registered side chat or another person's Main is never enough.
-func crewOwnerMainChatKey(project string) string {
+// crewOwnerDefaultAgentKey returns only the manifest's default agent backed by the owner's own registry.
+// A registered side chat or another person's default agent is never enough.
+func crewOwnerDefaultAgentKey(project string) string {
 	owner, root := ownerOfCrewProjectID(project), crewProjectRootByID(project)
 	if owner == "" || root == "" {
 		return ""
@@ -581,7 +581,7 @@ func ownerOfCrewProjectID(project string) string {
 	return record.OwnerID
 }
 
-// macAgentRow is one agent on the Mac app's Access page: Main or a side tab, with its purpose from the tab itself.
+// macAgentRow is one agent on the Mac app's Access page: the default agent or a side tab, with its purpose from the tab itself.
 type macAgentRow struct {
 	Tab      string   `json:"tab"`
 	Name     string   `json:"name"`
@@ -594,8 +594,8 @@ func (api *StreamingAPI) macAgentRows(ctx context.Context, claims *UserClaims, p
 	if err != nil {
 		return nil, err
 	}
-	// The owner decides which agents to share, the default one (Main) included (owner, 3 Nov). A purpose is optional.
-	rows := []macAgentRow{{Tab: macMainTab, Name: defaultAgentName(main.Name, false), Examples: main.Examples, Purpose: strings.TrimSpace(main.Purpose)}}
+	// The owner decides which agents to share, the default one included (owner, 3 Nov). A purpose is optional.
+	rows := []macAgentRow{{Tab: macDefaultTab, Name: defaultAgentName(main.Name, false), Examples: main.Examples, Purpose: strings.TrimSpace(main.Purpose)}}
 	for _, tab := range tabs {
 		if _, id, ok := strings.Cut(tab.ConversationKey, codeChatSideMarker); ok {
 			rows = append(rows, macAgentRow{Tab: id, Name: tab.Name, Purpose: tab.Purpose, Examples: tab.Examples})
@@ -1182,7 +1182,7 @@ func macSharedAgentDirectoryItems(user string) []map[string]interface{} {
 	return items
 }
 
-// crewMacAgentTabForKey maps the owner's saved Main pointer as well as side
+// crewMacAgentTabForKey maps the owner's saved default agent pointer as well as side
 // and shared-thread keys to the corresponding Mac agent, without a server copy.
 func crewMacAgentTabForKey(project, key string) string {
 	key = strings.TrimSpace(key)
@@ -1190,8 +1190,8 @@ func crewMacAgentTabForKey(project, key string) string {
 		return ""
 	}
 	owner := ownerOfCrewProjectID(project)
-	if key == crewOwnerDefaultChatKey(project, owner) || key == crewOwnerMainChatKey(project) {
-		return macMainTab
+	if key == crewOwnerDefaultChatKey(project, owner) || key == crewOwnerDefaultAgentKey(project) {
+		return macDefaultTab
 	}
 	return crewAgentKeyTab(key)
 }

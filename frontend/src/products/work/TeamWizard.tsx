@@ -92,7 +92,7 @@ export function TeamWizard({ target, onNo, offset = 0 }: { target: TeamTarget; o
         {options.agents.map(agent => <Option key={agent.key} kind="check" on={agents.includes(agent.key)} title={agent.name}
           line="Untick to keep it to yourself."
           onClick={() => setAgents(current => current.includes(agent.key) ? current.filter(key => key !== agent.key) : [...current, agent.key])}
-          aside={agent.main && <span className="shrink-0 rounded-full border border-border px-2 py-px text-xs text-muted-foreground">Default</span>} />)}
+          aside={agent.is_default && <span className="shrink-0 rounded-full border border-border px-2 py-px text-xs text-muted-foreground">Default</span>} />)}
       </div>}
       {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     </div>

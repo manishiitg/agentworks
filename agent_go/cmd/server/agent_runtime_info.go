@@ -217,8 +217,8 @@ func (api *StreamingAPI) runtimeInfoForRecord(ctx context.Context, owner string,
 	info := api.activityForRecord(record)
 	info.TeamProject = record.ResourceID
 	info.TeamTab = crewAgentKeyTab(record.ConversationKey)
-	if record.ConversationKey == crewOwnerDefaultChatKey(record.ResourceID, owner) || record.ConversationKey == crewOwnerMainChatKey(record.ResourceID) {
-		info.TeamTab = macMainTab
+	if record.ConversationKey == crewOwnerDefaultChatKey(record.ResourceID, owner) || record.ConversationKey == crewOwnerDefaultAgentKey(record.ResourceID) {
+		info.TeamTab = macDefaultTab
 	}
 	if api.agentProfiles == nil && api.projectActions == nil {
 		return info

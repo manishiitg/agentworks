@@ -115,7 +115,7 @@ it('allows longer agent names in the desktop Crew header before truncating', asy
   document.body.append(host)
   const root = createRoot(host)
   try {
-    await act(async () => root.render(<AgentHeaderLine crewName="ai-work" agent={{ key: 'a', name: 'Skills: add and share across teams', tabId: 't1', main: false }} />))
+    await act(async () => root.render(<AgentHeaderLine crewName="ai-work" agent={{ key: 'a', name: 'Skills: add and share across teams', tabId: 't1', isDefault: false }} />))
     const label = host.querySelector('[data-agent-header] span[title="Skills: add and share across teams"]')!
     expect(label.className).toContain('md:max-w-[28rem]')
     expect(label.className).toContain('lg:max-w-[36rem]')

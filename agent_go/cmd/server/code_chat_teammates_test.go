@@ -23,7 +23,7 @@ func TestMacTeammateChatsListsTeammatesAgentsFromTheTeamServer(t *testing.T) {
 		externalJSON(w, []AgentProfileSideChat{
 			{ConversationKey: "server-crew:chat:mine", SessionID: "s1", Name: "Mine", CanWrite: true, TabOwnerID: "owner"},
 			{ConversationKey: "server-crew:chat:theirs", SessionID: "s2", Name: "Their agent", TabOwnerID: "teammate", TabOwnerName: "Teammate", Purpose: "Reviews"},
-			{ConversationKey: "server-crew:chat:root-teammate", SessionID: "s3", Name: "Main", TabOwnerID: "teammate", IsDefaultAgent: true},
+			{ConversationKey: "server-crew:chat:root-teammate", SessionID: "s3", Name: "Agent", TabOwnerID: "teammate", IsDefaultAgent: true},
 		})
 	}))
 	defer server.Close()
@@ -34,7 +34,9 @@ func TestMacTeammateChatsListsTeammatesAgentsFromTheTeamServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := macTeammateChats(context.Background(), "owner", "mac-crew")
-	if len(got) != 1 || got[0].Key != "mac-crew:team:server-crew:chat:theirs" || got[0].Name != "Their agent" || got[0].OwnerName != "Teammate" || !got[0].Teammate {
+	// A teammate's default agent is listed with their other agents (#4046); the caller's own agents are not.
+	if len(got) != 2 || got[0].Key != "mac-crew:team:server-crew:chat:theirs" || got[0].Name != "Their agent" || got[0].OwnerName != "Teammate" || !got[0].Teammate ||
+		got[1].Key != "mac-crew:team:server-crew:chat:root-teammate" || !got[1].Teammate {
 		t.Fatalf("teammates' agents = %+v", got)
 	}
 }

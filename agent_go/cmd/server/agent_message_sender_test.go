@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// A Watcher's event reads as a Watcher in the chat, never as the Crew's own "Main" chat.
-func TestAgentMessageSenderNamesWatcherNotMain(t *testing.T) {
+// A Watcher's event reads as a Watcher in the chat, never as the Crew's own default agent.
+func TestAgentMessageSenderNamesWatcherNotDefaultAgent(t *testing.T) {
 	source := agentMessageEndpoint{UserID: "u", Kind: triggerCallerCrew, ID: "crew", ConditionJob: "job", Label: "Watcher: Notion tickets"}
 	label, agent, _ := agentMessageSender(context.Background(), source, "u")
 	if label != "Watcher: Notion tickets" || agent != "Watcher" {

@@ -30,7 +30,7 @@ func TestChatMessageSearchRechecksPrivateAndHiddenChats(t *testing.T) {
 	if err := defaultProductConversationRegistryStore().writeDocument(t.Context(), productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, key): record}}); err != nil {
 		t.Fatal(err)
 	}
-	agents := crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {macMainTab: true}, "other": {"agent1": true}})
+	agents := crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {macDefaultTab: true}, "other": {"agent1": true}})
 	for id, a := range agents {
 		if a.OwnerID == "owner" {
 			a.ChatKey = key
@@ -92,7 +92,7 @@ func TestChatMessageSearchRechecksPrivateAndHiddenChats(t *testing.T) {
 		t.Fatalf("admitted link = %d %s", w.Code, w.Body.String())
 	}
 	off := crewChatShareAgent
-	if _, err = setCrewTeamAgentRule(t.Context(), "team", "owner", macMainTab, nil, &off); err != nil {
+	if _, err = setCrewTeamAgentRule(t.Context(), "team", "owner", macDefaultTab, nil, &off); err != nil {
 		t.Fatal(err)
 	}
 	if w = search("other"); w.Code != 200 || strings.Contains(w.Body.String(), "needle shared text") || !strings.Contains(w.Body.String(), "needle own text") {

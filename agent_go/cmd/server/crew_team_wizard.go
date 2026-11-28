@@ -37,9 +37,9 @@ type crewWizardPerson struct {
 type crewWizardAgent struct {
 	Key  string `json:"key"`
 	Name string `json:"name"`
-	// Main marks the default agent (it gets work nobody addressed); not a forced sharing choice or a first place.
-	Main   bool `json:"main,omitempty"`
-	InTeam bool `json:"in_team"`
+	// IsDefault marks the default agent (it gets work nobody addressed); not a forced sharing choice or a first place.
+	IsDefault bool `json:"is_default,omitempty"`
+	InTeam    bool `json:"in_team"`
 }
 
 type crewWizardFolders struct {
@@ -63,21 +63,21 @@ type crewWizardChoice struct {
 		Level  string `json:"level"`
 	} `json:"people"`
 	Folder          string   `json:"folder"`
-	Agents          []string `json:"agents"` // explicit keys of the agents the Team may ask, Main included
+	Agents          []string `json:"agents"` // explicit keys of the agents the Team may ask, the default agent included
 	CreateDashboard bool     `json:"create_dashboard"`
 }
 
 // crewWizardAgents are the owner's own agents as the Team tab lists them while the Team is off, in their own order;
-// Main marks the default agent (#4046: it is an agent like any other).
+// IsDefault marks the default agent (#4046: it is an agent like any other).
 func crewWizardAgents(ctx context.Context, t crewTeam) []crewWizardAgent {
-	mainKey := crewOwnerMainChatKey(t.ProjectID)
+	defaultKey := crewOwnerDefaultAgentKey(t.ProjectID)
 	out := []crewWizardAgent{}
-	for _, a := range crewTeamSoloAgents(ctx, t, crewTabSetupSource{}, mainKey) {
+	for _, a := range crewTeamSoloAgents(ctx, t, crewTabSetupSource{}, defaultKey) {
 		inTeam := crewTeamDefaultInTeam(nil)
 		if saved, ok := t.registeredAgent(t.OwnerID, a.WatchKey); ok {
 			inTeam = saved.InTeam
 		}
-		out = append(out, crewWizardAgent{Key: a.Key, Name: a.Name, InTeam: inTeam, Main: a.Tab == macMainTab || crewTeamMainAgentWithKey(t, t.OwnerID, a.WatchKey, mainKey)})
+		out = append(out, crewWizardAgent{Key: a.Key, Name: a.Name, InTeam: inTeam, IsDefault: a.Tab == macDefaultTab || crewTeamDefaultAgentWithKey(t, t.OwnerID, a.WatchKey, defaultKey)})
 	}
 	return out
 }

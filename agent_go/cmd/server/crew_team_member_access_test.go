@@ -186,7 +186,7 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	if err := crewroot.WriteSync(team.ProjectID, crewroot.SyncBinding{Side: "server", Editing: "local", Mode: "relay", PairID: "pair", PeerProjectID: "mac-copy"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeMacSharedAgents(team.ProjectID, []macSharedAgent{{Tab: macMainTab, Name: "Main", Audience: "team"}, {Tab: "e139c703", Name: "Helper", Audience: "team"}}); err != nil {
+	if err := writeMacSharedAgents(team.ProjectID, []macSharedAgent{{Tab: macDefaultTab, Name: "Main", Audience: "team"}, {Tab: "e139c703", Name: "Helper", Audience: "team"}}); err != nil {
 		t.Fatal(err)
 	}
 	team, _ = readCrewTeam(team.ProjectID)
@@ -217,7 +217,7 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 			t.Fatalf("member saved the owner's agent rule by %q: %d", name, w.Code)
 		}
 	}
-	if saved, _ := readCrewTeam(team.ProjectID); saved.agentRule("owner", "e139c703").WhenOthersAsk != "Saved by helper" || saved.agentRule("owner", macMainTab).WhenOthersAsk != "Ask me first." {
+	if saved, _ := readCrewTeam(team.ProjectID); saved.agentRule("owner", "e139c703").WhenOthersAsk != "Saved by helper" || saved.agentRule("owner", macDefaultTab).WhenOthersAsk != "Ask me first." {
 		t.Fatalf("rules by Mac key or name not kept on the owner's agents: %+v", saved.Agents)
 	}
 	call("owner", "agent-rule", `{"agent_key":"Helper","when_others_ask":"Ask me first."}`)

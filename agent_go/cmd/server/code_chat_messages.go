@@ -99,10 +99,8 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 		chat.ID = strings.TrimPrefix(record.ConversationKey, manifest.ID+codeChatSideMarker)
 		chat.IsDefaultAgent = tab.OwnerID == userID && (record.IsDefaultAgent || record.ConversationKey == crewOwnerDefaultChatKey(manifest.ID, userID))
 		chat.Name = "Chat " + chat.ID
-		if chat.IsDefaultAgent {
-			chat.Name = "Main chat"
-		} else if record.IsDefaultAgent || record.ConversationKey == crewOwnerDefaultChatKey(manifest.ID, tab.OwnerID) || strings.HasPrefix(chat.ID, "root-") {
-			chat.Name = "Main" // another person's Main, by its name in the Team (never a raw root id)
+		if chat.IsDefaultAgent || record.IsDefaultAgent || record.ConversationKey == crewOwnerDefaultChatKey(manifest.ID, tab.OwnerID) || strings.HasPrefix(chat.ID, "root-") {
+			chat.Name = "Agent" // a person's default agent until it is named (never a raw root id)
 		}
 		// The person's or the agent's own name wins over the chat's automatic title.
 		if identity := tab.Identity; identity.Name != "" || identity.Purpose != "" || len(identity.Examples) > 0 {
@@ -111,7 +109,7 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 			chat.Examples = identity.Examples
 		}
 		chat.forkedFromKey = tab.Identity.ForkedFrom
-		// Main hides like any agent (owner, 25 Nov, #4046: Main is not special).
+		// The default agent hides like any agent (owner, 25 Nov, #4046: the default agent is not special).
 		chat.Hidden = tab.Identity.Unpinned
 		if own, ok := mine[record.ConversationKey]; ok && tab.OwnerID != userID {
 			chat.Hidden = own.Unpinned
@@ -142,7 +140,7 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 					if !agent.InTeam {
 						continue
 					}
-					project.Chats = append(project.Chats, codeChat{TeamAgentID: agent.ID, ID: agent.ID, Key: crewTeamNativeChatKey(manifest.ID, person.UserID, agent), OwnerID: person.UserID, Name: agent.Name, Purpose: agent.Purpose, Examples: agent.Examples, SessionID: agent.sessionID, IsDefaultAgent: person.UserID == userID && crewTeamMainAgent(team, userID, agent.ChatKey)})
+					project.Chats = append(project.Chats, codeChat{TeamAgentID: agent.ID, ID: agent.ID, Key: crewTeamNativeChatKey(manifest.ID, person.UserID, agent), OwnerID: person.UserID, Name: agent.Name, Purpose: agent.Purpose, Examples: agent.Examples, SessionID: agent.sessionID, IsDefaultAgent: person.UserID == userID && crewTeamDefaultAgent(team, userID, agent.ChatKey)})
 				}
 			}
 		}
@@ -300,11 +298,8 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 		out := make([]map[string]interface{}, 0, len(project.Chats))
 		for _, chat := range project.Chats {
 			// Names as the header shows them (owner, 10 Nov: a person's chip said "admin" while this list said their
-			// email, and a person's Main said its saved title "<email> · Builder", so "ask admin" found no one).
+			// email, and a default agent said its saved title "<email> · Builder", so "ask admin" found no one).
 			name := chat.Name
-			if chat.IsDefaultAgent {
-				name = "Main"
-			}
 			item := map[string]interface{}{"id": chat.ID, "name": name, "is_default_agent": chat.IsDefaultAgent, "owner_id": chat.OwnerID, "owner_name": firstNonEmptyTrimmed(chat.OwnerName, shareOwnerLabel(chat.OwnerID)), "can_write": chat.OwnerID == userID, "working": api.conversationTurnOccupied(chat.SessionID)}
 			if chat.Teammate {
 				// A teammate's agent runs on their side: its work state is not known here.

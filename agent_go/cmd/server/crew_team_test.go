@@ -244,7 +244,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The registry, not a native chat's existence, owns Team choices.
-	if err := assignCrewTeamAgentIDs(mustReadCrewTeam(t, "team-test"), []crewTeamAgentsPerson{{UserID: "member", Agents: []crewTeamAgent{{Tab: macMainTab, ChatKey: memberMain, Name: "Main"}}}}); err != nil {
+	if err := assignCrewTeamAgentIDs(mustReadCrewTeam(t, "team-test"), []crewTeamAgentsPerson{{UserID: "member", Agents: []crewTeamAgent{{Tab: macDefaultTab, ChatKey: memberMain, Name: "Main"}}}}); err != nil {
 		t.Fatal(err)
 	}
 	if w = call("member", "POST", base+"/agent-visibility", `{"agent_key":"*","in_team":false}`, ""); w.Code < 400 {
@@ -253,7 +253,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w = call("member", "POST", base+"/agent-visibility", `{"agent_key":"main","in_team":false}`, ""); w.Code != 400 || !strings.Contains(w.Body.String(), "at least one agent shared") {
 		t.Fatalf("member's last shared agent went Only me: %d %s", w.Code, w.Body.String())
 	}
-	if saved := mustReadCrewTeam(t, "team-test"); !saved.agentInTeam("owner", "team01") || !saved.agentInTeam("member", macMainTab) {
+	if saved := mustReadCrewTeam(t, "team-test"); !saved.agentInTeam("owner", "team01") || !saved.agentInTeam("member", macDefaultTab) {
 		t.Fatalf("refused choices changed the record: %+v", saved.Agents)
 	}
 	if w = call("owner", "POST", base+"/leave", `{}`, ""); w.Code != 403 || !crewTeamMember("team-test", "owner") {

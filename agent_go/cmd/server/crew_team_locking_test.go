@@ -167,7 +167,7 @@ func TestAssignCrewTeamAgentIDsSetsAddressOnFirstSave(t *testing.T) {
 			Name:    "Worker",
 		}},
 	}}
-	if err := assignCrewTeamAgentIDsWithMain(team, people, ""); err != nil {
+	if err := assignCrewTeamAgentIDsWithDefault(team, people, ""); err != nil {
 		t.Fatal(err)
 	}
 	if len(people[0].Agents) != 1 {

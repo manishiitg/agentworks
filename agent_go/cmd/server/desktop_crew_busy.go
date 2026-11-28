@@ -49,7 +49,7 @@ func (b *desktopRelayBusy) refresh(ctx context.Context, pairs map[string]string,
 		}
 		crews++
 		for session, tab := range tabs {
-			sessions[session] = desktopRelayChat{project: project, local: local, pair: pair, conversation: tab.Record.ConversationID, main: tab.Main}
+			sessions[session] = desktopRelayChat{project: project, local: local, pair: pair, conversation: tab.Record.ConversationID, main: tab.IsDefault}
 		}
 	}
 	b.sessions, b.checked = sessions, map[string]bool{}
