@@ -1,10 +1,11 @@
-import { ChevronRight, FolderSync, X, Globe, LayoutDashboard, Link2, ListChecks, TriangleAlert, Users, type LucideIcon } from 'lucide-react'
+import { Bot, ChevronRight, FolderSync, X, Globe, LayoutDashboard, Link2, ListChecks, TriangleAlert, Users, type LucideIcon } from 'lucide-react'
 import { PendingAgentForks } from '../../components/chat/PendingAgentForks'
 import { SetupPrompt } from '../../components/workspace/SetupPrompt'
 import { WorkspaceContextRow as Row } from '../../components/workspace/WorkspaceContextCard'
 import { CrewOnlineRow } from './CrewOnlineRow'
 import { CrewTeamPanel } from './CrewTeamPanel'
 import { openCrewAccess } from './MacSharedAgents'
+import { useBotsPageStore } from './bots/botsPageStore'
 import type { TeamPanelView } from './TeamPanel'
 import { TeamPanelHeader } from './TeamPanelHeader'
 import type { CrewMenuItem } from './crewProjectMenu'
@@ -23,6 +24,8 @@ const lineIcon: Record<CrewAccessLine['kind'], LucideIcon> = {
   public: Link2,
   folder: FolderSync,
   clash: TriangleAlert,
+  bots: Bot,
+  share: Link2,
 }
 
 const lineButton = 'flex w-full items-start gap-2 rounded-md px-1.5 py-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
@@ -95,6 +98,10 @@ export function WorkContextAccessFooter({
     // The dashboard line (owner, 6 Nov) opens the Artifacts page, where the server lists them, or says
     // there are none and offers its Ask.
     if (line.kind === 'team_live') { openCrewAccess(projectId, '', 'team', 'activity'); return }
+    // A server project's Bots and Dashboard lines (#4545): Bots opens the Bots page; Dashboard opens the Artifacts page,
+    // whose Share sets who can open the dashboard (people added, plus general access).
+    if (line.kind === 'bots') { useBotsPageStore.getState().show(); return }
+    if (line.kind === 'share') { openCrewAccess(projectId, '', 'artifacts'); return }
     if (line.kind === 'dashboard') { openCrewAccess(projectId, '', 'artifacts'); return }
     if (line.kind === 'folder' || line.kind === 'clash') openCrewAccess(projectId, '', 'team', 'sync')
     else openCrewAccess(projectId, '', line.kind === 'mac' || line.kind === 'public' ? 'mac' : 'team')
@@ -154,7 +161,7 @@ export function WorkContextAccessFooter({
         what="Bring teammates and their agents into this project."
         points={['Everyone works from the same project, tasks and files', 'Agents can hand work to each other and to people', 'See who is working on what, live']} />
     </div>)
-    : <Row key={item.id} icon={item.icon} onClick={() => onOpen(item)}>{item.id === 'mcp:team' ? crewTeamTitle(accessTree, item) : item.label}</Row>
+    : <Row key={item.id} icon={item.icon} detail={item.id === 'mcp:team' && access?.co_owners ? accessTree.find(line => line.kind === 'team')?.detail : undefined} onClick={() => onOpen(item)}>{item.id === 'mcp:team' ? crewTeamTitle(accessTree, item) : item.label}</Row>
 
   const teamTree = (teamLines.length > 0 || teamState.view?.team.on || !!teamState.error) && <div role="list" aria-label="Team details" className={showTeam ? 'pb-1' : undefined}><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} collapsed={!showTeam} selectedPerson={selectedPerson} onPersonSelect={onSelectPerson} onPanelView={onOpenTeamPane} askAgent={askAgent} />{!teamState.view?.team.on && renderTreeLines(teamLines)}</div>
 

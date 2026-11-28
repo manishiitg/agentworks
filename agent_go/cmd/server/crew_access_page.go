@@ -66,10 +66,10 @@ var crewAccessPeopleTabs = []crewAccessTab{
 
 var crewAccessTeamTab = crewAccessPeopleTabs
 
-// A Crew that lives on the server has co-owners instead of a Team (owner, 21 Nov): the Team page is its Co-owners page,
-// the Access panel with Shared with and Co-owners.
+// A Crew that lives on the server has co-owners instead of a Team (owner, 21 Nov): the Team page is its People page
+// (co-owners, Users and Teams; #4545).
 var crewAccessCoOwnerTabs = []crewAccessTab{
-	{ID: "team", Label: "Co-owners", Detail: "people who build it with you", Group: "team"},
+	{ID: "team", Label: "People", Detail: "who works in it with you", Group: "team"},
 	{ID: "dashboards", Label: "Artifacts", Detail: "what this project publishes", Group: "online"},
 }
 
