@@ -171,7 +171,7 @@ func (api *StreamingAPI) pauseNativeGoalForStop(sessionID string) {
 	defer cancel()
 	previous, err := api.latestNativeGoal(ctx, sessionID)
 	if err == nil && previous != nil && previous.Goal != nil && turnGoalProvider(previous.Provider) {
-		// agy and Claude Code have no pause: Stop ends the /goal turn and the goal waits for Start again.
+		// agy, Claude Code and Cursor have no pause: Stop ends the goal turn and the goal waits for Start again.
 		api.stopAgyGoal(sessionID, previous)
 		return
 	}

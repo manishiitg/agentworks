@@ -836,6 +836,10 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 	} else if len(opts.CodingProviderHistory) > 0 {
 		_, conversation = splitCursorSystemPrompt(opts.CodingProviderHistory)
 	}
+	conversation, goal, endGoal, goalErr := cursorGoalTurn(ctx, owner, conversation)
+	if goalErr != nil {
+		return nil, goalErr
+	}
 	prompt := buildCursorStructuredPrompt("", conversation, resumePrompt)
 	ctx = cursorSDKImageContext(ctx, owner, conversation)
 	if strings.TrimSpace(prompt) == "" && len(llmtypes.NativeImageInputsForSession(ctx, owner)) == 0 {
@@ -843,6 +847,9 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 	}
 	delivery, deliveredInstructions := s.instructions.Next(system)
 	prompt = instructions.InMessage(delivery, prompt)
+	if goal != nil || endGoal {
+		ctx = context.WithValue(ctx, cursorGoalTurnKey{}, cursorGoalTurnState{goal: goal, end: endGoal})
+	}
 	response, err = c.consumeSDKTurn(ctx, s, p, prompt, switchModel, model, emit, owner)
 	if err == nil {
 		deliveredInstructions()
@@ -878,8 +885,21 @@ func (c *CursorCLIAdapter) consumeSDKTurn(ctx context.Context, s *cursorSDKSessi
 			c.logger.Infof("[PLAN_MODE] provider=cursor-cli session=%s action=plan_turn", owner)
 		}
 	}
+	goalTurn, _ := ctx.Value(cursorGoalTurnKey{}).(cursorGoalTurnState)
+	if goalTurn.goal != nil {
+		request["goal_report"] = true
+	} else if goalTurn.end {
+		request["goal_end"] = cursorGoalEndNote
+	}
 	if err := p.send(request); err != nil {
 		return nil, err
+	}
+	if goalTurn.goal != nil {
+		seconds := int64(0)
+		// The intent reason releases a Stop's guard against late goal frames (server prepareNativeGoalEvent).
+		reason := "intent_" + goalTurn.goal.action
+		goalTurn.goal.log(s.agentID, "active", reason)
+		emit(llmtypes.NativeGoalChunk(llmtypes.NativeGoalUpdate{Provider: "cursor-cli", NativeSessionID: s.agentID, Goal: &llmtypes.NativeGoal{Objective: goalTurn.goal.objective, Status: "active", TimeUsedSeconds: &seconds}, Reason: reason}))
 	}
 	s.mu.Lock()
 	s.prompted = true
@@ -1004,6 +1024,20 @@ func (c *CursorCLIAdapter) consumeSDKTurn(ctx context.Context, s *cursorSDKSessi
 				}
 			case "context":
 				emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeStatusLine, StatusLine: c.cursorSDKContext(s, event), Metadata: meta})
+			case "goal":
+				// Cursor's own goal, read from the agent's checkpoint (cursorcli_sdk_goal.go).
+				if update, ok := cursorGoalUpdate(s.agentID, goalTurn.goal, event); ok {
+					status := "none"
+					if update.Goal != nil {
+						status = update.Goal.Status
+					}
+					goalTurn.goal.log(s.agentID, status, update.Reason)
+					emit(llmtypes.NativeGoalChunk(update))
+				}
+			case "goal_ended":
+				if c.logger != nil {
+					c.logger.Infof("[AGENT_GOAL] session=%s provider=cursor-cli native=%s action=end_asked reason=goal_stopped", owner, s.agentID)
+				}
 			case "compaction":
 				if chunk, ok := cursorSDKCompactionChunk(event, "auto"); ok {
 					emit(chunk)

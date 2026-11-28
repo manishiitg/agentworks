@@ -225,7 +225,7 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("AUTH_SECRET", "goal-query-test")
-	t.Setenv("SUPPORTED_LLM_PROVIDERS", "codex-cli,cursor-cli")
+	t.Setenv("SUPPORTED_LLM_PROVIDERS", "codex-cli,pi-cli")
 	t.Setenv("LLM_CONFIG_LOCKED", "")
 	t.Setenv("AGENTWORKS_PROVIDER_POLICY", "")
 	var err error
@@ -276,24 +276,24 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 	codexReq := req
 	// Owner live regression: an unsupported /goal is information, not a failed
 	// native turn. Check the same admitted HTTP and internal/MCP input paths.
-	cursor := (&providerAccountsEnv{api: f.api}).addAccount(t, "owner", map[string]interface{}{"provider": "cursor-cli", "display_name": "Cursor test account", "auth_method": "cli_login"})
+	other := (&providerAccountsEnv{api: f.api}).addAccount(t, "owner", map[string]interface{}{"provider": "pi-cli", "underlying_provider": "openrouter", "auth_method": "api_key", "display_name": "Pi test account", "credential": "test-pi-key"})
 	profile, err := f.api.agentProfiles.Resolve(crewProfileID, 0, "owner")
 	if err != nil {
 		t.Fatal(err)
 	}
 	otherModel := ""
 	for _, option := range profile.Runtime.ProviderOptions {
-		if option.Provider == "cursor-cli" {
+		if option.Provider == "pi-cli" {
 			otherModel = option.ModelID
 			break
 		}
 	}
 	if otherModel == "" {
-		t.Fatal("fixture Crew does not offer Cursor")
+		t.Fatal("fixture Crew does not offer Pi")
 	}
-	req.Provider, req.ModelID, req.ConnectionID, req.Query = "cursor-cli", otherModel, cursor.ID, "/goal Task"
+	req.Provider, req.ModelID, req.ConnectionID, req.Query = "pi-cli", otherModel, other.ID, "/goal Task"
 	req.LLMConfigSource = llmConfigSourceAgentProfile // the same saved project selection the composer submits
-	req.LLMConfig = &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "cursor-cli", ModelID: otherModel}}
+	req.LLMConfig = &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "pi-cli", ModelID: otherModel}}
 	otherReq := req
 	info := send("owner")
 	var notice struct {
@@ -316,7 +316,7 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 		t.Fatal("internal goal notice failed", result, err)
 	}
 	capabilities := nativeGoalProgramCapabilities()
-	if !capabilities["codex-cli"] || !capabilities["muse-cli"] || !capabilities["claude-code"] || capabilities["cursor-cli"] || capabilities["pi-cli"] || !capabilities["agy-cli"] {
+	if !capabilities["codex-cli"] || !capabilities["muse-cli"] || !capabilities["claude-code"] || !capabilities["cursor-cli"] || capabilities["pi-cli"] || !capabilities["agy-cli"] {
 		t.Fatal("server offered unsupported native goals", capabilities)
 	}
 	state, err := f.api.latestNativeGoal(context.Background(), sid)

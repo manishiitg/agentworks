@@ -23,9 +23,9 @@ export function PinnedGoalBar({ events, onCommand }: { events: PollingEvent[] | 
   // Muse reports what it works on now and next (#4628).
   const work = [goal.current_work?.trim() ? `Now: ${goal.current_work.trim()}` : '', goal.next_work?.trim() ? `Next: ${goal.next_work.trim()}` : ''].filter(Boolean).join(' · ')
   const stalled = goal.status === 'paused' && update?.reason === 'native_continuation_not_started'
-  // Antigravity and Claude Code have no pause or resume: Stop ends the /goal turn and Start again sends the goal
-  // again (#4604, #4626).
-  const agy = update?.provider === 'agy-cli' || update?.provider === 'claude-code'
+  // Antigravity, Claude Code and Cursor have no pause or resume: Stop ends the goal turn and Start again sends the
+  // goal again (#4604, #4626, #4623).
+  const agy = update?.provider === 'agy-cli' || update?.provider === 'claude-code' || update?.provider === 'cursor-cli'
   const resumable = goal.status === 'paused' || goal.status === 'blocked' || goal.status === 'usage_limited'
   const button = 'shrink-0 rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted'
   const objective = goal.objective.replace(/\s+/g, ' ').trim()
