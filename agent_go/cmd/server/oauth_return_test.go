@@ -44,35 +44,59 @@ func TestOAuthCallbackShowsProviderErrorAsText(t *testing.T) {
 }
 
 // On a server with several people, a sign-in link finished in a teammate's browser must not put the teammate's
-// account into the starter's connection: the code waits until the starter finishes it in the app.
+// account into the starter's connection: the callback issues a fresh completion nonce (never reusing state),
+// and a cross-user mismatch immediately destroys the held authorization code.
 func TestOAuthSignInIsFinishedOnlyByThePersonWhoStartedIt(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	api := &StreamingAPI{logger: loggerv2.NewNoop()}
-	flow := registerTestOAuthFlow(t, "state-bound", "owner")
 
-	rec := httptest.NewRecorder()
-	api.handleOAuthCallback(rec, httptest.NewRequest(http.MethodGet, "/api/oauth/callback?state=state-bound&code=one-time-code", nil))
-	if rec.Code != http.StatusFound || !strings.Contains(rec.Header().Get("Location"), oauthReturnParam+"=state-bound") {
-		t.Fatalf("callback did not send the browser into the app: %d %q", rec.Code, rec.Header().Get("Location"))
-	}
-	if len(flow.CodeChan) != 0 {
-		t.Fatal("the callback finished the sign-in without the person who started it")
-	}
-
-	complete := func(person string) int {
-		req := httptest.NewRequest(http.MethodPost, "/api/oauth/complete", strings.NewReader(`{"state":"state-bound"}`))
+	complete := func(person, token string) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/oauth/complete", strings.NewReader(`{"state":"`+token+`"}`))
 		req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: person, Username: person}))
 		rec := httptest.NewRecorder()
 		api.handleOAuthReturnComplete(rec, req)
 		return rec.Code
 	}
-	if code := complete("teammate"); code != http.StatusForbidden || len(flow.CodeChan) != 0 {
+
+	// Flow 1: teammate completes callback; raw state is rejected, teammate mismatch destroys the held code
+	// so the starter cannot subsequently redeem the teammate's authorization code.
+	flow1 := registerTestOAuthFlow(t, "state-bound-1", "owner")
+	rec := httptest.NewRecorder()
+	api.handleOAuthCallback(rec, httptest.NewRequest(http.MethodGet, "/api/oauth/callback?state=state-bound-1&code=teammate-code", nil))
+	loc, err := url.Parse(rec.Header().Get("Location"))
+	if rec.Code != http.StatusFound || err != nil {
+		t.Fatalf("callback did not send the browser into the app: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	nonce1 := loc.Query().Get(oauthReturnParam)
+	if nonce1 == "" || nonce1 == "state-bound-1" {
+		t.Fatalf("expected fresh completion nonce distinct from state, got %q", nonce1)
+	}
+	if len(flow1.CodeChan) != 0 {
+		t.Fatal("the callback finished the sign-in without the person who started it")
+	}
+	if code := complete("owner", "state-bound-1"); code != http.StatusForbidden {
+		t.Fatalf("starter redeemed raw state instead of completion nonce: %d", code)
+	}
+	if code := complete("teammate", nonce1); code != http.StatusForbidden || len(flow1.CodeChan) != 0 {
 		t.Fatalf("a teammate finished another person's sign-in: %d", code)
 	}
-	if code := complete("owner"); code != http.StatusOK {
+	if code := complete("owner", nonce1); code != http.StatusForbidden || len(flow1.CodeChan) != 0 {
+		t.Fatalf("held victim code survived cross-user mismatch and was redeemed by starter: %d", code)
+	}
+
+	// Flow 2: owner completes their own callback cleanly with the completion nonce.
+	flow2 := registerTestOAuthFlow(t, "state-bound-2", "owner")
+	rec2 := httptest.NewRecorder()
+	api.handleOAuthCallback(rec2, httptest.NewRequest(http.MethodGet, "/api/oauth/callback?state=state-bound-2&code=one-time-code", nil))
+	loc2, _ := url.Parse(rec2.Header().Get("Location"))
+	nonce2 := loc2.Query().Get(oauthReturnParam)
+	if nonce2 == "" || nonce2 == "state-bound-2" {
+		t.Fatalf("expected fresh completion nonce, got %q", nonce2)
+	}
+	if code := complete("owner", nonce2); code != http.StatusOK {
 		t.Fatalf("the person who started the sign-in could not finish it: %d", code)
 	}
-	if got := <-flow.CodeChan; got != "one-time-code" {
+	if got := <-flow2.CodeChan; got != "one-time-code" {
 		t.Fatalf("flow received %q", got)
 	}
 }

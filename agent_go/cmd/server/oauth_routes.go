@@ -202,6 +202,17 @@ func (api *StreamingAPI) handleOAuthCallback(w http.ResponseWriter, r *http.Requ
 		writeOAuthPage(w, http.StatusBadRequest, "Invalid or expired sign-in", "This sign-in was not found or has expired. You can close this window and try again.")
 		return
 	}
+	if !verifyOAuthCallbackBrowser(r, state) {
+		oauthFlowsMu.Lock()
+		delete(oauthFlows, state)
+		oauthFlowsMu.Unlock()
+		select {
+		case flow.ErrChan <- errors.New("sign-in was returned to a different browser than the one that started it"):
+		default:
+		}
+		writeOAuthPage(w, http.StatusForbidden, "Sign-in started in another browser", "Finish signing in from the same browser where you started it.")
+		return
+	}
 
 	// The provider's error text comes from the URL, so it is shown only as escaped text.
 	if errCode := query.Get("error"); errCode != "" {
@@ -738,6 +749,9 @@ func (api *StreamingAPI) handleOAuthStart(w http.ResponseWriter, r *http.Request
 	if discoveryResp != nil {
 		json.NewEncoder(w).Encode(discoveryResp)
 		return
+	}
+	if startResp != nil && startResp.State != "" {
+		bindOAuthStartBrowser(w, r, startResp.State)
 	}
 	json.NewEncoder(w).Encode(startResp)
 }

@@ -68,6 +68,10 @@ func (a *Admin) vaultRoutes(mux *http.ServeMux) {
 			writeErr(w, 400, errors.New("project root required"))
 			return
 		}
+		if strings.HasPrefix(root, store.CrewVaultRootPrefix) {
+			writeErr(w, 400, errors.New("Crew vaults must use the Crew vault route"))
+			return
+		}
 		sum := sha256.Sum256([]byte(root))
 		id := "v-" + hex.EncodeToString(sum[:12])
 		parts := strings.Split(strings.TrimRight(root, "/"), "/")

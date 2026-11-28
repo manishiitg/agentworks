@@ -483,6 +483,7 @@ func labelSameNameVaultRows(rows []map[string]any, from map[string]string, isOwn
 type vaultDelegation struct {
 	Purpose   string `json:"purpose,omitempty"`
 	Session   string `json:"session,omitempty"`
+	CrewVault string `json:"crew_vault,omitempty"`
 	Person    string `json:"person"`
 	Connector string `json:"connector"`
 	Expires   int64  `json:"expires"`
@@ -525,13 +526,17 @@ func vaultDelegationExpiry(now time.Time, minTTL time.Duration) int64 {
 }
 
 func (api *StreamingAPI) vaultServerConfig(person, connector string) (mcpclient.MCPServerConfig, error) {
+	return api.vaultServerConfigForCrewVault(person, connector, "")
+}
+
+func (api *StreamingAPI) vaultServerConfigForCrewVault(person, connector, crewVault string) (mcpclient.MCPServerConfig, error) {
 	_, secret, err := gatewayAdminServiceConfig()
 	if err != nil {
 		return mcpclient.MCPServerConfig{}, err
 	}
 	// Credential permits only this user's existing permissions for this connector.
 	// The gateway service secret and upstream token never reach the agent.
-	token := signVaultDelegation(secret, vaultDelegation{Person: person, Connector: connector, Expires: vaultDelegationExpiry(time.Now(), 23*time.Hour)})
+	token := signVaultDelegation(secret, vaultDelegation{Person: person, Connector: connector, CrewVault: crewVault, Expires: vaultDelegationExpiry(time.Now(), 23*time.Hour)})
 	// The MCP SDK connects from this Go process, not the workspace container.
 	// Shell-facing host.docker.internal URLs cannot be used for this connection.
 	return mcpclient.MCPServerConfig{URL: api.GetAPIURL() + "/internal/vault/mcp", Protocol: mcpclient.ProtocolHTTP, Headers: map[string]string{"Authorization": "Bearer " + token}}, nil
@@ -602,6 +607,9 @@ func vaultGatewayMCPProxy(target *url.URL, secret, runtimePath string, in vaultD
 		headers.Set("X-CapLayer-Actor", in.Person)
 		headers.Set("X-Vault-Platform-User", "1")
 		headers.Set("X-Vault-Connector", in.Connector)
+		if in.CrewVault != "" {
+			headers.Set("X-Vault-Crew-Vault", in.CrewVault)
+		}
 		if in.Purpose == "vault-builder" {
 			headers.Set("X-Vault-Builder", "1")
 		}
@@ -652,7 +660,7 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 		return nil, fmt.Errorf("%q is not in your vault. Connect it in Vault (My accounts), or ask someone to put theirs in a shared vault you are in", server)
 	}
 	v := matches[0]
-	cfg, err := api.vaultServerConfig(person, v.ID)
+	cfg, err := api.vaultServerConfigForCrewVault(person, v.ID, crewVaultScope(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -826,7 +834,12 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 				log.Printf("[MCP_SCOPE] event=selected_server_skipped server=%s lender=%s session=%s error=%q", name, lender, sessionID, secretErr.Error())
 				continue
 			}
-			cfg.Headers = map[string]string{"Authorization": "Bearer " + signVaultDelegation(secret, vaultDelegation{Person: lender, Connector: strings.TrimPrefix(vaultSelectionName(resolved.Name), "vault_"), Session: sessionID, Expires: vaultDelegationExpiry(time.Now(), 23*time.Hour)})}
+			connID := strings.TrimPrefix(vaultSelectionName(resolved.Name), "vault_")
+			crewScope := crewVaultScope(ctx)
+			if own.ids[connID] {
+				crewScope = ""
+			}
+			cfg.Headers = map[string]string{"Authorization": "Bearer " + signVaultDelegation(secret, vaultDelegation{Person: lender, Connector: connID, Session: sessionID, CrewVault: crewScope, Expires: vaultDelegationExpiry(time.Now(), 23*time.Hour)})}
 		}
 		runtimeName := resolved.Name
 		if governedVaultName(runtimeName) {

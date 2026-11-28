@@ -30,7 +30,12 @@ func (a *Admin) runtimeRoutes(mux *http.ServeMux) {
 		if valid && a.bindPlatformUser(r) != nil {
 			valid = false
 		}
-		return auth.Identity{UserID: actor, WorkspaceID: a.WorkspaceID, ClientID: "agentworks"}, r.Header.Get("X-Vault-Connector"), valid
+		return auth.Identity{
+			UserID:           actor,
+			WorkspaceID:      a.WorkspaceID,
+			ClientID:         "agentworks",
+			AllowedCrewVault: strings.TrimSpace(r.Header.Get("X-Vault-Crew-Vault")),
+		}, r.Header.Get("X-Vault-Connector"), valid
 	}
 	if a.Gateway != nil {
 		mux.Handle("/api/admin/runtime/external-mcp", a.Gateway.ExternalProductHandler(func(r *http.Request) (auth.Identity, string, bool) {
@@ -68,6 +73,9 @@ func (a *Admin) runtimeRoutes(mux *http.ServeMux) {
 				return
 			}
 			id := auth.Identity{UserID: actor, WorkspaceID: a.WorkspaceID, ClientID: "agentworks"}
+			if !builder {
+				id.AllowedCrewVault = strings.TrimSpace(r.Header.Get("X-Vault-Crew-Vault"))
+			}
 			type tool struct {
 				Name        string          `json:"name"`
 				Description string          `json:"description"`

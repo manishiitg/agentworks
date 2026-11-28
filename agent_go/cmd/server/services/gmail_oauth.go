@@ -285,6 +285,9 @@ const gmailOAuthPendingTTL = 15 * time.Minute
 // state is random and server-held, so a callback cannot be forged to attach
 // someone else's Google account to a connection.
 func BeginGmailOAuth(person, connectionID, clientName, redirectURL string, includeRead, includeAgentWrite bool, extraScopes []string) (string, error) {
+	if strings.TrimSpace(person) == "" && strings.EqualFold(strings.TrimSpace(os.Getenv("MULTI_USER_MODE")), "true") {
+		return "", fmt.Errorf("gmail oauth: signed-in user required")
+	}
 	cfg, err := gmailOAuthConfig(redirectURL, clientName, includeRead, includeAgentWrite, extraScopes)
 	if err != nil {
 		return "", err
@@ -331,6 +334,24 @@ func GmailOAuthPendingPerson(state string) string {
 	return gmailOAuthPending[state].Person
 }
 
+// GmailOAuthPendingConnection returns the target connection ID for a live pending sign-in.
+func GmailOAuthPendingConnection(state string) (string, bool) {
+	gmailOAuthPendingMu.Lock()
+	defer gmailOAuthPendingMu.Unlock()
+	pending, ok := gmailOAuthPending[state]
+	if !ok || time.Since(pending.CreatedAt) > gmailOAuthPendingTTL {
+		return "", false
+	}
+	return pending.ConnectionID, true
+}
+
+// DiscardGmailOAuthState removes a pending Gmail OAuth state without exchanging any code.
+func DiscardGmailOAuthState(state string) {
+	gmailOAuthPendingMu.Lock()
+	delete(gmailOAuthPending, state)
+	gmailOAuthPendingMu.Unlock()
+}
+
 // CompleteGmailOAuth exchanges the callback code and stores the credential.
 // Returns the connection, the verified account email, and the scopes Google
 // reports for the fresh access token after gog import succeeds. The caller
@@ -353,7 +374,8 @@ func CompleteGmailOAuth(ctx context.Context, state, code string) (string, string
 	if err != nil {
 		return "", "", nil, err
 	}
-	token, err := cfg.Exchange(ctx, code)
+	exchangeCtx := context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Timeout: gmailTokenRefreshTimeout})
+	token, err := cfg.Exchange(exchangeCtx, code)
 	if err != nil {
 		return "", "", nil, fmt.Errorf("gmail oauth: exchange authorization code: %w", err)
 	}

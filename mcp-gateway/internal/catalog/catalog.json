@@ -462,7 +462,10 @@
         "token_url": "https://api.dropboxapi.com/oauth2/token",
         "token_file": "~/.config/mcpagent/tokens/default/Dropbox.json",
         "resource": "https://mcp.dropbox.com/mcp",
-        "registration_endpoint": "https://www.dropbox.com/oauth2/register"
+        "registration_endpoint": "https://www.dropbox.com/oauth2/register",
+        "extra_auth_params": {
+          "token_access_type": "offline"
+        }
       }
     },
     "Postman": {
