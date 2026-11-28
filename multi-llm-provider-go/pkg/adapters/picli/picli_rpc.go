@@ -15,6 +15,7 @@ import (
 
 	"github.com/manishiitg/multi-llm-provider-go/internal/clisandbox"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/instructions"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/procshutdown"
 )
 
@@ -25,6 +26,7 @@ type piRPCSession struct {
 	nativeID, sessionFile, cwd, model, turnID string
 	fingerprint                               [32]byte
 	parts                                     map[string][32]byte
+	instructions                              instructions.Tracker
 	status                                    *llmtypes.StatusLine
 	idle                                      *time.Timer
 	receipts                                  []*piRPCReceipt
@@ -309,10 +311,11 @@ func (p *PiCLIAdapter) generateContentRPC(ctx context.Context, messages []llmtyp
 		})
 		s.mu.Unlock()
 	}()
-	config := map[string]any{"model": p.modelID, "key": p.apiKey, "custom": p.customProvider, "cwd": cwd, "runtime_dir": opts.CLIRuntimeDir, "system": system, "security": opts.CLISecurity, "env": llmtypes.MergeCodingAgentSecretEnvironment(os.Environ(), opts), "skills": llmtypes.AttachedSkillsFromOptions(opts)}
+	// Instruction changes go in the turn message via instructions.Tracker instead of restarting (#4560).
+	config := map[string]any{"model": p.modelID, "key": p.apiKey, "custom": p.customProvider, "cwd": cwd, "runtime_dir": opts.CLIRuntimeDir, "instructions_empty": strings.TrimSpace(system) == "", "security": opts.CLISecurity, "env": llmtypes.MergeCodingAgentSecretEnvironment(os.Environ(), opts)}
 	if opts.Metadata != nil {
 		for k, v := range opts.Metadata.Custom {
-			if k != MetadataKeyResumeSessionID && k != llmtypes.CodingProviderLaunchOnlyMetadataKey && k != llmtypes.CodingProviderIdleCompactMetadataKey {
+			if k != MetadataKeyResumeSessionID && k != llmtypes.CodingProviderLaunchOnlyMetadataKey && k != llmtypes.CodingProviderIdleCompactMetadataKey && k != llmtypes.CodingProviderLaunchSystemPromptMetadataKey && k != llmtypes.AttachedSkillsMetadataKey {
 				config[k] = v
 			}
 		}
@@ -374,13 +377,20 @@ func (p *PiCLIAdapter) generateContentRPC(ctx context.Context, messages []llmtyp
 		s.status = nil
 		s.receipts = nil
 		s.mu.Unlock()
+		s.instructions.Started(system)
 	}
 	if launchOnly {
 		return piRPCResponse(s, "", nil, nil), nil
 	}
 	if idleCompact {
-		return compactPiRPC(turnCtx, s, r, emit)
+		resp, compactErr := compactPiRPC(turnCtx, s, r, emit)
+		if compactErr == nil {
+			s.instructions.Compacted()
+		}
+		return resp, compactErr
 	}
+	delivery, deliveredInstructions := s.instructions.Next(system)
+	prompt = instructions.InMessage(delivery, prompt)
 	params, closeImages, prepErr := piParamsWithImages(turnCtx, owner, map[string]any{"message": prompt}, conversation)
 	if prepErr != nil {
 		return nil, prepErr
@@ -403,7 +413,11 @@ func (p *PiCLIAdapter) generateContentRPC(ctx context.Context, messages []llmtyp
 	}()
 
 	defer func() { cancel(); <-callDone }()
-	return p.consumeRPCTurn(turnCtx, s, r, emit, accepted)
+	resp, turnErr := p.consumeRPCTurn(turnCtx, s, r, emit, accepted)
+	if turnErr == nil {
+		deliveredInstructions()
+	}
+	return resp, turnErr
 }
 
 func piRPCMetadata(s *piRPCSession) map[string]any {

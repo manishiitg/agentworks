@@ -44,9 +44,16 @@ const bridgeTokenPrefix = "mcps2."
 // lifetime until tokens are refreshed in place.
 const bridgeTokenLifetime = 7 * 24 * time.Hour
 
+type cachedBridgeToken struct {
+	token  string
+	issued time.Time
+}
+
 var (
-	bridgeTokenMu  sync.RWMutex
-	bridgeTokenKey []byte
+	bridgeTokenMu       sync.RWMutex
+	bridgeTokenKey      []byte
+	bridgeTokenNow      = time.Now
+	sessionBridgeTokens = map[string]cachedBridgeToken{}
 )
 
 // NewBridgeTokenSecret returns a fresh random signing secret.
@@ -64,6 +71,7 @@ func SetBridgeTokenSecret(secret string) {
 	bridgeTokenMu.Lock()
 	defer bridgeTokenMu.Unlock()
 	resetProcessBridgeCredentialsLocked()
+	sessionBridgeTokens = map[string]cachedBridgeToken{}
 	secret = strings.TrimSpace(secret)
 	if secret == "" {
 		bridgeTokenKey = nil
@@ -88,20 +96,46 @@ func bridgeTokenMAC(key []byte, sessionID, issuedHour string) []byte {
 
 // BridgeTokenForSession returns the bearer token for sessionID, or "" when
 // session tokens are not configured or the session is empty.
+// A minted token stays pinned to the session until half its lifetime has elapsed
+// so the top of each UTC hour never mutates mcp_config or CLI environment and
+// forces warm coding CLIs to restart and re-cache (#4560).
 func BridgeTokenForSession(sessionID string) string {
 	sessionID = strings.TrimSpace(sessionID)
 	if token, managed := processBridgeTokenForSession(sessionID); managed {
 		return token
 	}
+	now := bridgeTokenNow()
 	bridgeTokenMu.RLock()
 	key := bridgeTokenKey
+	cached, hasCached := sessionBridgeTokens[sessionID]
 	bridgeTokenMu.RUnlock()
 	if len(key) == 0 || sessionID == "" {
 		return ""
 	}
+	if hasCached && !cached.issued.After(now) && now.Before(cached.issued.Add(bridgeTokenLifetime/2)) {
+		return cached.token
+	}
+	bridgeTokenMu.Lock()
+	defer bridgeTokenMu.Unlock()
+	if len(bridgeTokenKey) == 0 {
+		return ""
+	}
+	if cached, ok := sessionBridgeTokens[sessionID]; ok && !cached.issued.After(now) && now.Before(cached.issued.Add(bridgeTokenLifetime/2)) {
+		return cached.token
+	}
+	if len(sessionBridgeTokens) > 1024 {
+		for id, entry := range sessionBridgeTokens {
+			if entry.issued.After(now) || !now.Before(entry.issued.Add(bridgeTokenLifetime/2)) {
+				delete(sessionBridgeTokens, id)
+			}
+		}
+	}
 	enc := base64.RawURLEncoding
-	issuedHour := strconv.FormatInt(time.Now().Unix()/3600, 10)
-	return bridgeTokenPrefix + enc.EncodeToString([]byte(sessionID)) + "." + issuedHour + "." + enc.EncodeToString(bridgeTokenMAC(key, sessionID, issuedHour))
+	hour := now.Unix() / 3600
+	issuedHour := strconv.FormatInt(hour, 10)
+	token := bridgeTokenPrefix + enc.EncodeToString([]byte(sessionID)) + "." + issuedHour + "." + enc.EncodeToString(bridgeTokenMAC(bridgeTokenKey, sessionID, issuedHour))
+	sessionBridgeTokens[sessionID] = cachedBridgeToken{token: token, issued: time.Unix(hour*3600, 0)}
+	return token
 }
 
 // IsBridgeSessionToken reports whether token has the session-token shape
@@ -134,7 +168,7 @@ func VerifyBridgeToken(token string) (string, bool) {
 		return "", false
 	}
 	issued := time.Unix(hour*3600, 0)
-	now := time.Now()
+	now := bridgeTokenNow()
 	if issued.After(now) || !now.Before(issued.Add(bridgeTokenLifetime)) {
 		return "", false
 	}

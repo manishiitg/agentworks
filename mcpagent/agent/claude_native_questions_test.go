@@ -25,7 +25,7 @@ func TestClaudeNativeQuestionsEmittedOptions(t *testing.T) {
 	t.Setenv("MCP_API_TOKEN", "test-token")
 	for _, enforced := range []bool{false, true} {
 		for _, mode := range []string{codingAgentToolsMCPOnly, codingAgentToolsFull} {
-			for _, scenario := range []string{"attended", "unattended", "nonpersistent", "structured", "unregistered", "unadvertised", "sdk", "sdk_unregistered"} {
+			for _, scenario := range []string{"attended", "unattended", "nonpersistent", "structured", "unregistered", "unadvertised", "sdk", "sdk_unattended", "sdk_unregistered"} {
 				t.Run(fmt.Sprintf("%s/%s/enforced=%v", mode, scenario, enforced), func(t *testing.T) {
 					t.Setenv("MCPAGENT_CLAUDE_ENFORCE_HTTP_TOOL_ROUTING", fmt.Sprint(enforced))
 					sdk := strings.HasPrefix(scenario, "sdk")
@@ -39,7 +39,7 @@ func TestClaudeNativeQuestionsEmittedOptions(t *testing.T) {
 					if !sdk {
 						a.claudeCodeTransport = llm.ClaudeCodeTransportTmux
 					}
-					a.userAnswersNativeQuestions = scenario != "unattended"
+					a.userAnswersNativeQuestions = scenario != "unattended" && scenario != "sdk_unattended"
 					a.claudeCodePersistentInteractiveSession = scenario != "nonpersistent" && !sdk
 					if scenario == "structured" {
 						a.codingAgentTransport = llm.CodingAgentTransportStructured
