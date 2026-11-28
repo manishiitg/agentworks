@@ -29,6 +29,7 @@ import { openCrewAccess, openCrewAskThread, useCrewAsking, useCrewLivesOnMac, us
 import { agentSetupForTab, createOnlineAgent, forgetOnlineProjects, teamAgentForTab, teamChanged, teamFailure, useTeamTab } from '../../products/work/teamApi'
 import type { ChatTabPillProps } from './ChatTabPill'
 import { AgentHeaderLine, useCrewAgentsStore, useOpenAgentStore, type CrewAgentActions, type CrewAgentRow, type CrewClosedAgent } from './AgentCard'
+import { agentMessagePrompt } from './AgentMessageFrom'
 import { agentTeamShareFromRow } from './AgentInTeamMark'
 import { useChatRuntimeActivity } from '../../hooks/useChatRuntimeActivity'
 import { useMobileViewport } from '../../hooks/useMobileViewport'
@@ -303,6 +304,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
         lastAsked: ask && placeProject ? { who: ask.sender, when: ago || '', active: ask.active, open: () => { void openCrewAskThread(placeProject, ask) } } : undefined,
         // Your own agents message it with this line, Team on or not (owner, 28 Nov: the menu must say how agents message it).
         messageLine: `Ask the "${tabLabel(tab)}" agent in ${projectName} to …`,
+        messageCopy: agentMessagePrompt(tabLabel(tab), projectName),
         instructions: { set: tab.tabId === canonicalTabId ? undefined : Boolean(listedFor(tab)?.has_instructions), onEdit: () => setUpAgentInstructions(tab.tabId) },
         onSharing: placeProject && id ? () => openCrewAccess(placeProject, id) : undefined,
         onRemove: isAgentTab(tab) && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
