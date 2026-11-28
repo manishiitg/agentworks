@@ -42,21 +42,16 @@ export function ContinueOnlineDialog({ project, chatKey, tabId, name, close }: {
       {!plan && !error && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />Checking what would move…</p>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {plan && <>
-        {plan.server && <p className="text-sm">Goes to <b>{plan.project_name}</b> on {plan.server}{plan.new_project ? ': your Team has no online project yet, so a new one is made for it.' : ', your Team’s online project.'} A new agent there carries on and keeps working with your Mac closed.</p>}
         <div className="text-xs">
-          <p className="pb-1 font-medium">Copied</p>
+          <div className={row}><span>Goes to</span><span className="text-right"><b>{plan.project_name}</b>{plan.new_project ? ' (new)' : ''}</span></div>
           <div className={row}><span>Conversation</span><span className="text-muted-foreground">{plan.messages} messages</span></div>
-          {plan.repos.map(repo => <div key={repo.name} className={row}><span>{repo.name}</span><span className="min-w-0 truncate text-right text-muted-foreground">{[repo.changed ? `${repo.changed} changed files` : '', repo.unpushed ? `${repo.unpushed} unpushed commits` : ''].filter(Boolean).join(', ')} → branch {repo.branch}</span></div>)}
-          {plan.files.length > 0 && <div className={row}><span>Files</span><span className="min-w-0 text-right text-muted-foreground">{plan.files.length} into from-mac/</span></div>}
-          {plan.setup.length > 0 && <div className={row}><span>Instructions, memory, skills</span><span className="text-muted-foreground">{plan.setup.length} files</span></div>}
-          <div className={row}><span>Keys</span><span className="text-right text-muted-foreground">named in the handoff note; add them to the online project’s vault</span></div>
-          {plan.skipped.length > 0 && <>
-            <p className="pb-1 pt-2 font-medium">Not copied</p>
-            {plan.skipped.map(item => <p key={item} className="border-t border-border py-1.5 text-muted-foreground">{item}</p>)}
-          </>}
+          {plan.repos.map(repo => <div key={repo.name} className={row}><span>{repo.name}</span><span className="min-w-0 truncate text-right text-muted-foreground">{[repo.changed ? `${repo.changed} changed files` : '', repo.unpushed ? `${repo.unpushed} unpushed commits` : ''].filter(Boolean).join(', ')} → branch</span></div>)}
+          {plan.files.length > 0 && <div className={row}><span>Files</span><span className="text-muted-foreground">{plan.files.length}</span></div>}
+          {plan.setup.length > 0 && <div className={row}><span>Setup</span><span className="text-muted-foreground">{plan.setup.length} files</span></div>}
+          {plan.skipped.map(item => <p key={item} className="border-t border-border py-1.5 text-muted-foreground">{item}</p>)}
         </div>
-        <p className={`rounded-md p-2 text-sm ${plan.ready ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}>
-          {plan.ready ? 'Works with your Mac closed. This chat writes a handoff note, the online agent checks it has everything, then works on its own. This chat stays usable; anything you type here afterwards is separate.' : plan.problem}
+        <p className={`text-sm ${plan.ready ? 'text-muted-foreground' : 'rounded-md bg-warning/10 p-2 text-warning'}`}>
+          {plan.ready ? 'Keeps working with your Mac closed. This chat stays usable here.' : plan.problem}
         </p>
       </>}
       <div className="flex justify-end gap-2">
