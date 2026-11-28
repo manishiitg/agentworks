@@ -1737,6 +1737,10 @@ func (api *StreamingAPI) deliverNativeAgentMessage(ctx context.Context, c agentC
 			return session, fmt.Errorf("receiving conversation was replaced")
 		}
 		session = conversation.SessionID
+		dest.Session = session
+		if strings.TrimSpace(dest.Path) == "" {
+			dest.Path = conversation.WorkspacePath
+		}
 		// The receiving chat runs on its own model and account, like a turn typed in it. Building the request
 		// from the project default flipped a chat on another provider and restarted it on its next message.
 		query, err := prepareProductConversationTurn(ctx, dest.UserID, profile, AgentProfileChatRequest{Message: text}, conversation)

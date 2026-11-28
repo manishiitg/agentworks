@@ -265,3 +265,45 @@ func TestCrewRunLandlockPolicyDoesNotGrantLinkedTargetWrite(t *testing.T) {
 		}
 	}
 }
+
+// #4560: role/reply-style, project instructions and laptop policy flow per turn
+// without changing the process restart key, while secret boundaries (owner vs
+// different-secrets turn) and published revisions still force a fresh process.
+func TestAgentProfileSessionKeySkipsPerTurnNoiseAndKeepsSecretBoundary(t *testing.T) {
+	base := &resolvedAgentProfile{
+		Definition:             workproduct.BuiltinAgentProfile(),
+		SelectedServers:        []string{"github"},
+		IdentityKey:            "role:owner",
+		ProjectInstructions:    "Rule A",
+		LaptopConnection:       &laptopConnectionTarget{DeviceID: "mac-1"},
+		LaptopConnectionPolicy: `[{"folders":["a"]},false]`,
+		ChatSecrets:            []string{"GITHUB_TOKEN"},
+	}
+	sameProcess := *base
+	sameProcess.IdentityKey = "role:updated"
+	sameProcess.ProjectInstructions = "Rule A\nRule B"
+	sameProcess.LaptopConnection = nil
+	sameProcess.LaptopConnectionPolicy = ""
+	if agentProfileSessionKey(base) != agentProfileSessionKey(&sameProcess) {
+		t.Fatal("role, instructions, or laptop policy change must not invalidate the CLI session key")
+	}
+
+	// Owner turn -> teammate/different-secrets turn must keep a distinct key so
+	// one person's $SECRET_* environment is never reused for another secret set.
+	differentSecrets := *base
+	differentSecrets.ChatSecrets = []string{"TEAM_KEY"}
+	if agentProfileSessionKey(base) == agentProfileSessionKey(&differentSecrets) {
+		t.Fatal("different ChatSecrets must keep a distinct CLI session key")
+	}
+	noSecrets := *base
+	noSecrets.ChatSecrets = nil
+	if agentProfileSessionKey(base) == agentProfileSessionKey(&noSecrets) {
+		t.Fatal("removing ChatSecrets must keep a distinct CLI session key")
+	}
+
+	published := *base
+	published.Publication = &publishedProject{Revision: "rev-2"}
+	if agentProfileSessionKey(base) == agentProfileSessionKey(&published) {
+		t.Fatal("published revision change must keep a distinct CLI session key")
+	}
+}

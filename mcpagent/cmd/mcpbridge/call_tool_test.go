@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -52,5 +54,23 @@ func TestReadBridgeResponseBodyEnforcesLimit(t *testing.T) {
 	}
 	if _, err := readBridgeResponseBody(bytes.NewReader([]byte("hello!")), 5); err == nil {
 		t.Fatal("expected error when bridge response exceeds limit")
+	}
+}
+
+// #4560: live call_tool timeouts load from the chat-stable timeouts file instead
+// of changing MCP_TOOLS_FILE when custom HTTP tools toggle between turns.
+func TestLoadBridgeCallTimeoutsReadsChatStableFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".mcpbridge-call-timeouts-test.json")
+	if err := os.WriteFile(path, []byte(`{"execute_local_shell_command":300000}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := loadBridgeCallTimeouts(path)
+	if got["execute_local_shell_command"] != 300000 {
+		t.Fatalf("loaded timeouts = %v", got)
+	}
+	def := ToolDef{Name: "call_tool", Type: "call", CallTimeoutsMillis: got}
+	target, _, err := callToolTarget(def, map[string]any{"tool_name": "execute_local_shell_command"})
+	if err != nil || target.TimeoutMillis == nil || *target.TimeoutMillis != 300000 {
+		t.Fatalf("callToolTarget = %+v err=%v", target, err)
 	}
 }
