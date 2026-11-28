@@ -55,7 +55,8 @@ import { activateTab } from '../../utils/activateTab'
 import { loadWorkProductCommands } from './workData'
 import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from './projectProduct'
 import { workProjectActivity } from './workProjectPresentation'
-import { StartPage, type StartFolder } from './StartPage'
+import { StartPage, type StartFolder, type StartServer } from './StartPage'
+import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import { prepareCrewOnboarding } from './crewOnboarding'
 import type { CrewOnboarding } from './crewStarterTypes'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
@@ -342,8 +343,8 @@ function useWorkSessions(product: ProjectProductConfig) {
     void refresh().catch(() => {})
   }, [loading, missingSelectedId, refresh])
 
-  const create = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, rootPath?: string, firstMessage?: string) => {
-    const session = await createWorkSession(title, description, icon, product, runsOn, rootPath, firstMessage)
+  const create = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, rootPath?: string, firstMessage?: string, connection?: string) => {
+    const session = await createWorkSession(title, description, icon, product, runsOn, rootPath, firstMessage, connection)
     if (runsOn?.provider) rememberRunsOn(product.profileId, runsOn.provider)
     // A folder that already has a project returns that project (one folder, one project): list it once.
     updateSessions((current) => [session, ...current.filter(item => !(item.product === session.product && item.id === session.id))])
@@ -1333,6 +1334,13 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   // An existing folder can be chosen only in the app on this computer; elsewhere the server makes the folder.
   const startCanChooseFolder = isLocalDeployment() && getActiveWorkspaceProfile().type === 'local'
   const startPlace = startCanChooseFolder ? 'This Mac' : startWorkspace?.type === 'remote' ? startWorkspace.name : 'Server'
+  // In the Mac app, New project can also make the project on a server this Mac is signed in to (#4491).
+  const connections = useConnectedWorkStore(useShallow(state => state.connections))
+  const inventory = useConnectedWorkStore(state => state.inventory)
+  const startServers = useMemo<StartServer[]>(() => startCanChooseFolder
+    ? connections.filter(connection => connection.id !== 'local').map(connection => ({ id: connection.id, name: connection.name, online: inventory[connection.id]?.status === 'connected' }))
+    : [], [startCanChooseFolder, connections, inventory])
+  useEffect(() => { if (createOpen && startCanChooseFolder) void useConnectedWorkStore.getState().refresh() }, [createOpen, startCanChooseFolder])
   // Choosing another project leaves the start page.
   useEffect(() => { setCreateOpen(false) }, [selected?.id])
   const [deleteCandidate, setDeleteCandidate] = useState<WorkSession | null>(null)
@@ -1826,7 +1834,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     if (persist) writeWorkSplitRatio(selected?.id, ratio)
   }, [selected?.id])
 
-  const createProject = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, onboarding?: CrewOnboarding, rootPath?: string, localChat?: LocalChat, firstMessage?: string) => {
+  const createProject = useCallback(async (title: string, description: string, icon?: string, runsOn?: RunsOnSelection, onboarding?: CrewOnboarding, rootPath?: string, localChat?: LocalChat, firstMessage?: string, connection?: string) => {
     if (creating) return
     const user = useAuthStore.getState().user
     const server = useWorkspaceConnectionStore.getState().activeWorkspaceId
@@ -1835,7 +1843,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     setCreating(true)
     setCreateError(null)
     try {
-      const created = await create(title, description, icon, runsOn, rootPath, firstMessage)
+      const created = await create(title, description, icon, runsOn, rootPath, firstMessage, connection)
       if (!isCurrent()) return
       if (created.creationWarnings?.length) useChatStore.getState().addToast(created.creationWarnings.join(' '), 'warning')
       let imported: ImportedLocalChat | undefined
@@ -1967,7 +1975,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
               </div>
               <div className="min-h-0 flex-1">
                 <StartPage mode="new" place={startPlace} canChooseFolder={startCanChooseFolder} submitting={creating} error={createError}
-                  onSend={(text: string, folder: StartFolder) => { void createProject('', '', undefined, undefined, undefined, folder, undefined, text) }}
+                  servers={startServers}
+                  onSend={(text: string, folder: StartFolder, server?: StartServer) => { void createProject('', '', undefined, undefined, undefined, folder, undefined, text, server?.id) }}
                   onImportChat={startCanChooseFolder ? () => setPickingStartChat(true) : undefined} />
               </div>
             </div>
