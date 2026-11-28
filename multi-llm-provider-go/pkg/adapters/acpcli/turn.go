@@ -552,6 +552,12 @@ func (s *session) response(text string, usage *llmtypes.Usage) *llmtypes.Content
 	for k, v := range s.agent.ResponseMeta {
 		gi.Additional[k] = v
 	}
+	if reader, ok := s.outcome.(ExecutedModelReader); ok && sessionID != "" {
+		if executed := strings.TrimSpace(reader.ExecutedModel(sessionID)); executed != "" {
+			gi.Additional["cost_model_id"] = executed
+			gi.Additional[s.agent.metaKey("executed_model")] = executed
+		}
+	}
 	if usage != nil {
 		prompt := usage.InputTokens
 		gi.PromptTokens, gi.CompletionTokens, gi.TotalTokens = &prompt, &usage.OutputTokens, &usage.TotalTokens
