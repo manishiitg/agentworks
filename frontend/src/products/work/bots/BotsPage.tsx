@@ -74,7 +74,7 @@ function BotsDirectory() {
       <BotIcon aria-hidden="true" className="h-4 w-4" />
       <h1 className="text-sm font-semibold">Bots</h1>
       {bots && bots.length > 0 && <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{bots.length}</span>}
-      <span className="truncate text-xs text-muted-foreground">Shared agents at your company</span>
+      <span className="truncate text-xs text-muted-foreground">Agents shared with you</span>
       <button type="button" aria-label="Close Bots" onClick={() => close(false)} className="ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-4 w-4" /></button>
     </header>
     <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -82,9 +82,11 @@ function BotsDirectory() {
       {error && <div className="text-sm"><p role="alert">{error}</p><button type="button" className="mt-2 text-primary underline" onClick={retry}>Try again</button></div>}
       {bots?.length === 0 && !error && <div className="max-w-lg rounded-xl border border-border p-4 text-sm">
         <p aria-hidden="true" className="text-2xl">🤖</p>
-        <p className="mt-1 font-semibold">No bots shared with you yet</p>
-        <p className="mt-1 text-muted-foreground">Bots are your company's shared agents, like a PR reviewer or a sprint tracker. Add one to a project and use it there; you don't join its project.</p>
-        <p className="mt-2 text-xs text-muted-foreground">Made an agent yourself? Open its menu in a project on the server and turn on Bot.</p>
+        <p className="mt-1 font-semibold">No bots yet</p>
+        <p className="mt-1 text-muted-foreground">Bots are AI teammates you can give real work to. Each one is a colleague's agent with its whole project behind it: files, memory, skills, connected apps and workflows. Message it like a teammate in your own private chat, or add it to your projects so your agents can hand it work directly.</p>
+        <p className="mt-2 text-xs italic text-muted-foreground">A QA bot reproduces a bug, files the ticket and hands the fix to the debugging bot. A release bot runs the smoke tests and tells you what broke and why.</p>
+        <p className="mt-2 text-xs text-muted-foreground"><span className="font-medium text-foreground">To get one:</span> ask a colleague to share their agent with you.</p>
+        <p className="mt-1 text-xs text-muted-foreground"><span className="font-medium text-foreground">To share yours:</span> turn on Bot in your agent's menu (projects on the server).</p>
       </div>}
       {bots && bots.length > 0 && <>
         <p className="mb-3 text-sm text-muted-foreground">Add a bot to one of your projects to use it there, or reach it from your own AI apps.{onMac ? ' Add to a project lists your projects on this Mac and on the bot\'s server.' : ''}</p>
