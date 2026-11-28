@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/instructions"
 )
 
 // PLAT-872-19: the live agentic capture joined distinct messages into
@@ -255,5 +256,33 @@ func TestCodexAppServerShowsAsyncQuestionCardWhenAsked(t *testing.T) {
 	}
 	if strings.TrimSpace(output.String()) != "Waiting." {
 		t.Fatalf("the carded question was repeated as text, or a reply was lost: %q", output.String())
+	}
+}
+
+// #4602: Codex 0.171+ keeps a turn's additionalContext through compaction, so
+// changed instructions sent that way must not be sent again after it.
+func TestCodexCompactionResendsInstructionChangesOnlyWhereCodexDropsThem(t *testing.T) {
+	for _, tc := range []struct {
+		userAgent string
+		resend    bool
+	}{{"agentworks/0.172.0 (Mac OS 27.2.1; arm64) Apple_Terminal/488.9 (agentworks; 1)", false}, {"agentworks/0.170.3 (Linux)", true}, {"", true}} {
+		r := &codexRPC{version: codexUserAgentVersion(tc.userAgent), events: make(chan codexRPCMessage, 4), done: make(chan struct{})}
+		send := func(method, fields string) {
+			r.events <- codexRPCMessage{Method: method, Params: json.RawMessage(`{"threadId":"thread","turnId":"turn",` + fields + `}`)}
+		}
+		s := &codexAppSession{}
+		s.instructions.Started("rule one")
+		_, delivered := s.instructions.Next("rule one\nrule two")
+		delivered()
+		send("item/started", `"item":{"id":"c","type":"contextCompaction"}`)
+		send("item/completed", `"item":{"id":"c","type":"contextCompaction"}`)
+		send("turn/completed", `"turn":{"id":"turn","status":"completed"}`)
+		if _, err := (&CodexCLIAdapter{}).consumeAppTurn(context.Background(), s, r, "thread", "turn", func(llmtypes.StreamChunk) {}); err != nil {
+			t.Fatal(err)
+		}
+		next, _ := s.instructions.Next("rule one\nrule two")
+		if resent := next.Kind != instructions.None; resent != tc.resend {
+			t.Fatalf("userAgent %q: resent=%v want %v", tc.userAgent, resent, tc.resend)
+		}
 	}
 }
