@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 )
 
@@ -63,30 +65,10 @@ func (api *StreamingAPI) saveCrewAgentForkCopy(r *http.Request, offer crewAgentF
 	} else {
 		log.Printf("[AGENT_FORK] project=%s fork=%s event=native_skipped reason=program_differs_or_no_native", offer.Project, offer.ID)
 	}
-	now := time.Now().UTC()
-	path, ok := workProjectChatHistoryConversationPath(claims.UserID, destination.WorkspacePath, destination.SessionID, now)
-	if !ok || path == "" {
-		return fmt.Errorf("your private conversation storage is unavailable")
-	}
-	data, err := json.Marshal(map[string]any{
-		"session_id": destination.SessionID, "user_id": claims.UserID,
-		"workspace_path": destination.WorkspacePath, "agent_mode": "multi-agent",
-		"title": destination.Title, "conversation_history": payload.Conversation.History,
-		"runtime": runtime, "created_at": destination.CreatedAt, "updated_at": now.Format(time.RFC3339),
-	})
-	if err != nil {
+	if err := writeCopiedChatHistory(r.Context(), claims.UserID, destination, payload.Conversation.History, runtime); err != nil {
 		return err
 	}
-	if err = writeRawFileToWorkspace(r.Context(), path, string(data)); err != nil {
-		return err
-	}
-	if err = writeChatHistoryResumeSnapshot(r.Context(), path, data); err != nil {
-		return err
-	}
-	if err = updatePersistedChatHistoryIndex(claims.UserID, destination.SessionID, "multi-agent", payload.Conversation.History, runtime, path, int64(len(data)), now, nil); err != nil {
-		return err
-	}
-	if err = api.seedForkChatJournal(claims.UserID, destination, offer.Agent.ChatKey, offer.Agent.Name, payload.Conversation.History); err != nil {
+	if err := api.seedForkChatJournal(claims.UserID, destination, offer.Agent.ChatKey, offer.Agent.Name, payload.Conversation.History); err != nil {
 		return err
 	}
 	// The copy's first turn learns it is a copy of someone else's agent, not that agent.
@@ -96,6 +78,32 @@ func (api *StreamingAPI) saveCrewAgentForkCopy(r *http.Request, offer crewAgentF
 	}
 	log.Printf("[AGENT_FORK] project=%s fork=%s copy=%s session=%s event=imported native=%t", offer.Project, offer.ID, offer.CopyAgentID, destination.SessionID, runtime != nil)
 	return nil
+}
+
+// writeCopiedChatHistory saves a copied conversation as the destination chat's own history, so its next turn
+// continues from it. Used by a fork from a teammate and by Continue online from a Mac.
+func writeCopiedChatHistory(ctx context.Context, userID string, destination ProductConversationRecord, history []llmtypes.MessageContent, runtime *ChatHistoryAgentRuntime) error {
+	now := time.Now().UTC()
+	path, ok := workProjectChatHistoryConversationPath(userID, destination.WorkspacePath, destination.SessionID, now)
+	if !ok || path == "" {
+		return fmt.Errorf("your private conversation storage is unavailable")
+	}
+	data, err := json.Marshal(map[string]any{
+		"session_id": destination.SessionID, "user_id": userID,
+		"workspace_path": destination.WorkspacePath, "agent_mode": "multi-agent",
+		"title": destination.Title, "conversation_history": history,
+		"runtime": runtime, "created_at": destination.CreatedAt, "updated_at": now.Format(time.RFC3339),
+	})
+	if err != nil {
+		return err
+	}
+	if err = writeRawFileToWorkspace(ctx, path, string(data)); err != nil {
+		return err
+	}
+	if err = writeChatHistoryResumeSnapshot(ctx, path, data); err != nil {
+		return err
+	}
+	return updatePersistedChatHistoryIndex(userID, destination.SessionID, "multi-agent", history, runtime, path, int64(len(data)), now, nil)
 }
 
 func crewAgentForkChatKey(offer crewAgentFork) string {
