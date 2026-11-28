@@ -8,7 +8,7 @@ import type { AgentProfileSideChat } from '../../services/api-types'
 import { desktopRequest } from '../../services/desktopConnections'
 import { liveFeed } from '../../services/liveFeed'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
-import { registerRemoteSession } from '../../utils/remoteSessions'
+import { registerRemoteProject, registerRemoteSession } from '../../utils/remoteSessions'
 import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
 import type { PublicLink, PublicLinkMode } from '../../components/workflow/PublicLinkControl'
 import { useAuthStore } from '../../stores/useAuthStore'
@@ -411,6 +411,8 @@ export async function onlineAgentSideChats(profileId: string, projectId: string,
   }
   const out: AgentProfileSideChat[] = []
   for (const online of seen.projects) {
+    // The project's own requests (attaching a file, listing its files for @) go to that server too (#4504).
+    registerRemoteProject(online.project_id, binding.connection)
     const response = await fetch(`${base}/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats?project_id=${encodeURIComponent(online.project_id)}`, { headers })
     if (!response.ok) continue
     const rows = await response.json() as AgentProfileSideChat[]
