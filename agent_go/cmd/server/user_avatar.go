@@ -15,6 +15,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -73,7 +74,15 @@ func avatarFieldsFor(user, crew string) userAvatarFields {
 	return out
 }
 
+// avatarPersonIcons are the icons a person may pick; a bot also has a few that say what it does (#4545).
+var avatarPersonIcons = []string{"person", "rocket", "star", "leaf", "bot"}
+
 func normalizeUserAvatar(req userAvatarRequest) (*userAvatar, error) {
+	return normalizeAvatar(req, avatarPersonIcons)
+}
+
+// normalizeAvatar checks an icon and colour, or crops and shrinks a photo to a small JPEG; people and bots share it.
+func normalizeAvatar(req userAvatarRequest, icons []string) (*userAvatar, error) {
 	if req.Operation == "remove" {
 		return nil, nil
 	}
@@ -90,12 +99,10 @@ func normalizeUserAvatar(req userAvatarRequest) (*userAvatar, error) {
 		if req.Crop != nil {
 			return nil, errors.New("A crop needs a photo.")
 		}
-		switch req.Icon {
-		case "person", "rocket", "star", "leaf", "bot":
-			a.Icon = req.Icon
-		default:
+		if !slices.Contains(icons, req.Icon) {
 			return nil, errors.New("Choose a photo or an offered icon.")
 		}
+		a.Icon = req.Icon
 	} else {
 		if req.Icon != "" {
 			return nil, errors.New("Choose a photo or an icon, not both.")

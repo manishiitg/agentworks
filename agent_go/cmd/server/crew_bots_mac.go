@@ -145,6 +145,7 @@ func macProjectBots(ctx context.Context, owner, projectID string) ([]crewBotView
 		}
 		view := bots[i]
 		view.InProjects = nil
+		view.Connection = server
 		out = append(out, view)
 	}
 	return out, unavailable, nil

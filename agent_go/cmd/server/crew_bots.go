@@ -19,7 +19,9 @@ import (
 // other agents call the project's functions its maker picks by name; Ask (its chat) is always on. A bot is not a co-owner, User or Team
 // share (those are people who work in the project), and not the dashboard (shared by link).
 type crewBot struct {
-	Icon string `json:"icon,omitempty"`
+	// Icon is an emoji; Avatar, when set, is a photo or an icon on a colour and shows instead (crew_bot_avatar.go).
+	Icon   string         `json:"icon,omitempty"`
+	Avatar *crewBotAvatar `json:"avatar,omitempty"`
 	// Everyone is anyone at the company; otherwise People and the people of Teams are its audience.
 	Everyone  bool     `json:"everyone,omitempty"`
 	People    []string `json:"people,omitempty"`
@@ -138,6 +140,9 @@ type crewBotFunction struct {
 }
 
 type crewBotView struct {
+	userAvatarFields
+	// Connection is, on a Mac, the sign-in of the bot's server: its photo is read through it.
+	Connection   string            `json:"connection,omitempty"`
 	ID           string            `json:"id"`
 	Name         string            `json:"name"`
 	Purpose      string            `json:"purpose,omitempty"`
@@ -218,7 +223,7 @@ func crewBotViewFor(ctx context.Context, rec projectOwnerRecord, key, caller str
 	root := crewBotRoot(rec)
 	_, title := crewOwnerAndTitle(rec.ProjectID)
 	bot := rec.Bots[key]
-	view := crewBotView{ID: key, Name: firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Agent"), Purpose: tab.Identity.Purpose, Icon: bot.Icon, ProjectID: rec.ProjectID, ProjectTitle: firstNonEmptyTrimmed(title, rec.Folder), Workspace: root, MakerName: crewOwnerDisplayName(bot.Maker), Mine: bot.Maker == caller, Functions: crewBotFunctionsFor(ctx, rec, root, bot)}
+	view := crewBotView{userAvatarFields: crewBotAvatarFields(key, rec.Bots[key]), ID: key, Name: firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Agent"), Purpose: tab.Identity.Purpose, Icon: bot.Icon, ProjectID: rec.ProjectID, ProjectTitle: firstNonEmptyTrimmed(title, rec.Folder), Workspace: root, MakerName: crewOwnerDisplayName(bot.Maker), Mine: bot.Maker == caller, Functions: crewBotFunctionsFor(ctx, rec, root, bot)}
 	if view.Mine {
 		view.Everyone, view.People, view.Teams = bot.Everyone, bot.People, bot.Teams
 	}
@@ -360,6 +365,8 @@ type crewBotChange struct {
 	People    *[]string `json:"people,omitempty"`
 	Teams     *[]string `json:"teams,omitempty"`
 	Functions *[]string `json:"functions,omitempty"`
+	// Avatar sets (operation set: a photo, or an icon and colour) or removes (operation remove) the bot's picture.
+	Avatar *userAvatarRequest `json:"avatar,omitempty"`
 }
 
 // crewBotEditable is the agent at key in the project at root when caller made it there (the main owner or a co-owner).
@@ -441,6 +448,17 @@ func applyCrewBotChange(ctx context.Context, caller string, change crewBotChange
 			return nil, fmt.Errorf("Use one emoji or a few letters for the icon.")
 		}
 		bot.Icon = icon
+		bot.Avatar = nil // an emoji replaces a picture
+	}
+	if change.Avatar != nil {
+		avatar, err := crewBotAvatarFrom(*change.Avatar)
+		if err != nil {
+			return nil, err
+		}
+		bot.Avatar = avatar
+		if avatar == nil && bot.Icon == "" {
+			bot.Icon = "🤖"
+		}
 	}
 	if change.Everyone != nil {
 		bot.Everyone = *change.Everyone
@@ -562,18 +580,20 @@ func crewAddedBotsLine(added []string) string {
 // crewTabBot is an agent's bot on its header chip (crew_tab_setup.go): how many functions other agents can call, and
 // who may use it, worded by the server. The audience is the maker's to see (as in Bots); others read "Shared as a bot".
 type crewTabBot struct {
+	userAvatarFields
+	Icon      string `json:"icon,omitempty"`
 	Functions int    `json:"functions"`
 	Line      string `json:"line"`
 }
 
-func crewTabBotFor(bot crewBot, viewer string) *crewTabBot {
+func crewTabBotFor(key string, bot crewBot, viewer string) *crewTabBot {
 	count := len(bot.Functions)
 	fns := crewBotOffersLine(count)
 	who := "Shared as a bot"
 	if viewer == bot.Maker {
 		who = crewBotAudienceLine(bot)
 	}
-	return &crewTabBot{Functions: count, Line: who + " · " + fns}
+	return &crewTabBot{userAvatarFields: crewBotAvatarFields(key, bot), Icon: bot.Icon, Functions: count, Line: who + " · " + fns}
 }
 
 // crewBotOffersLine is what a bot offers: Ask is always on, so a bot with no functions ticked still answers questions
@@ -629,7 +649,11 @@ func crewBotState(ctx context.Context, caller, root, key string) (map[string]any
 	out := map[string]any{
 		"on": on, "agent": key, "name": firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Agent"), "purpose": tab.Identity.Purpose,
 		"icon": bot.Icon, "everyone": bot.Everyone, "people": people, "teams": nonNilStrings(bot.Teams), "functions": nonNilStrings(bot.Functions),
-		"available_functions": available, "team_choices": crewBotTeamChoices(caller),
+		"available_functions": available, "team_choices": crewBotTeamChoices(caller), "avatar_icons": avatarBotIcons,
+	}
+	if on {
+		fields := crewBotAvatarFields(key, bot)
+		out["avatar_url"], out["avatar_icon"], out["avatar_color"] = fields.AvatarURL, fields.AvatarIcon, fields.AvatarColor
 	}
 	return out, nil
 }
@@ -667,6 +691,7 @@ func (api *StreamingAPI) crewBotCall(w http.ResponseWriter, r *http.Request, cal
 // POST /api/bots/call                     call one of a bot's functions
 // POST /api/bots/ask                      ask a bot (a Mac project's agents, through the Mac's sign-in)
 // GET  /api/bots/read?inbox_id=           read the bot's answer to an ask
+// GET  /api/bots/avatar?bot=&revision=   the bot's photo, for someone it admits
 // GET  /api/bots/project?project_id=      the bots added to a project
 // POST /api/bots/project                  add a bot to my project, or take it out
 func (api *StreamingAPI) handleCrewBots(w http.ResponseWriter, r *http.Request) {
@@ -684,6 +709,8 @@ func (api *StreamingAPI) handleCrewBots(w http.ResponseWriter, r *http.Request) 
 	caller := sanitizeUserIDForPath(claims.UserID)
 	path := strings.TrimSuffix(r.URL.Path, "/")
 	switch {
+	case r.Method == http.MethodGet && strings.HasSuffix(path, "/bots/avatar"):
+		serveCrewBotAvatar(w, r, caller)
 	case r.Method == http.MethodPost && strings.HasSuffix(path, "/bots/ask"):
 		var body struct {
 			Bot          string `json:"bot"`
@@ -740,7 +767,7 @@ func (api *StreamingAPI) handleCrewBots(w http.ResponseWriter, r *http.Request) 
 		externalJSON(w, state)
 	case r.Method == http.MethodPut && strings.HasSuffix(path, "/bots/agent"):
 		var change crewBotChange
-		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10))
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 7<<20)) // a picture's photo is up to 5 MB
 		decoder.DisallowUnknownFields()
 		if decoder.Decode(&change) != nil || decoder.Decode(new(any)) != io.EOF {
 			externalError(w, 400, "invalid_arguments", "invalid bot change")
@@ -790,7 +817,9 @@ func externalBotsDefinition(add func(string, string, bool, bool, map[string]any,
 		"crew_id":       externalString("get, set, add, remove: the project's id; with list, also that project's bots."),
 		"agent":         externalString("get, set: your agent in that project, by name or chat id."),
 		"on":            map[string]any{"type": "boolean", "description": "set: true makes it a bot, false stops it."},
-		"icon":          externalString("set: one emoji."),
+		"icon":          externalString("set: one emoji (clears a picture)."),
+		"avatar_icon":   map[string]any{"type": "string", "enum": stringsToAny(avatarBotIcons), "description": "set: show this icon on avatar_color instead of the emoji. A photo is set from the bot card in the app."},
+		"avatar_color":  map[string]any{"type": "string", "enum": []any{"blue", "purple", "green", "orange"}, "description": "set: the icon's colour (default blue)."},
 		"name":          externalString("set: the bot's name (the agent's name)."),
 		"purpose":       externalString("set: one plain sentence on what it does."),
 		"everyone":      map[string]any{"type": "boolean", "description": "set: share with anyone at the company."},
@@ -920,6 +949,9 @@ func (api *StreamingAPI) externalBotsCall(w http.ResponseWriter, r *http.Request
 			if v, ok := args[field].(string); ok {
 				*dst = &v
 			}
+		}
+		if icon := str("avatar_icon"); icon != "" {
+			change.Avatar = &userAvatarRequest{Operation: "set", Icon: icon, Color: str("avatar_color")}
 		}
 		for field, dst := range map[string]**[]string{"people": &change.People, "teams": &change.Teams, "functions": &change.Functions} {
 			if raw, ok := args[field].([]any); ok {
