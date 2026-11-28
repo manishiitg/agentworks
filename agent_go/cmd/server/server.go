@@ -5196,7 +5196,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 				promptCtx.WorkflowContext += note
 			}
 			if resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID) {
-				promptCtx.WorkFolders = crewTeamFilesLine(GetUserFromContext(r.Context())) + workproduct.BuildAttachedFoldersPrompt(turnFolderGrants) + "\n" + turnFolderNotice
+				attachedFolders := workproduct.BuildAttachedFoldersPrompt(turnFolderGrants)
+				macFolders := laptopFoldersPrompt(GetUserFromContext(r.Context()), req.LaptopConnection, req.SelectedFolder)
+				if macFolders != "" && len(workproduct.AvailableAttachedGrants(turnFolderGrants)) == 0 {
+					attachedFolders = "\n### Attached Folders\n" // not "No folders are attached": the computer's folders follow
+				}
+				promptCtx.WorkFolders = crewTeamFilesLine(GetUserFromContext(r.Context())) + attachedFolders + macFolders + "\n" + turnFolderNotice
 				promptCtx.ConnectedTools = api.buildConnectedToolsPrompt(r.Context(), resolvedProfile.Definition.ID, GetUserFromContext(r.Context()), req.SelectedFolder, crewAskOnly, crewReaderCLI)
 			}
 			// The full browser guide is a ~10KB on-demand skill; this is only a

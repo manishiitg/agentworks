@@ -695,20 +695,27 @@ func TestCrewRootTurnCapturesEveryWorktree(t *testing.T) {
 		f.put(dir+"/a.txt", "dirty before\n")
 	}
 	f.put("app/a.txt", "main before\n")
+	// #4535: a worktree whose Git record was pruned is an ordinary folder; as a checkout Git could not read it, and
+	// every reply said its file changes could not be saved.
+	f.put("stale/.git", "gitdir: "+filepath.Join(f.s.Root, "app", ".git", "worktrees", "gone")+"\n")
+	f.put("stale/a.txt", "stale before\n")
 	f.backdateAll()
 	if _, err := f.s.BeginGitTurn(t.Context(), "root-reply"); err != nil {
 		t.Fatal(err)
 	}
-	for _, dir := range []string{"app", "first", "second"} {
+	for _, dir := range []string{"app", "first", "second", "stale"} {
 		f.put(dir+"/a.txt", "changed during reply\n")
 	}
 	after, err := f.s.FinishGitTurn(t.Context(), "root-reply")
 	if err != nil {
 		t.Fatal(err)
 	}
+	if after.Review != nil && len(after.Review.IncompleteRoots) != 0 {
+		t.Fatalf("stale worktree link marked the reply incomplete: %v", after.Review.IncompleteRoots)
+	}
 	c, err := f.s.CompareSaved(t.Context(), []string{after.ID}, "", "", func(string) bool { return true })
-	if err != nil || len(c.Changes) != 3 {
-		t.Fatalf("want the main repo and both worktrees, got %v %+v", err, c.Changes)
+	if err != nil || len(c.Changes) != 4 {
+		t.Fatalf("want the main repo, both worktrees and the stale folder's file, got %v %+v", err, c.Changes)
 	}
 }
 
