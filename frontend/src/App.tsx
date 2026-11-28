@@ -109,7 +109,9 @@ function AppWorkspace() {
     const close = () => useBotsPageStore.getState().setOpen(false)
     const events = ['popstate', 'product-navigation-changed', APP_PRODUCT_OPEN_EVENT]
     events.forEach(name => window.addEventListener(name, close))
-    return () => events.forEach(name => window.removeEventListener(name, close))
+    // Choosing another chat (an agent in the left menu) closes a bot's chat opened over the project.
+    const unsubscribe = useChatStore.subscribe((state, previous) => { if (state.activeTabId !== previous.activeTabId) close() })
+    return () => { events.forEach(name => window.removeEventListener(name, close)); unsubscribe() }
   }, [botsOpen])
   const returnNote = useWorkspaceReturnStore(state => state.note || state.saveError)
   const productSurface = useProductSurfaceStore(state => state.productSurface)

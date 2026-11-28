@@ -541,6 +541,8 @@ interface ChatAreaProps {
   showNewChatAction?: boolean
   /** Product-specific composer placeholder (the product variant otherwise says "Describe what you want to create…"). */
   composerPlaceholder?: string
+  /** Shown just above the composer (a bot's function buttons, #4545). */
+  composerTop?: React.ReactNode
   /** Sends the person's message somewhere other than this chat's own session (a shared agent's ask); the transcript
    * is fed by the caller. Used with a tab whose metadata has externalTransport. */
   onQuestionAnswerOverride?: CodingAgentQuestionAnswerHandler
@@ -565,7 +567,7 @@ let lastRestoredChatIdentity = -1
 
 // Inner component for chat area
 const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAreaRef>) => {
-  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showNewChatAction = false , composerPlaceholder, knowledgebaseFolderPath, slashCommands, onSubmitOverride, onQuestionAnswerOverride} = props
+  const { onNewChat, hideInput = false, compact = false, tabId, previousChatsCompact = false, previousChatsWorkspacePath, previousChatsRecentOnly = false, forcePreviousChats = false, workflowLandingContent, landingContent, contentRenderer: ContentRenderer, fullTurnStreaming = false, showConversationUsage = false, hideRuntimeStatus = false, showProductSteerAction = false, showNewChatAction = false , composerPlaceholder, composerTop, knowledgebaseFolderPath, slashCommands, onSubmitOverride, onQuestionAnswerOverride} = props
   useMcpOAuthChatNotifications(tabId)
   // null means "inactive — don't subscribe to any tab or run any effects"
   const isInactive = tabId === null
@@ -3928,6 +3930,7 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       )}
       {sentHere && !hideInput && !observingOwnerTab && <NotifyNudge agentName={activeTab?.name || 'the agent'} />}
       {!hideInput && !observingOwnerTab && activeSessionId && <ChatAgentsStrip sessionId={activeSessionId} tabId={activeTab?.tabId} helpers={chatHelpers} turnStartedAt={activeTabIsStreaming ? lastUserMessageAt : undefined} />}
+      {!hideInput && !observingOwnerTab && composerTop}
       {!hideInput && !observingOwnerTab && (
         <ChatInput
           // The composer owns tab-local draft, paste, upload and submit state.

@@ -1,6 +1,28 @@
 import api from '../../../services/api'
-import { folderConnection } from '../../../utils/remoteSessions'
+import { folderConnection, remoteProjectConnection } from '../../../utils/remoteSessions'
 import { randomUUID } from '../../../utils/randomUUID'
+import { isLocalDeployment } from '../../productSurfaceConfig'
+import { connectedLocations, useConnectedWorkStore } from '../../../stores/useConnectedWorkStore'
+
+/** Bots live on the server (#4545). The Mac app reaches the server it is signed in to (the first connected one) through
+ * its saved sign-in; the website is the server itself (undefined). */
+export function botsServer(): { id: string; name: string } | null | undefined {
+  if (!isLocalDeployment()) return undefined
+  const state = useConnectedWorkStore.getState()
+  const inventory = state.inventory
+  const server = connectedLocations(state).find(connection => connection.id !== 'local' && inventory[connection.id]?.status === 'connected')
+  return server ? { id: server.id, name: server.name } : null
+}
+
+/** Where a project's bot requests go: its own server. A Mac-only project has none (undefined with ok=false). */
+function projectServer(projectId: string): { ok: boolean; connection?: string } {
+  if (!isLocalDeployment()) return { ok: true }
+  const connection = remoteProjectConnection(projectId)
+  return connection ? { ok: true, connection } : { ok: false }
+}
+const serverConnection = () => botsServer()?.id || undefined
+/** On a Mac, bots come only from a server it is signed in to. */
+export const projectCanHaveBots = (projectId: string) => projectServer(projectId).ok
 
 /** One button of a bot: a project function. "ask" (its chat) is always first. */
 export type BotFunction = { name: string; description?: string; input_schema?: { properties?: Record<string, { type?: string; description?: string }>; required?: string[] } }
@@ -32,7 +54,7 @@ export type BotState = {
 export type BotChange = Partial<{ on: boolean; icon: string; name: string; purpose: string; everyone: boolean; people: string[]; teams: string[]; functions: string[] }>
 
 export async function listBots(): Promise<{ bots: Bot[]; addTargets: BotProject[] }> {
-  const { data } = await api.get<{ bots?: Bot[]; add_targets?: BotProject[] }>('/api/bots')
+  const { data } = await api.get<{ bots?: Bot[]; add_targets?: BotProject[] }>('/api/bots', { connection: serverConnection() })
   return { bots: data.bots ?? [], addTargets: data.add_targets ?? [] }
 }
 
@@ -40,12 +62,12 @@ export type ProjectBots = { bots: Bot[]; /** Ids of added bots no longer shared 
 
 /** The bots added to a project, as you may use them; unavailable counts those no longer shared with you. */
 export async function readProjectBots(projectId: string): Promise<ProjectBots> {
-  const { data } = await api.get<{ bots?: Bot[]; unavailable?: string[] }>('/api/bots/project', { params: { project_id: projectId } })
+  const { data } = await api.get<{ bots?: Bot[]; unavailable?: string[] }>('/api/bots/project', { params: { project_id: projectId }, connection: projectServer(projectId).connection })
   return { bots: data.bots ?? [], unavailable: data.unavailable ?? [] }
 }
 
 export async function setProjectBot(projectId: string, bot: string, add: boolean): Promise<ProjectBots> {
-  const { data } = await api.post<{ bots?: Bot[]; unavailable?: string[] }>('/api/bots/project', { project_id: projectId, bot, add })
+  const { data } = await api.post<{ bots?: Bot[]; unavailable?: string[] }>('/api/bots/project', { project_id: projectId, bot, add }, { connection: projectServer(projectId).connection ?? serverConnection() })
   botsChanged()
   return { bots: data.bots ?? [], unavailable: data.unavailable ?? [] }
 }
@@ -64,7 +86,7 @@ export async function saveBot(workspace: string, agent: string, change: BotChang
 export type BotCallResult = { call_id?: string; status?: string; result?: unknown; error?: string; next?: string }
 
 export async function callBot(bot: string, fn: string, args: Record<string, unknown>): Promise<BotCallResult> {
-  const { data } = await api.post<BotCallResult>('/api/bots/call', { bot, function: fn, args, submission_id: randomUUID() })
+  const { data } = await api.post<BotCallResult>('/api/bots/call', { bot, function: fn, args, submission_id: randomUUID() }, { connection: serverConnection() })
   return data
 }
 

@@ -320,7 +320,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
         onAutomations: automationsAsk ? () => { sendToTab(tab.tabId, automationsAsk) } : undefined,
         // Bots live on the server (#4545); the server checks the agent is yours.
         bot: !isLocalDeployment() && canControl(tab) && tab.metadata?.agentProfileWorkspace && tab.metadata?.agentProfileConversationKey
-          ? { workspace: tab.metadata.agentProfileWorkspace, agentKey: tab.metadata.agentProfileConversationKey } : undefined,
+          ? { workspace: tab.metadata.agentProfileWorkspace, agentKey: tab.metadata.agentProfileConversationKey, ask: (message: string) => { sendToTab(tab.tabId, message) } } : undefined,
       },
     }
   }

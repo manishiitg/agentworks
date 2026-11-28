@@ -3,6 +3,7 @@ import { useChatStore, waitForChatStoreHydration } from '../stores/useChatStore'
 import { useGlobalPresetStore } from '../stores/useGlobalPresetStore'
 import { assertChatIdentityCurrent, captureChatIdentity } from './chatIdentity'
 import { hydrateTabEvents } from './sessionRestore'
+import { registerRemoteSession } from './remoteSessions'
 
 export type ProjectChat = {
   product: string; project_id: string; workspace: string; mode: 'run' | 'builder'; profile_id: string
@@ -11,24 +12,27 @@ export type ProjectChat = {
 
 /** The backend resolves project, caller, role and durable conversation. The
  * browser presents that conversation and sends through the normal chat queue. */
-export async function openProjectAskConversation(project: { product?: string; projectId?: string; workspacePath: string }, options?: { activate?: boolean; userView?: boolean; /** A bot's own chat (#4545): this agent answers, no picker. */ agentKey?: string }): Promise<string> {
+export async function openProjectAskConversation(project: { product?: string; projectId?: string; workspacePath: string }, options?: { activate?: boolean; userView?: boolean; /** A bot's own chat (#4545): this agent answers, no picker. */ agentKey?: string; /** The server it lives on, from a Mac (#4545). */ connection?: string }): Promise<string> {
   const identity = captureChatIdentity()
   await waitForChatStoreHydration()
   assertChatIdentityCurrent(identity)
   const request = { workspace: project.workspacePath, ...(options?.userView ? { as_user: true } : {}), ...(options?.agentKey ? { agent_key: options.agentKey } : {}) }
   type Selection = { choose_agent: true; agents: { key: string; name: string }[]; message: string }
-  let { data } = await api.post<ProjectChat | Selection>('/api/project-ask/conversation', request)
+  const config = options?.connection ? { connection: options.connection } : undefined
+  let { data } = await api.post<ProjectChat | Selection>('/api/project-ask/conversation', request, config)
   if ('choose_agent' in data) {
     if (!data.agents.length) throw new Error(data.message)
     const agentKey = await chooseAskAgent(data.agents)
     assertChatIdentityCurrent(identity)
     if (!agentKey) throw new Error('Choose an agent when you are ready to ask.')
-    data = (await api.post<ProjectChat | Selection>('/api/project-ask/conversation', { ...request, agent_key: agentKey })).data
+    data = (await api.post<ProjectChat | Selection>('/api/project-ask/conversation', { ...request, agent_key: agentKey }, config)).data
     if ('choose_agent' in data) throw new Error(data.message)
   }
   const target = data
   assertChatIdentityCurrent(identity)
   if (project.projectId && target.project_id !== project.projectId) throw new Error('The project conversation changed. Reopen the dashboard.')
+  // A chat on another server (a bot opened from the Mac): its session's requests go there through this Mac's sign-in.
+  if (options?.connection) registerRemoteSession(target.conversation.session_id, options.connection)
   return presentProjectAskConversation(target, options)
 }
 

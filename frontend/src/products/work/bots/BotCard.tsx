@@ -5,11 +5,16 @@ import { botError, readBotState, saveBot, type BotChange, type BotState } from '
 
 type DirectoryUser = { id: string; username?: string; email?: string }
 
+// Ask AI (owner, 28 Nov): the agent's own chat sets the bot up and adds functions with the bots and function tools.
+const SETUP_ASK = "Set this agent up as a bot others can use without joining this project. Suggest an icon, a short name and a one-line purpose from what it does, ask me who should use it (chosen people and Teams, or anyone at the company) and which of this project's functions it should share, then save it with the bots tool (action=set)."
+const FUNCTION_ASK = "Add a function to this project that people using this agent as a bot can run. Ask me what it should do and what it needs as input, build and publish it with the existing function tools, then turn it on for this bot with the bots tool (action=set, functions)."
+const askButton = 'text-left text-[11px] text-primary hover:underline disabled:opacity-50'
+
 /**
  * Make one of your agents a bot (#4545): people use it without joining this project, each in their own private chat,
  * with the functions you pick as its buttons (Ask is always on). The server checks that the agent is yours and saves it.
  */
-export function BotCard({ workspace, agentKey }: { workspace: string; agentKey: string }) {
+export function BotCard({ workspace, agentKey, onAsk }: { workspace: string; agentKey: string; onAsk?: (message: string) => void }) {
   const [state, setState] = useState<BotState | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -37,8 +42,9 @@ export function BotCard({ workspace, agentKey }: { workspace: string; agentKey: 
   return <div className="space-y-2 py-1">
     <label className="flex items-start gap-2">
       <input type="checkbox" checked={state.on} disabled={busy} onChange={event => void change({ on: event.target.checked })} className="mt-0.5" />
-      <span><span className="block font-medium">Make it a bot</span><span className="block text-[11px] text-muted-foreground">People use it without joining this project. Each gets their own private chat with it; it runs with this project's setup in Run mode and its cost is theirs.</span></span>
+      <span><span className="block font-medium">Make it a bot</span><span className="block text-[11px] text-muted-foreground">It joins your company's Bots directory. People you pick add it to their projects and use it there, or from their own AI apps, each in their own private chat. It runs with this project's setup and its cost is theirs; they don't join this project.</span></span>
     </label>
+    {onAsk && <button type="button" className={askButton} onClick={() => onAsk(SETUP_ASK)}>✦ Ask AI to set up this bot</button>}
     {state.on && <>
       <div className="flex items-center gap-2">
         <input aria-label="Icon" defaultValue={state.icon} maxLength={8} disabled={busy} onBlur={event => { if (event.target.value !== state.icon) void change({ icon: event.target.value }) }} className="w-12 rounded-md border border-input bg-background px-1 py-1 text-center text-base" />
@@ -66,11 +72,13 @@ export function BotCard({ workspace, agentKey }: { workspace: string; agentKey: 
         </div>}
       </div>}
       <fieldset className="space-y-1">
-        <legend className="font-medium">Buttons</legend>
+        <legend className="font-medium">Functions</legend>
+        <p className="text-[11px] text-muted-foreground">What people can run with it: buttons in their chat, and by name over MCP.</p>
         <label className="flex items-center gap-2 text-muted-foreground"><input type="checkbox" checked disabled />Ask (its chat, always on)</label>
         {state.available_functions.map(fn => <label key={fn.name} title={fn.description} className="flex items-center gap-2"><input type="checkbox" checked={state.functions.includes(fn.name)} disabled={busy}
           onChange={event => void change({ functions: event.target.checked ? [...state.functions, fn.name] : state.functions.filter(name => name !== fn.name) })} />{fn.name}</label>)}
-        {state.available_functions.length === 0 && <p className="text-[11px] text-muted-foreground">This project has no functions yet. Ask this agent to add one, and it can be a button here.</p>}
+        {state.available_functions.length === 0 && <p className="text-[11px] text-muted-foreground">This project has no functions yet. Add one, and it can be a button here.</p>}
+        {onAsk && <button type="button" className={askButton} onClick={() => onAsk(FUNCTION_ASK)}>✦ Ask AI to add a function</button>}
       </fieldset>
       <p className="text-[11px] text-muted-foreground">It shows under Bots in the left menu for the people you chose.</p>
     </>}
