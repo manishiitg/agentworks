@@ -1,5 +1,5 @@
 import { LoadingIndicator } from '../ui/LoadingIndicator'
-import { Clock, Cloud, Globe, Users } from 'lucide-react'
+import { Clock, Cloud, Users } from 'lucide-react'
 import type { AgentMenuState } from './agentMenuState'
 import type { TeamTabPresence, TeamTabSetup } from '../../products/work/teamApi'
 
@@ -16,11 +16,10 @@ export function AgentSetupMark({ setup, chosen }: { setup?: TeamTabSetup; chosen
   const active = enabledAgentAutomations(setup)
   const showReach = !!setup.reach
   if (!showReach && !active.length) return null
-  const reach = setup.reach === 'agentbridge' ? 'Public on AgentBridge' : setup.reach === 'team' ? `Shared with team${chosen ? ' · chosen people' : ''}` : 'Only you'
+  const reach = setup.reach === 'team' ? `Shared with team${chosen ? ' · chosen people' : ''}` : 'Only you'
   const label = [...(showReach ? [reach] : []), ...active.map(item => `${item.kind}: ${item.name} · ${item.line}`)].join('\n')
-  const ReachIcon = setup.reach === 'agentbridge' ? Globe : Users
   return <span role="img" aria-label={label} title={label} className="inline-flex shrink-0 items-center gap-1.5">
-    {showReach && <span className="relative inline-flex"><ReachIcon aria-hidden="true" className={`h-3 w-3 ${setup.reach === 'agentbridge' ? 'text-emerald-500'  : 'text-primary'}`} />
+    {showReach && <span className="relative inline-flex"><Users aria-hidden="true" className="h-3 w-3 text-primary" />
 </span>}
     {/* One clock for every automation (schedule, Watcher, webhook), shown on hover or keyboard focus; the title names each (owner, 18 Nov). */}
     {active.length > 0 && <Clock aria-hidden="true" className="invisible h-3 w-3 text-[hsl(var(--warning))] group-hover:visible group-focus-within:visible" />}

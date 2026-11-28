@@ -23,7 +23,7 @@ should not require Discovery, but do not assume a particular destination
 supports private delivery: use the backend's reachable directory and returned
 access result. Do not turn on Discovery as a workaround without the person's
 request, or describe private messaging as working without an actual receipt.
-For Mac reach, Discovery and server execution, read `references/crew-on-mac/SKILL.md`.
+A project agent has no Discovery: other people reach it only through its Team. For Mac reach and server execution, read `references/crew-on-mac/SKILL.md`.
 
 ## Discover, send and reply
 

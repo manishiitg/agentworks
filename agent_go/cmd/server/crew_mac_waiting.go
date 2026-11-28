@@ -251,13 +251,7 @@ func (api *StreamingAPI) heldMacMessageAllowed(owner, project string, held crewM
 	if _, err := readCrewTeam(project); err != nil && !os.IsNotExist(err) {
 		return false, false
 	}
-	var reason string
-	if held.Inbox == "" {
-		_, reason = macSharedAgentFor(project, held.Tab, args.SenderID, owner)
-	} else {
-		_, reason = macSharedAgentForAgent(project, held.Tab, args.SenderID, owner)
-	}
-	if reason != "" {
+	if _, reason := macSharedAgentFor(project, held.Tab, args.SenderID, owner); reason != "" {
 		return false, true
 	}
 	if held.Inbox == "" {

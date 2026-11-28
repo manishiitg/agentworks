@@ -11,7 +11,7 @@ import (
 
 // applyCrewTeamOnMac makes this Mac follow its Crew's Team record from the company server (owner, 5 Nov: the server
 // decides): Team on lists every agent on the online copy (who sees which is the record's In team / Only me) and makes
-// the shared folders the server chose; Team off keeps only agents public on AgentBridge (Mac online's choice). It runs
+// the shared folders the server chose; Team off empties that list. It runs
 // when this Mac reads the record: its Team sync loop, its screen and its chat. It returns whether a folder was made.
 func (api *StreamingAPI) applyCrewTeamOnMac(ctx context.Context, project string, t crewTeam) bool {
 	if !IsLocalMode() {

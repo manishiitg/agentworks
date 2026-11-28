@@ -9,7 +9,7 @@ it('shows one clock for any automation on private and shared agents', () => {
   const schedule = { kind: 'Schedule', name: 'Daily report', line: 'every day', on: true }
   const trigger = { kind: 'Webhook', name: 'Incoming event', line: 'when called', on: true }
   const draw = (reach: TeamTabSetup['reach'], automations: TeamTabSetup['automations']) => renderToStaticMarkup(<AgentSetupMark setup={{ reach, starts_on_own: automations.some(item => item.on), automations }} />)
-  for (const reach of ['', 'team', 'agentbridge'] as const) {
+  for (const reach of ['', 'team'] as const) {
     for (const automations of [[schedule], [trigger], [schedule, trigger]]) {
       const mark = draw(reach, automations)
       expect(mark.match(/lucide-clock/g)).toHaveLength(1)

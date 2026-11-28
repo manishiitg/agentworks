@@ -25,7 +25,7 @@ type sharedCrewAgent struct {
 type crewAgentShareChange struct {
 	Agents   *[]string         `json:"shared_agents,omitempty"`
 	Purposes map[string]string `json:"agent_purposes,omitempty"`
-	// Agent / AgentOn switch one agent's selection and keep the rest (the Team tab's Public on AgentBridge).
+	// Agent / AgentOn switch one agent's selection and keep the rest.
 	Agent   string `json:"shared_agent,omitempty"`
 	AgentOn *bool  `json:"shared_agent_on,omitempty"`
 }
@@ -189,7 +189,7 @@ func sharedCrewAgentPeer(ctx context.Context, user string, peer agentMessageEndp
 	}
 	// An agent shared from a Crew on its owner's Mac: its audience decides (PLAT-856-509).
 	if !IsLocalMode() && crewRelayTwin(peer.ID) {
-		_, reason := macSharedAgentForAgent(peer.ID, macSharedAgentTab(peer.ID, peer.ChatKey), user, peer.UserID)
+		_, reason := macSharedAgentFor(peer.ID, macSharedAgentTab(peer.ID, peer.ChatKey), user, peer.UserID)
 		return reason == ""
 	}
 	chat, ok := sharedCrewAgentChat(ctx, user, peer.Path, peer.ChatKey)

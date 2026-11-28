@@ -100,7 +100,7 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	}
 	// The team's agents (a shared room, 5 Nov): members see the owner's In team agents, grouped by person; Only me
 	// agents and non-members see nothing.
-	if err := writeMacSharedAgents("team-test", []macSharedAgent{{Tab: "team01", Name: "Reviewer", Purpose: "Checks invoices", Audience: "team"}, {Tab: "solo01", Name: "Solo", Purpose: "Private", AgentBridgePublic: true}}); err != nil {
+	if err := writeMacSharedAgents("team-test", []macSharedAgent{{Tab: "team01", Name: "Reviewer", Purpose: "Checks invoices", Audience: "team"}, {Tab: "solo01", Name: "Solo", Purpose: "Private", Audience: "team"}}); err != nil {
 		t.Fatal(err)
 	}
 	private := mustReadCrewTeam(t, "team-test")
@@ -174,9 +174,9 @@ func TestCrewTeamFolderHTTPConflictRetryAndRevocation(t *testing.T) {
 	if w = call("outsider", "GET", base+"/folders?path=", "", ""); w.Code != 403 {
 		t.Fatalf("outsider listed the Crew's folders: %d %s", w.Code, w.Body.String())
 	}
-	agents := []macSharedAgent{{Tab: "team01", Audience: "team"}, {Tab: "solo01", AgentBridgePublic: true}}
+	agents := []macSharedAgent{{Tab: "team01", Audience: "team"}, {Tab: "solo01"}}
 	for _, tc := range []struct{ tab, who, reason string }{{"team01", "member", ""}, {"team01", "outsider", "not_in_audience"}, {"solo01", "member", "not_in_audience"}} {
-		if _, reason := macSharedAudience(agents, tc.tab, tc.who, "owner", crewTeamPeople("team-test"), false); reason != tc.reason {
+		if _, reason := macSharedAudience(agents, tc.tab, tc.who, "owner", crewTeamPeople("team-test")); reason != tc.reason {
 			t.Fatalf("audience %s/%s: %s", tc.tab, tc.who, reason)
 		}
 	}

@@ -21,7 +21,7 @@ import (
 // server writes every line; the Mac app and the website show the same tree.
 
 type crewAccessLine struct {
-	Kind   string `json:"kind"`  // mac, team, team_live, in_team, dashboard, public, folder, clash
+	Kind   string `json:"kind"`  // mac, team, team_live, in_team, dashboard, folder, clash
 	Group  string `json:"group"` // the menu row it sits under: "team" or "online" (crewAccessLineGroup)
 	Title  string `json:"title"`
 	Detail string `json:"detail,omitempty"`
@@ -45,7 +45,6 @@ type crewAccessFacts struct {
 	Posts         crewTeamActivityPosts
 	Team          *crewTeam
 	People        []crewTeamAgentsPerson // everyone in the Team with their in-team agents (crew_team_agents.go)
-	Agents        []macSharedAgent
 	LastChange    time.Time
 	Clashes       []crewTeamClash
 	Progress      *crewTeamRound
@@ -117,19 +116,16 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 		if f.Dashboard != "" {
 			lines = append(lines, crewAccessLine{Kind: "share", Title: "Dashboard", Detail: f.Dashboard})
 		}
-		return append(lines, crewAccessPublicLine(f.Agents)...)
+		return lines
 	}
 	if !f.TeamKnown {
-		return append(lines, crewAccessPublicLine(f.Agents)...)
-	}
-	if f.Member {
-		f.Agents = nil // the owner's Mac choices; the team line lists everyone's agents
+		return lines
 	}
 	if !teamOn {
 		if f.MacOnline || f.ServerCrew {
 			lines = append(lines, crewAccessLine{Kind: "team", Title: crewAccessTeamOffTitle})
 		}
-		return append(lines, crewAccessPublicLine(f.Agents)...)
+		return lines
 	}
 	names := []string{}
 	// The card is what the Team is doing, not your own agents' work (the left menu shows that; owner, 12 Nov).
@@ -190,7 +186,6 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 	lines = append(lines, crewAccessLine{Kind: "team", Title: title, Count: len(names)})
 	lines = append(lines, live[:min(3, len(live))]...)
 	lines = append(lines, recentLines[:min(3, len(recentLines))]...)
-	lines = append(lines, crewAccessPublicLine(f.Agents)...)
 	if f.Team.Folder.shared() {
 		if f.HasLocal && f.LocalError != "" {
 			lines = append(lines, crewAccessLine{Kind: "folder", Title: "Sync stopped", Detail: f.LocalError, Target: "sync"})
@@ -257,19 +252,6 @@ func crewAccessWithDashboard(tree []crewAccessLine, line crewAccessLine) []crewA
 	return append(out, tree[at:]...)
 }
 
-func crewAccessPublicLine(agents []macSharedAgent) []crewAccessLine {
-	names := []string{}
-	for _, a := range agents {
-		if !a.Off && a.AgentBridgePublic {
-			names = append(names, firstNonEmptyTrimmed(a.Name, a.Tab))
-		}
-	}
-	if len(names) == 0 {
-		return nil
-	}
-	return []crewAccessLine{{Kind: "public", Title: "Public on AgentBridge", Detail: strings.Join(names, ", ")}}
-}
-
 func crewAccessProgressLine(p crewTeamRound) string {
 	verb := "Sending"
 	if p.Direction == "download" {
@@ -329,7 +311,7 @@ type crewAccessRemote struct {
 // crewAccessTreeFor builds the tree where this server stands, like crewAccessSummaryFor.
 func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClaims, project string, b *crewroot.SyncBinding) []crewAccessLine {
 	owner := claims.UserID
-	f := crewAccessFacts{Agents: readMacSharedAgents(project), Viewer: owner, Where: crewTeamWhereFor(project, owner)}
+	f := crewAccessFacts{Viewer: owner, Where: crewTeamWhereFor(project, owner)}
 	if !IsLocalMode() {
 		// The website: this server holds the Team and the shared folder of the Crew's online copy.
 		f.MacOnline = b != nil && b.Mode == "relay"

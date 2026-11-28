@@ -211,7 +211,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 	}
 	// Agents shared from Crews on their owners' Macs, for the people in each agent's audience (PLAT-856-509).
 	if !IsLocalMode() {
-		for _, row := range macSharedAgentRows(claims.UserID, false) {
+		for _, row := range macSharedAgentRows(claims.UserID) {
 			project, _ := row["crew_id"].(string)
 			if t, err := readCrewTeam(project); err == nil && t.On && t.member(claims.UserID) {
 				continue

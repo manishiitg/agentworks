@@ -243,7 +243,6 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
         : !info.sharing && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Shared with</span><span className="min-w-0 truncate text-muted-foreground">{info.sharedWith || 'Only you'}</span></div>}
       {info.lastAsked && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Last asked</span>
         <button type="button" onClick={() => finish(info.lastAsked!.open)} className="min-w-0 truncate text-primary hover:underline">{info.lastAsked.who} · {info.lastAsked.when}</button></div>}
-      {info.setup?.agentbridge_line && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>AgentBridge</span><span className="text-emerald-500">{info.setup.agentbridge_line}</span></div>}
       {!info.owner && !info.sharing && <AgentOnlineCopyStatus setup={info.setup} />}
       {(info.setup || info.onAutomations || info.onAddAutomation) && (clickToOpen
         ? <AgentDetailSection title="Automations" value={automationsSummary(info.setup?.automations ?? [])}>

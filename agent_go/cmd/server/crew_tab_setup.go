@@ -13,7 +13,7 @@ import (
 )
 
 // A Crew agent tab's setup icon and its card rows (owner, 6 Nov, approved mockup "Tab status"): who can reach the agent
-// (public on AgentBridge, shared with the team, or only you) and what starts it on its own (schedules, watchers,
+// (shared with the team, or only you) and what starts it on its own (schedules, watchers,
 // webhooks). The server words every line; the tab bar and the card only show them, the same in the Mac app and on the
 // website, for the agent's owner and for teammates.
 
@@ -21,12 +21,11 @@ import (
 type crewTabSetup struct {
 	NextAutomation string                `json:"next_automation,omitempty"`
 	WhenOffline    *crewAgentWhenOffline `json:"when_offline,omitempty"`
-	// Reach is "agentbridge" (public on AgentBridge, which implies shared), "team" (shared with the team) or "".
+	// Reach is "team" (shared with the team) or "".
 	Reach string `json:"reach"`
 	// StartsOnOwn: at least one of Automations is on.
-	StartsOnOwn     bool                `json:"starts_on_own"`
-	AgentBridgeLine string              `json:"agentbridge_line,omitempty"` // "public · online", only while public
-	Automations     []crewTabAutomation `json:"automations"`
+	StartsOnOwn bool                `json:"starts_on_own"`
+	Automations []crewTabAutomation `json:"automations"`
 }
 
 // crewTabAutomation is one schedule, watcher or webhook that starts an agent, worded for its card.
@@ -158,7 +157,6 @@ type crewTabSetupSource struct {
 	ctx         context.Context
 	mainKey     string // validated once by the request builder
 	automations []crewTabAutomation
-	macOn       bool // the owner's Mac answers now (a Mac Crew); a Crew on the server is always online
 }
 
 // crewTabSetupSourceFor never waits (owner, 6 Nov: the agent card got slower). The Team tab is read again on every
@@ -178,7 +176,7 @@ func crewTabSetupSourceFor(ctx context.Context, t crewTeam, twin bool) crewTabSe
 			var items []crewTabAutomation
 			return items, result.Status == 200 && json.Unmarshal(result.Body, &items) == nil
 		})
-		return crewTabSetupSource{ctx: ctx, automations: items, macOn: on}
+		return crewTabSetupSource{ctx: ctx, automations: items}
 	}
 	if runningServerAPI == nil {
 		return crewTabSetupSource{ctx: ctx}
@@ -190,22 +188,16 @@ func crewTabSetupSourceFor(ctx context.Context, t crewTeam, twin bool) crewTabSe
 }
 
 // setup is one Team tab row's setup for the viewer. Automations belong to the Crew's owner (they run as the owner), so
-// only the owner's own agents list them; bridge is the owner's agent's AgentBridge setting (nil for anyone else's
-// agent). Shared with the team shows only on the viewer's own agents (owner, 6 Nov): someone else's agent they can see
-// is shared by definition, so its tab shows only what adds something, the globe (public on AgentBridge) and the bolt.
-func (src crewTabSetupSource) setup(t crewTeam, a crewTeamAgent, person, viewer string, inTeam bool, bridge *crewTeamTabBridge) *crewTabSetup {
+// only the owner's own agents list them. Shared with the team shows only on the viewer's own agents (owner, 6 Nov):
+// someone else's agent they can see is shared by definition, so its tab shows only what adds something, the bolt.
+func (src crewTabSetupSource) setup(t crewTeam, a crewTeamAgent, person, viewer string, inTeam bool) *crewTabSetup {
 	out := &crewTabSetup{Automations: []crewTabAutomation{}}
 	if person == viewer {
 		if row, ok := t.Agents[a.ID]; ok && row.OwnerID == viewer {
 			out.WhenOffline = crewAgentHeaderStatus(t, row)
 		}
 	}
-	switch {
-	case bridge != nil && bridge.Public:
-		out.Reach = "agentbridge"
-		online := !crewRelayTwin(t.ProjectID) || a.Place == "server" || a.PlaceServer || src.macOn
-		out.AgentBridgeLine = map[bool]string{true: "public · online", false: "public · offline"}[online]
-	case t.On && inTeam && person == viewer:
+	if t.On && inTeam && person == viewer {
 		out.Reach = "team"
 	}
 	var next *time.Time

@@ -103,7 +103,7 @@ func writeCrewTeamState(project string, change func(*crewTeamLocalState)) error 
 
 // crewTeamRoster is this Mac Crew's list on its online copy for the Team's switch: on, every agent is listed for the
 // Team (audience "team"), keeping each entry's other choices, and who sees which is the server's In team / Only me;
-// off, only agents public on AgentBridge stay, with no people audience. It says whether the list changed.
+// off, the list is emptied. It says whether the list changed.
 func crewTeamRoster(rows []macAgentRow, current []macSharedAgent, on bool) ([]macSharedAgent, bool) {
 	// A removed/import-replaced tab must not poison the entire next push:
 	// pushMacSharedAgents correctly refuses unknown tabs, including stale saved ones.
@@ -112,13 +112,7 @@ func crewTeamRoster(rows []macAgentRow, current []macSharedAgent, on bool) ([]ma
 	})
 	changed := len(next) != len(current)
 	if !on {
-		next = slices.DeleteFunc(next, func(agent macSharedAgent) bool { return !agent.AgentBridgePublic })
-		changed = len(next) < len(current)
-		for i := range next {
-			changed = changed || next[i].Audience != ""
-			next[i].Audience = ""
-		}
-		return next, changed
+		return []macSharedAgent{}, len(current) > 0
 	}
 	for _, row := range rows {
 		at := slices.IndexFunc(next, func(agent macSharedAgent) bool { return agent.Tab == row.Tab })

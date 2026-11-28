@@ -266,7 +266,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     </section>}
     {notice && <p role="status" className="text-xs text-muted-foreground">{notice}</p>}
     {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-    {/* Which agents others can message is each agent's Public on AgentBridge, in the Team tab's one agent list. */}
+    {/* Which agents others can message is each agent's In team / Only me, in the Team tab's one agent list. */}
     {!coOwnersOnly && !!state.accounts?.length && <details className="border-t border-border pt-3 text-xs"><summary className="cursor-pointer py-1 text-muted-foreground">Details</summary>
       <div className="mt-2 space-y-3">
         {!!state.accounts?.length && <div><p className="font-medium">Accounts used</p><ul className="mt-1 space-y-1">{state.accounts.map((account, i) => <li key={i}>{account.name}<span className="block text-muted-foreground">{account.use}</span></li>)}</ul></div>}

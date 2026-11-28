@@ -72,7 +72,7 @@ type crewWizardChoice struct {
 func crewWizardAgents(ctx context.Context, t crewTeam) []crewWizardAgent {
 	mainKey := crewOwnerMainChatKey(t.ProjectID)
 	out := []crewWizardAgent{}
-	for _, a := range crewTeamSoloAgents(ctx, t, crewTeamBridgesFor(t), crewTabSetupSource{}, mainKey) {
+	for _, a := range crewTeamSoloAgents(ctx, t, crewTabSetupSource{}, mainKey) {
 		inTeam := crewTeamDefaultInTeam(nil)
 		if saved, ok := t.registeredAgent(t.OwnerID, a.WatchKey); ok {
 			inTeam = saved.InTeam

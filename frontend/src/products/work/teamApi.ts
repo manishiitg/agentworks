@@ -109,15 +109,11 @@ export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string;
   chat_share: string; chat_private_line?: string; can_fork?: boolean; watch_key?: string
   // The rule editor's Ask message (the viewer's own agent).
   permissions_prompt?: string
-  // The sharing list (crew_team_tab.go): its purpose, whether the viewer edits it (POST agent-rule {purpose}), and its Public on
-  // AgentBridge (a Mac Crew's owner's own rows): needs_purpose shows Set purpose instead of the switch; state is the
-  // pill while it is public ("public · online").
+  // The sharing list (crew_team_tab.go): its purpose and whether the viewer edits it (POST agent-rule {purpose}).
   examples?: string[]; purpose: string; can_set_purpose: boolean
-  // copy_line is the owner's coding-app line for this one agent; copy_line_why says why there is none yet.
-  agentbridge?: { public: boolean; can_change: boolean; needs_purpose?: boolean; state?: string; copy_line?: string; copy_line_why?: string }
   // The tab's setup icon and card rows (crew_tab_setup.go), worded by the server, for everyone who sees the agent.
   setup?: TeamTabSetup }
-export type TeamTabSetup = { next_automation?: string; when_offline?: { line: string }; reach: 'agentbridge' | 'team' | ''; starts_on_own: boolean; agentbridge_line?: string; automations: { kind: string; name: string; line: string; on: boolean }[] }
+export type TeamTabSetup = { next_automation?: string; when_offline?: { line: string }; reach: 'team' | ''; starts_on_own: boolean; automations: { kind: string; name: string; line: string; on: boolean }[] }
 export type TeamTabSync = { line: string; problem?: boolean; attention?: boolean; last?: string; state?: string; changed_by?: string; changed_ago?: string; stale?: string; size?: string; progress?: { direction: 'upload' | 'download'; files: number; bytes_done: number; bytes_total: number } }
 export type TeamReachableAgent = AvatarFields & { purpose?: string; examples?: string[]; task_state?:string; chat_share?: string; chat_readable?:boolean; offline_line?:string; client_build?:string; update_needed?:boolean; cli?:string; engine?:string; model_id?:string; reasoning_effort?:string; agent_id:string; kind:string; name:string; person_id?:string; online_project?:string; person?:string; place:string; online:boolean; activity?:string; address:string; last_message?:string; last_message_at?:string; typing?:boolean }
 /** mine: the viewer is its main owner, so New agent can make an agent there. */
