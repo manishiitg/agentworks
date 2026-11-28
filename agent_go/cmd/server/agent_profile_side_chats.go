@@ -50,8 +50,8 @@ type AgentProfileSideChat struct {
 	HasInstructions bool `json:"has_instructions,omitempty"`
 	// ForkedFrom is the conversation key of the agent this one was forked from (#3288); the left menu nests it there.
 	ForkedFrom string `json:"forked_from,omitempty"`
-	// IsMain marks the caller's own main chat, listed only when asked with with_main=1 (for its purpose).
-	IsMain bool `json:"is_main,omitempty"`
+	// IsDefaultAgent marks the caller's own main chat, listed only when asked with with_main=1 (for its purpose).
+	IsDefaultAgent bool `json:"is_default_agent,omitempty"`
 	// OnYourMac marks the caller's own Mac agent, watch only on the website. Their Mac app already has it as their own
 	// tab, so it must not list it again as a teammate's.
 	OnYourMac bool `json:"on_your_mac,omitempty"`
@@ -232,10 +232,10 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		if hiddenFromTabStrip(record.ConversationKey) {
 			continue
 		}
-		defaultChat := record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(projectID, tab.OwnerID)
+		defaultChat := record.IsDefaultAgent || record.ConversationKey == crewOwnerDefaultChatKey(projectID, tab.OwnerID)
 		ownMain := tab.OwnerID == userID && defaultChat
 		if ownMain && main == nil && r.URL.Query().Get("with_main") == "1" {
-			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: firstNonEmptyTrimmed(tab.Identity.Name, "Main"), Purpose: tab.Identity.Purpose, Examples: tab.Identity.Examples, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: !tab.Identity.Unpinned, Position: tab.Identity.Position, IsMain: true, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
+			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: firstNonEmptyTrimmed(tab.Identity.Name, "Main"), Purpose: tab.Identity.Purpose, Examples: tab.Identity.Examples, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: !tab.Identity.Unpinned, Position: tab.Identity.Position, IsDefaultAgent: true, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
 			main.TeamNewInTeam = joinDefault(record)
 			if runtime, err := effectiveProfileChatModel(slot.profile, slot.binding, record, tab.Identity); err == nil {
 				main.Provider, main.ModelID = runtime.Provider, runtime.ModelID

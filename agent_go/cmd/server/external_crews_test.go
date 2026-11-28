@@ -227,14 +227,14 @@ func TestExternalCrewChatsAreYourOwn(t *testing.T) {
 	var mainChat externalCrewChat
 	found := false
 	for _, row := range mainRows {
-		if row.IsMain {
+		if row.IsDefaultAgent {
 			mainChat, found = row, true
 		}
 	}
 	if _, aliased := findCrewChat(mainRows, "main"); aliased {
 		t.Fatal(`"main" still addresses Main`)
 	}
-	if !found || !mainChat.IsMain || !strings.HasPrefix(mainChat.ChatID, "root-") || crewSideChatCount(mainRows) != 0 {
+	if !found || !mainChat.IsDefaultAgent || !strings.HasPrefix(mainChat.ChatID, "root-") || crewSideChatCount(mainRows) != 0 {
 		t.Fatalf("migrated main discovery = %+v, found=%v", mainRows, found)
 	}
 	if code, out := chats(owner, map[string]any{"crew_id": "beta", "action": "set_model", "chat_id": mainChat.ChatID, "engine": ""}); code != 200 {

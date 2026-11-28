@@ -34,7 +34,7 @@ it('groups threads into Active now and Recent, filters, pins, and opens a thread
   const spy = vi.spyOn(agentApi, 'listAgentProfileSideChats').mockImplementation(async (_profile, projectId) => {
     if (projectId === 'p1') {
       return [
-        { conversation_key: 'p1', name: 'Main', is_main: true, session_id: 's-main', last_message_at: '2026-11-25T10:00:00Z' },
+        { conversation_key: 'p1', name: 'Main', is_default_agent: true, session_id: 's-main', last_message_at: '2026-11-25T10:00:00Z' },
         { conversation_key: 'p1:chat:ui', name: 'UI review', session_id: 's-ui', provider: 'claude-code', last_message_at: '2026-11-25T12:00:00Z' },
       ]
     }
@@ -91,7 +91,7 @@ it('groups threads into Active now and Recent, filters, pins, and opens a thread
 it('shows an error card when loading fails and retries on click', async () => {
   const spy = vi.spyOn(agentApi, 'listAgentProfileSideChats')
     .mockRejectedValueOnce(new Error('network'))
-    .mockResolvedValueOnce([{ conversation_key: 'p1', name: 'Main', is_main: true, session_id: 's1' }])
+    .mockResolvedValueOnce([{ conversation_key: 'p1', name: 'Main', is_default_agent: true, session_id: 's1' }])
 
   const host = document.createElement('div')
   document.body.append(host)

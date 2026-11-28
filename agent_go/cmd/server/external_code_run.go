@@ -66,10 +66,10 @@ func (api *StreamingAPI) externalCodeRunChats(ctx context.Context, userID, proje
 		}
 		chat := codeChat{Key: record.ConversationKey, SessionID: record.SessionID, UpdatedAt: record.UpdatedAt}
 		chat.ID = strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
-		chat.IsMain = record.IsMainChat
+		chat.IsDefaultAgent = record.IsDefaultAgent
 		chat.Name = firstNonEmptyTrimmed(titles[record.SessionID], "Chat "+chat.ID)
-		if chat.IsMain {
-			chat.Name = "Main chat"
+		if chat.IsDefaultAgent {
+			chat.Name = "Default agent"
 		}
 		if identity, ok := identities[record.ConversationKey]; ok {
 			chat.Name = firstNonEmptyTrimmed(identity.Name, chat.Name)

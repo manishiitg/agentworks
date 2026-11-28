@@ -510,7 +510,7 @@ func crewShareActionsFor(ctx context.Context, src crewShareSource, canChange boo
 		agent := strings.TrimSpace(fn.Agent)
 		key := crewAgentChatID(agent)
 		if agent == "" || agent == fn.Name {
-			key, agent = "main", "Main" // a function in its own tab, or a new chat per call: the Crew's Main card
+			key, agent = "main", "Default agent" // a function in its own tab, or a new chat per call: the default agent's card
 		}
 		if _, ok := names[key]; !ok {
 			names[key] = agent

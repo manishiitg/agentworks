@@ -27,7 +27,7 @@ export function useChatShareLines(tabId?: string | null) {
  * No buttons, pictures or examples unless the project has a welcome page (WELCOME.md); the first message replaces it. */
 export function ChatEmptyState({ tabId }: { tabId?: string | null }) {
   const tab = useChatStore(state => (tabId ? state.chatTabs[tabId] : undefined))
-  const main = tab?.metadata?.agentProfileIsMainChat !== false
+  const main = tab?.metadata?.agentProfileIsDefaultAgent !== false
   const own = tab?.metadata?.agentProfileTabCanWrite !== false
   const team = useTeamTab(tab?.metadata?.agentProfileProjectId)
   const agent = own ? teamAgentForTab(team, tab?.metadata?.agentProfileConversationKey, main, own) : undefined

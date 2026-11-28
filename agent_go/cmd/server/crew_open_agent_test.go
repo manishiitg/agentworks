@@ -31,7 +31,7 @@ func TestCrewOpeningWithoutMainUsesAuthorizedExistingAgent(t *testing.T) {
 		}
 	}
 	// A stale deleted Main pointer is not repaired or adopted.
-	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","main_chat_key":"team:chat:deleted"}`)
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","default_agent_key":"team:chat:deleted"}`)
 	before := f.read(t, externalCommandCrewSettings+"/product.json")
 	open := func(user, key, requested string) (int, AgentProfileConversationResponse) {
 		t.Helper()
@@ -51,7 +51,7 @@ func TestCrewOpeningWithoutMainUsesAuthorizedExistingAgent(t *testing.T) {
 		if want == "" {
 			want = "team:chat:alpha"
 		}
-		if status != 200 || body.ConversationKey != want || body.SessionID == "" || body.IsMainChat {
+		if status != 200 || body.ConversationKey != want || body.SessionID == "" || body.IsDefaultAgent {
 			t.Fatalf("owner open: status=%d result=%+v", status, body)
 		}
 	}

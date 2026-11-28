@@ -155,7 +155,7 @@ func checkCrewChatRelayOwnerBoundary(t *testing.T, api *StreamingAPI, project, p
 		// and a tab id with path characters never reaches the resolver.
 		opened := api.runDesktopCrewChat(t.Context(), "local-id", pair, crewChatCall{ID: "tab", Operation: "resolve", Tab: "a1b2c3d4", Name: " Research "})
 		var tab AgentProfileConversationResponse
-		if opened.Status != 200 || json.Unmarshal(opened.Body, &tab) != nil || tab.IsMainChat || tab.ConversationID == "" || tab.ConversationID == current.ConversationID {
+		if opened.Status != 200 || json.Unmarshal(opened.Body, &tab) != nil || tab.IsDefaultAgent || tab.ConversationID == "" || tab.ConversationID == current.ConversationID {
 			t.Fatalf("new tab over the relay: %d %s", opened.Status, opened.Body)
 		}
 		if got := api.runDesktopCrewChat(t.Context(), "local-id", pair, crewChatCall{ID: "tab-status", Operation: "status", ConversationID: tab.ConversationID}); got.Status == 409 || got.Status == 403 {

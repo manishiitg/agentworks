@@ -32,7 +32,7 @@ func TestNewChatWithoutMainCreatesNoMain(t *testing.T) {
 	if after := entries(); after != before || rows() != listed {
 		t.Fatalf("new on a Crew with no Main created a chat: status %d %s, registry %d -> %d, listed %d -> %d", rec.Code, rec.Body.String(), before, after, listed, rows())
 	}
-	if rec.Code < 400 || !strings.Contains(rec.Body.String(), "Main") {
-		t.Fatalf("new on a Crew with no Main should say there is no Main to start again: %d %s", rec.Code, rec.Body.String())
+	if rec.Code < 400 || !strings.Contains(rec.Body.String(), "isn't ready") {
+		t.Fatalf("new on a Crew with no default agent should say the project isn't ready: %d %s", rec.Code, rec.Body.String())
 	}
 }

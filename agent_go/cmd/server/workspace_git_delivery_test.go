@@ -40,7 +40,7 @@ func TestWorkspaceGitDeliveryDraftsDoNotCommitAndPublishingUsesOnlySelectedAccou
 	writeFile(t, filepath.Join(repo, ".env"), "EXAMPLE=DO_NOT_SEND_NEW")
 	const session = "delivery-owner-chat"
 	const key = "team:chat:root-owner"
-	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Team","main_chat_key":"`+key+`"}`)
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Team","default_agent_key":"`+key+`"}`)
 	const connection = "11111111111111111111111111111111"
 	f.write(t, externalCommandCrewSettings+"/workflow.json", `{"id":"team","created_by":"owner","capabilities":{"github_connection_id":"`+connection+`"}}`)
 	if err := writeGitHubRecord("owner", githubAccountRecord{ID: connection, Login: "selected-account", SecretName: "FIXTURE_SELECTED"}); err != nil {

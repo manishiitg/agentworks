@@ -165,7 +165,7 @@ export function SidebarThreadsView({
             ? 'running'
             : 'idle'
         // Keep hidden agents out of the flat list unless they are actively working, waiting, or pinned.
-        if (!chat.is_main && chat.pinned === false && status === 'idle' && !pinnedSet.has(id)) continue
+        if (!chat.is_default_agent && chat.pinned === false && status === 'idle' && !pinnedSet.has(id)) continue
         const lastMessageAt = chat.last_message_at
         const timestamp = Date.parse(lastMessageAt || '') || 0
         list.push({
@@ -173,7 +173,7 @@ export function SidebarThreadsView({
           projectId: project.id,
           projectName: project.name,
           chat,
-          name: chat.name || (chat.is_main ? 'Main' : 'Agent'),
+          name: chat.name || (chat.is_default_agent ? 'Main' : 'Agent'),
           status,
           lastMessageAt,
           timestamp,
@@ -190,7 +190,7 @@ export function SidebarThreadsView({
     if (existing && useProductSurfaceStore.getState().selectedWorkProjectId === item.projectId) {
       openAgentTab(existing.tabId)
     } else {
-      const agent = item.chat.is_main ? undefined : workConversationAgent(item.chat.conversation_key)
+      const agent = item.chat.is_default_agent ? undefined : workConversationAgent(item.chat.conversation_key)
       openProductWorkspace('work')
       openAppProduct({ surface: 'work', id: item.projectId, agent })
     }

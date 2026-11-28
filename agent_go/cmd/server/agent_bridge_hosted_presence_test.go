@@ -5,7 +5,7 @@ import "testing"
 // #2980: default Main and imported/generated titles filled the agent list;
 // saved existence, a teammate's view and a running provider are not owner views.
 func TestHostedDirectoryRequiresNameOrOwnerView(t *testing.T) {
-	tab := crewOwnerChat{OwnerID: "owner", Record: ProductConversationRecord{SessionID: "view-test", Title: "Claude Code (example)", ConversationKey: "project:chat:view-test", ProfileID: "work", IsMainChat: true}}
+	tab := crewOwnerChat{OwnerID: "owner", Record: ProductConversationRecord{SessionID: "view-test", Title: "Claude Code (example)", ConversationKey: "project:chat:view-test", ProfileID: "work", IsDefaultAgent: true}}
 	if hostedDirectoryTab(tab) {
 		t.Fatal("generated title listed as an explicit agent")
 	}
@@ -28,7 +28,7 @@ func TestHostedDirectoryRequiresNameOrOwnerView(t *testing.T) {
 	if hostedDirectoryTab(tab) {
 		t.Fatal("closed unnamed Main remained listed")
 	}
-	tab.Record.IsMainChat = false
+	tab.Record.IsDefaultAgent = false
 	tab.Identity.Name = "Planner"
 	if !hostedDirectoryTab(tab) {
 		t.Fatal("named idle agent absent")

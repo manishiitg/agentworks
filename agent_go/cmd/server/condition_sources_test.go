@@ -157,8 +157,8 @@ func sameProductIgnoringMainChatKey(t *testing.T, before, after string) bool {
 	if err := json.Unmarshal([]byte(after), &b); err != nil {
 		t.Fatal(err)
 	}
-	delete(a, "main_chat_key")
-	delete(b, "main_chat_key")
+	delete(a, "default_agent_key")
+	delete(b, "default_agent_key")
 	left, _ := json.Marshal(a)
 	right, _ := json.Marshal(b)
 	return string(left) == string(right)

@@ -39,7 +39,7 @@ type ProductConversationRecord struct {
 	agentExamples         []string          // current own identity metadata; not persisted on the conversation record
 	runtimeInfo           *agentRuntimeInfo // backend projection only; never imported or persisted in chat history
 	handoffAgentToolsMode string
-	IsMainChat            bool   `json:"-"`
+	IsDefaultAgent        bool   `json:"-"`
 	ConnectionID          string `json:"connection_id,omitempty"`
 	ConversationID        string `json:"conversation_id"`
 	ConversationKey       string `json:"conversation_key"`
@@ -774,11 +774,11 @@ func (store productConversationRegistryStore) projectChats(ctx context.Context, 
 					if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
 						return nil, err
 					}
-					mainKey = manifest.MainChatKey
+					mainKey = manifest.DefaultAgentKey
 				}
 				mainKeys[record.WorkspacePath] = mainKey
 			}
-			record.IsMainChat = record.ConversationKey == mainKey
+			record.IsDefaultAgent = record.ConversationKey == mainKey
 			chats = append(chats, copyDirectoryConversation(record))
 		}
 	}
@@ -964,8 +964,8 @@ func (store productConversationRegistryStore) forget(ctx context.Context, userID
 }
 
 type productConversationBinding struct {
-	ProjectMainChatKey          string
-	ProjectMainAddress          bool
+	ProjectDefaultAgentKey      string
+	ProjectDefaultAddress       bool
 	ConversationKey             string
 	WorkspacePath               string
 	ManifestPath                string
@@ -1080,7 +1080,7 @@ func (store productConversationRegistryStore) resolveOrCreate(
 		existing.ProjectSelectedServers = append([]string(nil), binding.ProjectSelectedServers...)
 		existing.ProjectSelectedSkills = append([]string(nil), binding.ProjectSelectedSkills...)
 		existing.ProjectWorkflowContextPaths = append([]string(nil), binding.ProjectWorkflowContextPaths...)
-		existing.IsMainChat = existing.ConversationKey == binding.ProjectMainChatKey
+		existing.IsDefaultAgent = existing.ConversationKey == binding.ProjectDefaultAgentKey
 		return existing, nil
 	}
 
@@ -1113,7 +1113,7 @@ func (store productConversationRegistryStore) resolveOrCreate(
 	if err := store.writeDocument(ctx, path, document); err != nil {
 		return ProductConversationRecord{}, err
 	}
-	record.IsMainChat = record.ConversationKey == binding.ProjectMainChatKey
+	record.IsDefaultAgent = record.ConversationKey == binding.ProjectDefaultAgentKey
 	return record, nil
 }
 
@@ -1195,7 +1195,7 @@ func (store productConversationRegistryStore) rotate(
 	if err := store.writeDocument(ctx, path, document); err != nil {
 		return ProductConversationRecord{}, err
 	}
-	record.IsMainChat = record.ConversationKey == binding.ProjectMainChatKey
+	record.IsDefaultAgent = record.ConversationKey == binding.ProjectDefaultAgentKey
 	return record, nil
 }
 
@@ -1397,9 +1397,27 @@ func (m productProjectManifest) purpose() string {
 	return strings.TrimSpace(m.Description)
 }
 
+// UnmarshalJSON reads a project saved before #4688, when its default agent was stored as main_chat_key. One-off: each
+// project is rewritten with default_agent_key on its next save; delete this once every server has moved.
+func (m *productProjectManifest) UnmarshalJSON(data []byte) error {
+	type plain productProjectManifest
+	var saved struct {
+		plain
+		LegacyDefaultAgentKey string `json:"main_chat_key"`
+	}
+	if err := json.Unmarshal(data, &saved); err != nil {
+		return err
+	}
+	*m = productProjectManifest(saved.plain)
+	if m.DefaultAgentKey == "" {
+		m.DefaultAgentKey = saved.LegacyDefaultAgentKey
+	}
+	return nil
+}
+
 type productProjectManifest struct {
 	EmailInboxEnabled            *bool           `json:"email_inbox_enabled,omitempty"`
-	MainChatKey                  string          `json:"main_chat_key,omitempty"`
+	DefaultAgentKey              string          `json:"default_agent_key,omitempty"`
 	KnowledgebaseContractHistory json.RawMessage `json:"knowledgebase_contract_history,omitempty"`
 	SharedKnowledgebase          json.RawMessage `json:"shared_knowledgebase,omitempty"`
 	KnowledgebaseMode            string          `json:"knowledgebase_mode,omitempty"`
@@ -1623,16 +1641,16 @@ func resolveProductProjectBindingInRoot(
 			// "off".
 			ProjectNativeAgentTools: true,
 		}
-		matched.ProjectMainChatKey = strings.TrimSpace(manifest.MainChatKey)
-		matched.ProjectMainAddress = conversationKey == resourceProjectID
+		matched.ProjectDefaultAgentKey = strings.TrimSpace(manifest.DefaultAgentKey)
+		matched.ProjectDefaultAddress = conversationKey == resourceProjectID
 		// Only the legacy/default project chat is tied to product.json's one
 		// session_id. Additional tabs are independent and live solely in the
 		// shared product conversation registry.
-		if conversationKey != resourceProjectID && conversationKey != matched.ProjectMainChatKey {
+		if conversationKey != resourceProjectID && conversationKey != matched.ProjectDefaultAgentKey {
 			matched.ManifestPath = ""
 			matched.AuthoritativeSessionID = ""
 		}
-		if matched.ProjectMainChatKey != "" {
+		if matched.ProjectDefaultAgentKey != "" {
 			matched.AuthoritativeSessionID = ""
 		}
 	}
@@ -1686,8 +1704,8 @@ func isolateProjectAutomationBinding(base productConversationBinding, projectID,
 	// This key is an execution conversation, never the optional Main address.
 	// Retaining Main-address resolution with an empty ManifestPath refused
 	// product Ask/callback turns before they could reach their normal lane.
-	base.ProjectMainAddress = false
-	base.ProjectMainChatKey = ""
+	base.ProjectDefaultAddress = false
+	base.ProjectDefaultAgentKey = ""
 	base.ManifestPath = ""
 	base.AuthoritativeSessionID = ""
 	base.Title = firstNonEmptyTrimmed(title, base.Title+" · "+kind)

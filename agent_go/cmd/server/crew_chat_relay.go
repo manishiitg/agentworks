@@ -190,7 +190,7 @@ func (api *StreamingAPI) routeCrewMainChat(w http.ResponseWriter, r *http.Reques
 			return false
 		}
 		binding, _, err := resolveConversationBindingForUser(r.Context(), GetUserIDFromContext(r.Context()), resolved, key)
-		if err != nil || binding.ConversationKey != binding.ProjectMainChatKey {
+		if err != nil || binding.ConversationKey != binding.ProjectDefaultAgentKey {
 			return false
 		}
 	}

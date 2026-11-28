@@ -17,17 +17,17 @@ const goalChatProfile = "agentworks"
 // Goals and Relays use the same durable tab identities as Crews. The runtime remains the
 // workflow Builder: these records never turn a chat into a workflow execution.
 type goalOwnerTab struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	OwnerID   string `json:"owner_id"`
-	OwnerName string `json:"owner_name"`
-	SessionID string `json:"session_id"`
-	IsMain    bool   `json:"is_main"`
-	CanWrite  bool   `json:"can_write"`
-	Working   bool   `json:"working"`
-	UpdatedAt string `json:"updated_at,omitempty"`
-	Position  int    `json:"position,omitempty"`
-	Pinned    bool   `json:"pinned"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	OwnerID        string `json:"owner_id"`
+	OwnerName      string `json:"owner_name"`
+	SessionID      string `json:"session_id"`
+	IsDefaultAgent bool   `json:"is_default_agent"`
+	CanWrite       bool   `json:"can_write"`
+	Working        bool   `json:"working"`
+	UpdatedAt      string `json:"updated_at,omitempty"`
+	Position       int    `json:"position,omitempty"`
+	Pinned         bool   `json:"pinned"`
 }
 
 func goalTabMembers(m *WorkflowManifest) []string {
@@ -108,8 +108,8 @@ func (api *StreamingAPI) goalOwnerTabs(ctx context.Context, scope workflowBuilde
 			name, updatedAt := goalTabPresentation(record, identity, history[record.SessionID])
 			out = append(out, goalOwnerTab{ID: record.ConversationKey, Name: name, OwnerID: owner,
 				OwnerName: crewOwnerDisplayName(owner), SessionID: record.SessionID,
-				IsMain:   record.ConversationKey == crewOwnerDefaultChatKey(scope.PresetID, owner),
-				Position: identity.Position, Pinned: !identity.Unpinned,
+				IsDefaultAgent: record.ConversationKey == crewOwnerDefaultChatKey(scope.PresetID, owner),
+				Position:       identity.Position, Pinned: !identity.Unpinned,
 				CanWrite: owner == user, Working: api.conversationTurnOccupied(record.SessionID), UpdatedAt: updatedAt})
 		}
 	}
@@ -117,8 +117,8 @@ func (api *StreamingAPI) goalOwnerTabs(ctx context.Context, scope workflowBuilde
 		if out[i].CanWrite != out[j].CanWrite {
 			return out[i].CanWrite
 		}
-		if out[i].IsMain != out[j].IsMain {
-			return out[i].IsMain
+		if out[i].IsDefaultAgent != out[j].IsDefaultAgent {
+			return out[i].IsDefaultAgent
 		}
 		if out[i].Position != out[j].Position {
 			if out[i].Position == 0 {
@@ -188,7 +188,7 @@ func storeGoalOwnerTab(ctx context.Context, scope workflowBuilderScope, name str
 	}
 	identity := doc.Agents[entry]
 	return goalOwnerTab{ID: key, Name: firstNonEmptyTrimmed(identity.Name, record.Title, "Builder"), OwnerID: user,
-		OwnerName: crewOwnerDisplayName(user), SessionID: record.SessionID, IsMain: main, CanWrite: true, Position: identity.Position, Pinned: !identity.Unpinned, UpdatedAt: record.UpdatedAt}, nil
+		OwnerName: crewOwnerDisplayName(user), SessionID: record.SessionID, IsDefaultAgent: main, CanWrite: true, Position: identity.Position, Pinned: !identity.Unpinned, UpdatedAt: record.UpdatedAt}, nil
 }
 
 func (api *StreamingAPI) createGoalOwnerTab(ctx context.Context, scope workflowBuilderScope, name string, main bool, preferredSession string) (goalOwnerTab, error) {
@@ -241,7 +241,7 @@ func (api *StreamingAPI) goalTabForSession(ctx context.Context, session string) 
 		return goalOwnerTab{}, "", false
 	}
 	return goalOwnerTab{ID: record.ConversationKey, Name: firstNonEmptyTrimmed(record.Title, "Builder"), OwnerID: owner,
-		OwnerName: crewOwnerDisplayName(owner), SessionID: session, IsMain: record.ConversationKey == crewOwnerDefaultChatKey(m.ID, owner), CanWrite: owner == GetUserIDFromContext(ctx)}, record.WorkspacePath, true
+		OwnerName: crewOwnerDisplayName(owner), SessionID: session, IsDefaultAgent: record.ConversationKey == crewOwnerDefaultChatKey(m.ID, owner), CanWrite: owner == GetUserIDFromContext(ctx)}, record.WorkspacePath, true
 }
 
 func (api *StreamingAPI) goalOwnerTabSummary(ctx context.Context, scope workflowBuilderScope, fresh bool) (*workflowBuilderSessionResponse, error) {
@@ -252,7 +252,7 @@ func (api *StreamingAPI) goalOwnerTabSummary(ctx context.Context, scope workflow
 		return nil, err
 	}
 	for _, tab := range tabs {
-		if tab.OwnerID == user && tab.IsMain {
+		if tab.OwnerID == user && tab.IsDefaultAgent {
 			main = tab
 			break
 		}

@@ -148,7 +148,7 @@ func (api *StreamingAPI) desktopCrewTeamMessagePreviews(ctx context.Context, own
 	var previews map[string]crewTeamMessagePreview
 	for _, row := range rows {
 		tab := strings.TrimPrefix(row.ConversationKey, localProject+codeChatSideMarker)
-		if row.IsMain {
+		if row.IsDefaultAgent {
 			tab = macMainTab
 		}
 		allowed := false

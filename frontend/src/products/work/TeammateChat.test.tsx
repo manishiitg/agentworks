@@ -48,7 +48,7 @@ it('identifies the observed person and Mac in one line and asks the agent direct
  expect(header.textContent).toContain('Peer agent');expect(header.textContent).toContain("Colleague's Mac");expect(header.textContent).toContain('Working');expect(header.textContent).not.toContain('My previous agent')
  expect(host.querySelector('[role="note"]')).toBeNull()
  // #2971: return to the exact previous own chat, not the peer or Main.
- f.tabs.main={tabId:'main',name:'Main',lastAccessedAt:10,metadata:{agentProfileId:'work',agentProfileProjectId:'crew',agentProfileIsMainChat:true,agentProfileTabOwnerID:'viewer'}}
+ f.tabs.main={tabId:'main',name:'Main',lastAccessedAt:10,metadata:{agentProfileId:'work',agentProfileProjectId:'crew',agentProfileIsDefaultAgent:true,agentProfileTabOwnerID:'viewer'}}
  await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Back to My previous agent"]')!.click())
  expect(f.open).toHaveBeenLastCalledWith('own')
  delete f.tabs.own;delete f.tabs.main.lastAccessedAt

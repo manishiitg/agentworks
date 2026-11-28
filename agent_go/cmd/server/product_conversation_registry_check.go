@@ -249,7 +249,7 @@ func registryComparableChats(chats []ProductConversationRecord) []string {
 		encoded, _ := json.Marshal(struct {
 			Main   bool
 			Record ProductConversationRecord
-		}{chat.IsMainChat, chat})
+		}{chat.IsDefaultAgent, chat})
 		out = append(out, string(encoded))
 	}
 	sort.Strings(out)

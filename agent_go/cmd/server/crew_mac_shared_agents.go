@@ -294,14 +294,14 @@ func crewOwnerMainChatKey(project string) string {
 	}
 	ctx := context.Background()
 	manifest, err := readCrewProjectMetadata(ctx, crewProfileID, root)
-	if err != nil || manifest.ID != project || manifest.MainChatKey == "" {
+	if err != nil || manifest.ID != project || manifest.DefaultAgentKey == "" {
 		return ""
 	}
 	doc, err := defaultProductConversationRegistryStore().loadDocument(ctx, productConversationRegistryPath(owner))
 	if err != nil {
 		return ""
 	}
-	key := manifest.MainChatKey
+	key := manifest.DefaultAgentKey
 	record, ok := doc.Entries[productConversationRegistryEntryKey(crewProfileID, key)]
 	if !ok || record.ConversationKey != key || !validProjectMainRecord(owner, crewProfileID, project, root, record) {
 		return ""

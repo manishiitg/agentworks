@@ -22,7 +22,7 @@ func (api *StreamingAPI) setForkParent(ctx context.Context, userID, profileID, p
 		return http.StatusBadRequest, "Choose one of this project's agents."
 	}
 	if key == projectID {
-		return http.StatusBadRequest, "Main is never under another agent."
+		return http.StatusBadRequest, "The project's default agent is never under another agent."
 	}
 	tab, found, err := crewTabForKey(ctx, userID, profileID, key, workspacePath)
 	if err != nil {

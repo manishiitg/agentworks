@@ -42,7 +42,7 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
     const key = route.agent === 'main' ? route.id : route.agent ? `${route.id}:chat:${route.agent}` : undefined
     const cached = project && (!project.shared || project.shared.canBuild) && key ? Object.values(useChatStore.getState().chatTabs).find(tab =>
       tab.metadata?.agentProfileId === 'work' && tab.metadata.agentProfileProjectId === route.id &&
-      (tab.metadata.agentProfileConversationKey === key || route.agent === 'main' && tab.metadata.agentProfileIsMainChat) &&
+      (tab.metadata.agentProfileConversationKey === key || route.agent === 'main' && tab.metadata.agentProfileIsDefaultAgent) &&
       !tab.metadata.isViewOnly && !tab.metadata.isScheduledRun && !tab.metadata.isBotRun && tab.metadata.agentProfileTabCanWrite !== false && tab.sessionId) : undefined
     let reused = false
     if (cached) {

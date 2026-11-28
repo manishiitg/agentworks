@@ -275,11 +275,11 @@ func (r conversationRegistryRows) projectChats(ctx context.Context, profile, pro
 				if e = json.Unmarshal([]byte(raw), &manifest); e != nil {
 					return nil, e
 				}
-				mainKey = manifest.MainChatKey
+				mainKey = manifest.DefaultAgentKey
 			}
 			mainKeys[record.WorkspacePath] = mainKey
 		}
-		record.IsMainChat = record.ConversationKey == mainKey
+		record.IsDefaultAgent = record.ConversationKey == mainKey
 		chats = append(chats, record)
 	}
 	return chats, nil

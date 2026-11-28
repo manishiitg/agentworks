@@ -411,7 +411,7 @@ export async function onlineAgentSideChats(profileId: string, projectId: string,
     for (const row of rows || []) {
       if (row.can_write === false || !row.session_id || !row.conversation_key) continue
       registerRemoteSession(row.session_id, binding.connection)
-      out.push({ ...row, is_main: false, chat_location: undefined, agent_id: undefined, tab_owner_id: `project:${online.project_id}`, tab_owner_name: `${online.name} · online`,
+      out.push({ ...row, is_default_agent: false, chat_location: undefined, agent_id: undefined, tab_owner_id: `project:${online.project_id}`, tab_owner_name: `${online.name} · online`,
         online_project: { id: online.project_id, name: online.name, connection: binding.connection } })
     }
   }

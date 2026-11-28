@@ -39,7 +39,7 @@ func TestCreateCrewProjectIsAtTheSharedRoot(t *testing.T) {
 		if !strings.Contains(raw, `"owner_id": "owner"`) {
 			t.Fatalf("product.json lacks the informational owner: %s", raw)
 		}
-		if strings.Contains(raw, `"main_chat_key"`) || strings.Contains(raw, `"session_id"`) {
+		if strings.Contains(raw, `"default_agent_key"`) || strings.Contains(raw, `"session_id"`) {
 			t.Fatal("new Crew must have no implicit chat pointer")
 		}
 		// The creator is its owner; the workflow's attachment names the new root.

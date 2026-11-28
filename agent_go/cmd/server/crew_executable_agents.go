@@ -28,7 +28,7 @@ func crewExecutableAgentChoices(ctx context.Context, caller, owner, crewID, root
 		if tab.OwnerID != owner {
 			continue
 		}
-		choices = append(choices, crewExecutableAgentChoice{ID: tab.Record.ConversationKey, Name: firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Main")})
+		choices = append(choices, crewExecutableAgentChoice{ID: tab.Record.ConversationKey, Name: firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Agent")})
 	}
 	return choices, nil
 }
@@ -73,7 +73,7 @@ func (r *crewWorkflowResources) ResolveCrewAgentConfiguration(ctx context.Contex
 		if err != nil {
 			return result, err
 		}
-		result.Name = firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Main")
+		result.Name = firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Agent")
 		result.Model = &stepworkflow.AgentLLMConfig{Provider: model.Provider, ModelID: model.ModelID, ConnectionID: model.ConnectionID, Options: providerOptionRuntimeOptions(profile.Runtime, model.Provider, model.ModelID)}
 		if model.ReasoningEffort != "" {
 			if result.Model.Options == nil {

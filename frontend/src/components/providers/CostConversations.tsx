@@ -33,7 +33,7 @@ export default function CostConversations({ rows }: { rows: CostConversation[] }
         <summary className="cursor-pointer text-sm font-medium">
           <span className="inline-flex w-[calc(100%-1rem)] min-w-0 items-start justify-between gap-3 align-top">
             <span className="min-w-0">
-              <span className="block break-words">{titles[`${row.workflow_id}:${row.session_id}`] || row.title || (row.session_id.startsWith('work:project:') ? 'Main chat' : 'Untitled chat')}</span>
+              <span className="block break-words">{titles[`${row.workflow_id}:${row.session_id}`] || row.title || (row.session_id.startsWith('work:project:') ? 'Default agent' : 'Untitled chat')}</span>
               <span className="mt-1 block text-xs font-normal text-muted-foreground">{executions.length} {executions.length === 1 ? 'turn' : 'turns'}</span>
             </span>
             <span className="shrink-0 text-right tabular-nums">

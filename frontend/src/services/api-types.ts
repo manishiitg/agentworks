@@ -413,7 +413,7 @@ export interface AgentProfileSideChat {
   /** The caller's own agent has its own standing instructions (the text stays in its prompt). */
   has_instructions?: boolean
   /** The caller's own Main chat, listed only when asked for (withMain). */
-  is_main?: boolean
+  is_default_agent?: boolean
   /** The agent this one was forked from, by conversation key (#3288): the left menu nests it there. */
   forked_from?: string
   /** When its chat last had a message, from saved history, so the left menu's "2m" survives a restart (#3406). */
@@ -428,7 +428,7 @@ export interface AgentProfileConversationResponse {
   tab_owner_id?: string
   tab_owner_name?: string
   can_write?: boolean
-  is_main_chat?: boolean
+  is_default_agent?: boolean
   conversation_id: string
   conversation_key: string
   session_id: string

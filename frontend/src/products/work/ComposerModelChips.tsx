@@ -131,7 +131,7 @@ export default function ComposerModelChips({ tabId, workspacePath, label, fallba
   const profileId = meta?.agentProfileId || ''
   const projectId = meta?.agentProfileProjectId || ''
   const key = meta?.agentProfileConversationKey
-  const conversationKey = key && (key === projectId || key.startsWith(`${projectId}:chat:`)) ? key : meta?.agentProfileIsMainChat ? projectId : ''
+  const conversationKey = key && (key === projectId || key.startsWith(`${projectId}:chat:`)) ? key : meta?.agentProfileIsDefaultAgent ? projectId : ''
   const enabled = Boolean(meta?.agentProfileCanOpenModels && !meta.isViewOnly && projectId && conversationKey && meta.agentProfileEngine)
   const sources = useWorkModelSources({ profileId, profileVersion: meta?.agentProfileVersion, accountProduct: profileId, workspacePath, enabled })
   const selectedOption = enabled ? sources.options.find(option => option.id === meta?.agentProfileEngine) : undefined
