@@ -10,27 +10,48 @@ import (
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
-// crewReach is what an agent inside a Crew may list and start a message or function call to (owner, 19 Nov): its own
-// Crew, that Crew's Team, and the Crews linked to it with their agents and Team agents. The person's other Crews and
-// other Teams stay hidden and refused; other people's shared agents and Relays are unchanged.
+// crewReach is what an agent inside a Crew may list and start a message or function call to: its own
+// Crew, that Crew's Team, and any Crew tagged with # in the current turn (with their agents and Team agents).
+// The person's other Crews and other Teams stay hidden and refused; other people's shared agents and Relays are unchanged.
 type crewReach struct {
-	roots    map[string]bool // this Crew and its linked Crews
+	roots    map[string]bool // this Crew and this turn's #-referenced Crews
 	projects map[string]bool // their project IDs, each one's paired copy (Mac or server) and the Team a home belongs to
 }
 
 // crewReachNote is the one refusal line.
-const crewReachNote = "This agent isn't in this project or its Team, and its project is not linked to this one. Link its project (ask this chat, or use Linked projects), or ask from that project."
+const crewReachNote = "This agent isn't in this project or its Team. Tag its project with # in your message to reach it for that turn, or ask from that project."
 
-// crewReachFrom is the reach of the Crew at here. nil means no limit: outside a Crew (MCP). A link read failure still returns this Crew's own reach, with the error.
+type turnReachRefsKey struct{}
+
+// withTurnReachReferences attaches the current turn's authorized #project references
+// so crewReachFrom admits those projects for this turn only.
+func withTurnReachReferences(ctx context.Context, paths []string) context.Context {
+	if len(paths) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, turnReachRefsKey{}, slices.Clone(paths))
+}
+
+func turnReachReferences(ctx context.Context) []string {
+	if ctx == nil {
+		return nil
+	}
+	refs, _ := ctx.Value(turnReachRefsKey{}).([]string)
+	return refs
+}
+
+// crewReachFrom is the reach of the Crew at here. nil means no limit: outside a Crew (MCP).
 func crewReachFrom(ctx context.Context, here string) (*crewReach, error) {
 	here = strings.TrimSpace(here)
 	if here == "" {
 		return nil, nil
 	}
-	refs, err := readWorkWorkflowReferences(ctx, here)
 	r := &crewReach{roots: map[string]bool{}, projects: map[string]bool{}}
-	for _, root := range append([]string{here}, refs...) {
+	for _, root := range append([]string{here}, turnReachReferences(ctx)...) {
 		root = canonicalCrewWorkspaceRoot(root)
+		if root == "" {
+			continue
+		}
 		r.roots[root] = true
 		id := crewProjectIDOfRoot(root)
 		if id == "" {
@@ -45,15 +66,7 @@ func crewReachFrom(ctx context.Context, here string) (*crewReach, error) {
 			r.projects[t.ProjectID] = true
 		}
 	}
-	// Linked projects on the other machine (#3663): their agents are the person's own agents tagged with that project.
-	links, linkErr := readRemoteProjectLinks(ctx, here)
-	for _, link := range links {
-		r.projects[link.ProjectID] = true
-	}
-	if err == nil {
-		err = linkErr
-	}
-	return r, err
+	return r, nil
 }
 
 // crewReachCaller is the Crew a caller works in, or "" when the reach does not apply: watchers, workflow steps and

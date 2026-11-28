@@ -174,6 +174,19 @@ func (api *StreamingAPI) bindToolExecutionContextForSession(requestCtx context.C
 			}
 		}
 		refreshLinkedCrewSessionAccess(ctx, toolSession)
+		activeReq := req
+		if api != nil {
+			api.lastQueryMu.RLock()
+			if current, known := api.lastQueryRequests[authoritySession]; known {
+				activeReq = current
+			}
+			api.lastQueryMu.RUnlock()
+		}
+		turnRefs := activeReq.authorizedWorkflowContextReadPaths
+		if len(turnRefs) == 0 {
+			turnRefs = activeReq.WorkflowContextPaths
+		}
+		ctx = withTurnReachReferences(ctx, turnRefs)
 		return productpolicy.WithSelection(ctx, builderProductSelection(&copy)), nil
 	}
 }

@@ -7,10 +7,10 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentprofiles"
 )
 
-// From inside a Crew an agent lists and reaches only its own Crew, its Team and the Crews linked to it, with the agents
-// inside them; old workflow projects are not listed (calls: TestCrewSeesWorkflowFunctions). Callers outside a Crew
-// (MCP) see every owned Crew (owner, 19 Nov).
-func TestAgentDirectoryOtherOwnedCrewsNeedALink(t *testing.T) {
+// From inside a Crew an agent lists and reaches only its own Crew, its Team, and any Crew tagged with # in the
+// current turn (with the agents inside them); old workflow projects are not listed (calls: TestCrewSeesWorkflowFunctions).
+// Callers outside a Crew (MCP) see every owned Crew.
+func TestAgentDirectoryOtherOwnedCrewsNeedHashReference(t *testing.T) {
 	f := newMultiUserFixture(t, sharedIdentityLayout())
 	f.WithSharing(true)
 	registry := agentprofiles.NewRegistry()
@@ -46,9 +46,9 @@ func TestAgentDirectoryOtherOwnedCrewsNeedALink(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctxA := f.Ctx(fixtureUserA)
-	listed := func(here string) map[string]bool {
+	listed := func(here string, turnRefs ...string) map[string]bool {
 		t.Helper()
-		ctx := ctxA
+		ctx := withTurnReachReferences(ctxA, turnRefs)
 		if here != "" {
 			ctx = withDirectoryThisCrew(ctx, here)
 		}
@@ -70,58 +70,63 @@ func TestAgentDirectoryOtherOwnedCrewsNeedALink(t *testing.T) {
 		t.Fatalf("outside a Crew every owned Crew shows, and no Goal rows: %v", got)
 	}
 	if got := listed(beta); got[fixtureCrewID] || got["alpha-agent"] || !got["beta-crew"] || got["kind:goal"] || !got["own-native"] {
-		t.Fatalf("an unlinked Crew must list only itself and the person's own agents in no Crew: %v", got)
+		t.Fatalf("without a # reference a Crew must list only itself and the person's own agents in no Crew: %v", got)
 	}
-	// Not just hidden: a Crew tab sending through AgentBridge is refused.
+	// Not just hidden: a Crew tab sending through AgentBridge is refused without a # tag.
 	tab := triggerLinkCaller{Stamp: triggerCaller{Type: triggerCallerUser, ID: fixtureUserA}, BridgeHosted: &hostedBridgeBinding{Profile: crewProfileID, Project: "beta-crew", Chat: "beta-main"}, NamedAgentID: "beta-tab", Path: beta}
 	alphaAgent := triggerTarget{Kind: triggerCallerUser, NamedAgentID: "alpha-agent"}
 	alphaCrew := triggerTarget{Kind: triggerCallerCrew, Path: alpha, CrewID: fixtureCrewID}
 	for _, target := range []triggerTarget{alphaAgent, alphaCrew} {
 		if err := requireLinkedOwnCrew(ctxA, fixtureUserA, tab, target); err == nil {
-			t.Fatalf("an unlinked Crew reached %+v", target)
+			t.Fatalf("an untagged Crew reached %+v", target)
 		}
 	}
-	// A new message to the person's own attached agent in no Crew is never blocked by a link.
+	// A new message to the person's own attached agent in no Crew is never blocked.
 	if err := requireLinkedOwnCrew(ctxA, fixtureUserA, tab, triggerTarget{Kind: triggerCallerUser, NamedAgentID: "own-native"}); err != nil {
 		t.Fatalf("a Crew agent could not start a message to the person's own attached agent: %v", err)
 	}
-	// Another Team's agents stay hidden until that Team's Crew is linked; the Crew's own Team shows.
+	// Another Team's agents stay hidden unless that Team's Crew is tagged with #; the Crew's own Team shows.
 	otherTeam := map[string]any{"kind": "team_agent", "team_project_id": fixtureCrewID}
 	ownTeam := map[string]any{"kind": "team_agent", "team_project_id": "beta-crew"}
 	if reach, _ := crewReachFrom(ctxA, beta); reach.keepsRow(otherTeam, nil, nil, nil) || !reach.keepsRow(ownTeam, nil, nil, nil) {
-		t.Fatal("an unlinked Crew saw another Team's agent, or not its own Team's")
+		t.Fatal("an untagged Crew saw another Team's agent, or not its own Team's")
 	}
-	// #3663: a link to a project on the other machine shows the person's own agents tagged with it, never another Team's.
-	f.put(beta+"/workflow.json", `{"schema_version":1,"id":"beta-crew","label":"Beta","capabilities":{},"linked_remote_projects":[{"project_id":"mac-crew","name":"Mac"}]}`)
-	ownOnMac := map[string]any{"kind": "connected_agent", "yours": true, "crew_id": "mac-crew"}
-	ownOnMacCopy := map[string]any{"kind": "connected_agent", "yours": true, "crew_id": "mac-crew", "team_project_id": "mac-crew-copy"}
-	if reach, _ := crewReachFrom(ctxA, beta); !reach.keepsRow(ownOnMac, nil, nil, nil) || !reach.keepsRow(ownOnMacCopy, nil, nil, nil) || reach.keepsRow(otherTeam, nil, nil, nil) {
-		t.Fatal("a linked Mac project's own agents were hidden, or another Team's agent showed")
+	// Stale workflow_context_paths or linked_remote_projects in workflow.json no longer grant durable reach.
+	f.put(beta+"/workflow.json", `{"schema_version":1,"id":"beta-crew","label":"Beta","capabilities":{},"workflow_context_paths":["`+alpha+`"],"linked_remote_projects":[{"project_id":"mac-crew","name":"Mac"}]}`)
+	if got := listed(beta); got[fixtureCrewID] || got["alpha-agent"] {
+		t.Fatalf("stale durable links in workflow.json must not grant reach: %v", got)
 	}
-	// Linking Alpha to Beta opens Alpha, its agents and its Team.
-	f.put(beta+"/workflow.json", `{"schema_version":1,"id":"beta-crew","label":"Beta","capabilities":{},"workflow_context_paths":["`+alpha+`"]}`)
-	if got := listed(beta); !got[fixtureCrewID] || !got["alpha-agent"] {
-		t.Fatalf("a linked Crew and its agents must be listed: %v", got)
+	// Tagging Alpha with # in the current turn opens Alpha, its agents, and its Team for this turn only.
+	ctxTagged := withTurnReachReferences(ctxA, []string{alpha})
+	if got := listed(beta, alpha); !got[fixtureCrewID] || !got["alpha-agent"] {
+		t.Fatalf("a #-referenced Crew and its agents must be listed in that turn: %v", got)
 	}
 	for _, target := range []triggerTarget{alphaAgent, alphaCrew} {
-		if err := requireLinkedOwnCrew(ctxA, fixtureUserA, tab, target); err != nil {
-			t.Fatalf("a linked Crew was refused: %+v %v", target, err)
+		if err := requireLinkedOwnCrew(ctxTagged, fixtureUserA, tab, target); err != nil {
+			t.Fatalf("a #-referenced Crew was refused: %+v %v", target, err)
 		}
 	}
-	if reach, _ := crewReachFrom(ctxA, beta); !reach.keepsRow(otherTeam, nil, nil, nil) {
-		t.Fatal("a linked Crew's Team agent was hidden")
+	if reach, _ := crewReachFrom(ctxTagged, beta); !reach.keepsRow(otherTeam, nil, nil, nil) {
+		t.Fatal("a #-referenced Crew's Team agent was hidden")
 	}
-}
-
-// #3663 review: a blank project_id must not skip the connection-bounds check on an ordinary workspace_path reference.
-func TestRemoteProjectLinkBlankIDKeepsReferenceCheck(t *testing.T) {
-	if id, err := remoteProjectLinkArg(map[string]any{"project_id": "  ", "workspace_path": "Chats/Work/projects/a"}); id != "" || err != nil {
-		t.Fatalf("a blank project_id was taken as a link: %q %v", id, err)
+	// Verify bindToolExecutionContext tracks the live turn's # references across turns on a reused session.
+	const sid = "beta-reach-turn-test"
+	f.API.lastQueryRequests = map[string]QueryRequest{}
+	bind := f.API.bindToolExecutionContext(ctxA, sid, QueryRequest{AgentProfileID: "work", AgentProfileConversationKey: "beta-crew", SelectedFolder: beta}, false)
+	f.API.rememberLastQueryRequest(sid, QueryRequest{AgentProfileID: "work", AgentProfileConversationKey: "beta-crew", SelectedFolder: beta, authorizedWorkflowContextReadPaths: []string{alpha}})
+	turn1Ctx, err := bind(t.Context(), "send_message")
+	if err != nil {
+		t.Fatalf("turn 1 bind: %v", err)
 	}
-	if _, err := remoteProjectLinkArg(map[string]any{"project_id": "mac-crew", "workspace_path": "Chats/Work/projects/a"}); err == nil {
-		t.Fatal("a link with a workspace_path was accepted")
+	if err := requireLinkedOwnCrew(turn1Ctx, fixtureUserA, tab, alphaAgent); err != nil {
+		t.Fatalf("turn 1 with # reference refused: %v", err)
 	}
-	if id, err := remoteProjectLinkArg(map[string]any{"project_id": " mac-crew "}); id != "mac-crew" || err != nil {
-		t.Fatalf("a link was refused: %q %v", id, err)
+	f.API.rememberLastQueryRequest(sid, QueryRequest{AgentProfileID: "work", AgentProfileConversationKey: "beta-crew", SelectedFolder: beta})
+	turn2Ctx, err := bind(t.Context(), "send_message")
+	if err != nil {
+		t.Fatalf("turn 2 bind: %v", err)
+	}
+	if err := requireLinkedOwnCrew(turn2Ctx, fixtureUserA, tab, alphaAgent); err == nil {
+		t.Fatal("turn 2 without # reference retained prior turn reach")
 	}
 }

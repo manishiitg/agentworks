@@ -92,10 +92,8 @@ func TestDeclaredCrewCallsKeepFunctionTabAcrossOwners(t *testing.T) {
 			t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 			env := newCrewFunctionEnv(t)
 			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-			// Links belong to the actual caller, including another person's source.
-			env.mock.mu.Lock()
-			env.mock.files[tc.source+"/workflow.json"] = `{"workflow_context_paths":["` + linkBetaPath + `"]}`
-			env.mock.mu.Unlock()
+			// Per-turn #project reference admits Beta for this call.
+			ctx = withTurnReachReferences(ctx, []string{linkBetaPath})
 			caller, err := crewTriggerLinkCaller(tc.source)(ctx)
 			if err != nil {
 				t.Fatal(err)

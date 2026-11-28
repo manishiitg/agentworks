@@ -66,7 +66,7 @@ export const CREW_STARTER_TYPES = [
     example: 'Find policies, suggest duplicate merges or connect related knowledge. Choose Brain access after creation.',
     shortcuts: [
       { id: 'mcp:brain', label: 'Brain' },
-      { id: 'mcp:folders', label: 'Linked projects & folders' },
+      { id: 'mcp:folders', label: 'Folders' },
       { id: 'files', label: 'Files' },
       { id: 'schedules', label: 'Automations' },
     ],
@@ -78,7 +78,7 @@ export const CREW_STARTER_TYPES = [
     example: 'Coordinate a launch across my projects and workflows, highlight blockers and prepare a daily brief.',
     shortcuts: [
       { id: 'schedules', label: 'Automations' },
-      { id: 'mcp:folders', label: 'Linked projects & folders' },
+      { id: 'mcp:folders', label: 'Folders' },
       { id: 'dashboard', label: 'Project dashboard' },
       { id: 'memory:memory', label: 'Memory' },
     ],

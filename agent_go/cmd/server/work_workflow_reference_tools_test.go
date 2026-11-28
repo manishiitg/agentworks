@@ -10,7 +10,7 @@ import (
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 )
 
-func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *testing.T) {
+func TestWorkWorkflowReferenceToolsDiscoverAuthorizedWorkflowsOnly(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	withProjectSharing(t, true)
 	withMemoryUserDirectory(t, `{"users":[{"id":"reader","username":"reader","can_create":true,"products":["work"]},{"id":"owner","username":"owner","can_create":true,"products":["work"]}]}`)
@@ -29,7 +29,6 @@ func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *test
 		Access: &WorkflowAccess{Owners: []string{"owner"}},
 	})
 	productPath := bankingRoot + "/product.json"
-	runtimePath := bankingRoot + "/workflow.json"
 	researchProductPath := researchRoot + "/product.json"
 	workspace := &mockWorkspaceAPI{files: map[string]string{
 		manifestPath("Workflow/hdfc-personal"): string(shared),
@@ -43,14 +42,15 @@ func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *test
 
 	api := &StreamingAPI{}
 	registrar := &recordingRegistrar{}
-	common.SetSessionFolderGuard("session-1", []string{bankingRoot}, []string{bankingRoot})
-	t.Cleanup(func() { common.ClearSessionShellConfig("session-1") })
 	if err := api.registerWorkWorkflowReferenceTools(registrar, "reader", "session-1", bankingRoot, false); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"list_accessible_workflows", "attach_workflow_reference", "detach_workflow_reference"} {
-		if _, ok := registrar.tools[name]; !ok {
-			t.Fatalf("tool %q was not registered", name)
+	if _, ok := registrar.tools["list_accessible_workflows"]; !ok {
+		t.Fatal(`tool "list_accessible_workflows" was not registered`)
+	}
+	for _, retired := range []string{"attach_workflow_reference", "detach_workflow_reference"} {
+		if _, ok := registrar.tools[retired]; ok {
+			t.Fatalf("retired tool %q should not be registered", retired)
 		}
 	}
 
@@ -62,56 +62,9 @@ func TestWorkWorkflowReferenceToolsDiscoverAndPersistAuthorizedWorkflows(t *test
 	if err != nil || !strings.Contains(out, `"crews":`) || !strings.Contains(out, `"name": "Banking"`) || strings.Contains(out, `"icon": "B"`) || !strings.Contains(out, `"workspace_path": "`+bankingRoot+`"`) {
 		t.Fatalf("Crew discovery out=%s err=%v", out, err)
 	}
-	if _, err := registrar.tools["attach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": "Workflow/private-bank"}); err == nil {
-		t.Fatal("unauthorized workflow was attached")
-	}
-	if _, err := registrar.tools["attach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": bankingRoot}); err == nil {
-		t.Fatal("Crew attached itself")
-	}
-	// A Crew links other Crews only: a workflow it may read is still refused (owner, 7 Nov).
-	if _, err := registrar.tools["attach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": "Workflow/hdfc-personal"}); err == nil || !strings.Contains(err.Error(), "workflow cannot be attached") {
-		t.Fatalf("a workflow was attached to a Crew: %v", err)
-	}
-	out, err = registrar.tools["attach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": researchRoot})
-	if err != nil || !strings.Contains(out, "workflow references read-only") {
-		t.Fatalf("attach Crew out=%s err=%v", out, err)
-	}
-	crewReadRoot := researchRoot
-	if cfg := common.GetSessionShellConfig("session-1"); cfg == nil || !containsWorkReferencePath(cfg.ReadPaths, crewReadRoot) || !containsWorkReferencePath(cfg.WritePaths, crewReadRoot+"/") {
-		t.Fatalf("attached Crew did not receive its admitted file grants: %+v", cfg)
-	}
-	workspace.mu.Lock()
-	productSaved := workspace.files[productPath]
-	saved := workspace.files[runtimePath]
-	workspace.mu.Unlock()
-	var productMetadata map[string]interface{}
-	if json.Unmarshal([]byte(productSaved), &productMetadata) != nil || productMetadata["custom"] != "keep" || strings.Contains(productSaved, `Workflow/hdfc-personal`) {
-		t.Fatalf("product metadata was changed: %s", productSaved)
-	}
-	if strings.Contains(saved, `Workflow/`) || !strings.Contains(saved, `"`+researchRoot+`"`) || !strings.Contains(saved, `"selected_skills"`) {
-		t.Fatalf("workflow runtime manifest was not migrated and updated: %s", saved)
-	}
 	out, err = registrar.tools["list_accessible_workflows"].exec(context.Background(), map[string]interface{}{"query": "research"})
-	if err != nil || !strings.Contains(out, `"attached": true`) || !strings.Contains(out, `"name": "Research"`) {
-		t.Fatalf("attached Crew state out=%s err=%v", out, err)
-	}
-	// A deleted or otherwise unavailable reference must still be detachable so
-	// a stale durable grant cannot trap the project in a permanently failing turn.
-	workspace.mu.Lock()
-	delete(workspace.files, researchProductPath)
-	workspace.mu.Unlock()
-	if _, err := registrar.tools["detach_workflow_reference"].exec(context.Background(), map[string]interface{}{"workspace_path": researchRoot}); err != nil {
-		t.Fatalf("detach Crew: %v", err)
-	}
-	if cfg := common.GetSessionShellConfig("session-1"); cfg == nil || containsWorkReferencePath(cfg.ReadPaths, crewReadRoot) {
-		t.Fatalf("detached Crew remained in active read guard: %+v", cfg)
-	}
-	paths, err := readWorkWorkflowReferences(context.Background(), bankingRoot)
-	if err != nil || len(paths) != 0 {
-		t.Fatalf("paths after detach=%v err=%v", paths, err)
-	}
-	if cfg := common.GetSessionShellConfig("session-1"); cfg == nil || containsWorkReferencePath(cfg.ReadPaths, "Workflow/hdfc-personal") {
-		t.Fatalf("detached workflow remained in active read guard: %+v", cfg)
+	if err != nil || !strings.Contains(out, `"name": "Research"`) || strings.Contains(out, `"attached"`) {
+		t.Fatalf("shared Crew discovery out=%s err=%v", out, err)
 	}
 }
 
@@ -139,7 +92,7 @@ func TestBuilderAccessibleWorkflowListUsesCurrentUserAccessWithoutCrewMutationTo
 
 	api := &StreamingAPI{}
 	registrar := &recordingRegistrar{}
-	if err := api.registerAccessibleWorkflowListTool(registrar, "builder", nil, nil); err != nil {
+	if err := api.registerAccessibleWorkflowListTool(registrar, "builder"); err != nil {
 		t.Fatal(err)
 	}
 	if len(registrar.tools) != 1 {

@@ -8,6 +8,7 @@ import { WORK_PROFILE_ID, WORK_PROJECTS_ROOT } from '../products/work/workData'
 import { EntityIdentityIcon } from './ui/EntityIdentityIcon'
 import { AGENTWORKS_SUBTITLE, AgentWorksIcon, agentWorksFirst, isOwnAgentWorks } from './ui/AgentWorksIdentity'
 import { isPlainPickerKey } from '../utils/composerReferences'
+import { normalizeWorkspacePath } from '../utils/workspacePathUtils'
 
 interface CrewReference {
   presetId: string
@@ -35,6 +36,7 @@ interface CrewReferencePickerProps {
   onActiveOptionChange: (id?: string) => void
   searchQuery: string
   position: { bottom: number; left: number }
+  excludeWorkspacePath?: string
 }
 
 let lastReferences: { scopeKey: string; items: CrewReference[] } | null = null
@@ -48,6 +50,7 @@ export function CrewReferencePicker({
   onActiveOptionChange,
   searchQuery,
   position,
+  excludeWorkspacePath,
 }: CrewReferencePickerProps) {
   const rowID = (item: CrewReference) => `${listId}-${encodeURIComponent(referenceRowKey(item))}`
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null)
@@ -96,10 +99,12 @@ export function CrewReferencePicker({
     })
     return () => { cancelled = true }
   }, [isOpen, scopeKey])
+  const excludedPath = normalizeWorkspacePath(excludeWorkspacePath || '')
   const allReferences = useMemo(() => {
-    const items = isOpen && referenceResult?.scopeKey === scopeKey ? referenceResult?.items || [] : []
+    const raw = isOpen && referenceResult?.scopeKey === scopeKey ? referenceResult?.items || [] : []
+    const items = excludedPath ? raw.filter(item => normalizeWorkspacePath(item.workspacePath) !== excludedPath) : raw
     return agentWorksFirst(items, item => !!item.agentWorks)
-  }, [isOpen, referenceResult, scopeKey])
+  }, [isOpen, referenceResult, scopeKey, excludedPath])
 
   const query = searchQuery.toLowerCase().trim()
 

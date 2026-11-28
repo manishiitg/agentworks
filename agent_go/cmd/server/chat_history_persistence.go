@@ -240,6 +240,9 @@ func queryRequestForRetention(req QueryRequest) QueryRequest {
 
 func (api *StreamingAPI) rememberLastQueryRequest(sessionID string, req QueryRequest) {
 	api.lastQueryMu.Lock()
+	if api.lastQueryRequests == nil {
+		api.lastQueryRequests = map[string]QueryRequest{}
+	}
 	api.lastQueryRequests[sessionID] = queryRequestForRetention(req)
 	api.lastQueryMu.Unlock()
 }

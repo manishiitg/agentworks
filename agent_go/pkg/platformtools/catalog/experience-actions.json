@@ -10,12 +10,6 @@
     ]
   },
   {
-    "family": "workspace",
-    "name": "reference_attach",
-    "member": "attach_workflow_reference",
-    "description": "Use the current workspace reference attach operation."
-  },
-  {
     "family": "messages",
     "name": "mail_configure",
     "member": "configure_agent_inbox",
@@ -35,12 +29,6 @@
     "member": "create_slack_bot_route",
     "description": "Use the current integrations slack route create operation.",
     "external_members": "create_slack_bot_route"
-  },
-  {
-    "family": "workspace",
-    "name": "reference_detach",
-    "member": "detach_workflow_reference",
-    "description": "Use the current workspace reference detach operation."
   },
   {
     "family": "terminal",
@@ -588,22 +576,6 @@
     "description": "Use the current workspace references list operation.",
     "source": "crew_references",
     "source_action": "list"
-  },
-  {
-    "family": "workspace",
-    "name": "reference_attach",
-    "member": "crew_references__attach",
-    "description": "Use the current workspace reference attach operation.",
-    "source": "crew_references",
-    "source_action": "attach"
-  },
-  {
-    "family": "workspace",
-    "name": "reference_detach",
-    "member": "crew_references__detach",
-    "description": "Use the current workspace reference detach operation.",
-    "source": "crew_references",
-    "source_action": "detach"
   },
   {
     "family": "integrations",

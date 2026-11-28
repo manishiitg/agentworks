@@ -34,7 +34,7 @@ const ACCESS_OPEN_TARGETS: Record<string, { section: CrewAccessSection; teamSect
   tasks: { section: 'tasks' },
 }
 
-export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, workflowContextPaths, onWorkflowContextPathsChange, onAccessPage, onBack }: {
+export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canEdit = false, workspacePath, projectId, projectTitle, tabId, enabledPanels, onAsk, onAccessPage, onBack }: {
   /** Told whether the Access page is showing (it has its own back arrow and tabs, so the pane hides its title). */
   onAccessPage?: (access: boolean) => void
   onBack?: () => void
@@ -43,7 +43,6 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
   canEdit?: boolean; workspacePath: string; projectId: string; projectTitle: string
   tabId: string; enabledPanels?: Set<string>
   onAsk: (message: string) => Promise<void>
-  workflowContextPaths: string[]; onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>
 }) {
   const draft = useWorkspacePanelChatDraft(tabId)
   const product = useProjectProduct()
@@ -57,7 +56,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
     // Artifacts is its own page; the former dashboards target redirects here (owner, 14 Nov).
     // Team and Online (owner, 11 Nov) are the same page, each opened at its own tabs.
     const local = isLocalDeployment()
-    const next = ['team', 'online', 'share', 'computer', 'laptop', 'sync', 'agents', 'dashboards', 'artifacts'].includes(target) ? 'access' : target === 'slack-bot' && local ? 'slack-account' : target
+    const next = ['team', 'online', 'share', 'computer', 'laptop', 'sync', 'agents', 'dashboards', 'artifacts'].includes(target) ? 'access' : target === 'slack-bot' && local ? 'slack-account' : target === 'folders' && local ? 'mac-folders' : target
     if (next === 'computer-use' && (!canEdit || !local)) return
     if (!isWorkIntegrationTabEnabled(next === 'github' ? 'secrets' : next, enabledPanels) || next === 'brain' && !integrationProductAvailable('knowledgebase', allowedProducts)) return
     if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'github'].includes(next)) { setTab('apps'); setIntegrationSection(next as IntegrationSection); return }
@@ -67,7 +66,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
     if (['apps', 'brain', 'folders', 'mac-folders', 'slack-bot', 'slack', 'whatsapp', 'cli', 'access', 'computer-use', 'message-agents'].includes(next)) setTab(next as WorkIntegrationTab)
   })
   useEffect(() => { onAccessPage?.(tab === 'access'); return () => onAccessPage?.(false) }, [tab, onAccessPage])
-  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Linked projects', 'mac-folders': 'Folders on this Mac', 'slack-bot': 'Slack bot', slack: 'Use Slack as me', whatsapp: 'WhatsApp', cli: 'MCP access', access: 'Share', 'computer-use': 'Computer use', 'message-agents': 'Message other agents' }
+  const labels: Record<WorkIntegrationTab, string> = { apps: INTEGRATION_LABELS[integrationSection], brain: 'Brain', folders: 'Folders', 'mac-folders': 'Folders on this Mac', 'slack-bot': 'Slack bot', slack: 'Use Slack as me', whatsapp: 'WhatsApp', cli: 'MCP access', access: 'Share', 'computer-use': 'Computer use', 'message-agents': 'Message other agents' }
   if (accessLoading) return <p role="status" className="p-4 text-sm text-muted-foreground">Loading project access…</p>
   return <div className="flex h-full min-h-0 flex-col bg-background">
     {/* The Access page opens straight on its tabs, without a title row (owner, 4 Nov). */}
@@ -79,14 +78,14 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
         {tab === 'computer-use' && canEdit && isLocalDeployment() && <ComputerUsePanel projectId={projectId} />}
         {tab === 'apps' && <ProjectIntegrationPanel github workspacePath={workspacePath} tabId={tabId} placeNoun="Project" section={integrationSection} canEdit={canEdit} onAsk={draft} onAppsSaved={onAppsSaved} onSecretSelectionSaved={onAppsSaved} laptop={<CodeLocalFilesSettings sessionId={sessionId} />} />}
         {tab === 'brain' && <ProjectKnowledgebasePanel workspacePath={workspacePath} />}
-        {tab === 'folders' && <WorkFoldersSection part={isLocalDeployment() ? 'linked' : 'all'} onOpenComputer={canEdit ? () => setTab('access') : undefined} workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />}
+        {tab === 'folders' && <WorkFoldersSection onOpenComputer={canEdit ? () => setTab('access') : undefined} workspacePath={workspacePath} />}
         {/* In the Mac app this is the folders attached on this Mac (Downloads, your whole Mac, picked folders); on a server it
             is the person's laptop as seen from the server (owner, 4 Nov). A server project opened in the Mac app uses this
             Mac through its server, with your own folders for it (owner, 27 Nov). */}
         {tab === 'mac-folders' && (isLocalDeployment() && remoteProjectConnection(projectId)
           ? <CodeLocalFilesSettings sessionId={sessionId} thisMac={remoteProjectConnection(projectId)} />
           : isLocalDeployment()
-          ? <WorkFoldersSection part="attached" workspacePath={workspacePath} workflowContextPaths={workflowContextPaths} onWorkflowContextPathsChange={onWorkflowContextPathsChange} />
+          ? <WorkFoldersSection workspacePath={workspacePath} />
           : <CodeLocalFilesSettings sessionId={sessionId} />)}
         {tab === 'message-agents' && <ProjectAgentBridgePanel target={`workspace:${product.profileId}:${projectId}`} tabId={tabId} onAsk={draft} view="others" />}
         {tab === 'cli' && <ProjectMcpSetupPanel workspacePath={workspacePath} />}

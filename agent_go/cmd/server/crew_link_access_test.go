@@ -19,9 +19,9 @@ import (
 )
 
 // PLAT-746-471: reach the current private-Crew rule with a real declared
-// entry, then grant and revoke access without rebuilding the caller's tools.
+// entry and per-turn # reference admission, then grant and revoke access without rebuilding the caller's tools.
 func TestDeclaredCrewEntryAndLinksRecheckCurrentAccess(t *testing.T) {
-	for _, surface := range []string{"call", "link"} {
+	for _, surface := range []string{"call", "hash_ref"} {
 		t.Run(surface, func(t *testing.T) {
 			t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 			env := newCrewFunctionEnv(t)
@@ -40,9 +40,11 @@ func TestDeclaredCrewEntryAndLinksRecheckCurrentAccess(t *testing.T) {
 			if err := env.api.registerWorkWorkflowReferenceTools(run, "other", "link-run", linkAlphaPath, true); err != nil {
 				t.Fatal(err)
 			}
-			for _, name := range []string{"attach_workflow_reference", "detach_workflow_reference"} {
-				if _, ok := run.tools[name]; ok {
-					t.Fatalf("Run person received mutating tool %s", name)
+			for _, reg := range []*recordingRegistrar{links, run} {
+				for _, name := range []string{"attach_workflow_reference", "detach_workflow_reference"} {
+					if _, ok := reg.tools[name]; ok {
+						t.Fatalf("retired mutating tool %s was registered", name)
+					}
 				}
 			}
 			if _, err := run.tools["list_accessible_workflows"].exec(context.Background(), map[string]interface{}{}); err != nil {
@@ -55,8 +57,12 @@ func TestDeclaredCrewEntryAndLinksRecheckCurrentAccess(t *testing.T) {
 				}
 			}
 			invoke := func() (string, error) {
-				if surface == "link" {
-					return links.tools["attach_workflow_reference"].exec(ctx, map[string]interface{}{"workspace_path": linkGammaPath})
+				if surface == "hash_ref" {
+					authorized, _, err := authorizeWorkflowContextPathsWithReadRoots(ctx, []string{linkGammaPath})
+					if err != nil {
+						return "", err
+					}
+					return strings.Join(authorized, ","), nil
 				}
 				return env.alpha["project_functions_call"].exec(ctx, map[string]interface{}{"project": "Gamma", "function": fn.Name, "wait_seconds": 0, "notify": false})
 			}
@@ -89,11 +95,8 @@ func TestDeclaredCrewEntryAndLinksRecheckCurrentAccess(t *testing.T) {
 				if call.RunID == "" || call.TriggerID != fn.TriggerID {
 					t.Fatalf("allowed call never reached declared dispatch: %+v", view)
 				}
-			} else {
-				refs, err := readWorkWorkflowReferences(ctx, linkAlphaPath)
-				if err != nil || !containsWorkReferencePath(refs, linkGammaPath) {
-					t.Fatalf("allowed link not saved: %v %v", refs, err)
-				}
+			} else if out != linkGammaPath {
+				t.Fatalf("allowed # ref returned %q, want %q", out, linkGammaPath)
 			}
 			setAudience(nil)
 			denied("revoked")
@@ -155,8 +158,12 @@ func TestLinkedPrivateCrewFileReadChecksLiveAccess(t *testing.T) {
 		}
 	}
 	attach := func() error {
-		_, err := links.tools["attach_workflow_reference"].exec(ctx, map[string]interface{}{"workspace_path": linkGammaPath})
-		return err
+		_, readRoots, err := authorizeWorkflowContextPathsWithReadRoots(ctx, []string{linkGammaPath})
+		if err != nil {
+			return err
+		}
+		updateWorkSessionWorkflowGuard(sid, readRoots)
+		return nil
 	}
 	read := func(want bool, stage string) {
 		t.Helper()

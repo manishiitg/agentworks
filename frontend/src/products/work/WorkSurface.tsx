@@ -1267,7 +1267,6 @@ type ProjectStartRequest = { projectId: string; kind: 'start' | 'importChat' | '
 
 function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const { sessions, selected, select, create, remove, updateNativeAgentTools, updateSelections, updateIdentity, refresh, loading: sessionsLoading, error: sessionsError } = useWorkSessions(product)
-  const workflowContextSignature = selected?.workflowContextPaths.join('\u0000') || ''
   const [projectRequest, setProjectRequest] = useState<ProjectStartRequest | null>(null)
   const requestFor = useCallback((kind: ProjectStartRequest['kind']) => { if (selected) setProjectRequest({ projectId: selected.id, kind }) }, [selected])
   const clearProjectRequest = useCallback(() => setProjectRequest(null), [])
@@ -1300,12 +1299,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
     return () => window.clearInterval(timer)
   }, [tabId])
 
-  // A browser reload loses transient tab metadata while the durable references
-  // remain in workflow.json. Force the first follow-up through the full profile
-  // route so an old retained CLI cannot bypass the current read-only grants.
-  useEffect(() => {
-    if (selected?.id && workflowContextSignature) markWorkProjectRuntimeDirty(selected.id)
-  }, [selected?.id, workflowContextSignature])
   const [projectRefreshInteractionKinds, setProjectRefreshInteractionKinds] = useState<Set<string>>(() => new Set())
   useEffect(() => {
     let cancelled = false
@@ -1722,11 +1715,6 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   const changeSelectedServers = useCallback((servers: string[]) => updateSelections(workspaceProjectId!, { selectedServers: servers }), [workspaceProjectId, updateSelections])
   const changeSelectedSkills = useCallback((skills: string[]) => updateSelections(workspaceProjectId!, { selectedSkills: skills }), [workspaceProjectId, updateSelections])
   const changeSelectedGlobalSecrets = useCallback((secrets: string[]) => updateSelections(workspaceProjectId!, { selectedGlobalSecrets: secrets }), [workspaceProjectId, updateSelections])
-  const changeWorkflowContextPaths = useCallback(async (paths: string[]) => {
-    if (!workspaceProjectId) return
-    await updateSelections(workspaceProjectId, { workflowContextPaths: paths })
-    markWorkProjectRuntimeDirty(workspaceProjectId)
-  }, [workspaceProjectId, updateSelections])
   const changeProjectIdentity = useCallback((patch: ProductIdentityPatch) => updateIdentity(workspaceProjectId!, patch), [workspaceProjectId, updateIdentity])
   const requestDeleteProject = useCallback(() => setDeleteCandidate(selected ?? null), [selected])
 
@@ -2098,14 +2086,12 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                         showShell={showShell}
                         projectLLMConfig={selected.llmConfig}
                         selectedGlobalSecrets={selected.selectedGlobalSecrets}
-                        workflowContextPaths={selected.workflowContextPaths}
                         nativeAgentTools={!!selected.nativeAgentTools}
                         onNativeAgentToolsChange={changeNativeAgentTools}
                         onAppsSaved={handleAppsSaved}
                         onSelectedServersChange={changeSelectedServers}
                         onSelectedSkillsChange={changeSelectedSkills}
                         onSelectedGlobalSecretsChange={changeSelectedGlobalSecrets}
-                        onWorkflowContextPathsChange={changeWorkflowContextPaths}
                         onUpdateIdentity={changeProjectIdentity}
                         onDeleteRequest={requestDeleteProject}
                       /></>

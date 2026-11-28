@@ -286,19 +286,6 @@ func (api *StreamingAPI) externalCrewExecutionCall(w http.ResponseWriter, r *htt
 			common.SetSessionFolderGuardBlockedWritePaths(session, appendUniqueStrings(cfg.BlockedWritePaths, readOnly...))
 			common.ReplaceSessionShellEnvPrefix(session, "WORK_FOLDER_", env)
 		}
-		references, refErr := readWorkWorkflowReferences(r.Context(), root)
-		if refErr != nil {
-			externalError(w, 502, "references_unavailable", "Cannot resolve the project's current reference policy.")
-			return
-		}
-		allowed := []string{}
-		for _, ref := range references {
-			write := isCrewProjectPath(ref)
-			if api.externalCrewReferenceAllowed(r.Context(), claims, ref, write) {
-				allowed = append(allowed, ref)
-			}
-		}
-		updateWorkSessionWorkflowGuard(session, allowed)
 	}
 	common.SetSessionSandbox(session, profile.Runtime.Sandbox.IsStrict(), profile.Runtime.Sandbox.NetworkDisabled())
 	bindConversationBrowserIsolation(session, claims.UserID, root, nil)

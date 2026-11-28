@@ -2,9 +2,11 @@
 
 A picker selection such as `#crew:<name>` or `#workflow:<name>` names the
 exact folder listed in this message's reference context. These are project
-references, never Slack channels. The tag attaches access to the existing
-folder for this message; it does not copy files into the current project or
-make a permanent connection. A typed name alone is not a filesystem grant.
+references, never Slack channels. The tag grants one-turn access to that
+project's permitted files and lets this turn list, message, or call functions
+on its agents (replies in an opened inbox stay open); it does not copy files
+into the current project or make a permanent link. A typed name alone is not
+a filesystem or messaging grant.
 
 Resolve each listed path against `$WORKSPACE_DOCS_PATH`, never the CLI's
 current working directory. Read only the exact authorized folder; do not
