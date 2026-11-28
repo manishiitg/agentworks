@@ -20,8 +20,9 @@ export function PinnedGoalBar({ events, onCommand }: { events: PollingEvent[] | 
   const seconds = typeof goal.time_used_seconds === 'number' && Number.isFinite(goal.time_used_seconds) && goal.time_used_seconds >= 0 ? Math.floor(goal.time_used_seconds) : undefined
   const tokens = typeof goal.tokens_used === 'number' && Number.isFinite(goal.tokens_used) && goal.tokens_used >= 0 ? goal.tokens_used.toLocaleString() : undefined
   const stalled = goal.status === 'paused' && update?.reason === 'native_continuation_not_started'
-  // Antigravity has no pause or resume: Stop ends its /goal turn and Start again sends the goal again (#4604).
-  const agy = update?.provider === 'agy-cli'
+  // Antigravity and Claude Code have no pause or resume: Stop ends the /goal turn and Start again sends the goal
+  // again (#4604, #4626).
+  const agy = update?.provider === 'agy-cli' || update?.provider === 'claude-code'
   const resumable = goal.status === 'paused' || goal.status === 'blocked' || goal.status === 'usage_limited'
   const button = 'shrink-0 rounded-full border border-border px-2.5 py-0.5 text-xs hover:bg-muted'
   const objective = goal.objective.replace(/\s+/g, ' ').trim()
@@ -37,7 +38,7 @@ export function PinnedGoalBar({ events, onCommand }: { events: PollingEvent[] | 
       {onCommand && resumable && <button type="button" className={button} onClick={() => onCommand('/goal resume')}>{agy ? 'Start again' : 'Resume'}</button>}
       {onCommand && <button type="button" className={button} onClick={() => setClearing(identity)}>Clear</button>}
     </div>
-    {goal.status === 'blocked' && goal.last_check && <p className="mt-1 text-muted-foreground">{goal.last_check}</p>}
+    {(goal.status === 'blocked' || (goal.status === 'active' && update?.provider === 'claude-code')) && goal.last_check && <p className="mt-1 line-clamp-2 text-muted-foreground">{goal.status === 'active' ? `Not done yet: ${goal.last_check}` : goal.last_check}</p>}
     <ConfirmationDialog isOpen={Boolean(onCommand) && clearing === identity} onClose={() => setClearing(null)}
       onConfirm={() => { if (clearing === identity) { setClearing(null); onCommand?.('/goal clear') } }}
       title="Clear this goal?" message={`The agent stops working toward “${preview}”.`}
