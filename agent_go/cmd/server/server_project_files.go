@@ -164,7 +164,7 @@ func (api *StreamingAPI) registerServerProjectFilesTool(registrar definitionTool
 			if err != nil {
 				return "", err
 			}
-			return api.createOnlineProjectFromMac(ctx, userID, roots.ID, c, stringToolArg(args, "name"), stringToolArg(args, "purpose"))
+			return api.createOnlineProjectFromMac(ctx, userID, roots.ID, c, stringToolArg(args, "name"))
 		}
 		// Continue online (#4520): this chat moves to an agent in the Team's online project and keeps working there.
 		if action == "continue_online" || action == "continue_online_answer" {
@@ -240,12 +240,11 @@ func (api *StreamingAPI) registerServerProjectFilesTool(registrar definitionTool
 	}
 	parameters := map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
-			"action":            map[string]interface{}{"type": "string", "enum": []string{"projects", "create_project", "create_agent", "continue_online", "continue_online_answer", "list", "search", "read", "write"}, "description": "projects lists the server projects you can open; create_project makes a new online project for this project's Team (name, purpose); create_agent makes a named agent in a server project you own or co-own (project, name); continue_online moves this chat to a new agent in the Team's online project (or a new one) so it keeps working with the Mac closed (handoff_note); continue_online_answer answers that agent's question during the handoff (project, chat_id, message); list, search, read and write work on one project's files."},
+			"action":            map[string]interface{}{"type": "string", "enum": []string{"projects", "create_project", "create_agent", "continue_online", "continue_online_answer", "list", "search", "read", "write"}, "description": "projects lists the server projects you can open; create_project makes a new online project for this project's Team (name); create_agent makes a named agent in a server project you own or co-own (project, name); continue_online moves this chat to a new agent in the Team's online project (or a new one) so it keeps working with the Mac closed (handoff_note); continue_online_answer answers that agent's question during the handoff (project, chat_id, message); list, search, read and write work on one project's files."},
 			"handoff_note":      map[string]interface{}{"type": "string", "description": "continue_online: your note for the online agent: the task, where it stands, decisions made, what is next, and keys or access it will need (names only, never values)."},
 			"chat_id":           map[string]interface{}{"type": "string", "description": "continue_online_answer: the online agent's chat_id from the continue_online result."},
 			"message":           map[string]interface{}{"type": "string", "description": "continue_online_answer: your answer to the online agent."},
 			"name":              map[string]interface{}{"type": "string", "description": "create_project: the new online project's name, named for its job. create_agent: the new agent's name."},
-			"purpose":           map[string]interface{}{"type": "string", "description": "create_project: one or two sentences on what it does; becomes its Main's purpose."},
 			"server":            map[string]interface{}{"type": "string", "description": "Saved server name; optional when this Mac is signed in to one server."},
 			"project":           map[string]interface{}{"type": "string", "description": "Project ID from action=projects (create_agent, list, search, read, write) or from continue_online (continue_online_answer)."},
 			"path":              map[string]interface{}{"type": "string", "description": "Project-relative file path (read, write) or folder to start from (list, search)."},
@@ -268,17 +267,15 @@ func (api *StreamingAPI) registerServerProjectFilesTool(registrar definitionTool
 }
 
 // createOnlineProjectFromMac makes a new project on the server for this Mac project's Team (owner, 26 Nov, #4087): the
-// person owns it, its Main gets the purpose, and the Team goes into its Users, all through the server's own tools as
+// person owns it and the Team goes into its Users, all through the server's own tools as
 // the signed-in person, so the server's checks decide. Nothing is copied from the Mac.
-func (api *StreamingAPI) createOnlineProjectFromMac(ctx context.Context, userID, macProject string, c desktopConnection, name, purpose string) (string, error) {
-	name, purpose = strings.TrimSpace(name), strings.TrimSpace(purpose)
+func (api *StreamingAPI) createOnlineProjectFromMac(ctx context.Context, userID, macProject string, c desktopConnection, name string) (string, error) {
+	name = strings.TrimSpace(name)
 	if name == "" {
 		return "", fmt.Errorf("pass name: what the new online project is called, named for its job")
 	}
+	// A project has a name and no description (#4046); Main's purpose is set on its own chat.
 	spec := map[string]any{"name": name}
-	if purpose != "" {
-		spec["description"] = purpose
-	}
 	key := "mac-online-" + macProject + "-" + strings.ToLower(strings.Join(strings.Fields(name), "-"))
 	if len(key) > 128 {
 		key = key[:128]
