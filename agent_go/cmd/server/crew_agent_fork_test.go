@@ -440,7 +440,7 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	if !found {
 		t.Fatal("maker got no Team Activity audit of the fork")
 	}
-	// #3577: a synced chat is kept while its agent is on the Team and deleted once the agent leaves it.
+	// #3577: a synced chat is kept while its agent is on the Team with a Live chat and deleted once that ends.
 	if err = fsutil.WriteJSONAtomic(filepath.Join(teamDir, "team.json"), saved, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -456,15 +456,13 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "history.json")); err != nil {
 		t.Fatal("an unreadable people directory pruned a kept synced chat", err)
 	}
-	gone := saved
-	gone.Agents = maps.Clone(saved.Agents)
-	delete(gone.Agents, source.ID)
-	if err = fsutil.WriteJSONAtomic(filepath.Join(teamDir, "team.json"), gone, 0600); err != nil {
+	// Owner, 28 Nov: hiding the chat deletes its server copy, like taking the agent off the Team.
+	if err = fsutil.WriteJSONAtomic(filepath.Join(teamDir, "team.json"), hidden, 0600); err != nil {
 		t.Fatal(err)
 	}
 	pruneCrewSyncedChats(team.ProjectID)
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
-		t.Fatal("a removed agent's synced chat was kept", err)
+		t.Fatal("a Hidden chat's synced copy was kept", err)
 	}
 }
 

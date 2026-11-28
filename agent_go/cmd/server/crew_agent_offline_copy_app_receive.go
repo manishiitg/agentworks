@@ -49,10 +49,15 @@ func crewOfflineAppOwner(r *http.Request, t crewTeam, agent string, b crewOfflin
 }
 
 // Sharing with the Team turns on automatic history sync; a joined terminal
-// session syncs because joining is its capture choice. Only me agents keep no
-// online copy (crew_agent_synced_chat_cleanup.go deletes what is no longer
-// wanted). This never creates a home, enables Team or uploads other chats.
+// session syncs because joining is its capture choice. Only me agents and
+// Hidden chats keep no online copy (owner, 28 Nov: teammates can neither read
+// nor fork a Hidden chat, so the server keeps none; crew_agent_synced_chat_cleanup.go
+// deletes what is no longer wanted). This never creates a home, enables Team
+// or uploads other chats.
 func crewOfflineAppWanted(t crewTeam, a crewTeamRegisteredAgent, _ ...crewOfflineBinding) (bool, error) {
+	if a.Rule.ChatShare != crewChatShareLive {
+		return false, nil
+	}
 	if a.Kind == "terminal" && a.Terminal != nil {
 		return true, nil
 	}

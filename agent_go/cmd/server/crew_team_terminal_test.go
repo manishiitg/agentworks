@@ -325,9 +325,9 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			if row.ID == "" || row.InTeam || row.Rule.ChatShare != crewChatShareLive || row.Terminal == nil || row.Terminal.NamedAgentID != attached.AgentID || row.ChatKey != attached.SessionID {
 				t.Fatal("join did not preserve exact native identity and the Only me / Live defaults")
 			}
-			// The rest of this fixture is the person sharing the agent with a hidden chat.
+			// The rest of this fixture is the person sharing the agent (Live, so its chat syncs; hidden further down).
 			if err := updateCrewTeamRegisteredAgent("alpha", row.OwnerID, id, func(a *crewTeamRegisteredAgent) {
-				a.InTeam, a.Rule.ChatShare = true, crewChatShareAgent
+				a.InTeam = true
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -514,7 +514,7 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			// The actual Live handler must refuse before any Mac/native read unless
 			// the person chose Live and both people remain in this Team.
 			saved.People[0].Invited = false
-			row.InTeam = true
+			row.InTeam, row.Rule.ChatShare = true, crewChatShareAgent
 			saved.Agents[id] = row
 			if e = writeCrewTeamAgentFixture(saved); e != nil {
 				t.Fatal(e)
@@ -804,6 +804,11 @@ func TestTerminalTeamJoinUsesAttachedIdentityAndPairedCopy(t *testing.T) {
 			wanted, wantedErr := crewOfflineAppWanted(beta, privateRow)
 			if wantedErr != nil || !wanted {
 				t.Fatal("private joined terminal required Put online", wantedErr)
+			}
+			hiddenRow := privateRow
+			hiddenRow.Rule.ChatShare = crewChatShareAgent
+			if wanted, _ = crewOfflineAppWanted(beta, hiddenRow); wanted {
+				t.Fatal("a joined terminal's Hidden chat was still copied to the server (owner, 28 Nov)")
 			}
 			if _, bound := crewOfflineRowBinding(beta, privateRow); !bound {
 				t.Fatal("private joined terminal lost its source binding")

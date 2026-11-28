@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,7 +24,7 @@ func TestCrewOfflineAppHTTPRequiresOwnPairAndOnlineIntent(t *testing.T) {
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	t.Setenv("AGENTWORKS_ENABLED_PRODUCT_SURFACES", "agentworks,work,bullpen")
 	const agent = "team-agent-11111111-2222-4333-8444-555555555555"
-	row := crewTeamRegisteredAgent{ID: agent, OwnerID: "owner", Tab: "source", ChatKey: "alpha:chat:source", InTeam: true, Place: "mac", Rule: crewTeamAgentRule{ChatShare: crewChatShareAgent}}
+	row := crewTeamRegisteredAgent{ID: agent, OwnerID: "owner", Tab: "source", ChatKey: "alpha:chat:source", InTeam: true, Place: "mac"}
 	team := crewTeam{ProjectID: "alpha", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: map[string]crewTeamRegisteredAgent{agent: row}}
 	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
@@ -67,6 +68,21 @@ func TestCrewOfflineAppHTTPRequiresOwnPairAndOnlineIntent(t *testing.T) {
 	statusRoute := "/api/crew-teams/alpha/offline-copy-status"
 	if code, _ := request(ownerToken, "old-pair", "POST", statusRoute, statusBody); code != 403 {
 		t.Fatal("stale app pair admitted", code)
+	}
+	// Owner, 28 Nov: a Hidden chat is never copied to the server, even for its own paired Mac.
+	hidden := team
+	hidden.Agents = map[string]crewTeamRegisteredAgent{agent: row}
+	hiddenRow := row
+	hiddenRow.Rule.ChatShare = crewChatShareAgent
+	hidden.Agents[agent] = hiddenRow
+	if err := writeCrewTeamAgentFixture(hidden); err != nil {
+		t.Fatal(err)
+	}
+	if code, raw := request(ownerToken, "current-pair", "POST", statusRoute, statusBody); code != 200 || !strings.Contains(string(raw), `"wanted":false`) {
+		t.Fatalf("a Hidden chat was asked for a server copy: %d %s", code, raw)
+	}
+	if err := writeCrewTeamAgentFixture(team); err != nil {
+		t.Fatal(err)
 	}
 	code, raw := request(ownerToken, "current-pair", "POST", statusRoute, statusBody)
 	var status struct {
@@ -151,10 +167,8 @@ func TestCrewOfflineAppHTTPRequiresOwnPairAndOnlineIntent(t *testing.T) {
 	memberBinding := crewOfflineBinding{Provider: "agentworks", Session: "member-session", Attachment: "conversation-member"}
 	registered.People = []crewTeamPerson{{UserID: "other", Where: "mac", MacPair: "member-pair"}}
 	registered.Agents[memberID] = crewTeamRegisteredAgent{ID: memberID, OwnerID: "other", Tab: "member-source", ChatKey: "alpha:chat:mac-other-member-source", Place: "mac", InTeam: false}
-	if err := writeCrewTeamAgentFixture(registered); err != nil {
-		t.Fatal(err)
-	}
-	// Seed this built-copy fixture as server state.
+	// Seed this built-copy fixture as server state. A direct write: a Team save starts a background cleanup pass,
+	// which would race the member folder made below (Only me with the Team off is not kept).
 	teamDir, err := crewTeamDir("alpha")
 	if err != nil {
 		t.Fatal(err)
