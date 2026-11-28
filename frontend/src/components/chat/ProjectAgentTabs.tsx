@@ -307,9 +307,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
         onlyMe: Boolean(team?.team.on && teamRow?.mine && !teamRow.in_team),
         lastAsked: ask && placeProject ? { who: ask.sender, when: ago || '', active: ask.active, open: () => { void openCrewAskThread(placeProject, ask) } } : undefined,
         // Your own agents message it with this line, Team on or not (owner, 28 Nov: the menu must say how agents message it).
-        messageLine: `Ask the "${tabLabel(tab)}" agent in ${projectName} to …`,
-        messageCopy: agentMessagePrompt(tabLabel(tab), projectName),
-        messageOnline: onlineProject,
+        // Only a project on this Mac: an online project has no such row (owner, 28 Nov: "this should not show online").
+        messageLine: onlineProject ? undefined : `Ask the "${tabLabel(tab)}" agent in ${projectName} to …`,
+        messageCopy: onlineProject ? undefined : agentMessagePrompt(tabLabel(tab), projectName),
         instructions: { set: tab.tabId === canonicalTabId ? undefined : Boolean(listedFor(tab)?.has_instructions), onEdit: () => setUpAgentInstructions(tab.tabId) },
         onSharing: placeProject && id ? () => openCrewAccess(placeProject, id) : undefined,
         onRemove: isAgentTab(tab) && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
