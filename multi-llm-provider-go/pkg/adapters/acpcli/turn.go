@@ -18,6 +18,11 @@ import (
 // its prompt as cancelled before the process is stopped.
 var cancelWait = 30 * time.Second
 
+// silentPromptAfter is how long a turn may go without any update from the agent, with no step running and no
+// question waiting, before it asks the agent's own record whether the reply is in fact finished (#44294 in T3 Code:
+// agy sometimes writes its whole answer and never answers session/prompt). silentCheckEvery paces that check.
+var silentPromptAfter, silentCheckEvery = 15 * time.Minute, time.Minute
+
 // pump reads every event for the life of the process: a running turn gets
 // them; between turns, requests are answered with no person attending and
 // notifications are dropped (session/load replays history this way).
@@ -123,6 +128,15 @@ func (s *session) turn(ctx context.Context, prompt string, emit func(llmtypes.St
 	if s.outcome != nil {
 		outcome = s.outcome.BeginTurn(sessionID)
 	}
+	var replyFinished func() bool
+	var silence <-chan time.Time
+	if check, ok := s.outcome.(FinishedCheck); ok {
+		replyFinished = check.BeginFinished(sessionID)
+		ticker := time.NewTicker(silentCheckEvery)
+		defer ticker.Stop()
+		silence = ticker.C
+	}
+	lastProgress := time.Now()
 	// Every prompt of this turn answers here; a steer adds one (seq counts them) and only the latest ends the turn.
 	complete := make(chan promptDone, 16)
 	seq := 1
@@ -221,7 +235,32 @@ func (s *session) turn(ctx context.Context, prompt string, emit func(llmtypes.St
 	for {
 		select {
 		case msg := <-events:
+			lastProgress = time.Now()
 			handle(msg)
+		case <-silence:
+			if cancelled || time.Since(lastProgress) < silentPromptAfter {
+				continue
+			}
+			busy := questions.Waiting()
+			for _, t := range tools {
+				busy = busy || (t.open && !t.ended)
+			}
+			if busy {
+				lastProgress = time.Now()
+				continue
+			}
+			if !answered || !replyFinished() {
+				continue
+			}
+			for len(events) > 0 {
+				handle(<-events)
+			}
+			// The agent's record shows the reply done, but its prompt never answered: end the turn with that
+			// reply, and stop the process so the next message starts it again on the same conversation instead
+			// of queuing behind a prompt that will not end.
+			log.Printf("[ACP_CLI] session=%s agent=%s action=completed reason=silent_prompt_reply_finished silent_for=%s", s.rpc.owner, s.agent.ID, time.Since(lastProgress).Round(time.Second))
+			s.rpc.finish(errors.New("agent finished its reply but never ended its prompt"))
+			return s.response(text.String(), steeredUsage), nil
 		case req := <-steers:
 			if cancelled {
 				req.reply <- errSteerNotTaken("the turn is stopping")

@@ -121,6 +121,13 @@ type Outcome interface {
 	RPCFailure(model, sessionID string, err error) error
 }
 
+// FinishedCheck is an optional part of an Outcome. BeginFinished is called before a prompt; the returned check
+// reports whether the agent's own record shows that turn's reply finished. A turn whose prompt has gone silent
+// ends with its reply when it does.
+type FinishedCheck interface {
+	BeginFinished(sessionID string) func() bool
+}
+
 var launchHooks = struct {
 	sync.Mutex
 	m map[string]func(LaunchRequest) (*LaunchSpec, error)

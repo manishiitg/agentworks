@@ -27,6 +27,12 @@ func (o agyACPOutcome) BeginTurn(sessionID string) func(model, stopReason string
 	return beginAgyACPOutcome(o.home, sessionID).failure
 }
 
+// BeginFinished checks, for a prompt that went silent, whether agy's record ends with this turn's reply written and
+// done (a planner response, status done, after the turn's floor): agy sometimes never answers session/prompt.
+func (o agyACPOutcome) BeginFinished(sessionID string) func() bool {
+	return beginAgyACPOutcome(o.home, sessionID).replyFinished
+}
+
 func (o agyACPOutcome) RPCFailure(model, sessionID string, err error) error {
 	return agyACPRPCFailure(model, sessionID, err)
 }
@@ -200,6 +206,28 @@ func (w agyACPOutcomeWatch) failure(model, stop string) error {
 		log.Printf("[AGY_OUTCOME] session=%s kind=%s retry_at=%s", w.session, llmerrors.KindOf(failure), reset)
 	}
 	return failure
+}
+
+func (w agyACPOutcomeWatch) replyFinished() bool {
+	if !w.enabled {
+		return false
+	}
+	path, info, err := agyACPConversationFile(w.home, w.session)
+	if err != nil || info == nil || (w.before != nil && !os.SameFile(w.before, info)) {
+		return false
+	}
+	db, err := agyACPOpenLog(path)
+	if err != nil {
+		return false
+	}
+	defer db.Close()
+	var typ, status int
+	if err := db.QueryRowContext(context.Background(), `SELECT step_type,COALESCE(status,-1) FROM steps WHERE idx>? ORDER BY idx DESC LIMIT 1`, w.floor).Scan(&typ, &status); err != nil {
+		return false
+	}
+	finished := typ == agyStepAssistant && status == agyStepStatusDone
+	log.Printf("[AGY_OUTCOME] session=%s silent_prompt_check last_step_type=%d status=%d finished=%t", w.session, typ, status, finished)
+	return finished
 }
 
 func agyACPModelError(model, session string, err error) error {
