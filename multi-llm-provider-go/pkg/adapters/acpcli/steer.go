@@ -82,6 +82,23 @@ func SessionSteersWithPrompt(owner, agentID string) bool {
 	return s != nil && s.agent.ID == agentID && s.steersWithPrompt
 }
 
+// AgentOffersCommand reports whether a chat's running agent advertised the slash command name for its session.
+// known is false until the agent has advertised its commands (or when no session runs).
+func AgentOffersCommand(owner, agentID, name string) (offers, known bool) {
+	sessions.Lock()
+	s := sessions.m[owner]
+	sessions.Unlock()
+	if s == nil || s.agent.ID != agentID {
+		return false, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, c := range s.commands {
+		offers = offers || c == name
+	}
+	return offers, s.commandsKnown
+}
+
 // SteerTurn hands a message to this chat's running turn. It returns once the turn has sent it to the agent, or an
 // error wrapping llmtypes.ErrCodingAgentInputNotSent when no turn could take it.
 func SteerTurn(ctx context.Context, owner, agentID, text string) error {

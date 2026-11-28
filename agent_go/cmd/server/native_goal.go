@@ -113,6 +113,16 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 	if command.Action != "show" && !api.nativeGoalChangeAllowed(w, r, sessionID, builder) {
 		return r, true
 	}
+	if provider == agyGoalProvider {
+		// Antigravity's /goal has no pause, resume or read: AgentWorks answers show/pause/clear itself and sends
+		// only set and resume (Start again) to agy as a /goal turn (native_goal_agy.go).
+		if api.prepareAgyGoalCommand(w, r, sessionID, &command, allowDirectControl) {
+			return r, true
+		}
+		req.DisableLiveInputDelivery = true
+		log.Printf("[AGENT_GOAL] session=%s provider=%s event=command command=%s outcome=started%s", sessionID, provider, command.Action, nativeGoalCallerLog(r.Context()))
+		return r.WithContext(llmtypes.WithNativeGoalCommand(r.Context(), command)), false
+	}
 	if command.Action == "resume" && !trustedRestore {
 		// A finished goal has nothing to resume: say so in the chat instead of starting a turn that cannot do it
 		// (it left the message queued as "Delivery unconfirmed", GitHub #2845).
@@ -194,7 +204,9 @@ func (api *StreamingAPI) answerNativeGoalCommand(w http.ResponseWriter, sessionI
 }
 
 // Program support is a backend fact, shared by admission and composer metadata.
-func nativeGoalSupported(provider string) bool { return provider == "codex-cli" }
+func nativeGoalSupported(provider string) bool {
+	return provider == "codex-cli" || provider == agyGoalProvider
+}
 func nativeGoalProgramCapabilities() map[string]bool {
 	out := make(map[string]bool, len(supportedLLMProviders))
 	for _, provider := range supportedLLMProviders {
