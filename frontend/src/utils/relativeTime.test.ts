@@ -1,5 +1,5 @@
-import { expect, it } from 'vitest'
-import { formatRelativeIso, formatRelativeSeconds } from './relativeTime'
+import { describe, expect, it } from 'vitest'
+import { formatChatClock, formatRelativeIso, formatRelativeSeconds } from './relativeTime'
 
 it('formats compact relative Unix seconds consistently', () => {
   const now = 1_700_000_000
@@ -32,4 +32,21 @@ it('formats ISO timestamps and ignores empty or invalid values', () => {
   expect(formatRelativeIso('2026-11-26T11:45:00Z', { nowMs })).toBe('15m')
   expect(formatRelativeIso('2026-11-26T09:00:00Z', { nowMs })).toBe('3h')
   expect(formatRelativeIso('2026-11-24T12:00:00Z', { nowMs })).toBe('2d')
+})
+
+describe('formatChatClock', () => {
+  const now = new Date(2026, 10, 28, 12, 30)
+  it('shows only the time for today', () => {
+    expect(formatChatClock(new Date(2026, 10, 28, 9, 15), now, 'en-GB')).toBe('09:15')
+  })
+  it('names yesterday', () => {
+    expect(formatChatClock(new Date(2026, 10, 27, 23, 5), now, 'en-GB')).toBe('Yesterday 23:05')
+  })
+  it('adds the date for older messages, and the year when it differs', () => {
+    expect(formatChatClock(new Date(2026, 10, 25, 3, 15), now, 'en-GB')).toBe('25 Nov 03:15')
+    expect(formatChatClock(new Date(2025, 11, 31, 3, 15), now, 'en-GB')).toBe('31 Dec 2025 03:15')
+  })
+  it('returns nothing for a bad timestamp', () => {
+    expect(formatChatClock('nope', now)).toBe('')
+  })
 })
