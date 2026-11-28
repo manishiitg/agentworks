@@ -19,7 +19,7 @@ export function WorkspaceConnectionsMenu({ browser, details, browserAllowed, mcp
   browser: { connected: boolean; label: string; name?: string }; details: Record<string, string>; browserAllowed: boolean; mcpAllowed: boolean
   apps: CrewPanelRow[]; loading: boolean; unavailable: boolean; onOpen: (destination: string) => void; onManage?: () => void
   /** Features hidden from the panel before they are set up (#3780): one row each with its set-up action. */
-  setups?: { id: string; icon: LucideIcon; title: string; line: string; action: string; onClick: () => void }[]
+  setups?: { id: string; icon: LucideIcon; title: string; line: string; action: string; onClick: () => void; onShow?: () => void }[]
 }) {
   const mcps = apps.filter(item => item.destination === 'mcp:connected')
   const connectedMcps = mcps.filter(item => item.connected)
@@ -40,7 +40,11 @@ export function WorkspaceConnectionsMenu({ browser, details, browserAllowed, mcp
     {browserAllowed && <WorkspaceContextRow icon={browserIcon} hint={browserHint} detail={browser.name || browser.label} attention={!browser.connected && browser.label !== 'Checking…'} onClick={() => onOpen('browser')}>Browser</WorkspaceContextRow>}
     {accounts.map(item => <WorkspaceContextRow key={item.id} icon={iconFor(item)} hint={`${labelFor(item)} · ${item.detail}`} detail={item.detail} attention={item.attention} onClick={() => onOpen(item.destination!)}>{labelFor(item)}</WorkspaceContextRow>)}
     {mcpAllowed && <WorkspaceContextRow icon={Cable} hint={mcpHint} detail={mcpDetail} attention={attention > 0 || unavailable} onClick={() => onOpen('mcp:connected')}>MCPs</WorkspaceContextRow>}
-    {setups.map(item => <WorkspaceContextRow key={item.id} icon={item.icon} hint={item.line} detail={<span className="font-medium text-primary">{item.action}</span>} onClick={item.onClick}>{item.title}</WorkspaceContextRow>)}
+    {setups.map(item => {
+      const row = <WorkspaceContextRow key={item.id} icon={item.icon} hint={item.line} detail={<span className="font-medium text-primary">{item.action}</span>} onClick={item.onClick}>{item.title}</WorkspaceContextRow>
+      // A row hidden from the side menu (#4486) can go back there with Show.
+      return item.onShow ? <div key={item.id} className="flex items-center gap-1"><div className="min-w-0 flex-1">{row}</div><button type="button" onClick={item.onShow} title={`Show ${item.title} in the side menu again`} className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-background/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Show</button></div> : row
+    })}
     {onManage && <WorkspaceContextRow icon={Settings2} detail={<ChevronRight aria-hidden="true" className="h-3 w-3" />} onClick={onManage}>Manage integrations</WorkspaceContextRow>}
   </WorkspaceCompactGroup></TooltipProvider>
 }
