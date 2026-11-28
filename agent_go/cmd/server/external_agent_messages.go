@@ -101,6 +101,12 @@ func messagePeerView(claims *UserClaims, send bool) *UserClaims {
 func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claims *UserClaims, peer agentMessageEndpoint, send bool) error {
 	token := claims.AccessToken
 	denied := fmt.Errorf("conversation unavailable or access denied")
+	if peer.Kind == agentTeamPersonKind {
+		if teamPersonPeerAllowed(claims.UserID, peer) && namedAgentOperationAllowed(claims, send) {
+			return nil
+		}
+		return denied
+	}
 	if peer.TeamAgentID != "" && peer.UserID != claims.UserID && namedAgentOperationAllowed(claims, send) {
 		return crewTeamAdmitEndpoint(ctx, claims.UserID, peer)
 	}

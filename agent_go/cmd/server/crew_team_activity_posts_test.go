@@ -33,6 +33,18 @@ func TestCrewTeamTasksBindOwnAgentAndFollowRequestThreads(t *testing.T) {
 	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
+	// A teammate's Needs-you answer reached the Team server but never the asker's Mac app chat: both the inbox
+	// reader and the wake hint refused a Team-person sender. The answer passes for Team members only.
+	ownerClaims := &UserClaims{UserID: "owner", Username: "owner"}
+	for person, want := range map[string]bool{"other": true, "stranger": false} {
+		peer := agentMessageEndpoint{Kind: agentTeamPersonKind, UserID: person, ID: team.ProjectID}
+		if got := appAgentPeerAllowed(ctx, "owner", peer); got != want {
+			t.Fatalf("app inbox admits Team person %s = %t, want %t", person, got, want)
+		}
+		if err := f.api.externalAuthorizeMessagePeer(ctx, ownerClaims, peer, false); (err == nil) != want {
+			t.Fatalf("wake hint admits Team person %s err=%v, want allowed=%t", person, err, want)
+		}
+	}
 	for _, person := range []string{"owner", "other"} {
 		entries := map[string]ProductConversationRecord{}
 		for _, agent := range team.Agents {

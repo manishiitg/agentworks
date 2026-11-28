@@ -491,3 +491,13 @@ func agentCallerCrewProject(caller triggerLinkCaller) string {
 	}
 	return ""
 }
+
+// teamPersonPeerAllowed: a person asked in a Team request answers in that thread, and the asking agent hears the
+// answer (and may read the thread) while both are still in the Team.
+func teamPersonPeerAllowed(user string, peer agentMessageEndpoint) bool {
+	if peer.Kind != agentTeamPersonKind {
+		return false
+	}
+	t, err := readCrewTeam(peer.ID)
+	return err == nil && t.On && t.member(user) && t.member(peer.UserID)
+}
