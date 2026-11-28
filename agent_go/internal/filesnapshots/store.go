@@ -175,6 +175,7 @@ type storeState struct {
 	gate      chan struct{}
 	warming   atomic.Bool
 	gcRunning atomic.Bool
+	lastPrune atomic.Int64
 	limit     fileLimitCache
 	repos     repoReads
 }
@@ -723,10 +724,9 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 	if saveErr != nil {
 		return r, saveErr
 	}
-	s.prune(ctx)
 	unlock()
 	unlocked = true
-	s.scheduleGarbageCollection()
+	s.scheduleMaintenance()
 	return r, nil
 }
 
@@ -792,11 +792,15 @@ func (s Store) prune(ctx context.Context) {
 
 // gcEvery spaces out reclaiming expired replies' files. Git rewrites the
 // whole private store to do it (640 MB, about 4-8 s on a large Crew), so
-// expired replies' records and refs are removed at once while the disk-space
-// reclaim runs asynchronously only when the store gate is idle (#4080, #4667).
+// expired replies' records and refs are removed in throttled background
+// maintenance while disk-space reclaim runs at most once per day when idle
+// (#4080, #4667, #4690).
 const gcEvery = 24 * time.Hour
 
-var gcIdleDelay = 2 * time.Second
+var (
+	gcIdleDelay = 2 * time.Second
+	pruneEvery  = 15 * time.Minute
+)
 
 func (s Store) gcPendingPath() string { return filepath.Join(s.dir(), "gc-pending") }
 func (s Store) gcDonePath() string    { return filepath.Join(s.dir(), "gc-done") }
@@ -811,11 +815,20 @@ func (s Store) gcDue(now time.Time) bool {
 	return true
 }
 
-// scheduleGarbageCollection runs collectGarbage in a single background
-// goroutine per store once the store gate is idle, so reply captures never
-// block on git gc (#4667).
-func (s Store) scheduleGarbageCollection() {
-	if !s.gcDue(time.Now()) {
+func (s Store) pruneDue(now time.Time) bool {
+	last := s.state().lastPrune.Load()
+	if last == 0 {
+		return true
+	}
+	return now.Sub(time.Unix(0, last)) >= pruneEvery
+}
+
+// scheduleMaintenance runs throttled prune and collectGarbage in a single
+// background goroutine per store once the store gate is idle, so Finish never
+// blocks on scanning turns/*.json or git gc (#4667, #4690).
+func (s Store) scheduleMaintenance() {
+	now := time.Now()
+	if !s.pruneDue(now) && !s.gcDue(now) {
 		return
 	}
 	st := s.state()
@@ -829,7 +842,10 @@ func (s Store) scheduleGarbageCollection() {
 			timer := time.NewTimer(delay)
 			<-timer.C
 		}
-		if !s.gcDue(time.Now()) {
+		now := time.Now()
+		needPrune := s.pruneDue(now)
+		needGC := s.gcDue(now)
+		if !needPrune && !needGC {
 			return
 		}
 		// Non-blocking try-acquire: if a reply capture is active, skip this
@@ -840,10 +856,21 @@ func (s Store) scheduleGarbageCollection() {
 			return
 		}
 		defer func() { <-st.gate }()
-		gcCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		maintCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		s.collectGarbage(gcCtx, time.Now())
+		if needPrune {
+			s.prune(maintCtx)
+			st.lastPrune.Store(time.Now().UnixNano())
+		}
+		if s.gcDue(time.Now()) {
+			s.collectGarbage(maintCtx, time.Now())
+		}
 	}()
+}
+
+// scheduleGarbageCollection is kept as a helper for tests and callers.
+func (s Store) scheduleGarbageCollection() {
+	s.scheduleMaintenance()
 }
 
 // collectGarbage reclaims expired replies' files when some are waiting and the

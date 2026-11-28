@@ -23,6 +23,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // Read-only git view for the Files pane (VS Code style): which repos a
@@ -736,7 +738,34 @@ func workspaceGitCrewOwner(r *http.Request) string {
 // workspaceGitStatusRepos lists every repository under realBase with its
 // branch and changed files (Root relative to realBase); more is true when the
 // repository limit left some out.
+type workspaceGitStatusReposResult struct {
+	repos []workspaceGitRepo
+	more  bool
+}
+
+var workspaceGitStatusGroup singleflight.Group
+
 func workspaceGitStatusRepos(ctx context.Context, realBase string) (_ []workspaceGitRepo, more bool) {
+	if realBase == "" {
+		return workspaceGitStatusReposUncached(ctx, realBase)
+	}
+	ch := workspaceGitStatusGroup.DoChan(realBase, func() (any, error) {
+		scanCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), workspaceGitTimeout)
+		defer cancel()
+		repos, more := workspaceGitStatusReposUncached(scanCtx, realBase)
+		return workspaceGitStatusReposResult{repos: repos, more: more}, nil
+	})
+	select {
+	case <-ctx.Done():
+		return nil, false
+	case res := <-ch:
+		out := res.Val.(workspaceGitStatusReposResult)
+		cp := append([]workspaceGitRepo(nil), out.repos...)
+		return cp, out.more
+	}
+}
+
+func workspaceGitStatusReposUncached(ctx context.Context, realBase string) (_ []workspaceGitRepo, more bool) {
 	ctx = context.WithValue(ctx, workspaceGitRootKey{}, realBase)
 	started := time.Now()
 	watch := workspaceGitWatchFor(realBase) // nil: no file watcher here, read every checkout
