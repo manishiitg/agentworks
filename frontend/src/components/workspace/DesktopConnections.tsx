@@ -119,6 +119,7 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   const [newSectionName, setNewSectionName] = useState('')
   const [pinnedDragOver, setPinnedDragOver] = useState(false)
   const [recentDragOver, setRecentDragOver] = useState(false)
+  const [moreProjectsOpen, setMoreProjectsOpen] = useState(false)
   const [sidebarMode, setSidebarMode] = useState<SidebarViewMode>(() => readSidebarViewMode(historyScope))
   const selectSidebarMode = (next: SidebarViewMode) => {
     setSidebarMode(next)
@@ -188,7 +189,7 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
       return row ? [row] : []
     }),
   }))
-  const { pinnedRows, recentRows } = sidebarProjectShortcuts(rows, keyFor, pinned ?? [], recent ?? [], isOpenProject, sectionedKeys)
+  const { pinnedRows, recentRows, moreRows } = sidebarProjectShortcuts(rows, keyFor, pinned ?? [], recent ?? [], isOpenProject, sectionedKeys)
   const pinnedKeys = new Set(pinned ?? [])
   const renderProject = (project: typeof rows[number], pinnedShortcut: boolean) => {
     const { location: where, mac, state: crewState, connection, ...rest } = project
@@ -255,10 +256,6 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
       ...(pinnedRows.length === 0 && sectionedRows.length === 0 && recentRows.length === 0 ? rows.slice(0, 8) : []),
     ].filter((project, index, all) => all.findIndex(other => other.id === project.id) === index).slice(0, 12)
     const switchButtonClass = 'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-    const newSectionButton = canPin && rows.length > 0 && <button type="button" onClick={() => { setCreatingSection({}); setNewSectionName('') }} aria-label="New section" title="Create a collapsible section" className={switchButtonClass}>
-      <FolderPlus className="h-3 w-3 shrink-0" aria-hidden="true" />
-      <span>Section</span>
-    </button>
     const switchToThreads = rows.length > 0 && <button type="button" onClick={() => selectSidebarMode('threads')} aria-label="Switch to Threads view" className={switchButtonClass}>
       <ArrowLeftRight className="h-3 w-3 shrink-0" aria-hidden="true" />
       <span>Threads</span>
@@ -267,7 +264,7 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
       <ArrowLeftRight className="h-3 w-3 shrink-0" aria-hidden="true" />
       <span>Projects</span>
     </button>
-    const headerControls = (newSectionButton || switchToThreads) && <div className="flex items-center gap-0.5">{newSectionButton}{switchToThreads}</div>
+    const headerControls = switchToThreads
     const commitNewSection = () => {
       const id = createSection(newSectionName)
       if (id && creatingSection?.assignKey) assignProjectToSection(creatingSection.assignKey, id)
@@ -279,6 +276,7 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
       if (projectsInSection.some(project => waitingProjectIds.has(project.id))) return 'waiting'
       return undefined
     }
+    const moreActivity = sectionActivity(moreRows)
     return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3" data-sidebar-project-scroll onPointerDownCapture={() => markSidebarInteraction()}>
         {top}
@@ -310,21 +308,7 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
             {pinnedRows.map(project => renderProject(project, true))}
           </section>}
 
-          {pinnedRows.length === 0 && (resolvedSections.length > 0 || creatingSection) && headerControls && <div className="flex justify-end px-2 pb-1 pt-2">{headerControls}</div>}
-
-          {creatingSection && <form className="mb-2 flex items-center gap-1 px-1" onSubmit={event => { event.preventDefault(); commitNewSection() }}>
-            <input
-              type="text"
-              aria-label="New section name"
-              autoFocus
-              placeholder="Section name (e.g. Clients)"
-              value={newSectionName}
-              onChange={event => setNewSectionName(event.target.value)}
-              onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); setCreatingSection(null); setNewSectionName('') } }}
-              className="h-7 min-w-0 flex-1 rounded-md border border-primary/50 bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-            <button type="submit" disabled={!newSectionName.trim()} className="h-7 shrink-0 rounded-md bg-foreground px-2.5 text-xs font-medium text-background disabled:opacity-40">Add</button>
-          </form>}
+          {pinnedRows.length === 0 && resolvedSections.length > 0 && headerControls && <div className="flex justify-end px-2 pb-1 pt-2">{headerControls}</div>}
 
           {resolvedSections.map((section, index) => (
             <SidebarSectionBlock
@@ -347,6 +331,37 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
             </SidebarSectionBlock>
           ))}
 
+          {creatingSection ? (
+            <form className="mb-2 flex items-center gap-1 px-1 pt-1" onSubmit={event => { event.preventDefault(); commitNewSection() }}>
+              <input
+                type="text"
+                aria-label="New section name"
+                autoFocus
+                placeholder="Section name (e.g. Clients)"
+                value={newSectionName}
+                onChange={event => setNewSectionName(event.target.value)}
+                onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); setCreatingSection(null); setNewSectionName('') } }}
+                className="h-7 min-w-0 flex-1 rounded-md border border-primary/50 bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <button type="submit" disabled={!newSectionName.trim()} className="h-7 shrink-0 rounded-md bg-foreground px-2.5 text-xs font-medium text-background disabled:opacity-40">Add</button>
+            </form>
+          ) : (
+            canPin && rows.length > 0 && (
+              <div className="mb-1 px-1 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => { setCreatingSection({}); setNewSectionName('') }}
+                  aria-label="New section"
+                  title="Create a collapsible section"
+                  className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <FolderPlus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span>New section</span>
+                </button>
+              </div>
+            )
+          )}
+
           {recentRows.length > 0 && <section
             aria-labelledby="recent-projects-heading"
             onDragOver={event => {
@@ -364,15 +379,41 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
               assignProjectToSection(dropped, null)
               setPinned(dropped, false)
             }}
-            className={`mb-3 shrink-0 space-y-1 rounded-lg border transition-colors ${recentDragOver ? 'border-primary/60 bg-primary/10' : 'border-transparent'}`}
+            className={`mb-2.5 shrink-0 space-y-1 rounded-lg border transition-colors ${recentDragOver ? 'border-primary/60 bg-primary/10' : 'border-transparent'}`}
           >
             <div className="flex items-center justify-between px-2 pb-1 pt-2">
               <h2 id="recent-projects-heading" className="text-xs font-medium text-muted-foreground">Recent</h2>
-              {pinnedRows.length === 0 && resolvedSections.length === 0 && !creatingSection && headerControls}
+              {pinnedRows.length === 0 && resolvedSections.length === 0 && headerControls}
             </div>
             {recentRows.map(project => renderProject(project, false))}
           </section>}
-          {pinnedRows.length === 0 && resolvedSections.length === 0 && !creatingSection && recentRows.length === 0 && headerControls && <div className="flex justify-end px-2 pt-2">{headerControls}</div>}
+
+          {moreRows.length > 0 && <section aria-label="More projects" className="mb-3 shrink-0 space-y-1">
+            <div className="flex items-center justify-between px-1 pb-0.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setMoreProjectsOpen(openState => !openState)}
+                aria-expanded={moreProjectsOpen}
+                className="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${moreProjectsOpen ? 'rotate-90' : ''}`} aria-hidden="true" />
+                <span className="truncate">More projects</span>
+                <span className="shrink-0 text-[11px] tabular-nums opacity-70">{moreRows.length}</span>
+                {!moreProjectsOpen && moreActivity && (
+                  <span
+                    aria-label={moreActivity === 'running' ? 'Running' : 'Needs your input'}
+                    className={`ml-0.5 h-1.5 w-1.5 shrink-0 rounded-full ${moreActivity === 'running' ? 'bg-blue-500' : 'bg-amber-500'}`}
+                  />
+                )}
+              </button>
+              {pinnedRows.length === 0 && resolvedSections.length === 0 && recentRows.length === 0 && headerControls}
+            </div>
+            {moreProjectsOpen && <div className="space-y-1">
+              {moreRows.map(project => renderProject(project, false))}
+            </div>}
+          </section>}
+
+          {pinnedRows.length === 0 && resolvedSections.length === 0 && recentRows.length === 0 && moreRows.length === 0 && headerControls && <div className="flex justify-end px-2 pt-2">{headerControls}</div>}
         </>}
       </div>
     </div>
