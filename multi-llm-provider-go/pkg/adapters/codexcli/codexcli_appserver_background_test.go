@@ -3,6 +3,7 @@ package codexcli
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -98,6 +99,8 @@ func TestCodexBackgroundCommandStreamsOutputAfterTurnAndStops(t *testing.T) {
 	if toolEnds != 0 {
 		t.Fatal("a running command was ended with its turn")
 	}
+	// #4602: the turn's end asks Codex which commands still run; this one does.
+	answerCodexTerminalList(t, writer, server, `[{"itemId":"exec-1","processId":"4242","command":"npm run dev"}]`)
 	r.detachEvents()
 
 	// Between turns: Codex keeps sending the command's output.
@@ -153,7 +156,7 @@ func TestCodexBackgroundCommandStreamsOutputAfterTurnAndStops(t *testing.T) {
 func TestCodexCommandOutputEndsWithItemOrProcess(t *testing.T) {
 	const owner = "chat-3131-codex-end"
 	rec := recordBackgroundOutput(t, owner)
-	r := &codexRPC{pending: map[string]chan codexRPCMessage{}, events: make(chan codexRPCMessage, 4), done: make(chan struct{}), stop: func() {}}
+	r := &codexRPC{stdin: &idleReplyWriter{written: make(chan codexRPCMessage, 4)}, pending: map[string]chan codexRPCMessage{}, events: make(chan codexRPCMessage, 4), done: make(chan struct{}), stop: func() {}}
 	s := &codexAppSession{owner: owner, threadID: "thread"}
 	send := func(method, params string) {
 		observeCodexCommandEvent(s, r, method, json.RawMessage(params))
@@ -185,5 +188,46 @@ func TestCodexCommandOutputEndsWithItemOrProcess(t *testing.T) {
 	}
 	if len(s.commands.background()) != 0 {
 		t.Fatal("commands of a closed process still listed")
+	}
+}
+
+func answerCodexTerminalList(t *testing.T, writer *idleReplyWriter, server io.Writer, data string) {
+	t.Helper()
+	request := <-writer.written
+	if request.Method != "thread/backgroundTerminals/list" {
+		t.Fatalf("expected the live terminals list, got %+v", request)
+	}
+	idleSend(t, server, `{"id":`+string(request.ID)+`,"result":{"data":`+data+`,"nextCursor":null}}`)
+}
+
+// #4602: Codex can start a command and never report it finished; once its
+// turn ended and Codex no longer runs it, it stops being listed as running.
+func TestCodexCommandCodexNoLongerRunsEndsAfterItsTurn(t *testing.T) {
+	const owner = "chat-4602-codex-exited"
+	rec := recordBackgroundOutput(t, owner)
+	r, server, writer := idleFixture(t, 64)
+	s := &codexAppSession{owner: owner, threadID: "thread", rpc: r}
+	codexAppSessions.Lock()
+	codexAppSessions.sessions[owner] = s
+	codexAppSessions.Unlock()
+	t.Cleanup(func() {
+		codexAppSessions.Lock()
+		delete(codexAppSessions.sessions, owner)
+		codexAppSessions.Unlock()
+	})
+	r.attachEvents()
+	idleSend(t, server, `{"method":"item/started","params":{"threadId":"thread","turnId":"turn1","item":{"id":"exec-2","type":"commandExecution","command":"make test","processId":"77","status":"inProgress"}}}`)
+	idleSend(t, server, `{"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"turn1","status":"completed"}}}`)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := (&CodexCLIAdapter{}).consumeAppTurn(ctx, s, r, "thread", "turn1", func(llmtypes.StreamChunk) {}); err != nil {
+		t.Fatal(err)
+	}
+	answerCodexTerminalList(t, writer, server, `[]`)
+	rec.wait(t, "done chunk", func(chunks []llmtypes.BackgroundOutput) bool {
+		return len(chunks) > 0 && chunks[len(chunks)-1].Done && chunks[len(chunks)-1].ToolCallID == "exec-2"
+	})
+	if len(CodexBackgroundCommands(owner)) != 0 {
+		t.Fatal("a command Codex no longer runs is still listed")
 	}
 }
