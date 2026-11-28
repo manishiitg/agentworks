@@ -21,22 +21,22 @@ export function WorkspaceContextCard({ children, title, summary, subtle = false,
         aria-label="Workspace context"
         data-theme-surface="panel"
         data-workspace-context-card
-        className={`flex max-h-full min-h-0 flex-col gap-3 overflow-hidden rounded-2xl border border-border p-4 shadow-sm bg-surface-panel text-card-foreground ${subtle ? 'shadow-none' : ''}`}
+        className={`flex max-h-full min-h-0 flex-col gap-2 overflow-hidden rounded-2xl border border-border p-3 shadow-sm bg-surface-panel text-card-foreground ${subtle ? 'shadow-none' : ''}`}
       >
-        {(title || summary) && <header className="shrink-0 border-b border-border pb-3">
+        {(title || summary) && <header className="shrink-0 border-b border-border pb-2.5">
           {title && <h2 className="text-sm font-semibold text-foreground">{onBack ? <button type="button" aria-label="Back to workspace" title="Back to workspace" onClick={onBack} className="inline-flex min-h-8 items-center gap-2 rounded hover:text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft aria-hidden="true" className="h-3.5 w-3.5"/>{title}</button> : title}</h2>}
           {summary && <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{summary}</p>}
         </header>}
         {toolsAtTop && <div className="flex shrink-0">{toolsSearch}</div>}
-        <div className="workspace-menu-scroll min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain">
+        <div className="workspace-menu-scroll min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain">
           {children}
           {/* Team groups belong to the scrollable body, not a shrink-0 footer
               that can grow past the panel and clip its final rows. */}
-          {footerContent && <div className="border-t border-border pt-3">{footerContent}</div>}
+          {footerContent && <div className="mt-1.5 border-t border-border pt-2">{footerContent}</div>}
           {/* The very last thing in the body, under the Team and Artifacts rows (owner, 22 Nov: Context at the full end). */}
-          {endContent && <div className="border-t border-border pt-3">{endContent}</div>}
+          {endContent && <div className="mt-1.5 border-t border-border pt-2">{endContent}</div>}
         </div>
-        {!toolsAtTop && <footer className="shrink-0 border-t border-border pt-3">
+        {!toolsAtTop && <footer className="shrink-0 border-t border-border pt-2">
           <div className="flex items-center gap-3">
             {toolsSearch}
             {onFullMenu && <button type="button" aria-label="Full menu" onClick={onFullMenu} className="flex min-h-8 shrink-0 items-center gap-1.5 rounded px-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -102,12 +102,12 @@ export function WorkspaceContextRow({
       onClick={onClick}
       title={hint}
       aria-current={active ? 'page' : undefined}
-      className={`flex w-full items-center gap-2.5 rounded-md px-1 min-h-8 py-1.5 text-left text-xs ${attention ? 'bg-amber-500/10 text-amber-500' : active ? 'bg-background/50 text-foreground' : 'text-foreground/85'} hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+      className={`flex w-full items-center gap-2 rounded-md px-1.5 min-h-7 py-1 text-left text-xs ${attention ? 'bg-amber-500/10 text-amber-500' : active ? 'bg-background/50 text-foreground' : 'text-foreground/85'} hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
     >
       <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
       <span className={detail ? 'shrink-0' : 'min-w-0 flex-1 truncate'}>{children}</span>
       {detail && (
-        <span className="min-w-0 flex-1 truncate text-right text-[10px] text-muted-foreground">{detail}</span>
+        <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">{detail}</span>
       )}
     </button>
   )

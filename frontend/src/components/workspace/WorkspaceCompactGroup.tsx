@@ -9,22 +9,22 @@ export function WorkspaceCompactGroup({ title, icon: Icon, detail, preview, chil
   const [expanded, setExpanded] = useState(false)
   const id = useId()
   return <section>
-    <div className="flex min-h-9 items-center gap-2">
-      <button type="button" aria-expanded={expanded} aria-controls={id} aria-label={title} onClick={() => setExpanded(value => !value)} className="flex min-h-9 min-w-0 flex-1 items-center gap-2.5 rounded-md px-1 text-left text-xs text-foreground/85 hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <div className="flex min-h-7 items-center gap-2">
+      <button type="button" aria-expanded={expanded} aria-controls={id} aria-label={title} onClick={() => setExpanded(value => !value)} className="flex min-h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs text-foreground/85 hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <Icon aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground"/>
         {summaryOnly ? <span className="min-w-0 flex-1 truncate text-muted-foreground">{detail ?? title}</span> : <>
           <span className={detail !== undefined && detail !== null ? 'shrink-0' : 'min-w-0 flex-1 truncate'}>{title}</span>
-          {detail !== undefined && detail !== null && <span className="min-w-0 flex-1 truncate text-right text-[10px] text-muted-foreground">{detail}</span>}
+          {detail !== undefined && detail !== null && <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">{detail}</span>}
         </>}
-        {!preview && <ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}/>}
+        {!preview && <ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 text-muted-foreground/75 transition-transform ${expanded ? 'rotate-90' : ''}`}/>}
       </button>
       {preview && <>
         <div className="flex shrink-0 items-center gap-0.5">{preview}</div>
-        <button type="button" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${title.toLowerCase()}`} aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(value => !value)} className="flex h-8 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <button type="button" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${title.toLowerCase()}`} aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(value => !value)} className="flex h-7 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${expanded ? 'rotate-90' : ''}`}/>
         </button>
       </>}
     </div>
-    {expanded && <div id={id} className={flush ? 'mt-1 space-y-1' : 'ml-2.5 mt-1 space-y-1 border-l border-border pl-3'}>{children}</div>}
+    {expanded && <div id={id} className={flush ? 'mt-0.5 space-y-0.5' : 'ml-2.5 mt-0.5 space-y-0.5 border-l border-border pl-2.5'}>{children}</div>}
   </section>
 }
