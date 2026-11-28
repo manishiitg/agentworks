@@ -8,16 +8,32 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
-const agyGoalProvider = "agy-cli"
+const (
+	agyGoalProvider    = "agy-cli"
+	claudeGoalProvider = "claude-code"
+)
+
+// turnGoalProvider: a program whose goal runs as one /goal turn, with its state kept here (Antigravity, and Claude
+// Code, whose goal checks continue its turn until the goal is met, #4626).
+func turnGoalProvider(provider string) bool {
+	return provider == agyGoalProvider || provider == claudeGoalProvider
+}
+
+func turnGoalProgram(provider string) string {
+	if provider == claudeGoalProvider {
+		return "Claude Code"
+	}
+	return "Antigravity"
+}
 
 // prepareAgyGoalCommand handles an Antigravity chat's /goal command (#4604). agy keeps working on `/goal <objective>`
 // until it is finished, but has no pause, resume or goal read. The goal's state is the chat's own goal record:
 // active while the /goal turn runs, complete when it ends, paused when it is stopped. show, pause and clear are
 // answered here and never reach agy; resume (Start again) sends the stored objective again. It returns true when
 // it answered; false leaves a set or resume to run as the turn.
-func (api *StreamingAPI) prepareAgyGoalCommand(w http.ResponseWriter, r *http.Request, sessionID string, command *llmtypes.NativeGoalCommand, allowDirectControl bool) bool {
+func (api *StreamingAPI) prepareAgyGoalCommand(w http.ResponseWriter, r *http.Request, sessionID, provider string, command *llmtypes.NativeGoalCommand, allowDirectControl bool) bool {
 	previous, _ := api.latestNativeGoal(r.Context(), sessionID)
-	if previous != nil && (previous.Goal == nil || previous.Provider != agyGoalProvider) {
+	if previous != nil && (previous.Goal == nil || previous.Provider != provider) {
 		previous = nil
 	}
 	running := previous != nil && previous.Goal.Status == "active" && api.sessionTurnRunning(sessionID)
@@ -31,14 +47,14 @@ func (api *StreamingAPI) prepareAgyGoalCommand(w http.ResponseWriter, r *http.Re
 		return true
 	case "pause":
 		if !running || !allowDirectControl {
-			api.answerNativeGoalCommand(w, sessionID, "Antigravity can't pause a goal. Stop ends it; Start again picks it up later.")
+			api.answerNativeGoalCommand(w, sessionID, turnGoalProgram(provider)+" can't pause a goal. Stop ends it; Start again picks it up later.")
 			return true
 		}
 		if err := api.verifySessionAccess(r, sessionID); err != nil {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return true
 		}
-		api.cancelAgyGoalTurn(sessionID)
+		api.cancelAgyGoalTurn(sessionID, provider)
 		api.stopAgyGoal(sessionID, previous)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": "completed", "session_id": sessionID})
@@ -49,9 +65,9 @@ func (api *StreamingAPI) prepareAgyGoalCommand(w http.ResponseWriter, r *http.Re
 			return true
 		}
 		if running && allowDirectControl {
-			api.cancelAgyGoalTurn(sessionID)
+			api.cancelAgyGoalTurn(sessionID, provider)
 		}
-		if err := api.projectNativeGoal(sessionID, llmtypes.NativeGoalUpdate{Provider: agyGoalProvider, NativeSessionID: previous.NativeSessionID}, "person_clear"); err != nil {
+		if err := api.projectNativeGoal(sessionID, llmtypes.NativeGoalUpdate{Provider: provider, NativeSessionID: previous.NativeSessionID}, "person_clear"); err != nil {
 			http.Error(w, "Could not save goal state", http.StatusInternalServerError)
 			return true
 		}
@@ -66,7 +82,7 @@ func (api *StreamingAPI) prepareAgyGoalCommand(w http.ResponseWriter, r *http.Re
 			api.answerNativeGoalCommand(w, sessionID, "This goal is already done. Type the next task or set a new goal.")
 			return true
 		case running:
-			api.answerNativeGoalCommand(w, sessionID, "Antigravity is already working on this goal.")
+			api.answerNativeGoalCommand(w, sessionID, turnGoalProgram(provider)+" is already working on this goal.")
 			return true
 		}
 		command.Objective = previous.Goal.Objective
@@ -87,7 +103,7 @@ func (api *StreamingAPI) stopAgyGoal(sessionID string, previous *llmtypes.Native
 }
 
 // cancelAgyGoalTurn ends the chat's running /goal turn the way the chat's Stop does.
-func (api *StreamingAPI) cancelAgyGoalTurn(sessionID string) {
+func (api *StreamingAPI) cancelAgyGoalTurn(sessionID, provider string) {
 	api.agentCancelMux.Lock()
 	_, hasGoTurn := api.agentCancelFuncs[sessionID]
 	api.agentCancelMux.Unlock()
@@ -98,7 +114,7 @@ func (api *StreamingAPI) cancelAgyGoalTurn(sessionID string) {
 		delete(api.agentCancelFuncs, sessionID)
 	}
 	api.agentCancelMux.Unlock()
-	log.Printf("[AGENT_GOAL] session=%s provider=%s action=stopped reason=person_goal_stop", sessionID, agyGoalProvider)
+	log.Printf("[AGENT_GOAL] session=%s provider=%s action=stopped reason=person_goal_stop", sessionID, provider)
 }
 
 func agyGoalStatusLabel(status string) string {

@@ -19,7 +19,7 @@ func TestAgyGoalCommandsAnsweredByAgentWorks(t *testing.T) {
 	sid := "agy-goal-commands"
 	api, store := newDurableChatAPI(t, sid, "owner")
 	store.SetEventPreparer(api.prepareNativeGoalEvent)
-	if !nativeGoalSupported("agy-cli") || !nativeGoalSupported("codex-cli") || nativeGoalSupported("claude-code") {
+	if !nativeGoalSupported("agy-cli") || !nativeGoalSupported("codex-cli") || !nativeGoalSupported("claude-code") || nativeGoalSupported("cursor-cli") {
 		t.Fatal("goal programs changed")
 	}
 	run := func(action string) (bool, string, llmtypes.NativeGoalCommand) {
@@ -27,7 +27,7 @@ func TestAgyGoalCommandsAnsweredByAgentWorks(t *testing.T) {
 		command := llmtypes.NativeGoalCommand{SessionID: sid, Action: action}
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/", nil)
-		handled := api.prepareAgyGoalCommand(rec, req, sid, &command, true)
+		handled := api.prepareAgyGoalCommand(rec, req, sid, agyGoalProvider, &command, true)
 		var body struct {
 			Message string `json:"message"`
 		}
@@ -84,5 +84,39 @@ func TestAgyGoalCommandsAnsweredByAgentWorks(t *testing.T) {
 	}
 	if update := latest(); update == nil || update.Goal != nil {
 		t.Fatalf("after clear = %+v", update)
+	}
+}
+
+// #4626: a Claude Code chat's goal is kept here the same way: Stop records it stopped, and pause is answered.
+func TestClaudeGoalCommandsAnsweredByAgentWorks(t *testing.T) {
+	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"owner","can_create":true,"products":["work"]}]}`)
+	sid := "claude-goal-commands"
+	api, store := newDurableChatAPI(t, sid, "owner")
+	store.SetEventPreparer(api.prepareNativeGoalEvent)
+	run := func(action string) (bool, string, llmtypes.NativeGoalCommand) {
+		t.Helper()
+		command := llmtypes.NativeGoalCommand{SessionID: sid, Action: action}
+		rec := httptest.NewRecorder()
+		handled := api.prepareAgyGoalCommand(rec, httptest.NewRequest(http.MethodPost, "/", nil), sid, claudeGoalProvider, &command, true)
+		var body struct {
+			Message string `json:"message"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &body)
+		return handled, body.Message, command
+	}
+	working := llmtypes.NativeGoalUpdate{Provider: claudeGoalProvider, NativeSessionID: "claude-native", Goal: &llmtypes.NativeGoal{Objective: "ship the fix", Status: "active"}}
+	if err := api.projectNativeGoal(sid, working, "intent_set"); err != nil {
+		t.Fatal(err)
+	}
+	if handled, message, _ := run("pause"); !handled || message != "Claude Code can't pause a goal. Stop ends it; Start again picks it up later." {
+		t.Fatalf("pause: %t %q", handled, message)
+	}
+	api.pauseNativeGoalForStop(sid)
+	update, err := api.latestNativeGoal(context.Background(), sid)
+	if err != nil || update == nil || update.Goal == nil || update.Goal.Status != "paused" || update.Provider != claudeGoalProvider {
+		t.Fatalf("after Stop = %+v %v", update, err)
+	}
+	if handled, _, command := run("resume"); handled || command.Objective != "ship the fix" {
+		t.Fatalf("Start again: handled=%t objective=%q", handled, command.Objective)
 	}
 }

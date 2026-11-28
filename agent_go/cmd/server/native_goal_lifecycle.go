@@ -163,8 +163,8 @@ func (api *StreamingAPI) pauseNativeGoalForStop(sessionID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	previous, err := api.latestNativeGoal(ctx, sessionID)
-	if err == nil && previous != nil && previous.Goal != nil && previous.Provider == agyGoalProvider {
-		// agy has no pause: Stop ends the /goal turn and the goal waits for Start again.
+	if err == nil && previous != nil && previous.Goal != nil && turnGoalProvider(previous.Provider) {
+		// agy and Claude Code have no pause: Stop ends the /goal turn and the goal waits for Start again.
 		api.stopAgyGoal(sessionID, previous)
 		return
 	}

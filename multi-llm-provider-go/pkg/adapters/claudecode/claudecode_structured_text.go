@@ -125,7 +125,7 @@ func (t *claudeStructuredText) observe(ev claudeStreamEvent, emit func(llmtypes.
 		t.partial, t.emitted = true, true
 		emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeContent, Content: text, Metadata: map[string]any{llmtypes.ContentDeltaMetadataKey: true, llmtypes.AssistantBlockIDMetadataKey: id}})
 	case "assistant":
-		if ev.Message == nil {
+		if ev.Message == nil || claudeGoalNotice(ev) {
 			return
 		}
 		messageID := ev.Message.ID
@@ -268,6 +268,15 @@ var claudeGoalCheckFeedback = regexp.MustCompile(`^\[[^\]\n]+\]: `)
 // claudeStopHookFeedback returns what a blocking Stop hook told Claude when it
 // made the root turn carry on.
 func claudeStopHookFeedback(ev claudeStreamEvent) (string, bool) {
+	reason, ok := claudeSyntheticStopFeedback(ev)
+	if !ok || claudeGoalCheckFeedback.MatchString(reason) {
+		return "", false
+	}
+	return reason, true
+}
+
+// claudeSyntheticStopFeedback returns the text of a root "Stop hook feedback:" message Claude wrote itself.
+func claudeSyntheticStopFeedback(ev claudeStreamEvent) (string, bool) {
 	if ev.Type != "user" || !ev.IsSynthetic || ev.ParentToolUseID != "" || ev.Message == nil {
 		return "", false
 	}
@@ -278,11 +287,7 @@ func claudeStopHookFeedback(ev claudeStreamEvent) (string, bool) {
 		}
 	}
 	const prefix = "Stop hook feedback:\n"
-	reason, ok := strings.CutPrefix(text.String(), prefix)
-	if !ok || claudeGoalCheckFeedback.MatchString(reason) {
-		return "", false
-	}
-	return reason, true
+	return strings.CutPrefix(text.String(), prefix)
 }
 
 // claudeStopHookResult keeps each answer a Stop hook continued past, with a

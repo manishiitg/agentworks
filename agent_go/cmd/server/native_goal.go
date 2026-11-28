@@ -113,10 +113,10 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 	if command.Action != "show" && !api.nativeGoalChangeAllowed(w, r, sessionID, builder) {
 		return r, true
 	}
-	if provider == agyGoalProvider {
-		// Antigravity's /goal has no pause, resume or read: AgentWorks answers show/pause/clear itself and sends
-		// only set and resume (Start again) to agy as a /goal turn (native_goal_agy.go).
-		if api.prepareAgyGoalCommand(w, r, sessionID, &command, allowDirectControl) {
+	if turnGoalProvider(provider) {
+		// Antigravity's and Claude Code's /goal have no pause, resume or read: AgentWorks answers show/pause/clear
+		// itself and sends only set and resume (Start again) to the program as a /goal turn (native_goal_agy.go).
+		if api.prepareAgyGoalCommand(w, r, sessionID, provider, &command, allowDirectControl) {
 			return r, true
 		}
 		req.DisableLiveInputDelivery = true
@@ -205,7 +205,7 @@ func (api *StreamingAPI) answerNativeGoalCommand(w http.ResponseWriter, sessionI
 
 // Program support is a backend fact, shared by admission and composer metadata.
 func nativeGoalSupported(provider string) bool {
-	return provider == "codex-cli" || provider == agyGoalProvider
+	return provider == "codex-cli" || turnGoalProvider(provider)
 }
 func nativeGoalProgramCapabilities() map[string]bool {
 	out := make(map[string]bool, len(supportedLLMProviders))

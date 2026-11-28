@@ -396,6 +396,27 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 	}
 
 	owner := claudeInteractiveSessionIDFromOptions(opts)
+	// Claude Code's own /goal (claudecode_goal.go): a set or resume runs `/goal <objective>` as the turn; any
+	// other turn first clears a goal Claude still keeps from a stopped goal turn.
+	goalHome := llmtypes.CLIHomeEnvironment(opts)["HOME"]
+	var goal *claudeGoal
+	goalLocalCommand := idleCompact
+	switch {
+	case claudeGoalClearOnly(ctx):
+		prompt, goalLocalCommand = claudeGoalClearCommand, true
+	case !idleCompact:
+		var goalPrompt string
+		goal, goalPrompt, err = claudeGoalTurn(ctx, owner, resumeSessionID, opts)
+		if err != nil {
+			return nil, err
+		}
+		if goal != nil {
+			prompt, goalLocalCommand = goalPrompt, true
+			defer func() { goal.finish(ctx, err, sessionID, workingDir, goalHome) }()
+		} else if claudeNativeGoalLeft(owner, resumeSessionID, workingDir, goalHome) {
+			c.clearNativeGoal(ctx, owner, messages, opts)
+		}
+	}
 	environment := append(claudeStructuredProcessEnv(os.Environ(), opts, c.oauthToken), claudeSkillScopeEnv()...)
 	var cmd *exec.Cmd
 	var lines <-chan string
@@ -531,7 +552,7 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 			sess.process.Launched(c.logger, launchReason)
 			sess.logf("[CLAUDE_WARM] session=%s native=%s pid=%d action=process_restart reason=no_reusable_process", owner, sessionID, cmd.Process.Pid)
 		}
-		if !idleCompact && !adoptWake {
+		if !goalLocalCommand && !adoptWake {
 			prompt, rememberInstructions = claudeInstructionsPrompt(&sess.instructions, owner, sessionID, currentInstructions, prompt)
 		}
 		sess.mu.Lock()
@@ -903,6 +924,9 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 					}
 				}
 			case "user":
+				if reason, ok := claudeGoalCheckReason(ev); ok && goal != nil {
+					goal.check(reason)
+				}
 				// The completion side of a tool call's lifecycle: Claude's
 				// structured stream reports a finished tool call as a
 				// subsequent "user"-role event carrying a tool_result block

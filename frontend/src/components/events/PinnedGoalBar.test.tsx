@@ -83,3 +83,18 @@ it('shows Stop and Start again for an Antigravity goal', async () => {
     await act(async () => root.unmount())
   }
 })
+
+// #4626: Claude Code's goal works the same way, and its bar shows Claude's latest unmet check while it works.
+it('shows Stop and the latest check for a Claude Code goal', async () => {
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  const claudeGoal = { id: '1', type: 'native_goal_updated', data: { update: { provider: 'claude-code', native_session_id: 'claude_sess', goal: { objective: 'ship the fix', status: 'active', checks: 1, last_check: 'The tests have not been run yet.' } } } } as PollingEvent
+  try {
+    await act(async () => root.render(<PinnedGoalBar events={[claudeGoal]} onCommand={vi.fn()} />))
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('Working')
+    expect([...host.querySelectorAll('button')].map(button => button.textContent)).toEqual(['ship the fix', 'Stop', 'Clear'])
+    expect(host.textContent).toContain('Not done yet: The tests have not been run yet.')
+  } finally {
+    await act(async () => root.unmount())
+  }
+})
