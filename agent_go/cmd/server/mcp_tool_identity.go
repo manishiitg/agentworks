@@ -47,21 +47,62 @@ func (api *StreamingAPI) mcpToolUserID(ctx context.Context) (string, error) {
 	return userID, nil
 }
 
+func normalizeVaultCatalogKey(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 // Connection status comes from the current Vault inventory, never a private store.
 func vaultServerSetFor(ctx context.Context, person string) map[string]struct{} {
 	rows, err := vaultServersFor(ctx, person)
 	if err != nil || len(rows) == 0 {
 		return nil
 	}
-	connected := make(map[string]struct{}, len(rows))
+	connected := make(map[string]struct{}, len(rows)*4)
 	for _, row := range rows {
-		connected[vaultServerName(row.ID)] = struct{}{}
+		name := vaultServerName(row.ID)
+		connected[name] = struct{}{}
+		connected["id:"+strings.ToLower(name)] = struct{}{}
+		if key := normalizeVaultCatalogKey(row.Provider); key != "" {
+			connected["provider:"+key] = struct{}{}
+		}
+		if label := strings.ToLower(strings.TrimSpace(row.Label)); label != "" {
+			connected["label:"+label] = struct{}{}
+		}
 	}
 	return connected
 }
 
-func mcpToolStatusFromSet(name string, connected map[string]struct{}) ToolStatus {
+func mcpServerInVaultSet(name string, connected map[string]struct{}) bool {
+	if len(connected) == 0 {
+		return false
+	}
 	if _, ok := connected[name]; ok {
+		return true
+	}
+	if _, ok := connected["id:"+strings.ToLower(vaultSelectionName(name))]; ok {
+		return true
+	}
+	if key := normalizeVaultCatalogKey(name); key != "" {
+		if _, ok := connected["provider:"+key]; ok {
+			return true
+		}
+	}
+	if label := strings.ToLower(strings.TrimSpace(name)); label != "" {
+		if _, ok := connected["label:"+label]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func mcpToolStatusFromSet(name string, connected map[string]struct{}) ToolStatus {
+	if mcpServerInVaultSet(name, connected) {
 		return ToolStatus{Name: name, Server: name, Status: "not_loaded", Connection: connectionConnected}
 	}
 	return ToolStatus{Name: name, Server: name, Status: "not_connected", Connection: connectionAvailable}

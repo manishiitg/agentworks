@@ -43,7 +43,7 @@ type personalVault struct {
 	} `json:"connections"`
 }
 
-func personalVaults(ctx context.Context, person string) (personalVaultList, error) {
+func allVaultsForPerson(ctx context.Context, person string) (personalVaultList, error) {
 	var list personalVaultList
 	data, err := vaultPersonRequest(ctx, person, http.MethodGet, "/api/vaults", nil)
 	if err != nil {
@@ -51,6 +51,19 @@ func personalVaults(ctx context.Context, person string) (personalVaultList, erro
 	}
 	if err := json.Unmarshal(data, &list); err != nil {
 		return list, errors.New("Your vaults could not be read.")
+	}
+	for _, v := range list.Vaults {
+		for _, c := range v.Connections {
+			rememberVaultConnectionProvider(c.ID, c.Provider)
+		}
+	}
+	return list, nil
+}
+
+func personalVaults(ctx context.Context, person string) (personalVaultList, error) {
+	list, err := allVaultsForPerson(ctx, person)
+	if err != nil {
+		return list, err
 	}
 	// A server Crew's vault belongs to that Crew, not to any one person's accounts: it is shown and used in the Crew
 	// only (crew_vault.go), never in someone's own lists, lookups or sign-in status.
@@ -142,6 +155,15 @@ func projectVaultAppInUse(ctx context.Context, servers []string, chosenOnly bool
 // vaultConnectionProviders caches each connection's app (provider): it never changes for a connection ID.
 var vaultConnectionProviders sync.Map
 
+func rememberVaultConnectionProvider(id, provider string) {
+	id = strings.TrimSpace(id)
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if id == "" || provider == "" {
+		return
+	}
+	vaultConnectionProviders.Store(id, provider)
+}
+
 func vaultConnectionProvider(ctx context.Context, id string) string {
 	if v, ok := vaultConnectionProviders.Load(id); ok {
 		return v.(string)
@@ -151,7 +173,7 @@ func vaultConnectionProvider(ctx context.Context, id string) string {
 		return ""
 	}
 	provider := strings.ToLower(strings.TrimSpace(c.Provider))
-	vaultConnectionProviders.Store(id, provider)
+	rememberVaultConnectionProvider(id, provider)
 	return provider
 }
 
@@ -292,11 +314,17 @@ func (api *StreamingAPI) personalSlackAccounts(r *http.Request, workspace string
 			if id := api.vaultSlackIdentityCached(ctx, c.ID, true); !id.empty() {
 				out.TeamName, out.TeamDomain, out.UserName = id.TeamName, id.TeamDomain, id.UserName
 			}
+			if problem := mcpConnectProblemFor(c.ID); problem != "" {
+				out.Problem = problem
+			}
 		} else {
 			if outcome, ok := vaultSignInOutcomes.Load(c.ID); ok {
 				if o := outcome.(vaultSignInOutcome); !o.ok {
 					out.Problem = o.reason
 				}
+			}
+			if out.Problem == "" {
+				out.Problem = mcpConnectProblemFor(c.ID)
 			}
 		}
 		return out

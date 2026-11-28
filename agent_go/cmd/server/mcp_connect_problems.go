@@ -22,12 +22,27 @@ func init() {
 	mcpclient.OnConnectResult = recordMCPConnectResult
 }
 
+func mcpConnectProblemKey(serverName string) string {
+	name := strings.TrimSpace(serverName)
+	if name == "" {
+		return ""
+	}
+	return vaultSelectionName(name)
+}
+
 func recordMCPConnectResult(serverName string, err error) {
-	if err == nil {
-		mcpConnectProblems.Delete(serverName)
+	key := mcpConnectProblemKey(serverName)
+	if key == "" {
 		return
 	}
-	mcpConnectProblems.Store(serverName, mcpConnectProblem{Reason: plainMCPConnectReason(err.Error()), At: time.Now().UTC()})
+	if err == nil {
+		mcpConnectProblems.Delete(key)
+		if key != serverName {
+			mcpConnectProblems.Delete(serverName)
+		}
+		return
+	}
+	mcpConnectProblems.Store(key, mcpConnectProblem{Reason: plainMCPConnectReason(err.Error()), At: time.Now().UTC()})
 }
 
 // plainMCPConnectReason keeps what the service said and drops the transport wording around it.
@@ -47,13 +62,32 @@ func plainMCPConnectReason(message string) string {
 	return message
 }
 
-// mcpConnectProblemFor finds the latest problem of a person's saved connection by its id. The agent server name
-// ends with "__<id>" (the owner part before it varies with the session).
+func mcpConnectProblemMatches(storedKey, connectionID string) bool {
+	id := strings.TrimSpace(connectionID)
+	if id == "" {
+		return false
+	}
+	base := vaultSelectionName(strings.TrimSpace(storedKey))
+	if base == "" {
+		return false
+	}
+	if base == id || base == vaultServerName(id) || strings.HasSuffix(base, "__"+id) {
+		return true
+	}
+	return strings.HasPrefix(base, serverVaultPrefix) && strings.HasSuffix(base, "_"+id)
+}
+
+// mcpConnectProblemFor finds the latest problem of a person's saved connection by its id.
+// It matches Vault runtime names ("vault_<id>" / "vault_<id>__scope_<hex>"), server-Vault
+// names ("srv_<server>_<id>"), and legacy "<owner>__<id>" names.
 func mcpConnectProblemFor(connectionID string) string {
-	suffix := "__" + strings.TrimSpace(connectionID)
+	id := strings.TrimSpace(connectionID)
+	if id == "" {
+		return ""
+	}
 	var found mcpConnectProblem
 	mcpConnectProblems.Range(func(key, value any) bool {
-		if name, _ := key.(string); strings.HasSuffix(name, suffix) {
+		if name, _ := key.(string); mcpConnectProblemMatches(name, id) {
 			if problem := value.(mcpConnectProblem); problem.At.After(found.At) {
 				found = problem
 			}
