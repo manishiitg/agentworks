@@ -37,8 +37,8 @@ func (api *StreamingAPI) crewTeamActivityAgentForSession(ctx context.Context, ca
 		}
 	} else {
 		tab := strings.TrimPrefix(key, localProject+codeChatSideMarker)
-		if key == localProject || key == crewOwnerMainChatKey(localProject) {
-			tab = macMainTab
+		if key == localProject || key == crewOwnerDefaultAgentKey(localProject) {
+			tab = macDefaultTab
 		}
 		var result struct {
 			People []crewTeamAgentsPerson `json:"people"`

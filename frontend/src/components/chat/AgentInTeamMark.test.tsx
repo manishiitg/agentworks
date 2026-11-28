@@ -81,7 +81,7 @@ describe('AgentHeaderLine sharing pill', () => {
     const privateRow: CrewAgentRow = {
       tabId: 't1',
       name: 'Scratchpad',
-      main: false,
+      isDefault: false,
       info: { name: 'Scratchpad', sharing: { projectId: 'crew', agentKey: 'scratch' } },
     }
     const forkTo = vi.fn()
@@ -92,7 +92,7 @@ describe('AgentHeaderLine sharing pill', () => {
     const sharedRow: CrewAgentRow = {
       tabId: 't2',
       name: 'Design',
-      main: false,
+      isDefault: false,
       inTeam: true,
       teamShare: { inTeam: true, audience: 'whole_team', chatShare: 'agent' },
       actions: { forkTo, fork, rename, setSidebarHidden },

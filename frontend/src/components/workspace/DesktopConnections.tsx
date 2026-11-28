@@ -649,7 +649,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
         if (current) result = await listProjectSideChats('work', projectId, true, reload > 0)
         else {
           const base = connectionId === 'local' ? getLocalApiBaseUrl() : `${getDesktopApiBaseUrl()}/api/connections/${connectionId}`
-          const response = await fetch(`${base}/api/agent-profiles/work/side-chats?project_id=${encodeURIComponent(projectId)}&with_main=1`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` }, signal: AbortSignal.timeout(15000) })
+          const response = await fetch(`${base}/api/agent-profiles/work/side-chats?project_id=${encodeURIComponent(projectId)}&with_default=1`, { headers: { Authorization: `Bearer ${getAuthToken() || ''}` }, signal: AbortSignal.timeout(15000) })
           if (!response.ok) throw new Error('Chats unavailable')
           result = await response.json()
         }
@@ -695,7 +695,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     const teamAgent = teamAgentForTab(team, chat.conversation_key, !!chat.is_default_agent, chat.can_write !== false)
     const share = chat.can_write !== false ? agentTeamShareFromRow(teamAgent) : undefined
     return <ProjectAgentRow key={chat.conversation_key} projectId={projectId} sessionId={chat.session_id} session={session} lastMessageAt={chat.last_message_at} local={connectionId === getRawActiveWorkspaceId()}
-      activity={teamAgent?.activity} status={teamAgent?.status_label} onOpen={() => open(chat)} name={chat.name || (chat.is_default_agent ? 'Main' : 'Agent')}
+      activity={teamAgent?.activity} status={teamAgent?.status_label} onOpen={() => open(chat)} name={chat.name || 'Agent'}
       person={chat.can_write === false ? chat.tab_owner_name || 'Teammate' : undefined} inTeam={share ? { on: true, share } : undefined}
       setup={setupOf(chat) || undefined} place={chat.chat_location === 'mac' ? 'mac' : undefined} provider={chat.provider} />
   }

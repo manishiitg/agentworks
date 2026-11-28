@@ -45,7 +45,7 @@ func (api *StreamingAPI) externalTerminalStatus(w http.ResponseWriter, r *http.R
 	pane := externalArg(args, "action") == "team_pane"
 	if t.On && row.InTeam {
 		online := 0
-		people := teamAgentsByPersonWithMain(r.Context(), t, claims.UserID, crewOwnerMainChatKey(t.ProjectID))
+		people := teamAgentsByPersonWithDefault(r.Context(), t, claims.UserID, crewOwnerDefaultAgentKey(t.ProjectID))
 		reach := crewTeamReachableFrom(r.Context(), t, claims.UserID, people)
 		for _, a := range reach {
 			if a.Online {

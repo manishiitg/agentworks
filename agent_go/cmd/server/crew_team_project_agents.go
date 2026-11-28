@@ -214,7 +214,7 @@ func crewTeamOfAgent(project, id string) (crewTeam, bool) {
 }
 
 // crewTeamProjectPeople are the online projects of a Team in the Team's agent list, one entry per person who made agents
-// there: the main owner's Main and named agents, and each co-owner's and Team person's named agents (owner, 26 Nov). The
+// there: the main owner's default agent and named agents, and each co-owner's and Team person's named agents (owner, 26 Nov). The
 // main owner's entry is always there so the project shows even before anyone makes an agent.
 func crewTeamProjectPeople(ctx context.Context, t crewTeam, caller string) []crewTeamAgentsPerson {
 	out := []crewTeamAgentsPerson{}
@@ -249,7 +249,7 @@ func crewTeamProjectPeople(ctx context.Context, t crewTeam, caller string) []cre
 }
 
 // crewTeamProjectAgents are the named agents maker has in the online project (their tabs there, as its agent list shows
-// them), plus Main for the project's main owner. Unnamed side chats, function agents and hidden tabs are not agents.
+// them), plus the default agent of the project's main owner. Unnamed side chats, function agents and hidden tabs are not agents.
 func crewTeamProjectAgents(ctx context.Context, t crewTeam, project, maker string) []crewTeamAgent {
 	out := []crewTeamAgent{}
 	owner := ownerOfCrewProjectID(project)
@@ -266,7 +266,7 @@ func crewTeamProjectAgents(ctx context.Context, t crewTeam, project, maker strin
 		return out
 	}
 	member := crewTeamProjectMakerID(project, maker)
-	mainKey := crewOwnerMainChatKey(project)
+	defaultKey := crewOwnerDefaultAgentKey(project)
 	pending := map[string]time.Time{}
 	for _, request := range virtualtools.GetHumanFeedbackStore().ListPending(time.Now()) {
 		if previous, ok := pending[request.SessionID]; !ok || request.CreatedAt.Before(previous) {
@@ -287,12 +287,12 @@ func crewTeamProjectAgents(ctx context.Context, t crewTeam, project, maker strin
 		}
 		identity := doc.Agents[entryKey]
 		name := strings.TrimSpace(identity.Name)
-		if record.ConversationKey == mainKey {
+		if record.ConversationKey == defaultKey {
 			if maker != owner {
-				continue // a co-owner's or User's own Main chat is not one of the project's agents
+				continue // a co-owner's or User's own default agent is not one of the project's agents
 			}
-			name, tab = defaultAgentName(identity.Name, identity.GeneratedName), macMainTab
-		} else if name == "" || identity.GeneratedName || strings.EqualFold(name, "Main") {
+			name, tab = defaultAgentName(identity.Name, identity.GeneratedName), macDefaultTab
+		} else if name == "" || identity.GeneratedName {
 			continue // an unnamed chat is not one of the project's agents
 		}
 		activity, label := "", ""

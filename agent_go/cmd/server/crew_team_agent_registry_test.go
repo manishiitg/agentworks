@@ -20,12 +20,12 @@ import (
 
 // PLAT-746-820: a Main agent had different addresses on Mac and web, while
 // agents owned by different members could have the same native tab name.
-func TestCrewTeamAgentIdentitySurvivesMainKeyChangeAndSeparatesOwners(t *testing.T) {
+func TestCrewTeamAgentIdentitySurvivesDefaultKeyChangeAndSeparatesOwners(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	team := crewTeam{ProjectID: "identity-room", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}}
 	people := []crewTeamAgentsPerson{
-		{UserID: "owner", Agents: []crewTeamAgent{{Tab: macMainTab, ChatKey: team.ProjectID}}},
-		{UserID: "member", Agents: []crewTeamAgent{{Tab: macMainTab, ChatKey: "member-main"}}},
+		{UserID: "owner", Agents: []crewTeamAgent{{Tab: macDefaultTab, ChatKey: team.ProjectID}}},
+		{UserID: "member", Agents: []crewTeamAgent{{Tab: macDefaultTab, ChatKey: "member-main"}}},
 	}
 	if err := assignCrewTeamAgentIDs(team, people); err != nil {
 		t.Fatal(err)
@@ -65,7 +65,7 @@ func TestCrewTeamAgentIdentitySurvivesMainKeyChangeAndSeparatesOwners(t *testing
 	if err != nil || savedLive.Agents[ownerID].Rule.ChatShare != crewChatShareAgent {
 		t.Fatal("discovery replaced saved Hidden choice", err)
 	}
-	people[0].Agents[0] = crewTeamAgent{Tab: macMainTab, ChatKey: crewOwnerDefaultChatKey(team.ProjectID, team.OwnerID), Place: "server"}
+	people[0].Agents[0] = crewTeamAgent{Tab: macDefaultTab, ChatKey: crewOwnerDefaultChatKey(team.ProjectID, team.OwnerID), Place: "server"}
 	if err := assignCrewTeamAgentIDs(team, people); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestCrewTeamAgentIdentitySurvivesMainKeyChangeAndSeparatesOwners(t *testing
 	if err := fsutil.WriteJSONAtomic(filepath.Join(dir, "team.json"), current, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := assignCrewTeamAgentIDsWithMain(current, people, crewOwnerMainChatKey(team.ProjectID)); err != nil {
+	if err := assignCrewTeamAgentIDsWithDefault(current, people, crewOwnerDefaultAgentKey(team.ProjectID)); err != nil {
 		t.Fatal(err)
 	}
 	unchanged, err := readCrewTeam(team.ProjectID)
@@ -145,11 +145,11 @@ func crewTeamAgentFixtures(project string, choices map[string]map[string]bool) m
 		for key, inTeam := range tabs {
 			tab := strings.TrimPrefix(key, project+codeChatSideMarker)
 			if key == crewOwnerDefaultChatKey(project, person) {
-				tab = macMainTab
+				tab = macDefaultTab
 			}
 			id := crewTeamAgentIDPrefix + uuid.NewSHA1(uuid.NameSpaceOID, []byte(project+"/"+person+"/"+tab)).String()
 			chat := key
-			if tab == macMainTab {
+			if tab == macDefaultTab {
 				chat = crewOwnerDefaultChatKey(project, person)
 			} else if !strings.Contains(key, codeChatSideMarker) {
 				chat = project + codeChatSideMarker + tab
@@ -187,7 +187,7 @@ func writeCrewTeamAgentFixture(team crewTeam) error {
 }
 
 // PLAT-746-820: imported Main was named correctly but allocated a second Team ID.
-func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing.T) {
+func TestCrewTeamImportedDefaultAgentKeepsIdentityAndRejectsDuplicateBindings(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	f, _ := newExternalCrewCommandFixture(t)
@@ -200,11 +200,11 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	}
 	team := crewTeam{RegistryVersion: 1, ProjectID: "team", OwnerID: "owner", On: true}
 	discovered := memberTeamAgents(ctx, team, "owner", "owner")
-	if len(discovered) != 1 || discovered[0].Tab != macMainTab || discovered[0].ChatKey != key {
+	if len(discovered) != 1 || discovered[0].Tab != macDefaultTab || discovered[0].ChatKey != key {
 		t.Fatalf("manifest Main not used for identity: %+v", discovered)
 	}
 	mainID := crewTeamAgentIDPrefix + uuid.NewString()
-	main := crewTeamRegisteredAgent{ID: mainID, OwnerID: "owner", Tab: macMainTab, ChatKey: key, Place: "server", InTeam: false, Rule: crewTeamAgentRule{ChatShare: crewChatShareAgent}}
+	main := crewTeamRegisteredAgent{ID: mainID, OwnerID: "owner", Tab: macDefaultTab, ChatKey: key, Place: "server", InTeam: false, Rule: crewTeamAgentRule{ChatShare: crewChatShareAgent}}
 	oldBinding := main
 	oldBinding.Tab = "root-example"
 	team.Agents = map[string]crewTeamRegisteredAgent{mainID: oldBinding}
@@ -233,7 +233,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.Agents[mainID].Tab != macMainTab {
+	if saved.Agents[mainID].Tab != macDefaultTab {
 		t.Fatal("matching the chat must update its tab without replacing its ID")
 	}
 	// A member's default Main and two root chats remain three independent agents.
@@ -256,7 +256,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	}
 	for _, row := range memberRows {
 		wantMain := row.ChatKey == memberKeys[0]
-		if (row.Tab == macMainTab) != wantMain || crewTeamMainAgent(saved, "member", row.ChatKey) {
+		if (row.Tab == macDefaultTab) != wantMain || crewTeamDefaultAgent(saved, "member", row.ChatKey) {
 			t.Fatalf("member root chat received Main role: %+v", row)
 		}
 	}
@@ -276,7 +276,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	}
 	// A conflicting discovery row must not erase unrelated people or change
 	// either binding. Exercise the real bySource/byChat collision from the incident.
-	conflict := crewTeamAgent{Tab: macMainTab, ChatKey: memberKeys[1]}
+	conflict := crewTeamAgent{Tab: macDefaultTab, ChatKey: memberKeys[1]}
 	people[1].Agents = append([]crewTeamAgent{conflict}, memberRows...)
 	if err := assignCrewTeamAgentIDs(registered, people); err != nil {
 		t.Fatal(err)
@@ -315,7 +315,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 		t.Fatal(err)
 	}
 	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","default_agent_key":"`+secondKey+`"}`)
-	if crewTeamOwnerMainKey(ctx, afterConflict) != secondKey || crewTeamMainAgent(afterConflict, "owner", key) || !crewTeamMainAgent(afterConflict, "owner", secondKey) {
+	if crewTeamOwnerDefaultKey(ctx, afterConflict) != secondKey || crewTeamDefaultAgent(afterConflict, "owner", key) || !crewTeamDefaultAgent(afterConflict, "owner", secondKey) {
 		t.Fatal("Main did not follow its manifest pointer")
 	}
 	rows, err := defaultProductConversationRegistryStore().projectChats(ctx, "owner", crewProfileID, "team")
@@ -332,7 +332,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	}
 	// B arrives first, without A in this discovery round: role movement cannot
 	// depend on map order or on the old chat still being discoverable.
-	moved := []crewTeamAgentsPerson{{UserID: "owner", Agents: []crewTeamAgent{{Tab: macMainTab, ChatKey: secondKey, Place: "server"}}}}
+	moved := []crewTeamAgentsPerson{{UserID: "owner", Agents: []crewTeamAgent{{Tab: macDefaultTab, ChatKey: secondKey, Place: "server"}}}}
 	if err := assignCrewTeamAgentIDs(afterConflict, moved); err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +343,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	old.Tab, second.Tab = "root-example", macMainTab
+	old.Tab, second.Tab = "root-example", macDefaultTab
 	if !reflect.DeepEqual(rebound.Agents[mainID], old) || !reflect.DeepEqual(rebound.Agents[secondID], second) {
 		t.Fatalf("Main movement changed more than role: %+v", rebound.Agents)
 	}
@@ -389,7 +389,7 @@ func TestCrewTeamImportedMainKeepsIdentityAndRejectsDuplicateBindings(t *testing
 
 // PLAT-746-901: opening Team must not expand schedules/functions/webhooks just
 // to identify Main. Invalid unrelated action files previously hid Main too.
-func TestCrewTeamMainLookupSkipsRuntimeActions(t *testing.T) {
+func TestCrewTeamDefaultAgentLookupSkipsRuntimeActions(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	f, _ := newExternalCrewCommandFixture(t)
@@ -404,20 +404,20 @@ func TestCrewTeamMainLookupSkipsRuntimeActions(t *testing.T) {
 	if err := store.writeDocument(ctx, productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, key): record}}); err != nil {
 		t.Fatal(err)
 	}
-	main := crewOwnerMainChatKey("team")
+	main := crewOwnerDefaultAgentKey("team")
 	if main != key {
 		t.Fatalf("unrelated runtime actions blocked the saved Main: %q", main)
 	}
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true}
-	rows := memberTeamAgentsWithMain(ctx, team, "owner", "owner", main)
-	if len(rows) != 1 || rows[0].ChatKey != key || rows[0].Tab != macMainTab {
+	rows := memberTeamAgentsWithDefault(ctx, team, "owner", "owner", main)
+	if len(rows) != 1 || rows[0].ChatKey != key || rows[0].Tab != macDefaultTab {
 		t.Fatalf("Team discovery did not use the resolved Main: %+v", rows)
 	}
 	// Keep validating the owner registry rather than trusting the manifest alone.
 	if err := store.writeDocument(ctx, productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{}}); err != nil {
 		t.Fatal(err)
 	}
-	if crewOwnerMainChatKey("team") != "" {
+	if crewOwnerDefaultAgentKey("team") != "" {
 		t.Fatal("an unregistered Main must stay unavailable")
 	}
 }
@@ -541,7 +541,7 @@ func TestPruneDeletedCrewMacAgentsKeepsListedAndOthers(t *testing.T) {
 	if err := writeCrewTeamAgentFixture(team); err != nil {
 		t.Fatal(err)
 	}
-	pruneDeletedCrewMacAgents("team", "member", map[string]bool{macMainTab: true, "kept": true})
+	pruneDeletedCrewMacAgents("team", "member", map[string]bool{macDefaultTab: true, "kept": true})
 	saved, err := readCrewTeam("team")
 	if err != nil {
 		t.Fatal(err)

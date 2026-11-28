@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { fillMainDraft } from '../../utils/agentPurposeDraft'
+import { fillLastAgentDraft } from '../../utils/agentPurposeDraft'
 import { GitFork } from 'lucide-react'
 import { getAuthToken, getDesktopApiBaseUrl } from '../../services/api'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
@@ -45,7 +45,7 @@ export function ForkTeammateAgent({target,agent,name,compact=false,label='Fork t
  useEffect(()=>{if(!open)return;const close=(e:KeyboardEvent)=>{if(e.key==='Escape')setOpen(false)};document.addEventListener('keydown',close);return()=>document.removeEventListener('keydown',close)},[open,busy])
  function requestCopy(){
   const prompt=`Request a copy of ${name} (agent ${agent}, Team ${target.project}) from its maker. Ask the maker to use the existing Send a copy to a teammate flow from their own account; I will accept their offer. Do not change chat visibility or export a Hidden chat.`
-  if(fillMainDraft('',prompt))setOpen(false)
+  if(fillLastAgentDraft('',prompt))setOpen(false)
   else useChatStore.getState().addToast('Open one of your own agents first, then ask it to request this copy.','info')
  }
  async function fork(){

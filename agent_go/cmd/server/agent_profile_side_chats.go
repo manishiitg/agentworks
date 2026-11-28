@@ -50,7 +50,7 @@ type AgentProfileSideChat struct {
 	HasInstructions bool `json:"has_instructions,omitempty"`
 	// ForkedFrom is the conversation key of the agent this one was forked from (#3288); the left menu nests it there.
 	ForkedFrom string `json:"forked_from,omitempty"`
-	// IsDefaultAgent marks the caller's own main chat, listed only when asked with with_main=1 (for its purpose).
+	// IsDefaultAgent marks the caller's own main chat, listed only when asked with with_default=1 (for its purpose).
 	IsDefaultAgent bool `json:"is_default_agent,omitempty"`
 	// OnYourMac marks the caller's own Mac agent, watch only on the website. Their Mac app already has it as their own
 	// tab, so it must not list it again as a teammate's.
@@ -222,7 +222,7 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 	timing.identities, step = time.Since(step), time.Now()
 	out := []AgentProfileSideChat{}
 	var main *AgentProfileSideChat
-	// Every person's default chat in a Crew is their Main (owner, 5 Nov), named and described on its own chat like any
+	// Every person's default chat in a Crew is their default agent (owner, 5 Nov), named and described on its own chat like any
 	// agent (owner, 25 Nov, #4046: a project has no description). The left menu's person headings tell two people's
 	// Mains apart.
 	joinDefault := crewTeamJoinAgentDefaults(userID, projectID, slot.binding.WorkspacePath)
@@ -234,8 +234,8 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		}
 		defaultChat := record.IsDefaultAgent || record.ConversationKey == crewOwnerDefaultChatKey(projectID, tab.OwnerID)
 		ownMain := tab.OwnerID == userID && defaultChat
-		if ownMain && main == nil && r.URL.Query().Get("with_main") == "1" {
-			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: firstNonEmptyTrimmed(tab.Identity.Name, "Main"), Purpose: tab.Identity.Purpose, Examples: tab.Identity.Examples, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: !tab.Identity.Unpinned, Position: tab.Identity.Position, IsDefaultAgent: true, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
+		if ownMain && main == nil && r.URL.Query().Get("with_default") == "1" {
+			main = &AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: defaultAgentName(tab.Identity.Name, tab.Identity.GeneratedName), Purpose: tab.Identity.Purpose, Examples: tab.Identity.Examples, TabOwnerID: tab.OwnerID, CanWrite: true, Pinned: !tab.Identity.Unpinned, Position: tab.Identity.Position, IsDefaultAgent: true, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
 			main.TeamNewInTeam = joinDefault(record)
 			if runtime, err := effectiveProfileChatModel(slot.profile, slot.binding, record, tab.Identity); err == nil {
 				main.Provider, main.ModelID = runtime.Provider, runtime.ModelID
@@ -250,10 +250,10 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 		}
 		id := strings.TrimPrefix(record.ConversationKey, projectID+codeChatSideMarker)
 		name := firstNonEmptyTrimmed(tab.Identity.Name, "Chat "+id)
-		// Another person's default chat is their Main, never its key ("Chat root-…", owner 5 Nov), with its own purpose.
+		// Another person's default agent by its own name, never its key ("Chat root-…", owner 5 Nov), with its own purpose.
 		otherDefault := tab.OwnerID != userID && (defaultChat || strings.HasPrefix(id, "root-"))
 		if otherDefault {
-			name = "Main"
+			name = defaultAgentName(tab.Identity.Name, tab.Identity.GeneratedName)
 		}
 		row := AgentProfileSideChat{ConversationKey: record.ConversationKey, ConversationID: record.ConversationID, SessionID: record.SessionID, Name: name, Position: tab.Identity.Position, Pinned: !tab.Identity.Unpinned, TabOwnerID: tab.OwnerID, TabOwnerName: crewOwnerDisplayName(tab.OwnerID), CanWrite: tab.OwnerID == userID, Purpose: tab.Identity.Purpose, ForkedFrom: tab.Identity.ForkedFrom, HasInstructions: tab.OwnerID == userID && strings.TrimSpace(tab.Identity.Instructions) != ""}
 		if tab.OwnerID == userID {
@@ -276,7 +276,7 @@ func (api *StreamingAPI) sideChatsTimed(r *http.Request, userID string, slot pro
 	timing.rows, step = time.Since(step), time.Now()
 	out = append(out, scheduleOwnChatRows(r.Context(), userID, slot.profile.ID, projectID, slot.binding.WorkspacePath, mine)...)
 	timing.schedules = time.Since(step)
-	// Main is placed, pinned and hidden like any agent (owner, 25 Nov, #4046: Main is not special).
+	// The default agent is placed, pinned and hidden like any agent (owner, 25 Nov, #4046: the default agent is not special).
 	if main != nil {
 		out = append(out, *main)
 	}

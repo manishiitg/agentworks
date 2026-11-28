@@ -17,21 +17,21 @@ import (
 // Every Team agent has one server-issued ID. Visibility and rules live on that
 // agent's registry row. Native chat keys are resolved only at transport boundaries.
 
-// Main is an optional role on the owner's saved physical agent. A bare
+// The default agent is an optional role on the owner's saved physical agent. A bare
 // project address or a deterministic member name must not fabricate that role.
-func crewTeamMainAgent(t crewTeam, person, key string) bool {
+func crewTeamDefaultAgent(t crewTeam, person, key string) bool {
 	if person != t.OwnerID {
 		return false
 	}
-	return crewTeamMainAgentWithKey(t, person, key, crewOwnerMainChatKey(t.ProjectID))
+	return crewTeamDefaultAgentWithKey(t, person, key, crewOwnerDefaultAgentKey(t.ProjectID))
 }
 
-// The request resolves Main once; comparisons inside row loops perform no reads.
-func crewTeamMainAgentWithKey(t crewTeam, person, key, main string) bool {
+// The request resolves the default agent once; comparisons inside row loops perform no reads.
+func crewTeamDefaultAgentWithKey(t crewTeam, person, key, main string) bool {
 	if person != t.OwnerID {
 		return false
 	}
-	return main != "" && (key == main || key == macMainTab || key == t.ProjectID)
+	return main != "" && (key == main || key == macDefaultTab || key == t.ProjectID)
 }
 
 // agentInTeam uses the saved choice, then the person's join default for a new agent.
@@ -83,9 +83,9 @@ func crewTeamAgentOnMac(t crewTeam, person string) bool {
 	return onMac
 }
 
-// crewTeamOwnerMainKey is the chat key the website uses for the Crew owner's Main.
-func crewTeamOwnerMainKey(ctx context.Context, t crewTeam) string {
-	return crewOwnerMainChatKey(t.ProjectID)
+// crewTeamOwnerDefaultKey is the chat key the website uses for the Crew owner's default agent.
+func crewTeamOwnerDefaultKey(ctx context.Context, t crewTeam) string {
+	return crewOwnerDefaultAgentKey(t.ProjectID)
 }
 
 // crewTeamAgentKey resolves an internal native binding to its registry ID.
@@ -100,8 +100,8 @@ func crewTeamAgentKey(ctx context.Context, t crewTeam, person, key string) strin
 	if !crewTeamAgentOnMac(t, person) {
 		return key
 	}
-	if key == t.ProjectID || person == t.OwnerID && key == crewTeamOwnerMainKey(ctx, t) {
-		return macMainTab
+	if key == t.ProjectID || person == t.OwnerID && key == crewTeamOwnerDefaultKey(ctx, t) {
+		return macDefaultTab
 	}
 	rest, ok := strings.CutPrefix(key, t.ProjectID+codeChatSideMarker)
 	if !ok {
@@ -110,8 +110,8 @@ func crewTeamAgentKey(ctx context.Context, t crewTeam, person, key string) strin
 	if person != t.OwnerID {
 		rest = strings.TrimPrefix(rest, "mac-"+sanitizeUserIDForPath(person)+"-") // the Team tab's row key for it
 	}
-	if rest == "mac-main" || rest == macMainTab {
-		return macMainTab
+	if rest == "mac-main" || rest == macDefaultTab {
+		return macDefaultTab
 	}
 	if crewMacTabID(rest) {
 		return rest
@@ -154,12 +154,12 @@ func crewTeamOwnAgent(ctx context.Context, project, person, key string) (crewTea
 		return t, "", errCrewTeamAgentNotYours
 	}
 	rows := crewTeamOwnRows(ctx, t, person)
-	main := crewTeamMainAgent(t, person, key)
+	main := crewTeamDefaultAgent(t, person, key)
 	for _, row := range rows {
 		if !crewTeamSourceRowAdmits(t, person, t.Agents[row.ID]) {
 			continue
 		}
-		if row.ID == key || row.ChatKey == key || row.Tab == key || main && row.Tab == macMainTab {
+		if row.ID == key || row.ChatKey == key || row.Tab == key || main && row.Tab == macDefaultTab {
 			return t, row.ID, nil
 		}
 	}

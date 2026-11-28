@@ -97,13 +97,13 @@ it('shows sharing marks only on shared agents and leaves private agents clean', 
  try {
   await act(async () => root.render(<SidebarCrewAgents projectId="crew" />))
   // Private and chat-hidden agents stay clean in the left menu (owner, 26 Nov);
-  // only shared agents whose chat is visible reveal a micro pill on hover.
+  // shared agents whose chat is visible always show the sharing icon (owner, 28 Nov).
   expect(host.querySelector('[aria-current="page"] [aria-label="Only you"]')).toBeNull()
   expect(host.querySelector('[aria-label*="Agent only"]')).toBeNull()
   const chosenMark = host.querySelector('[aria-label="Shared with Ana, Sam · Full chat"]')
   expect(chosenMark).not.toBeNull()
-  expect(chosenMark?.className).toContain('hidden')
-  expect(chosenMark?.className).toContain('group-hover:inline-flex')
+  expect(chosenMark?.className).toContain('inline-flex')
+  expect(chosenMark?.className).not.toContain('hidden')
   expect(host.querySelector('[aria-label="Full chat: everyone on the Team can ask it and read its chat"]')).not.toBeNull()
   expect(host.textContent).not.toMatch(/In team unless marked with a lock|All in team/)
  } finally { f.extra = []; await act(async () => root.unmount()) }
@@ -333,7 +333,7 @@ it('nests a chat under another chat by dragging or via Move under…, while top-
  const targetDropHere = vi.fn()
  f.hidden = new Set(); f.active = 'a'; f.canHide = false; f.groups = {}
  f.extra = [
-  { tabId: 'm', key: 'crew', main: true, name: 'Main', sidebarOrder: 0, actions: {} },
+  { tabId: 'm', key: 'crew', isDefault: true, name: 'Agent', sidebarOrder: 0, actions: {} },
   { tabId: 'p', key: 'crew:chat:parent', name: 'Parent', sidebarOrder: 4, actions: { orderKey: 'crew:chat:parent', forkParent: parentForkParent, dropHere: targetDropHere } },
   { tabId: 'sub', key: 'crew:chat:sub', forkedFrom: 'crew:chat:parent', name: 'Child', sidebarOrder: 5, actions: { orderKey: 'crew:chat:sub', forkParent: vi.fn(async () => {}) } },
   { tabId: 't', key: 'crew:chat:topic', name: 'Topic', sidebarOrder: 6, actions: { orderKey: 'crew:chat:topic', forkParent: childForkParent } },
@@ -377,7 +377,7 @@ it('nests a chat under another chat by dragging or via Move under…, while top-
   expect(targetDropHere).toHaveBeenCalledWith('crew:chat:topic')
   expect(childForkParent).not.toHaveBeenCalled()
 
-  // Drag Topic onto Main (no orderKey/dropHere) -> nest under Main.
+  // Drag Topic onto the default agent (no orderKey/dropHere) -> nest under it.
   await act(async () => drag('dragstart', topicRow))
   await act(async () => drag('dragover', mainRow, 115))
   await act(async () => drag('drop', mainRow, 115))
@@ -397,7 +397,7 @@ it('nests a chat under another chat by dragging or via Move under…, while top-
   await click('Move under…', '[role="menuitem"]')
   const menuText = host.querySelector('[role="group"][aria-label="Make Topic a sub-chat under"]')?.textContent || ''
   expect(menuText).toContain('Parent')
-  expect(menuText).toContain('Main')
+  expect(menuText).toContain('Agent')
   expect(menuText).not.toContain('Topic')
   await click('Parent', '[role="menuitem"]')
   expect(childForkParent).toHaveBeenLastCalledWith('crew:chat:parent')

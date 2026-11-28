@@ -27,7 +27,7 @@ func TestConversationRegistryRowsMatchExistingGetterRules(t *testing.T) {
 	db.SetMaxOpenConns(1)
 	old, files := memoryProductConversationStore()
 	const project = "project_a"
-	const mainKey = project + ":chat:main"
+	const defaultKey = project + ":chat:main"
 	const crew = "Crew/example"
 	record := func(user, key string) ProductConversationRecord {
 		return ProductConversationRecord{
@@ -41,7 +41,7 @@ func TestConversationRegistryRowsMatchExistingGetterRules(t *testing.T) {
 	for _, user := range []string{"owner", "run", "other", "empty", "null"} {
 		doc := productConversationRegistryDocument{Version: 1, Entries: map[string]ProductConversationRecord{}, Previous: map[string][]ProductConversationRecord{}, Agents: map[string]ProductAgentIdentity{}}
 		if user != "empty" && user != "null" {
-			keys := []string{mainKey, project + ":chat:side", project + ":chat:child:nested", project + ":schedule:kept", project + ":schedule:kept:one-run", project + ":function:f:call", project + ":webhook:w:call", project + "_more:chat:other"}
+			keys := []string{defaultKey, project + ":chat:side", project + ":chat:child:nested", project + ":schedule:kept", project + ":schedule:kept:one-run", project + ":function:f:call", project + ":webhook:w:call", project + "_more:chat:other"}
 			if user == "run" {
 				keys = append(keys, project)
 			} // A leftover bare root must not override the saved Main pointer.
@@ -68,7 +68,7 @@ func TestConversationRegistryRowsMatchExistingGetterRules(t *testing.T) {
 				if i == 3 || i == 4 {
 					prior.SessionID = "duplicate-previous-session"
 				}
-				doc.Previous[crewProfileID+"/"+mainKey] = append(doc.Previous[crewProfileID+"/"+mainKey], prior)
+				doc.Previous[crewProfileID+"/"+defaultKey] = append(doc.Previous[crewProfileID+"/"+defaultKey], prior)
 			}
 		} else if user == "null" {
 			doc.Entries = nil
@@ -90,7 +90,7 @@ func TestConversationRegistryRowsMatchExistingGetterRules(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	manifest, _ := json.Marshal(productProjectManifest{DefaultAgentKey: mainKey})
+	manifest, _ := json.Marshal(productProjectManifest{DefaultAgentKey: defaultKey})
 	files[crew+"/product.json"] = string(manifest)
 	rowsFor := func(user string) conversationRegistryRows {
 		return conversationRegistryRows{db: db, namespace: productConversationRegistryPath(user)}
@@ -109,7 +109,7 @@ func TestConversationRegistryRowsMatchExistingGetterRules(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, chat := range chats {
-			if chat.IsDefaultAgent != (chat.ConversationKey == mainKey) {
+			if chat.IsDefaultAgent != (chat.ConversationKey == defaultKey) {
 				t.Fatal("bare root overrides manifest Main")
 			}
 		}
@@ -129,8 +129,8 @@ func TestConversationRegistryRowsMatchExistingGetterRules(t *testing.T) {
 	}
 	cases := []equivalence{
 		{"one identity", func(user string) (any, any, error, error) {
-			a, e := old.agentIdentity(ctx, user, crewProfileID, mainKey)
-			b, f := rowsFor(user).agentIdentity(ctx, crewProfileID, mainKey)
+			a, e := old.agentIdentity(ctx, user, crewProfileID, defaultKey)
+			b, f := rowsFor(user).agentIdentity(ctx, crewProfileID, defaultKey)
 			return a, b, e, f
 		}},
 		{"missing identity", func(user string) (any, any, error, error) {
@@ -144,8 +144,8 @@ func TestConversationRegistryRowsMatchExistingGetterRules(t *testing.T) {
 			return a, b, e, f
 		}},
 		{"ordered prior chats without import truncation or deduplication", func(user string) (any, any, error, error) {
-			a, ok, previous, e := old.history(ctx, user, agentprofiles.Profile{ID: crewProfileID}, productConversationBinding{ConversationKey: mainKey})
-			b, yes, prior, f := rowsFor(user).history(ctx, crewProfileID, mainKey)
+			a, ok, previous, e := old.history(ctx, user, agentprofiles.Profile{ID: crewProfileID}, productConversationBinding{ConversationKey: defaultKey})
+			b, yes, prior, f := rowsFor(user).history(ctx, crewProfileID, defaultKey)
 			return history{a, ok, previous}, history{b, yes, prior}, e, f
 		}},
 		{"missing slot history", func(user string) (any, any, error, error) {
@@ -199,14 +199,14 @@ func TestConversationRegistryRowsMatchExistingGetterRules(t *testing.T) {
 	}
 	t.Run("malformed snapshot fails closed without replacing imported bindings", func(t *testing.T) {
 		rows := rowsFor("owner")
-		before, err := rows.agentIdentity(ctx, crewProfileID, mainKey)
+		before, err := rows.agentIdentity(ctx, crewProfileID, defaultKey)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err = rows.importSnapshot(ctx, `{"entries":{"broken":`); err == nil {
 			t.Fatal("malformed identity snapshot accepted")
 		}
-		after, err := rows.agentIdentity(ctx, crewProfileID, mainKey)
+		after, err := rows.agentIdentity(ctx, crewProfileID, defaultKey)
 		if err != nil || !reflect.DeepEqual(before, after) {
 			t.Fatal("failed snapshot replaced identity bindings", err)
 		}

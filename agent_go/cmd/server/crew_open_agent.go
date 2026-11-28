@@ -10,7 +10,7 @@ import (
 )
 
 // PLAT-746-885: selection for opening only. Never use this for message routing
-// or persist its result as Main. All candidates come from the caller's audience.
+// or persist its result as the default agent. All candidates come from the caller's audience.
 func (api *StreamingAPI) crewOpeningAgent(r *http.Request, profile agentprofiles.Profile, project, requested string) (string, error) {
 	user := productWorkspaceUserID(r.Context())
 	crew, err := readCrewProjectBinding(r.Context(), user, profile, project, "")
@@ -23,7 +23,7 @@ func (api *StreamingAPI) crewOpeningAgent(r *http.Request, profile agentprofiles
 		urlCopy := *r.URL
 		copyRequest.URL = &urlCopy
 		query := urlCopy.Query()
-		query.Set("with_main", "1")
+		query.Set("with_default", "1")
 		copyRequest.URL.RawQuery = query.Encode()
 		choices, err = api.sideChatsFor(copyRequest, user, profileAndBinding{profile: profile, binding: crew.Binding, canBuild: true}, project)
 	} else {

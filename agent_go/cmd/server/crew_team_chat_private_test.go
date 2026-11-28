@@ -21,15 +21,15 @@ func TestCrewTeamChatPrivateRefusesTeammatesNotItsPerson(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	const mainKey = "team:chat:root-owner"
-	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","default_agent_key":"`+mainKey+`"}`)
-	if err := defaultProductConversationRegistryStore().writeDocument(t.Context(), productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, mainKey): {ProfileID: crewProfileID, ConversationKey: mainKey, WorkspacePath: externalCommandCrewRoot, SessionID: "owner-main"}}}); err != nil {
+	const defaultKey = "team:chat:root-owner"
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","session_id":"sess-team","default_agent_key":"`+defaultKey+`"}`)
+	if err := defaultProductConversationRegistryStore().writeDocument(t.Context(), productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, defaultKey): {ProfileID: crewProfileID, ConversationKey: defaultKey, WorkspacePath: externalCommandCrewRoot, SessionID: "owner-main"}}}); err != nil {
 		t.Fatal(err)
 	}
-	agents := crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {macMainTab: true}, "other": {"agent1": true}})
+	agents := crewTeamAgentFixtures("team", map[string]map[string]bool{"owner": {macDefaultTab: true}, "other": {"agent1": true}})
 	for id, a := range agents {
 		if a.OwnerID == "owner" {
-			a.ChatKey = mainKey
+			a.ChatKey = defaultKey
 			agents[id] = a
 		}
 	}
@@ -41,11 +41,11 @@ func TestCrewTeamChatPrivateRefusesTeammatesNotItsPerson(t *testing.T) {
 	if err := writeCrewTeamAgentFixture(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}, Agents: agents}); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: macMainTab, Audience: "team"}}); err != nil {
+	if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: macDefaultTab, Audience: "team"}}); err != nil {
 		t.Fatal(err)
 	}
 	const conversation, serverKey, serverSession = "private-check", "team:chat:agent1", "other-session"
-	crewMacTeamTabsCache.Store("team\x00owner", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "owner", Tab: macMainTab, ConversationID: conversation}}})
+	crewMacTeamTabsCache.Store("team\x00owner", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "owner", Tab: macDefaultTab, ConversationID: conversation}}})
 	t.Cleanup(func() { crewMacTeamTabsCache.Delete("team\x00owner") })
 	crewRelayStreams.append("owner", "team", conversation, crewRelayBatch{Kind: "event", Seq: 1, Body: json.RawMessage(`{"events":[{"content":"owner-chat-text"}]}`)})
 	crewRelayStreams.append("owner", "team", conversation, crewRelayBatch{Kind: "event", Seq: 4, Body: json.RawMessage(`{"events":[{"type":"user_message","sequence":2,"id":"mac-done-question"},{"type":"unified_completion","sequence":3,"id":"mac-done-answer"},{"type":"user_message","sequence":4,"id":"mac-running-question"},{"type":"streaming_chunk","id":"mac-running-partial"}]}`)})
@@ -85,12 +85,12 @@ func TestCrewTeamChatPrivateRefusesTeammatesNotItsPerson(t *testing.T) {
 	}
 
 	off, unknown := crewChatShareAgent, "everything"
-	if _, err := setCrewTeamAgentRule(t.Context(), "team", "owner", macMainTab, nil, &unknown); !errors.Is(err, errCrewChatShareUnknown) {
+	if _, err := setCrewTeamAgentRule(t.Context(), "team", "owner", macDefaultTab, nil, &unknown); !errors.Is(err, errCrewChatShareUnknown) {
 		t.Fatalf("an unknown choice was saved: %v", err)
 	}
 
 	// Only the agent's own person changes it.
-	if _, err := setCrewTeamAgentRule(t.Context(), "team", "other", crewMacTabRow("team", crewMacTeamTab{Person: "owner", Tab: macMainTab}).ConversationKey, nil, &off); !errors.Is(err, errCrewTeamAgentNotYours) {
+	if _, err := setCrewTeamAgentRule(t.Context(), "team", "other", crewMacTabRow("team", crewMacTeamTab{Person: "owner", Tab: macDefaultTab}).ConversationKey, nil, &off); !errors.Is(err, errCrewTeamAgentNotYours) {
 		t.Fatalf("a member changed the owner's agent: %v", err)
 	}
 	if _, err := setCrewTeamAgentRule(t.Context(), "team", "owner", serverKey, nil, &off); !errors.Is(err, errCrewTeamAgentNotYours) {
@@ -107,14 +107,14 @@ func TestCrewTeamChatPrivateRefusesTeammatesNotItsPerson(t *testing.T) {
 		handleCrewTeamAgentRule(w, r, "team", who)
 		return w
 	}
-	if w := choose("owner", macMainTab, "everything"); w.Code != 400 {
+	if w := choose("owner", macDefaultTab, "everything"); w.Code != 400 {
 		t.Fatalf("an unknown share choice was accepted: %d", w.Code)
 	}
-	if w := choose("owner", macMainTab, "agent_only"); w.Code != 200 || !strings.Contains(w.Body.String(), `"share":"agent_only"`) || !strings.Contains(w.Body.String(), `"in_team":true`) {
+	if w := choose("owner", macDefaultTab, "agent_only"); w.Code != 200 || !strings.Contains(w.Body.String(), `"share":"agent_only"`) || !strings.Contains(w.Body.String(), `"in_team":true`) {
 		t.Fatalf("the owner could not share their agent as Agent only: %d %s", w.Code, w.Body.String())
 	}
 	// Saving sharing drops the Mac's tab list cache; the Mac would send it again, the fixture seeds it again.
-	crewMacTeamTabsCache.Store("team\x00owner", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "owner", Tab: macMainTab, ConversationID: conversation}}})
+	crewMacTeamTabsCache.Store("team\x00owner", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "owner", Tab: macDefaultTab, ConversationID: conversation}}})
 	if _, err := setCrewTeamAgentRule(t.Context(), "team", "other", serverKey, nil, &off); err != nil {
 		t.Fatalf("other could not keep their own chat private: %v", err)
 	}
@@ -156,25 +156,25 @@ func TestCrewTeamChatPrivateRefusesTeammatesNotItsPerson(t *testing.T) {
 	}
 	listed := false
 	for _, row := range crewTeamTabFor(t.Context(), saved, "other").Agents {
-		if row.OwnerID == "owner" && row.Tab == macMainTab {
-			listed = row.ChatPrivateLine != "" && row.ChatShare == crewChatShareAgent && row.InTeam && row.WatchKey == crewMacTabRow("team", crewMacTeamTab{Person: "owner", Tab: macMainTab}).ConversationKey
+		if row.OwnerID == "owner" && row.Tab == macDefaultTab {
+			listed = row.ChatPrivateLine != "" && row.ChatShare == crewChatShareAgent && row.InTeam && row.WatchKey == crewMacTabRow("team", crewMacTeamTab{Person: "owner", Tab: macDefaultTab}).ConversationKey
 		}
 	}
 	if !listed {
 		t.Fatal("the private agent left the teammate's list, or has no line")
 	}
-	if _, reason := macSharedAgentFor("team", macMainTab, "other", "owner"); reason != "" {
+	if _, reason := macSharedAgentFor("team", macDefaultTab, "other", "owner"); reason != "" {
 		t.Fatalf("a private chat's agent can no longer be asked: %s", reason)
 	}
 
 	// Full chat again: the record holds nothing, and the teammate reads.
-	if w := choose("owner", macMainTab, "full_chat"); w.Code != 200 || !strings.Contains(w.Body.String(), `"share":"full_chat"`) {
+	if w := choose("owner", macDefaultTab, "full_chat"); w.Code != 200 || !strings.Contains(w.Body.String(), `"share":"full_chat"`) {
 		t.Fatalf("back to Full chat: %d %s", w.Code, w.Body.String())
 	}
-	if saved, _ := readCrewTeam("team"); !saved.agentRule("owner", macMainTab).empty() {
+	if saved, _ := readCrewTeam("team"); !saved.agentRule("owner", macDefaultTab).empty() {
 		t.Fatalf("on must store nothing: %+v", saved.Agents)
 	}
-	crewMacTeamTabsCache.Store("team\x00owner", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "owner", Tab: macMainTab, ConversationID: conversation}}})
+	crewMacTeamTabsCache.Store("team\x00owner", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "owner", Tab: macDefaultTab, ConversationID: conversation}}})
 	if w := get("other", macSession, "events"); w.Code != 200 || !strings.Contains(w.Body.String(), "owner-chat-text") {
 		t.Fatalf("on again must be readable: %d %s", w.Code, w.Body.String())
 	}

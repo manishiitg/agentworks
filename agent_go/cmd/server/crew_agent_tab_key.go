@@ -2,10 +2,10 @@ package server
 
 import "strings"
 
-// A Crew agent's chat key and its stable tab ID map to each other: Main is the
+// A Crew agent's chat key and its stable tab ID map to each other: the default agent is the
 // project ID itself, other agents are project + side marker + tab.
 func crewAgentTabKey(project, tab string) string {
-	if tab == macMainTab {
+	if tab == macDefaultTab {
 		return project
 	}
 	return project + codeChatSideMarker + tab
@@ -19,7 +19,7 @@ func crewAgentKeyTab(key string) string {
 		return ""
 	}
 	if key != "" && !strings.Contains(key, ":") {
-		return macMainTab
+		return macDefaultTab
 	}
 	return ""
 }

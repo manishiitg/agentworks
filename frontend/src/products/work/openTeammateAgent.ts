@@ -2,7 +2,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { useCrewAgentsStore } from '../../components/chat/AgentCard'
 import { openAgentTab } from '../../utils/openAgentTab'
 
-/** Reuse the existing observed teammate tab, never a maker's writable tab or Main draft. */
+/** Reuse the existing observed teammate tab, never a maker's writable tab or their own agent's draft. */
 export function openTeammateAgent(projectId: string, key: string, owner?: string) {
   const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.metadata?.agentProfileProjectId === projectId
     && item.metadata.agentProfileTabCanWrite === false && (!owner || item.metadata.agentProfileTabOwnerID === owner)

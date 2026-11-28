@@ -38,8 +38,4 @@ func TestHostedDirectoryRequiresNameOrOwnerView(t *testing.T) {
 		t.Fatal("generated import name counted as explicit")
 	}
 	tab.Identity.GeneratedName = false
-	tab.Identity.Name = "Main"
-	if hostedDirectoryTab(tab) {
-		t.Fatal("default Main remained a separate agent")
-	}
 }

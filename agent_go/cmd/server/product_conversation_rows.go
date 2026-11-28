@@ -253,7 +253,7 @@ func (r conversationRegistryRows) projectChats(ctx context.Context, profile, pro
 	if err != nil {
 		return nil, err
 	}
-	mainKeys := map[string]string{}
+	defaultKeys := map[string]string{}
 	var chats []ProductConversationRecord
 	for _, row := range selected {
 		record := row.record
@@ -263,9 +263,9 @@ func (r conversationRegistryRows) projectChats(ctx context.Context, profile, pro
 		if row.key != main && (len(row.key) <= len(side) || strings.Contains(row.key[len(side):], ":")) {
 			continue
 		}
-		mainKey, known := mainKeys[record.WorkspacePath]
+		defaultKey, known := defaultKeys[record.WorkspacePath]
 		if !known {
-			mainKey = ""
+			defaultKey = ""
 			raw, exists, e := read(ctx, strings.TrimSuffix(record.WorkspacePath, "/")+"/product.json")
 			if e != nil {
 				return nil, e
@@ -275,11 +275,11 @@ func (r conversationRegistryRows) projectChats(ctx context.Context, profile, pro
 				if e = json.Unmarshal([]byte(raw), &manifest); e != nil {
 					return nil, e
 				}
-				mainKey = manifest.DefaultAgentKey
+				defaultKey = manifest.DefaultAgentKey
 			}
-			mainKeys[record.WorkspacePath] = mainKey
+			defaultKeys[record.WorkspacePath] = defaultKey
 		}
-		record.IsDefaultAgent = record.ConversationKey == mainKey
+		record.IsDefaultAgent = record.ConversationKey == defaultKey
 		chats = append(chats, record)
 	}
 	return chats, nil

@@ -106,19 +106,19 @@ func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab
 	return out
 }
 
-// ownerMacTabsAll is every agent on the Crew owner's Mac, Main first, whatever the Team chose (the owner's
-// own list while the Team is off).
+// ownerMacTabsAll is every agent on the Crew owner's Mac, the default agent included, whatever the Team chose (the
+// owner's own list while the Team is off).
 func ownerMacTabsAll(ctx context.Context, project string) []crewMacTeamTab {
 	tabs, _ := readPersonMacTabs(ctx, ownerOfCrewProjectID(project), project, true)
-	if !slices.ContainsFunc(tabs, func(t crewMacTeamTab) bool { return t.Tab == macMainTab }) {
-		tabs = append([]crewMacTeamTab{{Tab: macMainTab, Name: "Main"}}, tabs...)
+	if !slices.ContainsFunc(tabs, func(t crewMacTeamTab) bool { return t.Tab == macDefaultTab }) {
+		tabs = append(tabs, crewMacTeamTab{Tab: macDefaultTab})
 	}
 	return tabs
 }
 
 // readPersonMacTabs is the last agent list read from this person's Mac (at most 15 s old, else read again while the
-// Mac is on, else the last one kept). withMain also reads its Main.
-func readPersonMacTabs(ctx context.Context, person, project string, withMain bool) ([]crewMacTeamTab, bool) {
+// Mac is on, else the last one kept). withDefault also reads its default agent.
+func readPersonMacTabs(ctx context.Context, person, project string, withDefault bool) ([]crewMacTeamTab, bool) {
 	pair, ok := crewMacPairFor(person, project)
 	if !ok {
 		return nil, false
@@ -130,7 +130,7 @@ func readPersonMacTabs(ctx context.Context, person, project string, withMain boo
 	// 15 s. Waiting on the Mac here held every Team tab up to 20 s whenever that Mac was busy (owner, 10 Nov).
 	if v, ok := cached.(crewMacTeamTabsRead); ok {
 		if online && time.Since(v.at) >= 15*time.Second {
-			refreshPersonMacTabs(key, person, project, pair, withMain)
+			refreshPersonMacTabs(key, person, project, pair, withDefault)
 		}
 		return v.tabs, true
 	}
@@ -139,7 +139,7 @@ func readPersonMacTabs(ctx context.Context, person, project string, withMain boo
 	if tabs, ok := readSavedCrewMacTabs(project, person); ok {
 		crewMacTeamTabsCache.Store(key, crewMacTeamTabsRead{tabs: tabs}) // zero time: read the Mac again once it is back
 		if online {
-			refreshPersonMacTabs(key, person, project, pair, withMain)
+			refreshPersonMacTabs(key, person, project, pair, withDefault)
 		}
 		return tabs, true
 	}
@@ -149,7 +149,7 @@ func readPersonMacTabs(ctx context.Context, person, project string, withMain boo
 	// Never read from this Mac: ask it now, briefly.
 	read, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
-	tabs, ok := readPersonMacTabsNow(read, person, project, pair, withMain)
+	tabs, ok := readPersonMacTabsNow(read, person, project, pair, withDefault)
 	if !ok {
 		return nil, false
 	}
@@ -161,10 +161,10 @@ func readPersonMacTabs(ctx context.Context, person, project string, withMain boo
 // longer lists them (owner, 20 Nov: agents a teammate deleted on their Mac still showed in the Team menu). Deleting
 // an agent on a Mac only removed its listing from that Mac's own copy, and the Team view puts registered agents
 // back when a Mac read misses them. Only a complete answer from the Mac itself prunes; an offline Mac, a failed read
-// or a kept list never does. Terminal chats, Main and function tabs have their own lifecycle and are left alone.
+// or a kept list never does. Terminal chats, the default agent and function tabs have their own lifecycle and are left alone.
 func pruneDeletedCrewMacAgents(project, person string, present map[string]bool) {
 	stale := func(a crewTeamRegisteredAgent) bool {
-		return a.OwnerID == person && a.Place == "mac" && a.Kind != "terminal" && a.Tab != "" && a.Tab != macMainTab && !crewFunctionTabKey(a.ChatKey) && !present[a.Tab]
+		return a.OwnerID == person && a.Place == "mac" && a.Kind != "terminal" && a.Tab != "" && a.Tab != macDefaultTab && !crewFunctionTabKey(a.ChatKey) && !present[a.Tab]
 	}
 	t, err := readCrewTeam(project)
 	if err != nil || !slices.ContainsFunc(slices.Collect(maps.Values(t.Agents)), stale) {
@@ -209,7 +209,7 @@ var crewMacTabsRefreshing sync.Map // key -> true while one background read of t
 
 // refreshPersonMacTabs reads a Mac's agent list again in the background, once at a time per Mac; a failed read keeps
 // the list it had (an empty answer from a busy Mac made its agents disappear from the Team tab).
-func refreshPersonMacTabs(key, person, project, pair string, withMain bool) {
+func refreshPersonMacTabs(key, person, project, pair string, withDefault bool) {
 	if _, running := crewMacTabsRefreshing.LoadOrStore(key, true); running {
 		return
 	}
@@ -217,7 +217,7 @@ func refreshPersonMacTabs(key, person, project, pair string, withMain bool) {
 		defer crewMacTabsRefreshing.Delete(key)
 		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 		defer cancel()
-		if tabs, ok := readPersonMacTabsNow(ctx, person, project, pair, withMain); ok {
+		if tabs, ok := readPersonMacTabsNow(ctx, person, project, pair, withDefault); ok {
 			previous, _ := crewMacTeamTabsCache.Load(key)
 			crewMacTeamTabsCache.Store(key, crewMacTeamTabsRead{at: time.Now(), tabs: tabs})
 			// Tell the Team tab only when the list changed; a refresh that found the same agents is silent.
@@ -228,8 +228,8 @@ func refreshPersonMacTabs(key, person, project, pair string, withMain bool) {
 	}()
 }
 
-// readPersonMacTabsNow asks the Mac for its agents (and its Main); ok is false when the Mac did not answer the list.
-func readPersonMacTabsNow(ctx context.Context, person, project, pair string, withMain bool) ([]crewMacTeamTab, bool) {
+// readPersonMacTabsNow asks the Mac for its agents (and its default agent); ok is false when the Mac did not answer the list.
+func readPersonMacTabsNow(ctx context.Context, person, project, pair string, withDefault bool) ([]crewMacTeamTab, bool) {
 	result := callCrewMacPair(ctx, person, project, pair, crewChatCall{Operation: "tabs", Query: map[string][]string{"team_preview": {"1"}}}, 10*time.Second)
 	var rows []AgentProfileSideChat
 	if result.Status != http.StatusOK || json.Unmarshal(result.Body, &rows) != nil {
@@ -243,7 +243,7 @@ func readPersonMacTabsNow(ctx context.Context, person, project, pair string, wit
 	for i, row := range rows {
 		_, id, ok := strings.Cut(row.ConversationKey, codeChatSideMarker)
 		if row.IsDefaultAgent {
-			id, ok = macMainTab, true
+			id, ok = macDefaultTab, true
 		}
 		if ok {
 			present[id] = true
@@ -262,8 +262,8 @@ func readPersonMacTabsNow(ctx context.Context, person, project, pair string, wit
 	crewMacTeamUsageCache.Store(project+"\x00"+person, usage)
 	// The Mac's own complete answer is the truth about which of its agents still exist.
 	pruneDeletedCrewMacAgents(project, person, present)
-	if !withMain {
-		tabs = slices.DeleteFunc(tabs, func(tab crewMacTeamTab) bool { return tab.Tab == macMainTab })
+	if !withDefault {
+		tabs = slices.DeleteFunc(tabs, func(tab crewMacTeamTab) bool { return tab.Tab == macDefaultTab })
 	}
 
 	saveCrewMacTabs(project, person, tabs)
@@ -382,7 +382,7 @@ func crewMacTeamConversation(ctx context.Context, project, conversation string) 
 // crewMacTabRow is a Mac agent as a tab row for someone else in the Team: watch only, with its person.
 func crewMacTabRow(project string, tab crewMacTeamTab) AgentProfileSideChat {
 	id := tab.Tab
-	if tab.Tab == macMainTab {
+	if tab.Tab == macDefaultTab {
 		id = "mac-main"
 	}
 	if tab.Person != ownerOfCrewProjectID(project) {
@@ -533,7 +533,7 @@ func crewMemberMacTarget(project, key string) (string, string, bool) {
 		}
 		if tab, ok := strings.CutPrefix(rest, sanitizeUserIDForPath(person)+"-"); ok && tab != "" {
 			if tab == "mac-main" {
-				tab = macMainTab
+				tab = macDefaultTab
 			}
 			return person, tab, true
 		}

@@ -34,7 +34,7 @@ func goalScheduleChats(ctx context.Context, owner, presetID, workspace string) (
 	if err != nil {
 		return nil, err
 	}
-	mainKey := crewOwnerDefaultChatKey(presetID, owner)
+	defaultKey := crewOwnerDefaultChatKey(presetID, owner)
 	history := chatHistorySessionsByID(owner, workspace)
 	out := []goalScheduleChat{}
 	for _, record := range records {
@@ -42,7 +42,7 @@ func goalScheduleChats(ctx context.Context, owner, presetID, workspace string) (
 			continue
 		}
 		name, _ := goalTabPresentation(record, identities[record.ConversationKey], history[record.SessionID])
-		out = append(out, goalScheduleChat{Key: record.ConversationKey, Name: name, SessionID: record.SessionID, Main: record.ConversationKey == mainKey})
+		out = append(out, goalScheduleChat{Key: record.ConversationKey, Name: name, SessionID: record.SessionID, Main: record.ConversationKey == defaultKey})
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Main != out[j].Main {
@@ -124,13 +124,13 @@ func goalScheduleDestinationView(manifest *WorkflowManifest, workspace string, s
 		return "", "", "", nil
 	}
 	owner := goalScheduleOwner(manifest, sched)
-	mainKey := crewOwnerDefaultChatKey(manifest.ID, owner)
+	defaultKey := crewOwnerDefaultChatKey(manifest.ID, owner)
 	switch {
 	case sched.Conversation == runDestinationIsolated:
 		destination = runDestinationIsolated
 	case sched.ChatKey != "":
 		destination, chatKey = runDestinationChat, sched.ChatKey
-		if sched.ChatKey != mainKey {
+		if sched.ChatKey != defaultKey {
 			chatID = strings.TrimPrefix(sched.ChatKey, manifest.ID+codeChatSideMarker)
 		}
 	default:

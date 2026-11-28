@@ -42,8 +42,8 @@ type crewTabAutomation struct {
 }
 
 // crewAutomationsByTab are this Crew's schedules, watchers, webhooks and workflows, each on the agent it starts. A
-// schedule or watcher starts the chat it was set from (Main when none); webhooks and workflows belong to the project,
-// so they are listed on Main (owner, 28 Nov): a workflow with a timer says when it runs, one without is run by hand.
+// schedule or watcher starts the chat it was set from (the default agent when none); webhooks and workflows belong to the project,
+// so they are listed on the default agent (owner, 28 Nov): a workflow with a timer says when it runs, one without is run by hand.
 // Internal triggers and typed functions are entry points other people and agents call, not something that starts
 // the agent on its own, so they are left out.
 func (s *ProjectActionDispatcher) crewAutomationsByTab(ctx context.Context, owner, project string) []crewTabAutomation {
@@ -64,14 +64,14 @@ func (s *ProjectActionDispatcher) crewAutomationsByTab(ctx context.Context, owne
 			WorkspacePath: binding.WorkspacePath, ManifestPath: binding.ManifestPath}
 		job.State = states[scheduleStateKey(job)]
 		resp := s.jobResponse(job, runs)
-		tab := firstNonEmptyTrimmed(resp.ChatID, macMainTab)
+		tab := firstNonEmptyTrimmed(resp.ChatID, macDefaultTab)
 		item := crewTabAutomation{Tab: tab, Kind: "Schedule", Name: firstNonEmptyTrimmed(sched.Name, "Schedule"), On: resp.Enabled}
 		if item.On {
 			item.NextRunAt = resp.NextRunAt
 		}
 		when := crewTabTimingWords(resp)
 		if sched.WorkflowID != "" {
-			item.Kind, item.Tab = "Workflow", macMainTab
+			item.Kind, item.Tab = "Workflow", macDefaultTab
 			item.Name = firstNonEmptyTrimmed(workflows[sched.WorkflowID], item.Name)
 			timed[sched.WorkflowID] = true
 		}
@@ -105,14 +105,14 @@ func (s *ProjectActionDispatcher) crewAutomationsByTab(ctx context.Context, owne
 	sort.Strings(ids) // a stable list, so an unchanged project is not seen as changed
 	for _, id := range ids {
 		if !timed[id] {
-			out = append(out, crewTabAutomation{Tab: macMainTab, Kind: "Workflow", Name: workflows[id], Line: "run by hand"})
+			out = append(out, crewTabAutomation{Tab: macDefaultTab, Kind: "Workflow", Name: workflows[id], Line: "run by hand"})
 		}
 	}
 	for _, trigger := range manifest.Triggers {
 		if trigger.IsInternal() || trigger.WorkspaceFunction {
 			continue
 		}
-		item := crewTabAutomation{Tab: macMainTab, Kind: "Webhook", Name: firstNonEmptyTrimmed(trigger.Name, "Webhook"), On: trigger.Enabled, Line: "when called"}
+		item := crewTabAutomation{Tab: macDefaultTab, Kind: "Webhook", Name: firstNonEmptyTrimmed(trigger.Name, "Webhook"), On: trigger.Enabled, Line: "when called"}
 		if trigger.ownConversation() {
 			item.Line += " · in its own chat"
 		}
@@ -157,7 +157,7 @@ func crewTabUntil(at time.Time) string {
 // crewTabSetupSource is what the Team tab reads once per reply to word every row's setup.
 type crewTabSetupSource struct {
 	ctx         context.Context
-	mainKey     string // validated once by the request builder
+	defaultKey  string // validated once by the request builder
 	automations []crewTabAutomation
 	bots        map[string]crewBot // the project's bots by agent key; only a project on the server has them
 }
@@ -216,9 +216,9 @@ func (src crewTabSetupSource) setup(t crewTeam, a crewTeamAgent, person, viewer 
 	}
 	var next *time.Time
 	if person == t.OwnerID {
-		main := a.Tab == macMainTab || crewTeamMainAgentWithKey(t, t.OwnerID, a.ChatKey, src.mainKey)
+		main := a.Tab == macDefaultTab || crewTeamDefaultAgentWithKey(t, t.OwnerID, a.ChatKey, src.defaultKey)
 		for _, item := range src.automations {
-			if item.Tab == a.Tab || (item.Tab == macMainTab && main) {
+			if item.Tab == a.Tab || (item.Tab == macDefaultTab && main) {
 				out.Automations = append(out.Automations, item)
 				out.StartsOnOwn = out.StartsOnOwn || item.On
 				if item.On && item.NextRunAt != nil && (next == nil || item.NextRunAt.Before(*next)) {

@@ -54,7 +54,7 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 		if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil && !externalOwnerAuthority(claims, target) {
 			return target, nil
 		}
-		// No agent named: the caller's only agent answers; with several, the caller chooses (no implicit Main, #4046).
+		// No agent named: the caller's only agent answers; with several, the caller chooses (no implicit default agent, #4046).
 		tabs, err := crewOwnerChatRecords(ctx, caller, target.CrewProfile, target.CrewID, target.Path)
 		if err != nil {
 			return target, err
@@ -68,14 +68,14 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 		if len(mine) == 1 {
 			record := mine[0].Record
 			target.CrewOwner = caller
-			target.Chat = &codeChat{OwnerID: caller, ID: record.ConversationKey, Key: record.ConversationKey, Name: firstNonEmptyTrimmed(mine[0].Identity.Name, "Main"), SessionID: record.SessionID}
+			target.Chat = &codeChat{OwnerID: caller, ID: record.ConversationKey, Key: record.ConversationKey, Name: firstNonEmptyTrimmed(mine[0].Identity.Name, "Agent"), SessionID: record.SessionID}
 			target.Label += " · " + target.Chat.Name
 			return target, nil
 		}
 		if len(mine) > 1 {
 			names := make([]string, 0, len(mine))
 			for _, tab := range mine {
-				names = append(names, fmt.Sprintf("%s (%s)", firstNonEmptyTrimmed(tab.Identity.Name, "Main"), strings.TrimPrefix(tab.Record.ConversationKey, target.CrewID+codeChatSideMarker)))
+				names = append(names, fmt.Sprintf("%s (%s)", firstNonEmptyTrimmed(tab.Identity.Name, "Agent"), strings.TrimPrefix(tab.Record.ConversationKey, target.CrewID+codeChatSideMarker)))
 			}
 			return target, fmt.Errorf("Choose which agent should answer: pass chat_id, one of %s (list_agents shows each agent's id)", strings.Join(names, ", "))
 		}

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Components } from 'react-markdown'
 import { teamRequest, type TeamTarget } from './teamApi'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
-import { fillMainDraft } from '../../utils/agentPurposeDraft'
+import { fillLastAgentDraft } from '../../utils/agentPurposeDraft'
 import { useChatStore } from '../../stores/useChatStore'
 import { PlainMarkdown } from '../../components/ui/PlainMarkdown'
 
@@ -113,7 +113,7 @@ export function TeamSetups({target,projectId,list,refreshKey,onOpen}:{target:Tea
   const prompt=theme
    ? `Share my current personal theme as a Team setup called "Apply this theme" in Team ${target.project}. Use appearance operation=export (settings action=appearance over MCP) to export the real theme, save that JSON and Markdown instructions in the Team shared files, then team_sync setup_share (crew_team_sync over MCP, crew_id=${target.project}). The instructions must import the JSON using appearance operation=import, then apply that named theme to the applying person's own appearance. The agent verifies and fills the checklist; never claim it is applied just because it was imported. No keys or personal account data. Ask me if you cannot access my personal appearance.`
    : `${edit?`Edit Team setup ${selected}`:'Share this as a Team setup'} in Team ${target.project}. Use team_sync (crew_team_sync over MCP, crew_id=${target.project}). ${edit?'Read setup_get and current revisions first.':'Ask what instructions and checklist I want to share, and who it is for (everyone, or chosen people from team_sync people).'} Keep instructions in a Markdown file in the existing Team shared folder. Store only its path and revision with setup_share/setup_edit. Required keys are names only. If it includes a skill, save its files in the Team shared folder and link them from the instructions so each person's agent can install them; list each MCP or skill by name in the setup's keys with kind mcp or skill. A key or secret never goes in the setup or its files: add it once to the Team vault with way_add (the Team's way of working) and list only its name. Nothing installs by itself; people apply it with their own agent. People never tick boxes; their own agents verify and update setup_checklist.`
-  if(!fillMainDraft(projectId,prompt)) useChatStore.getState().addToast('Open one of your own agent chats in this project, then try again. Nothing was sent.','info')
+  if(!fillLastAgentDraft(projectId,prompt)) useChatStore.getState().addToast('Open one of your own agent chats in this project, then try again. Nothing was sent.','info')
  }
  const apply=async()=>{
   if(!detail||!agent||busy) return

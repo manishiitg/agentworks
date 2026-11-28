@@ -55,7 +55,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   onImportLocalChat, canImportMcp = false, checkingLocalImport = false, projectActionReady = true, onDiscoverSkills, onOpenIdentity, onOrder, onForkParent, onSetSidebarHidden, onRename, onOpen, onReopen, onCloseTab, onSelectTab, projectActivity, renderAfterTab, isTabActive, onMakeInteractive, hideAddAgent = false, startChat = false, importMcpRequested = false, onRequestHandled, projectId,
 }: {
   tabs: ChatTab[]; listed: AgentProfileSideChat[]; canonicalTabId: string; projectName: string
-  /** The person's own Main chat's purpose; undefined when Main is not theirs. */
+  /** The person's own default agent's purpose; undefined when it is not theirs. */
   /** A project with no chats shows its start page; its header needs no New agent (#4439). */
   hideAddAgent?: boolean
   /** The project's start page asked for a new chat (#4439); handled once, then onRequestHandled. */
@@ -113,10 +113,10 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     window.addEventListener('keydown', escape)
     return () => window.removeEventListener('keydown', escape)
   }, [addMode])
-  // Main is listed, renamed, moved, hidden and removed like any agent (owner, 25 Nov, #4046: Main is not special).
+  // The default agent is listed, renamed, moved, hidden and removed like any agent (owner, 25 Nov, #4046).
   const listedByKey = useMemo(() => new Map(listed.map(chat => [chat.conversation_key, chat])), [listed])
-  const mainListed = useMemo(() => listed.find(chat => chat.is_default_agent), [listed])
-  const listedFor = (tab: ChatTab) => (tab.metadata?.agentProfileConversationKey ? listedByKey.get(tab.metadata.agentProfileConversationKey) : undefined) ?? (tab.tabId === canonicalTabId ? mainListed : undefined)
+  const defaultListed = useMemo(() => listed.find(chat => chat.is_default_agent), [listed])
+  const listedFor = (tab: ChatTab) => (tab.metadata?.agentProfileConversationKey ? listedByKey.get(tab.metadata.agentProfileConversationKey) : undefined) ?? (tab.tabId === canonicalTabId ? defaultListed : undefined)
   const ownedListed = listed.filter(chat => chat.can_write !== false)
   const sideChats = tabs.filter(tab => tab.tabId !== canonicalTabId && !tab.metadata?.isViewOnly)
   const phone = useMobileViewport()
@@ -152,11 +152,11 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const sideChatKey = (tab: ChatTab) => listedFor(tab)?.conversation_key
   const sideChatName = (tab: ChatTab) => workSideChatDisplayName(listedFor(tab)?.name || tab.name)
   const canControl = (tab: ChatTab) => tab.metadata?.agentProfileTabCanWrite !== false
-  // Another person's tab names that person, so two owners' main chats never look alike.
+  // Another person's tab names that person, so two owners' default agents never look alike.
   const tabLabel = (tab: ChatTab) => {
     const owner = tab.metadata?.agentProfileTabOwnerName
     // Other people's agents sit under their name (left menu headings, tab strip groups), so the name alone (owner, 5 Nov).
-    // Main's name is its own chat's, from the server (Main until renamed, #4030).
+    // The default agent's name is its own chat's, from the server (Agent until renamed, #4030).
     // The person's own online agent names its project, so it reads apart from this Mac's agents (#4121).
     const online = tab.metadata?.agentProfileOnlineProject
     if (online) return `${sideChatName(tab)} · ${online.name}`
@@ -164,7 +164,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   }
   // The purpose icon, for the tab's owner only (owner, 3 Nov): it fills the chat box; the agent saves the line itself.
   const purposeOf = (tab: ChatTab): string | undefined => {
-    // Main's purpose is its own chat's, like any agent's (owner, 25 Nov, #4046: a project has no description).
+    // The default agent's purpose is its own chat's, like any agent's (owner, 25 Nov, #4046: a project has no description).
     const chat = tab.tabId === canonicalTabId ? listed.find(row => row.is_default_agent) : listedFor(tab)
     return chat && chat.can_write !== false && isAgentTab(tab) ? chat.purpose || '' : undefined
   }
@@ -174,7 +174,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const place = useYourComputerSummary(Boolean(placeProject), placeProject)
   // On the website a Crew that lives on its owner's Mac has no tabs of its own online; a new one would be empty.
   const livesOnMac = useCrewLivesOnMac(placeProject)
-  // A Crew on its owner's Mac shows the Mac's own tabs while the Mac is on; with it off, Main only (PLAT-856-509).
+  // A Crew on its owner's Mac shows the Mac's own tabs while the Mac is on; with it off, the default agent only (PLAT-856-509).
   const sideChatsHere = allowSideChats && place !== 'mac_off'
   useEffect(() => {
     const add = (event: Event) => {
@@ -275,12 +275,12 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     const row = canControl(tab) && team?.team.on ? teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, true) : undefined
     return row?.in_team ? { line: 'my team', chosen: row.audience === 'chosen' } : undefined
   }
-  const inTeamFor = (key:string|undefined, main=false) => {
-    const row=teamAgentForTab(teamState,key,main,true)
+  const inTeamFor = (key:string|undefined, isDefault=false) => {
+    const row=teamAgentForTab(teamState,key,isDefault,true)
     return row?.mine===true && row.in_team
   }
-  const teamShareFor = (key: string | undefined, main = false) =>
-    team?.team.on ? agentTeamShareFromRow(teamAgentForTab(teamState, key, main, true)) : undefined
+  const teamShareFor = (key: string | undefined, isDefault = false) =>
+    team?.team.on ? agentTeamShareFromRow(teamAgentForTab(teamState, key, isDefault, true)) : undefined
   const sharedHere = (tab: ChatTab) => Boolean(shareOf(tab))
   // Its setup icon and card rows, the server's (crew_tab_setup.go): the same Team tab row as above, yours or a teammate's.
   const setupOf = (tab: ChatTab) => agentSetupForTab(teamState, tab.metadata?.agentProfileConversationKey, tab.tabId === canonicalTabId, canControl(tab))
@@ -360,19 +360,19 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   // The left menu and shortcuts keep the saved order regardless of selection. Cmd/Ctrl+1..5 and the arrows
   // follow it in Left menu mode, so reordering there changes the numbers.
   // Another person's chat is listed once even when this app holds two tabs for its session (owner, 10 Nov: a teammate's
-  // Main showed twice after it was opened).
+  // the default agent showed twice after it was opened).
   const menuOrder = tabs.filter(isAgentTab).filter((tab, index, all) => canControl(tab) || !tab.sessionId || all.findIndex(other => !canControl(other) && other.sessionId === tab.sessionId) === index)
   const sidebarOrder = new Map(listed.map((chat, index) => [chat.conversation_key, index]))
   const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index): CrewAgentRow => {
     const chat = listedFor(tab)
     const mine = canControl(tab)
-    const main = tab.tabId === canonicalTabId || chat?.is_default_agent === true
+    const isDefault = tab.tabId === canonicalTabId || chat?.is_default_agent === true
     const face = agentFace(tab)
     return {
       key: tab.metadata?.agentProfileConversationKey, forkedFrom: chat?.forked_from, lastMessageAt: chat?.last_message_at,
-      inTeam: mine && inTeamFor(tab.metadata?.agentProfileConversationKey, main),
-      teamShare: mine ? teamShareFor(tab.metadata?.agentProfileConversationKey, main) : undefined,
-      shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main,
+      inTeam: mine && inTeamFor(tab.metadata?.agentProfileConversationKey, isDefault),
+      teamShare: mine ? teamShareFor(tab.metadata?.agentProfileConversationKey, isDefault) : undefined,
+      shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), isDefault,
       // Your own online agent runs on the server, so it shows the cloud like a server project (owner, 28 Nov).
       place: tab.metadata?.agentProfileOnlineProject ? 'server' : chat?.chat_location === 'mac' ? 'mac' : undefined,
       ownerId: mine ? undefined : tabOwnerId(tab), owner: mine ? undefined : personName(tabOwnerId(tab)),
@@ -564,7 +564,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   )
 
   // Your own agents' menu (the caret) sits with your tabs, before the divider and the other people's chips.
-  // Keep general agent actions reachable with Main alone, including when local-chat import is unavailable.
+  // Keep general agent actions reachable with the default agent alone, including when local-chat import is unavailable.
   const moreMenu = surface !== 'work' && (
         <div ref={moreRef} className="relative shrink-0 max-md:min-w-0 max-md:flex-1">
           <button

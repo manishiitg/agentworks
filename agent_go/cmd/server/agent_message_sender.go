@@ -17,7 +17,7 @@ func agentMessageSender(ctx context.Context, source agentMessageEndpoint, receiv
 	}
 	agent, channel = "Agent", "AgentBridge"
 	// A Watcher's event is an automatic message, not the Crew's own chat: the row says so
-	// (it used to read "<person> · Main" because the caller is stamped with the Crew).
+	// (it used to read "<person> · <agent>" because the caller is stamped with the Crew).
 	if source.ConditionJob != "" {
 		name := agentMessageReadableName(strings.TrimPrefix(strings.TrimPrefix(source.Label, "Watcher: "), "Condition: "))
 		if name == "Agent" {
@@ -37,7 +37,7 @@ func agentMessageSender(ctx context.Context, source agentMessageEndpoint, receiv
 			agent = firstNonEmptyTrimmed(named.Label, named.Name)
 		}
 	case source.Kind == triggerCallerCrew:
-		agent = "Main"
+		agent = "Agent"
 		if source.ChatKey != "" {
 			if identity, err := defaultProductConversationRegistryStore().agentIdentity(ctx, source.UserID, source.Profile, source.ChatKey); err == nil {
 				agent = firstNonEmptyTrimmed(identity.Name, agent)
@@ -102,11 +102,11 @@ func externalConnectionApp(label string) string {
 	return "an AI app"
 }
 
-// A default tab is called Main in the chat UI. Keep a custom agent name intact.
+// An unnamed default agent is called Agent, as in the chat UI. Keep a custom agent name intact.
 func crewMessageSenderName(crew, name string) string {
 	crew, name = strings.TrimSpace(crew), strings.TrimSpace(name)
 	if name == "" || name == "Builder" {
-		name = "Main"
+		name = "Agent"
 	}
 	if crew == "" || crew == name {
 		return name

@@ -65,7 +65,7 @@ func TestCrewTeamTasksBindOwnAgentAndFollowRequestThreads(t *testing.T) {
 	}
 	defer pending.SubmitResponse(questionID, "done")
 	foundWaiting := false
-	for _, agent := range memberTeamAgentsWithMain(ctx, team, "owner", "other", "") {
+	for _, agent := range memberTeamAgentsWithDefault(ctx, team, "owner", "other", "") {
 		if agent.Tab == "one" {
 			foundWaiting = agent.Activity == "waiting" && !agent.waitingSince.IsZero() && !strings.Contains(agent.StatusLabel, "private owner question")
 		}

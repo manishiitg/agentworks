@@ -8,7 +8,7 @@ import { ForkToTeammate } from '../../components/chat/ForkToTeammate'
 import { fillOwnTabDraft } from '../../utils/agentPurposeDraft'
 import { crewSharePage, teamRequest } from './teamApi'
 
-vi.mock('../../utils/agentPurposeDraft',()=>({fillMainDraft:vi.fn(),fillOwnTabDraft:vi.fn(()=>true)}))
+vi.mock('../../utils/agentPurposeDraft',()=>({fillLastAgentDraft:vi.fn(),fillOwnTabDraft:vi.fn(()=>true)}))
 vi.mock('./AgentSharingRow',()=>({teamAgentChatTab:()=>({tabId:'exact-own-agent'})}))
 const fixture = vi.hoisted(() => ({ row: { key: 'agent-1', mine: true, audience: 'whole_team', chosen_people: [], when_others_ask: 'Answer theme questions.', uses: [{ name: 'Project files', kind: 'files' }], can_edit_rule: true } }))
 vi.mock('./teamApi', () => ({ useTeamTab: () => ({ target: { project: 'crew' }, view: { team:{on:true}, agents: [fixture.row], people: [] } }), teamRequest: vi.fn(async () => ({})), teamChanged: vi.fn(), teamFailure: (e: Error) => ({ message: e.message }), crewSharePage: vi.fn() }))

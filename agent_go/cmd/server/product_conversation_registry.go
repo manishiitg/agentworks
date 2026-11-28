@@ -756,7 +756,7 @@ func (store productConversationRegistryStore) projectChats(ctx context.Context, 
 		return nil, err
 	}
 	var chats []ProductConversationRecord
-	mainKeys := map[string]string{}
+	defaultKeys := map[string]string{}
 	main := productConversationRegistryEntryKey(profileID, projectID)
 	side := main + ":chat:"
 	for entryKey, record := range document.Entries {
@@ -764,9 +764,9 @@ func (store productConversationRegistryStore) projectChats(ctx context.Context, 
 			continue
 		}
 		if entryKey == main || (strings.HasPrefix(entryKey, side) && len(entryKey) > len(side) && !strings.Contains(entryKey[len(side):], ":")) {
-			mainKey, known := mainKeys[record.WorkspacePath]
+			defaultKey, known := defaultKeys[record.WorkspacePath]
 			if !known {
-				mainKey = "" // Main comes only from the saved role pointer.
+				defaultKey = "" // Main comes only from the saved role pointer.
 				if raw, found, readErr := store.read(ctx, strings.TrimSuffix(record.WorkspacePath, "/")+"/product.json"); readErr != nil {
 					return nil, readErr
 				} else if found {
@@ -774,11 +774,11 @@ func (store productConversationRegistryStore) projectChats(ctx context.Context, 
 					if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
 						return nil, err
 					}
-					mainKey = manifest.DefaultAgentKey
+					defaultKey = manifest.DefaultAgentKey
 				}
-				mainKeys[record.WorkspacePath] = mainKey
+				defaultKeys[record.WorkspacePath] = defaultKey
 			}
-			record.IsDefaultAgent = record.ConversationKey == mainKey
+			record.IsDefaultAgent = record.ConversationKey == defaultKey
 			chats = append(chats, copyDirectoryConversation(record))
 		}
 	}

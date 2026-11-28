@@ -8,16 +8,16 @@ import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import ModalPortal from '../../components/ui/ModalPortal'
 import { useChatStore } from '../../stores/useChatStore'
-import { fillMainDraft, fillOwnTabDraft, setUpAgentPurpose } from '../../utils/agentPurposeDraft'
+import { fillLastAgentDraft, fillOwnTabDraft, setUpAgentPurpose } from '../../utils/agentPurposeDraft'
 import { teamAgentChatTab } from './AgentSharingRow'
 import { openTeammateAgent } from './openTeammateAgent'
 import { AgentDetails, Saving, TeamTab, teamSettlingServer, type TeamGoOnline } from './TeamTab'
 import { openCrewAccess } from './MacSharedAgents'
 import { crewSharePage, setCrewAction, teamChanged, teamFailure, teamRequest, useTeamTab, type CrewShareAction, type CrewShareActionsGroup, type CrewShareAgent, type CrewSharePage, type TeamTarget } from './teamApi'
 
-/** Opens the viewer's own Main with the words in its chat box, not sent; nothing is saved by this page. */
-const toMain = (projectId: string, draft: string) => {
-  if (!fillMainDraft(projectId, draft)) useChatStore.getState().addToast('Open one of your agents in this project, then ask from there.', 'error')
+/** Opens the viewer's own agent they used last with the words in its chat box, not sent; nothing is saved by this page. */
+const toOwnAgent = (projectId: string, draft: string) => {
+  if (!fillLastAgentDraft(projectId, draft)) useChatStore.getState().addToast('Open one of your agents in this project, then ask from there.', 'error')
 }
 
 /**
@@ -82,7 +82,7 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
         <div className="flex items-center gap-2 border-b border-border px-3 py-2"><Avatar {...person} name={person.name} connection={target.connection} className="h-6 w-6 text-xs" /><span className="text-sm font-medium">{person.name}</span>{person.where && <span className="text-xs text-muted-foreground">· {person.where}</span>}</div>
         {person.items.map(item => {
           const watch = item.terminal_agent_id ? () => openTerminalConversation(projectId, target, { id: item.terminal_agent_id!, name: item.name }) : item.key ? () => openTeammateAgent(projectId, item.key!, item.owner_id) : undefined
-          const ask = item.address ? () => toMain(projectId, `Ask ${person.name}'s ${item.name} (${item.address}): `) : undefined
+          const ask = item.address ? () => toOwnAgent(projectId, `Ask ${person.name}'s ${item.name} (${item.address}): `) : undefined
           return <div key={person.name + item.name + item.line} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/50">
             <span className="min-w-0 flex-1 truncate"><span className="font-medium">{item.name}</span> <span className={`text-xs ${item.working ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`}>· {item.line}</span>{!!item.copy_bytes && <span className="text-xs text-muted-foreground" title="Size of its conversation copy online"> · {copySize(item.copy_bytes)} online</span>}</span>
             {item.watch && watch && <button type="button" title={`Watch ${person.name}'s ${item.name}`} onClick={watch} className="shrink-0 text-xs text-muted-foreground hover:text-primary">Watch</button>}
@@ -93,7 +93,7 @@ function ShareAgents({ page, target, projectId, onPeople }: { page: CrewSharePag
       </div>)}
     </>}
     {page.agents.length > 0 && <div className="flex items-center gap-2 px-1"><p className="text-xs font-medium text-muted-foreground">Your agents</p>
-      {page.agents_setup_ask && <button type="button" onClick={() => toMain(projectId, page.agents_setup_ask || '')} className="ml-auto text-xs text-primary hover:underline">✦ Ask AI to configure</button>}</div>}
+      {page.agents_setup_ask && <button type="button" onClick={() => toOwnAgent(projectId, page.agents_setup_ask || '')} className="ml-auto text-xs text-primary hover:underline">✦ Ask AI to configure</button>}</div>}
     {page.agents.map(agent => <ShareAgentCard key={`${agent.team || ''}:${agent.key}`} agent={agent} target={target} projectId={projectId} />)}
     {page.agents_empty && <p className="text-xs text-muted-foreground">{page.agents_empty}</p>}
     {/* Actions run only on the hosting server; its reply decides visibility. */}
@@ -269,13 +269,13 @@ function ShareActions({ group, target, projectId, onWizard }: { group: CrewShare
         <Switch aria-label={`${item.title}: on`} checked={item.on} disabled={!item.can_change || Boolean(pending)} onCheckedChange={on => void turn(item, on)} />
       </span>
     </div>)}
-    {group.setup_ask && <button type="button" onClick={() => toMain(projectId, group.setup_ask || '')} className="mt-2 text-[13px] text-primary hover:underline">✦ Ask AI to set up an action</button>}
+    {group.setup_ask && <button type="button" onClick={() => toOwnAgent(projectId, group.setup_ask || '')} className="mt-2 text-[13px] text-primary hover:underline">✦ Ask AI to set up an action</button>}
     {group.wizard_for && <button type="button" onClick={() => onWizard(group.wizard_for || '')} className="mt-2 text-[13px] text-primary hover:underline">+ Set up an action</button>}
     {error && <p role="alert" className="mt-1.5 text-xs text-destructive">{error}</p>}
   </div>
 }
 
-// The wizard's answers become the words of a draft in Main; the Crew's AI builds the action from them and shows it in
+// The wizard's answers become the words of a draft in the viewer's own agent; the Crew's AI builds the action from them and shows it in
 // chat before anything is saved. The page saves nothing.
 const GETS_BACK = [
   { label: 'A short written answer', words: 'a short written answer' },
@@ -289,7 +289,7 @@ const WHO_ASKS = [
 ]
 
 /** The first-time action wizard (owner, 9 Nov mock): what it should do, what people give it, what they get back and
- * who can ask; "Ask AI to build it" opens the Crew's Main with a draft built from the answers. */
+ * who can ask; "Ask AI to build it" opens the viewer's own agent with a draft built from the answers. */
 function ActionWizard({ name, projectId, onClose }: { name: string; projectId: string; onClose: () => void }) {
   const [step, setStep] = useState(1)
   const [job, setJob] = useState('')
@@ -303,7 +303,7 @@ function ActionWizard({ name, projectId, onClose }: { name: string; projectId: s
   }, [onClose])
   const finish = () => {
     const given = details.map(item => item.trim()).filter(Boolean)
-    toMain(projectId, `Set up an action for ${name}: ${job.trim()}. People give: ${given.length ? given.join(', ') : 'nothing'}. They get back: ${GETS_BACK[back].words}. Who can ask: ${WHO_ASKS[who].words}. Show me the action before you save it.`)
+    toOwnAgent(projectId, `Set up an action for ${name}: ${job.trim()}. People give: ${given.length ? given.join(', ') : 'nothing'}. They get back: ${GETS_BACK[back].words}. Who can ask: ${WHO_ASKS[who].words}. Show me the action before you save it.`)
     onClose()
   }
   const choice = (items: { label: string }[], chosen: number, choose: (index: number) => void, label: string) => <div role="radiogroup" aria-label={label} className="space-y-2">

@@ -5,7 +5,7 @@ import { ownerShortName } from './chatTabName'
 
 /** The watched agent's name, its person's display name, availability and address all come from the Team tab's one
  * server reading (the same rows as the Team tab and the left menu); "Ask from my agent" starts the request in your own
- * Main with that address. */
+ * agent with that address. */
 export function TeamAgentWatchingStatus({ projectId, chatKey, ownerName, agentName }: {
   projectId?: string; chatKey?: string; ownerName: string; agentName: string
 }) {
@@ -19,6 +19,6 @@ export function TeamAgentWatchingStatus({ projectId, chatKey, ownerName, agentNa
     <span className="min-w-0">Watching {owner}'s {name}. Only they type here.{status && <> <span className="font-medium">{status}</span> · Messages arrive when the Mac is back.</>}</span>
   </span>
   {projectId && <button type="button" className="ml-auto shrink-0 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
-    onClick={() => { if (!fillAskFromMyAgentDraft(projectId, owner, name, agent?.address)) useChatStore.getState().addToast('Open your own Main tab in this project, then ask from there.', 'error') }}>Ask from my agent</button>}
+    onClick={() => { if (!fillAskFromMyAgentDraft(projectId, owner, name, agent?.address)) useChatStore.getState().addToast('Open one of your own agents in this project, then ask from there.', 'error') }}>Ask from my agent</button>}
   </>
 }

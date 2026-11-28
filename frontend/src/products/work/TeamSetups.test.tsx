@@ -5,7 +5,7 @@ import {afterEach,expect,it,vi} from 'vitest'
 import {TeamSetups,type TeamSetupList} from './TeamSetups'
 import {teamRequest} from './teamApi'
 vi.mock('./teamApi',()=>({teamRequest:vi.fn()}))
-vi.mock('../../utils/agentPurposeDraft',()=>({fillMainDraft:vi.fn(()=>true)}))
+vi.mock('../../utils/agentPurposeDraft',()=>({fillLastAgentDraft:vi.fn(()=>true)}))
 vi.mock('../../stores/useChatStore',()=>({useChatStore:{getState:()=>({addToast:vi.fn()})}}))
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true})
 const host=document.createElement('div');document.body.append(host);const root=createRoot(host)

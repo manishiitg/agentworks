@@ -59,8 +59,8 @@ func (f crewTeamJoinFacts) empty() bool {
 
 // crewTeamJoinSetup (a Mac join) runs after the join is complete, and again when one of the person's agents connects
 // while the setup is still pending (local is this Mac's copy of the Team's Crew, which holds that pending mark). The
-// request goes to the person's Main agent in the Team's project, so the target is predictable; while Main is offline
-// the setup stays pending and goes to Main when it connects. It never fails the join: every outcome is one log line.
+// request goes to the person's default agent in the Team's project, so the target is predictable; while that agent is offline
+// the setup stays pending and goes to it when it connects. It never fails the join: every outcome is one log line.
 func (api *StreamingAPI) crewTeamJoinSetup(ctx context.Context, claims *UserClaims, c desktopConnection, project, teamName, local string, retry bool) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 	defer cancel()

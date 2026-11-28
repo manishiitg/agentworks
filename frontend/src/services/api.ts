@@ -1300,8 +1300,8 @@ export const agentApi = {
   },
 
   /** The open side tabs of a Code or Crew project as the server knows them (a tab another chat opened exists only there). */
-  listAgentProfileSideChats: async (profileId: string, projectId: string, withMain = false): Promise<AgentProfileSideChat[]> => {
-    const response = await api.get(`/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats`, { params: { project_id: projectId, ...(withMain ? { with_main: 1 } : {}) } })
+  listAgentProfileSideChats: async (profileId: string, projectId: string, withDefault = false): Promise<AgentProfileSideChat[]> => {
+    const response = await api.get(`/api/agent-profiles/${encodeURIComponent(profileId)}/side-chats`, { params: { project_id: projectId, ...(withDefault ? { with_default: 1 } : {}) } })
     return response.data
   },
 

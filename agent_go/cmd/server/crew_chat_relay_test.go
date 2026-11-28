@@ -299,14 +299,14 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 	team := crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "other"}}}
 	seed := func(conversation string) {
 		t.Helper()
-		team.Agents = crewTeamAgentFixtures(team.ProjectID, map[string]map[string]bool{"owner": {macMainTab: true}})
+		team.Agents = crewTeamAgentFixtures(team.ProjectID, map[string]map[string]bool{"owner": {macDefaultTab: true}})
 		if err := writeCrewTeamAgentFixture(team); err != nil {
 			t.Fatal(err)
 		}
-		if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: macMainTab, Audience: "team"}}); err != nil {
+		if err := writeMacSharedAgents("team", []macSharedAgent{{Tab: macDefaultTab, Audience: "team"}}); err != nil {
 			t.Fatal(err)
 		}
-		crewMacTeamTabsCache.Store("team\x00owner", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "owner", Tab: macMainTab, ConversationID: conversation}}})
+		crewMacTeamTabsCache.Store("team\x00owner", crewMacTeamTabsRead{at: time.Now(), tabs: []crewMacTeamTab{{Person: "owner", Tab: macDefaultTab, ConversationID: conversation}}})
 	}
 	t.Cleanup(func() { crewMacTeamTabsCache.Delete("team\x00owner") })
 	handler := f.api.crewChatRelayMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -378,7 +378,7 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 			switch revocation {
 			case "only-me":
 				// Team visibility belongs to the server registry, not relay advertisements.
-				revoked.Agents = crewTeamAgentFixtures(revoked.ProjectID, map[string]map[string]bool{"owner": {macMainTab: false}})
+				revoked.Agents = crewTeamAgentFixtures(revoked.ProjectID, map[string]map[string]bool{"owner": {macDefaultTab: false}})
 				err = writeCrewTeamAgentFixture(revoked)
 			case "removed":
 				revoked.People = nil
@@ -387,7 +387,7 @@ func TestCrewMacTeamWatchCredentialsAndLiveRevocation(t *testing.T) {
 				revoked.On = false
 				err = writeCrewTeam(revoked)
 			case "chat-private":
-				revoked.Agents = crewTeamAgentFixtures(revoked.ProjectID, map[string]map[string]bool{"owner": {macMainTab: true}})
+				revoked.Agents = crewTeamAgentFixtures(revoked.ProjectID, map[string]map[string]bool{"owner": {macDefaultTab: true}})
 				for id, a := range revoked.Agents {
 					a.Rule.ChatShare = crewChatShareAgent
 					revoked.Agents[id] = a

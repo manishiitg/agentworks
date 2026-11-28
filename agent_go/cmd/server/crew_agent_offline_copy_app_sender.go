@@ -180,8 +180,8 @@ func (api *StreamingAPI) syncCrewOfflineAppTurn(ctx context.Context, user, sessi
 		return err
 	}
 	tab := strings.TrimPrefix(record.ConversationKey, project+codeChatSideMarker)
-	if record.ConversationKey == project || record.ConversationKey == crewOwnerMainChatKey(project) {
-		tab = macMainTab
+	if record.ConversationKey == project || record.ConversationKey == crewOwnerDefaultAgentKey(project) {
+		tab = macDefaultTab
 	}
 	binding := crewOfflineBinding{Provider: "agentworks", Session: record.SessionID, Attachment: record.ConversationID}
 	var status struct {

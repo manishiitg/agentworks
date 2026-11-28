@@ -173,7 +173,7 @@ export function SidebarThreadsView({
           projectId: project.id,
           projectName: project.name,
           chat,
-          name: chat.name || (chat.is_default_agent ? 'Main' : 'Agent'),
+          name: chat.name || 'Agent',
           status,
           lastMessageAt,
           timestamp,

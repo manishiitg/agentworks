@@ -50,7 +50,7 @@ export async function resolveProductRoute(route: ProductRoute, signal: AbortSign
       // reloading every project manifest just to show an already-open own chat.
       const [models, chats] = await Promise.all([
         api.get<{ can_open_models: boolean }>('/api/agent-profiles/work/chat-models', { params: { project_id: route.id, access_only: 1 }, signal, skipSessionContext: true }),
-        api.get<AgentProfileSideChat[]>('/api/agent-profiles/work/side-chats', { params: { project_id: route.id, with_main: 1 }, signal, skipSessionContext: true }),
+        api.get<AgentProfileSideChat[]>('/api/agent-profiles/work/side-chats', { params: { project_id: route.id, with_default: 1 }, signal, skipSessionContext: true }),
       ])
       if (signal.aborted) return () => {}
       const confirmed = Array.isArray(chats.data) && chats.data.some(chat => chat.can_write && chat.session_id === cached.sessionId && chat.conversation_key === cached.metadata?.agentProfileConversationKey)
