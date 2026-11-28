@@ -284,7 +284,7 @@ func turnSharedAsk(ctx context.Context, req *QueryRequest) *crewMacSharedAsk {
 func whenOthersAskNote(askerName, ownerName, rule string) string {
 	note := fmt.Sprintf("[%s is asking, not %s.]", askerName, ownerName)
 	if rule = strings.TrimSpace(rule); rule != "" {
-		note += "\n" + ownerName + "'s rule when others ask: " + rule
+		note += "\n" + ownerName + "'s limits when teammates ask: " + rule
 	}
 	return note
 }
