@@ -286,6 +286,9 @@ func registerAppMessageAgent(ctx context.Context, claims *UserClaims, args map[s
 // AgentBridge grant or a current Team row (PLAT-746-1034), never a private Crew
 // or old person-specific share.
 func appAgentPeerAllowed(ctx context.Context, user string, peer agentMessageEndpoint) bool {
+	if peer.Kind == agentTeamPersonKind {
+		return teamPersonPeerAllowed(user, peer)
+	}
 	// A Team row is its own grant: the same current In-team admission as every other bridge path, never a
 	// published share (a teammate's app chat agent has no named agent at all).
 	if peer.TeamAgentID != "" {
