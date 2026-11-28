@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
 func TestAgyExecPinsDefaultModelInAPIKeyMode(t *testing.T) {
@@ -47,5 +49,26 @@ func TestAgyStreamExecUsesResultEvent(t *testing.T) {
 	}
 	if parsed.response != "final" || parsed.conversationID != "abc" || parsed.usage.TotalTokens != 4 {
 		t.Fatalf("wrong terminal result: %+v", parsed)
+	}
+}
+
+func TestAgyExecPromptDeduplicatesLaunchSystemPrompt(t *testing.T) {
+	msgs := []llmtypes.MessageContent{
+		llmtypes.TextPart(llmtypes.ChatMessageTypeSystem, "System rules."),
+		llmtypes.TextPart(llmtypes.ChatMessageTypeHuman, "hello"),
+	}
+	prompt, err := agyBuildExecPrompt(msgs, "System rules.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count := strings.Count(prompt, "System rules."); count != 1 {
+		t.Fatalf("expected 1 copy of system prompt, got %d in %q", count, prompt)
+	}
+	prompt, err = agyBuildExecPrompt(msgs, "Extra launch rules.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(prompt, "Extra launch rules.") || !strings.Contains(prompt, "System rules.") {
+		t.Fatalf("distinct launch system prompt was dropped: %q", prompt)
 	}
 }

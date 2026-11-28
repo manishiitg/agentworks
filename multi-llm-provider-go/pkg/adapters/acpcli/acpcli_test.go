@@ -218,3 +218,21 @@ func TestACPAuthRequiredIsSignInError(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestACPFoldMessagesDeduplicatesLaunchSystemPrompt(t *testing.T) {
+	opts := &llmtypes.CallOptions{}
+	llmtypes.WithCodingProviderLaunchSystemPrompt("Be brief.")(opts)
+	system, prompt := foldMessages(human("hello"), opts)
+	if system != "Be brief." || prompt != "hello" {
+		t.Fatalf("duplicate launch system prompt was not deduplicated: system=%q prompt=%q", system, prompt)
+	}
+	llmtypes.WithCodingProviderLaunchSystemPrompt("Launch rules.")(opts)
+	system, _ = foldMessages(human("hello"), opts)
+	if system != "Launch rules.\n\nBe brief." {
+		t.Fatalf("distinct launch system prompt was not kept: system=%q", system)
+	}
+	system, _ = foldMessages(nil, opts)
+	if system != "Launch rules." {
+		t.Fatalf("launch-only system prompt lost: system=%q", system)
+	}
+}

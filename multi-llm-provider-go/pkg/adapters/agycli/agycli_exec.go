@@ -49,10 +49,8 @@ type agyParsedExec struct {
 // header (print mode has no system-prompt flag), the last human text is the
 // turn. Non-text parts are rejected: pass image paths as text.
 func agyBuildExecPrompt(messages []llmtypes.MessageContent, launchSystemPrompt string) (string, error) {
-	var systems []string
-	if strings.TrimSpace(launchSystemPrompt) != "" {
-		systems = append(systems, strings.TrimSpace(launchSystemPrompt))
-	}
+	var msgSystems []string
+	seen := map[string]bool{}
 	human := ""
 	for _, m := range messages {
 		var parts []string
@@ -71,13 +69,19 @@ func agyBuildExecPrompt(messages []llmtypes.MessageContent, launchSystemPrompt s
 		text := strings.Join(parts, "")
 		switch m.Role {
 		case llmtypes.ChatMessageTypeSystem:
-			if strings.TrimSpace(text) != "" {
-				systems = append(systems, text)
+			if trimmed := strings.TrimSpace(text); trimmed != "" && !seen[trimmed] {
+				seen[trimmed] = true
+				msgSystems = append(msgSystems, trimmed)
 			}
 		case llmtypes.ChatMessageTypeHuman:
 			human = text
 		}
 	}
+	var systems []string
+	if launch := strings.TrimSpace(launchSystemPrompt); launch != "" && !seen[launch] && launch != strings.Join(msgSystems, "\n\n") {
+		systems = append(systems, launch)
+	}
+	systems = append(systems, msgSystems...)
 	if strings.TrimSpace(human) == "" {
 		return "", fmt.Errorf("agy-cli exec lane needs a human prompt, got none")
 	}

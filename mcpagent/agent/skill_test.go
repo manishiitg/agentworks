@@ -54,9 +54,16 @@ func TestClearSkills(t *testing.T) {
 
 func TestRenderSkillListingFormat(t *testing.T) {
 	got := renderSkillListing([]*llmtypes.Skill{
+		{Name: "pdf-extract", Description: "Extract from PDFs"},
+		{Name: "agent-browser", Description: "Drive a browser"},
+	})
+	same := renderSkillListing([]*llmtypes.Skill{
 		{Name: "agent-browser", Description: "Drive a browser"},
 		{Name: "pdf-extract", Description: "Extract from PDFs"},
 	})
+	if got != same {
+		t.Fatalf("renderSkillListing order depends on input order:\n%s\nvs\n%s", got, same)
+	}
 	for _, want := range []string{
 		"## Available Skills",
 		"- **agent-browser**: Drive a browser",
@@ -65,6 +72,9 @@ func TestRenderSkillListingFormat(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}
+	}
+	if strings.Index(got, "agent-browser") > strings.Index(got, "pdf-extract") {
+		t.Errorf("expected alphabetical skill order in:\n%s", got)
 	}
 }
 
