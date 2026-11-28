@@ -137,3 +137,15 @@ it('has no Goal row when the app has no goal command', async () => {
   await openMenu(<ChatModeMenu sessionId="s1" onPlanToggle={() => {}} />)
   expect(document.querySelector('[data-testid="chat-mode-goal"]')).toBeNull()
 })
+
+// #4623 (approved mockup): while a goal works, the chip says so and the menu shows it with the bar's actions.
+it('shows a running goal with Pause and Clear goal, sending the same /goal commands as the goal bar', async () => {
+  view = codexView('project')
+  const command = vi.fn()
+  const trigger = await openMenu(<ChatModeMenu sessionId="s1" onPlanToggle={() => {}} goal={{ on: false, running: { objective: 'Every workspace test passes' } }} onGoalToggle={() => {}} onGoalCommand={command} />)
+  expect(trigger.textContent).toContain('Goal running')
+  expect(document.querySelector('[data-testid="chat-mode-goal"]')).toBeNull()
+  expect(document.querySelector('[data-testid="chat-mode-goal-running"]')?.textContent).toContain('Running: Every workspace test passes')
+  await act(async () => { (document.querySelector('[data-testid="chat-mode-goal-pause"]') as HTMLElement).click() })
+  expect(command).toHaveBeenCalledWith('/goal pause')
+})
