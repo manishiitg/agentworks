@@ -133,7 +133,9 @@ func (api *StreamingAPI) desktopAgentNetworkMessage(ctx context.Context, owner s
 			return nil, fmt.Errorf("another person's request may only reply in its admitted AgentBridge conversation")
 		}
 	}
-	if !in.Read && !in.serverRefresh && !strings.HasPrefix(address, "inbox-") {
+	// A person is never an agent row, so asking one of this Crew's own Team's people skips the agent-list
+	// check; the Team server admits the asker and the person (#2853).
+	if !in.Read && !in.serverRefresh && !strings.HasPrefix(address, "inbox-") && !ownTeamPersonAsk(caller, connectionID, address) {
 		if err := api.requireNetworkReach(ctx, owner, caller, raw); err != nil {
 			return nil, err
 		}
@@ -225,4 +227,17 @@ func publicAgentDirectoryOnly(out map[string]interface{}) {
 	}
 	out["agents"] = kept
 	out["notice"] = "This turn can use agents with Discovery on and reply to its original sender; your private agents are unavailable."
+}
+
+// ownTeamPersonAsk: address is "person:<name>" on the Team server the calling chat's own Crew is joined to.
+func ownTeamPersonAsk(caller triggerLinkCaller, connectionID, address string) bool {
+	if _, person := agentTeamTarget(address); !person {
+		return false
+	}
+	project := agentCallerCrewProject(caller)
+	if project == "" {
+		return false
+	}
+	b, err := crewroot.ReadSync(project)
+	return err == nil && b != nil && b.Side == "local" && b.ConnectionID != "" && b.ConnectionID == connectionID
 }
