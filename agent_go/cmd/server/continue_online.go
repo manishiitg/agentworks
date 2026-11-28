@@ -21,6 +21,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 )
 
@@ -247,6 +248,11 @@ func continueOnlineCollectFiles(plan *continueOnlinePlan, roots crewroot.Roots) 
 			plan.Skipped = append(plan.Skipped, continueOnlineShow(path, roots)+" (over the copy limit)")
 			return
 		}
+		// The server never takes hidden folders or instruction files as project files (workflowfiles.ProtectedWrite).
+		if wf.ProtectedWrite(to) {
+			plan.Skipped = append(plan.Skipped, continueOnlineShow(path, roots)+" (hidden folder or instruction file; the online project keeps those private)")
+			return
+		}
 		for n := 2; used[to]; n++ {
 			ext := filepath.Ext(to)
 			to = strings.TrimSuffix(to, ext) + fmt.Sprintf("-%d", n) + ext
@@ -331,6 +337,9 @@ func continueOnlineCollectFiles(plan *continueOnlinePlan, roots crewroot.Roots) 
 		}
 		seen[path] = true
 		rel := filepath.Base(path)
+		if rel == "AGENTS.md" {
+			rel = "AGENTS.mac.md" // an AGENTS.md is an instruction file the server keeps private; this copy is for reading
+		}
 		if strings.HasSuffix(path, "SKILL.md") {
 			rel = "skills/" + filepath.Base(filepath.Dir(path)) + "/SKILL.md"
 		}
