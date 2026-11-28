@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -33,16 +34,17 @@ type crewTabAutomation struct {
 	// Tab is the agent it starts: "main" or the tab id (the <id> of "<project>:chat:<id>").
 	NextRunAt *time.Time `json:"next_run_at,omitempty"`
 	Tab       string     `json:"tab"`
-	Kind      string     `json:"kind"` // Schedule, Watcher or Webhook
+	Kind      string     `json:"kind"` // Schedule, Watcher, Webhook or Workflow
 	Name      string     `json:"name"`
 	Line      string     `json:"line"` // "every day at 20:00 (UTC) · next in 3 h", "when called · last call 10 min ago", "off"
 	On        bool       `json:"on"`
 }
 
-// crewAutomationsByTab are this Crew's schedules, watchers and webhooks, each on the agent it starts. A schedule or
-// watcher starts the chat it was set from (Main when none); a webhook has no tab of its own, so it is listed on Main,
-// where its turns land (or beside it, in its own chat). Internal triggers and typed functions are entry points other
-// people and agents call, not something that starts the agent on its own, so they are left out.
+// crewAutomationsByTab are this Crew's schedules, watchers, webhooks and workflows, each on the agent it starts. A
+// schedule or watcher starts the chat it was set from (Main when none); webhooks and workflows belong to the project,
+// so they are listed on Main (owner, 28 Nov): a workflow with a timer says when it runs, one without is run by hand.
+// Internal triggers and typed functions are entry points other people and agents call, not something that starts
+// the agent on its own, so they are left out.
 func (s *ProjectActionDispatcher) crewAutomationsByTab(ctx context.Context, owner, project string) []crewTabAutomation {
 	if s == nil || owner == "" || project == "" {
 		return nil
@@ -54,6 +56,8 @@ func (s *ProjectActionDispatcher) crewAutomationsByTab(ctx context.Context, owne
 	states, _ := s.loadState(ctx, owner)
 	runs := agentProfileRuntimeWorkspace(owner, binding.WorkspacePath)
 	out := []crewTabAutomation{}
+	workflows := crewWorkflowNames(ctx, manifest.ID)
+	timed := map[string]bool{}
 	for _, sched := range manifest.Schedules {
 		job := productScheduleJob{UserID: owner, Profile: profile, Schedule: sched, ProjectID: manifest.ID, ProjectTitle: manifest.displayTitle(),
 			WorkspacePath: binding.WorkspacePath, ManifestPath: binding.ManifestPath}
@@ -65,6 +69,11 @@ func (s *ProjectActionDispatcher) crewAutomationsByTab(ctx context.Context, owne
 			item.NextRunAt = resp.NextRunAt
 		}
 		when := crewTabTimingWords(resp)
+		if sched.WorkflowID != "" {
+			item.Kind, item.Tab = "Workflow", macMainTab
+			item.Name = firstNonEmptyTrimmed(workflows[sched.WorkflowID], item.Name)
+			timed[sched.WorkflowID] = true
+		}
 		if sched.Condition != nil {
 			item.Kind = "Watcher"
 			switch sched.Condition.CheckMode {
@@ -87,6 +96,16 @@ func (s *ProjectActionDispatcher) crewAutomationsByTab(ctx context.Context, owne
 			item.Line = when
 		}
 		out = append(out, item)
+	}
+	ids := make([]string, 0, len(workflows))
+	for id := range workflows {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids) // a stable list, so an unchanged project is not seen as changed
+	for _, id := range ids {
+		if !timed[id] {
+			out = append(out, crewTabAutomation{Tab: macMainTab, Kind: "Workflow", Name: workflows[id], Line: "run by hand"})
+		}
 	}
 	for _, trigger := range manifest.Triggers {
 		if trigger.IsInternal() || trigger.WorkspaceFunction {
@@ -247,4 +266,22 @@ func crewTabAutomationsCached(ctx context.Context, project string, canRead bool,
 		}()
 	}
 	return entry.items
+}
+
+// crewWorkflowNames are the project's Python workflows by ID, with their names. One unreadable script is skipped.
+func crewWorkflowNames(ctx context.Context, crewID string) map[string]string {
+	records, err := readCrewExecutables()
+	if err != nil {
+		return nil
+	}
+	names := map[string]string{}
+	for _, binding := range records {
+		if binding.Kind != "script" || binding.CrewID != crewID {
+			continue
+		}
+		if definition, err := readCrewScript(ctx, binding.Root); err == nil && definition != nil {
+			names[binding.ID] = firstNonEmptyTrimmed(definition.Name, "Workflow")
+		}
+	}
+	return names
 }
