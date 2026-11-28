@@ -102,12 +102,12 @@
     "family": "share",
     "name": "get",
     "member": "get_dashboard_share",
-    "description": "Inspect the product's current audience and selected shared agents."
+    "description": "Inspect who the dashboard is shared with: general access and the people added."
   },
   {
     "family": "share",
     "name": "set",
     "member": "share_dashboard",
-    "description": "Apply the owner's chosen audience, preserving people they did not ask to remove."
+    "description": "Set the owner's chosen general access (restricted or company) and people added, preserving people they did not ask to remove."
   }
 ]

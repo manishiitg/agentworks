@@ -454,29 +454,6 @@ function PeopleCard({ view, target, projectId }: { view: TeamTabView; target: Te
   </section>
 }
 
-/** The people who only open this Crew's dashboards and ask it (the Crew's Share to chosen people), listed on the Online
- * page's Dashboards tab (owner's Team Module Manager, 12 Nov). The server's /people writes every line and what each
- * person may be moved to (only the owner changes it); a Crew that is not online yet shows nothing. */
-export function DashboardPeopleCard({ target }: { target: TeamTarget }) {
-  const change = usePeopleChange(target, () => undefined)
-  const { pending, error, setError, note, ask, askError, propose, apply, cancel } = change
-  const people = usePeopleView(target, setError)
-  if (!people || people.kind !== 'server') return error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null
-  const known = new Set([people.owner, ...people.people, ...people.dashboard_people].map(person => person.user_id))
-  const everyone = people.add_everyone ? { label: people.add_everyone, onPick: () => void propose('everyone', people.add_everyone || '', 'dashboards') } : undefined
-  return <section aria-label="Who can open the dashboards" className={card}>
-    <h3 className="font-semibold">Who can open the dashboards</h3>
-    <p className="text-xs text-muted-foreground">People here open all this project's dashboards and can ask it. They see no files. People who work in the project with you are under Team.</p>
-    {note && <p className="text-xs text-muted-foreground">{note}</p>}
-    {people.dashboard_people.length === 0
-      ? <p className="text-xs text-muted-foreground">No one yet.</p>
-      : <div className="divide-y divide-border">{people.dashboard_people.map(person => <PersonLine connection={target.connection} key={person.user_id} person={person} people={people} pending={pending} closed={false} onMove={to => void propose(person.user_id, person.name, to)} />)}</div>}
-    {people.can_share && <AddPerson target={target} pending={pending} known={known} everyone={everyone} onPick={(id, name) => void propose(id, name, 'dashboards')} />}
-    {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
-    {ask && <PeopleChangeDialog ask={ask} saving={pending === 'confirm'} error={askError} onCancel={cancel} onConfirm={createDashboard => void apply(createDashboard)} />}
-  </section>
-}
-
 function FolderRow({ folder, target, canRemove, saving, disabled, onRemove }: { folder: string; target: TeamTarget; canRemove: boolean; saving: boolean; disabled: boolean; onRemove: () => void }) {
   const size = useFolderSize(target, `path=${encodeURIComponent(folder)}`)
   return <div className={`flex items-center gap-2 rounded-lg border border-border px-2 py-1.5 text-xs ${saving ? 'opacity-60' : ''}`}>

@@ -25,6 +25,7 @@ const (
 func TestCrewBindingAndListsIgnoreUnrelatedUnreadableCrew(t *testing.T) {
 	f := newMultiUserFixture(t, sharedIdentityLayout())
 	f.WithSharing(true)
+	joinCrewTeam(t, fixtureCrewFolder, fixtureUserB)
 	const brokenFolder = "z-broken-11111111"
 	const brokenID = "11111111-0000"
 	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: brokenFolder, ProjectID: brokenID, OwnerID: fixtureUserA, Shared: true}); err != nil {
@@ -53,9 +54,7 @@ func TestCrewBindingAndListsIgnoreUnrelatedUnreadableCrew(t *testing.T) {
 	if _, err := resolveCrewProjectBinding(f.Ctx(fixtureUserA), fixtureUserA, f.Crew, brokenID, ""); err == nil {
 		t.Fatal("opening the broken Crew itself must still fail")
 	}
-	if err := defaultProjectOwners().SetPrivate("work", fixtureCrewFolder, true); err != nil {
-		t.Fatal(err)
-	}
+	joinCrewTeam(t, fixtureCrewFolder)
 	if _, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, f.Crew, fixtureCrewID, ""); err == nil {
 		t.Fatal("an unrelated broken Crew must not bypass the target's sharing check")
 	}
@@ -150,14 +149,28 @@ func TestOwnSharedProjectsEndpointListsOnlyTheCallersCrews(t *testing.T) {
 	}
 }
 
-// With project sharing off (AGENTWORKS_PROJECT_SHARING=off) another user's Crew is invisible to everyone but its owner:
-// no reader access, no live-feed notices.
-func TestCrewAccessReaderNeedsProjectSharing(t *testing.T) {
+// Another user opens a Crew in Run mode through a bot, never through its dashboard's audience (#4545): with the
+// dashboard open to the company they open its pages only; no reader access, no live-feed notices.
+func TestCrewRunReaderComesFromABotNotTheDashboardShare(t *testing.T) {
 	f := newMultiUserFixture(t, sharedIdentityLayout())
-	ref := crewPathRef{Root: "Crew/" + fixtureCrewFolder, OwnerID: fixtureUserA, Shared: true}
+	root := "Crew/" + fixtureCrewFolder
+	ref := crewPathRef{Root: root, OwnerID: fixtureUserA, Shared: true}
 	f.WithSharing(true)
+	if err := defaultProjectOwners().SetPrivate("work", fixtureCrewFolder, false); err != nil {
+		t.Fatal(err)
+	}
+	if !crewPageAccess(f.Claims(fixtureUserB), ref) {
+		t.Fatal("a dashboard open to the company did not open its pages")
+	}
+	if crewAccessFor(f.Claims(fixtureUserB), ref) != crewAccessNone || newLiveFeedAccess(f.Claims(fixtureUserB)).visible(f.Ctx(fixtureUserB), ref.Root) {
+		t.Fatal("the dashboard's audience got the project")
+	}
+	if got, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, f.Crew, fixtureCrewID, ref.Root); err == nil {
+		t.Fatalf("the dashboard's audience opened the project: %+v", got)
+	}
+	shareCrewBotForTest(t, root, fixtureUserB)
 	if crewAccessFor(f.Claims(fixtureUserB), ref) != crewAccessReader || !newLiveFeedAccess(f.Claims(fixtureUserB)).visible(f.Ctx(fixtureUserB), ref.Root) {
-		t.Fatal("with sharing on, a user with the Crew product is a reader")
+		t.Fatal("a person the bot is shared with is not a reader")
 	}
 	// The shared-root scan checks the registry owner of every folder before reading manifests; the reader binding must
 	// still name the matched Crew's owner, not the last folder checked (here a later Crew owned by someone else).
@@ -167,29 +180,11 @@ func TestCrewAccessReaderNeedsProjectSharing(t *testing.T) {
 	if got, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, f.Crew, fixtureCrewID, ""); err != nil || got.OwnedByCaller || got.OwnerID != fixtureUserA {
 		t.Fatalf("reader binding through the shared root = %+v err=%v, want owner %q", got, err, fixtureUserA)
 	}
-	// The owner can keep one Crew to themselves while sharing is on (PLAT-725).
-	if err := defaultProjectOwners().SetPrivate("work", fixtureCrewFolder, true); err != nil {
-		t.Fatal(err)
-	}
+	stopCrewBotForTest(t, root)
 	if crewAccessFor(f.Claims(fixtureUserB), ref) != crewAccessNone || newLiveFeedAccess(f.Claims(fixtureUserB)).visible(f.Ctx(fixtureUserB), ref.Root) {
-		t.Fatal("another user still has access to a Crew its owner made private")
-	}
-	if got, err := resolveCrewProjectBinding(f.Ctx(fixtureUserB), fixtureUserB, f.Crew, fixtureCrewID, ref.Root); err == nil {
-		t.Fatalf("another user opened a private Crew: %+v", got)
-	}
-	if crewAccessFor(f.Claims(fixtureUserA), ref) != crewAccessOwner {
-		t.Fatal("the owner lost access to their private Crew")
-	}
-	if err := defaultProjectOwners().SetPrivate("work", fixtureCrewFolder, false); err != nil {
-		t.Fatal(err)
+		t.Fatal("another user kept the project after its bot stopped")
 	}
 	f.WithSharing(false)
-	if crewAccessFor(f.Claims(fixtureUserB), ref) != crewAccessNone {
-		t.Fatal("with sharing off, another user has access to a private Crew")
-	}
-	if newLiveFeedAccess(f.Claims(fixtureUserB)).visible(f.Ctx(fixtureUserB), ref.Root) {
-		t.Fatal("with sharing off, another user sees a private Crew's notices")
-	}
 	if crewAccessFor(f.Claims(fixtureUserA), ref) != crewAccessOwner || !newLiveFeedAccess(f.Claims(fixtureUserA)).visible(f.Ctx(fixtureUserA), ref.Root) {
 		t.Fatal("the owner lost access when sharing is off")
 	}

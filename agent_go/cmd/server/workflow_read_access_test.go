@@ -314,9 +314,7 @@ func TestCrewRunCannotReadRawWorkspaceRoutes(t *testing.T) {
 	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000", Shared: true, Private: true, AudienceConfigured: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.SetRunPeople("work", "app-c0de0001", []string{"other"}); err != nil {
-		t.Fatal(err)
-	}
+	shareCrewBotForTest(t, "Crew/app-c0de0001", "other")
 	ref, ok := resolveCrewPath(context.Background(), "other", codePrivacyOwnerRoot)
 	if !ok || crewAccessFor(&UserClaims{UserID: "other"}, ref) != crewAccessReader {
 		t.Fatal("fixture must be shared with the Run caller")

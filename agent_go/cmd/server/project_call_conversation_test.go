@@ -91,6 +91,7 @@ func TestDeclaredCrewCallsKeepFunctionTabAcrossOwners(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 			env := newCrewFunctionEnv(t)
+			shareCrewBotForTest(t, linkGammaPath, "owner")
 			ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
 			// Per-turn #project reference admits Beta for this call.
 			ctx = withTurnReachReferences(ctx, []string{linkBetaPath})

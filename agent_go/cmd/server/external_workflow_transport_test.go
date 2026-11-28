@@ -27,6 +27,7 @@ import (
 func TestCrewRunToolsThroughMCPBridge(t *testing.T) {
 	tokenTestSetup(t)
 	f, _ := newExternalCrewCommandFixture(t)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	const sessionID = "pat-token-run-bridge"
 	store, err := openAccessTokens()
 	if err != nil {
@@ -120,9 +121,7 @@ func TestCrewRunToolsThroughMCPBridge(t *testing.T) {
 	if _, err := resolve(executor.WithSessionID(ctx, "foreign-session"), crewPublishedCallToolName); err == nil || !strings.Contains(err.Error(), "does not own this tool session") {
 		t.Fatalf("wrong foreign-session refusal: %v", err)
 	}
-	if err := defaultProjectOwners().SetAudience("work", "test-team", true, nil); err != nil {
-		t.Fatal(err)
-	}
+	stopCrewBotForTest(t, externalCommandCrewRoot)
 	_, refusal := resolve(executor.WithSessionID(ctx, sessionID), crewPublishedCallToolName)
 	if refusal == nil {
 		t.Fatal("bound Crew tools retained removed access")

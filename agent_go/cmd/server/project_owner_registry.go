@@ -73,8 +73,8 @@ type projectOwnerRecord struct {
 	// AudienceConfigured distinguishes an explicit new audience from legacy Code
 	// records whose zero-value Private field was never an access grant.
 	AudienceConfigured bool `json:"audience_configured,omitempty"`
-	// RunPeople are the accounts a private Crew is shared with by name (dashboard sharing, PLAT-750). They use it as
-	// Run people do; everyone else is kept out as for any private Crew.
+	// RunPeople are the people added to the project's dashboard (general access Restricted). Like Private=false (anyone at
+	// the company with the link), it opens the dashboard pages and their live data only, not the project (#4545).
 	RunPeople []string `json:"run_people,omitempty"`
 	// SharedAgents are the stable existing tabs exposed to the same Run audience.
 	SharedAgents []string `json:"shared_agents,omitempty"`

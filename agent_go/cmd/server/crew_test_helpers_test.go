@@ -40,6 +40,57 @@ func registerTestCrew(t *testing.T, folder, owner string, shared bool, projectID
 	return "Crew/" + folder
 }
 
+// shareCrewBotForTest opens the project at root in Run mode to people the way the product does it: through a bot of its
+// owner (#4545: the dashboard's audience opens its pages only, never the project). A bot admits active accounts with the
+// projects product on a project on the server, so people without a directory record get one.
+func shareCrewBotForTest(t *testing.T, root string, people ...string) {
+	t.Helper()
+	rec, ok := crewOwnerRecordAt(root)
+	if !ok || rec.ProjectID == "" {
+		t.Fatalf("%s needs a registered project id to have a bot", root)
+	}
+	activateTestAccounts(t, people...)
+	if err := writeCrewBot(root, rec.ProjectID+codeChatSideMarker+"test-bot", &crewBot{Maker: rec.OwnerID, People: people}); err != nil {
+		t.Fatal(err)
+	}
+	resetCrewOwnerCache()
+}
+
+// stopCrewBotForTest stops the bot shareCrewBotForTest made.
+func stopCrewBotForTest(t *testing.T, root string) {
+	t.Helper()
+	rec, _ := crewOwnerRecordAt(root)
+	if err := writeCrewBot(root, rec.ProjectID+codeChatSideMarker+"test-bot", nil); err != nil {
+		t.Fatal(err)
+	}
+	resetCrewOwnerCache()
+}
+
+// activateTestAccounts gives each id without a directory record an active creator account (every product).
+func activateTestAccounts(t *testing.T, ids ...string) {
+	t.Helper()
+	dir, _ := readUserDirectoryFile()
+	if dir == nil {
+		dir = &userDirectory{}
+	}
+	users := append([]UserRecord{}, dir.Users...)
+	for _, id := range ids {
+		if dir.byID(id) == nil {
+			users = append(users, UserRecord{ID: id, Username: id, Email: id + "@example.com", Role: UserRoleCreator})
+		}
+	}
+	raw, err := json.Marshal(userDirectoryFile{Users: users, AccessRequests: dir.AccessRequests})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store, ok := userDirectoryStore.(*memoryUserDirectory); ok {
+		store.content = string(raw)
+		invalidateUserDirectoryCache()
+		return
+	}
+	withMemoryUserDirectory(t, string(raw))
+}
+
 func resetCrewOwnerCache() {
 	crewOwners.mu.Lock()
 	crewOwners.entries = map[string]crewOwnerEntry{}

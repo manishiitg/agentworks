@@ -105,16 +105,17 @@ fast, not for privacy between colleagues.
 
 1. Inside a product someone can access, everything about it is visible to
    them: runs and results, step logs, function calls, token usage, dashboards
-   and their data. Sharing a Crew, Goal or workflow includes reading its files
-   over MCP (skills, memory, knowledge, instructions, runs and logs); secret
-   values and private logs stay excluded.
+   and their data. Working in a Crew (its People), or using a Goal or
+   workflow, includes reading its files over MCP (skills, memory, knowledge,
+   instructions, runs and logs); secret values and private logs stay excluded.
 2. Sharing is three separate things. People (co-owners, Users, Teams) work in
    a project. Bots are its agents others use without joining it, each in their
    own private chat. A dashboard is shared like a Drive file: people you add,
    plus general access (Restricted / Anyone at the company with the link /
-   Anyone with the link for a public copy). Sharing a product means sharing
-   its dashboard; every shared product has one (a default when none was
-   built). Code and Relays have one owner. A Crew has
+   Anyone with the link for a public copy). Someone with only the dashboard
+   opens its pages and their data, never the project, its chats, agents or
+   files, and gets no Ask or function buttons; to let people ask or use a
+   project without joining, share an agent as a bot. Code and Relays have one owner. A Crew has
    one main owner; a Crew on the server also has co-owners who build it with
    them and change everything, and Users who work in it through chat with its
    setup but cannot change that setup (only the main owner adds or removes

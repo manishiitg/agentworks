@@ -11,14 +11,14 @@ func TestWorkspaceAudienceKeepsPrivateCrewPrivate(t *testing.T) {
 	_, profile := newCodePrivacyFixture(t)
 	registry := withProjectOwnerRegistry(t)
 	withProjectSharing(t, true)
-	if crewSharedWithOthers(codePrivacyOwnerRoot) || crewSharedWith(codePrivacyOwnerRoot, "other") {
+	if crewDashboardOpenToCompany(codePrivacyOwnerRoot) || crewSharedWith(codePrivacyOwnerRoot, "other") {
 		t.Fatal("unregistered private Crew became visible")
 	}
 	const folder = "app-c0de0001"
 	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: folder, OwnerID: "owner", ProjectID: "c0de0001-0000", Shared: true, Private: true, AudienceConfigured: true}); err != nil {
 		t.Fatal(err)
 	}
-	if crewSharedWithOthers(codePrivacyOwnerRoot) {
+	if crewDashboardOpenToCompany(codePrivacyOwnerRoot) {
 		t.Fatal("registered private Crew became public")
 	}
 	if _, err := resolveCrewProjectBinding(context.Background(), "other", profile, "c0de0001-0000", codePrivacyOwnerRoot); err == nil {
@@ -27,18 +27,18 @@ func TestWorkspaceAudienceKeepsPrivateCrewPrivate(t *testing.T) {
 	if err := registry.SetRunPeople("work", folder, []string{"other"}); err != nil {
 		t.Fatal(err)
 	}
-	if crewSharedWithOthers(codePrivacyOwnerRoot) || !crewSharedWith(codePrivacyOwnerRoot, "other") {
-		t.Fatal("selected audience is not respected")
+	// #4545: someone added to the dashboard opens its pages only, never the project (its chat, agents or files).
+	if crewDashboardOpenToCompany(codePrivacyOwnerRoot) || !crewDashboardSharedWith(codePrivacyOwnerRoot, "other") || crewSharedWith(codePrivacyOwnerRoot, "other") {
+		t.Fatal("people added to the dashboard must open its pages and nothing else")
 	}
-	binding, err := resolveCrewProjectBinding(context.Background(), "other", profile, "c0de0001-0000", codePrivacyOwnerRoot)
-	if err != nil || binding.OwnedByCaller || binding.Binding.ManifestPath != "" || binding.Binding.AuthoritativeSessionID != "" {
-		t.Fatalf("Run binding inherited owner state: %+v %v", binding, err)
+	if _, err := resolveCrewProjectBinding(context.Background(), "other", profile, "c0de0001-0000", codePrivacyOwnerRoot); err == nil {
+		t.Fatal("a dashboard share opened the project")
 	}
 	if err := registry.SetRunPeople("work", folder, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolveCrewProjectBinding(context.Background(), "other", profile, "c0de0001-0000", codePrivacyOwnerRoot); err == nil {
-		t.Fatal("removed person kept access")
+	if crewDashboardSharedWith(codePrivacyOwnerRoot, "other") {
+		t.Fatal("removed person kept the dashboard")
 	}
 	// The old zero-value record must not be resurrected by a later registration.
 	if err := registry.SetPrivate("work", folder, false); err != nil {
@@ -47,7 +47,7 @@ func TestWorkspaceAudienceKeepsPrivateCrewPrivate(t *testing.T) {
 	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: folder, OwnerID: "owner"}); err != nil {
 		t.Fatal(err)
 	}
-	if !crewSharedWithOthers(codePrivacyOwnerRoot) {
+	if !crewDashboardOpenToCompany(codePrivacyOwnerRoot) {
 		t.Fatal("explicit everyone audience was reset")
 	}
 }

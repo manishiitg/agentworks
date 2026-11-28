@@ -42,11 +42,9 @@ func TestCrewOwnerNavigationBeforeFirstChat(t *testing.T) {
 	if err := defaultProjectOwners().SetPrivate("work", "owner-tabs", false); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(list(true), `"workspace_id":"work:beta"`) {
-		t.Fatal("Run-only share leaked into Builder navigation")
-	}
-	if !strings.Contains(list(false), `"workspace_id":"work:beta"`) {
-		t.Fatal("ordinary MCP discovery lost Run access")
+	// A dashboard open to the company opens its pages only, so the project is listed nowhere (#4545).
+	if strings.Contains(list(true), `"workspace_id":"work:beta"`) || strings.Contains(list(false), `"workspace_id":"work:beta"`) {
+		t.Fatal("a dashboard share listed the project")
 	}
 }
 

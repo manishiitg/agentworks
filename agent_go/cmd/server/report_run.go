@@ -198,7 +198,8 @@ func (api *StreamingAPI) handleReportRun(w http.ResponseWriter, r *http.Request)
 	// Project capabilities are selected by the owner; live viewer permissions
 	// still govern every secret and MCP call made by the script.
 	if isCrew {
-		if crewAccessFor(claims, crew) == crewAccessNone {
+		// A dashboard's live-data script runs for anyone who can open its pages (#4545).
+		if !crewPageAccess(claims, crew) {
 			writeWorkflowPermissionDenied(w, "read")
 			return
 		}

@@ -193,6 +193,7 @@ func TestAddShareabilityMetadataClassifiesDeploymentHosts(t *testing.T) {
 
 func TestGetFileLinkToolScopesWorkLinksToProjectOwner(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other-user","role":"viewer","products":["code"]}]}`)
 	t.Setenv("PUBLIC_URL", "https://customer.example")
 	const userID = "owner"

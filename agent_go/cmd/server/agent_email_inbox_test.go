@@ -28,9 +28,10 @@ func agentEmailCrewFixture(t *testing.T) (triggerLinkEnv, context.Context, strin
 	env.mock.mu.Lock()
 	env.mock.files[root+"/product.json"] = `{"schema_version":1,"product":"work","id":"mail-checks","title":"Mail checks","session_id":"sess-mail-checks"}`
 	env.mock.mu.Unlock()
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "mail-checks", ProjectID: "mail-checks", OwnerID: "owner", Shared: true, Private: true, AudienceConfigured: true, RunPeople: []string{"other"}}); err != nil {
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "mail-checks", ProjectID: "mail-checks", OwnerID: "owner", Shared: true, Private: true, AudienceConfigured: true}); err != nil {
 		t.Fatal(err)
 	}
+	shareCrewBotForTest(t, root, "other")
 	stubCrewLookups(t, map[string]string{root: "owner"}, nil)
 	return env, internalBotRequestContext(context.Background(), "owner"), root
 }

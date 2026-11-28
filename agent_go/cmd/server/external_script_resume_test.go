@@ -211,6 +211,7 @@ func checkSavedScriptMCPResumeAfterEdit(t *testing.T, api *StreamingAPI, binding
 // Resume must be derived for that route with the same current Builder/Run rules.
 func TestWorkspaceStateProjectsCurrentResumeEligibility(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	owner := &UserClaims{UserID: "owner", Username: "owner"}
 	ctx := context.WithValue(t.Context(), UserContextKey, owner)
 	binding := crewExecutableBinding{ID: "resume-state", CrewID: "team", CrewRoot: externalCommandCrewRoot, Root: "Workflow/resume-state", Kind: "script", RuntimeRoot: "workflows/resume-state"}

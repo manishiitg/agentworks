@@ -104,9 +104,7 @@ func TestWorkspaceExternalResultsKeepRunPresentationAndCallBoundaries(t *testing
 	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "app-c0de0001", OwnerID: "owner", ProjectID: "c0de0001-0000", Shared: true, Private: true, AudienceConfigured: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.SetRunPeople("work", "app-c0de0001", []string{"other"}); err != nil {
-		t.Fatal(err)
-	}
+	shareCrewBotForTest(t, "Crew/app-c0de0001", "other")
 	req := httptest.NewRequest("POST", "/api/external/v1/call", nil)
 	req = req.WithContext(context.WithValue(req.Context(), UserContextKey, &UserClaims{UserID: "other"}))
 	recorder := httptest.NewRecorder()
@@ -148,9 +146,7 @@ func TestCrewDeletionRemovesOnlyItsExecutableBindings(t *testing.T) {
 	f.put("Crew/other/workflow.json", `{"schema_version":1,"id":"other-crew","label":"Other","capabilities":{}}`)
 	registerTestCrew(t, "other", fixtureUserB, true, "other-crew")
 	withProjectSharing(t, true)
-	if err := defaultProjectOwners().SetRunPeople("work", fixtureCrewFolder, []string{fixtureUserB}); err != nil {
-		t.Fatal(err)
-	}
+	shareCrewBotForTest(t, "Crew/"+fixtureCrewFolder, fixtureUserB)
 	for _, binding := range []crewExecutableBinding{
 		{ID: "workflow-delete", CrewID: fixtureCrewID, CrewRoot: f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), Root: "Workflow/delete-workflow", Kind: "script"},
 		{ID: "script-shared-id", CrewID: fixtureCrewID, CrewRoot: f.Layout.CrewPhysical(fixtureUserA, fixtureCrewFolder), Root: "Workflow/delete-script", Kind: "script"},

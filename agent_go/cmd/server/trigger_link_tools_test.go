@@ -138,6 +138,7 @@ func TestTriggerTargetResolutionUsesCurrentRunAccess(t *testing.T) {
 func TestSharedCrewFunctionUsesDeclaredEntry(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	env := newCrewFunctionEnv(t)
+	shareCrewBotForTest(t, linkGammaPath, "owner")
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
 	ownerCtx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "other"})
 	target, err := resolveTriggerTarget(ownerCtx, &UserClaims{UserID: "other"}, "Gamma")

@@ -23,6 +23,8 @@ func TestDashboardPublicLinkFrozenCopy(t *testing.T) {
 	if err := writeCrewTeam(crewTeam{ProjectID: "team", OwnerID: "owner", On: true, People: []crewTeamPerson{{UserID: "member"}}}); err != nil {
 		t.Fatal(err)
 	}
+	// On the server the member builds the project as a co-owner; its open dashboard alone gives its pages only (#4545).
+	joinCrewTeam(t, "test-team", "member")
 	t.Setenv("PUBLIC_URL", "https://app.example.com")
 	static := t.TempDir()
 	t.Setenv("STATIC_DIR", static)
@@ -112,12 +114,12 @@ func TestDashboardPublicLinkFrozenCopy(t *testing.T) {
 	if len(code) != 22 || !validDashboardPublicCode(code) { // the gateway admits exactly this shape
 		t.Fatalf("code shape: %q", code)
 	}
-	// The Artifacts page names each page by its id (its menu, Copy link and Delete use it) and shows the owner's
-	// public link; the list once came back with every id empty, so one click opened every row's menu.
+	// The Artifacts page names each page by its id (its menu, Copy link and Delete use it); the list once came back
+	// with every id empty, so one click opened every row's menu. The public link lives in the Share window (#4545).
 	tabW := httptest.NewRecorder()
 	f.api.handleCrewTeamDashboardsTab(tabW, adminRequest(http.MethodGet, "/api/crew-teams/team/dashboards-tab", "", owner, map[string]string{"project": "team"}))
 	var tab crewDashboardsTab
-	if tabW.Code != http.StatusOK || json.Unmarshal(tabW.Body.Bytes(), &tab) != nil || len(tab.Items) != 1 || tab.Items[0].ID != "sales" || tab.Items[0].When == "" || tab.Items[0].PublicLink == nil || !tab.Items[0].PublicLink.On {
+	if tabW.Code != http.StatusOK || json.Unmarshal(tabW.Body.Bytes(), &tab) != nil || len(tab.Items) != 1 || tab.Items[0].ID != "sales" || tab.Items[0].When == "" {
 		t.Fatalf("Artifacts page: %d %s", tabW.Code, tabW.Body.String())
 	}
 	page := open("/p/" + code)

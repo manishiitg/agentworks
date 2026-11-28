@@ -25,14 +25,10 @@ import (
 func TestCrewChatUploadUsesCallerFolder(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	f, _ := newExternalCrewCommandFixture(t)
-	// #3060: screenshots remain runtime attachments while source editing is on
-	// the paired Mac; the same caller-folder and revoked-access checks still run.
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
-	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Side: "server", Editing: "local", PairID: "pair", PeerProjectID: "local-team"}); err != nil {
-		t.Fatal(err)
-	}
 
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other","role":"editor","products":["work"]},{"id":"runner","role":"viewer","products":["work"]}]}`)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other", "runner")
 	image, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aOS8AAAAASUVORK5CYII=")
 	if err != nil {
 		t.Fatal(err)
@@ -150,11 +146,17 @@ func TestCrewChatUploadUsesCallerFolder(t *testing.T) {
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("upload changed outside files: %v", err)
 	}
-	if err := defaultProjectOwners().SetPrivate("work", "test-team", true); err != nil {
-		t.Fatal(err)
-	}
+	stopCrewBotForTest(t, externalCommandCrewRoot)
 	if w := upload(&UserClaims{UserID: "other"}, image, "revoked.png"); w.Code != 404 {
 		t.Fatalf("revoked sharing upload = %d %s", w.Code, w.Body.String())
+	}
+	// #3060: screenshots remain runtime attachments while source editing is on the paired Mac (only its owner and
+	// Team reach such a project; bots are for projects on the server, #4545).
+	if err := crewroot.WriteSync("team", crewroot.SyncBinding{Side: "server", Editing: "local", PairID: "pair", PeerProjectID: "local-team"}); err != nil {
+		t.Fatal(err)
+	}
+	if w := upload(&UserClaims{UserID: "owner", Username: "owner"}, image, "paired.png"); w.Code != 200 || !strings.Contains(w.Body.String(), externalCommandCrewRoot+"/uploads/") {
+		t.Fatalf("paired-Mac owner upload = %d %s", w.Code, w.Body.String())
 	}
 }
 
@@ -267,6 +269,7 @@ func TestCrewUploadIsReachableFromTheTurnAndTheChat(t *testing.T) {
 func TestCrewChunkedUploadUsesTheSameChecksAndWriter(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","role":"editor","products":["work"]},{"id":"other","role":"editor","products":["work"]}]}`)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	data := make([]byte, 12<<20) // over the 10 MiB form and 11 MiB content limits
 	if _, err := rand.Read(data); err != nil {
 		t.Fatal(err)
@@ -360,9 +363,7 @@ func TestCrewChunkedUploadUsesTheSameChecksAndWriter(t *testing.T) {
 	if w := call(view, http.MethodPost, "plan", plan, "application/json"); w.Code != http.StatusForbidden {
 		t.Fatalf("view token plan: %d %s", w.Code, w.Body.String())
 	}
-	if err := defaultProjectOwners().SetPrivate("work", "test-team", true); err != nil {
-		t.Fatal(err)
-	}
+	stopCrewBotForTest(t, externalCommandCrewRoot)
 	if w := call(runner, http.MethodPost, "plan", plan, "application/json"); w.Code != http.StatusNotFound {
 		t.Fatalf("revoked plan: %d %s", w.Code, w.Body.String())
 	}

@@ -22,6 +22,7 @@ import (
 // authenticated asset handlers must all preserve the same Crew/file bounds.
 func TestExternalCrewLinksOverMCPAndAssetAccess(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	t.Setenv("PUBLIC_URL", "https://app.example.com")
 	f.write(t, externalCommandCrewRoot+"/outputs/report.txt", "Report contents")
 	f.write(t, externalCommandCrewRoot+"/outputs/blocked.txt", "Private contents")

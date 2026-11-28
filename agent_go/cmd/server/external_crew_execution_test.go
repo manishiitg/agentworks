@@ -26,6 +26,7 @@ import (
 // policy that reaches the existing kernel sandbox rather than mocking it in Go.
 func TestExternalCrewExecutionOverMCP(t *testing.T) {
 	f, upstream := newExternalCrewCommandFixture(t)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	t.Setenv("AUTH_SECRET", "crew-execution-test-signing-secret")
 	// PLAT-746-448: conversion points the Crew at its existing workflow DB.
 	if err := defaultProjectOwners().modify(func(projects map[string]projectOwnerRecord) (bool, error) {

@@ -18,6 +18,7 @@ import (
 // which belong to project_functions_get_call under workflow access.
 func TestGetCrewFunctionCallRefusesWorkflowCalls(t *testing.T) {
 	env := newTriggerLinkEnv(t)
+	shareCrewBotForTest(t, linkBetaPath, "someone")
 	env.api.agentProfiles = env.svc.registry
 	seed := func(id, kind, target string) {
 		call := &crewFunctionCall{ID: id, UserID: "owner", CallerKind: triggerCallerUser, TargetKind: kind, TargetID: target, TargetPath: func() string {
@@ -130,6 +131,7 @@ func TestCrewFunctionQuestionIsBoundToCallAndRunScope(t *testing.T) {
 // under the existing one-company sharing rule, regardless of who made the call.
 func TestListCrewFunctionCallsMembersSeeAllResults(t *testing.T) {
 	env := newTriggerLinkEnv(t)
+	shareCrewBotForTest(t, linkBetaPath, "someone")
 	env.api.agentProfiles = env.svc.registry
 	seed := func(id, user string, isolated bool) {
 		call := &crewFunctionCall{ID: id, UserID: user, CallerKind: triggerCallerUser, CallerLabel: user + " connection", Function: "review", TargetKind: triggerCallerCrew, TargetID: "beta",

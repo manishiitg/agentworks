@@ -14,6 +14,7 @@ import (
 // owner agents to a Run person. Opening must not save a replacement Main.
 func TestCrewOpeningWithoutMainUsesAuthorizedExistingAgent(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	ctx := internalBotRequestContext(t.Context(), "owner")
 	profile, err := f.api.agentProfiles.Resolve("work", 0, "owner")
 	if err != nil {

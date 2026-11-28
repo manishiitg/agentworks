@@ -161,9 +161,13 @@ func (api *StreamingAPI) liveDefaultDashboard(ctx context.Context, claims *UserC
 		// A grant for one saved revision must not become a live-page grant.
 		return data, false, nil
 	}
-	target, err := api.dashboardTarget(ctx, claims, root)
+	target, err := api.dashboardPageTarget(ctx, claims, root)
 	if err != nil {
 		return nil, false, err
+	}
+	// Someone with only the dashboard opens the saved page: Ask and the function buttons are not theirs (#4545).
+	if target.PageOnly {
+		return data, false, nil
 	}
 	publication, err := readPublishedProject(ctx, root)
 	if err != nil {

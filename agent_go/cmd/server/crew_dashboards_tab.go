@@ -9,7 +9,7 @@ import (
 )
 
 // The Access page's Dashboards tab, next to Share (owner, 6 Nov mockup; its own tab again 9 Nov): everything the Crew
-// publishes (dashboards, artifacts and motion), each with its kind, when it was updated, who can open it and, on a server Crew, its public link. The
+// publishes (dashboards, artifacts and motion), each with its kind, when it was updated, and who can open it (sharing is the dashboard's one Share window). The
 // server writes every line; the card renders them. It reads the same rows and the same Team and Share records as the Team
 // card's Dashboards list (crew_team_dashboards.go), so it adds no access rule: the Crew's owner or a Team member opens
 // it, and only the owner changes who can open an item or its public link.
@@ -23,8 +23,6 @@ type crewDashboardsTabItem struct {
 	Line string `json:"line"`
 	// Who says who can open it: the Team always, and the people the owner shared the Crew with.
 	Who string `json:"who"`
-	// PublicLink is the owner's, on a Crew that lives on the server only.
-	PublicLink *dashboardPublicView `json:"public_link,omitempty"`
 	// When is "2 h ago" and Group is Today, This week or Older (owner, 25 Nov mockup); items come newest first.
 	When  string `json:"when,omitempty"`
 	Group string `json:"group"`
@@ -174,9 +172,6 @@ func (api *StreamingAPI) crewDashboardsTabFor(w http.ResponseWriter, r *http.Req
 			line += " · updated " + when
 		}
 		item := crewDashboardsTabItem{ID: row.ID, Title: row.Title, Path: row.Path, Kind: key, Line: line, Who: who, When: when, Group: crewDashboardsGroup(updated, time.Now()), CanDelete: tab.CanChange, updated: updated}
-		if !onMac && owner {
-			item.PublicLink = row.PublicLink
-		}
 		tab.Items = append(tab.Items, item)
 	}
 	sort.SliceStable(tab.Items, func(i, j int) bool { return tab.Items[i].updated.After(tab.Items[j].updated) })

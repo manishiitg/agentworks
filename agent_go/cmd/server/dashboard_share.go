@@ -14,20 +14,16 @@ import (
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
-// Sharing a dashboard (PLAT-750, share = dashboard). There is one access source
-// per product and this edits it, so Ask, functions, dashboards and MCP keep
-// using their existing checks and no second path can drift:
+// Sharing a dashboard (#4545): shared like a Drive file, people added plus general access.
 //
-//   - Crew: the owner registry's Private flag (everyone who uses the Crew
-//     product, or the owner alone).
-//   - Workflow and Relay: WorkflowAccess.Readers (the people listed) plus
-//     RunEveryone (every account that may use that product).
+//   - Project (Crew): the owner registry's Private flag (anyone at the company with the link) and RunPeople (people
+//     added). They open the dashboard pages and their data only (crewPageAccess), not the project: its People are
+//     co-owners, Users and Teams, and bots are how others ask or use it without joining.
+//   - Goal and Flow: WorkflowAccess.Readers plus RunEveryone, which still give Run use of the Goal or Flow.
 //
-// A share includes the dashboard, Ask, published functions and existing MCP
-// reads of product files, runs and logs. Secret values and private logs remain
-// excluded. Nothing becomes visible to more people unless its owner shares it.
+// Nothing becomes visible to more people unless its owner shares it.
 
-const runShareAccessDescription = "People you share with open its dashboard, can ask it, use its published functions, read and message selected existing agents, and read its files, runs and logs through MCP. Secret values and private logs stay excluded."
+const runShareAccessDescription = "A dashboard is shared like a Drive file: people added plus general access (restricted or anyone at the company with the link). They open its published pages and the data on them, nothing else: not the project, its chats, agents or files, and no Ask or function buttons. People who work in a project are its co-owners, Users and Teams; to let others ask or use it without joining, share an agent as a bot. For a Goal or Flow, people added also run it and ask it in Run mode."
 
 const (
 	runShareEveryone = "everyone"
@@ -50,8 +46,11 @@ type runShareAccount struct {
 type runShareState struct {
 	Accounts []runShareAccount `json:"accounts,omitempty"`
 	Mode     string            `json:"mode"`
-	People   []runSharePerson  `json:"people,omitempty"`
-	Unknown  []string          `json:"unknown_emails,omitempty"`
+	// Access is the dashboard's general access, worded like a Drive file: restricted (only People and the people added)
+	// or company (anyone at the company with the link). A public copy is each page's public link.
+	Access  string           `json:"access,omitempty"`
+	People  []runSharePerson `json:"people,omitempty"`
+	Unknown []string         `json:"unknown_emails,omitempty"`
 	// Previous is who had access before this change, so the owner or agent sees exactly who was removed.
 	Previous *runShareState `json:"previous,omitempty"`
 	// CanShare tells the screen whether to offer sharing: only the project's owner can.
@@ -61,6 +60,9 @@ type runShareState struct {
 	Owner bool `json:"owner,omitempty"`
 	// HasOwners says the project keeps an owner list: Goals, Flows and Crews on the server (co-owners). A Mac Crew has its Team.
 	HasOwners bool `json:"has_owners,omitempty"`
+	// PagesOnly says the dashboard opens its pages only, not the project (a project's dashboard, #4545); a Goal's or
+	// Flow's share still lets people run and ask it.
+	PagesOnly bool `json:"pages_only,omitempty"`
 	// ShareBlocked is the plain reason sharing is unavailable, shown as given.
 	ShareBlocked string `json:"share_blocked,omitempty"`
 	// Note says anything the owner should know about what the share did.
@@ -68,6 +70,27 @@ type runShareState struct {
 	Agents []sharedCrewAgent `json:"agents,omitempty"`
 	// PublicLinks is the main owner's public link control, here while the Crew's Team is off (the Team tab has it otherwise).
 	PublicLinks []dashboardPublicView `json:"public_links,omitempty"`
+}
+
+func dashboardGeneralAccess(mode string) string {
+	if mode == runShareEveryone {
+		return "company"
+	}
+	return "restricted"
+}
+
+const dashboardShareAccessHint = "Pass access: restricted (with the people to add in emails) or company."
+
+// dashboardShareMode maps share_dashboard's general access to the stored share mode: company is everyone; restricted is
+// the people added (applyRunShare makes it private when none are).
+func dashboardShareMode(access string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(access)) {
+	case "company":
+		return runShareEveryone, true
+	case "restricted":
+		return runSharePeople, true
+	}
+	return "", false
 }
 
 func dashboardShareAction(action string) bool { return action == "share" || action == "share_status" }
@@ -136,7 +159,7 @@ func (api *StreamingAPI) readRunShare(ctx context.Context, claims *UserClaims, t
 	state := runShareState{Mode: runSharePrivate, NeedsDashboard: target.Kind == "crew" && !hasPublishedDashboard(ctx, target.Root)}
 	switch target.Kind {
 	case "crew":
-		if crewSharedWithOthers(target.Root) {
+		if crewDashboardOpenToCompany(target.Root) {
 			state.Mode = runShareEveryone
 		} else if id, ok := projectIdentityOf(target.Root); ok && isProjectProfileID(id.Product) {
 			if rec, found := defaultProjectOwners().Lookup(id.Product, id.Folder); found && len(rec.RunPeople) > 0 {
@@ -386,6 +409,8 @@ func (api *StreamingAPI) handleDashboardShare(w http.ResponseWriter, r *http.Req
 		return
 	}
 	state.Owner = api.dashboardShareOwner(r.Context(), claims, target)
+	state.Access = dashboardGeneralAccess(state.Mode)
+	state.PagesOnly = target.Kind == "crew"
 	state.HasOwners = target.Kind != "crew" || crewLivesOnServer(target.ID)
 	state.CanShare = state.Owner && dashboardAuthoringAllowed(claims, &target) && !macTwin
 	if macTwin {

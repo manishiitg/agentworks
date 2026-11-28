@@ -92,7 +92,7 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 	if claims == nil || claims.UserID == "" || claims.Provider == "bot_route" || !dashboardReadPurposeAllowed(claims) {
 		return out, dashboardFailure(404, "dashboard unavailable")
 	}
-	target, err := api.dashboardTarget(ctx, claims, out.Resource.Root)
+	target, err := api.dashboardPageTarget(ctx, claims, out.Resource.Root)
 	if err != nil || target.Kind != out.Resource.Kind || target.ID != out.Resource.ProjectID {
 		return out, dashboardFailure(404, "dashboard unavailable")
 	}
@@ -151,5 +151,10 @@ func (api *StreamingAPI) resolveDashboardQuestionResource(ctx context.Context, c
 		out.Capability.CanAsk, out.Capability.Mode, out.Capability.Reason = false, "", "artifact"
 	}
 	out.Capability.CanUseFunctions = out.Capability.CanView && !IsLocalMode() && !out.Snapshot.Artifact
+	// Someone with the dashboard but not the project gets the page only: no Ask, no function buttons (#4545). To let
+	// people ask or use a project without joining it, its maker shares a bot.
+	if target.PageOnly {
+		out.Capability.CanAsk, out.Capability.CanUseFunctions, out.Capability.Mode, out.Capability.Reason = false, false, "", "page_only"
+	}
 	return out, nil
 }

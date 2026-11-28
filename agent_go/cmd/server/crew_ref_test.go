@@ -35,14 +35,19 @@ func TestResolveCrewPathOwner(t *testing.T) {
 	}
 }
 
+// The project's People and bots open it; its dashboard's audience (open to the company here) opens the pages only (#4545).
 func TestCrewAccessFor(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"alice","username":"alice","products":["work"]},{"id":"bob","username":"bob","products":["work"]},{"id":"carol","username":"carol","products":["agentworks"]}]}`)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
-	// A Crew starts private; another user reads it only once the owner has shared it.
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "sde", OwnerID: "alice", Shared: true}); err != nil {
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "sde", OwnerID: "alice", ProjectID: "sde-proj", Shared: true}); err != nil {
 		t.Fatal(err)
 	}
 	ref := crewPathRef{Root: "Crew/sde", OwnerID: "alice", Shared: true}
+	bob := &UserClaims{UserID: "bob", Username: "bob"}
+	if got := crewAccessFor(bob, ref); got != crewAccessNone || !crewPageAccess(bob, ref) {
+		t.Fatalf("dashboard audience: project access %v, page access %v; want none and the pages", got, crewPageAccess(bob, ref))
+	}
+	shareCrewBotForTest(t, "Crew/sde", "bob", "carol")
 	for user, want := range map[string]crewAccessLevel{"alice": crewAccessOwner, "bob": crewAccessReader, "carol": crewAccessNone} {
 		if got := crewAccessFor(&UserClaims{UserID: user, Username: user}, ref); got != want {
 			t.Fatalf("%s: %v, want %v", user, got, want)

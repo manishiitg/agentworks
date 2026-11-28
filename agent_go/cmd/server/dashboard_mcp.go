@@ -134,17 +134,15 @@ func dashboardToolDefinitions(add func(string, string, bool, bool, map[string]an
 		"workspace":    externalString("Existing project root or stable work:<id> from workspace list/get."),
 		"workspace_id": externalString("Stable work:<id> from workspace list/get. Pass exactly one project selector."),
 	}
-	add("get_dashboard_share", "Read who a project, Goal or Flow is shared with: everyone, chosen people (emails) or private. Anyone with access to the product may inspect sharing. "+runShareAccessDescription, false, false, shareProps)
+	add("get_dashboard_share", "Read who a dashboard is shared with: general access (restricted or company) and the people added. "+runShareAccessDescription, false, false, shareProps)
 	shareSet := map[string]any{}
 	for key, value := range shareProps {
 		shareSet[key] = value
 	}
 	shareSet["create_dashboard"] = map[string]any{"type": "boolean", "description": "Project only: create and publish the standard dashboard if none exists. Set true only after the person agrees to creating it for sharing; otherwise a missing dashboard returns dashboard_required without changing access."}
-	shareSet["mode"] = map[string]any{"type": "string", "enum": []any{"everyone", "people", "private"}, "description": "everyone: every account allowed to use this product. people: only the emails you list; an email with no account is reported back. private: only the owner. Shared people open the dashboard, Ask, use published functions and read product files, runs and logs through MCP; secret values and private logs stay excluded."}
-	shareSet["shared_agents"] = map[string]any{"type": "array", "maxItems": 100, "items": externalString("Stable chat_id from Share agents."), "description": "Project only: replaces the selected existing agents for this same audience. Empty clears; omitted preserves. Messages from sharing onward and their configured tools are shared; tab controls remain with their owner."}
-	shareSet["agent_purposes"] = map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string", "maxLength": 300}, "description": "Project only: saved one-line purpose by chat_id. Only the tab owner can change its purpose."}
-	shareSet["emails"] = map[string]any{"type": "array", "maxItems": 200, "items": externalString("Email of an account to share with, for mode people."), "description": "Replaces the people list. Ignored for everyone and private."}
-	add("share_dashboard", "Share a project, Goal or Flow using its owner's existing authoring consent. "+runShareAccessDescription+" A project without a published dashboard needs the person to agree to creating one first; inspect needs_dashboard, ask, and set create_dashboard=true only after agreement. Nothing is shared until the owner asks: use their choice of everyone, chosen people or private; never pick the audience for them. Mode people REPLACES the whole list: inspect sharing first and keep everyone the owner did not ask to remove; the reply shows the previous list.", true, false, shareSet, "mode")
+	shareSet["access"] = map[string]any{"type": "string", "enum": []any{"restricted", "company"}, "description": "General access. restricted: only the people added (emails) and the project's own People. company: anyone at the company with the link (signed in). For anyone with the link without signing in, use set_dashboard_public_link on one page (the main owner only)."}
+	shareSet["emails"] = map[string]any{"type": "array", "maxItems": 200, "items": externalString("Email of an account to add."), "description": "With access restricted: the people added. Replaces the whole list; an empty list leaves only the project's People. An email with no account is reported back."}
+	add("share_dashboard", "Share a dashboard like a Drive file, using its owner's existing authoring consent. "+runShareAccessDescription+" A project without a published dashboard needs the person to agree to creating one first; inspect needs_dashboard, ask, and set create_dashboard=true only after agreement. Nothing is shared until the owner asks: use their choice; never pick the audience for them. emails REPLACES the whole list: inspect sharing first and keep everyone the owner did not ask to remove; the reply shows the previous list.", true, false, shareSet, "access")
 	// Replace the old Run-assistant proxy with a native read operation. Keep its call shape.
 	add("get_report_link", "Return a live dashboard URL directly, without starting a Run conversation. document_path defaults to db/reports/index.html; supports Goals and Flows. Requires dashboards:read consent.", false, true, map[string]any{"document_path": externalString("HTML document under db/reports/.")})
 }
@@ -152,6 +150,16 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 	payload := map[string]any{"action": dashboardActions[name]}
 	for key, value := range args {
 		payload[key] = value
+	}
+	// share_dashboard speaks general access (#4545); the server keeps its stored modes.
+	if name == "share_dashboard" {
+		mode, ok := dashboardShareMode(externalArg(args, "access"))
+		if !ok {
+			externalError(w, 400, "invalid_arguments", dashboardShareAccessHint)
+			return
+		}
+		delete(payload, "access")
+		payload["mode"] = mode
 	}
 	// Projects are named by ID like every other MCP tool; dashboardTarget
 	// re-checks access on the resolved root.
@@ -166,7 +174,7 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 		}
 		if named > 1 || (named == 0 && dashboardActions[name] != "list" && dashboardActions[name] != "catalog") {
 			if name == "share_dashboard" {
-				logDashboardShareRefusal(GetUserFromContext(r.Context()), dashboardTarget{Root: workspace, ID: workflowID + flowID + crewID}, externalArg(args, "mode"), "selector", dashboardFailure(400, "pass exactly one project"), nil)
+				logDashboardShareRefusal(GetUserFromContext(r.Context()), dashboardTarget{Root: workspace, ID: workflowID + flowID + crewID}, externalArg(args, "access"), "selector", dashboardFailure(400, "pass exactly one project"), nil)
 			}
 			externalError(w, 400, "invalid_arguments", "Pass exactly one project ID or workspace.")
 			return
@@ -188,7 +196,7 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 			binding, _, ok := api.resolveExternalWorkspace(r.Context(), GetUserFromContext(r.Context()), workspace)
 			if !ok {
 				if name == "share_dashboard" {
-					logDashboardShareRefusal(GetUserFromContext(r.Context()), dashboardTarget{Root: workspace}, externalArg(args, "mode"), "target", dashboardFailure(404, "project unavailable"), nil)
+					logDashboardShareRefusal(GetUserFromContext(r.Context()), dashboardTarget{Root: workspace}, externalArg(args, "access"), "target", dashboardFailure(404, "project unavailable"), nil)
 				}
 				externalError(w, 404, "not_found", "project unavailable")
 				return
@@ -200,7 +208,7 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 			root, ok := dashboardWorkflowRoot(r, workflowID)
 			if !ok {
 				if name == "share_dashboard" {
-					logDashboardShareRefusal(GetUserFromContext(r.Context()), dashboardTarget{Kind: "workflow", ID: workflowID}, externalArg(args, "mode"), "target", dashboardFailure(404, "project unavailable"), nil)
+					logDashboardShareRefusal(GetUserFromContext(r.Context()), dashboardTarget{Kind: "workflow", ID: workflowID}, externalArg(args, "access"), "target", dashboardFailure(404, "project unavailable"), nil)
 				}
 				externalError(w, 404, "not_found", "project unavailable")
 				return
@@ -210,7 +218,7 @@ func (api *StreamingAPI) externalDashboardCall(w http.ResponseWriter, r *http.Re
 			crew, _, _, ok := api.externalCrewResolve(r.Context(), GetUserFromContext(r.Context()), crewID)
 			if !ok {
 				if name == "share_dashboard" {
-					logDashboardShareRefusal(GetUserFromContext(r.Context()), dashboardTarget{Kind: "crew", ID: crewID}, externalArg(args, "mode"), "target", dashboardFailure(404, "project unavailable"), nil)
+					logDashboardShareRefusal(GetUserFromContext(r.Context()), dashboardTarget{Kind: "crew", ID: crewID}, externalArg(args, "access"), "target", dashboardFailure(404, "project unavailable"), nil)
 				}
 				externalError(w, 404, "not_found", "project unavailable")
 				return
@@ -305,6 +313,14 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 				roots = append(roots, root)
 			}
 		}
+		// Projects whose dashboard is shared with the caller, though they don't work in them (#4545).
+		if records, err := defaultProjectOwners().All(); err == nil {
+			for _, rec := range records {
+				if root := crewBotRoot(rec); isProjectProfileID(rec.Product) && crewDashboardSharedWith(root, claims.UserID) {
+					roots = append(roots, root)
+				}
+			}
+		}
 	}
 	// Codes are private and enumerated only under this caller's own tree.
 
@@ -313,12 +329,12 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 	seen := map[string]bool{}
 	failed := []string{}
 	for _, root := range roots {
-		target, err := api.dashboardTarget(r.Context(), claims, root)
+		target, err := api.dashboardPageTarget(r.Context(), claims, root)
 		if err != nil || seen[target.Root] {
 			continue
 		}
 		seen[target.Root] = true
-		result, err := dashboardWorkspaceRequest(r.Context(), dashboards.Request{Root: target.Root, Action: "list", Guard: dashboardFileGuard(claims), IncludeDraft: dashboardAuthoringAllowed(claims, &target) && !publishedOnly})
+		result, err := dashboardWorkspaceRequest(r.Context(), dashboards.Request{Root: target.Root, Action: "list", Guard: dashboardFileGuard(claims), IncludeDraft: !target.PageOnly && dashboardAuthoringAllowed(claims, &target) && !publishedOnly})
 		if err != nil {
 			log.Printf("[DASHBOARD_DIRECTORY] user=%s project=%s ok=false reason=list_failed", GetUserIDFromContext(r.Context()), target.ID)
 			failed = append(failed, target.Root)
@@ -330,11 +346,11 @@ func (api *StreamingAPI) listAccessibleDashboards(w http.ResponseWriter, r *http
 			continue
 		}
 		for _, d := range result.Dashboards {
-			if publishedOnly && d.Managed && d.Published == "" {
+			if (publishedOnly || target.PageOnly) && d.Managed && d.Published == "" {
 				continue
 			}
 			viewTarget := target
-			viewTarget.Edit = dashboardAuthoringAllowed(claims, &target)
+			viewTarget.Edit = !target.PageOnly && dashboardAuthoringAllowed(claims, &target)
 			row := dashboardDiscoveryRow(viewTarget, d)
 			row["shared_with_me"] = sharedWithMe
 			resources = append(resources, dashboardQuestionDiscovery{viewTarget, d, row})

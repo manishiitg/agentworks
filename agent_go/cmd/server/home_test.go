@@ -246,7 +246,8 @@ func TestWorkspaceStateRestoresEmptyRegisteredSideChat(t *testing.T) {
 
 func TestHomeInventoryIncludesOnlyAdmittedSharedCode(t *testing.T) {
 	api, _ := newCodePrivacyFixture(t)
-	// Code is a Crew now: the fixture registered it private under the Crew product; only its Run people see it.
+	// Code is a Crew now: the fixture registered it private under the Crew product; only its People (here a User) see it
+	// (#4545: a dashboard share or a bot does not list the project).
 	registry := defaultProjectOwners()
 	withProjectSharing(t, true)
 	const folder = "app-c0de0001"
@@ -271,17 +272,17 @@ func TestHomeInventoryIncludesOnlyAdmittedSharedCode(t *testing.T) {
 	if contains() {
 		t.Fatal("private Code leaked into return inventory")
 	}
-	if err := registry.SetRunPeople("work", folder, []string{"other"}); err != nil {
+	if _, err := registry.AddUser("work", folder, "other"); err != nil {
 		t.Fatal(err)
 	}
 	if !contains() {
 		t.Fatal("shared Code missing from return inventory")
 	}
-	if err := registry.SetRunPeople("work", folder, nil); err != nil {
+	if _, err := registry.RemoveUser("work", folder, "other"); err != nil {
 		t.Fatal(err)
 	}
 	if contains() {
-		t.Fatal("revoked Run audience retained in return inventory")
+		t.Fatal("removed User retained in return inventory")
 	}
 	claims.AccessToken = &accesstokens.Token{Scopes: []string{"crews:read"}}
 	if contains() {

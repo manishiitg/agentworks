@@ -184,6 +184,7 @@ func TestExternalCrewCommandsOverMCP(t *testing.T) {
 
 func TestExternalCrewMemorySkillsAndCommandsFollowRoles(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	srv := serveExternalMCP(t, f.api, crewWriter("owner"))
