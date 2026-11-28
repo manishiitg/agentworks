@@ -553,11 +553,11 @@ func forkCrossProjectFirstTurnNote(parentName, forkName, parentPurpose, sourcePr
 	sourceFolder = sanitizeForkNoteField(sourceFolder)
 	destProjectName = sanitizeForkNoteField(destProjectName)
 	destFolder = sanitizeForkNoteField(destFolder)
-	sourceProjectID = sanitizeForkNoteField(sourceProjectID)
 	note := fmt.Sprintf(
-		"[This chat is a fork moved from another project. It is %q, a separate agent forked from %q in project %q (folder %q). You now run in project %q (folder %q). The conversation above is a copy of %q up to the fork: those earlier replies, file paths, tool outputs, memory, skills and logins belonged to %q, not here. You now work in %q with its own folder, sandbox, memory and Vault; you do not have access to %q's files or agents unless the person tags #%s in a message. You are not %q: do not carry on its unfinished work unless the person asks you to. Work in %q from here.]",
+		"[This chat is a fork moved from another project. It is %q, a separate agent forked from %q in project %q (folder %q). You now run in project %q (folder %q). The conversation above is a copy of %q up to the fork: those earlier replies, file paths, tool outputs, memory, skills and logins belonged to %q, not here. You now work in %q with its own folder, sandbox, memory and Vault. To copy a saved Python workflow or dashboard from %q, no # tag is needed: call workspace action=references_list to get its workflow ID or workspace_path, then crew_workflow_files action=create copy_from=<workflow_id> or dashboard action=list/get with from_project=<workspace_path>. You do not have access to %q's plain project files or agents unless the person tags %q with # in the composer (by project name, never a raw ID). You are not %q: do not carry on its unfinished work unless the person asks you to. Work in %q from here.]",
 		forkName, parentName, sourceProjectName, sourceFolder, destProjectName, destFolder,
-		parentName, sourceProjectName, destProjectName, sourceProjectName, sourceProjectID,
+		parentName, sourceProjectName, destProjectName, sourceProjectName,
+		sourceProjectName, sourceProjectName,
 		parentName, destFolder,
 	)
 	if purpose := strings.TrimSpace(parentPurpose); purpose != "" {
