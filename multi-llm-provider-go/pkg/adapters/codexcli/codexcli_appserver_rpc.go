@@ -71,8 +71,11 @@ type codexRPC struct {
 	// a command that outlived its turn keeps showing its output (#3131).
 	idleCommands func(codexRPCMessage) bool
 	// idleMu orders inline idle handling after the drain in detachEvents.
-	idleMu    sync.Mutex
-	idleStats codexIdleStats
+	idleMu sync.Mutex
+	// startupNotices: failed MCP server starts that arrived between turns,
+	// shown by the next turn (#4602).
+	startupNotices []codexRPCMessage
+	idleStats      codexIdleStats
 }
 
 // Counters only: idle handling keeps no per-item state.
@@ -328,6 +331,9 @@ func (r *codexRPC) handleIdleLocked(msg codexRPCMessage) {
 			handle(msg)
 			return
 		}
+	}
+	if r.keepStartupNotice(msg) {
+		return
 	}
 	if codexCommandMethod(msg.Method) {
 		r.mu.Lock()

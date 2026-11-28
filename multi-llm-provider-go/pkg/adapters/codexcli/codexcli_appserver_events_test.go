@@ -286,3 +286,26 @@ func TestCodexCompactionResendsInstructionChangesOnlyWhereCodexDropsThem(t *test
 		}
 	}
 }
+
+// #4602: a failed MCP server start (sent while the thread starts, before any
+// turn reads) and a hook that stopped the turn each show as a row saying why.
+func TestCodexShowsFailedMCPStartAndHookStopAsRows(t *testing.T) {
+	r := &codexRPC{events: make(chan codexRPCMessage, 4), done: make(chan struct{})}
+	r.handleIdleLocked(codexRPCMessage{Method: "mcpServer/startupStatus/updated", Params: json.RawMessage(`{"threadId":null,"name":"docs","status":"failed","error":"connection refused","failureReason":null}`)})
+	r.handleIdleLocked(codexRPCMessage{Method: "mcpServer/startupStatus/updated", Params: json.RawMessage(`{"threadId":null,"name":"fine","status":"ready","error":null}`)})
+	r.events <- codexRPCMessage{Method: "hook/completed", Params: json.RawMessage(`{"threadId":"thread","turnId":null,"run":{"id":"h1","eventName":"stop","status":"stopped","statusMessage":null,"entries":[{"kind":"stop","text":"tests must pass first"}]}}`)}
+	r.events <- codexRPCMessage{Method: "hook/completed", Params: json.RawMessage(`{"threadId":"thread","turnId":"turn","run":{"id":"h2","eventName":"preToolUse","status":"completed","entries":[]}}`)}
+	r.events <- codexRPCMessage{Method: "turn/completed", Params: json.RawMessage(`{"threadId":"thread","turn":{"id":"turn","status":"completed"}}`)}
+	var rows []string
+	if _, err := (&CodexCLIAdapter{}).consumeAppTurn(context.Background(), &codexAppSession{}, r, "thread", "turn", func(c llmtypes.StreamChunk) {
+		if c.Type == llmtypes.StreamChunkTypeToolCallEnd {
+			rows = append(rows, c.Content+": "+c.ToolResult)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(rows, " | ")
+	if len(rows) != 2 || !strings.Contains(got, "docs didn't start: connection refused") || !strings.Contains(got, "stopped the turn (stop): tests must pass first") {
+		t.Fatalf("rows %q", got)
+	}
+}
