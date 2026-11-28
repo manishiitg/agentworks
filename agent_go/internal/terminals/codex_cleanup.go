@@ -52,7 +52,11 @@ func CleanCompletedCodexContent(content string) string {
 	prevStripped := ""
 	origNonBlank, keptNonBlank := 0, 0
 	for _, line := range lines {
-		stripped := strings.TrimSpace(ansiEscapePattern.ReplaceAllString(line, ""))
+		stripped := line
+		if strings.IndexByte(stripped, '\x1b') >= 0 {
+			stripped = ansiEscapePattern.ReplaceAllString(stripped, "")
+		}
+		stripped = strings.TrimSpace(stripped)
 		if stripped == "" {
 			out = append(out, line)
 			prevStripped = ""
