@@ -60,8 +60,13 @@ type crewAccessFacts struct {
 	// CoOwners: a Crew that lives on the server has co-owners and no Team (owner, 21 Nov); the names besides the viewer.
 	// Non-nil means the menu's Team row is the Co-owners row.
 	CoOwners []string
-	// InTeams: the Teams this online project is in (#3664), one line each under its Co-owners row.
+	// InTeams: the Teams this online project is in (#3664), named on its People row.
 	InTeams []crewProjectInTeam
+	// Users, Bots and Dashboard (a server Crew, #4545): how many Users work in it, how many of its agents are shared as
+	// bots, and its dashboard's general access as the menu says it ("" hides the Dashboard line).
+	Users     int
+	Bots      int
+	Dashboard string
 	// Where the viewer's own agents work, when they are a Team member: "mac" or "web" (crew_team_where.go).
 	Where string
 	// Member: the viewer is a teammate, not the Crew's owner; the owner's Mac and its agent choices are not theirs.
@@ -75,7 +80,7 @@ const crewAccessTeamOffTitle = "Team off"
 // folder under Team, and how everyone else reaches it (Mac online, AgentBridge, dashboards) under Online.
 func crewAccessLineGroup(kind string) string {
 	switch kind {
-	case "team", "team_live", "in_team", "folder", "clash":
+	case "team", "team_live", "in_team", "folder", "clash", "bots", "share":
 		return "team"
 	}
 	return "online"
@@ -101,13 +106,16 @@ func crewAccessTreeLines(f crewAccessFacts) []crewAccessLine {
 		lines = append(lines, crewAccessLine{Kind: "mac", Title: "Remote Control"})
 	}
 	if f.CoOwners != nil {
-		title := "Co-owners · only you"
-		if len(f.CoOwners) > 0 {
-			title = "Co-owners · You + " + strings.Join(f.CoOwners, ", ")
+		// Sharing is three things (owner, 28 Nov, #4545): People work in the project, Bots are its agents others use
+		// without joining it, and the dashboard is shared by link like a Drive file.
+		lines = append(lines, crewAccessLine{Kind: "team", Title: "People", Detail: crewAccessPeopleDetail(f), Count: len(f.CoOwners)})
+		bots := "No agent shared as a bot yet"
+		if f.Bots > 0 {
+			bots = fmt.Sprintf("%d %s shared as %s", f.Bots, plural(f.Bots, "agent", "agents"), plural(f.Bots, "a bot", "bots"))
 		}
-		lines = append(lines, crewAccessLine{Kind: "team", Title: title, Count: len(f.CoOwners)})
-		for _, in := range f.InTeams {
-			lines = append(lines, crewAccessLine{Kind: "in_team", Title: "In Team · " + in.Name, Detail: in.Owner + "'s Team"})
+		lines = append(lines, crewAccessLine{Kind: "bots", Title: "Bots", Detail: bots})
+		if f.Dashboard != "" {
+			lines = append(lines, crewAccessLine{Kind: "share", Title: "Dashboard", Detail: f.Dashboard})
 		}
 		return append(lines, crewAccessPublicLine(f.Agents)...)
 	}
@@ -329,6 +337,12 @@ func (api *StreamingAPI) crewAccessTreeFor(ctx context.Context, claims *UserClai
 		if crewLivesOnServer(project) {
 			f.CoOwners = crewOwnerNamesFor(project, owner)
 			f.InTeams = crewProjectInTeams(project, owner)
+			if root := crewProjectRootByID(project); root != "" {
+				if rec, ok := crewOwnerRecordAt(root); ok {
+					f.Users, f.Bots = len(rec.Users), len(crewBotKeys(rec))
+				}
+				f.Dashboard = crewAccessDashboardDetail(ctx, claims, project, root)
+			}
 			return crewAccessTree(f)
 		}
 		f.TeamKnown = true // no Team record means the Team is off
@@ -540,4 +554,35 @@ func markCrewAccessCacheStale(project, peer string) {
 		}
 	}
 	crewTeamRefusals.Delete(peer)
+}
+
+// crewAccessPeopleDetail is the People line's summary: the co-owners, then the Users and the Teams working in it.
+func crewAccessPeopleDetail(f crewAccessFacts) string {
+	parts := []string{"Only you build it"}
+	if len(f.CoOwners) > 0 {
+		parts[0] = "You + " + strings.Join(f.CoOwners, ", ") + " (co-owners)"
+	}
+	if f.Users > 0 {
+		parts = append(parts, fmt.Sprintf("%d %s", f.Users, plural(f.Users, "User", "Users")))
+	}
+	for _, team := range f.InTeams {
+		parts = append(parts, team.Name)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// crewAccessDashboardDetail is the dashboard's general access, worded like a Drive file's (#4545).
+func crewAccessDashboardDetail(ctx context.Context, claims *UserClaims, project, root string) string {
+	detail := "Restricted"
+	if crewSharedWithOthers(root) {
+		detail = "Anyone at the company with the link"
+	} else if rec, ok := crewOwnerRecordAt(root); ok && len(rec.RunPeople) > 0 {
+		detail = fmt.Sprintf("Restricted · %d %s added", len(rec.RunPeople), plural(len(rec.RunPeople), "person", "people"))
+	}
+	for _, view := range dashboardPublicShareViews(ctx, claims, dashboardTarget{Kind: "crew", ID: project, Root: root}) {
+		if view.On {
+			return detail + " · public link on"
+		}
+	}
+	return detail
 }

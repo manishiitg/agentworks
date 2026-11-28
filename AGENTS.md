@@ -108,9 +108,13 @@ fast, not for privacy between colleagues.
    and their data. Sharing a Crew, Goal or workflow includes reading its files
    over MCP (skills, memory, knowledge, instructions, runs and logs); secret
    values and private logs stay excluded.
-2. Sharing is called "Share" (Only me / Chosen people / Everyone). Sharing a
-   product means sharing its dashboard; every shared product has one (a
-   default when none was built). Code and Relays have one owner. A Crew has
+2. Sharing is three separate things. People (co-owners, Users, Teams) work in
+   a project. Bots are its agents others use without joining it, each in their
+   own private chat. A dashboard is shared like a Drive file: people you add,
+   plus general access (Restricted / Anyone at the company with the link /
+   Anyone with the link for a public copy). Sharing a product means sharing
+   its dashboard; every shared product has one (a default when none was
+   built). Code and Relays have one owner. A Crew has
    one main owner; a Crew on the server also has co-owners who build it with
    them and change everything, and Users who work in it through chat with its
    setup but cannot change that setup (only the main owner adds or removes

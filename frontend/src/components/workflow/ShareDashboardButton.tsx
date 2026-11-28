@@ -30,7 +30,8 @@ type ProjectUser = Person & { locked_paths?: string[] }
 type ProjectTeam = { team_id: string; name: string; owner: string; people: number; can_remove: boolean; agents?: ProjectTeamAgent[]; members?: { id: string; name: string }[]; new_agents?: 'only_me' | 'whole_team'; project_id?: string }
 type OwnersState = { owner?: Person; co_owners: Person[]; can_manage: boolean; users?: ProjectUser[]; always_locked?: string[]; teams?: ProjectTeam[]; team_choices?: ProjectTeam[] }
 const who = (person: Person) => person.email || person.username || person.id
-const audience = (state: ShareState) => state.mode === 'everyone' ? 'Everyone' : state.mode === 'people' ? 'Chosen people' : state.has_owners ? 'Only owners' : 'Only me'
+// General access, worded like a Drive file (owner, 28 Nov, #4545).
+const audience = (state: ShareState) => state.mode === 'everyone' ? 'Anyone at the company' : state.mode === 'people' ? `${state.people?.length || 0} ${state.people?.length === 1 ? 'person' : 'people'} added` : 'Restricted'
 const errorText = (cause: unknown, fallback: string) => {
   const data = (cause as { response?: { data?: { error?: { message?: string } | string; message?: string } } })?.response?.data
   return (typeof data?.error === 'string' ? data.error : data?.error?.message) || data?.message || fallback
@@ -57,7 +58,6 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   // Everyone who can be picked: the server's account list (GET /api/users/directory), the same people as the Team's picker.
   const [directory, setDirectory] = useState<{ scope: string; users: DirectoryUser[] } | null>(null)
   const users = directory?.scope === scope ? directory.users : undefined
-  const [choosing, setChoosing] = useState(false)
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [ownersError, setOwnersError] = useState('')
@@ -146,12 +146,11 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
       setNotice('Link copied. People still need access to open it.')
     } catch (cause) { setError(errorText(cause, 'Could not copy the link.')) }
   }
-  // Two groups (owner 2026-11-02): on a Goal or Flow, co-owners build and change it; people it is shared with use it (dashboard, chat,
-  // functions, their own AI apps over MCP). The share choice is Only me / Chosen people / Everyone; the server stores an
-  // empty named list as private, so Only me clears the named list. Owner changes use the same server operation as chat.
+  // Shared like a Drive file (owner, 28 Nov, #4545): people you add, plus general access (Restricted or anyone at the
+  // company with the link); a dashboard's public link is "anyone with the link". The server stores an empty named list as
+  // private. Owner changes use the same server operation as chat.
   const companyWide = state.mode === 'everyone'
   const shareList = (list: string[]) => putShare('people', list)
-  const choice: 'private' | 'people' | 'everyone' = companyWide ? 'everyone' : state.mode === 'people' || choosing ? 'people' : 'private'
   const addOwner = (value: string) => {
     void run(async () => {
       await changeOwners('owner_add', value)
@@ -191,28 +190,32 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
       {options.map(person => <option key={person.id} value={person.email}>{person.username && person.username !== person.email ? `${person.username} (${person.email})` : person.email}</option>)}
     </select>
   }
-  const choices = [['private', 'Only me'], ['people', 'Chosen people'], ['everyone', 'Everyone']] as const
   const peopleContent = <div className="space-y-6 text-sm">
     {!coOwnersOnly && <><OnlineOnlyNote projectId={crewProjectId} />
-    <section aria-label="Shared with" className="space-y-3">
+    <section aria-label="People with access" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-semibold">Shared with</h3>
-        <button type="button" onClick={() => void copyLink()} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs hover:bg-muted"><Link2 aria-hidden="true" className="h-3.5 w-3.5" />Copy dashboard link</button>
+        <h3 className="font-semibold">People with access</h3>
+        <button type="button" onClick={() => void copyLink()} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs hover:bg-muted"><Link2 aria-hidden="true" className="h-3.5 w-3.5" />Copy link</button>
       </div>
-      <div role="radiogroup" aria-label="Who it is shared with" className="inline-flex rounded-lg border border-border p-0.5">
-        {choices.map(([value, text]) => <button key={value} type="button" role="radio" aria-checked={choice === value} disabled={busy}
-          onClick={() => { setChoosing(value === 'people'); void run(() => value === 'everyone' ? putShare('everyone') : shareList(value === 'people' ? emails : [])) }}
-          className={`rounded-md px-3 py-1.5 text-xs ${choice === value ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{text}</button>)}
-      </div>
-      <p className="text-xs text-muted-foreground">{choice === 'everyone' ? 'Everyone at the company can use it.' : choice === 'people' ? 'These people can use it.' : state.has_owners ? 'Only you and co-owners can use it.' : 'Only you and its Team can use it.'} Using means opening its dashboard, chatting with it and reaching it from their own AI apps.</p>
-      {choice === 'people' && <>
-        <ul aria-label="People it is shared with" className="space-y-2">
-          {(state.people || []).map(person => <li key={person.id} className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{removeButton(person, value => shareList(emails.filter(item => item !== value)))}</li>)}
-        </ul>
-        {personPicker(taken, addPerson, 'Share with a person')}
+      {companyWide ? <p className="text-xs text-muted-foreground">Everyone at the company can open it, so there is nobody to add.</p> : <>
+        {!!state.people?.length && <ul aria-label="People with access" className="space-y-2">
+          {state.people.map(person => <li key={person.id} className="flex min-w-0 items-center gap-2">{avatar(person)}<span className="min-w-0 flex-1 truncate" title={who(person)}>{who(person)}</span>{removeButton(person, value => shareList(emails.filter(item => item !== value)))}</li>)}
+        </ul>}
+        {personPicker(taken, addPerson, 'Add people')}
       </>}
     </section>
-    {!!state.public_links?.length && <section aria-label="Public links" className="space-y-3 border-t border-border pt-4">
+    <section aria-label="General access" className="space-y-2">
+      <h3 className="font-semibold">General access</h3>
+      <select aria-label="General access" value={companyWide ? 'company' : 'restricted'} disabled={busy}
+        onChange={event => void run(() => event.target.value === 'company' ? putShare('everyone') : shareList([]))}
+        className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm">
+        <option value="restricted">Restricted: only people added</option>
+        <option value="company">Anyone at the company with the link</option>
+      </select>
+      <p className="text-xs text-muted-foreground">{companyWide ? 'They sign in and see the live page, chat with it and use its functions.' : state.has_owners ? 'Only people added, co-owners and Users can open it.' : 'Only people added and its Team can open it.'} Opening it doesn't make them part of the project.</p>
+    </section>
+    {!!state.public_links?.length && <section aria-label="Anyone with the link" className="space-y-3 border-t border-border pt-4">
+      <div><h3 className="font-semibold">Anyone with the link, no sign-in</h3><p className="text-xs text-muted-foreground">A frozen copy of a dashboard that anyone can open. It changes only when you update it.</p></div>
       {state.public_links.map(link => <div key={link.dashboard_id} className="space-y-1">
         <p className="truncate font-medium">{link.title}</p>
         <PublicLinkControl link={link} change={async mode => (await api.post<PublicLink>('/api/dashboards', { workspace: workspacePath, action: 'public_link', mode, dashboard_id: link.dashboard_id })).data} />
@@ -274,7 +277,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
   if (isPanel) return <div className="w-full max-w-2xl">{content}</div>
   return <>
     <button ref={trigger} type="button" aria-label={label} aria-expanded={open} onClick={() => setOpen(value => !value)} className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted md:h-auto"><ShareIcon aria-hidden="true" className="h-3.5 w-3.5" />{label}</button>
-    {open && createPortal(<div ref={node => node?.focus()} tabIndex={-1} role="dialog" aria-label="Access" className="fixed right-4 top-4 z-[100] flex max-h-[calc(100dvh-2rem)] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-border bg-background shadow-xl outline-none sm:top-16 sm:max-h-[calc(100dvh-5rem)]"><div className="flex shrink-0 items-center justify-between border-b border-border p-3"><h2 className="text-sm font-semibold">Access</h2><button type="button" onClick={close} className="rounded px-2 py-1 text-xs hover:bg-muted">Close</button></div><div data-share-dialog-body className="min-h-0 overflow-y-auto overscroll-contain p-4">{content}</div></div>, document.body)}
+    {open && createPortal(<div ref={node => node?.focus()} tabIndex={-1} role="dialog" aria-label={label} className="fixed right-4 top-4 z-[100] flex max-h-[calc(100dvh-2rem)] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-border bg-background shadow-xl outline-none sm:top-16 sm:max-h-[calc(100dvh-5rem)]"><div className="flex shrink-0 items-center justify-between border-b border-border p-3"><h2 className="text-sm font-semibold">{label}</h2><button type="button" onClick={close} className="rounded px-2 py-1 text-xs hover:bg-muted">Close</button></div><div data-share-dialog-body className="min-h-0 overflow-y-auto overscroll-contain p-4">{content}</div></div>, document.body)}
   </>
 }
 

@@ -43,7 +43,7 @@ export type CloudState = 'mac' | 'mac_off' | 'online' | 'offline'
 /** Someone else's ask to a shared agent on this Mac, from the Mac's own status (the last ten minutes). */
 export type CrewAsk = { tab: string; agent: string; sender: string; channel?: string; conversation_key: string; session_id: string; started_at: string; active: boolean }
 /** One line of the Access tree under the side panel's Access row, written by the server (owner, 5 Nov mockup). */
-export type CrewAccessLine = { kind: 'mac' | 'team' | 'team_live' | 'in_team' | 'dashboard' | 'public' | 'folder' | 'clash'; group?: 'team' | 'online'; title: string; detail?: string; path?: string; ask?: string; target?: string; dashboards?: { id?: string; name: string; path: string }[]; count?: number; tag?: string; progress?: { direction: string; bytes_done: number; bytes_total: number } }
+export type CrewAccessLine = { kind: 'mac' | 'team' | 'team_live' | 'in_team' | 'dashboard' | 'public' | 'folder' | 'clash' | 'bots' | 'share'; group?: 'team' | 'online'; title: string; detail?: string; path?: string; ask?: string; target?: string; dashboards?: { id?: string; name: string; path: string }[]; count?: number; tag?: string; progress?: { direction: string; bytes_done: number; bytes_total: number } }
 type PlaceEntry = { place?: CloudState; chatOnly?: boolean; chatOnlyLine?: string; projectUser?: boolean; shared?: number; asking?: CrewAsk[]; listeners: Set<(place?: CloudState) => void>; timer?: number; abort?: AbortController; load?: () => void }
 const placeCache = new Map<string, PlaceEntry>()
 
@@ -267,7 +267,11 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
   // Project tasks open at full width from the side panel, like the Team page (#4314).
   if (section === 'tasks') return <ProjectTasksPage projectId={projectId} workspacePath={workspacePath} onBack={onBack}/>
   if (section === 'artifacts') return <section aria-label="Artifacts page" className="space-y-3 text-sm">
-    {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
+    {/* A server project's dashboard is shared by link like a Drive file (#4545): people added plus general access. */}
+    <div className="flex items-center gap-2">
+      {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
+      {status?.access_co_owners && workspacePath && <span className="ml-auto"><ShareDashboardButton workspacePath={workspacePath} label="Share dashboard" /></span>}
+    </div>
     <CrewDashboardsTab projectId={projectId} />
   </section>
   if (!status) return <p role="status" className="text-sm text-muted-foreground">Loading…</p>
