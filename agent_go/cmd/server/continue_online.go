@@ -36,9 +36,9 @@ const (
 	continueOnlineFileLimit     = 10 << 20
 	continueOnlineTotalLimit    = 50 << 20
 	continueOnlineMaxFiles      = 100
-	continueOnlineHistoryLimit  = 40 << 20
+	continueOnlineHistoryLimit  = 8 << 20 // the latest part; more than a model reads, and quick to upload
 	continueOnlineReplyWait     = 75 * time.Second
-	continueOnlineRequestLimit  = 64 << 20
+	continueOnlineRequestLimit  = 16 << 20
 	continueOnlineReplyMaxChars = 6000
 )
 
@@ -622,6 +622,10 @@ func (api *StreamingAPI) handleContinueFromMac(w http.ResponseWriter, r *http.Re
 		Source    string                    `json:"source"`
 		Message   string                    `json:"message"`
 		History   []llmtypes.MessageContent `json:"history"`
+	}
+	// The conversation can take longer to upload than the server's 30-second read limit (as a Crew sync does).
+	if err := http.NewResponseController(w).SetReadDeadline(time.Now().Add(10 * time.Minute)); err != nil {
+		log.Printf("[CONTINUE_ONLINE] team=%s read deadline not extended: %v", team, err)
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, continueOnlineRequestLimit)
 	if json.NewDecoder(r.Body).Decode(&in) != nil || strings.TrimSpace(in.ProjectID) == "" || strings.TrimSpace(in.Message) == "" {
