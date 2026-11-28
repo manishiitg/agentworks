@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, BookOpen, Check, Folder, FolderPlus, Import, MoreHorizontal, Plus, Pin, PinOff, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, BookOpen, Check, Import, Layers, ListPlus, MoreHorizontal, Plus, Pin, PinOff, Trash2 } from 'lucide-react'
 
 export interface SectionMenuOption {
   id: string
@@ -69,13 +69,13 @@ export function PinnedCrewOrderMenu({ name, pinned, onTogglePin, onMoveUp, onMov
         {onMoveToSection && (sections || []).map(section => {
           const active = currentSectionId === section.id
           return <button key={section.id} type="button" onClick={() => { onMoveToSection(section.id); close() }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
-            <Folder aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <Layers aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate">{section.name}</span>
             {active && <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />}
           </button>
         })}
         {onMoveToSection && currentSectionId && <button type="button" onClick={() => { onMoveToSection(null); close() }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">Remove from section</button>}
-        {onCreateSectionForProject && <button type="button" onClick={() => { close(); onCreateSectionForProject() }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><FolderPlus aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />New section…</button>}
+        {onCreateSectionForProject && <button type="button" onClick={() => { close(); onCreateSectionForProject() }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><ListPlus aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />New section…</button>}
       </>}
       {onRemoveOnlineCopy && !confirmRemove && <button type="button" onClick={() => setConfirmRemove(true)} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remove online copy</button>}
       {onRemoveOnlineCopy && confirmRemove && <div className="px-2 py-1">

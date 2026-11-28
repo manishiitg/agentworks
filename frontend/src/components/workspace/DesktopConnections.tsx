@@ -35,7 +35,7 @@ import { TeamInvites } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
 import { SidebarAgentLayout, SidebarCrewAgents, SidebarHiddenAgents } from './SidebarCrewAgents'
 import { sidebarAgentDisclosureClass, sidebarAgentListClass } from './sidebarAgentLayout'
-import { ArrowLeftRight, ChevronRight, Cloud, FolderPlus, Pin, Search } from 'lucide-react'
+import { ArrowLeftRight, ChevronRight, Cloud, ListPlus, Pin, Search } from 'lucide-react'
 import { SidebarSectionBlock, hasDraggedProject, readDraggedProjectKey } from './SidebarSectionBlock'
 import { agentTeamShareFromRow } from '../chat/AgentInTeamMark'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
@@ -354,7 +354,7 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
                   title="Create a collapsible section"
                   className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <FolderPlus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <ListPlus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                   <span>New section</span>
                 </button>
               </div>
