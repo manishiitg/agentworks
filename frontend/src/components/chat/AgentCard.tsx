@@ -1,7 +1,7 @@
 import { HeaderAgentSharing } from '../../products/work/ShareCrew'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, Clock, Cloud, Eye, FolderInput, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, Webhook, Workflow, X } from 'lucide-react'
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Bot as BotIcon, ChevronDown, Clock, Cloud, Eye, FolderInput, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, Webhook, Workflow, X } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
@@ -113,6 +113,8 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   const [renameDraft, setRenameDraft] = useState<string | null>(null)
   const [forking, setForking] = useState(false)
   const [botLine, setBotLine] = useState('')
+  // The header's Bot chip opens the card on its Bot section.
+  const [botFirst, setBotFirst] = useState(false)
   const anchor = useRef<HTMLSpanElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState<{ top: number; left: number; view: 'details' | 'automations' | 'sharing' } | null>(null)
@@ -155,10 +157,12 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   if (!info) return <>{content}</>
   const enabled = enabledAgentAutomations(info.setup)
   const shareInfo = shareShortcut && !info.owner ? describeAgentShare(info.teamShare) ?? (info.onlyMe ? onlyMeShare : null) : null
-  const open = (view: 'details' | 'automations' | 'sharing' = 'details') => {
+  const bot = info.setup?.bot
+  const open = (view: 'details' | 'automations' | 'sharing' = 'details', onBot = false) => {
     const rect = anchor.current?.getBoundingClientRect()
     if (!rect) return
     setAutomationsOpen(false)
+    setBotFirst(onBot)
     // The collapsed rail opens the card beside it; everywhere else below the name.
     if (side === 'right') setAt({ top: Math.max(8, Math.min(rect.top - 8, window.innerHeight - 240)), left: rect.right + 8, view })
     else setAt({ top: rect.bottom + 8, left: Math.max(8, Math.min(rect.left - 8, window.innerWidth - 448)), view })
@@ -212,6 +216,14 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           trigger.current = event.currentTarget
           if (at?.view === 'automations') dismiss(); else open('automations')
         }}><Clock aria-hidden="true" className="h-3.5 w-3.5" />{enabled.length}</button>}
+      {automationShortcut && bot && <button type="button" aria-label={`Shared as a bot: ${bot.line}`} aria-haspopup="dialog"
+        title={`Shared as a bot\n${bot.line}${info.bot ? '\nClick for bot settings' : ''}`}
+        className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-emerald-300 max-md:h-10 max-md:px-2"
+        onClick={event => {
+          event.stopPropagation()
+          trigger.current = event.currentTarget
+          if (at?.view === 'details' && botFirst) dismiss(); else open('details', true)
+        }}><BotIcon aria-hidden="true" className="h-3.5 w-3.5" />Bot · {bot.functions}</button>}
     </span>
     {at && createPortal(<>{sheet && <div ref={backdrop} aria-hidden="true" className="fixed inset-0 z-[100] bg-black/40" onClick={event => { event.stopPropagation(); dismiss() }} />}
     <div ref={box} tabIndex={clickToOpen ? -1 : undefined} role="dialog" aria-label={at.view === 'automations' ? `Automations for ${info.name}` : at.view === 'sharing' ? `Sharing for ${info.name}` : info.name} style={sheet ? undefined : { top: at.top, left: at.left }} onClick={event => event.stopPropagation()}
@@ -239,7 +251,8 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
       {(!clickToOpen || sheet) && <div className="flex items-center gap-2 text-sm font-semibold"><p className="min-w-0 flex-1 truncate">{info.name}</p>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}{clickToOpen && close('Close agent details')}</div>}
       {!clickToOpen && <AgentModelRow tabId={info.tabId} />}
       {clickToOpen ? <AgentDetailSection title="Setup" value={setupValue}>{setupDetails}</AgentDetailSection> : setupDetails}
-      {clickToOpen && info.bot && <AgentDetailSection title="Bot" value={botLine || botSummary(null)}><BotCard workspace={info.bot.workspace} agentKey={info.bot.agentKey} onSummary={setBotLine} onAsk={info.bot.ask && (message => finish(() => info.bot!.ask!(message)))} /></AgentDetailSection>}
+      {clickToOpen && info.bot && <AgentDetailSection key={botFirst ? 'bot-first' : 'bot'} defaultOpen={botFirst} title="Bot" value={botLine || (bot ? `On · ${bot.line}` : botSummary(null))}
+        aside={(botLine ? botLine.startsWith('On ·') : !!bot) && <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />}><BotCard workspace={info.bot.workspace} agentKey={info.bot.agentKey} onSummary={setBotLine} onAsk={info.bot.ask && (message => finish(() => info.bot!.ask!(message)))} /></AgentDetailSection>}
       {clickToOpen && info.messageLine && <AgentDetailSection title="Message it from another agent" aside={<CodingAppIcons />}><AgentMessageFrom line={info.messageLine} copyText={info.messageCopy} /></AgentDetailSection>}
       {!shareShortcut && info.sharing && <HeaderAgentSharing {...info.sharing} status={!info.owner ? <AgentOnlineCopyStatus setup={info.setup} /> : undefined} />}
       {info.owner ? <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Whose</span><span className="min-w-0 truncate text-muted-foreground">{info.owner}'s · shared with the team</span></div>

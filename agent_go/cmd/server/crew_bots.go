@@ -501,7 +501,8 @@ func writeCrewBot(root, key string, bot *crewBot) error {
 	if !ok {
 		return fmt.Errorf("Project unavailable")
 	}
-	return defaultProjectOwners().modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+	var project string
+	err := defaultProjectOwners().modify(func(projects map[string]projectOwnerRecord) (bool, error) {
 		id := projectOwnerKey(identity.Product, identity.Folder)
 		record, exists := projects[id]
 		if !exists {
@@ -524,8 +525,62 @@ func writeCrewBot(root, key string, bot *crewBot) error {
 		}
 		record.Bots = bots
 		projects[id] = record
+		project = record.ProjectID
 		return true, nil
 	})
+	if err == nil {
+		publishCrewPanelChanged(project) // the agent's header bot chip and card read it again
+	}
+	return err
+}
+
+// crewAddedBotsLine tells a project's agents that bots were added to it (#4545): added bots are not in messages
+// list_agents, so without it agents never learn they can ask them. It names only how many, so it costs a few tokens and
+// changes only when a bot is added or removed; bots action=list gives their names and functions.
+func crewAddedBotsLine(added []string) string {
+	switch len(added) {
+	case 0:
+		return ""
+	case 1:
+		return " This project has 1 bot added to it: before asking people or other agents for help, see if it fits (bots action=list shows it, its purpose and functions; ask or call it by its id)."
+	default:
+		return fmt.Sprintf(" This project has %d bots added to it: before asking people or other agents for help, see if one fits (bots action=list shows them, their purpose and functions; ask or call one by its id).", len(added))
+	}
+}
+
+// crewTabBot is an agent's bot on its header chip (crew_tab_setup.go): how many functions other agents can call, and
+// who may use it, worded by the server. The audience is the maker's to see (as in Bots); others read "Shared as a bot".
+type crewTabBot struct {
+	Functions int    `json:"functions"`
+	Line      string `json:"line"`
+}
+
+func crewTabBotFor(bot crewBot, viewer string) *crewTabBot {
+	count := len(bot.Functions)
+	fns := fmt.Sprintf("%d function%s", count, map[bool]string{true: "", false: "s"}[count == 1])
+	who := "Shared as a bot"
+	if viewer == bot.Maker {
+		who = crewBotAudienceLine(bot)
+	}
+	return &crewTabBot{Functions: count, Line: who + " · " + fns}
+}
+
+// crewBotAudienceLine is who may use the bot, in a few words.
+func crewBotAudienceLine(bot crewBot) string {
+	if bot.Everyone {
+		return "Anyone at the company"
+	}
+	parts := []string{}
+	if n := len(bot.People); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d %s", n, map[bool]string{true: "person", false: "people"}[n == 1]))
+	}
+	if n := len(bot.Teams); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d Team%s", n, map[bool]string{true: "", false: "s"}[n == 1]))
+	}
+	if len(parts) == 0 {
+		return "Only you so far"
+	}
+	return strings.Join(parts, " and ")
 }
 
 // crewBotState is the maker's card for one agent: whether it is a bot, its settings and what can be chosen.
@@ -788,7 +843,8 @@ func (api *StreamingAPI) externalBotsCall(w http.ResponseWriter, r *http.Request
 			externalError(w, 404, "not_found", "This bot is not shared with you. See bots action=list.")
 			return
 		}
-		call := map[string]any{"crew_id": projectID, "chat_id": bot, "message": str("message")}
+		// Asking a bot is a question: it expects an answer, so the bot's chat is told a reply is wanted.
+		call := map[string]any{"crew_id": projectID, "chat_id": bot, "message": str("message"), "expects_reply": true}
 		for _, key := range []string{"inbox_id", "submission_id"} {
 			if v := str(key); v != "" {
 				call[key] = v
@@ -884,7 +940,7 @@ func (api *StreamingAPI) registerCrewBotsChatTool(reg definitionToolRegistrar, g
 		description, props = d, p
 	})
 	gate.Declare(externalBotsTool)
-	return reg.RegisterCustomToolWithTimeout(externalBotsTool, description+" In this chat, get and set default to this project.", map[string]any{"type": "object", "properties": props, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
+	return reg.RegisterCustomToolWithTimeout(externalBotsTool, description+" In this chat, get and set default to this project."+crewAddedBotsLine(rec.AddedBots), map[string]any{"type": "object", "properties": props, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
 		call := map[string]any{}
 		for k, v := range args {
 			call[k] = v
