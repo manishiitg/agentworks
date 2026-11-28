@@ -81,14 +81,14 @@ func externalWorkspaceAllowed(claims *UserClaims) bool {
 }
 
 func (api *StreamingAPI) resolveExternalWorkspace(ctx context.Context, claims *UserClaims, raw string) (crewProjectBinding, productProjectManifest, bool) {
-	return api.externalWorkspaceBinding(ctx, claims, raw, resolveCrewProjectBinding)
+	return api.externalWorkspaceBinding(ctx, claims, raw, resolveCrewProjectBinding, readCrewProjectManifests)
 }
 
 func (api *StreamingAPI) readExternalWorkspace(ctx context.Context, claims *UserClaims, raw string) (crewProjectBinding, productProjectManifest, bool) {
-	return api.externalWorkspaceBinding(ctx, claims, raw, readCrewProjectBinding)
+	return api.externalWorkspaceBinding(ctx, claims, raw, readCrewProjectBinding, readCrewProjectManifests)
 }
 
-func (api *StreamingAPI) externalWorkspaceBinding(ctx context.Context, claims *UserClaims, raw string, bind func(context.Context, string, agentprofiles.Profile, string, string) (crewProjectBinding, error)) (crewProjectBinding, productProjectManifest, bool) {
+func (api *StreamingAPI) externalWorkspaceBinding(ctx context.Context, claims *UserClaims, raw string, bind func(context.Context, string, agentprofiles.Profile, string, string) (crewProjectBinding, error), read func(context.Context, string, string) (productProjectManifest, error)) (crewProjectBinding, productProjectManifest, bool) {
 	if api == nil || api.agentProfiles == nil || claims == nil {
 		return crewProjectBinding{}, productProjectManifest{}, false
 	}
@@ -108,7 +108,7 @@ func (api *StreamingAPI) externalWorkspaceBinding(ctx context.Context, claims *U
 	if err != nil {
 		return crewProjectBinding{}, productProjectManifest{}, false
 	}
-	doc, err := readCrewProjectManifests(ctx, profile.ID, binding.Binding.WorkspacePath)
+	doc, err := read(ctx, profile.ID, binding.Binding.WorkspacePath)
 	if err != nil || doc.ID != id {
 		return crewProjectBinding{}, productProjectManifest{}, false
 	}
@@ -321,7 +321,11 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 		if navigation && owner != claims.UserID && !ownerHasCrewCoOwnedBy(r.Context(), profile, owner, claims.UserID) {
 			continue
 		}
-		rows := listProjectsForOwner(r.Context(), claims, profile, owner, owner != claims.UserID)
+		// The list shows only IDs, names and access, so neither read below loads settings, functions or schedules.
+		rows := []productProjectManifest{}
+		forEachProjectOfOwner(r.Context(), claims, profile, owner, owner != claims.UserID, readCrewProjectMetadata, func(_ string, row productProjectManifest) {
+			rows = append(rows, row)
+		})
 		for _, row := range rows {
 			if q := strings.ToLower(strings.TrimSpace(externalArg(args, "query"))); q != "" && !strings.Contains(strings.ToLower(row.Title), q) {
 				continue
@@ -330,7 +334,7 @@ func (api *StreamingAPI) listExternalWorkspaces(w http.ResponseWriter, r *http.R
 			if seen[key] {
 				continue
 			}
-			binding, doc, ok := api.resolveExternalWorkspace(r.Context(), claims, key)
+			binding, doc, ok := api.externalWorkspaceBinding(r.Context(), claims, key, resolveCrewProjectBinding, readCrewProjectMetadata)
 			if !ok {
 				continue
 			}
