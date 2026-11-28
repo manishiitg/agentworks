@@ -83,6 +83,7 @@ export function WorkspaceContextRow({
   icon: Icon,
   children,
   detail,
+  badge,
   onClick,
   hint,
   attention = false,
@@ -91,6 +92,8 @@ export function WorkspaceContextRow({
   icon: LucideIcon
   children: ReactNode
   detail?: ReactNode
+  /** Short status kept whole right after the label; the label truncates first. */
+  badge?: ReactNode
   onClick: () => void
   hint?: string
   attention?: boolean
@@ -105,7 +108,8 @@ export function WorkspaceContextRow({
       className={`flex w-full items-center gap-2.5 rounded-md px-1 min-h-8 py-1.5 text-left text-xs ${attention ? 'bg-amber-500/10 text-amber-500' : active ? 'bg-background/50 text-foreground' : 'text-foreground/85'} hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
     >
       <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      <span className={detail ? 'shrink-0' : 'min-w-0 flex-1 truncate'}>{children}</span>
+      <span className={detail ? 'shrink-0' : badge ? 'min-w-0 truncate' : 'min-w-0 flex-1 truncate'}>{children}</span>
+      {badge && <span className="shrink-0">{badge}</span>}
       {detail && (
         <span className="min-w-0 flex-1 truncate text-right text-[10px] text-muted-foreground">{detail}</span>
       )}

@@ -1,4 +1,4 @@
-import { ChevronRight, FolderSync, Globe, LayoutDashboard, Link2, ListChecks, TriangleAlert, Users, type LucideIcon } from 'lucide-react'
+import { ChevronRight, FolderSync, X, Globe, LayoutDashboard, Link2, ListChecks, TriangleAlert, Users, type LucideIcon } from 'lucide-react'
 import { PendingAgentForks } from '../../components/chat/PendingAgentForks'
 import { SetupPrompt } from '../../components/workspace/SetupPrompt'
 import { WorkspaceContextRow as Row } from '../../components/workspace/WorkspaceContextCard'
@@ -44,6 +44,8 @@ export function WorkContextAccessFooter({
   askAgent,
   noTeamYet,
   teamHidden,
+  remoteHidden,
+  bridgeHidden,
   dashboardsOpen,
   setupsCount,
   setupsToDo,
@@ -52,6 +54,8 @@ export function WorkContextAccessFooter({
   onToggleTeamCollapsed,
   onOpenTeamPane,
   onHideTeam,
+  onHideRemote,
+  onHideBridge,
   onToggleDashboards,
 }: {
   projectId: string
@@ -66,6 +70,8 @@ export function WorkContextAccessFooter({
   askAgent?: string
   noTeamYet: boolean
   teamHidden: boolean
+  remoteHidden: boolean
+  bridgeHidden: boolean
   dashboardsOpen: boolean
   setupsCount: number
   setupsToDo?: number
@@ -74,6 +80,8 @@ export function WorkContextAccessFooter({
   onToggleTeamCollapsed: () => void
   onOpenTeamPane: (view: TeamPanelView, agent?: string) => void
   onHideTeam: () => void
+  onHideRemote: () => void
+  onHideBridge: () => void
   onToggleDashboards: () => void
 }) {
   if (accessItems.length === 0) return null
@@ -140,11 +148,17 @@ export function WorkContextAccessFooter({
   // Crew lives (its state icon); the server words both.
   // Remote Control and AgentBridge share one line (owner, 27 Nov), each still opening its own page;
   // AgentBridge keeps its natural width so Remote Control gets the rest (a 50/50 split was too cramped).
-  const bridgeItem = accessItems.find(item => item.id === 'mcp:agentbridge')
+  // Either can be hidden into Connections (owner, 28 Nov, #4486), like Team and Project activity before setup.
+  const bridgeItem = remoteHidden || bridgeHidden ? undefined : accessItems.find(item => item.id === 'mcp:agentbridge')
+  const onlyBridge = remoteHidden && !bridgeHidden ? accessItems.find(item => item.id === 'mcp:agentbridge') : undefined
+  const hideButton = (label: string, onHide: () => void) => <button type="button" onClick={onHide} aria-label={`Hide ${label}`} title={`Hide ${label}. It stays in Connections.`} className="flex h-5 w-4 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/hide:opacity-100"><X aria-hidden="true" className="h-3 w-3" /></button>
+  const remoteRow = (item: CrewMenuItem, compact: boolean) => <div className="group/hide flex min-w-0 flex-1 items-center"><div className="min-w-0 flex-1"><CrewOnlineRow compact={compact} state={computerState} theirs={theirs} onOpen={() => onOpen(item)} /></div>{hideButton('Remote Control', onHideRemote)}</div>
+  const bridgeRow = (item: CrewMenuItem, full: boolean) => <div className={`group/hide flex items-center ${full ? 'min-w-0 flex-1' : 'shrink-0'}`}><div className={full ? 'min-w-0 flex-1' : ''}><Row icon={item.icon} onClick={() => onOpen(item)}>{item.label}</Row></div>{hideButton(item.label, onHideBridge)}</div>
   const renderAccessRow = (item: CrewMenuItem) => item.id === 'mcp:online'
-    ? bridgeItem
-      ? <div key={item.id} className="flex items-center gap-1"><div className="min-w-0 flex-1"><CrewOnlineRow compact state={computerState} theirs={theirs} onOpen={() => onOpen(item)} /></div><span aria-hidden className="h-4 w-px shrink-0 bg-border" /><div className="shrink-0"><Row icon={bridgeItem.icon} onClick={() => onOpen(bridgeItem)}>{bridgeItem.label}</Row></div></div>
-      : <CrewOnlineRow key={item.id} state={computerState} theirs={theirs} onOpen={() => onOpen(item)} />
+    ? onlyBridge ? <div key={item.id} className="flex">{bridgeRow(onlyBridge, true)}</div>
+      : bridgeItem
+      ? <div key={item.id} className="flex items-center gap-1">{remoteRow(item, true)}<span aria-hidden className="h-4 w-px shrink-0 bg-border" />{bridgeRow(bridgeItem, false)}</div>
+      : <div key={item.id} className="flex">{remoteRow(item, false)}</div>
     : item.id === 'mcp:team' && teamState.view?.team.on ? <div key={item.id}><TeamPanelHeader onName={() => openCrewAccess(projectId, '', 'team')} view={teamState.view} connection={teamState.target?.connection} selectedPerson={selectedPerson} onPersonSelect={onSelectPerson} expanded={showTeam} onToggle={onToggleTeamCollapsed} needsCount={needsCount} /><PendingAgentForks state={teamState} place="menu" /></div>
     : noTeamYet && item.id === 'mcp:team' ? (teamHidden ? null : <div key={item.id}>
       {/* No Team yet (owner, 18 Nov; ⓘ card and Hide into Connections, #3780). */}
@@ -156,7 +170,8 @@ export function WorkContextAccessFooter({
 
   const teamTree = (teamLines.length > 0 || teamState.view?.team.on || !!teamState.error) && <div role="list" aria-label="Team details" className={showTeam ? 'pb-1' : undefined}><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} collapsed={!showTeam} selectedPerson={selectedPerson} onPersonSelect={onSelectPerson} onPanelView={onOpenTeamPane} askAgent={askAgent} />{!teamState.view?.team.on && renderTreeLines(teamLines)}</div>
 
-  const visibleItems = accessItems.filter(item => (item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)) && item.id !== 'mcp:agentbridge')
+  const visibleItems = accessItems.filter(item => (item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)) && item.id !== 'mcp:agentbridge'
+    && !(item.id === 'mcp:online' && remoteHidden && (bridgeHidden || !accessItems.some(other => other.id === 'mcp:agentbridge'))))
 
   return <div className="space-y-0.5">
     {visibleItems.map(item => <div key={item.id}>

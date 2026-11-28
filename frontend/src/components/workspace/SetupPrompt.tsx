@@ -53,5 +53,6 @@ export function useSetupPromptHidden(key: string) {
   const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(key) === '1' } catch { return false } })
   useEffect(() => { try { setHidden(localStorage.getItem(key) === '1') } catch { setHidden(false) } }, [key])
   const hide = () => { setHidden(true); try { localStorage.setItem(key, '1') } catch { /* hidden for this visit only */ } }
-  return [hidden, hide] as const
+  const show = () => { setHidden(false); try { localStorage.removeItem(key) } catch { /* shown for this visit only */ } }
+  return [hidden, hide, show] as const
 }
