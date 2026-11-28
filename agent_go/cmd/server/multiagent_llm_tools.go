@@ -612,9 +612,6 @@ func buildChatLLMCapabilities(keys *llm.ProviderAPIKeys, includeModels bool) []l
 			Usable:            usable,
 			Notes:             []string{"Use list_provider_models for full chat/text model metadata."},
 		}
-		if provider == string(llm.ProviderAgyCLI) {
-			entry.Notes = append([]string{"Alpha: enable only for local or explicitly approved testing."}, entry.Notes...)
-		}
 		if includeModels {
 			entry.Models = modelsByProvider[provider]
 		}

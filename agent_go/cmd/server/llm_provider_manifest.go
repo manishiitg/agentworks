@@ -155,8 +155,8 @@ var providerStaticInfoMap = map[string]providerStaticInfo{
 		apiKeyEnv:       "META_API_KEY",
 	},
 	"agy-cli": {
-		displayName:     "Antigravity CLI (Alpha)",
-		description:     "Alpha: uses the locally installed agy CLI (Google Antigravity). The terminal shows live progress; assistant text and tool receipts appear after each turn. Sign in with Google in the guided terminal, or use API-key mode for unattended setups (see the setup guide).",
+		displayName:     "Antigravity CLI",
+		description:     "Uses the locally installed agy CLI (Google Antigravity). The terminal shows live progress; assistant text and tool receipts appear after each turn. Sign in with Google in the guided terminal, or use API-key mode for unattended setups (see the setup guide).",
 		integrationKind: "coding_agent",
 		authDescription: "Local CLI (Google sign-in)",
 		requiresAPIKey:  false,
