@@ -145,7 +145,7 @@ func (api *StreamingAPI) handleOrderAgentProfileSideChats(w http.ResponseWriter,
 	writeAgentProfileJSON(w, http.StatusOK, out)
 }
 
-// handlePinAgentProfileSideChat saves whether a side tab stays on the strip: POST
+// handlePinAgentProfileSideChat saves whether a side tab stays on the strip (unpinned = archived): POST
 // /api/agent-profiles/{id}/side-chats/pin {"project_id": …, "conversation_key": …, "pinned": true}. It answers with the list.
 func (api *StreamingAPI) handlePinAgentProfileSideChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
@@ -182,6 +182,13 @@ func (api *StreamingAPI) handlePinAgentProfileSideChat(w http.ResponseWriter, r 
 	if err := defaultProductConversationRegistryStore().setSideChatPinned(r.Context(), userID, slot.profile.ID, projectID, input.ConversationKey, input.Pinned, found && tab.OwnerID != userID); err != nil {
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 		return
+	}
+	// Archiving your own agent also takes it out of the Team (owner, 28 Nov: "hide should also remove it from team
+	// share"). Unarchiving does not share it again. With no Team there is nothing to take back.
+	if !input.Pinned && !(found && tab.OwnerID != userID) {
+		if err := api.setOwnAgentInTeam(r.Context(), userID, strings.TrimSpace(input.ConversationKey), false); err != nil {
+			log.Printf("[CREW_TEAM] project=%s event=archive_unshare_skipped user=%s reason=%q", projectID, logUsernameForUserID(userID), err.Error())
+		}
 	}
 	out, err := api.sideChatsFor(r, userID, slot, projectID)
 	if err != nil {
