@@ -13,7 +13,6 @@ import (
 
 	"github.com/manishiitg/multi-llm-provider-go/llmerrors"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/codingready"
 )
 
 // agyExecEnvelope is the terminal result object from AGY's JSON output.
@@ -341,11 +340,6 @@ func (a *AgyCLIAdapter) generateContentExec(ctx context.Context, messages []llmt
 		// execution, so this run gets --dangerously-skip-permissions;
 		// unmounted runs keep headless default-deny. Each run owns a private
 		// AGY home and MCP catalogue.
-		if opts != nil && opts.Metadata != nil && opts.Metadata.Custom != nil {
-			if readyFile := codingready.MCPReadyFileFromMetadata(opts.Metadata.Custom); strings.TrimSpace(readyFile) != "" {
-				_ = codingready.WaitForMCPReadyFile(ctx, readyFile, codingready.MCPReadyWait())
-			}
-		}
 		servers, err := agyParseMCPServers(mcpJSON)
 		if err != nil {
 			return nil, err

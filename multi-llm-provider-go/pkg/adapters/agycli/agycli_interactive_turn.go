@@ -23,6 +23,7 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmerrors"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/tmuxlaunch"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/codingready"
 	"google.golang.org/protobuf/encoding/protowire"
 )
 
@@ -136,6 +137,12 @@ func ensureAgyInteractiveSessionForTurn(ctx context.Context, ownerSessionID, wor
 		}
 		return nil, err
 	}
+	var readyMarker codingready.ColdLaunchMarker
+	if strings.TrimSpace(mcpJSON) != "" && opts != nil && opts.Metadata != nil && opts.Metadata.Custom != nil {
+		if rf := codingready.MCPReadyFileFromMetadata(opts.Metadata.Custom); strings.TrimSpace(rf) != "" {
+			readyMarker = codingready.PrepareColdLaunch(rf)
+		}
+	}
 	session, err := bootAgyInteractiveSession(ctx, ownerSessionID, workingDir, model, resumeConversation, privateHome, opts)
 	if err != nil {
 		releaseToolHook()
@@ -143,6 +150,9 @@ func ensureAgyInteractiveSessionForTurn(ctx context.Context, ownerSessionID, wor
 			releaseMounts()
 		}
 		return nil, err
+	}
+	if readyMarker.Path != "" {
+		_ = codingready.WaitForMCPReadyFileAfter(ctx, readyMarker, codingready.MCPReadyWait())
 	}
 	session.model = model
 	session.mountFingerprint = fingerprint

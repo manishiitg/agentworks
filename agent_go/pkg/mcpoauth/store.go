@@ -172,6 +172,32 @@ func (s *Store) Client(ctx context.Context, id string) (Client, error) {
 	return c, err
 }
 
+// UpsertClient stores or refreshes a validated client (used for SEP-991 URL
+// Client ID Metadata Documents so consent, token exchange, and connection
+// listings share the verified client name and redirect URIs).
+func (s *Store) UpsertClient(ctx context.Context, client Client) error {
+	data, _ := json.Marshal(client.RedirectURIs)
+	res, err := s.db.ExecContext(ctx, `UPDATE clients SET name=?, redirect_uris=? WHERE id=?`, client.Name, string(data), client.ID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 1 {
+		return nil
+	}
+	res, err = s.db.ExecContext(ctx, `INSERT INTO clients (id,name,redirect_uris,created_at) SELECT ?,?,?,? WHERE (SELECT COUNT(*) FROM clients)< ?`, client.ID, client.Name, string(data), time.Now().Unix(), s.maxClients())
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		// Handle concurrent insert race cleanly before reporting limit reached.
+		if _, lookupErr := s.Client(ctx, client.ID); lookupErr == nil {
+			return nil
+		}
+		return errors.New("OAuth client registration limit reached")
+	}
+	return nil
+}
+
 // SaveRequest stores a pending authorization request, returning its opaque id.
 func (s *Store) SaveRequest(ctx context.Context, req AuthRequest) (string, error) {
 	raw, err := randomToken("mcp_req_")

@@ -518,3 +518,62 @@ func TestExternalMCPWorkspaceCatalogReachesSearchSyncAndReplyInput(t *testing.T)
 	}
 	requireRemoteError(t, call(args), "already answered Ask", "input_not_pending")
 }
+
+func TestExternalMCP2026CacheHints(t *testing.T) {
+	f := newExternalToolsFixture(t)
+	srv := serveExternalMCP(t, f.api, &UserClaims{UserID: "owner", Username: "owner"})
+
+	modernReq, err := http.NewRequest(http.MethodPost, srv.URL+externalMCPPath, strings.NewReader(`{
+		"jsonrpc":"2.0","id":1,"method":"tools/list",
+		"params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	modernReq.Header.Set("Content-Type", "application/json")
+	modernReq.Header.Set("Accept", "application/json, text/event-stream")
+	modernReq.Header.Set("Mcp-Protocol-Version", "2026-07-28")
+	modernReq.Header.Set("Mcp-Method", "tools/list")
+	modernResp, err := http.DefaultClient.Do(modernReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer modernResp.Body.Close()
+	modernBody, _ := io.ReadAll(modernResp.Body)
+	if modernResp.StatusCode != http.StatusOK {
+		t.Fatalf("2026-07-28 tools/list status=%d body=%s", modernResp.StatusCode, modernBody)
+	}
+	var modern struct {
+		Result struct {
+			TTLMs      int64  `json:"ttlMs"`
+			CacheScope string `json:"cacheScope"`
+			ResultType string `json:"resultType"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(modernBody, &modern); err != nil {
+		t.Fatalf("decode 2026-07-28 tools/list (%s): %v", modernBody, err)
+	}
+	if modern.Result.TTLMs != 60_000 || modern.Result.CacheScope != "private" || modern.Result.ResultType != "complete" {
+		t.Fatalf("unexpected 2026-07-28 cache hints: %+v (body=%s)", modern.Result, modernBody)
+	}
+
+	// Legacy clients remain free of 2026-07-28 cache fields.
+	legacyReq, err := http.NewRequest(http.MethodPost, srv.URL+externalMCPPath, strings.NewReader(`{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyReq.Header.Set("Content-Type", "application/json")
+	legacyReq.Header.Set("Accept", "application/json, text/event-stream")
+	legacyResp, err := http.DefaultClient.Do(legacyReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer legacyResp.Body.Close()
+	legacyBody, _ := io.ReadAll(legacyResp.Body)
+	if legacyResp.StatusCode != http.StatusOK {
+		t.Fatalf("legacy tools/list status=%d body=%s", legacyResp.StatusCode, legacyBody)
+	}
+	if strings.Contains(string(legacyBody), `"ttlMs"`) || strings.Contains(string(legacyBody), `"cacheScope"`) {
+		t.Fatalf("legacy tools/list leaked 2026 cache fields: %s", legacyBody)
+	}
+}

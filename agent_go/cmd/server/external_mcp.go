@@ -162,6 +162,12 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		server.WithResourceCapabilities(false, false),
 		server.WithElicitation(),
 		server.WithExtensions(map[string]any{agentworksclient.MCPTasksExtension: map[string]any{}}),
+		// SEP-2549 (MCP 2026-07-28): allow clients to cache per-principal list/discover
+		// results privately for 60s instead of revalidating on every turn. Legacy
+		// protocol versions ignore cache hints and remain byte-identical.
+		server.WithMethodCacheHints(mcp.MethodToolsList, 60_000, mcp.CacheScopePrivate),
+		server.WithMethodCacheHints(mcp.MethodResourcesList, 60_000, mcp.CacheScopePrivate),
+		server.WithMethodCacheHints(mcp.MethodServerDiscover, 60_000, mcp.CacheScopePrivate),
 		server.WithInstructions(instructions),
 	)
 	api.registerExternalDashboardApp(mcpServer, r)

@@ -175,6 +175,10 @@ func New(st *store.MemoryStore, a auth.Authenticator, ups map[string]*upstream.C
 	g.mcp = server.NewMCPServer("mcp-gateway", "0.1.0",
 		server.WithToolCapabilities(true),
 		server.WithHooks(hooks),
+		// SEP-2549 (MCP 2026-07-28): tools/list is shaped per caller identity, so
+		// advertise a brief private cache TTL; execution-time Authorize stays live.
+		server.WithMethodCacheHints(mcp.MethodToolsList, 30_000, mcp.CacheScopePrivate),
+		server.WithMethodCacheHints(mcp.MethodServerDiscover, 30_000, mcp.CacheScopePrivate),
 	)
 	return g
 }

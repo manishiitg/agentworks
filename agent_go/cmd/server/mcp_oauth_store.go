@@ -235,6 +235,28 @@ func (s *mcpOAuthStore) Client(ctx context.Context, id string) (mcpOAuthClient, 
 	return c, err
 }
 
+func (s *mcpOAuthStore) UpsertClient(ctx context.Context, client mcpOAuthClient) error {
+	data, _ := json.Marshal(client.RedirectURIs)
+	res, err := s.db.ExecContext(ctx, `UPDATE clients SET name=?, redirect_uris=? WHERE id=?`, client.Name, string(data), client.ID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 1 {
+		return nil
+	}
+	res, err = s.db.ExecContext(ctx, `INSERT INTO clients (id,name,redirect_uris,created_at) SELECT ?,?,?,? WHERE (SELECT COUNT(*) FROM clients)<10000`, client.ID, client.Name, string(data), time.Now().Unix())
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		if _, lookupErr := s.Client(ctx, client.ID); lookupErr == nil {
+			return nil
+		}
+		return errors.New("MCP OAuth client registration limit reached")
+	}
+	return nil
+}
+
 func (s *mcpOAuthStore) SaveRequest(ctx context.Context, req mcpOAuthRequest) (string, error) {
 	raw, err := mcpOAuthRandom("mcp_req_")
 	if err != nil {

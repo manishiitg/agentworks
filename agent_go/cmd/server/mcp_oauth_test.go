@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/manishiitg/coding-agent-loop/mcpoauth"
 )
 
 func TestMCPOAuthAuthorizationRefreshAndRevocation(t *testing.T) {
@@ -377,5 +379,125 @@ func TestMCPOAuthStableRefreshConcurrent(t *testing.T) {
 				t.Fatal("revoked stable refresh accepted")
 			}
 		})
+	}
+}
+
+func TestMCPOAuthCIMDMetadataAuthorizeAndToken(t *testing.T) {
+	t.Setenv("AGENTWORKS_STATE_ROOT", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("WORKSPACE_DOCS_PATH", filepath.Join(t.TempDir(), "docs"))
+	t.Setenv("MULTI_USER_MODE", "false")
+	t.Setenv("AUTH_SECRET", "mcp-oauth-cimd-test-signing-secret")
+	t.Setenv("PUBLIC_URL", "https://agentworks.example.com")
+
+	var cimdSrv *httptest.Server
+	cimdSrv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"client_id":                  cimdSrv.URL + r.URL.Path,
+			"client_name":                "AgentWorks CIMD Client",
+			"redirect_uris":              []string{"https://client.example/cb"},
+			"grant_types":                []string{"authorization_code", "refresh_token"},
+			"response_types":             []string{"code"},
+			"token_endpoint_auth_method": "none",
+		})
+	}))
+	defer cimdSrv.Close()
+
+	prevResolver := mcpOAuthCIMDResolver
+	mcpOAuthCIMDResolver = mcpoauth.NewCIMDResolverWithClient(cimdSrv.Client(), true)
+	t.Cleanup(func() { mcpOAuthCIMDResolver = prevResolver })
+
+	api := &StreamingAPI{}
+	router := mux.NewRouter()
+	router.HandleFunc(mcpOAuthMetadataPath, api.handleMCPOAuthMetadata)
+	router.HandleFunc(mcpOAuthAuthorizePath, api.handleMCPOAuthAuthorize).Methods("GET")
+	router.HandleFunc(mcpOAuthConsentPath, api.handleMCPOAuthConsent).Methods("GET", "POST")
+	router.HandleFunc(mcpOAuthTokenPath, api.handleMCPOAuthToken).Methods("POST")
+	router.HandleFunc(mcpOAuthConnectionsPath, api.handleMCPOAuthConnections).Methods("GET")
+	router.HandleFunc(externalMCPPath, api.handleExternalMCP).Methods("GET", "POST", "DELETE")
+	handler := AuthMiddleware(router)
+	request := func(method, path, body, token, contentType string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		if token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
+		if contentType != "" {
+			r.Header.Set("Content-Type", contentType)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+
+	meta := request("GET", mcpOAuthMetadataPath, "", "", "")
+	var metaDoc map[string]any
+	if meta.Code != 200 || json.Unmarshal(meta.Body.Bytes(), &metaDoc) != nil || metaDoc["client_id_metadata_document_supported"] != true {
+		t.Fatalf("AS metadata missing client_id_metadata_document_supported: %d %s", meta.Code, meta.Body.String())
+	}
+
+	clientID := cimdSrv.URL + "/oauth/client.json"
+	resource := "https://agentworks.example.com" + externalMCPPath
+	verifier := strings.Repeat("d", 43)
+	sum := sha256.Sum256([]byte(verifier))
+	pkce := base64.RawURLEncoding.EncodeToString(sum[:])
+
+	authz := url.Values{
+		"response_type": {"code"}, "client_id": {clientID},
+		"redirect_uri": {"https://client.example/cb"}, "scope": {"workflows:read files:read"},
+		"state": {"cimd-state"}, "code_challenge": {pkce},
+		"code_challenge_method": {"S256"}, "resource": {resource},
+	}
+	started := request("GET", mcpOAuthAuthorizePath+"?"+authz.Encode(), "", "", "")
+	if started.Code != 303 {
+		t.Fatalf("CIMD authorize failed: %d %s", started.Code, started.Body.String())
+	}
+	consentPath := started.Header().Get("Location")
+	jwt, err := GenerateJWT(GetDefaultUserID(), "owner", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	consent := request("GET", strings.Replace(consentPath, "/oauth/consent", mcpOAuthConsentPath, 1), "", jwt, "")
+	if consent.Code != 200 || !strings.Contains(consent.Body.String(), "AgentWorks CIMD Client") {
+		t.Fatalf("CIMD consent GET failed: %d %s", consent.Code, consent.Body.String())
+	}
+	decided := request("POST", strings.Replace(consentPath, "/oauth/consent", mcpOAuthConsentPath, 1), `{"decision":"approve"}`, jwt, "application/json")
+	var redir struct {
+		URL string `json:"redirect_url"`
+	}
+	if decided.Code != 200 || json.Unmarshal(decided.Body.Bytes(), &redir) != nil {
+		t.Fatalf("CIMD consent POST failed: %d %s", decided.Code, decided.Body.String())
+	}
+	cb, _ := url.Parse(redir.URL)
+	code := cb.Query().Get("code")
+
+	secretForm := url.Values{
+		"grant_type": {"authorization_code"}, "code": {code},
+		"redirect_uri": {"https://client.example/cb"}, "client_id": {clientID},
+		"client_secret": {"forbidden"}, "resource": {resource}, "code_verifier": {verifier},
+	}
+	if w := request("POST", mcpOAuthTokenPath, secretForm.Encode(), "", "application/x-www-form-urlencoded"); w.Code != 401 {
+		t.Fatalf("CIMD token with client_secret accepted: %d %s", w.Code, w.Body.String())
+	}
+
+	form := url.Values{
+		"grant_type": {"authorization_code"}, "code": {code},
+		"redirect_uri": {"https://client.example/cb"}, "client_id": {clientID},
+		"resource": {resource}, "code_verifier": {verifier},
+	}
+	issued := request("POST", mcpOAuthTokenPath, form.Encode(), "", "application/x-www-form-urlencoded")
+	var pair struct {
+		Access string `json:"access_token"`
+	}
+	if issued.Code != 200 || json.Unmarshal(issued.Body.Bytes(), &pair) != nil || pair.Access == "" {
+		t.Fatalf("CIMD token exchange failed: %d %s", issued.Code, issued.Body.String())
+	}
+
+	initResp := request("POST", externalMCPPath, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"cimd-test","version":"1"}}}`, pair.Access, "application/json")
+	if initResp.Code != 200 || !strings.Contains(initResp.Body.String(), "protocolVersion") {
+		t.Fatalf("CIMD token did not reach external MCP: %d %s", initResp.Code, initResp.Body.String())
+	}
+	conns := request("GET", mcpOAuthConnectionsPath, "", jwt, "")
+	if conns.Code != 200 || !strings.Contains(conns.Body.String(), "AgentWorks CIMD Client") {
+		t.Fatalf("connections missing CIMD client: %d %s", conns.Code, conns.Body.String())
 	}
 }

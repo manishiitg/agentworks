@@ -121,6 +121,9 @@ type Config struct {
 	CLIBrowserOrigin func(serverOrigin string) string
 	// CLIBrowserPath is the approval page path, e.g. /oauth/cli.
 	CLIBrowserPath string
+	// CIMDResolver resolves URL-based Client ID Metadata Documents (SEP-991).
+	// Nil uses DefaultCIMDResolver (public-internet HTTPS with SSRF checks).
+	CIMDResolver *CIMDResolver
 }
 
 var (

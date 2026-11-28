@@ -6,7 +6,9 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -156,6 +158,53 @@ func TestM0GovernedCallPath(t *testing.T) {
 	}
 	if res.IsError {
 		t.Fatalf("granted tools/call returned error result: %+v", res.Content)
+	}
+
+	// MCP 2026-07-28: OAuth AS advertises CIMD support and tools/list emits
+	// private SEP-2549 cache hints (30s) for 2026-07-28 clients.
+	metaResp, err := http.Get(publicURL + mcpserver.OAuthMetadataPath)
+	if err != nil {
+		t.Fatalf("oauth metadata: %v", err)
+	}
+	defer metaResp.Body.Close()
+	var metaDoc map[string]any
+	if err := json.NewDecoder(metaResp.Body).Decode(&metaDoc); err != nil || metaDoc["client_id_metadata_document_supported"] != true {
+		t.Fatalf("gateway OAuth metadata missing client_id_metadata_document_supported=true: %v %v", metaDoc, err)
+	}
+
+	modernReq, err := http.NewRequestWithContext(ctx, http.MethodPost, publicURL+"/mcp", strings.NewReader(`{
+		"jsonrpc":"2.0","id":7,"method":"tools/list",
+		"params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	modernReq.Header.Set("Authorization", "Bearer "+access)
+	modernReq.Header.Set("Content-Type", "application/json")
+	modernReq.Header.Set("Accept", "application/json, text/event-stream")
+	modernReq.Header.Set("Mcp-Protocol-Version", "2026-07-28")
+	modernReq.Header.Set("Mcp-Method", "tools/list")
+	modernResp, err := http.DefaultClient.Do(modernReq)
+	if err != nil {
+		t.Fatalf("2026-07-28 tools/list: %v", err)
+	}
+	defer modernResp.Body.Close()
+	modernBody, _ := io.ReadAll(modernResp.Body)
+	if modernResp.StatusCode != http.StatusOK {
+		t.Fatalf("2026-07-28 tools/list status=%d body=%s", modernResp.StatusCode, modernBody)
+	}
+	var modern struct {
+		Result struct {
+			TTLMs      int64  `json:"ttlMs"`
+			CacheScope string `json:"cacheScope"`
+			ResultType string `json:"resultType"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(modernBody, &modern); err != nil {
+		t.Fatalf("decode 2026-07-28 tools/list (%s): %v", modernBody, err)
+	}
+	if modern.Result.TTLMs != 30_000 || modern.Result.CacheScope != "private" || modern.Result.ResultType != "complete" {
+		t.Fatalf("unexpected gateway 2026-07-28 cache hints: %+v (body=%s)", modern.Result, modernBody)
 	}
 
 	// Ungranted call is denied even though the tool exists upstream.
