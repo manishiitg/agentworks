@@ -20,15 +20,48 @@ const (
 	crewChatShareAgent = "agent"
 )
 
-// crewTeamChatShareLabel and crewChatShareOptions are the choice on the viewer's own agent row.
-const crewTeamChatShareLabel = "Teammates see"
-
+// crewChatShareOptions name the two chat shares, as the share choice shows them.
 type crewChatShareOption struct {
 	Value string `json:"value"`
 	Label string `json:"label"`
 }
 
-var crewChatShareOptions = []crewChatShareOption{{crewChatShareLive, "Live chat"}, {crewChatShareAgent, "Just the agent"}}
+var crewChatShareOptions = []crewChatShareOption{{crewChatShareLive, "Full chat"}, {crewChatShareAgent, "Agent only"}}
+
+// An agent's sharing is one choice (owner, 28 Nov, approved mockup-team-share-modes): Only me, Agent only (teammates
+// and their agents can ask it and hand it work; the chat stays its person's and is not copied to the server) or Full
+// chat (they can also read the chat live, and its server copy while the Mac is off). Saved as the two existing fields:
+// shared with the Team (InTeam) and what teammates see of its chat (Rule.ChatShare).
+const (
+	crewShareOnlyMe    = "only_me"
+	crewShareAgentOnly = "agent_only"
+	crewShareFullChat  = "full_chat"
+)
+
+// crewShareMode is the one choice an agent's two saved fields make.
+func crewShareMode(inTeam bool, chatShare string) string {
+	switch {
+	case !inTeam:
+		return crewShareOnlyMe
+	case chatShare == crewChatShareAgent:
+		return crewShareAgentOnly
+	default:
+		return crewShareFullChat
+	}
+}
+
+// crewShareModeFields is what saving a choice writes; ok is false for anything but the three choices.
+func crewShareModeFields(mode string) (inTeam bool, chatShare string, ok bool) {
+	switch strings.TrimSpace(mode) {
+	case crewShareOnlyMe:
+		return false, "", true
+	case crewShareAgentOnly:
+		return true, crewChatShareAgent, true
+	case crewShareFullChat:
+		return true, crewChatShareLive, true
+	}
+	return false, "", false
+}
 
 // crewChatShareName is a share's plain name, as the choice shows it; "" when it is not one of the two.
 func crewChatShareName(share string) string {
@@ -42,7 +75,7 @@ func crewChatShareName(share string) string {
 
 // crewChatPrivateLine is what a teammate sees in place of the chat, and what a refused read says.
 func crewChatPrivateLine(person string) string {
-	return crewPersonShortName(person) + " keeps this chat private. You can still ask this agent."
+	return crewPersonShortName(person) + " shares this agent, not the chat. Ask it what it's working on, how to do something, or hand it a task."
 }
 
 // agentChatShare is what other people in the Team see of this agent's chat. The key is any name of the agent

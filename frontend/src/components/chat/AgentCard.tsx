@@ -76,7 +76,7 @@ export interface CrewAgentActions {
   /** A fork: hang it under that agent's key, or '' to move it out to its own place (#3504). */
   forkParent?: (parentKey: string) => Promise<void>
 }
-export interface CrewAgentRow { /** Its conversation key, for groups (#3288). */ key?: string; /** When its chat last had a message (saved history), for "2m" before any session is live (#3406). */ lastMessageAt?: string; /** The conversation key of the agent it was forked from. */ forkedFrom?: string; sidebarHidden?: boolean; sidebarOrder?: number; inTeam?:boolean; teamShare?: AgentTeamShare; tabId: string; name: string; main: boolean; /** Where it runs, as the server lists it: 'server' shows a cloud in the left menu. */ place?: 'mac' | 'server'; /** Whose agent it is when it is someone else's (a Team or co-owner Crew), by account and with the server's display name; absent for your own. */ ownerId?: string; owner?: string; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
+export interface CrewAgentRow { /** Its conversation key, for groups (#3288). */ key?: string; /** A teammate's agent shared as Agent only: it can be asked, not opened or added to a group. */ messageOnly?: boolean; /** When its chat last had a message (saved history), for "2m" before any session is live (#3406). */ lastMessageAt?: string; /** The conversation key of the agent it was forked from. */ forkedFrom?: string; sidebarHidden?: boolean; sidebarOrder?: number; inTeam?:boolean; teamShare?: AgentTeamShare; tabId: string; name: string; main: boolean; /** Where it runs, as the server lists it: 'server' shows a cloud in the left menu. */ place?: 'mac' | 'server'; /** Whose agent it is when it is someone else's (a Team or co-owner Crew), by account and with the server's display name; absent for your own. */ ownerId?: string; owner?: string; /** Its Cmd/Ctrl+number, in the left menu's order. */ shortcut?: number; asking?: boolean; info?: AgentCardInfo; activity?: 'running' | 'waiting' | null; actions?: CrewAgentActions }
 /** An agent the server lists for the Crew that has no open tab here; open() opens it again and switches to it. */
 export interface CrewClosedAgent { /** A teammate's agent: their name. */ owner?: string; forkedFrom?: string; sidebarHidden?: boolean; sidebarOrder?: number; inTeam?:boolean; teamShare?: AgentTeamShare; key: string; name: string; examples?: string[]; purpose?: string; open: () => Promise<unknown> }
 export const useCrewAgentsStore = create<{ projectId: string | null; name: string; agents: CrewAgentRow[]; closed: CrewClosedAgent[]; canAdd: boolean; canImportChat: boolean; canDiscoverSkills: boolean; set: (projectId: string, name: string, agents: CrewAgentRow[], canAdd: boolean, closed?: CrewClosedAgent[], imports?: { chat: boolean; skills: boolean }) => void }>(set => ({
@@ -94,7 +94,7 @@ export const useCrewAgentsStore = create<{ projectId: string | null; name: strin
 function AgentOnlineCopyStatus({ setup }: { setup?: TeamTabSetup }) {
  const line = setup?.when_offline?.line
  if (!line) return null
- return <div className="flex justify-between gap-3 border-t border-border py-2"><span className="text-muted-foreground">When Mac sleeps</span><span>{line}</span></div>
+ return <p className="border-t border-border py-2 text-muted-foreground">{line}</p>
 }
 
 let agentHoverCooldownUntil = 0

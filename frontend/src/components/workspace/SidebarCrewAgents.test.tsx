@@ -99,12 +99,12 @@ it('shows sharing marks only on shared agents and leaves private agents clean', 
   // Private and chat-hidden agents stay clean in the left menu (owner, 26 Nov);
   // only shared agents whose chat is visible reveal a micro pill on hover.
   expect(host.querySelector('[aria-current="page"] [aria-label="Only you"]')).toBeNull()
-  expect(host.querySelector('[aria-label*="Chat hidden"]')).toBeNull()
-  const chosenMark = host.querySelector('[aria-label="Shared with Ana, Sam · Chat visible"]')
+  expect(host.querySelector('[aria-label*="Agent only"]')).toBeNull()
+  const chosenMark = host.querySelector('[aria-label="Shared with Ana, Sam · Full chat"]')
   expect(chosenMark).not.toBeNull()
   expect(chosenMark?.className).toContain('hidden')
   expect(chosenMark?.className).toContain('group-hover:inline-flex')
-  expect(host.querySelector('[aria-label="Shared with everyone on the Team · Chat visible"]')).not.toBeNull()
+  expect(host.querySelector('[aria-label="Full chat: everyone on the Team can ask it and read its chat"]')).not.toBeNull()
   expect(host.textContent).not.toMatch(/In team unless marked with a lock|All in team/)
  } finally { f.extra = []; await act(async () => root.unmount()) }
 })
@@ -227,9 +227,17 @@ it('shows groups with their agents, forks under their parent without claiming mi
   await click('Take out of Design')
   expect(f.edit).toHaveBeenLastCalledWith({ op: 'move', key: 'crew:chat:parent', group: '' })
   // The teammate picker had no way out but a Close button below a long list: a click outside closes it.
+  // An Agent only teammate agent is listed but can't be added (owner, 28 Nov).
+  f.extra.push({ tabId: 'ask-only', key: 'crew:chat:ask-only', name: 'Ask-only agent', ownerId: 'teammate', owner: 'Ana', messageOnly: true })
+  await act(async () => root.render(<SidebarCrewAgents projectId="crew" onSelect={f.select}/>))
   await click('More for group Design')
   await click('Add a teammate’s agent…')
   expect(host.querySelector('[role="dialog"]')).toBeTruthy()
+  const askOnly = [...host.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(button => button.textContent?.startsWith('Ask-only agent'))!
+  expect(askOnly.disabled).toBe(true)
+  const edits = f.edit.mock.calls.length
+  await act(async () => askOnly.click())
+  expect(f.edit.mock.calls.length).toBe(edits)
   await act(async () => document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })))
   expect(host.querySelector('[role="dialog"]')).toBeNull()
  } finally { vi.useRealTimers(); f.extra = []; f.groups = {}; window.localStorage.clear(); await act(async () => root.unmount()) }

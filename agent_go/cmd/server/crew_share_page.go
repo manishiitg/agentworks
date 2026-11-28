@@ -38,8 +38,7 @@ type crewShareOption struct {
 	Open bool `json:"open"`
 }
 
-// crewShareAsk is an agent's share part: one switch (the agent is shared with the Team, POST agent-visibility) and, while
-// on, whether they see its chat (chat_share); the owner's own rule is the only limit on what it does for them. Every line is
+// crewShareAsk is an agent's share part: one choice, Only me / Agent only / Full chat (owner, 28 Nov); the owner's own rule is the only limit on what it does for them. Every line is
 // the server's; the page prints them.
 type crewShareAsk struct {
 	On        bool `json:"on"`
@@ -53,23 +52,22 @@ type crewShareAsk struct {
 	Fixed string `json:"fixed,omitempty"`
 	Note  string `json:"note,omitempty"`
 	// CanEdit: the viewer sets the permissions (their own agent).
-	CanEdit          bool                  `json:"can_edit"`
-	ChatShare        string                `json:"chat_share"`
-	ChatShareLabel   string                `json:"chat_share_label"`
-	ChatShareOptions []crewShareChatOption `json:"chat_share_options"`
+	CanEdit   bool   `json:"can_edit"`
+	ChatShare string `json:"chat_share"`
+	// Share is the one choice (crewShareMode): only_me, agent_only or full_chat; ShareOptions are its three options,
+	// each with its plain line. Saving one sends agent-rule {share}.
+	Share        string                `json:"share"`
+	ShareOptions []crewShareChatOption `json:"share_options"`
 	// RulesLabel is the link to the agent's permissions ("Permissions…").
 	RulesLabel string `json:"rules_label"`
-	// HiddenLine is the card's one hint while the viewer's own chat is Hidden.
-	HiddenLine string `json:"hidden_line"`
 	// SetupAsk is the draft "✦ Ask AI to configure" opens in the viewer's own agent for this card.
 	SetupAsk string `json:"setup_ask,omitempty"`
 }
 
 type crewShareChatOption struct {
-	Value   string `json:"value"`
-	Label   string `json:"label"`
-	Line    string `json:"line"`
-	Example string `json:"example"`
+	Value string `json:"value"`
+	Label string `json:"label"`
+	Line  string `json:"line"`
 }
 
 // crewShareAction is one action (a Crew function the owner declared): its name (sent
@@ -399,9 +397,20 @@ const (
 	crewSharePublishedAction  = "This action comes from published source. Change its source and publish again."
 )
 
-var crewShareChatOptions = []crewShareChatOption{
-	{Value: crewChatShareLive, Label: "Yes, live", Example: "They see your conversation with this agent as it happens.", Line: "Example: a teammate can follow your questions and the agent's replies live, including earlier shared conversation."},
-	{Value: crewChatShareAgent, Label: "No", Example: "They get their own thread with the agent; your conversation stays private.", Line: "Example: a teammate asks for a review in their own thread. They get that answer, not your private conversation with this agent."},
+// crewShareModeOptions are the three choices with their plain lines. An agent on a Mac answers only while that Mac is
+// on, so its lines say what happens while it is off; an online agent is always on.
+func crewShareModeOptions(onMac bool) []crewShareChatOption {
+	agentOnly := "Teammates and their agents can ask it questions and hand it work. Your chat stays yours."
+	fullChat := "They can also read your whole chat live."
+	if onMac {
+		agentOnly += " It answers while your Mac is on."
+		fullChat = "They can also read your whole chat live, and read it even while your Mac is off."
+	}
+	return []crewShareChatOption{
+		{Value: crewShareOnlyMe, Label: "Only me", Line: "Nobody else can ask it or see its chat."},
+		{Value: crewShareAgentOnly, Label: "Agent only", Line: agentOnly},
+		{Value: crewShareFullChat, Label: "Full chat", Line: fullChat},
+	}
 }
 
 // crewShareSource is where this Crew's actions are read: its function target and its workspace path (which its
@@ -812,9 +821,9 @@ func crewShareAgentSummary(teamOn bool, a crewTeamTabAgent) string {
 		line += "It helps them as it helps you, using your files, tools and signed-in apps, personal ones included. "
 	}
 	if a.ChatShare == crewChatShareLive {
-		line += "They can watch your chat live."
+		line += "They can read your chat live."
 	} else {
-		line += "They can't see your chat."
+		line += "Your chat stays yours."
 	}
 	return line
 }
@@ -861,9 +870,9 @@ func crewOfflineCopyBytes(project, agent string) int64 {
 // crewShareAgentCard is one of the viewer's own agents on the Share page and in its header menu, with its Team settings.
 func crewShareAgentCard(t crewTeam, a crewTeamTabAgent, onMac bool) crewShareAgent {
 	ask := &crewShareAsk{On: a.InTeam, CanChange: a.CanChange && !onMac, CanEdit: a.CanEditRule && !onMac,
-		Title: "Teammates can ask this agent", Line: "Not shared: only you and your agents can reach it.",
-		ChatShare: a.ChatShare, ChatShareLabel: "Teammates see your chat", ChatShareOptions: crewShareChatOptions,
-		HiddenLine: "Teammates see its answers, not your chat with it.", RulesLabel: "Permissions…"}
+		Title: "Share with the team", Line: "Not shared: only you and your agents can reach it.",
+		ChatShare: a.ChatShare, Share: crewShareMode(a.InTeam, a.ChatShare), ShareOptions: crewShareModeOptions(a.Place == "mac" || a.Kind == "terminal"),
+		RulesLabel: "Permissions…"}
 	if ask.CanEdit {
 		ask.SetupAsk = "Explain your current Team sharing settings in plain words: who can ask you, whether you may act as me, and what they see of our chat. Offer changes that would help, but do not change anything unless I ask. "
 	}

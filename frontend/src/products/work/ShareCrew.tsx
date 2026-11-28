@@ -132,15 +132,16 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, defa
     try { await save(); return true } catch (e) { setError(teamFailure(e).message); return false } finally { setPending('') }
   }
   const updated = teamChanged
-  const share = (on: boolean) => run('ask', async () => { await teamRequest(where, '/agent-visibility', 'POST', { agent_key: key, in_team: on }); updated() })
-  const rule = (field: string, change: { chat_share?: string; audience?: 'whole_team' | 'chosen'; chosen_people?: string[]; when_others_ask?: string }) => run(field, async () => { await teamRequest(where, '/agent-rule', 'POST', { agent_key: key, ...change }); updated() })
+  // One choice (owner, 28 Nov): Only me / Agent only / Full chat. The server maps it to sharing and chat visibility.
+  const share = (value: string) => run('ask', async () => { await teamRequest(where, '/agent-rule', 'POST', { agent_key: key, share: value }); updated() })
+  const rule = (field: string, change: { audience?: 'whole_team' | 'chosen'; chosen_people?: string[]; when_others_ask?: string }) => run(field, async () => { await teamRequest(where, '/agent-rule', 'POST', { agent_key: key, ...change }); updated() })
   const ask = agent.ask
   // The rule editor (When others ask) stays one click away, on the viewer's own agent.
   const row = agent.row || view?.agents.find(item => item.key === agent.key && item.mine)
   const busy = Boolean(pending)
   // One small card per agent (owner, 15 Nov mock): name and place with the switch on top, two compact choices, one hint
   // line that follows them. Off greys the choices and says who can still reach it.
-  const chatChoice = ask?.chat_share_options.find(option => option.value === ask.chat_share)
+  const choice = ask?.share_options.find(option => option.value === ask.share)
   // Who may ask: the whole Team or chosen people (the server's audience). The picker lists current members, not you;
   // chosen_people is always the complete list, and Chosen with nobody means nobody else.
   const members = (agent.members || view?.people || []).filter(person => !person.you && person.note !== 'you' && person.note !== 'invited')
@@ -150,17 +151,20 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, defa
    const tab=teamAgentChatTab(team,projectId,agent.key)
    if(!tab||!ask?.setup_ask||!fillOwnTabDraft(tab.tabId,ask.setup_ask))useChatStore.getState().addToast(`Open ${agent.name}'s own chat to explain these settings.`,'info')
   }
-  const example=(short?:string,long?:string)=>short?<details className="text-[11px] text-muted-foreground"><summary title={long} className="cursor-pointer list-none">{short}</summary><p className="mt-1 rounded border border-border p-2">{long}</p></details>:null
   const segment = (on: boolean) => `max-w-full whitespace-normal px-2.5 py-1.5 text-left text-xs ${on ? 'bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`
   // Team page (owner, 18 Nov mock, #3084): one line per agent with its switch; the settings open from the row, one line
   // each. The header keeps the summary visible and groups the controls under Sharing.
   const audienceLine = row?.audience === 'chosen' ? 'chosen people' : 'everyone'
-  const rowLine = [agent.line, ask ? (ask.on ? audienceLine : 'not shared') : ''].filter(Boolean).join(' · ')
-  const shareSwitch = ask && <span title={ask.fixed || undefined} className={`inline-flex items-center gap-2 text-xs text-muted-foreground ${compact ? 'w-full justify-between' : 'shrink-0'}`}>
-    <Saving on={pending === 'ask'}>{null}</Saving>
-    {ask.title}
-    <Switch aria-label={ask.title} checked={ask.on} disabled={!ask.can_change || busy} onCheckedChange={on => void share(on)} />
-  </span>
+  const rowLine = [agent.line, ask ? (ask.on ? audienceLine : '') : ''].filter(Boolean).join(' · ')
+  const shareChoice = ask && <div role="radiogroup" aria-label={ask.title} title={ask.fixed || undefined} className="w-full space-y-1">
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">{ask.title}<Saving on={pending === 'ask'}>{null}</Saving></div>
+    {ask.share_options.map(option => <button key={option.value} type="button" role="radio" aria-checked={ask.share === option.value} disabled={!ask.can_change || busy}
+      onClick={() => { if (ask.share !== option.value) void share(option.value) }}
+      className={`flex w-full items-start gap-2 rounded-lg border px-2.5 py-2 text-left ${ask.share === option.value ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'} disabled:cursor-not-allowed disabled:opacity-60`}>
+      <span aria-hidden className={`mt-0.5 h-3 w-3 shrink-0 rounded-full border ${ask.share === option.value ? 'border-[3.5px] border-primary' : 'border-muted-foreground/50'}`} />
+      <span className="min-w-0"><span className="block text-xs font-medium text-foreground">{option.label}</span><span className="block text-[11px] leading-snug text-muted-foreground">{option.line}</span></span>
+    </button>)}
+  </div>
   const summary = ask?.summary && <p role="note" className={`${compact ? "mb-2 px-1" : "my-2"} text-xs leading-relaxed text-muted-foreground`}>{ask.summary}</p>
   const settings = <>
     {ask?.setup_ask&&<button type="button" onClick={explain} className="text-[11px] text-primary hover:underline">✦ Ask AI to explain</button>}
@@ -193,16 +197,6 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, defa
             </span>
           </>}
         </AgentSetting>}
-        <AgentSetting compact name="Chat visibility" label={ask.chat_share_label} value={chatChoice?.label}>
-        <span className="flex items-center gap-2">
-          <span role="radiogroup" aria-label={ask.chat_share_label} className={`inline-flex min-w-0 max-w-full flex-wrap overflow-hidden rounded-lg border border-border`}>
-            {ask.chat_share_options.map(option => <button title={option.line} key={option.value} type="button" role="radio" aria-checked={ask.chat_share === option.value} disabled={busy || !ask.on}
-              onClick={() => { if (ask.chat_share !== option.value) void rule('see', { chat_share: option.value }) }}
-              className={segment(ask.chat_share === option.value)}>{option.label}</button>)}
-          </span>
-          <Saving on={pending === 'see'}>{null}</Saving>
-        </span>
-        {example(chatChoice?.example,chatChoice?.line)}</AgentSetting>
       </div>
     </div>}
     {ask?.can_edit && row && !((row.place === 'mac' || row.kind === 'terminal') && !row.uses?.length && !row.uses_note && (!ask.uses_line || ask.uses_line === 'No connections selected')) && <>
@@ -215,13 +209,13 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, defa
   if (compact && bare) return <div id={`header-agent-card-${agent.team ? `${agent.team}-` : ''}${agent.key}`} className="border-t border-border pt-2 text-xs">
     {agent.team_name && <p className="mb-1.5 font-medium text-foreground">{agent.team_name}</p>}
     {summary}
-    <div className="mt-2 flex items-center gap-2.5">{shareSwitch}</div>
+    <div className="mt-2">{shareChoice}</div>
     {settings}
     {failure}
   </div>
   if (compact) return <div id={`header-agent-card-${agent.team ? `${agent.team}-` : ''}${agent.key}`} className="text-xs">
-    <AgentDetailSection title={agent.team_name ? `Sharing · ${agent.team_name}` : 'Sharing'} value={ask ? (ask.on ? `Shared · ${ask.chat_share === 'agent' ? 'Chat hidden' : 'Chat visible'}` : 'Not shared with the team') : undefined} summary={summary} defaultOpen={defaultOpen}>
-      <div className="flex items-center gap-2.5">{shareSwitch}</div>
+    <AgentDetailSection title={agent.team_name ? `Sharing · ${agent.team_name}` : 'Sharing'} value={choice?.label} summary={summary} defaultOpen={defaultOpen}>
+      {shareChoice}
       {settings}
     </AgentDetailSection>
     {failure}
@@ -233,9 +227,9 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, defa
         <span className="shrink-0 truncate font-semibold">{agent.name}</span>
         {rowLine && <span title={agent.hint || undefined} className="min-w-0 truncate text-xs text-muted-foreground">{rowLine}</span>}
       </button>
-      {shareSwitch}
+      {choice && <span className="shrink-0 rounded-full bg-muted/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{choice.label}</span>}
     </div>
-    {open && <div className="mt-1 min-w-0 pl-5 text-xs">{summary}{settings}</div>}
+    {open && <div className="mt-1 min-w-0 pl-5 text-xs">{summary}{shareChoice}{settings}</div>}
     {failure}
   </div>
 }

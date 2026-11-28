@@ -548,9 +548,15 @@ function TeammateAgentPicker({ group, agents, onPick, onClose }: { group: string
         : !shown.length ? <p className="px-1 py-1 text-muted-foreground">No agent matches.</p>
         : [...byOwner].map(([owner, list]) => <div key={owner} role="group" aria-label={owner}>
           <p className="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-[11px] font-medium text-muted-foreground"><PersonInitial name={owner} />{owner}</p>
-          {list.map(agent => <button key={agent.tabId} type="button" className={`${menuItem} pl-8`} onClick={() => onPick(agent)}>
-            <span className="min-w-0 flex-1 truncate text-foreground">{agent.name}</span>
-          </button>)}
+          {list.map(agent => agent.messageOnly
+            // Agent only (owner, 28 Nov): its person shares the agent, not its chat, so it can't sit in your menu.
+            ? <button key={agent.tabId} type="button" disabled aria-disabled="true" title={`${owner} shares this agent, not its chat. Ask it from the Team panel.`} className={`${menuItem} pl-8 cursor-not-allowed opacity-50 hover:bg-transparent`}>
+              <span className="min-w-0 flex-1 truncate text-foreground">{agent.name}</span>
+              <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">Agent only</span>
+            </button>
+            : <button key={agent.tabId} type="button" className={`${menuItem} pl-8`} onClick={() => onPick(agent)}>
+              <span className="min-w-0 flex-1 truncate text-foreground">{agent.name}</span>
+            </button>)}
         </div>)}
     </div>
     <p className="border-t border-border px-2 py-1 text-[10px] text-muted-foreground">Only adds it to your menu; its sharing doesn’t change.</p>

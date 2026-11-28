@@ -22,7 +22,7 @@ the person's request, preserving current server checks.
 
 Agents are not published or put online by hand (owner, 17 Nov). While this Mac
 is off, teammates' asks to a Shared with team agent wait for it. Their agents
-can read its chat at any time, Mac on or off (only a Live chat), and the agent
+can read its chat at any time, Mac on or off (only a Full chat agent), and the agent
 is told who read what on its next turn. This project's own schedules and Watchers run on this
 Mac. Work that must keep running while the Mac is off (a report, a check, a
 reminder) belongs in a project on the server; nothing moves between the two.

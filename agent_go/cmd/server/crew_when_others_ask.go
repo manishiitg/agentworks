@@ -68,7 +68,7 @@ func withAgentRuleArgs(ctx context.Context, args map[string]any, project, person
 var errWhenOthersAskTooLong = fmt.Errorf("keep the rule under %d characters", whenOthersAskMaxRunes)
 
 // errCrewChatShareUnknown refuses anything but the two choices.
-var errCrewChatShareUnknown = errors.New("choose Live or Hidden")
+var errCrewChatShareUnknown = errors.New("choose Full chat or Agent only")
 
 // setCrewTeamAgentRule saves the person's own rule and/or Teammates see for one of their agents (nil leaves that part
 // as it is). Only the agent's own person may (crewTeamOwnAgent).
@@ -129,10 +129,23 @@ func handleCrewTeamAgentRule(w http.ResponseWriter, r *http.Request, project, pe
 		People        *[]string `json:"chosen_people"`
 		WhenOthersAsk *string   `json:"when_others_ask"`
 		ChatShare     *string   `json:"chat_share"`
+		// Share is the one choice (only_me, agent_only, full_chat); it sets in_team and chat_share together.
+		Share *string `json:"share"`
 	}
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in) != nil || in.InTeam == nil && in.Audience == nil && in.People == nil && in.WhenOthersAsk == nil && in.ChatShare == nil {
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&in) != nil || in.InTeam == nil && in.Audience == nil && in.People == nil && in.WhenOthersAsk == nil && in.ChatShare == nil && in.Share == nil {
 		externalError(w, 400, "invalid_agent", "Choose your agent and give what to change: shared with the Team, who it is shared with, its rule, or what teammates see of its chat.")
 		return
+	}
+	if in.Share != nil {
+		inTeam, chatShare, ok := crewShareModeFields(*in.Share)
+		if !ok {
+			externalError(w, 400, "invalid_share", "Choose only_me, agent_only or full_chat.")
+			return
+		}
+		in.InTeam = &inTeam
+		if inTeam {
+			in.ChatShare = &chatShare
+		}
 	}
 	if t, err := readCrewTeam(project); err == nil {
 		person = crewTeamRuleActor(t, person, in.Key)
@@ -144,13 +157,20 @@ func handleCrewTeamAgentRule(w http.ResponseWriter, r *http.Request, project, pe
 		case errors.Is(err, errWhenOthersAskTooLong):
 			externalError(w, 400, "rule_too_long", "Keep the rule under 1000 characters.")
 		case errors.Is(err, errCrewChatShareUnknown):
-			externalError(w, 400, "invalid_chat_share", "Choose Live chat or Just the agent.")
+			externalError(w, 400, "invalid_chat_share", "Choose Full chat or Agent only.")
 		case errors.Is(err, errCrewTeamAudienceUnknown):
 			externalError(w, 400, "invalid_audience", "Choose the whole Team (whole_team) or chosen people (chosen).")
 		case errors.Is(err, errCrewTeamAudiencePerson):
 			externalError(w, 400, "invalid_people", "Choose people who are in this Team (user IDs from directory), at most 200.")
 		default:
 			externalError(w, 409, "agent_update_failed", "It was not saved. Try again.")
+		}
+	}
+	// What teammates see is saved before the agent is shared, so Only me -> Agent only never shows the chat, even briefly.
+	if in.WhenOthersAsk != nil || in.ChatShare != nil {
+		if _, err := setCrewTeamAgentRule(r.Context(), project, person, in.Key, in.WhenOthersAsk, in.ChatShare); err != nil {
+			refuse(err)
+			return
 		}
 	}
 	if in.InTeam != nil {
@@ -176,19 +196,13 @@ func handleCrewTeamAgentRule(w http.ResponseWriter, r *http.Request, project, pe
 			return
 		}
 	}
-	if in.WhenOthersAsk != nil || in.ChatShare != nil {
-		if _, err := setCrewTeamAgentRule(r.Context(), project, person, in.Key, in.WhenOthersAsk, in.ChatShare); err != nil {
-			refuse(err)
-			return
-		}
-	}
 	t, stored, err := crewTeamOwnAgent(r.Context(), project, person, in.Key)
 	if err != nil {
 		refuse(err)
 		return
 	}
 	rule := t.agentRule(person, stored)
-	externalJSON(w, map[string]any{"in_team": t.agentInTeam(person, stored), "audience": rule.audienceName(), "chosen_people": t.audiencePeople(rule), "when_others_ask": rule.WhenOthersAsk, "has_rule": rule.WhenOthersAsk != "", "chat_share": rule.ChatShare})
+	externalJSON(w, map[string]any{"in_team": t.agentInTeam(person, stored), "audience": rule.audienceName(), "chosen_people": t.audiencePeople(rule), "when_others_ask": rule.WhenOthersAsk, "has_rule": rule.WhenOthersAsk != "", "chat_share": rule.ChatShare, "share": crewShareMode(t.agentInTeam(person, stored), rule.ChatShare)})
 }
 
 // setOwnAgentRule is an agent's own rule from its chat (set_my_agent_identity). On a Mac the Team record is on the

@@ -4,7 +4,7 @@ import { CodingCliIcon } from '../../components/chat/CodingCliIcon'
 import { AgentPlaceMark } from '../../components/chat/AgentIcon'
 import { Avatar, type AvatarFields } from '../../components/ui/Avatar'
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, Globe, Lock, Pencil, Users, X } from 'lucide-react'
+import { ArrowLeft, Globe, Pencil, Users, X } from 'lucide-react'
 import { formatRelativeIso } from '../../utils/relativeTime'
 
 /** All rows and live lines are already admitted/filtered by the server. */
@@ -50,7 +50,7 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
  const button='flex w-full min-w-0 items-start gap-2 rounded-md px-1 py-1.5 text-left hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
  const agent=(row:TeamPanelAgent)=><button key={row.id} type="button" aria-label={`Open ${row.person}'s ${row.name}`} onClick={()=>onAsk(row)} className={button} title={agentPurposeTooltip(row,runtime(row,true))}>
   <Avatar {...row} name={person(row)} className="mt-0.5 h-6 w-6 shrink-0 text-[10px]"/><AgentPlaceMark place={row.place==='server'?'server':'mac'}/>
-  <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{name(row)}{row.update_needed&&<span> · Update needed</span>}</span>
+  <span className="min-w-0 flex-1"><span className="flex min-w-0 items-center gap-1.5"><span className="truncate text-xs font-medium">{name(row)}{row.update_needed&&<span> · Update needed</span>}</span>{!row.mine&&row.chat_share==='agent'&&<span title="Agent only: ask it or hand it work; its chat stays with its person" className="shrink-0 rounded-full bg-muted/70 px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">Agent only</span>}</span>
    {row.purpose && <span className="block text-xs text-muted-foreground">{row.purpose}</span>}
    {!!row.examples?.length && <span className="block text-xs text-muted-foreground">Ask me to: {row.examples.join(' · ')}</span>}
    <span className="block truncate text-[10px] text-muted-foreground">{runtime(row)}</span>
@@ -66,7 +66,7 @@ export function TeamPanel({scope,agents,onAsk,people=[],selectedPerson,onPersonS
   return <button key={row.id} type="button" aria-label={`Open ${row.person}'s ${row.name}`} onClick={()=>onAsk(row)} title={agentPurposeTooltip(row,[runtime(row,true),status(row),row.update_needed&&'Update needed',row.last_message].filter(Boolean).join(' · '))} className={`flex h-6 w-full min-w-0 items-center gap-1.5 rounded px-1 text-left text-[11px] hover:bg-background/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${state==='idle'?'opacity-50':''}`}>
    <CodingCliIcon provider={row.cli||row.engine||'terminal'} className="inline-flex h-3.5 w-3.5 shrink-0 items-center"/>
    <span className="max-w-[120px] shrink-0 truncate font-medium">{name(row)}</span>
-   {!row.mine&&row.chat_share==='agent'&&<span role="img" aria-label="Chat hidden" title="Chat hidden" className="shrink-0"><Lock aria-hidden="true" className="h-3 w-3 text-muted-foreground"/></span>}
+   {!row.mine&&row.chat_share==='agent'&&<span title="Agent only: ask it or hand it work; its chat stays with its person" className="shrink-0 rounded-full bg-muted/70 px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">Agent only</span>}
    <span role="img" aria-label={state} title={state} className={`shrink-0 ${state==='waiting'?'text-amber-600 dark:text-amber-400':state==='running'?'text-emerald-600 dark:text-emerald-400':'text-muted-foreground'}`}>{state==='running'?'●':state==='waiting'?'◐':'○'}</span>
    <span className="min-w-0 flex-1 truncate text-muted-foreground">{row.last_message||(state==='idle'?'idle':status(row))}</span>
    <AgentPlaceMark place={row.place==='server'?'server':'mac'}/>

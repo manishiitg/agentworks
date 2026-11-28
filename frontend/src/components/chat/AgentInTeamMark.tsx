@@ -44,10 +44,10 @@ export function describeAgentShare(share?: AgentTeamShare): AgentShareDisplay | 
     const who = count ? names.join(', ') : 'nobody selected'
     const shortWho = count === 1 ? names[0] : count > 1 ? `${count} people` : 'Chosen people'
     const compactWho = count === 1 ? names[0] : count > 1 ? `${count} ppl` : 'Chosen'
-    const vis = knownChat ? (hidden ? 'Chat hidden' : 'Chat visible') : ''
+    const vis = knownChat ? (hidden ? 'Agent only' : 'Full chat') : ''
     return {
       headerLabel: vis ? `${shortWho} · ${vis}` : shortWho,
-      shortLabel: hidden ? `${compactWho} · hidden` : compactWho,
+      shortLabel: hidden ? `${compactWho} · agent only` : compactWho,
       tooltip: vis ? `Shared with ${who} · ${vis}` : `Shared with ${who}`,
       tone: 'chosen',
       chosen: true,
@@ -66,18 +66,18 @@ export function describeAgentShare(share?: AgentTeamShare): AgentShareDisplay | 
   }
   if (hidden) {
     return {
-      headerLabel: 'Team · Chat hidden',
-      shortLabel: 'Chat hidden',
-      tooltip: 'Shared with everyone on the Team · Chat hidden (teammates can ask, not read chat)',
+      headerLabel: 'Team · Agent only',
+      shortLabel: 'Agent only',
+      tooltip: 'Agent only: everyone on the Team can ask it and hand it work, not read its chat',
       tone: 'team-hidden',
       chosen: false,
       hidden: true,
     }
   }
   return {
-    headerLabel: 'Team · Chat visible',
+    headerLabel: 'Team · Full chat',
     shortLabel: 'Team',
-    tooltip: 'Shared with everyone on the Team · Chat visible',
+    tooltip: 'Full chat: everyone on the Team can ask it and read its chat',
     tone: 'team-visible',
     chosen: false,
     hidden: false,
@@ -98,7 +98,7 @@ export function AgentShareIcon({ info, className = 'h-3.5 w-3.5 shrink-0' }: { i
 }
 
 /** Only display the server's admitted own-row sharing state; this is not an access gate.
- * Private agents and chat-hidden agents stay clean in the left menu (owner, 26 Nov);
+ * Private agents and Agent only agents stay clean in the left menu (owner, 26 Nov);
  * only rows whose chat is visible to teammates reveal a micro text pill on hover. */
 export function AgentInTeamMark({ on, share, className = 'inline-flex' }: { on?: boolean; share?: AgentTeamShare; className?: string }) {
   const info = describeAgentShare(share ?? (on ? { inTeam: true } : undefined))

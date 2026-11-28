@@ -40,33 +40,33 @@ describe('AgentInTeamMark and describeAgentShare', () => {
 
   it('distinguishes everyone vs chosen people and chat visible vs hidden', () => {
     expect(describeAgentShare({ inTeam: true, audience: 'whole_team', chatShare: 'live' })).toEqual({
-      headerLabel: 'Team · Chat visible',
+      headerLabel: 'Team · Full chat',
       shortLabel: 'Team',
-      tooltip: 'Shared with everyone on the Team · Chat visible',
+      tooltip: 'Full chat: everyone on the Team can ask it and read its chat',
       tone: 'team-visible',
       chosen: false,
       hidden: false,
     })
     expect(describeAgentShare({ inTeam: true, audience: 'whole_team', chatShare: 'agent' })).toEqual({
-      headerLabel: 'Team · Chat hidden',
-      shortLabel: 'Chat hidden',
-      tooltip: 'Shared with everyone on the Team · Chat hidden (teammates can ask, not read chat)',
+      headerLabel: 'Team · Agent only',
+      shortLabel: 'Agent only',
+      tooltip: 'Agent only: everyone on the Team can ask it and hand it work, not read its chat',
       tone: 'team-hidden',
       chosen: false,
       hidden: true,
     })
     expect(describeAgentShare({ inTeam: true, audience: 'chosen', chosenPeople: ['Ana', 'Sam'], chatShare: 'agent' })).toEqual({
-      headerLabel: '2 people · Chat hidden',
-      shortLabel: '2 ppl · hidden',
-      tooltip: 'Shared with Ana, Sam · Chat hidden',
+      headerLabel: '2 people · Agent only',
+      shortLabel: '2 ppl · agent only',
+      tooltip: 'Shared with Ana, Sam · Agent only',
       tone: 'chosen',
       chosen: true,
       hidden: true,
     })
     expect(describeAgentShare({ inTeam: true, audience: 'chosen', chosenPeople: ['Ana'], chatShare: 'live' })).toEqual({
-      headerLabel: 'Ana · Chat visible',
+      headerLabel: 'Ana · Full chat',
       shortLabel: 'Ana',
-      tooltip: 'Shared with Ana · Chat visible',
+      tooltip: 'Shared with Ana · Full chat',
       tone: 'chosen',
       chosen: true,
       hidden: false,
@@ -178,10 +178,10 @@ describe('AgentHeaderLine sharing pill', () => {
       })
       expect(rename).toHaveBeenCalledWith('Design')
 
-      const pill = host.querySelector<HTMLButtonElement>('button[aria-label*="Chat hidden"]')
+      const pill = host.querySelector<HTMLButtonElement>('button[aria-label*="Agent only"]')
       expect(pill).not.toBeNull()
       expect(pill?.textContent).toBe('')
-      expect(pill?.getAttribute('title')).toContain('Chat hidden')
+      expect(pill?.getAttribute('title')).toContain('Agent only')
 
       await act(async () => pill!.click())
       const dialog = document.body.querySelector('[role="dialog"][aria-label="Sharing for Design"]')

@@ -104,10 +104,9 @@ export type TeamTabAgent = AvatarFields & { kind?: string; client_build?:string;
   activity?: 'running' | 'waiting' | ''
   // When others ask (crew_when_others_ask.go): names only; personal marks the viewer's own sign-ins (sent only to them).
   uses: { name: string; kind: string; personal?: boolean }[]; uses_note?: string; when_others_ask: string; has_rule: boolean; can_edit_rule: boolean; when_others_line: string
-  // Teammates see (crew_team_chat_private.go): chat_share_label and chat_share_options are the choice on the viewer's own
-  // agent; on someone else's, chat_private_line replaces the chat. watch_key is its
+  // Teammates see (crew_team_chat_private.go): on someone else's Agent only agent, chat_private_line replaces the chat. watch_key is its
   // tab's key where that differs.
-  chat_share: string; chat_share_label?: string; chat_share_options?: { value: string; label: string }[]; chat_private_line?: string; can_fork?: boolean; watch_key?: string
+  chat_share: string; chat_private_line?: string; can_fork?: boolean; watch_key?: string
   // The rule editor's Ask message (the viewer's own agent).
   permissions_prompt?: string
   // The sharing list (crew_team_tab.go): its purpose, whether the viewer edits it (POST agent-rule {purpose}), and its Public on
@@ -366,7 +365,7 @@ export type CrewShareOptionKey = 'team'
 export type CrewShareOption = { key: CrewShareOptionKey; title: string; line: string; chips: string[]; status: string; on: boolean; open: boolean }
 export type CrewShareAsk = { on: boolean; can_change: boolean; fixed?: string; note?: string; can_edit: boolean
   title: string; line: string; summary?: string; uses_line?: string;
-  chat_share: string; chat_share_label: string; chat_share_options: { value: string; label: string; line?: string; example?: string }[]; rules_label: string; hidden_line?: string; setup_ask?: string }
+  chat_share: string; share: string; share_options: { value: string; label: string; line: string }[]; rules_label: string; setup_ask?: string }
 export type CrewShareAction = { name: string; title: string; line?: string; inputs: string[]; on: boolean; can_change: boolean; fixed?: string; starts: string; who: string }
 /** team/team_key/row/members: an online project's agent, shared in the Team the project is in (crew_share_page.go). */
 export type CrewShareAgent = { key: string; name: string; line?: string; hint?: string; ask?: CrewShareAsk; team?: string; team_key?: string; team_name?: string; row?: TeamTabAgent; members?: TeamTabPerson[] }
