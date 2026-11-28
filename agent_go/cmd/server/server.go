@@ -4860,6 +4860,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 					sendError("Failed to register project owners tool", true)
 					return
 				}
+				if err := api.registerCrewBotsChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, chatWorkingFolder); err != nil {
+					sendError("Failed to register bots tool", true)
+					return
+				}
 				if err := api.registerProviderAccountsChatTool(llmAgent, toolGate, GetUserFromContext(r.Context()), crewReadOnly || currentUserIsReadOnly, getBaseURL(r)); err != nil {
 					sendError("Failed to register AI accounts tool", true)
 					return

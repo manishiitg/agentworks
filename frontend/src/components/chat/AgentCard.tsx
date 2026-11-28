@@ -7,6 +7,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
 import { AgentShareIcon, describeAgentShare, type AgentTeamShare } from './AgentInTeamMark'
 import { AgentDetailSection } from './AgentDetailSection'
+import { BotCard } from '../../products/work/bots/BotCard'
 import { AgentMessageFrom, CodingAppIcons } from './AgentMessageFrom'
 import { CodingCliIcon } from './CodingCliIcon'
 import { useLLMStore } from '../../stores/useLLMStore'
@@ -50,6 +51,8 @@ export interface AgentCardInfo {
   /** Sends the server's Automations… message to this agent's own chat; only on your own agents. */
   onAutomations?: () => void
   onAddAutomation?: () => void
+  /** Your own agent in a project on the server: it can be made a bot (#4545). */
+  bot?: { workspace: string; agentKey: string }
 }
 
 /** The open tab's agent, for the purpose line above its chat; the tab strip sets it. */
@@ -232,6 +235,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
       {(!clickToOpen || sheet) && <div className="flex items-center gap-2 text-sm font-semibold"><p className="min-w-0 flex-1 truncate">{info.name}</p>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}{clickToOpen && close('Close agent details')}</div>}
       {!clickToOpen && <AgentModelRow tabId={info.tabId} />}
       {clickToOpen ? <AgentDetailSection title="Setup" value={setupValue}>{setupDetails}</AgentDetailSection> : setupDetails}
+      {clickToOpen && info.bot && <AgentDetailSection title="Bot" value="Share it for others to use"><BotCard workspace={info.bot.workspace} agentKey={info.bot.agentKey} /></AgentDetailSection>}
       {clickToOpen && info.messageLine && <AgentDetailSection title="Message it from another agent" aside={info.messageOnline ? undefined : <CodingAppIcons />}><AgentMessageFrom line={info.messageLine} copyText={info.messageCopy} online={info.messageOnline} /></AgentDetailSection>}
       {!shareShortcut && info.sharing && <HeaderAgentSharing {...info.sharing} status={!info.owner ? <AgentOnlineCopyStatus setup={info.setup} /> : undefined} />}
       {info.owner ? <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Whose</span><span className="min-w-0 truncate text-muted-foreground">{info.owner}'s · shared with the team</span></div>

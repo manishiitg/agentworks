@@ -312,6 +312,7 @@ func externalTools() ([]externalTool, error) {
 		externalCrewFilesDefinition(add)
 		externalCrewDiagnosticsDefinition(add)
 		externalCrewOwnersDefinition(add)
+		externalBotsDefinition(add)
 		externalCrewTeamSyncDefinition(add)
 		if err := externalCrewExecutionDefinition(add); err != nil {
 			externalCatalogErr = err
@@ -765,6 +766,10 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 	}
 	if projectFunctionTool(tool.Name) {
 		api.externalProjectFunctionCall(w, r, tool.Name, call.Arguments)
+		return
+	}
+	if tool.Name == externalBotsTool {
+		api.externalBotsCall(w, r, call.Arguments)
 		return
 	}
 	if isExternalCrewTool(tool.Name) {
