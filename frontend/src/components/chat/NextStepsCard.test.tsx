@@ -2,7 +2,8 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { expect, it } from 'vitest'
-import { NextStepsSlot, NextStepsSlotHost } from './NextStepsCard'
+import { NextStepsCard, NextStepsSlot, NextStepsSlotHost } from './NextStepsCard'
+import type { NextOption } from '../../utils/nextSteps'
 
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -28,4 +29,26 @@ it("moves the card into the chat's transcript slot, and back when the slot goes"
   expect(text(el, 'composer')).toBe('')
   render(<><div data-testid="transcript" />{card}</>)
   expect(text(el, 'composer')).toBe('card')
+})
+
+const goalSteps = { summary: '', question: 'How?', options: [{ text: 'Fix and rerun until green', goal: 'All workspace tests pass' }, { text: 'Plan the move', plan: 'Move history to the database' }, { text: 'Leave it' }] }
+
+it('shows goal and plan answers as Start as goal / Plan first where the app has them, and sends the option', () => {
+  const picked: NextOption[] = []
+  const { el } = mount(<NextStepsCard steps={goalSteps} modes={{ goal: true, plan: true }} onPick={option => picked.push(option)} onDismiss={() => {}} />)
+  const goal = el.querySelector<HTMLButtonElement>('[data-testid="next-steps-option-0"]')!
+  expect(goal.dataset.mode).toBe('goal')
+  expect(goal.textContent).toContain('Start as goal')
+  expect(goal.textContent).toContain('All workspace tests pass')
+  expect(el.querySelector<HTMLButtonElement>('[data-testid="next-steps-option-1"]')!.dataset.mode).toBe('plan')
+  act(() => goal.click())
+  expect(picked).toEqual([goalSteps.options[0]])
+})
+
+it('shows goal and plan answers as plain answers in an app without them', () => {
+  const { el } = mount(<NextStepsCard steps={goalSteps} onPick={() => {}} onDismiss={() => {}} />)
+  const goal = el.querySelector<HTMLButtonElement>('[data-testid="next-steps-option-0"]')!
+  expect(goal.dataset.mode).toBeUndefined()
+  expect(goal.textContent).toContain('Fix and rerun until green')
+  expect(goal.textContent).not.toContain('Start as goal')
 })

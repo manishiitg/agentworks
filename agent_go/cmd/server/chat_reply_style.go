@@ -33,7 +33,7 @@ var chatReplyStyleNotes = map[string]string{
 }
 
 // chatNextStepsNote asks for the card's block. Its format is read by the screen (nextSteps.ts); keep them in step.
-const chatNextStepsNote = "When you end a reply and the person's next choice is clear, finish the reply with a block: a line ```next, then one line of JSON {\"summary\": \"one or two plain sentences on where the work stands\", \"question\": \"one short question\", \"options\": [\"answer\", \"answer\"]}, then a line ```. Give two or three short answers written as the person would send them, the most likely first. Leave the block out when nothing is waiting on them, and never mention it."
+const chatNextStepsNote = "When you end a reply and the person's next choice is clear, finish the reply with a block: a line ```next, then one line of JSON {\"summary\": \"one or two plain sentences on where the work stands\", \"question\": \"one short question\", \"options\": [\"answer\", \"answer\"]}, then a line ```. Give two or three short answers written as the person would send them, the most likely first. For big or multi-step work an answer may instead start a goal, {\"goal\": \"the check that says the work is done, e.g. every test in X passes\", \"label\": \"the same answer in plain words\"}, when there is a clear check for done, or a plan, {\"plan\": \"what to plan\", \"label\": \"...\"}, when the approach should be agreed before changing anything; the screen shows them as Start as goal and Plan first, and sends the label where the app has neither. Not for small asks. Leave the block out when nothing is waiting on them, and never mention it."
 
 var chatUnrelatedTaskChoices = []string{"ask", "new_tab", "here"}
 

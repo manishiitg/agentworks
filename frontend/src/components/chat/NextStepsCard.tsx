@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { X } from 'lucide-react'
+import { ListChecks, X } from 'lucide-react'
 import { useChatStore } from '../../stores/useChatStore'
-import { currentNextStepsEvent, nextStepsOf, type NextSteps } from '../../utils/nextSteps'
+import { currentNextStepsEvent, nextStepsOf, type NextOption, type NextSteps } from '../../utils/nextSteps'
 
 // Summary and next steps (owner, 26 Nov, like Claude Desktop): the agent's last reply ended with a short summary, one
 // question and two or three answers. Shown after that reply in the chat, scrolling with it like Claude Desktop's (owner,
@@ -41,7 +41,13 @@ export function NextStepsSlot({ tabId, children }: { tabId: string; children: Re
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '')
 
-export function NextStepsCard({ steps, onPick, onDismiss, onTurnOff, onTurnOn, shortcut = true }: { steps: NextSteps; shortcut?: boolean; onPick: (text: string) => void; onDismiss: () => void; onTurnOff?: () => void; onTurnOn?: () => void }) {
+/** How an answer goes from this chat: as a goal or a plan where the chat's app has one, else as its plain text. */
+export function nextOptionMode(option: NextOption, modes: { goal?: boolean; plan?: boolean }): 'goal' | 'plan' | undefined {
+  if (option.goal && modes.goal) return 'goal'
+  if (option.plan && modes.plan) return 'plan'
+}
+
+export function NextStepsCard({ steps, onPick, onDismiss, onTurnOff, onTurnOn, shortcut = true, modes = {} }: { steps: NextSteps; shortcut?: boolean; modes?: { goal?: boolean; plan?: boolean }; onPick: (option: NextOption) => void; onDismiss: () => void; onTurnOff?: () => void; onTurnOn?: () => void }) {
   const ref = useRef<HTMLElement>(null)
   const [off, setOff] = useState(false)
   // It appears as the reply ends; bring it into view the way the reply itself was.
@@ -72,12 +78,34 @@ export function NextStepsCard({ steps, onPick, onDismiss, onTurnOff, onTurnOn, s
       </button>
     </div>
     <div className="mt-2.5 flex flex-wrap gap-2">
-      {steps.options.map((option, index) => <button key={option} type="button" onClick={() => onPick(option)} data-testid={`next-steps-option-${index}`}
-        title={index === 0 && shortcut ? `Send "${option}" (${isMac ? '⌘' : 'Ctrl'}+Enter)` : `Send "${option}"`}
-        className={`inline-flex max-w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${index === 0 && shortcut ? 'bg-foreground text-background hover:bg-foreground/90' : 'bg-muted text-foreground hover:bg-muted/70'}`}>
-        <span className="truncate">{option}</span>
-        {index === 0 && shortcut && <kbd aria-hidden="true" className="rounded border border-background/30 px-1 text-[10px] leading-4">{isMac ? '⌘↵' : 'Ctrl↵'}</kbd>}
-      </button>)}
+      {steps.options.map((option, index) => {
+        const first = index === 0 && shortcut
+        const mode = nextOptionMode(option, modes)
+        const key = first && <kbd aria-hidden="true" className={`rounded border px-1 text-[10px] leading-4 ${mode === 'plan' ? 'border-border' : mode === 'goal' ? 'border-current/30' : 'border-background/30'}`}>{isMac ? '⌘↵' : 'Ctrl↵'}</kbd>
+        const focus = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+        // A goal or a plan (owner, 28 Nov): the button names the mode and shows the objective under it.
+        if (mode) {
+          const objective = mode === 'goal' ? option.goal! : option.plan!
+          const look = mode === 'goal'
+            ? (first ? 'border-success bg-success text-success-foreground hover:bg-success/90' : 'border-success/40 bg-success/10 text-success hover:bg-success/15')
+            : 'border-border bg-background text-foreground hover:bg-muted'
+          return <button key={`${mode}:${objective}`} type="button" onClick={() => onPick(option)} data-testid={`next-steps-option-${index}`} data-mode={mode}
+            title={`${mode === 'goal' ? 'Start as a goal' : 'Plan first'}: ${objective}${first ? ` (${isMac ? '⌘' : 'Ctrl'}+Enter)` : ''}`}
+            className={`inline-flex min-w-0 max-w-[22rem] flex-col items-start gap-px rounded-lg border px-3 py-1.5 text-left text-[13px] ${look} ${focus}`}>
+            <span className="inline-flex items-center gap-1.5 font-semibold">
+              {mode === 'goal' ? <span aria-hidden="true">🎯</span> : <ListChecks className="h-3.5 w-3.5" aria-hidden="true" />}
+              {mode === 'goal' ? 'Start as goal' : 'Plan first'}{key}
+            </span>
+            <span className="max-w-full truncate text-[11.5px] opacity-80">{objective}</span>
+          </button>
+        }
+        return <button key={option.text} type="button" onClick={() => onPick(option)} data-testid={`next-steps-option-${index}`}
+          title={first ? `Send "${option.text}" (${isMac ? '⌘' : 'Ctrl'}+Enter)` : `Send "${option.text}"`}
+          className={`inline-flex max-w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] ${focus} ${first ? 'bg-foreground text-background hover:bg-foreground/90' : 'bg-muted text-foreground hover:bg-muted/70'}`}>
+          <span className="truncate">{option.text}</span>
+          {key}
+        </button>
+      })}
       {/* Owner, 26 Nov: a quiet "Turn off" on the answers' row; where it turns back on is in its tooltip. */}
       {onTurnOff && <button type="button" onClick={() => { setOff(true); onTurnOff() }} data-testid="next-steps-turn-off"
         title="Stop these cards in this chat. Turn them back on in the mode menu › Replies."
