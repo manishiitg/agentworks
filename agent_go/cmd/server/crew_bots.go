@@ -16,7 +16,8 @@ import (
 
 // A bot is one agent of a project on the server that its maker shares for others to use without joining the project
 // (#4545). Each person who uses it gets a private chat with it (their own conversation, Run mode, cost to them), and
-// other agents call the project's functions its maker picks by name; Ask (its chat) is always on. A bot is not a co-owner, User or Team
+// other agents call the project's functions its maker picks by name, which the bot's agent then does in a fresh chat
+// per call (adoptCrewBotIdentity); Ask (its chat) is always on. A bot is not a co-owner, User or Team
 // share (those are people who work in the project), and not the dashboard (shared by link).
 type crewBot struct {
 	// Icon is an emoji; Avatar, when set, is a photo or an icon on a colour and shows instead (crew_bot_avatar.go).
@@ -658,8 +659,36 @@ func crewBotState(ctx context.Context, caller, root, key string) (map[string]any
 	return out, nil
 }
 
+// crewBotCallKey marks a function call made through a bot with the bot's key, so the bot's agent does the work
+// (crewFunctionCall.BotAgent, adoptCrewBotIdentity). Set only by crewBotCall, never from a request.
+type crewBotCallKey struct{}
+
+// adoptCrewBotIdentity gives a call made through a bot that bot agent's setup (owner, 28 Nov): the call's fresh chat
+// takes the agent's name, purpose, examples, own instructions, reply style and model, so the agent people were given is
+// the one that answers. The chat's prompt and model come from that identity like any chat's. A maker's own provider
+// account stays theirs: another person's run uses the model on the project's account.
+func adoptCrewBotIdentity(ctx context.Context, owner, profileID, conversationKey string, call *crewFunctionCall) {
+	rec, ok := crewBotRecordByID(call.BotAgent)
+	if !ok {
+		log.Printf("[CREW_BOT] bot=%s call=%s action=run_as_agent result=bot_gone", call.BotAgent, call.ID)
+		return
+	}
+	tab, found := crewBotAgent(ctx, rec, call.BotAgent)
+	if !found {
+		log.Printf("[CREW_BOT] bot=%s call=%s action=run_as_agent result=agent_gone", call.BotAgent, call.ID)
+		return
+	}
+	from := tab.Identity
+	from.Name = firstNonEmptyTrimmed(from.Name, tab.Record.Title)
+	if tab.OwnerID != owner {
+		from.ConnectionID = ""
+	}
+	err := defaultProductConversationRegistryStore().adoptAgentIdentity(ctx, owner, profileID, conversationKey, from, tab.OwnerID)
+	log.Printf("[CREW_BOT] bot=%s call=%s action=run_as_agent err=%v", call.BotAgent, call.ID, err)
+}
+
 // crewBotCall runs one of the bot's functions as the signed-in person, on the same typed-call path MCP and dashboards
-// use (access, caller policy and call ownership are checked there).
+// use (access, caller policy and call ownership are checked there). The bot's agent does the work.
 func (api *StreamingAPI) crewBotCall(w http.ResponseWriter, r *http.Request, caller string, botID, function string, args map[string]any, submissionID string) {
 	projectID, _, _ := strings.Cut(botID, codeChatSideMarker)
 	root := crewProjectRootByID(projectID)
@@ -676,7 +705,7 @@ func (api *StreamingAPI) crewBotCall(w http.ResponseWriter, r *http.Request, cal
 		args = map[string]any{}
 	}
 	req := httptest.NewRequest(http.MethodPost, "/api/external/call", nil)
-	req = req.WithContext(r.Context())
+	req = req.WithContext(context.WithValue(r.Context(), crewBotCallKey{}, botID))
 	rec2 := httptest.NewRecorder()
 	api.externalCrewCall(rec2, req, "project_functions_call", map[string]any{"crew_id": projectID, "function": function, "input": args, "submission_id": submissionID, "wait_seconds": float64(20)})
 	w.Header().Set("Content-Type", "application/json")

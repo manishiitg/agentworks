@@ -289,6 +289,34 @@ func (store productConversationRegistryStore) setAgentInstructions(ctx context.C
 	return identity, nil
 }
 
+// adoptAgentIdentity gives a chat another agent's setup: its name, purpose, examples, own instructions, reply style and
+// model (a call made through a bot, adoptCrewBotIdentity). Order, terminal and access choices stay the chat's own.
+func (store productConversationRegistryStore) adoptAgentIdentity(ctx context.Context, userID, profileID, conversationKey string, from ProductAgentIdentity, actor string) error {
+	path := productConversationRegistryPath(userID)
+	mutex := productConversationRegistryMutex(path)
+	mutex.Lock()
+	defer mutex.Unlock()
+	document, err := store.loadDocument(ctx, path)
+	if err != nil {
+		return err
+	}
+	entryKey := productConversationRegistryEntryKey(profileID, strings.TrimSpace(conversationKey))
+	if _, ok := document.Entries[entryKey]; !ok {
+		return fmt.Errorf("that chat no longer exists")
+	}
+	if document.Agents == nil {
+		document.Agents = map[string]ProductAgentIdentity{}
+	}
+	identity := document.Agents[entryKey]
+	identity.Name, identity.Purpose, identity.Examples, identity.Instructions = from.Name, from.Purpose, append([]string(nil), from.Examples...), from.Instructions
+	identity.ConnectionID, identity.Engine, identity.ModelID, identity.ReasoningEffort = from.ConnectionID, from.Engine, from.ModelID, from.ReasoningEffort
+	identity.ReplyStyle = from.ReplyStyle
+	identity.UpdatedBy, identity.UpdatedAt = strings.TrimSpace(actor), time.Now().UTC().Format(time.RFC3339)
+	document.Agents[entryKey] = identity
+	document.Version = productConversationRegistryVersion
+	return store.writeDocument(ctx, path, document)
+}
+
 // agentIdentity reads one chat's identity; a chat with none recorded returns the zero value.
 func (store productConversationRegistryStore) agentIdentity(ctx context.Context, userID, profileID, conversationKey string) (ProductAgentIdentity, error) {
 	path := productConversationRegistryPath(userID)

@@ -1671,6 +1671,9 @@ func (s *ProjectActionDispatcher) executeAutomationRun(runCtx context.Context, c
 			}
 			functionCall.mu.Unlock()
 			functionCall.persist()
+			if functionCall.BotAgent != "" {
+				adoptCrewBotIdentity(runCtx, job.UserID, job.Profile.ID, conversation.ConversationKey, functionCall)
+			}
 			runCtx = costActivityContext(runCtx, functionCall.UserID, "function_call", functionCall.ID)
 			functionEnv, envErr := checkedStructuredFunctionShellEnvironment(functionCall)
 			if envErr != nil {
