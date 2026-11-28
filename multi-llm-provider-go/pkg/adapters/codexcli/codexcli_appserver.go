@@ -262,10 +262,14 @@ func (c *CodexCLIAdapter) launchAppServer(ctx context.Context, opts *llmtypes.Ca
 	}()
 	initCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	if err = r.call(initCtx, "initialize", map[string]any{"clientInfo": map[string]string{"name": "agentworks", "title": "AgentWorks", "version": "1"}, "capabilities": map[string]any{"experimentalApi": true}}, nil); err != nil {
+	var initialized struct {
+		UserAgent string `json:"userAgent"`
+	}
+	if err = r.call(initCtx, "initialize", map[string]any{"clientInfo": map[string]string{"name": "agentworks", "title": "AgentWorks", "version": "1"}, "capabilities": map[string]any{"experimentalApi": true}}, &initialized); err != nil {
 		r.close()
 		return nil, err
 	}
+	r.version = codexUserAgentVersion(initialized.UserAgent)
 	if err = r.write(map[string]any{"method": "initialized"}); err != nil {
 		r.close()
 		return nil, err

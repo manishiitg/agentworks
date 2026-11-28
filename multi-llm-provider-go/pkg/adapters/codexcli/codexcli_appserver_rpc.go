@@ -9,6 +9,8 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"io"
 	"os/exec"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -40,6 +42,8 @@ type codexRPCError struct {
 }
 
 type codexRPC struct {
+	// version: the app-server's Codex version from initialize ("0.172.0"), "" when unread.
+	version                 string
 	logger                  interfaces.Logger
 	cmd                     *exec.Cmd
 	stdin                   io.WriteCloser
@@ -343,4 +347,41 @@ func (r *codexRPC) handleIdleLocked(msg codexRPCMessage) {
 func (r *codexRPC) close() {
 	r.finish(fmt.Errorf("codex app-server closed"))
 	<-r.exited
+}
+
+// codexUserAgentVersion reads the Codex version from initialize's userAgent
+// ("agentworks/0.172.0 (Mac OS ...) ..."); "" when it has none.
+func codexUserAgentVersion(userAgent string) string {
+	_, rest, ok := strings.Cut(strings.TrimSpace(userAgent), "/")
+	if !ok {
+		return ""
+	}
+	version, _, _ := strings.Cut(rest, " ")
+	return version
+}
+
+// codexCompactionKeepsTurnContext: Codex 0.171 and later keep a turn's
+// additionalContext (where changed AgentWorks instructions go) in the
+// compacted history, so sending them again after a compaction doubles them.
+// Older or unread versions drop it, and the next turn carries it again.
+func codexCompactionKeepsTurnContext(r *codexRPC) bool {
+	if r == nil {
+		return false
+	}
+	var parts [3]int
+	for i, field := range strings.SplitN(r.version, ".", 3) {
+		digits := field
+		if end := strings.IndexFunc(field, func(c rune) bool { return c < '0' || c > '9' }); end >= 0 {
+			digits = field[:end]
+		}
+		n, err := strconv.Atoi(digits)
+		if err != nil {
+			return false
+		}
+		parts[i] = n
+	}
+	if parts[0] != 0 {
+		return parts[0] > 0
+	}
+	return parts[1] >= 171
 }
