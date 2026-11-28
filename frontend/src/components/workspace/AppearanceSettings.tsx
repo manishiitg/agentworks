@@ -7,12 +7,13 @@ export default function AppearanceSettings() {
   const change = useAppearanceStore(state => state.change)
   const saving = useAppearanceStore(state => state.saving)
   const error = useAppearanceStore(state => state.error)
-  return <div className="max-w-lg space-y-5">
+  const currentLabel = current.name === 'Default' ? (current.mode === 'light' ? 'Light' : 'Dark') : current.name
+  return <div className="max-w-md space-y-4">
     <p className="text-sm text-muted-foreground">Choose a look, or ask an agent to make it yours. This changes only your appearance.</p>
     <AppearanceThemePicker />
-    {current.background_script && <button type="button" disabled={saving} className="text-sm underline" onClick={() => void change('apply', {...current, background_script:null})}>Disable script background</button>}
-    <AppearanceAgentButton className="w-full border border-border" />
-    <p className="text-xs text-muted-foreground">Current look: <span className="text-foreground">{current.name === 'Default' ? `Default ${current.mode === 'light' ? 'Light' : 'Dark'}` : current.name}</span></p>
-    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+    {current.background_script && <button type="button" disabled={saving} className="text-sm underline" onClick={() => void change('apply', { ...current, background_script: null })}>Disable script background</button>}
+    <AppearanceAgentButton className="w-full" />
+    <p className="text-xs text-muted-foreground">Current look: <span className="text-foreground">{currentLabel}</span></p>
+    {error && <p role="alert" className="rounded-md bg-destructive/10 px-2.5 py-2 text-sm text-destructive">{error}</p>}
   </div>
 }
