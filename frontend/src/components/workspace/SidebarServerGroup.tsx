@@ -5,7 +5,7 @@ import { openConnectedServers } from './ConnectedServersMenuItem'
 import { openProductWorkspace } from '../../utils/productWorkspaceNavigation'
 import { openAppProduct } from '../../utils/appNavigation'
 import { unregisterRemoteProject } from '../../utils/remoteSessions'
-import { ChevronRight, Cloud, LayoutDashboard, Laptop } from 'lucide-react'
+import { ChevronRight, Cloud, Folder, FolderOpen, LayoutDashboard, Laptop } from 'lucide-react'
 import { ProductSurfaceIcon } from '../ProductSurfaceIcon'
 import { EntityIdentityIcon } from '../ui/EntityIdentityIcon'
 
@@ -22,8 +22,8 @@ export function SidebarProjectRow({ name, kind, icon, selected, location, remote
   const macHome = owned_by_caller === false ? 'On their Mac' : 'On your Mac'
   return <div data-theme-row="project" draggable={Boolean(draggableProjectKey)} onDragStart={draggableProjectKey ? event => { event.dataTransfer.setData('text/x-agentworks-project', draggableProjectKey); event.dataTransfer.effectAllowed = 'move' } : undefined} className={`group/crew flex ${subline ? 'min-h-11 py-1' : 'h-6 max-md:h-9'} w-full items-center rounded-md ${offline ? 'opacity-60' : ''} ${highlight ? 'bg-foreground/[0.06] text-foreground' : 'text-muted-foreground/75 hover:bg-muted hover:text-foreground'}`}>
     <button type="button" title={`${label} · ${name}${shared_line ? ` · ${shared_line}` : ''}${location ? ` · ${location}` : ''}`} aria-label={`${name} · ${label}${location ? ` · ${location}` : ''}`} aria-current={selected ? 'page' : undefined} aria-expanded={heading ? agentsExpanded : undefined} onClick={heading ? onToggleAgents : onOpen}
-      className={`flex h-full min-w-0 ${onToggleAgents ? 'pl-2 pr-0.5' : 'flex-1 px-2'} items-center gap-2 rounded-md text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>
-      {showIcon && <span className="flex h-4 w-4 shrink-0 items-center justify-center"><EntityIdentityIcon icon={icon} label={name} className="h-4 w-4" fallback={sharedDashboard ? <LayoutDashboard className="h-4 w-4" /> : <ProductSurfaceIcon surface={kind === 'crew' ? 'work' : 'agentworks'} className="h-4 w-4" />} /></span>}
+      className={`flex h-full min-w-0 ${onToggleAgents ? 'pl-2 pr-0.5' : 'flex-1 px-2'} items-center gap-1.5 rounded-md text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>
+      {showIcon && <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center"><EntityIdentityIcon icon={icon} label={name} className="h-3.5 w-3.5 text-[10px]" fallback={sharedDashboard ? <LayoutDashboard className="h-3.5 w-3.5" aria-hidden="true" /> : kind === 'crew' ? (agentsExpanded ? <FolderOpen className="h-3 w-3 text-muted-foreground/75" aria-hidden="true" /> : <Folder className="h-3 w-3 text-muted-foreground/75" aria-hidden="true" />) : <ProductSurfaceIcon surface="agentworks" className="h-3.5 w-3.5" />} /></span>}
       <span className="min-w-0 flex-1"><span className={`flex min-w-0 items-center gap-1.5 text-[11px] leading-4 font-medium tracking-[0.02em]`}><span className="truncate">{name}</span>{serverLine && <span role="img" aria-label={serverLine} title={serverLine} className="inline-flex shrink-0 text-primary/80"><Cloud className="h-3 w-3" aria-hidden="true" /></span>}{shared_line && !heading && <SharedPeopleIcon sharedLine={shared_line} people={[]} />}</span>{subline && <span className="block truncate text-[11px] leading-4 text-muted-foreground">{subline}</span>}</span>
     </button>
     {/* The fold caret sits right beside the project name so it doesn't float off on the far right edge. */}
