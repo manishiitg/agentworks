@@ -133,6 +133,17 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
     expect(side().querySelector('#recent-projects-heading')?.textContent).toBe('Recent')
     expect(side().textContent).toContain('Alpha')
     expect(side().textContent).not.toContain('Beta')
+    // New section control sits above Recent, and remaining projects stay tucked in a collapsed More projects disclosure.
+    const newSectionBtn = button('New section', side())
+    const recentHeading = side().querySelector('#recent-projects-heading')!
+    expect(newSectionBtn.compareDocumentPosition(recentHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const moreToggle = [...side().querySelectorAll('button')].find(b => b.textContent?.includes('More projects'))!
+    expect(moreToggle.getAttribute('aria-expanded')).toBe('false')
+    await act(async () => moreToggle.click())
+    expect(moreToggle.getAttribute('aria-expanded')).toBe('true')
+    expect(side().textContent).toContain('Beta')
+    await act(async () => moreToggle.click())
+    expect(side().textContent).not.toContain('Beta')
 
     await click('Projects', side())
     const query = page().querySelector('input')!

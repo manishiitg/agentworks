@@ -56,3 +56,18 @@ it('creates, renames, collapses, reorders, assigns projects, and deletes sidebar
   expect(useProjectMenuHistoryStore.getState().sections[scope].map(s => s.id)).toEqual([internalId])
   expect(useProjectMenuHistoryStore.getState().recent[scope]).toContain('p2')
 })
+
+it('returns remaining unpinned, unsectioned, non-recent projects in moreRows after the 5-item recent cap', () => {
+  const rows = Array.from({ length: 8 }, (_, index) => ({ id: `p${index + 1}` }))
+  const { pinnedRows, recentRows, moreRows } = sidebarProjectShortcuts(
+    rows,
+    r => r.id,
+    ['p1'],
+    ['p2', 'p3', 'p4', 'p5', 'p6', 'p7'],
+    undefined,
+    new Set(['p8']),
+  )
+  expect(pinnedRows.map(r => r.id)).toEqual(['p1'])
+  expect(recentRows.map(r => r.id)).toEqual(['p2', 'p3', 'p4', 'p5', 'p6'])
+  expect(moreRows.map(r => r.id)).toEqual(['p7'])
+})

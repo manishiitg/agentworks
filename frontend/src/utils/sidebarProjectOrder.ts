@@ -6,12 +6,14 @@ export function sidebarProjectShortcuts<T>(rows: T[], key: (row: T) => string, p
     return row === undefined ? [] : [row]
   })
   const pinnedRows = resolve(pins)
-  // Pinned first, then custom sections, then up to five recent ones not pinned or sectioned.
+  // Pinned first, then custom sections, then up to five recent ones not pinned or sectioned, then the rest in More projects.
   const open = isOpen ? rows.find(isOpen) : undefined
   const recentRows = [...(open !== undefined ? [open] : []), ...resolve(recent)]
     .filter((row, index, all) => !pinnedRows.includes(row) && !sectionedKeys?.has(key(row)) && all.indexOf(row) === index)
     .slice(0, 5)
-  return { pinnedRows, recentRows, openRow: undefined as T | undefined }
+  const shown = new Set<T>([...pinnedRows, ...recentRows])
+  const moreRows = rows.filter(row => !shown.has(row) && !sectionedKeys?.has(key(row)))
+  return { pinnedRows, recentRows, moreRows, openRow: undefined as T | undefined }
 }
 
 const SIDEBAR_CLICK_GRACE_MS = 600
