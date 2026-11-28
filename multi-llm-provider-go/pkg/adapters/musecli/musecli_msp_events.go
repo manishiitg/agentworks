@@ -597,22 +597,100 @@ func (a *MuseCLIAdapter) pumpMuseMSP(s *museMSPSession) {
 		case <-s.rpc.done:
 			return
 		case msg := <-s.rpc.events:
-			observeMuseMSPSubagent(s, msg)
-			s.mu.Lock()
-			listener := s.listener
-			s.mu.Unlock()
-			if listener != nil {
-				// Never drop an event of a running turn: its turn/completed may be the one.
-				select {
-				case listener <- msg:
-				case <-s.rpc.done:
-					return
+			if msg.Method == "view/gap" {
+				// Muse dropped events of this session (its own delivery queue fell behind): read the missed
+				// ones back and pass them on in order, so a turn does not lose its text, tools or its end.
+				for _, missed := range a.museMSPGapEvents(s, msg) {
+					if !a.dispatchMuseMSP(s, missed) {
+						return
+					}
 				}
 				continue
 			}
-			a.handleIdleMuseMSP(s, msg)
+			if !a.dispatchMuseMSP(s, msg) {
+				return
+			}
 		}
 	}
+}
+
+// dispatchMuseMSP hands one host event to the running turn, or handles it
+// between turns. false: the host has gone.
+func (a *MuseCLIAdapter) dispatchMuseMSP(s *museMSPSession, msg museRPCMessage) bool {
+	observeMuseMSPSubagent(s, msg)
+	s.mu.Lock()
+	listener := s.listener
+	s.mu.Unlock()
+	if listener != nil {
+		// Never drop an event of a running turn: its turn/completed may be the one.
+		select {
+		case listener <- msg:
+		case <-s.rpc.done:
+			return false
+		}
+		return true
+	}
+	a.handleIdleMuseMSP(s, msg)
+	return true
+}
+
+// museMSPGapPages bounds one recovery read (1000 events a page).
+const museMSPGapPages = 20
+
+// museMSPGapEvents reads back the events a `view/gap` names: those after
+// `after` and before `next` (cursors are opaque, so the page stops at `next`).
+func (a *MuseCLIAdapter) museMSPGapEvents(s *museMSPSession, gap museRPCMessage) []museRPCMessage {
+	var p struct {
+		SessionID string `json:"sessionId"`
+		After     string `json:"after"`
+		Next      string `json:"next"`
+	}
+	s.mu.Lock()
+	sessionID := s.sessionID
+	s.mu.Unlock()
+	if json.Unmarshal(gap.Params, &p) != nil || p.After == "" || p.Next == "" || (p.SessionID != "" && p.SessionID != sessionID) {
+		return nil
+	}
+	if p.SessionID == "" {
+		p.SessionID = sessionID
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var missed []museRPCMessage
+	cursor := p.After
+	for page := 0; page < museMSPGapPages; page++ {
+		var result struct {
+			Events     []museRPCMessage `json:"events"`
+			NextCursor *string          `json:"nextCursor"`
+		}
+		if err := s.rpc.call(ctx, "view/page", map[string]any{"sessionId": p.SessionID, "cursor": cursor, "direction": "forward", "limit": 1000}, &result); err != nil {
+			if a.logger != nil {
+				a.logger.Infof("[MUSE_MSP_GAP] session=%s action=read_failed recovered=%d error=%v", p.SessionID, len(missed), err)
+			}
+			return missed
+		}
+		for _, event := range result.Events {
+			var at struct {
+				ViewCursor string `json:"viewCursor"`
+			}
+			_ = json.Unmarshal(event.Params, &at)
+			if at.ViewCursor == p.Next {
+				if a.logger != nil {
+					a.logger.Infof("[MUSE_MSP_GAP] session=%s action=recovered events=%d", p.SessionID, len(missed))
+				}
+				return missed
+			}
+			missed = append(missed, event)
+		}
+		if result.NextCursor == nil || *result.NextCursor == "" || len(result.Events) == 0 {
+			break
+		}
+		cursor = *result.NextCursor
+	}
+	if a.logger != nil {
+		a.logger.Infof("[MUSE_MSP_GAP] session=%s action=recovered_partial events=%d", p.SessionID, len(missed))
+	}
+	return missed
 }
 
 func (a *MuseCLIAdapter) handleIdleMuseMSP(s *museMSPSession, msg museRPCMessage) {
