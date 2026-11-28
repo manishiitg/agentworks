@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, ChevronRight, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronRight, Layers, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 
 const PROJECT_DRAG_MIME = 'text/x-agentworks-project'
 
@@ -120,6 +120,7 @@ export function SidebarSectionBlock({ id, name, count, collapsed, activityState,
           className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 text-left text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronRight aria-hidden="true" className={`h-3 w-3 shrink-0 transition-transform ${collapsed ? '' : 'rotate-90'}`} />
+          <Layers aria-hidden="true" className="h-3 w-3 shrink-0 text-muted-foreground/75" />
           <span className="min-w-0 truncate">{name}</span>
           {collapsed && count > 0 && <span className="shrink-0 rounded-full bg-muted px-1.5 text-[10px] leading-4 text-muted-foreground tabular-nums">{count}</span>}
           {collapsed && activityState === 'running' && <span role="img" aria-label="Working" title="Agent working in this section" className="h-1.5 w-1.5 shrink-0 rounded-full bg-info motion-safe:animate-pulse" />}
