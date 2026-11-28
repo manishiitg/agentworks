@@ -60,7 +60,7 @@ func prepareBrowserSecretArgs(command string, args []string, secrets map[string]
 			}
 			value, ok := secrets["SECRET_"+name]
 			if !ok || value == "" {
-				return nil, fmt.Errorf("Secret %q is not selected for this turn. Select it for this project in Vault (or save it with vault action=set) and try again.", name)
+				return nil, fmt.Errorf("Secret %q is not selected for this turn. Select it for this project in Vault, pass it in browser_secrets, or save it with vault action=set and try again.", name)
 			}
 			out.WriteString(value)
 			collectRedactVariants(redactSet, value)
@@ -194,10 +194,13 @@ func applyBrowserSecretPlan(opts *ExecuteOptions, plan *browserSecretPlan) *Exec
 	return cloned
 }
 
-// sessionSecretsForBrowser returns this turn's own SECRET_* environment values,
-// preserving existing session access boundaries (Run/Ask turns receive none).
+// sessionSecretsForBrowser returns this turn's own SECRET_* values, merging
+// selected Vault keys (Env) with any per-call browser-only secrets bound to
+// the calling session (BrowserSecrets). Existing session access boundaries are
+// preserved (Run/Ask turns receive none, and BrowserSecrets are never inherited
+// from another session).
 func sessionSecretsForBrowser(agentSessionID, workflowSessionID string) map[string]string {
-	extract := func(cfg *common.SessionShellConfig) map[string]string {
+	extractEnv := func(cfg *common.SessionShellConfig) map[string]string {
 		if cfg == nil || len(cfg.Env) == 0 {
 			return nil
 		}
@@ -213,25 +216,43 @@ func sessionSecretsForBrowser(agentSessionID, workflowSessionID string) map[stri
 		return out
 	}
 
+	var agentCfg, workflowCfg *common.SessionShellConfig
 	if agentSessionID != "" {
-		if cfg := common.GetSessionShellConfig(agentSessionID); cfg != nil {
-			if cfg.CrewAskReadOnly {
-				return nil
-			}
-			if secrets := extract(cfg); len(secrets) > 0 {
-				return secrets
-			}
+		agentCfg = common.GetSessionShellConfig(agentSessionID)
+		if agentCfg != nil && agentCfg.CrewAskReadOnly {
+			return nil
 		}
 	}
 	if workflowSessionID != "" && workflowSessionID != agentSessionID {
-		if cfg := common.GetSessionShellConfig(workflowSessionID); cfg != nil {
-			if cfg.CrewAskReadOnly {
-				return nil
-			}
-			return extract(cfg)
+		workflowCfg = common.GetSessionShellConfig(workflowSessionID)
+		if workflowCfg != nil && workflowCfg.CrewAskReadOnly {
+			return nil
 		}
 	}
-	return nil
+
+	out := extractEnv(agentCfg)
+	if len(out) == 0 {
+		out = extractEnv(workflowCfg)
+	}
+
+	browserCfg := agentCfg
+	if browserCfg == nil && agentSessionID == "" {
+		browserCfg = workflowCfg
+	}
+	if browserCfg != nil && len(browserCfg.BrowserSecrets) > 0 {
+		if out == nil {
+			out = make(map[string]string, len(browserCfg.BrowserSecrets))
+		}
+		for k, v := range browserCfg.BrowserSecrets {
+			if strings.HasPrefix(k, "SECRET_") && v != "" {
+				out[k] = v
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func secretShellEnvRef(arg string, opts *ExecuteOptions) (string, bool) {

@@ -259,6 +259,12 @@ type SessionShellConfig struct {
 	// STEP_OUTPUT_DIR reach the server-side bridge shell, which — unlike the
 	// in-process built-in executor — has no other channel for them.
 	Env map[string]string
+	// BrowserSecrets holds ephemeral browser-only secret values keyed by
+	// SECRET_<NAME> (for example, per-call browser_secrets passed by a Python
+	// workflow agent() call). Unlike Env, these are never exported into shell
+	// commands or coding-CLI child environments; only agent_browser fill/type
+	// reads them for the owning session and clears them when the call returns.
+	BrowserSecrets map[string]string
 }
 
 // SetSessionWorkflowPath associates a shell policy with one workflow so live
@@ -559,6 +565,7 @@ func cloneSessionShellConfig(cfg *SessionShellConfig) *SessionShellConfig {
 	copy.BlockedPaths = cloneStrings(cfg.BlockedPaths)
 	copy.BlockedWritePaths = cloneStrings(cfg.BlockedWritePaths)
 	copy.Env = cloneStringMap(cfg.Env)
+	copy.BrowserSecrets = cloneStringMap(cfg.BrowserSecrets)
 	return &copy
 }
 
@@ -693,6 +700,47 @@ func GetSessionShellEnv(sessionID string) map[string]string {
 		return nil
 	}
 	return cloneStringMap(cfg.Env)
+}
+
+// SetSessionBrowserSecrets sets ephemeral browser-only secret values (keyed by
+// SECRET_<NAME>) for one session. Values are never exported into shell Env or
+// logged; callers must clear them when the turn/call finishes.
+func SetSessionBrowserSecrets(sessionID string, secrets map[string]string) {
+	if strings.TrimSpace(sessionID) == "" || len(secrets) == 0 {
+		return
+	}
+	count := 0
+	updateSessionShellConfig(sessionID, func(cfg *SessionShellConfig) {
+		if cfg.BrowserSecrets == nil {
+			cfg.BrowserSecrets = make(map[string]string, len(secrets))
+		}
+		for key, value := range secrets {
+			if strings.HasPrefix(key, "SECRET_") && value != "" {
+				cfg.BrowserSecrets[key] = value
+				count++
+			}
+		}
+	})
+	if count > 0 {
+		log.Printf("[SHELL] Set %d browser-only secret(s) for session %s", count, sessionID)
+	}
+}
+
+// ClearSessionBrowserSecrets removes ephemeral browser-only secrets bound to a
+// session without disturbing its other shell settings or creating an empty entry.
+func ClearSessionBrowserSecrets(sessionID string) {
+	if strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	sessionShellConfigsMu.Lock()
+	defer sessionShellConfigsMu.Unlock()
+	existing := sessionShellConfigs[sessionID]
+	if existing == nil || len(existing.BrowserSecrets) == 0 {
+		return
+	}
+	cfg := cloneSessionShellConfig(existing)
+	cfg.BrowserSecrets = nil
+	sessionShellConfigs[sessionID] = cfg
 }
 
 // SetSessionBrowserMode stores configured browser intent for a session

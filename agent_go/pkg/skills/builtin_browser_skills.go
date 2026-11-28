@@ -281,7 +281,7 @@ agent_browser("fill", ["@e3", "$SECRET_SITE_PASSWORD"])
 # or: agent_browser("type", ["@e3", "$SECRET_SITE_PASSWORD"])
 ` + "```" + `
 
-The server substitutes the value from this turn's own selected keys under the same Vault access rules, and keeps the value out of tool arguments, results, errors, and server logs. Unknown or unselected key names fail with a plain error. Substitution applies only to ` + "`fill`" + ` and ` + "`type`" + `.
+The server substitutes the value from this turn's own selected Vault keys (or per-call ` + "`browser_secrets`" + ` passed by a Python workflow ` + "`agent(..., browser=True)`" + ` call) under the same access rules, and keeps the value out of tool arguments, results, errors, and server logs. Unknown or unselected key names fail with a plain error. Substitution applies only to ` + "`fill`" + ` and ` + "`type`" + `.
 
 Known limit: a later page snapshot or ` + "`eval`" + ` that reads the input field back can still expose what is on the page, so avoid reading entered credentials back.
 `

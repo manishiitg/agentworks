@@ -267,3 +267,64 @@ func TestBrowserSecretTypingAccessAndScopeRules(t *testing.T) {
 		t.Fatalf("unexpected RewrittenArgs: %#v", plan.RewrittenArgs)
 	}
 }
+
+func TestBrowserSecretTypingEphemeralBrowserSecrets(t *testing.T) {
+	workflowSession := "ephemeral-browser-workflow"
+	agentSession := "ephemeral-browser-agent"
+	siblingSession := "ephemeral-browser-sibling"
+	runAskSession := "ephemeral-browser-run-ask"
+
+	common.SetSessionShellEnv(workflowSession, map[string]string{
+		"SECRET_VAULT_KEY": "vault-secret-111",
+	})
+	common.SetSessionBrowserSecrets(agentSession, map[string]string{
+		"SECRET_SHEET_PASSWORD": "sheet-password-999",
+	})
+	common.SetSessionCrewAskReadOnly(runAskSession, true)
+	common.SetSessionBrowserSecrets(runAskSession, map[string]string{
+		"SECRET_SHEET_PASSWORD": "must-not-be-read",
+	})
+	defer common.ClearSessionShellConfig(workflowSession)
+	defer common.ClearSessionShellConfig(agentSession)
+	defer common.ClearSessionShellConfig(siblingSession)
+	defer common.ClearSessionShellConfig(runAskSession)
+
+	// BrowserSecrets must stay out of shell Env.
+	if env := common.GetSessionShellEnv(agentSession); env["SECRET_SHEET_PASSWORD"] != "" {
+		t.Fatalf("BrowserSecrets leaked into shell Env: %#v", env)
+	}
+
+	// Calling agent session gets both its ephemeral BrowserSecrets and workflow Vault keys.
+	merged := sessionSecretsForBrowser(agentSession, workflowSession)
+	if merged["SECRET_SHEET_PASSWORD"] != "sheet-password-999" {
+		t.Fatalf("missing ephemeral browser secret: %#v", merged)
+	}
+	if merged["SECRET_VAULT_KEY"] != "vault-secret-111" {
+		t.Fatalf("missing workflow vault secret alongside ephemeral secret: %#v", merged)
+	}
+	plan, err := prepareBrowserSecretArgs("fill", []string{"@e3", "$SECRET_SHEET_PASSWORD"}, merged)
+	if err != nil || plan == nil || plan.ExtraEnv["SECRET_AGENTWORKS_BROWSER_INPUT_0"] != "sheet-password-999" {
+		t.Fatalf("prepareBrowserSecretArgs(ephemeral) = %v, %v", plan, err)
+	}
+
+	// Sibling session must never inherit another session's BrowserSecrets.
+	siblingSecrets := sessionSecretsForBrowser(siblingSession, agentSession)
+	if siblingSecrets["SECRET_SHEET_PASSWORD"] != "" {
+		t.Fatalf("sibling session inherited BrowserSecrets: %#v", siblingSecrets)
+	}
+
+	// Run/Ask read-only turns receive no secrets even if BrowserSecrets were set.
+	if askSecrets := sessionSecretsForBrowser(runAskSession, workflowSession); len(askSecrets) != 0 {
+		t.Fatalf("CrewAskReadOnly session received secrets: %#v", askSecrets)
+	}
+
+	// Clearing BrowserSecrets removes only the ephemeral keys and preserves Vault keys.
+	common.ClearSessionBrowserSecrets(agentSession)
+	afterClear := sessionSecretsForBrowser(agentSession, workflowSession)
+	if afterClear["SECRET_SHEET_PASSWORD"] != "" {
+		t.Fatalf("ephemeral secret survived ClearSessionBrowserSecrets: %#v", afterClear)
+	}
+	if afterClear["SECRET_VAULT_KEY"] != "vault-secret-111" {
+		t.Fatalf("ClearSessionBrowserSecrets disturbed workflow Vault secret: %#v", afterClear)
+	}
+}
