@@ -269,7 +269,7 @@ export interface ReportHostInstallOptions {
  * Idempotent per document for the parts that bind listeners; the API object
  * is replaced on every call so a changed dataApi takes effect.
  */
-/** Shared renderer runtime, installed by the document itself in native and MCP Apps frames. */
+/** Shared renderer runtime, installed by the document itself. */
 export function installReportDocumentHost(document: Document, options: ReportHostInstallOptions): void {
   const doc = document as Document & AnyDocument
   const win = doc.defaultView as AnyWindow

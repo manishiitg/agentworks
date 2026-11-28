@@ -299,7 +299,6 @@ func externalTools() ([]externalTool, error) {
 		externalWorkflowTeamDefinition(add)
 		externalTriggerDefinitions(add)
 		dashboardToolDefinitions(add)
-		externalDashboardAppDefinition(add)
 		externalProjectDefinitions(add)
 		externalCrewChatDefinitions(add)
 		if err := externalCrewCommandDefinition(add); err != nil {
@@ -869,15 +868,6 @@ func (api *StreamingAPI) dispatchExternalCall(w http.ResponseWriter, r *http.Req
 			api.externalScheduleCall(w, r, call.Arguments, externalScheduleTarget{crewID: externalArg(call.Arguments, "crew_id")})
 			return
 		}
-	}
-	if tool.Name == "open_dashboard" {
-		result := api.openDashboardApp(r, call.Arguments)
-		if result.IsError {
-			externalError(w, 404, "dashboard_unavailable", "This dashboard is unavailable. Open an accessible shared dashboard.")
-			return
-		}
-		externalJSON(w, result.StructuredContent)
-		return
 	}
 	if isDashboardTool(tool.Name) {
 		api.externalDashboardCall(w, r, tool.Name, call.Arguments)

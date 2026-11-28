@@ -32,8 +32,7 @@ import (
 // get_api_spec returns schemas, call_tool executes. The full catalog (product.yaml's external_tools plus
 // run.tools) is resolved internally, so the MCP surface stays tiny no matter
 // how run mode grows, and hosted clients without tool search never face a
-// truncated tail. The dashboard render tool and its app-only data reader add
-// the MCP Apps resource contract for authorized Crew connections.
+// truncated tail. A dashboard is opened by its link (dashboard action=link).
 const externalMCPPath = "/api/external/v1/mcp"
 
 const (
@@ -170,7 +169,6 @@ func (api *StreamingAPI) handleExternalMCP(w http.ResponseWriter, r *http.Reques
 		server.WithMethodCacheHints(mcp.MethodServerDiscover, 60_000, mcp.CacheScopePrivate),
 		server.WithInstructions(instructions),
 	)
-	api.registerExternalDashboardApp(mcpServer, r)
 	for _, name := range externalMCPToolNames {
 		schema, err := json.Marshal(externalMCPToolSchemas[name])
 		if err != nil {

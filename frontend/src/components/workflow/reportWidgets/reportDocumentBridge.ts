@@ -1,4 +1,4 @@
-/** The opaque document transport used by website dashboards, previews and MCP Apps. */
+/** The opaque document transport used by website dashboards and previews. */
 export function isReportDocumentMessage(event: MessageEvent, child: Window | null, channel: string): boolean {
   return Boolean(child && event.source === child && event.data?.channel === channel)
 }
