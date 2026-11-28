@@ -16,7 +16,7 @@ import (
 
 // A bot is one agent of a project on the server that its maker shares for others to use without joining the project
 // (#4545). Each person who uses it gets a private chat with it (their own conversation, Run mode, cost to them), and
-// the project's functions its maker picks show as its buttons; Ask is always on. A bot is not a co-owner, User or Team
+// other agents call the project's functions its maker picks by name; Ask (its chat) is always on. A bot is not a co-owner, User or Team
 // share (those are people who work in the project), and not the dashboard (shared by link).
 type crewBot struct {
 	Icon string `json:"icon,omitempty"`
@@ -565,7 +565,7 @@ func (api *StreamingAPI) crewBotCall(w http.ResponseWriter, r *http.Request, cal
 		return
 	}
 	if !containsID(rec.Bots[botID].Functions, function) {
-		externalError(w, 404, "not_found", "This bot has no such button. Ask it in its chat instead.")
+		externalError(w, 404, "not_found", "This bot has no such function. Ask it in its chat instead.")
 		return
 	}
 	if args == nil {
@@ -584,7 +584,7 @@ func (api *StreamingAPI) crewBotCall(w http.ResponseWriter, r *http.Request, cal
 // GET  /api/bots                          bots shared with me and my own
 // GET  /api/bots/agent?workspace=&agent=  the maker's card for one agent
 // PUT  /api/bots/agent                    save the maker's change
-// POST /api/bots/call                     run one of a bot's buttons
+// POST /api/bots/call                     call one of a bot's functions
 // POST /api/bots/ask                      ask a bot (a Mac project's agents, through the Mac's sign-in)
 // GET  /api/bots/read?inbox_id=           read the bot's answer to an ask
 // GET  /api/bots/project?project_id=      the bots added to a project
@@ -699,12 +699,12 @@ const externalBotsTool = "bots"
 
 func externalBotsDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
 	strList := map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
-	add(externalBotsTool, "Bots: agents of projects on the server that their makers share for others to use without joining the project. list: the bots shared with you and your own (each with its id, icon, name, purpose, project and buttons; ask is always one). ask (bot, message, optional inbox_id): ask a bot; read (inbox_id) returns its answer (the same as messages action=read). call (bot, function, input): press one of its buttons, a project function; read the result with functions action=status. Makers: get (crew_id, agent) shows whether one of your agents in that project is a bot and what can be chosen; set (crew_id, agent, on, and any of icon, name, purpose, everyone, people, teams, functions) makes it a bot, changes it or stops it (on=false). Only the person who made the agent (the project's owner or a co-owner) sets it. everyone=true shares it with anyone at the company; otherwise people (user ids) and teams (team_id from get's team_choices). functions are the project's functions shown as its buttons. add / remove (crew_id, bot): put a bot shared with you into one of your projects (on the server: its owner or a co-owner; or a project on your Mac, from any server it is signed in to), or take it out; it then shows in that project's agent list and right menu, and the project's agents ask it with ask. list with crew_id also returns project_bots, the bots added to that project. A bot is not co-owners or Users (people who work in the project: crew_owners) and not the dashboard (shared by its link).", true, false, map[string]any{
+	add(externalBotsTool, "Bots: agents of projects on the server that their makers share for others to use without joining the project. list: the bots shared with you and your own (each with its id, icon, name, purpose, project and functions; ask is always one). ask (bot, message, optional inbox_id): ask a bot; read (inbox_id) returns its answer (the same as messages action=read). call (bot, function, input): call one of its functions by name; read the result with functions action=status. Makers: get (crew_id, agent) shows whether one of your agents in that project is a bot and what can be chosen; set (crew_id, agent, on, and any of icon, name, purpose, everyone, people, teams, functions) makes it a bot, changes it or stops it (on=false). Only the person who made the agent (the project's owner or a co-owner) sets it. everyone=true shares it with anyone at the company; otherwise people (user ids) and teams (team_id from get's team_choices). functions are the project's functions other agents may call by name. add / remove (crew_id, bot): put a bot shared with you into one of your projects (on the server: its owner or a co-owner; or a project on your Mac, from any server it is signed in to), or take it out; it then shows in that project's agent list and right menu, and the project's agents ask it with ask. list with crew_id also returns project_bots, the bots added to that project. A bot is not co-owners or Users (people who work in the project: crew_owners) and not the dashboard (shared by its link).", true, false, map[string]any{
 		"action":        map[string]any{"type": "string", "enum": []any{"list", "ask", "read", "call", "get", "set", "add", "remove"}},
 		"bot":           externalString("ask, call, add, remove: the bot's id from list."),
 		"message":       externalString("ask: your message."),
 		"inbox_id":      externalString("ask: the inbox from an earlier ask, to continue it. read: the inbox ask returned."),
-		"function":      externalString("call: the button's name from list."),
+		"function":      externalString("call: the function's name from list."),
 		"input":         map[string]any{"type": "object", "description": "call: the function's input."},
 		"submission_id": externalString("ask, call: optional retry key."),
 		"crew_id":       externalString("get, set, add, remove: the project's id; with list, also that project's bots."),
@@ -803,7 +803,7 @@ func (api *StreamingAPI) externalBotsCall(w http.ResponseWriter, r *http.Request
 		api.externalAgentMessages(w, r, map[string]any{"action": "read", "inbox_id": str("inbox_id")})
 	case "call":
 		if token != nil && !token.Allows("crews:run") {
-			externalError(w, 403, "insufficient_scope", "Pressing a bot's button needs a connection that may run projects.")
+			externalError(w, 403, "insufficient_scope", "Calling a bot's function needs a connection that may run projects.")
 			return
 		}
 		input, _ := args["input"].(map[string]any)

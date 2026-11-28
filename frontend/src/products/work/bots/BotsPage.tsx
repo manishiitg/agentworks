@@ -6,7 +6,7 @@ import { openProjectInPlace } from '../../../utils/openProjectInPlace'
 import { getRawActiveWorkspaceId } from '../../../utils/desktopConnection'
 import { remoteProjectConnection } from '../../../utils/remoteSessions'
 import { WorkingTipsContext } from '../../../components/chat/workingTipsContext'
-import { BOTS_CHANGED_EVENT, botError, callBot, listBots, setProjectBot, type Bot, type BotFunction, type BotProject } from './botsApi'
+import { BOTS_CHANGED_EVENT, botError, listBots, setProjectBot, type Bot, type BotProject } from './botsApi'
 import { useBotsPageStore, type BotChatFrom } from './botsPageStore'
 
 const ChatArea = lazy(() => import('../../../components/ChatArea'))
@@ -112,11 +112,12 @@ function DirectoryCard({ bot, targets }: { bot: Bot; targets: BotProject[] }) {
         {bot.purpose && <p className="mt-1 text-xs">{bot.purpose}</p>}
       </div>
     </div>
-    <p className="mt-2.5 text-[11px] text-muted-foreground">Functions</p>
-    <div className="mt-1 flex flex-wrap gap-1">
-      <span className="rounded-full bg-muted px-2 py-0.5 text-[11px]" title="Ask it anything">Ask</span>
-      {buttons.map(fn => <span key={fn.name} title={fn.description} className="rounded-full bg-muted px-2 py-0.5 text-[11px]">{fn.name}</span>)}
-    </div>
+    {buttons.length > 0 && <>
+      <p className="mt-2.5 text-[11px] text-muted-foreground">Your agents can call</p>
+      <div className="mt-1 flex flex-wrap gap-1">
+        {buttons.map(fn => <code key={fn.name} title={fn.description} className="rounded-full bg-muted px-2 py-0.5 text-[11px]">{fn.name}</code>)}
+      </div>
+    </>}
     <div className="mt-auto pt-3">
       {bot.mine ? <>
         <p className="text-[11px] text-muted-foreground">Yours, from {bot.project_title}. Change it from the agent's menu there. People you shared it with see it here.</p>
@@ -226,56 +227,12 @@ function BotChat({ bot }: { bot: Bot }) {
       .catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : botError(reason, 'Could not open the chat.')) })
     return () => { cancelled = true }
   }, [bot.id, bot.workspace, bot.project_id, bot.server?.id, viewer, retry])
-  const buttons = bot.functions.filter(fn => fn.name !== 'ask')
   const intro = <div className="mx-auto max-w-xl p-6 text-sm text-muted-foreground">
     <p>{bot.purpose || 'Ask it anything.'}</p>
     <p className="mt-1 text-xs">Only you see this chat. It runs with {bot.project_title}'s setup and its cost is yours; you can't see that project's files.</p>
   </div>
-  const top = buttons.length > 0 ? <div className="flex flex-wrap gap-1.5 px-4 pb-1.5 pt-1">{buttons.map(fn => <BotButton key={fn.name} bot={bot} fn={fn} />)}</div> : null
   return <section aria-label={`Chat with ${bot.name}`} className="flex min-h-0 flex-1 flex-col">
-    {tabId ? <WorkingTipsContext.Provider value={false}><Suspense fallback={<p role="status" className="p-4 text-sm">Opening chat…</p>}><ChatArea tabId={tabId} compact hideHeader previousChatsWorkspacePath={bot.workspace} landingContent={intro} composerTop={top} composerPlaceholder={`Ask ${bot.name}…`} /></Suspense></WorkingTipsContext.Provider>
+    {tabId ? <WorkingTipsContext.Provider value={false}><Suspense fallback={<p role="status" className="p-4 text-sm">Opening chat…</p>}><ChatArea tabId={tabId} compact hideHeader previousChatsWorkspacePath={bot.workspace} landingContent={intro} composerPlaceholder={`Ask ${bot.name}…`} /></Suspense></WorkingTipsContext.Provider>
       : <div className="p-4 text-sm text-muted-foreground"><p role="status">{error || 'Opening chat…'}</p>{error && <button type="button" onClick={() => setRetry(value => value + 1)} className="mt-2 underline">Try again</button>}</div>}
   </section>
-}
-
-/** One of the bot's functions as a button above the chat box, with a small form when it takes input. */
-function BotButton({ bot, fn }: { bot: Bot; fn: BotFunction }) {
-  const fields = Object.entries(fn.input_schema?.properties ?? {})
-  const [open, setOpen] = useState(false)
-  const [values, setValues] = useState<Record<string, string>>({})
-  const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState('')
-  const run = async () => {
-    setBusy(true); setResult('')
-    try {
-      const args: Record<string, unknown> = {}
-      for (const [name, field] of fields) {
-        const value = values[name]?.trim()
-        if (!value) continue
-        args[name] = field.type === 'number' || field.type === 'integer' ? Number(value) : field.type === 'boolean' ? value === 'true' : value
-      }
-      const out = await callBot(bot, fn.name, args)
-      const text = out.result === undefined ? '' : typeof out.result === 'string' ? out.result : JSON.stringify(out.result, null, 2)
-      setResult(out.error || text || (out.status === 'completed' ? 'Done.' : 'Started. It is still running; the result will be in the project\'s function calls.'))
-    } catch (reason) {
-      setResult(botError(reason, 'Could not run it.'))
-    } finally { setBusy(false) }
-  }
-  return <span className="relative">
-    <button type="button" title={fn.description} disabled={busy} aria-expanded={fields.length ? open : undefined}
-      onClick={() => fields.length ? setOpen(!open) : void run()}
-      className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-60">{busy ? `${fn.name}…` : fn.name}</button>
-    {(open || result) && <div role="dialog" aria-label={fn.name} className="absolute bottom-8 left-0 z-50 w-80 rounded-lg border border-border bg-popover p-3 text-xs shadow-lg">
-      {fn.description && <p className="mb-2 text-muted-foreground">{fn.description}</p>}
-      {open && fields.map(([name, field]) => <label key={name} className="mb-2 block">
-        <span className="block font-medium">{name}{fn.input_schema?.required?.includes(name) ? ' *' : ''}</span>
-        <input value={values[name] ?? ''} onChange={event => setValues({ ...values, [name]: event.target.value })} placeholder={field.description} className="mt-0.5 w-full rounded-md border border-input bg-background px-2 py-1" />
-      </label>)}
-      {result && <pre className="mb-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-2">{result}</pre>}
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={() => { setOpen(false); setResult('') }} className="rounded-md px-2 py-1 hover:bg-muted">Close</button>
-        {open && <button type="button" disabled={busy} onClick={() => void run()} className="rounded-md bg-primary px-2 py-1 text-primary-foreground disabled:opacity-60">{busy ? 'Running…' : 'Run'}</button>}
-      </div>
-    </div>}
-  </span>
 }
