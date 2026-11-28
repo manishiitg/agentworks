@@ -699,8 +699,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       {/* Crew always uses the same current-agent header. Other products keep their tabs. */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
       {surface === 'work' && (openTab?.metadata?.agentProfileOnlineProject ? <OnlineAgentLine tab={openTab} name={sideChatName(openTab)} team={teamState} /> : watchingOther ? <TeammateChatIdentity tabId={openTab?.tabId} /> : <AgentHeaderLine agent={headerAgent} crewName={projectName} onOpenIdentity={onOpenIdentity} />)}
-      {/* Viewing someone else's agent: no New agent in its header (owner, 19 Nov). The agents menu keeps it. */}
-      {surface === 'work' && !watchingOther && !hideAddAgent && <>
+      {/* Viewing someone else's agent: no New agent in its header (owner, 19 Nov). The agents menu keeps it.
+          Nor on your own online agent (owner, 28 Nov: it made a Mac chat there, "its confusing"). */}
+      {surface === 'work' && !watchingOther && !openTab?.metadata?.agentProfileOnlineProject && !hideAddAgent && <>
         <span aria-hidden="true" className="mx-0.5 h-4 w-px shrink-0 bg-border" />
         {addAgentButton}
       </>}
