@@ -91,6 +91,10 @@ type cursorSDKEvent struct {
 	Label   string `json:"label"`
 	Dropped bool   `json:"dropped"`
 	Done    bool   `json:"done"`
+	// reconnect: the SDK's own transport retry (SDK 1.5); Attempt is the 1-based attempt about to start.
+	Attempt int `json:"attempt"`
+	// mcp_blocked: MCP servers the team's Cursor policy refused; the bridge runs without them.
+	Servers []string `json:"servers"`
 }
 
 // cursorRememberedParams keeps, per Cursor account and model, the default settings a start found in the account's
@@ -890,6 +894,7 @@ func (c *CursorCLIAdapter) consumeSDKTurn(ctx context.Context, s *cursorSDKSessi
 	}
 	tools := map[string]*tool{}
 	var subagents []llmtypes.NativeSubagentTranscript
+	var retry *llmtypes.NativeRetry // an SDK reconnect still in progress in this turn
 	for {
 		select {
 		case event := <-p.events:
@@ -958,6 +963,28 @@ func (c *CursorCLIAdapter) consumeSDKTurn(ctx context.Context, s *cursorSDKSessi
 						emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeContent, Content: plan, Metadata: map[string]any{"cursor_session_id": s.agentID, "cursor_stream_source": "sdk", llmtypes.ContentDeltaMetadataKey: true}})
 					}
 				}
+			case "reconnect":
+				// Cursor is retrying its connection inside this run; shown like Claude's and Codex's own retries.
+				if event.Status == "reconnecting" {
+					attempt := event.Attempt - 1
+					if attempt < 1 {
+						attempt = 1
+					}
+					retry = &llmtypes.NativeRetry{Provider: "cursor-cli", NativeSessionID: s.agentID, Phase: "start", Attempt: attempt}
+					emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeNativeRetry, NativeRetry: retry})
+				} else if retry != nil {
+					end := *retry
+					end.Phase, end.Success = "end", true
+					emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeNativeRetry, NativeRetry: &end})
+					retry = nil
+				}
+				if c.logger != nil {
+					c.logger.Infof("[CURSOR_SDK] reconnect agent=%s state=%s attempt=%d", s.agentID, event.Status, event.Attempt)
+				}
+			case "mcp_blocked":
+				if c.logger != nil {
+					c.logger.Infof("[CURSOR_SDK] mcp_blocked agent=%s servers=%q: the team's Cursor MCP policy refused them; running without", s.agentID, event.Servers)
+				}
 			case "stale":
 				if c.logger != nil {
 					c.logger.Infof("[CURSOR_SDK] stale_active_run agent=%s action=%s", event.AgentID, event.Action)
@@ -991,7 +1018,8 @@ func (c *CursorCLIAdapter) consumeSDKTurn(ctx context.Context, s *cursorSDKSessi
 				}
 			case "turn_end_settled":
 				// The bridge finished a turn Cursor had ended but whose run stayed open ("quiet", after
-				// the quiet period), ended with the SDK's resume "no progress" error ("no_progress") or hit an
+				// the quiet period), ended with the SDK's resume "no progress" error ("no_progress"), gave up reconnecting
+				// after it ("connection_failed") or hit an
 				// SDK fault after the turn ended ("sdk_rejection").
 				if c.logger != nil {
 					c.logger.Infof("[CURSOR_SDK] turn_end_settled agent=%s reason=%s detail=%s chars=%d", s.agentID, event.Action, event.Status, text.Len())
@@ -1015,6 +1043,12 @@ func (c *CursorCLIAdapter) consumeSDKTurn(ctx context.Context, s *cursorSDKSessi
 					c.logger.Infof("[CURSOR_SDK] steer_outcome agent=%s steer=%s outcome=%s", s.agentID, event.ID, event.Status)
 				}
 			case "result":
+				if retry != nil {
+					end := *retry
+					end.Phase, end.Success = "end", event.Status == "finished"
+					emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeNativeRetry, NativeRetry: &end})
+					retry = nil
+				}
 				// A message sent after this point starts the next turn rather than joining this one.
 				s.mu.Lock()
 				s.running, s.prompted = false, false

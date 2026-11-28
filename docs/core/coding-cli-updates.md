@@ -4,7 +4,7 @@
 
 Claude and Cursor's SDK transports also need their official Node packages.
 One provisioner (`agent_go/internal/codingsdks/coding-sdks.cjs`) owns the
-certified Claude0.3.311 / Cursor1.3.1 versions and import/export checks. The
+certified Claude0.3.311 / Cursor1.5.2 versions and import/export checks. The
 managed installer runs that file; the backend embeds the same file, so a
 desktop DMG does not need a source checkout to prepare its components.
 
