@@ -409,8 +409,12 @@ func normalizeServerKey(serverName string) string {
 	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(serverName), "-", "_"))
 }
 
-// serverIsAvailable checks if a server passes the tool filter.
+// serverIsAvailable checks if a server passes both the session's live server
+// guard (if any) and the tool filter.
 func (a *Agent) serverIsAvailable(serverName string) bool {
+	if !codeexec.IsSessionServerAllowed(a.sessionID, serverName) {
+		return false
+	}
 	if a.toolFilter.ShouldIncludeServer(serverName) {
 		return true
 	}

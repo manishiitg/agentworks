@@ -484,6 +484,7 @@ type vaultDelegation struct {
 	Purpose   string `json:"purpose,omitempty"`
 	Session   string `json:"session,omitempty"`
 	CrewVault string `json:"crew_vault,omitempty"`
+	OwnApp    bool   `json:"own_app,omitempty"`
 	Person    string `json:"person"`
 	Connector string `json:"connector"`
 	Expires   int64  `json:"expires"`
@@ -553,8 +554,14 @@ func (api *StreamingAPI) handleVaultRuntimeMCP(w http.ResponseWriter, r *http.Re
 		http.Error(w, "unauthorized", 401)
 		return
 	}
+	if in.OwnApp {
+		if in.Session == "" || ownChatTurnPerson(in.Session) != in.Person {
+			http.Error(w, "personal Vault apps are only available on turns you typed in your own chat", http.StatusForbidden)
+			return
+		}
+	}
 	if in.Session != "" {
-		if root := api.projectRootForSession(in.Session); root != "" {
+		if root := api.projectRootForSession(in.Session); root != "" && !in.OwnApp {
 			selected, chosenOnly, err := projectAppSelection(r.Context(), root)
 			if err != nil {
 				http.Error(w, "project connection selection unavailable", 403)
@@ -780,7 +787,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 	// none keeps every authorized Vault connection as its default. Cache discovery once; live calls still recheck the
 	// actor's current grants and argument rules at the gateway.
 	picks := append([]string(nil), names...)
-	ctx, names, rows, remote, inventoryErr := api.vaultAppCandidates(ctx, lender, sessionID, names)
+	ctx, names, rows, remote, inventoryErr := api.vaultAppCandidates(ctx, person, lender, sessionID, names)
 	own := ownChatAppsFrom(ctx)
 	recordLaunchedVaultApps(sessionID, person, lender, picks, vaultAppLabels(names, rows, remote), len(own.ids) > 0, inventoryErr)
 	// A User of a server Crew starts and calls the Crew vault's apps as its main owner (crewVaultReader); the rows are
@@ -796,6 +803,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 	scoped := mcpclient.RuntimeOverrides{}
 	aliases := map[string]string{}
 	selected := []string{}
+	ownRuntimeServers := map[string]bool{}
 	for _, name := range names {
 		if name == mcpclient.NoServers {
 			continue
@@ -808,8 +816,10 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 		var resolved *executor.ResolvedMCPServer
 		var err error
 		lender := lender
+		isOwnApp := false
 		if id, ok := strings.CutPrefix(vaultSelectionName(name), "vault_"); ok && own.ids[id] {
 			lender = own.person
+			isOwnApp = true
 		}
 		if strings.HasPrefix(vaultSelectionName(name), serverVaultPrefix) {
 			resolved, err = api.resolveServerVaultMCP(ctx, lender, vaultSelectionName(name), sessionID)
@@ -836,14 +846,18 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 			}
 			connID := strings.TrimPrefix(vaultSelectionName(resolved.Name), "vault_")
 			crewScope := crewVaultScope(ctx)
-			if own.ids[connID] {
+			if isOwnApp {
 				crewScope = ""
 			}
-			cfg.Headers = map[string]string{"Authorization": "Bearer " + signVaultDelegation(secret, vaultDelegation{Person: lender, Connector: connID, Session: sessionID, CrewVault: crewScope, Expires: vaultDelegationExpiry(time.Now(), 23*time.Hour)})}
+			cfg.Headers = map[string]string{"Authorization": "Bearer " + signVaultDelegation(secret, vaultDelegation{Person: lender, Connector: connID, Session: sessionID, CrewVault: crewScope, OwnApp: isOwnApp, Expires: vaultDelegationExpiry(time.Now(), 23*time.Hour)})}
 		}
 		runtimeName := resolved.Name
 		if governedVaultName(runtimeName) {
 			runtimeName = vaultRuntimeName(vaultSelectionName(runtimeName), cfg)
+		}
+		if isOwnApp {
+			ownRuntimeServers[runtimeName] = true
+			ownRuntimeServers[vaultSelectionName(runtimeName)] = true
 		}
 		if _, seen := scoped[runtimeName]; !seen {
 			selected = append(selected, runtimeName)
@@ -867,6 +881,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 
 		}
 	}
+	installOwnChatAppServerGuard(sessionID, own.person, ownRuntimeServers)
 	if len(selected) == 0 {
 		selected = []string{mcpclient.NoServers}
 	}

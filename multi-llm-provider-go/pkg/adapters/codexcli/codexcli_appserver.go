@@ -373,10 +373,13 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		if refreshErr != nil {
 			return refreshErr
 		}
-		config = map[string]any{"model": c.modelID, "cwd": cwd, "runtime_dir": opts.CLIRuntimeDir, "native_questions": llmtypes.CodingAgentQuestionsAvailable(ctx), "security": opts.CLISecurity, "env": llmtypes.MergeCodingAgentSecretEnvironment(buildCodexStructuredEnv(c.apiKey), opts)}
+		// Keep the thread fingerprint invariant across attended/unattended turns,
+		// launch-only pre-warms, instruction updates (delivered via instructions.Tracker),
+		// and skill updates so Codex reuses its warm thread and prompt cache (#4560).
+		config = map[string]any{"model": c.modelID, "cwd": cwd, "runtime_dir": opts.CLIRuntimeDir, "security": opts.CLISecurity, "env": llmtypes.MergeCodingAgentSecretEnvironment(buildCodexStructuredEnv(c.apiKey), opts)}
 		if opts.Metadata != nil {
 			for k, v := range opts.Metadata.Custom {
-				if k != MetadataKeyResumeSessionID && k != llmtypes.CodingProviderIdleCompactMetadataKey {
+				if k != MetadataKeyResumeSessionID && k != llmtypes.CodingProviderIdleCompactMetadataKey && k != llmtypes.CodingProviderLaunchOnlyMetadataKey && k != llmtypes.CodingProviderLaunchSystemPromptMetadataKey && k != llmtypes.AttachedSkillsMetadataKey {
 					config[k] = v
 				}
 			}
@@ -519,17 +522,17 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		sandbox = codexSandboxUnderConfinement(opts, sandbox)
 		approval := codexOptionString(opts, MetadataKeyApprovalPolicy)
 		if approval == "" {
-			approval = "never"
-			if llmtypes.CodingAgentQuestionsAvailable(ctx) {
-				approval = "on-request"
-			}
+			// Always start with "on-request" and request_user_input enabled so attended
+			// and unattended turns share one warm thread without reloading (#4560);
+			// codexNativeQuestion declines/rejects interactive requests on unattended turns.
+			approval = "on-request"
 		}
 		threadConfig, configErr := codexAppThreadConfig(opts, approval)
 		if configErr != nil {
 			r.close()
 			return nil, configErr
 		}
-		threadConfig["features.default_mode_request_user_input"] = llmtypes.CodingAgentQuestionsAvailable(ctx)
+		threadConfig["features.default_mode_request_user_input"] = true
 		params := map[string]any{"cwd": cwd, "sandbox": sandbox, "approvalPolicy": approval, "developerInstructions": system, "config": threadConfig}
 		model := codexOptionString(opts, MetadataKeyCodexModel)
 		if model == "" {
@@ -1087,7 +1090,7 @@ func codexFingerprintParts(config map[string]any) map[string][32]byte {
 	custom := map[string]any{}
 	for k, value := range config {
 		switch k {
-		case "model", "cwd", "runtime_dir", "system", "native_questions", "security", "env":
+		case "model", "cwd", "runtime_dir", "system", "security", "env":
 			raw, _ := json.Marshal(value)
 			parts[k] = sha256.Sum256(raw)
 		default:
@@ -1104,7 +1107,7 @@ func codexFingerprintChanges(old, current map[string][32]byte) string {
 		return "initial"
 	}
 	var changed []string
-	for _, key := range []string{"model", "cwd", "runtime_dir", "system", "native_questions", "security", "env", "custom"} {
+	for _, key := range []string{"model", "cwd", "runtime_dir", "system", "security", "env", "custom"} {
 		if old[key] != current[key] {
 			changed = append(changed, key)
 		}
@@ -1121,7 +1124,7 @@ func codexCustomFingerprintParts(config map[string]any) map[string][32]byte {
 	parts := map[string][32]byte{}
 	for key, value := range config {
 		switch key {
-		case "model", "cwd", "runtime_dir", "system", "native_questions", "security", "env":
+		case "model", "cwd", "runtime_dir", "system", "security", "env":
 			continue
 		}
 		raw, _ := json.Marshal(value)

@@ -36,7 +36,7 @@ var (
 
 // vaultAppCandidates applies the default rule of scopeAgentMCP to a Vault inventory: picked apps when the product
 // picked some, none on an explicit none, otherwise every authorized app (and, on a linked Mac, the server's).
-func (api *StreamingAPI) vaultAppCandidates(ctx context.Context, lender, sessionID string, names []string) (context.Context, []string, []vaultRuntimeServer, []vaultRuntimeServer, error) {
+func (api *StreamingAPI) vaultAppCandidates(ctx context.Context, person, lender, sessionID string, names []string) (context.Context, []string, []vaultRuntimeServer, []vaultRuntimeServer, error) {
 	if root := api.projectRootForSession(sessionID); serverCrewForPath(root) != "" {
 		project := serverCrewForPath(root)
 		ctx = withCrewVaultScope(ctx, crewVaultID(project)) // a server Crew's turn sees its own Crew vault, and no other
@@ -53,8 +53,8 @@ func (api *StreamingAPI) vaultAppCandidates(ctx context.Context, lender, session
 	}
 	ctx = context.WithValue(ctx, vaultInventoryKey{}, vaultInventory{reader, rows, inventoryErr})
 	names = append([]string(nil), names...)
-	if inventoryErr == nil && serverCrewForPath(api.projectRootForSession(sessionID)) != "" {
-		ctx, rows, names = addOwnChatApps(ctx, sessionID, reader, rows, names) // your own apps in your own chat (#4165)
+	if inventoryErr == nil && serverCrewForPath(api.projectRootForSession(sessionID)) != "" && strings.TrimSpace(person) != "" && !isScheduledSessionIdentity(sessionID, "") {
+		ctx, rows, names = addOwnChatAppsForPerson(ctx, sessionID, person, reader, rows, names) // your own apps in your own chat (#4165), gated per turn (#4560)
 	}
 	picksVault := slices.ContainsFunc(names, func(name string) bool { return strings.HasPrefix(strings.TrimSpace(name), "vault_") })
 	explicitNone := slices.Contains(names, mcpclient.NoServers)
@@ -123,7 +123,7 @@ func (api *StreamingAPI) vaultAppChanges(ctx context.Context, sessionID string) 
 	if api.projectRootForSession(sessionID) != "" {
 		ctx = context.WithValue(ctx, placeScopedKey{}, true)
 	}
-	_, names, rows, remote, err := api.vaultAppCandidates(ctx, launched.lender, sessionID, launched.picks)
+	_, names, rows, remote, err := api.vaultAppCandidates(ctx, launched.person, launched.lender, sessionID, launched.picks)
 	if err != nil {
 		return launched, nil, nil, false
 	}
@@ -146,25 +146,12 @@ func (api *StreamingAPI) vaultAppChanges(ctx context.Context, sessionID string) 
 
 // vaultAppsReloadDue decides whether this message rebuilds the chat instead of going into the running app: the
 // person asked to reload, or a chat with no app screen sees changed Vault apps.
+// Personal Vault apps on online projects (#4165) are gated per turn in discovery and handleVaultRuntimeMCP so
+// switching between typed and automated turns reuses the warm CLI and prompt cache (#4560).
 func (api *StreamingAPI) vaultAppsReloadDue(ctx context.Context, sessionID string, req QueryRequest) bool {
 	if _, asked := vaultReloadRequested.Load(sessionID); asked {
 		log.Printf("[VAULT_APPS] session=%s action=reload reason=person_asked", sessionID)
 		return true
-	}
-	// Your own apps stay in turns you typed (#4165): a chat built with them is rebuilt before any other turn, and a chat
-	// built for another turn picks them up on your next typed message when you have some.
-	if launched, ok := launchedVaultAppsFor(sessionID); ok {
-		typed := ownChatTurnPerson(sessionID) != ""
-		if launched.own && !typed {
-			log.Printf("[VAULT_APPS] session=%s action=reload reason=own_apps_not_typed", sessionID)
-			return true
-		}
-		if typed && !launched.own {
-			if _, added, _, changed := api.vaultAppChanges(ctx, sessionID); changed && len(added) > 0 {
-				log.Printf("[VAULT_APPS] session=%s action=reload reason=own_apps_typed added=%d", sessionID, len(added))
-				return true
-			}
-		}
 	}
 	if strings.TrimSpace(req.BotPlatform) == "" && !isScheduledCrewChatDelivery(ctx) {
 		return false

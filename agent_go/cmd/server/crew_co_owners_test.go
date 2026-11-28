@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
+	"github.com/manishiitg/mcpagent/agent/codeexec"
 )
 
 // joinCrewTeam makes exactly these people the co-owners of the server Crew at folder: the only builders besides its main
@@ -273,12 +274,65 @@ func TestCrewTeamMemberBuildsLikeCoOwnerOnlyWhileJoined(t *testing.T) {
 	if out := (&StreamingAPI{}).withOwnChatKeys(context.Background(), "cara", root, false, []resolvedSecret{{Name: "A", Value: "a"}}); len(out) != 1 {
 		t.Fatalf("an automated turn got personal keys: %v", out)
 	}
-	// Your own apps likewise (#4165): a chat built with them is rebuilt before a turn the person did not type.
-	recordLaunchedVaultApps("chat-own-apps", "cara", "cara", nil, map[string]string{"vault_mine": "Mine"}, true, nil)
-	markOwnChatTurn("chat-own-apps", "cara", root, false)
-	if !(&StreamingAPI{}).vaultAppsReloadDue(context.Background(), "chat-own-apps", QueryRequest{TriggeredBy: "cron"}) {
-		t.Fatal("a turn nobody typed kept the person's own apps")
-	}
+	// Your own apps (#4165 + #4560): gated per turn in discovery and handleVaultRuntimeMCP so switching between
+	// typed and automated turns keeps the warm CLI and prompt cache instead of forcing a rebuild.
+	t.Run("own_apps_per_turn_gate", func(t *testing.T) {
+		recordLaunchedVaultApps("chat-own-apps", "cara", "cara", nil, map[string]string{"vault_mine": "Mine"}, true, nil)
+		installOwnChatAppServerGuard("chat-own-apps", "cara", map[string]bool{"vault_mine": true, "vault_mine__scope_0123456789abcdef0123456789abcdef": true})
+		t.Cleanup(func() { codeexec.SetSessionServerGuard("chat-own-apps", nil); ownChatTurns.Delete("chat-own-apps") })
+		markOwnChatTurn("chat-own-apps", "cara", root, false)
+		if (&StreamingAPI{}).vaultAppsReloadDue(context.Background(), "chat-own-apps", QueryRequest{TriggeredBy: "cron"}) {
+			t.Fatal("personal Vault app toggled a CLI rebuild instead of gating per turn")
+		}
+		if codeexec.IsSessionServerAllowed("chat-own-apps", "vault_mine") || codeexec.IsSessionServerAllowed("chat-own-apps", "vault_mine__scope_0123456789abcdef0123456789abcdef") {
+			t.Fatal("non-typed turn exposed personal Vault app to discovery")
+		}
+		if !codeexec.IsSessionServerAllowed("chat-own-apps", "vault_proj") {
+			t.Fatal("session server guard hid a project Vault app")
+		}
+		// Execution boundary: handleVaultRuntimeMCP refuses OwnApp tokens on non-typed turns and allows them on typed turns.
+		gatewayHit := false
+		gw := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gatewayHit = true
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}))
+		defer gw.Close()
+		secret := strings.Repeat("k", 32)
+		t.Setenv("CAPLAYER_SERVICE_URL", gw.URL)
+		t.Setenv("CAPLAYER_SERVICE_TOKEN", secret)
+		t.Setenv("CAPLAYER_SERVICE_TOKEN_FILE", "")
+		t.Setenv("MULTI_USER_MODE", "false")
+		ownToken := signVaultDelegation(secret, vaultDelegation{Person: "cara", Connector: "mine", Session: "chat-own-apps", OwnApp: true, Expires: time.Now().Add(time.Hour).Unix()})
+		callRuntime := func() *httptest.ResponseRecorder {
+			req := httptest.NewRequest(http.MethodPost, "/internal/vault/mcp", strings.NewReader(`{}`))
+			req.Header.Set("Authorization", "Bearer "+ownToken)
+			rec := httptest.NewRecorder()
+			(&StreamingAPI{}).handleVaultRuntimeMCP(rec, req)
+			return rec
+		}
+		if rec := callRuntime(); rec.Code != http.StatusForbidden || gatewayHit {
+			t.Fatalf("non-typed turn reached personal Vault app: status=%d hit=%t body=%q", rec.Code, gatewayHit, rec.Body.String())
+		}
+		// Another person typing in the session must not unlock cara's personal app either.
+		markOwnChatTurn("chat-own-apps", "ann", root, true)
+		if codeexec.IsSessionServerAllowed("chat-own-apps", "vault_mine") {
+			t.Fatal("another person's typed turn exposed cara's personal app")
+		}
+		if rec := callRuntime(); rec.Code != http.StatusForbidden || gatewayHit {
+			t.Fatalf("another person's typed turn reached cara's personal app: status=%d hit=%t", rec.Code, gatewayHit)
+		}
+		// When cara types in her own chat, discovery opens and execution passes the own-app gate.
+		markOwnChatTurn("chat-own-apps", "cara", root, true)
+		if !codeexec.IsSessionServerAllowed("chat-own-apps", "vault_mine") || !codeexec.IsSessionServerAllowed("chat-own-apps", "vault_mine__scope_0123456789abcdef0123456789abcdef") {
+			t.Fatal("cara's typed turn could not discover her own personal Vault app")
+		}
+		// Without an event store / registered session owner, mcpSessionPerson returns "" so handleVaultRuntimeMCP rejects
+		// only at the later session-ownership check — never at the own-app gate.
+		if rec := callRuntime(); strings.Contains(rec.Body.String(), "personal Vault apps") {
+			t.Fatalf("cara's typed turn was blocked by the own-app gate: status=%d body=%q", rec.Code, rec.Body.String())
+		}
+	})
 	// The same lock outside chat (#3796): a direct MCP setup tool is refused for cara while its read action, a co-owner
 	// and the owner stay open, and the website's file proxy refuses her write to the instructions but not a work file.
 	if crewSetupLockExternalRefusal("cara", "install_skill", "install", map[string]any{"crew_id": "team-proj"}) == "" {
