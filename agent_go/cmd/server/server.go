@@ -2074,6 +2074,12 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if idleRun == nil && !req.IsAutoNotification {
+		if run := idleCompacts.running(sessionID); run != nil && run.isStarted() && !isQueuedMessageSteer(r.Context()) && !conversationTurnQueueExecution(r.Context()) && shouldUseDurableConversationTurnQueue(req) {
+			api.ensureIdleCompactionSendWaitBound(sessionID, run, 0)
+			log.Printf("[IDLE_COMPACT] session=%s send queued behind running compaction source=query", sessionID)
+			api.queueConversationTurnResponse(w, r, currentUserID, sessionID, req)
+			return
+		}
 		api.waitForIdleCompaction(r.Context(), sessionID, "query")
 	}
 	if idleRun == nil && !req.IsAutoNotification && !isScheduledSessionIdentity(sessionID, req.TriggeredBy) {

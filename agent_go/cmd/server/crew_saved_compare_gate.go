@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	savedCompareCacheTTL        = 60 * time.Second
-	savedCompareCacheMaxEntries = 128
+	savedCompareCacheTTL        = 15 * time.Minute
+	savedCompareCacheMaxEntries = 512
 )
 
 type savedCompareCacheEntry struct {

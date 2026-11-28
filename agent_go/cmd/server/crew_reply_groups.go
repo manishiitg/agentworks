@@ -25,20 +25,26 @@ const replyGroupMaxFailingChecks = 10
 
 const (
 	replyGroupCacheTTL        = 30 * time.Second
-	replyGroupCacheMaxEntries = 128
+	replyGroupCacheStaleTTL   = 5 * time.Minute
+	replyGroupCacheMaxEntries = 256
 )
 
 var replyGroupChangesFn = filesnapshots.GroupChanges
 
 var replyGroupCache = struct {
 	sync.Mutex
-	entries map[string]replyGroupCacheEntry
-	group   singleflight.Group
-}{entries: make(map[string]replyGroupCacheEntry)}
+	entries    map[string]replyGroupCacheEntry
+	refreshing map[string]bool
+	group      singleflight.Group
+}{
+	entries:    make(map[string]replyGroupCacheEntry),
+	refreshing: make(map[string]bool),
+}
 
 type replyGroupCacheEntry struct {
-	groups  []filesnapshots.Group
-	expires time.Time
+	groups     []filesnapshots.Group
+	expires    time.Time
+	staleUntil time.Time
 }
 
 func cloneFileSnapshotGroups(groups []filesnapshots.Group) []filesnapshots.Group {
@@ -104,6 +110,27 @@ func replyGroupsAllowed(groups []filesnapshots.Group, allow func(string) bool) b
 	return true
 }
 
+func storeReplyGroupCacheEntry(key string, groups []filesnapshots.Group, now time.Time) {
+	replyGroupCache.Lock()
+	for k, cached := range replyGroupCache.entries {
+		if now.After(cached.staleUntil) {
+			delete(replyGroupCache.entries, k)
+		}
+	}
+	if len(replyGroupCache.entries) >= replyGroupCacheMaxEntries {
+		for k := range replyGroupCache.entries {
+			delete(replyGroupCache.entries, k)
+			break
+		}
+	}
+	replyGroupCache.entries[key] = replyGroupCacheEntry{
+		groups:     cloneFileSnapshotGroups(groups),
+		expires:    now.Add(replyGroupCacheTTL),
+		staleUntil: now.Add(replyGroupCacheStaleTTL),
+	}
+	replyGroupCache.Unlock()
+}
+
 func cachedReplyGroupChanges(ctx context.Context, roots crewroot.Roots, comparison filesnapshots.Comparison, allow func(string) bool) []filesnapshots.Group {
 	if comparison.Record.ID == "" {
 		return replyGroupChangesFn(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
@@ -111,13 +138,40 @@ func cachedReplyGroupChanges(ctx context.Context, roots crewroot.Roots, comparis
 	key := replyGroupCacheKey(GetUserIDFromContext(ctx), roots.Files, comparison)
 	now := time.Now()
 	replyGroupCache.Lock()
-	if entry, ok := replyGroupCache.entries[key]; ok && now.Before(entry.expires) {
+	if entry, ok := replyGroupCache.entries[key]; ok && now.Before(entry.staleUntil) {
 		cached := cloneFileSnapshotGroups(entry.groups)
-		replyGroupCache.Unlock()
-		if replyGroupsAllowed(cached, allow) {
-			return cached
+		needsRefresh := !now.Before(entry.expires) && !replyGroupCache.refreshing[key]
+		if needsRefresh {
+			replyGroupCache.refreshing[key] = true
 		}
-		return replyGroupChangesFn(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
+		replyGroupCache.Unlock()
+		if !replyGroupsAllowed(cached, allow) {
+			if needsRefresh {
+				replyGroupCache.Lock()
+				delete(replyGroupCache.refreshing, key)
+				replyGroupCache.Unlock()
+			}
+			return replyGroupChangesFn(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
+		}
+		if needsRefresh {
+			filesRoot := roots.Files
+			changesCopy := append([]filesnapshots.Change(nil), comparison.Changes...)
+			newReposCopy := append([]string(nil), comparison.NewRepos...)
+			go func() {
+				defer func() {
+					replyGroupCache.Lock()
+					delete(replyGroupCache.refreshing, key)
+					replyGroupCache.Unlock()
+				}()
+				bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				defer cancel()
+				groups := replyGroupChangesFn(bgCtx, filesRoot, changesCopy, newReposCopy, allow)
+				if bgCtx.Err() == nil {
+					storeReplyGroupCacheEntry(key, groups, time.Now())
+				}
+			}()
+		}
+		return cached
 	}
 	replyGroupCache.Unlock()
 
@@ -133,24 +187,7 @@ func cachedReplyGroupChanges(ctx context.Context, roots crewroot.Roots, comparis
 
 		groups := replyGroupChangesFn(ctx, roots.Files, comparison.Changes, comparison.NewRepos, allow)
 		if ctx.Err() == nil {
-			storeNow := time.Now()
-			replyGroupCache.Lock()
-			for k, cached := range replyGroupCache.entries {
-				if storeNow.After(cached.expires) {
-					delete(replyGroupCache.entries, k)
-				}
-			}
-			if len(replyGroupCache.entries) >= replyGroupCacheMaxEntries {
-				for k := range replyGroupCache.entries {
-					delete(replyGroupCache.entries, k)
-					break
-				}
-			}
-			replyGroupCache.entries[key] = replyGroupCacheEntry{
-				groups:  cloneFileSnapshotGroups(groups),
-				expires: storeNow.Add(replyGroupCacheTTL),
-			}
-			replyGroupCache.Unlock()
+			storeReplyGroupCacheEntry(key, groups, time.Now())
 		}
 		return groups, nil
 	})

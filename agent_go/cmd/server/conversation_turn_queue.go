@@ -599,8 +599,8 @@ func (api *StreamingAPI) kickConversationTurnQueue(sessionID string) {
 	// Startup recovery never kicks a chat it deferred, so any kick of one is new
 	// activity (a person's message): it starts now, not behind the recovery batch.
 	api.admitDeferredStartupResume(sessionID)
-	// A compaction started ahead of the queued messages holds them; it kicks the queue when it ends.
-	if run := idleCompacts.running(sessionID); run != nil && run.beforeQueued {
+	// A running compaction holds queued messages; runIdleCompaction kicks the queue when it ends.
+	if run := idleCompacts.running(sessionID); run != nil {
 		return
 	}
 	if by := api.conversationTurnOccupiedBy(sessionID); by != "" {
