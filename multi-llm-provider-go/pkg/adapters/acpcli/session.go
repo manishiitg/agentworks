@@ -79,9 +79,12 @@ type session struct {
 	questionPrefix string
 	fullTools      bool
 	preApproved    func(title string, rawInput json.RawMessage) bool
-	caps           agentCapabilities
-	authMethods    []string
-	outcome        Outcome
+	// commands are the slash commands the agent advertised for its session (available_commands_update).
+	commands      []string
+	commandsKnown bool
+	caps          agentCapabilities
+	authMethods   []string
+	outcome       Outcome
 	// steersWithPrompt: this agent's release takes a prompt sent mid-turn as a message into the running turn.
 	steersWithPrompt bool
 

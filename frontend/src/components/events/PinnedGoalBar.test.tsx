@@ -58,3 +58,28 @@ it('pins the newest goal, shows the blocked reason, sends goal commands and disa
     expect(host.querySelector('section')).toBeNull()
   } finally { await act(async () => root.unmount()) }
 })
+
+// #4604: Antigravity has no pause or resume. Its bar says Working with Stop while the /goal turn runs, and Stopped
+// with Start again after it; both send the same /goal commands, which the server answers for agy.
+it('shows Stop and Start again for an Antigravity goal', async () => {
+  const send = vi.fn()
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  const agyGoal = (id: string, status: string) => ({ id, type: 'native_goal_updated', data: { update: { provider: 'agy-cli', native_session_id: 'agy_sess', goal: { objective: 'make the tests pass', status } } } }) as PollingEvent
+  try {
+    await act(async () => root.render(<PinnedGoalBar events={[agyGoal('1', 'active')]} onCommand={send} />))
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('Working')
+    expect([...host.querySelectorAll('button')].map(button => button.textContent)).toEqual(['make the tests pass', 'Stop', 'Clear'])
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Stop')!.click())
+    await act(async () => root.render(<PinnedGoalBar events={[agyGoal('1', 'active'), agyGoal('2', 'paused')]} onCommand={send} />))
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('Stopped')
+    expect([...host.querySelectorAll('button')].map(button => button.textContent)).toEqual(['make the tests pass', 'Start again', 'Clear'])
+    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Start again')!.click())
+    expect(send.mock.calls).toEqual([['/goal pause'], ['/goal resume']])
+    await act(async () => root.render(<PinnedGoalBar events={[agyGoal('3', 'complete')]} onCommand={send} />))
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('Done')
+    expect([...host.querySelectorAll('button')].map(button => button.textContent)).toEqual(['make the tests pass', 'Clear'])
+  } finally {
+    await act(async () => root.unmount())
+  }
+})

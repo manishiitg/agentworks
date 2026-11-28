@@ -103,7 +103,14 @@ func (a *AgyCLIAdapter) generateContentACP(ctx context.Context, messages []llmty
 	if llmtypes.CodingProviderIdleCompactFromOptions(opts) {
 		return agyACPCompact(ctx, model, home, messages, &call)
 	}
+	messages, goal, err := agyGoalTurn(ctx, agyStringMetadata(opts, MetadataKeyInteractiveSessionID), agyStringMetadata(opts, MetadataKeyResumeSessionID), messages, opts)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := acpcli.Generate(ctx, agyACPAgent, model, messages, &call)
+	if goal != nil {
+		goal.finish(ctx, resp, err)
+	}
 	if err == nil && opts.StreamChan != nil {
 		if handle, ok := llmtypes.ExtractCodingProviderSessionHandleFromResponse(resp); ok {
 			for _, compaction := range agyACPTurnCompactions(home, handle.NativeSessionID) {

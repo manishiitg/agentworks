@@ -316,7 +316,7 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 		t.Fatal("internal goal notice failed", result, err)
 	}
 	capabilities := nativeGoalProgramCapabilities()
-	if !capabilities["codex-cli"] || capabilities["muse-cli"] || capabilities["claude-code"] || capabilities["cursor-cli"] || capabilities["pi-cli"] || capabilities["agy-cli"] {
+	if !capabilities["codex-cli"] || capabilities["muse-cli"] || capabilities["claude-code"] || capabilities["cursor-cli"] || capabilities["pi-cli"] || !capabilities["agy-cli"] {
 		t.Fatal("server offered unsupported native goals", capabilities)
 	}
 	state, err := f.api.latestNativeGoal(context.Background(), sid)

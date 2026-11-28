@@ -38,6 +38,9 @@ func (s *session) pump() {
 				s.rpc.deliver(msg)
 				continue
 			}
+			if msg.Method == "session/update" {
+				s.noteCommands(msg.Params)
+			}
 			s.mu.Lock()
 			listener := s.listener
 			s.mu.Unlock()
@@ -92,6 +95,31 @@ type sessionUpdate struct {
 	Size       *int            `json:"size"`
 	// ConfigOptions is set on config_option_update.
 	ConfigOptions []configOption `json:"configOptions"`
+	// AvailableCommands is set on available_commands_update: the agent's slash commands.
+	AvailableCommands []struct {
+		Name string `json:"name"`
+	} `json:"availableCommands"`
+}
+
+// noteCommands keeps the slash commands the agent last advertised for its current session (it may send them between
+// turns, so the pump reads them before any turn listener).
+func (s *session) noteCommands(params json.RawMessage) {
+	var envelope struct {
+		SessionID string        `json:"sessionId"`
+		Update    sessionUpdate `json:"update"`
+	}
+	if json.Unmarshal(params, &envelope) != nil || envelope.Update.Kind != "available_commands_update" {
+		return
+	}
+	names := make([]string, 0, len(envelope.Update.AvailableCommands))
+	for _, c := range envelope.Update.AvailableCommands {
+		names = append(names, strings.TrimPrefix(strings.TrimSpace(c.Name), "/"))
+	}
+	s.mu.Lock()
+	if envelope.SessionID == s.sessionID {
+		s.commands, s.commandsKnown = names, true
+	}
+	s.mu.Unlock()
 }
 
 type promptResult struct {
