@@ -6,7 +6,8 @@ import { ChatChangesRow } from '../../components/workspace/ChatChangesRow'
 import { ChatContextSection } from '../../components/workspace/ChatContextSection'
 import { WorkspaceContextCard, WorkspaceContextRow as Row } from '../../components/workspace/WorkspaceContextCard'
 import { WorkspaceDashboardMenu } from '../../components/workspace/WorkspaceDashboardMenu'
-import { WorkspaceConnectionsMenu } from '../../components/workspace/WorkspaceConnectionsMenu'
+import { WorkspaceConnectionsMenu, ConnectionIcon } from '../../components/workspace/WorkspaceConnectionsMenu'
+import { TooltipProvider } from '../../components/ui/tooltip'
 import { WorkspaceCompactGroup } from '../../components/workspace/WorkspaceCompactGroup'
 import type { DashboardChatTarget } from '../../components/workflow/DashboardEmptyState'
 import { setWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
@@ -55,7 +56,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const setups = useTeamSetupsList(teamState.target, projectId, panelVisible && !!teamState.target && !!teamState.view?.team.on && !teamState.error)
 
   const collapseKey = JSON.stringify(['agentworks.team-collapsed', user?.id, server, teamState.target?.connection, teamState.target?.project || projectId])
-  const readCollapsed = () => { try { const stored = localStorage.getItem(collapseKey); return stored === null ? true : stored === '1' } catch { return true } }
+  const readCollapsed = () => { try { return localStorage.getItem(collapseKey) === '1' } catch { return false } }
   const [collapse, setCollapse] = useState<{ key: string; value: boolean }>(() => ({ key: collapseKey, value: readCollapsed() }))
   const collapsed = collapse.key === collapseKey ? collapse.value : readCollapsed()
   const showTeam = !teamState.view?.team.on || !collapsed
@@ -140,13 +141,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
     { key: 'schedules', detailKey: 'schedules:schedules', target: 'schedules', label: 'Schedules', icon: CalendarClock, count: (section('schedules')?.rows.length ?? 0) + (section('watchers')?.rows.length ?? 0) },
     { key: 'email', detailKey: 'schedules:email', target: 'email', label: 'Inbox', icon: Mail, count: inboxRow?.connected ? 1 : 0 },
   ].filter(chip => chip.count > 0)
-  const automationSummary = automationChips.length
-    ? automationChips.map(chip =>
-        chip.key === 'email' ? 'Inbox'
-          : chip.key === 'workflow' ? `${chip.count} ${chip.count === 1 ? 'workflow' : 'workflows'}`
-          : `${chip.count} ${chip.count === 1 ? 'schedule' : 'schedules'}`
-      ).join(' · ')
-    : (data?.details.automations || 'none yet')
+  const automationCount = automationChips.reduce((total, chip) => total + chip.count, 0)
   // The Workflow row opens in place and lists the Crew's workflows (owner, 19 Nov); each opens its own page.
   // An online row lives on the Team, not on this Mac: it opens the workflows page, where it is listed.
   const openWorkflow = (rowId: string) => { if (rowId.startsWith('workflow:')) openCrewWorkflow(projectId, rowId.replace(/^workflow:/, '')); openID('workflow') }
@@ -258,7 +253,10 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
         ...(teamHidden && noTeamYet && teamItem && !access?.co_owners ? [{ id: 'team', icon: teamItem.icon, title: crewTeamTitle(accessTree, teamItem), line: TEAM_SETUP_LINE, action: 'Start a Team', onClick: () => open(teamItem) }] : []),
         ...(remoteHidden && remoteItem ? [{ id: 'remote', icon: remoteItem.icon, title: 'Remote Control', line: 'Use this project from your phone and the website', action: 'Open', onClick: () => open(remoteItem), onShow: showRemote }] : []),
       ]}/>
-      {(byId.has('workflow') || byId.has('schedules')) && <WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={Zap} detail={automationSummary}>
+      {(byId.has('workflow') || byId.has('schedules')) && <TooltipProvider delayDuration={200}><WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={Zap}
+        detail={automationChips.length ? undefined : data?.details.automations}
+        preview={automationChips.length ? <div className="isolate flex -space-x-1.5">{automationChips.map((chip, i) =>
+          <ConnectionIcon key={chip.key} icon={chip.icon} hint={`${chip.label} · ${data?.details[chip.detailKey] ?? chip.count}`} count={i === automationChips.length - 1 ? automationCount : undefined} onClick={() => chip.target === 'workflow' ? openID('workflow') : openAutomation(chip.target)} />)}</div> : undefined}>
         {/* Everything that sets work off, inside one row like Connections (owner, 8 Nov): the workflow, then its starts,
             each with the server's one-line summary. */}
         {workflowMenuRow}
@@ -267,7 +265,7 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
             <Row key={target} icon={Icon} detail={data?.details[`schedules:${target}`]} onClick={() => openAutomation(target)}>{label}</Row>)}
           {inboxRow && <Row icon={Mail} detail={data?.details['schedules:email']} onClick={() => openAutomation('email')}>Inbox</Row>}
         </>}
-      </WorkspaceCompactGroup>}
+      </WorkspaceCompactGroup></TooltipProvider>}
       {/* Other projects' bots added here (#4545); only in projects on the server. */}
       {projectId && <ProjectBotsSection projectId={projectId} />}
     </>}

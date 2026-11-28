@@ -20,7 +20,7 @@ export function ProjectBotsSection({ projectId }: { projectId: string }) {
     try { for (const bot of value.unavailable) await setProjectBot(projectId, bot, false) } catch (reason) { setError(botError(reason, 'Could not remove it.')) }
   }
   const count = value.bots.length
-  return <WorkspaceCompactGroup title="Bots" icon={BotIcon} detail={count ? String(count) : 'none yet'}>
+  return <WorkspaceCompactGroup title="Bots in this project" icon={BotIcon} detail={count ? String(count) : 'none yet'}>
     {value.bots.map(bot => <Row key={bot.id} icon={BotIcon} detail={bot.project_title} hint={bot.purpose} onClick={() => openChat(bot.id, { projectId })}><BotAvatar bot={bot} connection={bot.connection} className="mr-1 inline-grid h-4 w-4 align-[-3px] text-[10px]" />{bot.name}</Row>)}
     {gone > 0 && <p className="px-1 text-[11px] text-muted-foreground">{gone === 1 ? 'One bot here is' : `${gone} bots here are`} no longer shared with you, so this project's agents can't ask {gone === 1 ? 'it' : 'them'}. Ask its maker to share it again, or <button type="button" className="text-primary underline" onClick={() => void removeGone()}>remove {gone === 1 ? 'it' : 'them'}</button>.</p>}
     {error && <p role="alert" className="px-1 text-[11px] text-destructive">{error}</p>}

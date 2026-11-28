@@ -1,7 +1,7 @@
 import { Portal as TooltipPortal } from '@radix-ui/react-tooltip'
 import { Bot, Cable, ChevronRight, Chrome, Github, Grid2X2, MessageCircle, Monitor, MonitorCog, Settings2, Slack, type LucideIcon } from 'lucide-react'
 import type { CrewPanelRow } from '../../products/work/useCrewPanel'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'
 import { WorkspaceCompactGroup } from './WorkspaceCompactGroup'
 import { WorkspaceContextRow } from './WorkspaceContextCard'
 
@@ -32,14 +32,11 @@ export function WorkspaceConnectionsMenu({ browser, details, browserAllowed, mcp
   const labelFor = (item: CrewPanelRow) => item.destination === 'mcp:slack-bot' ? 'Slack bot' : item.label
   const iconFor = (item: CrewPanelRow) => item.destination === 'mcp:computer-use' ? MonitorCog : item.destination === 'mcp:github' ? Github : item.destination === 'mcp:gmail' ? Grid2X2 : item.destination === 'mcp:slack-bot' ? Bot : item.destination === 'mcp:whatsapp' ? MessageCircle : Slack
   if (!browserAllowed && !mcpAllowed && !accounts.length && !onManage && !setups.length) return null
-  const connectedAppCount = (browserAllowed && browser.connected ? 1 : 0) + accounts.filter(item => item.connected).length
-  const connectedMcpCount = mcpAllowed && !loading && !unavailable ? connectedMcps.length : 0
-  const summaryParts = [
-    connectedAppCount > 0 ? `${connectedAppCount} ${connectedAppCount === 1 ? 'app' : 'apps'}` : '',
-    connectedMcpCount > 0 ? `${connectedMcpCount} ${connectedMcpCount === 1 ? 'MCP' : 'MCPs'}` : '',
-  ].filter(Boolean)
-  const summaryDetail = summaryParts.length > 0 ? summaryParts.join(' · ') : loading ? 'Checking…' : 'none yet'
-  return <WorkspaceCompactGroup title="Connections" icon={Cable} detail={summaryDetail}>
+  return <TooltipProvider delayDuration={200}><WorkspaceCompactGroup title="Connections" icon={Cable} preview={<div className="isolate flex -space-x-1.5">
+    {browserAllowed && browser.connected && <ConnectionIcon icon={browserIcon} hint={browserHint} onClick={() => onOpen('browser')}/>}
+    {accounts.filter(item => item.connected).map(item => <ConnectionIcon key={item.id} icon={iconFor(item)} hint={`${labelFor(item)} · ${item.detail}`} onClick={() => onOpen(item.destination!)}/>)}
+    {mcpAllowed && !loading && !unavailable && connectedMcps.length > 0 && <ConnectionIcon icon={Cable} hint={mcpHint} count={connectedMcps.length} onClick={() => onOpen('mcp:connected')}/>}
+  </div>}>
     {browserAllowed && <WorkspaceContextRow icon={browserIcon} hint={browserHint} detail={browser.name || browser.label} attention={!browser.connected && browser.label !== 'Checking…'} onClick={() => onOpen('browser')}>Browser</WorkspaceContextRow>}
     {accounts.map(item => <WorkspaceContextRow key={item.id} icon={iconFor(item)} hint={`${labelFor(item)} · ${item.detail}`} detail={item.detail} attention={item.attention} onClick={() => onOpen(item.destination!)}>{labelFor(item)}</WorkspaceContextRow>)}
     {mcpAllowed && <WorkspaceContextRow icon={Cable} hint={mcpHint} detail={mcpDetail} attention={attention > 0 || unavailable} onClick={() => onOpen('mcp:connected')}>MCPs</WorkspaceContextRow>}
@@ -49,5 +46,5 @@ export function WorkspaceConnectionsMenu({ browser, details, browserAllowed, mcp
       return item.onShow ? <div key={item.id} className="flex items-center gap-1"><div className="min-w-0 flex-1">{row}</div><button type="button" onClick={item.onShow} title={`Show ${item.title} in the side menu again`} className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-background/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Show</button></div> : row
     })}
     {onManage && <WorkspaceContextRow icon={Settings2} detail={<ChevronRight aria-hidden="true" className="h-3 w-3" />} onClick={onManage}>Manage integrations</WorkspaceContextRow>}
-  </WorkspaceCompactGroup>
+  </WorkspaceCompactGroup></TooltipProvider>
 }
