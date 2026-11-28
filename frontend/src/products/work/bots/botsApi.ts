@@ -1,4 +1,5 @@
 import api from '../../../services/api'
+import type { AvatarFields } from '../../../components/ui/Avatar'
 import { folderConnection, remoteProjectConnection } from '../../../utils/remoteSessions'
 import { isLocalDeployment } from '../../productSurfaceConfig'
 import { connectedLocations, useConnectedWorkStore } from '../../../stores/useConnectedWorkStore'
@@ -24,7 +25,9 @@ const projectConnection = (projectId: string) => isLocalDeployment() ? remotePro
 export type BotFunction = { name: string; description?: string; input_schema?: { properties?: Record<string, { type?: string; description?: string }>; required?: string[] } }
 
 /** A bot as GET /api/bots lists it (#4545). The server decides who sees which bot. */
-export type Bot = {
+export type Bot = AvatarFields & {
+  /** On a Mac, a project's bot: the sign-in of its server (its photo is read through it). */
+  connection?: string
   id: string; name: string; purpose?: string; icon?: string
   project_id: string; project_title: string; workspace: string; maker_name: string
   mine?: boolean; functions: BotFunction[]
@@ -45,13 +48,17 @@ export const BOTS_CHANGED_EVENT = 'agentworks:bots-changed'
 export const botsChanged = () => window.dispatchEvent(new Event(BOTS_CHANGED_EVENT))
 
 /** The maker's card for one of their agents (GET /api/bots/agent). */
-export type BotState = {
+export type BotState = AvatarFields & {
+  /** The icons a bot's picture may use. */
+  avatar_icons?: string[]
   on: boolean; agent: string; name: string; purpose?: string; icon?: string
   everyone: boolean; people: { user_id: string; name: string }[]; teams: string[]; functions: string[]
   available_functions: BotFunction[]; team_choices: { team_id: string; name: string }[]
 }
 
-export type BotChange = Partial<{ on: boolean; icon: string; name: string; purpose: string; everyone: boolean; people: string[]; teams: string[]; functions: string[] }>
+/** A picture change: a photo (base64), or an icon and colour; remove goes back to the emoji. */
+export type BotAvatarChange = { operation: 'set' | 'remove'; icon?: string; color?: string; image_base64?: string }
+export type BotChange = Partial<{ avatar: BotAvatarChange; on: boolean; icon: string; name: string; purpose: string; everyone: boolean; people: string[]; teams: string[]; functions: string[] }>
 
 type ServerBots = { bots?: Bot[]; add_targets?: BotProject[] }
 type MacProject = { project_id: string; title: string; added_bots?: string[]; bot_servers?: Record<string, string> }

@@ -8,6 +8,7 @@ import { remoteProjectConnection } from '../../../utils/remoteSessions'
 import { WorkingTipsContext } from '../../../components/chat/workingTipsContext'
 import { BOTS_CHANGED_EVENT, botError, listBots, setProjectBot, type Bot, type BotProject } from './botsApi'
 import { useBotsPageStore, type BotChatFrom } from './botsPageStore'
+import { BotAvatar } from './BotAvatar'
 
 const ChatArea = lazy(() => import('../../../components/ChatArea'))
 
@@ -105,7 +106,7 @@ function DirectoryCard({ bot, targets }: { bot: Bot; targets: BotProject[] }) {
   const buttons = bot.functions.filter(fn => fn.name !== 'ask')
   return <div className="flex flex-col rounded-xl border border-border p-3.5">
     <div className="flex items-start gap-2.5">
-      <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-lg">{bot.icon || '🤖'}</span>
+      <BotAvatar bot={bot} connection={bot.server?.id} className="h-9 w-9 text-lg" />
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-1.5"><span className="truncate text-sm font-semibold">{bot.name}</span>{bot.mine && <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-medium text-primary">Yours</span>}</p>
         <p className="truncate text-[11px] text-muted-foreground">{bot.project_title} · {bot.mine ? 'by you' : `by ${bot.maker_name}`}</p>
@@ -200,7 +201,7 @@ function BotChatPage({ botId, from }: { botId: string; from: BotChatFrom | null 
   return <div className="flex h-full min-h-0 flex-col bg-background">
     <header className="flex min-h-12 shrink-0 items-center gap-2.5 border-b border-border px-3 py-1.5">
       <button type="button" aria-label={back} title={back} onClick={() => { if (from) openBotProject(from.projectId, from.server); close(false) }} className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>
-      <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-base">{bot?.icon || '🤖'}</span>
+      {bot ? <BotAvatar bot={bot} connection={bot.server?.id ?? bot.connection} /> : <BotAvatar bot={{ name: 'Bot' }} />}
       <div className="min-w-0 flex-1">
         <h1 className="truncate text-sm font-semibold">{bot?.name ?? 'Bot'}</h1>
         {bot && <p className="truncate text-[11px] text-muted-foreground">Bot from {bot.project_title} · {bot.mine ? 'by you' : `by ${bot.maker_name}`}</p>}

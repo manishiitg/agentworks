@@ -1,13 +1,14 @@
 import { HeaderAgentSharing } from '../../products/work/ShareCrew'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Bot as BotIcon, ChevronDown, Clock, Cloud, Eye, FolderInput, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, Webhook, Workflow, X } from 'lucide-react'
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, Clock, Cloud, Eye, FolderInput, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, Webhook, Workflow, X } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
 import { AgentShareIcon, describeAgentShare, onlyMeShare, type AgentTeamShare } from './AgentInTeamMark'
 import { AgentDetailSection } from './AgentDetailSection'
 import { BotCard, botSummary } from '../../products/work/bots/BotCard'
+import { BotAvatar } from '../../products/work/bots/BotAvatar'
 import { AgentMessageFrom, CodingAppIcons } from './AgentMessageFrom'
 import { CodingCliIcon } from './CodingCliIcon'
 import { useLLMStore } from '../../stores/useLLMStore'
@@ -223,7 +224,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           event.stopPropagation()
           trigger.current = event.currentTarget
           if (at?.view === 'details' && botFirst) dismiss(); else open('details', true)
-        }}><BotIcon aria-hidden="true" className="h-3.5 w-3.5" />{bot.functions ? `Bot · ${bot.functions}` : 'Bot'}</button>}
+        }}><BotAvatar bot={{ ...bot, name: info.name }} className="h-4 w-4 text-[10px]" />{bot.functions ? `Bot · ${bot.functions}` : 'Bot'}</button>}
     </span>
     {at && createPortal(<>{sheet && <div ref={backdrop} aria-hidden="true" className="fixed inset-0 z-[100] bg-black/40" onClick={event => { event.stopPropagation(); dismiss() }} />}
     <div ref={box} tabIndex={clickToOpen ? -1 : undefined} role="dialog" aria-label={at.view === 'automations' ? `Automations for ${info.name}` : at.view === 'sharing' ? `Sharing for ${info.name}` : info.name} style={sheet ? undefined : { top: at.top, left: at.left }} onClick={event => event.stopPropagation()}

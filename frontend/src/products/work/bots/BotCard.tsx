@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import api from '../../../services/api'
 import { folderConnection } from '../../../utils/remoteSessions'
 import { botError, readBotState, saveBot, type BotChange, type BotFunction, type BotState } from './botsApi'
+import { BotAvatar } from './BotAvatar'
+import { avatarColours, avatarIcons } from '../../../components/ui/Avatar'
 
 type DirectoryUser = { id: string; username?: string; email?: string }
 
@@ -70,8 +72,7 @@ export function BotCard({ workspace, agentKey, onAsk, onSummary }: { workspace: 
       <div className="rounded-lg border border-border p-2">
         <p className="mb-1.5 text-[11px] text-muted-foreground">How it shows in Bots</p>
         <div className="flex items-start gap-2">
-          <input aria-label="Icon" title="Icon" defaultValue={state.icon} maxLength={8} disabled={busy} onBlur={event => { if (event.target.value !== state.icon) void change({ icon: event.target.value }) }}
-            className="h-9 w-9 shrink-0 rounded-lg border border-dashed border-border bg-primary/10 text-center text-base" />
+          <BotAvatar bot={state} connection={folderConnection(workspace)} className="h-9 w-9 text-base" />
           <div className="min-w-0 flex-1 space-y-1">
             <input aria-label="Bot name" defaultValue={state.name} disabled={busy} onBlur={event => { const name = event.target.value.trim(); if (name && name !== state.name) void change({ name }) }}
               className="w-full rounded-md border border-input bg-background px-2 py-1 font-semibold" />
@@ -80,6 +81,7 @@ export function BotCard({ workspace, agentKey, onAsk, onSummary }: { workspace: 
                 className="mt-0.5 block w-full rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground" /></label>
           </div>
         </div>
+        <BotPicturePicker state={state} busy={busy} onChange={change} />
       </div>
       <label className="block font-medium">Who can use it
         <select value={state.everyone ? 'everyone' : 'people'} disabled={busy} onChange={event => void change({ everyone: event.target.value === 'everyone' })}
@@ -120,5 +122,38 @@ export function BotCard({ workspace, agentKey, onAsk, onSummary }: { workspace: 
       </section>
     </>}
     {error && <p role="alert" className="text-destructive">{error}</p>}
+  </div>
+}
+
+/** The bot's picture (#4545): an emoji, an icon on a colour, or a photo; the same avatar people have. */
+function BotPicturePicker({ state, busy, onChange }: { state: BotState; busy: boolean; onChange: (next: BotChange) => Promise<void> }) {
+  const colour = state.avatar_color || 'blue'
+  const photo = (file: File | undefined) => {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => { const data = String(reader.result ?? ''); void onChange({ avatar: { operation: 'set', image_base64: data.slice(data.indexOf(',') + 1) } }) }
+    reader.readAsDataURL(file)
+  }
+  const tile = 'grid h-7 w-7 place-items-center rounded-md border hover:bg-muted disabled:opacity-50'
+  return <div className="mt-2 space-y-1.5 border-t border-border pt-2">
+    <p className="text-[11px] text-muted-foreground">Picture</p>
+    <div className="flex flex-wrap items-center gap-1">
+      <input aria-label="Emoji" title="Use an emoji" defaultValue={state.icon} maxLength={8} disabled={busy} onBlur={event => { const icon = event.target.value.trim(); if (icon && (icon !== state.icon || state.avatar_icon || state.avatar_url)) void onChange({ icon }) }}
+        className={`h-7 w-9 rounded-md border bg-background text-center text-sm ${!state.avatar_icon && !state.avatar_url ? 'border-primary' : 'border-input'}`} />
+      {(state.avatar_icons ?? []).filter(name => Object.hasOwn(avatarIcons, name)).map(name => {
+        const Icon = avatarIcons[name as keyof typeof avatarIcons]
+        return <button key={name} type="button" title={name} aria-label={`Icon: ${name}`} aria-pressed={state.avatar_icon === name} disabled={busy}
+          onClick={() => void onChange({ avatar: { operation: 'set', icon: name, color: colour } })}
+          className={`${tile} ${state.avatar_icon === name ? 'border-primary' : 'border-transparent'}`}><Icon aria-hidden="true" className="h-3.5 w-3.5" /></button>
+      })}
+    </div>
+    <div className="flex flex-wrap items-center gap-1.5">
+      {state.avatar_icon && Object.keys(avatarColours).map(name => <button key={name} type="button" title={name} aria-label={`Colour: ${name}`} aria-pressed={colour === name} disabled={busy}
+        onClick={() => void onChange({ avatar: { operation: 'set', icon: state.avatar_icon, color: name } })}
+        className={`h-5 w-5 rounded-full ${avatarColours[name]} ${colour === name ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : ''}`} />)}
+      <label className={`cursor-pointer rounded-md border border-border px-2 py-0.5 hover:bg-muted ${busy ? 'pointer-events-none opacity-50' : ''}`}>Photo…
+        <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" disabled={busy} onChange={event => { photo(event.target.files?.[0]); event.target.value = '' }} /></label>
+      {(state.avatar_icon || state.avatar_url) && <button type="button" disabled={busy} onClick={() => void onChange({ avatar: { operation: 'remove' } })} className="text-muted-foreground hover:text-foreground">Use the emoji</button>}
+    </div>
   </div>
 }

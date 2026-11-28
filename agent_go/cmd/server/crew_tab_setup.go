@@ -212,7 +212,7 @@ func (src crewTabSetupSource) setup(t crewTeam, a crewTeamAgent, person, viewer 
 		out.Reach = "team"
 	}
 	if bot, ok := src.bots[a.ChatKey]; ok && a.ChatKey != "" {
-		out.Bot = crewTabBotFor(bot, viewer)
+		out.Bot = crewTabBotFor(a.ChatKey, bot, viewer)
 	}
 	var next *time.Time
 	if person == t.OwnerID {
