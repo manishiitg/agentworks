@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { Check, ChevronDown, ChevronRight, ListChecks } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, ListChecks, Target } from 'lucide-react'
 import { useChatContextView } from '../../products/work/useChatContextView'
 import { changeChatContext, menuLabelClass, menuRowClass } from '../../products/work/ChatContextItems'
 import api, { workFolderApi } from '../../services/api'
@@ -8,16 +8,18 @@ import type { ChatAccessMode, ChatReplyStyle, ChatUnrelatedTask, WorkFolderGrant
 import { useWorkflowStore } from '../../stores/useWorkflowStore'
 import { useChatStore } from '../../stores/useChatStore'
 
-// The chat's mode beside the model (#3885): how this chat works (Auto, Auto-review, Plan). What it can reach is the
+// The chat's mode beside the model (#3885): how this chat works (Auto, Auto-review, Plan, Goal). What it can reach is the
 // project's access, set in Folders on this Mac (owner, 26 Nov: "access is at project level.. mode is chat level"); the
 // menu shows it on one line with Change. Shift+Tab still switches Plan.
 
-type Row = { id: ChatAccessMode | 'plan'; label: string; chip: string; detail: string }
+type Row = { id: ChatAccessMode | 'plan' | 'goal'; label: string; chip: string; detail: string }
 
 const ROWS: Row[] = [
   { id: 'project', label: 'Auto', chip: 'Auto', detail: 'Works without asking, inside the folders it can reach.' },
   { id: 'auto_review', label: 'Auto-review', chip: 'Auto-review', detail: 'The coding app’s own reviewer approves each action and refuses risky ones.' },
   { id: 'plan', label: 'Plan', chip: 'Plan', detail: 'Proposes a plan and changes nothing until you approve it.' },
+  // Goal (#4604): the coding app's own goal command; the next message is the goal. Only apps the server says have one.
+  { id: 'goal', label: 'Goal', chip: 'Goal', detail: 'Keeps working until the goal in your next message is finished.' },
 ]
 
 // Reply style (owner, 26 Nov, like Claude Desktop's Output style), for every coding app.
@@ -55,7 +57,7 @@ function useReach(open: boolean, reloadTick: number) {
 
 export const openCrewMacFoldersEvent = 'agentworks:open-crew-mac-folders'
 
-export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanToggle, onStart }: {
+export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanToggle, goal, onGoalToggle, onStart }: {
   sessionId?: string
   // The Crew project this chat belongs to: its side panel opens Folders on this Mac.
   projectId?: string
@@ -63,6 +65,9 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
   plan?: { on: boolean }
   planReady?: boolean
   onPlanToggle: () => void
+  // Goal: shown only when this chat's coding app has its own goal command; on, the next message is sent as the goal.
+  goal?: { on: boolean }
+  onGoalToggle?: () => void
   onStart?: () => void
 }) {
   const view = useChatContextView(sessionId || '')
@@ -73,7 +78,7 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
   const [reachReload, setReachReload] = useState(0)
   const reach = useReach(open && !access?.on_server, reachReload)
   const mode: ChatAccessMode = access?.mode || 'project'
-  const current: Row['id'] = plan?.on ? 'plan' : mode
+  const current: Row['id'] = plan?.on ? 'plan' : goal?.on ? 'goal' : mode
   const row = ROWS.find(item => item.id === current) || ROWS[0]
 
   if (plan?.on && planReady && onStart) {
@@ -91,14 +96,20 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
     )
   }
   const replies = view?.replies
-  if (!access && !plan) return null
+  if (!access && !plan && !goal) return null
 
   const pick = async (id: string) => {
     if (id === 'plan') {
+      if (goal?.on) onGoalToggle?.()
       if (!plan?.on) onPlanToggle()
       return
     }
     if (plan?.on) onPlanToggle()
+    if (id === 'goal') {
+      if (!goal?.on) onGoalToggle?.()
+      return
+    }
+    if (goal?.on) onGoalToggle?.()
     if (!sessionId || id === mode) return
     setSaving(true)
     try { await changeChatContext(sessionId, { access_mode: id as ChatAccessMode }) } finally { setSaving(false) }
@@ -109,9 +120,9 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
     try { await changeChatContext(sessionId, change) } finally { setSaving(false) }
   }
   const option = (id: Row['id']) => access?.options.find(item => item.mode === id)
-  const rows = ROWS.filter(item => item.id === 'plan' ? Boolean(plan) : Boolean(access))
+  const rows = ROWS.filter(item => item.id === 'plan' ? Boolean(plan) : item.id === 'goal' ? Boolean(goal) : Boolean(access))
   // The saved mode this app cannot run here (Auto-review in a Codex chat) runs as This project: say so.
-  const fallback = access && access.mode !== access.effective && !plan?.on
+  const fallback = access && access.mode !== access.effective && !plan?.on && !goal?.on
   const wholeMac = Boolean(reach?.home) && Boolean(reach?.folders.some(folder => folder.path.replace(/\/+$/, '') === reach?.home && folder.access === 'read_write'))
   const others = (reach?.folders || []).filter(folder => folder.path.replace(/\/+$/, '') !== reach?.home)
   // A Crew project's side panel is its own (WorkSurface listens for this event); other chats use the workflow pane.
@@ -132,6 +143,7 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
   return <Menu.Root modal={false} open={open} onOpenChange={setOpen}>
     <Menu.Trigger type="button" data-testid="plan-mode-chip" aria-pressed={plan?.on} aria-label={`Mode: ${row.label}. ${row.detail}`} title={`${row.label}: ${row.detail}${plan ? ' Shift+Tab switches Plan.' : ''}`} className={chipClass}>
       {current === 'plan' && <ListChecks className="h-3 w-3" aria-hidden="true" />}
+      {current === 'goal' && <Target className="h-3 w-3" aria-hidden="true" />}
       <span className={fallback ? 'line-through decoration-muted-foreground/60' : undefined}>{row.chip}</span>
       <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />
     </Menu.Trigger>
@@ -141,7 +153,7 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
         <Menu.Label className={menuLabelClass}>Mode</Menu.Label>
         <Menu.RadioGroup value={current} onValueChange={id => void pick(id)}>
           {rows.map(item => {
-            const state: { available: boolean; why?: string } | undefined = item.id === 'plan' ? { available: true } : option(item.id)
+            const state: { available: boolean; why?: string } | undefined = item.id === 'plan' || item.id === 'goal' ? { available: true } : option(item.id)
             const disabled = saving || state?.available === false
             return <Menu.RadioItem key={item.id} value={item.id} disabled={disabled} data-testid={`chat-mode-${item.id}`} className={`${menuRowClass} items-start`}>
               <span className="min-w-0 flex-1">

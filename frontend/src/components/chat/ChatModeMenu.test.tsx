@@ -117,3 +117,23 @@ it('hides the unrelated-task row on a server that does not offer it', async () =
   await openMenu(<ChatModeMenu sessionId="s1" onPlanToggle={() => {}} />)
   expect(document.querySelector('[data-testid="chat-unrelated-task"]')).toBeNull()
 })
+
+// #4604: Goal shows only for an app with its own goal command; picking it turns Plan off and arms the goal.
+it('offers Goal only when the app has a goal command, and picking it leaves Plan', async () => {
+  view = codexView('project')
+  const planToggle = vi.fn()
+  const goalToggle = vi.fn()
+  await openMenu(<ChatModeMenu sessionId="s1" plan={{ on: true }} onPlanToggle={planToggle} goal={{ on: false }} onGoalToggle={goalToggle} />)
+  const goal = document.querySelector('[data-testid="chat-mode-goal"]') as HTMLElement
+  expect(goal).not.toBeNull()
+  await act(async () => { goal.click() })
+  expect(planToggle).toHaveBeenCalledTimes(1)
+  expect(goalToggle).toHaveBeenCalledTimes(1)
+  expect(changeChatContext).not.toHaveBeenCalled()
+})
+
+it('has no Goal row when the app has no goal command', async () => {
+  view = codexView('project')
+  await openMenu(<ChatModeMenu sessionId="s1" onPlanToggle={() => {}} />)
+  expect(document.querySelector('[data-testid="chat-mode-goal"]')).toBeNull()
+})
