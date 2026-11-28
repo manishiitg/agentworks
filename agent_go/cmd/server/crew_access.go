@@ -210,7 +210,7 @@ func readCrewProjectBinding(ctx context.Context, callerID string, profile agentp
 			co.OwnedByCaller, co.CoOwner = true, true
 			return co, nil
 		}
-		if !crewSharedWith(binding.WorkspacePath, callerID) {
+		if !crewSharedWith(binding.WorkspacePath, callerID) && !crewBotAdmitsAny(binding.WorkspacePath, sanitizeUserIDForPath(callerID)) {
 			return denied()
 		}
 		return readerCrewProjectBinding(ownerID, binding), nil

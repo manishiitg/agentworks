@@ -595,7 +595,7 @@ func externalTokenAllows(c *UserClaims, tool externalTool) bool {
 		return t.Allows("workflows:read")
 	case "query_database", "manage_messaging":
 		return reads || t.Allows("crews:read")
-	case "manage_crew_chats":
+	case "manage_crew_chats", externalBotsTool:
 		return t.Allows("crews:read") || t.Allows("crews:run")
 	case "get_secret_sources":
 		return reads || t.Allows("crews:read") || externalCodeRunAllowed(c)

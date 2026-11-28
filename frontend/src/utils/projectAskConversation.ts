@@ -11,11 +11,11 @@ export type ProjectChat = {
 
 /** The backend resolves project, caller, role and durable conversation. The
  * browser presents that conversation and sends through the normal chat queue. */
-export async function openProjectAskConversation(project: { product?: string; projectId?: string; workspacePath: string }, options?: { activate?: boolean; userView?: boolean }): Promise<string> {
+export async function openProjectAskConversation(project: { product?: string; projectId?: string; workspacePath: string }, options?: { activate?: boolean; userView?: boolean; /** A bot's own chat (#4545): this agent answers, no picker. */ agentKey?: string }): Promise<string> {
   const identity = captureChatIdentity()
   await waitForChatStoreHydration()
   assertChatIdentityCurrent(identity)
-  const request = { workspace: project.workspacePath, ...(options?.userView ? { as_user: true } : {}) }
+  const request = { workspace: project.workspacePath, ...(options?.userView ? { as_user: true } : {}), ...(options?.agentKey ? { agent_key: options.agentKey } : {}) }
   type Selection = { choose_agent: true; agents: { key: string; name: string }[]; message: string }
   let { data } = await api.post<ProjectChat | Selection>('/api/project-ask/conversation', request)
   if ('choose_agent' in data) {

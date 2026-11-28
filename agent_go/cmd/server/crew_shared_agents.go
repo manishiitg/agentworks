@@ -73,6 +73,10 @@ func crewShareAgents(ctx context.Context, caller, root string, includeUnselected
 		return nil, err
 	}
 	selected := crewSharedAgentKeys(root)
+	// Selected agents go to the project's own Run audience; a person who reaches it only through a bot sees that bot.
+	if !includeUnselected && caller != owner && !crewSharedWith(root, caller) && !crewIsProjectUser(root, caller) {
+		selected = nil
+	}
 	agents := []sharedCrewAgent{}
 	for _, tab := range tabs {
 		key := tab.Record.ConversationKey
@@ -87,6 +91,13 @@ func crewShareAgents(ctx context.Context, caller, root string, includeUnselected
 			continue
 		}
 		agents = append(agents, sharedCrewAgent{ChatID: key, Name: firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Builder"), Purpose: tab.Identity.Purpose, Examples: tab.Identity.Examples, Selected: shared, CanEditPurpose: includeUnselected && tab.OwnerID == caller, OwnerName: crewOwnerDisplayName(tab.OwnerID), tab: tab})
+	}
+	if !includeUnselected {
+		for _, bot := range crewBotSharedAgents(ctx, caller, root) {
+			if !slices.ContainsFunc(agents, func(a sharedCrewAgent) bool { return a.ChatID == bot.ChatID }) {
+				agents = append(agents, bot)
+			}
+		}
 	}
 	return agents, nil
 }
@@ -155,7 +166,7 @@ func sharedCrewAgentChat(ctx context.Context, user, root, chatID string) (*codeC
 			}
 		}
 	}
-	if !crewSharedWith(root, user) && !crewProjectOwnedByCaller(user, root) {
+	if !crewSharedWith(root, user) && !crewProjectOwnedByCaller(user, root) && !crewBotAdmitsAny(root, sanitizeUserIDForPath(user)) {
 		return nil, false
 	}
 	agents, err := crewShareAgents(ctx, user, root, false)
@@ -228,4 +239,3 @@ func removeCrewSharedAgent(root, key string) error {
 		return before != len(record.SharedAgents) || hadSince, nil
 	})
 }
-

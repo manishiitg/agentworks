@@ -16,7 +16,7 @@ import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Info, Loader2, MoreHoriz
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
-import type { ProductSurface } from '../../products/productSurfaceConfig'
+import { isLocalDeployment, type ProductSurface } from '../../products/productSurfaceConfig'
 import { workChatTabShortcut } from '../../products/work/workTabs'
 import { workSideChatDisplayName } from '../../products/work/workProjectPresentation'
 import { markFeatureUsed } from '../../utils/featureUsage'
@@ -317,6 +317,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
         setup: setupOf(tab),
         onAddAutomation: () => { sendToTab(tab.tabId, 'Add an automation for this agent. Ask what I want it to do and when, then use the existing automation tools.') },
         onAutomations: automationsAsk ? () => { sendToTab(tab.tabId, automationsAsk) } : undefined,
+        // Bots live on the server (#4545); the server checks the agent is yours.
+        bot: !isLocalDeployment() && canControl(tab) && tab.metadata?.agentProfileWorkspace && tab.metadata?.agentProfileConversationKey
+          ? { workspace: tab.metadata.agentProfileWorkspace, agentKey: tab.metadata.agentProfileConversationKey } : undefined,
       },
     }
   }
