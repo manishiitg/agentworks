@@ -169,6 +169,7 @@ type idleCompactRun struct {
 	// beforeQueued: "Compact at 300K" compacts a busy chat between two queued messages, so the queue's backlog does
 	// not refuse it (chat_context_options.go compactBeforeQueuedTurn).
 	beforeQueued bool
+	sendWaitOnce sync.Once
 }
 
 func newIdleCompactRun() *idleCompactRun {
@@ -425,6 +426,7 @@ func (api *StreamingAPI) idleCompactLastActivity(sessionID string, lastTurnEnd t
 // runIdleCompaction replays the chat's last person request as a
 // compaction-only turn through handleQuery, as the tab owner.
 func (api *StreamingAPI) runIdleCompaction(sessionID, owner string, chat idleCompactChat, tokens, idleMin int, run *idleCompactRun) {
+	defer api.kickConversationTurnQueue(sessionID)
 	defer idleCompacts.end(sessionID, run)
 	logSkip := func(reason string) {
 		log.Printf("[IDLE_COMPACT] session=%s provider=%s owner=%s tokens=%d idle_min=%d action=skip reason=%s", sessionID, chat.provider, owner, tokens, idleMin, reason)
@@ -641,6 +643,30 @@ func (api *StreamingAPI) compactIdleTurn(ctx context.Context, sessionID string, 
 		log.Printf("[IDLE_COMPACT] session=%s compaction stopped before it finished: %v", sessionID, err)
 	}
 	run.finish(result, err)
+}
+
+// ensureIdleCompactionSendWaitBound bounds how long a running compaction may
+// hold a queued person's send. Past SendWait the compaction is stopped so the
+// queue can dispatch the person's message on the uncompacted session.
+func (api *StreamingAPI) ensureIdleCompactionSendWaitBound(sessionID string, run *idleCompactRun, wait time.Duration) {
+	if run == nil {
+		return
+	}
+	if wait <= 0 {
+		wait = idleCompactConfigFromEnv().SendWait
+	}
+	run.sendWaitOnce.Do(func() {
+		go func() {
+			timer := time.NewTimer(wait)
+			defer timer.Stop()
+			select {
+			case <-run.done:
+			case <-timer.C:
+				log.Printf("[IDLE_COMPACT] session=%s action=failed reason=send_wait_exceeded waited=%s; closing the compaction so queued send can proceed", sessionID, wait)
+				run.stop()
+			}
+		}()
+	})
 }
 
 // waitForIdleCompaction holds a person's send while the chat is being

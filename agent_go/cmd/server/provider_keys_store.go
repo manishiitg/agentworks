@@ -5,19 +5,68 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/manishiitg/mcpagent/llm"
 )
 
 const providerKeysFilePath = "config/provider-api-keys.json"
 const maskedProviderKeyPrefix = "********"
+const providerKeysCacheTTL = 15 * time.Second
+
+var providerKeysCache = struct {
+	sync.Mutex
+	key     string
+	exists  bool
+	value   *StoredProviderKeys
+	expires time.Time
+}{}
+
+func providerKeysCacheKey() string {
+	sum := sha256.Sum256(GetAuthSecret())
+	return getWorkspaceAPIURL() + "\x00" + hex.EncodeToString(sum[:8])
+}
+
+func invalidateProviderKeysCache() {
+	providerKeysCache.Lock()
+	providerKeysCache.key = ""
+	providerKeysCache.value = nil
+	providerKeysCache.exists = false
+	providerKeysCache.expires = time.Time{}
+	providerKeysCache.Unlock()
+}
+
+func cloneStoredProviderKeys(src *StoredProviderKeys) *StoredProviderKeys {
+	if src == nil {
+		return nil
+	}
+	cp := *src
+	if src.PiProviderKeys != nil {
+		cp.PiProviderKeys = make(map[string]string, len(src.PiProviderKeys))
+		for k, v := range src.PiProviderKeys {
+			cp.PiProviderKeys[k] = v
+		}
+	}
+	if src.Bedrock != nil {
+		b := *src.Bedrock
+		cp.Bedrock = &b
+	}
+	if src.Azure != nil {
+		a := *src.Azure
+		cp.Azure = &a
+	}
+	return &cp
+}
 
 // StoredProviderKeys holds workspace provider credentials in a single encrypted
 // file in the workspace config folder. The top-level
@@ -59,10 +108,12 @@ func SaveProviderKeys(ctx context.Context, keys *StoredProviderKeys) error {
 	if keys == nil {
 		return nil
 	}
+	invalidateProviderKeysCache()
 	if !hasStoredProviderKeys(keys) {
 		if err := deleteWorkspaceFile(ctx, providerKeysFilePath); err != nil {
 			return fmt.Errorf("failed to delete empty provider keys file: %w", err)
 		}
+		invalidateProviderKeysCache()
 		return nil
 	}
 
@@ -81,6 +132,7 @@ func SaveProviderKeys(ctx context.Context, keys *StoredProviderKeys) error {
 		return fmt.Errorf("failed to write encrypted keys: %w", err)
 	}
 
+	invalidateProviderKeysCache()
 	return nil
 }
 
@@ -133,11 +185,31 @@ func isMaskedProviderKey(value string) bool {
 // LoadProviderKeys reads and decrypts provider API keys from the workspace.
 // Returns nil, nil if the file doesn't exist.
 func LoadProviderKeys(ctx context.Context) (*StoredProviderKeys, error) {
+	cacheKey := providerKeysCacheKey()
+	now := time.Now()
+	providerKeysCache.Lock()
+	if providerKeysCache.key == cacheKey && now.Before(providerKeysCache.expires) {
+		exists := providerKeysCache.exists
+		cached := cloneStoredProviderKeys(providerKeysCache.value)
+		providerKeysCache.Unlock()
+		if !exists {
+			return nil, nil
+		}
+		return cached, nil
+	}
+	providerKeysCache.Unlock()
+
 	content, exists, err := readFileFromWorkspace(ctx, providerKeysFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read keys file: %w", err)
 	}
 	if !exists {
+		providerKeysCache.Lock()
+		providerKeysCache.key = cacheKey
+		providerKeysCache.exists = false
+		providerKeysCache.value = nil
+		providerKeysCache.expires = time.Now().Add(providerKeysCacheTTL)
+		providerKeysCache.Unlock()
 		return nil, nil
 	}
 
@@ -155,6 +227,13 @@ func LoadProviderKeys(ctx context.Context) (*StoredProviderKeys, error) {
 	if err := json.Unmarshal(plaintext, &keys); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal keys: %w", err)
 	}
+
+	providerKeysCache.Lock()
+	providerKeysCache.key = cacheKey
+	providerKeysCache.exists = true
+	providerKeysCache.value = cloneStoredProviderKeys(&keys)
+	providerKeysCache.expires = time.Now().Add(providerKeysCacheTTL)
+	providerKeysCache.Unlock()
 
 	return &keys, nil
 }

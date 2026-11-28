@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -14,12 +15,165 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
+	"golang.org/x/sync/singleflight"
+
 	"github.com/manishiitg/coding-agent-loop/workspace/publication"
 	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
+
+const (
+	desktopTeamStatusFreshTTL      = 20 * time.Second
+	desktopTeamStatusStaleTTL      = 5 * time.Minute
+	desktopTeamStatusRemoteTimeout = 5 * time.Second
+	desktopTeamStatusMaxEntries    = 128
+)
+
+type desktopTeamStatusRemote struct {
+	team      crewTeam
+	clashes   []crewTeamClash
+	clashesOK bool
+}
+
+type desktopTeamStatusCacheEntry struct {
+	data       desktopTeamStatusRemote
+	expires    time.Time
+	staleUntil time.Time
+}
+
+var desktopTeamStatusCache = struct {
+	sync.Mutex
+	entries    map[string]desktopTeamStatusCacheEntry
+	refreshing map[string]bool
+	group      singleflight.Group
+}{
+	entries:    make(map[string]desktopTeamStatusCacheEntry),
+	refreshing: make(map[string]bool),
+}
+
+func desktopTeamStatusCacheKey(owner, connID, project string) string {
+	return owner + "\x00" + connID + "\x00" + project
+}
+
+func cloneDesktopTeamStatusRemote(src desktopTeamStatusRemote) desktopTeamStatusRemote {
+	cp := src
+	if src.clashes != nil {
+		cp.clashes = append([]crewTeamClash(nil), src.clashes...)
+	}
+	return cp
+}
+
+func invalidateDesktopTeamStatusCache(owner, connID, project string) {
+	key := desktopTeamStatusCacheKey(owner, connID, project)
+	desktopTeamStatusCache.Lock()
+	delete(desktopTeamStatusCache.entries, key)
+	desktopTeamStatusCache.Unlock()
+}
+
+func storeDesktopTeamStatusCache(key string, data desktopTeamStatusRemote, now time.Time) {
+	desktopTeamStatusCache.Lock()
+	for k, cached := range desktopTeamStatusCache.entries {
+		if now.After(cached.staleUntil) {
+			delete(desktopTeamStatusCache.entries, k)
+		}
+	}
+	if len(desktopTeamStatusCache.entries) >= desktopTeamStatusMaxEntries {
+		for k := range desktopTeamStatusCache.entries {
+			delete(desktopTeamStatusCache.entries, k)
+			break
+		}
+	}
+	desktopTeamStatusCache.entries[key] = desktopTeamStatusCacheEntry{
+		data:       cloneDesktopTeamStatusRemote(data),
+		expires:    now.Add(desktopTeamStatusFreshTTL),
+		staleUntil: now.Add(desktopTeamStatusStaleTTL),
+	}
+	desktopTeamStatusCache.Unlock()
+}
+
+func fetchDesktopTeamStatusRemote(ctx context.Context, owner string, c desktopConnection, project string) (desktopTeamStatusRemote, error) {
+	ok, release := desktopProxyTryAcquire(c.ID)
+	if !ok {
+		return desktopTeamStatusRemote{}, &crewRemoteTransportError{Message: "cannot reach your company's server; local changes stay on this computer"}
+	}
+	if release != nil {
+		defer release()
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, desktopTeamStatusRemoteTimeout)
+	defer cancel()
+
+	var t crewTeam
+	if err := crewTeamRemoteJSON(reqCtx, owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project), nil, &t); err != nil {
+		var transportErr *crewRemoteTransportError
+		if errors.As(err, &transportErr) {
+			markDesktopProxyUnreachable(c.ID)
+		}
+		return desktopTeamStatusRemote{}, err
+	}
+	clearDesktopProxyUnreachable(c.ID)
+
+	out := desktopTeamStatusRemote{team: t}
+	if t.FolderAccess && t.Folder.ID != "" {
+		var open struct {
+			Clashes []crewTeamClash `json:"clashes"`
+		}
+		if err := crewTeamRemoteJSON(reqCtx, owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project)+"/clashes?folder_id="+url.QueryEscape(t.Folder.ID), nil, &open); err == nil {
+			out.clashes = open.Clashes
+			out.clashesOK = true
+		}
+	}
+	return out, nil
+}
+
+func cachedDesktopTeamStatus(ctx context.Context, owner string, c desktopConnection, project string) (desktopTeamStatusRemote, bool, error) {
+	key := desktopTeamStatusCacheKey(owner, c.ID, project)
+	now := time.Now()
+	desktopTeamStatusCache.Lock()
+	if entry, ok := desktopTeamStatusCache.entries[key]; ok && now.Before(entry.staleUntil) {
+		cached := cloneDesktopTeamStatusRemote(entry.data)
+		needsRefresh := !now.Before(entry.expires) && !desktopTeamStatusCache.refreshing[key]
+		if needsRefresh {
+			desktopTeamStatusCache.refreshing[key] = true
+		}
+		desktopTeamStatusCache.Unlock()
+		if needsRefresh {
+			go func() {
+				defer func() {
+					desktopTeamStatusCache.Lock()
+					delete(desktopTeamStatusCache.refreshing, key)
+					desktopTeamStatusCache.Unlock()
+				}()
+				fresh, err := fetchDesktopTeamStatusRemote(context.Background(), owner, c, project)
+				if err == nil {
+					storeDesktopTeamStatusCache(key, fresh, time.Now())
+					return
+				}
+				var httpErr *crewRemoteHTTPError
+				if errors.As(err, &httpErr) && (httpErr.Status == http.StatusForbidden || httpErr.Status == http.StatusNotFound || httpErr.Status == http.StatusUnauthorized) {
+					invalidateDesktopTeamStatusCache(owner, c.ID, project)
+				}
+			}()
+		}
+		return cached, !desktopProxyInCooldown(c.ID), nil
+	}
+	desktopTeamStatusCache.Unlock()
+
+	value, err, _ := desktopTeamStatusCache.group.Do(key, func() (any, error) {
+		fresh, err := fetchDesktopTeamStatusRemote(ctx, owner, c, project)
+		if err != nil {
+			return desktopTeamStatusRemote{}, err
+		}
+		storeDesktopTeamStatusCache(key, fresh, time.Now())
+		return fresh, nil
+	})
+	if err != nil {
+		return desktopTeamStatusRemote{}, false, err
+	}
+	return cloneDesktopTeamStatusRemote(value.(desktopTeamStatusRemote)), true, nil
+}
 
 // crewTeamShareSize counts the files a share choice would sync from this Crew's folder, by the same rules as a sync.
 func crewTeamShareSize(root string, share crewTeamFolder) (count, bytes int64) {
@@ -59,12 +213,12 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 		return
 	}
 	project := mux.Vars(r)["project"]
-	var t crewTeam
-	err := crewTeamRemoteJSON(r.Context(), owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project), nil, &t)
+	remote, reachable, err := cachedDesktopTeamStatus(r.Context(), owner, c, project)
 	if err != nil {
 		externalError(w, 409, "team_offline", "Your company is offline. Your downloaded folders remain on this computer.")
 		return
 	}
+	t := remote.team
 	if !t.FolderAccess {
 		externalError(w, 403, "team_folder_forbidden", "Ask the owner to allow you to edit the shared folder.")
 		return
@@ -84,7 +238,7 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 	}
 	status := b.Status
 	message := b.Error
-	if err != nil {
+	if !reachable {
 		status = "offline"
 		message = "Saved on this Mac. Changes will send when connected."
 	}
@@ -110,7 +264,7 @@ func (api *StreamingAPI) handleDesktopTeamStatus(w http.ResponseWriter, r *http.
 		}
 	}
 	// The Sync line, worded like the website's (crewTeamCopyLine), so both apps show one line for a copy.
-	line, problem, attention, progress := crewTeamMacCopyLine(r.Context(), owner, c, project, t, dir, b, err == nil)
+	line, problem, attention, progress := crewTeamMacCopyLineWithClashes(r.Context(), owner, c, project, t, dir, b, reachable, remote.clashes, remote.clashesOK)
 	externalJSON(w, map[string]any{"project_id": project, "local_folder": b.Root, "local_project_id": b.LocalProject, "status": status, "message": message, "last_synced": b.LastSynced, "file_count": len(b.Files),
 		"skipped": skipped, "skipped_files": choosable, "synced_on_purpose": mine, "too_large": b.TooLarge, "previous_folders": crewTeamPreviousLocalFolders(dir, b), "progress": progress,
 		"line": line, "problem": problem, "attention": attention, "state": crewTeamSyncWord(b, problem, attention, progress), "stale": crewTeamSyncStale(b, problem || progress != nil, time.Now())})
@@ -176,6 +330,7 @@ func (api *StreamingAPI) handleDesktopTeamSyncAnyway(w http.ResponseWriter, r *h
 		externalError(w, 400, "sync_anyway_failed", err.Error())
 		return
 	}
+	invalidateDesktopTeamStatusCache(GetUserFromContext(r.Context()).UserID, mux.Vars(r)["connection"], mux.Vars(r)["project"])
 	externalJSON(w, map[string]any{"path": input.Path, "on": input.On})
 }
 
@@ -263,6 +418,10 @@ func crewTeamPreviousLocalFolders(dir string, current crewTeamLocal) []string {
 // crewTeamMacCopyLine is this Mac's copy's one sync line, shown by the Team panel, Team › Sync and team_sync sync:
 // a round in progress, else the copy's state with any open clash by file. attention is amber, problem red.
 func crewTeamMacCopyLine(ctx context.Context, owner string, c desktopConnection, project string, t crewTeam, dir string, b crewTeamLocal, reachable bool) (string, bool, bool, *crewTeamRound) {
+	return crewTeamMacCopyLineWithClashes(ctx, owner, c, project, t, dir, b, reachable, nil, false)
+}
+
+func crewTeamMacCopyLineWithClashes(ctx context.Context, owner string, c desktopConnection, project string, t crewTeam, dir string, b crewTeamLocal, reachable bool, cachedClashes []crewTeamClash, hasCachedClashes bool) (string, bool, bool, *crewTeamRound) {
 	progress := crewTeamRoundFor(dir)
 	line, problem, attention := crewTeamCopyLine(b, t.Folder)
 	switch {
@@ -272,12 +431,20 @@ func crewTeamMacCopyLine(ctx context.Context, owner string, c desktopConnection,
 		line, problem, attention = "Can't sync: your company's server can't be reached. Changes here send when it's back.", true, false
 	default:
 		// An open clash stays on this Mac's line too, by file, until someone sorts it out (owner, 5 Nov).
-		var open struct {
-			Clashes []crewTeamClash `json:"clashes"`
+		var clashes []crewTeamClash
+		if hasCachedClashes {
+			clashes = append([]crewTeamClash(nil), cachedClashes...)
+		} else {
+			var open struct {
+				Clashes []crewTeamClash `json:"clashes"`
+			}
+			if crewTeamRemoteJSON(ctx, owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project)+"/clashes?folder_id="+url.QueryEscape(t.Folder.ID), nil, &open) == nil {
+				clashes = open.Clashes
+			}
 		}
-		if crewTeamRemoteJSON(ctx, owner, c, http.MethodGet, "/api/crew-teams/"+url.PathEscape(project)+"/clashes?folder_id="+url.QueryEscape(t.Folder.ID), nil, &open) == nil {
-			slices.Reverse(open.Clashes) // the server lists newest first
-			if paths := crewTeamOpenClashPaths(open.Clashes); len(paths) > 0 {
+		if len(clashes) > 0 {
+			slices.Reverse(clashes) // the server lists newest first
+			if paths := crewTeamOpenClashPaths(clashes); len(paths) > 0 {
 				line += " · " + crewTeamClashLine(paths) // a clash is on the line, not a failure
 				attention = true
 			}
