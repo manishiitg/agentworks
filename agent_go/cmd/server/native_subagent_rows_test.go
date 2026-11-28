@@ -29,11 +29,11 @@ func TestNativeSubagentRowsUseSharedDurableFacts(t *testing.T) {
 	api := &StreamingAPI{eventStore: store}
 	start := time.Now().Add(-time.Minute).UTC()
 	record := llmtypes.NativeRecord{ID: "sdk-task:one:started", Provider: "cursor-cli", SessionID: "native", TaskID: "one", TaskRunID: "run", TurnID: "launch-turn", Kind: "helper", State: "started", Timestamp: start}
-	api.observeCursorSubagentRow("not-a-chat", record)
+	api.observeNativeSubagentRow("not-a-chat", record)
 	if len(store.GetAllEventsRaw("not-a-chat")) != 0 {
 		t.Fatal("helper escaped its owned durable chat")
 	}
-	api.observeCursorSubagentRow("chat", record)
+	api.observeNativeSubagentRow("chat", record)
 	for _, provider := range []string{"muse-cli", "agy-cli"} {
 		r := record
 		r.Provider = provider

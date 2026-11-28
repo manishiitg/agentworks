@@ -559,6 +559,7 @@ func (a *MuseCLIAdapter) pumpMuseMSP(s *museMSPSession) {
 		case <-s.rpc.done:
 			return
 		case msg := <-s.rpc.events:
+			observeMuseMSPSubagent(s, msg)
 			s.mu.Lock()
 			listener := s.listener
 			s.mu.Unlock()

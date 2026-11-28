@@ -16,10 +16,11 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 )
 
 // nativeSubagentConversation finds the child a chat's Claude (Agent call),
-// Codex (spawnAgent call) or Cursor (task call) started with toolCallID.
+// Codex (spawnAgent call), Cursor (task call) or Muse (subagent item) started with toolCallID.
 var nativeSubagentConversation = func(owner, toolCallID string) (llmtypes.NativeSubagentTranscript, bool) {
 	if child, ok := claudecode.ClaudeSubagentConversation(owner, toolCallID); ok {
 		return child, true
@@ -27,7 +28,10 @@ var nativeSubagentConversation = func(owner, toolCallID string) (llmtypes.Native
 	if child, ok := codexcli.CodexSubagentConversation(owner, toolCallID); ok {
 		return child, true
 	}
-	return cursorcli.CursorSubagentConversation(owner, toolCallID)
+	if child, ok := cursorcli.CursorSubagentConversation(owner, toolCallID); ok {
+		return child, true
+	}
+	return musecli.MuseSubagentConversation(owner, toolCallID)
 }
 
 // GET /api/sessions/{session_id}/subagents/{tool_call_id} returns, as it is
