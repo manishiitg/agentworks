@@ -453,7 +453,7 @@ func buildWorkflowContextPromptWithLabels(paths []string, labels map[string]stri
 		skillName = skillNames[0]
 	}
 	return "\n## Workflow Context\n\n" +
-		fmt.Sprintf("These exact folders are authorized reference context for this message. Before discovering, attaching, reading or invoking referenced projects, read the attached `%s` skill. Use the listed roots and the runtime's effective access grants.\n\n", skillName) +
+		fmt.Sprintf("These exact folders are authorized # reference context for this message (files plus agent/function reach for this turn only). Before discovering or reading referenced projects, read the attached `%s` skill. Use the listed roots and the runtime's effective access grants.\n\n", skillName) +
 		strings.Join(references, "\n") + "\n"
 }
 

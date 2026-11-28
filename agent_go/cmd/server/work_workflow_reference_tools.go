@@ -245,9 +245,8 @@ func splitCrewReferenceFolders(folders []string) (crewWrite, readOnly []string) 
 }
 
 // registerAccessibleWorkflowListTool gives product and Builder agents the same
-// authorization-aware workflow discovery surface as the AgentWorks picker.
-// attachedPaths is optional because only Crew persists workflow references.
-func (api *StreamingAPI) registerAccessibleWorkflowListTool(registrar definitionToolRegistrar, userID string, attachedPaths func(context.Context) ([]string, error), linkedRemote func(context.Context) ([]remoteProjectLink, error)) error {
+// authorization-aware project/workflow discovery surface as the AgentWorks picker.
+func (api *StreamingAPI) registerAccessibleWorkflowListTool(registrar definitionToolRegistrar, userID string) error {
 	register := func(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error)) error {
 		return registrar.RegisterCustomTool(name, description, parameters, execute, "workflow_discovery_tools")
 	}
@@ -264,7 +263,7 @@ func (api *StreamingAPI) registerAccessibleWorkflowListTool(registrar definition
 		return context.WithValue(ctx, UserContextKey, &copy)
 	}
 
-	return register("list_accessible_workflows", "Search AgentWorks workflows the current user may read and every project project on the server (each project lists its owner). Each result includes its project name and display identity (identity name and icon). In project, pass an exact returned workspace_path to attach_workflow_reference for durable access. An empty query lists everything accessible.", map[string]interface{}{
+	return register("list_accessible_workflows", "Search AgentWorks workflows and projects the current user may access (each project lists its owner, name and workspace_path). An empty query lists everything accessible.", map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
 			"query": map[string]interface{}{"type": "string", "description": "Optional case-insensitive workflow or project name, identity, id, icon, or path search."},
@@ -276,17 +275,6 @@ func (api *StreamingAPI) registerAccessibleWorkflowListTool(registrar definition
 			return "", err
 		}
 		visible := filterWorkflowManifestsForUser(claims, discovered)
-		attached := []string{}
-		if attachedPaths != nil {
-			attached, err = attachedPaths(ctx)
-			if err != nil {
-				return "", err
-			}
-		}
-		attachedSet := make(map[string]bool, len(attached))
-		for _, path := range attached {
-			attachedSet[path] = true
-		}
 		query, _ := args["query"].(string)
 		query = strings.ToLower(strings.TrimSpace(query))
 		items := make([]map[string]interface{}, 0, len(visible))
@@ -298,15 +286,11 @@ func (api *StreamingAPI) registerAccessibleWorkflowListTool(registrar definition
 			if query != "" && !strings.Contains(haystack, query) {
 				continue
 			}
-			item := map[string]interface{}{
+			items = append(items, map[string]interface{}{
 				"id": id, "name": label, "label": label, "workspace_path": path,
 				"identity": accessibleProjectIdentity{Name: label, Icon: accessibleProjectIcon(workflow.Manifest.Icon, label)},
 				"access":   string(workflow.MyAccess),
-			}
-			if attachedPaths != nil {
-				item["attached"] = attachedSet[path]
-			}
-			items = append(items, item)
+			})
 		}
 		sort.Slice(items, func(i, j int) bool {
 			left := strings.ToLower(fmt.Sprint(items[i]["label"], "\n", items[i]["workspace_path"]))
@@ -317,206 +301,16 @@ func (api *StreamingAPI) registerAccessibleWorkflowListTool(registrar definition
 		if err != nil {
 			return "", err
 		}
-		if attachedPaths != nil {
-			for _, crew := range crews {
-				path, _ := crew["workspace_path"].(string)
-				crew["attached"] = attachedSet[path]
-			}
-		}
 		out := map[string]interface{}{"workflows": items, "crews": crews}
-		if linkedRemote != nil {
-			if links, err := linkedRemote(ctx); err == nil && len(links) > 0 {
-				out["linked_remote_projects"] = links
-			}
-		}
 		encoded, err := json.MarshalIndent(out, "", "  ")
 		return string(encoded), err
 	})
 }
 
-// registerWorkWorkflowReferenceTools lets the Work assistant discover the
-// same authorized workflow set as the AgentWorks picker and persist an exact
-// Crew reference in workflow.json (workflows are not linked to a Crew). Names are never accepted for mutation:
-// the model must first list, disambiguate, and use the returned workspace path.
+// registerWorkWorkflowReferenceTools exposes authorized project/workflow discovery.
+// Cross-project file and agent access is per-turn via #project references; durable project linking is retired.
 func (api *StreamingAPI) registerWorkWorkflowReferenceTools(registrar definitionToolRegistrar, userID, sessionID, workspacePath string, readOnly bool) error {
-	if err := api.registerAccessibleWorkflowListTool(registrar, userID, func(ctx context.Context) ([]string, error) {
-		return readWorkWorkflowReferences(ctx, workspacePath)
-	}, func(ctx context.Context) ([]remoteProjectLink, error) {
-		return readRemoteProjectLinks(ctx, workspacePath)
-	}); err != nil {
-		return err
-	}
-	// Crew Run mode: discovery stays so readers can see what the crew
-	// references; attach/detach mutate the crew and go.
-	if readOnly {
-		return nil
-	}
-	register := func(name, description string, parameters map[string]interface{}, execute func(context.Context, map[string]interface{}) (string, error)) error {
-		return registrar.RegisterCustomTool(name, description, parameters, execute, "work_workflow_reference_tools")
-	}
-	claims := &UserClaims{UserID: strings.TrimSpace(userID)}
-	if record := directoryUserFor(userID, "", ""); record != nil {
-		claims.Username = record.Username
-		claims.Email = record.Email
-	}
-	withClaims := func(ctx context.Context) context.Context {
-		if current := GetUserFromContext(ctx); current != nil && current.UserID == userID {
-			return ctx
-		}
-		copy := *claims
-		return context.WithValue(ctx, UserContextKey, &copy)
-	}
-
-	if err := register("attach_workflow_reference", "Link another project to this one; call only after the person asks. A project on this machine: pass its exact workspace_path from list_accessible_workflows; it becomes durable context (read-write). A project on a server this Mac is signed in to: pass project_id (from server_project_files action=projects) and server when there are several; the link is saved on both sides so agents in either project can list and message each other's agents. Workflows cannot be linked: run one with run_workflow_trigger or ask its owner agent.", map[string]interface{}{
-		"type": "object",
-		"properties": map[string]interface{}{
-			"workspace_path": map[string]interface{}{"type": "string", "description": "Exact project workspace_path returned by list_accessible_workflows."},
-			"project_id":     map[string]interface{}{"type": "string", "description": "A project on another machine: its ID (on the Mac, a server project's ID from server_project_files action=projects)."},
-			"server":         map[string]interface{}{"type": "string", "description": "With project_id on the Mac: the saved server's name, when the Mac is signed in to several."},
-			"project_name":   map[string]interface{}{"type": "string", "description": "Set by the Mac when it saves its link on the server; not needed otherwise."},
-		},
-	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-		ctx = withClaims(ctx)
-		project, err := remoteProjectLinkArg(args)
-		if err != nil {
-			return "", err
-		}
-		if project != "" {
-			out, err := linkRemoteProject(ctx, userID, workspacePath, stringToolArg(args, "server"), project, stringToolArg(args, "project_name"))
-			if err != nil {
-				return "", err
-			}
-			encoded, err := json.MarshalIndent(out, "", "  ")
-			return string(encoded), err
-		}
-		path, _ := args["workspace_path"].(string)
-		if strings.HasPrefix(strings.Trim(strings.TrimSpace(path), "/"), "Workflow/") {
-			return "", fmt.Errorf("a workflow cannot be attached to a project; run it with run_workflow_trigger, or call its functions")
-		}
-		canonicalCurrent := canonicalChatHistoryWorkspacePath(userID, workspacePath)
-		if strings.TrimSuffix(strings.TrimSpace(path), "/") == canonicalCurrent {
-			return "", fmt.Errorf("a project cannot attach itself as reference context")
-		}
-		authorized, readRoots, err := authorizeWorkflowContextPathsWithReadRoots(ctx, []string{path})
-		if err != nil || len(authorized) != 1 {
-			if err != nil {
-				return "", err
-			}
-			return "", fmt.Errorf("workflow reference is unavailable")
-		}
-		paths, err := updateWorkWorkflowReferences(ctx, workspacePath, func(existing []string) ([]string, error) {
-			return appendUniqueStrings(existing, authorized[0]), nil
-		})
-		if err != nil {
-			return "", err
-		}
-		updateWorkSessionWorkflowGuard(sessionID, readRoots)
-		api.emitAgentProfileEvent(sessionID, map[string]interface{}{"type": "work_workflow_references_updated", "workflow_context_paths": paths})
-		encoded, err := json.MarshalIndent(map[string]interface{}{
-			"workflow_context_paths": paths,
-			"note":                   "The project is saved as durable context and file access is active now (Project references are read-write, workflow references read-only).",
-		}, "", "  ")
-		return string(encoded), err
-	}); err != nil {
-		return err
-	}
-
-	return register("detach_workflow_reference", "Remove one linked project from this project: the exact saved workspace_path, or project_id for a project on another machine (on the Mac this also removes the server's side).", map[string]interface{}{
-		"type": "object",
-		"properties": map[string]interface{}{
-			"workspace_path": map[string]interface{}{"type": "string"},
-			"project_id":     map[string]interface{}{"type": "string", "description": "A linked project on another machine."},
-		},
-	}, func(ctx context.Context, args map[string]interface{}) (string, error) {
-		ctx = withClaims(ctx)
-		project, err := remoteProjectLinkArg(args)
-		if err != nil {
-			return "", err
-		}
-		if project != "" {
-			return unlinkRemoteProject(ctx, userID, workspacePath, project)
-		}
-		path, _ := args["workspace_path"].(string)
-		path = strings.TrimSuffix(strings.TrimSpace(path), "/")
-		removedReadRoot, validReference := contextReferenceReadRoot(userID, path)
-		if !validReference {
-			// Removal needs the exact saved value, not access to its target.
-			// It never resolves a retired path or grants a new read root.
-			removedReadRoot = path
-		}
-		paths, err := updateWorkWorkflowReferences(ctx, workspacePath, func(existing []string) ([]string, error) {
-			kept := make([]string, 0, len(existing))
-			found := false
-			for _, current := range existing {
-				if current == path {
-					found = true
-					continue
-				}
-				kept = append(kept, current)
-			}
-			if !found {
-				return nil, fmt.Errorf("workflow reference %q is not attached", path)
-			}
-			return kept, nil
-		})
-		if err != nil {
-			return "", err
-		}
-		updateWorkSessionWorkflowGuard(sessionID, nil, path, removedReadRoot)
-		api.emitAgentProfileEvent(sessionID, map[string]interface{}{"type": "work_workflow_references_updated", "workflow_context_paths": paths})
-		return "Project reference detached. Access is revoked now.", nil
-	})
-}
-
-func readWorkWorkflowReferences(ctx context.Context, workspacePath string) ([]string, error) {
-	productRaw, productExists, err := readFileFromWorkspace(ctx, strings.TrimSuffix(strings.TrimSpace(workspacePath), "/")+"/product.json")
-	if err != nil {
-		return nil, err
-	}
-	if !productExists {
-		return nil, fmt.Errorf("Work product manifest does not exist")
-	}
-	var productManifest productProjectManifest
-	if err := json.Unmarshal([]byte(productRaw), &productManifest); err != nil {
-		return nil, fmt.Errorf("decode Work product manifest: %w", err)
-	}
-	if !isProjectProfileID(productManifest.Product) {
-		return nil, fmt.Errorf("workspace is not a project or project")
-	}
-	raw, _, err := readProjectRuntimeManifest(ctx, "work", workspacePath)
-	if err != nil {
-		return nil, err
-	}
-	var manifest productProjectManifest
-	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return nil, fmt.Errorf("decode Work runtime manifest: %w", err)
-	}
-	return canonicalRuntimeSelection(firstNonEmptyStrings(manifest.WorkflowContextPaths, manifest.Capabilities.WorkflowContextPaths)), nil
-}
-
-func updateWorkWorkflowReferences(ctx context.Context, workspacePath string, mutate func([]string) ([]string, error)) ([]string, error) {
-	var next []string
-	err := mutateProjectRuntimeManifest(ctx, "work", workspacePath, func(document map[string]any, _ map[string]any) (bool, error) {
-		rawDoc, err := json.Marshal(document)
-		if err != nil {
-			return false, fmt.Errorf("encode Work product manifest: %w", err)
-		}
-		var typed productProjectManifest
-		if err := json.Unmarshal(rawDoc, &typed); err != nil {
-			return false, fmt.Errorf("decode Work product manifest: %w", err)
-		}
-		next, err = mutate(canonicalRuntimeSelection(firstNonEmptyStrings(typed.WorkflowContextPaths, typed.Capabilities.WorkflowContextPaths)))
-		if err != nil {
-			return false, err
-		}
-		next = canonicalRuntimeSelection(next)
-		document["workflow_context_paths"] = next
-		return true, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return next, nil
+	return api.registerAccessibleWorkflowListTool(registrar, userID)
 }
 
 // Project discovery shares audience rules while keeping the two origin grants.

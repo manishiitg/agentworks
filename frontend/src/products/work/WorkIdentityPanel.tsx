@@ -1,8 +1,7 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { useWorkspaceViewTarget } from '../../hooks/useWorkspaceViewTarget'
-import { Fingerprint, FolderOpen, Globe, Loader2, Lock, Settings, Tag, Trash2, X } from 'lucide-react'
+import { Fingerprint, FolderOpen, Loader2, Lock, Settings, Tag, Trash2, X } from 'lucide-react'
 import { FolderGrantList } from '../../components/folders/FolderGrantList'
-import { WorkflowReferenceAccess } from '../../components/folders/WorkflowReferenceAccess'
 import { Button } from '../../components/ui/Button'
 import { SettingsCard } from '../../components/ui/SettingsCard'
 import { ToggleRow } from '../../components/ui/ToggleRow'
@@ -15,7 +14,6 @@ import type { ProductIdentity } from '../../platform/chat/productProjects'
 import type { ProductIdentityPatch } from '../../platform/chat/productProjects'
 import api, { workFolderApi } from '../../services/api'
 import type { PresetLLMConfig, WorkFolderGrant } from '../../services/api-types'
-import { loadWorkSessions } from './workSessions'
 import { useProjectProduct } from './projectProduct'
 import { isWorkIdentityTabEnabled } from './workViewGating'
 import { ProjectInstructionsCard } from './ProjectInstructionsCard'
@@ -93,52 +91,14 @@ function WorkGeneralPanel({ projectTitle, projectIdentity, onUpdateIdentity }: {
   )
 }
 
-type ServerLink = { project_id: string; name: string; where: string; can_remove: boolean }
-
-/** Links to a project on the other machine (#3663): a Mac project linked to a server project, or the server project's
- * link back. The server lists them and removes both sides; its message is shown as it says it. Also from chat:
- * "link <project> on <server>" / "unlink <project>". Nothing shows until a link exists. */
-function ServerLinksCard({ workspacePath }: { workspacePath: string }) {
-  const [links, setLinks] = useState<ServerLink[]>([])
-  const [pending, setPending] = useState('')
-  const [note, setNote] = useState('')
-  const load = () => api.get<{ links: ServerLink[] }>('/api/work/remote-links', { params: { workspace_path: workspacePath } }).then(({ data }) => setLinks(data.links || [])).catch(() => setLinks([]))
-  useEffect(() => { void load() }, [workspacePath]) // eslint-disable-line react-hooks/exhaustive-deps
-  if (links.length === 0 && !note) return null
-  const remove = async (link: ServerLink) => {
-    setPending(link.project_id); setNote('')
-    try { const { data } = await api.post<{ note?: string }>('/api/work/remote-links', { workspace_path: workspacePath, project_id: link.project_id }); setNote(data.note || ''); await load() }
-    catch (cause) { setNote(localFileError(cause)) }
-    finally { setPending('') }
-  }
-  return <SettingsCard icon={<Globe aria-hidden="true" className="h-4 w-4 text-primary" />} title="Linked on another machine" count={`${links.length} linked`}
-    description="Projects on a server (or on a Mac) linked to this one. Your agents in both can find and message each other.">
-    <div className="divide-y divide-border">{links.map(link => <div key={link.project_id} className="flex items-center gap-3 py-2">
-      <p className="min-w-0 flex-1 truncate text-sm">{link.name} <span className="text-xs text-muted-foreground">· {link.where}</span></p>
-      {link.can_remove && <button type="button" disabled={Boolean(pending)} onClick={() => void remove(link)} className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-50">{pending === link.project_id ? <Loader2 aria-label="Removing" className="h-3.5 w-3.5 animate-spin" /> : 'Remove'}</button>}
-    </div>)}</div>
-    {note && <p className="text-xs text-muted-foreground">{note}</p>}
-  </SettingsCard>
-}
-
-/** part (owner, 4 Nov): in the Mac app "Linked projects" shows only the linked projects and "Folders on this Mac" only the
- * folders attached on this Mac; elsewhere one page shows both. */
-export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWorkflowContextPathsChange, onOpenComputer, part = 'all' }: {
-  part?: 'all' | 'linked' | 'attached'
+export function WorkFoldersSection({ workspacePath, onOpenComputer }: {
   workspacePath: string
-  workflowContextPaths: string[]
   onOpenComputer?: () => void
-  onWorkflowContextPathsChange: (paths: string[]) => Promise<unknown>
 }) {
   const [folders, setFolders] = useState<WorkFolderGrant[]>([])
   const [roots, setRoots] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [crewReferences, setCrewReferences] = useState<Array<{ path: string; label: string; icon?: string }>>([])
-  // A Code project can also attach the person's other projects (their files, read-only). Not Local ones (their
-  // files are on a computer), and not for a Crew, which others can open.
-  const product = useProjectProduct()
-
 
   useEffect(() => {
     let cancelled = false
@@ -155,19 +115,6 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
     })
     return () => { cancelled = true }
   }, [workspacePath])
-
-  useEffect(() => {
-    let cancelled = false
-    void loadWorkSessions().then(sessions => {
-      if (cancelled) return
-      setCrewReferences(sessions.map(session => ({
-        path: session.workspacePath,
-        label: session.identity?.name || session.title,
-        icon: session.identity?.icon,
-      })))
-    }).catch(() => { if (!cancelled) setCrewReferences([]) })
-    return () => { cancelled = true }
-  }, [])
 
 
 
@@ -235,17 +182,8 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
 
   return (
     <div className="space-y-4">
-      {part !== 'linked' && roots.length > 0 && <p className="text-[11px] text-muted-foreground">Allowed roots: {roots.join(', ')}</p>}
-      {part !== 'attached' && <WorkflowReferenceAccess
-        selectedPaths={workflowContextPaths}
-        onChange={onWorkflowContextPathsChange}
-        excludeWorkspacePath={workspacePath}
-        additionalReferences={crewReferences}
-        additionalLabel="Project"
-        showAdditionalGroup
-      />}
-      {part !== 'attached' && <ServerLinksCard workspacePath={workspacePath} />}
-      {part !== 'linked' && <SettingsCard
+      {roots.length > 0 && <p className="text-[11px] text-muted-foreground">Allowed roots: {roots.join(', ')}</p>}
+      <SettingsCard
         icon={<FolderOpen aria-hidden="true" className="h-4 w-4 text-primary" />}
         title="Attached folders"
         description={local ? "Folders on your Mac that your projects can open. They stay on your Mac." : "Folders available on this server. Use Your computer for folders on your laptop."}
@@ -276,7 +214,7 @@ export function WorkFoldersSection({ workspacePath, workflowContextPaths, onWork
           <button type="button" disabled={adding} onClick={() => void add()} className="h-8 rounded-md border border-border px-3 text-xs hover:bg-muted disabled:opacity-50">{adding ? 'Adding…' : 'Add folder'}</button>
         </div> : <div className="mt-3 text-xs text-muted-foreground">{local ? 'Add folders from the AgentWorks Mac app.' : onOpenComputer && <button type="button" onClick={onOpenComputer} className="underline underline-offset-2 hover:text-foreground">Open Your computer</button>}</div>}
         {error && <p className="text-xs text-destructive">{error}</p>}
-      </SettingsCard>}
+      </SettingsCard>
     </div>
   )
 }

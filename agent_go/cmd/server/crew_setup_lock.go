@@ -126,8 +126,6 @@ var crewSetupLockedTools = map[string]bool{
 	"delete_project_schedule":   true,
 	"manage_condition_triggers": true,
 	"manage_schedules":          true,
-	"attach_workflow_reference": true,
-	"detach_workflow_reference": true,
 }
 
 // crewSetupLockedRefusal is the one plain line a User sees when something would change the setup.

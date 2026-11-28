@@ -65,10 +65,6 @@ func TestMutateProjectRuntimeManifestSerializesConcurrentWriters(t *testing.T) {
 			return appendUniqueStrings(cur, "vault_c-demo")
 		}, true)
 	})
-	run(func() error {
-		_, err := setRemoteProjectLink(ctx, root, remoteProjectLink{ProjectID: "remote-1", Name: "Remote", Server: "srv-1"})
-		return err
-	})
 
 	wg.Wait()
 	close(errs)
@@ -83,10 +79,6 @@ func TestMutateProjectRuntimeManifestSerializesConcurrentWriters(t *testing.T) {
 	var doc map[string]any
 	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
 		t.Fatalf("unmarshal workflow.json: %v\n%s", err, raw)
-	}
-	links, _ := doc["linked_remote_projects"].([]any)
-	if len(links) != 1 {
-		t.Fatalf("linked_remote_projects lost in concurrent writes: %s", raw)
 	}
 	caps, _ := doc["capabilities"].(map[string]any)
 	if caps["github_connection_id"] != "33333333333333333333333333333333" {

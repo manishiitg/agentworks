@@ -147,7 +147,6 @@ func TestCrewReaderDeniedToolsGate(t *testing.T) {
 	gate.DenyReaderTools(crewReaderDeniedTools()...)
 	for _, denied := range []string{
 		"diff_patch_workspace_file", "image_gen", "image_edit",
-		"attach_workflow_reference", "detach_workflow_reference",
 		"create_project_schedule", "update_project_schedule", "delete_project_schedule", "trigger_project_schedule",
 		"update_project_mcp_server_selection", "update_project_global_secret_selection", "update_project_skill_selection",
 		"set_workflow_secret", "delete_workflow_secret",

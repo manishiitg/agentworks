@@ -106,7 +106,6 @@ func (api *StreamingAPI) newServerRouter() (*mux.Router, *mux.Router) {
 	apiRouter.HandleFunc("/client-events", handleClientEvent).Methods("POST")
 	apiRouter.HandleFunc("/crew-sync/{project}", api.handleCrewSync).Methods("GET", "POST")
 	apiRouter.HandleFunc("/work/mac-downloads", api.handleMacDownloadsAccess).Methods("GET", "PUT")
-	apiRouter.HandleFunc("/work/remote-links", api.handleRemoteProjectLinks).Methods("GET", "POST")
 	loadMacDownloadsAccess()
 	apiRouter.HandleFunc("/desktop-connections/{connection}/crew-sync/{project}", api.handleDesktopCrewSync).Methods("GET", "POST")
 	apiRouter.HandleFunc("/desktop-connections", api.handleDesktopConnections).Methods("GET", "POST")

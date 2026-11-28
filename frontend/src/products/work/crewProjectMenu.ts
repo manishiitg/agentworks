@@ -50,8 +50,9 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
       add('mcp', item.id === 'slack' ? 'Integrations' : 'Use', item.id === 'slack' ? 'Slack bot' : item.label, item.icon, item.id === 'slack' ? 'slack-bot' : item.id, item.id === 'slack' ? undefined : 'Use from other apps')
     }
     for (const item of projectConnectionSections({ allowedProducts, workMode: true, enabledPanels, onOpen: () => {} })) {
-      // Linked projects sit with the Crew's connections; the main menu keeps the Share row (owner, 3 Nov).
-      add('mcp', 'Integrations', item.id === 'mcp:folders' ? 'Linked projects' : item.label, item.icon, item.id.slice(4), item.subgroup)
+      // Linked projects are retired: on a Mac, Folders on this Mac replaces the separate folders row.
+      if (item.id === 'mcp:folders' && isLocalDeployment()) continue
+      add('mcp', 'Integrations', item.id === 'mcp:folders' ? 'Folders' : item.label, item.icon, item.id.slice(4), item.subgroup)
     }
     if (hasDesktopConnections() || isLocalDeployment()) add('mcp', 'Integrations', 'Folders on this Mac', Folder, 'mac-folders')
     if (isWorkIntegrationTabEnabled('secrets', enabledPanels)) add('mcp', 'Integrations', 'GitHub', Github, 'github')

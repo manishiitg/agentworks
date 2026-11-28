@@ -1560,7 +1560,11 @@ func (api *StreamingAPI) registerCrewFunctionToolSet(registrar definitionToolReg
 			callCaller = externalCrewCaller(claims)
 			callCaller.Path, callCaller.Chat = caller.Path, caller.Chat
 		}
-		call, err := api.startCrewFunctionCall(context.WithValue(ctx, structuredFunctionCallerSessionKey{}, sessionID), userID, callCaller, target, fn, args, timeout, submissionID)
+		callCtx := context.WithValue(ctx, structuredFunctionCallerSessionKey{}, sessionID)
+		if len(turnReachReferences(callCtx)) == 0 && len(parentReq.WorkflowContextPaths) > 0 {
+			callCtx = withTurnReachReferences(callCtx, parentReq.WorkflowContextPaths)
+		}
+		call, err := api.startCrewFunctionCall(callCtx, userID, callCaller, target, fn, args, timeout, submissionID)
 		if err != nil {
 			return "", err
 		}

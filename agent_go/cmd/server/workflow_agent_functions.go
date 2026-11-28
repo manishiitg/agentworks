@@ -48,9 +48,9 @@ func (api *StreamingAPI) workflowAgentFunctionToolsForRun(ctx context.Context) s
 				return triggerLinkCaller{}, err
 			}
 			if binding != nil && binding.Kind == "script" {
-				// Scripts act as their registered owning Crew. This deliberately
-				// retains Linked projects and function caller checks, with no
-				// standalone-workflow exemption or editable owner stamp.
+				// Scripts act as their registered owning project, keeping project
+				// reach isolation and function caller checks with no standalone-workflow
+				// exemption or editable owner stamp.
 				caller = crewTriggerLinkCaller(binding.CrewRoot)
 			}
 			resolved, err := caller(ctx)

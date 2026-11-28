@@ -42,9 +42,7 @@ Resolve the authorized root before reading:
 - Project references follow the effective runtime grants and the restrictions
   above. Never infer write access from a project's name or discovery result.
 
-A `#` workflow selection applies only to that message. For durable access to a
-workflow or another project, use
-`workspace action=references_list`, disambiguate by its exact returned path, and call
-`workspace action=reference_attach` only when the user asks to keep it attached. Use
-the exact saved path for `workspace action=reference_detach`. Durable references live
-in the project's `workflow.json` and are re-authorized on every turn.
+A `#` project selection applies only to that message (granting one-turn file
+and agent/function access for that turn only). Durable project linking is
+retired; use `workspace action=references_list` only for discovery (for
+example, copying a workflow or reading another project's dashboard).

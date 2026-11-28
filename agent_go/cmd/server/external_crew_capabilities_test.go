@@ -188,22 +188,14 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	if !strings.Contains(result, "Workflow/research") {
 		t.Fatal(result)
 	}
-	// Workflows are not linked to a Crew; discovery still lists them for ask and functions.
-	attachName, attachArgs := canonicalTestCall("workspace", map[string]any{"action": "reference_attach", "workspace_path": "Workflow/research", "crew_id": "team"})
-	attachBody, _ := json.Marshal(map[string]any{"name": attachName, "arguments": attachArgs})
-	f.api.dispatchExternalCall(httptest.NewRecorder(), adminRequest(http.MethodPost, "/api/external/call", string(attachBody), claims, nil), false)
-	if manifest, _, _ := readFileFromWorkspace(t.Context(), externalCommandCrewRoot+"/workflow.json"); strings.Contains(manifest, "Workflow/research") {
-		t.Fatal("a workflow reference was persisted")
-	}
 	claims.AccessToken.AllWorkflows = false
 	claims.AccessToken.WorkflowIDs = []string{"other"}
-	crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "reference_attach", "workspace_path": "Workflow/research"}, 403)
 	result = crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "references_list"}, 200)
 	if strings.Contains(result, "Workflow/research") {
 		t.Fatal("out-of-bound reference was listed")
 	}
-	for _, group := range []string{"skills", "mcp", "workspace"} {
-		action := map[string]string{"skills": "uninstall", "mcp": "remove", "workspace": "reference_attach"}[group]
+	for _, group := range []string{"skills", "mcp"} {
+		action := map[string]string{"skills": "uninstall", "mcp": "remove"}[group]
 		crewCapabilityHTTP(t, f, crewReader("owner"), group, map[string]any{"action": action}, 403)
 		crewCapabilityHTTP(t, f, crewWriter("other"), group, map[string]any{"action": action}, 403)
 	}

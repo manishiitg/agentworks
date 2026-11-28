@@ -3725,6 +3725,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         onActiveOptionChange={setActiveReferenceOption}
         searchQuery={crewReferenceSearch}
         position={crewReferencesPosition}
+        excludeWorkspacePath={profileAtRoot}
       />}
 
       {/* Inline Skill Selection Popup */}

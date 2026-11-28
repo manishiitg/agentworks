@@ -33,8 +33,6 @@ metadata:
     - files
     - list_accessible_workflows
     - database
-    - attach_workflow_reference
-    - detach_workflow_reference
     agentworks:
     - share
     - manage_project

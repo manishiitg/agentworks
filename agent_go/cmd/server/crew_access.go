@@ -428,9 +428,7 @@ func crewReaderDeniedTools() []string {
 		"diff_patch_workspace_file",
 		"image_gen",
 		"image_edit",
-		// Crew configuration: references, schedules, triggers (lists stay).
-		"attach_workflow_reference",
-		"detach_workflow_reference",
+		// Crew configuration: schedules, triggers (lists stay).
 		"create_project_schedule",
 		"update_project_schedule",
 		"delete_project_schedule",

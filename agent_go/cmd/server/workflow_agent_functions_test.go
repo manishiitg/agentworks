@@ -62,18 +62,13 @@ func TestPythonAsksKeepRunAuthorityAndIndependentInboxes(t *testing.T) {
 	}
 	ask := executors["ask_crew"].(func(context.Context, map[string]interface{}) (string, error))
 	read := executors["read_agent_messages"].(func(context.Context, map[string]interface{}) (string, error))
-	if _, err := ask(ctx, map[string]interface{}{"crew": "alpha", "message": "Ask myself", "submission_id": "self"}); err == nil || !strings.Contains(err.Error(), "own Crew") {
-		t.Fatalf("script asked its own Crew: %v", err)
+	if _, err := ask(ctx, map[string]interface{}{"crew": "alpha", "message": "Ask myself", "submission_id": "self"}); err == nil || !strings.Contains(err.Error(), "own project") {
+		t.Fatalf("script asked its own project: %v", err)
 	}
-	if _, err := updateWorkWorkflowReferences(ctx, linkAlphaPath, func([]string) ([]string, error) { return nil, nil }); err != nil {
-		t.Fatal(err)
+	if _, err := ask(ctx, map[string]interface{}{"crew": "beta", "message": "Untagged", "submission_id": "unlinked"}); err == nil || !strings.Contains(err.Error(), "Tag its project with #") {
+		t.Fatalf("script bypassed Crew reach rule: %v", err)
 	}
-	if _, err := ask(ctx, map[string]interface{}{"crew": "beta", "message": "Unlinked", "submission_id": "unlinked"}); err == nil || !strings.Contains(err.Error(), "not linked") {
-		t.Fatalf("script bypassed Crew link rule: %v", err)
-	}
-	if _, err := updateWorkWorkflowReferences(ctx, linkAlphaPath, func([]string) ([]string, error) { return []string{linkBetaPath}, nil }); err != nil {
-		t.Fatal(err)
-	}
+	ctx = withTurnReachReferences(ctx, []string{linkBetaPath})
 	var unavailable string
 	for _, name := range []string{"gamma", "unknown"} {
 		_, err := ask(ctx, map[string]interface{}{"crew": name, "message": "Please review", "submission_id": name})
@@ -392,7 +387,7 @@ func TestWorkflowAgentFunctionCallsIdentityResultsAndRetryScope(t *testing.T) {
 }
 
 // PLAT-746-441: converted Python scripts must act as their Crew and retain the
-// same-owner link rule; the old workflow exemption must not grant new access.
+// Project Python workflows stay scoped to their owning project (no cross-project bypass).
 func TestPythonScriptFunctionCallerRequiresCrewLinkAndKeepsRunScope(t *testing.T) {
 	t.Setenv("WORKSPACE_DOCS_PATH", t.TempDir())
 	env := newWorkflowFunctionEnv(t)
@@ -402,11 +397,6 @@ func TestPythonScriptFunctionCallerRequiresCrewLinkAndKeepsRunScope(t *testing.T
 		return internalSessionTurnResult{FinalResponse: "Checked build."}, nil
 	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner"})
-	// The common function fixture links Alpha to Beta. This regression starts
-	// unlinked so its first refusal must come from the real link rule.
-	if _, err := updateWorkWorkflowReferences(ctx, linkAlphaPath, func([]string) ([]string, error) { return nil, nil }); err != nil {
-		t.Fatal(err)
-	}
 	binding := crewExecutableBinding{ID: "python-source", CrewID: "alpha", CrewRoot: linkAlphaPath, Root: "Workflow/python-source", Kind: "script"}
 	if err := registerCrewExecutable(binding); err != nil {
 		t.Fatal(err)
@@ -426,8 +416,8 @@ func TestPythonScriptFunctionCallerRequiresCrewLinkAndKeepsRunScope(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	invoke := func(name string, args map[string]interface{}) (map[string]interface{}, error) {
-		raw, err := executors[name].(func(context.Context, map[string]interface{}) (string, error))(ctx, args)
+	invokeWith := func(callCtx context.Context, name string, args map[string]interface{}) (map[string]interface{}, error) {
+		raw, err := executors[name].(func(context.Context, map[string]interface{}) (string, error))(callCtx, args)
 		var value map[string]interface{}
 		if err == nil {
 			err = json.Unmarshal([]byte(raw), &value)
@@ -435,23 +425,20 @@ func TestPythonScriptFunctionCallerRequiresCrewLinkAndKeepsRunScope(t *testing.T
 		return value, err
 	}
 	args := map[string]interface{}{"project": "Beta", "function": "check_build", "input": map[string]interface{}{"build": "7"}, "wait_seconds": 3}
-	if _, err := invoke("project_functions_call", args); err == nil || !strings.Contains(err.Error(), "not linked") {
-		t.Fatalf("unlinked Crew admitted: %v", err)
+	if _, err := invokeWith(ctx, "project_functions_call", args); err == nil || !strings.Contains(err.Error(), "Tag its project with #") {
+		t.Fatalf("untagged Crew admitted: %v", err)
 	}
-	if _, err := updateWorkWorkflowReferences(ctx, linkAlphaPath, func(refs []string) ([]string, error) { return append(refs, linkBetaPath), nil }); err != nil {
-		t.Fatal(err)
-	}
-	value, err := invoke("project_functions_call", args)
+	taggedCtx := withTurnReachReferences(ctx, []string{linkBetaPath})
+	value, err := invokeWith(taggedCtx, "project_functions_call", args)
 	if err != nil || value["status"] != "completed" {
-
-		t.Fatalf("linked Crew call = %v %v", value, err)
+		t.Fatalf("tagged Crew call = %v %v", value, err)
 	}
 	id := value["call_id"].(string)
 	call := lookupCrewFunctionCall(id)
 	if call.CallerKind != triggerCallerCrew || call.CallerID != "alpha" {
 		t.Fatalf("script kept workflow exemption: %+v", call.snapshot())
 	}
-	status, err := invoke("project_functions_get_call", map[string]interface{}{"call_id": id})
+	status, err := invokeWith(taggedCtx, "project_functions_get_call", map[string]interface{}{"call_id": id})
 	if err != nil || status["status"] != "completed" {
 		t.Fatalf("authorized status failed: %v %v", status, err)
 	}
@@ -486,14 +473,11 @@ func TestPythonScriptFunctionCallerRequiresCrewLinkAndKeepsRunScope(t *testing.T
 			}
 		})
 	}
-	if _, err := updateWorkWorkflowReferences(ctx, linkAlphaPath, func([]string) ([]string, error) { return nil, nil }); err != nil {
-		t.Fatal(err)
+	if _, err := invokeWith(ctx, "project_functions_get_call", map[string]interface{}{"call_id": id}); err != nil {
+		t.Fatalf("without # tag lost an existing authorized receipt: %v", err)
 	}
-	if _, err := invoke("project_functions_get_call", map[string]interface{}{"call_id": id}); err != nil {
-		t.Fatalf("unlinking lost an existing authorized receipt: %v", err)
-	}
-	if _, err := invoke("project_functions_call", args); err == nil || !strings.Contains(err.Error(), "not linked") {
-		t.Fatalf("unlinked Crew still started function work: %v", err)
+	if _, err := invokeWith(ctx, "project_functions_call", args); err == nil || !strings.Contains(err.Error(), "Tag its project with #") {
+		t.Fatalf("untagged Crew still started function work: %v", err)
 	}
 }
 
